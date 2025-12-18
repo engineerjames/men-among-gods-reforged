@@ -15,7 +15,6 @@ use std::time::{Duration, Instant};
 use crate::constants::*;
 use crate::logging::Logger;
 use crate::types::*;
-use crate::xlog;
 
 // Platform-specific rdtsc implementation
 #[cfg(all(target_arch = "x86_64", target_feature = "sse2"))]
@@ -135,7 +134,7 @@ impl Profiler {
     }
     
     /// Display profiling results to characters with CF_PROF flag
-    pub fn god_prof(&self, ch: &[Character], logger: &Logger, do_char_log: impl Fn(usize, i32, &str)) {
+    pub fn god_prof(&self, ch: &[Character], _logger: &Logger, do_char_log: impl Fn(usize, i32, &str)) {
         let mut bestn = [-1i32; MAX_BEST];
         let mut bestv = [1u64; MAX_BEST];
         

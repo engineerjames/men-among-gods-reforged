@@ -12,7 +12,6 @@ Rust port maintains original logic and comments.
 
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
-use std::io::Write;
 use std::net::TcpStream;
 
 use crate::constants::*;

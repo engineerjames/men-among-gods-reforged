@@ -11,7 +11,7 @@ Rust port maintains original logic and comments.
 //! Logging module - server logging functionality
 
 use chrono::Local;
-use std::fs::{File, OpenOptions};
+use std::fs::OpenOptions;
 use std::io::{self, Write};
 use std::sync::Mutex;
 
