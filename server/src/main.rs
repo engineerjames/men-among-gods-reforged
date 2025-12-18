@@ -20,6 +20,10 @@ mod logging;
 mod network;
 mod game_loop;
 mod profiling;
+mod god;
+mod population;
+mod state_mgmt;
+mod player_control;
 
 use std::env;
 use std::fs::{self, OpenOptions};
