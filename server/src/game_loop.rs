@@ -63,6 +63,9 @@ pub struct GameState {
     pub state_manager: StateManager,
     pub lab9_manager: Lab9Manager,
     pub node_manager: NodeManager,
+    
+    /// Wakeup system - cycles through characters for periodic wakeup
+    pub wakeup_counter: usize,
 }
 
 impl GameState {
@@ -127,6 +130,7 @@ impl GameState {
             state_manager: StateManager::new("./data"),
             lab9_manager: Lab9Manager::new(),
             node_manager: NodeManager::new(),
+            wakeup_counter: 1,
         }
     }
     
@@ -207,37 +211,46 @@ impl GameState {
         }
 
         // Let characters (NPCs and players) act
+        let mut cnt = 0;
         let mut awake = 0;
         let mut body = 0;
+        let mut plon = 0;  // visible online players
 
-        // Periodically wake up sleeping characters
+        // Periodically wake up sleeping characters (every 64 ticks, give one character 60 seconds of activity)
         if (self.globs.ticker & 63) == 0 {
-            // Would implement wakeup queue rotation
+            if self.wakeup_counter >= MAXCHARS {
+                self.wakeup_counter = 1;
+            }
+            self.ch[self.wakeup_counter].data[92] = (TICKS * 60) as i32; // 60 seconds of awake time
+            self.wakeup_counter += 1;
         }
 
         for n in 1..self.ch.len() {
             if self.ch[n].used == USE_EMPTY {
                 continue;
             }
+            cnt += 1;
 
             // Update character flags
             if (self.ch[n].flags & CharacterFlags::CF_UPDATE.bits()) != 0 {
-                // Would call really_update_char(n)
+                // Would call really_update_char(n) - recalculates stats
                 self.ch[n].flags &= !CharacterFlags::CF_UPDATE.bits();
             }
 
             // Check for expired non-active characters
             if self.ch[n].used == USE_NONACTIVE && (n & 1023) == (self.globs.ticker as usize & 1023) {
-                // Would call check_expire(n)
+                self.check_expire(n);
             }
 
-            // Handle bodies
+            // Handle bodies (corpses)
             if (self.ch[n].flags & CharacterFlags::CF_BODY.bits()) != 0 {
                 if (self.ch[n].flags & CharacterFlags::CF_PLAYER.bits()) == 0 && self.ch[n].data[98] as i32 > TICKS as i32 * 60 * 30 {
                     self.ch[n].data[98] += 1;
                     // Remove lost body
                     xlog!(self.logger, "Removing lost body of character {}", n);
+                    // Would call god_destroy_items(n) here
                     self.ch[n].used = USE_EMPTY;
+                    continue;
                 }
                 body += 1;
                 continue;
@@ -249,8 +262,7 @@ impl GameState {
             }
 
             // Skip if character is sleeping and not in group
-            if self.ch[n].status < 8 {
-                // Would call group_active(n)
+            if self.ch[n].status < 8 && !self.group_active(n) {
                 continue;
             }
 
@@ -259,7 +271,9 @@ impl GameState {
             // Update online time for active characters
             if self.ch[n].used == USE_ACTIVE {
                 if (n & 1023) == (self.globs.ticker as usize & 1023) {
-                    // Would call check_valid(n)
+                    if !self.check_char_valid(n) {
+                        continue;
+                    }
                 }
                 self.ch[n].current_online_time += 1;
                 self.ch[n].total_online_time += 1;
@@ -267,31 +281,50 @@ impl GameState {
                 if (self.ch[n].flags & (CharacterFlags::CF_PLAYER.bits() | CharacterFlags::CF_USURP.bits())) != 0 {
                     self.globs.total_online_time += 1;
                     self.globs.online_per_hour[hour as usize % 24] += 1;
+
+                    // Decrement player cooldown/duration counters
+                    if (self.ch[n].flags & CharacterFlags::CF_PLAYER.bits()) != 0 {
+                        if self.ch[n].data[71] > 0 {
+                            self.ch[n].data[71] -= 1;
+                        }
+                        if self.ch[n].data[72] > 0 {
+                            self.ch[n].data[72] -= 1;
+                        }
+                    }
+
+                    // Count visible online players (not invisible)
+                    if (self.ch[n].flags & CharacterFlags::CF_PLAYER.bits()) != 0 && 
+                       (self.ch[n].flags & CharacterFlags::CF_INVISIBLE.bits()) == 0 {
+                        plon += 1;
+                    }
                 }
+
+                // Let character act
+                // Would call plr_act(n) - process character actions
             }
+
+            // Handle regeneration for all awake characters
+            // Would call do_regenerate(n) - heal, mana regen
         }
 
-        self.globs.character_cnt = awake;
-        self.globs.body = body;
-        
-        // Count online players
-        let mut online = 0;
-        for n in 1..MAXPLAYER {
-            if self.players.players[n].is_connected() && 
-               (self.players.players[n].state == ST_NORMAL || self.players.players[n].state == ST_EXIT) {
-                online += 1;
-            }
-        }
-
-        self.globs.players_online = online as i32;
+        self.globs.character_cnt = cnt as i32;
+        self.globs.awake = awake as i32;
+        self.globs.body = body as i32;
+        self.globs.players_online = plon as i32;
 
         // Track max online
-        if online as i32 > self.globs.max_online {
-            self.globs.max_online = online as i32;
+        if plon as i32 > self.globs.max_online {
+            self.globs.max_online = plon as i32;
         }
-        if online as i32 > self.globs.max_online_per_hour[hour as usize % 24] {
-            self.globs.max_online_per_hour[hour as usize % 24] = online as i32;
+        if plon as i32 > self.globs.max_online_per_hour[hour as usize % 24] {
+            self.globs.max_online_per_hour[hour as usize % 24] = plon as i32;
         }
+
+        // Process world systems
+        // pop_tick() - update NPCs and world entities
+        // effect_tick() - process effect/buff system
+        // item_tick() - process items
+        // global_tick() - world updates like day/night cycle
     }
     
     /// Load game state and data from disk
@@ -459,9 +492,191 @@ impl GameState {
         xlog!(self.logger, "Removed Lab Item {} from character {}", item_name, carried);
     }
 
-    /// Send tick update to player (helper for game loop)
-    fn plr_tick(&mut self, _n: usize) {
-        // Would send tick packet to player
+    /// Send tick update to player - based on plr_tick from svr_tick.cpp
+    /// Checks for lag-induced stoning and handles lag recovery
+    fn plr_tick(&mut self, nr: usize) {
+        if nr >= MAXPLAYER {
+            return;
+        }
+
+        // Increment player tick counter
+        self.players.players[nr].ltick += 1;
+
+        if self.players.players[nr].state != ST_NORMAL {
+            return;
+        }
+
+        let cn = self.players.players[nr].usnr;
+
+        // Check for lag-based stoning
+        if cn > 0 && cn < self.ch.len() && 
+           self.ch[cn].data[19] != 0 && 
+           (self.ch[cn].flags & CharacterFlags::CF_PLAYER.bits()) != 0 {
+            
+            let lag_threshold = self.ch[cn].data[19] as i32;
+            let ltick = self.players.players[nr].ltick as i32;
+            let rtick = self.players.players[nr].rtick as i32;
+            let lag_diff = ltick - rtick;
+
+            // Check if should be stoned due to lag
+            if lag_diff > lag_threshold && (self.ch[cn].flags & CharacterFlags::CF_STONED.bits()) == 0 {
+                let lag_seconds = lag_diff as f32 / 18.0;
+                xlog!(self.logger, "Character {} turned to stone due to lag ({:.2}s)", cn, lag_seconds);
+                self.ch[cn].flags |= CharacterFlags::CF_STONED.bits();
+                // Would call stone_gc(cn, 1)
+            } 
+            // Check if should unstoned (lag recovered)
+            else if lag_diff < lag_threshold - TICKS as i32 && 
+                    (self.ch[cn].flags & CharacterFlags::CF_STONED.bits()) != 0 {
+                xlog!(self.logger, "Character {} unstoned, lag is gone", cn);
+                self.ch[cn].flags &= !CharacterFlags::CF_STONED.bits();
+                // Would call stone_gc(cn, 0)
+            }
+        }
+    }
+
+    /// Check if character is still valid - based on check_valid from svr_tick.cpp
+    fn check_char_valid(&mut self, cn: usize) -> bool {
+        if cn >= self.ch.len() {
+            return false;
+        }
+
+        // Check bounds
+        let ch_x = self.ch[cn].x;
+        let ch_y = self.ch[cn].y;
+        if ch_x < 1 || ch_y < 1 || 
+           ch_x >= (SERVER_MAPX - 2) as i16 || 
+           ch_y >= (SERVER_MAPY - 2) as i16 {
+            xlog!(self.logger, "Character {} killed for invalid position ({}, {})", 
+                  cn, ch_x, ch_y);
+            // Would call do_char_killed(0, cn) - kill the character
+            return false;
+        }
+
+        // Verify character is on map
+        let map_idx = (ch_x as usize) + (ch_y as usize) * (SERVER_MAPX as usize);
+        if map_idx < self.map.len() {
+            let map_ch = self.map[map_idx].ch;
+            if map_ch as usize != cn {
+                xlog!(self.logger, "Character {} not on map (found {})", cn, map_ch);
+                // Try to relocate character or fail
+                if self.map[map_idx].ch == 0 {
+                    self.map[map_idx].ch = cn as u32;
+                } else {
+                    // Would call god_drop_char_fuzzy_large to relocate
+                    return false;
+                }
+            }
+        }
+
+        // Validate inventory items (40 items)
+        for n in 0..40 {
+            let item_idx = self.ch[cn].item[n] as usize;
+            if item_idx != 0 && item_idx < self.it.len() {
+                if self.it[item_idx].carried as usize != cn || self.it[item_idx].used != USE_ACTIVE {
+                    xlog!(self.logger, "Reset inventory item {} from character {}", item_idx, cn);
+                    self.ch[cn].item[n] = 0;
+                }
+            }
+        }
+
+        // Validate depot items (62 items)
+        for n in 0..62 {
+            let item_idx = self.ch[cn].depot[n] as usize;
+            if item_idx != 0 && item_idx < self.it.len() {
+                if self.it[item_idx].carried as usize != cn || self.it[item_idx].used != USE_ACTIVE {
+                    xlog!(self.logger, "Reset depot item {} from character {}", item_idx, cn);
+                    self.ch[cn].depot[n] = 0;
+                }
+            }
+        }
+
+        // Validate worn items and spells (20 each)
+        for n in 0..20 {
+            let worn_idx = self.ch[cn].worn[n] as usize;
+            if worn_idx != 0 && worn_idx < self.it.len() {
+                if self.it[worn_idx].carried as usize != cn || self.it[worn_idx].used != USE_ACTIVE {
+                    xlog!(self.logger, "Reset worn item {} from character {}", worn_idx, cn);
+                    self.ch[cn].worn[n] = 0;
+                }
+            }
+
+            let spell_idx = self.ch[cn].spell[n] as usize;
+            if spell_idx != 0 && spell_idx < self.it.len() {
+                if self.it[spell_idx].carried as usize != cn || self.it[spell_idx].used != USE_ACTIVE {
+                    xlog!(self.logger, "Reset spell item {} from character {}", spell_idx, cn);
+                    self.ch[cn].spell[n] = 0;
+                }
+            }
+        }
+
+        // If NPC is stoned, verify the character who stoned them still exists
+        if (self.ch[cn].flags & CharacterFlags::CF_STONED.bits()) != 0 && 
+           (self.ch[cn].flags & CharacterFlags::CF_PLAYER.bits()) == 0 {
+            let caster = self.ch[cn].data[63] as usize;
+            if caster == 0 || caster >= self.ch.len() || self.ch[caster].used == USE_EMPTY {
+                self.ch[cn].flags &= !CharacterFlags::CF_STONED.bits();
+                xlog!(self.logger, "Removed stoned flag from character {} (caster gone)", cn);
+            }
+        }
+
+        true
+    }
+
+    /// Check if character should expire - based on check_expire from svr_tick.cpp
+    fn check_expire(&mut self, cn: usize) {
+        if cn >= self.ch.len() {
+            return;
+        }
+
+        let day_secs = 60 * 60 * 24;
+        let week_secs = day_secs * 7;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+
+        let login_date = self.ch[cn].login_date as i64;
+        let points = self.ch[cn].points_tot as i64;
+
+        let should_erase = if points == 0 {
+            login_date + 3 * day_secs < now
+        } else if points < 10000 {
+            login_date + 1 * week_secs < now
+        } else if points < 100000 {
+            login_date + 2 * week_secs < now
+        } else if points < 1000000 {
+            login_date + 4 * week_secs < now
+        } else {
+            login_date + 6 * week_secs < now
+        };
+
+        if should_erase {
+            let char_name = self.ch[cn].get_name().to_string();
+            xlog!(self.logger, "Erased player {}, {} exp", char_name, points);
+            // Would call god_destroy_items(cn)
+            self.ch[cn].used = USE_EMPTY;
+        }
+    }
+
+    /// Check if character is part of active group - based on group_active from svr_tick.cpp
+    fn group_active(&self, cn: usize) -> bool {
+        if cn >= self.ch.len() {
+            return false;
+        }
+
+        // Player or usurped character that's active
+        if (self.ch[cn].flags & (CharacterFlags::CF_PLAYER.bits() | CharacterFlags::CF_USURP.bits() | CharacterFlags::CF_NOSLEEP.bits())) != 0
+            && self.ch[cn].used == USE_ACTIVE {
+            return true;
+        }
+
+        // Awake timer is set
+        if self.ch[cn].data[92] > 0 {
+            return true;
+        }
+
+        false
     }
 }
 
