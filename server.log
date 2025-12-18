@@ -1,0 +1,20 @@
+17.12.25 21:27:14: Mercenaries of Astonia Server v2.14.07
+17.12.25 21:27:14: Copyright (C) 1997-2001 Daniel Brockhaus
+17.12.25 21:27:14: Running speed test...
+17.12.25 21:27:15: Speed test: 1000 MHz
+17.12.25 21:27:15: load() called - stub implementation
+17.12.25 21:27:15: init_node() called - stub implementation
+17.12.25 21:27:15: init_lab9() called - stub implementation
+17.12.25 21:27:15: god_init_freelist() called - stub implementation
+17.12.25 21:27:15: god_init_badnames() called - stub implementation
+17.12.25 21:27:15: init_badwords() called - stub implementation
+17.12.25 21:27:15: god_read_banlist() called - stub implementation
+17.12.25 21:27:15: reset_changed_items() called - stub implementation
+17.12.25 21:27:15: load_mod() called - stub implementation
+17.12.25 21:27:15: Entering game loop...
+17.12.25 21:27:15: load_mod() called - stub implementation
+17.12.25 21:27:15: load_mod() called - stub implementation
+17.12.25 21:27:25: Sending shutdown message
+17.12.25 21:27:26: Leaving main loop
+17.12.25 21:27:26: unload() called - stub implementation
+17.12.25 21:27:26: Server down (0,0)
