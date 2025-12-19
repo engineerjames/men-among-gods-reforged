@@ -14,6 +14,8 @@ impl Repository {
         self.load_character_templates()?;
         self.load_effects()?;
         self.load_globals()?;
+        self.load_bad_names()?;
+        self.load_bad_words()?;
         Ok(())
     }
 
@@ -56,6 +58,18 @@ impl Repository {
     fn load_globals(&self) -> Result<(), String> {
         log::info!("Loading globals data...");
         let globals_data = fs::read(".dat/globals.dat").map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    fn load_bad_names(&self) -> Result<(), String> {
+        log::info!("Loading bad names...");
+        let bad_names_data = fs::read(".dat/bad_names.txt").map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    fn load_bad_words(&self) -> Result<(), String> {
+        log::info!("Loading bad words...");
+        let bad_words_data = fs::read(".dat/bad_words.txt").map_err(|e| e.to_string())?;
         Ok(())
     }
 
