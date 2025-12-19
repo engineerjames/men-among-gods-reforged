@@ -9,6 +9,9 @@ use log4rs::{
     filter::threshold::ThresholdFilter,
 };
 
+pub mod constants;
+pub mod types;
+
 pub fn initialize_logger(
     log_level: LevelFilter,
     file_path: Option<&str>,

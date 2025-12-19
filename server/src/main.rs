@@ -1,4 +1,3 @@
-mod constants;
 mod repository;
 
 use log;
@@ -12,7 +11,6 @@ use std::sync::Arc;
 use signal_hook::consts::{SIGHUP, SIGINT, SIGQUIT, SIGTERM};
 use signal_hook::iterator::Signals;
 
-use constants::*;
 use core;
 
 fn main() {
@@ -205,7 +203,7 @@ fn main() {
         if quit_flag.load(Ordering::SeqCst) {
             if ltimer == 0 {
                 // kick all players
-                for n in 1..MAXPLAYER {
+                for n in 1..core::constants::MAXPLAYER {
                     // if state.players.players[n].is_connected() {
                     //     let usnr = state.players.players[n].usnr;
                     //     state.plr_logout(usnr, n, LO_SHUTDOWN);
@@ -221,7 +219,7 @@ fn main() {
                 // reset this to 250 !!!
                 //xlog!(state.logger, "Leaving main loop");
                 // safety measure only. Players should be out already
-                for n in 1..MAXPLAYER {
+                for n in 1..core::constants::MAXPLAYER {
                     // if state.players.players[n].is_connected() {
                     //     state.players.players[n].disconnect();
                     // }
