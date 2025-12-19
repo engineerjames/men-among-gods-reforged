@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+core = { path = "../core" }
 libc = "0.2"
 nix = { version = "0.27", features = ["signal", "net", "fs", "time"] }
 flate2 = "1.0"

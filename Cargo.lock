@@ -67,6 +67,13 @@ dependencies = [
 [[package]]
 name = "client"
 version = "0.1.0"
+dependencies = [
+ "core",
+]
+
+[[package]]
+name = "core"
+version = "0.1.0"
 
 [[package]]
 name = "core-foundation-sys"
@@ -221,6 +228,7 @@ version = "0.1.0"
 dependencies = [
  "bitflags",
  "chrono",
+ "core",
  "flate2",
  "libc",
  "nix",
