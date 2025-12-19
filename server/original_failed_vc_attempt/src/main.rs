@@ -1,3 +1,18 @@
+/*************************************************************************
+
+This file is part of 'Mercenaries of Astonia v2'
+Copyright (c) 1997-2001 Daniel Brockhaus (joker@astonia.com)
+All rights reserved.
+
+Rust port maintains original logic and comments.
+
+**************************************************************************/
+
+//! Mercenaries of Astonia Server - Rust Implementation
+//!
+//! This is a Rust port of the original C++ server code, maintaining
+//! the same execution flow and logic while using Rust idioms.
+
 mod constants;
 mod types;
 mod player;
