@@ -9,6 +9,9 @@ use log4rs::{
     filter::threshold::ThresholdFilter,
 };
 
+#[macro_use]
+pub mod byte_operations;
+
 pub mod constants;
 pub mod types;
 

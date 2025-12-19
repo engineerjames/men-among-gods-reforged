@@ -20,3 +20,24 @@ pub struct Map {
     /// s.a.
     pub flags: u64,
 }
+
+impl Map {
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        if bytes.len() < std::mem::size_of::<Map>() {
+            return None;
+        }
+
+        let mut offset: usize = 0;
+
+        Some(Self {
+            sprite: read_u16!(bytes, offset),
+            fsprite: read_u16!(bytes, offset),
+            ch: read_u32!(bytes, offset),
+            to_ch: read_u32!(bytes, offset),
+            it: read_u32!(bytes, offset),
+            dlight: read_u16!(bytes, offset),
+            light: read_i16!(bytes, offset),
+            flags: read_u64!(bytes, offset),
+        })
+    }
+}
