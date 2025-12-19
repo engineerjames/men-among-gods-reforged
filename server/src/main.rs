@@ -1,5 +1,6 @@
 mod constants;
 
+use log;
 use std::env;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -11,69 +12,53 @@ use signal_hook::consts::{SIGHUP, SIGINT, SIGQUIT, SIGTERM};
 use signal_hook::iterator::Signals;
 
 use constants::*;
-
-/// Global quit flag - set by signal handlers
-static QUIT: AtomicBool = AtomicBool::new(false);
+use core;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    
-    // nice(5) equivalent - lower process priority
-    #[cfg(unix)]
-    unsafe {
-        libc::nice(5);
-    }
-    
-    // Always run in foreground with stdout logging
-    // let logger = Logger::new_file("server.log").unwrap_or_else(|e| {
-    //     eprintln!("Failed to open log file: {}. Falling back to stdout.", e);
-    //     Logger::new_stdout()
-    // });
-    
-    // xlog!(logger, "Mercenaries of Astonia Server v{}.{:02}.{:02}", 
-    //     VERSION >> 16, (VERSION >> 8) & 255, VERSION & 255);
-    // xlog!(logger, "Copyright (C) 1997-2001 Daniel Brockhaus");
-    
-    // Calibrate profiler
-    // xlog!(state.logger, "Running speed test...");
-    // xlog!(state.logger, "Speed test: {:.0} MHz", state.profiler.cycles_per_sec / 1_000_000.0);
-    
-    // Set up signal handlers
-    // ignore the silly pipe errors:
-    // signal(SIGPIPE, SIG_IGN);
-    
+
+    // The original implementation had a call here for nice(5) to lower process priority.
+    // This is platform dependent and omitted for simplicity.
+
+    // Initialize logging
+    core::initialize_logger(log::LevelFilter::Debug, Some("server.log")).unwrap_or_else(|e| {
+        eprintln!("Failed to initialize logger: {}. Exiting.", e);
+        process::exit(1);
+    });
+
+    log::info!("Starting Men Among Gods: Reforged Server v0.0.1");
+
     let quit_flag = Arc::new(AtomicBool::new(false));
     let quit_flag_clone = quit_flag.clone();
-    
+
     // Set up signal handling in a separate thread
-    std::thread::spawn(move || {
-        let mut signals = Signals::new(&[SIGINT, SIGTERM, SIGQUIT, SIGHUP]).unwrap();
+    let mut signals = Signals::new(&[SIGINT, SIGTERM, SIGQUIT, SIGHUP]).unwrap();
+    let handle = signals.handle();
+
+    let signal_thread = std::thread::spawn(move || {
         for sig in signals.forever() {
             match sig {
-                SIGHUP => {
-                    // Log rotation would happen here
-                    // For now, just note it
-                    println!("SIGHUP received");
-                }
                 SIGINT | SIGTERM | SIGQUIT => {
                     if !quit_flag_clone.load(Ordering::SeqCst) {
-                        println!("Got signal to terminate. Shutdown initiated...");
+                        log::info!("Got signal to terminate. Shutdown initiated...");
                     } else {
-                        println!("Alright, alright, I'm already terminating!");
+                        log::info!("Alright, alright, I'm already terminating!");
                     }
                     quit_flag_clone.store(true, Ordering::SeqCst);
                 }
-                _ => {}
+                _ => {
+                    log::warn!("Received unsupported signal: {}", sig);
+                }
             }
         }
     });
-    
+
     // Load game data
     // if !state.load() {
     //     // xlog!(state.logger, "load() failed.");
     //     process::exit(1);
     // }
-    
+
     // Check for dirty flag
     // if (state.globs.flags & GF_DIRTY) != 0 {
     //     // xlog!(state.logger, "Data files were not cleanly unmounted.");
@@ -81,7 +66,7 @@ fn main() {
     //         process::exit(1);
     //     }
     // }
-    
+
     // Handle command-line arguments for maintenance tasks
     if args.len() == 2 {
         let cmd = args[1].to_lowercase();
@@ -124,14 +109,14 @@ fn main() {
             _ => {}
         }
     }
-    
+
     // Log out all active characters (cleanup from previous run)
     // for n in 1..MAXCHARS {
     //     if state.ch[n].used == USE_ACTIVE {
     //         state.plr_logout(n, 0, LO_SHUTDOWN);
     //     }
     // }
-    
+
     // Set up PID file
     if let Ok(mut pidfile) = OpenOptions::new()
         .write(true)
@@ -140,10 +125,8 @@ fn main() {
         .open("server.pid")
     {
         let _ = writeln!(pidfile, "{}", process::id());
-        #[cfg(unix)]
-        let _ = set_permissions_mode("server.pid", 0o664);
     }
-    
+
     // Initialize subsystems
     // state.init_node();
     // state.init_lab9();
@@ -152,7 +135,7 @@ fn main() {
     // state.init_badwords();
     // state.god_read_banlist();
     // state.reset_changed_items();
-    
+
     // remove lab items from all players (leave this here for a while!)
     // for n in 1..MAXITEM {
     //     if state.it[n].used == USE_EMPTY {
@@ -171,26 +154,26 @@ fn main() {
     //         }
     //     }
     // }
-    
+
     // Validate character template positions
     // for n in 1..MAXTCHARS {
     //     if state.ch_temp[n].used == USE_EMPTY {
     //         continue;
     //     }
-        
+
     //     let x = state.ch_temp[n].data[29] % SERVER_MAPX;
     //     let y = state.ch_temp[n].data[29] / SERVER_MAPX;
-        
+
     //     if x == 0 && y == 0 {
     //         continue;
     //     }
-        
+
     //     let ch_x = state.ch_temp[n].x as i32;
     //     let ch_y = state.ch_temp[n].y as i32;
-        
+
     //     if (x - ch_x).abs() + (y - ch_y).abs() > 200 {
-    //         // xlog!(state.logger, "RESET {} ({}): {} {} -> {} {}", 
-    //         //     n, 
+    //         // xlog!(state.logger, "RESET {} ({}): {} {} -> {} {}",
+    //         //     n,
     //         //     std::str::from_utf8(&state.ch_temp[n].name)
     //         //         .unwrap_or("*unknown*")
     //         //         .trim_end_matches('\0'),
@@ -198,26 +181,26 @@ fn main() {
     //         state.ch_temp[n].data[29] = state.ch_temp[n].x as i32 + state.ch_temp[n].y as i32 * SERVER_MAPX;
     //     }
     // }
-    
+
     // // Mark data as dirty (in use)
     // state.globs.flags |= GF_DIRTY;
-    
+
     // state.load_mod();
-    
+
     //xlog!(state.logger, "Entering game loop...");
-    
+
     // Main game loop
     let mut doleave = false;
     let mut ltimer = 0;
-    
+
     while !doleave {
         // if (state.globs.ticker & 4095) == 0 {
         //     state.load_mod();
         //     // update();
         // }
-        
+
         // game_loop(&mut state);
-        
+
         if quit_flag.load(Ordering::SeqCst) {
             if ltimer == 0 {
                 // kick all players
@@ -232,8 +215,9 @@ fn main() {
             } else {
                 ltimer += 1;
             }
-            
-            if ltimer > 25 {  // reset this to 250 !!!
+
+            if ltimer > 25 {
+                // reset this to 250 !!!
                 //xlog!(state.logger, "Leaving main loop");
                 // safety measure only. Players should be out already
                 for n in 1..MAXPLAYER {
@@ -245,20 +229,15 @@ fn main() {
             }
         }
     }
-    
+
     // Clean shutdown
     // state.globs.flags &= !GF_DIRTY;
     // state.unload();
-    
+
     //xlog!(state.logger, "Server down ({},{})", state.see_hit, state.see_miss);
-    
+
     // Remove PID file
     let _ = fs::remove_file("server.pid");
-}
-
-/// Extension trait for setting file permissions on Unix
-#[cfg(unix)]
-fn set_permissions_mode(path: &str, mode: u32) -> std::io::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    fs::set_permissions(path, fs::Permissions::from_mode(mode))
+    handle.close();
+    signal_thread.join().unwrap(); // TODO: Better error handling here
 }

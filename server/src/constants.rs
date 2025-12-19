@@ -1,13 +1,3 @@
-/*************************************************************************
-
-This file is part of 'Mercenaries of Astonia v2'
-Copyright (c) 1997-2001 Daniel Brockhaus (joker@astonia.com)
-All rights reserved.
-
-Rust port maintains original logic and comments.
-
-**************************************************************************/
-
 //! Constants module - contains all game constants ported from the original C++ headers
 
 use bitflags::bitflags;
@@ -70,8 +60,8 @@ pub const WN_ARMS: usize = 3;
 pub const WN_BELT: usize = 4;
 pub const WN_LEGS: usize = 5;
 pub const WN_FEET: usize = 6;
-pub const WN_LHAND: usize = 7;  // shield
-pub const WN_RHAND: usize = 8;  // weapon
+pub const WN_LHAND: usize = 7; // shield
+pub const WN_RHAND: usize = 8; // weapon
 pub const WN_CLOAK: usize = 9;
 pub const WN_LRING: usize = 10;
 pub const WN_RRING: usize = 11;
@@ -88,7 +78,7 @@ pub const PL_BELT: u16 = 32;
 pub const PL_LEGS: u16 = 64;
 pub const PL_FEET: u16 = 128;
 pub const PL_WEAPON: u16 = 256;
-pub const PL_SHIELD: u16 = 512;   // not usable with two-handed weapons
+pub const PL_SHIELD: u16 = 512; // not usable with two-handed weapons
 pub const PL_CLOAK: u16 = 1024;
 pub const PL_TWOHAND: u16 = 2048;
 pub const PL_RING: u16 = 4096;
@@ -357,7 +347,7 @@ pub const SK_SWORD: usize = 3;
 pub const SK_AXE: usize = 4;
 pub const SK_DAGGER: usize = 2;
 pub const SK_STAFF: usize = 5;
-pub const SK_TWOHAND: usize = 6;  // two handed weapon
+pub const SK_TWOHAND: usize = 6; // two handed weapon
 pub const SK_LOCK: usize = 7;
 pub const SK_STEALTH: usize = 8;
 pub const SK_PERCEPT: usize = 9;
@@ -491,13 +481,13 @@ bitflags! {
         const IF_NOEXPIRE = 1 << 38;
         /// item was enhanced by a soulstone
         const IF_SOULSTONE = 1 << 39;
-        
+
         /// Composite: all weapon types
-        const IF_WEAPON = Self::IF_WP_SWORD.bits() | Self::IF_WP_DAGGER.bits() 
-                        | Self::IF_WP_AXE.bits() | Self::IF_WP_STAFF.bits() 
+        const IF_WEAPON = Self::IF_WP_SWORD.bits() | Self::IF_WP_DAGGER.bits()
+                        | Self::IF_WP_AXE.bits() | Self::IF_WP_STAFF.bits()
                         | Self::IF_WP_TWOHAND.bits();
         /// Composite: sellable items
-        const IF_SELLABLE = Self::IF_WEAPON.bits() | Self::IF_MISC.bits() 
+        const IF_SELLABLE = Self::IF_WEAPON.bits() | Self::IF_MISC.bits()
                           | Self::IF_MAGIC.bits() | Self::IF_ARMOR.bits();
     }
 }
@@ -633,7 +623,7 @@ pub const SV_SETCHAR_AMANA: u8 = 70;
 pub const SV_SETCHAR_DIR: u8 = 71;
 pub const SV_UNIQUE: u8 = 72;
 pub const SV_IGNORE: u8 = 73;
-pub const SV_SETMAP: u8 = 128;  // 128-255 are used !!!
+pub const SV_SETMAP: u8 = 128; // 128-255 are used !!!
 
 // =============================================================================
 // Logout Reasons (from client.h)
@@ -718,8 +708,8 @@ pub const OBUFSIZE: usize = TBUFSIZE;
 // =============================================================================
 
 pub const ERR_NONE: i32 = 0;
-pub const ERR_SUCCESS: i32 = 1;  // operation finished, successfully
-pub const ERR_FAILED: i32 = 2;   // failed and will never succeed
+pub const ERR_SUCCESS: i32 = 1; // operation finished, successfully
+pub const ERR_FAILED: i32 = 2; // failed and will never succeed
 
 // =============================================================================
 // Lab9 Constants (from lab9.h)
