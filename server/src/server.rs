@@ -31,8 +31,6 @@ impl<'a> Server<'a> {
         // Initialize subsystems
         // state.init_lab9();
         // state.god_init_freelist();
-        // state.god_init_badnames();
-        // state.init_badwords();
         // state.god_read_banlist();
         // state.reset_changed_items();
 
@@ -81,8 +79,6 @@ impl<'a> Server<'a> {
         //         state.ch_temp[n].data[29] = state.ch_temp[n].x as i32 + state.ch_temp[n].y as i32 * SERVER_MAPX;
         //     }
         // }
-
-        // state.load_mod();
     }
 
     pub fn tick(&mut self) {

@@ -16,6 +16,8 @@ pub struct Repository {
     pub globals: core::types::Global,
     bad_names: Vec<String>,
     bad_words: Vec<String>,
+    message_of_the_day: String,
+    ban_list: Vec<core::types::Ban>,
 }
 
 impl Repository {
@@ -32,6 +34,8 @@ impl Repository {
             globals: core::types::Global::default(),
             bad_names: Vec::new(),
             bad_words: Vec::new(),
+            message_of_the_day: String::new(),
+            ban_list: Vec::new(),
         }
     }
     pub fn load(&mut self) -> Result<(), String> {
@@ -44,6 +48,8 @@ impl Repository {
         self.load_globals()?;
         self.load_bad_names()?;
         self.load_bad_words()?;
+        self.load_message_of_the_day()?;
+        self.load_ban_list()?;
         Ok(())
     }
 
@@ -282,6 +288,40 @@ impl Repository {
             self.bad_words.push(line.to_string());
         }
 
+        Ok(())
+    }
+
+    fn load_message_of_the_day(&mut self) -> Result<(), String> {
+        log::info!("Loading message of the day...");
+        let motd_data =
+            fs::read_to_string(".dat/motd.txt").unwrap_or("Live long and prosper!".to_string());
+        self.message_of_the_day = motd_data;
+
+        if self.message_of_the_day.len() > 130 {
+            log::warn!(
+                "Message of the day is too long ({} characters). Truncating to 130 characters.",
+                self.message_of_the_day.len()
+            );
+            self.message_of_the_day = self.message_of_the_day[..130].to_string();
+        }
+
+        Ok(())
+    }
+
+    fn load_ban_list(&mut self) -> Result<(), String> {
+        log::info!("Loading ban list...");
+        let banlist_data = fs::read(".dat/banlist.dat");
+
+        match banlist_data {
+            Ok(_data) => {
+                // Parse ban list data here
+                log::info!("Ban list loaded successfully.");
+                // TODO: Actually load this.
+            }
+            Err(_) => {
+                log::warn!("Ban list file not found. Continuing without loading ban list.");
+            }
+        }
         Ok(())
     }
 }
