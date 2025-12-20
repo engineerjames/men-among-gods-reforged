@@ -4,7 +4,7 @@ use flate2::write::ZlibEncoder;
 
 use crate::{
     constants::{OBUFSIZE, SPR_EMPTY, TBUFSIZE, TILEX, TILEY},
-    types::{CMap, ClientPlayer},
+    types::{CMap, ClientPlayer, Map},
 };
 
 // Server side player data
@@ -43,11 +43,11 @@ pub struct ServerPlayer {
     pub prio: i32,
 
     pub cpl: ClientPlayer,
-    pub cmap: Vec<CMap>,
-    pub smap: Vec<CMap>,
+    pub cmap: [CMap; TILEX * TILEY],
+    pub smap: [CMap; TILEX * TILEY],
 
     // copy of map for comparision
-    pub xmap: Vec<CMap>,
+    pub xmap: [Map; TILEX * TILEY],
 
     // copy of visibility map for comparision
     pub vx: i32,
@@ -66,14 +66,14 @@ pub struct ServerPlayer {
     pub passwd: [u8; 16],
 
     /// IDs of changed fields
-    pub changed_field: Vec<i32>,
+    pub changed_field: [i32; TILEX * TILEY],
 }
 
 impl ServerPlayer {
     pub fn new() -> Self {
         let cmap_size = TILEX * TILEY;
-        let mut cmap = vec![CMap::default(); cmap_size];
-        let mut smap = vec![CMap::default(); cmap_size];
+        let mut cmap = std::array::from_fn(|_| CMap::default());
+        let mut smap = std::array::from_fn(|_| CMap::default());
 
         // Initialize sprites to SPR_EMPTY as in original code
         for m in 0..cmap_size {
@@ -106,7 +106,7 @@ impl ServerPlayer {
             cpl: ClientPlayer::default(),
             cmap,
             smap,
-            xmap: vec![CMap::default(); cmap_size],
+            xmap: std::array::from_fn(|_| Map::default()),
             vx: 0,
             vy: 0,
             visi: [0; 40 * 40],
@@ -115,7 +115,7 @@ impl ServerPlayer {
             ticker_started: 0,
             unique: 0,
             passwd: [0; 16],
-            changed_field: vec![0; cmap_size],
+            changed_field: [0; TILEX * TILEY],
         }
     }
 }

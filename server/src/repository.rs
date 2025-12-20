@@ -1,5 +1,9 @@
 use std::fs;
 
+// TODO: Currently this only reads data files into memory.
+// So if you close down the server and restart, any changes made during runtime will be lost.
+// In the future, we will want to implement saving changes back to the data files.
+
 // Contains the data repository for the server
 pub struct Repository {
     // Add fields as necessary
