@@ -1,3 +1,5 @@
+mod enums;
+mod network_manager;
 mod path_finding;
 mod repository;
 mod server;

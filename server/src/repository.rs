@@ -10,7 +10,7 @@ pub struct Repository {
     map: [core::types::Map; core::constants::MAPX as usize * core::constants::MAPY as usize],
     items: [core::types::Item; core::constants::MAXITEM as usize],
     item_templates: [core::types::Item; core::constants::MAXTITEM as usize],
-    characters: [core::types::Character; core::constants::MAXCHARS as usize],
+    pub characters: [core::types::Character; core::constants::MAXCHARS as usize],
     character_templates: [core::types::Character; core::constants::MAXTCHARS as usize],
     effects: [core::types::Effect; core::constants::MAXEFFECT as usize],
     pub globals: core::types::Global,

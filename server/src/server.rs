@@ -1,19 +1,26 @@
 use core::constants::MAXPLAYER;
+use std::rc::Rc;
 
+use crate::network_manager::NetworkManager;
 use crate::repository::Repository;
+use crate::state::State;
 
 pub struct Server<'a> {
     repository: &'a mut Repository,
-    players: [crate::core::types::ServerPlayer; MAXPLAYER],
-    state: crate::state::State,
+    network: Rc<NetworkManager>,
+    players: [core::types::ServerPlayer; MAXPLAYER],
+    state: State,
 }
 
 impl<'a> Server<'a> {
     pub fn new(repository: &'a mut Repository) -> Self {
+        let network = Rc::new(NetworkManager::new());
+        let state = State::new(network.clone());
         Server {
             repository,
-            players: std::array::from_fn(|_| crate::core::types::ServerPlayer::new()),
-            state: crate::state::State::new(),
+            network,
+            players: std::array::from_fn(|_| core::types::ServerPlayer::new()),
+            state,
         }
     }
 
@@ -22,11 +29,22 @@ impl<'a> Server<'a> {
         self.repository.globals.set_dirty(true);
 
         // Log out all active characters (cleanup from previous run)
-        // for n in 1..MAXCHARS {
-        //     if state.ch[n].used == USE_ACTIVE {
-        //         state.plr_logout(n, 0, LO_SHUTDOWN);
-        //     }
-        // }
+        for i in 0..core::constants::MAXCHARS as usize {
+            if self.repository.characters[i].used != core::constants::USE_ACTIVE {
+                continue;
+            }
+
+            log::info!(
+                "Logging out character '{}' on server startup",
+                self.repository.characters[i].get_name(),
+            );
+            self.state.logout_player(
+                self.repository,
+                i,
+                None,
+                crate::enums::LogoutReason::Shutdown,
+            );
+        }
 
         // Initialize subsystems
         // state.init_lab9();
