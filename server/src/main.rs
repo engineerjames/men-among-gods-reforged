@@ -1,3 +1,4 @@
+mod path_finding;
 mod repository;
 mod server;
 mod state;

@@ -29,7 +29,6 @@ impl<'a> Server<'a> {
         // }
 
         // Initialize subsystems
-        // state.init_node();
         // state.init_lab9();
         // state.god_init_freelist();
         // state.god_init_badnames();

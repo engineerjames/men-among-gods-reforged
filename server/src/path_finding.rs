@@ -1,0 +1,817 @@
+//! A* pathfinding implementation
+//!
+//! This module provides pathfinding capabilities for characters to navigate
+//! through the game world, taking into account obstacles, movement costs,
+//! and directional constraints.
+
+use std::cmp::Ordering;
+use std::cmp::{max, min};
+use std::collections::BinaryHeap;
+
+use core::constants::*;
+use core::types::{Character, Item, Map};
+
+const MAX_NODES: usize = 4096;
+
+/// A node in the A* search graph
+#[derive(Clone, Copy, Debug)]
+struct Node {
+    /// X coordinate
+    x: i16,
+    /// Y coordinate
+    y: i16,
+    /// Direction we originally came from (0 = none)
+    dir: u8,
+    /// Total estimated cost to reach goal
+    tcost: i32,
+    /// Cost of steps so far
+    cost: i32,
+    /// Current direction of travel
+    cdir: u8,
+    /// Index in the nodes array
+    index: usize,
+}
+
+impl PartialEq for Node {
+    fn eq(&self, other: &Self) -> bool {
+        self.tcost == other.tcost
+    }
+}
+
+impl Eq for Node {}
+
+impl PartialOrd for Node {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Node {
+    fn cmp(&self, other: &Self) -> Ordering {
+        // Reverse ordering for min-heap behavior
+        other.tcost.cmp(&self.tcost)
+    }
+}
+
+/// Tracks bad target locations that have recently failed pathfinding
+#[derive(Clone, Copy)]
+struct BadTarget {
+    tick: u32,
+}
+
+/// Pathfinder state
+pub struct PathFinder {
+    /// Map of coordinates to node indices (using flat array indexed by x + y * MAPX)
+    node_map: Vec<Option<usize>>,
+    /// All nodes allocated for the current search
+    nodes: Vec<Node>,
+    /// Priority queue of nodes to visit
+    open_set: BinaryHeap<Node>,
+    /// Tracks which nodes have been visited
+    visited: Vec<bool>,
+    /// Bad target tracking
+    bad_targets: Vec<BadTarget>,
+}
+
+impl PathFinder {
+    /// Create a new pathfinder
+    pub fn new() -> Self {
+        let map_size = (SERVER_MAPX * SERVER_MAPY) as usize;
+        Self {
+            node_map: vec![None; map_size],
+            nodes: Vec::with_capacity(MAX_NODES),
+            open_set: BinaryHeap::with_capacity(MAX_NODES),
+            visited: vec![false; MAX_NODES],
+            bad_targets: vec![BadTarget { tick: 0 }; map_size],
+        }
+    }
+
+    /// Reset pathfinder state for a new search
+    fn reset(&mut self) {
+        // Clear node map
+        for slot in &mut self.node_map {
+            *slot = None;
+        }
+        self.nodes.clear();
+        self.open_set.clear();
+        for v in &mut self.visited {
+            *v = false;
+        }
+    }
+
+    /// Check if a target location is marked as bad
+    fn is_bad_target(&self, x: i16, y: i16, current_tick: u32) -> bool {
+        let idx = (x as i32 + y as i32 * SERVER_MAPX) as usize;
+        self.bad_targets[idx].tick > current_tick
+    }
+
+    /// Mark a target location as bad
+    fn add_bad_target(&mut self, x: i16, y: i16, current_tick: u32) {
+        let idx = (x as i32 + y as i32 * SERVER_MAPX) as usize;
+        self.bad_targets[idx].tick = current_tick + 1;
+    }
+
+    /// Calculate heuristic cost from (fx, fy) to target
+    fn heuristic_cost(&self, fx: i16, fy: i16, tx: i16, ty: i16) -> i32 {
+        let dx = (fx - tx).abs() as i32;
+        let dy = (fy - ty).abs() as i32;
+
+        if dx > dy {
+            (dx << 1) + dy
+        } else {
+            (dy << 1) + dx
+        }
+    }
+
+    /// Calculate cost considering direction and targets
+    fn calculate_cost(
+        &self,
+        fx: i16,
+        fy: i16,
+        cdir: u8,
+        mode: u8,
+        tx1: i16,
+        ty1: i16,
+        tx2: i16,
+        ty2: i16,
+    ) -> i32 {
+        if mode == 0 || mode == 1 {
+            self.heuristic_cost(fx, fy, tx1, ty1)
+        } else {
+            // Mode 2: two possible targets
+            let ndir1 = dcoor_to_dir(tx1 - fx, ty1 - fy);
+            let dirdiff1 = turn_count(cdir, ndir1);
+
+            let ndir2 = dcoor_to_dir(tx2 - fx, ty2 - fy);
+            let dirdiff2 = turn_count(cdir, ndir2);
+
+            let cost1 = self.heuristic_cost(fx, fy, tx1, ty1) + 12 + dirdiff1;
+            let cost2 = self.heuristic_cost(fx, fy, tx2, ty2) + dirdiff2;
+
+            min(cost1, cost2)
+        }
+    }
+
+    /// Check if a map tile is passable
+    fn is_passable(&self, m: usize, mapblock: u64, map: &[Map], items: &[Item]) -> bool {
+        // Check map flags
+        if (map[m].flags & mapblock) != 0 {
+            return false;
+        }
+
+        // Check for characters blocking
+        if map[m].ch != 0 || map[m].to_ch != 0 {
+            return false;
+        }
+
+        // Check for blocking items
+        let item_idx = map[m].it as usize;
+        if item_idx != 0 && item_idx < items.len() {
+            let item = &items[item_idx];
+            if (item.flags & ItemFlags::IF_MOVEBLOCK.bits()) != 0 && item.driver != 2 {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    /// Add a node to the search
+    fn add_node(
+        &mut self,
+        x: i16,
+        y: i16,
+        dir: u8,
+        ccost: i32,
+        cdir: u8,
+        mode: u8,
+        tx1: i16,
+        ty1: i16,
+        tx2: i16,
+        ty2: i16,
+        max_step: usize,
+    ) -> bool {
+        // Bounds check
+        if x < 1 || x >= (SERVER_MAPX - 1) as i16 || y < 1 || y >= (SERVER_MAPY - 1) as i16 {
+            return false;
+        }
+
+        let m = (x as i32 + y as i32 * SERVER_MAPX) as usize;
+        let gcost = self.calculate_cost(x, y, cdir, mode, tx1, ty1, tx2, ty2);
+        let tcost = ccost + gcost;
+
+        // Check if we already have a node at this position
+        if let Some(existing_idx) = self.node_map[m] {
+            let existing_node = &self.nodes[existing_idx];
+
+            // If existing node is better or equal, skip
+            if existing_node.tcost <= tcost {
+                return false;
+            }
+
+            // Update existing node if not visited
+            if !self.visited[existing_idx] {
+                let updated_node = Node {
+                    x,
+                    y,
+                    dir,
+                    tcost,
+                    cost: ccost,
+                    cdir,
+                    index: existing_idx,
+                };
+                self.nodes[existing_idx] = updated_node;
+                self.open_set.push(updated_node);
+            }
+            return true;
+        }
+
+        // Create new node
+        if self.nodes.len() >= max_step {
+            return false;
+        }
+
+        let index = self.nodes.len();
+        let node = Node {
+            x,
+            y,
+            dir,
+            tcost,
+            cost: ccost,
+            cdir,
+            index,
+        };
+
+        self.nodes.push(node);
+        self.node_map[m] = Some(index);
+        self.open_set.push(node);
+
+        true
+    }
+
+    /// Add successor nodes for a given node
+    fn add_successors(
+        &mut self,
+        node: &Node,
+        mapblock: u64,
+        map: &[Map],
+        items: &[Item],
+        mode: u8,
+        tx1: i16,
+        ty1: i16,
+        tx2: i16,
+        ty2: i16,
+        max_step: usize,
+    ) {
+        let base_x = node.x as i32;
+        let base_y = node.y as i32;
+        let base_m = (base_x + base_y * SERVER_MAPX) as usize;
+
+        // Cardinal directions
+        let right_m = (base_x + 1 + base_y * SERVER_MAPX) as usize;
+        let left_m = (base_x - 1 + base_y * SERVER_MAPX) as usize;
+        let down_m = (base_x + (base_y + 1) * SERVER_MAPX) as usize;
+        let up_m = (base_x + (base_y - 1) * SERVER_MAPX) as usize;
+
+        let can_right = self.is_passable(right_m, mapblock, map, items);
+        let can_left = self.is_passable(left_m, mapblock, map, items);
+        let can_down = self.is_passable(down_m, mapblock, map, items);
+        let can_up = self.is_passable(up_m, mapblock, map, items);
+
+        let dir_to_use = if node.dir == 0 { node.cdir } else { node.dir };
+
+        // Right
+        if can_right {
+            let cost = node.cost + 2 + turn_count(node.cdir, DX_RIGHT);
+            self.add_node(
+                node.x + 1,
+                node.y,
+                dir_to_use,
+                cost,
+                DX_RIGHT,
+                mode,
+                tx1,
+                ty1,
+                tx2,
+                ty2,
+                max_step,
+            );
+        }
+
+        // Left
+        if can_left {
+            let cost = node.cost + 2 + turn_count(node.cdir, DX_LEFT);
+            self.add_node(
+                node.x - 1,
+                node.y,
+                dir_to_use,
+                cost,
+                DX_LEFT,
+                mode,
+                tx1,
+                ty1,
+                tx2,
+                ty2,
+                max_step,
+            );
+        }
+
+        // Down
+        if can_down {
+            let cost = node.cost + 2 + turn_count(node.cdir, DX_DOWN);
+            self.add_node(
+                node.x,
+                node.y + 1,
+                dir_to_use,
+                cost,
+                DX_DOWN,
+                mode,
+                tx1,
+                ty1,
+                tx2,
+                ty2,
+                max_step,
+            );
+        }
+
+        // Up
+        if can_up {
+            let cost = node.cost + 2 + turn_count(node.cdir, DX_UP);
+            self.add_node(
+                node.x,
+                node.y - 1,
+                dir_to_use,
+                cost,
+                DX_UP,
+                mode,
+                tx1,
+                ty1,
+                tx2,
+                ty2,
+                max_step,
+            );
+        }
+
+        // Diagonal directions (only if both cardinal directions are passable)
+
+        // Right-Down
+        if can_right && can_down {
+            let rd_m = (base_x + 1 + (base_y + 1) * SERVER_MAPX) as usize;
+            if self.is_passable(rd_m, mapblock, map, items) {
+                let cost = node.cost + 3 + turn_count(node.cdir, DX_RIGHTDOWN);
+                self.add_node(
+                    node.x + 1,
+                    node.y + 1,
+                    dir_to_use,
+                    cost,
+                    DX_RIGHTDOWN,
+                    mode,
+                    tx1,
+                    ty1,
+                    tx2,
+                    ty2,
+                    max_step,
+                );
+            }
+        }
+
+        // Right-Up
+        if can_right && can_up {
+            let ru_m = (base_x + 1 + (base_y - 1) * SERVER_MAPX) as usize;
+            if self.is_passable(ru_m, mapblock, map, items) {
+                let cost = node.cost + 3 + turn_count(node.cdir, DX_RIGHTUP);
+                self.add_node(
+                    node.x + 1,
+                    node.y - 1,
+                    dir_to_use,
+                    cost,
+                    DX_RIGHTUP,
+                    mode,
+                    tx1,
+                    ty1,
+                    tx2,
+                    ty2,
+                    max_step,
+                );
+            }
+        }
+
+        // Left-Down
+        if can_left && can_down {
+            let ld_m = (base_x - 1 + (base_y + 1) * SERVER_MAPX) as usize;
+            if self.is_passable(ld_m, mapblock, map, items) {
+                let cost = node.cost + 3 + turn_count(node.cdir, DX_LEFTDOWN);
+                self.add_node(
+                    node.x - 1,
+                    node.y + 1,
+                    dir_to_use,
+                    cost,
+                    DX_LEFTDOWN,
+                    mode,
+                    tx1,
+                    ty1,
+                    tx2,
+                    ty2,
+                    max_step,
+                );
+            }
+        }
+
+        // Left-Up
+        if can_left && can_up {
+            let lu_m = (base_x - 1 + (base_y - 1) * SERVER_MAPX) as usize;
+            if self.is_passable(lu_m, mapblock, map, items) {
+                let cost = node.cost + 3 + turn_count(node.cdir, DX_LEFTUP);
+                self.add_node(
+                    node.x - 1,
+                    node.y - 1,
+                    dir_to_use,
+                    cost,
+                    DX_LEFTUP,
+                    mode,
+                    tx1,
+                    ty1,
+                    tx2,
+                    ty2,
+                    max_step,
+                );
+            }
+        }
+    }
+
+    /// Run A* search
+    fn astar(
+        &mut self,
+        fx: i16,
+        fy: i16,
+        cdir: u8,
+        mapblock: u64,
+        map: &[Map],
+        items: &[Item],
+        mode: u8,
+        tx1: i16,
+        ty1: i16,
+        tx2: i16,
+        ty2: i16,
+        max_step: usize,
+    ) -> Option<u8> {
+        // Add start node
+        let start_cost = self.calculate_cost(fx, fy, cdir, mode, tx1, ty1, tx2, ty2);
+        let start_node = Node {
+            x: fx,
+            y: fy,
+            dir: 0,
+            tcost: start_cost,
+            cost: 0,
+            cdir,
+            index: 0,
+        };
+
+        let start_m = (fx as i32 + fy as i32 * SERVER_MAPX) as usize;
+        self.nodes.push(start_node);
+        self.node_map[start_m] = Some(0);
+        self.open_set.push(start_node);
+
+        while let Some(current) = self.open_set.pop() {
+            // Skip if already visited
+            if self.visited[current.index] {
+                continue;
+            }
+
+            // Mark as visited
+            self.visited[current.index] = true;
+
+            // Check if we reached the goal
+            if mode == 0 && current.x == tx1 && current.y == ty1 {
+                return Some(self.nodes[current.index].dir);
+            }
+
+            if mode != 0 {
+                let dx = (current.x - tx1).abs();
+                let dy = (current.y - ty1).abs();
+                if dx + dy == 1 {
+                    return Some(self.nodes[current.index].dir);
+                }
+
+                if mode == 2 {
+                    let dx2 = (current.x - tx2).abs();
+                    let dy2 = (current.y - ty2).abs();
+                    if dx2 + dy2 == 1 {
+                        return Some(self.nodes[current.index].dir);
+                    }
+                }
+            }
+
+            // Add successors
+            self.add_successors(
+                &current, mapblock, map, items, mode, tx1, ty1, tx2, ty2, max_step,
+            );
+        }
+
+        None
+    }
+
+    /// Find path from character to target
+    ///
+    /// # Arguments
+    /// * `character` - The character doing the pathfinding
+    /// * `x1`, `y1` - Primary target coordinates
+    /// * `flag` - Mode: 0 = exact target, 1 = adjacent to target, 2 = two targets
+    /// * `x2`, `y2` - Secondary target coordinates (used in mode 2)
+    /// * `map` - The game map
+    /// * `items` - Item array
+    /// * `current_tick` - Current game tick for bad target tracking
+    ///
+    /// # Returns
+    /// Direction to move, or None if no path found
+    pub fn find_path(
+        &mut self,
+        character: &Character,
+        x1: i16,
+        y1: i16,
+        flag: u8,
+        x2: i16,
+        y2: i16,
+        map: &[Map],
+        items: &[Item],
+        current_tick: u32,
+    ) -> Option<u8> {
+        // Bounds checking
+        if character.x < 1 || character.x >= (SERVER_MAPX - 1) as i16 {
+            return None;
+        }
+        if character.y < 1 || character.y >= (SERVER_MAPY - 1) as i16 {
+            return None;
+        }
+        if x1 < 1 || x1 >= (SERVER_MAPX - 1) as i16 {
+            return None;
+        }
+        if y1 < 1 || y1 >= (SERVER_MAPY - 1) as i16 {
+            return None;
+        }
+        if x2 < 0 || x2 >= SERVER_MAPX as i16 {
+            return None;
+        }
+        if y2 < 0 || y2 >= SERVER_MAPY as i16 {
+            return None;
+        }
+
+        // Check if target is marked as bad
+        if self.is_bad_target(x1, y1, current_tick) {
+            return None;
+        }
+
+        // Determine movement blocking flags
+        let mapblock = if (character.kindred as u32 & KIN_MONSTER) != 0
+            && (character.flags
+                & (CharacterFlags::CF_USURP.bits() | CharacterFlags::CF_THRALL.bits()))
+                == 0
+        {
+            MF_NOMONST as u64 | MF_MOVEBLOCK as u64
+        } else {
+            MF_MOVEBLOCK as u64
+        };
+
+        let mapblock = if (character.flags
+            & (CharacterFlags::CF_PLAYER.bits() | CharacterFlags::CF_USURP.bits()))
+            == 0
+        {
+            mapblock | MF_DEATHTRAP as u64
+        } else {
+            mapblock
+        };
+
+        // Check if target is passable (for exact target mode)
+        if flag == 0 {
+            let target_m = (x1 as i32 + y1 as i32 * SERVER_MAPX) as usize;
+            if !self.is_passable(target_m, mapblock, map, items) {
+                return None;
+            }
+        }
+
+        // Calculate max steps
+        let distance = max((character.x - x1).abs(), (character.y - y1).abs()) as usize;
+        let mut max_step = if character.attack_cn != 0
+            || ((character.flags
+                & (CharacterFlags::CF_PLAYER.bits() | CharacterFlags::CF_USURP.bits()))
+                == 0
+                && character.data[78] != 0)
+        {
+            distance * 4 + 50
+        } else {
+            distance * 8 + 100
+        };
+
+        // Special case for temp == 498 (hack for grolmy in stunrun.c)
+        if character.temp == 498 {
+            max_step += 4000;
+        }
+
+        if max_step > MAX_NODES {
+            max_step = MAX_NODES;
+        }
+
+        // Reset state for new search
+        self.reset();
+
+        // Run A* search
+        let result = self.astar(
+            character.x,
+            character.y,
+            character.dir,
+            mapblock,
+            map,
+            items,
+            flag,
+            x1,
+            y1,
+            x2,
+            y2,
+            max_step,
+        );
+
+        // Mark as bad target if failed
+        if result.is_none() {
+            self.add_bad_target(x1, y1, current_tick);
+        }
+
+        result
+    }
+}
+
+impl Default for PathFinder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Convert delta coordinates to direction
+fn dcoor_to_dir(dx: i16, dy: i16) -> u8 {
+    match (dx.signum(), dy.signum()) {
+        (1, 1) => DX_RIGHTDOWN,
+        (1, 0) => DX_RIGHT,
+        (1, -1) => DX_RIGHTUP,
+        (0, 1) => DX_DOWN,
+        (0, -1) => DX_UP,
+        (-1, 1) => DX_LEFTDOWN,
+        (-1, 0) => DX_LEFT,
+        (-1, -1) => DX_LEFTUP,
+        _ => 0, // No movement
+    }
+}
+
+/// Calculate number of turns needed to change from dir1 to dir2
+fn turn_count(dir1: u8, dir2: u8) -> i32 {
+    if dir1 == dir2 {
+        return 0;
+    }
+
+    if dir1 == DX_UP {
+        if dir2 == DX_DOWN {
+            return 4;
+        }
+        if dir2 == DX_RIGHTUP || dir2 == DX_LEFTUP {
+            return 1;
+        }
+        if dir2 == DX_RIGHT || dir2 == DX_LEFT {
+            return 2;
+        }
+        return 3;
+    }
+
+    if dir1 == DX_DOWN {
+        if dir2 == DX_UP {
+            return 4;
+        }
+        if dir2 == DX_RIGHTDOWN || dir2 == DX_LEFTDOWN {
+            return 1;
+        }
+        if dir2 == DX_RIGHT || dir2 == DX_LEFT {
+            return 2;
+        }
+        return 3;
+    }
+
+    if dir1 == DX_LEFT {
+        if dir2 == DX_RIGHT {
+            return 4;
+        }
+        if dir2 == DX_LEFTUP || dir2 == DX_LEFTDOWN {
+            return 1;
+        }
+        if dir2 == DX_UP || dir2 == DX_DOWN {
+            return 2;
+        }
+        return 3;
+    }
+
+    if dir1 == DX_RIGHT {
+        if dir2 == DX_LEFT {
+            return 4;
+        }
+        if dir2 == DX_RIGHTUP || dir2 == DX_RIGHTDOWN {
+            return 1;
+        }
+        if dir2 == DX_UP || dir2 == DX_DOWN {
+            return 2;
+        }
+        return 3;
+    }
+
+    if dir1 == DX_LEFTUP {
+        if dir2 == DX_RIGHTDOWN {
+            return 4;
+        }
+        if dir2 == DX_UP || dir2 == DX_LEFT {
+            return 1;
+        }
+        if dir2 == DX_RIGHTUP || dir2 == DX_LEFTDOWN {
+            return 2;
+        }
+        return 3;
+    }
+
+    if dir1 == DX_LEFTDOWN {
+        if dir2 == DX_RIGHTUP {
+            return 4;
+        }
+        if dir2 == DX_DOWN || dir2 == DX_LEFT {
+            return 1;
+        }
+        if dir2 == DX_RIGHTDOWN || dir2 == DX_LEFTUP {
+            return 2;
+        }
+        return 3;
+    }
+
+    if dir1 == DX_RIGHTUP {
+        if dir2 == DX_LEFTDOWN {
+            return 4;
+        }
+        if dir2 == DX_UP || dir2 == DX_RIGHT {
+            return 1;
+        }
+        if dir2 == DX_RIGHTDOWN || dir2 == DX_LEFTUP {
+            return 2;
+        }
+        return 3;
+    }
+
+    if dir1 == DX_RIGHTDOWN {
+        if dir2 == DX_LEFTUP {
+            return 4;
+        }
+        if dir2 == DX_DOWN || dir2 == DX_RIGHT {
+            return 1;
+        }
+        if dir2 == DX_RIGHTUP || dir2 == DX_LEFTDOWN {
+            return 2;
+        }
+        return 3;
+    }
+
+    99 // Invalid direction
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_dcoor_to_dir() {
+        assert_eq!(dcoor_to_dir(1, 0), DX_RIGHT);
+        assert_eq!(dcoor_to_dir(-1, 0), DX_LEFT);
+        assert_eq!(dcoor_to_dir(0, 1), DX_DOWN);
+        assert_eq!(dcoor_to_dir(0, -1), DX_UP);
+        assert_eq!(dcoor_to_dir(1, 1), DX_RIGHTDOWN);
+        assert_eq!(dcoor_to_dir(1, -1), DX_RIGHTUP);
+        assert_eq!(dcoor_to_dir(-1, 1), DX_LEFTDOWN);
+        assert_eq!(dcoor_to_dir(-1, -1), DX_LEFTUP);
+        assert_eq!(dcoor_to_dir(0, 0), 0);
+    }
+
+    #[test]
+    fn test_turn_count() {
+        // Same direction
+        assert_eq!(turn_count(DX_UP, DX_UP), 0);
+
+        // Opposite directions
+        assert_eq!(turn_count(DX_UP, DX_DOWN), 4);
+        assert_eq!(turn_count(DX_LEFT, DX_RIGHT), 4);
+
+        // Adjacent directions
+        assert_eq!(turn_count(DX_UP, DX_RIGHTUP), 1);
+        assert_eq!(turn_count(DX_UP, DX_LEFTUP), 1);
+
+        // Perpendicular directions
+        assert_eq!(turn_count(DX_UP, DX_RIGHT), 2);
+        assert_eq!(turn_count(DX_UP, DX_LEFT), 2);
+    }
+
+    #[test]
+    fn test_pathfinder_creation() {
+        let pf = PathFinder::new();
+        assert_eq!(pf.nodes.capacity(), MAX_NODES);
+        assert_eq!(pf.node_map.len(), (SERVER_MAPX * SERVER_MAPY) as usize);
+    }
+}
