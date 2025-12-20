@@ -1,3 +1,5 @@
+use crate::constants;
+
 /// Global server state structure
 #[derive(Debug, Default)]
 #[repr(C)]
@@ -129,7 +131,20 @@ impl Global {
             fullmoon: read_i8!(bytes, offset),
             newmoon: read_i8!(bytes, offset),
             unique: read_u64!(bytes, offset),
+            #[allow(unused_assignments)]
             cap: read_i32!(bytes, offset),
         })
+    }
+
+    pub fn is_dirty(&self) -> bool {
+        (self.flags & constants::GF_DIRTY) != 0
+    }
+
+    pub fn set_dirty(&mut self, value: bool) {
+        if value {
+            self.flags |= constants::GF_DIRTY;
+        } else {
+            self.flags &= !constants::GF_DIRTY;
+        }
     }
 }

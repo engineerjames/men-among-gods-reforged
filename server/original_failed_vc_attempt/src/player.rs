@@ -1,13 +1,3 @@
-/*************************************************************************
-
-This file is part of 'Mercenaries of Astonia v2'
-Copyright (c) 1997-2001 Daniel Brockhaus (joker@astonia.com)
-All rights reserved.
-
-Rust port maintains original logic and comments.
-
-**************************************************************************/
-
 //! Player module - manages player connections and state
 
 use flate2::write::ZlibEncoder;
@@ -27,12 +17,12 @@ pub struct Player {
     /// all incoming packets have 16 bytes max
     pub inbuf: [u8; 256],
     pub in_len: usize,
-    
+
     /// tick buffer for outgoing data before compression
     pub tbuf: Vec<u8>,
     /// output buffer for compressed data
     pub obuf: Vec<u8>,
-    
+
     /// write pointer into obuf
     pub iptr: usize,
     /// read pointer from obuf
@@ -44,7 +34,7 @@ pub struct Player {
     pub state: u32,
     pub lasttick: u32,
     pub lasttick2: u32,
-    pub usnr: usize,  // character number this player controls
+    pub usnr: usize, // character number this player controls
     pub pass1: u32,
     pub pass2: u32,
     pub ltick: u32,
@@ -90,13 +80,13 @@ impl Player {
         let cmap_size = TILEX * TILEY;
         let mut cmap = vec![CMap::default(); cmap_size];
         let mut smap = vec![CMap::default(); cmap_size];
-        
+
         // Initialize sprites to SPR_EMPTY as in original code
         for m in 0..cmap_size {
             cmap[m].ba_sprite = SPR_EMPTY as i16;
             smap[m].ba_sprite = SPR_EMPTY as i16;
         }
-        
+
         Self {
             sock: None,
             addr: 0,
@@ -134,7 +124,7 @@ impl Player {
             changed_field: vec![0; cmap_size],
         }
     }
-    
+
     /// Initialize a new player connection
     pub fn initialize(&mut self, addr: u32, ticker: i32) {
         self.addr = addr;
@@ -152,10 +142,10 @@ impl Player {
         self.lasttick2 = ticker as u32;
         self.prio = 0;
         self.ticker_started = 0;
-        
+
         // Reset cpl
         self.cpl = CPlayer::default();
-        
+
         // Reset maps
         let cmap_size = TILEX * TILEY;
         for m in 0..cmap_size {
@@ -165,18 +155,18 @@ impl Player {
             self.smap[m].ba_sprite = SPR_EMPTY as i16;
             self.xmap[m] = Map::default();
         }
-        
+
         self.passwd = [0; 16];
-        
+
         // Initialize zlib compressor
         self.zs = Some(ZlibEncoder::new(Vec::new(), Compression::best()));
     }
-    
+
     /// Check if this player slot is connected
     pub fn is_connected(&self) -> bool {
         self.sock.is_some()
     }
-    
+
     /// Close the connection and clean up
     pub fn disconnect(&mut self) {
         if let Some(stream) = self.sock.take() {
@@ -201,7 +191,7 @@ impl PlayerManager {
         }
         Self { players }
     }
-    
+
     /// Find an empty player slot
     /// Returns None if MAXPLAYER reached
     pub fn find_empty_slot(&self) -> Option<usize> {
@@ -212,7 +202,7 @@ impl PlayerManager {
         }
         None
     }
-    
+
     /// Get a mutable reference to a player by index
     pub fn get_mut(&mut self, index: usize) -> Option<&mut Player> {
         if index > 0 && index < MAXPLAYER {
@@ -221,7 +211,7 @@ impl PlayerManager {
             None
         }
     }
-    
+
     /// Get a reference to a player by index
     pub fn get(&self, index: usize) -> Option<&Player> {
         if index > 0 && index < MAXPLAYER {

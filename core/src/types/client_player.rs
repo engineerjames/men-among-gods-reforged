@@ -1,6 +1,6 @@
 /// Client-side player data
 #[derive(Clone)]
-pub struct CPlayer {
+pub struct ClientPlayer {
     // informative stuff
     pub name: [u8; 40],
 
@@ -63,7 +63,7 @@ pub struct CPlayer {
     pub y: i32,
 }
 
-impl Default for CPlayer {
+impl Default for ClientPlayer {
     fn default() -> Self {
         Self {
             name: [0; 40],

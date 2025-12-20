@@ -37,6 +37,7 @@ impl Map {
             it: read_u32!(bytes, offset),
             dlight: read_u16!(bytes, offset),
             light: read_i16!(bytes, offset),
+            #[allow(unused_assignments)]
             flags: read_u64!(bytes, offset),
         })
     }

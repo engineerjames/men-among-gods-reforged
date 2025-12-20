@@ -9,7 +9,7 @@ pub struct Repository {
     characters: [core::types::Character; core::constants::MAXCHARS as usize],
     character_templates: [core::types::Character; core::constants::MAXTCHARS as usize],
     effects: [core::types::Effect; core::constants::MAXEFFECT as usize],
-    globals: core::types::Global,
+    pub globals: core::types::Global,
     bad_names: Vec<String>,
     bad_words: Vec<String>,
 }
@@ -280,6 +280,4 @@ impl Repository {
 
         Ok(())
     }
-
-    // Add methods for data access and manipulation
 }

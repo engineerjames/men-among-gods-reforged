@@ -62,14 +62,14 @@ fn main() {
     }
 
     // Check for dirty flag
-    // if (state.globs.flags & GF_DIRTY) != 0 {
-    //     // xlog!(state.logger, "Data files were not cleanly unmounted.");
-    //     if args.len() != 2 {
-    //         process::exit(1);
-    //     }
-    // }
+    if repository.globals.is_dirty() {
+        // xlog!(state.logger, "Data files were not cleanly unmounted.");
+        if args.len() != 2 {
+            process::exit(1);
+        }
+    }
 
-    // Handle command-line arguments for maintenance tasks
+    // TODO: Handle command-line arguments for maintenance tasks
     if args.len() == 2 {
         let cmd = args[1].to_lowercase();
         match cmd.as_str() {
@@ -184,12 +184,12 @@ fn main() {
     //     }
     // }
 
-    // // Mark data as dirty (in use)
-    // state.globs.flags |= GF_DIRTY;
+    // Mark data as dirty (in use)
+    repository.globals.set_dirty(true);
 
     // state.load_mod();
 
-    //xlog!(state.logger, "Entering game loop...");
+    log::info!("Entering main game loop...");
 
     // Main game loop
     let mut doleave = false;
@@ -206,7 +206,7 @@ fn main() {
         if quit_flag.load(Ordering::SeqCst) {
             if ltimer == 0 {
                 // kick all players
-                for n in 1..core::constants::MAXPLAYER {
+                for _n in 1..core::constants::MAXPLAYER {
                     // if state.players.players[n].is_connected() {
                     //     let usnr = state.players.players[n].usnr;
                     //     state.plr_logout(usnr, n, LO_SHUTDOWN);
@@ -222,7 +222,7 @@ fn main() {
                 // reset this to 250 !!!
                 //xlog!(state.logger, "Leaving main loop");
                 // safety measure only. Players should be out already
-                for n in 1..core::constants::MAXPLAYER {
+                for _n in 1..core::constants::MAXPLAYER {
                     // if state.players.players[n].is_connected() {
                     //     state.players.players[n].disconnect();
                     // }
@@ -233,10 +233,10 @@ fn main() {
     }
 
     // Clean shutdown
-    // state.globs.flags &= !GF_DIRTY;
+    repository.globals.set_dirty(false);
     // state.unload();
 
-    //xlog!(state.logger, "Server down ({},{})", state.see_hit, state.see_miss);
+    log::info!("Server shutdown complete.");
 
     // Remove PID file
     let _ = fs::remove_file("server.pid");
