@@ -13,6 +13,8 @@ use signal_hook::iterator::Signals;
 
 use core;
 
+use crate::repository::Repository;
+
 fn main() {
     let args: Vec<String> = env::args().collect();
 
@@ -53,10 +55,11 @@ fn main() {
     });
 
     // Load game data
-    // if !state.load() {
-    //     // xlog!(state.logger, "load() failed.");
-    //     process::exit(1);
-    // }
+    let mut repository = Repository::new();
+    if let Err(e) = repository.load() {
+        log::error!("Failed to load game data: {}. Exiting.", e);
+        process::exit(1);
+    }
 
     // Check for dirty flag
     // if (state.globs.flags & GF_DIRTY) != 0 {

@@ -15,6 +15,21 @@ pub struct Repository {
 }
 
 impl Repository {
+    pub fn new() -> Self {
+        Self {
+            map: [core::types::Map::default();
+                core::constants::MAPX as usize * core::constants::MAPY as usize],
+            items: [core::types::Item::default(); core::constants::MAXITEM as usize],
+            item_templates: [core::types::Item::default(); core::constants::MAXTITEM as usize],
+            characters: [core::types::Character::default(); core::constants::MAXCHARS as usize],
+            character_templates: [core::types::Character::default();
+                core::constants::MAXTCHARS as usize],
+            effects: [core::types::Effect::default(); core::constants::MAXEFFECT as usize],
+            globals: core::types::Global::default(),
+            bad_names: Vec::new(),
+            bad_words: Vec::new(),
+        }
+    }
     pub fn load(&mut self) -> Result<(), String> {
         self.load_map()?;
         self.load_items()?;
@@ -246,13 +261,23 @@ impl Repository {
 
     fn load_bad_names(&mut self) -> Result<(), String> {
         log::info!("Loading bad names...");
-        let bad_names_data = fs::read(".dat/bad_names.txt").map_err(|e| e.to_string())?;
+        let bad_names_data = fs::read_to_string(".dat/bad_names.txt").map_err(|e| e.to_string())?;
+
+        for line in bad_names_data.lines() {
+            self.bad_names.push(line.to_string());
+        }
+
         Ok(())
     }
 
     fn load_bad_words(&mut self) -> Result<(), String> {
         log::info!("Loading bad words...");
-        let bad_words_data = fs::read(".dat/bad_words.txt").map_err(|e| e.to_string())?;
+        let bad_words_data = fs::read_to_string(".dat/bad_words.txt").map_err(|e| e.to_string())?;
+
+        for line in bad_words_data.lines() {
+            self.bad_words.push(line.to_string());
+        }
+
         Ok(())
     }
 

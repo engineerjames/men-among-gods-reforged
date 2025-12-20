@@ -3,7 +3,7 @@
 use crate::constants::ItemFlags;
 
 /// Item structure
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 #[repr(C, packed)]
 pub struct Item {
     pub used: u8,               // 1

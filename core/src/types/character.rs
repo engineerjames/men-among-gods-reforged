@@ -3,7 +3,7 @@
 use crate::constants::CharacterFlags;
 
 /// Character structure - represents both players and NPCs
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 #[repr(C, packed)]
 pub struct Character {
     pub used: u8, // 1
