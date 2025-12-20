@@ -57,9 +57,9 @@ macro_rules! read_i32 {
     }};
 }
 
-macro_rules! read_u64 {
+macro_rules! read_i64 {
     ($bytes:expr, $offset:expr) => {{
-        let val = u64::from_le_bytes([
+        let val = i64::from_le_bytes([
             $bytes[$offset],
             $bytes[$offset + 1],
             $bytes[$offset + 2],
@@ -74,11 +74,19 @@ macro_rules! read_u64 {
     }};
 }
 
-macro_rules! read_array {
-    ($bytes:expr, $offset:expr, $size:expr) => {{
-        let mut arr = [0u8; $size];
-        arr.copy_from_slice(&$bytes[$offset..$offset + $size]);
-        $offset += $size;
-        arr
+macro_rules! read_u64 {
+    ($bytes:expr, $offset:expr) => {{
+        let val = u64::from_le_bytes([
+            $bytes[$offset],
+            $bytes[$offset + 1],
+            $bytes[$offset + 2],
+            $bytes[$offset + 3],
+            $bytes[$offset + 4],
+            $bytes[$offset + 5],
+            $bytes[$offset + 6],
+            $bytes[$offset + 7],
+        ]);
+        $offset += 8;
+        val
     }};
 }

@@ -296,4 +296,230 @@ impl Character {
     pub fn has_prof(&self) -> bool {
         (self.flags & CharacterFlags::CF_PROF.bits()) != 0
     }
+
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        if bytes.len() < std::mem::size_of::<Character>() {
+            return None;
+        }
+
+        let mut offset: usize = 0;
+
+        Some(Self {
+            used: read_u8!(bytes, offset),
+            name: {
+                let mut arr = [0u8; 40];
+                for i in 0..40 {
+                    arr[i] = read_u8!(bytes, offset);
+                }
+                arr
+            },
+            reference: {
+                let mut arr = [0u8; 40];
+                for i in 0..40 {
+                    arr[i] = read_u8!(bytes, offset);
+                }
+                arr
+            },
+            description: {
+                let mut arr = [0u8; 200];
+                for i in 0..200 {
+                    arr[i] = read_u8!(bytes, offset);
+                }
+                arr
+            },
+            kindred: read_i32!(bytes, offset),
+            player: read_i32!(bytes, offset),
+            pass1: read_u32!(bytes, offset),
+            pass2: read_u32!(bytes, offset),
+            sprite: read_u16!(bytes, offset),
+            sound: read_u16!(bytes, offset),
+            flags: read_u64!(bytes, offset),
+            alignment: read_i16!(bytes, offset),
+            temple_x: read_u16!(bytes, offset),
+            temple_y: read_u16!(bytes, offset),
+            tavern_x: read_u16!(bytes, offset),
+            tavern_y: read_u16!(bytes, offset),
+            temp: read_u16!(bytes, offset),
+            attrib: {
+                let mut arr = [[0u8; 6]; 5];
+                for i in 0..5 {
+                    for j in 0..6 {
+                        arr[i][j] = read_u8!(bytes, offset);
+                    }
+                }
+                arr
+            },
+            hp: {
+                let mut arr = [0u16; 6];
+                for i in 0..6 {
+                    arr[i] = read_u16!(bytes, offset);
+                }
+                arr
+            },
+            end: {
+                let mut arr = [0u16; 6];
+                for i in 0..6 {
+                    arr[i] = read_u16!(bytes, offset);
+                }
+                arr
+            },
+            mana: {
+                let mut arr = [0u16; 6];
+                for i in 0..6 {
+                    arr[i] = read_u16!(bytes, offset);
+                }
+                arr
+            },
+            skill: {
+                let mut arr = [[0u8; 6]; 50];
+                for i in 0..50 {
+                    for j in 0..6 {
+                        arr[i][j] = read_u8!(bytes, offset);
+                    }
+                }
+                arr
+            },
+            weapon_bonus: read_u8!(bytes, offset),
+            armor_bonus: read_u8!(bytes, offset),
+            a_hp: read_i32!(bytes, offset),
+            a_end: read_i32!(bytes, offset),
+            a_mana: read_i32!(bytes, offset),
+            light: read_u8!(bytes, offset),
+            mode: read_u8!(bytes, offset),
+            speed: read_i16!(bytes, offset),
+            points: read_i32!(bytes, offset),
+            points_tot: read_i32!(bytes, offset),
+            armor: read_i16!(bytes, offset),
+            weapon: read_i16!(bytes, offset),
+            x: read_i16!(bytes, offset),
+            y: read_i16!(bytes, offset),
+            tox: read_i16!(bytes, offset),
+            toy: read_i16!(bytes, offset),
+            frx: read_i16!(bytes, offset),
+            fry: read_i16!(bytes, offset),
+            status: read_i16!(bytes, offset),
+            status2: read_i16!(bytes, offset),
+            dir: read_u8!(bytes, offset),
+            gold: read_i32!(bytes, offset),
+            item: {
+                let mut arr = [0u32; 40];
+                for i in 0..40 {
+                    arr[i] = read_u32!(bytes, offset);
+                }
+                arr
+            },
+            worn: {
+                let mut arr = [0u32; 20];
+                for i in 0..20 {
+                    arr[i] = read_u32!(bytes, offset);
+                }
+                arr
+            },
+            spell: {
+                let mut arr = [0u32; 20];
+                for i in 0..20 {
+                    arr[i] = read_u32!(bytes, offset);
+                }
+                arr
+            },
+            citem: read_u32!(bytes, offset),
+            creation_date: read_u32!(bytes, offset),
+            login_date: read_u32!(bytes, offset),
+            addr: read_u32!(bytes, offset),
+            current_online_time: read_u32!(bytes, offset),
+            total_online_time: read_u32!(bytes, offset),
+            comp_volume: read_u32!(bytes, offset),
+            raw_volume: read_u32!(bytes, offset),
+            idle: read_u32!(bytes, offset),
+            attack_cn: read_u16!(bytes, offset),
+            skill_nr: read_u16!(bytes, offset),
+            skill_target1: read_u16!(bytes, offset),
+            skill_target2: read_u16!(bytes, offset),
+            goto_x: read_u16!(bytes, offset),
+            goto_y: read_u16!(bytes, offset),
+            use_nr: read_u16!(bytes, offset),
+            misc_action: read_u16!(bytes, offset),
+            misc_target1: read_u16!(bytes, offset),
+            misc_target2: read_u16!(bytes, offset),
+            cerrno: read_u16!(bytes, offset),
+            escape_timer: read_u16!(bytes, offset),
+            enemy: {
+                let mut arr = [0u16; 4];
+                for i in 0..4 {
+                    arr[i] = read_u16!(bytes, offset);
+                }
+                arr
+            },
+            current_enemy: read_u16!(bytes, offset),
+            retry: read_u16!(bytes, offset),
+            stunned: read_u16!(bytes, offset),
+            speed_mod: read_i8!(bytes, offset),
+            last_action: read_i8!(bytes, offset),
+            unused: read_i8!(bytes, offset),
+            depot_sold: read_i8!(bytes, offset),
+            gethit_dam: read_i8!(bytes, offset),
+            gethit_bonus: read_i8!(bytes, offset),
+            light_bonus: read_u8!(bytes, offset),
+            passwd: {
+                let mut arr = [0u8; 16];
+                for i in 0..16 {
+                    arr[i] = read_u8!(bytes, offset);
+                }
+                arr
+            },
+            lastattack: read_i8!(bytes, offset),
+            future1: {
+                let mut arr = [0i8; 25];
+                for i in 0..25 {
+                    arr[i] = read_i8!(bytes, offset);
+                }
+                arr
+            },
+            sprite_override: read_i16!(bytes, offset),
+            future2: {
+                let mut arr = [0i16; 49];
+                for i in 0..49 {
+                    arr[i] = read_i16!(bytes, offset);
+                }
+                arr
+            },
+            depot: {
+                let mut arr = [0u32; 62];
+                for i in 0..62 {
+                    arr[i] = read_u32!(bytes, offset);
+                }
+                arr
+            },
+            depot_cost: read_i32!(bytes, offset),
+            luck: read_i32!(bytes, offset),
+            unreach: read_i32!(bytes, offset),
+            unreachx: read_i32!(bytes, offset),
+            unreachy: read_i32!(bytes, offset),
+            monster_class: read_i32!(bytes, offset),
+            future3: {
+                let mut arr = [0i32; 12];
+                for i in 0..12 {
+                    arr[i] = read_i32!(bytes, offset);
+                }
+                arr
+            },
+            logout_date: read_u32!(bytes, offset),
+            data: {
+                let mut arr = [0i32; 100];
+                for i in 0..100 {
+                    arr[i] = read_i32!(bytes, offset);
+                }
+                arr
+            },
+            text: {
+                let mut arr = [[0u8; 160]; 10];
+                for i in 0..10 {
+                    for j in 0..160 {
+                        arr[i][j] = read_u8!(bytes, offset);
+                    }
+                }
+                arr
+            },
+        })
+    }
 }

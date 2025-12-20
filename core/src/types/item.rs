@@ -142,4 +142,116 @@ impl Item {
     pub fn has_soulstone(&self) -> bool {
         (self.flags & ItemFlags::IF_SOULSTONE.bits()) != 0
     }
+
+    pub fn from_bytes(data: &[u8]) -> Option<Self> {
+        if data.len() < std::mem::size_of::<Item>() {
+            return None;
+        }
+
+        let mut offset: usize = 0;
+
+        Some(Self {
+            used: read_u8!(data, offset),
+            name: {
+                let mut arr = [0u8; 40];
+                for i in 0..40 {
+                    arr[i] = read_u8!(data, offset);
+                }
+                arr
+            },
+            reference: {
+                let mut arr = [0u8; 40];
+                for i in 0..40 {
+                    arr[i] = read_u8!(data, offset);
+                }
+                arr
+            },
+            description: {
+                let mut arr = [0u8; 200];
+                for i in 0..200 {
+                    arr[i] = read_u8!(data, offset);
+                }
+                arr
+            },
+            flags: read_u64!(data, offset),
+            value: read_u32!(data, offset),
+            placement: read_u16!(data, offset),
+            temp: read_u16!(data, offset),
+            damage_state: read_u8!(data, offset),
+            max_age: [read_u32!(data, offset), read_u32!(data, offset)],
+            current_age: [read_u32!(data, offset), read_u32!(data, offset)],
+            max_damage: read_u32!(data, offset),
+            current_damage: read_u32!(data, offset),
+            attrib: {
+                let mut arr = [[0i8; 3]; 5];
+                for i in 0..5 {
+                    for j in 0..3 {
+                        arr[i][j] = read_i8!(data, offset);
+                    }
+                }
+                arr
+            },
+            hp: [
+                read_i16!(data, offset),
+                read_i16!(data, offset),
+                read_i16!(data, offset),
+            ],
+            end: [
+                read_i16!(data, offset),
+                read_i16!(data, offset),
+                read_i16!(data, offset),
+            ],
+            mana: [
+                read_i16!(data, offset),
+                read_i16!(data, offset),
+                read_i16!(data, offset),
+            ],
+            skill: {
+                let mut arr = [[0i8; 3]; 50];
+                for i in 0..50 {
+                    for j in 0..3 {
+                        arr[i][j] = read_i8!(data, offset);
+                    }
+                }
+                arr
+            },
+            armor: [read_i8!(data, offset), read_i8!(data, offset)],
+            weapon: [read_i8!(data, offset), read_i8!(data, offset)],
+            light: [read_i16!(data, offset), read_i16!(data, offset)],
+            duration: read_u32!(data, offset),
+            cost: read_u32!(data, offset),
+            power: read_u32!(data, offset),
+            active: read_u32!(data, offset),
+            x: read_u16!(data, offset),
+            y: read_u16!(data, offset),
+            carried: read_u16!(data, offset),
+            sprite_override: read_u16!(data, offset),
+            sprite: [read_i16!(data, offset), read_i16!(data, offset)],
+            status: [read_u8!(data, offset), read_u8!(data, offset)],
+            gethit_dam: [read_i8!(data, offset), read_i8!(data, offset)],
+            min_rank: read_i8!(data, offset),
+            future: [
+                read_i8!(data, offset),
+                read_i8!(data, offset),
+                read_i8!(data, offset),
+            ],
+            future3: {
+                let mut arr = [0i32; 9];
+                for i in 0..9 {
+                    arr[i] = read_i32!(data, offset);
+                }
+                arr
+            },
+            t_bought: read_i32!(data, offset),
+            t_sold: read_i32!(data, offset),
+            driver: read_u8!(data, offset),
+            data: {
+                let mut arr = [0u32; 10];
+                for i in 0..10 {
+                    arr[i] = read_u32!(data, offset);
+                }
+                arr
+            },
+        })
+    }
 }
