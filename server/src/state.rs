@@ -1,4 +1,4 @@
-use core::constants::MAXPLAYER;
+use core::constants::{MAXCHARS, MAXPLAYER};
 use std::rc::Rc;
 
 use crate::enums;
@@ -230,7 +230,7 @@ impl State {
             buffer[0] = core::constants::SV_EXIT;
             buffer[1] = reason as u8;
 
-            let (_, player) = player.unwrap();
+            let (player_id, player) = player.unwrap();
 
             if player.state == core::constants::ST_NORMAL {
                 self.network.xsend(player.usnr as usize, &buffer, 16);
@@ -238,7 +238,34 @@ impl State {
                 self.network.csend(player.usnr as usize, &buffer, 16);
             }
 
-            // TODO: Call player_exit()
+            self.player_exit(
+                repository.globals.ticker as u32,
+                (character_id, character),
+                (player_id, player),
+            );
+        }
+    }
+
+    pub fn player_exit(
+        &self,
+        ticker: u32,
+        character: (usize, &mut core::types::Character),
+        player: (usize, &mut core::types::ServerPlayer),
+    ) {
+        let (_, ch) = character;
+        let (player_id, plr) = player;
+
+        log::info!(
+            "Player {} exiting for character '{}'",
+            player_id,
+            ch.get_name()
+        );
+
+        plr.state = core::constants::ST_EXIT;
+        plr.lasttick = ticker;
+
+        if plr.usnr > 0 && plr.usnr < MAXCHARS && ch.player as usize == player_id {
+            ch.player = 0;
         }
     }
 
