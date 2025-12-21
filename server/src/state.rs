@@ -11,7 +11,6 @@ use crate::repository::Repository;
 pub struct State {
     pathfinder: PathFinder,
     network: Rc<NetworkManager>,
-    visi: Option<*const [i8; 40 * 40]>,
     _visi: [i8; 40 * 40],
     see_miss: u64,
     see_hit: u64,
@@ -25,7 +24,6 @@ impl State {
         State {
             pathfinder: PathFinder::new(),
             network,
-            visi: None,
             _visi: [0; 40 * 40],
             see_miss: 0,
             see_hit: 0,
@@ -375,7 +373,8 @@ impl State {
     }
 
     pub fn do_add_light(
-        &self,
+        &mut self,
+        repository: &Repository,
         map_tiles: &mut [core::types::Map],
         see_map: &mut [core::types::SeeMap],
         character: &core::types::Character,
@@ -421,12 +420,36 @@ impl State {
                 {
                     continue;
                 }
+
+                let v = self.can_see(
+                    repository,
+                    see_map,
+                    character,
+                    None,
+                    x_center,
+                    y_center,
+                    x,
+                    y,
+                    core::constants::LIGHTDIST,
+                );
+
+                if v != 0 {
+                    let d = strength / (v * (x_center - x).abs() + (y_center - y).abs());
+                    let map_index = (y as usize) * core::constants::MAPX as usize + (x as usize);
+
+                    if flag == 1 {
+                        map_tiles[map_index].add_light(-d);
+                    } else {
+                        map_tiles[map_index].add_light(d);
+                    }
+                }
             }
         }
     }
 
     pub fn can_see(
         &mut self,
+        repository: &Repository,
         see_map: &mut [core::types::SeeMap],
         character: &core::types::Character,
         character_id: Option<usize>,
@@ -435,57 +458,207 @@ impl State {
         tx: i32,
         ty: i32,
         max_distance: i32,
-    ) {
+    ) -> i32 {
         match character_id {
             Some(cn) => {
-                self.visi = Some(&see_map[cn].vis as *const _);
-
                 if (fx != see_map[cn].x) || (fy != see_map[cn].y) {
                     if character.is_monster() && !character.is_usurp_or_thrall() {
                         self.is_monster = true;
                     }
 
-                    self.can_map_see(fx, fy, max_distance);
+                    // Copy the visibility data from see_map to our working buffer
+                    self._visi.copy_from_slice(&see_map[cn].vis);
+
+                    self.can_map_see(repository, fx, fy, max_distance);
+
+                    // Copy the updated visibility data back to see_map
+                    see_map[cn].vis.copy_from_slice(&self._visi);
                     see_map[cn].x = fx;
                     see_map[cn].y = fy;
                     self.see_miss += 1;
                 } else {
+                    // Copy the visibility data from see_map for checking
+                    self._visi.copy_from_slice(&see_map[cn].vis);
                     self.see_hit += 1;
                     self.ox = fx;
                     self.oy = fy;
                 }
             }
             None => {
-                // TODO: Look up what this actually does...
-                if !self.visi.map_or(false, |v| v == &self._visi as *const _) {
-                    self.visi = Some(&self._visi as *const _);
-                    self.ox = 0;
-                    self.oy = 0;
-                }
-
                 if (self.ox != fx) || (self.oy != fy) {
                     self.is_monster = false;
-                    self.can_map_see(fx, fy, max_distance);
+                    self.can_map_see(repository, fx, fy, max_distance);
                 }
             }
         }
 
-        self.check_vis(tx, ty);
+        self.check_vis(tx, ty)
     }
 
-    pub fn can_map_see(&self, fx: i32, fy: i32, max_distance: i32) {
-        // Implementation of line-of-sight algorithm goes here
+    pub fn can_map_see(&mut self, repository: &Repository, fx: i32, fy: i32, max_distance: i32) {
+        // Clear the visibility array
+        self._visi.fill(0);
+
+        self.ox = fx;
+        self.oy = fy;
+
+        self.add_vis(fx, fy, 1);
+
+        for dist in 1..(max_distance + 1) {
+            let xc = fx;
+            let yc = fy;
+
+            // Top and bottom horizontal lines
+            for x in (xc - dist)..=(xc + dist) {
+                let y = yc - dist;
+                if self.close_vis_see(repository, x, y, dist as i8) {
+                    self.add_vis(x, y, dist + 1);
+                }
+
+                let y = yc + dist;
+                if self.close_vis_see(repository, x, y, dist as i8) {
+                    self.add_vis(x, y, dist + 1);
+                }
+            }
+
+            // Left and right vertical lines (excluding corners already done)
+            for y in (yc - dist + 1)..=(yc + dist - 1) {
+                let x = xc - dist;
+                if self.close_vis_see(repository, x, y, dist as i8) {
+                    self.add_vis(x, y, dist + 1);
+                }
+
+                let x = xc + dist;
+                if self.close_vis_see(repository, x, y, dist as i8) {
+                    self.add_vis(x, y, dist + 1);
+                }
+            }
+        }
     }
 
-    pub fn check_vis(&self, tx: i32, ty: i32) {
-        // Implementation to check visibility of target coordinates goes here
+    pub fn check_vis(&self, tx: i32, ty: i32) -> i32 {
+        let mut best = 99;
+
+        let x = tx - self.ox + 20;
+        let y = ty - self.oy + 20;
+
+        // Check all 8 adjacent cells for the best (lowest) visibility value
+        let offsets = [
+            (1, 0),
+            (-1, 0),
+            (0, 1),
+            (0, -1),
+            (1, 1),
+            (1, -1),
+            (-1, 1),
+            (-1, -1),
+        ];
+
+        for (dx, dy) in offsets.iter() {
+            let nx = x + dx;
+            let ny = y + dy;
+
+            if nx >= 0 && nx < 40 && ny >= 0 && ny < 40 {
+                let idx = (nx + ny * 40) as usize;
+                let val = self._visi[idx];
+                if val != 0 && val < best {
+                    best = val;
+                }
+            }
+        }
+
+        if best == 99 {
+            0
+        } else {
+            1
+        }
     }
 
-    pub fn add_vis(&self, x: i32, y: i32, value: i32) {
-        // Implementation to add visibility value at coordinates goes here
+    pub fn add_vis(&mut self, x: i32, y: i32, value: i32) {
+        let vx = x - self.ox + 20;
+        let vy = y - self.oy + 20;
+
+        if vx >= 0 && vx < 40 && vy >= 0 && vy < 40 {
+            let idx = (vx + vy * 40) as usize;
+            if self._visi[idx] == 0 {
+                self._visi[idx] = value as i8;
+            }
+        }
     }
 
-    pub fn close_vis_see(&self, x: i32, y: i32, value: i32) {
-        // Implementation to close visibility map goes here
+    pub fn close_vis_see(&self, repository: &Repository, x: i32, y: i32, value: i8) -> bool {
+        if !self.check_map_see(repository, x, y) {
+            return false;
+        }
+
+        let vx = x - self.ox + 20;
+        let vy = y - self.oy + 20;
+
+        if vx < 0 || vx >= 40 || vy < 0 || vy >= 40 {
+            return false;
+        }
+
+        // Check all 8 adjacent cells
+        let offsets = [
+            (1, 0),
+            (-1, 0),
+            (0, 1),
+            (0, -1),
+            (1, 1),
+            (1, -1),
+            (-1, 1),
+            (-1, -1),
+        ];
+
+        for (dx, dy) in offsets.iter() {
+            let nx = vx + dx;
+            let ny = vy + dy;
+
+            if nx >= 0 && nx < 40 && ny >= 0 && ny < 40 {
+                let idx = (nx + ny * 40) as usize;
+                if self._visi[idx] == value {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    fn check_map_see(&self, repository: &Repository, x: i32, y: i32) -> bool {
+        // Check boundaries
+        if x <= 0
+            || x >= core::constants::MAPX as i32
+            || y <= 0
+            || y >= core::constants::MAPY as i32
+        {
+            return false;
+        }
+
+        let m = (x + y * core::constants::MAPX as i32) as usize;
+
+        // Check if it's a monster and the map blocks monsters
+        if self.is_monster {
+            if repository.map[m].flags & core::constants::MF_MOVEBLOCK as u64 != 0 {
+                return false;
+            }
+        } else {
+            // Check for sight blocking flags
+            if repository.map[m].flags & core::constants::MF_SIGHTBLOCK as u64 != 0 {
+                return false;
+            }
+        }
+
+        // Check if there's an item that blocks sight
+        let item_idx = repository.map[m].it as usize;
+        if item_idx != 0 && item_idx < repository.items.len() {
+            if repository.items[item_idx].flags & core::constants::ItemFlags::IF_SIGHTBLOCK.bits()
+                != 0
+            {
+                return false;
+            }
+        }
+
+        true
     }
 }
