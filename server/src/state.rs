@@ -36,250 +36,286 @@ impl State {
     /// plr_logout from original C++ code
     pub fn logout_player(
         &mut self,
-        repository: &mut Repository,
         character_id: usize,
         player: Option<(usize, &mut core::types::ServerPlayer)>,
         reason: enums::LogoutReason,
     ) {
         // Logic to log out the player
-        log::debug!(
-            "Logging out character '{}' for reason: {:?}",
-            repository.characters[character_id].get_name(),
-            reason
-        );
+        Repository::with_characters(|characters| {
+            log::debug!(
+                "Logging out character '{}' for reason: {:?}",
+                characters[character_id].get_name(),
+                reason
+            );
+        });
 
-        let mut character = &mut repository.characters[character_id];
+        let character_has_player = Repository::with_characters(|characters| {
+            characters[character_id].player
+                == player
+                    .as_ref()
+                    .map_or(i32::MAX, |(player_number, _)| *player_number as i32)
+        });
 
-        let character_has_player = character.player
-            == player
-                .as_ref()
-                .map_or(i32::MAX, |(player_number, _)| *player_number as i32);
+        // Handle usurp flag and recursive logout
+        if character_has_player {
+            let should_logout_co = Repository::with_characters_mut(|characters| {
+                let character = &mut characters[character_id];
+                if character.flags & enums::CharacterFlags::Usurp.bits() != 0 {
+                    character.flags &= !(enums::CharacterFlags::ComputerControlledPlayer
+                        | enums::CharacterFlags::Usurp
+                        | enums::CharacterFlags::Staff
+                        | enums::CharacterFlags::Immortal
+                        | enums::CharacterFlags::God
+                        | enums::CharacterFlags::Creator)
+                        .bits();
+                    Some(character.data[97] as usize)
+                } else {
+                    None
+                }
+            });
 
-        if character_has_player && character.flags & enums::CharacterFlags::Usurp.bits() != 0 {
-            // If this character belongs to the player being logged out and has the Usurp flag set,
-            // clear all elevated privilege flags (CCP, Usurp, Staff, Immortal, God, Creator).
-            // This ensures that characters who were temporarily granted elevated permissions
-            // (e.g., via usurping another character) lose those permissions when logging out.
-            character.flags &= !(enums::CharacterFlags::ComputerControlledPlayer
-                | enums::CharacterFlags::Usurp
-                | enums::CharacterFlags::Staff
-                | enums::CharacterFlags::Immortal
-                | enums::CharacterFlags::God
-                | enums::CharacterFlags::Creator)
-                .bits();
-
-            let co = character.data[97];
-            // Perform the actual logout operation for the player controlling this character.
-            self.logout_player(repository, co as usize, None, enums::LogoutReason::Shutdown);
-
-            character = &mut repository.characters[character_id];
+            if let Some(co) = should_logout_co {
+                self.logout_player(co, None, enums::LogoutReason::Shutdown);
+            }
         }
 
-        // TODO: Evaluate if we can use this instead:
-        // if character_has_player
-        //     && enums::CharacterFlags::from_bits_truncate(repository.characters[character_id].flags)
-        //         .contains(enums::CharacterFlags::Player)
-        //     && !enums::CharacterFlags::from_bits_truncate(repository.characters[character_id].flags)
-        //         .contains(enums::CharacterFlags::ComputerControlledPlayer)
-        // {}
-        if character_has_player
-            && (character.flags & enums::CharacterFlags::Player.bits()) != 0
-            && (character.flags & enums::CharacterFlags::ComputerControlledPlayer.bits()) == 0
-        {
-            if reason == enums::LogoutReason::Exit {
-                log::warn!(
-                    "Character '{}' punished for leaving the game by means of F12.",
-                    character.get_name(),
-                );
+        // Main logout logic for active players
+        if character_has_player {
+            let (is_player, is_not_ccp) = Repository::with_characters(|characters| {
+                let character = &characters[character_id];
+                (
+                    character.flags & enums::CharacterFlags::Player.bits() != 0,
+                    character.flags & enums::CharacterFlags::ComputerControlledPlayer.bits() == 0,
+                )
+            });
 
-                let damage_message = format!(
-                    "You have been hit by a demon. You lost {} HP.\n",
-                    (character.hp[5] * 8 / 10)
-                );
-                let messages_to_send = [
-                    " \n",
-                    "You are being punished for leaving the game without entering a tavern:\n",
-                    " \n",
-                    damage_message.as_str(),
-                ];
-
-                for i in 0..messages_to_send.len() {
-                    self.do_character_log(
-                        Some((character_id, character)),
-                        &player,
-                        core::types::FontColor::Red,
-                        messages_to_send[i],
-                    );
-                }
-
-                character.a_hp -= (character.hp[5] * 800) as i32;
-
-                if character.a_hp < 500 {
-                    self.do_character_log(
-                        Some((character_id, character)),
-                        &player,
-                        core::types::FontColor::Red,
-                        String::from("The demon killed you.\n \n").as_str(),
-                    );
-                    // TODO: Kill the character here
-                } else {
-                    if character.gold / 10 > 0 {
-                        let money_stolen_message = format!(
-                            " \nA demon grabs your purse and removes {} gold, and {} silver.\n",
-                            (character.gold / 10) / 100,
-                            (character.gold / 10) % 100
+            if is_player && is_not_ccp {
+                // Handle exit punishment
+                if reason == enums::LogoutReason::Exit {
+                    Repository::with_characters_mut(|characters| {
+                        let character = &mut characters[character_id];
+                        log::warn!(
+                            "Character '{}' punished for leaving the game by means of F12.",
+                            character.get_name(),
                         );
 
-                        self.do_character_log(
-                            Some((character_id, character)),
-                            &player,
-                            core::types::FontColor::Red,
-                            money_stolen_message.as_str(),
+                        let damage_message = format!(
+                            "You have been hit by a demon. You lost {} HP.\n",
+                            (character.hp[5] * 8 / 10)
                         );
+                        let messages_to_send = [
+                            " \n",
+                            "You are being punished for leaving the game without entering a tavern:\n",
+                            " \n",
+                            damage_message.as_str(),
+                        ];
 
-                        character.gold -= character.gold / 10;
-
-                        if character.citem != 0 && character.citem & 0x80000000 == 0 {
+                        for i in 0..messages_to_send.len() {
                             self.do_character_log(
                                 Some((character_id, character)),
                                 &player,
                                 core::types::FontColor::Red,
-                                "The demon also takes the money in your hand!\n",
+                                messages_to_send[i],
                             );
+                        }
 
-                            // Remove the item from the character
-                            character.citem = 0;
+                        character.a_hp -= (character.hp[5] * 800) as i32;
+
+                        if character.a_hp < 500 {
+                            self.do_character_log(
+                                Some((character_id, character)),
+                                &player,
+                                core::types::FontColor::Red,
+                                String::from("The demon killed you.\n \n").as_str(),
+                            );
+                            // TODO: Kill the character here
+                        } else {
+                            if character.gold / 10 > 0 {
+                                let money_stolen_message = format!(
+                                    " \nA demon grabs your purse and removes {} gold, and {} silver.\n",
+                                    (character.gold / 10) / 100,
+                                    (character.gold / 10) % 100
+                                );
+
+                                self.do_character_log(
+                                    Some((character_id, character)),
+                                    &player,
+                                    core::types::FontColor::Red,
+                                    money_stolen_message.as_str(),
+                                );
+
+                                character.gold -= character.gold / 10;
+
+                                if character.citem != 0 && character.citem & 0x80000000 == 0 {
+                                    self.do_character_log(
+                                        Some((character_id, character)),
+                                        &player,
+                                        core::types::FontColor::Red,
+                                        "The demon also takes the money in your hand!\n",
+                                    );
+
+                                    character.citem = 0;
+                                }
+                            }
+                        }
+                    });
+                }
+
+                // Clear map positions
+                let (map_index, to_map_index, light) = Repository::with_characters(|characters| {
+                    let character = &characters[character_id];
+                    let map_index = (character.y as usize) * core::constants::MAPX as usize
+                        + (character.x as usize);
+                    let to_map_index = (character.toy as usize) * core::constants::MAPX as usize
+                        + (character.tox as usize);
+                    (map_index, to_map_index, character.light)
+                });
+
+                Repository::with_map_mut(|map| {
+                    if map[map_index].ch == character_id as u32 {
+                        map[map_index].ch = 0;
+                        if light != 0 {
+                            // TODO: Update lighting here via do_add_light
                         }
                     }
-                    // TODO: Do area log here
-                    //    do_area_log( cn, 0, ch[ cn ].x, ch[ cn ].y, 2, "%s left the game without saying goodbye and was punished by the gods.\n",
-                    //    ch[ cn ].name );
-                }
-            }
 
-            let map_index =
-                (character.y as usize) * core::constants::MAPX as usize + (character.x as usize);
-            if repository.map[map_index].ch == character_id as u32 {
-                repository.map[map_index].ch = 0;
+                    if map[to_map_index].ch == character_id as u32 {
+                        map[to_map_index].ch = 0;
+                    }
+                });
 
-                if character.light != 0 {
-                    // TODO: Update lighting here via do_add_light
-                }
-            }
-
-            let to_map_index = (character.toy as usize) * core::constants::MAPX as usize
-                + (character.tox as usize);
-            if repository.map[to_map_index].ch == character_id as u32 {
-                repository.map[to_map_index].ch = 0;
-            }
-
-            // TODO: remove_enemy call goes here
-            if reason == enums::LogoutReason::IdleTooLong
-                || reason == enums::LogoutReason::Shutdown
-                || reason == enums::LogoutReason::Unknown
-            {
-                if !character.is_close_to_temple()
-                    && !character.in_no_lag_scroll_area(&repository.map)
+                // Handle lag scroll
+                if reason == enums::LogoutReason::IdleTooLong
+                    || reason == enums::LogoutReason::Shutdown
+                    || reason == enums::LogoutReason::Unknown
                 {
-                    log::info!(
-                        "Giving lag scroll to character '{}' for idle/logout too long.",
-                        character.get_name(),
-                    );
+                    let (is_close_to_temple, map_index) =
+                        Repository::with_characters(|characters| {
+                            let character = &characters[character_id];
+                            let map_index = (character.y as usize) * core::constants::MAPX as usize
+                                + (character.x as usize);
+                            (character.is_close_to_temple(), map_index)
+                        });
 
-                    let item_number = God::create_item(
-                        &mut repository.items,
-                        &repository.item_templates,
-                        core::constants::IT_LAGSCROLL as usize,
-                    );
-
-                    if let Some(item_id) = item_number {
-                        repository.items[item_id].data[0] = character.x as u32;
-                        repository.items[item_id].data[1] = character.y as u32;
-                        repository.items[item_id].data[2] = repository.globals.ticker as u32;
-
-                        God::give_character_item(
-                            character,
-                            &mut repository.items[item_id],
-                            character_id,
-                            item_id,
-                        );
+                    let should_give = if !is_close_to_temple {
+                        Repository::with_map(|map| {
+                            map[map_index].flags & core::constants::MF_NOLAG as u64 == 0
+                        })
                     } else {
-                        log::error!(
-                            "Failed to create lag scroll for character '{}'.",
-                            character.get_name(),
-                        );
+                        false
+                    };
+
+                    if should_give {
+                        Repository::with_characters(|characters| {
+                            log::info!(
+                                "Giving lag scroll to character '{}' for idle/logout too long.",
+                                characters[character_id].get_name(),
+                            );
+                        });
+
+                        if let Some(item_id) =
+                            God::create_item(core::constants::IT_LAGSCROLL as usize)
+                        {
+                            let (char_x, char_y) = Repository::with_characters(|characters| {
+                                (characters[character_id].x, characters[character_id].y)
+                            });
+
+                            Repository::with_items_mut(|items| {
+                                items[item_id].data[0] = char_x as u32;
+                                items[item_id].data[1] = char_y as u32;
+                            });
+
+                            Repository::with_globals(|globals| {
+                                Repository::with_items_mut(|items| {
+                                    items[item_id].data[2] = globals.ticker as u32;
+                                });
+                            });
+
+                            God::give_character_item(character_id, item_id);
+                        } else {
+                            Repository::with_characters(|characters| {
+                                log::error!(
+                                    "Failed to create lag scroll for character '{}'.",
+                                    characters[character_id].get_name(),
+                                );
+                            });
+                        }
                     }
                 }
+
+                // Reset character state
+                Repository::with_characters_mut(|characters| {
+                    let character = &mut characters[character_id];
+                    character.x = 0;
+                    character.y = 0;
+                    character.tox = 0;
+                    character.toy = 0;
+                    character.frx = 0;
+                    character.fry = 0;
+                    character.player = 0;
+                    character.status = 0;
+                    character.status2 = 0;
+                    character.dir = 0;
+                    character.escape_timer = 0;
+                    for i in 0..4 {
+                        character.enemy[i] = 0;
+                    }
+                    character.attack_cn = 0;
+                    character.skill_nr = 0;
+                    character.goto_x = 0;
+                    character.goto_y = 0;
+                    character.use_nr = 0;
+                    character.misc_action = 0;
+                    character.stunned = 0;
+                    character.retry = 0;
+
+                    for i in 0..13 {
+                        if i == 11 {
+                            continue;
+                        }
+                        character.data[i] = 0;
+                    }
+
+                    character.data[96] = 0;
+                    character.used = core::constants::USE_NONACTIVE;
+                    character.logout_date = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs() as u32;
+
+                    character.flags |= enums::CharacterFlags::SaveMe.bits();
+
+                    if character.is_building() {
+                        God::build(character, character_id, 0);
+                    }
+                });
             }
-
-            character.x = 0;
-            character.y = 0;
-            character.tox = 0;
-            character.toy = 0;
-            character.frx = 0;
-            character.fry = 0;
-            character.player = 0;
-            character.status = 0;
-            character.status2 = 0;
-            character.dir = 0;
-            character.escape_timer = 0;
-            for i in 0..4 {
-                character.enemy[i] = 0;
-            }
-            character.attack_cn = 0;
-            character.skill_nr = 0;
-            character.goto_x = 0;
-            character.goto_y = 0; // TODO: This wasn't there originally; mistake?
-            character.use_nr = 0;
-            character.misc_action = 0;
-            character.stunned = 0;
-            character.retry = 0;
-
-            for i in 0..13 {
-                if i == 11 {
-                    continue;
-                }
-
-                character.data[i] = 0;
-            }
-
-            character.data[96] = 0;
-            character.used = core::constants::USE_NONACTIVE;
-            character.logout_date = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs() as u32; // TODO: Evaluate if this duration is appropriate
-
-            character.flags |= enums::CharacterFlags::SaveMe.bits();
-
-            if character.is_building() {
-                God::build(character, character_id, 0);
-            }
-            // TODO:
-            // if ( IS_BUILDING( cn ) )
-            // god_build(cn, 0);
-
-            // TODO: Call do_announce here
         }
 
+        // Send exit message to player
         if player.is_some() && reason != enums::LogoutReason::Usurp {
             let mut buffer: [u8; 16] = [0; 16];
             buffer[0] = core::constants::SV_EXIT;
             buffer[1] = reason as u8;
 
-            let (player_id, player) = player.unwrap();
+            let (player_id, plr) = player.unwrap();
 
-            if player.state == core::constants::ST_NORMAL {
-                self.network.xsend(player.usnr as usize, &buffer, 16);
+            if plr.state == core::constants::ST_NORMAL {
+                self.network.xsend(plr.usnr as usize, &buffer, 16);
             } else {
-                self.network.csend(player.usnr as usize, &buffer, 16);
+                self.network.csend(plr.usnr as usize, &buffer, 16);
             }
 
-            self.player_exit(
-                repository.globals.ticker as u32,
-                (character_id, character),
-                (player_id, player),
-            );
+            Repository::with_characters_mut(|characters| {
+                let character = &mut characters[character_id];
+                Repository::with_globals(|globals| {
+                    self.player_exit(
+                        globals.ticker as u32,
+                        (character_id, character),
+                        (player_id, plr),
+                    );
+                });
+            });
         }
     }
 

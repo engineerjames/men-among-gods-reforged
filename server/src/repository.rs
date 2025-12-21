@@ -1,8 +1,11 @@
 use std::fs;
+use std::sync::{OnceLock, RwLock};
 
 // TODO: Currently this only reads data files into memory.
 // So if you close down the server and restart, any changes made during runtime will be lost.
 // In the future, we will want to implement saving changes back to the data files.
+
+static REPOSITORY: OnceLock<RwLock<Repository>> = OnceLock::new();
 
 // Contains the data repository for the server
 pub struct Repository {
@@ -325,5 +328,173 @@ impl Repository {
             }
         }
         Ok(())
+    }
+
+    // Initialize the global repository
+    pub fn initialize() -> Result<(), String> {
+        let mut repo = Repository::new();
+        repo.load()?;
+        REPOSITORY
+            .set(RwLock::new(repo))
+            .map_err(|_| "Repository already initialized".to_string())?;
+        Ok(())
+    }
+
+    // Static accessor methods for read-only access
+    pub fn with_map<F, R>(f: F) -> R
+    where
+        F: FnOnce(&[core::types::Map]) -> R,
+    {
+        let repo = REPOSITORY
+            .get()
+            .expect("Repository not initialized")
+            .read()
+            .unwrap();
+        f(&repo.map)
+    }
+
+    pub fn with_items<F, R>(f: F) -> R
+    where
+        F: FnOnce(&[core::types::Item]) -> R,
+    {
+        let repo = REPOSITORY
+            .get()
+            .expect("Repository not initialized")
+            .read()
+            .unwrap();
+        f(&repo.items)
+    }
+
+    pub fn with_item_templates<F, R>(f: F) -> R
+    where
+        F: FnOnce(&[core::types::Item]) -> R,
+    {
+        let repo = REPOSITORY
+            .get()
+            .expect("Repository not initialized")
+            .read()
+            .unwrap();
+        f(&repo.item_templates)
+    }
+
+    pub fn with_characters<F, R>(f: F) -> R
+    where
+        F: FnOnce(&[core::types::Character]) -> R,
+    {
+        let repo = REPOSITORY
+            .get()
+            .expect("Repository not initialized")
+            .read()
+            .unwrap();
+        f(&repo.characters)
+    }
+
+    pub fn with_effects<F, R>(f: F) -> R
+    where
+        F: FnOnce(&[core::types::Effect]) -> R,
+    {
+        let repo = REPOSITORY
+            .get()
+            .expect("Repository not initialized")
+            .read()
+            .unwrap();
+        f(&repo.effects)
+    }
+
+    pub fn with_globals<F, R>(f: F) -> R
+    where
+        F: FnOnce(&core::types::Global) -> R,
+    {
+        let repo = REPOSITORY
+            .get()
+            .expect("Repository not initialized")
+            .read()
+            .unwrap();
+        f(&repo.globals)
+    }
+
+    pub fn with_see_map<F, R>(f: F) -> R
+    where
+        F: FnOnce(&[core::types::SeeMap]) -> R,
+    {
+        let repo = REPOSITORY
+            .get()
+            .expect("Repository not initialized")
+            .read()
+            .unwrap();
+        f(&repo.see_map)
+    }
+
+    // Static accessor methods for mutable access
+    pub fn with_map_mut<F, R>(f: F) -> R
+    where
+        F: FnOnce(&mut [core::types::Map]) -> R,
+    {
+        let mut repo = REPOSITORY
+            .get()
+            .expect("Repository not initialized")
+            .write()
+            .unwrap();
+        f(&mut repo.map)
+    }
+
+    pub fn with_items_mut<F, R>(f: F) -> R
+    where
+        F: FnOnce(&mut [core::types::Item]) -> R,
+    {
+        let mut repo = REPOSITORY
+            .get()
+            .expect("Repository not initialized")
+            .write()
+            .unwrap();
+        f(&mut repo.items)
+    }
+
+    pub fn with_characters_mut<F, R>(f: F) -> R
+    where
+        F: FnOnce(&mut [core::types::Character]) -> R,
+    {
+        let mut repo = REPOSITORY
+            .get()
+            .expect("Repository not initialized")
+            .write()
+            .unwrap();
+        f(&mut repo.characters)
+    }
+
+    pub fn with_effects_mut<F, R>(f: F) -> R
+    where
+        F: FnOnce(&mut [core::types::Effect]) -> R,
+    {
+        let mut repo = REPOSITORY
+            .get()
+            .expect("Repository not initialized")
+            .write()
+            .unwrap();
+        f(&mut repo.effects)
+    }
+
+    pub fn with_globals_mut<F, R>(f: F) -> R
+    where
+        F: FnOnce(&mut core::types::Global) -> R,
+    {
+        let mut repo = REPOSITORY
+            .get()
+            .expect("Repository not initialized")
+            .write()
+            .unwrap();
+        f(&mut repo.globals)
+    }
+
+    pub fn with_see_map_mut<F, R>(f: F) -> R
+    where
+        F: FnOnce(&mut [core::types::SeeMap]) -> R,
+    {
+        let mut repo = REPOSITORY
+            .get()
+            .expect("Repository not initialized")
+            .write()
+            .unwrap();
+        f(&mut repo.see_map)
     }
 }

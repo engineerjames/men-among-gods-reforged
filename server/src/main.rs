@@ -110,22 +110,23 @@ fn main() {
     let quit_flag_clone = quit_flag.clone();
     let (signal_thread, handle) = setup_signal_handling(quit_flag_clone);
 
-    // Load game data
-    let mut repository = Repository::new();
-    if let Err(e) = repository.load() {
-        log::error!("Failed to load game data: {}. Exiting.", e);
-        process::exit(1);
-    }
-
     handle_command_line_args(&args);
 
-    // Check for dirty flag
-    if repository.globals.is_dirty() {
-        log::error!("Data files were not closed cleanly last time. Exiting.");
+    // Initialize the global repository
+    if let Err(e) = Repository::initialize() {
+        log::error!("Failed to initialize repository: {}. Exiting.", e);
         process::exit(1);
     }
 
-    let mut server = server::Server::new(&mut repository);
+    // Check for dirty flag
+    Repository::with_globals(|globals| {
+        if globals.is_dirty() {
+            log::error!("Data files were not closed cleanly last time. Exiting.");
+            process::exit(1);
+        }
+    });
+
+    let mut server = server::Server::new();
 
     server.initialize();
 

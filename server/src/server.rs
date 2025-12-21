@@ -5,19 +5,17 @@ use crate::network_manager::NetworkManager;
 use crate::repository::Repository;
 use crate::state::State;
 
-pub struct Server<'a> {
-    repository: &'a mut Repository,
+pub struct Server {
     network: Rc<NetworkManager>,
     players: [core::types::ServerPlayer; MAXPLAYER],
     state: State,
 }
 
-impl<'a> Server<'a> {
-    pub fn new(repository: &'a mut Repository) -> Self {
+impl Server {
+    pub fn new() -> Self {
         let network = Rc::new(NetworkManager::new());
         let state = State::new(network.clone());
         Server {
-            repository,
             network,
             players: std::array::from_fn(|_| core::types::ServerPlayer::new()),
             state,
@@ -26,24 +24,29 @@ impl<'a> Server<'a> {
 
     pub fn initialize(&mut self) {
         // Mark data as dirty (in use)
-        self.repository.globals.set_dirty(true);
+        Repository::with_globals_mut(|globals| {
+            globals.set_dirty(true);
+        });
 
         // Log out all active characters (cleanup from previous run)
         for i in 0..core::constants::MAXCHARS as usize {
-            if self.repository.characters[i].used != core::constants::USE_ACTIVE {
+            let should_logout = Repository::with_characters(|characters| {
+                characters[i].used == core::constants::USE_ACTIVE
+            });
+
+            if !should_logout {
                 continue;
             }
 
-            log::info!(
-                "Logging out character '{}' on server startup",
-                self.repository.characters[i].get_name(),
-            );
-            self.state.logout_player(
-                self.repository,
-                i,
-                None,
-                crate::enums::LogoutReason::Shutdown,
-            );
+            Repository::with_characters(|characters| {
+                log::info!(
+                    "Logging out character '{}' on server startup",
+                    characters[i].get_name(),
+                );
+            });
+
+            self.state
+                .logout_player(i, None, crate::enums::LogoutReason::Shutdown);
         }
 
         // Initialize subsystems
@@ -104,9 +107,11 @@ impl<'a> Server<'a> {
     }
 }
 
-impl Drop for Server<'_> {
+impl Drop for Server {
     fn drop(&mut self) {
-        // On server shutdown, clear the dirty flag
-        self.repository.globals.set_dirty(false);
+        log::info!("Server shutting down, marking data as clean.");
+        Repository::with_globals_mut(|globals| {
+            globals.set_dirty(false);
+        });
     }
 }
