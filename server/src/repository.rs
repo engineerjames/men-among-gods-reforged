@@ -6,8 +6,7 @@ use std::fs;
 
 // Contains the data repository for the server
 pub struct Repository {
-    // Add fields as necessary
-    map: [core::types::Map; core::constants::MAPX as usize * core::constants::MAPY as usize],
+    pub map: [core::types::Map; core::constants::MAPX as usize * core::constants::MAPY as usize],
     items: [core::types::Item; core::constants::MAXITEM as usize],
     item_templates: [core::types::Item; core::constants::MAXTITEM as usize],
     pub characters: [core::types::Character; core::constants::MAXCHARS as usize],

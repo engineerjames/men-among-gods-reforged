@@ -57,9 +57,6 @@ impl State {
 
             let co = character.data[97];
             // Perform the actual logout operation for the player controlling this character.
-            // TODO: Handle the player reference properly.
-            drop(character);
-
             self.logout_player(repository, co as usize, None, enums::LogoutReason::Shutdown);
 
             character = &mut repository.characters[character_id];
@@ -95,8 +92,7 @@ impl State {
 
                 for i in 0..messages_to_send.len() {
                     self.do_character_log(
-                        repository,
-                        character_id,
+                        Some((character_id, character)),
                         &player,
                         core::types::FontColor::Red,
                         messages_to_send[i],
@@ -107,8 +103,7 @@ impl State {
 
                 if character.a_hp < 500 {
                     self.do_character_log(
-                        repository,
-                        character_id,
+                        Some((character_id, character)),
                         &player,
                         core::types::FontColor::Red,
                         String::from("The demon killed you.\n \n").as_str(),
@@ -123,8 +118,7 @@ impl State {
                         );
 
                         self.do_character_log(
-                            repository,
-                            character_id,
+                            Some((character_id, character)),
                             &player,
                             core::types::FontColor::Red,
                             money_stolen_message.as_str(),
@@ -134,8 +128,7 @@ impl State {
 
                         if character.citem != 0 && character.citem & 0x80000000 == 0 {
                             self.do_character_log(
-                                repository,
-                                character_id,
+                                Some((character_id, character)),
                                 &player,
                                 core::types::FontColor::Red,
                                 "The demon also takes the money in your hand!\n",
@@ -144,82 +137,177 @@ impl State {
                             // Remove the item from the character
                             character.citem = 0;
                         }
-
-                        // TODO: Do area log here
-                        //    do_area_log( cn, 0, ch[ cn ].x, ch[ cn ].y, 2, "%s left the game without saying goodbye and was punished by the gods.\n",
-                        //    ch[ cn ].name );
                     }
+                    // TODO: Do area log here
+                    //    do_area_log( cn, 0, ch[ cn ].x, ch[ cn ].y, 2, "%s left the game without saying goodbye and was punished by the gods.\n",
+                    //    ch[ cn ].name );
                 }
             }
+
+            let map_index =
+                (character.y as usize) * core::constants::MAPX as usize + (character.x as usize);
+            if repository.map[map_index].ch == character_id as u32 {
+                repository.map[map_index].ch = 0;
+
+                if character.light != 0 {
+                    // TODO: Update lighting here via do_add_light
+                }
+            }
+
+            let to_map_index = (character.toy as usize) * core::constants::MAPX as usize
+                + (character.tox as usize);
+            if repository.map[to_map_index].ch == character_id as u32 {
+                repository.map[to_map_index].ch = 0;
+            }
+
+            // TODO: remove_enemy call goes here
+            if reason == enums::LogoutReason::IdleTooLong
+                || reason == enums::LogoutReason::Shutdown
+                || reason == enums::LogoutReason::Unknown
+            {
+                // TODO
+                //   if ( abs( ch[ cn ].x - ch[ cn ].temple_x ) + abs( ch[ cn ].y - ch[ cn ].temple_y ) > 10 &&
+                //        ! ( map[ ch[ cn ].x + ch[ cn ].y * SERVER_MAPX ].flags & MF_NOLAG ) )
+                //   {
+                //     in                 = god_create_item( IT_LAGSCROLL );
+                //     it[ in ].data[ 0 ] = ch[ cn ].x;
+                //     it[ in ].data[ 1 ] = ch[ cn ].y;
+                //     it[ in ].data[ 2 ] = globs->ticker;
+                //     if ( in )
+                //       god_give_char( in, cn );
+                //   }
+            }
+
+            character.x = 0;
+            character.y = 0;
+            character.tox = 0;
+            character.toy = 0;
+            character.frx = 0;
+            character.fry = 0;
+            character.player = 0;
+            character.status = 0;
+            character.status2 = 0;
+            character.dir = 0;
+            character.escape_timer = 0;
+            for i in 0..4 {
+                character.enemy[i] = 0;
+            }
+            character.attack_cn = 0;
+            character.skill_nr = 0;
+            character.goto_x = 0;
+            character.goto_y = 0; // TODO: This wasn't there originally; mistake?
+            character.use_nr = 0;
+            character.misc_action = 0;
+            character.stunned = 0;
+            character.retry = 0;
+
+            for i in 0..13 {
+                if i == 11 {
+                    continue;
+                }
+
+                character.data[i] = 0;
+            }
+
+            character.data[96] = 0;
+            character.used = core::constants::USE_NONACTIVE;
+            character.logout_date = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as u32; // TODO: Evaluate if this duration is appropriate
+
+            character.flags |= enums::CharacterFlags::SaveMe.bits();
+
+            // TODO:
+            // if ( IS_BUILDING( cn ) )
+            // god_build(cn, 0);
+
+            // TODO: Call do_announce here
+        }
+
+        if player.is_some() && reason != enums::LogoutReason::Usurp {
+            let mut buffer: [u8; 16] = [0; 16];
+            buffer[0] = core::constants::SV_EXIT;
+            buffer[1] = reason as u8;
+
+            let (_, player) = player.unwrap();
+
+            if player.state == core::constants::ST_NORMAL {
+                self.network.xsend(player.usnr as usize, &buffer, 16);
+            } else {
+                self.network.csend(player.usnr as usize, &buffer, 16);
+            }
+
+            // TODO: Call player_exit()
         }
     }
 
     pub fn do_character_log(
         &self,
-        repository: &Repository,
-        character_id: usize,
+        character: Option<(usize, &core::types::Character)>,
         player: &Option<(usize, &mut core::types::ServerPlayer)>,
         font: core::types::FontColor,
         message: &str,
     ) {
-        if repository.characters[character_id].player == 0
-            && repository.characters[character_id].temp != 15
-        {
-            return;
-        }
+        if let Some((character_id, ch)) = character {
+            if ch.player == 0 && ch.temp != 15 {
+                return;
+            }
 
-        self.do_log(repository, character_id, player, font, message);
+            self.do_log(Some((character_id, ch)), player, font, message);
+        }
     }
 
     pub fn do_log(
         &self,
-        repository: &Repository,
-        character_id: usize,
+        character: Option<(usize, &core::types::Character)>,
         player: &Option<(usize, &mut core::types::ServerPlayer)>,
         font: core::types::FontColor,
         message: &str,
     ) {
         let mut buffer: [u8; 16] = [0; 16];
 
-        let player_id = repository.characters[character_id].player;
+        if let Some((character_id, ch)) = character {
+            let player_id = ch.player;
 
-        if player_id < 1 || player_id as usize >= MAXPLAYER {
-            log::error!(
-                "do_log: Invalid player ID {} for character '{}'",
-                player_id,
-                repository.characters[character_id].get_name(),
-            );
-            return;
-        }
-
-        if let Some((_, player)) = player {
-            if player.usnr != character_id {
+            if player_id < 1 || player_id as usize >= MAXPLAYER {
+                log::error!(
+                    "do_log: Invalid player ID {} for character '{}'",
+                    player_id,
+                    ch.get_name(),
+                );
                 return;
             }
-        } else {
-            log::warn!(
-                "do_log: No player reference for character '{}'",
-                repository.characters[character_id].get_name(),
-            );
-        }
 
-        let mut bytes_sent: usize = 0;
-        let len = message.len() - 1;
-
-        while bytes_sent <= len {
-            buffer[0] = core::constants::SV_LOG + font as u8;
-
-            for i in 0..15 {
-                if bytes_sent + i > len {
-                    buffer[i + 1] = 0;
-                } else {
-                    buffer[i + 1] = message.as_bytes()[bytes_sent + i];
+            if let Some((_, player)) = player {
+                if player.usnr != character_id {
+                    return;
                 }
+            } else {
+                log::warn!(
+                    "do_log: No player reference for character '{}'",
+                    ch.get_name(),
+                );
             }
 
-            self.network.send(player_id as usize, &buffer, 16);
+            let mut bytes_sent: usize = 0;
+            let len = message.len() - 1;
 
-            bytes_sent += 15;
+            while bytes_sent <= len {
+                buffer[0] = core::constants::SV_LOG + font as u8;
+
+                for i in 0..15 {
+                    if bytes_sent + i > len {
+                        buffer[i + 1] = 0;
+                    } else {
+                        buffer[i + 1] = message.as_bytes()[bytes_sent + i];
+                    }
+                }
+
+                self.network.xsend(player_id as usize, &buffer, 16);
+
+                bytes_sent += 15;
+            }
         }
     }
 }

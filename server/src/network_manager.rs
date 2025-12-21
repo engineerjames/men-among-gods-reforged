@@ -9,8 +9,12 @@ impl NetworkManager {
         }
     }
 
-    pub fn send(&self, player_id: usize, data: &[u8], length: u8) {
+    pub fn xsend(&self, player_id: usize, data: &[u8], length: u8) {
         // Implementation for sending data to a player.
+    }
+
+    pub fn csend(&self, player_id: usize, data: &[u8], length: u8) {
+        // Implementation for sending compressed data to a player.
     }
 
     // Additional methods for network management would go here.

@@ -1,6 +1,7 @@
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogoutReason {
+    Unknown = 0,
     ChallengeFailed = 1,
     IdleTooLong = 2,
     NoRoom = 3,
