@@ -252,6 +252,9 @@ impl State {
 
             character.flags |= enums::CharacterFlags::SaveMe.bits();
 
+            if character.is_building() {
+                God::build(character, character_id, 0);
+            }
             // TODO:
             // if ( IS_BUILDING( cn ) )
             // god_build(cn, 0);

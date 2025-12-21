@@ -569,4 +569,8 @@ impl Character {
     pub fn is_usurp_or_thrall(&self) -> bool {
         (self.flags & (CharacterFlags::CF_USURP.bits() | CharacterFlags::CF_THRALL.bits())) != 0
     }
+
+    pub fn is_building(&self) -> bool {
+        (self.flags & CharacterFlags::CF_BUILDMODE.bits()) != 0
+    }
 }

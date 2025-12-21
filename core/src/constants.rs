@@ -684,6 +684,7 @@ pub const SPR_ARM_ARMOR: u16 = 1018;
 pub const SPR_TEMPLAR_POOL: u16 = 1019;
 pub const SPR_TORCH2: u16 = 1026;
 pub const SPR_TAVERN_GROUND: u16 = 1034;
+pub const SPR_STONE_GROUND2: u16 = 1052;
 
 pub const SPR_TEMPLAR: u16 = 2000;
 pub const SPR_LIZARD: u16 = SPR_TEMPLAR + 1024;
