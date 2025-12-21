@@ -94,14 +94,18 @@ impl God {
         }
     }
 
-    pub fn build(character: &mut core::types::Character, character_id: usize, build_type: u8) {
+    pub fn build(character: &mut core::types::Character, character_id: usize, build_type: u32) {
         if !character.is_building() {
         } else if build_type != 0 {
         } else {
         }
     }
 
-    pub fn build_equip(character: &mut core::types::Character, build_type: u32) {
+    pub fn build_equip(
+        character: &mut core::types::Character,
+        item_templates: &[core::types::Item; core::constants::MAXTITEM as usize],
+        build_type: u32,
+    ) {
         let mut m = 0;
 
         match build_type {
@@ -362,14 +366,46 @@ impl God {
             _ => {}
         }
 
-        // Fill inventory with remaining items from templates
-        // Note: This requires access to item templates which would need to be passed in
-        // For now, implementing just the direct sprite assignments as per C++ function
+        // Fill inventory with other stuff upward from last item
+        for n in build_type as usize..core::constants::MAXTITEM as usize {
+            if m >= 40 {
+                break;
+            }
+
+            if item_templates[n].used == core::constants::USE_EMPTY {
+                continue;
+            }
+
+            if item_templates[n].flags & core::constants::ItemFlags::IF_TAKE.bits() != 0 {
+                continue;
+            }
+
+            if item_templates[n].driver == 25 && item_templates[n].data[3] == 0 {
+                continue;
+            }
+
+            if item_templates[n].driver == 22 {
+                continue;
+            }
+
+            character.item[m] = n as u32;
+            m += 1;
+        }
 
         log::info!(
             "Build mode {} set for character {}",
             build_type,
             character.get_name()
         );
+
+        // TODO: Send message via do_char_log?
     }
+
+    pub fn build_start(character: &mut core::types::Character, character_id: usize) -> bool {
+        return false;
+    }
+
+    pub fn create_char() {}
+
+    pub fn drop_char() {}
 }
