@@ -522,4 +522,51 @@ impl Character {
             },
         })
     }
+
+    pub fn is_close_to_temple(&self) -> bool {
+        let dx = (self.x as i32 - self.temple_x as i32).abs();
+        let dy = (self.y as i32 - self.temple_y as i32).abs();
+        (dx + dy) <= 10
+    }
+
+    pub fn in_no_lag_scroll_area(
+        &self,
+        map_tiles: &[crate::types::Map;
+             crate::constants::MAPX as usize * crate::constants::MAPY as usize],
+    ) -> bool {
+        let map_index = (self.y as usize) * (crate::constants::MAPX as usize) + (self.x as usize);
+
+        map_tiles[map_index].flags & crate::constants::MF_NOLAG as u64 != 0
+    }
+
+    pub fn is_sane_character(char_id: usize) -> bool {
+        char_id > 0 && char_id < crate::constants::MAXCHARS
+    }
+
+    pub fn is_living_character(&self, char_id: usize) -> bool {
+        Self::is_sane_character(char_id) && self.used != crate::constants::USE_EMPTY
+    }
+
+    pub fn get_next_inventory_slot(&self) -> Option<usize> {
+        let inventory = self.item;
+        for (i, &item_id) in inventory.iter().enumerate() {
+            if item_id == 0 {
+                // TODO: Should this 0 be a constant?
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    pub fn set_do_update_flags(&mut self) {
+        self.flags |= CharacterFlags::CF_UPDATE.bits() | CharacterFlags::CF_SAVEME.bits();
+    }
+
+    pub fn is_monster(&self) -> bool {
+        (self.kindred as u32 & crate::constants::KIN_MONSTER) != 0
+    }
+
+    pub fn is_usurp_or_thrall(&self) -> bool {
+        (self.flags & (CharacterFlags::CF_USURP.bits() | CharacterFlags::CF_THRALL.bits())) != 0
+    }
 }

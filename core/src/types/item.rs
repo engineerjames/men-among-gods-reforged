@@ -254,4 +254,16 @@ impl Item {
             },
         })
     }
+
+    pub fn is_sane_item_template(template_id: usize) -> bool {
+        (template_id > 0) && (template_id < crate::constants::MAXTITEM)
+    }
+
+    pub fn is_unique(&self) -> bool {
+        (self.flags & ItemFlags::IF_UNIQUE.bits()) != 0
+    }
+
+    pub fn is_sane_item(item_id: usize) -> bool {
+        (item_id > 0) && (item_id < crate::constants::MAXITEM)
+    }
 }

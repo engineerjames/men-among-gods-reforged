@@ -7,12 +7,13 @@ use std::fs;
 // Contains the data repository for the server
 pub struct Repository {
     pub map: [core::types::Map; core::constants::MAPX as usize * core::constants::MAPY as usize],
-    items: [core::types::Item; core::constants::MAXITEM as usize],
-    item_templates: [core::types::Item; core::constants::MAXTITEM as usize],
+    pub items: [core::types::Item; core::constants::MAXITEM as usize],
+    pub item_templates: [core::types::Item; core::constants::MAXTITEM as usize],
     pub characters: [core::types::Character; core::constants::MAXCHARS as usize],
     character_templates: [core::types::Character; core::constants::MAXTCHARS as usize],
     effects: [core::types::Effect; core::constants::MAXEFFECT as usize],
     pub globals: core::types::Global,
+    pub see_map: [core::types::SeeMap; core::constants::MAXCHARS as usize],
     bad_names: Vec<String>,
     bad_words: Vec<String>,
     message_of_the_day: String,
@@ -22,6 +23,7 @@ pub struct Repository {
 impl Repository {
     pub fn new() -> Self {
         Self {
+            // TODO: Evaluate how we can prevent accidental copying of any of these types...
             map: [core::types::Map::default();
                 core::constants::MAPX as usize * core::constants::MAPY as usize],
             items: [core::types::Item::default(); core::constants::MAXITEM as usize],
@@ -31,6 +33,7 @@ impl Repository {
                 core::constants::MAXTCHARS as usize],
             effects: [core::types::Effect::default(); core::constants::MAXEFFECT as usize],
             globals: core::types::Global::default(),
+            see_map: [core::types::SeeMap::default(); core::constants::MAXCHARS as usize],
             bad_names: Vec::new(),
             bad_words: Vec::new(),
             message_of_the_day: String::new(),

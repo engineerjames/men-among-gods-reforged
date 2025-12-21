@@ -1,7 +1,9 @@
 use core::constants::{MAXCHARS, MAXPLAYER};
+use std::cmp;
 use std::rc::Rc;
 
 use crate::enums;
+use crate::god::God;
 use crate::network_manager::NetworkManager;
 use crate::path_finding::PathFinder;
 use crate::repository::Repository;
@@ -9,14 +11,27 @@ use crate::repository::Repository;
 pub struct State {
     pathfinder: PathFinder,
     network: Rc<NetworkManager>,
+    visi: Option<*const [i8; 40 * 40]>,
+    _visi: [i8; 40 * 40],
+    see_miss: u64,
+    see_hit: u64,
+    ox: i32,
+    oy: i32,
+    is_monster: bool,
 }
 
 impl State {
     pub fn new(network: Rc<NetworkManager>) -> Self {
         State {
-            // Initialize fields as necessary
             pathfinder: PathFinder::new(),
             network,
+            visi: None,
+            _visi: [0; 40 * 40],
+            see_miss: 0,
+            see_hit: 0,
+            ox: 0,
+            oy: 0,
+            is_monster: false,
         }
     }
 
@@ -165,17 +180,38 @@ impl State {
                 || reason == enums::LogoutReason::Shutdown
                 || reason == enums::LogoutReason::Unknown
             {
-                // TODO
-                //   if ( abs( ch[ cn ].x - ch[ cn ].temple_x ) + abs( ch[ cn ].y - ch[ cn ].temple_y ) > 10 &&
-                //        ! ( map[ ch[ cn ].x + ch[ cn ].y * SERVER_MAPX ].flags & MF_NOLAG ) )
-                //   {
-                //     in                 = god_create_item( IT_LAGSCROLL );
-                //     it[ in ].data[ 0 ] = ch[ cn ].x;
-                //     it[ in ].data[ 1 ] = ch[ cn ].y;
-                //     it[ in ].data[ 2 ] = globs->ticker;
-                //     if ( in )
-                //       god_give_char( in, cn );
-                //   }
+                if !character.is_close_to_temple()
+                    && !character.in_no_lag_scroll_area(&repository.map)
+                {
+                    log::info!(
+                        "Giving lag scroll to character '{}' for idle/logout too long.",
+                        character.get_name(),
+                    );
+
+                    let item_number = God::create_item(
+                        &mut repository.items,
+                        &repository.item_templates,
+                        core::constants::IT_LAGSCROLL as usize,
+                    );
+
+                    if let Some(item_id) = item_number {
+                        repository.items[item_id].data[0] = character.x as u32;
+                        repository.items[item_id].data[1] = character.y as u32;
+                        repository.items[item_id].data[2] = repository.globals.ticker as u32;
+
+                        God::give_character_item(
+                            character,
+                            &mut repository.items[item_id],
+                            character_id,
+                            item_id,
+                        );
+                    } else {
+                        log::error!(
+                            "Failed to create lag scroll for character '{}'.",
+                            character.get_name(),
+                        );
+                    }
+                }
             }
 
             character.x = 0;
@@ -336,5 +372,120 @@ impl State {
                 bytes_sent += 15;
             }
         }
+    }
+
+    pub fn do_add_light(
+        &self,
+        map_tiles: &mut [core::types::Map],
+        see_map: &mut [core::types::SeeMap],
+        character: &core::types::Character,
+        x_center: i32,
+        y_center: i32,
+        mut strength: i32,
+    ) {
+        // First add light to the center
+        let center_map_index =
+            (y_center as usize) * core::constants::MAPX as usize + (x_center as usize);
+
+        map_tiles[center_map_index].add_light(strength);
+
+        let flag = if strength < 0 {
+            strength = -strength;
+            1
+        } else {
+            0
+        };
+
+        let xs = cmp::max(0, x_center - core::constants::LIGHTDIST);
+        let ys = cmp::max(0, y_center - core::constants::LIGHTDIST);
+        let xe = cmp::min(
+            core::constants::MAPX as i32 - 1,
+            x_center + 1 + core::constants::LIGHTDIST,
+        );
+        let ye = cmp::min(
+            core::constants::MAPY as i32 - 1,
+            y_center + 1 + core::constants::LIGHTDIST,
+        );
+
+        for y in ys..ye {
+            for x in xs..xe {
+                if x == x_center && y == y_center {
+                    continue;
+                }
+
+                let dx = (x - x_center).abs();
+                let dy = (y - y_center).abs();
+
+                if (dx * dx + dy * dy)
+                    > (core::constants::LIGHTDIST * core::constants::LIGHTDIST + 1)
+                {
+                    continue;
+                }
+            }
+        }
+    }
+
+    pub fn can_see(
+        &mut self,
+        see_map: &mut [core::types::SeeMap],
+        character: &core::types::Character,
+        character_id: Option<usize>,
+        fx: i32,
+        fy: i32,
+        tx: i32,
+        ty: i32,
+        max_distance: i32,
+    ) {
+        match character_id {
+            Some(cn) => {
+                self.visi = Some(&see_map[cn].vis as *const _);
+
+                if (fx != see_map[cn].x) || (fy != see_map[cn].y) {
+                    if character.is_monster() && !character.is_usurp_or_thrall() {
+                        self.is_monster = true;
+                    }
+
+                    self.can_map_see(fx, fy, max_distance);
+                    see_map[cn].x = fx;
+                    see_map[cn].y = fy;
+                    self.see_miss += 1;
+                } else {
+                    self.see_hit += 1;
+                    self.ox = fx;
+                    self.oy = fy;
+                }
+            }
+            None => {
+                // TODO: Look up what this actually does...
+                if !self.visi.map_or(false, |v| v == &self._visi as *const _) {
+                    self.visi = Some(&self._visi as *const _);
+                    self.ox = 0;
+                    self.oy = 0;
+                }
+
+                if (self.ox != fx) || (self.oy != fy) {
+                    self.is_monster = false;
+                    self.can_map_see(fx, fy, max_distance);
+                }
+            }
+        }
+
+        self.check_vis(tx, ty);
+    }
+
+    pub fn can_map_see(&self, fx: i32, fy: i32, max_distance: i32) {
+        // Implementation of line-of-sight algorithm goes here
+    }
+
+    pub fn check_vis(&self, tx: i32, ty: i32) {
+        // Implementation to check visibility of target coordinates goes here
+    }
+
+    pub fn add_vis(&self, x: i32, y: i32, value: i32) {
+        // Implementation to add visibility value at coordinates goes here
+    }
+
+    pub fn close_vis_see(&self, x: i32, y: i32, value: i32) {
+        // Implementation to close visibility map goes here
     }
 }

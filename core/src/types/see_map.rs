@@ -1,5 +1,5 @@
 /// Visibility map for a character
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct SeeMap {
     pub x: i32,
     pub y: i32,
