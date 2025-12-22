@@ -1,4 +1,4 @@
-use core::types::Character;
+use core::{constants::ItemFlags, types::Character};
 use std::sync::{OnceLock, RwLock};
 
 use crate::{god::God, repository::Repository, state::State};
@@ -517,10 +517,24 @@ impl Labyrinth9 {
                 });
 
                 if riddle_attempts > 0 {
-                    //     do_sayx( riddler, "Sorry, that's not right. You have %d more attempt%s!", riddleattempts[ idx ],
-                    //    ( riddleattempts[ idx ] == 1 ) ? "" : "s" );
+                    State::with(|state| {
+                        state.do_sayx(
+                            riddler as usize,
+                            format!(
+                                "Sorry, that's not right. You have {} more attempt{}!\n",
+                                riddle_attempts,
+                                if riddle_attempts == 1 { "" } else { "s" }
+                            )
+                            .as_str(),
+                        );
+                    });
                 } else {
-                    //           do_sayx( riddler, "Sorry, that's not right. Now you'll have to bring me the book again to start over!\n" );
+                    State::with(|state| {
+                        state.do_sayx(
+                            riddler as usize,
+                            "Sorry, that's not right. Now you'll have to bring me the book again to start over!\n",
+                        );
+                    });
                     characters[character_id].data[core::constants::CHD_RIDDLER] = 0;
                     Labyrinth9::with_mut(|lab| {
                         lab.guesser[guesser_index as usize] = 0;
@@ -561,5 +575,133 @@ impl Labyrinth9 {
         Repository::with_characters_mut(|characters| {
             characters[character_id].data[core::constants::CHD_RIDDLER] = riddler_id as i32;
         });
+    }
+
+    pub fn lab9_check_door(&self, bankno: i32) -> bool {
+        if bankno < 1 || bankno > core::constants::BANKS as i32 {
+            log::error!("lab9_check_door: invalid bank number {}", bankno);
+            return false;
+        }
+        let bank_index = bankno - 1;
+
+        let x = BANKS[bank_index as usize].x1;
+        let mut y = BANKS[bank_index as usize].y1;
+        let t = BANKS[bank_index as usize].temp;
+
+        let mut correct = true;
+        let mut m = x + y * core::constants::MAPX as i32;
+
+        for n in 0..core::constants::SWITCHES {
+            let item_number = Repository::with_map(|map| map[m as usize].it);
+
+            if item_number == 0
+                || Repository::with_items(|items| items[item_number as usize].temp) != t as u16
+            {
+                log::error!(
+                    "lab9_check_door: switch {} in bank {} is not set correctly",
+                    n + 1,
+                    bankno
+                );
+                return false;
+            }
+
+            let question = self.questions[bank_index as usize][n];
+            let switch_is_true =
+                Repository::with_items(|items| items[item_number as usize].data[1] == 1);
+
+            if switch_is_true
+                != self.switch_questions[bank_index as usize][question as usize - 1].should_be_true
+            {
+                correct = false;
+            }
+
+            y += 1;
+        }
+
+        // Door logic
+        m = self.banks[bank_index as usize].doorx
+            + self.banks[bank_index as usize].doory * core::constants::MAPX as i32;
+
+        let item_number = Repository::with_map(|map| map[m as usize].it);
+
+        if item_number == 0 {
+            log::error!(
+                "lab9_check_door: door in bank {} has no item assigned",
+                bankno
+            );
+            return false;
+        }
+
+        if correct {
+            // Open the door
+            Repository::with_items_mut(|items| {
+                if items[item_number as usize].active == 0 {
+                    return;
+                }
+
+                items[item_number as usize].data[1] = 0;
+                items[item_number as usize].active = items[item_number as usize].duration;
+                items[item_number as usize].flags &=
+                    !(ItemFlags::IF_MOVEBLOCK | ItemFlags::IF_SIGHTBLOCK).bits();
+
+                State::with_mut(|state| {
+                    state.do_area_sound(
+                        0,
+                        0,
+                        items[item_number as usize].x as usize,
+                        items[item_number as usize].y as usize,
+                        10,
+                    );
+
+                    state.reset_go(
+                        items[item_number as usize].x as usize,
+                        items[item_number as usize].y as usize,
+                    );
+
+                    state.add_lights(
+                        items[item_number as usize].x as i32,
+                        items[item_number as usize].y as i32,
+                    );
+                });
+            });
+            return true;
+        } else {
+            // Close the door
+            Repository::with_items_mut(|items| {
+                if !correct && items[item_number as usize].active != 0 {
+                    return;
+                }
+
+                items[item_number as usize].data[1] = 1;
+                items[item_number as usize].active = 0;
+                let temp = items[item_number as usize].temp;
+                let flags = Repository::with_item_templates(|item_templates| {
+                    item_templates[temp as usize].flags & ItemFlags::IF_SIGHTBLOCK.bits()
+                });
+
+                items[item_number as usize].flags |= ItemFlags::IF_MOVEBLOCK.bits() | flags;
+
+                State::with_mut(|state| {
+                    state.do_area_sound(
+                        0,
+                        0,
+                        items[item_number as usize].x as usize,
+                        items[item_number as usize].y as usize,
+                        10,
+                    );
+
+                    state.reset_go(
+                        items[item_number as usize].x as usize,
+                        items[item_number as usize].y as usize,
+                    );
+
+                    state.add_lights(
+                        items[item_number as usize].x as i32,
+                        items[item_number as usize].y as i32,
+                    );
+                });
+            });
+            return false;
+        }
     }
 }
