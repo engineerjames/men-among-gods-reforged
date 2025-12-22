@@ -61,7 +61,7 @@ struct BadTarget {
 
 /// Pathfinder state
 pub struct PathFinder {
-    /// Map of coordinates to node indices (using flat array indexed by x + y * MAPX)
+    /// Map of coordinates to node indices (using flat array indexed by x + y * SERVER_MAPX)
     node_map: Vec<Option<usize>>,
     /// All nodes allocated for the current search
     nodes: Vec<Node>,

@@ -9,7 +9,8 @@ static REPOSITORY: OnceLock<RwLock<Repository>> = OnceLock::new();
 
 // Contains the data repository for the server
 pub struct Repository {
-    map: [core::types::Map; core::constants::MAPX as usize * core::constants::MAPY as usize],
+    map: [core::types::Map;
+        core::constants::SERVER_MAPX as usize * core::constants::SERVER_MAPY as usize],
     items: [core::types::Item; core::constants::MAXITEM as usize],
     item_templates: [core::types::Item; core::constants::MAXTITEM as usize],
     characters: [core::types::Character; core::constants::MAXCHARS as usize],
@@ -28,7 +29,7 @@ impl Repository {
         Self {
             // TODO: Evaluate how we can prevent accidental copying of any of these types...
             map: [core::types::Map::default();
-                core::constants::MAPX as usize * core::constants::MAPY as usize],
+                core::constants::SERVER_MAPX as usize * core::constants::SERVER_MAPY as usize],
             items: [core::types::Item::default(); core::constants::MAXITEM as usize],
             item_templates: [core::types::Item::default(); core::constants::MAXTITEM as usize],
             characters: [core::types::Character::default(); core::constants::MAXCHARS as usize],
@@ -62,8 +63,8 @@ impl Repository {
         log::info!("Loading map data...");
         let map_data = fs::read(".dat/map.dat").map_err(|e| e.to_string())?;
 
-        let expected_map_size = core::constants::MAPX as usize
-            * core::constants::MAPY as usize
+        let expected_map_size = core::constants::SERVER_MAPX as usize
+            * core::constants::SERVER_MAPY as usize
             * std::mem::size_of::<core::types::Map>();
 
         let actual_map_size = map_data.len();

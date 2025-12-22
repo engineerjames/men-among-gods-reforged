@@ -589,7 +589,7 @@ impl Labyrinth9 {
         let t = BANKS[bank_index as usize].temp;
 
         let mut correct = true;
-        let mut m = x + y * core::constants::MAPX as i32;
+        let mut m = x + y * core::constants::SERVER_MAPX as i32;
 
         for n in 0..core::constants::SWITCHES {
             let item_number = Repository::with_map(|map| map[m as usize].it);
@@ -620,7 +620,7 @@ impl Labyrinth9 {
 
         // Door logic
         m = self.banks[bank_index as usize].doorx
-            + self.banks[bank_index as usize].doory * core::constants::MAPX as i32;
+            + self.banks[bank_index as usize].doory * core::constants::SERVER_MAPX as i32;
 
         let item_number = Repository::with_map(|map| map[m as usize].it);
 
@@ -644,18 +644,18 @@ impl Labyrinth9 {
                 items[item_number as usize].flags &=
                     !(ItemFlags::IF_MOVEBLOCK | ItemFlags::IF_SIGHTBLOCK).bits();
 
-                State::with_mut(|state| {
-                    state.do_area_sound(
-                        0,
-                        0,
-                        items[item_number as usize].x as usize,
-                        items[item_number as usize].y as usize,
-                        10,
-                    );
+                State::do_area_sound(
+                    0,
+                    0,
+                    items[item_number as usize].x as i32,
+                    items[item_number as usize].y as i32,
+                    10,
+                );
 
+                State::with_mut(|state| {
                     state.reset_go(
-                        items[item_number as usize].x as usize,
-                        items[item_number as usize].y as usize,
+                        items[item_number as usize].x as i32,
+                        items[item_number as usize].y as i32,
                     );
 
                     state.add_lights(
@@ -681,18 +681,17 @@ impl Labyrinth9 {
 
                 items[item_number as usize].flags |= ItemFlags::IF_MOVEBLOCK.bits() | flags;
 
+                State::do_area_sound(
+                    0,
+                    0,
+                    items[item_number as usize].x as i32,
+                    items[item_number as usize].y as i32,
+                    10,
+                );
                 State::with_mut(|state| {
-                    state.do_area_sound(
-                        0,
-                        0,
-                        items[item_number as usize].x as usize,
-                        items[item_number as usize].y as usize,
-                        10,
-                    );
-
                     state.reset_go(
-                        items[item_number as usize].x as usize,
-                        items[item_number as usize].y as usize,
+                        items[item_number as usize].x as i32,
+                        items[item_number as usize].y as i32,
                     );
 
                     state.add_lights(

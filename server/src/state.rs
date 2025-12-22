@@ -189,9 +189,10 @@ impl State {
                 // Clear map positions
                 let (map_index, to_map_index, light) = Repository::with_characters(|characters| {
                     let character = &characters[character_id];
-                    let map_index = (character.y as usize) * core::constants::MAPX as usize
+                    let map_index = (character.y as usize) * core::constants::SERVER_MAPX as usize
                         + (character.x as usize);
-                    let to_map_index = (character.toy as usize) * core::constants::MAPX as usize
+                    let to_map_index = (character.toy as usize)
+                        * core::constants::SERVER_MAPX as usize
                         + (character.tox as usize);
                     (map_index, to_map_index, character.light)
                 });
@@ -217,7 +218,8 @@ impl State {
                     let (is_close_to_temple, map_index) =
                         Repository::with_characters(|characters| {
                             let character = &characters[character_id];
-                            let map_index = (character.y as usize) * core::constants::MAPX as usize
+                            let map_index = (character.y as usize)
+                                * core::constants::SERVER_MAPX as usize
                                 + (character.x as usize);
                             (character.is_close_to_temple(), map_index)
                         });
@@ -465,15 +467,15 @@ impl State {
         message: &str,
     ) {
         let x_min = cmp::max(0, xs - 12);
-        let x_max = cmp::min(core::constants::MAPX as i32, xs + 13);
+        let x_max = cmp::min(core::constants::SERVER_MAPX as i32, xs + 13);
         let y_min = cmp::max(0, ys - 12);
-        let y_max = cmp::min(core::constants::MAPY as i32, ys + 13);
+        let y_max = cmp::min(core::constants::SERVER_MAPY as i32, ys + 13);
 
         let mut recipients: Vec<usize> = Vec::new();
 
         Repository::with_map(|map| {
             for y in y_min..y_max {
-                let row_base = y * core::constants::MAPX as i32;
+                let row_base = y * core::constants::SERVER_MAPX as i32;
                 for x in x_min..x_max {
                     let idx = (x + row_base) as usize;
                     let cc = map[idx].ch as usize;
@@ -505,7 +507,7 @@ impl State {
     pub fn do_add_light(&mut self, x_center: i32, y_center: i32, mut strength: i32) {
         // First add light to the center
         let center_map_index =
-            (y_center as usize) * core::constants::MAPX as usize + (x_center as usize);
+            (y_center as usize) * core::constants::SERVER_MAPX as usize + (x_center as usize);
 
         Repository::with_map_mut(|map_tiles| {
             map_tiles[center_map_index].add_light(strength);
@@ -521,11 +523,11 @@ impl State {
         let xs = cmp::max(0, x_center - core::constants::LIGHTDIST);
         let ys = cmp::max(0, y_center - core::constants::LIGHTDIST);
         let xe = cmp::min(
-            core::constants::MAPX as i32 - 1,
+            core::constants::SERVER_MAPX as i32 - 1,
             x_center + 1 + core::constants::LIGHTDIST,
         );
         let ye = cmp::min(
-            core::constants::MAPY as i32 - 1,
+            core::constants::SERVER_MAPY as i32 - 1,
             y_center + 1 + core::constants::LIGHTDIST,
         );
 
@@ -548,7 +550,8 @@ impl State {
 
                 if v != 0 {
                     let d = strength / (v * (x_center - x).abs() + (y_center - y).abs());
-                    let map_index = (y as usize) * core::constants::MAPX as usize + (x as usize);
+                    let map_index =
+                        (y as usize) * core::constants::SERVER_MAPX as usize + (x as usize);
 
                     Repository::with_map_mut(|map_tiles| {
                         if flag == 1 {
@@ -566,11 +569,11 @@ impl State {
         let xs = cmp::max(0, xc - core::constants::LIGHTDIST);
         let ys = cmp::max(0, yc - core::constants::LIGHTDIST);
         let xe = cmp::min(
-            core::constants::MAPX as i32 - 1,
+            core::constants::SERVER_MAPX as i32 - 1,
             xc + 1 + core::constants::LIGHTDIST,
         );
         let ye = cmp::min(
-            core::constants::MAPY as i32 - 1,
+            core::constants::SERVER_MAPY as i32 - 1,
             yc + 1 + core::constants::LIGHTDIST,
         );
 
@@ -585,7 +588,7 @@ impl State {
                     continue;
                 }
 
-                let m = (x + y * core::constants::MAPX as i32) as usize;
+                let m = (x + y * core::constants::SERVER_MAPX as i32) as usize;
 
                 let should_continue = Repository::with_map(|map| {
                     map[m].flags & core::constants::MF_INDOORS as u64 != 0
@@ -616,7 +619,7 @@ impl State {
             best = 256;
         }
 
-        let center_index = (xc + yc * core::constants::MAPX as i32) as usize;
+        let center_index = (xc + yc * core::constants::SERVER_MAPX as i32) as usize;
 
         Repository::with_map_mut(|map| {
             if center_index < map.len() {
@@ -633,17 +636,17 @@ impl State {
         let xs = cmp::max(1, x0 - core::constants::LIGHTDIST);
         let ys = cmp::max(1, y0 - core::constants::LIGHTDIST);
         let xe = cmp::min(
-            core::constants::MAPX as i32 - 2,
+            core::constants::SERVER_MAPX as i32 - 2,
             x0 + 1 + core::constants::LIGHTDIST,
         );
         let ye = cmp::min(
-            core::constants::MAPY as i32 - 2,
+            core::constants::SERVER_MAPY as i32 - 2,
             y0 + 1 + core::constants::LIGHTDIST,
         );
 
         for yy in ys..ye {
             for xx in xs..xe {
-                let m = (xx + yy * core::constants::MAPX as i32) as usize;
+                let m = (xx + yy * core::constants::SERVER_MAPX as i32) as usize;
 
                 let item_idx = Repository::with_map(|map| map[m].it as usize);
                 let light_value_from_item = Repository::with_items(|items| {
@@ -834,7 +837,7 @@ impl State {
     }
 
     pub fn check_dlight(x: usize, y: usize) -> i32 {
-        let map_index = x + y * core::constants::MAPX;
+        let map_index = x + y * core::constants::SERVER_MAPX as usize;
 
         Repository::with_map(|map| {
             Repository::with_globals(|globals| {
@@ -941,7 +944,7 @@ impl State {
                 // Modify by light
                 if characters[cn].flags & CharacterFlags::CF_INFRARED.bits() == 0 {
                     let map_index = characters[co].x as usize
-                        + characters[co].y as usize * core::constants::MAPX;
+                        + characters[co].y as usize * core::constants::SERVER_MAPX as usize;
                     let mut light = std::cmp::max(
                         map[map_index].light as i32,
                         State::check_dlight(characters[co].x as usize, characters[co].y as usize),
@@ -1085,14 +1088,14 @@ impl State {
     fn check_map_see(&self, x: i32, y: i32) -> bool {
         // Check boundaries
         if x <= 0
-            || x >= core::constants::MAPX as i32
+            || x >= core::constants::SERVER_MAPX as i32
             || y <= 0
-            || y >= core::constants::MAPY as i32
+            || y >= core::constants::SERVER_MAPY as i32
         {
             return false;
         }
 
-        let m = (x + y * core::constants::MAPX as i32) as usize;
+        let m = (x + y * core::constants::SERVER_MAPX as i32) as usize;
 
         // Check if it's a monster and the map blocks monsters
         if self.is_monster {
@@ -1191,17 +1194,17 @@ impl State {
         });
     }
 
-    fn do_area_sound(cn: usize, co: usize, xs: i32, ys: i32, nr: i32) {
+    pub fn do_area_sound(cn: usize, co: usize, xs: i32, ys: i32, nr: i32) {
         let x_min = cmp::max(0, xs - 8);
-        let x_max = cmp::min(core::constants::MAPX as i32, xs + 9);
+        let x_max = cmp::min(core::constants::SERVER_MAPX as i32, xs + 9);
         let y_min = cmp::max(0, ys - 8);
-        let y_max = cmp::min(core::constants::MAPY as i32, ys + 9);
+        let y_max = cmp::min(core::constants::SERVER_MAPY as i32, ys + 9);
 
         let mut recipients: Vec<(usize, i32, i32)> = Vec::new();
 
         Repository::with_map(|map| {
             for y in y_min..y_max {
-                let row_base = y * core::constants::MAPX as i32;
+                let row_base = y * core::constants::SERVER_MAPX as i32;
                 for x in x_min..x_max {
                     let idx = (x + row_base) as usize;
                     let cc = map[idx].ch as usize;
@@ -1279,5 +1282,27 @@ impl State {
             });
             Self::do_area_sound(character_id, 0, x, y, sound_id);
         }
+    }
+
+    pub fn reset_go(&mut self, xc: i32, yc: i32) {
+        Repository::with_see_map_mut(|see_map| {
+            for y in
+                std::cmp::max(0, yc - 18)..std::cmp::min(core::constants::SERVER_MAPY - 1, yc + 18)
+            {
+                for x in std::cmp::max(0, xc - 18)
+                    ..std::cmp::min(core::constants::SERVER_MAPX - 1, xc + 18)
+                {
+                    let cn = Repository::with_map(|map| {
+                        map[(x + y * core::constants::SERVER_MAPX) as usize].ch as usize
+                    });
+
+                    see_map[cn].x = 0;
+                    see_map[cn].y = 0;
+                }
+            }
+        });
+
+        self.ox = 0;
+        self.oy = 0;
     }
 }

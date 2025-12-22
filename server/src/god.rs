@@ -1062,7 +1062,7 @@ impl God {
             return false;
         }
 
-        let map_index = x + y * core::constants::MAPX;
+        let map_index = x + y * core::constants::SERVER_MAPX as usize;
 
         let move_is_valid = Repository::with_map(|map_tiles| {
             Repository::with_items(|items| {

@@ -532,9 +532,11 @@ impl Character {
     pub fn in_no_lag_scroll_area(
         &self,
         map_tiles: &[crate::types::Map;
-             crate::constants::MAPX as usize * crate::constants::MAPY as usize],
+             crate::constants::SERVER_MAPX as usize
+                 * crate::constants::SERVER_MAPY as usize],
     ) -> bool {
-        let map_index = (self.y as usize) * (crate::constants::MAPX as usize) + (self.x as usize);
+        let map_index =
+            (self.y as usize) * (crate::constants::SERVER_MAPX as usize) + (self.x as usize);
 
         map_tiles[map_index].flags & crate::constants::MF_NOLAG as u64 != 0
     }

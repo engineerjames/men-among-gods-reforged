@@ -48,6 +48,6 @@ impl Map {
     }
 
     pub fn is_sane_coordinates(x: usize, y: usize) -> bool {
-        x < crate::constants::MAPX as usize && y < crate::constants::MAPY as usize
+        x < crate::constants::SERVER_MAPX as usize && y < crate::constants::SERVER_MAPY as usize
     }
 }
