@@ -359,7 +359,7 @@ impl State {
     }
 
     pub fn do_log(
-        &self,
+        &self, // TODO: Rework these functions to pass in just the ids around
         character: Option<(usize, &core::types::Character)>,
         player: &Option<(usize, &mut core::types::ServerPlayer)>,
         font: core::types::FontColor,
@@ -413,7 +413,7 @@ impl State {
 
     pub fn do_add_light(
         &mut self,
-        repository: &Repository,
+        _repository: &Repository,
         map_tiles: &mut [core::types::Map],
         see_map: &mut [core::types::SeeMap],
         character: &core::types::Character,
@@ -461,7 +461,6 @@ impl State {
                 }
 
                 let v = self.can_see(
-                    repository,
                     see_map,
                     character,
                     None,
@@ -488,7 +487,6 @@ impl State {
 
     pub fn can_see(
         &mut self,
-        repository: &Repository,
         see_map: &mut [core::types::SeeMap],
         character: &core::types::Character,
         character_id: Option<usize>,
@@ -508,7 +506,7 @@ impl State {
                     // Copy the visibility data from see_map to our working buffer
                     self._visi.copy_from_slice(&see_map[cn].vis);
 
-                    self.can_map_see(repository, fx, fy, max_distance);
+                    self.can_map_see(fx, fy, max_distance);
 
                     // Copy the updated visibility data back to see_map
                     see_map[cn].vis.copy_from_slice(&self._visi);
@@ -526,7 +524,7 @@ impl State {
             None => {
                 if (self.ox != fx) || (self.oy != fy) {
                     self.is_monster = false;
-                    self.can_map_see(repository, fx, fy, max_distance);
+                    self.can_map_see(fx, fy, max_distance);
                 }
             }
         }
@@ -534,7 +532,7 @@ impl State {
         self.check_vis(tx, ty)
     }
 
-    pub fn can_map_see(&mut self, repository: &Repository, fx: i32, fy: i32, max_distance: i32) {
+    pub fn can_map_see(&mut self, fx: i32, fy: i32, max_distance: i32) {
         // Clear the visibility array
         self._visi.fill(0);
 
@@ -550,12 +548,12 @@ impl State {
             // Top and bottom horizontal lines
             for x in (xc - dist)..=(xc + dist) {
                 let y = yc - dist;
-                if self.close_vis_see(repository, x, y, dist as i8) {
+                if self.close_vis_see(x, y, dist as i8) {
                     self.add_vis(x, y, dist + 1);
                 }
 
                 let y = yc + dist;
-                if self.close_vis_see(repository, x, y, dist as i8) {
+                if self.close_vis_see(x, y, dist as i8) {
                     self.add_vis(x, y, dist + 1);
                 }
             }
@@ -563,12 +561,12 @@ impl State {
             // Left and right vertical lines (excluding corners already done)
             for y in (yc - dist + 1)..=(yc + dist - 1) {
                 let x = xc - dist;
-                if self.close_vis_see(repository, x, y, dist as i8) {
+                if self.close_vis_see(x, y, dist as i8) {
                     self.add_vis(x, y, dist + 1);
                 }
 
                 let x = xc + dist;
-                if self.close_vis_see(repository, x, y, dist as i8) {
+                if self.close_vis_see(x, y, dist as i8) {
                     self.add_vis(x, y, dist + 1);
                 }
             }
@@ -625,8 +623,8 @@ impl State {
         }
     }
 
-    pub fn close_vis_see(&self, repository: &Repository, x: i32, y: i32, value: i8) -> bool {
-        if !self.check_map_see(repository, x, y) {
+    pub fn close_vis_see(&self, x: i32, y: i32, value: i8) -> bool {
+        if !self.check_map_see(x, y) {
             return false;
         }
 
@@ -664,7 +662,7 @@ impl State {
         false
     }
 
-    fn check_map_see(&self, repository: &Repository, x: i32, y: i32) -> bool {
+    fn check_map_see(&self, x: i32, y: i32) -> bool {
         // Check boundaries
         if x <= 0
             || x >= core::constants::MAPX as i32
@@ -678,24 +676,38 @@ impl State {
 
         // Check if it's a monster and the map blocks monsters
         if self.is_monster {
-            if repository.map[m].flags & core::constants::MF_MOVEBLOCK as u64 != 0 {
+            let blocked = Repository::with_map(|map| {
+                map[m].flags & core::constants::MF_MOVEBLOCK as u64 != 0
+            });
+            if blocked {
                 return false;
             }
         } else {
             // Check for sight blocking flags
-            if repository.map[m].flags & core::constants::MF_SIGHTBLOCK as u64 != 0 {
+            let blocked = Repository::with_map(|map| {
+                map[m].flags & core::constants::MF_SIGHTBLOCK as u64 != 0
+            });
+            if blocked {
                 return false;
             }
         }
 
         // Check if there's an item that blocks sight
-        let item_idx = repository.map[m].it as usize;
-        if item_idx != 0 && item_idx < repository.items.len() {
-            if repository.items[item_idx].flags & core::constants::ItemFlags::IF_SIGHTBLOCK.bits()
-                != 0
-            {
-                return false;
+        let blocks_sight = Repository::with_map(|map| {
+            let item_idx = map[m].it as usize;
+            if item_idx != 0 {
+                Repository::with_items(|items| {
+                    item_idx < items.len()
+                        && items[item_idx].flags & core::constants::ItemFlags::IF_SIGHTBLOCK.bits()
+                            != 0
+                })
+            } else {
+                false
             }
+        });
+
+        if blocks_sight {
+            return false;
         }
 
         true

@@ -573,4 +573,39 @@ impl Character {
     pub fn is_building(&self) -> bool {
         (self.flags & CharacterFlags::CF_BUILDMODE.bits()) != 0
     }
+
+    pub fn get_kindred_as_string(&self) -> String {
+        let kindred = self.kindred as u32;
+        if kindred & crate::constants::KIN_TEMPLAR != 0 {
+            "Templar".to_string()
+        } else if kindred & crate::constants::KIN_HARAKIM != 0 {
+            "Harakim".to_string()
+        } else if kindred & crate::constants::KIN_MERCENARY != 0 {
+            "Monster".to_string()
+        } else if kindred & crate::constants::KIN_SEYAN_DU != 0 {
+            "Seyan'Du".to_string()
+        } else {
+            "Monster".to_string()
+        }
+    }
+
+    pub fn get_gender_as_string(&self) -> String {
+        let kindred = self.kindred as u32;
+        if kindred & crate::constants::KIN_FEMALE != 0 {
+            "Female".to_string()
+        } else if kindred & crate::constants::KIN_MALE != 0 {
+            "Male".to_string()
+        } else {
+            "It".to_string()
+        }
+    }
+
+    pub fn get_default_description(&self) -> String {
+        format!(
+            "{} is a {}. {} looks somewhat nondescript.",
+            String::from_utf8_lossy(&self.name),
+            self.get_kindred_as_string(),
+            self.get_gender_as_string()
+        )
+    }
 }

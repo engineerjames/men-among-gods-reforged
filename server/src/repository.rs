@@ -9,14 +9,14 @@ static REPOSITORY: OnceLock<RwLock<Repository>> = OnceLock::new();
 
 // Contains the data repository for the server
 pub struct Repository {
-    pub map: [core::types::Map; core::constants::MAPX as usize * core::constants::MAPY as usize],
-    pub items: [core::types::Item; core::constants::MAXITEM as usize],
-    pub item_templates: [core::types::Item; core::constants::MAXTITEM as usize],
-    pub characters: [core::types::Character; core::constants::MAXCHARS as usize],
+    map: [core::types::Map; core::constants::MAPX as usize * core::constants::MAPY as usize],
+    items: [core::types::Item; core::constants::MAXITEM as usize],
+    item_templates: [core::types::Item; core::constants::MAXTITEM as usize],
+    characters: [core::types::Character; core::constants::MAXCHARS as usize],
     character_templates: [core::types::Character; core::constants::MAXTCHARS as usize],
     effects: [core::types::Effect; core::constants::MAXEFFECT as usize],
-    pub globals: core::types::Global,
-    pub see_map: [core::types::SeeMap; core::constants::MAXCHARS as usize],
+    globals: core::types::Global,
+    see_map: [core::types::SeeMap; core::constants::MAXCHARS as usize],
     bad_names: Vec<String>,
     bad_words: Vec<String>,
     message_of_the_day: String,
@@ -425,7 +425,6 @@ impl Repository {
         f(&repo.see_map)
     }
 
-    // Static accessor methods for mutable access
     pub fn with_map_mut<F, R>(f: F) -> R
     where
         F: FnOnce(&mut [core::types::Map]) -> R,
@@ -448,6 +447,30 @@ impl Repository {
             .write()
             .unwrap();
         f(&mut repo.items)
+    }
+
+    pub fn with_character_templates<F, R>(f: F) -> R
+    where
+        F: FnOnce(&[core::types::Character]) -> R,
+    {
+        let repo = REPOSITORY
+            .get()
+            .expect("Repository not initialized")
+            .read()
+            .unwrap();
+        f(&repo.character_templates)
+    }
+
+    pub fn with_character_templates_mut<F, R>(f: F) -> R
+    where
+        F: FnOnce(&mut [core::types::Character]) -> R,
+    {
+        let mut repo = REPOSITORY
+            .get()
+            .expect("Repository not initialized")
+            .write()
+            .unwrap();
+        f(&mut repo.character_templates)
     }
 
     pub fn with_characters_mut<F, R>(f: F) -> R

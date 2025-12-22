@@ -46,4 +46,8 @@ impl Map {
         let new_light = self.light.saturating_add(amount as i16);
         self.light = new_light.clamp(0, i16::MAX); // TODO: What is the actual max light value?
     }
+
+    pub fn is_sane_coordinates(x: usize, y: usize) -> bool {
+        x < crate::constants::MAPX as usize && y < crate::constants::MAPY as usize
+    }
 }
