@@ -1,3 +1,8 @@
+use core::types::Character;
+use std::sync::{OnceLock, RwLock};
+
+use crate::{god::God, repository::Repository, state::State};
+
 #[derive(Clone, Copy)]
 struct Destination {
     x: u32,
@@ -328,33 +333,193 @@ const DESTINATIONS: [Destination; core::constants::RIDDLEGIVERS] = [
     Destination { x: 34, y: 806 },
 ];
 
+static LABYRINTH9: OnceLock<RwLock<Labyrinth9>> = OnceLock::new();
+
 pub struct Labyrinth9 {
-    guesser: &'static [i32; core::constants::RIDDLEGIVERS],
-    riddleno: &'static [i32; core::constants::RIDDLEGIVERS],
-    riddle_timeout: &'static [i32; core::constants::RIDDLEGIVERS],
-    riddle_attempts: &'static [i32; core::constants::RIDDLEGIVERS],
+    guesser: [i32; core::constants::RIDDLEGIVERS],
+    riddleno: [i32; core::constants::RIDDLEGIVERS],
+    riddle_timeout: [i32; core::constants::RIDDLEGIVERS],
+    riddle_attempts: [i32; core::constants::RIDDLEGIVERS],
     destinations: &'static [Destination; core::constants::RIDDLEGIVERS],
     riddles: &'static [[Riddle; core::constants::MAX_RIDDLES]; core::constants::RIDDLEGIVERS],
     switch_questions:
         &'static [[SwitchQuestions; core::constants::BANK_QUESTIONS]; core::constants::BANKS],
     banks: &'static [Bank; core::constants::BANKS],
-    questions: &'static [[i32; core::constants::SWITCHES]; core::constants::BANKS],
+    questions: [[i32; core::constants::SWITCHES]; core::constants::BANKS],
 }
 
 impl Labyrinth9 {
-    pub fn init() {
-        Labyrinth9 {
-            guesser: &[0; core::constants::RIDDLEGIVERS],
-            riddleno: &[0; core::constants::RIDDLEGIVERS],
-            riddle_timeout: &[0; core::constants::RIDDLEGIVERS],
-            riddle_attempts: &[0; core::constants::RIDDLEGIVERS],
+    fn new() -> Self {
+        Self {
+            guesser: [0; core::constants::RIDDLEGIVERS],
+            riddleno: [0; core::constants::RIDDLEGIVERS],
+            riddle_timeout: [0; core::constants::RIDDLEGIVERS],
+            riddle_attempts: [0; core::constants::RIDDLEGIVERS],
             destinations: &DESTINATIONS,
             riddles: &RIDDLES,
             switch_questions: &SWITCH_QUESTIONS,
             banks: &BANKS,
-            questions: &[[0; core::constants::SWITCHES]; core::constants::BANKS],
-        };
+            questions: [[0; core::constants::SWITCHES]; core::constants::BANKS],
+        }
     }
 
-    // Additional methods for Labyrinth9 would go here.
+    pub fn initialize() -> Result<(), String> {
+        let lab = Labyrinth9::new();
+        LABYRINTH9
+            .set(RwLock::new(lab))
+            .map_err(|_| "Labyrinth9 already initialized".to_string())?;
+        Ok(())
+    }
+
+    pub fn with<F, R>(f: F) -> R
+    where
+        F: FnOnce(&Labyrinth9) -> R,
+    {
+        let lab = LABYRINTH9
+            .get()
+            .expect("Labyrinth9 not initialized")
+            .read()
+            .unwrap();
+        f(&*lab)
+    }
+
+    pub fn with_mut<F, R>(f: F) -> R
+    where
+        F: FnOnce(&mut Labyrinth9) -> R,
+    {
+        let mut lab = LABYRINTH9
+            .get()
+            .expect("Labyrinth9 not initialized")
+            .write()
+            .unwrap();
+        f(&mut *lab)
+    }
+
+    pub fn lab9_guesser_says(character_id: usize, text: &str) -> bool {
+        let is_player =
+            Repository::with_characters(|characters| characters[character_id].is_player());
+
+        if !is_player {
+            log::warn!(
+                "Non-player character {} attempted to answer a riddle.",
+                character_id
+            );
+            return false;
+        }
+
+        Repository::with_characters_mut(|characters| {
+            let riddler = characters[character_id].data[core::constants::CHD_RIDDLER];
+
+            // Valid riddler?
+            if !Character::is_sane_npc(riddler as usize, &characters[riddler as usize]) {
+                log::warn!(
+                    "Character {} attempted to answer a riddle from invalid riddler {}.",
+                    character_id,
+                    riddler
+                );
+                characters[character_id].data[core::constants::CHD_RIDDLER] = 0;
+                return false;
+            }
+
+            // Certified riddler?
+            let area_of_knowledge = characters[riddler as usize].data[72]; // Area of knowledge
+            if area_of_knowledge < core::constants::RIDDLE_MIN_AREA
+                || area_of_knowledge > core::constants::RIDDLE_MAX_AREA
+            {
+                log::warn!(
+                    "Character {} attempted to answer a riddle from uncertified riddler {}.",
+                    character_id,
+                    riddler
+                );
+                characters[character_id].data[core::constants::CHD_RIDDLER] = 0;
+                return false;
+            }
+
+            // Does the riddler remember the guesser?
+            let guesser_index = area_of_knowledge - core::constants::RIDDLE_MIN_AREA;
+            let guesser_match =
+                Labyrinth9::with(|lab| lab.guesser[guesser_index as usize] == character_id as i32);
+
+            if !guesser_match {
+                log::warn!(
+                    "Character {} attempted to answer a riddle from riddler {} who does not remember them.",
+                    character_id,
+                    riddler
+                );
+                characters[character_id].data[core::constants::CHD_RIDDLER] = 0;
+                return false;
+            }
+
+            // Does the player see the riddler?
+            let can_see_riddler =
+                State::with_mut(|state| state.do_character_can_see(character_id, riddler as usize));
+
+            if !can_see_riddler {
+                log::warn!(
+                    "Character {} attempted to answer a riddle from riddler {} who they cannot see.",
+                    character_id,
+                    riddler
+                );
+                characters[character_id].data[core::constants::CHD_RIDDLER] = 0;
+                return false;
+            }
+
+            let riddle = Labyrinth9::with(|lab| {
+                let riddleno = lab.riddleno[guesser_index as usize];
+                lab.riddles[guesser_index as usize][riddleno as usize - 1]
+            });
+
+            let mut found = false;
+            for word in text.split(' ') {
+                if riddle.answer_1.eq_ignore_ascii_case(word.trim()) {
+                    found = true;
+                    break;
+                }
+            }
+
+            if found {
+                // Call do_sayx here
+                //     do_sayx( riddler,
+                //  "That's absolutely correct, %s! "
+                //  "For solving my riddle, I will advance you in your quest. "
+                //  "Close your eyes and...\n",
+                //  ch[ cn ].name );
+                if God::transfer_char(
+                    character_id,
+                    DESTINATIONS[guesser_index as usize].x as usize,
+                    DESTINATIONS[guesser_index as usize].y as usize,
+                ) {
+                    characters[character_id].data[core::constants::CHD_RIDDLER] = 0;
+                    Labyrinth9::with_mut(|lab| {
+                        lab.guesser[guesser_index as usize] = 0;
+                    });
+                } else {
+                    log::error!(
+                        "Failed to transfer character {} to destination after solving riddle.",
+                        character_id
+                    );
+                    //       do_sayx( riddler, "Oops! Something went wrong. Please try again a bit later.\n" );
+                }
+                return true;
+            } else {
+                let riddle_attempts = Labyrinth9::with_mut(|lab| {
+                    lab.riddle_attempts[guesser_index as usize] -= 1;
+                    lab.riddle_attempts[guesser_index as usize]
+                });
+
+                if riddle_attempts > 0 {
+                    //     do_sayx( riddler, "Sorry, that's not right. You have %d more attempt%s!", riddleattempts[ idx ],
+                    //    ( riddleattempts[ idx ] == 1 ) ? "" : "s" );
+                } else {
+                    //           do_sayx( riddler, "Sorry, that's not right. Now you'll have to bring me the book again to start over!\n" );
+                    characters[character_id].data[core::constants::CHD_RIDDLER] = 0;
+                    Labyrinth9::with_mut(|lab| {
+                        lab.guesser[guesser_index as usize] = 0;
+                    });
+                }
+            }
+
+            return true;
+        })
+    }
 }

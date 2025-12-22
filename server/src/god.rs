@@ -1,6 +1,6 @@
 use core::types::{Character, Map};
 
-use crate::{enums::CharacterFlags, repository::Repository};
+use crate::{enums::CharacterFlags, repository::Repository, state::State};
 use rand::Rng;
 
 pub struct God {}
@@ -61,20 +61,20 @@ impl God {
         None
     }
 
-    pub fn give_character_item(char_id: usize, item_id: usize) -> bool {
+    pub fn give_character_item(character_id: usize, item_id: usize) -> bool {
         if !core::types::Item::is_sane_item(item_id) {
             log::error!("Invalid item ID {} when giving item.", item_id);
             return false;
         }
 
         Repository::with_characters_mut(|characters| {
-            if !characters[char_id].is_living_character(char_id) {
-                log::error!("Invalid character ID {} when giving item.", char_id);
+            if !characters[character_id].is_living_character(character_id) {
+                log::error!("Invalid character ID {} when giving item.", character_id);
                 return false;
             }
 
             Repository::with_items_mut(|items| {
-                let character = &mut characters[char_id];
+                let character = &mut characters[character_id];
                 let item = &mut items[item_id];
 
                 log::debug!(
@@ -87,7 +87,7 @@ impl God {
                     character.item[slot] = item_id as u32;
                     item.x = 0;
                     item.y = 0;
-                    item.carried = char_id as u16;
+                    item.carried = character_id as u16;
 
                     character.set_do_update_flags();
 
@@ -96,7 +96,7 @@ impl God {
                     log::error!(
                         "No free inventory slots available for character '{}' (ID {}).",
                         character.get_name(),
-                        char_id
+                        character_id
                     );
 
                     false
@@ -603,6 +603,53 @@ impl God {
         return false;
     }
 
+    pub fn drop_char_fuzzy(character_id: usize, x: usize, y: usize) -> bool {
+        let positions_to_try: [(usize, usize); 25] = [
+            (x + 0, y + 0),
+            (x + 1, y + 0),
+            (x - 1, y + 0),
+            (x + 0, y + 1),
+            (x + 0, y - 1),
+            (x + 1, y + 1),
+            (x + 1, y - 1),
+            (x - 1, y + 1),
+            (x - 1, y - 1),
+            (x + 2, y - 2),
+            (x + 2, y - 1),
+            (x + 2, y + 0),
+            (x + 2, y + 1),
+            (x + 2, y + 2),
+            (x - 2, y - 2),
+            (x - 2, y - 1),
+            (x - 2, y + 0),
+            (x - 2, y + 1),
+            (x - 2, y + 2),
+            (x - 1, y + 2),
+            (x + 0, y + 2),
+            (x + 1, y + 2),
+            (x - 1, y - 2),
+            (x + 0, y - 2),
+            (x + 1, y - 2),
+        ];
+
+        for (try_x, try_y) in positions_to_try.iter() {
+            let early_return = State::with_mut(|state| {
+                if state.can_go(*try_x as i32, *try_y as i32, *try_x as i32, *try_y as i32)
+                    && Self::drop_char(character_id, *try_x, *try_y)
+                {
+                    return true;
+                }
+                false
+            });
+
+            if early_return {
+                return true;
+            }
+        }
+
+        false
+    }
+
     pub fn drop_char_fuzzy_large(
         character_id: usize,
         x: usize,
@@ -641,12 +688,25 @@ impl God {
 
         for (try_x, try_y) in positions_to_try.iter() {
             // Also check can_map_go here
-            if Self::drop_char(character_id, *try_x, *try_y) {
+            let early_return = State::with_mut(|state| {
+                if state.can_go(
+                    center_x as i32,
+                    center_y as i32,
+                    *try_x as i32,
+                    *try_y as i32,
+                ) && Self::drop_char(character_id, *try_x, *try_y)
+                {
+                    return true;
+                }
+                false
+            });
+
+            if early_return {
                 return true;
             }
         }
 
-        true
+        false
     }
 
     pub fn create_char(template_id: usize, with_items: bool) -> Option<i32> {

@@ -18,6 +18,7 @@ impl Server {
     }
 
     pub fn initialize(&mut self) -> Result<(), String> {
+        Repository::initialize()?;
         State::initialize()?;
         NetworkManager::initialize()?;
 
@@ -49,7 +50,7 @@ impl Server {
         }
 
         // Initialize subsystems
-        Labyrinth9::init();
+        Labyrinth9::initialize()?;
         // state.reset_changed_items();
 
         // remove lab items from all players (leave this here for a while!)

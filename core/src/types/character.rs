@@ -1,6 +1,6 @@
 //! Character structure - represents both players and NPCs
 
-use crate::constants::CharacterFlags;
+use crate::{constants::CharacterFlags, types::character};
 
 /// Character structure - represents both players and NPCs
 #[derive(Clone, Copy)]
@@ -607,5 +607,29 @@ impl Character {
             self.get_kindred_as_string(),
             self.get_gender_as_string()
         )
+    }
+
+    pub fn is_sane_npc(character_id: usize, character: &Character) -> bool {
+        character_id > 0 && character_id < crate::constants::MAXCHARS && !character.is_player()
+    }
+
+    pub fn get_invisibility_level(&self) -> i32 {
+        if self.flags as u64 & CharacterFlags::CF_GREATERINV.bits() != 0 {
+            return 15;
+        }
+
+        if self.flags & CharacterFlags::CF_GOD.bits() != 0 {
+            return 10;
+        }
+
+        if self.flags & (CharacterFlags::CF_IMP | CharacterFlags::CF_USURP).bits() != 0 {
+            return 5;
+        }
+
+        if self.flags & CharacterFlags::CF_STAFF.bits() != 0 {
+            return 2;
+        }
+
+        return 1;
     }
 }

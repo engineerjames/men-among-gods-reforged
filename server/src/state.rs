@@ -1,4 +1,5 @@
-use core::constants::{MAXCHARS, MAXPLAYER};
+use core::constants::{CharacterFlags, MAXCHARS, MAXPLAYER};
+use core::types::Character;
 use std::cmp;
 use std::rc::Rc;
 use std::sync::{OnceLock, RwLock};
@@ -14,6 +15,7 @@ static STATE: OnceLock<RwLock<State>> = OnceLock::new();
 pub struct State {
     pathfinder: PathFinder,
     _visi: [i8; 40 * 40],
+    visi: [i8; 40 * 40],
     see_miss: u64,
     see_hit: u64,
     ox: i32,
@@ -22,10 +24,11 @@ pub struct State {
 }
 
 impl State {
-    pub fn new() -> Self {
+    fn new() -> Self {
         State {
             pathfinder: PathFinder::new(),
             _visi: [0; 40 * 40],
+            visi: [0; 40 * 40],
             see_miss: 0,
             see_hit: 0,
             ox: 0,
@@ -493,7 +496,6 @@ impl State {
 
                 let v = self.can_see(
                     see_map,
-                    character,
                     None,
                     x_center,
                     y_center,
@@ -519,7 +521,6 @@ impl State {
     pub fn can_see(
         &mut self,
         see_map: &mut [core::types::SeeMap],
-        character: &core::types::Character,
         character_id: Option<usize>,
         fx: i32,
         fy: i32,
@@ -527,38 +528,40 @@ impl State {
         ty: i32,
         max_distance: i32,
     ) -> i32 {
-        match character_id {
-            Some(cn) => {
-                if (fx != see_map[cn].x) || (fy != see_map[cn].y) {
-                    if character.is_monster() && !character.is_usurp_or_thrall() {
-                        self.is_monster = true;
+        Repository::with_characters(|characters| {
+            match character_id {
+                Some(cn) => {
+                    if (fx != see_map[cn].x) || (fy != see_map[cn].y) {
+                        if characters[cn].is_monster() && !characters[cn].is_usurp_or_thrall() {
+                            self.is_monster = true;
+                        }
+
+                        // Copy the visibility data from see_map to our working buffer
+                        self._visi.copy_from_slice(&see_map[cn].vis);
+
+                        self.can_map_see(fx, fy, max_distance);
+
+                        // Copy the updated visibility data back to see_map
+                        see_map[cn].vis.copy_from_slice(&self._visi);
+                        see_map[cn].x = fx;
+                        see_map[cn].y = fy;
+                        self.see_miss += 1;
+                    } else {
+                        // Copy the visibility data from see_map for checking
+                        self._visi.copy_from_slice(&see_map[cn].vis);
+                        self.see_hit += 1;
+                        self.ox = fx;
+                        self.oy = fy;
                     }
-
-                    // Copy the visibility data from see_map to our working buffer
-                    self._visi.copy_from_slice(&see_map[cn].vis);
-
-                    self.can_map_see(fx, fy, max_distance);
-
-                    // Copy the updated visibility data back to see_map
-                    see_map[cn].vis.copy_from_slice(&self._visi);
-                    see_map[cn].x = fx;
-                    see_map[cn].y = fy;
-                    self.see_miss += 1;
-                } else {
-                    // Copy the visibility data from see_map for checking
-                    self._visi.copy_from_slice(&see_map[cn].vis);
-                    self.see_hit += 1;
-                    self.ox = fx;
-                    self.oy = fy;
+                }
+                None => {
+                    if (self.ox != fx) || (self.oy != fy) {
+                        self.is_monster = false;
+                        self.can_map_see(fx, fy, max_distance);
+                    }
                 }
             }
-            None => {
-                if (self.ox != fx) || (self.oy != fy) {
-                    self.is_monster = false;
-                    self.can_map_see(fx, fy, max_distance);
-                }
-            }
-        }
+        });
 
         self.check_vis(tx, ty)
     }
@@ -643,6 +646,190 @@ impl State {
                 }
             }
         }
+    }
+
+    pub fn can_go(&mut self, fx: i32, fy: i32, target_x: i32, target_y: i32) -> bool {
+        if self.visi != self._visi {
+            self.visi = self._visi.clone();
+            self.ox = 0;
+            self.oy = 0;
+        }
+
+        if (self.ox != fx || self.oy != fy) {
+            self.can_map_go(fx, fy, 15);
+        }
+
+        let tmp = self.check_vis(target_x, target_y);
+
+        tmp != 0
+    }
+
+    pub fn check_dlight(x: usize, y: usize) -> i32 {
+        let map_index = x + y * core::constants::MAPX;
+
+        Repository::with_map(|map| {
+            Repository::with_globals(|globals| {
+                if map[map_index].flags & core::constants::MF_INDOORS as u64 == 0 {
+                    globals.dlight
+                } else {
+                    (globals.dlight * map[map_index].dlight as i32) / 256
+                }
+            })
+        })
+    }
+
+    // TODO: Combine with check_dlight
+    pub fn check_dlightm(map_index: usize) -> i32 {
+        Repository::with_map(|map| {
+            Repository::with_globals(|globals| {
+                if map[map_index].flags & core::constants::MF_INDOORS as u64 == 0 {
+                    globals.dlight
+                } else {
+                    (globals.dlight * map[map_index].dlight as i32) / 256
+                }
+            })
+        })
+    }
+
+    pub fn do_character_calculate_light(&self, cn: usize, light: i32) -> i32 {
+        Repository::with_characters(|characters| {
+            let character = &characters[cn];
+            let mut adjusted_light = light;
+
+            if light == 0 && character.skill[core::constants::SK_PERCEPT][5] > 150 {
+                adjusted_light = 1;
+            }
+
+            adjusted_light = adjusted_light
+                * std::cmp::min(character.skill[core::constants::SK_PERCEPT][5] as i32, 10)
+                / 10;
+
+            if adjusted_light > 255 {
+                adjusted_light = 255;
+            }
+
+            if character.flags & CharacterFlags::CF_INFRARED.bits() != 0 && adjusted_light < 5 {
+                adjusted_light = 5;
+            }
+
+            adjusted_light
+        })
+    }
+
+    pub fn do_character_can_see(&mut self, cn: usize, co: usize) -> bool {
+        if cn == co {
+            return true;
+        }
+
+        Repository::with_characters(|characters| {
+            Repository::with_map(|map| {
+                if characters[co].used != core::constants::USE_ACTIVE {
+                    return false;
+                }
+
+                if characters[co].flags & CharacterFlags::CF_INVISIBLE.bits() != 0
+                    && (characters[cn].get_invisibility_level()
+                        < characters[co].get_invisibility_level())
+                {
+                    return false;
+                }
+
+                if characters[co].flags & CharacterFlags::CF_BODY.bits() != 0 {
+                    return false;
+                }
+
+                let d1 = (characters[cn].x - characters[co].x).abs() as i32;
+                let d2 = (characters[cn].y - characters[co].y).abs() as i32;
+
+                let rd = d1 * d1 + d2 * d2;
+                let mut d = rd;
+
+                if d > 1000 {
+                    return false;
+                }
+
+                // Modify by perception and stealth
+                match characters[co].mode {
+                    0 => {
+                        d = (d
+                            * (characters[co].skill[core::constants::SK_STEALTH][5] as i32 + 20))
+                            / 20;
+                    }
+                    1 => {
+                        d = (d
+                            * (characters[co].skill[core::constants::SK_STEALTH][5] as i32 + 50))
+                            / 50;
+                    }
+                    _ => {
+                        d = (d
+                            * (characters[co].skill[core::constants::SK_STEALTH][5] as i32 + 100))
+                            / 100;
+                    }
+                }
+
+                d -= characters[cn].skill[core::constants::SK_PERCEPT][5] as i32 * 2;
+
+                // Modify by light
+                if characters[cn].flags & CharacterFlags::CF_INFRARED.bits() == 0 {
+                    let map_index = characters[co].x as usize
+                        + characters[co].y as usize * core::constants::MAPX;
+                    let mut light = std::cmp::max(
+                        map[map_index].light as i32,
+                        State::check_dlight(characters[co].x as usize, characters[co].y as usize),
+                    );
+
+                    // TODO: Shouldn't this be co?
+                    light = self.do_character_calculate_light(cn, light);
+
+                    if light == 0 {
+                        return false;
+                    }
+
+                    if light > 64 {
+                        light = 64;
+                    }
+
+                    d += (64 - light) * 2;
+                }
+
+                if rd < 3 && d > 70 {
+                    d = 70;
+                }
+
+                if d > 200 {
+                    return false;
+                }
+
+                let can_see = Repository::with_see_map_mut(|see_map| {
+                    if !self
+                        .can_see(
+                            see_map,
+                            Some(cn),
+                            characters[cn].x as i32,
+                            characters[cn].y as i32,
+                            characters[co].x as i32,
+                            characters[co].y as i32,
+                            15,
+                        )
+                        .ne(&0)
+                    {
+                        return false;
+                    }
+
+                    return true;
+                });
+
+                if !can_see {
+                    return false;
+                }
+
+                if d < 1 {
+                    return true;
+                }
+
+                d != 0 // TODO: Should we return the numeric value?
+            })
+        })
     }
 
     pub fn check_vis(&self, tx: i32, ty: i32) -> i32 {
