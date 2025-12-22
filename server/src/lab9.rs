@@ -368,6 +368,13 @@ impl Labyrinth9 {
         LABYRINTH9
             .set(RwLock::new(lab))
             .map_err(|_| "Labyrinth9 already initialized".to_string())?;
+
+        Labyrinth9::with_mut(|lab| {
+            for i in 1..BANKS.len() + 1 {
+                lab.lab9_reset_bank(i as i32, true);
+            }
+        });
+
         Ok(())
     }
 
@@ -395,7 +402,7 @@ impl Labyrinth9 {
         f(&mut *lab)
     }
 
-    pub fn lab9_guesser_says(character_id: usize, text: &str) -> bool {
+    pub fn lab9_guesser_says(&mut self, character_id: usize, text: &str) -> bool {
         let is_player =
             Repository::with_characters(|characters| characters[character_id].is_player());
 
@@ -437,8 +444,7 @@ impl Labyrinth9 {
 
             // Does the riddler remember the guesser?
             let guesser_index = area_of_knowledge - core::constants::RIDDLE_MIN_AREA;
-            let guesser_match =
-                Labyrinth9::with(|lab| lab.guesser[guesser_index as usize] == character_id as i32);
+            let guesser_match = self.guesser[guesser_index as usize] == character_id as i32;
 
             if !guesser_match {
                 log::warn!(
@@ -464,10 +470,10 @@ impl Labyrinth9 {
                 return false;
             }
 
-            let riddle = Labyrinth9::with(|lab| {
-                let riddleno = lab.riddleno[guesser_index as usize];
-                lab.riddles[guesser_index as usize][riddleno as usize - 1]
-            });
+            let riddle = {
+                let riddleno = self.riddleno[guesser_index as usize];
+                self.riddles[guesser_index as usize][riddleno as usize - 1]
+            };
 
             let mut found = false;
             for word in text.split(' ') {
@@ -494,9 +500,7 @@ impl Labyrinth9 {
                     DESTINATIONS[guesser_index as usize].y as usize,
                 ) {
                     characters[character_id].data[core::constants::CHD_RIDDLER] = 0;
-                    Labyrinth9::with_mut(|lab| {
-                        lab.guesser[guesser_index as usize] = 0;
-                    });
+                    self.guesser[guesser_index as usize] = 0;
                 } else {
                     log::error!(
                         "Failed to transfer character {} to destination after solving riddle.",
@@ -511,10 +515,10 @@ impl Labyrinth9 {
                 }
                 return true;
             } else {
-                let riddle_attempts = Labyrinth9::with_mut(|lab| {
-                    lab.riddle_attempts[guesser_index as usize] -= 1;
-                    lab.riddle_attempts[guesser_index as usize]
-                });
+                let riddle_attempts = {
+                    self.riddle_attempts[guesser_index as usize] -= 1;
+                    self.riddle_attempts[guesser_index as usize]
+                };
 
                 if riddle_attempts > 0 {
                     State::with(|state| {
@@ -536,9 +540,7 @@ impl Labyrinth9 {
                         );
                     });
                     characters[character_id].data[core::constants::CHD_RIDDLER] = 0;
-                    Labyrinth9::with_mut(|lab| {
-                        lab.guesser[guesser_index as usize] = 0;
-                    });
+                    self.guesser[guesser_index as usize] = 0;
                 }
             }
 
@@ -546,30 +548,27 @@ impl Labyrinth9 {
         })
     }
 
-    pub fn lab9_pose_riddle(riddler_id: usize, character_id: usize) {
+    pub fn lab9_pose_riddle(&mut self, riddler_id: usize, character_id: usize) {
         let riddle_index = Repository::with_characters(|characters| {
             characters[riddler_id].data[72] - core::constants::RIDDLE_MIN_AREA
         });
 
         let riddle_number = 1 + rand::random::<i32>() % (core::constants::MAX_RIDDLES as i32);
-        Labyrinth9::with_mut(|lab| {
-            let question = lab.riddles[riddle_index as usize][riddle_number as usize - 1].question;
-            lab.guesser[riddle_index as usize] = character_id as i32;
-            lab.riddleno[riddle_index as usize] = riddle_number;
-            lab.riddle_timeout[riddle_index as usize] = core::constants::RIDDLE_TIMEOUT;
-            lab.riddle_attempts[riddle_index as usize] = core::constants::RIDDLE_ATTEMPTS;
-
-            State::with_mut(|state| {
-                state.do_sayx(
+        let question = self.riddles[riddle_index as usize][riddle_number as usize - 1].question;
+        self.guesser[riddle_index as usize] = character_id as i32;
+        self.riddleno[riddle_index as usize] = riddle_number;
+        self.riddle_timeout[riddle_index as usize] = core::constants::RIDDLE_TIMEOUT;
+        self.riddle_attempts[riddle_index as usize] = core::constants::RIDDLE_ATTEMPTS;
+        State::with_mut(|state| {
+            state.do_sayx(
                     riddler_id,
                     format!(
                         "Here is a riddle. You have 3 minutes and {} attempts to say the correct answer.\n",
-                        lab.riddle_attempts[riddle_index as usize],
+                        self.riddle_attempts[riddle_index as usize],
                     ).as_str(),
                 );
 
-                state.do_sayx(riddler_id, question);
-            });
+            state.do_sayx(riddler_id, question);
         });
 
         Repository::with_characters_mut(|characters| {
@@ -702,5 +701,222 @@ impl Labyrinth9 {
             });
             return false;
         }
+    }
+
+    /// Reset a given numbered switch bank
+    /// Translates C++ function: void lab9_reset_bank(int bankno, int closedoor)
+    pub fn lab9_reset_bank(&mut self, bankno: i32, closedoor: bool) {
+        log::info!("lab9: reset bank #{}", bankno);
+
+        if bankno < 1 || bankno > core::constants::BANKS as i32 {
+            log::error!("lab9_reset_bank(): panic: bad bank number {}!!", bankno);
+            return;
+        }
+
+        let bank_index = (bankno - 1) as usize;
+        let bank = BANKS[bank_index];
+        let x = bank.x1;
+        let mut y = bank.y1;
+        let t = bank.temp;
+
+        // Reset switches and build description from random question
+        for n in 0..core::constants::SWITCHES {
+            let m = (x + y * core::constants::SERVER_MAPX) as usize;
+            let item_number = Repository::with_map(|map| map[m].it);
+
+            if item_number == 0
+                || Repository::with_items(|items| items[item_number as usize].temp) != t as u16
+            {
+                log::error!("reset_bank_at(): panic: no switch at {}!!", m);
+                return;
+            }
+
+            let bankidx = Repository::with_items(|items| {
+                (items[item_number as usize].data[0] as i32 - 1) as usize
+            });
+
+            Repository::with_items_mut(|items| {
+                items[item_number as usize].data[1] = 1;
+                items[item_number as usize].active = 0;
+            });
+
+            let mut q: i32;
+            let mut unique: bool;
+
+            loop {
+                q = 1 + (rand::random::<i32>().abs() % core::constants::BANK_QUESTIONS as i32);
+
+                self.questions[bankidx][n] = q;
+
+                unique = true;
+                for j in 0..n {
+                    let prev_q = self.questions[bankidx][j];
+                    if prev_q == q {
+                        unique = false;
+                        break;
+                    }
+                }
+
+                if unique {
+                    break;
+                }
+            }
+
+            // Set description on the switch
+            let question_text = SWITCH_QUESTIONS[bankidx][q as usize - 1].question;
+            let description = format!(
+                "It looks like a switch. Attached near the bottom is a note that reads: {}\n",
+                question_text
+            );
+
+            Repository::with_items_mut(|items| {
+                let desc_bytes = description.as_bytes();
+                let len = desc_bytes.len().min(200);
+                items[item_number as usize].description[..len].copy_from_slice(&desc_bytes[..len]);
+                // Null-terminate if there's space
+                if len < 200 {
+                    items[item_number as usize].description[len] = 0;
+                }
+            });
+
+            y += 1;
+        }
+
+        // Handle door
+        let door_m = (bank.doorx + bank.doory * core::constants::SERVER_MAPX) as usize;
+        let door = Repository::with_map(|map| map[door_m].it);
+
+        if closedoor && door != 0 {
+            self.use_lab9_door(0, door as i32);
+        }
+    }
+
+    /// Flip a switch in Lab 9
+    /// Translates C++ function: int use_lab9_switch(int cn, int in)
+    pub fn use_lab9_switch(self, cn: usize, item_id: i32) -> bool {
+        log::info!("Character {} flipped a switch.", cn);
+
+        Repository::with_items_mut(|items| {
+            items[item_id as usize].data[1] = if items[item_id as usize].data[1] == 0 {
+                1
+            } else {
+                0
+            };
+
+            State::do_area_sound(
+                0,
+                0,
+                items[item_id as usize].x as i32,
+                items[item_id as usize].y as i32,
+                10,
+            );
+
+            let bank_no = items[item_id as usize].data[0] as i32;
+
+            if self.lab9_check_door(bank_no) {
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Green,
+                        "You hear a door open nearby.\n",
+                    );
+                });
+            }
+        });
+
+        true
+    }
+
+    /// One way door in lab 9
+    /// Translates C++ function: int use_lab9_door(int cn, int in)
+    /// data[3] = switch bank number (1..5)
+    pub fn use_lab9_door(&mut self, cn: usize, item_id: i32) -> bool {
+        let item_x = Repository::with_items(|items| items[item_id as usize].x);
+        let item_y = Repository::with_items(|items| items[item_id as usize].y);
+        let m = (item_x as i32 + item_y as i32 * core::constants::SERVER_MAPX) as usize;
+
+        let ch_at_door = Repository::with_map(|map| map[m].ch);
+        if ch_at_door != 0 {
+            return false;
+        }
+
+        // This statement allows free movement southward.
+        if cn == 0 {
+            Repository::with_items_mut(|items| {
+                items[item_id as usize].active = 1; // just so it will close for sure
+            });
+        } else {
+            let is_active = Repository::with_items(|items| items[item_id as usize].active);
+            let character_x = Repository::with_characters(|characters| characters[cn].x);
+            let character_y = Repository::with_characters(|characters| characters[cn].y);
+
+            if is_active == 0
+                && ((character_x as i32) > (item_x as i32)
+                    || (character_y as i32) < (item_y as i32))
+            {
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Red,
+                        "It's locked and no key will open it.\n",
+                    );
+                });
+                return false;
+            }
+        }
+
+        State::with_mut(|state| {
+            state.reset_go(item_x as i32, item_y as i32);
+            state.remove_lights(item_x as i32, item_y as i32);
+        });
+
+        State::do_area_sound(0, 0, item_x as i32, item_y as i32, 10);
+
+        let is_active = Repository::with_items(|items| items[item_id as usize].active);
+
+        if is_active == 0 {
+            // open door
+            Repository::with_items_mut(|items| {
+                items[item_id as usize].flags &=
+                    !(ItemFlags::IF_MOVEBLOCK | ItemFlags::IF_SIGHTBLOCK).bits();
+                items[item_id as usize].data[1] = 0;
+            });
+        } else {
+            // close door
+            let temp = Repository::with_items(|items| items[item_id as usize].temp);
+            let flags = Repository::with_item_templates(|item_templates| {
+                item_templates[temp as usize].flags & ItemFlags::IF_SIGHTBLOCK.bits()
+            });
+
+            Repository::with_items_mut(|items| {
+                items[item_id as usize].flags |= ItemFlags::IF_MOVEBLOCK.bits() | flags;
+                items[item_id as usize].data[1] = 1;
+
+                let bank_no = items[item_id as usize].data[3] as i32;
+                self.lab9_reset_bank(bank_no, false);
+            });
+        }
+
+        State::with_mut(|state| {
+            state.reset_go(item_x as i32, item_y as i32);
+            state.add_lights(item_x as i32, item_y as i32);
+
+            let character_position = Repository::with_characters(|characters| {
+                (characters[cn].x as i32, characters[cn].y as i32)
+            });
+            state.do_area_notify(
+                cn as i32,
+                0,
+                character_position.0 as i32,
+                character_position.1 as i32,
+                core::constants::NT_SEE as i32,
+                cn as i32,
+                0,
+                0,
+                0,
+            );
+        });
+
+        true
     }
 }

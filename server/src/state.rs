@@ -4,6 +4,7 @@ use std::cmp;
 use std::rc::Rc;
 use std::sync::{OnceLock, RwLock};
 
+use crate::driver::Driver;
 use crate::enums;
 use crate::god::God;
 use crate::network_manager::NetworkManager;
@@ -187,21 +188,33 @@ impl State {
                 }
 
                 // Clear map positions
-                let (map_index, to_map_index, light) = Repository::with_characters(|characters| {
-                    let character = &characters[character_id];
-                    let map_index = (character.y as usize) * core::constants::SERVER_MAPX as usize
-                        + (character.x as usize);
-                    let to_map_index = (character.toy as usize)
-                        * core::constants::SERVER_MAPX as usize
-                        + (character.tox as usize);
-                    (map_index, to_map_index, character.light)
-                });
+                let (map_index, to_map_index, light, character_x, character_y) =
+                    Repository::with_characters(|characters| {
+                        let character = &characters[character_id];
+                        let map_index = (character.y as usize)
+                            * core::constants::SERVER_MAPX as usize
+                            + (character.x as usize);
+                        let to_map_index = (character.toy as usize)
+                            * core::constants::SERVER_MAPX as usize
+                            + (character.tox as usize);
+                        (
+                            map_index,
+                            to_map_index,
+                            character.light,
+                            character.x,
+                            character.y,
+                        )
+                    });
 
                 Repository::with_map_mut(|map| {
                     if map[map_index].ch == character_id as u32 {
                         map[map_index].ch = 0;
                         if light != 0 {
-                            // TODO: Update lighting here via do_add_light
+                            self.do_add_light(
+                                character_x as i32,
+                                character_y as i32,
+                                -(light as i32),
+                            );
                         }
                     }
 
@@ -1304,5 +1317,103 @@ impl State {
 
         self.ox = 0;
         self.oy = 0;
+    }
+
+    pub fn remove_lights(&mut self, x: i32, y: i32) {
+        let xs = cmp::max(1, x - core::constants::LIGHTDIST);
+        let ys = cmp::max(1, y - core::constants::LIGHTDIST);
+        let xe = cmp::min(
+            core::constants::SERVER_MAPX as i32 - 2,
+            x + 1 + core::constants::LIGHTDIST,
+        );
+        let ye = cmp::min(
+            core::constants::SERVER_MAPY as i32 - 2,
+            y + 1 + core::constants::LIGHTDIST,
+        );
+
+        for yy in ys..ye {
+            for xx in xs..xe {
+                let m = (xx + yy * core::constants::SERVER_MAPX as i32) as usize;
+
+                let item_idx = Repository::with_map(|map| map[m].it as usize);
+                let light_value_from_item = Repository::with_items(|items| {
+                    if item_idx != 0 && item_idx < items.len() {
+                        let it = &items[item_idx];
+                        if it.active != 0 {
+                            it.light[1]
+                        } else {
+                            it.light[0]
+                        }
+                    } else {
+                        0
+                    }
+                });
+
+                if light_value_from_item != 0 {
+                    self.do_add_light(xx, yy, -(light_value_from_item as i32));
+                }
+
+                let cn = Repository::with_map(|map| map[m].ch as usize);
+
+                let light_value_from_character = Repository::with_characters(|characters| {
+                    if !Character::is_sane_character(cn) {
+                        0
+                    } else {
+                        characters[cn].light
+                    }
+                });
+
+                if light_value_from_character != 0 {
+                    self.do_add_light(xx, yy, -(light_value_from_character as i32));
+                }
+
+                Repository::with_map_mut(|map| {
+                    map[m].dlight = 0;
+                });
+            }
+        }
+    }
+
+    pub fn do_area_notify(
+        &self,
+        cn: i32,
+        co: i32,
+        xs: i32,
+        ys: i32,
+        notify_type: i32,
+        dat1: i32,
+        dat2: i32,
+        dat3: i32,
+        dat4: i32,
+    ) {
+        Repository::with_map(|map| {
+            // 12 = AREASIZE constant TODO: use constant
+            for y in
+                std::cmp::max(0, ys - 12)..std::cmp::min(core::constants::SERVER_MAPY, ys + 12 + 1)
+            {
+                let m = y * core::constants::SERVER_MAPX as i32;
+                for x in std::cmp::max(0, xs - 12)
+                    ..std::cmp::min(core::constants::SERVER_MAPX, xs + 12 + 1)
+                {
+                    let cc = map[(x + m) as usize].ch;
+
+                    if cc != 0 && cc != cn as u32 && cc != co as u32 {
+                        self.do_notify_char(cc, notify_type, dat1, dat2, dat3, dat4);
+                    }
+                }
+            }
+        });
+    }
+
+    pub fn do_notify_char(
+        &self,
+        character_id: u32,
+        notify_type: i32,
+        dat1: i32,
+        dat2: i32,
+        dat3: i32,
+        dat4: i32,
+    ) {
+        Driver::msg(character_id, notify_type, dat1, dat2, dat3, dat4);
     }
 }
