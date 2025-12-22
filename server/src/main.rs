@@ -92,7 +92,7 @@ fn handle_command_line_args(args: &[String]) {
     }
 }
 
-fn main() {
+fn main() -> Result<(), String> {
     let args: Vec<String> = env::args().collect();
 
     // The original implementation had a call here for nice(5) to lower process priority.
@@ -129,7 +129,7 @@ fn main() {
 
     let mut server = server::Server::new();
 
-    server.initialize();
+    server.initialize()?;
 
     log::info!("Entering main game loop...");
 
@@ -143,4 +143,6 @@ fn main() {
     signal_thread.join().unwrap_or_else(|e| {
         log::error!("Failed to join signal handling thread: {:?}", e);
     });
+
+    Ok(())
 }

@@ -1,6 +1,7 @@
 use core::constants::{MAXCHARS, MAXPLAYER};
 use std::cmp;
 use std::rc::Rc;
+use std::sync::{OnceLock, RwLock};
 
 use crate::enums;
 use crate::god::God;
@@ -8,9 +9,10 @@ use crate::network_manager::NetworkManager;
 use crate::path_finding::PathFinder;
 use crate::repository::Repository;
 
+static STATE: OnceLock<RwLock<State>> = OnceLock::new();
+
 pub struct State {
     pathfinder: PathFinder,
-    network: Rc<NetworkManager>,
     _visi: [i8; 40 * 40],
     see_miss: u64,
     see_hit: u64,
@@ -20,10 +22,9 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(network: Rc<NetworkManager>) -> Self {
+    pub fn new() -> Self {
         State {
             pathfinder: PathFinder::new(),
-            network,
             _visi: [0; 40 * 40],
             see_miss: 0,
             see_hit: 0,
@@ -31,6 +32,30 @@ impl State {
             oy: 0,
             is_monster: false,
         }
+    }
+
+    pub fn initialize() -> Result<(), String> {
+        let state = State::new();
+        STATE
+            .set(RwLock::new(state))
+            .map_err(|_| "State already initialized".to_string())?;
+        Ok(())
+    }
+
+    pub fn with<F, R>(f: F) -> R
+    where
+        F: FnOnce(&State) -> R,
+    {
+        let state = STATE.get().expect("State not initialized").read().unwrap();
+        f(&*state)
+    }
+
+    pub fn with_mut<F, R>(f: F) -> R
+    where
+        F: FnOnce(&mut State) -> R,
+    {
+        let mut state = STATE.get().expect("State not initialized").write().unwrap();
+        f(&mut *state)
     }
 
     /// plr_logout from original C++ code
@@ -301,9 +326,13 @@ impl State {
             let (player_id, plr) = player.unwrap();
 
             if plr.state == core::constants::ST_NORMAL {
-                self.network.xsend(plr.usnr as usize, &buffer, 16);
+                NetworkManager::with(|network| {
+                    network.xsend(player_id as usize, &buffer, 16);
+                });
             } else {
-                self.network.csend(plr.usnr as usize, &buffer, 16);
+                NetworkManager::with(|network| {
+                    network.csend(player_id as usize, &buffer, 16);
+                });
             }
 
             Repository::with_characters_mut(|characters| {
@@ -404,7 +433,9 @@ impl State {
                     }
                 }
 
-                self.network.xsend(player_id as usize, &buffer, 16);
+                NetworkManager::with(|network| {
+                    network.xsend(player_id as usize, &buffer, 16);
+                });
 
                 bytes_sent += 15;
             }

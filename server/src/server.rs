@@ -7,23 +7,20 @@ use crate::repository::Repository;
 use crate::state::State;
 
 pub struct Server {
-    network: Rc<NetworkManager>,
     players: [core::types::ServerPlayer; MAXPLAYER],
-    state: State,
 }
 
 impl Server {
     pub fn new() -> Self {
-        let network = Rc::new(NetworkManager::new());
-        let state = State::new(network.clone());
         Server {
-            network,
             players: std::array::from_fn(|_| core::types::ServerPlayer::new()),
-            state,
         }
     }
 
-    pub fn initialize(&mut self) {
+    pub fn initialize(&mut self) -> Result<(), String> {
+        State::initialize()?;
+        NetworkManager::initialize()?;
+
         // Mark data as dirty (in use)
         Repository::with_globals_mut(|globals| {
             globals.set_dirty(true);
@@ -46,8 +43,9 @@ impl Server {
                 );
             });
 
-            self.state
-                .logout_player(i, None, crate::enums::LogoutReason::Shutdown);
+            State::with_mut(|state| {
+                state.logout_player(i, None, crate::enums::LogoutReason::Shutdown);
+            });
         }
 
         // Initialize subsystems
@@ -99,6 +97,8 @@ impl Server {
         //         state.ch_temp[n].data[29] = state.ch_temp[n].x as i32 + state.ch_temp[n].y as i32 * SERVER_MAPX;
         //     }
         // }
+
+        Ok(())
     }
 
     pub fn tick(&mut self) {
