@@ -1,4 +1,4 @@
-use core::constants::{CharacterFlags, MAXCHARS, MAXPLAYER};
+use core::constants::{CharacterFlags, ItemFlags, MAXCHARS, MAXPLAYER};
 use core::types::{Character, ServerPlayer};
 use std::cmp;
 use std::rc::Rc;
@@ -502,20 +502,14 @@ impl State {
         }
     }
 
-    pub fn do_add_light(
-        &mut self,
-        _repository: &Repository,
-        map_tiles: &mut [core::types::Map],
-        see_map: &mut [core::types::SeeMap],
-        x_center: i32,
-        y_center: i32,
-        mut strength: i32,
-    ) {
+    pub fn do_add_light(&mut self, x_center: i32, y_center: i32, mut strength: i32) {
         // First add light to the center
         let center_map_index =
             (y_center as usize) * core::constants::MAPX as usize + (x_center as usize);
 
-        map_tiles[center_map_index].add_light(strength);
+        Repository::with_map_mut(|map_tiles| {
+            map_tiles[center_map_index].add_light(strength);
+        });
 
         let flag = if strength < 0 {
             strength = -strength;
@@ -550,25 +544,144 @@ impl State {
                     continue;
                 }
 
-                let v = self.can_see(
-                    see_map,
-                    None,
-                    x_center,
-                    y_center,
-                    x,
-                    y,
-                    core::constants::LIGHTDIST,
-                );
+                let v = self.can_see(None, x_center, y_center, x, y, core::constants::LIGHTDIST);
 
                 if v != 0 {
                     let d = strength / (v * (x_center - x).abs() + (y_center - y).abs());
                     let map_index = (y as usize) * core::constants::MAPX as usize + (x as usize);
 
-                    if flag == 1 {
-                        map_tiles[map_index].add_light(-d);
+                    Repository::with_map_mut(|map_tiles| {
+                        if flag == 1 {
+                            map_tiles[map_index].add_light(-d);
+                        } else {
+                            map_tiles[map_index].add_light(d);
+                        }
+                    });
+                }
+            }
+        }
+    }
+
+    fn compute_dlight(&mut self, xc: i32, yc: i32) {
+        let xs = cmp::max(0, xc - core::constants::LIGHTDIST);
+        let ys = cmp::max(0, yc - core::constants::LIGHTDIST);
+        let xe = cmp::min(
+            core::constants::MAPX as i32 - 1,
+            xc + 1 + core::constants::LIGHTDIST,
+        );
+        let ye = cmp::min(
+            core::constants::MAPY as i32 - 1,
+            yc + 1 + core::constants::LIGHTDIST,
+        );
+
+        let mut best: i32 = 0;
+
+        for y in ys..ye {
+            for x in xs..xe {
+                let dx = xc - x;
+                let dy = yc - y;
+                if dx * dx + dy * dy > (core::constants::LIGHTDIST * core::constants::LIGHTDIST + 1)
+                {
+                    continue;
+                }
+
+                let m = (x + y * core::constants::MAPX as i32) as usize;
+
+                let should_continue = Repository::with_map(|map| {
+                    map[m].flags & core::constants::MF_INDOORS as u64 != 0
+                });
+
+                if should_continue {
+                    continue;
+                }
+
+                let v = self.can_see(None, xc, yc, x, y, core::constants::LIGHTDIST);
+                if v == 0 {
+                    continue;
+                }
+
+                let denom = v * (dx.abs() + dy.abs());
+                if denom <= 0 {
+                    continue;
+                }
+
+                let d = 256 / denom;
+                if d > best {
+                    best = d;
+                }
+            }
+        }
+
+        if best > 256 {
+            best = 256;
+        }
+
+        let center_index = (xc + yc * core::constants::MAPX as i32) as usize;
+
+        Repository::with_map_mut(|map| {
+            if center_index < map.len() {
+                map[center_index].dlight = best as u16;
+            }
+        });
+    }
+
+    /// Port of `add_lights(int x, int y)` from the original `helper.cpp`.
+    pub fn add_lights(&mut self, x: i32, y: i32) {
+        let x0 = x;
+        let y0 = y;
+
+        let xs = cmp::max(1, x0 - core::constants::LIGHTDIST);
+        let ys = cmp::max(1, y0 - core::constants::LIGHTDIST);
+        let xe = cmp::min(
+            core::constants::MAPX as i32 - 2,
+            x0 + 1 + core::constants::LIGHTDIST,
+        );
+        let ye = cmp::min(
+            core::constants::MAPY as i32 - 2,
+            y0 + 1 + core::constants::LIGHTDIST,
+        );
+
+        for yy in ys..ye {
+            for xx in xs..xe {
+                let m = (xx + yy * core::constants::MAPX as i32) as usize;
+
+                let item_idx = Repository::with_map(|map| map[m].it as usize);
+                let light_value_from_item = Repository::with_items(|items| {
+                    if item_idx != 0 && item_idx < items.len() {
+                        let it = &items[item_idx];
+                        if it.active != 0 {
+                            it.light[1]
+                        } else {
+                            it.light[0]
+                        }
                     } else {
-                        map_tiles[map_index].add_light(d);
+                        0
                     }
+                });
+
+                if light_value_from_item != 0 {
+                    self.do_add_light(xx, yy, light_value_from_item as i32);
+                }
+
+                let cn = Repository::with_map(|map| map[m].ch as usize);
+
+                let light_value_from_character = Repository::with_characters(|characters| {
+                    if !Character::is_sane_character(cn) {
+                        0
+                    } else {
+                        characters[cn].light
+                    }
+                });
+
+                if light_value_from_character != 0 {
+                    self.do_add_light(xx, yy, light_value_from_character as i32);
+                }
+
+                let is_indoors = Repository::with_map(|map| {
+                    map[m].flags & core::constants::MF_INDOORS as u64 != 0
+                });
+                if is_indoors {
+                    self.compute_dlight(xx, yy);
                 }
             }
         }
@@ -576,7 +689,6 @@ impl State {
 
     pub fn can_see(
         &mut self,
-        see_map: &mut [core::types::SeeMap],
         character_id: Option<usize>,
         fx: i32,
         fy: i32,
@@ -584,39 +696,40 @@ impl State {
         ty: i32,
         max_distance: i32,
     ) -> i32 {
-        Repository::with_characters(|characters| {
-            match character_id {
-                Some(cn) => {
-                    if (fx != see_map[cn].x) || (fy != see_map[cn].y) {
-                        if characters[cn].is_monster() && !characters[cn].is_usurp_or_thrall() {
-                            self.is_monster = true;
+        Repository::with_see_map_mut(|see_map| {
+            Repository::with_characters(|characters| {
+                match character_id {
+                    Some(cn) => {
+                        if (fx != see_map[cn].x) || (fy != see_map[cn].y) {
+                            self.is_monster =
+                                characters[cn].is_monster() && !characters[cn].is_usurp_or_thrall();
+
+                            // Copy the visibility data from see_map to our working buffer
+                            self._visi.copy_from_slice(&see_map[cn].vis);
+
+                            self.can_map_see(fx, fy, max_distance);
+
+                            // Copy the updated visibility data back to see_map
+                            see_map[cn].vis.copy_from_slice(&self._visi);
+                            see_map[cn].x = fx;
+                            see_map[cn].y = fy;
+                            self.see_miss += 1;
+                        } else {
+                            // Copy the visibility data from see_map for checking
+                            self._visi.copy_from_slice(&see_map[cn].vis);
+                            self.see_hit += 1;
+                            self.ox = fx;
+                            self.oy = fy;
                         }
-
-                        // Copy the visibility data from see_map to our working buffer
-                        self._visi.copy_from_slice(&see_map[cn].vis);
-
-                        self.can_map_see(fx, fy, max_distance);
-
-                        // Copy the updated visibility data back to see_map
-                        see_map[cn].vis.copy_from_slice(&self._visi);
-                        see_map[cn].x = fx;
-                        see_map[cn].y = fy;
-                        self.see_miss += 1;
-                    } else {
-                        // Copy the visibility data from see_map for checking
-                        self._visi.copy_from_slice(&see_map[cn].vis);
-                        self.see_hit += 1;
-                        self.ox = fx;
-                        self.oy = fy;
+                    }
+                    None => {
+                        if (self.ox != fx) || (self.oy != fy) {
+                            self.is_monster = false;
+                            self.can_map_see(fx, fy, max_distance);
+                        }
                     }
                 }
-                None => {
-                    if (self.ox != fx) || (self.oy != fy) {
-                        self.is_monster = false;
-                        self.can_map_see(fx, fy, max_distance);
-                    }
-                }
-            }
+            })
         });
 
         self.check_vis(tx, ty)
@@ -856,24 +969,16 @@ impl State {
                     return false;
                 }
 
-                let can_see = Repository::with_see_map_mut(|see_map| {
-                    if !self
-                        .can_see(
-                            see_map,
-                            Some(cn),
-                            characters[cn].x as i32,
-                            characters[cn].y as i32,
-                            characters[co].x as i32,
-                            characters[co].y as i32,
-                            15,
-                        )
-                        .ne(&0)
-                    {
-                        return false;
-                    }
-
-                    return true;
-                });
+                let can_see = !self
+                    .can_see(
+                        Some(cn),
+                        characters[cn].x as i32,
+                        characters[cn].y as i32,
+                        characters[co].x as i32,
+                        characters[co].y as i32,
+                        15,
+                    )
+                    .ne(&0);
 
                 if !can_see {
                     return false;
@@ -922,7 +1027,7 @@ impl State {
         if best == 99 {
             0
         } else {
-            1
+            best as i32
         }
     }
 
@@ -992,7 +1097,8 @@ impl State {
         // Check if it's a monster and the map blocks monsters
         if self.is_monster {
             let blocked = Repository::with_map(|map| {
-                map[m].flags & core::constants::MF_MOVEBLOCK as u64 != 0
+                map[m].flags & (core::constants::MF_SIGHTBLOCK | core::constants::MF_NOMONST) as u64
+                    != 0
             });
             if blocked {
                 return false;
