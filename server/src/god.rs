@@ -108,7 +108,7 @@ impl God {
     pub fn build(character: &mut core::types::Character, character_id: usize, build_type: u32) {
         if !character.is_building() {
             if Self::build_start(character_id) {
-                Self::build_equip(character, build_type);
+                Self::build_equip(character_id, build_type);
             } else {
                 log::error!(
                     "Failed to start build mode for character {}",
@@ -118,305 +118,315 @@ impl God {
         } else if build_type != 0 {
             Self::build_stop(character_id);
         } else {
-            Self::build_equip(character, build_type);
+            Self::build_equip(character_id, build_type);
         }
     }
 
-    pub fn build_equip(character: &mut core::types::Character, build_type: u32) {
-        Repository::with_item_templates(|item_templates| {
-            let mut m = 0;
+    pub fn build_equip(character_id: usize, build_type: u32) {
+        Repository::with_characters_mut(|characters| {
+            let character = &mut characters[character_id];
 
-            match build_type {
-                0 => {
-                    // Map flags
-                    character.item[m] = 0x40000000 | core::constants::MF_MOVEBLOCK;
-                    m += 1;
-                    character.item[m] = 0x40000000 | core::constants::MF_SIGHTBLOCK;
-                    m += 1;
-                    character.item[m] = 0x40000000 | core::constants::MF_INDOORS;
-                    m += 1;
-                    character.item[m] = 0x40000000 | core::constants::MF_ARENA;
-                    m += 1;
-                    character.item[m] = 0x40000000 | core::constants::MF_NOMONST;
-                    m += 1;
-                    character.item[m] = 0x40000000 | core::constants::MF_BANK;
-                    m += 1;
-                    character.item[m] = 0x40000000 | core::constants::MF_TAVERN;
-                    m += 1;
-                    character.item[m] = 0x40000000 | core::constants::MF_NOMAGIC;
-                    m += 1;
-                    character.item[m] = 0x40000000 | core::constants::MF_DEATHTRAP;
-                    m += 1;
-                    character.item[m] = 0x40000000 | core::constants::MF_UWATER;
-                    m += 1;
-                    character.item[m] = 0x40000000 | core::constants::MF_NOLAG;
-                    m += 1;
-                    character.item[m] = 0x40000000 | (core::constants::MF_NOFIGHT as u32);
-                    m += 1;
-                    character.item[m] = 0x40000000 | core::constants::MF_NOEXPIRE;
-                    m += 1;
+            Repository::with_item_templates(|item_templates| {
+                let mut m = 0;
 
-                    // Ground sprites
-                    character.item[m] = 0x20000000 | core::constants::SPR_TUNDRA_GROUND as u32;
-                    m += 1;
-                    character.item[m] = 0x20000000 | core::constants::SPR_DESERT_GROUND as u32;
-                    m += 1;
-                    character.item[m] = 0x20000000 | core::constants::SPR_GROUND1 as u32;
-                    m += 1;
-                    character.item[m] = 0x20000000 | core::constants::SPR_WOOD_GROUND as u32;
-                    m += 1;
-                    character.item[m] = 0x20000000 | core::constants::SPR_TAVERN_GROUND as u32;
-                    m += 1;
-                    character.item[m] = 0x20000000 | core::constants::SPR_STONE_GROUND1 as u32;
-                    m += 1;
-                    character.item[m] = 0x20000000 | core::constants::SPR_STONE_GROUND2 as u32;
-                    m += 1;
+                match build_type {
+                    0 => {
+                        // Map flags
+                        character.item[m] = 0x40000000 | core::constants::MF_MOVEBLOCK;
+                        m += 1;
+                        character.item[m] = 0x40000000 | core::constants::MF_SIGHTBLOCK;
+                        m += 1;
+                        character.item[m] = 0x40000000 | core::constants::MF_INDOORS;
+                        m += 1;
+                        character.item[m] = 0x40000000 | core::constants::MF_ARENA;
+                        m += 1;
+                        character.item[m] = 0x40000000 | core::constants::MF_NOMONST;
+                        m += 1;
+                        character.item[m] = 0x40000000 | core::constants::MF_BANK;
+                        m += 1;
+                        character.item[m] = 0x40000000 | core::constants::MF_TAVERN;
+                        m += 1;
+                        character.item[m] = 0x40000000 | core::constants::MF_NOMAGIC;
+                        m += 1;
+                        character.item[m] = 0x40000000 | core::constants::MF_DEATHTRAP;
+                        m += 1;
+                        character.item[m] = 0x40000000 | core::constants::MF_UWATER;
+                        m += 1;
+                        character.item[m] = 0x40000000 | core::constants::MF_NOLAG;
+                        m += 1;
+                        character.item[m] = 0x40000000 | (core::constants::MF_NOFIGHT as u32);
+                        m += 1;
+                        character.item[m] = 0x40000000 | core::constants::MF_NOEXPIRE;
+                        m += 1;
 
-                    // Additional sprite IDs
-                    character.item[m] = 0x20000000 | 1100;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 1099;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 1109;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 1118;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 1141;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 1158;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 1145;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 1014;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 1003;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 1005;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 1006;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 1007;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 402;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 500;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 558;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 596;
-                    m += 1;
-                }
-                1 => {
-                    for n in 520..=541 {
-                        character.item[m] = 0x20000000 | n;
+                        // Ground sprites
+                        character.item[m] = 0x20000000 | core::constants::SPR_TUNDRA_GROUND as u32;
+                        m += 1;
+                        character.item[m] = 0x20000000 | core::constants::SPR_DESERT_GROUND as u32;
+                        m += 1;
+                        character.item[m] = 0x20000000 | core::constants::SPR_GROUND1 as u32;
+                        m += 1;
+                        character.item[m] = 0x20000000 | core::constants::SPR_WOOD_GROUND as u32;
+                        m += 1;
+                        character.item[m] = 0x20000000 | core::constants::SPR_TAVERN_GROUND as u32;
+                        m += 1;
+                        character.item[m] = 0x20000000 | core::constants::SPR_STONE_GROUND1 as u32;
+                        m += 1;
+                        character.item[m] = 0x20000000 | core::constants::SPR_STONE_GROUND2 as u32;
+                        m += 1;
+
+                        // Additional sprite IDs
+                        character.item[m] = 0x20000000 | 1100;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 1099;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 1109;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 1118;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 1141;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 1158;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 1145;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 1014;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 1003;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 1005;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 1006;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 1007;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 402;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 500;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 558;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 596;
                         m += 1;
                     }
-                }
-                2 => {
-                    for n in 542..=554 {
-                        character.item[m] = 0x20000000 | n;
+                    1 => {
+                        for n in 520..=541 {
+                            character.item[m] = 0x20000000 | n;
+                            m += 1;
+                        }
+                    }
+                    2 => {
+                        for n in 542..=554 {
+                            character.item[m] = 0x20000000 | n;
+                            m += 1;
+                        }
+                    }
+                    3 => {
+                        for n in 130..=145 {
+                            character.item[m] = 0x20000000 | n;
+                            m += 1;
+                        }
+                    }
+                    4 => {
+                        for n in 170..=175 {
+                            character.item[m] = 0x20000000 | n;
+                            m += 1;
+                        }
+                    }
+                    331 => {
+                        character.item[m] = 0x40000000 | core::constants::MF_INDOORS;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 116;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 117;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 118;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 704;
                         m += 1;
                     }
-                }
-                3 => {
-                    for n in 130..=145 {
-                        character.item[m] = 0x20000000 | n;
+                    700 => {
+                        // Black stronghold
+                        character.item[m] = 0x40000000 | core::constants::MF_INDOORS;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 950;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 959;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 16652;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 16653;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 16654;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 16655;
                         m += 1;
                     }
-                }
-                4 => {
-                    for n in 170..=175 {
-                        character.item[m] = 0x20000000 | n;
+                    701 => {
+                        for n in 0..40 {
+                            character.item[m] = 0x20000000 | (n + 16430);
+                            m += 1;
+                        }
+                    }
+                    702 => {
+                        for n in 40..78 {
+                            character.item[m] = 0x20000000 | (n + 16430);
+                            m += 1;
+                        }
+                    }
+                    703 => {
+                        for n in 16584..16599 {
+                            character.item[m] = 0x20000000 | n;
+                            m += 1;
+                        }
+                    }
+                    704 => {
+                        for n in 985..989 {
+                            character.item[m] = 0x20000000 | n;
+                            m += 1;
+                        }
+                    }
+                    705 => {
+                        character.item[m] = 0x20000000 | 1118;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 989;
+                        m += 1;
+                        for n in 16634..16642 {
+                            character.item[m] = 0x20000000 | n;
+                            m += 1;
+                        }
+                    }
+                    819 => {
+                        character.item[m] = 0x40000000 | core::constants::MF_INDOORS;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 16728;
                         m += 1;
                     }
-                }
-                331 => {
-                    character.item[m] = 0x40000000 | core::constants::MF_INDOORS;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 116;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 117;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 118;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 704;
-                    m += 1;
-                }
-                700 => {
-                    // Black stronghold
-                    character.item[m] = 0x40000000 | core::constants::MF_INDOORS;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 950;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 959;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 16652;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 16653;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 16654;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 16655;
-                    m += 1;
-                }
-                701 => {
-                    for n in 0..40 {
-                        character.item[m] = 0x20000000 | (n + 16430);
+                    900 => {
+                        // Graveyard quest
+                        character.item[m] = 0x20000000 | 16933; // lost souls tile
+                        m += 1;
+                        character.item[m] = 0x20000000 | 16934; // grave
+                        m += 1;
+                        character.item[m] = 0x20000000 | 16937; // grave, other dir
                         m += 1;
                     }
-                }
-                702 => {
-                    for n in 40..78 {
-                        character.item[m] = 0x20000000 | (n + 16430);
+                    1000 => {
+                        character.item[m] = 0x40000000 | core::constants::MF_INDOORS;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 1014;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 704;
+                        m += 1;
+
+                        for n in 508..=519 {
+                            character.item[m] = n;
+                            m += 1;
+                        }
+                        character.item[m] = 522;
                         m += 1;
                     }
-                }
-                703 => {
-                    for n in 16584..16599 {
-                        character.item[m] = 0x20000000 | n;
+                    1001 => {
+                        character.item[m] = 0x40000000 | core::constants::MF_INDOORS;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 1118;
+                        m += 1;
+                        character.item[m] = 16;
+                        m += 1;
+                        character.item[m] = 17;
+                        m += 1;
+                        character.item[m] = 45;
+                        m += 1;
+                        character.item[m] = 47;
+                        m += 1;
+                        character.item[m] = 19;
+                        m += 1;
+                        character.item[m] = 20;
+                        m += 1;
+                        character.item[m] = 48;
+                        m += 1;
+                        character.item[m] = 49;
+                        m += 1;
+                        character.item[m] = 606;
+                        m += 1;
+                        character.item[m] = 607;
+                        m += 1;
+                        character.item[m] = 608;
+                        m += 1;
+                        character.item[m] = 609;
+                        m += 1;
+                        character.item[m] = 611;
                         m += 1;
                     }
-                }
-                704 => {
-                    for n in 985..989 {
-                        character.item[m] = 0x20000000 | n;
+                    1002 => {
+                        // Ice penta
+                        character.item[m] = 0x40000000 | core::constants::MF_INDOORS;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 16670;
+                        m += 1;
+
+                        for n in 800..=812 {
+                            character.item[m] = n;
+                            m += 1;
+                        }
+                    }
+                    1003 => {
+                        character.item[m] = 0x20000000 | 16980;
                         m += 1;
                     }
-                }
-                705 => {
-                    character.item[m] = 0x20000000 | 1118;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 989;
-                    m += 1;
-                    for n in 16634..16642 {
-                        character.item[m] = 0x20000000 | n;
+                    1140 => {
+                        character.item[m] = 0x20000000 | 17064;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 17065;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 17066;
+                        m += 1;
+                        character.item[m] = 0x20000000 | 17067;
                         m += 1;
                     }
+                    _ => {}
                 }
-                819 => {
-                    character.item[m] = 0x40000000 | core::constants::MF_INDOORS;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 16728;
-                    m += 1;
-                }
-                900 => {
-                    // Graveyard quest
-                    character.item[m] = 0x20000000 | 16933; // lost souls tile
-                    m += 1;
-                    character.item[m] = 0x20000000 | 16934; // grave
-                    m += 1;
-                    character.item[m] = 0x20000000 | 16937; // grave, other dir
-                    m += 1;
-                }
-                1000 => {
-                    character.item[m] = 0x40000000 | core::constants::MF_INDOORS;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 1014;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 704;
-                    m += 1;
 
-                    for n in 508..=519 {
-                        character.item[m] = n;
-                        m += 1;
+                // Fill inventory with other stuff upward from last item
+                for n in build_type as usize..core::constants::MAXTITEM as usize {
+                    if m >= 40 {
+                        break;
                     }
-                    character.item[m] = 522;
-                    m += 1;
-                }
-                1001 => {
-                    character.item[m] = 0x40000000 | core::constants::MF_INDOORS;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 1118;
-                    m += 1;
-                    character.item[m] = 16;
-                    m += 1;
-                    character.item[m] = 17;
-                    m += 1;
-                    character.item[m] = 45;
-                    m += 1;
-                    character.item[m] = 47;
-                    m += 1;
-                    character.item[m] = 19;
-                    m += 1;
-                    character.item[m] = 20;
-                    m += 1;
-                    character.item[m] = 48;
-                    m += 1;
-                    character.item[m] = 49;
-                    m += 1;
-                    character.item[m] = 606;
-                    m += 1;
-                    character.item[m] = 607;
-                    m += 1;
-                    character.item[m] = 608;
-                    m += 1;
-                    character.item[m] = 609;
-                    m += 1;
-                    character.item[m] = 611;
-                    m += 1;
-                }
-                1002 => {
-                    // Ice penta
-                    character.item[m] = 0x40000000 | core::constants::MF_INDOORS;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 16670;
-                    m += 1;
 
-                    for n in 800..=812 {
-                        character.item[m] = n;
-                        m += 1;
+                    if item_templates[n].used == core::constants::USE_EMPTY {
+                        continue;
                     }
-                }
-                1003 => {
-                    character.item[m] = 0x20000000 | 16980;
+
+                    if item_templates[n].flags & core::constants::ItemFlags::IF_TAKE.bits() != 0 {
+                        continue;
+                    }
+
+                    if item_templates[n].driver == 25 && item_templates[n].data[3] == 0 {
+                        continue;
+                    }
+
+                    if item_templates[n].driver == 22 {
+                        continue;
+                    }
+
+                    character.item[m] = n as u32;
                     m += 1;
                 }
-                1140 => {
-                    character.item[m] = 0x20000000 | 17064;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 17065;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 17066;
-                    m += 1;
-                    character.item[m] = 0x20000000 | 17067;
-                    m += 1;
-                }
-                _ => {}
-            }
 
-            // Fill inventory with other stuff upward from last item
-            for n in build_type as usize..core::constants::MAXTITEM as usize {
-                if m >= 40 {
-                    break;
-                }
+                log::info!(
+                    "Build mode {} set for character {}",
+                    build_type,
+                    character.get_name()
+                );
 
-                if item_templates[n].used == core::constants::USE_EMPTY {
-                    continue;
-                }
-
-                if item_templates[n].flags & core::constants::ItemFlags::IF_TAKE.bits() != 0 {
-                    continue;
-                }
-
-                if item_templates[n].driver == 25 && item_templates[n].data[3] == 0 {
-                    continue;
-                }
-
-                if item_templates[n].driver == 22 {
-                    continue;
-                }
-
-                character.item[m] = n as u32;
-                m += 1;
-            }
-
-            log::info!(
-                "Build mode {} set for character {}",
-                build_type,
-                character.get_name()
-            );
-
-            // TODO: Send message via do_char_log?
+                State::with(|state| {
+                    state.do_character_log(
+                        character_id,
+                        core::types::FontColor::Blue,
+                        "You are now in build mode. To exit, use the build command again.\n",
+                    );
+                })
+            });
         })
     }
 
@@ -431,14 +441,30 @@ impl God {
         });
 
         if let Some(companion_id) = companion {
-            // do character log:    do_char_log( cn, 0, "Get rid of %s first.\n", ch[ co ].name );
+            let companion_name = Repository::with_characters(|characters| {
+                characters[companion_id].get_name().to_string()
+            });
+            State::with(|state| {
+                state.do_character_log(
+                    character_id,
+                    core::types::FontColor::Red,
+                    &format!("Get rid of your companion '{}' first.\n", companion_name),
+                );
+            });
+
             return false;
         }
 
         let character_id_to_hold_inventory = Self::create_char(1, false);
 
         if character_id_to_hold_inventory.is_none() {
-            // do character log:    do_char_log( cn, 0, "Failed to create temporary character to hold items for build mode.\n" );
+            State::with(|state| {
+                state.do_character_log(
+                    character_id,
+                    core::types::FontColor::Red,
+                    "Failed to create temporary character to hold your items for build mode.\n",
+                );
+            });
             log::error!(
                 "Failed to create temporary character to hold items for build mode for character ID {}",
                 character_id
@@ -500,8 +526,15 @@ impl God {
             // Reset build mode
             character.flags &= !core::constants::CharacterFlags::CF_BUILDMODE.bits();
             character.misc_action = 0; // DR_IDLE
-                                       // TODO: Add logging when logging system is complete
-                                       // do_char_log(character_id, 3, "Now out of build mode.\n");
+
+            State::with(|state| {
+                state.do_character_log(
+                    character_id,
+                    core::types::FontColor::Blue,
+                    "You are now out of build mode.\n",
+                );
+            });
+
             log::info!("Character {} now out of build mode", character.get_name());
         });
 
@@ -515,7 +548,14 @@ impl God {
                 "Could not find item holder for character {} when stopping build mode",
                 character_id
             );
-            // do_char_log( character_id, 0, "Could not find your item holder!\n" );
+
+            State::with(|state| {
+                state.do_character_log(
+                    character_id,
+                    core::types::FontColor::Red,
+                    "Could not find your item holder!\n",
+                );
+            });
             return;
         }
 

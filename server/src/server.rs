@@ -1,23 +1,54 @@
 use core::constants::MAXPLAYER;
-use std::rc::Rc;
+use std::sync::{OnceLock, RwLock};
 
 use crate::lab9::Labyrinth9;
 use crate::network_manager::NetworkManager;
 use crate::repository::Repository;
 use crate::state::State;
 
-pub struct Server {
-    players: [core::types::ServerPlayer; MAXPLAYER],
-}
+static PLAYERS: OnceLock<RwLock<[core::types::ServerPlayer; MAXPLAYER]>> = OnceLock::new();
+
+pub struct Server {}
 
 impl Server {
     pub fn new() -> Self {
-        Server {
-            players: std::array::from_fn(|_| core::types::ServerPlayer::new()),
-        }
+        Server {}
+    }
+
+    pub fn initialize_players() -> Result<(), String> {
+        let players = std::array::from_fn(|_| core::types::ServerPlayer::new());
+        PLAYERS
+            .set(RwLock::new(players))
+            .map_err(|_| "Players already initialized".to_string())?;
+        Ok(())
+    }
+
+    pub fn with_players<F, R>(f: F) -> R
+    where
+        F: FnOnce(&[core::types::ServerPlayer]) -> R,
+    {
+        let players = PLAYERS
+            .get()
+            .expect("Players not initialized")
+            .read()
+            .unwrap();
+        f(&players[..])
+    }
+
+    pub fn with_players_mut<F, R>(f: F) -> R
+    where
+        F: FnOnce(&mut [core::types::ServerPlayer]) -> R,
+    {
+        let mut players = PLAYERS
+            .get()
+            .expect("Players not initialized")
+            .write()
+            .unwrap();
+        f(&mut players[..])
     }
 
     pub fn initialize(&mut self) -> Result<(), String> {
+        Server::initialize_players()?;
         Repository::initialize()?;
         State::initialize()?;
         NetworkManager::initialize()?;

@@ -1,5 +1,5 @@
 use core::constants::{CharacterFlags, MAXCHARS, MAXPLAYER};
-use core::types::Character;
+use core::types::{Character, ServerPlayer};
 use std::cmp;
 use std::rc::Rc;
 use std::sync::{OnceLock, RwLock};
@@ -9,6 +9,7 @@ use crate::god::God;
 use crate::network_manager::NetworkManager;
 use crate::path_finding::PathFinder;
 use crate::repository::Repository;
+use crate::server::Server;
 
 static STATE: OnceLock<RwLock<State>> = OnceLock::new();
 
@@ -140,8 +141,7 @@ impl State {
 
                         for i in 0..messages_to_send.len() {
                             self.do_character_log(
-                                Some((character_id, character)),
-                                &player,
+                                character_id,
                                 core::types::FontColor::Red,
                                 messages_to_send[i],
                             );
@@ -151,8 +151,7 @@ impl State {
 
                         if character.a_hp < 500 {
                             self.do_character_log(
-                                Some((character_id, character)),
-                                &player,
+                                character_id,
                                 core::types::FontColor::Red,
                                 String::from("The demon killed you.\n \n").as_str(),
                             );
@@ -166,8 +165,7 @@ impl State {
                                 );
 
                                 self.do_character_log(
-                                    Some((character_id, character)),
-                                    &player,
+                                    character_id,
                                     core::types::FontColor::Red,
                                     money_stolen_message.as_str(),
                                 );
@@ -176,8 +174,7 @@ impl State {
 
                                 if character.citem != 0 && character.citem & 0x80000000 == 0 {
                                     self.do_character_log(
-                                        Some((character_id, character)),
-                                        &player,
+                                        character_id,
                                         core::types::FontColor::Red,
                                         "The demon also takes the money in your hand!\n",
                                     );
@@ -376,50 +373,63 @@ impl State {
 
     pub fn do_character_log(
         &self,
-        character: Option<(usize, &core::types::Character)>,
-        player: &Option<(usize, &mut core::types::ServerPlayer)>,
+        character_id: usize,
         font: core::types::FontColor,
         message: &str,
     ) {
-        if let Some((character_id, ch)) = character {
+        Repository::with_characters(|characters| {
+            let ch = &characters[character_id];
             if ch.player == 0 && ch.temp != 15 {
+                log::warn!(
+                    "do_character_log: Character '{}' has no associated player.",
+                    ch.get_name(),
+                );
                 return;
             }
 
-            self.do_log(Some((character_id, ch)), player, font, message);
-        }
+            self.do_log(character_id, font, message);
+        });
     }
 
     pub fn do_log(
         &self, // TODO: Rework these functions to pass in just the ids around
-        character: Option<(usize, &core::types::Character)>,
-        player: &Option<(usize, &mut core::types::ServerPlayer)>,
+        character_id: usize,
         font: core::types::FontColor,
         message: &str,
     ) {
         let mut buffer: [u8; 16] = [0; 16];
 
-        if let Some((character_id, ch)) = character {
-            let player_id = ch.player;
+        Repository::with_characters(|characters| {
+            let ch = &characters[character_id];
 
-            if player_id < 1 || player_id as usize >= MAXPLAYER {
+            if !ServerPlayer::is_sane_player(ch.player as usize)
+                || (ch.flags & CharacterFlags::CF_PLAYER.bits()) == 0
+            {
+                let id = ch.player;
                 log::error!(
                     "do_log: Invalid player ID {} for character '{}'",
-                    player_id,
+                    id,
                     ch.get_name(),
                 );
                 return;
             }
 
-            if let Some((_, player)) = player {
-                if player.usnr != character_id {
-                    return;
+            let matching_player_id = Server::with_players(|players| {
+                for i in 0..MAXPLAYER as usize {
+                    if players[i].usnr == character_id {
+                        return Some(i);
+                    }
                 }
-            } else {
-                log::warn!(
-                    "do_log: No player reference for character '{}'",
+
+                None
+            });
+
+            if matching_player_id.is_none() {
+                log::error!(
+                    "do_log: No matching player found for character '{}'",
                     ch.get_name(),
                 );
+                return;
             }
 
             let mut bytes_sent: usize = 0;
@@ -437,11 +447,58 @@ impl State {
                 }
 
                 NetworkManager::with(|network| {
-                    network.xsend(player_id as usize, &buffer, 16);
+                    network.xsend(matching_player_id.unwrap() as usize, &buffer, 16);
                 });
 
                 bytes_sent += 15;
             }
+        });
+    }
+
+    fn do_area_log(
+        &self,
+        cn: usize,
+        co: usize,
+        xs: i32,
+        ys: i32,
+        font: core::types::FontColor,
+        message: &str,
+    ) {
+        let x_min = cmp::max(0, xs - 12);
+        let x_max = cmp::min(core::constants::MAPX as i32, xs + 13);
+        let y_min = cmp::max(0, ys - 12);
+        let y_max = cmp::min(core::constants::MAPY as i32, ys + 13);
+
+        let mut recipients: Vec<usize> = Vec::new();
+
+        Repository::with_map(|map| {
+            for y in y_min..y_max {
+                let row_base = y * core::constants::MAPX as i32;
+                for x in x_min..x_max {
+                    let idx = (x + row_base) as usize;
+                    let cc = map[idx].ch as usize;
+                    if cc == 0 || cc == cn || cc == co {
+                        continue;
+                    }
+                    recipients.push(cc);
+                }
+            }
+        });
+
+        let recipients: Vec<usize> = Repository::with_characters(|characters| {
+            recipients
+                .into_iter()
+                .filter(|cc| {
+                    *cc < MAXCHARS as usize
+                        && characters[*cc].used == core::constants::USE_ACTIVE
+                        && characters[*cc].player != 0
+                        && (characters[*cc].flags & CharacterFlags::CF_PLAYER.bits()) != 0
+                })
+                .collect()
+        });
+
+        for cc in recipients {
+            self.do_character_log(cc, font, message);
         }
     }
 
@@ -450,7 +507,6 @@ impl State {
         _repository: &Repository,
         map_tiles: &mut [core::types::Map],
         see_map: &mut [core::types::SeeMap],
-        character: &core::types::Character,
         x_center: i32,
         y_center: i32,
         mut strength: i32,
@@ -970,5 +1026,152 @@ impl State {
         }
 
         true
+    }
+
+    /// Port of original `do_sayx(int cn, char* format, ...)` from `svr_do.cpp`.
+    ///
+    /// The C++ version formats a message into a local buffer, runs `process_options`,
+    /// and then sends a local area log message with different fonts for player/NPC.
+    pub fn do_sayx(&self, character_id: usize, message: &str) {
+        let mut buf = message.to_string();
+        Self::process_options(character_id, &mut buf);
+
+        let (x, y, is_player, name) = Repository::with_characters(|characters| {
+            let ch = &characters[character_id];
+            (
+                ch.x as i32,
+                ch.y as i32,
+                (ch.flags & CharacterFlags::CF_PLAYER.bits()) != 0,
+                ch.get_name().to_string(),
+            )
+        });
+
+        let name_short: String = name.chars().take(30).collect();
+        let msg_short: String = buf.chars().take(300).collect();
+
+        let line = format!("{}: \"{}\"\n", name_short, msg_short);
+
+        let font = if is_player {
+            core::types::FontColor::Blue
+        } else {
+            core::types::FontColor::Yellow
+        };
+
+        self.do_area_log(0, 0, x, y, font, &line);
+    }
+
+    fn char_play_sound(character_id: usize, sound: i32, vol: i32, pan: i32) {
+        let matching_player_id = Server::with_players(|players| {
+            for i in 0..MAXPLAYER as usize {
+                if players[i].usnr == character_id {
+                    return Some(i);
+                }
+            }
+            None
+        });
+
+        let Some(player_id) = matching_player_id else {
+            return;
+        };
+
+        let mut buf: [u8; 16] = [0; 16];
+        buf[0] = core::constants::SV_PLAYSOUND;
+        buf[1..5].copy_from_slice(&sound.to_le_bytes());
+        buf[5..9].copy_from_slice(&vol.to_le_bytes());
+        buf[9..13].copy_from_slice(&pan.to_le_bytes());
+
+        NetworkManager::with(|network| {
+            network.xsend(player_id, &buf, 13);
+        });
+    }
+
+    fn do_area_sound(cn: usize, co: usize, xs: i32, ys: i32, nr: i32) {
+        let x_min = cmp::max(0, xs - 8);
+        let x_max = cmp::min(core::constants::MAPX as i32, xs + 9);
+        let y_min = cmp::max(0, ys - 8);
+        let y_max = cmp::min(core::constants::MAPY as i32, ys + 9);
+
+        let mut recipients: Vec<(usize, i32, i32)> = Vec::new();
+
+        Repository::with_map(|map| {
+            for y in y_min..y_max {
+                let row_base = y * core::constants::MAPX as i32;
+                for x in x_min..x_max {
+                    let idx = (x + row_base) as usize;
+                    let cc = map[idx].ch as usize;
+                    if cc == 0 || cc == cn || cc == co {
+                        continue;
+                    }
+
+                    let s = ys - y + xs - x;
+                    let xpan = if s < 0 {
+                        -500
+                    } else if s > 0 {
+                        500
+                    } else {
+                        0
+                    };
+
+                    let dist2 = (ys - y) * (ys - y) + (xs - x) * (xs - x);
+                    let mut xvol = -150 - dist2 * 30;
+                    if xvol < -5000 {
+                        xvol = -5000;
+                    }
+
+                    recipients.push((cc, xvol, xpan));
+                }
+            }
+        });
+
+        let recipients_with_player: Vec<(usize, i32, i32)> =
+            Repository::with_characters(|characters| {
+                recipients
+                    .into_iter()
+                    .filter(|(cc, _, _)| characters[*cc].player != 0)
+                    .collect()
+            });
+
+        for (cc, vol, pan) in recipients_with_player {
+            Self::char_play_sound(cc, nr, vol, pan);
+        }
+    }
+
+    /// Port of original `process_options(int cn, char* buf)` from `svr_do.cpp`.
+    ///
+    /// Supports a leading `#<digits>###` option prefix:
+    /// - Parses the integer sound id after the first '#'
+    /// - Strips the `#<digits>` and any additional leading '#' characters
+    /// - If the parsed sound id is non-zero, plays it to nearby players (excluding the speaker)
+    pub fn process_options(character_id: usize, buf: &mut String) {
+        if !buf.starts_with('#') {
+            return;
+        }
+
+        let bytes = buf.as_bytes();
+        let mut idx: usize = 1; // skip initial '#'
+
+        while idx < bytes.len() && bytes[idx].is_ascii_digit() {
+            idx += 1;
+        }
+
+        let sound_id: i32 = if idx > 1 {
+            buf[1..idx].parse::<i32>().unwrap_or(0)
+        } else {
+            0
+        };
+
+        while idx < bytes.len() && bytes[idx] == b'#' {
+            idx += 1;
+        }
+
+        buf.drain(..idx);
+
+        if sound_id != 0 {
+            let (x, y) = Repository::with_characters(|characters| {
+                let ch = &characters[character_id];
+                (ch.x as i32, ch.y as i32)
+            });
+            Self::do_area_sound(character_id, 0, x, y, sound_id);
+        }
     }
 }

@@ -118,4 +118,8 @@ impl ServerPlayer {
             changed_field: [0; TILEX * TILEY],
         }
     }
+
+    pub fn is_sane_player(player_index: usize) -> bool {
+        player_index < crate::constants::MAXPLAYER as usize
+    }
 }

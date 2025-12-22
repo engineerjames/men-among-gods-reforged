@@ -478,12 +478,16 @@ impl Labyrinth9 {
             }
 
             if found {
-                // Call do_sayx here
-                //     do_sayx( riddler,
-                //  "That's absolutely correct, %s! "
-                //  "For solving my riddle, I will advance you in your quest. "
-                //  "Close your eyes and...\n",
-                //  ch[ cn ].name );
+                State::with(|state| {
+                    state.do_sayx(
+                        riddler as usize,
+                        format!(
+                            "That's absolutely correct, {}! \nFor solving my riddle, I will advance you in your quest. \nClose your eyes and...\n",
+                            characters[character_id].get_name()
+                        ).as_str(),
+                    );
+                });
+
                 if God::transfer_char(
                     character_id,
                     DESTINATIONS[guesser_index as usize].x as usize,
@@ -498,7 +502,12 @@ impl Labyrinth9 {
                         "Failed to transfer character {} to destination after solving riddle.",
                         character_id
                     );
-                    //       do_sayx( riddler, "Oops! Something went wrong. Please try again a bit later.\n" );
+                    State::with(|state| {
+                        state.do_sayx(
+                            riddler as usize,
+                            "Oops! Something went wrong. Please try again a bit later.\n",
+                        );
+                    });
                 }
                 return true;
             } else {
@@ -521,5 +530,36 @@ impl Labyrinth9 {
 
             return true;
         })
+    }
+
+    pub fn lab9_pose_riddle(riddler_id: usize, character_id: usize) {
+        let riddle_index = Repository::with_characters(|characters| {
+            characters[riddler_id].data[72] - core::constants::RIDDLE_MIN_AREA
+        });
+
+        let riddle_number = 1 + rand::random::<i32>() % (core::constants::MAX_RIDDLES as i32);
+        Labyrinth9::with_mut(|lab| {
+            let question = lab.riddles[riddle_index as usize][riddle_number as usize - 1].question;
+            lab.guesser[riddle_index as usize] = character_id as i32;
+            lab.riddleno[riddle_index as usize] = riddle_number;
+            lab.riddle_timeout[riddle_index as usize] = core::constants::RIDDLE_TIMEOUT;
+            lab.riddle_attempts[riddle_index as usize] = core::constants::RIDDLE_ATTEMPTS;
+
+            State::with_mut(|state| {
+                state.do_sayx(
+                    riddler_id,
+                    format!(
+                        "Here is a riddle. You have 3 minutes and {} attempts to say the correct answer.\n",
+                        lab.riddle_attempts[riddle_index as usize],
+                    ).as_str(),
+                );
+
+                state.do_sayx(riddler_id, question);
+            });
+        });
+
+        Repository::with_characters_mut(|characters| {
+            characters[character_id].data[core::constants::CHD_RIDDLER] = riddler_id as i32;
+        });
     }
 }
