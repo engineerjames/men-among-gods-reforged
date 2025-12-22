@@ -532,6 +532,47 @@ impl State {
         self.check_vis(tx, ty)
     }
 
+    pub fn can_map_go(&mut self, fx: i32, fy: i32, max_distance: i32) {
+        // Clear the visibility array
+        self._visi.fill(0);
+
+        self.ox = fx;
+        self.oy = fy;
+
+        self.add_vis(fx, fy, 1);
+
+        for dist in 1..(max_distance + 1) {
+            let xc = fx;
+            let yc = fy;
+
+            // Top and bottom horizontal lines
+            for x in (xc - dist)..=(xc + dist) {
+                let y = yc - dist;
+                if self.close_vis_see(x, y, dist as i8) {
+                    self.add_vis(x, y, dist + 1);
+                }
+
+                let y = yc + dist;
+                if self.close_vis_see(x, y, dist as i8) {
+                    self.add_vis(x, y, dist + 1);
+                }
+            }
+
+            // Left and right vertical lines (excluding corners already done)
+            for y in (yc - dist + 1)..=(yc + dist - 1) {
+                let x = xc - dist;
+                if self.close_vis_see(x, y, dist as i8) {
+                    self.add_vis(x, y, dist + 1);
+                }
+
+                let x = xc + dist;
+                if self.close_vis_see(x, y, dist as i8) {
+                    self.add_vis(x, y, dist + 1);
+                }
+            }
+        }
+    }
+
     pub fn can_map_see(&mut self, fx: i32, fy: i32, max_distance: i32) {
         // Clear the visibility array
         self._visi.fill(0);

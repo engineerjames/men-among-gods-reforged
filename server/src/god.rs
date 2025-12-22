@@ -1,4 +1,4 @@
-use core::types::Map;
+use core::types::{Character, Map};
 
 use crate::{enums::CharacterFlags, repository::Repository};
 use rand::Rng;
@@ -565,6 +565,88 @@ impl God {
 
             characters[character_id].set_do_update_flags();
         });
+    }
+
+    pub fn transfer_char(character_id: usize, x: usize, y: usize) -> bool {
+        if !Character::is_sane_character(character_id) || !Map::is_sane_coordinates(x, y) {
+            log::error!(
+                "Invalid character ID {} or coordinates ({}, {}) in transfer_char",
+                character_id,
+                x,
+                y
+            );
+            return false;
+        }
+
+        Repository::with_characters_mut(|characters| {
+            let character = &mut characters[character_id];
+            character.status = 0;
+            character.attack_cn = 0;
+            character.skill_nr = 0;
+            character.goto_x = x as u16;
+            character.goto_y = y as u16; // TODO: This was missing before... should this be here?
+        });
+
+        // TODO: Call plr_map_remove here when map system is implemented
+
+        let positions_to_try: [(usize, usize); 5] =
+            [(x, y), (x + 3, y), (x, y + 3), (x - 3, y), (x, y - 3)];
+
+        for (try_x, try_y) in positions_to_try.iter() {
+            if Self::drop_char_fuzzy_large(character_id, *try_x, *try_y, x, y) {
+                return true;
+            }
+        }
+
+        // TODO: Call plr_map_set here when map system is implemented
+
+        return false;
+    }
+
+    pub fn drop_char_fuzzy_large(
+        character_id: usize,
+        x: usize,
+        y: usize,
+        center_x: usize,
+        center_y: usize,
+    ) -> bool {
+        // TODO: Refactor this stupid function later
+        let positions_to_try: [(usize, usize); 25] = [
+            (x + 0, y + 0),
+            (x + 1, y + 0),
+            (x - 1, y + 0),
+            (x + 0, y + 1),
+            (x + 0, y - 1),
+            (x + 1, y + 1),
+            (x + 1, y - 1),
+            (x - 1, y + 1),
+            (x - 1, y - 1),
+            (x + 2, y - 2),
+            (x + 2, y - 1),
+            (x + 2, y + 0),
+            (x + 2, y + 1),
+            (x + 2, y + 2),
+            (x - 2, y - 2),
+            (x - 2, y - 1),
+            (x - 2, y + 0),
+            (x - 2, y + 1),
+            (x - 2, y + 2),
+            (x - 1, y + 2),
+            (x + 0, y + 2),
+            (x + 1, y + 2),
+            (x - 1, y - 2),
+            (x + 0, y - 2),
+            (x + 1, y - 2),
+        ];
+
+        for (try_x, try_y) in positions_to_try.iter() {
+            // Also check can_map_go here
+            if Self::drop_char(character_id, *try_x, *try_y) {
+                return true;
+            }
+        }
+
+        true
     }
 
     pub fn create_char(template_id: usize, with_items: bool) -> Option<i32> {
