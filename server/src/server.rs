@@ -51,8 +51,6 @@ impl Server {
 
         // Initialize subsystems
         // state.init_lab9();
-        // state.god_init_freelist();
-        // state.god_read_banlist();
         // state.reset_changed_items();
 
         // remove lab items from all players (leave this here for a while!)

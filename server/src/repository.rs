@@ -461,18 +461,6 @@ impl Repository {
         f(&repo.character_templates)
     }
 
-    pub fn with_character_templates_mut<F, R>(f: F) -> R
-    where
-        F: FnOnce(&mut [core::types::Character]) -> R,
-    {
-        let mut repo = REPOSITORY
-            .get()
-            .expect("Repository not initialized")
-            .write()
-            .unwrap();
-        f(&mut repo.character_templates)
-    }
-
     pub fn with_characters_mut<F, R>(f: F) -> R
     where
         F: FnOnce(&mut [core::types::Character]) -> R,

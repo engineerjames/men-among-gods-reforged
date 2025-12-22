@@ -1,7 +1,6 @@
-use core::types::{Character, Map};
+use core::types::Map;
 
 use crate::{enums::CharacterFlags, repository::Repository};
-use chrono::format;
 use rand::Rng;
 
 pub struct God {}
@@ -108,8 +107,18 @@ impl God {
 
     pub fn build(character: &mut core::types::Character, character_id: usize, build_type: u32) {
         if !character.is_building() {
+            if Self::build_start(character_id) {
+                Self::build_equip(character, build_type);
+            } else {
+                log::error!(
+                    "Failed to start build mode for character {}",
+                    character.get_name()
+                );
+            }
         } else if build_type != 0 {
+            Self::build_stop(character_id);
         } else {
+            Self::build_equip(character, build_type);
         }
     }
 
@@ -430,6 +439,10 @@ impl God {
 
         if character_id_to_hold_inventory.is_none() {
             // do character log:    do_char_log( cn, 0, "Failed to create temporary character to hold items for build mode.\n" );
+            log::error!(
+                "Failed to create temporary character to hold items for build mode for character ID {}",
+                character_id
+            );
             return false;
         }
 
@@ -467,6 +480,91 @@ impl God {
             characters[character_id].set_do_update_flags();
         });
         return true;
+    }
+
+    pub fn build_stop(character_id: usize) {
+        if !core::types::Character::is_sane_character(character_id) {
+            log::error!("Invalid character ID {} in build_stop", character_id);
+            return;
+        }
+
+        // Empty builder's inventory
+        Repository::with_characters_mut(|characters| {
+            let character = &mut characters[character_id];
+
+            for n in 0..40 {
+                character.item[n] = 0;
+            }
+            character.citem = 0;
+
+            // Reset build mode
+            character.flags &= !core::constants::CharacterFlags::CF_BUILDMODE.bits();
+            character.misc_action = 0; // DR_IDLE
+                                       // TODO: Add logging when logging system is complete
+                                       // do_char_log(character_id, 3, "Now out of build mode.\n");
+            log::info!("Character {} now out of build mode", character.get_name());
+        });
+
+        // Retrieve inventory from item holder
+        let companion_id = Repository::with_characters(|characters| {
+            characters[character_id].data[core::constants::CHD_COMPANION] as usize
+        });
+
+        if companion_id == 0 {
+            log::error!(
+                "Could not find item holder for character {} when stopping build mode",
+                character_id
+            );
+            // do_char_log( character_id, 0, "Could not find your item holder!\n" );
+            return;
+        }
+
+        Repository::with_characters_mut(|characters| {
+            // Collect inventory data from companion first
+            let mut items_to_transfer = Vec::new();
+            let companion_citem;
+
+            {
+                let companion = &mut characters[companion_id];
+                for n in 0..40 {
+                    items_to_transfer.push((n, companion.item[n]));
+                    companion.item[n] = 0;
+                }
+                companion_citem = companion.citem;
+                companion.citem = 0;
+
+                // Destroy item holder (companion)
+                // TODO: plr_map_remove(companion_id) when map system is implemented
+                companion.used = core::constants::USE_EMPTY;
+                characters[character_id].data[core::constants::CHD_COMPANION] = 0;
+            }
+
+            // Transfer inventory from companion to builder
+            for (n, item_id) in items_to_transfer {
+                if item_id != 0 {
+                    characters[character_id].item[n] = item_id;
+
+                    // Update item's carrier
+                    Repository::with_items_mut(|items| {
+                        if core::types::Item::is_sane_item(item_id as usize) {
+                            items[item_id as usize].carried = character_id as u16;
+                        }
+                    });
+                }
+            }
+
+            // Transfer citem from companion to builder
+            characters[character_id].citem = companion_citem;
+            if companion_citem != 0 {
+                Repository::with_items_mut(|items| {
+                    if core::types::Item::is_sane_item(companion_citem as usize) {
+                        items[companion_citem as usize].carried = character_id as u16;
+                    }
+                });
+            }
+
+            characters[character_id].set_do_update_flags();
+        });
     }
 
     pub fn create_char(template_id: usize, with_items: bool) -> Option<i32> {
