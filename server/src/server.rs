@@ -1,6 +1,7 @@
 use core::constants::MAXPLAYER;
 use std::rc::Rc;
 
+use crate::lab9::Labyrinth9;
 use crate::network_manager::NetworkManager;
 use crate::repository::Repository;
 use crate::state::State;
@@ -50,7 +51,7 @@ impl Server {
         }
 
         // Initialize subsystems
-        // state.init_lab9();
+        Labyrinth9::init();
         // state.reset_changed_items();
 
         // remove lab items from all players (leave this here for a while!)

@@ -1,5 +1,6 @@
 mod enums;
 mod god;
+mod lab9;
 mod network_manager;
 mod path_finding;
 mod repository;
