@@ -746,3 +746,19 @@ pub const BANK_QUESTIONS: usize = 8;
 pub const MAX_BEST: usize = 10;
 /// Profiling frequency in seconds
 pub const PROF_FREQ: i32 = 2;
+
+// =============================================================================
+// Driver Constants (from driverconstants.h)
+// =============================================================================
+
+pub const DR_IDLE: u32 = 0;
+pub const DR_DROP: u32 = 1;
+pub const DR_PICKUP: u32 = 2;
+pub const DR_GIVE: u32 = 3;
+pub const DR_USE: u32 = 4;
+pub const DR_BOW: u32 = 5;
+pub const DR_WAVE: u32 = 6;
+pub const DR_TURN: u32 = 7;
+pub const DR_SINGLEBUILD: u32 = 8;
+pub const DR_AREABUILD1: u32 = 9;
+pub const DR_AREABUILD2: u32 = 10;

@@ -521,7 +521,6 @@ pub fn npc_shout(cn: usize, co: usize, code: i32, x: i32, y: i32) -> i32 {
             } else {
                 String::new()
             };
-            drop(characters);
 
             npc_saytext_n(
                 cn,
@@ -833,9 +832,72 @@ pub fn npc_can_spell(cn: usize, co: usize, spell: usize) -> bool {
     })
 }
 
-pub fn npc_quaff_potion(cn: usize, itemp: i32, stemp: i32) -> i32 {
-    // TODO: Implement potion quaffing logic
-    0
+pub fn npc_quaff_potion(cn: usize, itemp: i32, stemp: i32) -> bool {
+    Repository::with_characters(|ch| {
+        for n in 0..20 {
+            let item_index = ch[cn].spell[n];
+
+            if item_index == 0 {
+                continue;
+            }
+
+            let should_return_false = Repository::with_items(|it| {
+                if it[item_index as usize].temp as i32 == stemp {
+                    return true;
+                }
+                false
+            });
+
+            if should_return_false {
+                return false;
+            }
+        }
+
+        // Find potion and quaff it
+        let (should_quaff, name): (bool, String) = Repository::with_items(|it| {
+            for n in 0..40 {
+                let item_index = ch[cn].item[n];
+
+                if item_index == 0 {
+                    continue;
+                }
+
+                if it[item_index as usize].temp == itemp as u16 {
+                    return (
+                        true,
+                        String::from_utf8_lossy(&it[item_index as usize].name)
+                            .into_owned()
+                            .into(),
+                    );
+                }
+            }
+
+            (false, String::new().into())
+        });
+
+        if !should_quaff {
+            return false;
+        }
+
+        State::with(|state| {
+            state.do_area_log(
+                cn,
+                0,
+                ch[cn].x as i32,
+                ch[cn].y as i32,
+                core::types::FontColor::Yellow,
+                &format!(
+                    "The {} uses a {}.\n",
+                    String::from_utf8_lossy(&ch[cn].name),
+                    name
+                ),
+            )
+        });
+
+        // TODO: use_driver(cn, in, 1);
+
+        true
+    })
 }
 
 pub fn die_companion(cn: usize) {
@@ -898,8 +960,534 @@ pub fn npc_driver_low(cn: usize) {
         return;
     }
 
-    // TODO: Implement full low priority driver logic
-    // This is a very large function with patrol, random walk, etc.
+    let ticker = Repository::with_globals(|globals| globals.ticker);
+    let flags = Repository::with_globals(|globals| globals.flags);
+
+    // Handle action results
+    Repository::with_characters_mut(|characters| {
+        if characters[cn].last_action == ERR_SUCCESS as i8 {
+            characters[cn].data[36] = 0; // Reset frust with successful action
+        } else if characters[cn].last_action == ERR_FAILED as i8 {
+            characters[cn].data[36] += 1; // Increase frust with failed action
+        }
+    });
+
+    // Are we supposed to loot graves?
+    let (alignment, temp, character_flags) = Repository::with_characters(|characters| {
+        (
+            characters[cn].alignment,
+            characters[cn].temp,
+            characters[cn].flags,
+        )
+    });
+
+    if alignment < 0
+        && (flags & GF_LOOTING) != 0
+        && ((cn & 15) == (ticker as usize & 15)
+            || (character_flags & CharacterFlags::CF_ISLOOTING.bits()) != 0)
+        && temp != CT_COMPANION as u16
+    {
+        if npc_grave_logic(cn) {
+            return;
+        }
+    }
+
+    // Did someone call help? - high prio
+    let (data_55, data_54) = Repository::with_characters(|characters| {
+        (characters[cn].data[55], characters[cn].data[54])
+    });
+
+    if data_55 != 0 && data_55 + (TICKS * 120) > ticker as i32 && data_54 != 0 {
+        let m = data_54;
+        Repository::with_characters_mut(|characters| {
+            characters[cn].goto_x =
+                (m % SERVER_MAPX) as u16 + get_frust_x_off(ticker as i32) as u16;
+            characters[cn].goto_y =
+                (m / SERVER_MAPX) as u16 + get_frust_y_off(ticker as i32) as u16;
+            characters[cn].data[58] = 2;
+        });
+        return;
+    }
+
+    // Go to last known enemy position and stay there for up to 30 seconds
+    let (data_77, data_76, data_36) = Repository::with_characters(|characters| {
+        (
+            characters[cn].data[77],
+            characters[cn].data[76],
+            characters[cn].data[36],
+        )
+    });
+
+    if data_77 != 0 && data_77 + (TICKS * 30) > ticker as i32 {
+        let m = data_76;
+        Repository::with_characters_mut(|characters| {
+            characters[cn].goto_x = (m % SERVER_MAPX) as u16 + get_frust_x_off(data_36) as u16;
+            characters[cn].goto_y = (m / SERVER_MAPX) as u16 + get_frust_y_off(data_36) as u16;
+        });
+        return;
+    }
+
+    // We're hurt: rest
+    let (a_hp, hp_5) =
+        Repository::with_characters(|characters| (characters[cn].a_hp, characters[cn].hp[5]));
+
+    if a_hp < (hp_5 as i32 * 750) {
+        return;
+    }
+
+    // Close door, medium prio
+    for n in 20..24 {
+        let m = Repository::with_characters(|characters| characters[cn].data[n]);
+
+        if m != 0 {
+            let m = m as usize;
+            // Check if the door is free
+            let is_free = Repository::with_map(|map| {
+                map[m].ch == 0
+                    && map[m].to_ch == 0
+                    && map[m + 1].ch == 0
+                    && map[m + 1].to_ch == 0
+                    && map[m - 1].ch == 0
+                    && map[m - 1].to_ch == 0
+                    && map[m + SERVER_MAPX as usize].ch == 0
+                    && map[m + SERVER_MAPX as usize].to_ch == 0
+                    && map[m - SERVER_MAPX as usize].ch == 0
+                    && map[m - SERVER_MAPX as usize].to_ch == 0
+            });
+
+            if is_free {
+                let (it_idx, is_active) = Repository::with_map(|map| {
+                    let it_idx = map[m].it;
+                    if it_idx != 0 {
+                        let is_active =
+                            Repository::with_items(|items| items[it_idx as usize].active);
+                        (it_idx, is_active)
+                    } else {
+                        (0, 0)
+                    }
+                });
+
+                if it_idx != 0 && is_active != 0 {
+                    Repository::with_characters_mut(|characters| {
+                        characters[cn].misc_action = core::constants::DR_USE as u16;
+                        characters[cn].misc_target1 = (m % SERVER_MAPX as usize) as u16;
+                        characters[cn].misc_target2 = (m / SERVER_MAPX as usize) as u16;
+                        characters[cn].data[58] = 1;
+                    });
+                    return;
+                }
+            }
+        }
+    }
+
+    // Activate light, medium prio
+    for n in 32..36 {
+        let m = Repository::with_characters(|characters| characters[cn].data[n]);
+
+        if m != 0 && m < (SERVER_MAPX * SERVER_MAPY) as i32 {
+            let m = m as usize;
+            let (it_idx, is_active) = Repository::with_map(|map| {
+                let it_idx = map[m].it;
+                if it_idx != 0 {
+                    let is_active = Repository::with_items(|items| items[it_idx as usize].active);
+                    (it_idx, is_active)
+                } else {
+                    (0, 1)
+                }
+            });
+
+            if it_idx != 0 && is_active == 0 {
+                Repository::with_characters_mut(|characters| {
+                    characters[cn].misc_action = core::constants::DR_USE as u16;
+                    characters[cn].misc_target1 = (m % SERVER_MAPX as usize) as u16;
+                    characters[cn].misc_target2 = (m / SERVER_MAPX as usize) as u16;
+                    characters[cn].data[58] = 1;
+                });
+                return;
+            }
+        }
+    }
+
+    // Patrol, low
+    let data_10 = Repository::with_characters(|characters| characters[cn].data[10]);
+    if data_10 != 0 {
+        let mut n = Repository::with_characters(|characters| characters[cn].data[19]);
+
+        if n < 10 || n > 18 {
+            n = 10;
+            Repository::with_characters_mut(|characters| {
+                characters[cn].data[19] = n;
+            });
+        }
+
+        let data_57 = Repository::with_characters(|characters| characters[cn].data[57]);
+        if data_57 > ticker as i32 {
+            return;
+        }
+
+        let (m, data_36, ch_x, ch_y, data_79) = Repository::with_characters(|characters| {
+            (
+                characters[cn].data[n as usize],
+                characters[cn].data[36],
+                characters[cn].x,
+                characters[cn].y,
+                characters[cn].data[79],
+            )
+        });
+
+        let x = (m % SERVER_MAPX) as i32 + get_frust_x_off(data_36);
+        let y = (m / SERVER_MAPX) as i32 + get_frust_y_off(data_36);
+
+        if data_36 > 20 || ((ch_x as i32 - x).abs() + (ch_y as i32 - y).abs()) < 4 {
+            if data_36 <= 20 && data_79 != 0 {
+                Repository::with_characters_mut(|characters| {
+                    characters[cn].data[57] = ticker as i32 + data_79;
+                });
+            }
+
+            n += 1;
+            if n > 18 {
+                n = 10;
+            }
+
+            let data_n = Repository::with_characters(|characters| characters[cn].data[n as usize]);
+            if data_n == 0 {
+                n = 10;
+            }
+
+            Repository::with_characters_mut(|characters| {
+                characters[cn].data[19] = n;
+                characters[cn].data[36] = 0;
+            });
+
+            return;
+        }
+
+        Repository::with_characters_mut(|characters| {
+            characters[cn].goto_x = x as u16;
+            characters[cn].goto_y = y as u16;
+            characters[cn].data[58] = 0;
+        });
+        return;
+    }
+
+    // Random walk, low
+    let data_60 = Repository::with_characters(|characters| characters[cn].data[60]);
+    if data_60 != 0 {
+        Repository::with_characters_mut(|characters| {
+            characters[cn].data[58] = 0;
+        });
+
+        let mut data_61 = Repository::with_characters(|characters| characters[cn].data[61]);
+        if data_61 < 1 {
+            Repository::with_characters_mut(|characters| {
+                characters[cn].data[61] = data_60;
+            });
+
+            let (ch_x, ch_y, data_73, data_29) = Repository::with_characters(|characters| {
+                (
+                    characters[cn].x,
+                    characters[cn].y,
+                    characters[cn].data[73],
+                    characters[cn].data[29],
+                )
+            });
+
+            let mut panic = 0;
+            let mut x = 0;
+            let mut y = 0;
+
+            for attempt in 0..5 {
+                // Call RANDOM function (doesn't exist yet, use placeholder)
+                x = ch_x as i32 - 5 + (ticker as i32 % 11); // RANDOM(11)
+                y = ch_y as i32 - 5 + ((ticker as i32 / 11) % 11); // RANDOM(11)
+
+                if x < 1 || x >= SERVER_MAPX as i32 || y < 1 || y > SERVER_MAPX as i32 {
+                    panic = attempt + 1;
+                    continue;
+                }
+
+                if data_73 != 0 {
+                    // Too far away from origin?
+                    let xo = (data_29 % SERVER_MAPX) as i32;
+                    let yo = (data_29 / SERVER_MAPX) as i32;
+
+                    if (x - xo).abs() + (y - yo).abs() > data_73 {
+                        // Try to return to origin
+                        let plr_check_target = |tx: i32, ty: i32| -> bool {
+                            npc_check_target(tx as usize, ty as usize)
+                        };
+
+                        if plr_check_target(xo, yo) {
+                            Repository::with_characters_mut(|characters| {
+                                characters[cn].goto_x = xo as u16;
+                                characters[cn].goto_y = yo as u16;
+                            });
+                            return;
+                        } else if plr_check_target(xo + 1, yo) {
+                            Repository::with_characters_mut(|characters| {
+                                characters[cn].goto_x = (xo + 1) as u16;
+                                characters[cn].goto_y = yo as u16;
+                            });
+                            return;
+                        } else if plr_check_target(xo - 1, yo) {
+                            Repository::with_characters_mut(|characters| {
+                                characters[cn].goto_x = (xo - 1) as u16;
+                                characters[cn].goto_y = yo as u16;
+                            });
+                            return;
+                        } else if plr_check_target(xo, yo + 1) {
+                            Repository::with_characters_mut(|characters| {
+                                characters[cn].goto_x = xo as u16;
+                                characters[cn].goto_y = (yo + 1) as u16;
+                            });
+                            return;
+                        } else if plr_check_target(xo, yo - 1) {
+                            Repository::with_characters_mut(|characters| {
+                                characters[cn].goto_x = xo as u16;
+                                characters[cn].goto_y = (yo - 1) as u16;
+                            });
+                            return;
+                        } else {
+                            panic = attempt + 1;
+                            continue;
+                        }
+                    }
+                }
+
+                if !npc_check_target(x as usize, y as usize) {
+                    panic = attempt + 1;
+                    continue;
+                }
+
+                // Call can_go (doesn't exist yet)
+                // if !can_go(ch_x as i32, ch_y as i32, x, y) {
+                //     panic = attempt + 1;
+                //     continue;
+                // }
+
+                panic = attempt;
+                break;
+            }
+
+            if panic == 5 {
+                return;
+            }
+
+            Repository::with_characters_mut(|characters| {
+                characters[cn].goto_x = x as u16;
+                characters[cn].goto_y = y as u16;
+            });
+            return;
+        } else {
+            Repository::with_characters_mut(|characters| {
+                characters[cn].data[61] -= 1;
+            });
+            return;
+        }
+    }
+
+    // Resting position, lowest prio
+    let data_29 = Repository::with_characters(|characters| characters[cn].data[29]);
+    if data_29 != 0 {
+        let data_36 = Repository::with_characters(|characters| characters[cn].data[36]);
+        let m = data_29;
+        let x = (m % SERVER_MAPX) as i32 + get_frust_x_off(data_36);
+        let y = (m / SERVER_MAPX) as i32 + get_frust_y_off(data_36);
+
+        Repository::with_characters_mut(|characters| {
+            characters[cn].data[58] = 0;
+        });
+
+        let (ch_x, ch_y, ch_dir, data_30) = Repository::with_characters(|characters| {
+            (
+                characters[cn].x,
+                characters[cn].y,
+                characters[cn].dir,
+                characters[cn].data[30],
+            )
+        });
+
+        if ch_x != x as i16 || ch_y != y as i16 {
+            Repository::with_characters_mut(|characters| {
+                characters[cn].goto_x = x as u16;
+                characters[cn].goto_y = y as u16;
+            });
+            return;
+        }
+
+        if ch_dir as i32 != data_30 {
+            Repository::with_characters_mut(|characters| {
+                characters[cn].misc_action = core::constants::DR_TURN as u16;
+
+                match data_30 {
+                    x if x == core::constants::DX_UP as i32 => {
+                        characters[cn].misc_target1 = x as u16;
+                        characters[cn].misc_target2 = (y - 1) as u16;
+                    }
+                    x if x == core::constants::DX_DOWN as i32 => {
+                        characters[cn].misc_target1 = x as u16;
+                        characters[cn].misc_target2 = (y + 1) as u16;
+                    }
+                    x if x == core::constants::DX_LEFT as i32 => {
+                        characters[cn].misc_target1 = (x - 1) as u16;
+                        characters[cn].misc_target2 = y as u16;
+                    }
+                    x if x == core::constants::DX_RIGHT as i32 => {
+                        characters[cn].misc_target1 = (x + 1) as u16;
+                        characters[cn].misc_target2 = y as u16;
+                    }
+                    x if x == core::constants::DX_LEFTUP as i32 => {
+                        characters[cn].misc_target1 = (x - 1) as u16;
+                        characters[cn].misc_target2 = (y - 1) as u16;
+                    }
+                    x if x == core::constants::DX_LEFTDOWN as i32 => {
+                        characters[cn].misc_target1 = (x - 1) as u16;
+                        characters[cn].misc_target2 = (y + 1) as u16;
+                    }
+                    x if x == core::constants::DX_RIGHTUP as i32 => {
+                        characters[cn].misc_target1 = (x + 1) as u16;
+                        characters[cn].misc_target2 = (y - 1) as u16;
+                    }
+                    x if x == core::constants::DX_RIGHTDOWN as i32 => {
+                        characters[cn].misc_target1 = (x + 1) as u16;
+                        characters[cn].misc_target2 = (y + 1) as u16;
+                    }
+                    _ => {
+                        characters[cn].misc_action = core::constants::DR_IDLE as u16;
+                    }
+                }
+            });
+            return;
+        }
+    }
+
+    // Reset talked-to list
+    let data_67 = Repository::with_characters(|characters| characters[cn].data[67]);
+    if data_67 + (TICKS * 60 * 5) < ticker as i32 {
+        let data_37 = Repository::with_characters(|characters| characters[cn].data[37]);
+        if data_37 != 0 {
+            Repository::with_characters_mut(|characters| {
+                for n in 37..41 {
+                    characters[cn].data[n] = 1; // Hope we never have a character nr 1!
+                }
+            });
+        }
+        Repository::with_characters_mut(|characters| {
+            characters[cn].data[67] = ticker as i32;
+        });
+    }
+
+    // Special sub-proc for Shiva (black stronghold mage)
+    let (data_26, a_mana, mana_5) = Repository::with_characters(|characters| {
+        (
+            characters[cn].data[26],
+            characters[cn].a_mana,
+            characters[cn].mana[5],
+        )
+    });
+
+    if data_26 == 2 && a_mana > (mana_5 as i32 * 900) {
+        // Count active monsters of type 27
+        let mut m = 0;
+        for n in 1..MAXCHARS {
+            let (used, flags, data_42) = Repository::with_characters(|characters| {
+                if n >= characters.len() {
+                    return (0, 0, 0);
+                }
+                (
+                    characters[n].used,
+                    characters[n].flags,
+                    characters[n].data[42],
+                )
+            });
+
+            if used != USE_ACTIVE {
+                continue;
+            }
+            if (flags & (CharacterFlags::CF_BODY.bits() | CharacterFlags::CF_RESPAWN.bits())) != 0 {
+                continue;
+            }
+            if data_42 == 27 {
+                m += 1;
+            }
+        }
+
+        if m < 15 {
+            let mut n = 0;
+
+            // Check candles
+            let candle_positions = [(446, 347), (450, 351), (457, 348), (457, 340), (449, 340)];
+
+            for (cx, cy) in &candle_positions {
+                let map_idx = cx + cy * SERVER_MAPX as usize;
+                let (it_idx, is_active) = Repository::with_map(|map| {
+                    let it_idx = map[map_idx].it;
+                    if it_idx != 0 {
+                        let is_active =
+                            Repository::with_items(|items| items[it_idx as usize].active);
+                        (it_idx, is_active)
+                    } else {
+                        (0, 0)
+                    }
+                });
+
+                if it_idx != 0 {
+                    if is_active == 0 {
+                        n += 1;
+                    } else {
+                        if shiva_activate_candle(cn, it_idx as usize) != 0 {
+                            return;
+                        }
+                    }
+                }
+            }
+
+            if n > 0 {
+                for m_idx in 0..n {
+                    // Call pop_create_char (doesn't exist yet)
+                    let co = 0; // pop_create_char(503 + m_idx, 0);
+                    if co == 0 {
+                        State::with(|state| {
+                            state.do_sayx(cn, &format!("create char ({})", m_idx));
+                        });
+                        break;
+                    }
+
+                    // Call god_drop_char_fuzzy (doesn't exist yet)
+                    let drop_result = false; // !god_drop_char_fuzzy(co, 452, 345);
+                    if drop_result {
+                        State::with(|state| {
+                            state.do_sayx(cn, &format!("drop char ({})", m_idx));
+                        });
+                        God::destroy_items(co);
+                        Repository::with_characters_mut(|characters| {
+                            characters[co].used = 0;
+                        });
+                        break;
+                    }
+
+                    // Call fx_add_effect (doesn't exist yet)
+                    // fx_add_effect(6, 0, characters[co].x, characters[co].y, 0);
+                }
+
+                // fx_add_effect(7, 0, characters[cn].x, characters[cn].y, 0);
+                State::with(|state| {
+                    state.do_sayx(cn, "Khuzak gurawin duskar!");
+                });
+
+                Repository::with_characters_mut(|characters| {
+                    characters[cn].a_mana -= n * 100 * 1000;
+                });
+
+                log::info!("created {} new monsters", n);
+            }
+        }
+
+        Repository::with_characters_mut(|characters| {
+            characters[cn].a_mana -= 100 * 1000;
+        });
+    }
 }
 
 // ****************************************************
@@ -988,37 +1576,46 @@ pub fn npc_item_value(in_idx: usize) -> i32 {
 }
 
 pub fn npc_want_item(cn: usize, in_idx: usize) -> bool {
-    Repository::with_characters(|characters| {
-        if characters[cn].item[38] != 0 {
-            return false; // Inventory almost full
-        }
+    let item_38 = Repository::with_characters(|characters| characters[cn].item[38]);
 
-        if characters[cn].citem != 0 {
-            Repository::with_items(|items| {
-                log::info!(
-                    "have {} in citem",
-                    String::from_utf8_lossy(&items[in_idx].name)
-                );
-            });
+    if item_38 != 0 {
+        return false; // hack: don't take more stuff if inventory is almost full
+    }
 
-            let do_store_item = State::with(|state| state.do_store_item(cn));
-            if do_store_item == -1 {
-                Repository::with_items_mut(|items| {
-                    items[characters[cn].citem as usize].used = 0;
-                });
-                Repository::with_characters_mut(|chars| {
-                    chars[cn].citem = 0;
-                });
-            }
-        }
+    let citem = Repository::with_characters(|characters| characters[cn].citem);
 
+    if citem != 0 {
         Repository::with_items(|items| {
-            let temp = items[in_idx].temp;
-            temp == 833 || temp == 267
-        })
-    });
+            log::info!(
+                "have {} in citem",
+                String::from_utf8_lossy(&items[in_idx].name)
+            );
+        });
 
-    // TODO: Complete implementation
+        let do_store_item = State::with(|state| state.do_store_item(cn));
+        if do_store_item == -1 {
+            Repository::with_items_mut(|items| {
+                items[citem as usize].used = USE_EMPTY;
+            });
+            Repository::with_characters_mut(|chars| {
+                chars[cn].citem = 0;
+            });
+        }
+    }
+
+    let temp = Repository::with_items(|items| items[in_idx].temp);
+
+    if temp == 833 || temp == 267 {
+        Repository::with_characters_mut(|characters| {
+            characters[cn].citem = in_idx as u32;
+        });
+        Repository::with_items_mut(|items| {
+            items[in_idx].carried = cn as u16;
+        });
+        State::with(|state| state.do_store_item(cn));
+        return true;
+    }
+
     false
 }
 

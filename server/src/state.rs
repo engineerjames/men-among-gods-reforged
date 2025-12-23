@@ -469,7 +469,7 @@ impl State {
         });
     }
 
-    fn do_area_log(
+    pub fn do_area_log(
         &self,
         cn: usize,
         co: usize,
