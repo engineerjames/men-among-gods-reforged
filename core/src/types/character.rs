@@ -1,6 +1,6 @@
 //! Character structure - represents both players and NPCs
 
-use crate::{constants::CharacterFlags, types::character};
+use crate::constants::CharacterFlags;
 
 /// Character structure - represents both players and NPCs
 #[derive(Clone, Copy)]

@@ -1,7 +1,6 @@
-use core::constants::{CharacterFlags, ItemFlags, MAXCHARS, MAXPLAYER};
+use core::constants::{CharacterFlags, MAXCHARS, MAXPLAYER};
 use core::types::{Character, ServerPlayer};
 use std::cmp;
-use std::rc::Rc;
 use std::sync::{OnceLock, RwLock};
 
 use crate::driver::Driver;
@@ -1398,14 +1397,21 @@ impl State {
                     let cc = map[(x + m) as usize].ch;
 
                     if cc != 0 && cc != cn as u32 && cc != co as u32 {
-                        self.do_notify_char(cc, notify_type, dat1, dat2, dat3, dat4);
+                        self.do_notify_character(cc, notify_type, dat1, dat2, dat3, dat4);
                     }
                 }
             }
         });
     }
 
-    pub fn do_notify_char(
+    pub fn do_store_item(&self, character_id: usize) -> i32 {
+        // TODO: implement store item logic
+        0
+    }
+
+    pub fn do_character_killed(&self, character_id: usize, killer_id: usize) {}
+
+    pub fn do_notify_character(
         &self,
         character_id: u32,
         notify_type: i32,
@@ -1415,5 +1421,99 @@ impl State {
         dat4: i32,
     ) {
         Driver::msg(character_id, notify_type, dat1, dat2, dat3, dat4);
+    }
+
+    // use this one sparingly! It uses quite a bit of computation time!
+    /* This routine finds the 3 closest NPCs to the one doing the shouting,
+    so that they can come to the shouter's rescue or something. */
+    pub fn do_npc_shout(
+        &self,
+        cn: usize,
+        shout_type: i32,
+        dat1: i32,
+        dat2: i32,
+        dat3: i32,
+        dat4: i32,
+    ) {
+        Repository::with_characters(|characters| {
+            let mut best: [i32; 3] = [99; 3];
+            let mut bestn: [i32; 3] = [0; 3];
+
+            if characters[cn].data[52] == 3 {
+                for co in 1..core::constants::MAXCHARS {
+                    if co != cn
+                        && characters[co].used == core::constants::USE_ACTIVE
+                        && characters[co].flags & CharacterFlags::CF_BODY.bits() == 0
+                    {
+                        if characters[co].flags
+                            & (CharacterFlags::CF_PLAYER | CharacterFlags::CF_USURP).bits()
+                            != 0
+                        {
+                            continue;
+                        }
+
+                        if characters[co].data[53] != characters[cn].data[52] {
+                            continue;
+                        }
+
+                        // TODO: This distance calculation seems incorrect potentially -- doublecheck
+                        let distance = (characters[cn].x as i32 - characters[co].x as i32).abs()
+                            + (characters[cn].y as i32 - characters[co].y as i32).abs();
+
+                        if distance < best[0] {
+                            best[2] = best[1];
+                            bestn[2] = bestn[1];
+                            best[1] = best[0];
+                            bestn[1] = bestn[0];
+                            best[0] = distance;
+                            bestn[0] = co as i32;
+                        } else if distance < best[1] {
+                            best[2] = best[1];
+                            bestn[2] = bestn[1];
+                            best[1] = distance;
+                            bestn[1] = co as i32;
+                        }
+                        // } else if distance < best[3] {
+                        //     // TODO: Pretty sure [3] isn't safe
+                        //     best[3] = distance;
+                        //     bestn[3] = co as i32;
+                        // }
+                    }
+                }
+
+                for i in 0..bestn.len() {
+                    if bestn[i] != 0 {
+                        self.do_notify_character(
+                            bestn[i] as u32,
+                            shout_type,
+                            dat1,
+                            dat2,
+                            dat3,
+                            dat4,
+                        );
+                    }
+                }
+            } else {
+                for co in 1..core::constants::MAXCHARS {
+                    if co != cn
+                        && characters[co].used == core::constants::USE_ACTIVE
+                        && characters[co].flags & CharacterFlags::CF_BODY.bits() == 0
+                    {
+                        if characters[co].flags
+                            & (CharacterFlags::CF_PLAYER | CharacterFlags::CF_USURP).bits()
+                            != 0
+                        {
+                            continue;
+                        }
+
+                        if characters[co].data[53] != characters[cn].data[52] {
+                            continue;
+                        }
+
+                        self.do_notify_character(co as u32, shout_type, dat1, dat2, dat3, dat4);
+                    }
+                }
+            }
+        });
     }
 }

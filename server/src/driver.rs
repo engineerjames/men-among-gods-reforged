@@ -1,6 +1,5 @@
-use crate::{god::God, repository::Repository, state::State};
+use crate::{driver_special, god::God, repository::Repository, state::State};
 use core::constants::*;
-use std::io::Read;
 use crate::helpers;
 
 // Helper functions
@@ -265,13 +264,18 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
                     let co_name = String::from_utf8_lossy(&characters[co].name).to_string();
                     npc_saytext_n(cn, 4, Some(&co_name));
                 }
-                do_npc_shout(cn, NT_SHOUT, cn, characters[cn].data[52], 
-                           characters[cn].x, characters[cn].y);
+                State::with(|state| {
+                    state.do_npc_shout(cn, NT_SHOUT as i32, cn as i32, characters[cn].data[52] as i32, 
+                           characters[cn].x as i32, characters[cn].y as i32);
+                });
             }
         }
         
         // Can't see attacker - panic mode
-        if co >= MAXCHARS || !do_char_can_see(cn, co) {
+        let character_can_see = State::with_mut(|state| {
+            state.do_character_can_see(cn, co)
+        });
+        if co >= MAXCHARS || !character_can_see {
             characters[cn].data[78] = (ticker + (TICKS * 30)) as i32;
             return 1;
         }
@@ -279,9 +283,8 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
         // Fight back
         if co < MAXCHARS {
             let co_name = characters[co].name.clone();
-            drop(characters); // Release borrow before calling npc_add_enemy
             if npc_add_enemy(cn, co, true) {
-                let co_name = String::from_utf8_lossy(&characters[co].name).to_string();
+                let co_name = String::from_utf8_lossy(&co_name).to_string();
                 npc_saytext_n(cn, 1, Some(&co_name));
                 log::info!("NPC {} added {} to enemy list for attacking", cn, co);
             }
@@ -309,21 +312,20 @@ pub fn npc_didmiss(_cn: usize, _co: usize) -> i32 {
 
 pub fn npc_killed(cn: usize, cc: usize, co: usize) -> i32 {
     Repository::with_characters_mut(|characters| {
-        if characters[cn].attack_cn == co as i32 {
+        if characters[cn].attack_cn == co as u16 {
             characters[cn].attack_cn = 0;
         }
         characters[cn].data[76] = 0;
         characters[cn].data[77] = 0;
         characters[cn].data[78] = 0;
         
-        let idx = co as i32 | ((char_id(co) as i32) << 16);
+        let idx = co as i32 | ((helpers::char_id(co) as i32) << 16);
         
         for n in 80..92 {
             if characters[cn].data[n] == idx {
                 if cn == cc && co < MAXCHARS {
                     let co_name = characters[co].name.clone();
-                    drop(characters);
-                    npc_saytext_n(cn, 0, Some(&co_name));
+                    npc_saytext_n(cn, 0, Some(&String::from_utf8_lossy(&co_name)));
                     Repository::with_characters_mut(|chars| {
                         chars[cn].data[n] = 0;
                     });
@@ -354,7 +356,15 @@ pub fn npc_seeattack(cn: usize, cc: usize, co: usize) -> i32 {
     Repository::with_characters_mut(|characters| {
         characters[cn].data[92] = (TICKS * 60) as i32;
         
-        if !do_char_can_see(cn, co) || !do_char_can_see(cn, cc) {
+        let cn_can_see_co = State::with_mut(|state| {
+            state.do_character_can_see(cn, co)
+        });
+
+        let cn_can_see_cc = State::with_mut(|state| {
+            state.do_character_can_see(cn, cc)
+        });
+
+        if !cn_can_see_co || !cn_can_see_cc {
             return 1; // Processed - can't see participants
         }
         
@@ -378,21 +388,20 @@ pub fn npc_seeattack(cn: usize, cc: usize, co: usize) -> i32 {
             if ret {
                 let c2_name = Repository::with_characters(|chars| chars[c2].name.clone());
                 let c3_name = Repository::with_characters(|chars| chars[c3].name.clone());
-                npc_saytext_n(cn, 1, Some(&c2_name));
-                chlog(cn, &format!("Added {} to kill list for attacking {} (prevent fight)", c2_name, c3_name));
+                npc_saytext_n(cn, 1, Some(&String::from_utf8_lossy(&c2_name)));
+                log::info!("NPC {} added {} to enemy list for attacking {}", cn, String::from_utf8_lossy(&c2_name), String::from_utf8_lossy(&c3_name));
             }
             return 1;
         }
         
         // Protect character by template
         if characters[cn].data[31] != 0 {
-            if characters[co].temp == characters[cn].data[31] {
-                drop(characters);
+            if characters[co].temp == characters[cn].data[31] as u16 {
                 if npc_add_enemy(cn, cc, true) {
                     let cc_name = Repository::with_characters(|chars| chars[cc].name.clone());
                     let co_name = Repository::with_characters(|chars| chars[co].name.clone());
-                    npc_saytext_n(cn, 1, Some(&cc_name));
-                    chlog(cn, &format!("Added {} to kill list for attacking {} (protect char)", cc_name, co_name));
+                    npc_saytext_n(cn, 1, Some(&String::from_utf8_lossy(&cc_name)));
+                    log::info!("NPC {} added {} to enemy list for attacking {} (protect char)", cn, String::from_utf8_lossy(&cc_name), String::from_utf8_lossy(&co_name));
                 }
                 Repository::with_characters_mut(|chars| {
                     if chars[cn].data[65] == 0 {
@@ -404,6 +413,7 @@ pub fn npc_seeattack(cn: usize, cc: usize, co: usize) -> i32 {
         
         // Additional protect logic continues...
         // (Truncated for brevity - similar pattern for other protect cases)
+        // TODO: Fill out the rest of thus function...
         
         0
     })
@@ -441,16 +451,16 @@ pub fn npc_give(_cn: usize, _co: usize, _in: usize, _money: i32) -> i32 {
 }
 
 pub fn npc_died(cn: usize, co: usize) -> i32 {
+    // TODO: Re-evaluate this function
     Repository::with_characters(|characters| {
         if characters[cn].data[48] != 0 && co > 0 {
             // TODO: Add RANDOM function
             if characters[cn].data[48] > 50 { // Simplified random check
                 let co_name = if co < MAXCHARS {
-                    characters[co].name.clone()
+                    String::from_utf8_lossy(&characters[co].name).to_string()
                 } else {
                     String::new()
                 };
-                drop(characters);
                 npc_saytext_n(cn, 3, if co_name.is_empty() { None } else { Some(&co_name) });
             }
             return 1;
@@ -464,10 +474,10 @@ pub fn npc_shout(cn: usize, co: usize, code: i32, x: i32, y: i32) -> i32 {
         if characters[cn].data[53] != 0 && characters[cn].data[53] == code {
             characters[cn].data[92] = (TICKS * 60) as i32;
             characters[cn].data[54] = x + y * SERVER_MAPX;
-            characters[cn].data[55] = get_globs_ticker() as i32;
+            characters[cn].data[55] = Repository::with_globals(|globals| globals.ticker) as i32;
             
             let co_name = if co < MAXCHARS {
-                characters[co].name.clone()
+                String::from_utf8_lossy(&characters[co].name).to_string()
             } else {
                 String::new()
             };
@@ -488,7 +498,11 @@ pub fn npc_shout(cn: usize, co: usize, code: i32, x: i32, y: i32) -> i32 {
 }
 
 pub fn npc_hitme(cn: usize, co: usize) -> i32 {
-    if !do_char_can_see(cn, co) {
+    let cn_can_see_co = State::with_mut(|state| {
+        state.do_character_can_see(cn, co)
+    });
+
+    if !cn_can_see_co {
         return 1;
     }
     
@@ -507,11 +521,11 @@ pub fn npc_msg(cn: usize, msg_type: i32, dat1: i32, dat2: i32, dat3: i32, dat4: 
     
     if special_driver != 0 {
         return match special_driver {
-            1 => npc_stunrun_msg(cn, msg_type, dat1, dat2, dat3, dat4),
-            2 => npc_cityattack_msg(cn, msg_type, dat1, dat2, dat3, dat4),
-            3 => npc_malte_msg(cn, msg_type, dat1, dat2, dat3, dat4),
+            1 => driver_special::npc_stunrun_msg(cn, msg_type, dat1, dat2, dat3, dat4),
+            2 => driver_special::npc_cityattack_msg(cn, msg_type, dat1, dat2, dat3, dat4),
+            3 => driver_special::npc_malte_msg(cn, msg_type, dat1, dat2, dat3, dat4),
             _ => {
-                chlog(cn, &format!("unknown special driver {}", special_driver));
+                log::error!("Unknown special driver {} for {}", special_driver, cn);
                 0
             }
         };
@@ -558,9 +572,9 @@ pub fn get_spellcost(cn: usize, spell: usize) -> i32 {
             SK_GHOST => 45,
             SK_MSHIELD => 25,
             SK_RECALL => 15,
-            _ => 9999,
+            _ => 255, // Originally was 9999 which is invalid for a u8
         }
-    })
+    }) as i32
 }
 
 pub fn spellflag(spell: usize) -> u32 {
@@ -605,13 +619,16 @@ pub fn npc_quaff_potion(cn: usize, itemp: i32, stemp: i32) -> i32 {
 
 pub fn die_companion(cn: usize) {
     Repository::with_characters(|characters| {
-        fx_add_effect(7, 0, characters[cn].x, characters[cn].y, 0);
+        // TODO: fx_add_effect(7, 0, characters[cn].x, characters[cn].y, 0);
     });
-    god_destroy_items(cn);
+    God::destroy_items(cn);
     Repository::with_characters_mut(|characters| {
         characters[cn].gold = 0;
     });
-    do_char_killed(0, cn);
+
+    State::with(|state| {
+        state.do_character_killed(0, cn);
+    });
 }
 
 // ****************************************************
@@ -624,11 +641,11 @@ pub fn npc_driver_high(cn: usize) -> i32 {
     
     if special_driver != 0 {
         return match special_driver {
-            1 => npc_stunrun_high(cn),
-            2 => npc_cityattack_high(cn),
-            3 => npc_malte_high(cn),
+            1 => driver_special::npc_stunrun_high(cn),
+            2 => driver_special::npc_cityattack_high(cn),
+            3 => driver_special::npc_malte_high(cn),
             _ => {
-                chlog(cn, &format!("unknown special driver {}", special_driver));
+                log::error!("Unknown special driver {} for {}", special_driver, cn);
                 0
             }
         };
@@ -649,13 +666,14 @@ pub fn npc_driver_low(cn: usize) {
     
     if special_driver != 0 {
         match special_driver {
-            1 => npc_stunrun_low(cn),
-            2 => npc_cityattack_low(cn),
-            3 => npc_malte_low(cn),
-            _ => {
-                chlog(cn, &format!("unknown special driver {}", special_driver));
-            }
+            1 => driver_special::npc_stunrun_low(cn),
+            2 => driver_special::npc_cityattack_low(cn),
+            3 => driver_special::npc_malte_low(cn),
+            _ => {log::error!("Unknown special driver {} for {}", special_driver, cn) ;
+        -1
         }
+            
+        };
         return;
     }
     
@@ -700,28 +718,28 @@ pub fn npc_can_wear_item(cn: usize, in_idx: usize) -> bool {
             
             // Check attribute requirements
             for m in 0..5 {
-                if it.attrib[m][2] > ch.attrib[m][0] {
+                if it.attrib[m][2] > ch.attrib[m][0] as i8 {
                     return false;
                 }
             }
             
             // Check skill requirements
             for m in 0..50 {
-                if it.skill[m][2] > ch.skill[m][0] {
+                if it.skill[m][2] > ch.skill[m][0] as i8 {
                     return false;
                 }
             }
             
             // Check other requirements
-            if it.hp[2] > ch.hp[0] {
+            if it.hp[2] > ch.hp[0] as i16{
                 return false;
             }
             
-            if it.end[2] > ch.end[0] {
+            if it.end[2] > ch.end[0] as i16 {
                 return false;
             }
             
-            if it.mana[2] > ch.mana[0] {
+            if it.mana[2] > ch.mana[0] as i16 {
                 return false;
             }
             
@@ -739,13 +757,13 @@ pub fn npc_item_value(in_idx: usize) -> i32 {
             score += it.attrib[n][0] * 5;
         }
         
-        score += it.value / 10;
+        score += (it.value / 10) as i8;
         score += it.weapon[0] * 50;
         score += it.armor[0] * 50;
-        score -= it.damage_state;
+        score -= it.damage_state as i8;
         
         score
-    })
+    }) as i32
 }
 
 pub fn npc_want_item(cn: usize, in_idx: usize) -> bool {
@@ -756,9 +774,14 @@ pub fn npc_want_item(cn: usize, in_idx: usize) -> bool {
         
         if characters[cn].citem != 0 {
             Repository::with_items(|items| {
-                chlog(cn, &format!("have {} in citem", items[in_idx].name));
+                log::info!("have {} in citem",String::from_utf8_lossy(&items[in_idx].name));
+                
             });
-            if do_store_item(cn) == -1 {
+
+            let do_store_item = State::with(|state| {
+                state.do_store_item(cn)
+            });
+            if do_store_item == -1 {
                 Repository::with_items_mut(|items| {
                     items[characters[cn].citem as usize].used = 0;
                 });
