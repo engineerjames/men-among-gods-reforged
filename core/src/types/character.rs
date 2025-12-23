@@ -634,4 +634,49 @@ impl Character {
 
         return 1;
     }
+
+    pub fn set_name(&mut self, new_name: &str) {
+        let bytes = new_name.as_bytes();
+        let limit = if bytes.len() < self.name.len() {
+            bytes.len()
+        } else {
+            log::warn!(
+                "Truncating character name '{}' to fit in {} bytes",
+                new_name,
+                self.name.len()
+            );
+            self.name.len()
+        };
+        self.name[..limit].copy_from_slice(&bytes[..limit]);
+    }
+
+    pub fn set_reference(&mut self, new_reference: &str) {
+        let bytes = new_reference.as_bytes();
+        let limit = if bytes.len() < self.reference.len() {
+            bytes.len()
+        } else {
+            log::warn!(
+                "Truncating character reference '{}' to fit in {} bytes",
+                new_reference,
+                self.reference.len()
+            );
+            self.reference.len()
+        };
+        self.reference[..limit].copy_from_slice(&bytes[..limit]);
+    }
+
+    pub fn set_description(&mut self, new_description: &str) {
+        let bytes = new_description.as_bytes();
+        let limit = if bytes.len() < self.description.len() {
+            bytes.len()
+        } else {
+            log::warn!(
+                "Truncating character description '{}' to fit in {} bytes",
+                new_description,
+                self.description.len()
+            );
+            self.description.len()
+        };
+        self.description[..limit].copy_from_slice(&bytes[..limit]);
+    }
 }

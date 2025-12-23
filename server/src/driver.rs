@@ -1,5 +1,7 @@
-use crate::repository::Repository;
+use crate::{god::God, repository::Repository, state::State};
 use core::constants::*;
+use std::io::Read;
+use crate::helpers;
 
 // Helper functions
 
@@ -47,42 +49,40 @@ impl Driver {
 
 pub fn npc_add_enemy(cn: usize, co: usize, always: bool) -> bool {
     Repository::with_characters_mut(|characters| {
-        let ch_cn = &characters[cn];
-        let ch_co = &characters[co];
         
         // Don't attack anyone of the same group
-        if ch_cn.data[42] == ch_co.data[42] {
+        if characters[cn].data[42] == characters[co].data[42] {
             return false;
         }
         
         // Group 1 mobs shall not attack ghost companions
-        if !always && ch_cn.data[42] == 1 && (ch_co.data[42] & 0x10000) != 0 {
+        if !always && characters[cn].data[42] == 1 && (characters[co].data[42] & 0x10000) != 0 {
             return false;
         }
         
-        if !always && (ch_cn.points_tot + 500) * 25 < ch_co.points_tot {
+        if !always && (characters[cn].points_tot + 500) * 25 < characters[co].points_tot {
             return false;
         }
         
-        let ticker = get_globs_ticker();
-        characters[cn].data[76] = ch_co.x as i32 + ch_co.y as i32 * SERVER_MAPX;
+        let ticker = Repository::with_globals(|globals| globals.ticker);
+        characters[cn].data[76] = characters[co].x as i32 + characters[co].y as i32 * SERVER_MAPX;
         characters[cn].data[77] = ticker as i32;
         
-        let cc = ch_cn.attack_cn;
+        let cc = characters[cn].attack_cn;
         let d1 = if cc > 0 && usize::from(cc) < MAXCHARS { npc_dist(cn, cc as usize) } else { i32::MAX };
         let d2 = npc_dist(cn, co);
         
-        let flags = get_globs_flags();
-        if ch_cn.attack_cn == 0 || 
+        let flags = Repository::with_globals(|globals| globals.flags);
+        if characters[cn].attack_cn == 0 || 
            (d1 > d2 && (flags & 0x04) != 0) ||  // GF_CLOSEENEMY
-           (d1 == d2 && (cc == 0 || characters[cc as usize].attack_cn != cn as i32) && 
-            ch_co.attack_cn == cn as u16) {
+           (d1 == d2 && (cc == 0 || characters[cc as usize].attack_cn != cn as u16) && 
+            characters[co].attack_cn == cn as u16) {
             characters[cn].attack_cn = co as u16;
             characters[cn].goto_x = 0;
             characters[cn].data[58] = 2;
         }
         
-        let idx = co as i32 | ((char_id(co) as i32) << 16);
+        let idx = co as i32 | ((helpers::char_id(co) as i32) << 16);
         
         // Check if already in enemy list
         for n in 80..92 {
@@ -103,7 +103,7 @@ pub fn npc_add_enemy(cn: usize, co: usize, always: bool) -> bool {
 
 pub fn npc_is_enemy(cn: usize, co: usize) -> bool {
     Repository::with_characters(|characters| {
-        let idx = co as i32 | ((char_id(co) as i32) << 16);
+        let idx = co as i32 | ((helpers::char_id(co) as i32) << 16);
         
         for n in 80..92 {
             if characters[cn].data[n] == idx {
@@ -115,25 +115,27 @@ pub fn npc_is_enemy(cn: usize, co: usize) -> bool {
 }
 
 pub fn npc_list_enemies(npc: usize, cn: usize) -> i32 {
+    State::with(|state| {
     Repository::with_characters(|characters| {
         let mut none = true;
-        do_char_log(cn, 2, &format!("Enemies of {}:", characters[npc].name));
+        state.do_character_log(cn, core::types::FontColor::Green, &format!("Enemies of {}:", String::from_utf8_lossy(&characters[npc].name)));
         
         for n in 80..92 {
             let cv = (characters[npc].data[n] & 0xFFFF) as usize;
             if cv > 0 && cv < MAXCHARS {
-                do_char_log(cn, 2, &format!("  {}", characters[cv].name));
+                state.do_character_log(cn, core::types::FontColor::Green, &format!("  {}", String::from_utf8_lossy(&characters[cv].name)));
                 none = false;
             }
         }
         
         if none {
-            do_char_log(cn, 2, "-none-");
+            state.do_character_log(cn, core::types::FontColor::Green, "-none-");
             0
         } else {
             1
         }
     })
+})
 }
 
 pub fn npc_remove_enemy(npc: usize, enemy: usize) -> bool {
@@ -172,19 +174,24 @@ pub fn npc_saytext_n(npc: usize, n: usize, name: Option<&str>) {
             if temp == CT_COMPANION as u16 {
                 if talkative == -10 {
                     let text = if let Some(name_str) = name {
-                        ch_npc.text[n].replace("%1", name_str)
+                        String::from_utf8_lossy(&ch_npc.text[n]).replace("%1", name_str)
                     } else {
-                        ch_npc.text[n].clone()
+                        String::from_utf8_lossy(&ch_npc.text[n]).to_string()
                     };
-                    do_sayx(npc, &text);
+                    State::with(|state| {
+                        state.do_sayx(npc, &text);
+                    });
                 }
             } else {
                 let text = if let Some(name_str) = name {
-                    ch_npc.text[n].replace("%1", name_str)
+                    String::from_utf8_lossy(&ch_npc.text[n]).replace("%1", name_str)
                 } else {
-                    ch_npc.text[n].clone()
+                    String::from_utf8_lossy(&ch_npc.text[n]).to_string()
                 };
-                do_sayx(npc, &text);
+
+                State::with(|state| {
+                    state.do_sayx(npc, &text);
+                });
             }
         }
     });
@@ -194,39 +201,44 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
     Repository::with_characters_mut(|characters| {
         characters[cn].data[92] = (TICKS * 60) as i32;
         
-        let ticker = get_globs_ticker();
+        let ticker = Repository::with_globals(|globals| globals.ticker);
         
         // Special handling for high alignment NPCs being attacked by players
         if co > 0 && co < MAXCHARS && 
-           (characters[co].flags & CF_PLAYER.bits()) != 0 &&
+           (characters[co].flags & CharacterFlags::CF_PLAYER.bits()) != 0 &&
            characters[cn].alignment == 10000 &&
-           (characters[cn].name != "Peacekeeper" || 
-            characters[cn].a_hp < characters[cn].hp[5] * 500) &&
+           (String::from_utf8_lossy(&characters[cn].name) != "Peacekeeper" || 
+            characters[cn].a_hp < (characters[cn].hp[5] * 500) as i32) &&
            characters[cn].data[70] < ticker as i32 {
             
-            do_sayx(cn, "Skua! Protect the innocent! Send me a Peacekeeper!");
-            fx_add_effect(6, 0, characters[cn].x, characters[cn].y, 0);
-            characters[cn].data[70] = (ticker + (TICKS * 60) as u32) as i32;
+            State::with(|state| {
+                state.do_sayx(cn, "Skua! Protect the innocent! Send me a Peacekeeper!");
+            });
+            // TODO: Add fx_add_effect(6, 0, characters[cn].x, characters[cn].y, 0);
+            characters[cn].data[70] = (ticker + (TICKS * 60) ) as i32;
             
-            let cc = god_create_char(80, 1);
-            if cc > 0 && cc < MAXCHARS {
-                characters[cc].temp = CT_COMPANION;
+            let cc = God::create_char(80, true);
+            if cc.is_some() && cc.unwrap() > 0 && cc.unwrap() < MAXCHARS as i32 {
+                let cc = cc.unwrap() as usize;
+                characters[cc].temp = CT_COMPANION as u16;
                 characters[cc].data[42] = 65536 + cn as i32;
                 characters[cc].data[59] = 65536 + cn as i32;
                 characters[cc].data[24] = 0;
                 characters[cc].data[36] = 0;
                 characters[cc].data[43] = 0;
-                characters[cc].data[80] = co as i32 | ((char_id(co) as i32) << 16);
+                characters[cc].data[80] = co as i32 | ((helpers::char_id(co) as i32) << 16);
                 characters[cc].data[63] = cn as i32;
-                characters[cc].data[64] = (ticker + 120 * TICKS as u32) as i32;
-                characters[cc].data[70] = (ticker + (TICKS * 60) as u32) as i32;
+                characters[cc].data[64] = (ticker + 120 * TICKS) as i32;
+                characters[cc].data[70] = (ticker + (TICKS * 60)) as i32;
                 
-                characters[cc].name = "Shadow of Peace".to_string();
-                characters[cc].reference = "Shadow of Peace".to_string();
-                characters[cc].description = "You see a Shadow of Peace.".to_string();
+                characters[cc].set_name("Shadow of Peace");
+                characters[cc].set_reference("Shadow of Peace");
+                characters[cc].set_description("You see a Shadow of Peace.");
+
+
                 
-                if !god_drop_char_fuzzy(cc, characters[co].x, characters[co].y) {
-                    god_destroy_items(cc);
+                if !God::drop_char_fuzzy(cc as usize, characters[co].x as usize, characters[co].y as usize) {
+                    God::destroy_items(cc as usize);
                     characters[cc].used = 0;
                 }
             }
@@ -235,20 +247,23 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
         // Help request for good aligned characters
         if characters[cn].alignment > 1000 && 
            characters[cn].data[70] < ticker as i32 && 
-           characters[cn].a_mana < characters[cn].mana[5] * 333 {
-            do_sayx(cn, "Skua! Help me!");
-            characters[cn].data[70] = (ticker + (TICKS * 60 * 2) as u32) as i32;
-            characters[cn].a_mana = characters[cn].mana[5] * 1000;
-            fx_add_effect(6, 0, characters[cn].x, characters[cn].y, 0);
+           characters[cn].a_mana < (characters[cn].mana[5] * 333) as i32 {
+            State::with(|state| {
+                state.do_sayx(cn, "Skua! Help me!");
+            });
+            characters[cn].data[70] = (ticker + (TICKS * 60 * 2)) as i32;
+            characters[cn].a_mana = (characters[cn].mana[5] * 1000) as i32;
+            // TODO: fx_add_effect(6, 0, characters[cn].x, characters[cn].y, 0);
         }
         
         // Shout for help
-        if characters[cn].data[52] != 0 && characters[cn].a_hp < characters[cn].hp[5] * 666 {
-            if characters[cn].data[55] + (TICKS * 60) as i32 < ticker as i32 {
+        if characters[cn].data[52] != 0 && characters[cn].a_hp < (characters[cn].hp[5] * 666) as i32 {
+            if characters[cn].data[55] + (TICKS * 60) < ticker as i32 {
                 characters[cn].data[54] = 0;
                 characters[cn].data[55] = ticker as i32;
                 if co < MAXCHARS {
-                    npc_saytext_n(cn, 4, Some(&characters[co].name.clone()));
+                    let co_name = String::from_utf8_lossy(&characters[co].name).to_string();
+                    npc_saytext_n(cn, 4, Some(&co_name));
                 }
                 do_npc_shout(cn, NT_SHOUT, cn, characters[cn].data[52], 
                            characters[cn].x, characters[cn].y);
@@ -257,7 +272,7 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
         
         // Can't see attacker - panic mode
         if co >= MAXCHARS || !do_char_can_see(cn, co) {
-            characters[cn].data[78] = (ticker + (TICKS * 30) as u32) as i32;
+            characters[cn].data[78] = (ticker + (TICKS * 30)) as i32;
             return 1;
         }
         
@@ -266,8 +281,9 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
             let co_name = characters[co].name.clone();
             drop(characters); // Release borrow before calling npc_add_enemy
             if npc_add_enemy(cn, co, true) {
+                let co_name = String::from_utf8_lossy(&characters[co].name).to_string();
                 npc_saytext_n(cn, 1, Some(&co_name));
-                chlog(cn, &format!("Added {} to kill list for attacking me", co_name));
+                log::info!("NPC {} added {} to enemy list for attacking", cn, co);
             }
         }
         
