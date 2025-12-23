@@ -1,6 +1,7 @@
 mod driver;
 mod enums;
 mod god;
+mod helpers;
 mod lab9;
 mod network_manager;
 mod path_finding;
