@@ -1487,7 +1487,7 @@ impl State {
         });
     }
 
-    pub fn do_store_item(&self, character_id: usize) -> i32 {
+    pub fn do_store_item(&self, cn: usize) -> i32 {
         // TODO: implement store item logic
         0
     }
@@ -1757,4 +1757,54 @@ impl State {
             Ordering::Equal
         })
     }
+
+    pub fn do_maygive(&self, cn: usize, co: usize, item_idx: usize) -> bool {}
+
+    pub fn do_give(&self, cn: usize, co: usize) -> bool {}
+
+    pub fn really_update_char(&self, cn: usize) {}
+
+    pub fn do_regenerate(&self, cn: usize) {}
+
+    pub fn do_raise_attrib(&self, cn: usize, attrib: i32) -> bool {}
+
+    pub fn do_raise_hp(&self, cn: usize) -> bool {}
+
+    pub fn do_lower_hp(&self, cn: usize) -> bool {}
+
+    pub fn do_lower_mana(&self, cn: usize) -> bool {}
+
+    pub fn do_raise_end(&self, cn: usize) -> bool {}
+
+    pub fn do_raise_mana(&self, cn: usize) -> bool {}
+
+    pub fn do_raise_skill(&self, cn: usize, skill: i32) -> bool {}
+
+    pub fn do_item_value(&self, item_idx: usize) -> i32 {}
+
+    pub fn do_look_item(&self, cn: usize, item_idx: usize) {}
+
+    pub fn barter(&self, cn: usize, opr: i32, flag: i32) -> i32 {}
+
+    pub fn do_shop_char(&self, cn: usize, co: usize, nr: i32) {}
+
+    pub fn do_depot_cost(&self, item_idx: usize) -> i32 {}
+
+    pub fn do_add_depot(&self, cn: usize, item_idx: usize) -> bool {}
+
+    pub fn do_pay_depot(&self, cn: usize) {}
+
+    pub fn do_depot_char(&self, cn: usize, co: usize, nr: i32) {}
+
+    pub fn do_look_char(&self, cn: usize, co: usize, godflag: i32, autoflag: i32, lootflag: i32) {}
+
+    pub fn do_look_depot(&self, cn: usize, co: usize) {}
+
+    pub fn do_look_player_depot(&self, cn: usize, cv: &str) {}
+
+    pub fn do_look_player_inventory(&self, cn: usize, cv: &str) {}
+
+    pub fn do_look_player_equipment(&self, cn: usize, cv: &str) {}
+
+    pub fn do_steal_player(&self, cn: usize, cv: &str, ci: &str) -> bool {}
 }

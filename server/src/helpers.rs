@@ -220,3 +220,15 @@ pub fn turncount(dir1: u8, dir2: u8) -> i32 {
         _ => 99,
     }
 }
+
+pub fn invis_level(cn: usize) -> i32 {}
+
+pub fn attrib_needed(value: i32, diff: i32) -> i32 {}
+
+pub fn hp_needed(value: i32, diff: i32) -> i32 {}
+
+pub fn end_needed(value: i32, diff: i32) -> i32 {}
+
+pub fn mana_needed(value: i32, diff: i32) -> i32 {}
+
+pub fn skill_needed(value: i32, diff: i32) -> i32 {}
