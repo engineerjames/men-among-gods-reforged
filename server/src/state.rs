@@ -1008,6 +1008,89 @@ impl State {
         })
     }
 
+    pub fn do_char_can_see_item(&mut self, cn: usize, in_idx: usize) -> i32 {
+        Repository::with_characters(|characters| {
+            Repository::with_items(|items| {
+                Repository::with_map(|map| {
+                    // Check if item is active
+                    if items[in_idx].used != core::constants::USE_ACTIVE {
+                        return 0;
+                    }
+
+                    // Calculate raw distance (squared)
+                    let d1 = (characters[cn].x - items[in_idx].x as i16).abs() as i32;
+                    let d2 = (characters[cn].y - items[in_idx].y as i16).abs() as i32;
+
+                    let rd = d1 * d1 + d2 * d2;
+                    let mut d = rd;
+
+                    // Early exit for far distances
+                    if d > 1000 {
+                        return 0;
+                    }
+
+                    // Modify by perception
+                    d += 50 - characters[cn].skill[core::constants::SK_PERCEPT][5] as i32 * 2;
+
+                    // Modify by light (unless character has infrared)
+                    if characters[cn].flags & CharacterFlags::CF_INFRARED.bits() == 0 {
+                        let map_index = items[in_idx].x as usize
+                            + items[in_idx].y as usize * core::constants::SERVER_MAPX as usize;
+                        let mut light = std::cmp::max(
+                            map[map_index].light as i32,
+                            State::check_dlight(items[in_idx].x as usize, items[in_idx].y as usize),
+                        );
+
+                        light = self.do_character_calculate_light(cn, light);
+
+                        if light == 0 {
+                            return 0;
+                        }
+
+                        if light > 64 {
+                            light = 64;
+                        }
+
+                        d += (64 - light) * 3;
+                    }
+
+                    // Check for hidden items
+                    if items[in_idx].flags & core::constants::ItemFlags::IF_HIDDEN.bits() != 0 {
+                        d += items[in_idx].data[9] as i32;
+                    } else if rd < 3 && d > 200 {
+                        d = 200;
+                    }
+
+                    // Check distance threshold
+                    if d > 200 {
+                        return 0;
+                    }
+
+                    // Check line of sight
+                    let can_see = self.can_see(
+                        Some(cn),
+                        characters[cn].x as i32,
+                        characters[cn].y as i32,
+                        items[in_idx].x as i32,
+                        items[in_idx].y as i32,
+                        15,
+                    );
+
+                    if can_see == 0 {
+                        return 0;
+                    }
+
+                    // Return 1 for very close items, otherwise return distance
+                    if d < 1 {
+                        1
+                    } else {
+                        d
+                    }
+                })
+            })
+        })
+    }
+
     pub fn check_vis(&self, tx: i32, ty: i32) -> i32 {
         let mut best = 99;
 
@@ -1515,5 +1598,163 @@ impl State {
                 }
             }
         });
+    }
+
+    /// Sort character inventory based on order string
+    /// Port of do_sort from svr_do.cpp
+    pub fn do_sort(&self, cn: usize, order: &str) {
+        // Check if character is in building mode
+        let is_building = Repository::with_characters(|characters| characters[cn].is_building());
+
+        if is_building {
+            // TODO: Add do_char_log to send message to character
+            log::info!("Character {} tried to sort while in build mode", cn);
+            return;
+        }
+
+        // Get a copy of the items array to sort
+        let mut items = Repository::with_characters(|characters| characters[cn].item);
+
+        // Sort using custom comparison function based on order string
+        items.sort_by(|&a, &b| self.qsort_compare(a as usize, b as usize, order));
+
+        // Write sorted items back
+        Repository::with_characters_mut(|characters| {
+            characters[cn].item = items;
+        });
+
+        // Update character to send changes to client
+        // TODO: Implement do_update_char equivalent
+        // For now, this will at least sort the inventory in memory
+        NetworkManager::with(|nm| {
+            let player_id = Repository::with_characters(|characters| characters[cn].player);
+            if player_id > 0 && player_id < MAXPLAYER as i32 {
+                // TODO: Send character inventory update to client
+            }
+        });
+    }
+
+    /// Comparison function for sorting items
+    /// Port of qsort_proc from svr_do.cpp
+    fn qsort_compare(&self, in1: usize, in2: usize, order: &str) -> std::cmp::Ordering {
+        use std::cmp::Ordering;
+
+        // Handle empty slots - they go to the end
+        if in1 == 0 && in2 == 0 {
+            return Ordering::Equal;
+        }
+        if in1 != 0 && in2 == 0 {
+            return Ordering::Less;
+        }
+        if in1 == 0 && in2 != 0 {
+            return Ordering::Greater;
+        }
+
+        // Compare based on order string criteria
+        Repository::with_items(|items| {
+            let item1 = &items[in1];
+            let item2 = &items[in2];
+
+            for ch in order.chars() {
+                match ch {
+                    'w' => {
+                        // Sort by weapon
+                        let is_weapon1 =
+                            item1.flags & core::constants::ItemFlags::IF_WEAPON.bits() != 0;
+                        let is_weapon2 =
+                            item2.flags & core::constants::ItemFlags::IF_WEAPON.bits() != 0;
+                        if is_weapon1 && !is_weapon2 {
+                            return Ordering::Less;
+                        }
+                        if !is_weapon1 && is_weapon2 {
+                            return Ordering::Greater;
+                        }
+                    }
+                    'a' => {
+                        // Sort by armor
+                        let is_armor1 =
+                            item1.flags & core::constants::ItemFlags::IF_ARMOR.bits() != 0;
+                        let is_armor2 =
+                            item2.flags & core::constants::ItemFlags::IF_ARMOR.bits() != 0;
+                        if is_armor1 && !is_armor2 {
+                            return Ordering::Less;
+                        }
+                        if !is_armor1 && is_armor2 {
+                            return Ordering::Greater;
+                        }
+                    }
+                    'p' => {
+                        // Sort by usable/consumable (use-destroy)
+                        let is_usedestroy1 =
+                            item1.flags & core::constants::ItemFlags::IF_USEDESTROY.bits() != 0;
+                        let is_usedestroy2 =
+                            item2.flags & core::constants::ItemFlags::IF_USEDESTROY.bits() != 0;
+                        if is_usedestroy1 && !is_usedestroy2 {
+                            return Ordering::Less;
+                        }
+                        if !is_usedestroy1 && is_usedestroy2 {
+                            return Ordering::Greater;
+                        }
+                    }
+                    'h' => {
+                        // Sort by HP (higher first)
+                        if item1.hp[0] > item2.hp[0] {
+                            return Ordering::Less;
+                        }
+                        if item1.hp[0] < item2.hp[0] {
+                            return Ordering::Greater;
+                        }
+                    }
+                    'e' => {
+                        // Sort by endurance (higher first)
+                        if item1.end[0] > item2.end[0] {
+                            return Ordering::Less;
+                        }
+                        if item1.end[0] < item2.end[0] {
+                            return Ordering::Greater;
+                        }
+                    }
+                    'm' => {
+                        // Sort by mana (higher first)
+                        if item1.mana[0] > item2.mana[0] {
+                            return Ordering::Less;
+                        }
+                        if item1.mana[0] < item2.mana[0] {
+                            return Ordering::Greater;
+                        }
+                    }
+                    'v' => {
+                        // Sort by value (higher first)
+                        if item1.value > item2.value {
+                            return Ordering::Less;
+                        }
+                        if item1.value < item2.value {
+                            return Ordering::Greater;
+                        }
+                    }
+                    _ => {
+                        // Unknown character, skip
+                    }
+                }
+            }
+
+            // Fall back to sort by value
+            if item1.value > item2.value {
+                return Ordering::Less;
+            }
+            if item1.value < item2.value {
+                return Ordering::Greater;
+            }
+
+            // Finally sort by temp (to maintain stability)
+            if item1.temp > item2.temp {
+                return Ordering::Greater;
+            }
+            if item1.temp < item2.temp {
+                return Ordering::Less;
+            }
+
+            Ordering::Equal
+        })
     }
 }
