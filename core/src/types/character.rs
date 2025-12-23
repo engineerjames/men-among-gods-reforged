@@ -679,4 +679,21 @@ impl Character {
         };
         self.description[..limit].copy_from_slice(&bytes[..limit]);
     }
+
+    pub fn group_active(&self) -> bool {
+        if (self.flags
+            & (CharacterFlags::CF_PLAYER | CharacterFlags::CF_USURP | CharacterFlags::CF_NOSLEEP)
+                .bits())
+            != 0
+            && self.used == crate::constants::USE_ACTIVE
+        {
+            return true;
+        }
+
+        if self.data[92] != 0 {
+            return true;
+        }
+
+        false
+    }
 }

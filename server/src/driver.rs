@@ -2204,7 +2204,6 @@ pub fn npc_cityguard_see(cn: usize, co: usize, flag: i32) -> i32 {
                     } else {
                         "Cityguard: \"The monsters are approaching the outpost! Alert!\""
                     };
-                    // TODO: Add do_char_log to State
                     log::info!("[char {}] {}", n, message);
                 }
             }
