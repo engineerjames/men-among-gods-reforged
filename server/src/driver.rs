@@ -591,10 +591,62 @@ pub fn spellflag(spell: usize) -> u32 {
     }
 }
 
-pub fn npc_try_spell(cn: usize, co: usize, spell: usize) -> i32 {
+pub fn npc_check_target( x: usize, y: usize) -> bool {
+    if x < 1 || x >= SERVER_MAPX as usize || y < 1 || y >= SERVER_MAPY as usize {
+        return false;
+    }
+
+    let m = x + y * SERVER_MAPX as usize;
+
+    Repository::with_map(|map| {
+        let map_item = Repository::with_items(|items| {
+            if map[m].it == 0 {
+                return None;
+            }
+
+            Some(items[map[m].it as usize])
+        } );
+
+        if map_item.is_none() {
+            return false;
+        }
+
+        let map_item = map_item.unwrap();
+        if map[m].flags & (core::constants::MF_MOVEBLOCK as u64 | core::constants::MF_NOMONST as u64) != 0 || map[m].ch != 0 || map[m].to_ch != 0 || (map_item.flags & ItemFlags::IF_MOVEBLOCK.bits() != 0 && map_item.driver != 2) {
+            return false;
+        }
+
+        true
+    })
+}
+
+pub fn npc_is_stunned(cn: usize) -> bool {
+    for n in 0..20 {
+        let active_spell = Repository::with_characters(|characters| characters[cn].spell[n]);
+        if active_spell != 0 && Repository::with_items(|items| items[active_spell as usize].temp) == SK_STUN as u16 {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+// TODO: Combine with npc_is_stunned?
+pub fn npc_is_blessed(cn: usize) -> bool {
+    for n in 0..20 {
+        let active_spell = Repository::with_characters(|characters| characters[cn].spell[n]);
+        if active_spell != 0 && Repository::with_items(|items| items[active_spell as usize].temp) == SK_BLESS as u16 {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+pub fn npc_try_spell(cn: usize, co: usize, spell: usize) -> bool {
     // TODO: Implement full spell casting logic
     // This is a complex function that needs item and spell system integration
-    0
+    false
 }
 
 pub fn npc_can_spell(cn: usize, co: usize, spell: usize) -> bool {
