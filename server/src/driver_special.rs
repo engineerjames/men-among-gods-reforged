@@ -596,15 +596,115 @@ pub fn npc_stunrun_low(_cn: usize) -> i32 {
     0
 }
 
+fn npc_stunrun_add_seen(cn: usize, co: usize) -> i32 {
+    let ticker = Repository::with_globals(|g| g.ticker);
+
+    // Check if co is already in the seen list (data[0-19])
+    for n in 0..20 {
+        let data_n = Repository::with_characters(|ch| ch[cn].data[n]);
+        if data_n == co as i32 {
+            Repository::with_characters_mut(|ch| ch[cn].data[n + 50] = ticker);
+            return 1;
+        }
+    }
+
+    // Find an empty slot and add co
+    for n in 0..20 {
+        let data_n = Repository::with_characters(|ch| ch[cn].data[n]);
+        if data_n == 0 {
+            Repository::with_characters_mut(|ch| {
+                ch[cn].data[n] = co as i32;
+                ch[cn].data[n + 50] = ticker;
+            });
+            break;
+        }
+    }
+
+    1
+}
+
+fn npc_stunrun_gotattack(cn: usize, co: usize) -> i32 {
+    npc_stunrun_add_seen(cn, co);
+    Repository::with_characters_mut(|ch| ch[cn].data[20] = co as i32);
+    1
+}
+
+fn npc_stunrun_add_fight(cn: usize, co: usize) {
+    let ticker = Repository::with_globals(|g| g.ticker);
+
+    // Check if co is already in the fight list (data[30-34])
+    for n in 30..35 {
+        let data_n = Repository::with_characters(|ch| ch[cn].data[n]);
+        if data_n == co as i32 {
+            Repository::with_characters_mut(|ch| ch[cn].data[n + 5] = ticker);
+            return;
+        }
+    }
+
+    // Find an empty slot and add co
+    for n in 30..35 {
+        let data_n = Repository::with_characters(|ch| ch[cn].data[n]);
+        if data_n == 0 {
+            Repository::with_characters_mut(|ch| {
+                ch[cn].data[n] = co as i32;
+                ch[cn].data[n + 5] = ticker;
+            });
+            break;
+        }
+    }
+}
+
+fn npc_stunrun_seeattack(cn: usize, cc: usize, co: usize) -> i32 {
+    if State::with_mut(|state| state.do_character_can_see(cn, co)) {
+        npc_stunrun_add_seen(cn, co);
+        npc_stunrun_add_fight(cn, co);
+    }
+    if State::with_mut(|state| state.do_character_can_see(cn, cc)) {
+        npc_stunrun_add_seen(cn, cc);
+        npc_stunrun_add_fight(cn, cc);
+    }
+    1
+}
+
+fn npc_stunrun_see(cn: usize, co: usize) -> i32 {
+    if !State::with_mut(|state| state.do_character_can_see(cn, co)) {
+        return 1; // processed it: we cannot see him, so ignore him
+    }
+
+    npc_stunrun_add_seen(cn, co);
+    1
+}
+
 pub fn npc_stunrun_msg(
-    character_id: usize,
-    msg_type: i32,
+    cn: usize,
+    msg_type: u8,
     dat1: i32,
     dat2: i32,
-    dat3: i32,
-    dat4: i32,
+    _dat3: i32,
+    _dat4: i32,
 ) -> i32 {
-    0
+    match msg_type {
+        NT_GOTHIT => npc_stunrun_gotattack(cn, dat1 as usize),
+        NT_GOTMISS => npc_stunrun_gotattack(cn, dat1 as usize),
+        NT_DIDHIT => 0,
+        NT_DIDMISS => 0,
+        NT_DIDKILL => 0,
+        NT_GOTEXP => 0,
+        NT_SEEKILL => 0,
+        NT_SEEHIT => npc_stunrun_seeattack(cn, dat1 as usize, dat2 as usize),
+        NT_SEEMISS => npc_stunrun_seeattack(cn, dat1 as usize, dat2 as usize),
+        NT_GIVE => 0,
+        NT_SEE => npc_stunrun_see(cn, dat1 as usize),
+        NT_DIED => 0,
+        NT_SHOUT => 0,
+        NT_HITME => 0,
+        _ => {
+            let name =
+                Repository::with_characters(|ch| String::from_utf8_lossy(&ch[cn].name).to_string());
+            log::warn!("Unknown NPC message for {} ({}): {}", cn, name, msg_type);
+            0
+        }
+    }
 }
 
 pub fn npc_cityattack_high(cn: usize) -> i32 {

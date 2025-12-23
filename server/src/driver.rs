@@ -566,7 +566,7 @@ pub fn npc_msg(cn: usize, msg_type: i32, dat1: i32, dat2: i32, dat3: i32, dat4: 
 
     if special_driver != 0 {
         return match special_driver {
-            1 => driver_special::npc_stunrun_msg(cn, msg_type, dat1, dat2, dat3, dat4),
+            1 => driver_special::npc_stunrun_msg(cn, msg_type as u8, dat1, dat2, dat3, dat4),
             2 => driver_special::npc_cityattack_msg(cn, msg_type, dat1, dat2, dat3, dat4),
             3 => driver_special::npc_malte_msg(cn, msg_type, dat1, dat2, dat3, dat4),
             _ => {
