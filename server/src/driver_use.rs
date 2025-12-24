@@ -1,3 +1,7 @@
+use std::u32;
+
+use crate::lab9::{self, Labyrinth9};
+
 // Helper function to take an item from a character
 fn take_item_from_char(item_idx: usize, cn: usize) {
     use crate::repository::Repository;
@@ -165,7 +169,7 @@ pub fn use_door(cn: usize, item_idx: usize) -> i32 {
                                 State::with(|state| {
                                     state.do_character_log(
                                         cn,
-                                        core::types::FontColor::LOG_SYSTEM,
+                                        core::types::FontColor::Blue,
                                         "You failed to pick the lock.",
                                     );
                                 });
@@ -180,7 +184,7 @@ pub fn use_door(cn: usize, item_idx: usize) -> i32 {
                     State::with(|state| {
                         state.do_character_log(
                             cn,
-                            core::types::FontColor::LOG_SYSTEM,
+                            core::types::FontColor::Blue,
                             "It's locked and you don't have the right key.",
                         );
                     });
@@ -279,7 +283,7 @@ pub fn use_create_item(cn: usize, item_idx: usize) -> i32 {
             State::with(|state| {
                 state.do_character_log(
                     cn,
-                    core::types::FontColor::LOG_SYSTEM,
+                    core::types::FontColor::Blue,
                     &format!("Your backpack is full, so you can't take the {}.", item_ref),
                 );
             });
@@ -298,7 +302,7 @@ pub fn use_create_item(cn: usize, item_idx: usize) -> i32 {
         State::with(|state| {
             state.do_character_log(
                 cn,
-                core::types::FontColor::LOG_INFO,
+                core::types::FontColor::Green,
                 &format!("You got a {}.", item_ref),
             );
         });
@@ -319,7 +323,7 @@ pub fn use_create_item(cn: usize, item_idx: usize) -> i32 {
                     State::with(|state| {
                         state.do_character_log(
                             cn,
-                            core::types::FontColor::LOG_SYSTEM,
+                            core::types::FontColor::Blue,
                             &format!(
                                 "You feel yourself form a magical connection with the {}.",
                                 item.reference
@@ -375,7 +379,7 @@ pub fn use_create_gold(cn: usize, item_idx: usize) -> i32 {
         State::with(|state| {
             state.do_character_log(
                 cn,
-                core::types::FontColor::LOG_INFO,
+                core::types::FontColor::Green,
                 &format!("You got a {}G.", gold_amount),
             );
         });
@@ -448,7 +452,7 @@ pub fn use_create_item2(cn: usize, item_idx: usize) -> i32 {
             State::with(|state| {
                 state.do_character_log(
                     cn,
-                    core::types::FontColor::LOG_SYSTEM,
+                    core::types::FontColor::Blue,
                     &format!("Your backpack is full, so you can't take the {}.", item_ref),
                 );
             });
@@ -466,7 +470,7 @@ pub fn use_create_item2(cn: usize, item_idx: usize) -> i32 {
         State::with(|state| {
             state.do_character_log(
                 cn,
-                core::types::FontColor::LOG_INFO,
+                core::types::FontColor::Green,
                 &format!("You got a {}.", item_ref),
             );
         });
@@ -549,7 +553,7 @@ pub fn use_create_item3(cn: usize, item_idx: usize) -> i32 {
         Some(id) => id,
         None => {
             State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::LOG_INFO, "It's empty...");
+                state.do_character_log(cn, core::types::FontColor::Green, "It's empty...");
             });
             return 1;
         }
@@ -559,7 +563,7 @@ pub fn use_create_item3(cn: usize, item_idx: usize) -> i32 {
         State::with(|state| {
             state.do_character_log(
                 cn,
-                core::types::FontColor::LOG_SYSTEM,
+                core::types::FontColor::Blue,
                 "Your backpack is full, so you can't take anything.",
             );
         });
@@ -576,7 +580,7 @@ pub fn use_create_item3(cn: usize, item_idx: usize) -> i32 {
         State::with(|state| {
             state.do_character_log(
                 cn,
-                core::types::FontColor::LOG_INFO,
+                core::types::FontColor::Green,
                 &format!("You got a {}.", item_ref),
             );
         });
@@ -601,7 +605,7 @@ pub fn use_mix_potion(cn: usize, item_idx: usize) -> i32 {
         State::with(|state| {
             state.do_character_log(
                 cn,
-                core::types::FontColor::LOG_SYSTEM,
+                core::types::FontColor::Blue,
                 "What do you want to do with it?",
             );
         });
@@ -613,7 +617,7 @@ pub fn use_mix_potion(cn: usize, item_idx: usize) -> i32 {
         State::with(|state| {
             state.do_character_log(
                 cn,
-                core::types::FontColor::LOG_SYSTEM,
+                core::types::FontColor::Blue,
                 "Too difficult to do on the ground.",
             );
         });
@@ -694,7 +698,7 @@ pub fn use_mix_potion(cn: usize, item_idx: usize) -> i32 {
         Some(t) => t,
         None => {
             State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::LOG_SYSTEM, "Sorry?");
+                state.do_character_log(cn, core::types::FontColor::Blue, "Sorry?");
             });
             return 0;
         }
@@ -737,7 +741,7 @@ pub fn use_chain(cn: usize, item_idx: usize) -> i32 {
         State::with(|state| {
             state.do_character_log(
                 cn,
-                core::types::FontColor::LOG_SYSTEM,
+                core::types::FontColor::Blue,
                 "What do you want to do with it?",
             );
         });
@@ -749,7 +753,7 @@ pub fn use_chain(cn: usize, item_idx: usize) -> i32 {
         State::with(|state| {
             state.do_character_log(
                 cn,
-                core::types::FontColor::LOG_SYSTEM,
+                core::types::FontColor::Blue,
                 "Too difficult to do on the ground.",
             );
         });
@@ -759,7 +763,7 @@ pub fn use_chain(cn: usize, item_idx: usize) -> i32 {
     let citem_temp = Repository::with_items(|items| items[citem].temp);
     if citem_temp != 206 {
         State::with(|state| {
-            state.do_character_log(cn, core::types::FontColor::LOG_SYSTEM, "Sorry?");
+            state.do_character_log(cn, core::types::FontColor::Blue, "Sorry?");
         });
         return 0;
     }
@@ -769,11 +773,7 @@ pub fn use_chain(cn: usize, item_idx: usize) -> i32 {
 
     if current_temp >= max_data {
         State::with(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::LOG_SYSTEM,
-                "It won't fit anymore.",
-            );
+            state.do_character_log(cn, core::types::FontColor::Blue, "It won't fit anymore.");
         });
         return 0;
     }
@@ -829,7 +829,7 @@ pub fn stone_sword(cn: usize, item_idx: usize) -> i32 {
         State::with(|state| {
             state.do_character_log(
                 cn,
-                core::types::FontColor::LOG_SYSTEM,
+                core::types::FontColor::Blue,
                 "You're not strong enough.",
             );
         });
@@ -850,7 +850,7 @@ pub fn stone_sword(cn: usize, item_idx: usize) -> i32 {
         State::with(|state| {
             state.do_character_log(
                 cn,
-                core::types::FontColor::LOG_INFO,
+                core::types::FontColor::Green,
                 &format!("You got a {}.", item_ref),
             );
         });
@@ -1786,7 +1786,7 @@ pub fn use_scroll3(cn: usize, item_idx: usize) -> i32 {
 
     Repository::with_characters_mut(|characters| {
         characters[cn].points_tot += pts;
-        characters[cn].hp[0] += amount as i8;
+        characters[cn].hp[0] += amount as u16;
     });
 
     State::with(|state| {
@@ -1854,7 +1854,7 @@ pub fn use_scroll4(cn: usize, item_idx: usize) -> i32 {
 
     Repository::with_characters_mut(|characters| {
         characters[cn].points_tot += pts;
-        characters[cn].end[0] += amount as i8;
+        characters[cn].end[0] += amount as u16;
     });
 
     State::with(|state| {
@@ -1922,7 +1922,7 @@ pub fn use_scroll5(cn: usize, item_idx: usize) -> i32 {
 
     Repository::with_characters_mut(|characters| {
         characters[cn].points_tot += pts;
-        characters[cn].mana[0] += amount as i8;
+        characters[cn].mana[0] += amount as u16;
     });
 
     State::with(|state| {
@@ -2358,7 +2358,7 @@ pub fn use_spawn(cn: usize, item_idx: usize) -> i32 {
             }
 
             let citem_template = Repository::with_items(|items| items[citem as usize].temp);
-            if citem_template != required_template {
+            if citem_template as usize != required_template {
                 return 0;
             }
 
@@ -2424,7 +2424,7 @@ pub fn use_pile(cn: usize, item_idx: usize) -> i32 {
 
     let m = (x as usize) + (y as usize) * core::constants::MAPX;
     Repository::with_map_mut(|map| {
-        map[m].item = 0;
+        map[m].it = 0;
     });
 
     // Calculate chance based on player's luck
@@ -2475,7 +2475,7 @@ pub fn use_pile(cn: usize, item_idx: usize) -> i32 {
     // Create item
     if let Some(in2) = God::create_item(tmp) {
         let is_takeable =
-            Repository::with_items(|items| items[in2].flags.contains(ItemFlags::IF_TAKE));
+            Repository::with_items(|items| (items[in2].flags & ItemFlags::IF_TAKE.bits()) != 0);
 
         if is_takeable {
             // Give to player
@@ -2485,13 +2485,13 @@ pub fn use_pile(cn: usize, item_idx: usize) -> i32 {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Green,
-                        &format!("You've found a {}!\n", reference),
+                        &format!("You've found a {}!\n", String::from_utf8_lossy(&reference)),
                     );
                 });
             }
         } else {
             // It's a monster spawner
-            God::drop_item(in2, x, y);
+            God::drop_item(in2, x as usize, y as usize);
             // TODO: Implement fx_add_effect(9, 16, in2, items[in2].data[0], 0);
             log::info!("use_pile: spawning monster at ({}, {})", x, y);
         }
@@ -2555,7 +2555,7 @@ pub fn mine_wall(cn: usize, item_idx: usize) -> i32 {
             }
         });
         let m = x + y * core::constants::MAPX;
-        let map_item = Repository::with_map(|map| map[m].item);
+        let map_item = Repository::with_map(|map| map[m].it);
         if map_item == 0 {
             return 0;
         }
@@ -2603,7 +2603,6 @@ pub fn mine_wall(cn: usize, item_idx: usize) -> i32 {
 
 pub fn mine_state(cn: usize, item_idx: usize) -> i32 {
     use crate::repository::Repository;
-    use core::constants::SERVER_MAPX;
 
     if item_idx == 0 {
         return 0;
@@ -2616,7 +2615,7 @@ pub fn mine_state(cn: usize, item_idx: usize) -> i32 {
     }
 
     // Return state from data[2]
-    Repository::with_items(|items| items[item_idx].data[2])
+    Repository::with_items(|items| items[item_idx].data[2]) as i32
 }
 
 pub fn use_mine(cn: usize, item_idx: usize) -> i32 {
@@ -2751,21 +2750,21 @@ pub fn use_mine_fast(cn: usize, item_idx: usize) -> i32 {
     // TODO: Implement fx_add_effect
     // fx_add_effect(10, TICKS * 60 * 15, x, y, temp);
 
-    State::with(|state| {
+    State::with_mut(|state| {
         state.reset_go(x as i32, y as i32);
         state.remove_lights(x as i32, y as i32);
     });
 
     // Remove item from map
     Repository::with_map_mut(|map| {
-        map[(x + y * SERVER_MAPX) as usize].it = 0;
+        map[(x + y * SERVER_MAPX as u16) as usize].it = 0;
     });
 
     Repository::with_items_mut(|items| {
         items[item_idx].used = USE_EMPTY;
     });
 
-    State::with(|state| {
+    State::with_mut(|state| {
         state.reset_go(x as i32, y as i32);
         state.add_lights(x as i32, y as i32);
     });
@@ -3109,8 +3108,8 @@ pub fn boost_char(cn: usize, divi: usize) -> i32 {
             items[in_idx].name = "Soulstone".to_string();
             items[in_idx].reference = "soulstone".to_string();
             items[in_idx].description = format!("Level {} soulstone, holding {} exp.", rank, exp);
-            items[in_idx].data[0] = rank as i32;
-            items[in_idx].data[1] = exp as i32;
+            items[in_idx].data[0] = rank;
+            items[in_idx].data[1] = exp;
             items[in_idx].temp = 0;
             items[in_idx].driver = 68;
         });
@@ -3145,7 +3144,7 @@ pub fn spawn_penta_enemy(item_idx: usize) -> i32 {
     } else if data9 == 23 {
         24
     } else {
-        (rand::random::<i32>() % 3) - 1 + data9
+        (rand::random::<i32>() % 3) - 1 + data9 as i32
     };
 
     if tmp < 0 {
@@ -3182,7 +3181,7 @@ pub fn spawn_penta_enemy(item_idx: usize) -> i32 {
 
     Repository::with_characters_mut(|characters| {
         characters[cn].data[0] = item_idx as i32;
-        characters[cn].data[29] = (x + y * core::constants::SERVER_MAPX) as i32;
+        characters[cn].data[29] = (x + y * core::constants::SERVER_MAPX as u16) as i32;
         characters[cn].data[60] = 60 * 60 * 2; // TICKS * 60 * 2
         characters[cn].data[73] = 8;
         characters[cn].dir = 1;
@@ -3218,7 +3217,7 @@ pub fn solved_pentagram(cn: usize, item_idx: usize) -> i32 {
 
     // Add bonus to character's pending exp
     Repository::with_characters_mut(|characters| {
-        characters[cn].data[18] += bonus;
+        characters[cn].data[18] += bonus as i32;
     });
 
     // Log to character
@@ -3304,7 +3303,7 @@ pub fn solved_pentagram(cn: usize, item_idx: usize) -> i32 {
                     );
                 }
             }
-            items[n].duration = 10 * 60 + (rand::random::<i32>() % (20 * 60));
+            items[n].duration = 10 * 60 + (rand::random::<i32>() % (20 * 60)) as u32;
             items[n].active = items[n].duration;
         }
     });
@@ -3338,7 +3337,7 @@ pub fn is_in_pentagram_quest(cn: usize) -> bool {
     ];
 
     for (_idx, x1, y1, x2, y2) in areas.iter() {
-        if x >= *x1 as u16 && y >= *y1 as u16 && x <= *x2 as u16 && y <= *y2 as u16 {
+        if x as i32 >= *x1 && y as i32 >= *y1 && x as i32 <= *x2 && y as i32 <= *y2 {
             return true;
         }
     }
@@ -3389,7 +3388,7 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
                 if needs_spawn {
                     let new_enemy = spawn_penta_enemy(item_idx);
                     Repository::with_items_mut(|items| {
-                        items[item_idx].data[m] = new_enemy;
+                        items[item_idx].data[m] = new_enemy as u32;
                     });
                 }
             }
@@ -3422,7 +3421,7 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
         (r1, r2)
     });
 
-    if r1 > r2 {
+    if r1 as u32 > r2 {
         State::with(|state| {
             state.do_character_log(
                 cn,
@@ -3439,8 +3438,8 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
     // Activate pentagram
     let v = Repository::with_items_mut(|items| {
         let v = items[item_idx].data[0];
-        items[item_idx].data[8] = cn as i32;
-        items[item_idx].duration = -1;
+        items[item_idx].data[8] = cn as u32;
+        items[item_idx].duration = u32::MAX; // TODO: What should this be? Max int?
         v
     });
 
@@ -3487,11 +3486,12 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
             continue;
         }
         tot += 1;
-        if n != item_idx && item_active != -1 {
+        if n != item_idx && item_active != u32::MAX {
+            // TODO: This was -1 vs. 0 before but I'm not sure how it worked? Need to re-evaluate...
             continue;
         }
         act += 1;
-        if item_data8 != cn as i32 {
+        if item_data8 as usize != cn {
             continue;
         }
 
@@ -3508,29 +3508,29 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
             b[2] = b[1];
             b[1] = b[0];
             b[0] = n;
-        } else if v > bv[1] {
+        } else if v > bv[1] as u32 {
             bv[4] = bv[3];
             bv[3] = bv[2];
             bv[2] = bv[1];
-            bv[1] = v;
+            bv[1] = v as i32;
             b[4] = b[3];
             b[3] = b[2];
             b[2] = b[1];
             b[1] = n;
-        } else if v > bv[2] {
+        } else if v > bv[2] as u32 {
             bv[4] = bv[3];
             bv[3] = bv[2];
-            bv[2] = v;
+            bv[2] = v as i32;
             b[4] = b[3];
             b[3] = b[2];
             b[2] = n;
-        } else if v > bv[3] {
+        } else if v > bv[3] as u32 {
             bv[4] = bv[3];
-            bv[3] = v;
+            bv[3] = v as i32;
             b[4] = b[3];
             b[3] = n;
-        } else if v > bv[4] {
-            bv[4] = v;
+        } else if v > bv[4] as u32 {
+            bv[4] = v as i32;
             b[4] = n;
         }
     }
@@ -3538,7 +3538,7 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
     // Display top 5 pentagrams
     if b[0] != 0 {
         State::with(|state| {
-            state.do_character_log(cn, core::types::FontColor::Yellow, "You're holding:\\n");
+            state.do_character_log(cn, core::types::FontColor::Yellow, "You're holding:\n");
         });
     }
 
@@ -3624,7 +3624,7 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
         if needs_spawn {
             let new_enemy = spawn_penta_enemy(item_idx);
             Repository::with_items_mut(|items| {
-                items[item_idx].data[m] = new_enemy;
+                items[item_idx].data[m] = new_enemy as u32;
             });
         }
     }
@@ -3679,7 +3679,7 @@ pub fn use_shrine(cn: usize, item_idx: usize) -> i32 {
         Repository::with_characters_mut(|characters| {
             characters[cn].citem = 0;
         });
-        value
+        value as i32
     };
 
     let mut val = val + (rand::random::<i32>() % (val + 1));
@@ -3694,8 +3694,8 @@ pub fn use_shrine(cn: usize, item_idx: usize) -> i32 {
     if val >= rank {
         // Restore mana
         let mana_restored = Repository::with_characters_mut(|characters| {
-            if characters[cn].a_mana < characters[cn].mana[5] * 1000 {
-                characters[cn].a_mana = characters[cn].mana[5] * 1000;
+            if characters[cn].a_mana < characters[cn].mana[5] as i32 * 1000 {
+                characters[cn].a_mana = characters[cn].mana[5] as i32 * 1000;
                 true
             } else {
                 false
@@ -3715,19 +3715,19 @@ pub fn use_shrine(cn: usize, item_idx: usize) -> i32 {
 
         // Determine message based on value
         let message = if val >= rank * 64 {
-            "The gods are madly in love with your offer.\\n"
+            "The gods are madly in love with your offer.\n"
         } else if val >= rank * 32 {
-            "The gods love your offer very much.\\n"
+            "The gods love your offer very much.\n"
         } else if val >= rank * 16 {
-            "The gods love your offer.\\n"
+            "The gods love your offer.\n"
         } else if val >= rank * 8 {
-            "The gods are very pleased with your offer.\\n"
+            "The gods are very pleased with your offer.\n"
         } else if val >= rank * 4 {
-            "The gods are pleased with your offer.\\n"
+            "The gods are pleased with your offer.\n"
         } else if val >= rank * 2 {
-            "The gods deemed your offer apropriate.\\n"
+            "The gods deemed your offer apropriate.\n"
         } else {
-            "The gods accepted your offer.\\n"
+            "The gods accepted your offer.\n"
         };
 
         State::with(|state| {
@@ -3747,12 +3747,12 @@ pub fn use_shrine(cn: usize, item_idx: usize) -> i32 {
         let (message, luck_change) = if val < rank / 8 {
             ("You have angered the gods with your unworthy gift.\\n", -2)
         } else if val < rank / 4 {
-            ("The gods sneer at your gift.\\n", -1)
+            ("The gods sneer at your gift.\n", -1)
         } else if val < rank / 2 {
-            ("The gods think you're cheap.\\n", 0)
+            ("The gods think you're cheap.\n", 0)
         } else {
             (
-                "You feel that it takes more than this to please the gods.\\n",
+                "You feel that it takes more than this to please the gods.\n",
                 0,
             )
         };
@@ -3885,7 +3885,7 @@ pub fn teleport3(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
-                &format!("Your {} vanished.\\n", item_ref),
+                &format!("Your {} vanished.\n", String::from_utf8_lossy(&item_ref)),
             );
         });
     }
@@ -3905,7 +3905,7 @@ pub fn teleport3(cn: usize, item_idx: usize) -> i32 {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
-                    &format!("Your {} vanished.\\n", item_ref),
+                    &format!("Your {} vanished.\n", String::from_utf8_lossy(&item_ref)),
                 );
             });
         }
@@ -3916,7 +3916,7 @@ pub fn teleport3(cn: usize, item_idx: usize) -> i32 {
         let in2 = Repository::with_characters(|characters| characters[cn].spell[n] as usize);
         if in2 != 0 {
             let temp = Repository::with_items(|items| items[in2].temp);
-            if temp == SK_RECALL {
+            if temp as usize == SK_RECALL {
                 Repository::with_characters_mut(|characters| {
                     characters[cn].spell[n] = 0;
                 });
@@ -3945,7 +3945,11 @@ pub fn teleport3(cn: usize, item_idx: usize) -> i32 {
             (items[citem].flags & ItemFlags::IF_LABYDESTROY.bits()) != 0
         });
         if has_flag {
-            let item_ref = Repository::with_items(|items| items[citem].reference.clone());
+            let item_ref = Repository::with_items(|items| {
+                String::from_utf8_lossy(&items[citem].reference)
+                    .trim_end_matches('\0')
+                    .to_string()
+            });
             Repository::with_characters_mut(|characters| {
                 characters[cn].citem = 0;
             });
@@ -3983,7 +3987,7 @@ pub fn teleport3(cn: usize, item_idx: usize) -> i32 {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Yellow,
-                        &format!("Your {} vanished.\\n", item_ref),
+                        &format!("Your {} vanished.\n", String::from_utf8_lossy(&item_ref)),
                     );
                 });
             }
@@ -4011,7 +4015,7 @@ pub fn teleport3(cn: usize, item_idx: usize) -> i32 {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Yellow,
-                        &format!("Your {} vanished.\\n", item_ref),
+                        &format!("Your {} vanished.\n", String::from_utf8_lossy(&item_ref)),
                     );
                 });
             }
@@ -4082,7 +4086,7 @@ pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
     let mut in2 = Repository::with_characters(|characters| characters[cn].worn[WN_RHAND] as usize);
 
     let sword_valid = if in2 != 0 {
-        Repository::with_items(|items| items[in2].driver == 40 && items[in2].data[0] == cn as i32)
+        Repository::with_items(|items| items[in2].driver == 40 && items[in2].data[0] == cn as u32)
     } else {
         false
     };
@@ -4097,7 +4101,7 @@ pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
                 }
                 items[n].used == USE_ACTIVE
                     && items[n].driver == 40
-                    && items[n].data[0] == cn as i32
+                    && items[n].data[0] == cn as u32
             });
 
             if should_replace {
@@ -4106,13 +4110,13 @@ pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
                     Repository::with_items(|items| (items[n].x, items[n].y, items[n].carried));
 
                 let broken_sword = God::create_item(683);
-                if broken_sword != 0 {
+                if broken_sword.unwrap() != 0 {
                     Repository::with_items_mut(|items| {
-                        items[broken_sword].x = x;
-                        items[broken_sword].y = y;
-                        items[broken_sword].carried = carried;
-                        items[broken_sword].temp = 683;
-                        items[broken_sword].flags |= ItemFlags::IF_UPDATE.bits();
+                        items[broken_sword.unwrap() as usize].x = x;
+                        items[broken_sword.unwrap() as usize].y = y;
+                        items[broken_sword.unwrap() as usize].carried = carried;
+                        items[broken_sword.unwrap() as usize].temp = 683;
+                        items[broken_sword.unwrap() as usize].flags |= ItemFlags::IF_UPDATE.bits();
                     });
                     Repository::with_items_mut(|items| {
                         items[n].used = USE_EMPTY;
@@ -4135,10 +4139,10 @@ pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
         }
 
         // Create new Seyan'Du sword (template 682)
-        in2 = God::create_item(682);
+        in2 = God::create_item(682).unwrap();
         God::give_character_item(in2, cn);
         Repository::with_items_mut(|items| {
-            items[in2].data[0] = cn as i32;
+            items[in2].data[0] = cn as u32;
         });
         State::with(|state| {
             state.do_character_log(
@@ -4154,12 +4158,13 @@ pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
 
     // Mark this shrine as visited
     let shrine_bit = Repository::with_items(|items| items[item_idx].data[0]);
-    let already_visited =
-        Repository::with_characters(|characters| (characters[cn].data[21] & shrine_bit) != 0);
+    let already_visited = Repository::with_characters(|characters| {
+        (characters[cn].data[21] as u32 & shrine_bit) != 0
+    });
 
     if !already_visited {
         Repository::with_characters_mut(|characters| {
-            characters[cn].data[21] |= shrine_bit;
+            characters[cn].data[21] as u32 |= shrine_bit;
         });
         State::with(|state| {
             state.do_character_log(
@@ -4205,7 +4210,7 @@ pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
         items[in2].temp = 0;
         items[in2].description = format!(
             "A huge, two-handed sword, engraved with runes and magic symbols. It bears the name {}.",
-            cn_name
+            String::from_utf8_lossy(&cn_name)
         );
     });
 
@@ -4302,7 +4307,7 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
-                    &format!("Your {} vanished.\\n", item_ref),
+                    &format!("Your {} vanished.\\n", String::from_utf8_lossy(&item_ref)),
                 );
             });
         }
@@ -4329,7 +4334,7 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Yellow,
-                        &format!("Your {} vanished.\\n", item_ref),
+                        &format!("Your {} vanished.\n", String::from_utf8_lossy(&item_ref)),
                     );
                 });
             }
@@ -4357,7 +4362,7 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Yellow,
-                        &format!("Your {} vanished.\\n", item_ref),
+                        &format!("Your {} vanished.\n", String::from_utf8_lossy(&item_ref)),
                     );
                 });
             }
@@ -4396,7 +4401,7 @@ pub fn spell_scroll(cn: usize, item_idx: usize) -> i32 {
 
     if charges == 0 {
         State::with(|state| {
-            state.do_character_log(cn, core::types::FontColor::Yellow, "Nothing happened!\\n");
+            state.do_character_log(cn, core::types::FontColor::Yellow, "Nothing happened!\n");
         });
         return 0;
     }
@@ -4422,7 +4427,7 @@ pub fn spell_scroll(cn: usize, item_idx: usize) -> i32 {
     }
 
     // Check attack spells for may_attack
-    if spell == SK_CURSE || spell == SK_STUN {
+    if spell as usize == SK_CURSE || spell as usize == SK_STUN {
         // TODO: Implement may_attack_msg
         // if !may_attack_msg(cn, co, 1) {
         //     chlog(cn, "Prevented from attacking %s (%d)", ch[co].name, co);
@@ -4438,7 +4443,7 @@ pub fn spell_scroll(cn: usize, item_idx: usize) -> i32 {
     }
 
     // Cast spell
-    let ret = match spell {
+    let ret = match spell as usize {
         SK_LIGHT => {
             // TODO: Implement spell_light
             log::info!("TODO: spell_light({}, {}, {})", cn, co, power);
@@ -4521,7 +4526,7 @@ pub fn use_blook_pentagram(cn: usize, item_idx: usize) -> i32 {
     // Set blood state and update sprite
     Repository::with_items_mut(|items| {
         items[item_idx].data[0] = 1;
-        items[item_idx].sprite[0] = items[item_idx].data[1] + items[item_idx].data[0];
+        items[item_idx].sprite[0] = items[item_idx].data[1] as i16 + items[item_idx].data[0] as i16;
     });
 
     1
@@ -4545,7 +4550,7 @@ pub fn use_create_npc(cn: usize, item_idx: usize) -> i32 {
 
     // Create NPC from template
     let template = Repository::with_items(|items| items[item_idx].data[0]);
-    let co = pop_create_char(template, 0);
+    let co = pop_create_char(template as usize, false);
     if co == 0 {
         return 0;
     }
@@ -4583,7 +4588,7 @@ pub fn use_rotate(cn: usize, item_idx: usize) -> i32 {
         if items[item_idx].data[1] > 3 {
             items[item_idx].data[1] = 0;
         }
-        items[item_idx].sprite[0] = items[item_idx].data[0] + items[item_idx].data[1];
+        items[item_idx].sprite[0] = items[item_idx].data[0] as i16 + items[item_idx].data[1] as i16;
         items[item_idx].flags |= ItemFlags::IF_UPDATE;
     });
 
@@ -4608,7 +4613,7 @@ pub fn use_lab8_key(cn: usize, item_idx: usize) -> i32 {
     let citem = Repository::with_characters(|characters| characters[cn].citem as usize);
     if citem == 0 || (citem & 0x80000000) != 0 {
         State::with(|state| {
-            state.do_char_log(cn, 1, "Nothing happens.\n", crate::enums::FontColor::Red);
+            state.do_character_log(cn, core::types::FontColor::Yellow, "Nothing happens.\n");
         });
         return 0;
     }
@@ -4616,11 +4621,10 @@ pub fn use_lab8_key(cn: usize, item_idx: usize) -> i32 {
     let carried = Repository::with_items(|items| items[item_idx].carried);
     if carried == 0 {
         State::with(|state| {
-            state.do_char_log(
+            state.do_character_log(
                 cn,
-                0,
+                core::types::FontColor::Red,
                 "Too difficult to do on the ground.\n",
-                crate::enums::FontColor::Yellow,
             );
         });
         return 0;
@@ -4637,9 +4641,9 @@ pub fn use_lab8_key(cn: usize, item_idx: usize) -> i32 {
         )
     });
 
-    let result_template = if data0 == citem_temp {
+    let result_template = if data0 as u16 == citem_temp {
         data1
-    } else if data2 == citem_temp {
+    } else if data2 as u16 == citem_temp {
         data3
     } else {
         0
@@ -4647,11 +4651,10 @@ pub fn use_lab8_key(cn: usize, item_idx: usize) -> i32 {
 
     if result_template == 0 {
         State::with(|state| {
-            state.do_char_log(
+            state.do_character_log(
                 cn,
-                0,
+                core::types::FontColor::Red,
                 "Those don't fit together.\n",
-                crate::enums::FontColor::Yellow,
             );
         });
         return 0;
@@ -4680,11 +4683,11 @@ pub fn use_lab8_key(cn: usize, item_idx: usize) -> i32 {
     });
 
     // Create and give new key
-    let new_key = God::create_item(result_template);
+    let new_key = God::create_item(result_template as usize);
     Repository::with_items_mut(|items| {
-        items[new_key].flags |= ItemFlags::IF_UPDATE;
+        items[new_key.unwrap() as usize].flags |= ItemFlags::IF_UPDATE;
     });
-    God::give_character_item(new_key, cn);
+    God::give_character_item(new_key.unwrap(), cn);
 
     1
 }
@@ -4705,11 +4708,10 @@ pub fn use_lab8_shrine(cn: usize, item_idx: usize) -> i32 {
     let offer = Repository::with_characters(|characters| characters[cn].citem as usize);
     if offer == 0 {
         State::with(|state| {
-            state.do_char_log(
+            state.do_character_log(
                 cn,
-                1,
-                "You get the feeling that it would be apropriate to give the Goddess a present.\n",
-                crate::enums::FontColor::Red,
+                core::types::FontColor::Yellow,
+                "You get the feeling that it would be appropriate to give the Goddess a present.\n",
             );
         });
         return 0;
@@ -4719,13 +4721,12 @@ pub fn use_lab8_shrine(cn: usize, item_idx: usize) -> i32 {
     let (offer_temp, expected_temp) =
         Repository::with_items(|items| (items[offer].temp, items[item_idx].data[0]));
 
-    if (offer & 0x80000000) != 0 || offer_temp != expected_temp {
+    if (offer & 0x80000000) != 0 || offer_temp as u32 != expected_temp {
         State::with(|state| {
-            state.do_char_log(
+            state.do_character_log(
                 cn,
-                1,
+                core::types::FontColor::Yellow,
                 "The Goddess only wants her property back, and rejects your offer.\n",
-                crate::enums::FontColor::Red,
             );
         });
         return 0;
@@ -4750,26 +4751,25 @@ pub fn use_lab8_shrine(cn: usize, item_idx: usize) -> i32 {
 
     // Create and give gift
     let gift_template = Repository::with_items(|items| items[item_idx].data[1]);
-    let gift = God::create_item(gift_template);
+    let gift = God::create_item(gift_template as usize);
 
-    if !God::give_character_item(gift, cn) {
+    if !God::give_character_item(gift.unwrap(), cn) {
         // If inventory full, put in carried
         Repository::with_characters_mut(|characters| {
-            characters[cn].citem = gift as i32;
+            characters[cn].citem = gift.unwrap() as u32;
         });
         Repository::with_items_mut(|items| {
-            items[gift].carried = cn as i32;
+            items[gift.unwrap() as usize].carried = cn as u16;
         });
     }
 
     let gift_ref =
         Repository::with_items(|items| String::from_utf8_lossy(&items[gift].reference).to_string());
     State::with(|state| {
-        state.do_char_log(
+        state.do_character_log(
             cn,
-            1,
+            core::types::FontColor::Yellow,
             &format!("The Goddess has given you a {} in return!\n", gift_ref),
-            crate::enums::FontColor::Red,
         );
     });
 
@@ -4792,11 +4792,10 @@ pub fn use_lab8_moneyshrine(cn: usize, item_idx: usize) -> i32 {
     let offer = Repository::with_characters(|characters| characters[cn].citem);
     if offer == 0 {
         State::with(|state| {
-            state.do_char_log(
+            state.do_character_log(
                 cn,
-                1,
-                "You get the feeling that it would be apropriate to give the Goddess a present.\n",
-                crate::enums::FontColor::Red,
+                core::types::FontColor::Yellow,
+                "You get the feeling that it would be appropriate to give the Goddess a present.\n",
             );
         });
         return 0;
@@ -4805,11 +4804,10 @@ pub fn use_lab8_moneyshrine(cn: usize, item_idx: usize) -> i32 {
     // Check if it's money
     if (offer & 0x80000000) == 0 {
         State::with(|state| {
-            state.do_char_log(
+            state.do_character_log(
                 cn,
-                1,
+                core::types::FontColor::Yellow,
                 "Only money is accepted at this shrine.\n",
-                crate::enums::FontColor::Red,
             );
         });
         return 0;
@@ -4820,11 +4818,10 @@ pub fn use_lab8_moneyshrine(cn: usize, item_idx: usize) -> i32 {
 
     if amount < min_offering {
         State::with(|state| {
-            state.do_char_log(
+            state.do_character_log(
                 cn,
-                1,
+                core::types::FontColor::Yellow,
                 "Your offering is not sufficient, and was rejected.\n",
-                crate::enums::FontColor::Red,
             );
         });
         return 0;
@@ -4843,23 +4840,22 @@ pub fn use_lab8_moneyshrine(cn: usize, item_idx: usize) -> i32 {
 
     let (dest_x, dest_y) =
         Repository::with_items(|items| (items[item_idx].data[1], items[item_idx].data[2]));
-    God::transfer_char(cn, dest_x, dest_y);
+    God::transfer_char(cn as usize, dest_x as usize, dest_y as usize);
 
     // Restore mana if needed
     let (a_mana, max_mana) = Repository::with_characters(|characters| {
         (characters[cn].a_mana, characters[cn].mana[5] * 1000)
     });
 
-    if a_mana < max_mana {
+    if a_mana < max_mana as i32 {
         Repository::with_characters_mut(|characters| {
-            characters[cn].a_mana = characters[cn].mana[5] * 1000;
+            characters[cn].a_mana = characters[cn].mana[5] as i32 * 1000;
         });
         State::with(|state| {
-            state.do_char_log(
+            state.do_character_log(
                 cn,
-                0,
+                core::types::FontColor::Red,
                 "You feel the hand of the Goddess of Magic touch your mind.\n",
-                crate::enums::FontColor::Yellow,
             );
         });
         // TODO: fx_add_effect(6, 0, ch[cn].x, ch[cn].y, 0);
@@ -4879,11 +4875,10 @@ pub fn change_to_archtemplar(cn: usize) {
     let agility = Repository::with_characters(|characters| characters[cn].attrib[0][0]);
     if agility < 90 {
         State::with(|state| {
-            state.do_char_log(
+            state.do_character_log(
                 cn,
-                1,
+                core::types::FontColor::Yellow,
                 "Your agility is too low. There is still room for improvement.\n",
-                crate::enums::FontColor::Red,
             );
         });
         return;
@@ -4893,11 +4888,10 @@ pub fn change_to_archtemplar(cn: usize) {
     let strength = Repository::with_characters(|characters| characters[cn].attrib[1][0]);
     if strength < 90 {
         State::with(|state| {
-            state.do_char_log(
+            state.do_character_log(
                 cn,
-                1,
+                core::types::FontColor::Yellow,
                 "Your strength is too low. There is still room for improvement.\n",
-                crate::enums::FontColor::Red,
             );
         });
         return;
@@ -4916,14 +4910,13 @@ pub fn change_to_archtemplar(cn: usize) {
     log::info!("TODO: god_minor_racechange({}, {})", cn, new_race);
 
     State::with(|state| {
-        state.do_char_log(
+        state.do_character_log(
             cn,
-            1,
+            core::types::FontColor::Yellow,
             &format!(
                 "You are truly worthy to become a Archtemplar. Congratulations, {}.\n",
                 name
             ),
-            crate::enums::FontColor::Red,
         );
     });
 }
@@ -4938,11 +4931,10 @@ pub fn change_to_archharakim(cn: usize) {
     let willpower = Repository::with_characters(|characters| characters[cn].attrib[3][0]);
     if willpower < 90 {
         State::with(|state| {
-            state.do_char_log(
+            state.do_character_log(
                 cn,
-                1,
+                core::types::FontColor::Yellow,
                 "Your willpower is too low. There is still room for improvement.\n",
-                crate::enums::FontColor::Red,
             );
         });
         return;
@@ -4952,11 +4944,10 @@ pub fn change_to_archharakim(cn: usize) {
     let intuition = Repository::with_characters(|characters| characters[cn].attrib[4][0]);
     if intuition < 90 {
         State::with(|state| {
-            state.do_char_log(
+            state.do_character_log(
                 cn,
-                1,
+                core::types::FontColor::Yellow,
                 "Your intuition is too low. There is still room for improvement.\n",
-                crate::enums::FontColor::Red,
             );
         });
         return;
@@ -4976,14 +4967,13 @@ pub fn change_to_archharakim(cn: usize) {
     log::info!("TODO: god_minor_racechange({}, {})", cn, new_race);
 
     State::with(|state| {
-        state.do_char_log(
+        state.do_character_log(
             cn,
-            1,
+            core::types::FontColor::Yellow,
             &format!(
                 "You are truly worthy to become a Archharakim. Congratulations, {}.\n",
                 name
             ),
-            crate::enums::FontColor::Red,
         );
     });
 }
@@ -4999,11 +4989,10 @@ pub fn change_to_warrior(cn: usize) {
     let agility = Repository::with_characters(|characters| characters[cn].attrib[0][0]);
     if agility < 60 {
         State::with(|state| {
-            state.do_char_log(
+            state.do_character_log(
                 cn,
-                1,
+                core::types::FontColor::Yellow,
                 "Your agility is too low. There is still room for improvement.\n",
-                crate::enums::FontColor::Red,
             );
         });
         return;
@@ -5013,11 +5002,10 @@ pub fn change_to_warrior(cn: usize) {
     let strength = Repository::with_characters(|characters| characters[cn].attrib[1][0]);
     if strength < 60 {
         State::with(|state| {
-            state.do_char_log(
+            state.do_character_log(
                 cn,
-                1,
+                core::types::FontColor::Yellow,
                 "Your strength is too low. There is still room for improvement.\n",
-                crate::enums::FontColor::Red,
             );
         });
         return;
@@ -5036,14 +5024,13 @@ pub fn change_to_warrior(cn: usize) {
     log::info!("TODO: god_minor_racechange({}, {})", cn, new_race);
 
     State::with(|state| {
-        state.do_char_log(
+        state.do_character_log(
             cn,
-            1,
+            core::types::FontColor::Yellow,
             &format!(
                 "You are truly worthy to become a Warrior. Congratulations, {}.\n",
                 name
             ),
-            crate::enums::FontColor::Red,
         );
     });
 }
@@ -5059,11 +5046,10 @@ pub fn change_to_sorcerer(cn: usize) {
     let willpower = Repository::with_characters(|characters| characters[cn].attrib[3][0]);
     if willpower < 60 {
         State::with(|state| {
-            state.do_char_log(
+            state.do_character_log(
                 cn,
-                1,
+                core::types::FontColor::Yellow,
                 "Your willpower is too low. There is still room for improvement.\n",
-                crate::enums::FontColor::Red,
             );
         });
         return;
@@ -5073,11 +5059,10 @@ pub fn change_to_sorcerer(cn: usize) {
     let intuition = Repository::with_characters(|characters| characters[cn].attrib[4][0]);
     if intuition < 60 {
         State::with(|state| {
-            state.do_char_log(
+            state.do_character_log(
                 cn,
-                1,
+                core::types::FontColor::Yellow,
                 "Your intuition is too low. There is still room for improvement.\n",
-                crate::enums::FontColor::Red,
             );
         });
         return;
@@ -5096,14 +5081,13 @@ pub fn change_to_sorcerer(cn: usize) {
     log::info!("TODO: god_minor_racechange({}, {})", cn, new_race);
 
     State::with(|state| {
-        state.do_char_log(
+        state.do_character_log(
             cn,
-            1,
+            core::types::FontColor::Yellow,
             &format!(
                 "You are truly worthy to become a Sorcerer. Congratulations, {}.\n",
                 name
             ),
-            crate::enums::FontColor::Red,
         );
     });
 }
@@ -5128,11 +5112,10 @@ pub fn shrine_of_change(cn: usize, item_idx: usize) -> i32 {
     let citem = Repository::with_characters(|characters| characters[cn].citem as usize);
     if citem == 0 || (citem & 0x80000000) != 0 {
         State::with(|state| {
-            state.do_char_log(
+            state.do_character_log(
                 cn,
-                1,
+                core::types::FontColor::Yellow,
                 "Read the notes, my friend.\n",
-                crate::enums::FontColor::Red,
             );
         });
         return 0;
@@ -5152,11 +5135,10 @@ pub fn shrine_of_change(cn: usize, item_idx: usize) -> i32 {
             change_to_archharakim(cn);
         } else {
             State::with(|state| {
-                state.do_char_log(
+                state.do_character_log(
                     cn,
-                    1,
+                    core::types::FontColor::Yellow,
                     "You are neither Templar nor Harakim.\n",
-                    crate::enums::FontColor::Red,
                 );
             });
         }
@@ -5169,11 +5151,10 @@ pub fn shrine_of_change(cn: usize, item_idx: usize) -> i32 {
             change_to_warrior(cn);
         } else {
             State::with(|state| {
-                state.do_char_log(
+                state.do_character_log(
                     cn,
-                    1,
+                    core::types::FontColor::Yellow,
                     "You are not a Mercenary.\n",
-                    crate::enums::FontColor::Red,
                 );
             });
         }
@@ -5186,11 +5167,10 @@ pub fn shrine_of_change(cn: usize, item_idx: usize) -> i32 {
             change_to_sorcerer(cn);
         } else {
             State::with(|state| {
-                state.do_char_log(
+                state.do_character_log(
                     cn,
-                    1,
+                    core::types::FontColor::Yellow,
                     "You are not a Mercenary.\n",
-                    crate::enums::FontColor::Red,
                 );
             });
         }
@@ -5198,11 +5178,10 @@ pub fn shrine_of_change(cn: usize, item_idx: usize) -> i32 {
     }
 
     State::with(|state| {
-        state.do_char_log(
+        state.do_character_log(
             cn,
-            1,
+            core::types::FontColor::Yellow,
             "Read the notes, my friend.\n",
-            crate::enums::FontColor::Red,
         );
     });
     0
@@ -5236,26 +5215,25 @@ pub fn explorer_point(cn: usize, item_idx: usize) -> i32 {
             })
         });
 
-    if ((char_data46 & data0) == 0)
-        && ((char_data47 & data1) == 0)
-        && ((char_data48 & data2) == 0)
-        && ((char_data49 & data3) == 0)
+    if ((char_data46 & data0 as i32) == 0)
+        && ((char_data47 & data1 as i32) == 0)
+        && ((char_data48 & data2 as i32) == 0)
+        && ((char_data49 & data3 as i32) == 0)
     {
         // Mark as visited
         Repository::with_characters_mut(|characters| {
-            characters[cn].data[46] |= data0;
-            characters[cn].data[47] |= data1;
-            characters[cn].data[48] |= data2;
-            characters[cn].data[49] |= data3;
+            characters[cn].data[46] |= data0 as i32;
+            characters[cn].data[47] |= data1 as i32;
+            characters[cn].data[48] |= data2 as i32;
+            characters[cn].data[49] |= data3 as i32;
             characters[cn].luck += 10;
         });
 
         State::with(|state| {
-            state.do_char_log(
+            state.do_character_log(
                 cn,
-                0,
+                core::types::FontColor::Red,
                 "You found a new exploration point!\n",
-                crate::enums::FontColor::Yellow,
             );
         });
 
@@ -5270,7 +5248,7 @@ pub fn explorer_point(cn: usize, item_idx: usize) -> i32 {
         let mut rng = rand::thread_rng();
 
         let mut exp = base_exp / 2 + rng.gen_range(0..base_exp);
-        exp = std::cmp::min(points_tot / 10, exp); // Not more than 10% of total experience
+        exp = std::cmp::min(points_tot as u32 / 10, exp); // Not more than 10% of total experience
         exp += rng.gen_range(0..(exp / 10 + 1)); // Some more randomness
 
         log::info!(
@@ -5299,11 +5277,10 @@ pub fn use_garbage(cn: usize, item_idx: usize) -> i32 {
     let citem = Repository::with_characters(|characters| characters[cn].citem);
     if citem == 0 {
         State::with(|state| {
-            state.do_char_log(
+            state.do_character_log(
                 cn,
-                1,
+                core::types::FontColor::Yellow,
                 "You feel that you could dispose of unwanted items in this digusting garbage can.\n",
-                crate::enums::FontColor::Red,
             );
         });
         return 0;
@@ -5317,15 +5294,14 @@ pub fn use_garbage(cn: usize, item_idx: usize) -> i32 {
         });
 
         State::with(|state| {
-            state.do_char_log(
+            state.do_character_log(
                 cn,
-                1,
+                core::types::FontColor::Yellow,
                 &format!(
                     "You disposed of {} gold and {} silver.\n",
                     val / 100,
                     val % 100
                 ),
-                crate::enums::FontColor::Red,
             );
         });
     } else {
@@ -5342,11 +5318,10 @@ pub fn use_garbage(cn: usize, item_idx: usize) -> i32 {
         });
 
         State::with(|state| {
-            state.do_char_log(
+            state.do_character_log(
                 cn,
-                1,
+                core::types::FontColor::Yellow,
                 &format!("You disposed of the {}.\n", reference),
-                crate::enums::FontColor::Red,
             );
         });
     }
@@ -5405,11 +5380,10 @@ pub fn use_driver(cn: usize, item_idx: usize, carried: bool) {
                 if cn != 0 {
                     use crate::state::State;
                     State::with(|state| {
-                        state.do_char_log(
+                        state.do_character_log(
                             cn,
-                            0,
+                            core::types::FontColor::Red,
                             "You use cannot the lock-pick directly. Hold it under your mouse cursor and click on the door...\n",
-                            crate::enums::FontColor::Yellow,
                         );
                     });
                 }
@@ -5474,8 +5448,8 @@ pub fn use_driver(cn: usize, item_idx: usize, carried: bool) {
             61 => use_lab8_key(cn, item_idx),
             63 => use_lab8_shrine(cn, item_idx),
             64 => use_lab8_moneyshrine(cn, item_idx),
-            65 => use_lab9_switch(cn, item_idx),
-            66 => use_lab9_door(cn, item_idx),
+            65 => Labyrinth9::with(|lab9| lab9.use_lab9_switch(cn, item_idx)) as i32,
+            66 => Labyrinth9::with(|lab9| lab9.use_lab9_door(cn, item_idx)) as i32,
             67 => use_garbage(cn, item_idx),
             68 => use_soulstone(cn, item_idx),
             69 => 0,
@@ -5507,8 +5481,8 @@ pub fn use_driver(cn: usize, item_idx: usize, carried: bool) {
     let (active, has_usedeactivate, has_useactivate) = Repository::with_items(|items| {
         (
             items[item_idx].active,
-            (items[item_idx].flags & ItemFlags::IF_USEDEACTIVATE) != 0,
-            (items[item_idx].flags & ItemFlags::IF_USEACTIVATE) != 0,
+            (items[item_idx].flags & ItemFlags::IF_USEDEACTIVATE.bits()) != 0,
+            (items[item_idx].flags & ItemFlags::IF_USEACTIVATE.bits()) != 0,
         )
     });
 
@@ -5580,20 +5554,20 @@ pub fn item_age(item_idx: usize) -> i32 {
             if items[item_idx].damage_state > 1 {
                 let st = std::cmp::max(0, 4 - items[item_idx].damage_state as i32);
 
-                if items[item_idx].armor[0] > st {
+                if items[item_idx].armor[0] > st as i8 {
                     items[item_idx].armor[0] -= 1;
                 }
-                if items[item_idx].armor[1] > st {
+                if items[item_idx].armor[1] > st as i8 {
                     items[item_idx].armor[1] -= 1;
                 }
 
-                if items[item_idx].weapon[0] > st * 2 {
+                if items[item_idx].weapon[0] > st as i8 * 2 {
                     items[item_idx].weapon[0] -= 1;
                     if items[item_idx].weapon[0] > 0 {
                         items[item_idx].weapon[0] -= 1;
                     }
                 }
-                if items[item_idx].weapon[1] > st * 2 {
+                if items[item_idx].weapon[1] > st as i8 * 2 {
                     items[item_idx].weapon[1] -= 1;
                     if items[item_idx].weapon[1] > 0 {
                         items[item_idx].weapon[1] -= 1;
@@ -5622,7 +5596,7 @@ pub fn item_age(item_idx: usize) -> i32 {
             TICKS * 60 * 30
         };
 
-        if current_age_act > expire_time {
+        if current_age_act > expire_time as u32 {
             Repository::with_items_mut(|items| {
                 items[item_idx].damage_state = 5;
             });
@@ -5649,7 +5623,7 @@ pub fn item_damage_worn(cn: usize, n: usize, damage: i32) {
     }
 
     Repository::with_items_mut(|items| {
-        items[worn_idx].current_damage += damage;
+        items[worn_idx].current_damage += damage as u32;
     });
 
     if item_age(worn_idx) != 0 {
@@ -5663,41 +5637,37 @@ pub fn item_damage_worn(cn: usize, n: usize, damage: i32) {
         match damage_state {
             1 => {
                 State::with(|state| {
-                    state.do_char_log(
+                    state.do_character_log(
                         cn,
-                        1,
+                        core::types::FontColor::Yellow,
                         &format!("The {} you are using is showing signs of use.\n", reference),
-                        crate::enums::FontColor::Red,
                     );
                 });
             }
             2 => {
                 State::with(|state| {
-                    state.do_char_log(
+                    state.do_character_log(
                         cn,
-                        1,
+                        core::types::FontColor::Yellow,
                         &format!("The {} you are using was slightly damaged.\n", reference),
-                        crate::enums::FontColor::Red,
                     );
                 });
             }
             3 => {
                 State::with(|state| {
-                    state.do_char_log(
+                    state.do_character_log(
                         cn,
-                        1,
+                        core::types::FontColor::Yellow,
                         &format!("The {} you are using was damaged.\n", reference),
-                        crate::enums::FontColor::Red,
                     );
                 });
             }
             4 => {
                 State::with(|state| {
-                    state.do_char_log(
+                    state.do_character_log(
                         cn,
-                        0,
+                        core::types::FontColor::Red,
                         &format!("The {} you are using was badly damaged.\n", reference),
-                        crate::enums::FontColor::Yellow,
                     );
                 });
             }
@@ -5709,11 +5679,10 @@ pub fn item_damage_worn(cn: usize, n: usize, damage: i32) {
                     items[worn_idx].used = USE_EMPTY;
                 });
                 State::with(|state| {
-                    state.do_char_log(
+                    state.do_character_log(
                         cn,
-                        0,
+                        core::types::FontColor::Red,
                         &format!("The {} you were using was destroyed.\n", reference),
-                        crate::enums::FontColor::Yellow,
                     );
                 });
             }
@@ -5740,7 +5709,7 @@ pub fn item_damage_citem(cn: usize, damage: i32) {
     }
 
     Repository::with_items_mut(|items| {
-        items[citem_idx].current_damage += damage;
+        items[citem_idx].current_damage += damage as u32;
     });
 
     if item_age(citem_idx) != 0 {
@@ -5754,41 +5723,37 @@ pub fn item_damage_citem(cn: usize, damage: i32) {
         match damage_state {
             1 => {
                 State::with(|state| {
-                    state.do_char_log(
+                    state.do_character_log(
                         cn,
-                        1,
+                        core::types::FontColor::Yellow,
                         &format!("The {} you are using is showing signs of use.\n", reference),
-                        crate::enums::FontColor::Red,
                     );
                 });
             }
             2 => {
                 State::with(|state| {
-                    state.do_char_log(
+                    state.do_character_log(
                         cn,
-                        1,
+                        core::types::FontColor::Yellow,
                         &format!("The {} you are using was slightly damaged.\n", reference),
-                        crate::enums::FontColor::Red,
                     );
                 });
             }
             3 => {
                 State::with(|state| {
-                    state.do_char_log(
+                    state.do_character_log(
                         cn,
-                        1,
+                        core::types::FontColor::Yellow,
                         &format!("The {} you are using was damaged.\n", reference),
-                        crate::enums::FontColor::Red,
                     );
                 });
             }
             4 => {
                 State::with(|state| {
-                    state.do_char_log(
+                    state.do_character_log(
                         cn,
-                        0,
+                        core::types::FontColor::Red,
                         &format!("The {} you are using was badly damaged.\n", reference),
-                        crate::enums::FontColor::Yellow,
                     );
                 });
             }
@@ -5800,11 +5765,10 @@ pub fn item_damage_citem(cn: usize, damage: i32) {
                     items[citem_idx].used = USE_EMPTY;
                 });
                 State::with(|state| {
-                    state.do_char_log(
+                    state.do_character_log(
                         cn,
-                        0,
+                        core::types::FontColor::Red,
                         &format!("The {} you were using was destroyed.\n", reference),
-                        crate::enums::FontColor::Yellow,
                     );
                 });
             }
@@ -5879,7 +5843,7 @@ pub fn lightage(item_idx: usize, multi: i32) {
     let act = Repository::with_items(|items| if items[item_idx].active != 0 { 1 } else { 0 });
 
     Repository::with_items_mut(|items| {
-        items[item_idx].current_age[act] += light * 2;
+        items[item_idx].current_age[act] += light as u32 * 2;
     });
 }
 
@@ -5931,13 +5895,13 @@ pub fn age_message(cn: usize, item_idx: usize, where_is: &str) {
 
     let formatted_msg = msg.replace("{}", &reference).replace("{}", where_is);
     let color = if font == 1 {
-        crate::enums::FontColor::Red
+        core::types::FontColor::Red
     } else {
-        crate::enums::FontColor::Yellow
+        core::types::FontColor::Yellow
     };
 
     State::with(|state| {
-        state.do_char_log(cn, font, &formatted_msg, color);
+        state.do_character_log(cn, font, &formatted_msg, color);
     });
 }
 
@@ -6395,7 +6359,7 @@ pub fn item_tick_expire() {
     };
 
     for x in 0..SERVER_MAPX as usize {
-        let m = x + y * SERVER_MAPX as usize;
+        let m = x + _y * SERVER_MAPX as usize;
 
         // Process items on this tile
         let in_idx = Repository::with_map(|map| map[m].it);
@@ -6423,7 +6387,7 @@ pub fn item_tick_expire() {
                     });
                     if light_diff != 0 {
                         State::with_mut(|state| {
-                            state.do_add_light(x as i32, y as i32, light_diff);
+                            state.do_add_light(x as i32, _y as i32, light_diff);
                         });
                     }
                 }
@@ -6439,7 +6403,7 @@ pub fn item_tick_expire() {
                         });
                         if light_diff != 0 {
                             State::with_mut(|state| {
-                                state.do_add_light(x as i32, y as i32, -light_diff);
+                                state.do_add_light(x as i32, _y as i32, -light_diff);
                             });
                         }
                     }
@@ -6492,7 +6456,7 @@ pub fn item_tick_expire() {
                         let light = Repository::with_items(|items| items[in_idx].light[act]);
                         if light != 0 {
                             State::with_mut(|state| {
-                                state.do_add_light(x as i32, y as i32, -(light as i32));
+                                state.do_add_light(x as i32, _y as i32, -(light as i32));
                             });
                         }
 
@@ -6527,8 +6491,8 @@ pub fn item_tick_expire() {
             let (ch_x, ch_y, ch_used) = Repository::with_characters(|characters| {
                 (characters[cn].x, characters[cn].y, characters[cn].used)
             });
-            if ch_x != x as i16 || ch_y != y as i16 || ch_used != USE_ACTIVE {
-                log::error!("map[{},{}].ch reset from {} to 0", x, y, cn);
+            if ch_x != x as i16 || ch_y != _y as i16 || ch_used != USE_ACTIVE {
+                log::error!("map[{},{}].ch reset from {} to 0", x, _y, cn);
                 Repository::with_map_mut(|map| {
                     map[m].ch = 0;
                 });
@@ -6544,8 +6508,8 @@ pub fn item_tick_expire() {
             let (tox, toy, ch_used) = Repository::with_characters(|characters| {
                 (characters[cn].tox, characters[cn].toy, characters[cn].used)
             });
-            if tox != x as i16 || toy != y as i16 || ch_used != USE_ACTIVE {
-                log::error!("map[{},{}].to_ch reset from {} to 0", x, y, cn);
+            if tox != x as i16 || toy != _y as i16 || ch_used != USE_ACTIVE {
+                log::error!("map[{},{}].to_ch reset from {} to 0", x, _y, cn);
                 Repository::with_map_mut(|map| {
                     map[m].to_ch = 0;
                 });
@@ -6561,8 +6525,8 @@ pub fn item_tick_expire() {
             let (it_x, it_y, it_used) = Repository::with_items(|items| {
                 (items[in_idx].x, items[in_idx].y, items[in_idx].used)
             });
-            if it_x != x as u16 || it_y != y as u16 || it_used != USE_ACTIVE {
-                log::error!("map[{},{}].it reset from {} to 0", x, y, in_idx);
+            if it_x != x as u16 || it_y != _y as u16 || it_used != USE_ACTIVE {
+                log::error!("map[{},{}].it reset from {} to 0", x, _y, in_idx);
                 Repository::with_map_mut(|map| {
                     map[m].it = 0;
                 });
@@ -6699,7 +6663,7 @@ pub fn item_tick_gc() {
         Repository::with_items(|items| {
             let (x, y, carried) = (items[n].x, items[n].y, items[n].carried);
             log::error!(
-                "Garbage: Item {} ({}, {}, {})",
+                "Garbage: Item {} ({}, {}, {}, {})",
                 n,
                 items[n].get_name(),
                 carried,
@@ -6770,7 +6734,7 @@ pub fn trap1(cn: usize, item_idx: usize) {
         State::with(|state| {
             state.do_character_log(
                 cn,
-                0,
+                core::types::FontColor::Red,
                 &format!(
                     "You triggered an acid attack. Your {} desintegrated.",
                     item_name
@@ -6794,7 +6758,7 @@ pub fn trap1(cn: usize, item_idx: usize) {
         State::with(|state| {
             state.do_character_log(
                 cn,
-                0,
+                core::types::FontColor::Red,
                 "You triggered an acid attack, but it hit only your skin.",
             );
         });
@@ -6809,7 +6773,7 @@ pub fn trap2(cn: usize, tmp: usize) {
     use crate::repository::Repository;
     use core::constants::USE_EMPTY;
 
-    let cc = pop_create_char(tmp, 0);
+    let cc = pop_create_char(tmp, false);
     if cc == 0 {
         return;
     }
@@ -6828,7 +6792,7 @@ pub fn trap2(cn: usize, tmp: usize) {
 
     // TODO: do_update_char(cc);
     Repository::with_characters_mut(|characters| {
-        characters[cc].attack_cn = cn as u32;
+        characters[cc].attack_cn = cn as u16;
     });
 }
 
@@ -6858,17 +6822,21 @@ pub fn start_trap(cn: usize, item_idx: usize) {
         0 => {
             log::info!("Character {} stepped on Arrow Trap", cn);
             State::with(|state| {
-                state.do_character_log(cn, 0, "You feel a sudden pain!");
+                state.do_character_log(cn, core::types::FontColor::Red, "You feel a sudden pain!");
             });
             // TODO: do_hurt(0, cn, 250, 0);
         }
         1 => {
             log::info!("Character {} stepped on Attack Trigger Trap", cn);
             State::with(|state| {
-                state.do_character_log(cn, 0, "You hear a loud croaking noise!");
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    "You hear a loud croaking noise!",
+                );
             });
             State::with_mut(|state| {
-                state.do_area_notify(cn, 0, x as i32, y as i32, 8, cn as i32, 0, 0, 0);
+                state.do_area_notify(cn as i32, 0, x as i32, y as i32, 8, cn as i32, 0, 0, 0);
                 // NT_HITME = 8
             });
         }
@@ -6877,7 +6845,11 @@ pub fn start_trap(cn: usize, item_idx: usize) {
         4 => trap2(cn, 324),
         _ => {
             State::with(|state| {
-                state.do_character_log(cn, 0, "Phew. Must be your lucky day today.");
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    "Phew. Must be your lucky day today.",
+                );
             });
         }
     }
@@ -6936,7 +6908,7 @@ pub fn step_portal1_lab13(cn: usize, item_idx: usize) -> i32 {
     };
 
     // Check kindred
-    let kindred = Repository::with_characters(|characters| characters[cn].kindred);
+    let kindred = Repository::with_characters(|characters| characters[cn].kindred) as u32;
     if (kindred & KIN_HARAKIM) == 0
         && (kindred & KIN_TEMPLAR) == 0
         && (kindred & KIN_MERCENARY) == 0
@@ -6946,7 +6918,7 @@ pub fn step_portal1_lab13(cn: usize, item_idx: usize) -> i32 {
         State::with(|state| {
             state.do_character_log(
                 cn,
-                0,
+                core::types::FontColor::Red,
                 "This portal opens only for Harakim, Templars, Mercenaries, Warrior and Sorcerers.",
             );
         });
@@ -7095,7 +7067,11 @@ pub fn step_portal2_lab13(cn: usize, item_idx: usize) -> i32 {
 
     if flag == 1 {
         State::with(|state| {
-            state.do_character_log(cn, 0, "You may not pass while another player is inside.");
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "You may not pass while another player is inside.",
+            );
         });
         return -1;
     }
@@ -7122,7 +7098,7 @@ pub fn step_portal2_lab13(cn: usize, item_idx: usize) -> i32 {
         if temp != 51 {
             continue;
         }
-        if a_hp > hp5 * 900 && a_mana > mana5 * 900 {
+        if a_hp > (hp5 * 900) as i32 && a_mana > (mana5 * 900) as i32 {
             flag = 1;
         }
         break;
@@ -7240,7 +7216,11 @@ pub fn step_portal_arena(cn: usize, item_idx: usize) -> i32 {
 
     if flag == 1 {
         State::with(|state| {
-            state.do_character_log(cn, 1, "A winner! You gain one arena-rank!");
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "A winner! You gain one arena-rank!",
+            );
         });
         Repository::with_characters_mut(|characters| {
             characters[cn].data[22] += 1;
@@ -7277,7 +7257,11 @@ pub fn step_portal_arena(cn: usize, item_idx: usize) -> i32 {
     });
     if frx >= xs && frx <= xe && fry >= ys && fry <= ye {
         State::with(|state| {
-            state.do_character_log(cn, 1, "You forfeit this fight.");
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "You forfeit this fight.",
+            );
         });
         return 1;
     }
@@ -7289,7 +7273,11 @@ pub fn step_portal_arena(cn: usize, item_idx: usize) -> i32 {
             let occupied = Repository::with_map(|map| map[m].ch != 0);
             if occupied {
                 State::with(|state| {
-                    state.do_character_log(cn, 1, "The arena is busy. Please come back later.");
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Yellow,
+                        "The arena is busy. Please come back later.",
+                    );
                 });
                 return -1;
             }
@@ -7297,7 +7285,7 @@ pub fn step_portal_arena(cn: usize, item_idx: usize) -> i32 {
     }
 
     // Create enemy
-    let co = pop_create_char(nr, 0);
+    let co = pop_create_char(nr, false);
     if co == 0 {
         State::with(|state| {
             state.do_character_log(cn, 1, "Please tell the gods that the arena isn't working.");
@@ -7372,7 +7360,7 @@ pub fn step_teleport(cn: usize, item_idx: usize) -> i32 {
         let (map_flags, ch, to_ch, it) =
             Repository::with_map(|map| (map[m2].flags, map[m2].ch, map[m2].to_ch, map[m2].it));
 
-        if (map_flags & MF_MOVEBLOCK) != 0 {
+        if (map_flags & MF_MOVEBLOCK as u64) != 0 {
             continue;
         }
         if ch != 0 {
@@ -7387,7 +7375,7 @@ pub fn step_teleport(cn: usize, item_idx: usize) -> i32 {
                 continue;
             }
         }
-        if (map_flags & (MF_TAVERN | MF_DEATHTRAP)) != 0 {
+        if (map_flags & ((MF_TAVERN | MF_DEATHTRAP) as u64)) != 0 {
             continue;
         }
 
@@ -7428,7 +7416,17 @@ pub fn step_teleport(cn: usize, item_idx: usize) -> i32 {
     State::with_mut(|state| {
         let (new_x, new_y) =
             Repository::with_characters(|characters| (characters[cn].x, characters[cn].y));
-        state.do_area_notify(cn, 0, new_x as i32, new_y as i32, 1, cn as i32, 0, 0, 0);
+        state.do_area_notify(
+            cn as i32,
+            0,
+            new_x as i32,
+            new_y as i32,
+            1,
+            cn as i32,
+            0,
+            0,
+            0,
+        );
         // NT_SEE = 1
     });
 
@@ -7449,7 +7447,7 @@ pub fn add_spell(cn: usize, item_idx: usize) {
                 characters[cn].spell[n] = item_idx as u32;
             });
             Repository::with_items_mut(|items| {
-                items[item_idx].carried = cn as u32;
+                items[item_idx].carried = cn as u16;
             });
             // TODO: do_update_char(cn);
             return;
@@ -7466,7 +7464,7 @@ pub fn step_firefloor(cn: usize, item_idx: usize) -> i32 {
     use core::constants::ItemFlags;
 
     State::with(|state| {
-        state.do_character_log(cn, 0, "Outch!");
+        state.do_character_log(cn, core::types::FontColor::Red, "Outch!");
     });
 
     let in2 = match God::create_item(1) {
@@ -7475,9 +7473,9 @@ pub fn step_firefloor(cn: usize, item_idx: usize) -> i32 {
     };
 
     Repository::with_items_mut(|items| {
-        items[in2].set_name("Fire");
-        items[in2].set_reference("fire");
-        items[in2].set_description("Fire.");
+        items[in2].name[..4].copy_from_slice(b"Fire");
+        items[in2].reference[..4].copy_from_slice(b"fire");
+        items[in2].description[..5].copy_from_slice(b"Fire.");
         items[in2].hp[0] = -5000;
         items[in2].active = 1;
         items[in2].duration = 1;
