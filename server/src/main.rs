@@ -1,11 +1,13 @@
 mod driver;
 mod driver_special;
+mod effect;
 mod enums;
 mod god;
 mod helpers;
 mod lab9;
 mod network_manager;
 mod path_finding;
+mod player;
 mod repository;
 mod server;
 mod state;

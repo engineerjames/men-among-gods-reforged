@@ -3,6 +3,7 @@ use std::sync::{OnceLock, RwLock};
 
 use crate::lab9::Labyrinth9;
 use crate::network_manager::NetworkManager;
+use crate::player;
 use crate::repository::Repository;
 use crate::state::State;
 
@@ -75,9 +76,7 @@ impl Server {
                 );
             });
 
-            State::with_mut(|state| {
-                state.plr_logout(i, None, crate::enums::LogoutReason::Shutdown);
-            });
+            player::plr_logout(i, 0, crate::enums::LogoutReason::Shutdown);
         }
 
         // Initialize subsystems

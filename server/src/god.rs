@@ -1057,6 +1057,56 @@ impl God {
         name
     }
 
+    pub fn drop_item(item_id: usize, x: usize, y: usize) -> bool {
+        if !Map::is_sane_coordinates(x, y) {
+            return false;
+        }
+
+        let map_index = x + y * core::constants::SERVER_MAPX as usize;
+
+        let can_drop = Repository::with_map(|map| {
+            if map[map_index].ch != 0
+                || map[map_index].to_ch != 0
+                || map[map_index].it != 0
+                || (map[map_index].flags
+                    & (core::constants::MF_MOVEBLOCK | core::constants::MF_DEATHTRAP) as u64)
+                    != 0
+                || map[map_index].fsprite != 0
+            {
+                return false;
+            }
+            true
+        });
+
+        if !can_drop {
+            return false;
+        }
+
+        Repository::with_map_mut(|map| {
+            map[map_index].it = item_id as u32;
+        });
+
+        Repository::with_items_mut(|items| {
+            items[item_id].x = x as u16;
+            items[item_id].y = y as u16;
+            items[item_id].carried = 0;
+
+            let light_value = if items[item_id].active != 0 {
+                items[item_id].light[1]
+            } else {
+                items[item_id].light[0]
+            };
+
+            if light_value != 0 {
+                State::with_mut(|state| {
+                    state.do_add_light(x as i32, y as i32, light_value as i32);
+                });
+            }
+        });
+
+        true
+    }
+
     pub fn drop_char(character_id: usize, x: usize, y: usize) -> bool {
         if !Map::is_sane_coordinates(x, y) {
             return false;

@@ -725,6 +725,8 @@ pub const MAX_RIDDLES: usize = 11;
 /// How long before the time for the riddle is up (3 minutes)
 pub const RIDDLE_TIMEOUT: i32 = 3 * 60 * TICKS;
 
+pub const AREA_SIZE: i32 = 12;
+
 /// Areas of knowledge define a riddlegiver
 pub const RIDDLE_MIN_AREA: i32 = 21;
 pub const RIDDLE_MAX_AREA: i32 = 25;
