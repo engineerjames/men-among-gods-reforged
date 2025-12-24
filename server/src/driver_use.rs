@@ -2515,7 +2515,7 @@ pub fn use_grave(cn: usize, item_idx: usize) -> i32 {
             }
             let ch = &characters[cc];
             ch.data[0] as usize == item_idx
-                && ch.flags & core::constants::CF_BODY == 0
+                && (ch.flags & core::constants::CharacterFlags::CF_BODY.bits()) == 0
                 && ch.used != USE_EMPTY
         });
 
@@ -4382,7 +4382,7 @@ pub fn spell_scroll(cn: usize, item_idx: usize) -> i32 {
     use crate::repository::Repository;
     use crate::state::State;
     use core::constants::{
-        SK_BLESS, SK_CURSE, SK_ENHANCE, SK_LIGHT, SK_MSHIELD, SK_PROTECT, SK_RESIST, SK_STUN,
+        SK_BLESS, SK_CURSE, SK_ENHANCE, SK_LIGHT, SK_MSHIELD, SK_PROTECT, SK_STUN,
     };
 
     // Read scroll data
@@ -6335,38 +6335,1239 @@ pub fn greenlingball(item_idx: usize) {
     }
 }
 
-pub fn expire_blood_penta(item_idx: usize) {}
+pub fn expire_blood_penta(item_idx: usize) {
+    use crate::repository::Repository;
 
-pub fn expire_driver(item_idx: usize) {}
+    Repository::with_items_mut(|items| {
+        let item = &mut items[item_idx];
+        if item.data[0] != 0 {
+            item.data[0] += 1;
+            if item.data[0] > 7 {
+                item.data[0] = 0;
+            }
+            item.sprite[0] = item.data[1] as u32 + item.data[0] as u32;
+        }
+    });
+}
 
-pub fn item_tick_expire() {}
+pub fn expire_driver(item_idx: usize) {
+    use crate::repository::Repository;
 
-pub fn item_tick_gc() {}
+    let driver = Repository::with_items(|items| items[item_idx].driver);
 
-pub fn item_tick() {}
+    match driver {
+        49 => expire_blood_penta(item_idx),
+        _ => {
+            Repository::with_items(|items| {
+                log::error!(
+                    "unknown expire driver {} for item {} ({})",
+                    items[item_idx].driver,
+                    items[item_idx].get_name(),
+                    item_idx
+                );
+            });
+        }
+    }
+}
 
-pub fn trap1(cn: usize, item_idx: usize) {}
+pub fn item_tick_expire() {
+    use crate::god::God;
+    use crate::repository::Repository;
+    use crate::state::State;
+    use core::constants::{
+        ItemFlags, MF_NOEXPIRE, SERVER_MAPX, SERVER_MAPY, USE_ACTIVE, USE_EMPTY,
+    };
 
-pub fn trap2(cn: usize, item_idx: usize) {}
+    static mut Y: usize = 0;
+    const EXP_TIME: i32 = (SERVER_MAPY / 4) as i32;
 
-pub fn start_trap(cn: usize, item_idx: usize) {}
+    let _y = unsafe {
+        let current_y = Y;
+        Y += 1;
+        if Y >= SERVER_MAPY as usize {
+            Repository::with_globals_mut(|globals| {
+                globals.expire_run += 1;
+                globals.lost_run += 1;
+            });
+            Y = 0;
+        }
+        current_y
+    };
 
-pub fn step_trap(cn: usize, item_idx: usize) -> i32 {}
+    for x in 0..SERVER_MAPX as usize {
+        let m = x + y * SERVER_MAPX as usize;
 
-pub fn step_trap_remove(cn: usize, item_idx: usize) {}
+        // Process items on this tile
+        let in_idx = Repository::with_map(|map| map[m].it);
+        if in_idx != 0 {
+            let in_idx = in_idx as usize;
 
-pub fn step_portal1_lab13(cn: usize, item_idx: usize) -> i32 {}
+            // Handle IF_REACTIVATE
+            let (flags, active, duration, light_diff) = Repository::with_items(|items| {
+                let item = &items[in_idx];
+                (
+                    item.flags,
+                    item.active,
+                    item.duration,
+                    item.light[1] as i32 - item.light[0] as i32,
+                )
+            });
 
-pub fn step_portal2_lab13(cn: usize, item_idx: usize) -> i32 {}
+            let (ch_present, to_ch_present) =
+                Repository::with_map(|map| (map[m].ch != 0, map[m].to_ch != 0));
 
-pub fn step_portal_arena(cn: usize, item_idx: usize) -> i32 {}
+            if (flags & ItemFlags::IF_REACTIVATE.bits()) != 0 && active == 0 {
+                if !ch_present && !to_ch_present {
+                    Repository::with_items_mut(|items| {
+                        items[in_idx].active = duration;
+                    });
+                    if light_diff != 0 {
+                        State::with_mut(|state| {
+                            state.do_add_light(x as i32, y as i32, light_diff);
+                        });
+                    }
+                }
+            }
 
-pub fn step_teleport(cn: usize, item_idx: usize) -> i32 {}
+            // Handle active expiration
+            if active != 0 && active != 0xffffffff {
+                if active <= EXP_TIME as u32 {
+                    if may_deactivate(in_idx) && !ch_present && !to_ch_present {
+                        use_driver(0, in_idx, false);
+                        Repository::with_items_mut(|items| {
+                            items[in_idx].active = 0;
+                        });
+                        if light_diff != 0 {
+                            State::with_mut(|state| {
+                                state.do_add_light(x as i32, y as i32, -light_diff);
+                            });
+                        }
+                    }
+                } else {
+                    Repository::with_items_mut(|items| {
+                        items[in_idx].active -= EXP_TIME as u32;
+                    });
+                }
+            }
 
-pub fn step_firefloor(cn: usize, item_idx: usize) -> i32 {}
+            // Legacy drivers
+            let driver = Repository::with_items(|items| items[in_idx].driver);
+            if driver == 33 {
+                pentagram(in_idx);
+            }
+            if driver == 43 {
+                spiderweb(in_idx);
+            }
+            if driver == 56 {
+                greenlingball(in_idx);
+            }
 
-pub fn step_firefloor_remove(cn: usize, item_idx: usize) {}
+            // IF_EXPIREPROC
+            if (flags & ItemFlags::IF_EXPIREPROC.bits()) != 0 {
+                expire_driver(in_idx);
+            }
 
-pub fn step_driver(cn: usize, item_idx: usize) -> i32 {}
+            // Check if item should expire
+            let map_flags = Repository::with_map(|map| map[m].flags);
+            if ((flags & ItemFlags::IF_TAKE.bits()) == 0 && driver != 7)
+                || ((map_flags & MF_NOEXPIRE) != 0 && driver != 7)
+                || driver == 37
+                || (flags & ItemFlags::IF_NOEXPIRE.bits()) != 0
+            {
+                // Skip expiration
+            } else {
+                let act = if active != 0 { 1 } else { 0 };
 
-pub fn step_driver_remove(cn: usize, item_idx: usize) {}
+                Repository::with_items_mut(|items| {
+                    items[in_idx].current_age[act] += EXP_TIME as u32;
+                });
+
+                if (flags & ItemFlags::IF_LIGHTAGE.bits()) != 0 {
+                    lightage(in_idx, EXP_TIME);
+                }
+
+                if item_age(in_idx) != 0 {
+                    let damage_state = Repository::with_items(|items| items[in_idx].damage_state);
+                    if damage_state == 5 {
+                        let light = Repository::with_items(|items| items[in_idx].light[act]);
+                        if light != 0 {
+                            State::with_mut(|state| {
+                                state.do_add_light(x as i32, y as i32, -(light as i32));
+                            });
+                        }
+
+                        Repository::with_map_mut(|map| {
+                            map[m].it = 0;
+                        });
+                        Repository::with_items_mut(|items| {
+                            items[in_idx].used = USE_EMPTY;
+                        });
+                        Repository::with_globals_mut(|globals| {
+                            globals.expire_cnt += 1;
+                        });
+
+                        // Handle tomb (driver == 7)
+                        if driver == 7 {
+                            let co = Repository::with_items(|items| items[in_idx].data[0] as usize);
+                            // TODO: Implement full tomb handling with respawn logic
+                            God::destroy_items(co);
+                            Repository::with_characters_mut(|characters| {
+                                characters[co].used = USE_EMPTY;
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // Checker: validate map references
+        let cn = Repository::with_map(|map| map[m].ch);
+        if cn != 0 {
+            let cn = cn as usize;
+            let (ch_x, ch_y, ch_used) = Repository::with_characters(|characters| {
+                (characters[cn].x, characters[cn].y, characters[cn].used)
+            });
+            if ch_x != x as i16 || ch_y != y as i16 || ch_used != USE_ACTIVE {
+                log::error!("map[{},{}].ch reset from {} to 0", x, y, cn);
+                Repository::with_map_mut(|map| {
+                    map[m].ch = 0;
+                });
+                Repository::with_globals_mut(|globals| {
+                    globals.lost_cnt += 1;
+                });
+            }
+        }
+
+        let cn = Repository::with_map(|map| map[m].to_ch);
+        if cn != 0 {
+            let cn = cn as usize;
+            let (tox, toy, ch_used) = Repository::with_characters(|characters| {
+                (characters[cn].tox, characters[cn].toy, characters[cn].used)
+            });
+            if tox != x as i16 || toy != y as i16 || ch_used != USE_ACTIVE {
+                log::error!("map[{},{}].to_ch reset from {} to 0", x, y, cn);
+                Repository::with_map_mut(|map| {
+                    map[m].to_ch = 0;
+                });
+                Repository::with_globals_mut(|globals| {
+                    globals.lost_cnt += 1;
+                });
+            }
+        }
+
+        let in_idx = Repository::with_map(|map| map[m].it);
+        if in_idx != 0 {
+            let in_idx = in_idx as usize;
+            let (it_x, it_y, it_used) = Repository::with_items(|items| {
+                (items[in_idx].x, items[in_idx].y, items[in_idx].used)
+            });
+            if it_x != x as u16 || it_y != y as u16 || it_used != USE_ACTIVE {
+                log::error!("map[{},{}].it reset from {} to 0", x, y, in_idx);
+                Repository::with_map_mut(|map| {
+                    map[m].it = 0;
+                });
+                Repository::with_globals_mut(|globals| {
+                    globals.lost_cnt += 1;
+                });
+            }
+        }
+    }
+}
+
+pub fn item_tick_gc() {
+    use crate::repository::Repository;
+    use core::constants::{CharacterFlags, ItemFlags, MAXITEM, SERVER_MAPX, USE_ACTIVE, USE_EMPTY};
+
+    static mut OFF: usize = 0;
+    static mut CNT: i32 = 0;
+
+    let (off, m) = unsafe {
+        let current_off = OFF;
+        let current_m = std::cmp::min(current_off + 256, MAXITEM as usize);
+        (current_off, current_m)
+    };
+
+    for n in off..m {
+        let used = Repository::with_items(|items| items[n].used);
+        if used == USE_EMPTY {
+            continue;
+        }
+
+        unsafe { CNT += 1 };
+
+        // Hack: make reset seyan swords unusable
+        let (driver, data0) = Repository::with_items(|items| (items[n].driver, items[n].data[0]));
+        if driver == 40 && data0 == 0 {
+            // Reset to template 683
+            Repository::with_items_mut(|items| {
+                Repository::with_item_templates(|item_templates| {
+                    let (x, y, carried, temp) =
+                        (items[n].x, items[n].y, items[n].carried, items[n].temp);
+                    items[n] = item_templates[683].clone();
+                    items[n].x = x;
+                    items[n].y = y;
+                    items[n].carried = carried;
+                    items[n].temp = 683;
+                    items[n].flags |= ItemFlags::IF_UPDATE.bits();
+                });
+            });
+
+            let cn = Repository::with_items(|items| items[n].carried);
+            if cn != 0 {
+                // TODO: Implement do_update_char
+                log::info!("reset sword from character {}", cn);
+            }
+        }
+
+        let cn = Repository::with_items(|items| items[n].carried as usize);
+        if cn != 0 {
+            let is_sane = cn < core::constants::MAXCHARS as usize;
+            if is_sane {
+                let ch_used = Repository::with_characters(|characters| characters[cn].used);
+                if ch_used != 0 {
+                    // Check if item is in character's inventory
+                    let mut found = false;
+
+                    // Check item slots
+                    for z in 0..40 {
+                        let item_id =
+                            Repository::with_characters(|characters| characters[cn].item[z]);
+                        if item_id == n as u32 {
+                            found = true;
+                            break;
+                        }
+                    }
+
+                    // Check worn/spell slots
+                    if !found {
+                        for z in 0..20 {
+                            let worn_id =
+                                Repository::with_characters(|characters| characters[cn].worn[z]);
+                            let spell_id =
+                                Repository::with_characters(|characters| characters[cn].spell[z]);
+                            if worn_id == n as u32 || spell_id == n as u32 {
+                                found = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    // Check citem
+                    if !found {
+                        let citem = Repository::with_characters(|characters| characters[cn].citem);
+                        if citem == n as u32 {
+                            found = true;
+                        }
+                    }
+
+                    // Check depot for players
+                    if !found {
+                        let is_player = Repository::with_characters(|characters| {
+                            (characters[cn].flags & CharacterFlags::CF_PLAYER.bits()) != 0
+                        });
+                        if is_player {
+                            for z in 0..62 {
+                                let depot_id = Repository::with_characters(|characters| {
+                                    characters[cn].depot[z]
+                                });
+                                if depot_id == n as u32 {
+                                    found = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    if found {
+                        continue;
+                    }
+                }
+            }
+        } else {
+            // Check if item is on the map
+            let (x, y) = Repository::with_items(|items| (items[n].x, items[n].y));
+            let in2 = Repository::with_map(|map| {
+                let idx = x as usize + y as usize * SERVER_MAPX as usize;
+                map[idx].it
+            });
+            if in2 == n as u32 {
+                continue;
+            }
+        }
+
+        // Item is garbage - remove it
+        Repository::with_items(|items| {
+            let (x, y, carried) = (items[n].x, items[n].y, items[n].carried);
+            log::error!(
+                "Garbage: Item {} ({}, {}, {})",
+                n,
+                items[n].get_name(),
+                carried,
+                x,
+                y
+            );
+        });
+
+        Repository::with_items_mut(|items| {
+            items[n].used = USE_EMPTY;
+        });
+
+        Repository::with_globals_mut(|globals| {
+            globals.gc_cnt += 1;
+        });
+    }
+
+    unsafe {
+        OFF += 256;
+        if OFF >= MAXITEM as usize {
+            OFF = 0;
+            let count = CNT;
+            Repository::with_globals_mut(|globals| {
+                globals.item_cnt = count;
+                globals.gc_run += 1;
+            });
+            CNT = 0;
+        }
+    }
+}
+
+pub fn item_tick() {
+    item_tick_expire();
+    item_tick_expire();
+    item_tick_expire();
+    item_tick_expire();
+    item_tick_gc();
+}
+
+pub fn trap1(cn: usize, item_idx: usize) {
+    use crate::repository::Repository;
+    use crate::state::State;
+    use core::constants::{SERVER_MAPX, USE_EMPTY};
+    use rand::Rng;
+
+    let n = Repository::with_items(|items| items[item_idx].data[1] as usize);
+    if n != 0 {
+        let in2 = Repository::with_map(|map| map[n].it as usize);
+        if in2 != 0 {
+            let (active, data0) =
+                Repository::with_items(|items| (items[in2].active, items[in2].data[0]));
+            if active != 0 || data0 != 0 {
+                State::with(|state| {
+                    state.do_character_log(cn, 0, "You stepped on a trap, but nothing happened!");
+                });
+                return;
+            }
+        }
+    }
+
+    let mut rng = rand::thread_rng();
+    let slot = rng.gen_range(0..12);
+    let in_worn = Repository::with_characters(|characters| characters[cn].worn[slot]);
+
+    if in_worn != 0 {
+        let item_name =
+            Repository::with_items(|items| items[in_worn as usize].get_name().to_string());
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                0,
+                &format!(
+                    "You triggered an acid attack. Your {} desintegrated.",
+                    item_name
+                ),
+            );
+        });
+        log::info!(
+            "Character {} stepped on Acid Trap, {} vanished",
+            cn,
+            item_name
+        );
+
+        Repository::with_items_mut(|items| {
+            items[in_worn as usize].used = USE_EMPTY;
+        });
+        Repository::with_characters_mut(|characters| {
+            characters[cn].worn[slot] = 0;
+        });
+        // TODO: do_update_char(cn);
+    } else {
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                0,
+                "You triggered an acid attack, but it hit only your skin.",
+            );
+        });
+        log::info!("Character {} stepped on Acid Trap", cn);
+        // TODO: do_hurt(0, cn, 350, 0);
+    }
+}
+
+pub fn trap2(cn: usize, tmp: usize) {
+    use crate::god::God;
+    use crate::populate::pop_create_char;
+    use crate::repository::Repository;
+    use core::constants::USE_EMPTY;
+
+    let cc = pop_create_char(tmp, 0);
+    if cc == 0 {
+        return;
+    }
+
+    let (ch_x, ch_y) = Repository::with_characters(|characters| {
+        (characters[cn].x as usize, characters[cn].y as usize)
+    });
+
+    if !God::drop_char_fuzzy(cc, ch_x, ch_y) {
+        log::error!("trap2: drop failed");
+        Repository::with_characters_mut(|characters| {
+            characters[cc].used = USE_EMPTY;
+        });
+        return;
+    }
+
+    // TODO: do_update_char(cc);
+    Repository::with_characters_mut(|characters| {
+        characters[cc].attack_cn = cn as u32;
+    });
+}
+
+pub fn start_trap(cn: usize, item_idx: usize) {
+    use crate::repository::Repository;
+    use crate::state::State;
+
+    let (duration, light0, light1, x, y) = Repository::with_items(|items| {
+        let item = &items[item_idx];
+        (item.duration, item.light[0], item.light[1], item.x, item.y)
+    });
+
+    if duration != 0 {
+        Repository::with_items_mut(|items| {
+            items[item_idx].active = duration;
+        });
+        if light0 != light1 && x > 0 {
+            State::with_mut(|state| {
+                state.do_add_light(x as i32, y as i32, light1 as i32 - light0 as i32);
+            });
+        }
+    }
+
+    let trap_type = Repository::with_items(|items| items[item_idx].data[0]);
+
+    match trap_type {
+        0 => {
+            log::info!("Character {} stepped on Arrow Trap", cn);
+            State::with(|state| {
+                state.do_character_log(cn, 0, "You feel a sudden pain!");
+            });
+            // TODO: do_hurt(0, cn, 250, 0);
+        }
+        1 => {
+            log::info!("Character {} stepped on Attack Trigger Trap", cn);
+            State::with(|state| {
+                state.do_character_log(cn, 0, "You hear a loud croaking noise!");
+            });
+            State::with_mut(|state| {
+                state.do_area_notify(cn, 0, x as i32, y as i32, 8, cn as i32, 0, 0, 0);
+                // NT_HITME = 8
+            });
+        }
+        2 => trap1(cn, item_idx),
+        3 => trap2(cn, 323),
+        4 => trap2(cn, 324),
+        _ => {
+            State::with(|state| {
+                state.do_character_log(cn, 0, "Phew. Must be your lucky day today.");
+            });
+        }
+    }
+}
+
+pub fn step_trap(cn: usize, item_idx: usize) -> i32 {
+    use crate::repository::Repository;
+    use crate::state::State;
+    use core::constants::CharacterFlags;
+
+    let is_player = Repository::with_characters(|characters| {
+        (characters[cn].flags & CharacterFlags::CF_PLAYER.bits()) != 0
+    });
+
+    if is_player {
+        start_trap(cn, item_idx);
+    } else {
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                0,
+                "You stepped on a trap. Fortunately, nothing happened.",
+            );
+        });
+    }
+
+    0
+}
+
+pub fn step_trap_remove(cn: usize, item_idx: usize) {
+    use crate::repository::Repository;
+    use crate::state::State;
+
+    let (active, light0, light1, x, y) = Repository::with_items(|items| {
+        let item = &items[item_idx];
+        (item.active, item.light[0], item.light[1], item.x, item.y)
+    });
+
+    if active != 0 {
+        Repository::with_items_mut(|items| {
+            items[item_idx].active = 0;
+        });
+        if light0 != light1 && x > 0 {
+            State::with_mut(|state| {
+                state.do_add_light(x as i32, y as i32, light0 as i32 - light1 as i32);
+            });
+        }
+    }
+}
+
+pub fn step_portal1_lab13(cn: usize, item_idx: usize) -> i32 {
+    use crate::repository::Repository;
+    use crate::state::State;
+    use core::constants::{
+        KIN_HARAKIM, KIN_MERCENARY, KIN_SORCERER, KIN_TEMPLAR, KIN_WARRIOR, USE_EMPTY,
+    };
+
+    // Check kindred
+    let kindred = Repository::with_characters(|characters| characters[cn].kindred);
+    if (kindred & KIN_HARAKIM) == 0
+        && (kindred & KIN_TEMPLAR) == 0
+        && (kindred & KIN_MERCENARY) == 0
+        && (kindred & KIN_SORCERER) == 0
+        && (kindred & KIN_WARRIOR) == 0
+    {
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                0,
+                "This portal opens only for Harakim, Templars, Mercenaries, Warrior and Sorcerers.",
+            );
+        });
+        return -1;
+    }
+
+    // Check for items
+    let mut has_items = false;
+
+    let citem = Repository::with_characters(|characters| characters[cn].citem);
+    if citem != 0 {
+        has_items = true;
+    }
+
+    if !has_items {
+        for n in 0..40 {
+            let item_id = Repository::with_characters(|characters| characters[cn].item[n]);
+            if item_id != 0 {
+                has_items = true;
+                break;
+            }
+        }
+    }
+
+    if !has_items {
+        for n in 0..20 {
+            let worn_id = Repository::with_characters(|characters| characters[cn].worn[n]);
+            if worn_id != 0 {
+                has_items = true;
+                break;
+            }
+        }
+    }
+
+    if has_items {
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                0,
+                "You may not pass unless you leave all your items behind.",
+            );
+        });
+        return -1;
+    }
+
+    // Remove all spells
+    for n in 0..20 {
+        let spell_id = Repository::with_characters(|characters| characters[cn].spell[n]);
+        if spell_id != 0 {
+            Repository::with_items_mut(|items| {
+                items[spell_id as usize].used = USE_EMPTY;
+            });
+            Repository::with_characters_mut(|characters| {
+                characters[cn].spell[n] = 0;
+            });
+        }
+    }
+    // TODO: do_update_char(cn);
+
+    1
+}
+
+pub fn step_portal2_lab13(cn: usize, item_idx: usize) -> i32 {
+    use crate::repository::Repository;
+    use crate::state::State;
+    use core::constants::{CharacterFlags, SERVER_MAPX, USE_ACTIVE, USE_EMPTY};
+
+    let is_player = Repository::with_characters(|characters| {
+        (characters[cn].flags & CharacterFlags::CF_PLAYER.bits()) != 0
+    });
+    if !is_player {
+        return -1;
+    }
+
+    // Check area 1: x=48-80, y=594-608
+    let mut flag = 0;
+    for x in 48..=80 {
+        for y in 594..=608 {
+            let m = x + y * SERVER_MAPX as usize;
+            let co = Repository::with_map(|map| map[m].ch);
+            if co != 0 && co != cn as u32 {
+                let is_other_player = Repository::with_characters(|characters| {
+                    (characters[co as usize].flags & CharacterFlags::CF_PLAYER.bits()) != 0
+                });
+                if is_other_player {
+                    flag = 1;
+                    break;
+                }
+            }
+
+            let in2 = Repository::with_map(|map| map[m].it);
+            if in2 != 0 {
+                let temp = Repository::with_items(|items| items[in2 as usize].temp);
+                if temp == 664 || temp == 170 {
+                    flag = 2;
+                    break;
+                }
+            }
+        }
+        if flag != 0 {
+            break;
+        }
+    }
+
+    // Check area 2: x=38-48, y=593-602
+    if flag == 0 {
+        for x in 38..=48 {
+            for y in 593..=602 {
+                let m = x + y * SERVER_MAPX as usize;
+                let co = Repository::with_map(|map| map[m].ch);
+                if co != 0 && co != cn as u32 {
+                    let is_other_player = Repository::with_characters(|characters| {
+                        (characters[co as usize].flags & CharacterFlags::CF_PLAYER.bits()) != 0
+                    });
+                    if is_other_player {
+                        flag = 1;
+                        break;
+                    }
+                }
+
+                let in2 = Repository::with_map(|map| map[m].it);
+                if in2 != 0 {
+                    let temp = Repository::with_items(|items| items[in2 as usize].temp);
+                    if temp == 664 || temp == 170 {
+                        flag = 2;
+                        break;
+                    }
+                }
+            }
+            if flag != 0 {
+                break;
+            }
+        }
+    }
+
+    if flag == 2 {
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                0,
+                "The Final Test is waiting for a certain item to expire, please try again later.",
+            );
+        });
+        return -1;
+    }
+
+    if flag == 1 {
+        State::with(|state| {
+            state.do_character_log(cn, 0, "You may not pass while another player is inside.");
+        });
+        return -1;
+    }
+
+    // Check for gatekeeper (character template 51)
+    flag = 0;
+    for n in 0..core::constants::MAXCHARS as usize {
+        let (used, flags, temp, a_hp, hp5, a_mana, mana5) =
+            Repository::with_characters(|characters| {
+                (
+                    characters[n].used,
+                    characters[n].flags,
+                    characters[n].temp,
+                    characters[n].a_hp,
+                    characters[n].hp[5],
+                    characters[n].a_mana,
+                    characters[n].mana[5],
+                )
+            });
+
+        if used != USE_ACTIVE || (flags & CharacterFlags::CF_BODY.bits()) != 0 {
+            continue;
+        }
+        if temp != 51 {
+            continue;
+        }
+        if a_hp > hp5 * 900 && a_mana > mana5 * 900 {
+            flag = 1;
+        }
+        break;
+    }
+
+    if flag == 0 {
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                0,
+                "The Gatekeeper is currently busy. Please try again in a few minutes.",
+            );
+        });
+        return -1;
+    }
+
+    // Check if doors are closed (item 15220)
+    let door_data = Repository::with_items(|items| items[15220].data[1]);
+    if door_data == 0 {
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                0,
+                "The doors aren't closed again yet. Please try again in a few minutes.",
+            );
+        });
+        return -1;
+    }
+
+    // Remove all spells
+    for n in 0..20 {
+        let spell_id = Repository::with_characters(|characters| characters[cn].spell[n]);
+        if spell_id != 0 {
+            Repository::with_items_mut(|items| {
+                items[spell_id as usize].used = USE_EMPTY;
+            });
+            Repository::with_characters_mut(|characters| {
+                characters[cn].spell[n] = 0;
+            });
+        }
+    }
+
+    // Remove items with temp 664
+    for n in 0..40 {
+        let item_id = Repository::with_characters(|characters| characters[cn].item[n]);
+        if item_id != 0 {
+            let temp = Repository::with_items(|items| items[item_id as usize].temp);
+            if temp == 664 {
+                Repository::with_characters_mut(|characters| {
+                    characters[cn].item[n] = 0;
+                });
+                Repository::with_items_mut(|items| {
+                    items[item_id as usize].used = USE_EMPTY;
+                });
+            }
+        }
+    }
+
+    let citem = Repository::with_characters(|characters| characters[cn].citem);
+    if citem != 0 && (citem & 0x80000000) == 0 {
+        let temp = Repository::with_items(|items| items[citem as usize].temp);
+        if temp == 664 {
+            Repository::with_characters_mut(|characters| {
+                characters[cn].citem = 0;
+            });
+            Repository::with_items_mut(|items| {
+                items[citem as usize].used = USE_EMPTY;
+            });
+        }
+    }
+    // TODO: do_update_char(cn);
+
+    1
+}
+
+pub fn step_portal_arena(cn: usize, item_idx: usize) -> i32 {
+    use crate::god::God;
+    use crate::populate::pop_create_char;
+    use crate::repository::Repository;
+    use crate::state::State;
+    use core::constants::{SERVER_MAPX, TICKS, USE_EMPTY};
+
+    // Check for arena token (temp 687) in citem
+    let citem = Repository::with_characters(|characters| characters[cn].citem);
+    let mut flag = 0;
+    if citem != 0 && (citem & 0x80000000) == 0 {
+        let temp = Repository::with_items(|items| items[citem as usize].temp);
+        if temp == 687 {
+            Repository::with_characters_mut(|characters| {
+                characters[cn].citem = 0;
+            });
+            Repository::with_items_mut(|items| {
+                items[citem as usize].used = USE_EMPTY;
+            });
+            flag = 1;
+        }
+    }
+
+    // Check inventory for token
+    for n in 0..40 {
+        let item_id = Repository::with_characters(|characters| characters[cn].item[n]);
+        if item_id != 0 {
+            let temp = Repository::with_items(|items| items[item_id as usize].temp);
+            if temp == 687 {
+                flag = 1;
+                Repository::with_characters_mut(|characters| {
+                    characters[cn].item[n] = 0;
+                });
+                Repository::with_items_mut(|items| {
+                    items[item_id as usize].used = USE_EMPTY;
+                });
+            }
+        }
+    }
+
+    if flag == 1 {
+        State::with(|state| {
+            state.do_character_log(cn, 1, "A winner! You gain one arena-rank!");
+        });
+        Repository::with_characters_mut(|characters| {
+            characters[cn].data[22] += 1;
+            characters[cn].data[23] = 1;
+        });
+        return 1;
+    }
+
+    // Get arena rank
+    let nr = Repository::with_characters(|characters| characters[cn].data[22] as usize);
+    let nr = nr + 364;
+    if nr > 381 {
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                1,
+                "Please tell the gods to add more potent monsters to the arena.",
+            );
+        });
+        return -1;
+    }
+
+    // Get arena bounds
+    let (data1, data2) =
+        Repository::with_items(|items| (items[item_idx].data[1], items[item_idx].data[2]));
+    let xs = (data1 as usize) % SERVER_MAPX as usize;
+    let ys = (data1 as usize) / SERVER_MAPX as usize;
+    let xe = (data2 as usize) % SERVER_MAPX as usize;
+    let ye = (data2 as usize) / SERVER_MAPX as usize;
+
+    // Check if character is forfeiting
+    let (frx, fry) = Repository::with_characters(|characters| {
+        (characters[cn].frx as usize, characters[cn].fry as usize)
+    });
+    if frx >= xs && frx <= xe && fry >= ys && fry <= ye {
+        State::with(|state| {
+            state.do_character_log(cn, 1, "You forfeit this fight.");
+        });
+        return 1;
+    }
+
+    // Check if arena is occupied
+    for x in xs..=xe {
+        for y in ys..=ye {
+            let m = x + y * SERVER_MAPX as usize;
+            let occupied = Repository::with_map(|map| map[m].ch != 0);
+            if occupied {
+                State::with(|state| {
+                    state.do_character_log(cn, 1, "The arena is busy. Please come back later.");
+                });
+                return -1;
+            }
+        }
+    }
+
+    // Create enemy
+    let co = pop_create_char(nr, 0);
+    if co == 0 {
+        State::with(|state| {
+            state.do_character_log(cn, 1, "Please tell the gods that the arena isn't working.");
+        });
+        return -1;
+    }
+
+    let data0 = Repository::with_items(|items| items[item_idx].data[0]);
+    let drop_x = (data0 as usize) % SERVER_MAPX as usize;
+    let drop_y = (data0 as usize) / SERVER_MAPX as usize;
+
+    if !God::drop_char_fuzzy(co, drop_x, drop_y) {
+        State::with(|state| {
+            state.do_character_log(cn, 1, "Please tell the gods that the arena isn't working.");
+        });
+        return -1;
+    }
+
+    Repository::with_globals(|globals| {
+        Repository::with_characters_mut(|characters| {
+            characters[co].data[64] = globals.ticker as i32 + (TICKS * 60 * 5) as i32;
+        });
+    });
+
+    // Create arena token
+    if let Some(in2) = God::create_item(687) {
+        God::give_character_item(co, in2);
+    }
+
+    Repository::with_characters_mut(|characters| {
+        characters[cn].data[23] = 0;
+    });
+
+    1
+}
+
+pub fn step_teleport(cn: usize, item_idx: usize) -> i32 {
+    use crate::player::{plr_map_remove, plr_map_set};
+    use crate::repository::Repository;
+    use crate::state::State;
+    use core::constants::{ItemFlags, MF_DEATHTRAP, MF_MOVEBLOCK, MF_TAVERN, SERVER_MAPX};
+
+    if cn == 0 {
+        log::error!("step_teleport(): cn = 0");
+        return -1;
+    }
+
+    let (x, y) = Repository::with_items(|items| {
+        (
+            items[item_idx].data[0] as usize,
+            items[item_idx].data[1] as usize,
+        )
+    });
+
+    if x >= SERVER_MAPX as usize || y >= (SERVER_MAPX * 2) as usize {
+        log::error!("step_teleport(): bad coordinates in item {}", item_idx);
+        return -1;
+    }
+
+    let m = x + y * SERVER_MAPX as usize;
+
+    // Check for unoccupied landing spot
+    let loc_off: [isize; 5] = [0, -(SERVER_MAPX as isize), SERVER_MAPX as isize, 1, -1];
+    let mut m3 = 0;
+
+    for offset in loc_off.iter() {
+        let m2 = (m as isize + offset) as usize;
+        if m2 >= (SERVER_MAPX * SERVER_MAPX * 2) as usize {
+            continue;
+        }
+
+        let (map_flags, ch, to_ch, it) =
+            Repository::with_map(|map| (map[m2].flags, map[m2].ch, map[m2].to_ch, map[m2].it));
+
+        if (map_flags & MF_MOVEBLOCK) != 0 {
+            continue;
+        }
+        if ch != 0 {
+            continue;
+        }
+        if to_ch != 0 {
+            continue;
+        }
+        if it != 0 {
+            let it_flags = Repository::with_items(|items| items[it as usize].flags);
+            if (it_flags & ItemFlags::IF_MOVEBLOCK.bits()) != 0 {
+                continue;
+            }
+        }
+        if (map_flags & (MF_TAVERN | MF_DEATHTRAP)) != 0 {
+            continue;
+        }
+
+        m3 = m2;
+        break;
+    }
+
+    if m3 == 0 {
+        // Target occupied: fail silently
+        return -1;
+    }
+
+    // Add departure effect
+    let (old_x, old_y) =
+        Repository::with_characters(|characters| (characters[cn].x, characters[cn].y));
+    // TODO: fx_add_effect(6, 0, old_x, old_y, 0);
+
+    plr_map_remove(cn);
+
+    // Update character position
+    Repository::with_characters_mut(|characters| {
+        characters[cn].status = 0;
+        characters[cn].attack_cn = 0;
+        characters[cn].skill_nr = 0;
+        characters[cn].goto_x = 0;
+    });
+
+    // Set new position
+    Repository::with_map_mut(|map| {
+        map[m3].ch = cn as u32;
+        map[m3].to_ch = 0;
+    });
+    Repository::with_characters_mut(|characters| {
+        characters[cn].x = (m3 % SERVER_MAPX as usize) as i16;
+        characters[cn].y = (m3 / SERVER_MAPX as usize) as i16;
+    });
+
+    State::with_mut(|state| {
+        let (new_x, new_y) =
+            Repository::with_characters(|characters| (characters[cn].x, characters[cn].y));
+        state.do_area_notify(cn, 0, new_x as i32, new_y as i32, 1, cn as i32, 0, 0, 0);
+        // NT_SEE = 1
+    });
+
+    // Add arrival effect
+    // TODO: fx_add_effect(6, 0, new_x, new_y, 0);
+
+    2 // TELEPORT_SUCCESS
+}
+
+pub fn add_spell(cn: usize, item_idx: usize) {
+    use crate::repository::Repository;
+
+    // Find empty spell slot
+    for n in 0..20 {
+        let spell_id = Repository::with_characters(|characters| characters[cn].spell[n]);
+        if spell_id == 0 {
+            Repository::with_characters_mut(|characters| {
+                characters[cn].spell[n] = item_idx as u32;
+            });
+            Repository::with_items_mut(|items| {
+                items[item_idx].carried = cn as u32;
+            });
+            // TODO: do_update_char(cn);
+            return;
+        }
+    }
+
+    log::error!("add_spell: no free spell slot for character {}", cn);
+}
+
+pub fn step_firefloor(cn: usize, item_idx: usize) -> i32 {
+    use crate::god::God;
+    use crate::repository::Repository;
+    use crate::state::State;
+    use core::constants::ItemFlags;
+
+    State::with(|state| {
+        state.do_character_log(cn, 0, "Outch!");
+    });
+
+    let in2 = match God::create_item(1) {
+        Some(idx) => idx,
+        None => return 0,
+    };
+
+    Repository::with_items_mut(|items| {
+        items[in2].set_name("Fire");
+        items[in2].set_reference("fire");
+        items[in2].set_description("Fire.");
+        items[in2].hp[0] = -5000;
+        items[in2].active = 1;
+        items[in2].duration = 1;
+        items[in2].flags = ItemFlags::IF_SPELL.bits() | ItemFlags::IF_PERMSPELL.bits();
+    });
+
+    let (temp, sprite1) =
+        Repository::with_items(|items| (items[item_idx].temp, items[item_idx].sprite[1]));
+    Repository::with_items_mut(|items| {
+        items[in2].temp = temp;
+        items[in2].sprite[1] = sprite1;
+    });
+
+    add_spell(cn, in2);
+
+    0
+}
+
+pub fn step_firefloor_remove(cn: usize, item_idx: usize) {
+    use crate::repository::Repository;
+    use core::constants::USE_EMPTY;
+
+    let temp = Repository::with_items(|items| items[item_idx].temp);
+
+    for n in 0..20 {
+        let in2 = Repository::with_characters(|characters| characters[cn].spell[n]);
+        if in2 != 0 {
+            let spell_temp = Repository::with_items(|items| items[in2 as usize].temp);
+            if spell_temp == temp {
+                Repository::with_items_mut(|items| {
+                    items[in2 as usize].used = USE_EMPTY;
+                });
+                Repository::with_characters_mut(|characters| {
+                    characters[cn].spell[n] = 0;
+                });
+                return;
+            }
+        }
+    }
+}
+
+pub fn step_driver(cn: usize, item_idx: usize) -> i32 {
+    use crate::repository::Repository;
+
+    let driver = Repository::with_items(|items| items[item_idx].driver);
+
+    let ret = match driver {
+        36 => step_portal1_lab13(cn, item_idx),
+        37 => step_trap(cn, item_idx),
+        38 => step_portal2_lab13(cn, item_idx),
+        47 => step_portal_arena(cn, item_idx),
+        62 => step_teleport(cn, item_idx),
+        69 => step_firefloor(cn, item_idx),
+        _ => {
+            Repository::with_items(|items| {
+                log::error!(
+                    "unknown step driver {} for item {} ({})",
+                    items[item_idx].driver,
+                    items[item_idx].get_name(),
+                    item_idx
+                );
+            });
+            0
+        }
+    };
+
+    ret
+}
+
+pub fn step_driver_remove(cn: usize, item_idx: usize) {
+    use crate::repository::Repository;
+
+    let driver = Repository::with_items(|items| items[item_idx].driver);
+
+    match driver {
+        36 => {}
+        37 => step_trap_remove(cn, item_idx),
+        38 => {}
+        47 => {}
+        62 => {}
+        69 => step_firefloor_remove(cn, item_idx),
+        _ => {
+            Repository::with_items(|items| {
+                log::error!(
+                    "unknown step driver {} for item {} ({})",
+                    items[item_idx].driver,
+                    items[item_idx].get_name(),
+                    item_idx
+                );
+            });
+        }
+    }
+}
