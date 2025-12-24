@@ -12,6 +12,7 @@ mod populate;
 mod repository;
 mod server;
 mod state;
+mod talk;
 
 use log;
 use std::env;
