@@ -1,3 +1,5 @@
+use core::constants::CharacterFlags;
+
 use crate::repository::Repository;
 
 const WHO_RANK_NAME: [&str; core::constants::RANKS] = [
@@ -221,14 +223,51 @@ pub fn turncount(dir1: u8, dir2: u8) -> i32 {
     }
 }
 
-pub fn invis_level(cn: usize) -> i32 {}
+pub fn invis_level(cn: usize) -> i32 {
+    Repository::with_characters(|characters| {
+        if characters[cn].flags & CharacterFlags::CF_GREATERINV.bits() != 0 {
+            return 15;
+        }
+        if characters[cn].flags & CharacterFlags::CF_GOD.bits() != 0 {
+            return 10;
+        }
+        if characters[cn].flags & (CharacterFlags::CF_IMP | CharacterFlags::CF_USURP).bits() != 0 {
+            return 5;
+        }
+        if characters[cn].flags & CharacterFlags::CF_STAFF.bits() != 0 {
+            return 2;
+        }
 
-pub fn attrib_needed(value: i32, diff: i32) -> i32 {}
+        return 1;
+    })
+}
 
-pub fn hp_needed(value: i32, diff: i32) -> i32 {}
+/// Helper function to calculate points needed to raise an attribute
+/// Port of attrib_needed from svr_do.cpp
+pub fn attrib_needed(v: i32, diff: i32) -> i32 {
+    v * v * v * diff / 20
+}
 
-pub fn end_needed(value: i32, diff: i32) -> i32 {}
+/// Helper function to calculate points needed to raise HP
+/// Port of hp_needed from svr_do.cpp
+pub fn hp_needed(v: i32, diff: i32) -> i32 {
+    v * diff
+}
 
-pub fn mana_needed(value: i32, diff: i32) -> i32 {}
+/// Helper function to calculate points needed to raise endurance
+/// Port of end_needed from svr_do.cpp
+pub fn end_needed(v: i32, diff: i32) -> i32 {
+    v * diff / 2
+}
 
-pub fn skill_needed(value: i32, diff: i32) -> i32 {}
+/// Helper function to calculate points needed to raise mana
+/// Port of mana_needed from svr_do.cpp
+pub fn mana_needed(v: i32, diff: i32) -> i32 {
+    v * diff
+}
+
+/// Helper function to calculate points needed to raise a skill
+/// Port of skill_needed from svr_do.cpp
+pub fn skill_needed(v: i32, diff: i32) -> i32 {
+    std::cmp::max(v, v * v * v * diff / 40)
+}

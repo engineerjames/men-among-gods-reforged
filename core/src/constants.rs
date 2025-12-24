@@ -762,3 +762,13 @@ pub const DR_TURN: u32 = 7;
 pub const DR_SINGLEBUILD: u32 = 8;
 pub const DR_AREABUILD1: u32 = 9;
 pub const DR_AREABUILD2: u32 = 10;
+
+// =============================================================================
+// Attribute Indices (from SkillTab.h)
+// =============================================================================
+
+pub const AT_BRAVE: i32 = 0;
+pub const AT_WILL: i32 = 1;
+pub const AT_INT: i32 = 2;
+pub const AT_AGIL: i32 = 3;
+pub const AT_STREN: i32 = 4;
