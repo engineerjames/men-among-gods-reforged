@@ -299,7 +299,7 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
         }
 
         // Can't see attacker - panic mode
-        let character_can_see = State::with_mut(|state| state.do_character_can_see(cn, co));
+        let character_can_see = State::with_mut(|state| state.do_char_can_see(cn, co));
         if co >= MAXCHARS || character_can_see == 0 {
             characters[cn].data[78] = (ticker + (TICKS * 30)) as i32;
             return 1;
@@ -381,9 +381,9 @@ pub fn npc_seeattack(cn: usize, cc: usize, co: usize) -> i32 {
     Repository::with_characters_mut(|characters| {
         characters[cn].data[92] = (TICKS * 60) as i32;
 
-        let cn_can_see_co = State::with_mut(|state| state.do_character_can_see(cn, co));
+        let cn_can_see_co = State::with_mut(|state| state.do_char_can_see(cn, co));
 
-        let cn_can_see_cc = State::with_mut(|state| state.do_character_can_see(cn, cc));
+        let cn_can_see_cc = State::with_mut(|state| state.do_char_can_see(cn, cc));
 
         if cn_can_see_co == 0 || cn_can_see_cc == 0 {
             return 1; // Processed - can't see participants
@@ -545,7 +545,7 @@ pub fn npc_shout(cn: usize, co: usize, code: i32, x: i32, y: i32) -> i32 {
 }
 
 pub fn npc_hitme(cn: usize, co: usize) -> i32 {
-    let cn_can_see_co = State::with_mut(|state| state.do_character_can_see(cn, co));
+    let cn_can_see_co = State::with_mut(|state| state.do_char_can_see(cn, co));
 
     if cn_can_see_co == 0 {
         return 1;
@@ -2232,7 +2232,7 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
     }
 
     // Check if we can see the character
-    let can_see = State::with_mut(|state| state.do_character_can_see(cn, co));
+    let can_see = State::with_mut(|state| state.do_char_can_see(cn, co));
     if can_see == 0 {
         return 1; // Processed: we cannot see them, so ignore
     }

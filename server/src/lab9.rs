@@ -458,7 +458,7 @@ impl Labyrinth9 {
 
             // Does the player see the riddler?
             let can_see_riddler =
-                State::with_mut(|state| state.do_character_can_see(character_id, riddler as usize));
+                State::with_mut(|state| state.do_char_can_see(character_id, riddler as usize));
 
             if can_see_riddler == 0 {
                 log::warn!(

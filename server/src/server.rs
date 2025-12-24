@@ -76,7 +76,7 @@ impl Server {
             });
 
             State::with_mut(|state| {
-                state.logout_player(i, None, crate::enums::LogoutReason::Shutdown);
+                state.plr_logout(i, None, crate::enums::LogoutReason::Shutdown);
             });
         }
 

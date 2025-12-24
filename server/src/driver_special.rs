@@ -656,11 +656,11 @@ fn npc_stunrun_add_fight(cn: usize, co: usize) {
 
 fn npc_stunrun_seeattack(cn: usize, cc: usize, co: usize) -> i32 {
     // TODO: Double check this implementation now...
-    if State::with_mut(|state| state.do_character_can_see(cn, co)) != 0 {
+    if State::with_mut(|state| state.do_char_can_see(cn, co)) != 0 {
         npc_stunrun_add_seen(cn, co);
         npc_stunrun_add_fight(cn, co);
     }
-    if State::with_mut(|state| state.do_character_can_see(cn, cc)) != 0 {
+    if State::with_mut(|state| state.do_char_can_see(cn, cc)) != 0 {
         npc_stunrun_add_seen(cn, cc);
         npc_stunrun_add_fight(cn, cc);
     }
@@ -668,7 +668,7 @@ fn npc_stunrun_seeattack(cn: usize, cc: usize, co: usize) -> i32 {
 }
 
 fn npc_stunrun_see(cn: usize, co: usize) -> i32 {
-    if State::with_mut(|state| state.do_character_can_see(cn, co)) == 0 {
+    if State::with_mut(|state| state.do_char_can_see(cn, co)) == 0 {
         return 1; // processed it: we cannot see him, so ignore him
     }
 
@@ -946,17 +946,17 @@ fn npc_cityattack_gotattack(_cn: usize, _co: usize) -> i32 {
 
 fn npc_cityattack_seeattack(cn: usize, cc: usize, co: usize) -> i32 {
     // Check if cn can see co (does nothing with the result in C++ original)
-    State::with_mut(|state| state.do_character_can_see(cn, co));
+    State::with_mut(|state| state.do_char_can_see(cn, co));
 
     // Check if cn can see cc (does nothing with the result in C++ original)
-    State::with_mut(|state| state.do_character_can_see(cn, cc));
+    State::with_mut(|state| state.do_char_can_see(cn, cc));
 
     1
 }
 
 fn npc_cityattack_see(cn: usize, co: usize) -> i32 {
     // Check if cn can see co
-    let can_see = State::with_mut(|state| state.do_character_can_see(cn, co));
+    let can_see = State::with_mut(|state| state.do_char_can_see(cn, co));
     if can_see == 0 {
         return 1; // processed it: we cannot see them, so ignore
     }

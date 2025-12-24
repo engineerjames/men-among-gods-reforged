@@ -64,7 +64,7 @@ impl State {
     }
 
     /// plr_logout from original C++ code
-    pub fn logout_player(
+    pub fn plr_logout(
         &mut self,
         character_id: usize,
         player: Option<(usize, &mut core::types::ServerPlayer)>,
@@ -105,7 +105,7 @@ impl State {
             });
 
             if let Some(co) = should_logout_co {
-                self.logout_player(co, None, enums::LogoutReason::Shutdown);
+                self.plr_logout(co, None, enums::LogoutReason::Shutdown);
             }
         }
 
@@ -156,7 +156,7 @@ impl State {
                                 core::types::FontColor::Red,
                                 String::from("The demon killed you.\n \n").as_str(),
                             );
-                            // TODO: Kill the character here
+                            self.do_character_killed(character_id, 0);
                         } else {
                             if character.gold / 10 > 0 {
                                 let money_stolen_message = format!(
@@ -406,12 +406,7 @@ impl State {
         });
     }
 
-    pub fn do_log(
-        &self, // TODO: Rework these functions to pass in just the ids around
-        character_id: usize,
-        font: core::types::FontColor,
-        message: &str,
-    ) {
+    pub fn do_log(&self, character_id: usize, font: core::types::FontColor, message: &str) {
         let mut buffer: [u8; 16] = [0; 16];
 
         Repository::with_characters(|characters| {
@@ -852,18 +847,9 @@ impl State {
     pub fn check_dlight(x: usize, y: usize) -> i32 {
         let map_index = x + y * core::constants::SERVER_MAPX as usize;
 
-        Repository::with_map(|map| {
-            Repository::with_globals(|globals| {
-                if map[map_index].flags & core::constants::MF_INDOORS as u64 == 0 {
-                    globals.dlight
-                } else {
-                    (globals.dlight * map[map_index].dlight as i32) / 256
-                }
-            })
-        })
+        Self::check_dlightm(map_index)
     }
 
-    // TODO: Combine with check_dlight
     pub fn check_dlightm(map_index: usize) -> i32 {
         Repository::with_map(|map| {
             Repository::with_globals(|globals| {
@@ -901,7 +887,7 @@ impl State {
         })
     }
 
-    pub fn do_character_can_see(&mut self, cn: usize, co: usize) -> i32 {
+    pub fn do_char_can_see(&mut self, cn: usize, co: usize) -> i32 {
         if cn == co {
             return 1;
         }
@@ -5713,7 +5699,7 @@ impl State {
         let mut visibility = if godflag != 0 || is_body {
             1
         } else {
-            self.do_character_can_see(cn, co)
+            self.do_char_can_see(cn, co)
         };
 
         if visibility == 0 {
