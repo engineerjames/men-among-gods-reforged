@@ -6553,4 +6553,752 @@ impl State {
             false
         }
     }
+
+    /// Port of `do_swap_item(int cn, int n)` from `svr_do.cpp`
+    ///
+    /// Swap the carried item (citem) with an equipment slot.
+    /// Performs various prerequisite checks including attributes, skills, HP/END/MANA requirements,
+    /// faction restrictions, rank requirements, and placement validation.
+    ///
+    /// # Arguments
+    /// * `cn` - Character index
+    /// * `n` - Equipment slot index (0-19, but only 0-11 are valid worn slots)
+    ///
+    /// # Returns
+    /// * The slot number on success
+    /// * -1 on failure
+    pub fn do_swap_item(&self, cn: usize, n: usize) -> i32 {
+        const AT_TEXT: [&str; 5] = [
+            "not brave enough",
+            "not determined enough",
+            "not intuitive enough",
+            "not agile enough",
+            "not strong enough",
+        ];
+
+        Repository::with_characters_mut(|characters| {
+            // Check if citem has high bit set (invalid state)
+            if (characters[cn].citem & 0x80000000) != 0 {
+                return -1;
+            }
+
+            // Sanity check slot range
+            if n > 19 {
+                return -1;
+            }
+
+            let tmp = characters[cn].citem as usize;
+
+            // Check prerequisites if there's an item to equip
+            if tmp != 0 {
+                Repository::with_items_mut(|items| {
+                    // Driver 52: Personal item with character binding
+                    if items[tmp].driver == 52 && items[tmp].data[0] as usize != cn {
+                        if items[tmp].data[0] == 0 {
+                            // Bind item to character
+                            items[tmp].data[0] = cn as u32;
+
+                            // Engrave character name into description
+                            let current_desc = String::from_utf8_lossy(&items[tmp].description)
+                                .trim_matches('\0')
+                                .to_string();
+                            let char_name = String::from_utf8_lossy(&characters[cn].name)
+                                .trim_matches('\0')
+                                .to_string();
+                            let new_desc = format!(
+                                "{} Engraved in it are the letters \"{}\".",
+                                current_desc, char_name
+                            );
+
+                            if new_desc.len() < 200 {
+                                let desc_bytes = new_desc.as_bytes();
+                                items[tmp].description[..desc_bytes.len().min(200)]
+                                    .copy_from_slice(&desc_bytes[..desc_bytes.len().min(200)]);
+                            }
+                        } else {
+                            let item_ref = String::from_utf8_lossy(&items[tmp].reference)
+                                .trim_matches('\0')
+                                .to_string();
+                            self.do_character_log(
+                                cn,
+                                core::types::FontColor::Red,
+                                &format!(
+                                    "The gods frown at your attempt to wear another ones {}.\n",
+                                    item_ref
+                                ),
+                            );
+                            return -1;
+                        }
+                    }
+
+                    // Check attribute requirements
+                    for m in 0..5 {
+                        if items[tmp].attrib[m][2] > characters[cn].attrib[m][0] as i8 {
+                            self.do_character_log(
+                                cn,
+                                core::types::FontColor::Red,
+                                &format!("You're {} to use that.\n", AT_TEXT[m]),
+                            );
+                            return -1;
+                        }
+                    }
+
+                    // Check skill requirements
+                    for m in 0..50 {
+                        if items[tmp].skill[m][2] > characters[cn].skill[m][0] as i8 {
+                            self.do_character_log(
+                                cn,
+                                core::types::FontColor::Red,
+                                "You don't know how to use that.\n",
+                            );
+                            return -1;
+                        }
+                        if items[tmp].skill[m][2] != 0 && characters[cn].skill[m][0] == 0 {
+                            self.do_character_log(
+                                cn,
+                                core::types::FontColor::Red,
+                                "You don't know how to use that.\n",
+                            );
+                            return -1;
+                        }
+                    }
+
+                    // Check HP/END/MANA requirements
+                    if items[tmp].hp[2] > characters[cn].hp[0] as i16 {
+                        self.do_character_log(
+                            cn,
+                            core::types::FontColor::Red,
+                            "You don't have enough life force to use that.\n",
+                        );
+                        return -1;
+                    }
+                    if items[tmp].end[2] > characters[cn].end[0] as i16 {
+                        self.do_character_log(
+                            cn,
+                            core::types::FontColor::Red,
+                            "You don't have enough endurance to use that.\n",
+                        );
+                        return -1;
+                    }
+                    if items[tmp].mana[2] > characters[cn].mana[0] as i16 {
+                        self.do_character_log(
+                            cn,
+                            core::types::FontColor::Red,
+                            "You don't have enough mana to use that.\n",
+                        );
+                        return -1;
+                    }
+
+                    // Check faction/kindred restrictions
+                    if (items[tmp].driver == 18
+                        && (characters[cn].kindred & core::constants::KIN_PURPLE as i32) != 0)
+                        || (items[tmp].driver == 39
+                            && (characters[cn].kindred & core::constants::KIN_PURPLE as i32) == 0)
+                        || (items[tmp].driver == 40
+                            && (characters[cn].kindred & core::constants::KIN_SEYAN_DU as i32) == 0)
+                    {
+                        self.do_character_log(
+                            cn,
+                            core::types::FontColor::Red,
+                            "Ouch. That hurt.\n",
+                        );
+                        return -1;
+                    }
+
+                    // Check rank requirement
+                    if items[tmp].min_rank
+                        > crate::helpers::points2rank(characters[cn].points_tot as u32) as i8
+                    {
+                        self.do_character_log(
+                            cn,
+                            core::types::FontColor::Red,
+                            "You're not experienced enough to use that.\n",
+                        );
+                        return -1;
+                    }
+
+                    // Check for correct placement
+                    use core::constants::*;
+                    let placement_ok = match n {
+                        WN_HEAD => (items[tmp].placement & PL_HEAD) != 0,
+                        WN_NECK => (items[tmp].placement & PL_NECK) != 0,
+                        WN_BODY => (items[tmp].placement & PL_BODY) != 0,
+                        WN_ARMS => (items[tmp].placement & PL_ARMS) != 0,
+                        WN_BELT => (items[tmp].placement & PL_BELT) != 0,
+                        WN_LEGS => (items[tmp].placement & PL_LEGS) != 0,
+                        WN_FEET => (items[tmp].placement & PL_FEET) != 0,
+                        WN_LHAND => {
+                            if (items[tmp].placement & PL_SHIELD) == 0 {
+                                false
+                            } else {
+                                // Check if right hand has two-handed weapon
+                                let rhand_item = characters[cn].worn[WN_RHAND] as usize;
+                                if rhand_item != 0
+                                    && (items[rhand_item].placement & PL_TWOHAND) != 0
+                                {
+                                    false
+                                } else {
+                                    true
+                                }
+                            }
+                        }
+                        WN_RHAND => {
+                            if (items[tmp].placement & PL_WEAPON) == 0 {
+                                false
+                            } else if (items[tmp].placement & PL_TWOHAND) != 0
+                                && characters[cn].worn[WN_LHAND] != 0
+                            {
+                                false
+                            } else {
+                                true
+                            }
+                        }
+                        WN_CLOAK => (items[tmp].placement & PL_CLOAK) != 0,
+                        WN_RRING | WN_LRING => (items[tmp].placement & PL_RING) != 0,
+                        _ => false,
+                    };
+
+                    if !placement_ok {
+                        return -1;
+                    }
+
+                    -2 // Success marker to continue after closure
+                })
+            } else {
+                -2 // Success marker - no item to check
+            }
+        });
+
+        // Perform the swap
+        Repository::with_characters_mut(|characters| {
+            let tmp = characters[cn].citem;
+            characters[cn].citem = characters[cn].worn[n];
+            characters[cn].worn[n] = tmp;
+
+            // TODO: Implement do_update_char
+            log::info!("TODO: Call do_update_char for cn={}", cn);
+
+            n as i32
+        })
+    }
+
+    /// Port of `may_attack_msg(int cn, int co, int msg)` from `svr_do.cpp`
+    ///
+    /// Check if character cn may attack character co.
+    /// If msg is true, tell cn why they can't attack (if applicable).
+    ///
+    /// # Arguments
+    /// * `cn` - Attacker character index
+    /// * `co` - Target character index  
+    /// * `msg` - Whether to display messages explaining why attack is not allowed
+    ///
+    /// # Returns
+    /// * 1 if attack is allowed
+    /// * 0 if attack is not allowed
+    pub fn may_attack_msg(&self, cn: usize, co: usize, msg: bool) -> i32 {
+        use core::constants::*;
+
+        Repository::with_characters(|characters| {
+            // Sanity checks
+            if cn == 0 || cn >= MAXCHARS || co == 0 || co >= MAXCHARS {
+                return 1;
+            }
+            if characters[cn].used == 0 || characters[co].used == 0 {
+                return 1;
+            }
+
+            // Unsafe gods may attack anyone
+            if (characters[cn].flags & CharacterFlags::CF_GOD.bits()) != 0
+                && (characters[cn].flags & CharacterFlags::CF_SAFE.bits()) == 0
+            {
+                return 1;
+            }
+
+            // Unsafe gods may be attacked by anyone
+            if (characters[co].flags & CharacterFlags::CF_GOD.bits()) != 0
+                && (characters[co].flags & CharacterFlags::CF_SAFE.bits()) == 0
+            {
+                return 1;
+            }
+
+            let mut cn_actual = cn;
+            let mut co_actual = co;
+
+            // Player companion? Act as if trying to attack the master instead
+            if (characters[cn].flags & CharacterFlags::CF_BODY.bits()) != 0
+                && characters[cn].data[64] == 0
+            {
+                cn_actual = characters[cn].data[CHD_MASTER] as usize;
+                if cn_actual == 0 || cn_actual >= MAXCHARS || characters[cn_actual].used == 0 {
+                    return 1; // Bad values, let them try
+                }
+            }
+
+            // NPCs may attack anyone, anywhere
+            if (characters[cn_actual].flags & CharacterFlags::CF_PLAYER.bits()) == 0 {
+                return 1;
+            }
+
+            // Check for NOFIGHT
+            Repository::with_map(|map| {
+                let m1 = (characters[cn_actual].x as i32
+                    + characters[cn_actual].y as i32 * SERVER_MAPX as i32)
+                    as usize;
+                let m2 = (characters[co_actual].x as i32
+                    + characters[co_actual].y as i32 * SERVER_MAPX as i32)
+                    as usize;
+
+                if ((map[m1].flags | map[m2].flags) & MF_NOFIGHT) != 0 {
+                    if msg {
+                        self.do_character_log(
+                            cn,
+                            core::types::FontColor::Red,
+                            "You can't attack anyone here!\n",
+                        );
+                    }
+                    return 0;
+                }
+
+                // Player companion target? Act as if trying to attack the master instead
+                if (characters[co_actual].flags & CharacterFlags::CF_BODY.bits()) != 0
+                    && characters[co_actual].data[64] == 0
+                {
+                    co_actual = characters[co_actual].data[CHD_MASTER] as usize;
+                    if co_actual == 0 || co_actual >= MAXCHARS || characters[co_actual].used == 0 {
+                        return 1; // Bad values, let them try
+                    }
+                }
+
+                // Check for player-npc (OK)
+                if (characters[cn_actual].flags & CharacterFlags::CF_PLAYER.bits()) == 0
+                    || (characters[co_actual].flags & CharacterFlags::CF_PLAYER.bits()) == 0
+                {
+                    return 1;
+                }
+
+                // Both are players. Check for Arena (OK)
+                if ((map[m1].flags & map[m2].flags) & MF_ARENA as u64) != 0 {
+                    return 1;
+                }
+
+                // Check if aggressor is purple
+                if (characters[cn_actual].kindred & KIN_PURPLE as i32) == 0 {
+                    if msg {
+                        self.do_character_log(
+                            cn,
+                            core::types::FontColor::Red,
+                            "You can't attack other players! You're not a follower of the Purple One.\n",
+                        );
+                    }
+                    return 0;
+                }
+
+                // Check if victim is purple
+                if (characters[co_actual].kindred & KIN_PURPLE as i32) == 0 {
+                    if msg {
+                        let co_name = String::from_utf8_lossy(&characters[co_actual].name)
+                            .trim_matches('\0')
+                            .to_string();
+                        let pronoun = if (characters[co_actual].kindred & KIN_MALE as i32) != 0 {
+                            "He"
+                        } else {
+                            "She"
+                        };
+                        self.do_character_log(
+                            cn,
+                            core::types::FontColor::Red,
+                            &format!(
+                                "You can't attack {}! {}'s not a follower of the Purple One.\n",
+                                co_name, pronoun
+                            ),
+                        );
+                    }
+                    return 0;
+                }
+
+                // Check rank difference
+                let cn_rank =
+                    crate::helpers::points2rank(characters[cn_actual].points_tot as u32) as i32;
+                let co_rank =
+                    crate::helpers::points2rank(characters[co_actual].points_tot as u32) as i32;
+
+                if (cn_rank - co_rank).abs() > 3 {
+                    if msg {
+                        let co_name = String::from_utf8_lossy(&characters[co_actual].name)
+                            .trim_matches('\0')
+                            .to_string();
+                        self.do_character_log(
+                            cn,
+                            core::types::FontColor::Red,
+                            &format!("You're not allowed to attack {}. The rank difference is too large.\n", co_name),
+                        );
+                    }
+                    return 0;
+                }
+
+                1
+            })
+        })
+    }
+
+    /// Port of `do_check_new_level(int cn)` from `svr_do.cpp`
+    ///
+    /// Check if a player has leveled up and award appropriate stat bonuses.
+    /// Also announces the new rank to the world via an NPC herald.
+    ///
+    /// # Arguments
+    /// * `cn` - Character index to check
+    pub fn do_check_new_level(&self, cn: usize) {
+        use core::constants::*;
+
+        Repository::with_characters_mut(|characters| {
+            // Only for players
+            if (characters[cn].flags & CharacterFlags::CF_PLAYER.bits()) == 0 {
+                return;
+            }
+
+            let rank = crate::helpers::points2rank(characters[cn].points_tot as u32) as usize;
+
+            // Check if current rank is less than new rank
+            if (characters[cn].data[45] as usize) < rank {
+                let (hp, end, mana) = if (characters[cn].kindred
+                    & ((KIN_TEMPLAR | KIN_ARCHTEMPLAR) as i32))
+                    != 0
+                {
+                    (15, 10, 5)
+                } else if (characters[cn].kindred
+                    & ((KIN_MERCENARY | KIN_SORCERER | KIN_WARRIOR | KIN_SEYAN_DU) as i32))
+                    != 0
+                {
+                    (10, 10, 10)
+                } else if (characters[cn].kindred & ((KIN_HARAKIM | KIN_ARCHHARAKIM) as i32)) != 0 {
+                    (5, 10, 15)
+                } else {
+                    return; // Unknown kindred, don't proceed
+                };
+
+                let diff = rank - characters[cn].data[45] as usize;
+                characters[cn].data[45] = rank as i32;
+
+                // Log level up message
+                if diff == 1 {
+                    self.do_character_log(
+                        cn,
+                        core::types::FontColor::Yellow,
+                        &format!(
+                            "You rose a level! Congratulations! You received {} hitpoints, {} endurance and {} mana.\n",
+                            hp * diff,
+                            end * diff,
+                            mana * diff
+                        ),
+                    );
+                } else {
+                    self.do_character_log(
+                        cn,
+                        core::types::FontColor::Yellow,
+                        &format!(
+                            "You rose {} levels! Congratulations! You received {} hitpoints, {} endurance and {} mana.\n",
+                            diff,
+                            hp * diff,
+                            end * diff,
+                            mana * diff
+                        ),
+                    );
+                }
+
+                // Find an NPC to announce the rank
+                let temp = if (characters[cn].kindred & KIN_PURPLE as i32) != 0 {
+                    CT_PRIEST
+                } else {
+                    CT_LGUARD
+                };
+
+                // Find a character with appropriate template
+                let mut herald_cn = 0;
+                for n in 1..MAXCHARS {
+                    if characters[n].used != USE_ACTIVE {
+                        continue;
+                    }
+                    if (characters[n].flags & CharacterFlags::CF_BODY.bits()) != 0 {
+                        continue;
+                    }
+                    if characters[n].temp == temp as u16 {
+                        herald_cn = n;
+                        break;
+                    }
+                }
+
+                // Have the herald yell it out
+                if herald_cn != 0 {
+                    let char_name = String::from_utf8_lossy(&characters[cn].name)
+                        .trim_matches('\0')
+                        .to_string();
+                    let rank_name = if rank < crate::helpers::RANK_NAMES.len() {
+                        crate::helpers::RANK_NAMES[rank]
+                    } else {
+                        "Unknown Rank"
+                    };
+                    let message = format!(
+                        "Hear ye, hear ye! {} has attained the rank of {}!",
+                        char_name, rank_name
+                    );
+
+                    // TODO: Implement do_shout
+                    log::info!("TODO: Herald {} would shout: {}", herald_cn, message);
+                }
+
+                // Award stat increases
+                characters[cn].hp[1] = (hp * rank) as u16;
+                characters[cn].end[1] = (end * rank) as u16;
+                characters[cn].mana[1] = (mana * rank) as u16;
+
+                // TODO: Implement do_update_char
+                log::info!("TODO: Call do_update_char for cn={}", cn);
+            }
+        });
+    }
+
+    /// Port of `do_seen(int cn, char* cco)` from `svr_do.cpp`
+    ///
+    /// Tell when a certain player last logged on.
+    ///
+    /// # Arguments
+    /// * `cn` - Character asking about last seen time
+    /// * `target_name` - Name or ID of character to look up
+    pub fn do_seen(&self, cn: usize, target_name: &str) {
+        use core::constants::*;
+
+        if target_name.is_empty() {
+            self.do_character_log(cn, core::types::FontColor::Red, "When was WHO last seen?\n");
+            return;
+        }
+
+        Repository::with_characters(|characters| {
+            // Numeric lookup only for deities
+            let co = if target_name.chars().next().unwrap_or('a').is_ascii_digit() {
+                if (characters[cn].flags
+                    & (CharacterFlags::CF_IMP | CharacterFlags::CF_GOD | CharacterFlags::CF_USURP)
+                        .bits())
+                    == 0
+                {
+                    0
+                } else {
+                    target_name.parse::<usize>().unwrap_or(0)
+                }
+            } else {
+                // TODO: Implement do_lookup_char_self - for now just return 0
+                log::info!(
+                    "TODO: Implement do_lookup_char_self for target_name={}",
+                    target_name
+                );
+                0
+            };
+
+            if co == 0 {
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("I've never heard of {}.\n", target_name),
+                );
+                return;
+            }
+
+            if (characters[co].flags & CharacterFlags::CF_PLAYER.bits()) == 0 {
+                let co_name = String::from_utf8_lossy(&characters[co].name)
+                    .trim_matches('\0')
+                    .to_string();
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("{} is not a player.\n", co_name),
+                );
+                return;
+            }
+
+            if (characters[cn].flags & CharacterFlags::CF_GOD.bits()) == 0
+                && (characters[co].flags & CharacterFlags::CF_GOD.bits()) != 0
+            {
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    "No one knows when the gods where last seen.\n",
+                );
+                return;
+            }
+
+            if (characters[cn].flags & (CharacterFlags::CF_IMP | CharacterFlags::CF_GOD).bits())
+                != 0
+            {
+                // God view: detailed timestamp
+                let last = std::cmp::max(characters[co].login_date, characters[co].logout_date);
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs() as i32;
+
+                let co_name = String::from_utf8_lossy(&characters[co].name)
+                    .trim_matches('\0')
+                    .to_string();
+
+                // Format timestamps
+                use chrono::{DateTime, TimeZone, Utc};
+                let last_dt = Utc.timestamp_opt(last as i64, 0).unwrap();
+                let now_dt = Utc.timestamp_opt(now as i64, 0).unwrap();
+
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!(
+                        "{} was last seen on {} (time now: {})\n",
+                        co_name,
+                        last_dt.format("%Y-%m-%d %H:%M:%S"),
+                        now_dt.format("%Y-%m-%d %H:%M:%S")
+                    ),
+                );
+
+                if characters[co].used == USE_ACTIVE
+                    && (characters[co].flags & CharacterFlags::CF_INVISIBLE.bits()) == 0
+                {
+                    self.do_character_log(
+                        cn,
+                        core::types::FontColor::Yellow,
+                        &format!("PS: {} is online right now!\n", co_name),
+                    );
+                }
+            } else {
+                // Normal player view: relative time
+                let last_date =
+                    (std::cmp::max(characters[co].login_date, characters[co].logout_date)
+                        / (24 * 3600)) as i32;
+                let current_date = (std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs() as i32)
+                    / (24 * 3600);
+                let days = current_date - last_date;
+
+                let when = match days {
+                    0 => "earlier today".to_string(),
+                    1 => "yesterday".to_string(),
+                    2 => "the day before yesterday".to_string(),
+                    _ => format!("{} days ago", days),
+                };
+
+                let co_name = String::from_utf8_lossy(&characters[co].name)
+                    .trim_matches('\0')
+                    .to_string();
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!("{} was last seen {}.\n", co_name, when),
+                );
+            }
+        });
+    }
+
+    /// Port of `do_spellignore(int cn)` from `svr_do.cpp`
+    ///
+    /// Toggle the CF_SPELLIGNORE flag for a character.
+    /// When set, the character will not fight back if spelled.
+    ///
+    /// # Arguments
+    /// * `cn` - Character index
+    pub fn do_spellignore(&self, cn: usize) {
+        Repository::with_characters_mut(|characters| {
+            characters[cn].flags ^= CharacterFlags::CF_SPELLIGNORE.bits();
+
+            if (characters[cn].flags & CharacterFlags::CF_SPELLIGNORE.bits()) != 0 {
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    "Now ignoring spell attacks.\n",
+                );
+            } else {
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    "Now reacting to spell attacks.\n",
+                );
+            }
+        });
+    }
+
+    /// Port of `remember_pvp(int cn, int co)` from `svr_do.cpp`
+    ///
+    /// Remember PvP attacks for tracking purposes.
+    /// Stores the victim and time of attack in the attacker's data fields.
+    /// Arena attacks don't count.
+    ///
+    /// # Arguments
+    /// * `cn` - Attacker character index
+    /// * `co` - Victim character index
+    pub fn remember_pvp(&self, cn: usize, co: usize) {
+        use core::constants::*;
+
+        Repository::with_characters_mut(|characters| {
+            Repository::with_map(|map| {
+                let m = (characters[cn].x as i32 + characters[cn].y as i32 * SERVER_MAPX as i32)
+                    as usize;
+
+                // Arena attacks don't count
+                if (map[m].flags & MF_ARENA as u64) != 0 {
+                    return;
+                }
+
+                // Sanity checks for cn
+                if cn == 0 || cn >= MAXCHARS || characters[cn].used == 0 {
+                    return;
+                }
+
+                let mut cn_actual = cn;
+
+                // Substitute master for companion
+                if (characters[cn].flags & CharacterFlags::CF_BODY.bits()) != 0 {
+                    cn_actual = characters[cn].data[CHD_MASTER] as usize;
+                }
+
+                // Must be a valid player
+                if cn_actual == 0 || cn_actual >= MAXCHARS {
+                    return;
+                }
+                if (characters[cn_actual].flags & CharacterFlags::CF_PLAYER.bits()) == 0 {
+                    return;
+                }
+                if (characters[cn_actual].kindred & KIN_PURPLE as i32) == 0 {
+                    return;
+                }
+
+                // Sanity checks for co
+                if co == 0 || co >= MAXCHARS || characters[co].used == 0 {
+                    return;
+                }
+
+                let mut co_actual = co;
+
+                // Substitute master for companion
+                if (characters[co].flags & CharacterFlags::CF_BODY.bits()) != 0 {
+                    co_actual = characters[co].data[CHD_MASTER] as usize;
+                }
+
+                // Must be a valid player
+                if co_actual == 0 || co_actual >= MAXCHARS {
+                    return;
+                }
+                if (characters[co_actual].flags & CharacterFlags::CF_PLAYER.bits()) == 0 {
+                    return;
+                }
+
+                // Can't attack self
+                if cn_actual == co_actual {
+                    return;
+                }
+
+                // Record the attack
+                // TODO: Get actual ticker value from Server/State
+                let ticker = 0; // Placeholder
+                characters[cn_actual].data[CHD_ATTACKTIME] = ticker;
+                characters[cn_actual].data[CHD_ATTACKVICT] = co_actual as i32;
+            });
+        });
+    }
 }

@@ -8,6 +8,33 @@ const WHO_RANK_NAME: [&str; core::constants::RANKS] = [
     "KNIGT", "BARON", " EARL", "WARLD",
 ];
 
+pub const RANK_NAMES: [&str; core::constants::RANKS] = [
+    "Private",
+    "Private First Class",
+    "Lance Corporal",
+    "Corporal",
+    "Sergeant",
+    "Staff Sergeant",
+    "Master Sergeant",
+    "First Sergeant",
+    "Sergeant Major",
+    "Second Lieutenant",
+    "First Lieutenant",
+    "Captain",
+    "Major",
+    "Lieutenant Colonel",
+    "Colonel",
+    "Brigadier General",
+    "Major General",
+    "Lieutenant General",
+    "General",
+    "Field Marshal",
+    "Knight",
+    "Baron",
+    "Earl",
+    "Warlord",
+];
+
 // WTF is this some kind of weird hash function?
 pub fn char_id(cn: usize) -> i32 {
     Repository::with_characters(|characters| {
