@@ -5974,7 +5974,7 @@ impl State {
         }
 
         // God/IMP/USURP debug information
-        let (cn_is_god_imp_usurp) = Repository::with_characters(|ch| {
+        let cn_is_god_imp_usurp = Repository::with_characters(|ch| {
             ch[cn].flags
                 & (CharacterFlags::CF_GOD | CharacterFlags::CF_IMP | CharacterFlags::CF_USURP)
                     .bits()

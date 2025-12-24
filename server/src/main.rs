@@ -8,6 +8,7 @@ mod lab9;
 mod network_manager;
 mod path_finding;
 mod player;
+mod populate;
 mod repository;
 mod server;
 mod state;

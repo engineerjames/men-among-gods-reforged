@@ -1,7 +1,6 @@
-use crate::{enums::CharacterFlags, god::God, repository::Repository, state::State};
-use core::types::{Effect, Item, Map};
-use rand::Rng;
-use std::io::Read;
+use crate::{
+    enums::CharacterFlags, god::God, player, populate, repository::Repository, state::State,
+};
 
 pub struct EffectManager {}
 
@@ -118,7 +117,7 @@ impl EffectManager {
                     + effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
 
                 // Check if target position is clear
-                if Self::plr_check_target(map_index) {
+                if player::plr_check_target(map_index) {
                     Repository::with_map_mut(|map| {
                         map[map_index].flags |= core::constants::MF_MOVEBLOCK as u64;
                     });
@@ -150,7 +149,7 @@ impl EffectManager {
 
                 if effects[n].duration == 9 {
                     let co = effects[n].data[2] as usize;
-                    Self::plr_map_remove(co);
+                    player::plr_map_remove(co);
 
                     let m = Self::find_drop_position(map_index);
 
@@ -370,9 +369,9 @@ impl EffectManager {
                         map[map_index].flags &= !core::constants::MF_MOVEBLOCK as u64;
                     });
 
-                    let cn = Self::pop_create_char(effects[n].data[2] as usize, true);
+                    let cn = populate::pop_create_char(effects[n].data[2] as usize, true);
 
-                    if cn.is_none() {
+                    if cn != 0 {
                         let respawn_flag = Repository::with_character_templates(|char_templates| {
                             (char_templates[effects[n].data[2] as usize].flags
                                 & CharacterFlags::Respawn.bits())
@@ -416,13 +415,13 @@ impl EffectManager {
                 });
 
                 if effects[n].data[1] != 0 {
-                    let cn = Self::pop_create_char(effects[n].data[1] as usize, false);
-                    if let Some(cn) = cn {
+                    let cn = populate::pop_create_char(effects[n].data[1] as usize, false);
+                    if cn != 0 {
                         God::drop_char(cn as usize, x as usize, y as usize);
                         Repository::with_characters_mut(|characters| {
                             characters[cn as usize].dir = core::constants::DX_RIGHTUP;
                         });
-                        Self::plr_reset_status(cn as usize);
+                        player::plr_reset_status(cn as usize);
                     }
                 }
 

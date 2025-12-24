@@ -1,6 +1,6 @@
 use crate::helpers;
 use crate::{driver_special, god::God, repository::Repository, state::State};
-use core::{constants::*, types::Character};
+use core::constants::*;
 
 // Helper functions
 
