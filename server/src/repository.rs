@@ -450,6 +450,18 @@ impl Repository {
         f(&mut repo.items)
     }
 
+    pub fn with_item_templates_mut<F, R>(f: F) -> R
+    where
+        F: FnOnce(&mut [core::types::Item]) -> R,
+    {
+        let mut repo = REPOSITORY
+            .get()
+            .expect("Repository not initialized")
+            .write()
+            .unwrap();
+        f(&mut repo.item_templates)
+    }
+
     pub fn with_character_templates<F, R>(f: F) -> R
     where
         F: FnOnce(&[core::types::Character]) -> R,

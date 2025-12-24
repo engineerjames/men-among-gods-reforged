@@ -460,7 +460,7 @@ impl Labyrinth9 {
             let can_see_riddler =
                 State::with_mut(|state| state.do_character_can_see(character_id, riddler as usize));
 
-            if !can_see_riddler {
+            if can_see_riddler == 0 {
                 log::warn!(
                     "Character {} attempted to answer a riddle from riddler {} who they cannot see.",
                     character_id,

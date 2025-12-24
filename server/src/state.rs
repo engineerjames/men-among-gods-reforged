@@ -4,7 +4,7 @@ use rand::Rng;
 use std::cmp;
 use std::sync::{OnceLock, RwLock};
 
-use crate::driver::Driver;
+use crate::driver::{self, Driver};
 use crate::god::God;
 use crate::network_manager::NetworkManager;
 use crate::path_finding::PathFinder;
@@ -901,26 +901,26 @@ impl State {
         })
     }
 
-    pub fn do_character_can_see(&mut self, cn: usize, co: usize) -> bool {
+    pub fn do_character_can_see(&mut self, cn: usize, co: usize) -> i32 {
         if cn == co {
-            return true;
+            return 1;
         }
 
         Repository::with_characters(|characters| {
             Repository::with_map(|map| {
                 if characters[co].used != core::constants::USE_ACTIVE {
-                    return false;
+                    return 0;
                 }
 
                 if characters[co].flags & CharacterFlags::CF_INVISIBLE.bits() != 0
                     && (characters[cn].get_invisibility_level()
                         < characters[co].get_invisibility_level())
                 {
-                    return false;
+                    return 0;
                 }
 
                 if characters[co].flags & CharacterFlags::CF_BODY.bits() != 0 {
-                    return false;
+                    return 0;
                 }
 
                 let d1 = (characters[cn].x - characters[co].x).abs() as i32;
@@ -930,7 +930,7 @@ impl State {
                 let mut d = rd;
 
                 if d > 1000 {
-                    return false;
+                    return 0;
                 }
 
                 // Modify by perception and stealth
@@ -967,7 +967,7 @@ impl State {
                     light = self.do_character_calculate_light(cn, light);
 
                     if light == 0 {
-                        return false;
+                        return 0;
                     }
 
                     if light > 64 {
@@ -982,7 +982,7 @@ impl State {
                 }
 
                 if d > 200 {
-                    return false;
+                    return 0;
                 }
 
                 let can_see = !self
@@ -997,14 +997,15 @@ impl State {
                     .ne(&0);
 
                 if !can_see {
-                    return false;
+                    return 0;
                 }
 
                 if d < 1 {
-                    return true;
+                    return 1;
                 }
 
-                d != 0 // TODO: Should we return the numeric value?
+                // TODO: Re-check the implementation of this function in the original code
+                d
             })
         })
     }
@@ -4356,31 +4357,2538 @@ impl State {
         true
     }
 
-    pub fn do_item_value(&self, item_idx: usize) -> i32 {}
+    /// Port of `do_item_value(int in)` from `svr_do.cpp`
+    ///
+    /// Returns the value of an item (for buying/selling/trading).
+    ///
+    /// # Arguments
+    /// * `item_idx` - The index of the item
+    ///
+    /// # Returns
+    /// * Item value in gold, or 0 if item index is invalid
+    pub fn do_item_value(&self, item_idx: usize) -> u32 {
+        if item_idx < 1 || item_idx >= core::constants::MAXITEM {
+            return 0;
+        }
 
-    pub fn do_look_item(&self, cn: usize, item_idx: usize) {}
+        Repository::with_items(|items| items[item_idx].value)
+    }
 
-    pub fn barter(&self, cn: usize, opr: i32, flag: i32) -> i32 {}
+    /// Port of `do_look_item(int cn, int in)` from `svr_do.cpp`
+    ///
+    /// Displays detailed information about an item to a character.
+    /// Shows description, condition, and compares with carried item if applicable.
+    ///
+    /// # Arguments
+    /// * `cn` - Character looking at the item
+    /// * `item_idx` - The item being examined
+    pub fn do_look_item(&mut self, cn: usize, item_idx: usize) {
+        // Determine if item is active
+        let act = Repository::with_items(|items| if items[item_idx].active != 0 { 1 } else { 0 });
 
-    pub fn do_shop_char(&self, cn: usize, co: usize, nr: i32) {}
+        // Check if character has the item in inventory or worn
+        let mut has_item = false;
 
-    pub fn do_depot_cost(&self, item_idx: usize) -> i32 {}
+        Repository::with_characters(|ch| {
+            // Check inventory
+            for n in 0..40 {
+                if ch[cn].item[n] == item_idx as u32 {
+                    has_item = true;
+                    break;
+                }
+            }
 
-    pub fn do_add_depot(&self, cn: usize, item_idx: usize) -> bool {}
+            // Check worn items if not found in inventory
+            if !has_item {
+                for n in 0..20 {
+                    if ch[cn].worn[n] == item_idx as u32 {
+                        has_item = true;
+                        break;
+                    }
+                }
+            }
+        });
 
-    pub fn do_pay_depot(&self, cn: usize) {}
+        // If character doesn't have item, check if they can see it
+        if !has_item && self.do_char_can_see_item(cn, item_idx) == 0 {
+            return;
+        }
 
-    pub fn do_depot_char(&self, cn: usize, co: usize, nr: i32) {}
+        // Check if item has special look driver
+        let has_lookspecial = Repository::with_items(|items| {
+            items[item_idx].flags & ItemFlags::IF_LOOKSPECIAL.bits() != 0
+        });
 
-    pub fn do_look_char(&self, cn: usize, co: usize, godflag: i32, autoflag: i32, lootflag: i32) {}
+        if has_lookspecial {
+            // TODO: Implement look_driver
+            log::info!("TODO: Call look_driver({}, {})", cn, item_idx);
+        } else {
+            // Show item description
+            let description = Repository::with_items(|items| items[item_idx].description.clone());
+            self.do_character_log(
+                cn,
+                FontColor::Green,
+                &format!("{}\n", String::from_utf8_lossy(&description)),
+            );
 
-    pub fn do_look_depot(&self, cn: usize, co: usize) {}
+            // Show condition if item has aging or damage
+            let (max_age_0, max_age_1, max_damage, damage_state) =
+                Repository::with_items(|items| {
+                    (
+                        items[item_idx].max_age[act],
+                        items[item_idx].max_age[if act == 0 { 1 } else { 0 }],
+                        items[item_idx].max_damage,
+                        items[item_idx].damage_state,
+                    )
+                });
 
-    pub fn do_look_player_depot(&self, cn: usize, cv: &str) {}
+            if max_age_0 != 0 || max_age_1 != 0 || max_damage != 0 {
+                let condition_msg = match damage_state {
+                    0 => "It's in perfect condition.\n",
+                    1 => "It's showing signs of age.\n",
+                    2 => "It's fairly old.\n",
+                    3 => "It is old.\n",
+                    4 => "It is very old and battered.\n",
+                    _ => "",
+                };
 
-    pub fn do_look_player_inventory(&self, cn: usize, cv: &str) {}
+                if !condition_msg.is_empty() {
+                    let color = if damage_state >= 4 {
+                        FontColor::Yellow
+                    } else {
+                        FontColor::Green
+                    };
+                    self.do_character_log(cn, color, condition_msg);
+                }
+            }
 
-    pub fn do_look_player_equipment(&self, cn: usize, cv: &str) {}
+            // Show detailed info for build mode
+            let is_building = Repository::with_characters(|ch| {
+                ch[cn].flags & CharacterFlags::CF_BUILDMODE.bits() != 0
+            });
 
-    pub fn do_steal_player(&self, cn: usize, cv: &str, ci: &str) -> bool {}
+            if is_building {
+                let (
+                    temp,
+                    sprite_0,
+                    sprite_1,
+                    curr_age_0,
+                    max_age_0,
+                    curr_age_1,
+                    max_age_1,
+                    curr_damage,
+                    max_damage,
+                    active,
+                    duration,
+                    driver,
+                    data,
+                ) = Repository::with_items(|items| {
+                    (
+                        items[item_idx].temp,
+                        items[item_idx].sprite[0],
+                        items[item_idx].sprite[1],
+                        items[item_idx].current_age[0],
+                        items[item_idx].max_age[0],
+                        items[item_idx].current_age[1],
+                        items[item_idx].max_age[1],
+                        items[item_idx].current_damage,
+                        items[item_idx].max_damage,
+                        items[item_idx].active,
+                        items[item_idx].duration,
+                        items[item_idx].driver,
+                        items[item_idx].data,
+                    )
+                });
+
+                self.do_character_log(
+                    cn,
+                    FontColor::Green,
+                    &format!("Temp: {}, Sprite: {},{}.\n", temp, sprite_0, sprite_1),
+                );
+                self.do_character_log(
+                    cn,
+                    FontColor::Green,
+                    &format!("In-Active Age {} of {}.\n", curr_age_0, max_age_0),
+                );
+                self.do_character_log(
+                    cn,
+                    FontColor::Green,
+                    &format!("Active Age {} of {}.\n", curr_age_1, max_age_1),
+                );
+                self.do_character_log(
+                    cn,
+                    FontColor::Green,
+                    &format!("Damage {} of {}.\n", curr_damage, max_damage),
+                );
+                self.do_character_log(
+                    cn,
+                    FontColor::Green,
+                    &format!("Active {} of {}.\n", active, duration),
+                );
+                self.do_character_log(
+                    cn,
+                    FontColor::Green,
+                    &format!(
+                        "Driver={} [{},{},{},{},{},{},{},{},{},{}].\n",
+                        driver,
+                        data[0],
+                        data[1],
+                        data[2],
+                        data[3],
+                        data[4],
+                        data[5],
+                        data[6],
+                        data[7],
+                        data[8],
+                        data[9]
+                    ),
+                );
+            }
+
+            // Show god-mode info
+            let is_god =
+                Repository::with_characters(|ch| ch[cn].flags & CharacterFlags::CF_GOD.bits() != 0);
+
+            if is_god {
+                let (
+                    temp,
+                    value,
+                    active,
+                    sprite_0,
+                    sprite_1,
+                    max_age_0,
+                    max_age_1,
+                    curr_age_0,
+                    curr_age_1,
+                    max_damage,
+                    curr_damage,
+                ) = Repository::with_items(|items| {
+                    (
+                        items[item_idx].temp,
+                        items[item_idx].value,
+                        items[item_idx].active,
+                        items[item_idx].sprite[0],
+                        items[item_idx].sprite[1],
+                        items[item_idx].max_age[0],
+                        items[item_idx].max_age[1],
+                        items[item_idx].current_age[0],
+                        items[item_idx].current_age[1],
+                        items[item_idx].max_damage,
+                        items[item_idx].current_damage,
+                    )
+                });
+
+                self.do_character_log(
+                    cn,
+                    FontColor::Green,
+                    &format!(
+                        "ID={}, Temp={}, Value: {}G {}S.\n",
+                        item_idx,
+                        temp,
+                        value / 100,
+                        value % 100
+                    ),
+                );
+                self.do_character_log(
+                    cn,
+                    FontColor::Green,
+                    &format!("active={}, sprite={}/{}\n", active, sprite_0, sprite_1),
+                );
+                self.do_character_log(
+                    cn,
+                    FontColor::Green,
+                    &format!(
+                        "max_age={}/{}, current_age={}/{}\n",
+                        max_age_0, max_age_1, curr_age_0, curr_age_1
+                    ),
+                );
+                self.do_character_log(
+                    cn,
+                    FontColor::Green,
+                    &format!(
+                        "max_damage={}, current_damage={}\n",
+                        max_damage, curr_damage
+                    ),
+                );
+            }
+
+            // Compare with carried item if present
+            let citem = Repository::with_characters(|ch| ch[cn].citem);
+
+            if citem != 0 && (citem & 0x80000000) == 0 {
+                let citem_idx = citem as usize;
+
+                // Validate carried item
+                if citem_idx > 0 && citem_idx < core::constants::MAXITEM {
+                    self.do_character_log(cn, FontColor::Green, " \n");
+
+                    let citem_name = Repository::with_items(|items| items[citem_idx].name.clone());
+                    self.do_character_log(
+                        cn,
+                        FontColor::Green,
+                        &format!(
+                            "You compare it with a {}:\n",
+                            String::from_utf8_lossy(&citem_name)
+                        ),
+                    );
+
+                    // Compare weapon stats
+                    let (weapon_this, weapon_carried, name_this) =
+                        Repository::with_items(|items| {
+                            (
+                                items[item_idx].weapon[0],
+                                items[citem_idx].weapon[0],
+                                items[item_idx].name.clone(),
+                            )
+                        });
+
+                    if weapon_this > weapon_carried {
+                        self.do_character_log(
+                            cn,
+                            FontColor::Green,
+                            &format!(
+                                "A {} is the better weapon.\n",
+                                String::from_utf8_lossy(&name_this)
+                            ),
+                        );
+                    } else if weapon_this < weapon_carried {
+                        self.do_character_log(
+                            cn,
+                            FontColor::Green,
+                            &format!(
+                                "A {} is the better weapon.\n",
+                                String::from_utf8_lossy(&citem_name)
+                            ),
+                        );
+                    } else {
+                        self.do_character_log(cn, FontColor::Green, "No difference as a weapon.\n");
+                    }
+
+                    // Compare armor stats
+                    let (armor_this, armor_carried) = Repository::with_items(|items| {
+                        (items[item_idx].armor[0], items[citem_idx].armor[0])
+                    });
+
+                    if armor_this > armor_carried {
+                        self.do_character_log(
+                            cn,
+                            FontColor::Green,
+                            &format!(
+                                "A {} is the better armor.\n",
+                                String::from_utf8_lossy(&name_this)
+                            ),
+                        );
+                    } else if armor_this < armor_carried {
+                        self.do_character_log(
+                            cn,
+                            FontColor::Green,
+                            &format!(
+                                "A {} is the better armor.\n",
+                                String::from_utf8_lossy(&citem_name)
+                            ),
+                        );
+                    } else {
+                        self.do_character_log(cn, FontColor::Green, "No difference as armor.\n");
+                    }
+                }
+            } else {
+                // No carried item - show item_info if identified
+                let is_identified = Repository::with_items(|items| {
+                    items[item_idx].flags & ItemFlags::IF_IDENTIFIED.bits() != 0
+                });
+
+                if is_identified {
+                    // TODO: Implement item_info
+                    log::info!("TODO: Call item_info({}, {}, 1)", cn, item_idx);
+                }
+            }
+
+            // Special case: tombstone remote scan
+            let (item_temp, item_data_0) =
+                Repository::with_items(|items| (items[item_idx].temp, items[item_idx].data[0]));
+
+            if item_temp == core::constants::IT_TOMBSTONE as u16 && item_data_0 != 0 {
+                // TODO: Implement do_ransack_corpse
+                log::info!(
+                    "TODO: Call do_ransack_corpse({}, {}, 'In the tombstone you notice %s!\\n')",
+                    cn,
+                    item_data_0
+                );
+            }
+
+            // Special case: driver 57 (career pole check)
+            let item_driver = Repository::with_items(|items| items[item_idx].driver);
+            if item_driver == 57 {
+                let (points_tot, data_4) = Repository::with_characters(|ch| {
+                    let item_data = Repository::with_items(|items| items[item_idx].data[4]);
+                    (ch[cn].points_tot, item_data)
+                });
+
+                let percent = std::cmp::min(100, (100 * (points_tot / 10)) / (data_4 as i32 + 1));
+
+                if percent < 50 {
+                    self.do_character_log(
+                        cn,
+                        FontColor::Yellow,
+                        "You sense that it's too early in your career to touch this pole.\n",
+                    );
+                } else if percent < 70 {
+                    self.do_character_log(
+                        cn,
+                        FontColor::Yellow,
+                        "You sense that it's a bit early in your career to touch this pole.\n",
+                    );
+                }
+            }
+        }
+    }
+
+    /// Port of `barter(int cn, int opr, int flag)` from `svr_do.cpp`
+    ///
+    /// Calculates adjusted price based on character's barter skill.
+    /// Better barter skill gets better prices when buying or selling.
+    ///
+    /// # Arguments
+    /// * `cn` - Character index
+    /// * `opr` - Original price of the item
+    /// * `flag` - 1 if merchant is selling (player buying), 0 if merchant is buying (player selling)
+    ///
+    /// # Returns
+    /// * Adjusted price after applying barter skill
+    pub fn barter(&self, cn: usize, opr: i32, flag: i32) -> i32 {
+        let barter_skill =
+            Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_BARTER][5] as i32);
+
+        let pr = if flag != 0 {
+            // Merchant is selling (player is buying)
+            // Higher skill = lower price
+            let calculated = opr * 4 - (opr * barter_skill) / 50;
+            // Price can't go below original price
+            if calculated < opr {
+                opr
+            } else {
+                calculated
+            }
+        } else {
+            // Merchant is buying (player is selling)
+            // Higher skill = higher price for player
+            let calculated = opr / 4 + (opr * barter_skill) / 200;
+            // Price can't go above original price
+            if calculated > opr {
+                opr
+            } else {
+                calculated
+            }
+        };
+
+        pr
+    }
+
+    /// Port of `do_shop_char(int cn, int co, int nr)` from `svr_do.cpp`
+    ///
+    /// Handles shopping interactions between a character and a merchant/body.
+    /// This function supports:
+    /// - Selling items to merchants (when character has citem)
+    /// - Buying items from merchants (nr < 62)
+    /// - Looting items from corpses (CF_BODY)
+    /// - Examining item descriptions (nr >= 62)
+    ///
+    /// # Arguments
+    /// * `cn` - Character performing the action (player)
+    /// * `co` - Target character (merchant or corpse)
+    /// * `nr` - Action selector:
+    ///   - 0-39: Buy/take from merchant/corpse inventory
+    ///   - 40-59: Take from corpse worn items
+    ///   - 60: Take carried item from corpse
+    ///   - 61: Take gold from corpse
+    ///   - 62+: Examine item descriptions (nr-62 gives item slot)
+    pub fn do_shop_char(&mut self, cn: usize, co: usize, nr: i32) {
+        // Validate parameters
+        if co == 0 || co >= core::constants::MAXCHARS || nr < 0 || nr >= 124 {
+            return;
+        }
+
+        // Check if target is a merchant or corpse (body)
+        let (is_merchant, is_body) = Repository::with_characters(|ch| {
+            (
+                ch[co].flags & CharacterFlags::CF_MERCHANT.bits() != 0,
+                ch[co].flags & CharacterFlags::CF_BODY.bits() != 0,
+            )
+        });
+
+        if !is_merchant && !is_body {
+            return;
+        }
+
+        // For living merchants, check visibility
+        if !is_body {
+            // TODO: Implement do_char_can_see
+            // For now, assume visible
+            log::info!("TODO: Check if cn={} can see co={}", cn, co);
+        }
+
+        // For corpses, check distance (must be adjacent)
+        if is_body {
+            let (cn_x, cn_y, co_x, co_y) = Repository::with_characters(|ch| {
+                (
+                    ch[cn].x as i32,
+                    ch[cn].y as i32,
+                    ch[co].x as i32,
+                    ch[co].y as i32,
+                )
+            });
+
+            let distance = (cn_x - co_x).abs() + (cn_y - co_y).abs();
+            if distance > 1 {
+                return;
+            }
+        }
+
+        // Handle selling to merchant (player has citem)
+        let citem = Repository::with_characters(|ch| ch[cn].citem);
+
+        if citem != 0 && is_merchant {
+            // Check if trying to sell money
+            if citem & 0x80000000 != 0 {
+                self.do_character_log(cn, FontColor::Green, "You want to sell money? Weird!\n");
+                return;
+            }
+
+            let item_idx = citem as usize;
+
+            // Check if merchant accepts this type of item
+            let merchant_template = Repository::with_characters(|ch| ch[co].data[0] as usize);
+
+            let (item_flags, template_flags) = Repository::with_items(|items| {
+                Repository::with_item_templates(|templates| {
+                    (items[item_idx].flags, templates[merchant_template].flags)
+                })
+            });
+
+            let mut accepts = false;
+            if (item_flags & ItemFlags::IF_ARMOR.bits() != 0)
+                && (template_flags & ItemFlags::IF_ARMOR.bits() != 0)
+            {
+                accepts = true;
+            }
+            if (item_flags & ItemFlags::IF_WEAPON.bits() != 0)
+                && (template_flags & ItemFlags::IF_WEAPON.bits() != 0)
+            {
+                accepts = true;
+            }
+            if (item_flags & ItemFlags::IF_MAGIC.bits() != 0)
+                && (template_flags & ItemFlags::IF_MAGIC.bits() != 0)
+            {
+                accepts = true;
+            }
+            if (item_flags & ItemFlags::IF_MISC.bits() != 0)
+                && (template_flags & ItemFlags::IF_MISC.bits() != 0)
+            {
+                accepts = true;
+            }
+
+            if !accepts {
+                let merchant_name = Repository::with_characters(|ch| {
+                    String::from_utf8_lossy(&ch[co].name).to_string()
+                });
+                self.do_character_log(
+                    cn,
+                    FontColor::Green,
+                    &format!("{} doesn't buy those.\n", merchant_name),
+                );
+                return;
+            }
+
+            // Calculate price with barter
+            let value = self.do_item_value(item_idx);
+            let price = self.barter(cn, value as i32, 0);
+
+            // Check if merchant can afford it
+            let merchant_gold = Repository::with_characters(|ch| ch[co].gold);
+            if merchant_gold < price as i32 {
+                let merchant_ref = Repository::with_characters(|ch| {
+                    String::from_utf8_lossy(&ch[co].reference).to_string()
+                });
+                self.do_character_log(
+                    cn,
+                    FontColor::Green,
+                    &format!("{} cannot afford that.\n", merchant_ref),
+                );
+                return;
+            }
+
+            // Complete the sale
+            Repository::with_characters_mut(|ch| {
+                ch[cn].citem = 0;
+                ch[cn].gold += price as i32;
+            });
+
+            // Transfer item to merchant
+            // TODO: Implement god_give_char - for now just log
+            log::info!("TODO: god_give_char({}, {})", item_idx, co);
+
+            let item_name = Repository::with_items(|items| {
+                String::from_utf8_lossy(&items[item_idx].name).to_string()
+            });
+
+            let item_ref = Repository::with_items(|items| {
+                String::from_utf8_lossy(&items[item_idx].reference).to_string()
+            });
+
+            // TODO: Implement chlog
+            log::info!("TODO: chlog({}, 'Sold {}')", cn, item_name);
+
+            self.do_character_log(
+                cn,
+                FontColor::Yellow,
+                &format!(
+                    "You sold a {} for {}G {}S.\n",
+                    item_ref,
+                    price / 100,
+                    price % 100
+                ),
+            );
+
+            // Update item template statistics
+            let temp_id = Repository::with_items(|items| items[item_idx].temp as usize);
+            if temp_id > 0 && temp_id < core::constants::MAXTITEM {
+                Repository::with_item_templates_mut(|templates| {
+                    templates[temp_id].t_sold += 1;
+                });
+            }
+        } else {
+            // Handle buying/taking/examining items
+            if nr < 62 {
+                // Buying or taking items
+                if nr < 40 {
+                    // Inventory slot
+                    let item_idx =
+                        Repository::with_characters(|ch| ch[co].item[nr as usize] as usize);
+
+                    if item_idx != 0 {
+                        let price = if is_merchant {
+                            let value = self.do_item_value(item_idx);
+                            let pr = self.barter(cn, value as i32, 1);
+
+                            let player_gold = Repository::with_characters(|ch| ch[cn].gold);
+                            if player_gold < pr as i32 {
+                                self.do_character_log(
+                                    cn,
+                                    FontColor::Green,
+                                    "You cannot afford that.\n",
+                                );
+                                return;
+                            }
+                            pr
+                        } else {
+                            0
+                        };
+
+                        // TODO: Implement god_take_from_char and god_give_char
+                        log::info!("TODO: god_take_from_char({}, {})", item_idx, co);
+
+                        let gave_success = God::give_character_item(cn, item_idx);
+
+                        if gave_success {
+                            if is_merchant {
+                                Repository::with_characters_mut(|ch| {
+                                    ch[cn].gold -= price;
+                                    ch[co].gold += price;
+                                });
+
+                                let item_name = Repository::with_items(|items| {
+                                    String::from_utf8_lossy(&items[item_idx].name).to_string()
+                                });
+                                let item_ref = Repository::with_items(|items| {
+                                    String::from_utf8_lossy(&items[item_idx].reference).to_string()
+                                });
+
+                                // TODO: Implement chlog
+                                log::info!("TODO: chlog({}, 'Bought {}')", cn, item_name);
+
+                                self.do_character_log(
+                                    cn,
+                                    FontColor::Yellow,
+                                    &format!(
+                                        "You bought a {} for {}G {}S.\n",
+                                        item_ref,
+                                        price / 100,
+                                        price % 100
+                                    ),
+                                );
+
+                                // Update template statistics
+                                let temp_id =
+                                    Repository::with_items(|items| items[item_idx].temp as usize);
+                                if temp_id > 0 && temp_id < core::constants::MAXTITEM {
+                                    Repository::with_item_templates_mut(|templates| {
+                                        templates[temp_id].t_bought += 1;
+                                    });
+                                }
+                            } else {
+                                let item_name = Repository::with_items(|items| {
+                                    String::from_utf8_lossy(&items[item_idx].name).to_string()
+                                });
+                                let item_ref = Repository::with_items(|items| {
+                                    String::from_utf8_lossy(&items[item_idx].reference).to_string()
+                                });
+
+                                self.do_character_log(
+                                    cn,
+                                    FontColor::Yellow,
+                                    &format!("You took a {}.\n", item_ref),
+                                );
+                            }
+                        } else {
+                            // Failed to give item - put it back
+                            // TODO: Implement god_give_char to return item
+                            log::info!("TODO: god_give_char({}, {}) to return item", item_idx, co);
+
+                            let item_ref = Repository::with_items(|items| {
+                                String::from_utf8_lossy(&items[item_idx].reference).to_string()
+                            });
+
+                            if is_merchant {
+                                self.do_character_log(
+                                    cn,
+                                    FontColor::Green,
+                                    &format!(
+                                        "You cannot buy the {} because your inventory is full.\n",
+                                        item_ref
+                                    ),
+                                );
+                            } else {
+                                self.do_character_log(
+                                    cn,
+                                    FontColor::Green,
+                                    &format!(
+                                        "You cannot take the {} because your inventory is full.\n",
+                                        item_ref
+                                    ),
+                                );
+                            }
+                        }
+                    }
+                } else if nr < 60 {
+                    // Worn items (only for corpses)
+                    if is_body {
+                        let worn_slot = (nr - 40) as usize;
+                        let item_idx =
+                            Repository::with_characters(|ch| ch[co].worn[worn_slot] as usize);
+
+                        if item_idx != 0 {
+                            // TODO: Implement god_take_from_char
+                            log::info!("TODO: god_take_from_char({}, {})", item_idx, co);
+
+                            let gave_success = God::give_character_item(cn, item_idx);
+
+                            if gave_success {
+                                let item_name = Repository::with_items(|items| {
+                                    String::from_utf8_lossy(&items[item_idx].name).to_string()
+                                });
+                                let item_ref = Repository::with_items(|items| {
+                                    String::from_utf8_lossy(&items[item_idx].reference).to_string()
+                                });
+
+                                // TODO: Implement chlog
+                                log::info!("TODO: chlog({}, 'Took {}')", cn, item_name);
+
+                                self.do_character_log(
+                                    cn,
+                                    FontColor::Yellow,
+                                    &format!("You took a {}.\n", item_ref),
+                                );
+                            } else {
+                                // TODO: Implement god_give_char to return item
+                                log::info!(
+                                    "TODO: god_give_char({}, {}) to return item",
+                                    item_idx,
+                                    co
+                                );
+
+                                let item_ref = Repository::with_items(|items| {
+                                    String::from_utf8_lossy(&items[item_idx].reference).to_string()
+                                });
+
+                                self.do_character_log(
+                                    cn,
+                                    FontColor::Green,
+                                    &format!(
+                                        "You cannot take the {} because your inventory is full.\n",
+                                        item_ref
+                                    ),
+                                );
+                            }
+                        }
+                    }
+                } else if nr == 60 {
+                    // Carried item (only for corpses)
+                    if is_body {
+                        let item_idx = Repository::with_characters(|ch| ch[co].citem as usize);
+
+                        if item_idx != 0 {
+                            // TODO: Implement god_take_from_char
+                            log::info!("TODO: god_take_from_char({}, {})", item_idx, co);
+
+                            let gave_success = God::give_character_item(cn, item_idx);
+
+                            if gave_success {
+                                let item_name = Repository::with_items(|items| {
+                                    String::from_utf8_lossy(&items[item_idx].name).to_string()
+                                });
+                                let item_ref = Repository::with_items(|items| {
+                                    String::from_utf8_lossy(&items[item_idx].reference).to_string()
+                                });
+
+                                // TODO: Implement chlog
+                                log::info!("TODO: chlog({}, 'Took {}')", cn, item_name);
+
+                                self.do_character_log(
+                                    cn,
+                                    FontColor::Yellow,
+                                    &format!("You took a {}.\n", item_ref),
+                                );
+                            } else {
+                                // TODO: Implement god_give_char to return item
+                                log::info!(
+                                    "TODO: god_give_char({}, {}) to return item",
+                                    item_idx,
+                                    co
+                                );
+
+                                let item_ref = Repository::with_items(|items| {
+                                    String::from_utf8_lossy(&items[item_idx].reference).to_string()
+                                });
+
+                                self.do_character_log(
+                                    cn,
+                                    FontColor::Green,
+                                    &format!(
+                                        "You cannot take the {} because your inventory is full.\n",
+                                        item_ref
+                                    ),
+                                );
+                            }
+                        }
+                    }
+                } else {
+                    // nr == 61: Take gold (only for corpses)
+                    if is_body {
+                        let corpse_gold = Repository::with_characters(|ch| ch[co].gold);
+
+                        if corpse_gold > 0 {
+                            Repository::with_characters_mut(|ch| {
+                                ch[cn].gold += corpse_gold;
+                                ch[co].gold = 0;
+                            });
+
+                            // TODO: Implement chlog
+                            log::info!(
+                                "TODO: chlog({}, 'Took {}G {}S')",
+                                cn,
+                                corpse_gold / 100,
+                                corpse_gold % 100
+                            );
+
+                            self.do_character_log(
+                                cn,
+                                FontColor::Yellow,
+                                &format!(
+                                    "You took {}G {}S.\n",
+                                    corpse_gold / 100,
+                                    corpse_gold % 100
+                                ),
+                            );
+                        }
+                    }
+                }
+            } else {
+                // Examine item descriptions (nr >= 62)
+                let exam_nr = nr - 62;
+
+                if exam_nr < 40 {
+                    // Inventory item description
+                    let item_idx =
+                        Repository::with_characters(|ch| ch[co].item[exam_nr as usize] as usize);
+
+                    if item_idx != 0 {
+                        let (item_name, item_desc) = Repository::with_items(|items| {
+                            (
+                                String::from_utf8_lossy(&items[item_idx].name).to_string(),
+                                String::from_utf8_lossy(&items[item_idx].description).to_string(),
+                            )
+                        });
+
+                        self.do_character_log(cn, FontColor::Yellow, &format!("{}:\n", item_name));
+                        self.do_character_log(cn, FontColor::Yellow, &format!("{}\n", item_desc));
+                    }
+                } else if exam_nr < 61 {
+                    // Worn item description (only for corpses)
+                    if is_body {
+                        let worn_slot = (exam_nr - 40) as usize;
+                        let item_idx =
+                            Repository::with_characters(|ch| ch[co].worn[worn_slot] as usize);
+
+                        if item_idx != 0 {
+                            let (item_name, item_desc) = Repository::with_items(|items| {
+                                (
+                                    String::from_utf8_lossy(&items[item_idx].name).to_string(),
+                                    String::from_utf8_lossy(&items[item_idx].description)
+                                        .to_string(),
+                                )
+                            });
+
+                            self.do_character_log(
+                                cn,
+                                FontColor::Yellow,
+                                &format!("{}:\n", item_name),
+                            );
+                            self.do_character_log(
+                                cn,
+                                FontColor::Yellow,
+                                &format!("{}\n", item_desc),
+                            );
+                        }
+                    }
+                } else {
+                    // Carried item description (only for corpses)
+                    if is_body {
+                        let item_idx = Repository::with_characters(|ch| ch[co].citem as usize);
+
+                        if item_idx != 0 {
+                            let (item_name, item_desc) = Repository::with_items(|items| {
+                                (
+                                    String::from_utf8_lossy(&items[item_idx].name).to_string(),
+                                    String::from_utf8_lossy(&items[item_idx].description)
+                                        .to_string(),
+                                )
+                            });
+
+                            self.do_character_log(
+                                cn,
+                                FontColor::Yellow,
+                                &format!("{}:\n", item_name),
+                            );
+                            self.do_character_log(
+                                cn,
+                                FontColor::Yellow,
+                                &format!("{}\n", item_desc),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        // Update merchant shop display if applicable
+        if is_merchant {
+            driver::update_shop(co);
+        }
+
+        // Refresh the character/corpse display
+        self.do_look_char(cn, co, 0, 0, 1);
+    }
+
+    /// Port of `do_depot_cost(int in)` from `svr_do.cpp`
+    ///
+    /// Calculates the storage cost for depositing an item in the depot.
+    /// Cost is based on item value, power, and special flags.
+    ///
+    /// # Arguments
+    /// * `item_idx` - The index of the item to calculate depot cost for
+    ///
+    /// # Returns
+    /// * Storage cost in gold per tick
+    pub fn do_depot_cost(&self, item_idx: usize) -> i32 {
+        if item_idx == 0 || item_idx >= core::constants::MAXITEM {
+            return 0;
+        }
+
+        Repository::with_items(|items| {
+            let item = &items[item_idx];
+
+            let mut cost = 1;
+
+            // Add cost based on item value
+            cost += item.value as i32 / 1600;
+
+            // Add cost based on item power (cubic formula)
+            let power = item.power as i32;
+            cost += (power * power * power) / 16000;
+
+            // Items that are destroyed in labyrinth have much higher storage cost
+            if item.flags & ItemFlags::IF_LABYDESTROY.bits() != 0 {
+                cost += 20000;
+            }
+
+            cost
+        })
+    }
+
+    /// Port of `do_add_depot(int cn, int in)` from `svr_do.cpp`
+    ///
+    /// Adds an item to a character's depot storage.
+    /// Finds the first empty slot in the depot and stores the item there.
+    ///
+    /// # Arguments
+    /// * `cn` - Character index
+    /// * `item_idx` - The index of the item to add to depot
+    ///
+    /// # Returns
+    /// * `true` - Item was successfully added to depot
+    /// * `false` - Depot is full (all 62 slots occupied)
+    pub fn do_add_depot(&self, cn: usize, item_idx: usize) -> bool {
+        // Find first empty depot slot
+        let empty_slot = Repository::with_characters(|ch| {
+            for n in 0..62 {
+                if ch[cn].depot[n] == 0 {
+                    return Some(n);
+                }
+            }
+            None
+        });
+
+        // If no empty slot found, depot is full
+        let slot = match empty_slot {
+            Some(n) => n,
+            None => return false,
+        };
+
+        // Add item to depot slot
+        Repository::with_characters_mut(|ch| {
+            ch[cn].depot[slot] = item_idx as u32;
+            ch[cn].set_do_update_flags();
+        });
+
+        true
+    }
+
+    /// Port of `do_pay_depot(int cn)` from `svr_do.cpp`
+    ///
+    /// Handles depot storage fee payment. If the character doesn't have enough gold in
+    /// their bank account (data[13]), this function automatically sells the least valuable
+    /// items from the depot to cover the storage costs.
+    ///
+    /// # Arguments
+    /// * `cn` - Character index
+    ///
+    /// # Process
+    /// 1. Calculate total depot storage cost
+    /// 2. If not enough gold in bank account, sell cheapest depot items until enough funds
+    /// 3. Deduct storage cost from bank account
+    /// 4. Track total depot costs paid
+    pub fn do_pay_depot(&self, cn: usize) {
+        loop {
+            // Calculate total cost for all items in depot
+            let total_cost = self.get_depot_cost(cn);
+
+            let bank_balance = Repository::with_characters(|ch| ch[cn].data[13]);
+
+            if total_cost > bank_balance as i32 {
+                // Not enough money - find and sell cheapest item
+                let (cheapest_value, cheapest_slot) = Repository::with_characters(|ch| {
+                    let mut lowest_value = 99999999;
+                    let mut lowest_slot = None;
+
+                    for n in 0..62 {
+                        let item_idx = ch[cn].depot[n];
+                        if item_idx != 0 {
+                            let value = self.do_item_value(item_idx as usize);
+                            if value < lowest_value {
+                                lowest_value = value;
+                                lowest_slot = Some(n);
+                            }
+                        }
+                    }
+
+                    (lowest_value, lowest_slot)
+                });
+
+                // If no items to sell, panic
+                let slot = match cheapest_slot {
+                    Some(n) => n,
+                    None => {
+                        log::error!("PANIC: depot forced sale failed for cn={}", cn);
+                        return;
+                    }
+                };
+
+                // Sell the item for half its value
+                let sell_value = cheapest_value / 2;
+
+                let item_idx = Repository::with_characters(|ch| ch[cn].depot[slot]);
+
+                // Add proceeds to bank account
+                Repository::with_characters_mut(|ch| {
+                    ch[cn].data[13] += sell_value as i32;
+                });
+
+                // Mark item as empty (destroyed)
+                Repository::with_items_mut(|items| {
+                    items[item_idx as usize].used = core::constants::USE_EMPTY;
+                });
+
+                // Remove item from depot
+                Repository::with_characters_mut(|ch| {
+                    ch[cn].depot[slot] = 0;
+                    ch[cn].depot_sold += 1;
+                });
+
+                let item_name = Repository::with_items(|items| {
+                    String::from_utf8_lossy(&items[item_idx as usize].name).to_string()
+                });
+
+                // TODO: Implement chlog
+                log::info!(
+                    "TODO: chlog({}, 'Bank sold {} for {}G {}S to pay for depot (slot {})')",
+                    cn,
+                    item_name,
+                    sell_value / 100,
+                    sell_value % 100,
+                    slot
+                );
+            } else {
+                // Enough money - pay the cost
+                Repository::with_characters_mut(|ch| {
+                    ch[cn].data[13] -= total_cost;
+                    ch[cn].depot_cost += total_cost;
+                });
+                break;
+            }
+        }
+    }
+
+    /// Helper function to calculate total depot storage cost
+    ///
+    /// Sums up the storage cost for all items currently in the depot.
+    ///
+    /// # Arguments
+    /// * `cn` - Character index
+    ///
+    /// # Returns
+    /// * Total storage cost for all depot items
+    fn get_depot_cost(&self, cn: usize) -> i32 {
+        Repository::with_characters(|ch| {
+            let mut total = 0;
+            for n in 0..62 {
+                let item_idx = ch[cn].depot[n];
+                if item_idx != 0 {
+                    total += self.do_depot_cost(item_idx as usize);
+                }
+            }
+            total
+        })
+    }
+
+    /// Port of `do_depot_char(int cn, int co, int nr)` from `svr_do.cpp`
+    ///
+    /// Handles depot (bank storage) interactions for a character.
+    /// Allows depositing items into depot, withdrawing items, and examining items.
+    ///
+    /// # Arguments
+    /// * `cn` - Character performing the action
+    /// * `co` - Target character (must be same as cn for depot)
+    /// * `nr` - Action selector:
+    ///   - 0-61: Withdraw item from depot slot
+    ///   - 62+: Examine item in depot (nr-62 gives slot)
+    ///   - If character has citem: Deposit that item
+    pub fn do_depot_char(&mut self, cn: usize, co: usize, nr: i32) {
+        // Validate parameters
+        if co == 0 || co >= core::constants::MAXCHARS || nr < 0 || nr >= 124 {
+            return;
+        }
+
+        // Can only access own depot
+        if cn != co {
+            return;
+        }
+
+        // Check if in a bank or is god
+        let (char_x, char_y, is_god) = Repository::with_characters(|ch| {
+            (
+                ch[cn].x,
+                ch[cn].y,
+                ch[cn].flags & CharacterFlags::CF_GOD.bits() != 0,
+            )
+        });
+
+        if !is_god {
+            let map_idx = char_x as usize + char_y as usize * core::constants::SERVER_MAPX as usize;
+            let in_bank = Repository::with_map(|map| {
+                map[map_idx].flags & core::constants::MF_BANK as u64 != 0
+            });
+
+            if !in_bank {
+                self.do_character_log(
+                    cn,
+                    FontColor::Green,
+                    "You cannot access your depot outside a bank.\n",
+                );
+                return;
+            }
+        }
+
+        let citem = Repository::with_characters(|ch| ch[cn].citem);
+
+        if citem != 0 {
+            // Depositing an item
+            if citem & 0x80000000 != 0 {
+                self.do_character_log(
+                    cn,
+                    FontColor::Green,
+                    "Use #deposit to put money in the bank!\n",
+                );
+                return;
+            }
+
+            let item_idx = citem as usize;
+
+            // Check if allowed to deposit
+            if !self.do_maygive(cn, 0, item_idx) {
+                self.do_character_log(cn, FontColor::Green, "You are not allowed to do that!\n");
+                return;
+            }
+
+            let has_nodepot = Repository::with_items(|items| {
+                items[item_idx].flags & ItemFlags::IF_NODEPOT.bits() != 0
+            });
+
+            if has_nodepot {
+                self.do_character_log(cn, FontColor::Green, "You are not allowed to do that!\n");
+                return;
+            }
+
+            // Calculate storage cost
+            let storage_cost = self.do_depot_cost(item_idx);
+
+            // Try to add to depot
+            if self.do_add_depot(co, item_idx) {
+                Repository::with_characters_mut(|ch| {
+                    ch[cn].citem = 0;
+                });
+
+                let item_ref = Repository::with_items(|items| {
+                    String::from_utf8_lossy(&items[item_idx].reference).to_string()
+                });
+
+                let item_name = Repository::with_items(|items| {
+                    String::from_utf8_lossy(&items[item_idx].name).to_string()
+                });
+
+                // Calculate costs per day (Astonian and Earth)
+                let astonian_cost = storage_cost;
+                let earth_cost = storage_cost * 18; // 18 Astonian days per Earth day
+
+                self.do_character_log(
+                    cn,
+                    FontColor::Yellow,
+                    &format!(
+                        "You deposited {}. The rent is {}G {}S per Astonian day or {}G {}S per Earth day.\n",
+                        item_ref,
+                        astonian_cost / 100,
+                        astonian_cost % 100,
+                        earth_cost / 100,
+                        earth_cost % 100
+                    ),
+                );
+
+                // TODO: Implement chlog
+                log::info!("TODO: chlog({}, 'Deposited {}')", cn, item_name);
+            }
+        } else {
+            // Withdrawing or examining items
+            if nr < 62 {
+                // Withdraw item from depot
+                let item_idx = Repository::with_characters(|ch| ch[co].depot[nr as usize]);
+
+                if item_idx != 0 {
+                    // TODO: Implement god_give_char
+                    let gave_success = God::give_character_item(cn, item_idx as usize);
+
+                    if gave_success {
+                        Repository::with_characters_mut(|ch| {
+                            ch[co].depot[nr as usize] = 0;
+                        });
+
+                        let item_ref = Repository::with_items(|items| {
+                            String::from_utf8_lossy(&items[item_idx as usize].reference).to_string()
+                        });
+
+                        let item_name = Repository::with_items(|items| {
+                            String::from_utf8_lossy(&items[item_idx as usize].name).to_string()
+                        });
+
+                        self.do_character_log(
+                            cn,
+                            FontColor::Yellow,
+                            &format!("You took the {} from your depot.\n", item_ref),
+                        );
+
+                        // TODO: Implement chlog
+                        log::info!("TODO: chlog({}, 'Took {} from depot')", cn, item_name);
+                    } else {
+                        let item_ref = Repository::with_items(|items| {
+                            String::from_utf8_lossy(&items[item_idx as usize].reference).to_string()
+                        });
+
+                        self.do_character_log(
+                            cn,
+                            FontColor::Green,
+                            &format!(
+                                "You cannot take the {} because your inventory is full.\n",
+                                item_ref
+                            ),
+                        );
+                    }
+                }
+            } else {
+                // Examine item in depot
+                let exam_slot = (nr - 62) as usize;
+                let item_idx = Repository::with_characters(|ch| ch[co].depot[exam_slot]);
+
+                if item_idx != 0 {
+                    let (item_name, item_desc) = Repository::with_items(|items| {
+                        (
+                            String::from_utf8_lossy(&items[item_idx as usize].name).to_string(),
+                            String::from_utf8_lossy(&items[item_idx as usize].description)
+                                .to_string(),
+                        )
+                    });
+
+                    self.do_character_log(cn, FontColor::Yellow, &format!("{}:\n", item_name));
+                    self.do_character_log(cn, FontColor::Yellow, &format!("{}\n", item_desc));
+                }
+            }
+        }
+    }
+
+    /// Port of `do_look_char(int cn, int co, int godflag, int autoflag, int lootflag)` from `svr_do.cpp`
+    ///
+    /// Displays detailed information about a character (merchant, corpse, or other player/NPC).
+    /// This function sends multiple binary packets to the client to display:
+    /// - Character description and status messages
+    /// - Character equipment and stats
+    /// - Shop/corpse inventory if applicable
+    ///
+    /// # Arguments
+    /// * `cn` - Character doing the looking
+    /// * `co` - Character being looked at
+    /// * `godflag` - If set, bypasses visibility checks
+    /// * `autoflag` - If set, suppresses descriptive text (for repeated/automatic looks)
+    /// * `lootflag` - If set, allows looking at corpses
+    pub fn do_look_char(
+        &mut self,
+        cn: usize,
+        co: usize,
+        godflag: i32,
+        autoflag: i32,
+        lootflag: i32,
+    ) {
+        // Validate parameters
+        if co == 0 || co >= core::constants::MAXCHARS {
+            return;
+        }
+
+        // Check if target is a corpse and distance
+        let (is_body, co_x, co_y) = Repository::with_characters(|ch| {
+            (
+                ch[co].flags & CharacterFlags::CF_BODY.bits() != 0,
+                ch[co].x,
+                ch[co].y,
+            )
+        });
+
+        if is_body {
+            let (cn_x, cn_y) = Repository::with_characters(|ch| (ch[cn].x, ch[cn].y));
+            let distance = (cn_x - co_x).abs() + (cn_y - co_y).abs();
+            if distance > 1 {
+                return;
+            }
+            if lootflag == 0 {
+                return;
+            }
+        }
+
+        // Check visibility
+        let mut visibility = if godflag != 0 || is_body {
+            1
+        } else {
+            self.do_character_can_see(cn, co)
+        };
+
+        if visibility == 0 {
+            return;
+        }
+
+        // Handle text descriptions and logging (only if not autoflag)
+        let (is_merchant, co_flags, co_temp) = Repository::with_characters(|ch| {
+            (
+                ch[co].flags & CharacterFlags::CF_MERCHANT.bits() != 0,
+                ch[co].flags,
+                ch[co].temp,
+            )
+        });
+
+        if autoflag == 0 && !is_merchant && !is_body {
+            // Rate limiting for players
+            let is_player = Repository::with_characters(|ch| {
+                ch[cn].flags & CharacterFlags::CF_PLAYER.bits() != 0
+            });
+
+            if is_player {
+                let can_proceed = Repository::with_characters_mut(|ch| {
+                    ch[cn].data[71] += core::constants::CNTSAY;
+                    if ch[cn].data[71] > core::constants::MAXSAY {
+                        false
+                    } else {
+                        true
+                    }
+                });
+
+                if !can_proceed {
+                    self.do_character_log(
+                        cn,
+                        FontColor::Green,
+                        "Oops, you're a bit too fast for me!\n",
+                    );
+                    return;
+                }
+            }
+
+            // Show description or reference
+            let (has_desc, description, reference) = Repository::with_characters(|ch| {
+                let has_desc = ch[co].description[0] != 0;
+                let description = String::from_utf8_lossy(&ch[co].description).to_string();
+                let reference = String::from_utf8_lossy(&ch[co].reference).to_string();
+                (has_desc, description, reference)
+            });
+
+            if has_desc {
+                self.do_character_log(cn, FontColor::Yellow, &format!("{}\n", description));
+            } else {
+                self.do_character_log(cn, FontColor::Yellow, &format!("You see {}.\n", reference));
+            }
+
+            // Check if target is AFK (away from keyboard)
+            let (co_is_player, co_data0, co_text0) = Repository::with_characters(|ch| {
+                let is_player = ch[co].is_player();
+                let data0 = ch[co].data[0];
+                let text0 = String::from_utf8_lossy(&ch[co].text[0]).to_string();
+                (is_player, data0, text0)
+            });
+
+            if co_is_player && co_data0 != 0 {
+                let co_name = Repository::with_characters(|ch| {
+                    String::from_utf8_lossy(&ch[co].name).to_string()
+                });
+
+                if !co_text0.is_empty() {
+                    self.do_character_log(
+                        cn,
+                        FontColor::Yellow,
+                        &format!("{} is away from keyboard; Message:\n", co_name),
+                    );
+                    self.do_character_log(cn, FontColor::Green, &format!("  \"{}\"\n", co_text0));
+                } else {
+                    self.do_character_log(
+                        cn,
+                        FontColor::Yellow,
+                        &format!("{} is away from keyboard.\n", co_name),
+                    );
+                }
+            }
+
+            // Check for Purple One follower
+            let (co_kindred, co_reference) = Repository::with_characters(|ch| {
+                (
+                    ch[co].kindred,
+                    String::from_utf8_lossy(&ch[co].reference).to_string(),
+                )
+            });
+
+            if co_is_player && (co_kindred as u32 & core::constants::KIN_PURPLE) != 0 {
+                self.do_character_log(
+                    cn,
+                    FontColor::Yellow,
+                    &format!("{} is a follower of the Purple One.\n", co_reference),
+                );
+            }
+
+            // Reciprocal "looks at you" message
+            let (cn_is_player, cn_is_invisible, cn_is_shutup) = Repository::with_characters(|ch| {
+                (
+                    ch[cn].flags & CharacterFlags::CF_PLAYER.bits() != 0,
+                    ch[cn].flags & CharacterFlags::CF_INVISIBLE.bits() != 0,
+                    ch[cn].flags & CharacterFlags::CF_SHUTUP.bits() != 0,
+                )
+            });
+
+            if godflag == 0 && cn != co && cn_is_player && !cn_is_invisible && !cn_is_shutup {
+                let cn_name = Repository::with_characters(|ch| {
+                    String::from_utf8_lossy(&ch[cn].name).to_string()
+                });
+
+                // TODO: Implement do_char_log to send message to co
+                log::info!("TODO: do_char_log({}, '{} looks at you.')", co, cn_name);
+            }
+
+            // Show death information for players
+            let (co_data14, co_data15, co_data16, co_data17, co_is_god) =
+                Repository::with_characters(|ch| {
+                    (
+                        ch[co].data[14],
+                        ch[co].data[15],
+                        ch[co].data[16],
+                        ch[co].data[17],
+                        ch[co].flags & CharacterFlags::CF_GOD.bits() != 0,
+                    )
+                });
+
+            if co_is_player && co_data14 != 0 && !co_is_god {
+                let killer = if co_data15 == 0 {
+                    "unknown causes".to_string()
+                } else if co_data15 >= core::constants::MAXCHARS as i32 {
+                    let killer_idx = (co_data15 & 0xFFFF) as usize;
+                    Repository::with_characters(|ch| {
+                        String::from_utf8_lossy(&ch[killer_idx].reference).to_string()
+                    })
+                } else {
+                    // TODO: Access ch_temp for non-character killer names
+                    "unknown killer".to_string()
+                };
+
+                let area = {
+                    let map_x = co_data17 % core::constants::SERVER_MAPX;
+                    let map_y = co_data17 / core::constants::SERVER_MAPX;
+                    // TODO: Implement get_area_m function
+                    format!("area at {},{}", map_x, map_y)
+                };
+
+                self.do_character_log(
+                    cn,
+                    FontColor::Yellow,
+                    &format!(
+                        "{} died {} times, the last time on the day {} of the year {}, killed by {} {}.\n",
+                        co_reference,
+                        co_data14,
+                        co_data16 % 300,
+                        co_data16 / 300,
+                        killer,
+                        area
+                    ),
+                );
+            }
+
+            // Show "saved from death" count
+            let co_data44 = Repository::with_characters(|ch| ch[co].data[44]);
+            if co_is_player && co_data44 != 0 && !co_is_god {
+                self.do_character_log(
+                    cn,
+                    FontColor::Yellow,
+                    &format!(
+                        "{} was saved from death {} times.\n",
+                        co_reference, co_data44
+                    ),
+                );
+            }
+
+            // Show Purple of Honor status
+            let (co_is_poh, co_is_poh_leader) = Repository::with_characters(|ch| {
+                (
+                    ch[co].flags & CharacterFlags::CF_POH.bits() != 0,
+                    ch[co].flags & CharacterFlags::CF_POH_LEADER.bits() != 0,
+                )
+            });
+
+            if co_is_player && co_is_poh {
+                if co_is_poh_leader {
+                    self.do_character_log(
+                        cn,
+                        FontColor::Red,
+                        &format!("{} is a Leader among the Purples of Honor.\n", co_reference),
+                    );
+                } else {
+                    self.do_character_log(
+                        cn,
+                        FontColor::Red,
+                        &format!("{} is a Purple of Honor.\n", co_reference),
+                    );
+                }
+            }
+
+            // Show custom text[3] (player description/title)
+            let co_text3 = Repository::with_characters(|ch| {
+                String::from_utf8_lossy(&ch[co].text[3]).to_string()
+            });
+
+            if !co_text3.is_empty() && co_is_player {
+                self.do_character_log(cn, FontColor::Yellow, &format!("{}\n", co_text3));
+            }
+        }
+
+        // Get player_id for sending packets
+        let player_id = Repository::with_characters(|ch| ch[cn].player);
+        if player_id == 0 {
+            return;
+        }
+
+        // If visibility > 75, obscure equipment details
+        if visibility > 75 {
+            visibility = 100;
+        }
+
+        // Send SV_LOOK1 packet (main equipment slots)
+        let mut buf = [0u8; 16];
+        buf[0] = core::constants::SV_LOOK1;
+
+        if visibility <= 75 {
+            let worn_sprites = Repository::with_characters(|ch| {
+                let mut sprites = [0u16; 7];
+                let worn_indices = [0, 2, 3, 5, 6, 7, 8];
+                for (i, &slot) in worn_indices.iter().enumerate() {
+                    if ch[co].worn[slot] != 0 {
+                        sprites[i] = Repository::with_items(|items| {
+                            items[ch[co].worn[slot] as usize].sprite[0] as u16
+                        });
+                    }
+                }
+                sprites
+            });
+
+            for (i, sprite) in worn_sprites.iter().enumerate() {
+                let offset = 1 + i * 2;
+                buf[offset] = (*sprite & 0xFF) as u8;
+                buf[offset + 1] = (*sprite >> 8) as u8;
+            }
+        } else {
+            // Obscured - use sprite 35 for all slots
+            for i in 0..7 {
+                let offset = 1 + i * 2;
+                buf[offset] = 35;
+                buf[offset + 1] = 0;
+            }
+        }
+        buf[15] = autoflag as u8;
+
+        NetworkManager::with(|network| {
+            network.xsend(player_id as usize, &buf, 16);
+        });
+
+        // Send SV_LOOK2 packet
+        buf[0] = core::constants::SV_LOOK2;
+
+        if visibility <= 75 {
+            let (worn9, worn10, sprite, points_tot, hp5, end5, mana5, a_hp, a_end, a_mana) =
+                Repository::with_characters(|ch| {
+                    let w9 = if ch[co].worn[9] != 0 {
+                        Repository::with_items(|items| items[ch[co].worn[9] as usize].sprite[0])
+                    } else {
+                        0
+                    };
+                    let w10 = if ch[co].worn[10] != 0 {
+                        Repository::with_items(|items| items[ch[co].worn[10] as usize].sprite[0])
+                    } else {
+                        0
+                    };
+                    (
+                        w9,
+                        w10,
+                        ch[co].sprite,
+                        ch[co].points_tot,
+                        ch[co].hp[5],
+                        ch[co].end[5],
+                        ch[co].mana[5],
+                        ch[co].a_hp,
+                        ch[co].a_end,
+                        ch[co].a_mana,
+                    )
+                });
+
+            buf[1] = (worn9 & 0xFF) as u8;
+            buf[2] = (worn9 >> 8) as u8;
+            buf[13] = (worn10 & 0xFF) as u8;
+            buf[14] = (worn10 >> 8) as u8;
+
+            buf[3] = (sprite & 0xFF) as u8;
+            buf[4] = (sprite >> 8) as u8;
+
+            let points_bytes = points_tot.to_le_bytes();
+            buf[5..9].copy_from_slice(&points_bytes);
+
+            // Apply random variation if visibility is poor
+            let (hp_diff, end_diff, mana_diff) = if visibility > 75 {
+                let mut rng = rand::thread_rng();
+                let hp_d = hp5 / 2 - rng.gen_range(0..=hp5);
+                let end_d = end5 / 2 - rng.gen_range(0..=end5);
+                let mana_d = mana5 / 2 - rng.gen_range(0..=mana5);
+                (hp_d, end_d, mana_d)
+            } else {
+                (0, 0, 0)
+            };
+
+            let hp_display = ((hp5 + hp_diff) as u32).to_le_bytes();
+            buf[9..13].copy_from_slice(&hp_display);
+        } else {
+            // Obscured
+            buf[1] = 35;
+            buf[2] = 0;
+            buf[13] = 35;
+            buf[14] = 0;
+        }
+
+        NetworkManager::with(|network| {
+            network.xsend(player_id as usize, &buf, 16);
+        });
+
+        // Send SV_LOOK3 packet
+        buf[0] = core::constants::SV_LOOK3;
+
+        let (end5, a_hp, a_end, mana5, a_mana, co_id) = Repository::with_characters(|ch| {
+            (
+                ch[co].end[5],
+                ch[co].a_hp,
+                ch[co].a_end,
+                ch[co].mana[5],
+                ch[co].a_mana,
+                helpers::char_id(co),
+            )
+        });
+
+        let (hp_diff, end_diff, mana_diff) = if visibility > 75 {
+            let mut rng = rand::thread_rng();
+            let hp5 = Repository::with_characters(|ch| ch[co].hp[5]);
+            let hp_d = hp5 / 2 - rng.gen_range(0..=hp5);
+            let end_d = end5 / 2 - rng.gen_range(0..=end5);
+            let mana_d = mana5 / 2 - rng.gen_range(0..=mana5);
+            (hp_d, end_d, mana_d)
+        } else {
+            (0, 0, 0)
+        };
+
+        let end_display = (end5 + end_diff) as u16;
+        buf[1] = (end_display & 0xFF) as u8;
+        buf[2] = (end_display >> 8) as u8;
+
+        let ahp_display = ((a_hp + 500) / 1000 + hp_diff as i32) as u16;
+        buf[3] = (ahp_display & 0xFF) as u8;
+        buf[4] = (ahp_display >> 8) as u8;
+
+        let aend_display = ((a_end + 500) / 1000 + end_diff as i32) as u16;
+        buf[5] = (aend_display & 0xFF) as u8;
+        buf[6] = (aend_display >> 8) as u8;
+
+        let co_u16 = co as u16;
+        buf[7] = (co_u16 & 0xFF) as u8;
+        buf[8] = (co_u16 >> 8) as u8;
+
+        let co_id_u16 = co_id as u16;
+        buf[9] = (co_id_u16 & 0xFF) as u8;
+        buf[10] = (co_id_u16 >> 8) as u8;
+
+        let mana_display = (mana5 + mana_diff) as u16;
+        buf[11] = (mana_display & 0xFF) as u8;
+        buf[12] = (mana_display >> 8) as u8;
+
+        let amana_display = ((a_mana + 500) / 1000 + mana_diff as i32) as u16;
+        buf[13] = (amana_display & 0xFF) as u8;
+        buf[14] = (amana_display >> 8) as u8;
+
+        NetworkManager::with(|network| {
+            network.xsend(player_id as usize, &buf, 16);
+        });
+
+        // Send SV_LOOK4 packet
+        buf[0] = core::constants::SV_LOOK4;
+
+        if visibility <= 75 {
+            let (worn1, worn4, worn11, worn12, worn13) = Repository::with_characters(|ch| {
+                let w1 = if ch[co].worn[1] != 0 {
+                    Repository::with_items(|items| items[ch[co].worn[1] as usize].sprite[0])
+                } else {
+                    0
+                };
+                let w4 = if ch[co].worn[4] != 0 {
+                    Repository::with_items(|items| items[ch[co].worn[4] as usize].sprite[0])
+                } else {
+                    0
+                };
+                let w11 = if ch[co].worn[11] != 0 {
+                    Repository::with_items(|items| items[ch[co].worn[11] as usize].sprite[0])
+                } else {
+                    0
+                };
+                let w12 = if ch[co].worn[12] != 0 {
+                    Repository::with_items(|items| items[ch[co].worn[12] as usize].sprite[0])
+                } else {
+                    0
+                };
+                let w13 = if ch[co].worn[13] != 0 {
+                    Repository::with_items(|items| items[ch[co].worn[13] as usize].sprite[0])
+                } else {
+                    0
+                };
+                (w1, w4, w11, w12, w13)
+            });
+
+            buf[1] = (worn1 & 0xFF) as u8;
+            buf[2] = (worn1 >> 8) as u8;
+            buf[3] = (worn4 & 0xFF) as u8;
+            buf[4] = (worn4 >> 8) as u8;
+            buf[10] = (worn11 & 0xFF) as u8;
+            buf[11] = (worn11 >> 8) as u8;
+            buf[12] = (worn12 & 0xFF) as u8;
+            buf[13] = (worn12 >> 8) as u8;
+            buf[14] = (worn13 & 0xFF) as u8;
+            buf[15] = (worn13 >> 8) as u8;
+        } else {
+            buf[1] = 35;
+            buf[2] = 0;
+            buf[3] = 35;
+            buf[4] = 0;
+            buf[10] = 35;
+            buf[11] = 0;
+            buf[12] = 35;
+            buf[13] = 0;
+            buf[14] = 35;
+            buf[15] = 0;
+        }
+
+        // Check if this is a merchant or corpse to show shop interface
+        if (is_merchant || is_body) && autoflag == 0 {
+            buf[5] = 1;
+
+            // Show price for carried item if applicable
+            let citem = Repository::with_characters(|ch| ch[cn].citem);
+            let price = if citem != 0 {
+                if is_merchant {
+                    self.barter(cn, self.do_item_value(citem as usize) as i32, 0)
+                } else {
+                    0
+                }
+            } else {
+                0
+            };
+
+            let price_bytes = (price as u32).to_le_bytes();
+            buf[6..10].copy_from_slice(&price_bytes);
+        } else {
+            buf[5] = 0;
+        }
+
+        NetworkManager::with(|network| {
+            network.xsend(player_id as usize, &buf, 16);
+        });
+
+        // Send SV_LOOK5 packet (character name)
+        buf[0] = core::constants::SV_LOOK5;
+
+        let co_name = Repository::with_characters(|ch| {
+            let mut name = [0u8; 15];
+            name.copy_from_slice(&ch[co].name[0..15]);
+            name
+        });
+
+        buf[1..16].copy_from_slice(&co_name);
+
+        NetworkManager::with(|network| {
+            network.xsend(player_id as usize, &buf, 16);
+        });
+
+        // Send SV_LOOK6 packets (shop inventory) if merchant or corpse
+        if (is_merchant || is_body) && autoflag == 0 {
+            // Send inventory slots 0-39 in pairs
+            for n in (0..40).step_by(2) {
+                buf[0] = core::constants::SV_LOOK6;
+                buf[1] = n as u8;
+
+                for m in n..std::cmp::min(40, n + 2) {
+                    let (sprite, price) = Repository::with_characters(|ch| {
+                        let item_idx = ch[co].item[m];
+                        if item_idx != 0 {
+                            let spr =
+                                Repository::with_items(|items| items[item_idx as usize].sprite[0]);
+                            let pr = if is_merchant {
+                                self.barter(cn, self.do_item_value(item_idx as usize) as i32, 1)
+                            } else {
+                                0
+                            };
+                            (spr, pr)
+                        } else {
+                            (0, 0)
+                        }
+                    });
+
+                    let offset = 2 + (m - n) * 6;
+                    buf[offset] = (sprite & 0xFF) as u8;
+                    buf[offset + 1] = (sprite >> 8) as u8;
+
+                    let price_bytes = (price as u32).to_le_bytes();
+                    buf[offset + 2..offset + 6].copy_from_slice(&price_bytes);
+                }
+
+                NetworkManager::with(|network| {
+                    network.xsend(player_id as usize, &buf, 16);
+                });
+            }
+
+            // Send worn slots 0-19 (displayed as slots 40-59) if corpse
+            for n in (0..20).step_by(2) {
+                buf[0] = core::constants::SV_LOOK6;
+                buf[1] = (n + 40) as u8;
+
+                for m in n..std::cmp::min(20, n + 2) {
+                    let (sprite, price) = Repository::with_characters(|ch| {
+                        let item_idx = ch[co].worn[m];
+                        if item_idx != 0 && is_body {
+                            let spr =
+                                Repository::with_items(|items| items[item_idx as usize].sprite[0]);
+                            (spr, 0)
+                        } else {
+                            (0, 0)
+                        }
+                    });
+
+                    let offset = 2 + (m - n) * 6;
+                    buf[offset] = (sprite & 0xFF) as u8;
+                    buf[offset + 1] = (sprite >> 8) as u8;
+
+                    let price_bytes = (price as u32).to_le_bytes();
+                    buf[offset + 2..offset + 6].copy_from_slice(&price_bytes);
+                }
+
+                NetworkManager::with(|network| {
+                    network.xsend(player_id as usize, &buf, 16);
+                });
+            }
+
+            // Send citem and gold (slots 60-61)
+            buf[0] = core::constants::SV_LOOK6;
+            buf[1] = 60;
+
+            // Slot 60: citem
+            let (citem_sprite, gold) = Repository::with_characters(|ch| {
+                let citem_idx = ch[co].citem;
+                let spr = if citem_idx != 0 && is_body {
+                    Repository::with_items(|items| items[citem_idx as usize].sprite[0])
+                } else {
+                    0
+                };
+                (spr, ch[co].gold)
+            });
+
+            buf[2] = (citem_sprite & 0xFF) as u8;
+            buf[3] = (citem_sprite >> 8) as u8;
+            let price_bytes = [0u8; 4];
+            buf[4..8].copy_from_slice(&price_bytes);
+
+            // Slot 61: gold
+            let gold_sprite = if gold > 0 && is_body {
+                if gold > 999999 {
+                    121
+                } else if gold > 99999 {
+                    120
+                } else if gold > 9999 {
+                    41
+                } else if gold > 999 {
+                    40
+                } else if gold > 99 {
+                    39
+                } else if gold > 9 {
+                    38
+                } else {
+                    37
+                }
+            } else {
+                0
+            };
+
+            buf[8] = (gold_sprite & 0xFF) as u8;
+            buf[9] = (gold_sprite >> 8) as u8;
+            buf[10..14].copy_from_slice(&[0u8; 4]);
+
+            NetworkManager::with(|network| {
+                network.xsend(player_id as usize, &buf, 16);
+            });
+        }
+
+        // God/IMP/USURP debug information
+        let (cn_is_god_imp_usurp) = Repository::with_characters(|ch| {
+            ch[cn].flags
+                & (CharacterFlags::CF_GOD | CharacterFlags::CF_IMP | CharacterFlags::CF_USURP)
+                    .bits()
+                != 0
+        });
+
+        let co_is_god =
+            Repository::with_characters(|ch| ch[co].flags & CharacterFlags::CF_GOD.bits() != 0);
+
+        if cn_is_god_imp_usurp && autoflag == 0 && !is_merchant && !is_body && !co_is_god {
+            let (co_x, co_y) = Repository::with_characters(|ch| (ch[co].x, ch[co].y));
+            self.do_character_log(
+                cn,
+                FontColor::Green,
+                &format!(
+                    "This is char {}, created from template {}, pos {},{}\n",
+                    co, co_temp, co_x, co_y
+                ),
+            );
+
+            let (co_is_golden, co_is_black) = Repository::with_characters(|ch| {
+                (
+                    ch[co].flags & CharacterFlags::CF_GOLDEN.bits() != 0,
+                    ch[co].flags & CharacterFlags::CF_BLACK.bits() != 0,
+                )
+            });
+
+            if co_is_golden {
+                self.do_character_log(cn, FontColor::Green, "Golden List.\n");
+            }
+            if co_is_black {
+                self.do_character_log(cn, FontColor::Green, "Black List.\n");
+            }
+        }
+    }
+
+    /// Port of `do_look_depot(int cn, int co)` from `svr_do.cpp`
+    ///
+    /// Displays the depot (bank storage) interface to a character.
+    /// This sends binary packets to the client showing:
+    /// - Character stats and sprite
+    /// - Depot storage slots (62 slots)
+    /// - Storage costs for each item
+    /// - Cost for depositing carried item (if any)
+    ///
+    /// The display uses a special flag (0x8000) in the character ID to indicate depot view.
+    ///
+    /// # Arguments
+    /// * `cn` - Character viewing the depot
+    /// * `co` - Target character (must be same as cn)
+    pub fn do_look_depot(&self, cn: usize, co: usize) {
+        // Validate parameters
+        if co == 0 || co >= core::constants::MAXCHARS {
+            return;
+        }
+
+        // Can only view own depot
+        if cn != co {
+            return;
+        }
+
+        // Check if in a bank or is god
+        let (char_x, char_y, is_god, player_id) = Repository::with_characters(|ch| {
+            (
+                ch[cn].x,
+                ch[cn].y,
+                ch[cn].flags & CharacterFlags::CF_GOD.bits() != 0,
+                ch[cn].player,
+            )
+        });
+
+        if player_id == 0 {
+            return;
+        }
+
+        if !is_god {
+            let map_idx = char_x as usize + char_y as usize * core::constants::SERVER_MAPX as usize;
+            let in_bank = Repository::with_map(|map| {
+                map[map_idx].flags & core::constants::MF_BANK as u64 != 0
+            });
+
+            if !in_bank {
+                self.do_character_log(
+                    cn,
+                    FontColor::Red,
+                    "You cannot access your depot outside a bank.\n",
+                );
+                return;
+            }
+        }
+
+        let mut buf = [0u8; 16];
+
+        // Send SV_LOOK1 packet - all equipment slots obscured (sprite 35)
+        buf[0] = core::constants::SV_LOOK1;
+        for i in 0..7 {
+            let offset = 1 + i * 2;
+            buf[offset] = 35;
+            buf[offset + 1] = 0;
+        }
+        buf[15] = 0;
+
+        NetworkManager::with(|network| {
+            network.xsend(player_id as usize, &buf, 16);
+        });
+
+        // Send SV_LOOK2 packet
+        buf[0] = core::constants::SV_LOOK2;
+
+        let (sprite, points_tot, hp5) =
+            Repository::with_characters(|ch| (ch[co].sprite, ch[co].points_tot, ch[co].hp[5]));
+
+        buf[1] = 35;
+        buf[2] = 0;
+        buf[13] = 35;
+        buf[14] = 0;
+
+        buf[3] = (sprite & 0xFF) as u8;
+        buf[4] = (sprite >> 8) as u8;
+
+        let points_bytes = points_tot.to_le_bytes();
+        buf[5..9].copy_from_slice(&points_bytes);
+
+        let hp_bytes = (hp5 as u32).to_le_bytes();
+        buf[9..13].copy_from_slice(&hp_bytes);
+
+        NetworkManager::with(|network| {
+            network.xsend(player_id as usize, &buf, 16);
+        });
+
+        // Send SV_LOOK3 packet
+        buf[0] = core::constants::SV_LOOK3;
+
+        let (end5, a_hp, a_end, mana5, a_mana, co_id) = Repository::with_characters(|ch| {
+            (
+                ch[co].end[5],
+                ch[co].a_hp,
+                ch[co].a_end,
+                ch[co].mana[5],
+                ch[co].a_mana,
+                helpers::char_id(co),
+            )
+        });
+
+        buf[1] = (end5 & 0xFF) as u8;
+        buf[2] = (end5 >> 8) as u8;
+
+        let ahp_display = ((a_hp + 500) / 1000) as u16;
+        buf[3] = (ahp_display & 0xFF) as u8;
+        buf[4] = (ahp_display >> 8) as u8;
+
+        let aend_display = ((a_end + 500) / 1000) as u16;
+        buf[5] = (aend_display & 0xFF) as u8;
+        buf[6] = (aend_display >> 8) as u8;
+
+        // Special flag: co | 0x8000 indicates depot view
+        let co_with_flag = (co as u16) | 0x8000;
+        buf[7] = (co_with_flag & 0xFF) as u8;
+        buf[8] = (co_with_flag >> 8) as u8;
+
+        let co_id_u16 = co_id as u16;
+        buf[9] = (co_id_u16 & 0xFF) as u8;
+        buf[10] = (co_id_u16 >> 8) as u8;
+
+        buf[11] = (mana5 & 0xFF) as u8;
+        buf[12] = (mana5 >> 8) as u8;
+
+        let amana_display = ((a_mana + 500) / 1000) as u16;
+        buf[13] = (amana_display & 0xFF) as u8;
+        buf[14] = (amana_display >> 8) as u8;
+
+        NetworkManager::with(|network| {
+            network.xsend(player_id as usize, &buf, 16);
+        });
+
+        // Send SV_LOOK4 packet
+        buf[0] = core::constants::SV_LOOK4;
+
+        // All equipment slots obscured
+        buf[1] = 35;
+        buf[2] = 0;
+        buf[3] = 35;
+        buf[4] = 0;
+        buf[10] = 35;
+        buf[11] = 0;
+        buf[12] = 35;
+        buf[13] = 0;
+        buf[14] = 35;
+        buf[15] = 0;
+
+        // Show depot interface (flag = 1)
+        buf[5] = 1;
+
+        // Show cost for depositing carried item (if valid)
+        let citem = Repository::with_characters(|ch| ch[cn].citem);
+        let deposit_cost = if citem > 0 && citem < core::constants::MAXITEM as u32 {
+            let item_cost = self.do_depot_cost(citem as usize);
+            (core::constants::TICKS * item_cost) as u32
+        } else {
+            0
+        };
+
+        let cost_bytes = deposit_cost.to_le_bytes();
+        buf[6..10].copy_from_slice(&cost_bytes);
+
+        NetworkManager::with(|network| {
+            network.xsend(player_id as usize, &buf, 16);
+        });
+
+        // Send SV_LOOK5 packet (character name)
+        buf[0] = core::constants::SV_LOOK5;
+
+        let co_name = Repository::with_characters(|ch| {
+            let mut name = [0u8; 15];
+            name.copy_from_slice(&ch[co].name[0..15]);
+            name
+        });
+
+        buf[1..16].copy_from_slice(&co_name);
+
+        NetworkManager::with(|network| {
+            network.xsend(player_id as usize, &buf, 16);
+        });
+
+        // Send SV_LOOK6 packets for all 62 depot slots in pairs
+        for n in (0..62).step_by(2) {
+            buf[0] = core::constants::SV_LOOK6;
+            buf[1] = n as u8;
+
+            for m in n..std::cmp::min(62, n + 2) {
+                let (sprite, cost) = Repository::with_characters(|ch| {
+                    let item_idx = ch[co].depot[m];
+                    if item_idx != 0 {
+                        let spr =
+                            Repository::with_items(|items| items[item_idx as usize].sprite[0]);
+                        let item_cost = self.do_depot_cost(item_idx as usize);
+                        let total_cost = (core::constants::TICKS * item_cost) as u32;
+                        (spr, total_cost)
+                    } else {
+                        (0, 0)
+                    }
+                });
+
+                let offset = 2 + (m - n) * 6;
+                buf[offset] = (sprite & 0xFF) as u8;
+                buf[offset + 1] = (sprite >> 8) as u8;
+
+                let cost_bytes = cost.to_le_bytes();
+                buf[offset + 2..offset + 6].copy_from_slice(&cost_bytes);
+            }
+
+            NetworkManager::with(|network| {
+                network.xsend(player_id as usize, &buf, 16);
+            });
+        }
+    }
+
+    /// Port of `do_look_player_depot(int cn, char* cv)` from `svr_do.cpp`
+    ///
+    /// Debug/admin command to view another player's depot contents.
+    /// Lists all items in the target character's depot with item IDs and names.
+    ///
+    /// # Arguments
+    /// * `cn` - Character issuing the command (admin/god)
+    /// * `cv` - Character ID string to look up
+    pub fn do_look_player_depot(&self, cn: usize, cv: &str) {
+        // Parse character ID from string
+        let co = match cv.trim().parse::<usize>() {
+            Ok(id) => id,
+            Err(_) => {
+                self.do_character_log(cn, FontColor::Red, &format!("Bad character: {}!\n", cv));
+                return;
+            }
+        };
+
+        // Validate character ID
+        if co == 0 || co >= core::constants::MAXCHARS {
+            self.do_character_log(cn, FontColor::Red, &format!("Bad character: {}!\n", cv));
+            return;
+        }
+
+        let (co_name, depot_items) = Repository::with_characters(|ch| {
+            let name = String::from_utf8_lossy(&ch[co].name).to_string();
+            let mut items = Vec::new();
+
+            for m in 0..62 {
+                let item_idx = ch[co].depot[m];
+                if item_idx != 0 {
+                    let item_name = Repository::with_items(|items| {
+                        String::from_utf8_lossy(&items[item_idx as usize].name).to_string()
+                    });
+                    items.push((item_idx, item_name));
+                }
+            }
+
+            (name, items)
+        });
+
+        self.do_character_log(
+            cn,
+            FontColor::Yellow,
+            &format!("Depot contents for : {}\n", co_name),
+        );
+        self.do_character_log(
+            cn,
+            FontColor::Yellow,
+            "-----------------------------------\n",
+        );
+
+        for (item_idx, item_name) in &depot_items {
+            self.do_character_log(
+                cn,
+                FontColor::Yellow,
+                &format!("{:6}: {}\n", item_idx, item_name),
+            );
+        }
+
+        self.do_character_log(cn, FontColor::Yellow, " \n");
+        self.do_character_log(
+            cn,
+            FontColor::Yellow,
+            &format!("Total : {} items.\n", depot_items.len()),
+        );
+    }
+
+    /// Port of `do_look_player_inventory(int cn, char* cv)` from `svr_do.cpp`
+    ///
+    /// Debug/admin command to view another player's inventory contents.
+    /// Lists all items in the target character's inventory (40 slots) with item IDs and names.
+    ///
+    /// # Arguments
+    /// * `cn` - Character issuing the command (admin/god)
+    /// * `cv` - Character ID string to look up
+    pub fn do_look_player_inventory(&self, cn: usize, cv: &str) {
+        // Parse character ID from string
+        let co = match cv.trim().parse::<usize>() {
+            Ok(id) => id,
+            Err(_) => {
+                self.do_character_log(cn, FontColor::Red, &format!("Bad character: {}!\n", cv));
+                return;
+            }
+        };
+
+        // Validate character ID
+        if co == 0 || co >= core::constants::MAXCHARS {
+            self.do_character_log(cn, FontColor::Red, &format!("Bad character: {}!\n", cv));
+            return;
+        }
+
+        let (co_name, inventory_items) = Repository::with_characters(|ch| {
+            let name = String::from_utf8_lossy(&ch[co].name).to_string();
+            let mut items = Vec::new();
+
+            for n in 0..40 {
+                let item_idx = ch[co].item[n];
+                if item_idx != 0 {
+                    let item_name = Repository::with_items(|it| {
+                        String::from_utf8_lossy(&it[item_idx as usize].name).to_string()
+                    });
+                    items.push((item_idx, item_name));
+                }
+            }
+
+            (name, items)
+        });
+
+        self.do_character_log(
+            cn,
+            FontColor::Yellow,
+            &format!("Inventory contents for : {}\n", co_name),
+        );
+        self.do_character_log(
+            cn,
+            FontColor::Yellow,
+            "-----------------------------------\n",
+        );
+
+        for (item_idx, item_name) in &inventory_items {
+            self.do_character_log(
+                cn,
+                FontColor::Yellow,
+                &format!("{:6}: {}\n", item_idx, item_name),
+            );
+        }
+
+        self.do_character_log(cn, FontColor::Yellow, " \n");
+        self.do_character_log(
+            cn,
+            FontColor::Yellow,
+            &format!("Total : {} items.\n", inventory_items.len()),
+        );
+    }
+
+    /// Port of `do_look_player_equipment(int cn, char* cv)` from `svr_do.cpp`
+    ///
+    /// Debug/admin command to view another player's equipment.
+    /// Lists all items in the target character's worn equipment (20 slots) with item IDs and names.
+    ///
+    /// # Arguments
+    /// * `cn` - Character issuing the command (admin/god)
+    /// * `cv` - Character ID string to look up
+    pub fn do_look_player_equipment(&self, cn: usize, cv: &str) {
+        // Parse character ID from string
+        let co = match cv.trim().parse::<usize>() {
+            Ok(id) => id,
+            Err(_) => {
+                self.do_character_log(cn, FontColor::Red, &format!("Bad character: {}!\n", cv));
+                return;
+            }
+        };
+
+        // Validate character ID
+        if co == 0 || co >= core::constants::MAXCHARS {
+            self.do_character_log(cn, FontColor::Red, &format!("Bad character: {}!\n", cv));
+            return;
+        }
+
+        let (co_name, equipment_items) = Repository::with_characters(|ch| {
+            let name = String::from_utf8_lossy(&ch[co].name).to_string();
+            let mut items = Vec::new();
+
+            for n in 0..20 {
+                let item_idx = ch[co].worn[n];
+                if item_idx != 0 {
+                    let item_name = Repository::with_items(|it| {
+                        String::from_utf8_lossy(&it[item_idx as usize].name).to_string()
+                    });
+                    items.push((item_idx, item_name));
+                }
+            }
+
+            (name, items)
+        });
+
+        self.do_character_log(
+            cn,
+            FontColor::Yellow,
+            &format!("Equipment for : {}\n", co_name),
+        );
+        self.do_character_log(
+            cn,
+            FontColor::Yellow,
+            "-----------------------------------\n",
+        );
+
+        for (item_idx, item_name) in &equipment_items {
+            self.do_character_log(
+                cn,
+                FontColor::Yellow,
+                &format!("{:6}: {}\n", item_idx, item_name),
+            );
+        }
+
+        self.do_character_log(cn, FontColor::Yellow, " \n");
+        self.do_character_log(
+            cn,
+            FontColor::Yellow,
+            &format!("Total : {} items.\n", equipment_items.len()),
+        );
+    }
+
+    /// Port of `do_steal_player(int cn, char* cv, char* ci)` from `svr_do.cpp`
+    ///
+    /// Debug/admin command to steal an item from a player.
+    /// Searches through the target's inventory, depot, and worn equipment for the specified item.
+    /// If found, transfers the item to the admin character using god_give_char.
+    ///
+    /// # Arguments
+    /// * `cn` - Character issuing the command (admin/god)
+    /// * `cv` - Character ID string to steal from
+    /// * `ci` - Item ID string to steal
+    ///
+    /// # Returns
+    /// * `true` - Item was successfully stolen
+    /// * `false` - Item not found or transfer failed
+    pub fn do_steal_player(&self, cn: usize, cv: &str, ci: &str) -> bool {
+        // Parse character ID from string
+        let co = match cv.trim().parse::<usize>() {
+            Ok(id) => id,
+            Err(_) => {
+                self.do_character_log(cn, FontColor::Red, &format!("Bad character: {}!\n", cv));
+                return false;
+            }
+        };
+
+        // Parse item ID from string
+        let item_id = match ci.trim().parse::<u32>() {
+            Ok(id) => id,
+            Err(_) => return false,
+        };
+
+        // Validate character ID
+        if co == 0 || co >= core::constants::MAXCHARS {
+            self.do_character_log(cn, FontColor::Red, &format!("Bad character: {}!\n", cv));
+            return false;
+        }
+
+        if item_id == 0 {
+            return false;
+        }
+
+        // Search through inventory (40 slots)
+        let mut found_location: Option<(usize, &str)> = None;
+
+        Repository::with_characters(|ch| {
+            for n in 0..40 {
+                if ch[co].item[n] == item_id {
+                    found_location = Some((n, "inventory"));
+                    return;
+                }
+            }
+
+            // Search through depot (62 slots) if not found in inventory
+            for n in 0..62 {
+                if ch[co].depot[n] == item_id {
+                    found_location = Some((n, "depot"));
+                    return;
+                }
+            }
+
+            // Search through worn equipment (20 slots) if not found elsewhere
+            for n in 0..20 {
+                if ch[co].worn[n] == item_id {
+                    found_location = Some((n, "worn"));
+                    return;
+                }
+            }
+        });
+
+        if let Some((slot_index, location)) = found_location {
+            // Try to give the item to the admin character
+            if God::give_character_item(cn, item_id as usize) {
+                // Remove item from target's slot
+                Repository::with_characters_mut(|ch| match location {
+                    "inventory" => ch[co].item[slot_index] = 0,
+                    "depot" => ch[co].depot[slot_index] = 0,
+                    "worn" => ch[co].worn[slot_index] = 0,
+                    _ => {}
+                });
+
+                // Get item reference and character name for logging
+                let (item_reference, co_name) = Repository::with_items(|it| {
+                    let item_ref =
+                        String::from_utf8_lossy(&it[item_id as usize].reference).to_string();
+                    let char_name = Repository::with_characters(|ch| {
+                        String::from_utf8_lossy(&ch[co].name).to_string()
+                    });
+                    (item_ref, char_name)
+                });
+
+                self.do_character_log(
+                    cn,
+                    FontColor::Yellow,
+                    &format!("You stole {} from {}.\n", item_reference, co_name),
+                );
+                true
+            } else {
+                // Inventory full
+                let item_reference = Repository::with_items(|it| {
+                    String::from_utf8_lossy(&it[item_id as usize].reference).to_string()
+                });
+
+                self.do_character_log(
+                    cn,
+                    FontColor::Red,
+                    &format!(
+                        "You cannot take the {} because your inventory is full.\n",
+                        item_reference
+                    ),
+                );
+                false
+            }
+        } else {
+            // Item not found
+            self.do_character_log(cn, FontColor::Red, "Item not found.\n");
+            false
+        }
+    }
 }
