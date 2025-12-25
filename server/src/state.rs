@@ -512,7 +512,7 @@ impl State {
             self.oy = 0;
         }
 
-        if (self.ox != fx || self.oy != fy) {
+        if self.ox != fx || self.oy != fy {
             self.can_map_go(fx, fy, 15);
         }
 
@@ -7141,7 +7141,7 @@ impl State {
                     .to_string();
 
                 // Format timestamps
-                use chrono::{DateTime, TimeZone, Utc};
+                use chrono::{TimeZone, Utc};
                 let last_dt = Utc.timestamp_opt(last as i64, 0).unwrap();
                 let now_dt = Utc.timestamp_opt(now as i64, 0).unwrap();
 

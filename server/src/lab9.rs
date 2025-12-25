@@ -793,7 +793,7 @@ impl Labyrinth9 {
 
     /// Flip a switch in Lab 9
     /// Translates C++ function: int use_lab9_switch(int cn, int in)
-    pub fn use_lab9_switch(self, cn: usize, item_id: i32) -> bool {
+    pub fn use_lab9_switch(&self, cn: usize, item_id: i32) -> bool {
         log::info!("Character {} flipped a switch.", cn);
 
         Repository::with_items_mut(|items| {

@@ -1057,6 +1057,10 @@ impl God {
         name
     }
 
+    pub fn take_from_char(item_id: usize, cn: usize) -> bool {
+        true // TODO: Implement this
+    }
+
     pub fn drop_item(item_id: usize, x: usize, y: usize) -> bool {
         if !Map::is_sane_coordinates(x, y) {
             return false;
