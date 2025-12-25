@@ -3,6 +3,29 @@ use crate::{
     state::State,
 };
 
+const SPEEDTAB: [[u8; 20]; 20] = [
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1],
+    [1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1],
+    [1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1],
+    [1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1],
+    [1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1],
+    [1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0],
+    [0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1],
+    [0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1],
+    [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
+    [1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0],
+    [1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0],
+    [0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1],
+    [0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0],
+    [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0],
+    [0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0],
+    [0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+    [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+];
+
 pub fn plr_logout(character_id: usize, player_id: usize, reason: enums::LogoutReason) {
     // Logic to log out the player
     Repository::with_characters(|characters| {
@@ -1577,4 +1600,149 @@ pub fn plr_reset_status(cn: usize) {
             }
         };
     });
+}
+
+pub fn act_drop(cn: usize) {
+    plr_drop(cn);
+}
+
+pub fn act_use(cn: usize) {
+    plr_use(cn);
+}
+
+pub fn act_pickup(cn: usize) {
+    plr_pickup(cn);
+}
+
+pub fn act_skill(cn: usize) {
+    plr_skill(cn);
+}
+
+pub fn act_wave(cn: usize) {
+    plr_wave(cn);
+}
+
+pub fn act_idle(cn: usize) {
+    if Repository::with_globals(|globals| (globals.ticker & 15) == (cn as i32 & 15)) {
+        let (x, y) = Repository::with_characters(|characters| (characters[cn].x, characters[cn].y));
+        State::with(|state| {
+            state.do_area_notify(
+                cn as i32,
+                0,
+                x as i32,
+                y as i32,
+                core::constants::NT_SEE as i32,
+                cn as i32,
+                0,
+                0,
+                0,
+            )
+        });
+    }
+}
+
+pub fn plr_doact(cn: usize) {
+    plr_reset_status(cn);
+    if Repository::with_characters(|characters| characters[cn].group_active()) {
+        // driver call not implemented yet; log for now
+        log::info!("plr_doact: group active for {} - driver call TODO", cn);
+    }
+}
+
+pub fn plr_act(cn: usize) {
+    let (stunned, flags, status) = Repository::with_characters(|characters| {
+        (
+            characters[cn].stunned,
+            characters[cn].flags,
+            characters[cn].status,
+        )
+    });
+
+    if stunned != 0 {
+        act_idle(cn);
+        return;
+    }
+
+    if flags & enums::CharacterFlags::Stoned.bits() != 0 {
+        act_idle(cn);
+        return;
+    }
+
+    match status {
+        0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 => {
+            act_idle(cn);
+            plr_doact(cn);
+        }
+        8 => {
+            if speedo(cn) != 0 {
+                plr_doact(cn)
+            } else {
+                plr_move_up(cn)
+            }
+        }
+        9 => {
+            if speedo(cn) != 0 {
+                plr_doact(cn)
+            } else {
+                plr_move_down(cn)
+            }
+        }
+        10 => {
+            if speedo(cn) != 0 {
+                plr_doact(cn)
+            } else {
+                plr_move_left(cn)
+            }
+        }
+        11 => {
+            if speedo(cn) != 0 {
+                plr_doact(cn)
+            } else {
+                plr_move_right(cn)
+            }
+        }
+        12 => {
+            if speedo(cn) != 0 {
+                plr_doact(cn)
+            } else {
+                plr_move_leftup(cn)
+            }
+        }
+        13 => {
+            if speedo(cn) != 0 {
+                plr_doact(cn)
+            } else {
+                plr_move_leftdown(cn)
+            }
+        }
+        14 => {
+            if speedo(cn) != 0 {
+                plr_doact(cn)
+            } else {
+                plr_move_rightup(cn)
+            }
+        }
+        15 => {
+            if speedo(cn) != 0 {
+                plr_doact(cn)
+            } else {
+                plr_move_rightdown(cn)
+            }
+        }
+        16 => plr_attack(cn, 0),
+        17 => plr_give(cn),
+        18 => plr_pickup(cn),
+        19 => plr_bow(cn),
+        20 => plr_drop(cn),
+        21 => plr_use(cn),
+        22 => plr_skill(cn),
+        23 => plr_wave(cn),
+        _ => act_idle(cn),
+    }
+}
+
+pub fn speedo(n: usize) -> i32 {
+    let speed = Repository::with_characters(|characters| characters[n].speed as usize);
+    let ctick = Repository::with_globals(|globals| (globals.ticker % 20) as usize);
+    SPEEDTAB[speed][ctick] as i32
 }

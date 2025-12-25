@@ -3239,9 +3239,7 @@ impl God {
         }
 
         if temp < 0 || temp >= core::constants::MAXTCHARS as i32 {
-            State::with(|state| {
-                log::error!("Invalid character template: {}", temp);
-            });
+            log::error!("Invalid character template: {}", temp);
             return;
         }
 
@@ -3249,30 +3247,84 @@ impl God {
             let template = &templates[temp as usize];
 
             if template.used == core::constants::USE_EMPTY {
-                State::with(|state| {
-                    log::error!("Template {} is not in use", temp);
-                });
+                log::error!("Template {} is not in use", temp);
+
                 return;
             }
+
+            let template_name = String::from_utf8_lossy(&template.name)
+                .trim_end_matches('\0')
+                .to_string();
 
             Repository::with_characters_mut(|characters| {
                 let character = &mut characters[cn];
 
-                // Minor race change - only change sprite, keep other attributes
-                character.sprite = template.sprite;
-                character.set_do_update_flags();
-
+                // Log the change
                 State::with(|state| {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Green,
-                        &format!(
-                            "Minor race change for character {} to template {}",
-                            character.get_name(),
-                            temp
-                        ),
+                        &format!("Changed into {}", template_name),
                     );
                 });
+
+                // Set HP, END, MANA from template
+                character.hp[1] = template.hp[1];
+                character.hp[2] = template.hp[2];
+                character.hp[3] = template.hp[3];
+                character.end[1] = template.end[1];
+                character.end[2] = template.end[2];
+                character.end[3] = template.end[3];
+                character.mana[1] = template.mana[1];
+                character.mana[2] = template.mana[2];
+                character.mana[3] = template.mana[3];
+
+                // Set sprite
+                character.sprite = template.sprite;
+
+                // Set kindred, preserving KIN_PURPLE
+                if character.kindred & (core::constants::KIN_PURPLE as i32) != 0 {
+                    character.kindred = template.kindred | (core::constants::KIN_PURPLE as i32);
+                } else {
+                    character.kindred = template.kindred;
+                }
+
+                // Set temp
+                character.temp = temp as u16;
+
+                // Set bonuses
+                character.weapon_bonus = template.weapon_bonus;
+                character.armor_bonus = template.armor_bonus;
+                character.gethit_bonus = template.gethit_bonus;
+
+                // Copy attributes
+                for n in 0..5 {
+                    character.attrib[n][1] = template.attrib[n][1];
+                    character.attrib[n][2] = template.attrib[n][2];
+                    character.attrib[n][3] = template.attrib[n][3];
+                }
+
+                // Copy skills
+                for n in 0..50 {
+                    if character.skill[n][0] == 0 && template.skill[n][0] != 0 {
+                        character.skill[n][0] = template.skill[n][0];
+                        // Log added skill
+                        log::info!("added skill {} to {}", n, character.get_name());
+                    }
+                    character.skill[n][1] = template.skill[n][1];
+                    character.skill[n][2] = template.skill[n][2];
+                    character.skill[n][3] = template.skill[n][3];
+                }
+
+                // Reset level
+                character.data[45] = 0;
+
+                character.set_do_update_flags();
+            });
+
+            // Check for new level
+            State::with(|state| {
+                state.do_check_new_level(cn);
             });
         });
     }
