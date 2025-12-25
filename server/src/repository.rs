@@ -533,4 +533,28 @@ impl Repository {
             .unwrap();
         f(&mut repo.see_map)
     }
+
+    pub fn with_ban_list<F, R>(f: F) -> R
+    where
+        F: FnOnce(&Vec<core::types::Ban>) -> R,
+    {
+        let repo = REPOSITORY
+            .get()
+            .expect("Repository not initialized")
+            .read()
+            .unwrap();
+        f(&repo.ban_list)
+    }
+
+    pub fn with_ban_list_mut<F, R>(f: F) -> R
+    where
+        F: FnOnce(&mut Vec<core::types::Ban>) -> R,
+    {
+        let mut repo = REPOSITORY
+            .get()
+            .expect("Repository not initialized")
+            .write()
+            .unwrap();
+        f(&mut repo.ban_list)
+    }
 }

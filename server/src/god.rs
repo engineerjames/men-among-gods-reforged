@@ -1,6 +1,7 @@
 use core::types::{Character, Map};
 
 use crate::{enums::CharacterFlags, repository::Repository, state::State};
+use libc::useconds_t;
 use rand::Rng;
 
 pub struct God {}
@@ -1154,101 +1155,1637 @@ impl God {
         true
     }
 
-    pub fn change_pass(cn: usize, co: usize, pass: &str) -> i32 {}
+    pub fn change_pass(cn: usize, co: usize, pass: &str) -> i32 {
+        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
+            return 0;
+        }
 
-    pub fn remove_item(cn: usize, item_id: usize) -> i32 {}
+        Repository::with_characters_mut(|characters| {
+            let character = &mut characters[co];
 
-    pub fn drop_item_fuzzy(nr: usize, x: usize, y: usize) -> bool {}
+            // Set new password (simplified - original used crypt)
+            let pass_hash = pass.as_bytes();
+            character.pass1 = pass_hash
+                .iter()
+                .take(4)
+                .fold(0u32, |acc, &b| (acc << 8) | b as u32);
+            character.pass2 = pass_hash
+                .iter()
+                .skip(4)
+                .take(4)
+                .fold(0u32, |acc, &b| (acc << 8) | b as u32);
 
-    pub fn goto(cn: usize, co: usize, cx: &str, cy: &str) {}
+            character.set_do_update_flags();
 
-    pub fn info(cn: usize, co: usize) {}
-    pub fn iinfo(cn: usize, item_index: usize) {}
-    pub fn tinfo(cn: usize, template: usize) {}
-    pub fn unique(cn: usize) {}
-    pub fn who(cn: usize) {}
-    pub fn implist(cn: usize) {}
+            State::with(|state| {
+                log::info!("Password changed for character {}", character.get_name());
+            });
 
-    pub fn user_who(cn: usize) {}
-    pub fn top(cn: usize) {}
+            1
+        })
+    }
 
-    pub fn create(cn: usize, x: i32) {}
+    pub fn remove_item(cn: usize, item_id: usize) -> i32 {
+        if !Character::is_sane_character(cn) || !core::types::Item::is_sane_item(item_id) {
+            return 0;
+        }
 
-    pub fn find_next_char(start_index: usize, spec1: &str, spec2: &str) -> i32 {}
+        Repository::with_characters_mut(|characters| {
+            let character = &mut characters[cn];
 
-    pub fn invis(looker: usize, target: usize) -> i32 {}
+            // Check inventory slots
+            for n in 0..40 {
+                if character.item[n] == item_id as u32 {
+                    character.item[n] = 0;
+                    Repository::with_items_mut(|items| {
+                        items[item_id].carried = 0;
+                    });
+                    character.set_do_update_flags();
+                    return 1;
+                }
+            }
 
-    pub fn summon(cn: usize, spec1: &str, spec2: &str, spec3: &str) {}
+            // Check worn/wielded slots
+            for n in 0..20 {
+                if character.worn[n] == item_id as u32 {
+                    character.worn[n] = 0;
+                    Repository::with_items_mut(|items| {
+                        items[item_id].carried = 0;
+                    });
+                    character.set_do_update_flags();
+                    return 1;
+                }
+            }
 
-    pub fn mirror(cn: usize, spec1: &str, spec2: &str) {}
+            0
+        })
+    }
 
-    pub fn thrall(cn: usize, spec1: &str, spec2: &str) -> i32 {}
+    pub fn drop_item_fuzzy(nr: usize, x: usize, y: usize) -> bool {
+        let positions_to_try: [(usize, usize); 25] = [
+            (x + 0, y + 0),
+            (x + 1, y + 0),
+            (x - 1, y + 0),
+            (x + 0, y + 1),
+            (x + 0, y - 1),
+            (x + 1, y + 1),
+            (x + 1, y - 1),
+            (x - 1, y + 1),
+            (x - 1, y - 1),
+            (x + 2, y - 2),
+            (x + 2, y - 1),
+            (x + 2, y + 0),
+            (x + 2, y + 1),
+            (x + 2, y + 2),
+            (x - 2, y - 2),
+            (x - 2, y - 1),
+            (x - 2, y + 0),
+            (x - 2, y + 1),
+            (x - 2, y + 2),
+            (x - 1, y + 2),
+            (x + 0, y + 2),
+            (x + 1, y + 2),
+            (x - 1, y - 2),
+            (x + 0, y - 2),
+            (x + 1, y - 2),
+        ];
 
-    pub fn tavern(cn: usize) {}
+        for (try_x, try_y) in positions_to_try.iter() {
+            if Self::drop_item(nr, *try_x, *try_y) {
+                return true;
+            }
+        }
 
-    pub fn raise_char(cn: usize, co: usize, value: i32) {}
+        false
+    }
 
-    pub fn lower_char(cn: usize, co: usize, value: i32) {}
+    pub fn goto(cn: usize, co: usize, cx: &str, cy: &str) {
+        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
+            return;
+        }
 
-    pub fn gold_char(cn: usize, co: usize, value: i32, silver: &str) {}
+        let (x, y) = Repository::with_characters(|characters| {
+            let character = &characters[cn];
+            let mut target_x = character.x as usize;
+            let mut target_y = character.y as usize;
 
-    pub fn erase(cn: usize, co: usize, erase_player: i32) {}
+            // Parse direction modifiers
+            if cx.starts_with('n') || cx.starts_with('N') {
+                if let Ok(val) = cx[1..].parse::<i32>() {
+                    target_y = (target_y as i32 - val).max(1) as usize;
+                }
+            } else if cx.starts_with('s') || cx.starts_with('S') {
+                if let Ok(val) = cx[1..].parse::<i32>() {
+                    target_y = (target_y as i32 + val)
+                        .min((core::constants::SERVER_MAPY - 2) as i32)
+                        as usize;
+                }
+            } else if cx.starts_with('e') || cx.starts_with('E') {
+                if let Ok(val) = cx[1..].parse::<i32>() {
+                    target_x = (target_x as i32 + val)
+                        .min((core::constants::SERVER_MAPX - 2) as i32)
+                        as usize;
+                }
+            } else if cx.starts_with('w') || cx.starts_with('W') {
+                if let Ok(val) = cx[1..].parse::<i32>() {
+                    target_x = (target_x as i32 - val).max(1) as usize;
+                }
+            } else if let Ok(val) = cx.parse::<usize>() {
+                target_x = val.clamp(1, (core::constants::SERVER_MAPX - 2) as usize);
+            }
 
-    pub fn kick(cn: usize, co: usize) {}
+            if let Ok(val) = cy.parse::<usize>() {
+                target_y = val.clamp(1, (core::constants::SERVER_MAPY - 2) as usize);
+            }
 
-    pub fn skill(cn: usize, co: usize, n: i32, val: i32) {}
+            (target_x, target_y)
+        });
 
-    pub fn donate_item(item_id: usize, place: i32) {}
+        Self::transfer_char(co, x, y);
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                &format!("Character {} teleported to ({}, {})", co, x, y),
+            );
+        });
+    }
 
-    pub fn set_flag(cn: usize, co: usize, flag: u64) {}
+    pub fn info(cn: usize, co: usize) {
+        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
+            return;
+        }
 
-    pub fn set_gflag(cn: usize, flag: i32) {}
+        Repository::with_characters(|characters| {
+            let target = &characters[co];
 
-    pub fn set_purple(cn: usize, co: usize) {}
+            State::with(|state| {
+                let sprite_to_print = target.sprite;
+                let hp_current_to_print = target.hp[5];
+                let hp_max_to_print = target.hp[0];
+                let end_current_to_print = target.end[5];
+                let end_max_to_print = target.end[0];
+                let mana_current_to_print = target.mana[5];
+                let mana_max_to_print = target.mana[0];
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!(
+                        "Character Info for {}: ID={}, Sprite={}, HP={}/{}, End={}/{}, Mana={}/{}",
+                        target.get_name(),
+                        co,
+                        sprite_to_print,
+                        hp_current_to_print,
+                        hp_max_to_print,
+                        end_current_to_print,
+                        end_max_to_print,
+                        mana_current_to_print,
+                        mana_max_to_print
+                    ),
+                );
 
-    pub fn racechange(co: usize, temp: i32) {}
+                let x_to_print = target.x;
+                let y_to_print = target.y;
+                let flags_to_print = target.flags;
+                let points_to_print = target.points;
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!(
+                        "  Position: ({}, {}), Flags: {:x}, Points: {}",
+                        x_to_print, y_to_print, flags_to_print, points_to_print
+                    ),
+                );
+            });
+        });
+    }
 
-    pub fn save(cn: usize, co: usize) -> i32 {}
+    pub fn iinfo(cn: usize, item_index: usize) {
+        if !Character::is_sane_character(cn) || !core::types::Item::is_sane_item(item_index) {
+            return;
+        }
 
-    pub fn mail_pass(cn: usize, co: usize) {}
+        Repository::with_items(|items| {
+            let item = &items[item_index];
 
-    pub fn slap(cn: usize, co: usize) {}
+            State::with(|state| {
+                let sprite_0_to_print = item.sprite[0];
+                let sprite_1_to_print = item.sprite[1];
+                let carried_to_print = item.carried;
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!(
+                        "Item Info: ID={}, Sprite=[{},{}], Carried={}, Used={}",
+                        item_index,
+                        sprite_0_to_print,
+                        sprite_1_to_print,
+                        carried_to_print,
+                        item.used
+                    ),
+                );
+            });
+        });
+    }
 
-    pub fn spritechange(cn: usize, co: usize, sprite: i32) {}
+    pub fn tinfo(cn: usize, template: usize) {
+        if !Character::is_sane_character(cn) || !core::types::Item::is_sane_item_template(template)
+        {
+            return;
+        }
 
-    pub fn luck(cn: usize, co: usize, value: i32) {}
+        Repository::with_item_templates(|templates| {
+            let tmpl = &templates[template];
 
-    pub fn reset_description(cn: usize, co: usize) {}
+            State::with(|state| {
+                let sprite_0_to_print = tmpl.sprite[0];
+                let sprite_1_to_print = tmpl.sprite[1];
+                let used_to_print = tmpl.used;
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!(
+                        "Template Info: ID={}, Sprite=[{},{}], Used={}",
+                        template, sprite_0_to_print, sprite_1_to_print, used_to_print
+                    ),
+                );
+            });
+        });
+    }
+    pub fn unique(cn: usize) {
+        if !Character::is_sane_character(cn) {
+            return;
+        }
 
-    pub fn set_name(cn: usize, co: usize, name: &str) {}
+        Repository::with_items(|items| {
+            State::with(|state| {
+                state.do_character_log(cn, core::types::FontColor::Green, "Listing unique items:");
+                for i in 1..core::constants::MAXITEM as usize {
+                    if items[i].used != core::constants::USE_EMPTY && items[i].is_unique() {
+                        let sprite_0_to_print = items[i].sprite[0];
+                        let sprite_1_to_print = items[i].sprite[1];
+                        let carried_to_print = items[i].carried;
+                        state.do_character_log(
+                            cn,
+                            core::types::FontColor::Green,
+                            &format!(
+                                "  Item {}: Sprite=[{},{}], Carried={}",
+                                i, sprite_0_to_print, sprite_1_to_print, carried_to_print
+                            ),
+                        );
+                    }
+                }
+            });
+        });
+    }
 
-    pub fn usurp(cn: usize, co: usize) {}
+    pub fn who(cn: usize) {
+        if !Character::is_sane_character(cn) {
+            return;
+        }
 
-    pub fn exit_usurp(cn: usize) {}
+        Repository::with_characters(|characters| {
+            State::with(|state| {
+                state.do_character_log(cn, core::types::FontColor::Green, "Online characters:");
+                for i in 1..core::constants::MAXCHARS as usize {
+                    if characters[i].is_living_character(i) && characters[i].is_player() {
+                        let points_to_print = characters[i].points;
+                        state.do_character_log(
+                            cn,
+                            core::types::FontColor::Green,
+                            &format!(
+                                "  {}: Points={} {}",
+                                characters[i].get_name(),
+                                points_to_print,
+                                if characters[i].flags
+                                    & core::constants::CharacterFlags::CF_GOD.bits()
+                                    != 0
+                                {
+                                    "[GOD]"
+                                } else {
+                                    ""
+                                }
+                            ),
+                        );
+                    }
+                }
+            });
+        });
+    }
 
-    pub fn grolm(cn: usize) {}
+    pub fn implist(cn: usize) {
+        if !Character::is_sane_character(cn) {
+            return;
+        }
 
-    pub fn grolm_info(cn: usize) {}
+        Repository::with_characters(|characters| {
+            State::with(|state| {
+                state.do_character_log(cn, core::types::FontColor::Green, "Immortal characters:");
+                for i in 1..core::constants::MAXCHARS as usize {
+                    if characters[i].is_living_character(i) {
+                        if characters[i].flags & core::constants::CharacterFlags::CF_IMMORTAL.bits()
+                            != 0
+                            || characters[i].flags & core::constants::CharacterFlags::CF_GOD.bits()
+                                != 0
+                        {
+                            let flags_to_print = characters[i].flags;
+                            state.do_character_log(
+                                cn,
+                                core::types::FontColor::Green,
+                                &format!(
+                                    "  {}: Flags={:x}",
+                                    characters[i].get_name(),
+                                    flags_to_print
+                                ),
+                            );
+                        }
+                    }
+                }
+            });
+        });
+    }
 
-    pub fn grolm_start(cn: usize) {}
+    pub fn user_who(cn: usize) {
+        if !Character::is_sane_character(cn) {
+            return;
+        }
 
-    pub fn gargoyle(cn: usize) {}
+        let mut count = 0;
+        Repository::with_characters(|characters| {
+            State::with(|state| {
+                state.do_character_log(cn, core::types::FontColor::Green, "Players online:");
+                for i in 1..core::constants::MAXCHARS as usize {
+                    if characters[i].is_living_character(i) && characters[i].is_player() {
+                        count += 1;
+                        let points_to_print = characters[i].points;
+                        state.do_character_log(
+                            cn,
+                            core::types::FontColor::Green,
+                            &format!(
+                                "  {} - Points: {}",
+                                characters[i].get_name(),
+                                points_to_print
+                            ),
+                        );
+                    }
+                }
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!("Total: {} players", count),
+                );
+            });
+        });
+    }
 
-    pub fn minor_racechange(cn: usize, temp: i32) {}
+    pub fn top(cn: usize) {
+        if !Character::is_sane_character(cn) {
+            return;
+        }
 
-    pub fn force(cn: usize, whom: &str, text: &str) {}
+        // Simple top players list - would need proper ranking system
+        Repository::with_characters(|characters| {
+            State::with(|state| {
+                state.do_character_log(cn, core::types::FontColor::Green, "Top players by points:");
+                // This is simplified - original had more complex ranking
+                for i in 1..core::constants::MAXCHARS as usize {
+                    if characters[i].is_living_character(i) && characters[i].is_player() {
+                        if characters[i].points > 100000 {
+                            let points_to_print = characters[i].points;
+                            state.do_character_log(
+                                cn,
+                                core::types::FontColor::Green,
+                                &format!(
+                                    "  {}: Points={}",
+                                    characters[i].get_name(),
+                                    points_to_print
+                                ),
+                            );
+                        }
+                    }
+                }
+            });
+        });
+    }
 
-    pub fn enemy(cn: usize, npc: &str, victim: &str) {}
+    pub fn create(cn: usize, x: i32) {
+        if !Character::is_sane_character(cn) {
+            return;
+        }
 
-    pub fn is_banned(addr: i32) -> bool {}
+        let item_id = Self::create_item(x as usize);
 
-    pub fn add_single_ban(cn: usize, co: usize, addr: u32) {}
+        if let Some(item_id) = item_id {
+            if Self::give_character_item(cn, item_id) {
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Green,
+                        &format!("Created item {} and gave to character {}", item_id, cn),
+                    );
+                });
+            } else {
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Red,
+                        &format!("Failed to give item {} to character {}", item_id, cn),
+                    );
+                });
+            }
+        } else {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("Failed to create item from template {}", x),
+                );
+            });
+        }
+    }
 
-    pub fn add_ban(cn: usize, co: usize) {}
+    pub fn find_next_char(start_index: usize, spec1: &str, spec2: &str) -> i32 {
+        Repository::with_characters(|characters| {
+            for i in start_index..core::constants::MAXCHARS as usize {
+                if !characters[i].is_living_character(i) {
+                    continue;
+                }
 
-    pub fn del_ban(cn: usize, nr: usize) {}
+                let name = characters[i].get_name().to_lowercase();
+                let reference = String::from_utf8_lossy(&characters[i].reference)
+                    .trim_end_matches('\0')
+                    .to_lowercase();
 
-    pub fn list_ban(cn: usize) {}
+                let spec1_lower = spec1.to_lowercase();
+                let spec2_lower = spec2.to_lowercase();
 
-    pub fn shutup(cn: usize, co: usize) {}
+                if !spec1.is_empty()
+                    && !name.contains(&spec1_lower)
+                    && !reference.contains(&spec1_lower)
+                {
+                    continue;
+                }
+
+                if !spec2.is_empty()
+                    && !name.contains(&spec2_lower)
+                    && !reference.contains(&spec2_lower)
+                {
+                    continue;
+                }
+
+                return i as i32;
+            }
+            0
+        })
+    }
+
+    pub fn invis(looker: usize, target: usize) -> i32 {
+        if !Character::is_sane_character(looker) || !Character::is_sane_character(target) {
+            return 1;
+        }
+
+        Repository::with_characters(|characters| {
+            let looker_char = &characters[looker];
+            let target_char = &characters[target];
+
+            // Check if target is invisible
+            if target_char.flags & core::constants::CharacterFlags::CF_INVISIBLE.bits() != 0 {
+                // Check if looker can see invisible
+                if looker_char.flags & core::constants::CharacterFlags::CF_INFRARED.bits() == 0 {
+                    return 1;
+                }
+            }
+
+            0
+        })
+    }
+
+    pub fn summon(cn: usize, spec1: &str, spec2: &str, spec3: &str) {
+        if !Character::is_sane_character(cn) {
+            return;
+        }
+
+        let target_cn = Self::find_next_char(1, spec1, spec2);
+
+        if target_cn <= 0 {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("Could not find character matching '{}' '{}'", spec1, spec2),
+                );
+            });
+            return;
+        }
+
+        let (x, y) = Repository::with_characters(|characters| {
+            let summoner = &characters[cn];
+            let mut target_x = summoner.x as i32;
+            let mut target_y = summoner.y as i32;
+
+            // Calculate position in front of summoner based on direction
+            match summoner.dir {
+                0 => target_x += 1, // DX_RIGHT
+                1 => {
+                    target_x += 1;
+                    target_y -= 1;
+                } // DX_RIGHTUP
+                2 => target_y -= 1, // DX_UP
+                3 => {
+                    target_x -= 1;
+                    target_y -= 1;
+                } // DX_LEFTUP
+                4 => target_x -= 1, // DX_LEFT
+                5 => {
+                    target_x -= 1;
+                    target_y += 1;
+                } // DX_LEFTDOWN
+                6 => target_y += 1, // DX_DOWN
+                7 => {
+                    target_x += 1;
+                    target_y += 1;
+                } // DX_RIGHTDOWN
+                _ => {}
+            }
+
+            (
+                target_x
+                    .max(1)
+                    .min((core::constants::SERVER_MAPX - 2) as i32) as usize,
+                target_y
+                    .max(1)
+                    .min((core::constants::SERVER_MAPY - 2) as i32) as usize,
+            )
+        });
+
+        Self::transfer_char(target_cn as usize, x, y);
+
+        State::with(|state| {
+            log::info!(
+                "Summoned character {} to position ({}, {})",
+                target_cn,
+                x,
+                y
+            );
+        });
+    }
+
+    pub fn mirror(cn: usize, spec1: &str, spec2: &str) {
+        // Simplified mirror implementation - creates a copy of target
+        if !Character::is_sane_character(cn) {
+            return;
+        }
+
+        let target_cn = Self::find_next_char(1, spec1, spec2);
+
+        if target_cn <= 0 {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    "Could not find character to mirror",
+                );
+            });
+            return;
+        }
+
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!(
+                    "Mirror function not fully implemented for character {}",
+                    target_cn
+                ),
+            );
+        });
+    }
+
+    pub fn thrall(cn: usize, spec1: &str, spec2: &str) -> i32 {
+        // Simplified thrall implementation
+        if !Character::is_sane_character(cn) {
+            return 0;
+        }
+
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "Thrall function not fully implemented",
+            );
+        });
+
+        0
+    }
+
+    pub fn tavern(cn: usize) {
+        if !Character::is_sane_character(cn) {
+            return;
+        }
+
+        Repository::with_characters_mut(|characters| {
+            let character = &mut characters[cn];
+            character.hp[5] = character.hp[0];
+            character.end[5] = character.end[0];
+            character.mana[5] = character.mana[0];
+            character.set_do_update_flags();
+        });
+
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                &format!("Character {} fully healed at tavern", cn),
+            );
+        });
+    }
+
+    pub fn raise_char(cn: usize, co: usize, value: i32) {
+        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
+            return;
+        }
+
+        if value < 1 || value > 5 {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("Invalid raise value: {}", value),
+                );
+            });
+            return;
+        }
+
+        Repository::with_characters_mut(|characters| {
+            let target = &mut characters[co];
+
+            // Raise stats based on value
+            for _ in 0..value {
+                target.attrib[0][0] = (target.attrib[0][0] + 1).min(127);
+                target.attrib[0][1] = (target.attrib[0][1] + 1).min(127);
+                target.attrib[0][2] = (target.attrib[0][2] + 1).min(127);
+                target.attrib[0][3] = (target.attrib[0][3] + 1).min(127);
+                target.attrib[0][4] = (target.attrib[0][4] + 1).min(127);
+            }
+
+            target.set_do_update_flags();
+
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!("Raised character {} stats by {}", target.get_name(), value),
+                );
+            });
+        });
+    }
+
+    pub fn lower_char(cn: usize, co: usize, value: i32) {
+        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
+            return;
+        }
+
+        if value < 1 || value > 5 {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("Invalid lower value: {}", value),
+                );
+            });
+            return;
+        }
+
+        Repository::with_characters_mut(|characters| {
+            let target = &mut characters[co];
+
+            // Lower stats based on value
+            for _ in 0..value {
+                target.attrib[0][0] = (target.attrib[0][0] - 1).max(1);
+                target.attrib[0][1] = (target.attrib[0][1] - 1).max(1);
+                target.attrib[0][2] = (target.attrib[0][2] - 1).max(1);
+                target.attrib[0][3] = (target.attrib[0][3] - 1).max(1);
+                target.attrib[0][4] = (target.attrib[0][4] - 1).max(1);
+            }
+
+            target.set_do_update_flags();
+
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!("Lowered character {} stats by {}", target.get_name(), value),
+                );
+            });
+        });
+    }
+
+    pub fn gold_char(cn: usize, co: usize, value: i32, silver: &str) {
+        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
+            return;
+        }
+
+        let mut total_silver = value * 100; // value is in gold
+
+        // If silver string is provided, parse additional silver
+        if !silver.is_empty() {
+            if let Ok(silver_val) = silver.parse::<i32>() {
+                total_silver += silver_val;
+            }
+        }
+
+        Repository::with_characters_mut(|characters| {
+            let target = &mut characters[co];
+            target.gold = (target.gold + total_silver).max(0);
+            target.set_do_update_flags();
+
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!(
+                        "Gave {} silver to character {}",
+                        total_silver,
+                        target.get_name()
+                    ),
+                );
+            });
+        });
+    }
+
+    pub fn erase(cn: usize, co: usize, erase_player: i32) {
+        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
+            return;
+        }
+
+        Repository::with_characters(|characters| {
+            if !characters[co].is_player() && erase_player != 0 {
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Red,
+                        "Cannot erase non-player character without override",
+                    );
+                });
+                return;
+            }
+
+            // Destroy all items
+            Self::destroy_items(co);
+
+            Repository::with_characters_mut(|characters_mut| {
+                let character = &mut characters_mut[co];
+
+                // Clear character data
+                character.used = core::constants::USE_EMPTY;
+                character.flags = 0;
+                character.hp[5] = 0;
+
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Green,
+                        &format!("Erased character {}", co),
+                    );
+                });
+            });
+        });
+    }
+
+    pub fn kick(cn: usize, co: usize) {
+        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
+            return;
+        }
+
+        Repository::with_characters(|characters| {
+            if !characters[co].is_player() {
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Red,
+                        "Cannot kick non-player character",
+                    );
+                });
+                return;
+            }
+
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!("Kicking player {}", characters[co].get_name()),
+                );
+                // TODO: Actual kick logic would involve disconnecting the player
+            });
+        });
+    }
+
+    pub fn skill(cn: usize, co: usize, n: i32, val: i32) {
+        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
+            return;
+        }
+
+        if n < 0 || n >= 50 {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("Invalid skill number: {}", n),
+                );
+            });
+            return;
+        }
+
+        let val = val.clamp(0, 127);
+
+        Repository::with_characters_mut(|characters| {
+            let target = &mut characters[co];
+            target.skill[n as usize][0] = val as u8;
+            target.skill[n as usize][1] = val as u8;
+            target.set_do_update_flags();
+
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!(
+                        "Set skill {} to {} for character {}",
+                        n,
+                        val,
+                        target.get_name()
+                    ),
+                );
+            });
+        });
+    }
+
+    pub fn donate_item(item_id: usize, place: i32) {
+        if !core::types::Item::is_sane_item(item_id) {
+            return;
+        }
+
+        // Simplified donation system - places item at specific location
+        let (x, y) = match place {
+            1 => (100, 100), // Example donation locations
+            2 => (200, 200),
+            _ => (150, 150),
+        };
+
+        if Self::drop_item(item_id, x, y) {
+            State::with(|state| {
+                log::info!(
+                    "Donated item {} to place {} at ({}, {})",
+                    item_id,
+                    place,
+                    x,
+                    y
+                );
+            });
+        } else {
+            State::with(|state| {
+                log::error!("Failed to donate item {}", item_id);
+            });
+        }
+    }
+
+    pub fn set_flag(cn: usize, co: usize, flag: u64) {
+        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
+            return;
+        }
+
+        Repository::with_characters_mut(|characters| {
+            let target = &mut characters[co];
+
+            // Toggle the flag
+            if target.flags & flag != 0 {
+                target.flags &= !flag;
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Green,
+                        &format!(
+                            "Removed flag {:x} from character {}",
+                            flag,
+                            target.get_name()
+                        ),
+                    );
+                });
+            } else {
+                target.flags |= flag;
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Green,
+                        &format!("Added flag {:x} to character {}", flag, target.get_name()),
+                    );
+                });
+            }
+
+            target.set_do_update_flags();
+        });
+    }
+
+    pub fn set_gflag(cn: usize, flag: i32) {
+        if !Character::is_sane_character(cn) {
+            return;
+        }
+
+        Repository::with_globals_mut(|globals| {
+            let flag_bit = 1i32 << flag;
+
+            if globals.flags & flag_bit != 0 {
+                globals.flags &= !flag_bit;
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Green,
+                        &format!("Removed global flag {}", flag),
+                    );
+                });
+            } else {
+                globals.flags |= flag_bit;
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Green,
+                        &format!("Added global flag {}", flag),
+                    );
+                });
+            }
+        });
+    }
+
+    pub fn set_purple(cn: usize, co: usize) {
+        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
+            return;
+        }
+
+        Repository::with_characters_mut(|characters| {
+            let target = &mut characters[co];
+
+            // Toggle purple (PK) status
+            // Assuming there's a PK flag in constants
+            let pk_flag = 0x1000000u64; // Example PK flag
+
+            if target.flags & pk_flag != 0 {
+                target.flags &= !pk_flag;
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Green,
+                        &format!("Removed PK status from character {}", target.get_name()),
+                    );
+                });
+            } else {
+                target.flags |= pk_flag;
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Green,
+                        &format!("Added PK status to character {}", target.get_name()),
+                    );
+                });
+            }
+
+            target.set_do_update_flags();
+        });
+    }
+
+    pub fn racechange(co: usize, temp: i32) {
+        if !Character::is_sane_character(co) {
+            return;
+        }
+
+        if temp < 0 || temp >= core::constants::MAXTCHARS as i32 {
+            State::with(|state| {
+                log::error!("Invalid character template: {}", temp);
+            });
+            return;
+        }
+
+        Repository::with_character_templates(|templates| {
+            let template = &templates[temp as usize];
+
+            if template.used == core::constants::USE_EMPTY {
+                State::with(|state| {
+                    log::error!("Template {} is not in use", temp);
+                });
+                return;
+            }
+
+            Repository::with_characters_mut(|characters| {
+                let character = &mut characters[co];
+
+                // Preserve important data
+                let old_name = character.name;
+                let old_items = character.item;
+                let old_worn = character.worn;
+                let old_gold = character.gold;
+
+                // Apply template
+                character.sprite = template.sprite;
+                character.kindred = template.kindred;
+
+                // Restore preserved data
+                character.name = old_name;
+                character.item = old_items;
+                character.worn = old_worn;
+                character.gold = old_gold;
+
+                character.set_do_update_flags();
+
+                State::with(|state| {
+                    log::info!(
+                        "Changed race of character {} to template {}",
+                        character.get_name(),
+                        temp
+                    );
+                });
+            });
+        });
+    }
+
+    pub fn save(cn: usize, co: usize) -> i32 {
+        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
+            return 0;
+        }
+
+        Repository::with_characters(|characters| {
+            if !characters[co].is_player() {
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Red,
+                        "Cannot save non-player character",
+                    );
+                });
+                return 0;
+            }
+
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!("Saving character {}", characters[co].get_name()),
+                );
+                // TODO: Actual save logic would write to disk
+            });
+
+            1
+        })
+    }
+
+    pub fn mail_pass(cn: usize, co: usize) {
+        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
+            return;
+        }
+
+        Repository::with_characters(|characters| {
+            let character = &characters[co];
+
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!("Mailing password for character {}", character.get_name()),
+                );
+                // TODO: Actual mail logic
+            });
+        });
+    }
+
+    pub fn slap(cn: usize, co: usize) {
+        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
+            return;
+        }
+
+        Repository::with_characters_mut(|characters| {
+            let target = &mut characters[co];
+
+            // Damage the target (hp[5] is total, hp[0] is max)
+            let damage = (target.hp[0] / 10).max(1);
+            target.hp[5] = (target.hp[5] as i32 - damage as i32).max(1) as u16;
+
+            target.set_do_update_flags();
+
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!(
+                        "Slapped character {} for {} damage",
+                        target.get_name(),
+                        damage
+                    ),
+                );
+            });
+        });
+    }
+
+    pub fn spritechange(cn: usize, co: usize, sprite: i32) {
+        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
+            return;
+        }
+
+        if sprite < 0 || sprite > 10000 {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("Invalid sprite number: {}", sprite),
+                );
+            });
+            return;
+        }
+
+        Repository::with_characters_mut(|characters| {
+            let target = &mut characters[co];
+            target.sprite = sprite as u16;
+            target.set_do_update_flags();
+
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!(
+                        "Changed sprite of character {} to {}",
+                        target.get_name(),
+                        sprite
+                    ),
+                );
+            });
+        });
+    }
+
+    pub fn luck(cn: usize, co: usize, value: i32) {
+        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
+            return;
+        }
+
+        let value = value.clamp(-127, 127);
+
+        Repository::with_characters_mut(|characters| {
+            let target = &mut characters[co];
+            target.luck = value;
+            target.set_do_update_flags();
+
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!("Set luck of character {} to {}", target.get_name(), value),
+                );
+            });
+        });
+    }
+
+    pub fn reset_description(cn: usize, co: usize) {
+        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
+            return;
+        }
+
+        Repository::with_characters_mut(|characters| {
+            let target = &mut characters[co];
+
+            // Reset to default description
+            let default_desc = format!(
+                "{} is a character. They look somewhat nondescript.",
+                target.get_name()
+            );
+            target.description = default_desc
+                .bytes()
+                .take(200)
+                .collect::<Vec<u8>>()
+                .try_into()
+                .unwrap_or([0; 200]);
+            target.set_do_update_flags();
+
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!("Reset description for character {}", target.get_name()),
+                );
+            });
+        });
+    }
+
+    pub fn set_name(cn: usize, co: usize, name: &str) {
+        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
+            return;
+        }
+
+        if name.len() > 16 || name.is_empty() {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("Invalid name length: {}", name.len()),
+                );
+            });
+            return;
+        }
+
+        Repository::with_characters_mut(|characters| {
+            let target = &mut characters[co];
+            let old_name = target.get_name().to_string();
+            target.name = name
+                .bytes()
+                .take(40)
+                .collect::<Vec<u8>>()
+                .try_into()
+                .unwrap_or([0; 40]);
+            target.set_do_update_flags();
+
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!("Changed name of character from {} to {}", old_name, name),
+                );
+            });
+        });
+    }
+
+    pub fn usurp(cn: usize, co: usize) {
+        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
+            return;
+        }
+
+        Repository::with_characters_mut(|characters| {
+            let usurper = &mut characters[cn];
+
+            // Save original character data
+            usurper.data[core::constants::CHD_COMPANION] = co as i32;
+            usurper.flags |= core::constants::CharacterFlags::CF_USURP.bits();
+
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!("Character {} usurped character {}", cn, co),
+                );
+            });
+        });
+    }
+
+    pub fn exit_usurp(cn: usize) {
+        if !Character::is_sane_character(cn) {
+            return;
+        }
+
+        Repository::with_characters_mut(|characters| {
+            let character = &mut characters[cn];
+
+            if character.flags & core::constants::CharacterFlags::CF_USURP.bits() == 0 {
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Red,
+                        &format!("Character {} is not usurping", cn),
+                    );
+                });
+                return;
+            }
+
+            character.flags &= !core::constants::CharacterFlags::CF_USURP.bits();
+            character.data[core::constants::CHD_COMPANION] = 0;
+
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!("Character {} exited usurp mode", cn),
+                );
+            });
+        });
+    }
+
+    pub fn grolm(cn: usize) {
+        if !Character::is_sane_character(cn) {
+            return;
+        }
+
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!("Grolm feature not fully implemented for character {}", cn),
+            );
+        });
+    }
+
+    pub fn grolm_info(cn: usize) {
+        if !Character::is_sane_character(cn) {
+            return;
+        }
+
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!("Grolm info not fully implemented for character {}", cn),
+            );
+        });
+    }
+
+    pub fn grolm_start(cn: usize) {
+        if !Character::is_sane_character(cn) {
+            return;
+        }
+
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!("Grolm start not fully implemented for character {}", cn),
+            );
+        });
+    }
+
+    pub fn gargoyle(cn: usize) {
+        if !Character::is_sane_character(cn) {
+            return;
+        }
+
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!(
+                    "Gargoyle feature not fully implemented for character {}",
+                    cn
+                ),
+            );
+        });
+    }
+
+    pub fn minor_racechange(cn: usize, temp: i32) {
+        if !Character::is_sane_character(cn) {
+            return;
+        }
+
+        if temp < 0 || temp >= core::constants::MAXTCHARS as i32 {
+            State::with(|state| {
+                log::error!("Invalid character template: {}", temp);
+            });
+            return;
+        }
+
+        Repository::with_character_templates(|templates| {
+            let template = &templates[temp as usize];
+
+            if template.used == core::constants::USE_EMPTY {
+                State::with(|state| {
+                    log::error!("Template {} is not in use", temp);
+                });
+                return;
+            }
+
+            Repository::with_characters_mut(|characters| {
+                let character = &mut characters[cn];
+
+                // Minor race change - only change sprite, keep other attributes
+                character.sprite = template.sprite;
+                character.set_do_update_flags();
+
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Green,
+                        &format!(
+                            "Minor race change for character {} to template {}",
+                            character.get_name(),
+                            temp
+                        ),
+                    );
+                });
+            });
+        });
+    }
+
+    pub fn force(cn: usize, whom: &str, text: &str) {
+        if !Character::is_sane_character(cn) {
+            return;
+        }
+
+        let target_cn = Self::find_next_char(1, whom, "");
+
+        if target_cn <= 0 {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("Could not find character '{}'", whom),
+                );
+            });
+            return;
+        }
+
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                &format!("Forcing character {} to: {}", target_cn, text),
+            );
+            // TODO: Actual force command execution would go here
+        });
+    }
+
+    pub fn enemy(cn: usize, npc: &str, victim: &str) {
+        if !Character::is_sane_character(cn) {
+            return;
+        }
+
+        let npc_cn = Self::find_next_char(1, npc, "");
+        let victim_cn = Self::find_next_char(1, victim, "");
+
+        if npc_cn <= 0 {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("Could not find NPC '{}'", npc),
+                );
+            });
+            return;
+        }
+
+        if victim_cn <= 0 {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("Could not find victim '{}'", victim),
+                );
+            });
+            return;
+        }
+
+        Repository::with_characters_mut(|characters| {
+            let npc_char = &mut characters[npc_cn as usize];
+            npc_char.attack_cn = victim_cn as u16;
+
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!("Set NPC {} to attack character {}", npc_cn, victim_cn),
+                );
+            });
+        });
+    }
+
+    pub fn is_banned(addr: i32) -> bool {
+        let addr = addr as u32;
+
+        Repository::with_ban_list(|ban_list| {
+            for ban in ban_list.iter() {
+                if ban.address() == addr {
+                    return true;
+                }
+            }
+            false
+        })
+    }
+
+    pub fn add_single_ban(cn: usize, co: usize, addr: u32) {
+        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
+            return;
+        }
+
+        let (creator_name, victim_name) = Repository::with_characters(|characters| {
+            (
+                characters[cn].get_name().to_string(),
+                characters[co].get_name().to_string(),
+            )
+        });
+
+        Repository::with_ban_list_mut(|ban_list| {
+            if ban_list.len() >= 250 {
+                State::with(|state| {
+                    state.do_character_log(cn, core::types::FontColor::Red, "Ban list is full");
+                });
+                return;
+            }
+
+            let mut ban = core::types::Ban::new();
+            ban.set_address(addr);
+            ban.set_creator(&creator_name);
+            ban.set_victim(&victim_name);
+
+            ban_list.push(ban);
+
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!("Added ban for address {} by {}", addr, creator_name),
+                );
+            });
+        });
+    }
+
+    pub fn add_ban(cn: usize, co: usize) {
+        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
+            return;
+        }
+
+        // Get player address - would need actual connection info
+        // For now using placeholder logic
+        let addr = 0u32; // TODO: Get actual player IP address
+
+        Self::add_single_ban(cn, co, addr);
+    }
+
+    pub fn del_ban(cn: usize, nr: usize) {
+        if !Character::is_sane_character(cn) {
+            return;
+        }
+
+        Repository::with_ban_list_mut(|ban_list| {
+            if nr >= ban_list.len() {
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Red,
+                        &format!("Invalid ban number: {}", nr),
+                    );
+                });
+                return;
+            }
+
+            ban_list.remove(nr);
+
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!("Removed ban entry {}", nr),
+                );
+            });
+        });
+    }
+
+    pub fn list_ban(cn: usize) {
+        if !Character::is_sane_character(cn) {
+            return;
+        }
+
+        Repository::with_ban_list(|ban_list| {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!("Ban list ({} entries):", ban_list.len()),
+                );
+                for (i, ban) in ban_list.iter().enumerate() {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Green,
+                        &format!(
+                            "  {}: Address={}, Creator={}, Victim={}",
+                            i,
+                            ban.address(),
+                            ban.creator(),
+                            ban.victim()
+                        ),
+                    );
+                }
+            });
+        });
+    }
+
+    pub fn shutup(cn: usize, co: usize) {
+        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
+            return;
+        }
+
+        Repository::with_characters_mut(|characters| {
+            let target = &mut characters[co];
+
+            // Toggle shutup flag
+            if target.flags & core::constants::CharacterFlags::CF_SHUTUP.bits() != 0 {
+                target.flags &= !core::constants::CharacterFlags::CF_SHUTUP.bits();
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Green,
+                        &format!("Removed shutup from character {}", target.get_name()),
+                    );
+                });
+            } else {
+                target.flags |= core::constants::CharacterFlags::CF_SHUTUP.bits();
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Green,
+                        &format!("Added shutup to character {}", target.get_name()),
+                    );
+                });
+            }
+
+            target.set_do_update_flags();
+        });
+    }
 }
