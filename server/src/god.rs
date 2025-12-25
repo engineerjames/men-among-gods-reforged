@@ -61,6 +61,7 @@ impl God {
         None
     }
 
+    // Implementation of god_give_char from svr_god.cpp
     pub fn give_character_item(character_id: usize, item_id: usize) -> bool {
         if !core::types::Item::is_sane_item(item_id) {
             log::error!("Invalid item ID {} when giving item.", item_id);
@@ -1152,4 +1153,102 @@ impl God {
 
         true
     }
+
+    pub fn change_pass(cn: usize, co: usize, pass: &str) -> i32 {}
+
+    pub fn remove_item(cn: usize, item_id: usize) -> i32 {}
+
+    pub fn drop_item_fuzzy(nr: usize, x: usize, y: usize) -> bool {}
+
+    pub fn goto(cn: usize, co: usize, cx: &str, cy: &str) {}
+
+    pub fn info(cn: usize, co: usize) {}
+    pub fn iinfo(cn: usize, item_index: usize) {}
+    pub fn tinfo(cn: usize, template: usize) {}
+    pub fn unique(cn: usize) {}
+    pub fn who(cn: usize) {}
+    pub fn implist(cn: usize) {}
+
+    pub fn user_who(cn: usize) {}
+    pub fn top(cn: usize) {}
+
+    pub fn create(cn: usize, x: i32) {}
+
+    pub fn find_next_char(start_index: usize, spec1: &str, spec2: &str) -> i32 {}
+
+    pub fn invis(looker: usize, target: usize) -> i32 {}
+
+    pub fn summon(cn: usize, spec1: &str, spec2: &str, spec3: &str) {}
+
+    pub fn mirror(cn: usize, spec1: &str, spec2: &str) {}
+
+    pub fn thrall(cn: usize, spec1: &str, spec2: &str) -> i32 {}
+
+    pub fn tavern(cn: usize) {}
+
+    pub fn raise_char(cn: usize, co: usize, value: i32) {}
+
+    pub fn lower_char(cn: usize, co: usize, value: i32) {}
+
+    pub fn gold_char(cn: usize, co: usize, value: i32, silver: &str) {}
+
+    pub fn erase(cn: usize, co: usize, erase_player: i32) {}
+
+    pub fn kick(cn: usize, co: usize) {}
+
+    pub fn skill(cn: usize, co: usize, n: i32, val: i32) {}
+
+    pub fn donate_item(item_id: usize, place: i32) {}
+
+    pub fn set_flag(cn: usize, co: usize, flag: u64) {}
+
+    pub fn set_gflag(cn: usize, flag: i32) {}
+
+    pub fn set_purple(cn: usize, co: usize) {}
+
+    pub fn racechange(co: usize, temp: i32) {}
+
+    pub fn save(cn: usize, co: usize) -> i32 {}
+
+    pub fn mail_pass(cn: usize, co: usize) {}
+
+    pub fn slap(cn: usize, co: usize) {}
+
+    pub fn spritechange(cn: usize, co: usize, sprite: i32) {}
+
+    pub fn luck(cn: usize, co: usize, value: i32) {}
+
+    pub fn reset_description(cn: usize, co: usize) {}
+
+    pub fn set_name(cn: usize, co: usize, name: &str) {}
+
+    pub fn usurp(cn: usize, co: usize) {}
+
+    pub fn exit_usurp(cn: usize) {}
+
+    pub fn grolm(cn: usize) {}
+
+    pub fn grolm_info(cn: usize) {}
+
+    pub fn grolm_start(cn: usize) {}
+
+    pub fn gargoyle(cn: usize) {}
+
+    pub fn minor_racechange(cn: usize, temp: i32) {}
+
+    pub fn force(cn: usize, whom: &str, text: &str) {}
+
+    pub fn enemy(cn: usize, npc: &str, victim: &str) {}
+
+    pub fn is_banned(addr: i32) -> bool {}
+
+    pub fn add_single_ban(cn: usize, co: usize, addr: u32) {}
+
+    pub fn add_ban(cn: usize, co: usize) {}
+
+    pub fn del_ban(cn: usize, nr: usize) {}
+
+    pub fn list_ban(cn: usize) {}
+
+    pub fn shutup(cn: usize, co: usize) {}
 }
