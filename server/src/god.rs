@@ -1721,61 +1721,460 @@ impl God {
         Self::transfer_char(target_cn as usize, x, y);
 
         State::with(|state| {
-            log::info!(
-                "Summoned character {} to position ({}, {})",
-                target_cn,
-                x,
-                y
-            );
-        });
-    }
-
-    pub fn mirror(cn: usize, spec1: &str, spec2: &str) {
-        // Simplified mirror implementation - creates a copy of target
-        if !Character::is_sane_character(cn) {
-            return;
-        }
-
-        let target_cn = Self::find_next_char(1, spec1, spec2);
-
-        if target_cn <= 0 {
-            State::with(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Red,
-                    "Could not find character to mirror",
-                );
-            });
-            return;
-        }
-
-        State::with(|state| {
             state.do_character_log(
                 cn,
-                core::types::FontColor::Yellow,
+                core::types::FontColor::Green,
                 &format!(
-                    "Mirror function not fully implemented for character {}",
-                    target_cn
+                    "Summoned character {} to position ({}, {})",
+                    target_cn, x, y
                 ),
             );
         });
     }
 
+    pub fn mirror(cn: usize, spec1: &str, spec2: &str) {
+        if !Character::is_sane_character(cn) {
+            return;
+        }
+
+        // Parse bonus from spec2
+        let bonus = if !spec2.is_empty() {
+            spec2.parse::<i32>().unwrap_or(0)
+        } else {
+            0
+        };
+
+        // Parse character number or find by name
+        let co = if spec1.is_empty() {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    "create mirror-enemy of whom?",
+                );
+            });
+            return;
+        } else if spec1.chars().all(|c| c.is_ascii_digit()) {
+            spec1.parse::<usize>().unwrap_or(0)
+        } else {
+            Self::find_next_char(1, spec1, "") as usize
+        };
+
+        if !Character::is_sane_character(co) {
+            State::with(|state| {
+                state.do_character_log(cn, core::types::FontColor::Red, "No such character.");
+            });
+            return;
+        }
+
+        Repository::with_characters(|characters| {
+            if characters[co].flags & core::constants::CharacterFlags::CF_BODY.bits() != 0 {
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Red,
+                        "Character recently deceased.",
+                    );
+                });
+                return;
+            }
+
+            if !characters[co].is_player() {
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Red,
+                        &format!(
+                            "{} is not a player, and you can't mirror monsters!",
+                            characters[co].get_name()
+                        ),
+                    );
+                });
+                return;
+            }
+
+            if co == cn {
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Yellow,
+                        "You want an enemy? Here it is...!",
+                    );
+                });
+            }
+        });
+
+        // Create mirror character with template 968
+        let cc = match Self::create_char(968, false) {
+            Some(cc) => cc as usize,
+            None => {
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Red,
+                        "god_create_char() failed.",
+                    );
+                });
+                return;
+            }
+        };
+
+        // Copy attributes from target to mirror
+        Repository::with_characters_mut(|characters| {
+            let target_name_bytes = characters[co].name.clone();
+            let target_sprite = characters[co].sprite;
+            let target_attrib = characters[co].attrib.clone();
+            let target_hp = characters[co].hp;
+            let target_end = characters[co].end;
+            let target_mana = characters[co].mana;
+            let target_skill = characters[co].skill.clone();
+            let target_kindred = characters[co].kindred as u32;
+            let caster_weapon = characters[cn].weapon;
+            let caster_armor = characters[cn].armor;
+            let caster_x = characters[cn].x;
+            let caster_y = characters[cn].y;
+
+            let mirror = &mut characters[cc];
+            mirror.name = target_name_bytes;
+            mirror.sprite = target_sprite;
+
+            // Copy attributes
+            for i in 0..5 {
+                mirror.attrib[i][0] = target_attrib[i][0];
+            }
+
+            // Copy max HP/END/MANA
+            mirror.hp[0] = target_hp[0];
+            mirror.end[0] = target_end[0];
+            mirror.mana[0] = target_mana[0];
+
+            // Copy skills
+            for i in 1..35 {
+                mirror.skill[i][0] = target_skill[i][0];
+            }
+
+            // Calculate hand-to-hand skill based on kindred
+            if target_kindred
+                & (core::constants::KIN_TEMPLAR
+                    | core::constants::KIN_ARCHTEMPLAR
+                    | core::constants::KIN_SEYAN_DU)
+                != 0
+            {
+                // TH -> hand2hand (str,str,agi)
+                mirror.skill[0][0] = (target_skill[6][0] as i32
+                    + bonus
+                    + (target_attrib[4][0] as i32 - target_attrib[0][0] as i32) / 5)
+                    .clamp(0, 255) as u8;
+            } else if target_kindred
+                & (core::constants::KIN_HARAKIM | core::constants::KIN_ARCHHARAKIM)
+                != 0
+            {
+                // Dag-> hand2hand (wil,agi,int)
+                mirror.skill[0][0] = (target_skill[2][0] as i32
+                    + bonus
+                    + (target_attrib[2][0] as i32 - target_attrib[4][0] as i32) / 5)
+                    .clamp(0, 255) as u8;
+            } else if target_kindred
+                & (core::constants::KIN_MERCENARY
+                    | core::constants::KIN_SORCERER
+                    | core::constants::KIN_WARRIOR)
+                != 0
+            {
+                // Swo-> hand2hand (wil,agi,str)
+                mirror.skill[0][0] = (target_skill[3][0] as i32 + bonus).clamp(0, 255) as u8;
+            }
+
+            mirror.weapon = caster_weapon;
+            mirror.armor = caster_armor;
+            mirror.set_do_update_flags();
+
+            // Drop the mirror at caster's position
+            Self::drop_char_fuzzy(cc, caster_x as usize, caster_y as usize);
+
+            // Add target as enemy
+            crate::driver::npc_add_enemy(cc, co, true);
+
+            let target_name = String::from_utf8_lossy(&target_name_bytes)
+                .trim_end_matches('\0')
+                .to_string();
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!("Mirror of {} active (bonus: {})", target_name, bonus),
+                );
+            });
+        });
+    }
+
     pub fn thrall(cn: usize, spec1: &str, spec2: &str) -> i32 {
-        // Simplified thrall implementation
         if !Character::is_sane_character(cn) {
             return 0;
         }
 
-        State::with(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "Thrall function not fully implemented",
-            );
+        // Check for arguments
+        if spec1.is_empty() {
+            State::with(|state| {
+                state.do_character_log(cn, core::types::FontColor::Red, "enthrall whom?");
+            });
+            return 0;
+        }
+
+        let co = if spec2.is_empty() {
+            // Only one argument - parse character number
+            let co = spec1.parse::<usize>().unwrap_or(0);
+
+            if !Character::is_sane_character(co) {
+                State::with(|state| {
+                    state.do_character_log(cn, core::types::FontColor::Red, "No such character.");
+                });
+                return 0;
+            }
+
+            Repository::with_characters(|characters| {
+                if characters[co].flags & core::constants::CharacterFlags::CF_BODY.bits() != 0 {
+                    let corpse_owner = characters[co].data[core::constants::CHD_COMPANION];
+                    State::with(|state| {
+                        state.do_character_log(
+                            cn,
+                            core::types::FontColor::Red,
+                            &format!("Character recently deceased; try {}.", corpse_owner),
+                        );
+                    });
+                    return 0;
+                }
+
+                if co == cn {
+                    State::with(|state| {
+                        state.do_character_log(
+                            cn,
+                            core::types::FontColor::Red,
+                            "You can't enthrall yourself!",
+                        );
+                    });
+                    return 0;
+                }
+
+                co
+            })
+        } else {
+            // At least 2 arguments - find character by name/rank
+            let mut co = 0usize;
+            loop {
+                co = Self::find_next_char(co, spec1, spec2) as usize;
+                if co == 0 {
+                    break;
+                }
+                if co == cn {
+                    continue; // ignore self
+                }
+                let should_continue = Repository::with_characters(|characters| {
+                    characters[co].flags & core::constants::CharacterFlags::CF_BODY.bits() != 0
+                });
+                if should_continue {
+                    continue; // ignore bodies
+                }
+                break;
+            }
+
+            if co == 0 {
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Red,
+                        &format!("Couldn't find a {} {}.", spec1, spec2),
+                    );
+                });
+                return 0;
+            }
+            co
+        };
+
+        // Validate target
+        let validation_failed = Repository::with_characters(|characters| {
+            if characters[co].is_player() {
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Red,
+                        &format!(
+                            "{} is a player, and you can't enthrall players!",
+                            characters[co].get_name()
+                        ),
+                    );
+                });
+                return true;
+            }
+
+            // Check if already a companion/thrall (data[42] is group, companions have group 65536+cn)
+            if characters[co].data[42] > 65536 {
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Red,
+                        &format!(
+                            "{} is a companion/thrall, and you can't enthrall them!",
+                            characters[co].get_name()
+                        ),
+                    );
+                });
+                return true;
+            }
+
+            false
         });
 
-        0
+        if validation_failed {
+            return 0;
+        }
+
+        // Calculate position in front of summoner
+        let (x, y) = Repository::with_characters(|characters| {
+            let summoner = &characters[cn];
+            let mut x = summoner.x as i32;
+            let mut y = summoner.y as i32;
+
+            match summoner.dir {
+                0 => x += 1, // DX_RIGHT
+                1 => {
+                    x += 1;
+                    y -= 1;
+                } // DX_RIGHTUP
+                2 => y -= 1, // DX_UP
+                3 => {
+                    x -= 1;
+                    y -= 1;
+                } // DX_LEFTUP
+                4 => x -= 1, // DX_LEFT
+                5 => {
+                    x -= 1;
+                    y += 1;
+                } // DX_LEFTDOWN
+                6 => y += 1, // DX_DOWN
+                7 => {
+                    x += 1;
+                    y += 1;
+                } // DX_RIGHTDOWN
+                _ => {}
+            }
+
+            (x as usize, y as usize)
+        });
+
+        // Get target template and create thrall
+        let target_template = Repository::with_characters(|characters| characters[co].temp);
+
+        let ct = match Self::create_char(target_template as usize, true) {
+            Some(ct) => ct as usize,
+            None => {
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Red,
+                        "god_create_char() failed.",
+                    );
+                });
+                return 0;
+            }
+        };
+
+        // Configure the thrall
+        Repository::with_characters_mut(|characters| {
+            let target_name_bytes = characters[co].name.clone();
+            let target_reference = characters[co].reference.clone();
+            let target_description = characters[co].description.clone();
+
+            let thrall = &mut characters[ct];
+            thrall.name = target_name_bytes;
+            thrall.reference = target_reference;
+            thrall.description = target_description;
+
+            // Make thrall act like a ghost companion
+            thrall.temp = core::constants::CT_COMPANION as u16;
+            let ticker = Repository::with_globals(|globals| globals.ticker);
+            thrall.data[64] = (ticker + 7 * 24 * 3600 * core::constants::TICKS) as i32; // die in one week
+            thrall.data[42] = (65536 + cn) as i32; // set group
+            thrall.data[59] = (65536 + cn) as i32; // protect all other members of this group
+
+            // Make thrall harmless
+            thrall.data[24] = 0; // do not interfere in fights
+            thrall.data[36] = 0; // no walking around
+            thrall.data[43] = 0; // don't attack anyone
+            thrall.data[80] = 0; // no enemies
+            thrall.data[63] = cn as i32; // obey and protect enthraller
+
+            thrall.flags |= core::constants::CharacterFlags::CF_SHUTUP.bits()
+                | core::constants::CharacterFlags::CF_THRALL.bits();
+
+            // Remove labyrinth items from worn slots
+            for n in 0..20 {
+                if thrall.worn[n] != 0 {
+                    let item_id = thrall.worn[n] as usize;
+                    Repository::with_items_mut(|items| {
+                        if items[item_id].flags & core::constants::ItemFlags::IF_LABYDESTROY.bits()
+                            != 0
+                        {
+                            items[item_id].used = 0;
+                            thrall.worn[n] = 0;
+                        }
+                    });
+                }
+            }
+
+            // Remove labyrinth items from inventory
+            for n in 0..40 {
+                if thrall.item[n] != 0 {
+                    let item_id = thrall.item[n] as usize;
+                    Repository::with_items_mut(|items| {
+                        if items[item_id].flags & core::constants::ItemFlags::IF_LABYDESTROY.bits()
+                            != 0
+                        {
+                            items[item_id].used = 0;
+                            thrall.item[n] = 0;
+                        }
+                    });
+                }
+            }
+
+            // Remove labyrinth item from carried item
+            if thrall.citem != 0 {
+                let item_id = thrall.citem as usize;
+                Repository::with_items_mut(|items| {
+                    if items[item_id].flags & core::constants::ItemFlags::IF_LABYDESTROY.bits() != 0
+                    {
+                        items[item_id].used = 0;
+                        thrall.citem = 0;
+                    }
+                });
+            }
+
+            // Drop thrall at calculated position
+            if !Self::drop_char_fuzzy(ct, x, y) {
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Red,
+                        "god_drop_char_fuzzy() called from god_thrall() failed.",
+                    );
+                });
+                Self::destroy_items(ct);
+                thrall.used = core::constants::USE_EMPTY;
+                return 0;
+            }
+
+            let target_name = String::from_utf8_lossy(&target_name_bytes)
+                .trim_end_matches('\0')
+                .to_string();
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!("{} was enthralled.", target_name),
+                );
+            });
+
+            ct as i32
+        })
     }
 
     pub fn tavern(cn: usize) {
@@ -2020,30 +2419,33 @@ impl God {
     }
 
     pub fn donate_item(item_id: usize, place: i32) {
+        // Donation locations:
+        // Temple of Skua: (497, 512)
+        // Temple of the Purple One: (560, 542)
+        const DON_X: [usize; 2] = [497, 560];
+        const DON_Y: [usize; 2] = [512, 542];
+
         if !core::types::Item::is_sane_item(item_id) {
+            log::warn!("Attempt to god_donate_item {}", item_id);
             return;
         }
 
-        // Simplified donation system - places item at specific location
-        let (x, y) = match place {
-            1 => (100, 100), // Example donation locations
-            2 => (200, 200),
-            _ => (150, 150),
+        // If place is not 1 or 2, pick randomly
+        let place = if place < 1 || place > 2 {
+            use rand::Rng;
+            rand::thread_rng().gen_range(1..=2)
+        } else {
+            place
         };
 
-        if Self::drop_item(item_id, x, y) {
-            State::with(|state| {
-                log::info!(
-                    "Donated item {} to place {} at ({}, {})",
-                    item_id,
-                    place,
-                    x,
-                    y
-                );
-            });
-        } else {
-            State::with(|state| {
-                log::error!("Failed to donate item {}", item_id);
+        let x = DON_X[(place - 1) as usize];
+        let y = DON_Y[(place - 1) as usize];
+
+        // Try to drop the item at the donation location
+        if !Self::drop_item_fuzzy(item_id, x, y) {
+            // If drop fails, destroy the item
+            Repository::with_items_mut(|items| {
+                items[item_id].used = core::constants::USE_EMPTY;
             });
         }
     }
