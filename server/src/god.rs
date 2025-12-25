@@ -1,6 +1,14 @@
-use core::types::{Character, Map};
+use core::{
+    constants::LO_SHUTDOWN,
+    types::{Character, Map},
+};
 
-use crate::{enums::CharacterFlags, repository::Repository, state::State};
+use crate::{
+    enums::{CharacterFlags, LogoutReason},
+    player,
+    repository::Repository,
+    state::State,
+};
 use libc::useconds_t;
 use rand::Rng;
 
@@ -2313,69 +2321,187 @@ impl God {
     }
 
     pub fn erase(cn: usize, co: usize, erase_player: i32) {
-        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
-            return;
-        }
-
-        Repository::with_characters(|characters| {
-            if !characters[co].is_player() && erase_player != 0 {
-                State::with(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Red,
-                        "Cannot erase non-player character without override",
-                    );
-                });
-                return;
-            }
-
-            // Destroy all items
-            Self::destroy_items(co);
-
-            Repository::with_characters_mut(|characters_mut| {
-                let character = &mut characters_mut[co];
-
-                // Clear character data
-                character.used = core::constants::USE_EMPTY;
-                character.flags = 0;
-                character.hp[5] = 0;
-
-                State::with(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Green,
-                        &format!("Erased character {}", co),
-                    );
-                });
+        if co == 0 {
+            State::with(|state| {
+                state.do_character_log(cn, core::types::FontColor::Red, "No such character.");
             });
-        });
-    }
-
-    pub fn kick(cn: usize, co: usize) {
-        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
         }
 
-        Repository::with_characters(|characters| {
-            if !characters[co].is_player() {
-                State::with(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Red,
-                        "Cannot kick non-player character",
-                    );
-                });
-                return;
-            }
-
+        // Check if character is sane
+        if !Character::is_sane_character(co) {
             State::with(|state| {
                 state.do_character_log(
                     cn,
-                    core::types::FontColor::Green,
-                    &format!("Kicking player {}", characters[co].get_name()),
+                    core::types::FontColor::Red,
+                    &format!("Bad character number: {}", co),
                 );
-                // TODO: Actual kick logic would involve disconnecting the player
             });
+            return;
+        }
+
+        // Check if character is used
+        let (is_used, is_player_or_usurp, character_name) =
+            Repository::with_characters(|characters| {
+                let character = &characters[co];
+                let is_used = character.used != core::constants::USE_EMPTY;
+                let is_player_or_usurp = (character.flags
+                    & (core::constants::CharacterFlags::CF_PLAYER.bits()
+                        | core::constants::CharacterFlags::CF_USURP.bits()))
+                    != 0;
+                let name = character.name.clone();
+                (is_used, is_player_or_usurp, name)
+            });
+
+        if !is_used {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("Character {} is unused anyway.", co),
+                );
+            });
+            return;
+        }
+
+        // Check if player/QM but erase_player is false
+        if is_player_or_usurp && erase_player == 0 {
+            let name_str = String::from_utf8_lossy(&character_name)
+                .trim_end_matches('\0')
+                .to_string();
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("{} is a player or QM; use #PERASE if you insist.", name_str),
+                );
+            });
+            return;
+        }
+
+        // Check if erase_player is true but character is not player/usurp
+        if erase_player != 0 && !is_player_or_usurp {
+            let name_str = String::from_utf8_lossy(&character_name)
+                .trim_end_matches('\0')
+                .to_string();
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("{} is not a player; use #ERASE for NPCs.", name_str),
+                );
+            });
+            return;
+        }
+
+        if erase_player != 0 {
+            // Erasing a player
+            let name_str = String::from_utf8_lossy(&character_name)
+                .trim_end_matches('\0')
+                .to_string();
+
+            Repository::with_characters(|ch| {
+                player::plr_logout(co as usize, ch[co].player as usize, LogoutReason::Shutdown);
+            });
+
+            Repository::with_characters_mut(|characters| {
+                characters[co].used = core::constants::USE_EMPTY;
+            });
+
+            // TODO: chlog(cn, "IMP: Erased player %d (%-.20s).", co, ch[co].name);
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!("Player {} ({}) is no more.", co, name_str),
+                );
+            });
+        } else {
+            // Erasing an NPC
+            let name_str = String::from_utf8_lossy(&character_name)
+                .trim_end_matches('\0')
+                .to_string();
+
+            // Call do_char_killed(0, co)
+            State::with(|state| {
+                state.do_character_killed(co, 0);
+            });
+
+            // TODO: chlog(cn, "IMP: Erased NPC %d (%-.20s).", co, ch[co].name);
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!("NPC {} ({}) is no more.", co, name_str),
+                );
+            });
+        }
+    }
+
+    pub fn kick(cn: usize, co: usize) {
+        // Check co == 0
+        if co == 0 {
+            State::with(|state| {
+                state.do_character_log(cn, core::types::FontColor::Red, "No such character.");
+            });
+            return;
+        }
+
+        // Check if character is sane and used
+        if !Character::is_sane_character(co) {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("Bad character number: {}", co),
+                );
+            });
+            return;
+        }
+
+        let (is_used, character_name) = Repository::with_characters(|characters| {
+            let character = &characters[co];
+            let is_used = character.used != core::constants::USE_EMPTY;
+            let name = character.name.clone();
+            (is_used, name)
+        });
+
+        if !is_used {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("Character {} is unused anyway.", co),
+                );
+            });
+            return;
+        }
+
+        let name_str = String::from_utf8_lossy(&character_name)
+            .trim_end_matches('\0')
+            .to_string();
+
+        Repository::with_characters(|ch| {
+            player::plr_logout(
+                co as usize,
+                ch[co].player as usize,
+                LogoutReason::IdleTooLong,
+            );
+        });
+
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!("Kicked {}.", name_str),
+            );
+        });
+
+        // TODO: chlog(cn, "IMP: kicked %s (%d)", ch[co].name, co);
+
+        // Set CF_KICKED flag
+        Repository::with_characters_mut(|characters| {
+            characters[co].flags |= core::constants::CharacterFlags::CF_KICKED.bits();
         });
     }
 
@@ -2810,24 +2936,104 @@ impl God {
     }
 
     pub fn usurp(cn: usize, co: usize) {
-        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
+        // Check co == 0
+        if co == 0 {
+            State::with(|state| {
+                state.do_character_log(cn, core::types::FontColor::Red, "No such character.");
+            });
             return;
         }
 
-        Repository::with_characters_mut(|characters| {
-            let usurper = &mut characters[cn];
-
-            // Save original character data
-            usurper.data[core::constants::CHD_COMPANION] = co as i32;
-            usurper.flags |= core::constants::CharacterFlags::CF_USURP.bits();
-
+        // Check if character is sane
+        if !Character::is_sane_character(co) {
             State::with(|state| {
                 state.do_character_log(
                     cn,
-                    core::types::FontColor::Green,
-                    &format!("Character {} usurped character {}", cn, co),
+                    core::types::FontColor::Red,
+                    &format!("Bad character number: {}", co),
                 );
             });
+            return;
+        }
+
+        // Check if character is used and is an NPC (not a player)
+        let (is_used, is_player_or_usurp, character_name, co_temp) =
+            Repository::with_characters(|characters| {
+                let character = &characters[co];
+                let is_used = character.used != core::constants::USE_EMPTY;
+                let is_player_or_usurp = (character.flags
+                    & (core::constants::CharacterFlags::CF_PLAYER.bits()
+                        | core::constants::CharacterFlags::CF_USURP.bits()))
+                    != 0;
+                let name = character.name.clone();
+                let temp = character.temp;
+                (is_used, is_player_or_usurp, name, temp)
+            });
+
+        if !is_used || is_player_or_usurp {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("Character {} is not an NPC.", co),
+                );
+            });
+            return;
+        }
+
+        let name_str = String::from_utf8_lossy(&character_name)
+            .trim_end_matches('\0')
+            .to_string();
+
+        // TODO: chlog(cn, "IMP: Usurping %s (%d, t=%d)", ch[co].name, co, ch[co].temp);
+
+        // Get player number from cn
+        let nr = Repository::with_characters(|characters| characters[cn].player);
+
+        Repository::with_characters_mut(|characters| {
+            // Set CF_USURP flag on target
+            characters[co].flags |= core::constants::CharacterFlags::CF_USURP.bits();
+
+            // Set player number on target
+            characters[co].player = nr;
+
+            // TODO: player[nr].usnr = co; (when player array is implemented)
+
+            // Handle nested usurp: if cn is already usurping someone
+            if characters[cn].flags & core::constants::CharacterFlags::CF_USURP.bits() != 0 {
+                // Transfer the original character reference
+                characters[co].data[97] = characters[cn].data[97];
+                characters[cn].data[97] = 0;
+            } else {
+                // Save original character (cn) in co's data[97]
+                characters[co].data[97] = cn as i32;
+                // Set CCP flag on original character
+                characters[cn].flags |= core::constants::CharacterFlags::CF_CCP.bits();
+            }
+
+            // If cn is a player, save position and transfer
+            if characters[cn].flags & core::constants::CharacterFlags::CF_PLAYER.bits() != 0 {
+                // Save tavern position
+                characters[cn].tavern_x = characters[cn].x as u16;
+                characters[cn].tavern_y = characters[cn].y as u16;
+
+                // Transfer character to (10, 10)
+                let cn_x = characters[cn].x;
+                let cn_y = characters[cn].y;
+                // TODO: god_transfer_char(cn, 10, 10) when implemented
+                // For now, just set the position
+                characters[cn].x = 10;
+                characters[cn].y = 10;
+
+                // Set AFK if not already AFK
+                if characters[cn].data[core::constants::CHD_AFK] == 0 {
+                    // TODO: do_afk(cn, NULL) when implemented
+                }
+            }
+
+            // TODO: plr_logout(cn, nr, LO_USURP) when implemented
+
+            characters[co].set_do_update_flags();
         });
     }
 
@@ -2837,29 +3043,37 @@ impl God {
         }
 
         Repository::with_characters_mut(|characters| {
-            let character = &mut characters[cn];
+            // Clear usurp-related flags from cn
+            characters[cn].flags &= !(core::constants::CharacterFlags::CF_USURP.bits()
+                | core::constants::CharacterFlags::CF_STAFF.bits()
+                | core::constants::CharacterFlags::CF_IMMORTAL.bits()
+                | core::constants::CharacterFlags::CF_GOD.bits()
+                | core::constants::CharacterFlags::CF_CREATOR.bits());
 
-            if character.flags & core::constants::CharacterFlags::CF_USURP.bits() == 0 {
-                State::with(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Red,
-                        &format!("Character {} is not usurping", cn),
-                    );
-                });
-                return;
+            // Get original character from data[97]
+            let co = characters[cn].data[97] as usize;
+
+            // Clear CCP flag from original character
+            if Character::is_sane_character(co) {
+                characters[co].flags &= !core::constants::CharacterFlags::CF_CCP.bits();
+
+                // Get player number
+                let nr = characters[cn].player;
+
+                // Transfer player back to original character
+                characters[co].player = nr;
+
+                // TODO: player[nr].usnr = co; (when player array is implemented)
+
+                // Transfer character back to recall position (512, 512)
+                // TODO: god_transfer_char(co, 512, 512) when implemented
+                characters[co].x = 512;
+                characters[co].y = 512;
+
+                // TODO: do_afk(co, NULL) when implemented
+
+                characters[cn].set_do_update_flags();
             }
-
-            character.flags &= !core::constants::CharacterFlags::CF_USURP.bits();
-            character.data[core::constants::CHD_COMPANION] = 0;
-
-            State::with(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Green,
-                    &format!("Character {} exited usurp mode", cn),
-                );
-            });
         });
     }
 
@@ -2868,13 +3082,21 @@ impl God {
             return;
         }
 
-        State::with(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                &format!("Grolm feature not fully implemented for character {}", cn),
-            );
-        });
+        // Create character from template 386 with items
+        let co = crate::populate::pop_create_char(386, true);
+
+        if co != 0 {
+            let character_name =
+                Repository::with_characters(|characters| characters[co].name.clone());
+
+            let name_str = String::from_utf8_lossy(&character_name)
+                .trim_end_matches('\0')
+                .to_string();
+
+            // TODO: chlog(cn, "IMP: is now playing %s (%d)", ch[co].name, co);
+
+            Self::usurp(cn, co);
+        }
     }
 
     pub fn grolm_info(cn: usize) {
@@ -2882,11 +3104,58 @@ impl God {
             return;
         }
 
+        // Find character with template 498 (Grolmy)
+        let co = Repository::with_characters(|characters| {
+            for co in 1..core::constants::MAXCHARS {
+                if characters[co].temp == 498 {
+                    return co;
+                }
+            }
+            core::constants::MAXCHARS
+        });
+
+        // Check if found, active, and not a corpse
+        let (is_valid, data_22, data_40, data_23) = Repository::with_characters(|characters| {
+            if co == core::constants::MAXCHARS {
+                return (false, 0, 0, 0);
+            }
+            let character = &characters[co];
+            let is_valid = character.used == core::constants::USE_ACTIVE
+                && (character.flags & core::constants::CharacterFlags::CF_BODY.bits()) == 0;
+            (
+                is_valid,
+                character.data[22],
+                character.data[40],
+                character.data[23],
+            )
+        });
+
+        if !is_valid || co == core::constants::MAXCHARS {
+            State::with(|state| {
+                state.do_character_log(cn, core::types::FontColor::Yellow, "Grolmy is dead.");
+            });
+            return;
+        }
+
+        // Display state info
+        let state_name = match data_22 {
+            0 => "at_home",
+            1 => "moving_out",
+            2 => "moving_in",
+            _ => "unknown",
+        };
+
+        let ticker = Repository::with_globals(|globals| globals.ticker);
+        let timer_minutes = (ticker - data_23) as f64 / (core::constants::TICKS as f64 * 60.0);
+
         State::with(|state| {
             state.do_character_log(
                 cn,
-                core::types::FontColor::Yellow,
-                &format!("Grolm info not fully implemented for character {}", cn),
+                core::types::FontColor::Green,
+                &format!(
+                    "Current state={}, runs={}, timer={:.2}m, id={}.",
+                    state_name, data_40, timer_minutes, co
+                ),
             );
         });
     }
@@ -2896,12 +3165,49 @@ impl God {
             return;
         }
 
-        State::with(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                &format!("Grolm start not fully implemented for character {}", cn),
-            );
+        // Find character with template 498 (Grolmy)
+        let co = Repository::with_characters(|characters| {
+            for co in 1..core::constants::MAXCHARS {
+                if characters[co].temp == 498 {
+                    return co;
+                }
+            }
+            core::constants::MAXCHARS
+        });
+
+        // Check if found, active, and not a corpse
+        let (is_valid, data_22) = Repository::with_characters(|characters| {
+            if co == core::constants::MAXCHARS {
+                return (false, 0);
+            }
+            let character = &characters[co];
+            let is_valid = character.used == core::constants::USE_ACTIVE
+                && (character.flags & core::constants::CharacterFlags::CF_BODY.bits()) == 0;
+            (is_valid, character.data[22])
+        });
+
+        if !is_valid || co == core::constants::MAXCHARS {
+            State::with(|state| {
+                state.do_character_log(cn, core::types::FontColor::Yellow, "Grolmy is dead.");
+            });
+            return;
+        }
+
+        // Check if already moving
+        if data_22 != 0 {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    "Grolmy is already moving.",
+                );
+            });
+            return;
+        }
+
+        // Start movement
+        Repository::with_characters_mut(|characters| {
+            characters[co].data[22] = 1;
         });
     }
 
@@ -2910,16 +3216,21 @@ impl God {
             return;
         }
 
-        State::with(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                &format!(
-                    "Gargoyle feature not fully implemented for character {}",
-                    cn
-                ),
-            );
-        });
+        // Create character from template 495 with items
+        let co = crate::populate::pop_create_char(495, true);
+
+        if co != 0 {
+            let character_name =
+                Repository::with_characters(|characters| characters[co].name.clone());
+
+            let name_str = String::from_utf8_lossy(&character_name)
+                .trim_end_matches('\0')
+                .to_string();
+
+            // TODO: chlog(cn, "is now playing %s (%d)", ch[co].name, co);
+
+            Self::usurp(cn, co);
+        }
     }
 
     pub fn minor_racechange(cn: usize, temp: i32) {
@@ -2967,30 +3278,97 @@ impl God {
     }
 
     pub fn force(cn: usize, whom: &str, text: &str) {
-        if !Character::is_sane_character(cn) {
+        // Check cn <= 0
+        if cn == 0 {
             return;
         }
 
-        let target_cn = Self::find_next_char(1, whom, "");
+        // Check if whom is empty
+        if whom.is_empty() {
+            State::with(|state| {
+                state.do_character_log(cn, core::types::FontColor::Red, "#FORCE whom?");
+            });
+            return;
+        }
 
-        if target_cn <= 0 {
+        // Find the character
+        let co = Self::find_next_char(1, whom, "");
+
+        if co <= 0 {
+            State::with(|state| {
+                state.do_character_log(cn, core::types::FontColor::Red, "No such character.");
+            });
+            return;
+        }
+
+        let co_usize = co as usize;
+
+        // Check if character is used
+        let (is_used, is_player, character_name) = Repository::with_characters(|characters| {
+            let is_used = characters[co_usize].used == core::constants::USE_ACTIVE;
+            let is_player =
+                characters[co_usize].flags & core::constants::CharacterFlags::CF_PLAYER.bits() != 0;
+            let name = characters[co_usize].name.clone();
+            (is_used, is_player, name)
+        });
+
+        if !is_used {
+            State::with(|state| {
+                state.do_character_log(cn, core::types::FontColor::Red, "Character is not active.");
+            });
+            return;
+        }
+
+        // Check if trying to force a player when not a god
+        let is_cn_god = Repository::with_characters(|characters| {
+            characters[cn].flags & core::constants::CharacterFlags::CF_GOD.bits() != 0
+        });
+
+        if is_player && !is_cn_god {
             State::with(|state| {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Red,
-                    &format!("Could not find character '{}'", whom),
+                    "Not allowed to #FORCE players.",
                 );
             });
             return;
         }
 
+        // Check if text is empty
+        if text.is_empty() {
+            let name_str = String::from_utf8_lossy(&character_name)
+                .trim_end_matches('\0')
+                .to_string();
+
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("#FORCE {} to what?", name_str),
+                );
+            });
+            return;
+        }
+
+        let name_str = String::from_utf8_lossy(&character_name)
+            .trim_end_matches('\0')
+            .to_string();
+
+        // TODO: chlog(cn, "IMP: Forced %s (%d) to \"%s\"", ch[co].name, co, text);
+
+        // Make the character say the text
+        State::with(|state| {
+            state.do_sayx(co_usize, text);
+        });
+
+        // Show success message
         State::with(|state| {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                &format!("Forcing character {} to: {}", target_cn, text),
+                &format!("{} was forced.", name_str),
             );
-            // TODO: Actual force command execution would go here
         });
     }
 
