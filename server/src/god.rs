@@ -1068,7 +1068,60 @@ impl God {
     }
 
     pub fn take_from_char(item_id: usize, cn: usize) -> bool {
-        true // TODO: Implement this
+        if !core::types::Item::is_sane_item(item_id) {
+            return false;
+        }
+
+        Repository::with_characters_mut(|characters| {
+            if !characters[cn].is_living_character(cn) {
+                return false;
+            }
+
+            Repository::with_items_mut(|items| {
+                // Remove from citem
+                if characters[cn].citem as usize == item_id {
+                    characters[cn].citem = 0;
+                } else {
+                    // Try inventory
+                    let mut found = false;
+                    for n in 0..40 {
+                        if characters[cn].item[n] as usize == item_id {
+                            characters[cn].item[n] = 0;
+                            found = true;
+                            break;
+                        }
+                    }
+                    if !found {
+                        // Try worn
+                        for n in 0..20 {
+                            if characters[cn].worn[n] as usize == item_id {
+                                characters[cn].worn[n] = 0;
+                                found = true;
+                                break;
+                            }
+                        }
+                        if !found {
+                            return false;
+                        }
+                    }
+                }
+
+                // Clear item carriage
+                items[item_id].x = 0;
+                items[item_id].y = 0;
+                items[item_id].carried = 0;
+
+                // Mark character for update
+                characters[cn].set_do_update_flags();
+
+                // Call update hook in State so that network/clients can be informed
+                State::with(|state| {
+                    state.do_update_char(cn);
+                });
+
+                true
+            })
+        })
     }
 
     pub fn drop_item(item_id: usize, x: usize, y: usize) -> bool {

@@ -7301,4 +7301,116 @@ impl State {
             });
         });
     }
+
+    pub fn do_hurt(cn: usize, co: usize, dam: i32, type_hurt: i32) -> i32 {}
+
+    pub fn do_give_exp(cn: usize, p: i32, gflag: i32, rank: i32) {}
+
+    pub fn get_fight_skill(cn: usize) -> i32 {}
+
+    pub fn do_char_can_flee(cn: usize) -> i32 {}
+
+    pub fn do_ransack_corpse(cn: usize, co: usize, msg: &str) {}
+
+    pub fn remove_enemy(co: usize) {}
+
+    pub fn do_char_score(cn: usize) -> i32 {}
+
+    pub fn do_say(cn: usize, text: &str) {}
+
+    pub fn do_command(cn: usize, ptr: &str) {}
+
+    pub fn do_become_skua(cn: usize) {}
+
+    pub fn do_make_soulstone(cn: usize, cexp: i32) {}
+
+    pub fn do_list_all_flags(cn: usize, flag: u64) {}
+
+    pub fn do_list_net(cn: usize, co: usize) {}
+
+    pub fn do_respawn(cn: usize, co: usize) {}
+
+    pub fn do_npclist(cn: usize, name: &str) {}
+
+    pub fn do_leave(cn: usize) {}
+
+    pub fn do_enter(cn: usize) {}
+
+    pub fn do_stat(cn: usize) {}
+
+    pub fn do_become_purple(cn: usize) {}
+
+    pub fn do_create_note(cn: usize, text: &str) {}
+
+    pub fn do_emote(cn: usize, text: &str) {}
+
+    pub fn do_check_pent_count(cn: usize) {}
+
+    pub fn do_view_exp_to_rank(cn: usize) {}
+
+    pub fn rank2points(rank: i32) -> i32 {}
+
+    pub fn do_gold(cn: usize, val: i32) {}
+
+    pub fn do_god_give(cn: usize, co: usize) {}
+
+    pub fn do_lag(cn: usize, lag: i32) {}
+
+    pub fn do_depot(cn: usize) {}
+
+    pub fn do_balance(cn: usize) {}
+
+    pub fn do_withdraw(cn: usize, g: i32, s: i32) {}
+
+    pub fn do_deposit(cn: usize, g: i32, s: i32) {}
+
+    pub fn do_fightback(cn: usize) {}
+
+    pub fn do_follow(cn: usize, name: &str) {}
+
+    pub fn do_ignore(cn: usize, name: &str, flag: i32) {}
+
+    pub fn do_group(cn: usize, name: &str) {}
+
+    pub fn do_allow(cn: usize, co: usize) {}
+
+    pub fn do_mark(cn: usize, co: usize, msg: &str) {}
+
+    pub fn do_afk(cn: usize, msg: &str) {}
+
+    pub fn do_help(cn: usize, topic: &str) {}
+
+    pub fn do_gtell(cn: usize, text: &str) {}
+
+    pub fn do_nostaff(cn: usize) {}
+
+    pub fn do_stell(cn: usize, text: &str) {}
+
+    pub fn do_itell(cn: usize, text: &str) {}
+
+    pub fn do_shout(cn: usize, text: &str) {}
+
+    pub fn do_noshout(cn: usize) {}
+
+    pub fn do_notell(cn: usize) {}
+
+    pub fn do_tell(cn: usize, con: &str, text: &str) {}
+
+    pub fn do_is_ignore(cn: usize, co: usize, flag: i32) -> i32 {}
+
+    pub fn do_lookup_char_self(name: &str, cn: usize) -> i32 {}
+
+    pub fn do_lookup_char(name: &str) -> i32 {}
+
+    pub fn do_imp_log(font: core::types::FontColor, text: &str) {}
+
+    pub fn do_caution(source: i32, author: i32, text: &str) {}
+
+    pub fn do_announce(source: i32, author: i32, text: &str) {}
+
+    pub fn do_admin_log(source: i32, text: &str) {}
+
+    pub fn do_staff_log(font: core::types::FontColor, text: &str) {}
+
+    pub fn do_area_say1(cn: usize, xs: usize, ys: usize, text: &str) {}
 }

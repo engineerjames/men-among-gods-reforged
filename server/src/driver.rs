@@ -1,6 +1,7 @@
 use crate::helpers;
 use crate::{driver_special, god::God, repository::Repository, state::State};
 use core::constants::*;
+use rand::Rng;
 
 // Helper functions
 
@@ -477,17 +478,229 @@ pub fn npc_seemiss(cn: usize, cc: usize, co: usize) -> i32 {
 }
 
 pub fn npc_give(_cn: usize, _co: usize, _in: usize, _money: i32) -> i32 {
-    // TODO: Large function - implement item giving logic
-    0
+    Repository::with_characters_mut(|characters| {
+        let cn = _cn;
+        let co = _co;
+        let in_item = _in;
+        let money = _money;
+
+        // If giver is a player/usurp, set active timer; otherwise ensure group active
+        if (characters[co].flags
+            & (CharacterFlags::CF_PLAYER.bits() | CharacterFlags::CF_USURP.bits()) as u64)
+            != 0
+        {
+            characters[cn].data[92] = (TICKS * 60) as i32;
+        } else if !characters[cn].group_active() {
+            return 0;
+        }
+
+        // Item given and matches what NPC wants
+        if in_item != 0
+            && Repository::with_items(|items| items[in_item].temp as i32) == characters[cn].data[49]
+        {
+            // Black candle special-case
+            if characters[cn].data[49] == 740 && characters[cn].temp == 518 {
+                characters[co].data[43] += 1;
+                // Remove item from NPC and destroy it
+                God::take_from_char(in_item, cn);
+                Repository::with_items_mut(|items| {
+                    items[in_item].used = core::constants::USE_EMPTY;
+                });
+
+                State::with(|state| {
+                    state.do_sayx(
+                        cn,
+                        &format!(
+                            "Ah, a black candle! Great work, {}! Now we will have peace for a while...",
+                            characters[co].get_name()
+                        ),
+                    );
+                    state.do_area_log(
+                        cn,
+                        0,
+                        characters[cn].x as i32,
+                        characters[cn].y as i32,
+                        core::types::FontColor::Yellow,
+                        &format!(
+                            "The Cityguard is impressed by {}'s deed.\n",
+                            characters[co].get_name()
+                        ),
+                    );
+                });
+            } else {
+                // Thank you message
+                let ref_name = Repository::with_items(|items| {
+                    String::from_utf8_lossy(&items[in_item].reference).to_string()
+                });
+                State::with(|state| {
+                    state.do_sayx(
+                        cn,
+                        &format!(
+                            "Thank you {}. That's the {} I wanted.",
+                            characters[co].get_name(),
+                            ref_name
+                        ),
+                    );
+                });
+            }
+
+            // Quest-requested items: teach skill / give exp
+            let nr = characters[cn].data[50];
+            if nr != 0 {
+                let nr_usize = nr as usize;
+                State::with(|state| {
+                    // Skill name isn't available here; use placeholder
+                    state.do_sayx(cn, &format!("Now I'll teach you skill #{}.", nr));
+                });
+
+                if characters[co].skill[nr_usize][0] != 0 {
+                    State::with(|state| {
+                        state.do_sayx(
+                            cn,
+                            &format!(
+                                "But you already know skill #{}, {}!",
+                                nr,
+                                characters[co].get_name()
+                            ),
+                        );
+                    });
+                    // give item back to player
+                    God::take_from_char(in_item, cn);
+                    God::give_character_item(co, in_item);
+                    State::with(|state| {
+                        state.do_character_log(
+                            co,
+                            core::types::FontColor::Green,
+                            &format!(
+                                "{} did not accept the {}.\n",
+                                characters[cn].get_name(),
+                                Repository::with_items(|items| items[in_item]
+                                    .get_name()
+                                    .to_string())
+                            ),
+                        );
+                    });
+                } else {
+                    // teach skill
+                    characters[co].skill[nr_usize][0] = 1;
+                    State::with(|state| {
+                        state.do_character_log(
+                            co,
+                            core::types::FontColor::Green,
+                            &format!("You learned skill #{}!\n", nr),
+                        );
+                        characters[co].set_do_update_flags();
+                    });
+
+                    let give_exp = characters[cn].data[51];
+                    if give_exp != 0 {
+                        State::with(|state| {
+                            state.do_sayx(cn, &format!("Now I'll teach you a bit about life, the world and everything, {}.", characters[co].get_name()));
+                            state.do_give_exp(co, give_exp, 0, -1);
+                        });
+                    }
+
+                    // take and destroy the offered item
+                    God::take_from_char(in_item, cn);
+                    Repository::with_items_mut(|items| {
+                        items[in_item].used = core::constants::USE_EMPTY;
+                    });
+                }
+            }
+
+            // Return-gift
+            let give_temp = characters[cn].data[66];
+            if give_temp != 0 {
+                State::with(|state| {
+                    state.do_sayx(
+                        cn,
+                        &format!(
+                            "Here is your {} in exchange.",
+                            Repository::with_item_templates(|t| String::from_utf8_lossy(
+                                &t[give_temp as usize].reference
+                            )
+                            .to_string())
+                        ),
+                    );
+                });
+                God::take_from_char(in_item, cn);
+                Repository::with_items_mut(|items| {
+                    items[in_item].used = core::constants::USE_EMPTY
+                });
+                if let Some(new_item) = God::create_item(give_temp as usize) {
+                    God::give_character_item(co, new_item);
+                }
+            }
+
+            // Riddle-giver special
+            let ar = characters[cn].data[72];
+            if characters[co].is_player()
+                && ar >= core::constants::RIDDLE_MIN_AREA
+                && ar <= core::constants::RIDDLE_MAX_AREA
+            {
+                let idx = (ar - core::constants::RIDDLE_MIN_AREA) as usize;
+                // check Lab9 guesser
+                let still = crate::lab9::Labyrinth9::with(|lab9| lab9.guesser[idx]);
+                if still != 0 && still as usize != co {
+                    State::with(|state| {
+                        state.do_sayx(
+                            cn,
+                            &format!(
+                                "I'm still riddling {}; please come back later!\n",
+                                Repository::with_characters(|ch| ch[still as usize].get_name())
+                            ),
+                        );
+                    });
+                    God::take_from_char(in_item, cn);
+                    God::give_character_item(co, in_item);
+                    return 0;
+                }
+
+                // Destroy gift from player and pose riddle
+                God::take_from_char(in_item, co);
+                Repository::with_items_mut(|items| {
+                    items[in_item].used = core::constants::USE_EMPTY
+                });
+                crate::lab9::Labyrinth9::with_mut(|lab9| lab9.lab9_pose_riddle(cn, co));
+            }
+
+            return 0;
+        } else if in_item == 0 && money != 0 {
+            // NPC doesn't take money
+            State::with(|state| {
+                state.do_sayx(cn, "I don't take money from you!");
+            });
+            characters[co].gold += money;
+            characters[cn].gold -= money;
+        } else {
+            // Not accepted - return item to giver
+            God::take_from_char(in_item, cn);
+            God::give_character_item(co, in_item);
+            State::with(|state| {
+                state.do_character_log(
+                    co,
+                    core::types::FontColor::Green,
+                    &format!(
+                        "{} did not accept the {}.\n",
+                        characters[cn].get_name(),
+                        Repository::with_items(|items| items[in_item].get_name().to_string())
+                    ),
+                );
+            });
+        }
+
+        0
+    })
 }
 
 pub fn npc_died(cn: usize, co: usize) -> i32 {
-    // TODO: Re-evaluate this function
+    // Mirror C++ behavior: chance = characters[cn].data[48]
     Repository::with_characters(|characters| {
-        if characters[cn].data[48] != 0 && co > 0 {
-            // TODO: Add RANDOM function
-            if characters[cn].data[48] > 50 {
-                // Simplified random check
+        let chance = characters[cn].data[48];
+        if chance != 0 && co > 0 {
+            // random 0..99 < chance
+            let roll = rand::thread_rng().gen_range(0..100) as i32;
+            if roll < chance {
                 let co_name = if co < MAXCHARS {
                     String::from_utf8_lossy(&characters[co].name).to_string()
                 } else {
