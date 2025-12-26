@@ -934,8 +934,116 @@ impl Server {
     }
 
     fn compress_ticks(&mut self) {
-        // Compress and send tick data to all connected players
-        // This is the equivalent of compress_ticks() in C++
+        use std::io::Write;
+
+        // For each connected player, compress their tick buffer (`tbuf`) if worthwhile
+        Server::with_players_mut(|players| {
+            for n in 1..players.len() {
+                // quick checks
+                if players[n].sock.is_none() {
+                    continue;
+                }
+                if players[n].ticker_started == 0 {
+                    continue;
+                }
+
+                // ensure sane usnr
+                if players[n].usnr >= core::constants::MAXCHARS as usize {
+                    players[n].usnr = 0;
+                }
+
+                let ilen = players[n].tptr;
+                let mut olen = ilen + 2;
+
+                if olen > 16 {
+                    // compress into encoder's inner buffer
+                    if let Some(zs) = players[n].zs.as_mut() {
+                        let before = zs.get_ref().len();
+                        let _ = zs.write_all(&players[n].tbuf[..ilen]);
+                        // flush to ensure we get compressed bytes out (Z_SYNC_FLUSH equivalent)
+                        let _ = zs.flush();
+                        let after = zs.get_ref().len();
+                        let csize = after.saturating_sub(before);
+
+                        // prepare 2-byte header with high bit set to indicate compressed
+                        let header = (((csize + 2) as u16) | 0x8000u16).to_le_bytes();
+
+                        // Extract compressed data before creating the closure
+                        let compressed = zs.get_ref()[before..after].to_vec();
+
+                        // write header then compressed bytes into obuf with wrap
+                        let obuf_len = players[n].obuf.len();
+                        let mut iptr = players[n].iptr;
+
+                        // helper to copy slice into obuf with wrap
+                        let mut write_into = |data: &[u8]| {
+                            for &b in data {
+                                players[n].obuf[iptr] = b;
+                                iptr += 1;
+                                if iptr >= obuf_len {
+                                    iptr = 0;
+                                }
+                            }
+                        };
+
+                        write_into(&header);
+                        write_into(&compressed);
+
+                        players[n].iptr = iptr;
+
+                        // update character stats
+                        let usnr = players[n].usnr;
+                        Repository::with_characters_mut(|ch| {
+                            if usnr < core::constants::MAXCHARS as usize {
+                                ch[usnr].comp_volume =
+                                    ch[usnr].comp_volume.wrapping_add((csize + 2) as u32);
+                                ch[usnr].raw_volume = ch[usnr].raw_volume.wrapping_add(ilen as u32);
+                            }
+                        });
+                    }
+                } else {
+                    // send raw (no compression)
+                    let header = (olen as u16).to_le_bytes();
+                    let obuf_len = players[n].obuf.len();
+                    let mut iptr = players[n].iptr;
+
+                    // Copy tbuf data before defining the closure
+                    let tbuf_data: Vec<u8> = if ilen > 0 {
+                        players[n].tbuf[..ilen].to_vec()
+                    } else {
+                        Vec::new()
+                    };
+
+                    let mut write_into = |data: &[u8]| {
+                        for &b in data {
+                            players[n].obuf[iptr] = b;
+                            iptr += 1;
+                            if iptr >= obuf_len {
+                                iptr = 0;
+                            }
+                        }
+                    };
+
+                    write_into(&header);
+                    if ilen > 0 {
+                        write_into(&tbuf_data);
+                    }
+                    players[n].iptr = iptr;
+
+                    // update character stats
+                    let usnr = players[n].usnr;
+                    Repository::with_characters_mut(|ch| {
+                        if usnr < core::constants::MAXCHARS as usize {
+                            ch[usnr].comp_volume = ch[usnr].comp_volume.wrapping_add(olen as u32);
+                            ch[usnr].raw_volume = ch[usnr].raw_volume.wrapping_add(ilen as u32);
+                        }
+                    });
+                }
+
+                // reset tptr
+                players[n].tptr = 0;
+            }
+        });
     }
 
     fn handle_network_io(&mut self) {
