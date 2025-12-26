@@ -1746,3 +1746,515 @@ pub fn speedo(n: usize) -> i32 {
     let ctick = Repository::with_globals(|globals| (globals.ticker % 20) as usize);
     SPEEDTAB[speed][ctick] as i32
 }
+
+// Static mode for plr_getmap speed savings
+static PLR_GETMAP_MODE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// Port of `plr_state` from `svr_tick.cpp`
+/// Handles player state transitions (login, exit, timeouts)
+pub fn plr_state(nr: usize) {
+    let (ticker, lasttick, state) = Repository::with_globals(|globals| {
+        Server::with_players(|players| {
+            (
+                globals.ticker as i32,
+                players[nr].lasttick as i32,
+                players[nr].state,
+            )
+        })
+    });
+
+    // Handle ST_EXIT timeout - close connection after 15 seconds
+    if ticker.wrapping_sub(lasttick) > core::constants::TICKS * 15
+        && state == core::constants::ST_EXIT
+    {
+        Server::with_players_mut(|players| {
+            log::info!("Connection closed (ST_EXIT) for player {}", nr);
+            // Close socket - the actual close happens in network layer
+            players[nr].sock = None;
+        });
+        return;
+    }
+
+    // Handle idle timeout - logout after 60 seconds
+    if ticker.wrapping_sub(lasttick) > core::constants::TICKS * 60 {
+        log::info!("Idle timeout for player {}", nr);
+        plr_logout(0, nr, enums::LogoutReason::IdleTooLong);
+        return;
+    }
+
+    match state {
+        state if state == core::constants::ST_NEWLOGIN => {
+            plr_newlogin(nr);
+        }
+        state if state == core::constants::ST_LOGIN => {
+            plr_login(nr);
+        }
+        state if state == core::constants::ST_NEWCAP => {
+            // Timeout after 10 seconds, go back to NEWLOGIN
+            if ticker.wrapping_sub(lasttick) > core::constants::TICKS * 10 {
+                Server::with_players_mut(|players| {
+                    players[nr].state = core::constants::ST_NEWLOGIN;
+                });
+            }
+        }
+        state if state == core::constants::ST_CAP => {
+            // Timeout after 10 seconds, go back to LOGIN
+            if ticker.wrapping_sub(lasttick) > core::constants::TICKS * 10 {
+                Server::with_players_mut(|players| {
+                    players[nr].state = core::constants::ST_LOGIN;
+                });
+            }
+        }
+        state if state == core::constants::ST_NEW_CHALLENGE => {
+            // Do nothing - waiting for challenge response
+        }
+        state if state == core::constants::ST_LOGIN_CHALLENGE => {
+            // Do nothing - waiting for challenge response
+        }
+        state if state == core::constants::ST_CONNECT => {
+            // Do nothing - initial connection state
+        }
+        state if state == core::constants::ST_EXIT => {
+            // Do nothing - handled above
+        }
+        _ => {
+            log::warn!("UNKNOWN ST: {} for player {}", state, nr);
+        }
+    }
+}
+
+/// Port of `plr_newlogin` from `svr_tick.cpp`
+/// Handles new player login (stub - to be implemented)
+fn plr_newlogin(_nr: usize) {
+    // TODO: Implement new player login logic
+    // This creates a new character for the player
+}
+
+/// Port of `plr_login` from `svr_tick.cpp`
+/// Handles existing player login (stub - to be implemented)
+fn plr_login(_nr: usize) {
+    // TODO: Implement existing player login logic
+    // This loads an existing character for the player
+}
+
+/// Port of `plr_clear_map` from `svr_tick.cpp`
+/// Clears all player map data (used when entering speed savings mode)
+fn plr_clear_map() {
+    Server::with_players_mut(|players| {
+        for n in 1..core::constants::MAXPLAYER {
+            // Zero out smap
+            for m in 0..(core::constants::TILEX * core::constants::TILEY) as usize {
+                players[n].smap[m] = core::types::CMap::default();
+            }
+            // Force do_all in plr_getmap by resetting vx
+            players[n].vx = 0;
+        }
+    });
+}
+
+/// Port of `plr_getmap` from `svr_tick.cpp`
+/// Gets the map view for a player, with speed savings mode support
+pub fn plr_getmap(nr: usize) {
+    let (load_avg, has_speedy_flag) = Repository::with_globals(|globals| {
+        (
+            globals.load_avg,
+            (globals.flags & core::constants::GF_SPEEDY) != 0,
+        )
+    });
+
+    let mode = PLR_GETMAP_MODE.load(std::sync::atomic::Ordering::Relaxed);
+
+    // Enter speed savings mode if load is too high
+    if load_avg > 8000 && mode == 0 && has_speedy_flag {
+        PLR_GETMAP_MODE.store(1, std::sync::atomic::Ordering::Relaxed);
+        plr_clear_map();
+        State::with(|state| {
+            state.do_announce(
+                0,
+                0,
+                "Entered speed savings mode. Display will be imperfect.\n",
+            );
+        });
+    }
+
+    // Leave speed savings mode if load is acceptable
+    if (!has_speedy_flag || load_avg < 6500) && mode != 0 {
+        PLR_GETMAP_MODE.store(0, std::sync::atomic::Ordering::Relaxed);
+        State::with(|state| {
+            state.do_announce(0, 0, "Left speed savings mode.\n");
+        });
+    }
+
+    let current_mode = PLR_GETMAP_MODE.load(std::sync::atomic::Ordering::Relaxed);
+    if current_mode == 0 {
+        plr_getmap_complete(nr);
+    } else {
+        plr_getmap_fast(nr);
+    }
+}
+
+/// Port of `plr_getmap_complete` from `svr_tick.cpp`
+/// Full map update for player (stub - to be implemented)
+fn plr_getmap_complete(_nr: usize) {
+    // TODO: Implement complete map gathering
+    // This computes visibility and populates the player's smap
+}
+
+/// Port of `plr_getmap_fast` from `svr_tick.cpp`
+/// Fast map update for player in speed savings mode (stub - to be implemented)
+fn plr_getmap_fast(_nr: usize) {
+    // TODO: Implement fast map gathering
+    // This is a reduced version for high load situations
+}
+
+/// Port of `plr_change` from `svr_tick.cpp`
+/// Sends changed player data to the client
+pub fn plr_change(nr: usize) {
+    let cn = Server::with_players(|players| players[nr].usnr as usize);
+
+    if cn == 0 || cn >= core::constants::MAXCHARS {
+        return;
+    }
+
+    let (ticker, should_update) = Repository::with_globals(|globals| {
+        Repository::with_characters(|ch| {
+            // Check CF_UPDATE flag
+            let has_update_flag = (ch[cn].flags & enums::CharacterFlags::Update.bits()) != 0;
+            let ticker_match = (cn & 15) == (globals.ticker as usize & 15);
+            (globals.ticker as i32, has_update_flag || ticker_match)
+        })
+    });
+
+    if should_update {
+        // Send full player stats update
+        plr_change_stats(nr, cn, ticker);
+    }
+
+    // Always send combat-related updates
+    plr_change_hp(nr, cn);
+    plr_change_end(nr, cn);
+    plr_change_mana(nr, cn);
+    plr_change_dir(nr, cn);
+    plr_change_points(nr, cn);
+    plr_change_gold(nr, cn);
+    plr_change_position(nr, cn);
+    plr_change_target(nr, cn);
+
+    // Send map tile changes (light, sprites, characters, items)
+    plr_change_map(nr, cn);
+}
+
+/// Send full stats update to player
+fn plr_change_stats(_nr: usize, _cn: usize, _ticker: i32) {
+    // TODO: Implement full stats update
+    // This sends all skill values, attributes, etc.
+}
+
+/// Send HP change to player
+fn plr_change_hp(nr: usize, cn: usize) {
+    let (current_hp, player_hp) = Repository::with_characters(|ch| {
+        Server::with_players(|players| {
+            let a_hp = (ch[cn].a_hp + 500) / 1000;
+            (a_hp, players[nr].cpl.a_hp)
+        })
+    });
+
+    if current_hp != player_hp {
+        let mut buf: [u8; 16] = [0; 16];
+        buf[0] = core::constants::SV_SETCHAR_AHP;
+        buf[1] = current_hp as u8;
+        buf[2] = (current_hp >> 8) as u8;
+
+        NetworkManager::with(|network| {
+            network.xsend(nr, &buf, 3);
+        });
+
+        Server::with_players_mut(|players| {
+            players[nr].cpl.a_hp = current_hp;
+        });
+    }
+}
+
+/// Send endurance change to player
+fn plr_change_end(nr: usize, cn: usize) {
+    let (current_end, player_end) = Repository::with_characters(|ch| {
+        Server::with_players(|players| {
+            let a_end = (ch[cn].a_end + 500) / 1000;
+            (a_end, players[nr].cpl.a_end)
+        })
+    });
+
+    if current_end != player_end {
+        let mut buf: [u8; 16] = [0; 16];
+        buf[0] = core::constants::SV_SETCHAR_ENDUR;
+        buf[1] = current_end as u8;
+        buf[2] = (current_end >> 8) as u8;
+
+        NetworkManager::with(|network| {
+            network.xsend(nr, &buf, 3);
+        });
+
+        Server::with_players_mut(|players| {
+            players[nr].cpl.a_end = current_end;
+        });
+    }
+}
+
+/// Send mana change to player
+fn plr_change_mana(nr: usize, cn: usize) {
+    let (current_mana, player_mana) = Repository::with_characters(|ch| {
+        Server::with_players(|players| {
+            let a_mana = (ch[cn].a_mana + 500) / 1000;
+            (a_mana, players[nr].cpl.a_mana)
+        })
+    });
+
+    if current_mana != player_mana {
+        let mut buf: [u8; 16] = [0; 16];
+        buf[0] = core::constants::SV_SETCHAR_MANA;
+        buf[1] = current_mana as u8;
+        buf[2] = (current_mana >> 8) as u8;
+
+        NetworkManager::with(|network| {
+            network.xsend(nr, &buf, 3);
+        });
+
+        Server::with_players_mut(|players| {
+            players[nr].cpl.a_mana = current_mana;
+        });
+    }
+}
+
+/// Send direction change to player
+fn plr_change_dir(nr: usize, cn: usize) {
+    let (current_dir, player_dir) = Repository::with_characters(|ch| {
+        Server::with_players(|players| (ch[cn].dir, players[nr].cpl.dir))
+    });
+
+    if current_dir as i32 != player_dir {
+        let mut buf: [u8; 16] = [0; 16];
+        buf[0] = core::constants::SV_SETCHAR_MODE;
+        buf[1] = current_dir;
+
+        NetworkManager::with(|network| {
+            network.xsend(nr, &buf, 2);
+        });
+
+        Server::with_players_mut(|players| {
+            players[nr].cpl.dir = current_dir as i32;
+        });
+    }
+}
+
+/// Send points/kindred change to player
+fn plr_change_points(nr: usize, cn: usize) {
+    let (points, points_tot, kindred, cpl_points, cpl_points_tot, cpl_kindred) =
+        Repository::with_characters(|ch| {
+            Server::with_players(|players| {
+                (
+                    ch[cn].points,
+                    ch[cn].points_tot,
+                    ch[cn].kindred,
+                    players[nr].cpl.points,
+                    players[nr].cpl.points_tot,
+                    players[nr].cpl.kindred,
+                )
+            })
+        });
+
+    if points != cpl_points || points_tot != cpl_points_tot || kindred != cpl_kindred {
+        let mut buf: [u8; 16] = [0; 16];
+        buf[0] = core::constants::SV_SETCHAR_PTS;
+
+        // points (4 bytes)
+        buf[1] = points as u8;
+        buf[2] = (points >> 8) as u8;
+        buf[3] = (points >> 16) as u8;
+        buf[4] = (points >> 24) as u8;
+
+        // points_tot (4 bytes)
+        buf[5] = points_tot as u8;
+        buf[6] = (points_tot >> 8) as u8;
+        buf[7] = (points_tot >> 16) as u8;
+        buf[8] = (points_tot >> 24) as u8;
+
+        // kindred (1 byte)
+        buf[9] = kindred as u8;
+
+        NetworkManager::with(|network| {
+            network.xsend(nr, &buf, 10);
+        });
+
+        Server::with_players_mut(|players| {
+            players[nr].cpl.points = points;
+            players[nr].cpl.points_tot = points_tot;
+            players[nr].cpl.kindred = kindred;
+        });
+    }
+}
+
+/// Send gold/armor/weapon change to player
+fn plr_change_gold(nr: usize, cn: usize) {
+    let (gold, armor, weapon, cpl_gold, cpl_armor, cpl_weapon) =
+        Repository::with_characters(|ch| {
+            Server::with_players(|players| {
+                (
+                    ch[cn].gold,
+                    ch[cn].armor,
+                    ch[cn].weapon,
+                    players[nr].cpl.gold,
+                    players[nr].cpl.armor,
+                    players[nr].cpl.weapon,
+                )
+            })
+        });
+
+    if gold != cpl_gold || armor as i32 != cpl_armor || weapon as i32 != cpl_weapon {
+        let mut buf: [u8; 16] = [0; 16];
+        buf[0] = core::constants::SV_SETCHAR_GOLD;
+
+        // gold (4 bytes)
+        buf[1] = gold as u8;
+        buf[2] = (gold >> 8) as u8;
+        buf[3] = (gold >> 16) as u8;
+        buf[4] = (gold >> 24) as u8;
+
+        // armor (2 bytes)
+        buf[5] = armor as u8;
+        buf[6] = (armor >> 8) as u8;
+
+        // weapon (2 bytes)
+        buf[7] = weapon as u8;
+        buf[8] = (weapon >> 8) as u8;
+
+        NetworkManager::with(|network| {
+            network.xsend(nr, &buf, 9);
+        });
+
+        Server::with_players_mut(|players| {
+            players[nr].cpl.gold = gold;
+            players[nr].cpl.armor = armor as i32;
+            players[nr].cpl.weapon = weapon as i32;
+        });
+    }
+}
+
+/// Send position change to player
+fn plr_change_position(nr: usize, cn: usize) {
+    let (x, y, cpl_x, cpl_y) = Repository::with_characters(|ch| {
+        Server::with_players(|players| (ch[cn].x, ch[cn].y, players[nr].cpl.x, players[nr].cpl.y))
+    });
+
+    if x as i32 != cpl_x || y as i32 != cpl_y {
+        let mut buf: [u8; 16] = [0; 16];
+        buf[0] = core::constants::SV_SETORIGIN;
+
+        // x (2 bytes)
+        buf[1] = x as u8;
+        buf[2] = (x >> 8) as u8;
+
+        // y (2 bytes)
+        buf[3] = y as u8;
+        buf[4] = (y >> 8) as u8;
+
+        NetworkManager::with(|network| {
+            network.xsend(nr, &buf, 5);
+        });
+
+        Server::with_players_mut(|players| {
+            players[nr].cpl.x = x as i32;
+            players[nr].cpl.y = y as i32;
+        });
+    }
+}
+
+/// Send target change to player
+fn plr_change_target(nr: usize, cn: usize) {
+    let (attack_cn, goto_x, goto_y, misc_action, misc_target1, misc_target2) =
+        Repository::with_characters(|ch| {
+            (
+                ch[cn].attack_cn,
+                ch[cn].goto_x,
+                ch[cn].goto_y,
+                ch[cn].misc_action,
+                ch[cn].misc_target1,
+                ch[cn].misc_target2,
+            )
+        });
+
+    let (
+        cpl_attack_cn,
+        cpl_goto_x,
+        cpl_goto_y,
+        cpl_misc_action,
+        cpl_misc_target1,
+        cpl_misc_target2,
+    ) = Server::with_players(|players| {
+        (
+            players[nr].cpl.attack_cn,
+            players[nr].cpl.goto_x,
+            players[nr].cpl.goto_y,
+            players[nr].cpl.misc_action,
+            players[nr].cpl.misc_target1,
+            players[nr].cpl.misc_target2,
+        )
+    });
+
+    if attack_cn as i32 != cpl_attack_cn
+        || goto_x as i32 != cpl_goto_x
+        || goto_y as i32 != cpl_goto_y
+        || misc_action as i32 != cpl_misc_action
+        || misc_target1 as i32 != cpl_misc_target1
+        || misc_target2 as i32 != cpl_misc_target2
+    {
+        let mut buf: [u8; 16] = [0; 16];
+        buf[0] = core::constants::SV_SETTARGET;
+
+        // attack_cn (2 bytes)
+        buf[1] = attack_cn as u8;
+        buf[2] = (attack_cn >> 8) as u8;
+
+        // goto_x (2 bytes)
+        buf[3] = goto_x as u8;
+        buf[4] = (goto_x >> 8) as u8;
+
+        // goto_y (2 bytes)
+        buf[5] = goto_y as u8;
+        buf[6] = (goto_y >> 8) as u8;
+
+        // misc_action (2 bytes)
+        buf[7] = misc_action as u8;
+        buf[8] = (misc_action >> 8) as u8;
+
+        // misc_target1 (2 bytes)
+        buf[9] = misc_target1 as u8;
+        buf[10] = (misc_target1 >> 8) as u8;
+
+        // misc_target2 (2 bytes)
+        buf[11] = misc_target2 as u8;
+        buf[12] = (misc_target2 >> 8) as u8;
+
+        NetworkManager::with(|network| {
+            network.xsend(nr, &buf, 13);
+        });
+
+        Server::with_players_mut(|players| {
+            players[nr].cpl.attack_cn = attack_cn as i32;
+            players[nr].cpl.goto_x = goto_x as i32;
+            players[nr].cpl.goto_y = goto_y as i32;
+            players[nr].cpl.misc_action = misc_action as i32;
+            players[nr].cpl.misc_target1 = misc_target1 as i32;
+            players[nr].cpl.misc_target2 = misc_target2 as i32;
+        });
+    }
+}
+
+/// Send map tile changes to player (light, sprites, characters, items)
+fn plr_change_map(_nr: usize, _cn: usize) {
+    // TODO: Implement map change detection and sending
+    // This iterates through visible tiles and sends changes for:
+    // - Light values
+    // - Background sprites
+    // - Character sprites/status
+    // - Item sprites/status
+}
