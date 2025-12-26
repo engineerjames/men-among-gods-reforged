@@ -166,7 +166,7 @@ impl EffectManager {
 
                             if (characters[co].flags & CharacterFlags::Respawn.bits()) != 0 {
                                 Repository::with_character_templates(|char_templates| {
-                                    Self::add_effect(
+                                    Self::fx_add_effect(
                                         2,
                                         core::constants::TICKS * 60 * 5
                                             + rand::random::<i32>().abs()
@@ -526,7 +526,13 @@ impl EffectManager {
     }
 
     /// Port of `fx_add_effect` from `svr_effect.cpp`
-    pub fn add_effect(effect_type: i32, duration: i32, d1: i32, d2: i32, d3: i32) -> Option<usize> {
+    pub fn fx_add_effect(
+        effect_type: i32,
+        duration: i32,
+        d1: i32,
+        d2: i32,
+        d3: i32,
+    ) -> Option<usize> {
         Repository::with_effects_mut(|effects| {
             for n in 1..core::constants::MAXEFFECT as usize {
                 if effects[n].used == core::constants::USE_EMPTY {
@@ -619,7 +625,7 @@ impl EffectManager {
                 map[map_index].flags |= core::constants::MF_MOVEBLOCK as u64;
             });
 
-            let fn_idx = Self::add_effect(
+            let fn_idx = Self::fx_add_effect(
                 4,
                 0,
                 (map_index % core::constants::SERVER_MAPX as usize) as i32,
@@ -642,7 +648,7 @@ impl EffectManager {
 
                 if temp != 0 && (characters[co].flags & CharacterFlags::Respawn.bits()) != 0 {
                     if temp == 189 || temp == 561 {
-                        Self::add_effect(
+                        Self::fx_add_effect(
                             2,
                             core::constants::TICKS * 60 * 20
                                 + rand::random::<i32>().abs() % (core::constants::TICKS * 60 * 5),
@@ -655,7 +661,7 @@ impl EffectManager {
                             temp as i32,
                         );
                     } else {
-                        Self::add_effect(
+                        Self::fx_add_effect(
                             2,
                             core::constants::TICKS * 60 * 4
                                 + rand::random::<i32>().abs() % (core::constants::TICKS * 60 * 1),
