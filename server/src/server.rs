@@ -2,7 +2,8 @@ use chrono::Timelike;
 use core::constants::MAXPLAYER;
 use core::types::{Character, ServerPlayer};
 use std::io::ErrorKind;
-use std::net::TcpListener;
+use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::sync::{OnceLock, RwLock};
 use std::time::{Duration, Instant};
 
@@ -13,6 +14,8 @@ use crate::network_manager::NetworkManager;
 use crate::repository::Repository;
 use crate::state::State;
 use crate::{player, populate};
+use flate2::write::ZlibEncoder;
+use flate2::Compression;
 
 static PLAYERS: OnceLock<RwLock<[core::types::ServerPlayer; MAXPLAYER]>> = OnceLock::new();
 
@@ -633,18 +636,174 @@ impl Server {
     }
 
     fn new_player(&mut self, _stream: std::net::TcpStream, _addr: std::net::IpAddr) {
-        // Process new player connection - to be implemented
-        // This is the equivalent of new_player() in C++
+        // Accept and initialize a new player slot. Mirrors server.cpp::new_player
+        let mut stream = _stream;
+        let addr = _addr;
+
+        // Set non-blocking mode on the socket
+        let _ = stream.set_nonblocking(true);
+
+        // Convert IPv4 address to u32 (use 0 for IPv6)
+        let addr_u32: u32 = match addr {
+            std::net::IpAddr::V4(a) => u32::from_be_bytes(a.octets()),
+            _ => 0,
+        };
+
+        // Prepare a fresh ServerPlayer and find a free slot
+        let mut slot: Option<usize> = None;
+        Server::with_players_mut(move |players| {
+            for n in 1..players.len() {
+                if players[n].sock.is_none() {
+                    slot = Some(n);
+                    break;
+                }
+            }
+
+            if slot.is_none() {
+                // No free slot; drop the socket and return
+                log::warn!("new_player: MAXPLAYER reached");
+                return;
+            }
+
+            let n = slot.unwrap();
+
+            // Build fresh player state similar to ServerPlayer::new()
+            let mut newp = core::types::ServerPlayer::new();
+            newp.sock = Some(stream);
+            newp.addr = addr_u32;
+
+            // Initialize compression (deflateInit level 9 equivalent)
+            newp.zs = Some(ZlibEncoder::new(Vec::new(), Compression::best()));
+
+            // Set initial state values
+            newp.state = core::constants::ST_CONNECT;
+            newp.lasttick = Repository::with_globals(|g| g.ticker as u32);
+            newp.lasttick2 = newp.lasttick;
+            newp.prio = 0;
+            newp.ticker_started = 0;
+
+            players[n] = newp;
+
+            log::info!("New connection assigned to slot {}", n);
+        });
     }
 
     fn rec_player(&self, _player_idx: usize) {
-        // Receive data from player - to be implemented
-        // This is the equivalent of rec_player() in C++
+        // Receive incoming bytes from a connected player's socket.
+        let idx = _player_idx;
+        Server::with_players_mut(|players| {
+            if idx >= players.len() {
+                return;
+            }
+
+            // Ensure socket exists
+            if players[idx].sock.is_none() {
+                return;
+            }
+
+            // Prepare slice for reading
+            let in_len = players[idx].in_len;
+            if in_len >= players[idx].inbuf.len() {
+                return;
+            }
+
+            // Borrow socket mutably and read into available buffer
+            if let Some(ref mut sock) = players[idx].sock {
+                match sock.read(&mut players[idx].inbuf[in_len..]) {
+                    Ok(0) => {
+                        // Connection closed by peer
+                        log::info!("Connection closed (recv)");
+                        let cn = players[idx].usnr;
+                        players[idx].sock = None;
+                        players[idx].ltick = 0;
+                        players[idx].rtick = 0;
+                        players[idx].zs = None;
+                        player::plr_logout(cn, idx, crate::enums::LogoutReason::Unknown);
+                    }
+                    Ok(len) => {
+                        players[idx].in_len += len;
+                        Repository::with_globals_mut(|g| {
+                            g.recv += len as i64;
+                        });
+                    }
+                    Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+                        // No data to read now
+                    }
+                    Err(e) => {
+                        log::error!("Connection closed (recv error): {}", e);
+                        let cn = players[idx].usnr;
+                        players[idx].sock = None;
+                        players[idx].ltick = 0;
+                        players[idx].rtick = 0;
+                        players[idx].zs = None;
+                        player::plr_logout(cn, idx, crate::enums::LogoutReason::Unknown);
+                    }
+                }
+            }
+        });
     }
 
     fn send_player(&self, _player_idx: usize) {
-        // Send data to player - to be implemented
-        // This is the equivalent of send_player() in C++
+        // Send pending data from player's output buffer to their socket.
+        let idx = _player_idx;
+        Server::with_players_mut(|players| {
+            if idx >= players.len() {
+                return;
+            }
+            if players[idx].sock.is_none() {
+                return;
+            }
+
+            let iptr = players[idx].iptr;
+            let optr = players[idx].optr;
+            let obuf_len = players[idx].obuf.len();
+
+            let (len, slice_start) = if iptr < optr {
+                (obuf_len - optr, optr)
+            } else {
+                (iptr - optr, optr)
+            };
+
+            if len == 0 {
+                return;
+            }
+
+            if let Some(ref mut sock) = players[idx].sock {
+                // Write the available contiguous slice
+                let end = slice_start + len;
+                let to_send = &players[idx].obuf[slice_start..end.min(players[idx].obuf.len())];
+                match sock.write(to_send) {
+                    Ok(0) => {
+                        log::error!("Connection closed (send, wrote 0)");
+                        let cn = players[idx].usnr;
+                        players[idx].sock = None;
+                        players[idx].ltick = 0;
+                        players[idx].rtick = 0;
+                        players[idx].zs = None;
+                        player::plr_logout(cn, idx, crate::enums::LogoutReason::Unknown);
+                    }
+                    Ok(ret) => {
+                        Repository::with_globals_mut(|g| g.send += ret as i64);
+                        players[idx].optr += ret;
+                        if players[idx].optr >= players[idx].obuf.len() {
+                            players[idx].optr = 0;
+                        }
+                    }
+                    Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+                        // socket not ready for writing
+                    }
+                    Err(e) => {
+                        log::error!("Connection closed (send error): {}", e);
+                        let cn = players[idx].usnr;
+                        players[idx].sock = None;
+                        players[idx].ltick = 0;
+                        players[idx].rtick = 0;
+                        players[idx].zs = None;
+                        player::plr_logout(cn, idx, crate::enums::LogoutReason::Unknown);
+                    }
+                }
+            }
+        });
     }
 }
 
