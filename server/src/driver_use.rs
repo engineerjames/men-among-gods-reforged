@@ -915,7 +915,7 @@ pub fn finish_laby_teleport(cn: usize, nr: usize, exp: usize) -> i32 {
             );
         });
 
-        State::with(|state| {
+        State::with_mut(|state| {
             state.do_give_exp(cn, exp as i32, 0, -1);
         })
     }
@@ -1164,8 +1164,9 @@ pub fn teleport(cn: usize, item_idx: usize) -> i32 {
     for n in 0..20 {
         let spell_idx = Repository::with_characters(|characters| characters[cn].spell[n]);
         if spell_idx != 0 {
-            let is_recall =
-                Repository::with_items(|items| items[spell_idx as usize].temp == SK_RECALL as u16);
+            let is_recall = Repository::with_items(|items| {
+                items[spell_idx as usize].temp == core::constants::SK_RECALL as u16
+            });
             if is_recall {
                 Repository::with_characters_mut(|characters| {
                     characters[cn].spell[n] = 0;

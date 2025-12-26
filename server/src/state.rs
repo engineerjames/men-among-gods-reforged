@@ -7364,7 +7364,7 @@ impl State {
         });
     }
 
-    pub fn do_hurt(&self, cn: usize, co: usize, dam: i32, type_hurt: i32) -> i32 {
+    pub fn do_hurt(&mut self, cn: usize, co: usize, dam: i32, type_hurt: i32) -> i32 {
         use core::constants::*;
 
         // Quick sanity/body check
@@ -7579,7 +7579,7 @@ impl State {
                     core::types::FontColor::Yellow,
                     &format!(
                         "A god reached down and saved {} from the killing blow.\n",
-                        Repository::with_characters(|ch| ch[co].get_name())
+                        Repository::with_characters(|ch| ch[co].get_name().to_string())
                     ),
                 );
                 God::transfer_char(
@@ -7633,7 +7633,7 @@ impl State {
                 core::types::FontColor::Red,
                 &format!(
                     "{} is dead!\n",
-                    Repository::with_characters(|ch| ch[co].get_name())
+                    Repository::with_characters(|ch| ch[co].get_name().to_string())
                 ),
             );
             self.do_character_log(
@@ -7641,7 +7641,7 @@ impl State {
                 core::types::FontColor::Red,
                 &format!(
                     "You killed {}.\n",
-                    Repository::with_characters(|ch| ch[co].get_name())
+                    Repository::with_characters(|ch| ch[co].get_name().to_string())
                 ),
             );
 
@@ -8061,7 +8061,7 @@ impl State {
         ((pts.sqrt() as i32) / 7) + 7
     }
 
-    pub fn do_say(&self, cn: usize, text: &str) {
+    pub fn do_say(&mut self, cn: usize, text: &str) {
         // Rate limiting for players (skip for direct '|' logs)
         if Repository::with_characters(|ch| {
             (ch[cn].flags & CharacterFlags::CF_PLAYER.bits()) != 0 && !text.starts_with('|')

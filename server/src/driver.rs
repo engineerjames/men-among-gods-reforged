@@ -597,7 +597,7 @@ pub fn npc_give(_cn: usize, _co: usize, _in: usize, _money: i32) -> i32 {
 
                     let give_exp = characters[cn].data[51];
                     if give_exp != 0 {
-                        State::with(|state| {
+                        State::with_mut(|state| {
                             state.do_sayx(cn, &format!("Now I'll teach you a bit about life, the world and everything, {}.", characters[co].get_name()));
                             state.do_give_exp(co, give_exp, 0, -1);
                         });
@@ -650,7 +650,9 @@ pub fn npc_give(_cn: usize, _co: usize, _in: usize, _money: i32) -> i32 {
                             cn,
                             &format!(
                                 "I'm still riddling {}; please come back later!\n",
-                                Repository::with_characters(|ch| ch[still as usize].get_name())
+                                Repository::with_characters(|ch| ch[still as usize]
+                                    .get_name()
+                                    .to_string())
                             ),
                         );
                     });
