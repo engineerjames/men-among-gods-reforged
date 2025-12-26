@@ -2585,14 +2585,160 @@ pub fn plr_cmd(nr: usize) {
 // Command handler stubs - to be implemented
 // ============================================================================
 
-/// Handle new login challenge
-fn plr_challenge_newlogin(_nr: usize) {
-    // TODO: Implement challenge for new login
+/// Secret key for xcrypt function (from svr_tick.cpp)
+const SECRET: &[u8] = b"Ifhjf64hH8sa,-#39ddj843tvxcv0434dvsdc40G#34Trefc349534Y5#34trecerr943\
+5#erZt#eA534#5erFtw#Trwec,9345mwrxm gerte-534lMIZDN(/dn8sfn8&DBDB/D&s\
+8efnsd897)DDzD'D'D''Dofs,t0943-rg-gdfg-gdf.t,e95.34u.5retfrh.wretv.56\
+9v4#asf.59m(D)/ND/DDLD;gd+dsa,fw9r,x  OD(98snfsf";
+
+/// Port of `xcrypt` from `svr_tick.cpp`
+/// Encryption function for challenge verification
+fn xcrypt(val: u32) -> u32 {
+    let mut res: u32 = 0;
+
+    res = res.wrapping_add(SECRET[(val & 255) as usize] as u32);
+    res = res.wrapping_add((SECRET[((val >> 8) & 255) as usize] as u32) << 8);
+    res = res.wrapping_add((SECRET[((val >> 16) & 255) as usize] as u32) << 16);
+    res = res.wrapping_add((SECRET[((val >> 24) & 255) as usize] as u32) << 24);
+
+    res ^= 0x5a7ce52e;
+
+    res
 }
 
-/// Handle login challenge response
-fn plr_challenge(_nr: usize) {
-    // TODO: Implement challenge verification
+/// Port of `send_mod` from `svr_tick.cpp`
+/// Sends mod data to the client (8 packets of 15 bytes each)
+fn send_mod(nr: usize) {
+    // TODO: Implement mod sending when mod data is available
+    // For now, this is a stub - mod data would be loaded from somewhere
+    // In the original code, this sends 8 SV_MOD packets with mod data
+    let _mod_data: [u8; 120] = [0; 120]; // placeholder
+
+    for n in 0..8u8 {
+        let mut buf: [u8; 16] = [0; 16];
+        buf[0] = core::constants::SV_MOD1 + n;
+        // Copy 15 bytes of mod data (placeholder zeros for now)
+        // buf[1..16].copy_from_slice(&mod_data[(n as usize * 15)..((n as usize + 1) * 15)]);
+
+        NetworkManager::with(|network| {
+            network.csend(nr, &buf, 16);
+        });
+    }
+}
+
+/// Port of `plr_challenge_newlogin` from `svr_tick.cpp`
+/// Handle new login challenge - generates a random challenge and sends it to the client
+fn plr_challenge_newlogin(nr: usize) {
+    use rand::Rng;
+
+    // Generate random challenge value (0x3fffffff max, ensure non-zero)
+    let mut tmp = rand::thread_rng().gen_range(1..0x3fffffff_u32);
+    if tmp == 0 {
+        tmp = 42;
+    }
+
+    let ticker = Repository::with_globals(|globals| globals.ticker as u32);
+
+    Server::with_players_mut(|players| {
+        players[nr].challenge = tmp;
+        players[nr].state = core::constants::ST_NEW_CHALLENGE;
+        players[nr].lasttick = ticker;
+    });
+
+    // Send challenge to client
+    let mut buf: [u8; 16] = [0; 16];
+    buf[0] = core::constants::SV_CHALLENGE;
+    buf[1..5].copy_from_slice(&tmp.to_le_bytes());
+
+    NetworkManager::with(|network| {
+        network.csend(nr, &buf, 16);
+    });
+
+    log::debug!(
+        "Player {} challenge_newlogin: sent challenge {:08X}",
+        nr,
+        tmp
+    );
+
+    send_mod(nr);
+}
+
+/// Port of `plr_challenge` from `svr_tick.cpp`
+/// Handle login challenge response - verifies the client's response
+fn plr_challenge(nr: usize) {
+    let (challenge, state) =
+        Server::with_players(|players| (players[nr].challenge, players[nr].state));
+
+    // Read challenge response, version, and race from inbuf
+    let (response, version, race) = Server::with_players(|players| {
+        let response = u32::from_le_bytes([
+            players[nr].inbuf[1],
+            players[nr].inbuf[2],
+            players[nr].inbuf[3],
+            players[nr].inbuf[4],
+        ]);
+        let version = i32::from_le_bytes([
+            players[nr].inbuf[5],
+            players[nr].inbuf[6],
+            players[nr].inbuf[7],
+            players[nr].inbuf[8],
+        ]);
+        let race = i32::from_le_bytes([
+            players[nr].inbuf[9],
+            players[nr].inbuf[10],
+            players[nr].inbuf[11],
+            players[nr].inbuf[12],
+        ]);
+        (response, version, race)
+    });
+
+    // Store version and race
+    Server::with_players_mut(|players| {
+        players[nr].version = version;
+        players[nr].race = race;
+    });
+
+    // Verify the challenge response
+    if response != xcrypt(challenge) {
+        log::warn!("Player {} challenge failed", nr);
+        let usnr = Server::with_players(|players| players[nr].usnr);
+        plr_logout(usnr, nr, enums::LogoutReason::ChallengeFailed);
+        return;
+    }
+
+    let ticker = Repository::with_globals(|globals| globals.ticker as u32);
+
+    // Update state based on current state
+    match state {
+        state if state == core::constants::ST_NEW_CHALLENGE => {
+            Server::with_players_mut(|players| {
+                players[nr].state = core::constants::ST_NEWLOGIN;
+                players[nr].lasttick = ticker;
+            });
+        }
+        state if state == core::constants::ST_LOGIN_CHALLENGE => {
+            Server::with_players_mut(|players| {
+                players[nr].state = core::constants::ST_LOGIN;
+                players[nr].lasttick = ticker;
+            });
+        }
+        state if state == core::constants::ST_CHALLENGE => {
+            Server::with_players_mut(|players| {
+                players[nr].state = core::constants::ST_NORMAL;
+                players[nr].lasttick = ticker;
+                players[nr].ltick = 0;
+            });
+        }
+        _ => {
+            log::warn!(
+                "Player {} challenge reply at unexpected state {}",
+                nr,
+                state
+            );
+        }
+    }
+
+    log::debug!("Player {} challenge ok", nr);
 }
 
 /// Handle existing login challenge
@@ -2600,24 +2746,120 @@ fn plr_challenge_login(_nr: usize) {
     // TODO: Implement challenge for existing login
 }
 
-/// Handle unique ID request
-fn plr_unique(_nr: usize) {
-    // TODO: Implement unique ID handling
+/// Port of `plr_unique` from `svr_tick.cpp`
+/// Handle unique ID request - receives or generates a unique client identifier
+fn plr_unique(nr: usize) {
+    // Read unique ID from inbuf (8 bytes as u64)
+    let unique = Server::with_players(|players| {
+        u64::from_le_bytes([
+            players[nr].inbuf[1],
+            players[nr].inbuf[2],
+            players[nr].inbuf[3],
+            players[nr].inbuf[4],
+            players[nr].inbuf[5],
+            players[nr].inbuf[6],
+            players[nr].inbuf[7],
+            players[nr].inbuf[8],
+        ])
+    });
+
+    Server::with_players_mut(|players| {
+        players[nr].unique = unique;
+    });
+
+    log::debug!("Player {} received unique {:016X}", nr, unique);
+
+    // If client doesn't have a unique ID, generate one
+    if unique == 0 {
+        let new_unique = Repository::with_globals_mut(|globals| {
+            globals.unique = globals.unique.wrapping_add(1);
+            globals.unique
+        });
+
+        Server::with_players_mut(|players| {
+            players[nr].unique = new_unique;
+        });
+
+        // Send the new unique ID back to the client
+        let mut buf: [u8; 16] = [0; 16];
+        buf[0] = core::constants::SV_UNIQUE;
+        buf[1..9].copy_from_slice(&new_unique.to_le_bytes());
+
+        NetworkManager::with(|network| {
+            network.xsend(nr, &buf, 9);
+        });
+
+        log::debug!("Player {} sent unique {:016X}", nr, new_unique);
+    }
 }
 
-/// Handle password change
-fn plr_passwd(_nr: usize) {
-    // TODO: Implement password handling
+/// Port of `plr_passwd` from `svr_tick.cpp`
+/// Handle password change - receives password hash from client
+fn plr_passwd(nr: usize) {
+    // Copy 15 bytes of password from inbuf to player passwd
+    Server::with_players_mut(|players| {
+        players[nr].passwd[..15].copy_from_slice(&players[nr].inbuf[1..16]);
+        players[nr].passwd[15] = 0; // null terminate
+    });
+
+    // Calculate hash for logging (same algorithm as original)
+    let hash = Server::with_players(|players| {
+        let mut hash: u32 = 0;
+        for n in 0..15 {
+            if players[nr].passwd[n] == 0 {
+                break;
+            }
+            hash ^= (players[nr].passwd[n] as u32) << (n * 2);
+        }
+        hash
+    });
+
+    log::debug!("Player {} received passwd hash {}", nr, hash);
 }
 
-/// Handle performance report from client
-fn plr_perf_report(_nr: usize) {
-    // TODO: Implement performance report handling
+/// Port of `plr_perf_report` from `svr_tick.cpp`
+/// Handle performance report from client - updates timeout
+fn plr_perf_report(nr: usize) {
+    // Read performance metrics from inbuf (unused but parsed for completeness)
+    let (_ticksize, _skip, _idle) = Server::with_players(|players| {
+        let ticksize = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]);
+        let skip = u16::from_le_bytes([players[nr].inbuf[3], players[nr].inbuf[4]]);
+        let idle = u16::from_le_bytes([players[nr].inbuf[5], players[nr].inbuf[6]]);
+        (ticksize, skip, idle)
+    });
+
+    // Update timeout - this is the important part
+    let ticker = Repository::with_globals(|globals| globals.ticker as u32);
+    Server::with_players_mut(|players| {
+        players[nr].lasttick = ticker;
+    });
+
+    // Optional: log performance metrics (commented out in original)
+    // log::trace!("Player {} perf: ticksize={}, skip={}%, idle={}%", nr, ticksize, skip, idle);
 }
 
-/// Handle look command
-fn plr_cmd_look(_nr: usize, _autoflag: bool) {
-    // TODO: Implement look at character/NPC
+/// Port of `plr_cmd_look` from `svr_tick.cpp`
+/// Handle look command - look at character/NPC or depot
+fn plr_cmd_look(nr: usize, autoflag: bool) {
+    let (cn, co) = Server::with_players(|players| {
+        let co = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]) as usize;
+        (players[nr].usnr, co)
+    });
+
+    // Check if looking at depot (high bit set) or character
+    if (co & 0x8000) != 0 {
+        // Looking at depot slot
+        let depot_slot = co & 0x7fff;
+        State::with(|state| {
+            state.do_look_depot(cn, depot_slot);
+        });
+    } else {
+        // Looking at character
+        let autoflag_int = if autoflag { 1 } else { 0 };
+        State::with_mut(|state| {
+            state.do_look_char(cn, co, 0, autoflag_int, 0);
+        });
+    }
 }
 
 /// Handle set user data command
