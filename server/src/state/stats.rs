@@ -1201,32 +1201,6 @@ impl State {
         self.do_update_char(cn);
     }
 
-    /// Reset player status based on facing direction (port of `plr_reset_status`)
-    pub(crate) fn plr_reset_status(&self, cn: usize) {
-        use core::constants::*;
-        Repository::with_characters_mut(|ch| {
-            ch[cn].status = match ch[cn].dir {
-                DX_UP => 0,
-                DX_DOWN => 1,
-                DX_LEFT => 2,
-                DX_RIGHT => 3,
-                DX_LEFTUP => 4,
-                DX_LEFTDOWN => 5,
-                DX_RIGHTUP => 6,
-                DX_RIGHTDOWN => 7,
-                _ => {
-                    log::error!(
-                        "plr_reset_status (stats.rs): illegal value for dir: {} for char {}",
-                        ch[cn].dir,
-                        cn
-                    );
-                    ch[cn].dir = DX_UP;
-                    0
-                }
-            };
-        });
-    }
-
     /// Port of `do_raise_attrib(int cn, int nr)` from `svr_do.cpp`
     ///
     /// Attempts to raise an attribute using available character points.
@@ -1323,6 +1297,8 @@ impl State {
         Repository::with_characters_mut(|ch| {
             ch[cn].points -= points_needed;
             ch[cn].end[0] += 1;
+
+            self.do_update_char(cn);
         });
 
         true
@@ -1354,6 +1330,8 @@ impl State {
         Repository::with_characters_mut(|ch| {
             ch[cn].points -= points_needed;
             ch[cn].mana[0] += 1;
+
+            self.do_update_char(cn);
         });
 
         true
@@ -1426,6 +1404,8 @@ impl State {
 
         Repository::with_characters_mut(|ch| {
             ch[cn].points_tot -= points_lost;
+
+            self.do_update_char(cn);
         });
 
         true
@@ -1453,6 +1433,7 @@ impl State {
 
         Repository::with_characters_mut(|ch| {
             ch[cn].points_tot -= points_lost;
+            self.do_update_char(cn);
         });
 
         true
@@ -1464,8 +1445,6 @@ impl State {
     /// Awards HP, endurance, and mana based on character kindred.
     /// Announces level gains and has an NPC herald announce the new rank.
     pub(crate) fn do_check_new_level(&self, cn: usize) {
-        use core::constants::*;
-
         Repository::with_characters_mut(|characters| {
             // Only for players
             if (characters[cn].flags & CharacterFlags::CF_PLAYER.bits()) == 0 {
@@ -1477,16 +1456,22 @@ impl State {
             // Check if current rank is less than new rank
             if (characters[cn].data[45] as usize) < rank {
                 let (hp, end, mana) = if (characters[cn].kindred
-                    & ((KIN_TEMPLAR | KIN_ARCHTEMPLAR) as i32))
+                    & ((core::constants::KIN_TEMPLAR | core::constants::KIN_ARCHTEMPLAR) as i32))
                     != 0
                 {
                     (15, 10, 5)
                 } else if (characters[cn].kindred
-                    & ((KIN_MERCENARY | KIN_SORCERER | KIN_WARRIOR | KIN_SEYAN_DU) as i32))
+                    & ((core::constants::KIN_MERCENARY
+                        | core::constants::KIN_SORCERER
+                        | core::constants::KIN_WARRIOR
+                        | core::constants::KIN_SEYAN_DU) as i32))
                     != 0
                 {
                     (10, 10, 10)
-                } else if (characters[cn].kindred & ((KIN_HARAKIM | KIN_ARCHHARAKIM) as i32)) != 0 {
+                } else if (characters[cn].kindred
+                    & ((core::constants::KIN_HARAKIM | core::constants::KIN_ARCHHARAKIM) as i32))
+                    != 0
+                {
                     (5, 10, 15)
                 } else {
                     return; // Unknown kindred, don't proceed
@@ -1522,16 +1507,16 @@ impl State {
                 }
 
                 // Find an NPC to announce the rank
-                let temp = if (characters[cn].kindred & KIN_PURPLE as i32) != 0 {
-                    CT_PRIEST
+                let temp = if (characters[cn].kindred & (core::constants::KIN_PURPLE as i32)) != 0 {
+                    core::constants::CT_PRIEST
                 } else {
-                    CT_LGUARD
+                    core::constants::CT_LGUARD
                 };
 
                 // Find a character with appropriate template
                 let mut herald_cn = 0;
-                for n in 1..MAXCHARS {
-                    if characters[n].used != USE_ACTIVE {
+                for n in 1..core::constants::MAXCHARS {
+                    if characters[n].used != core::constants::USE_ACTIVE {
                         continue;
                     }
                     if (characters[n].flags & CharacterFlags::CF_BODY.bits()) != 0 {
@@ -1941,7 +1926,7 @@ impl State {
                 })
                 && noexp == 0
             {
-                let tmp = self.get_score(co);
+                let tmp = self.do_char_score(co);
                 let rank =
                     helpers::points2rank(
                         Repository::with_characters(|ch| ch[co].points_tot as u32) as u32

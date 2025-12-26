@@ -4,8 +4,8 @@ use rand::Rng;
 
 use crate::effect::EffectManager;
 use crate::god::God;
-use crate::helpers;
 use crate::repository::Repository;
+use crate::{helpers, player};
 
 use super::State;
 
@@ -455,7 +455,7 @@ impl State {
             }
         });
 
-        self.plr_reset_status(co);
+        player::plr_reset_status(co);
 
         // Apply permanent stat loss if not a god and no guardian angel
         let is_god =
@@ -479,7 +479,7 @@ impl State {
 
         // Setup the grave (body)
         Repository::with_characters_mut(|characters| {
-            self.plr_reset_status(cc);
+            player::plr_reset_status(cc);
 
             characters[cc].player = 0;
             characters[cc].flags = CharacterFlags::CF_BODY.bits();
@@ -517,8 +517,7 @@ impl State {
             globals.npcs_died += 1;
         });
 
-        // TODO: Implement plr_reset_status
-        log::info!("TODO: Reset NPC status for character {}", co);
+        player::plr_reset_status(co);
 
         // Check for USURP flag (player controlling NPC)
         let usurp_player = Repository::with_characters(|characters| {

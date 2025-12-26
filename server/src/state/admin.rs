@@ -298,17 +298,68 @@ impl State {
     /// Port of `do_look_player_inventory(int cn, char* cv)` from `svr_do.cpp`
     ///
     /// Debug/admin command to view another player's inventory contents.
-    pub(crate) fn do_look_player_inventory(&self, cn: usize, cv: &str) {
-        // TODO: Implement admin inventory viewing
+    /// Lists all items in the target character's inventory (40 slots) with item IDs and names.
+    ///
+    /// # Arguments
+    /// * `cn` - Character issuing the command (admin/god)
+    /// * `cv` - Character ID string to look up
+    pub fn do_look_player_inventory(&self, cn: usize, cv: &str) {
+        // Parse character ID from string
+        let co = match cv.trim().parse::<usize>() {
+            Ok(id) => id,
+            Err(_) => {
+                self.do_character_log(cn, FontColor::Red, &format!("Bad character: {}!\n", cv));
+                return;
+            }
+        };
+
+        // Validate character ID
+        if co == 0 || co >= core::constants::MAXCHARS {
+            self.do_character_log(cn, FontColor::Red, &format!("Bad character: {}!\n", cv));
+            return;
+        }
+
+        let (co_name, inventory_items) = Repository::with_characters(|ch| {
+            let name = String::from_utf8_lossy(&ch[co].name).to_string();
+            let mut items = Vec::new();
+
+            for n in 0..40 {
+                let item_idx = ch[co].item[n];
+                if item_idx != 0 {
+                    let item_name = Repository::with_items(|it| {
+                        String::from_utf8_lossy(&it[item_idx as usize].name).to_string()
+                    });
+                    items.push((item_idx, item_name));
+                }
+            }
+
+            (name, items)
+        });
+
         self.do_character_log(
             cn,
-            FontColor::Green,
-            &format!("Looking at inventory for character: {}\n", cv),
+            FontColor::Yellow,
+            &format!("Inventory contents for : {}\n", co_name),
         );
-        log::info!(
-            "TODO: Implement do_look_player_inventory for cn={}, cv={}",
+        self.do_character_log(
             cn,
-            cv
+            FontColor::Yellow,
+            "-----------------------------------\n",
+        );
+
+        for (item_idx, item_name) in &inventory_items {
+            self.do_character_log(
+                cn,
+                FontColor::Yellow,
+                &format!("{:6}: {}\n", item_idx, item_name),
+            );
+        }
+
+        self.do_character_log(cn, FontColor::Yellow, " \n");
+        self.do_character_log(
+            cn,
+            FontColor::Yellow,
+            &format!("Total : {} items.\n", inventory_items.len()),
         );
     }
 

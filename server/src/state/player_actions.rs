@@ -238,18 +238,133 @@ impl State {
     /// # Arguments
     /// * `cn` - Character asking about last seen time
     /// * `target_name` - Name or ID of character to look up
-    pub(crate) fn do_seen(&self, cn: usize, target_name: &str) {
-        // TODO: Implement character database lookup for last seen time
-        self.do_character_log(
-            cn,
-            FontColor::Green,
-            &format!("Looking up last seen time for: {}\n", target_name),
-        );
-        log::info!(
-            "TODO: Implement do_seen fully for cn={}, target={}",
-            cn,
-            target_name
-        );
+    pub fn do_seen(&self, cn: usize, target_name: &str) {
+        if target_name.is_empty() {
+            self.do_character_log(cn, core::types::FontColor::Red, "When was WHO last seen?\n");
+            return;
+        }
+
+        Repository::with_characters(|characters| {
+            // Numeric lookup only for deities
+            let co = if target_name.chars().next().unwrap_or('a').is_ascii_digit() {
+                if (characters[cn].flags
+                    & (CharacterFlags::CF_IMP | CharacterFlags::CF_GOD | CharacterFlags::CF_USURP)
+                        .bits())
+                    == 0
+                {
+                    0
+                } else {
+                    target_name.parse::<usize>().unwrap_or(0)
+                }
+            } else {
+                // TODO: Implement do_lookup_char_self - for now just return 0
+                log::info!(
+                    "TODO: Implement do_lookup_char_self for target_name={}",
+                    target_name
+                );
+                0
+            };
+
+            if co == 0 {
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("I've never heard of {}.\n", target_name),
+                );
+                return;
+            }
+
+            if (characters[co].flags & CharacterFlags::CF_PLAYER.bits()) == 0 {
+                let co_name = String::from_utf8_lossy(&characters[co].name)
+                    .trim_matches('\0')
+                    .to_string();
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("{} is not a player.\n", co_name),
+                );
+                return;
+            }
+
+            if (characters[cn].flags & CharacterFlags::CF_GOD.bits()) == 0
+                && (characters[co].flags & CharacterFlags::CF_GOD.bits()) != 0
+            {
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    "No one knows when the gods where last seen.\n",
+                );
+                return;
+            }
+
+            if (characters[cn].flags & (CharacterFlags::CF_IMP | CharacterFlags::CF_GOD).bits())
+                != 0
+            {
+                // God view: detailed timestamp
+                let last = std::cmp::max(characters[co].login_date, characters[co].logout_date);
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs() as i32;
+
+                let co_name = String::from_utf8_lossy(&characters[co].name)
+                    .trim_matches('\0')
+                    .to_string();
+
+                // Format timestamps
+                use chrono::{TimeZone, Utc};
+                let last_dt = Utc.timestamp_opt(last as i64, 0).unwrap();
+                let now_dt = Utc.timestamp_opt(now as i64, 0).unwrap();
+
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!(
+                        "{} was last seen on {} (time now: {})\n",
+                        co_name,
+                        last_dt.format("%Y-%m-%d %H:%M:%S"),
+                        now_dt.format("%Y-%m-%d %H:%M:%S")
+                    ),
+                );
+
+                if characters[co].used == core::constants::USE_ACTIVE
+                    && (characters[co].flags & CharacterFlags::CF_INVISIBLE.bits()) == 0
+                {
+                    self.do_character_log(
+                        cn,
+                        core::types::FontColor::Yellow,
+                        &format!("PS: {} is online right now!\n", co_name),
+                    );
+                }
+            } else {
+                // Normal player view: relative time
+                let last_date =
+                    (std::cmp::max(characters[co].login_date, characters[co].logout_date)
+                        / (24 * 3600)) as i32;
+                let current_date = (std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs() as i32)
+                    / (24 * 3600);
+                let days = current_date - last_date;
+
+                let when = match days {
+                    0 => "earlier today".to_string(),
+                    1 => "yesterday".to_string(),
+                    2 => "the day before yesterday".to_string(),
+                    _ => format!("{} days ago", days),
+                };
+
+                let co_name = String::from_utf8_lossy(&characters[co].name)
+                    .trim_matches('\0')
+                    .to_string();
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!("{} was last seen {}.\n", co_name, when),
+                );
+            }
+        });
     }
 
     /// Port of `do_follow(int cn, char* name)` from `svr_do.cpp`

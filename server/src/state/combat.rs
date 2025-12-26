@@ -139,12 +139,11 @@ impl State {
     ///
     /// Handle looting a corpse.
     pub(crate) fn do_ransack_corpse(&self, cn: usize, co: usize, msg: &str) {
-        use core::constants::{PL_BELT, SK_SENSE};
-
         let mut rng = rand::thread_rng();
 
-        let sense_skill =
-            Repository::with_characters(|characters| characters[cn].skill[SK_SENSE][5] as i32);
+        let sense_skill = Repository::with_characters(|characters| {
+            characters[cn].skill[core::constants::SK_SENSE][5] as i32
+        });
 
         // Check for unique weapon in right hand
         let rhand = Repository::with_characters(|characters| {
@@ -212,7 +211,7 @@ impl State {
             }
 
             // belt / placement check
-            if (placement & PL_BELT) != 0 && sense_skill > rng.gen_range(0..200) {
+            if (placement & core::constants::PL_BELT) != 0 && sense_skill > rng.gen_range(0..200) {
                 let message = msg.replacen("%s", "a magical belt", 1);
                 self.do_character_log(cn, FontColor::Yellow, &message);
                 continue;
@@ -298,37 +297,72 @@ impl State {
     /// # Arguments
     /// * `cn` - Attacker character index
     /// * `co` - Victim character index
-    pub(crate) fn remember_pvp(&self, cn: usize, co: usize) {
+    pub fn remember_pvp(&self, cn: usize, co: usize) {
         Repository::with_characters_mut(|characters| {
-            let (cn_x, cn_y, co_is_player) = {
-                let cn_ch = &characters[cn];
-                let co_ch = &characters[co];
-                (
-                    cn_ch.x,
-                    cn_ch.y,
-                    (co_ch.flags & CharacterFlags::CF_PLAYER.bits()) != 0,
-                )
-            };
+            Repository::with_map(|map| {
+                let m = (characters[cn].x as i32
+                    + characters[cn].y as i32 * core::constants::SERVER_MAPX as i32)
+                    as usize;
 
-            if !co_is_player {
-                return;
-            }
+                // Arena attacks don't count
+                if (map[m].flags & core::constants::MF_ARENA as u64) != 0 {
+                    return;
+                }
 
-            // Check if in arena
-            let in_arena = Repository::with_map(|map| {
-                let idx = (cn_x + cn_y * core::constants::SERVER_MAPX as i16) as usize;
-                (map[idx].flags & core::constants::MF_ARENA as u64) != 0
+                // Sanity checks for cn
+                if cn == 0 || cn >= core::constants::MAXCHARS as usize || characters[cn].used == 0 {
+                    return;
+                }
+
+                let mut cn_actual = cn;
+
+                // Substitute master for companion
+                if (characters[cn].flags & CharacterFlags::CF_BODY.bits()) != 0 {
+                    cn_actual = characters[cn].data[core::constants::CHD_MASTER] as usize;
+                }
+
+                // Must be a valid player
+                if cn_actual == 0 || cn_actual >= core::constants::MAXCHARS as usize {
+                    return;
+                }
+                if (characters[cn_actual].flags & CharacterFlags::CF_PLAYER.bits()) == 0 {
+                    return;
+                }
+                if (characters[cn_actual].kindred & core::constants::KIN_PURPLE as i32) == 0 {
+                    return;
+                }
+
+                // Sanity checks for co
+                if co == 0 || co >= core::constants::MAXCHARS as usize || characters[co].used == 0 {
+                    return;
+                }
+
+                let mut co_actual = co;
+
+                // Substitute master for companion
+                if (characters[co].flags & CharacterFlags::CF_BODY.bits()) != 0 {
+                    co_actual = characters[co].data[core::constants::CHD_MASTER] as usize;
+                }
+
+                // Must be a valid player
+                if co_actual == 0 || co_actual >= core::constants::MAXCHARS as usize {
+                    return;
+                }
+                if (characters[co_actual].flags & CharacterFlags::CF_PLAYER.bits()) == 0 {
+                    return;
+                }
+
+                // Can't attack self
+                if cn_actual == co_actual {
+                    return;
+                }
+
+                // Record the attack
+                // TODO: Get actual ticker value from Server/State
+                let ticker = 0; // Placeholder
+                characters[cn_actual].data[core::constants::CHD_ATTACKTIME] = ticker;
+                characters[cn_actual].data[core::constants::CHD_ATTACKVICT] = co_actual as i32;
             });
-
-            if in_arena {
-                return;
-            }
-
-            // Store victim and time in data fields
-            // Original uses data[94], data[95], data[96] for tracking
-            characters[cn].data[94] = co as i32;
-            // TODO: Store current game time in data[95]
-            characters[cn].data[95] = 0; // Placeholder for time
         });
     }
 

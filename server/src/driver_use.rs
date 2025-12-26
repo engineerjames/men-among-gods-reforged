@@ -2726,9 +2726,14 @@ pub fn use_mine(cn: usize, item_idx: usize) -> i32 {
             item_damage_weapon(cn, str * 10);
             str /= 4;
         }
-        // TODO: Implement char_play_sound and do_area_sound
-        // State::char_play_sound(cn, 11, -150, 0);
-        // State::do_area_sound(cn, 0, characters[cn].x, characters[cn].y, 11);
+        State::char_play_sound(cn, 11, -150, 0);
+        State::do_area_sound(
+            cn,
+            0,
+            Repository::with_characters(|characters| characters[cn].x as i32),
+            Repository::with_characters(|characters| characters[cn].y as i32),
+            11,
+        );
     } else {
         str /= 10;
         let low_health = Repository::with_characters_mut(|characters| {

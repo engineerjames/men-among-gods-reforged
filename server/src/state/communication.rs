@@ -1,6 +1,7 @@
 use crate::driver::Driver;
 use crate::god::God;
 use crate::helpers;
+use crate::network_manager::NetworkManager;
 use crate::repository::Repository;
 use crate::state::State;
 use core::constants::{CharacterFlags, MAXCHARS};
@@ -167,7 +168,7 @@ impl State {
     /// * `godflag` - If set, bypasses visibility checks
     /// * `autoflag` - If set, suppresses descriptive text (for repeated/automatic looks)
     /// * `lootflag` - If set, allows looking at corpses
-    pub(crate) fn do_look_char(
+    pub fn do_look_char(
         &mut self,
         cn: usize,
         co: usize,
@@ -201,7 +202,7 @@ impl State {
         }
 
         // Check visibility
-        let visibility = if godflag != 0 || is_body {
+        let mut visibility = if godflag != 0 || is_body {
             1
         } else {
             self.do_char_can_see(cn, co)
@@ -212,8 +213,12 @@ impl State {
         }
 
         // Handle text descriptions and logging (only if not autoflag)
-        let is_merchant = Repository::with_characters(|ch| {
-            ch[co].flags & CharacterFlags::CF_MERCHANT.bits() != 0
+        let (is_merchant, co_flags, co_temp) = Repository::with_characters(|ch| {
+            (
+                ch[co].flags & CharacterFlags::CF_MERCHANT.bits() != 0,
+                ch[co].flags,
+                ch[co].temp,
+            )
         });
 
         if autoflag == 0 && !is_merchant && !is_body {
@@ -333,42 +338,507 @@ impl State {
 
             if co_is_player && co_data14 != 0 && !co_is_god {
                 let killer = if co_data15 == 0 {
-                    "something".to_string()
-                } else {
+                    "unknown causes".to_string()
+                } else if co_data15 >= core::constants::MAXCHARS as i32 {
+                    let killer_idx = (co_data15 & 0xFFFF) as usize;
                     Repository::with_characters(|ch| {
-                        if co_data15 as usize >= MAXCHARS || ch[co_data15 as usize].used == 0 {
-                            "something".to_string()
-                        } else {
-                            String::from_utf8_lossy(&ch[co_data15 as usize].name)
-                                .trim_matches('\0')
-                                .to_string()
-                        }
+                        String::from_utf8_lossy(&ch[killer_idx].reference).to_string()
                     })
+                } else {
+                    // TODO: Access ch_temp for non-character killer names
+                    "unknown killer".to_string()
                 };
 
-                let victim_name = Repository::with_characters(|ch| {
-                    String::from_utf8_lossy(&ch[co].name)
-                        .trim_matches('\0')
-                        .to_string()
-                });
-
-                let minute = co_data16 / 60;
-                let hour = minute / 60;
-                let minute_remainder = minute % 60;
+                let area = {
+                    let map_x = co_data17 % core::constants::SERVER_MAPX;
+                    let map_y = co_data17 / core::constants::SERVER_MAPX;
+                    // TODO: Implement get_area_m function
+                    format!("area at {},{}", map_x, map_y)
+                };
 
                 self.do_character_log(
                     cn,
                     FontColor::Yellow,
                     &format!(
-                        "{} died {}h {}m ago, killed by {}. Level: {}\n",
-                        victim_name, hour, minute_remainder, killer, co_data17
+                        "{} died {} times, the last time on the day {} of the year {}, killed by {} {}.\n",
+                        co_reference,
+                        co_data14,
+                        co_data16 % 300,
+                        co_data16 / 300,
+                        killer,
+                        area
                     ),
                 );
             }
+
+            // Show "saved from death" count
+            let co_data44 = Repository::with_characters(|ch| ch[co].data[44]);
+            if co_is_player && co_data44 != 0 && !co_is_god {
+                self.do_character_log(
+                    cn,
+                    FontColor::Yellow,
+                    &format!(
+                        "{} was saved from death {} times.\n",
+                        co_reference, co_data44
+                    ),
+                );
+            }
+
+            // Show Purple of Honor status
+            let (co_is_poh, co_is_poh_leader) = Repository::with_characters(|ch| {
+                (
+                    ch[co].flags & CharacterFlags::CF_POH.bits() != 0,
+                    ch[co].flags & CharacterFlags::CF_POH_LEADER.bits() != 0,
+                )
+            });
+
+            if co_is_player && co_is_poh {
+                if co_is_poh_leader {
+                    self.do_character_log(
+                        cn,
+                        FontColor::Red,
+                        &format!("{} is a Leader among the Purples of Honor.\n", co_reference),
+                    );
+                } else {
+                    self.do_character_log(
+                        cn,
+                        FontColor::Red,
+                        &format!("{} is a Purple of Honor.\n", co_reference),
+                    );
+                }
+            }
+
+            // Show custom text[3] (player description/title)
+            let co_text3 = Repository::with_characters(|ch| {
+                String::from_utf8_lossy(&ch[co].text[3]).to_string()
+            });
+
+            if !co_text3.is_empty() && co_is_player {
+                self.do_character_log(cn, FontColor::Yellow, &format!("{}\n", co_text3));
+            }
         }
 
-        // TODO: Merchant/corpse shop viewing implementation would continue here
-        // This is the complete player information viewing portion
+        // Get player_id for sending packets
+        let player_id = Repository::with_characters(|ch| ch[cn].player);
+        if player_id == 0 {
+            return;
+        }
+
+        // If visibility > 75, obscure equipment details
+        if visibility > 75 {
+            visibility = 100;
+        }
+
+        // Send SV_LOOK1 packet (main equipment slots)
+        let mut buf = [0u8; 16];
+        buf[0] = core::constants::SV_LOOK1;
+
+        if visibility <= 75 {
+            let worn_sprites = Repository::with_characters(|ch| {
+                let mut sprites = [0u16; 7];
+                let worn_indices = [0, 2, 3, 5, 6, 7, 8];
+                for (i, &slot) in worn_indices.iter().enumerate() {
+                    if ch[co].worn[slot] != 0 {
+                        sprites[i] = Repository::with_items(|items| {
+                            items[ch[co].worn[slot] as usize].sprite[0] as u16
+                        });
+                    }
+                }
+                sprites
+            });
+
+            for (i, sprite) in worn_sprites.iter().enumerate() {
+                let offset = 1 + i * 2;
+                buf[offset] = (*sprite & 0xFF) as u8;
+                buf[offset + 1] = (*sprite >> 8) as u8;
+            }
+        } else {
+            // Obscured - use sprite 35 for all slots
+            for i in 0..7 {
+                let offset = 1 + i * 2;
+                buf[offset] = 35;
+                buf[offset + 1] = 0;
+            }
+        }
+        buf[15] = autoflag as u8;
+
+        NetworkManager::with(|network| {
+            network.xsend(player_id as usize, &buf, 16);
+        });
+
+        // Send SV_LOOK2 packet
+        buf[0] = core::constants::SV_LOOK2;
+
+        if visibility <= 75 {
+            let (worn9, worn10, sprite, points_tot, hp5, end5, mana5, a_hp, a_end, a_mana) =
+                Repository::with_characters(|ch| {
+                    let w9 = if ch[co].worn[9] != 0 {
+                        Repository::with_items(|items| items[ch[co].worn[9] as usize].sprite[0])
+                    } else {
+                        0
+                    };
+                    let w10 = if ch[co].worn[10] != 0 {
+                        Repository::with_items(|items| items[ch[co].worn[10] as usize].sprite[0])
+                    } else {
+                        0
+                    };
+                    (
+                        w9,
+                        w10,
+                        ch[co].sprite,
+                        ch[co].points_tot,
+                        ch[co].hp[5],
+                        ch[co].end[5],
+                        ch[co].mana[5],
+                        ch[co].a_hp,
+                        ch[co].a_end,
+                        ch[co].a_mana,
+                    )
+                });
+
+            buf[1] = (worn9 & 0xFF) as u8;
+            buf[2] = (worn9 >> 8) as u8;
+            buf[13] = (worn10 & 0xFF) as u8;
+            buf[14] = (worn10 >> 8) as u8;
+
+            buf[3] = (sprite & 0xFF) as u8;
+            buf[4] = (sprite >> 8) as u8;
+
+            let points_bytes = points_tot.to_le_bytes();
+            buf[5..9].copy_from_slice(&points_bytes);
+
+            // Apply random variation if visibility is poor
+            let (hp_diff, end_diff, mana_diff) = if visibility > 75 {
+                let mut rng = rand::thread_rng();
+                let hp_d = hp5 / 2 - rng.gen_range(0..=hp5);
+                let end_d = end5 / 2 - rng.gen_range(0..=end5);
+                let mana_d = mana5 / 2 - rng.gen_range(0..=mana5);
+                (hp_d, end_d, mana_d)
+            } else {
+                (0, 0, 0)
+            };
+
+            let hp_display = ((hp5 + hp_diff) as u32).to_le_bytes();
+            buf[9..13].copy_from_slice(&hp_display);
+        } else {
+            // Obscured
+            buf[1] = 35;
+            buf[2] = 0;
+            buf[13] = 35;
+            buf[14] = 0;
+        }
+
+        NetworkManager::with(|network| {
+            network.xsend(player_id as usize, &buf, 16);
+        });
+
+        // Send SV_LOOK3 packet
+        buf[0] = core::constants::SV_LOOK3;
+
+        let (end5, a_hp, a_end, mana5, a_mana, co_id) = Repository::with_characters(|ch| {
+            (
+                ch[co].end[5],
+                ch[co].a_hp,
+                ch[co].a_end,
+                ch[co].mana[5],
+                ch[co].a_mana,
+                helpers::char_id(co),
+            )
+        });
+
+        let (hp_diff, end_diff, mana_diff) = if visibility > 75 {
+            let mut rng = rand::thread_rng();
+            let hp5 = Repository::with_characters(|ch| ch[co].hp[5]);
+            let hp_d = hp5 / 2 - rng.gen_range(0..=hp5);
+            let end_d = end5 / 2 - rng.gen_range(0..=end5);
+            let mana_d = mana5 / 2 - rng.gen_range(0..=mana5);
+            (hp_d, end_d, mana_d)
+        } else {
+            (0, 0, 0)
+        };
+
+        let end_display = (end5 + end_diff) as u16;
+        buf[1] = (end_display & 0xFF) as u8;
+        buf[2] = (end_display >> 8) as u8;
+
+        let ahp_display = ((a_hp + 500) / 1000 + hp_diff as i32) as u16;
+        buf[3] = (ahp_display & 0xFF) as u8;
+        buf[4] = (ahp_display >> 8) as u8;
+
+        let aend_display = ((a_end + 500) / 1000 + end_diff as i32) as u16;
+        buf[5] = (aend_display & 0xFF) as u8;
+        buf[6] = (aend_display >> 8) as u8;
+
+        let co_u16 = co as u16;
+        buf[7] = (co_u16 & 0xFF) as u8;
+        buf[8] = (co_u16 >> 8) as u8;
+
+        let co_id_u16 = co_id as u16;
+        buf[9] = (co_id_u16 & 0xFF) as u8;
+        buf[10] = (co_id_u16 >> 8) as u8;
+
+        let mana_display = (mana5 + mana_diff) as u16;
+        buf[11] = (mana_display & 0xFF) as u8;
+        buf[12] = (mana_display >> 8) as u8;
+
+        let amana_display = ((a_mana + 500) / 1000 + mana_diff as i32) as u16;
+        buf[13] = (amana_display & 0xFF) as u8;
+        buf[14] = (amana_display >> 8) as u8;
+
+        NetworkManager::with(|network| {
+            network.xsend(player_id as usize, &buf, 16);
+        });
+
+        // Send SV_LOOK4 packet
+        buf[0] = core::constants::SV_LOOK4;
+
+        if visibility <= 75 {
+            let (worn1, worn4, worn11, worn12, worn13) = Repository::with_characters(|ch| {
+                let w1 = if ch[co].worn[1] != 0 {
+                    Repository::with_items(|items| items[ch[co].worn[1] as usize].sprite[0])
+                } else {
+                    0
+                };
+                let w4 = if ch[co].worn[4] != 0 {
+                    Repository::with_items(|items| items[ch[co].worn[4] as usize].sprite[0])
+                } else {
+                    0
+                };
+                let w11 = if ch[co].worn[11] != 0 {
+                    Repository::with_items(|items| items[ch[co].worn[11] as usize].sprite[0])
+                } else {
+                    0
+                };
+                let w12 = if ch[co].worn[12] != 0 {
+                    Repository::with_items(|items| items[ch[co].worn[12] as usize].sprite[0])
+                } else {
+                    0
+                };
+                let w13 = if ch[co].worn[13] != 0 {
+                    Repository::with_items(|items| items[ch[co].worn[13] as usize].sprite[0])
+                } else {
+                    0
+                };
+                (w1, w4, w11, w12, w13)
+            });
+
+            buf[1] = (worn1 & 0xFF) as u8;
+            buf[2] = (worn1 >> 8) as u8;
+            buf[3] = (worn4 & 0xFF) as u8;
+            buf[4] = (worn4 >> 8) as u8;
+            buf[10] = (worn11 & 0xFF) as u8;
+            buf[11] = (worn11 >> 8) as u8;
+            buf[12] = (worn12 & 0xFF) as u8;
+            buf[13] = (worn12 >> 8) as u8;
+            buf[14] = (worn13 & 0xFF) as u8;
+            buf[15] = (worn13 >> 8) as u8;
+        } else {
+            buf[1] = 35;
+            buf[2] = 0;
+            buf[3] = 35;
+            buf[4] = 0;
+            buf[10] = 35;
+            buf[11] = 0;
+            buf[12] = 35;
+            buf[13] = 0;
+            buf[14] = 35;
+            buf[15] = 0;
+        }
+
+        // Check if this is a merchant or corpse to show shop interface
+        if (is_merchant || is_body) && autoflag == 0 {
+            buf[5] = 1;
+
+            // Show price for carried item if applicable
+            let citem = Repository::with_characters(|ch| ch[cn].citem);
+            let price = if citem != 0 {
+                if is_merchant {
+                    self.barter(cn, self.do_item_value(citem as usize) as i32, 0)
+                } else {
+                    0
+                }
+            } else {
+                0
+            };
+
+            let price_bytes = (price as u32).to_le_bytes();
+            buf[6..10].copy_from_slice(&price_bytes);
+        } else {
+            buf[5] = 0;
+        }
+
+        NetworkManager::with(|network| {
+            network.xsend(player_id as usize, &buf, 16);
+        });
+
+        // Send SV_LOOK5 packet (character name)
+        buf[0] = core::constants::SV_LOOK5;
+
+        let co_name = Repository::with_characters(|ch| {
+            let mut name = [0u8; 15];
+            name.copy_from_slice(&ch[co].name[0..15]);
+            name
+        });
+
+        buf[1..16].copy_from_slice(&co_name);
+
+        NetworkManager::with(|network| {
+            network.xsend(player_id as usize, &buf, 16);
+        });
+
+        // Send SV_LOOK6 packets (shop inventory) if merchant or corpse
+        if (is_merchant || is_body) && autoflag == 0 {
+            // Send inventory slots 0-39 in pairs
+            for n in (0..40).step_by(2) {
+                buf[0] = core::constants::SV_LOOK6;
+                buf[1] = n as u8;
+
+                for m in n..std::cmp::min(40, n + 2) {
+                    let (sprite, price) = Repository::with_characters(|ch| {
+                        let item_idx = ch[co].item[m];
+                        if item_idx != 0 {
+                            let spr =
+                                Repository::with_items(|items| items[item_idx as usize].sprite[0]);
+                            let pr = if is_merchant {
+                                self.barter(cn, self.do_item_value(item_idx as usize) as i32, 1)
+                            } else {
+                                0
+                            };
+                            (spr, pr)
+                        } else {
+                            (0, 0)
+                        }
+                    });
+
+                    let offset = 2 + (m - n) * 6;
+                    buf[offset] = (sprite & 0xFF) as u8;
+                    buf[offset + 1] = (sprite >> 8) as u8;
+
+                    let price_bytes = (price as u32).to_le_bytes();
+                    buf[offset + 2..offset + 6].copy_from_slice(&price_bytes);
+                }
+
+                NetworkManager::with(|network| {
+                    network.xsend(player_id as usize, &buf, 16);
+                });
+            }
+
+            // Send worn slots 0-19 (displayed as slots 40-59) if corpse
+            for n in (0..20).step_by(2) {
+                buf[0] = core::constants::SV_LOOK6;
+                buf[1] = (n + 40) as u8;
+
+                for m in n..std::cmp::min(20, n + 2) {
+                    let (sprite, price) = Repository::with_characters(|ch| {
+                        let item_idx = ch[co].worn[m];
+                        if item_idx != 0 && is_body {
+                            let spr =
+                                Repository::with_items(|items| items[item_idx as usize].sprite[0]);
+                            (spr, 0)
+                        } else {
+                            (0, 0)
+                        }
+                    });
+
+                    let offset = 2 + (m - n) * 6;
+                    buf[offset] = (sprite & 0xFF) as u8;
+                    buf[offset + 1] = (sprite >> 8) as u8;
+
+                    let price_bytes = (price as u32).to_le_bytes();
+                    buf[offset + 2..offset + 6].copy_from_slice(&price_bytes);
+                }
+
+                NetworkManager::with(|network| {
+                    network.xsend(player_id as usize, &buf, 16);
+                });
+            }
+
+            // Send citem and gold (slots 60-61)
+            buf[0] = core::constants::SV_LOOK6;
+            buf[1] = 60;
+
+            // Slot 60: citem
+            let (citem_sprite, gold) = Repository::with_characters(|ch| {
+                let citem_idx = ch[co].citem;
+                let spr = if citem_idx != 0 && is_body {
+                    Repository::with_items(|items| items[citem_idx as usize].sprite[0])
+                } else {
+                    0
+                };
+                (spr, ch[co].gold)
+            });
+
+            buf[2] = (citem_sprite & 0xFF) as u8;
+            buf[3] = (citem_sprite >> 8) as u8;
+            let price_bytes = [0u8; 4];
+            buf[4..8].copy_from_slice(&price_bytes);
+
+            // Slot 61: gold
+            let gold_sprite = if gold > 0 && is_body {
+                if gold > 999999 {
+                    121
+                } else if gold > 99999 {
+                    120
+                } else if gold > 9999 {
+                    41
+                } else if gold > 999 {
+                    40
+                } else if gold > 99 {
+                    39
+                } else if gold > 9 {
+                    38
+                } else {
+                    37
+                }
+            } else {
+                0
+            };
+
+            buf[8] = (gold_sprite & 0xFF) as u8;
+            buf[9] = (gold_sprite >> 8) as u8;
+            buf[10..14].copy_from_slice(&[0u8; 4]);
+
+            NetworkManager::with(|network| {
+                network.xsend(player_id as usize, &buf, 16);
+            });
+        }
+
+        // God/IMP/USURP debug information
+        let cn_is_god_imp_usurp = Repository::with_characters(|ch| {
+            ch[cn].flags
+                & (CharacterFlags::CF_GOD | CharacterFlags::CF_IMP | CharacterFlags::CF_USURP)
+                    .bits()
+                != 0
+        });
+
+        let co_is_god =
+            Repository::with_characters(|ch| ch[co].flags & CharacterFlags::CF_GOD.bits() != 0);
+
+        if cn_is_god_imp_usurp && autoflag == 0 && !is_merchant && !is_body && !co_is_god {
+            let (co_x, co_y) = Repository::with_characters(|ch| (ch[co].x, ch[co].y));
+            self.do_character_log(
+                cn,
+                FontColor::Green,
+                &format!(
+                    "This is char {}, created from template {}, pos {},{}\n",
+                    co, co_temp, co_x, co_y
+                ),
+            );
+
+            let (co_is_golden, co_is_black) = Repository::with_characters(|ch| {
+                (
+                    ch[co].flags & CharacterFlags::CF_GOLDEN.bits() != 0,
+                    ch[co].flags & CharacterFlags::CF_BLACK.bits() != 0,
+                )
+            });
+
+            if co_is_golden {
+                self.do_character_log(cn, FontColor::Green, "Golden List.\n");
+            }
+            if co_is_black {
+                self.do_character_log(cn, FontColor::Green, "Black List.\n");
+            }
+        }
     }
 
     /// Port of `may_attack_msg(int cn, int co, int msg)` from `svr_do.cpp`
