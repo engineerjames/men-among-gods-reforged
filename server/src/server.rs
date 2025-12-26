@@ -7,13 +7,14 @@ use std::net::{TcpListener, TcpStream};
 use std::sync::{OnceLock, RwLock};
 use std::time::{Duration, Instant};
 
+use crate::effect::EffectManager;
 use crate::enums::CharacterFlags;
 use crate::god::God;
 use crate::lab9::Labyrinth9;
 use crate::network_manager::NetworkManager;
 use crate::repository::Repository;
 use crate::state::State;
-use crate::{player, populate};
+use crate::{driver_use, player, populate};
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
 
@@ -512,7 +513,9 @@ impl Server {
                 player::plr_act(n)
             }
 
-            self.do_regenerate(n);
+            State::with(|state| {
+                state.do_regenerate(n);
+            });
         }
 
         // Update global stats
@@ -525,8 +528,9 @@ impl Server {
 
         // Run subsystem ticks
         populate::pop_tick();
-        self.effect_tick();
-        self.item_tick();
+        EffectManager::effect_tick();
+        driver_use::item_tick();
+
         self.global_tick();
     }
 
@@ -802,20 +806,131 @@ impl Server {
         true
     }
 
-    fn do_regenerate(&self, _cn: usize) {
-        // Character regeneration - to be implemented
-    }
-
-    fn effect_tick(&self) {
-        // Process effects - to be implemented
-    }
-
-    fn item_tick(&self) {
-        // Process items - to be implemented
-    }
-
     fn global_tick(&self) {
-        // Global updates (time of day, weather, etc.) - to be implemented
+        // Port of svr_glob.cpp::global_tick
+        const MD_HOUR: i32 = 3600;
+        const MD_DAY: i32 = MD_HOUR * 24;
+        const MD_YEAR: i32 = 300;
+
+        // Increment mdtime and compute day rollover + daylight/moon state
+        let (day_rolled, early_return) = Repository::with_globals_mut(|globals| {
+            globals.mdtime += 1;
+
+            let mut rolled = false;
+            if globals.mdtime >= MD_DAY {
+                globals.mdday += 1;
+                globals.mdtime = 0;
+                rolled = true;
+                log::info!(
+                    "day {} of the year {} begins",
+                    globals.mdday,
+                    globals.mdyear
+                );
+            }
+
+            if globals.mdday >= MD_YEAR {
+                globals.mdyear += 1;
+                globals.mdday = 1;
+            }
+
+            if globals.mdtime < MD_HOUR * 6 {
+                globals.dlight = 0;
+            } else if globals.mdtime < MD_HOUR * 7 {
+                globals.dlight = (globals.mdtime - MD_HOUR * 6) * 255 / MD_HOUR;
+            } else if globals.mdtime < MD_HOUR * 22 {
+                globals.dlight = 255;
+            } else if globals.mdtime < MD_HOUR * 23 {
+                globals.dlight = (MD_HOUR * 23 - globals.mdtime) * 255 / MD_HOUR;
+            } else {
+                globals.dlight = 0;
+            }
+
+            let mut tmp = globals.mdday % 28 + 1;
+
+            globals.newmoon = 0;
+            globals.fullmoon = 0;
+
+            if tmp == 1 {
+                globals.newmoon = 1;
+                return (rolled, true);
+            }
+            if tmp == 15 {
+                globals.fullmoon = 1;
+            }
+
+            if tmp > 14 {
+                tmp = 28 - tmp;
+            }
+            if tmp > globals.dlight {
+                globals.dlight = tmp;
+            }
+
+            (rolled, false)
+        });
+
+        if early_return {
+            return;
+        }
+
+        // If a new day began, run pay_rent() and do_misc()
+        if day_rolled {
+            // pay_rent: call depot payment routine for each player
+            for cn in 1..core::constants::MAXCHARS as usize {
+                let is_player = Repository::with_characters(|ch| {
+                    ch[cn].used != core::constants::USE_EMPTY
+                        && (ch[cn].flags & crate::enums::CharacterFlags::Player.bits()) != 0
+                });
+                if !is_player {
+                    continue;
+                }
+                State::with(|s| s.do_pay_depot(cn));
+            }
+
+            // do_misc: adjust luck and clear temporary flags for players
+            for cn in 1..core::constants::MAXCHARS as usize {
+                let is_player = Repository::with_characters(|ch| {
+                    ch[cn].used != core::constants::USE_EMPTY
+                        && (ch[cn].flags & crate::enums::CharacterFlags::Player.bits()) != 0
+                });
+                if !is_player {
+                    continue;
+                }
+
+                let uniques = crate::driver::count_uniques(cn);
+
+                if uniques > 1 {
+                    // reduce luck for multi-unique holders if active
+                    let is_active = Repository::with_characters(|ch| {
+                        ch[cn].used == core::constants::USE_ACTIVE
+                    });
+                    if is_active {
+                        Repository::with_characters_mut(|ch| {
+                            ch[cn].luck -= 5;
+                            let luck_to_log = ch[cn].luck;
+                            log::info!(
+                                "reduced luck by 5 to {} for having more than one unique",
+                                luck_to_log,
+                            );
+                        });
+                    }
+                } else {
+                    // slowly recover luck towards 0
+                    Repository::with_characters_mut(|ch| {
+                        if ch[cn].luck < 0 {
+                            ch[cn].luck += 1;
+                        }
+                        if ch[cn].luck < 0 {
+                            ch[cn].luck += 1;
+                        }
+                        // clear temporary punishment flags
+                        let mask = crate::enums::CharacterFlags::ShutUp.bits()
+                            | crate::enums::CharacterFlags::NoDesc.bits()
+                            | crate::enums::CharacterFlags::Kicked.bits();
+                        ch[cn].flags &= !mask;
+                    });
+                }
+            }
+        }
     }
 
     fn compress_ticks(&mut self) {
