@@ -1050,8 +1050,8 @@ pub fn finish_laby_teleport(cn: usize, nr: usize, exp: usize) -> i32 {
 
     // Add effects and transfer character
     EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
-    God::transfer_char(cn, 512, 512);
-    EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
+    God::transfer_char(cn, 512, 512); // TODO: Shouldn't this be their temple coords?
+    EffectManager::fx_add_effect(6, 0, 512 as i32, 512 as i32, 0);
 
     // Update temple and tavern coordinates
     let (x, y) = Repository::with_characters(|characters| (characters[cn].x, characters[cn].y));
@@ -1088,11 +1088,6 @@ pub fn is_nolab_item(item_idx: usize) -> bool {
 }
 
 pub fn teleport(cn: usize, item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::{ItemFlags, SK_RECALL, USE_EMPTY};
-
     if cn == 0 {
         return 1;
     }
@@ -1110,7 +1105,9 @@ pub fn teleport(cn: usize, item_idx: usize) -> i32 {
     }
 
     // Remove nolab items from citem
-    let citem = Repository::with_characters(|characters| characters[cn].citem);
+    let (citem, x, y) = Repository::with_characters(|characters| {
+        (characters[cn].citem, characters[cn].x, characters[cn].y)
+    });
     if citem != 0 && is_nolab_item(citem as usize) {
         let item_ref = Repository::with_items(|items| {
             String::from_utf8_lossy(&items[citem as usize].reference)
@@ -1203,9 +1200,9 @@ pub fn teleport(cn: usize, item_idx: usize) -> i32 {
         )
     });
 
-    // TODO: Implement fx_add_effect(6, 0, x, y, 0)
+    EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
     God::transfer_char(cn, dest_x, dest_y);
-    // TODO: Implement fx_add_effect(6, 0, x, y, 0)
+    EffectManager::fx_add_effect(6, 0, dest_x as i32, dest_y as i32, 0);
 
     1
 }
@@ -1215,6 +1212,8 @@ pub fn teleport2(cn: usize, item_idx: usize) -> i32 {
     use crate::repository::Repository;
     use crate::state::State;
     use core::constants::{ItemFlags, SK_RECALL};
+
+    // TODO: Just do a re-implementation of this function...
 
     if cn == 0 {
         return 1;
@@ -1299,7 +1298,6 @@ pub fn teleport2(cn: usize, item_idx: usize) -> i32 {
     }
 
     // TODO: Implement fx_add_effect(7, 0, x, y, 0)
-
     1
 }
 
@@ -1382,67 +1380,89 @@ pub fn use_labyrinth(cn: usize, item_idx: usize) -> i32 {
     }
 
     // Teleport based on labyrinth progress
-    let progress = Repository::with_characters(|characters| characters[cn].data[20]);
+    let (progress, x, y) = Repository::with_characters(|characters| {
+        (characters[cn].data[20], characters[cn].x, characters[cn].y)
+    });
 
     let flag = match progress {
         0 => {
-            // TODO: fx_add_effect(6, 0, x, y, 0)
+            EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
             let result = God::transfer_char(cn, 64, 56);
-            // TODO: fx_add_effect(6, 0, x, y, 0)
+            Repository::with_characters(|ch| {
+                EffectManager::fx_add_effect(6, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
+            });
             result
         }
         1 => {
-            // TODO: fx_add_effect(6, 0, x, y, 0)
+            EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
             let result = God::transfer_char(cn, 95, 207);
-            // TODO: fx_add_effect(6, 0, x, y, 0)
+            Repository::with_characters(|ch| {
+                EffectManager::fx_add_effect(6, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
+            });
             result
         }
         2 => {
-            // TODO: fx_add_effect(6, 0, x, y, 0)
+            EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
             let result = God::transfer_char(cn, 74, 240);
-            // TODO: fx_add_effect(6, 0, x, y, 0)
+            Repository::with_characters(|ch| {
+                EffectManager::fx_add_effect(6, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
+            });
             result
         }
         3 => {
-            // TODO: fx_add_effect(6, 0, x, y, 0)
+            EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
             let result = God::transfer_char(cn, 37, 370);
-            // TODO: fx_add_effect(6, 0, x, y, 0)
+            Repository::with_characters(|ch| {
+                EffectManager::fx_add_effect(6, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
+            });
             result
         }
         4 => {
-            // TODO: fx_add_effect(6, 0, x, y, 0)
+            EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
             let result = God::transfer_char(cn, 114, 390);
-            // TODO: fx_add_effect(6, 0, x, y, 0)
+            Repository::with_characters(|ch| {
+                EffectManager::fx_add_effect(6, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
+            });
             result
         }
         5 => {
-            // TODO: fx_add_effect(6, 0, x, y, 0)
+            EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
             let result = God::transfer_char(cn, 28, 493);
-            // TODO: fx_add_effect(6, 0, x, y, 0)
+            Repository::with_characters(|ch| {
+                EffectManager::fx_add_effect(6, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
+            });
             result
         }
         6 => {
-            // TODO: fx_add_effect(6, 0, x, y, 0)
+            EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
             let result = God::transfer_char(cn, 24, 534);
-            // TODO: fx_add_effect(6, 0, x, y, 0)
+            Repository::with_characters(|ch| {
+                EffectManager::fx_add_effect(6, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
+            });
             result
         }
         7 => {
-            // TODO: fx_add_effect(6, 0, x, y, 0)
+            EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
             let result = God::transfer_char(cn, 118, 667);
-            // TODO: fx_add_effect(6, 0, x, y, 0)
+            Repository::with_characters(|ch| {
+                EffectManager::fx_add_effect(6, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
+            });
             result
         }
         8 => {
-            // TODO: fx_add_effect(6, 0, x, y, 0)
+            EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
             let result = God::transfer_char(cn, 63, 720);
-            // TODO: fx_add_effect(6, 0, x, y, 0)
+            Repository::with_characters(|ch| {
+                EffectManager::fx_add_effect(6, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
+            });
             result
         }
         9 => {
-            // TODO: fx_add_effect(6, 0, x, y, 0)
+            EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
             let result = God::transfer_char(cn, 33, 597);
-            // TODO: fx_add_effect(6, 0, x, y, 0)
+            Repository::with_characters(|ch| {
+                EffectManager::fx_add_effect(6, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
+            });
             result
         }
         _ => {
@@ -2393,8 +2413,15 @@ pub fn use_spawn(cn: usize, item_idx: usize) -> i32 {
     // Add effect if data[2] contains a character template
     let temp = Repository::with_items(|items| items[item_idx].data[2] as usize);
     if temp != 0 {
-        // TODO: Implement fx_add_effect and ch_temp access
-        // fx_add_effect(2, TICKS * 10, ch_temp[temp].x, ch_temp[temp].y, temp);
+        Repository::with_character_templates(|ch_temp| {
+            EffectManager::fx_add_effect(
+                2,
+                core::constants::TICKS * 10,
+                ch_temp[temp].x as i32,
+                ch_temp[temp].y as i32,
+                temp as i32,
+            )
+        });
         log::info!("use_spawn: would add effect for template {}", temp);
     }
 
@@ -2492,8 +2519,12 @@ pub fn use_pile(cn: usize, item_idx: usize) -> i32 {
 
     // Create item
     if let Some(in2) = God::create_item(tmp) {
-        let is_takeable =
-            Repository::with_items(|items| (items[in2].flags & ItemFlags::IF_TAKE.bits()) != 0);
+        let (is_takeable, data_0) = Repository::with_items(|items| {
+            (
+                (items[in2].flags & ItemFlags::IF_TAKE.bits()) != 0,
+                items[in2].data[0],
+            )
+        });
 
         if is_takeable {
             // Give to player
@@ -2510,7 +2541,7 @@ pub fn use_pile(cn: usize, item_idx: usize) -> i32 {
         } else {
             // It's a monster spawner
             God::drop_item(in2, x as usize, y as usize);
-            // TODO: Implement fx_add_effect(9, 16, in2, items[in2].data[0], 0);
+            EffectManager::fx_add_effect(9, 16, in2 as i32, data_0 as i32, 0);
             log::info!("use_pile: spawning monster at ({}, {})", x, y);
         }
     }
@@ -2519,9 +2550,6 @@ pub fn use_pile(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_grave(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-    use core::constants::USE_EMPTY;
-
     // Get previously spawned character
     let cc = Repository::with_items(|items| items[item_idx].data[0] as usize);
 
@@ -2564,7 +2592,7 @@ pub fn mine_wall(cn: usize, item_idx: usize) -> i32 {
     use core::constants::ItemFlags;
 
     // If no item provided, get it from the map
-    let in_idx = if item_idx == 0 {
+    let (in_idx, x, y) = if item_idx == 0 {
         let (x, y) = Repository::with_characters(|characters| {
             if cn == 0 {
                 (0, 0)
@@ -2577,15 +2605,21 @@ pub fn mine_wall(cn: usize, item_idx: usize) -> i32 {
         if map_item == 0 {
             return 0;
         }
-        map_item as usize
+        (map_item as usize, x, y)
     } else {
-        item_idx
+        (item_idx, 0, 0)
     };
 
     // Add rebuild wall effect if data[3] is set
     let should_rebuild = Repository::with_items(|items| items[in_idx].data[3] != 0);
     if should_rebuild {
-        // TODO: Implement fx_add_effect(10, TICKS * 60 * 15, x, y, temp);
+        EffectManager::fx_add_effect(
+            10,
+            core::constants::TICKS * 60 * 15,
+            x as i32,
+            y as i32,
+            0 as i32, // TODO: Not sure what to set this to--was originally 'temp'
+        );
         log::info!("mine_wall: would add rebuild effect");
     }
 
@@ -2765,8 +2799,13 @@ pub fn use_mine_fast(cn: usize, item_idx: usize) -> i32 {
         (items[item_idx].x, items[item_idx].y, items[item_idx].temp)
     });
 
-    // TODO: Implement fx_add_effect
-    // fx_add_effect(10, TICKS * 60 * 15, x, y, temp);
+    EffectManager::fx_add_effect(
+        10,
+        core::constants::TICKS * 60 * 15,
+        x as i32,
+        y as i32,
+        temp as i32,
+    );
 
     State::with_mut(|state| {
         state.reset_go(x as i32, y as i32);
@@ -3738,7 +3777,11 @@ pub fn use_shrine(cn: usize, item_idx: usize) -> i32 {
                     "You feel the hand of the Goddess of Magic touch your mind.\\n",
                 );
             });
-            // TODO: fx_add_effect(6, 0, ch[cn].x, ch[cn].y, 0);
+            let (x, y) = Repository::with_characters(|characters| {
+                (characters[cn].x as i32, characters[cn].y as i32)
+            });
+
+            EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
         }
 
         // Determine message based on value
@@ -3822,23 +3865,22 @@ pub fn use_shrine(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_kill_undead(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-    use core::constants::{CharacterFlags, SERVER_MAPX, SERVER_MAPY, WN_RHAND};
-
     if cn == 0 {
         return 0;
     }
 
     // Check if wielding the item
     let is_wielded = Repository::with_characters(|characters| {
-        characters[cn].worn[WN_RHAND] as usize == item_idx
+        characters[cn].worn[core::constants::WN_RHAND] as usize == item_idx
     });
 
     if !is_wielded {
         return 0;
     }
 
-    // TODO: fx_add_effect(7, 0, ch[cn].x, ch[cn].y, 0);
+    Repository::with_characters(|ch| {
+        EffectManager::fx_add_effect(7, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
+    });
 
     // Get character position
     let (ch_x, ch_y) = Repository::with_characters(|characters| {
@@ -3847,16 +3889,17 @@ pub fn use_kill_undead(cn: usize, item_idx: usize) -> i32 {
 
     // Damage all undead in 8x8 area
     for y in (ch_y - 8)..(ch_y + 8) {
-        if y < 1 || y >= SERVER_MAPY as i32 {
+        if y < 1 || y >= core::constants::SERVER_MAPY as i32 {
             continue;
         }
         for x in (ch_x - 8)..(ch_x + 8) {
-            if x < 1 || x >= SERVER_MAPX as i32 {
+            if x < 1 || x >= core::constants::SERVER_MAPX as i32 {
                 continue;
             }
 
-            let co =
-                Repository::with_map(|map| map[(x + y * SERVER_MAPX as i32) as usize].ch as usize);
+            let co = Repository::with_map(|map| {
+                map[(x + y * core::constants::SERVER_MAPX as i32) as usize].ch as usize
+            });
 
             if co != 0 {
                 let is_undead = Repository::with_characters(|characters| {
@@ -3864,15 +3907,14 @@ pub fn use_kill_undead(cn: usize, item_idx: usize) -> i32 {
                 });
 
                 if is_undead {
-                    // TODO: Implement do_hurt(cn, co, 500, 2);
-                    log::info!("TODO: do_hurt({}, {}, 500, 2)", cn, co);
-                    // TODO: fx_add_effect(5, 0, ch[co].x, ch[co].y, 0);
+                    State::with(|state| state.do_hurt(cn, co, 500, 2));
+                    EffectManager::fx_add_effect(5, 0, x, y, 0);
                 }
             }
         }
     }
 
-    item_damage_worn(cn, WN_RHAND, 500);
+    item_damage_worn(cn, core::constants::WN_RHAND, 500);
 
     1
 }
@@ -3956,7 +3998,9 @@ pub fn teleport3(cn: usize, item_idx: usize) -> i32 {
     }
 
     // Teleport
-    // TODO: fx_add_effect(6, 0, ch[cn].x, ch[cn].y, 0);
+    Repository::with_characters(|ch| {
+        EffectManager::fx_add_effect(6, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
+    });
     let (dest_x, dest_y) = Repository::with_items(|items| {
         (
             items[item_idx].data[0] as usize,
@@ -3964,7 +4008,9 @@ pub fn teleport3(cn: usize, item_idx: usize) -> i32 {
         )
     });
     God::transfer_char(cn, dest_x, dest_y);
-    // TODO: fx_add_effect(6, 0, ch[cn].x, ch[cn].y, 0);
+    Repository::with_characters(|ch| {
+        EffectManager::fx_add_effect(6, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
+    });
 
     // Remove IF_LABYDESTROY items from citem
     let citem = Repository::with_characters(|characters| characters[cn].citem as usize);
@@ -4404,7 +4450,9 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
     }
 
     // Teleport
-    // TODO: fx_add_effect(6, 0, ch[cn].x, ch[cn].y, 0);
+    Repository::with_characters(|ch| {
+        EffectManager::fx_add_effect(6, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
+    });
     let (dest_x, dest_y) = Repository::with_items(|items| {
         (
             items[item_idx].data[0] as usize,
@@ -4412,7 +4460,9 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
         )
     });
     God::transfer_char(cn, dest_x, dest_y);
-    // TODO: fx_add_effect(6, 0, ch[cn].x, ch[cn].y, 0);
+    Repository::with_characters(|ch| {
+        EffectManager::fx_add_effect(6, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
+    });
 
     1
 }
@@ -4888,7 +4938,9 @@ pub fn use_lab8_moneyshrine(cn: usize, item_idx: usize) -> i32 {
                 "You feel the hand of the Goddess of Magic touch your mind.\n",
             );
         });
-        // TODO: fx_add_effect(6, 0, ch[cn].x, ch[cn].y, 0);
+        Repository::with_characters(|ch| {
+            EffectManager::fx_add_effect(6, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
+        });
     }
 
     1
@@ -7755,9 +7807,9 @@ pub fn step_teleport(cn: usize, item_idx: usize) -> i32 {
     }
 
     // Add departure effect
-    let (old_x, old_y) =
-        Repository::with_characters(|characters| (characters[cn].x, characters[cn].y));
-    // TODO: fx_add_effect(6, 0, old_x, old_y, 0);
+    Repository::with_characters(|ch| {
+        EffectManager::fx_add_effect(6, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
+    });
 
     player::plr_map_remove(cn);
 
@@ -7797,14 +7849,14 @@ pub fn step_teleport(cn: usize, item_idx: usize) -> i32 {
     });
 
     // Add arrival effect
-    // TODO: fx_add_effect(6, 0, new_x, new_y, 0);
+    Repository::with_characters(|ch| {
+        EffectManager::fx_add_effect(6, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
+    });
 
     2 // TELEPORT_SUCCESS
 }
 
 pub fn add_spell(cn: usize, item_idx: usize) {
-    use crate::repository::Repository;
-
     // Find empty spell slot
     for n in 0..20 {
         let spell_id = Repository::with_characters(|characters| characters[cn].spell[n]);
@@ -7824,11 +7876,6 @@ pub fn add_spell(cn: usize, item_idx: usize) {
 }
 
 pub fn step_firefloor(cn: usize, item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::ItemFlags;
-
     State::with(|state| {
         state.do_character_log(cn, core::types::FontColor::Red, "Outch!");
     });
@@ -7861,9 +7908,6 @@ pub fn step_firefloor(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn step_firefloor_remove(cn: usize, item_idx: usize) {
-    use crate::repository::Repository;
-    use core::constants::USE_EMPTY;
-
     let temp = Repository::with_items(|items| items[item_idx].temp);
 
     for n in 0..20 {
@@ -7884,8 +7928,6 @@ pub fn step_firefloor_remove(cn: usize, item_idx: usize) {
 }
 
 pub fn step_driver(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-
     let driver = Repository::with_items(|items| items[item_idx].driver);
 
     let ret = match driver {
@@ -7912,8 +7954,6 @@ pub fn step_driver(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn step_driver_remove(cn: usize, item_idx: usize) {
-    use crate::repository::Repository;
-
     let driver = Repository::with_items(|items| items[item_idx].driver);
 
     match driver {

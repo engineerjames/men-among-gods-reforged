@@ -1,3 +1,4 @@
+use crate::effect::EffectManager;
 use crate::helpers;
 use crate::{driver_special, god::God, repository::Repository, state::State};
 use core::constants::*;
@@ -231,7 +232,9 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
             State::with(|state| {
                 state.do_sayx(cn, "Skua! Protect the innocent! Send me a Peacekeeper!");
             });
-            // TODO: Add fx_add_effect(6, 0, characters[cn].x, characters[cn].y, 0);
+            Repository::with_characters(|ch| {
+                EffectManager::fx_add_effect(6, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
+            });
             characters[cn].data[70] = (ticker + (TICKS * 60)) as i32;
 
             let cc = God::create_char(80, true);
@@ -273,7 +276,7 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
             });
             characters[cn].data[70] = (ticker + (TICKS * 60 * 2)) as i32;
             characters[cn].a_mana = (characters[cn].mana[5] * 1000) as i32;
-            // TODO: fx_add_effect(6, 0, characters[cn].x, characters[cn].y, 0);
+            EffectManager::fx_add_effect(6, 0, characters[cn].x as i32, characters[cn].y as i32, 0);
         }
 
         // Shout for help
@@ -1012,7 +1015,7 @@ pub fn npc_try_spell(cn: usize, co: usize, spell: usize) -> bool {
                 ch[cn].skill_nr = spell as u16;
                 ch[cn].skill_target1 = co as u16;
                 ch[co].data[96] |= tmp as i32;
-                // TODO: fx_add_effect(11, 8, co, tmp, 0);
+                EffectManager::fx_add_effect(11, 8, ch[co].x as i32, ch[co].y as i32, tmp as i32);
                 return true;
             }
         }
@@ -1115,7 +1118,7 @@ pub fn npc_quaff_potion(cn: usize, itemp: i32, stemp: i32) -> bool {
 
 pub fn die_companion(cn: usize) {
     Repository::with_characters(|characters| {
-        // TODO: fx_add_effect(7, 0, characters[cn].x, characters[cn].y, 0);
+        EffectManager::fx_add_effect(7, 0, characters[cn].x as i32, characters[cn].y as i32, 0);
     });
     God::destroy_items(cn);
     Repository::with_characters_mut(|characters| {
@@ -1680,11 +1683,14 @@ pub fn npc_driver_low(cn: usize) {
                         break;
                     }
 
-                    // Call fx_add_effect (doesn't exist yet)
-                    // fx_add_effect(6, 0, characters[co].x, characters[co].y, 0);
+                    Repository::with_characters(|ch| {
+                        EffectManager::fx_add_effect(6, 0, ch[co].x as i32, ch[co].y as i32, 0);
+                    });
                 }
 
-                // fx_add_effect(7, 0, characters[cn].x, characters[cn].y, 0);
+                Repository::with_characters(|ch| {
+                    EffectManager::fx_add_effect(7, 0, ch[cn].x as i32, ch[cn].y as i32, 0);
+                });
                 State::with(|state| {
                     state.do_sayx(cn, "Khuzak gurawin duskar!");
                 });
@@ -2287,8 +2293,11 @@ pub fn shiva_activate_candle(cn: usize, in_idx: usize) -> i32 {
     }
 
     // Add visual effects
-    // TODO: fx_add_effect(6, 0, it_x, it_y, 0);
-    // TODO: fx_add_effect(7, 0, ch_x, ch_y, 0);
+    EffectManager::fx_add_effect(6, 0, it_x as i32, it_y as i32, 0);
+
+    Repository::with_characters(|ch| {
+        EffectManager::fx_add_effect(7, 0, ch[cn].x as i32, ch[cn].y as i32, 0);
+    });
 
     // Character says the magic words
     State::with(|state| {
