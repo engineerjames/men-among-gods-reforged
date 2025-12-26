@@ -1629,8 +1629,7 @@ impl State {
             }
         });
 
-        // TODO: Implement plr_reset_status
-        log::info!("TODO: Reset player status for character {}", co);
+        self.plr_reset_status(co);
 
         // Apply permanent stat loss if not a god and no guardian angel
         let is_god =
@@ -1654,8 +1653,7 @@ impl State {
 
         // Setup the grave (body)
         Repository::with_characters_mut(|characters| {
-            // TODO: Implement plr_reset_status
-            log::info!("TODO: Reset status for grave {}", cc);
+            self.plr_reset_status(cc);
 
             characters[cc].player = 0;
             characters[cc].flags = CharacterFlags::CF_BODY.bits();
@@ -2651,8 +2649,7 @@ impl State {
                 Repository::with_characters_mut(|characters| {
                     characters[cn].flags |= CharacterFlags::CF_NOMAGIC.bits();
                 });
-                // TODO: Implement remove_spells
-                log::info!("TODO: Remove spells for character {}", cn);
+                self.remove_spells(cn);
                 self.do_character_log(cn, FontColor::Green, "You feel your magic fail.\n");
             }
         } else {
@@ -3764,6 +3761,59 @@ impl State {
         } // attack right
 
         n // default
+    }
+
+    /// Set the update/save flags for a character (port of `do_update_char`)
+    pub fn do_update_char(&self, cn: usize) {
+        Repository::with_characters_mut(|characters| {
+            characters[cn].set_do_update_flags();
+        });
+    }
+
+    /// Remove all active spell items from a character (port of `remove_spells`)
+    pub fn remove_spells(&self, cn: usize) {
+        for n in 0..20 {
+            let spell_item = Repository::with_characters(|ch| ch[cn].spell[n]);
+            if spell_item == 0 {
+                continue;
+            }
+            let in_idx = spell_item as usize;
+            Repository::with_items_mut(|items| {
+                if in_idx < items.len() {
+                    items[in_idx].used = core::constants::USE_EMPTY;
+                }
+            });
+            Repository::with_characters_mut(|ch| {
+                ch[cn].spell[n] = 0;
+            });
+        }
+        self.do_update_char(cn);
+    }
+
+    /// Reset player status based on facing direction (port of `plr_reset_status`)
+    pub fn plr_reset_status(&self, cn: usize) {
+        use core::constants::*;
+        Repository::with_characters_mut(|ch| {
+            ch[cn].status = match ch[cn].dir {
+                DX_UP => 0,
+                DX_DOWN => 1,
+                DX_LEFT => 2,
+                DX_RIGHT => 3,
+                DX_LEFTUP => 4,
+                DX_LEFTDOWN => 5,
+                DX_RIGHTUP => 6,
+                DX_RIGHTDOWN => 7,
+                _ => {
+                    log::error!(
+                        "plr_reset_status (state.rs): illegal value for dir: {} for char {}",
+                        ch[cn].dir,
+                        cn
+                    );
+                    ch[cn].dir = DX_UP;
+                    0
+                }
+            };
+        });
     }
 
     /// Port of `do_raise_attrib(int cn, int nr)` from `svr_do.cpp`
@@ -7302,115 +7352,480 @@ impl State {
         });
     }
 
-    pub fn do_hurt(cn: usize, co: usize, dam: i32, type_hurt: i32) -> i32 {}
+    pub fn do_hurt(&self, cn: usize, co: usize, dam: i32, type_hurt: i32) -> i32 {
+        use core::constants::*;
 
-    pub fn do_give_exp(cn: usize, p: i32, gflag: i32, rank: i32) {}
+        // Quick sanity/body check
+        let is_body =
+            Repository::with_characters(|ch| (ch[co].flags & CharacterFlags::CF_BODY.bits()) != 0);
+        if is_body {
+            return 0;
+        }
 
-    pub fn get_fight_skill(cn: usize) -> i32 {}
+        // If a real player got hit, damage armour pieces
+        let co_is_player = Repository::with_characters(|ch| {
+            (ch[co].flags & CharacterFlags::CF_PLAYER.bits()) != 0
+        });
+        if co_is_player {
+            crate::driver_use::item_damage_armor(co, dam);
+        }
 
-    pub fn do_char_can_flee(cn: usize) -> i32 {}
+        // Determine noexp conditions
+        let mut noexp = 0;
+        Repository::with_characters(|ch| {
+            if cn != 0
+                && (ch[cn].flags & CharacterFlags::CF_PLAYER.bits()) == 0
+                && ch[cn].data[63] == co as i32
+            {
+                noexp = 1;
+            }
+            if (ch[co].flags & CharacterFlags::CF_PLAYER.bits()) != 0 {
+                noexp = 1;
+            }
+            if ch[co].temp == CT_COMPANION as u16
+                && (ch[co].flags & CharacterFlags::CF_THRALL.bits()) == 0
+            {
+                noexp = 1;
+            }
+        });
 
-    pub fn do_ransack_corpse(cn: usize, co: usize, msg: &str) {}
+        // Handle magical shields (SK_MSHIELD)
+        let co_armor = Repository::with_characters(|ch| ch[co].armor);
+        let spells = Repository::with_characters(|ch| ch[co].spell);
+        let mut shield_updates: Vec<(usize, usize, i32, bool)> = Vec::new(); // (slot, item_idx, new_active, kill)
 
-    pub fn remove_enemy(co: usize) {}
+        for n in 0..20 {
+            let in_idx = spells[n] as usize;
+            if in_idx == 0 {
+                continue;
+            }
 
-    pub fn do_char_score(cn: usize) -> i32 {}
+            let (item_temp, item_active) = Repository::with_items(|items| {
+                if in_idx < items.len() {
+                    (items[in_idx].temp, items[in_idx].active)
+                } else {
+                    (0u16, 0u32)
+                }
+            });
 
-    pub fn do_say(cn: usize, text: &str) {}
+            if item_temp == SK_MSHIELD as u16 {
+                let active = item_active as i32;
+                let mut tmp = active / 1024 + 1;
+                tmp = (dam + tmp - co_armor as i32) * 5;
 
-    pub fn do_command(cn: usize, ptr: &str) {}
+                if tmp > 0 {
+                    if tmp >= active {
+                        shield_updates.push((n, in_idx, 0, true));
+                    } else {
+                        shield_updates.push((n, in_idx, active - tmp, false));
+                    }
+                }
+            }
+        }
 
-    pub fn do_become_skua(cn: usize) {}
+        // Apply shield updates
+        if !shield_updates.is_empty() {
+            for (slot, in_idx, new_active, kill) in shield_updates {
+                if kill {
+                    Repository::with_characters_mut(|characters| {
+                        characters[co].spell[slot] = 0;
+                    });
+                    Repository::with_items_mut(|items| {
+                        if in_idx < items.len() {
+                            items[in_idx].used = USE_EMPTY;
+                        }
+                    });
+                    self.do_update_char(co);
+                } else {
+                    Repository::with_items_mut(|items| {
+                        if in_idx < items.len() {
+                            items[in_idx].active = new_active as u32;
+                            items[in_idx].armor[1] = (items[in_idx].active / 1024 + 1) as i8;
+                            items[in_idx].power = items[in_idx].active / 256;
+                        }
+                    });
+                    self.do_update_char(co);
+                }
+            }
+        }
 
-    pub fn do_make_soulstone(cn: usize, cexp: i32) {}
+        // Compute damage scaling by type
+        let mut dam = dam;
+        if type_hurt == 0 {
+            dam -= co_armor as i32;
+            if dam < 0 {
+                dam = 0;
+            } else {
+                dam *= 250;
+            }
+        } else if type_hurt == 3 {
+            dam *= 1000;
+        } else {
+            dam -= co_armor as i32;
+            if dam < 0 {
+                dam = 0;
+            } else {
+                dam *= 750;
+            }
+        }
 
-    pub fn do_list_all_flags(cn: usize, flag: u64) {}
+        // Immortal characters take no damage
+        let is_immortal = Repository::with_characters(|ch| {
+            (ch[co].flags & CharacterFlags::CF_IMMORTAL.bits()) != 0
+        });
+        if is_immortal {
+            dam = 0;
+        }
 
-    pub fn do_list_net(cn: usize, co: usize) {}
+        // Notifications for visible hits
+        if type_hurt != 3 {
+            let (cn_x, cn_y) = Repository::with_characters(|ch| (ch[cn].x, ch[cn].y));
+            self.do_area_notify(
+                cn as i32,
+                co as i32,
+                cn_x as i32,
+                cn_y as i32,
+                NT_SEEHIT as i32,
+                cn as i32,
+                co as i32,
+                0,
+                0,
+            );
+            self.do_notify_character(co as u32, NT_GOTHIT as i32, cn as i32, dam / 1000, 0, 0);
+            self.do_notify_character(cn as u32, NT_DIDHIT as i32, co as i32, dam / 1000, 0, 0);
+        }
 
-    pub fn do_respawn(cn: usize, co: usize) {}
+        if dam < 1 {
+            return 0;
+        }
 
-    pub fn do_npclist(cn: usize, name: &str) {}
+        // Award some experience for damaging blows
+        if type_hurt != 2 && type_hurt != 3 && noexp == 0 {
+            let mut tmp = dam / 4000;
+            if tmp > 0 && cn != 0 {
+                tmp = helpers::scale_exps(cn as i32, co as i32, tmp);
+                if tmp > 0 {
+                    Repository::with_characters_mut(|characters| {
+                        characters[cn].points += tmp;
+                        characters[cn].points_tot += tmp;
+                    });
+                    self.do_check_new_level(cn);
+                }
+            }
+        }
 
-    pub fn do_leave(cn: usize) {}
+        // Set map injury flags and show FX (FX not implemented yet)
+        if type_hurt != 1 {
+            Repository::with_map_mut(|map| {
+                let idx = (Repository::with_characters(|ch| ch[co].x as i32)
+                    + Repository::with_characters(|ch| ch[co].y as i32) * SERVER_MAPX as i32)
+                    as usize;
+                if dam < 10000 {
+                    map[idx].flags |= MF_GFX_INJURED as u64;
+                } else if dam < 30000 {
+                    map[idx].flags |= (MF_GFX_INJURED | MF_GFX_INJURED1) as u64;
+                } else if dam < 50000 {
+                    map[idx].flags |= (MF_GFX_INJURED | MF_GFX_INJURED2) as u64;
+                } else {
+                    map[idx].flags |= (MF_GFX_INJURED | MF_GFX_INJURED1 | MF_GFX_INJURED2) as u64;
+                }
+            });
+            // TODO: fx_add_effect
+        }
 
-    pub fn do_enter(cn: usize) {}
+        // God save check
+        let saved_by_god = Repository::with_characters(|ch| {
+            let will_die_hp = ch[co].a_hp - dam;
+            (will_die_hp < 500) && (ch[co].luck >= 100)
+        });
 
-    pub fn do_stat(cn: usize) {}
+        if saved_by_god {
+            let mf_arena = Repository::with_map(|map| {
+                let idx = (Repository::with_characters(|ch| ch[co].x as i32)
+                    + Repository::with_characters(|ch| ch[co].y as i32) * SERVER_MAPX as i32)
+                    as usize;
+                map[idx].flags & MF_ARENA as u64
+            });
 
-    pub fn do_become_purple(cn: usize) {}
+            let mut rng = rand::thread_rng();
+            if mf_arena == 0
+                && rng.gen_range(0..10000) < 5000 + Repository::with_characters(|ch| ch[co].luck)
+            {
+                // Save the character
+                Repository::with_characters_mut(|characters| {
+                    characters[co].a_hp = characters[co].hp[5] as i32 * 500;
+                    characters[co].luck /= 2;
+                    characters[co].data[44] += 1; // saved counter
+                });
 
-    pub fn do_create_note(cn: usize, text: &str) {}
+                self.do_character_log(co, core::types::FontColor::Yellow, "A god reached down and saved you from the killing blow. You must have done the gods a favor sometime in the past!\n");
+                self.do_area_log(
+                    co,
+                    0,
+                    Repository::with_characters(|ch| ch[co].x as i32),
+                    Repository::with_characters(|ch| ch[co].y as i32),
+                    core::types::FontColor::Yellow,
+                    &format!(
+                        "A god reached down and saved {} from the killing blow.\n",
+                        Repository::with_characters(|ch| ch[co].get_name())
+                    ),
+                );
+                God::transfer_char(
+                    co,
+                    Repository::with_characters(|ch| ch[co].temple_x as usize),
+                    Repository::with_characters(|ch| ch[co].temple_y as usize),
+                );
 
-    pub fn do_emote(cn: usize, text: &str) {}
+                Repository::with_characters_mut(|characters| {
+                    characters[cn].data[44] += 1;
+                });
 
-    pub fn do_check_pent_count(cn: usize) {}
+                self.do_notify_character(cn as u32, NT_DIDKILL as i32, co as i32, 0, 0, 0);
+                self.do_area_notify(
+                    cn as i32,
+                    co as i32,
+                    Repository::with_characters(|ch| ch[cn].x as i32),
+                    Repository::with_characters(|ch| ch[cn].y as i32),
+                    NT_SEEKILL as i32,
+                    cn as i32,
+                    co as i32,
+                    0,
+                    0,
+                );
+                return (dam / 1000) as i32;
+            }
+        }
 
-    pub fn do_view_exp_to_rank(cn: usize) {}
+        // Subtract hp
+        Repository::with_characters_mut(|characters| {
+            characters[co].a_hp -= dam;
+        });
 
-    pub fn rank2points(rank: i32) -> i32 {}
+        // Warn about low HP
+        let cur_hp = Repository::with_characters(|ch| ch[co].a_hp);
+        if cur_hp < 8000 && cur_hp >= 500 {
+            self.do_character_log(
+                co,
+                core::types::FontColor::Red,
+                "You're almost dead... Give running a try!\n",
+            );
+        }
 
-    pub fn do_gold(cn: usize, val: i32) {}
+        // Handle death
+        if cur_hp < 500 {
+            self.do_area_log(
+                cn,
+                co,
+                Repository::with_characters(|ch| ch[cn].x as i32),
+                Repository::with_characters(|ch| ch[cn].y as i32),
+                core::types::FontColor::Red,
+                &format!(
+                    "{} is dead!\n",
+                    Repository::with_characters(|ch| ch[co].get_name())
+                ),
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                &format!(
+                    "You killed {}.\n",
+                    Repository::with_characters(|ch| ch[co].get_name())
+                ),
+            );
 
-    pub fn do_god_give(cn: usize, co: usize) {}
+            if Repository::with_characters(|ch| {
+                (ch[cn].flags & CharacterFlags::CF_INVISIBLE.bits()) != 0
+            }) {
+                self.do_character_log(
+                    co,
+                    core::types::FontColor::Red,
+                    "Oh dear, that blow was fatal. Somebody killed you...\n",
+                );
+            } else {
+                self.do_character_log(
+                    co,
+                    core::types::FontColor::Red,
+                    &format!(
+                        "Oh dear, that blow was fatal. {} killed you...\n",
+                        Repository::with_characters(|ch| ch[cn].get_name())
+                    ),
+                );
+            }
 
-    pub fn do_lag(cn: usize, lag: i32) {}
+            self.do_notify_character(cn as u32, NT_DIDKILL as i32, co as i32, 0, 0, 0);
+            self.do_area_notify(
+                cn as i32,
+                co as i32,
+                Repository::with_characters(|ch| ch[cn].x as i32),
+                Repository::with_characters(|ch| ch[cn].y as i32),
+                NT_SEEKILL as i32,
+                cn as i32,
+                co as i32,
+                0,
+                0,
+            );
 
-    pub fn do_depot(cn: usize) {}
+            // Score and EXP handing (defer to helpers/stubs)
+            if type_hurt != 2
+                && cn != 0
+                && Repository::with_map(|map| {
+                    let idx = (Repository::with_characters(|ch| ch[co].x as i32)
+                        + Repository::with_characters(|ch| ch[co].y as i32) * SERVER_MAPX as i32)
+                        as usize;
+                    map[idx].flags & MF_ARENA as u64 == 0
+                })
+                && noexp == 0
+            {
+                let tmp = self.do_char_score(co);
+                let rank =
+                    helpers::points2rank(
+                        Repository::with_characters(|ch| ch[co].points_tot as u32) as u32
+                    ) as i32;
+                // Some bonuses for spells are handled in do_give_exp/do_char_killed
+                self.do_character_killed(co, cn);
+                if type_hurt != 2 && cn != 0 && cn != co {
+                    self.do_give_exp(cn, tmp, 1, rank);
+                }
+            } else {
+                self.do_character_killed(co, cn);
+            }
 
-    pub fn do_balance(cn: usize) {}
+            Repository::with_characters_mut(|characters| {
+                characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
+            });
+        } else {
+            // Reactive damage (gethit)
+            if type_hurt == 0 {
+                let gethit = Repository::with_characters(|ch| ch[co].gethit_dam);
+                if gethit > 0 {
+                    let mut rng = rand::thread_rng();
+                    let odam = rng.gen_range(0..(gethit as i32)) + 1;
+                    // call do_hurt on attacker
+                    self.do_hurt(co, cn, odam, 3);
+                }
+            }
+        }
 
-    pub fn do_withdraw(cn: usize, g: i32, s: i32) {}
+        dam / 1000
+    }
 
-    pub fn do_deposit(cn: usize, g: i32, s: i32) {}
+    pub fn do_give_exp(&self, cn: usize, p: i32, gflag: i32, rank: i32) {}
 
-    pub fn do_fightback(cn: usize) {}
+    pub fn get_fight_skill(&self, cn: usize) -> i32 {}
 
-    pub fn do_follow(cn: usize, name: &str) {}
+    pub fn do_char_can_flee(&self, cn: usize) -> i32 {}
 
-    pub fn do_ignore(cn: usize, name: &str, flag: i32) {}
+    pub fn do_ransack_corpse(&self, cn: usize, co: usize, msg: &str) {}
 
-    pub fn do_group(cn: usize, name: &str) {}
+    pub fn remove_enemy(co: usize) {
+        Repository::with_characters_mut(|characters| {
+            for n in 1..MAXCHARS as usize {
+                for m in 0..4 {
+                    if characters[n].enemy[m] as usize == co {
+                        characters[n].enemy[m] = 0;
+                    }
+                }
+            }
+        });
+    }
 
-    pub fn do_allow(cn: usize, co: usize) {}
+    pub fn do_char_score(&self, cn: usize) -> i32 {}
 
-    pub fn do_mark(cn: usize, co: usize, msg: &str) {}
+    pub fn do_say(&self, cn: usize, text: &str) {}
 
-    pub fn do_afk(cn: usize, msg: &str) {}
+    pub fn do_command(&self, cn: usize, ptr: &str) {}
 
-    pub fn do_help(cn: usize, topic: &str) {}
+    pub fn do_become_skua(&self, cn: usize) {}
 
-    pub fn do_gtell(cn: usize, text: &str) {}
+    pub fn do_make_soulstone(&self, cn: usize, cexp: i32) {}
 
-    pub fn do_nostaff(cn: usize) {}
+    pub fn do_list_all_flags(&self, cn: usize, flag: u64) {}
 
-    pub fn do_stell(cn: usize, text: &str) {}
+    pub fn do_list_net(&self, cn: usize, co: usize) {}
 
-    pub fn do_itell(cn: usize, text: &str) {}
+    pub fn do_respawn(&self, cn: usize, co: usize) {}
 
-    pub fn do_shout(cn: usize, text: &str) {}
+    pub fn do_npclist(&self, cn: usize, name: &str) {}
 
-    pub fn do_noshout(cn: usize) {}
+    pub fn do_leave(&self, cn: usize) {}
 
-    pub fn do_notell(cn: usize) {}
+    pub fn do_enter(&self, cn: usize) {}
 
-    pub fn do_tell(cn: usize, con: &str, text: &str) {}
+    pub fn do_stat(&self, cn: usize) {}
 
-    pub fn do_is_ignore(cn: usize, co: usize, flag: i32) -> i32 {}
+    pub fn do_become_purple(&self, cn: usize) {}
 
-    pub fn do_lookup_char_self(name: &str, cn: usize) -> i32 {}
+    pub fn do_create_note(&self, cn: usize, text: &str) {}
 
-    pub fn do_lookup_char(name: &str) -> i32 {}
+    pub fn do_emote(&self, cn: usize, text: &str) {}
 
-    pub fn do_imp_log(font: core::types::FontColor, text: &str) {}
+    pub fn do_check_pent_count(&self, cn: usize) {}
 
-    pub fn do_caution(source: i32, author: i32, text: &str) {}
+    pub fn do_view_exp_to_rank(&self, cn: usize) {}
 
-    pub fn do_announce(source: i32, author: i32, text: &str) {}
+    pub fn rank2points(&self, rank: i32) -> i32 {}
 
-    pub fn do_admin_log(source: i32, text: &str) {}
+    pub fn do_gold(&self, cn: usize, val: i32) {}
 
-    pub fn do_staff_log(font: core::types::FontColor, text: &str) {}
+    pub fn do_god_give(&self, cn: usize, co: usize) {}
 
-    pub fn do_area_say1(cn: usize, xs: usize, ys: usize, text: &str) {}
+    pub fn do_lag(&self, cn: usize, lag: i32) {}
+
+    pub fn do_depot(&self, cn: usize) {}
+
+    pub fn do_balance(&self, cn: usize) {}
+
+    pub fn do_withdraw(&self, cn: usize, g: i32, s: i32) {}
+
+    pub fn do_deposit(&self, cn: usize, g: i32, s: i32) {}
+
+    pub fn do_fightback(&self, cn: usize) {}
+
+    pub fn do_follow(&self, cn: usize, name: &str) {}
+
+    pub fn do_ignore(&self, cn: usize, name: &str, flag: i32) {}
+
+    pub fn do_group(&self, cn: usize, name: &str) {}
+
+    pub fn do_allow(&self, cn: usize, co: usize) {}
+
+    pub fn do_mark(&self, cn: usize, co: usize, msg: &str) {}
+
+    pub fn do_afk(&self, cn: usize, msg: &str) {}
+
+    pub fn do_help(&self, cn: usize, topic: &str) {}
+
+    pub fn do_gtell(&self, cn: usize, text: &str) {}
+
+    pub fn do_nostaff(&self, cn: usize) {}
+
+    pub fn do_stell(&self, cn: usize, text: &str) {}
+
+    pub fn do_itell(&self, cn: usize, text: &str) {}
+
+    pub fn do_shout(&self, cn: usize, text: &str) {}
+
+    pub fn do_noshout(&self, cn: usize) {}
+
+    pub fn do_notell(&self, cn: usize) {}
+
+    pub fn do_tell(&self, cn: usize, con: &str, text: &str) {}
+
+    pub fn do_is_ignore(&self, cn: usize, co: usize, flag: i32) -> i32 {}
+
+    pub fn do_lookup_char_self(&self, name: &str, cn: usize) -> i32 {}
+
+    pub fn do_lookup_char(&self, name: &str) -> i32 {}
+
+    pub fn do_imp_log(&self, font: core::types::FontColor, text: &str) {}
+
+    pub fn do_caution(&self, source: i32, author: i32, text: &str) {}
+
+    pub fn do_announce(&self, source: i32, author: i32, text: &str) {}
+
+    pub fn do_admin_log(&self, source: i32, text: &str) {}
+
+    pub fn do_staff_log(&self, font: core::types::FontColor, text: &str) {}
+
+    pub fn do_area_say1(&self, cn: usize, xs: usize, ys: usize, text: &str) {}
 }

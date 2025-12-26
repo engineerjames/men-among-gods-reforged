@@ -402,6 +402,10 @@ impl Labyrinth9 {
         f(&mut *lab)
     }
 
+    pub fn get_guesser(&self, idx: usize) -> i32 {
+        self.guesser[idx]
+    }
+
     pub fn lab9_guesser_says(&mut self, character_id: usize, text: &str) -> bool {
         let is_player =
             Repository::with_characters(|characters| characters[character_id].is_player());

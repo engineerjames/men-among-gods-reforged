@@ -640,7 +640,7 @@ pub fn npc_give(_cn: usize, _co: usize, _in: usize, _money: i32) -> i32 {
             {
                 let idx = (ar - core::constants::RIDDLE_MIN_AREA) as usize;
                 // check Lab9 guesser
-                let still = crate::lab9::Labyrinth9::with(|lab9| lab9.guesser[idx]);
+                let still = crate::lab9::Labyrinth9::with(|lab9| lab9.get_guesser(idx));
                 if still != 0 && still as usize != co {
                     State::with(|state| {
                         state.do_sayx(
