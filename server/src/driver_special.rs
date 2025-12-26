@@ -1,4 +1,5 @@
 use crate::driver;
+use crate::effect::EffectManager;
 use crate::god::God;
 use crate::repository::Repository;
 use crate::state::State;
@@ -1115,7 +1116,7 @@ pub fn npc_malte_low(cn: usize) -> i32 {
 
             let (cn_x, cn_y) = Repository::with_characters(|ch| (ch[cn].x, ch[cn].y));
 
-            // TODO: fx_add_effect(7, 0, cn_x, cn_y, 0);
+            EffectManager::fx_add_effect(7, 0, cn_x as i32, cn_y as i32, 0);
 
             Repository::with_characters_mut(|ch| {
                 ch[cn].data[2] = ticker + TICKS * 6;

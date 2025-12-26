@@ -8870,7 +8870,7 @@ impl State {
 
             log::info!("TODO: chlog({}, 'Converted to purple.')", cn);
 
-            crate::effect::EffectManager::fx_add_effect(5, 0, x, y, 0);
+            EffectManager::fx_add_effect(5, 0, x as i32, y as i32, 0);
         } else {
             self.do_character_log(cn, FontColor::Red, "Hmm. Nothing happened.\n");
         }

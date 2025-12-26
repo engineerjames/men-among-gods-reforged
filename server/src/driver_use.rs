@@ -1,3 +1,4 @@
+use crate::effect::EffectManager;
 use crate::god::God;
 use crate::helpers::points2rank;
 use crate::lab9::Labyrinth9;
@@ -886,13 +887,10 @@ pub fn stone_sword(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn finish_laby_teleport(cn: usize, nr: usize, exp: usize) -> i32 {
-    use crate::god::God;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::{ItemFlags, USE_EMPTY};
-
     // Update labyrinth progress if this is a new level
-    let current_progress = Repository::with_characters(|characters| characters[cn].data[20]);
+    let (current_progress, x, y) = Repository::with_characters(|characters| {
+        (characters[cn].data[20], characters[cn].x, characters[cn].y)
+    });
 
     if (current_progress as usize) < nr {
         Repository::with_characters_mut(|characters| {
@@ -917,8 +915,9 @@ pub fn finish_laby_teleport(cn: usize, nr: usize, exp: usize) -> i32 {
             );
         });
 
-        // TODO: Implement do_give_exp(cn, exp, 0, -1)
-        // TODO: Implement chlog(cn, "Solved Labyrinth Part %d", nr)
+        State::with(|state| {
+            state.do_give_exp(cn, exp as i32, 0, -1);
+        })
     }
 
     // Remove items with IF_LABYDESTROY flag from citem
@@ -1050,9 +1049,9 @@ pub fn finish_laby_teleport(cn: usize, nr: usize, exp: usize) -> i32 {
     }
 
     // Add effects and transfer character
-    // TODO: Implement fx_add_effect(6, 0, x, y, 0)
+    EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
     God::transfer_char(cn, 512, 512);
-    // TODO: Implement fx_add_effect(6, 0, x, y, 0)
+    EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
 
     // Update temple and tavern coordinates
     let (x, y) = Repository::with_characters(|characters| (characters[cn].x, characters[cn].y));

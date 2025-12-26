@@ -1,7 +1,4 @@
-use core::{
-    constants::LO_SHUTDOWN,
-    types::{Character, Map},
-};
+use core::types::{Character, Map};
 
 use crate::{
     enums::{CharacterFlags, LogoutReason},
@@ -9,7 +6,6 @@ use crate::{
     repository::Repository,
     state::State,
 };
-use libc::useconds_t;
 use rand::Rng;
 
 pub struct God {}
@@ -115,15 +111,16 @@ impl God {
         })
     }
 
-    pub fn build(character: &mut core::types::Character, character_id: usize, build_type: u32) {
-        if !character.is_building() {
+    pub fn build(character_id: usize, build_type: u32) {
+        let (character_is_building, name) = Repository::with_characters(|characters| {
+            let character = &characters[character_id];
+            (character.is_building(), character.get_name().to_string())
+        });
+        if !character_is_building {
             if Self::build_start(character_id) {
                 Self::build_equip(character_id, build_type);
             } else {
-                log::error!(
-                    "Failed to start build mode for character {}",
-                    character.get_name()
-                );
+                log::error!("Failed to start build mode for character {}", name);
             }
         } else if build_type != 0 {
             Self::build_stop(character_id);
