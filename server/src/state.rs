@@ -565,7 +565,7 @@ impl State {
         })
     }
 
-    pub fn do_char_can_see(&self, cn: usize, co: usize) -> i32 {
+    pub fn do_char_can_see(&mut self, cn: usize, co: usize) -> i32 {
         if cn == co {
             return 1;
         }
@@ -669,7 +669,7 @@ impl State {
         })
     }
 
-    pub fn do_char_can_see_item(&self, cn: usize, in_idx: usize) -> i32 {
+    pub fn do_char_can_see_item(&mut self, cn: usize, in_idx: usize) -> i32 {
         Repository::with_characters(|characters| {
             Repository::with_items(|items| {
                 Repository::with_map(|map| {
@@ -1337,8 +1337,15 @@ impl State {
                             core::types::FontColor::Red,
                             "To join the purple one and be a killer, type #purple now.\n",
                         );
-                        // TODO: Implement fx_add_effect
-                        log::info!("TODO: Add effect 6 at position ({}, {})", co_x, co_y);
+                        Repository::with_characters(|ch| {
+                            EffectManager::fx_add_effect(
+                                6,
+                                co_x as i32,
+                                co_y as i32,
+                                0,
+                                ch[killer_id].player,
+                            );
+                        });
                     }
                 }
 
@@ -3584,16 +3591,20 @@ impl State {
 
                             if God::transfer_char(cn, dest_x as usize, dest_y as usize) {
                                 if !is_invisible {
-                                    // TODO: Implement fx_add_effect
-                                    log::info!(
-                                        "TODO: fx_add_effect(12, 0, {}, {}, 0)",
-                                        old_x,
-                                        old_y
+                                    EffectManager::fx_add_effect(
+                                        12,
+                                        0,
+                                        old_x as i32,
+                                        old_y as i32,
+                                        0,
                                     );
-                                    log::info!(
-                                        "TODO: fx_add_effect(12, 0, {}, {}, 0)",
-                                        dest_x,
-                                        dest_y
+
+                                    EffectManager::fx_add_effect(
+                                        12,
+                                        0,
+                                        dest_x as i32,
+                                        dest_y as i32,
+                                        0,
                                     );
                                 }
                             }
@@ -7648,7 +7659,7 @@ impl State {
                     core::types::FontColor::Red,
                     &format!(
                         "Oh dear, that blow was fatal. {} killed you...\n",
-                        Repository::with_characters(|ch| ch[cn].get_name())
+                        Repository::with_characters(|ch| ch[cn].get_name().to_string())
                     ),
                 );
             }
@@ -7710,9 +7721,7 @@ impl State {
         dam / 1000
     }
 
-    pub fn do_give_exp(&self, cn: usize, p: i32, gflag: i32, rank: i32) {
-        use crate::helpers;
-
+    pub fn do_give_exp(&mut self, cn: usize, p: i32, gflag: i32, rank: i32) {
         if p < 0 {
             log::error!("PANIC: do_give_exp got negative amount");
             return;
@@ -7966,8 +7975,8 @@ impl State {
         });
         if rhand != 0 {
             let unique = Repository::with_items(|items| {
-                if rhand < items.len() {
-                    items[rhand].is_unique()
+                if (rhand as usize) < items.len() {
+                    items[rhand as usize].is_unique()
                 } else {
                     false
                 }
@@ -8250,7 +8259,7 @@ impl State {
         });
     }
 
-    pub fn do_command(&self, cn: usize, ptr: &str) {
+    pub fn do_command(&mut self, cn: usize, ptr: &str) {
         // Tokenize up to 10 args. Mimics the original C++ behaviour: quoted tokens
         // or alnum tokens, and `args[n]` points to the remainder starting at next token.
         let mut arg: [String; 10] = Default::default();
@@ -8394,7 +8403,7 @@ impl State {
                     return;
                 }
                 if starts("caution") && f_gius {
-                    self.do_caution(cn as i32, cn as i32, args_get(0));
+                    self.do_caution(cn, cn, args_get(0));
                     return;
                 }
                 if starts("ccp") && f_i {
