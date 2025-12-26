@@ -564,7 +564,7 @@ impl State {
         })
     }
 
-    pub fn do_char_can_see(&mut self, cn: usize, co: usize) -> i32 {
+    pub fn do_char_can_see(&self, cn: usize, co: usize) -> i32 {
         if cn == co {
             return 1;
         }
@@ -668,7 +668,7 @@ impl State {
         })
     }
 
-    pub fn do_char_can_see_item(&mut self, cn: usize, in_idx: usize) -> i32 {
+    pub fn do_char_can_see_item(&self, cn: usize, in_idx: usize) -> i32 {
         Repository::with_characters(|characters| {
             Repository::with_items(|items| {
                 Repository::with_map(|map| {
@@ -7709,13 +7709,329 @@ impl State {
         dam / 1000
     }
 
-    pub fn do_give_exp(&self, cn: usize, p: i32, gflag: i32, rank: i32) {}
+    pub fn do_give_exp(&self, cn: usize, p: i32, gflag: i32, rank: i32) {
+        use crate::helpers;
 
-    pub fn get_fight_skill(&self, cn: usize) -> i32 {}
+        if p < 0 {
+            log::error!("PANIC: do_give_exp got negative amount");
+            return;
+        }
 
-    pub fn do_char_can_flee(&self, cn: usize) -> i32 {}
+        if gflag != 0 {
+            // Group distribution for players
+            let is_player = Repository::with_characters(|ch| {
+                (ch[cn].flags & core::constants::CharacterFlags::CF_PLAYER.bits()) != 0
+            });
+            if is_player {
+                let mut c = 1;
+                for n in 1..10 {
+                    let co = Repository::with_characters(|ch| ch[cn].data[n] as usize);
+                    if co != 0 {
+                        // mutual membership and visible
+                        let mutual = Repository::with_characters(|ch| {
+                            let mut found = false;
+                            for m in 1..10 {
+                                if ch[co].data[m] as usize == cn {
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            found
+                        });
+                        if mutual && self.do_char_can_see(cn, co) != 0 {
+                            c += 1;
+                        }
+                    }
+                }
 
-    pub fn do_ransack_corpse(&self, cn: usize, co: usize, msg: &str) {}
+                // distribute
+                let mut s = 0;
+                for n in 1..10 {
+                    let co = Repository::with_characters(|ch| ch[cn].data[n] as usize);
+                    if co != 0 {
+                        let mutual = Repository::with_characters(|ch| {
+                            let mut found = false;
+                            for m in 1..10 {
+                                if ch[co].data[m] as usize == cn {
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            found
+                        });
+                        if mutual && self.do_char_can_see(cn, co) != 0 {
+                            let share = p / c;
+                            self.do_give_exp(co, share, 0, rank);
+                            s += share;
+                        }
+                    }
+                }
+                self.do_give_exp(cn, p - s, 0, rank);
+            } else {
+                // NPC follower handling
+                let co = Repository::with_characters(|ch| ch[cn].data[63] as i32);
+                if co != 0 {
+                    self.do_give_exp(cn, p, 0, rank);
+                    let master = Repository::with_characters(|ch| ch[cn].data[63] as i32);
+                    if master > 0
+                        && (master as usize) < core::constants::MAXCHARS
+                        && Repository::with_characters(|ch| ch[master as usize].points_tot)
+                            > Repository::with_characters(|ch| ch[cn].points_tot)
+                    {
+                        Repository::with_characters_mut(|characters| {
+                            characters[cn].data[28] += helpers::scale_exps2(master, rank, p);
+                        });
+                    } else {
+                        Repository::with_characters_mut(|characters| {
+                            characters[cn].data[28] += helpers::scale_exps2(cn as i32, rank, p);
+                        });
+                    }
+                }
+            }
+            return;
+        }
+
+        // Non-grouped experience
+        let mut p = p;
+        if rank >= 0 && rank <= 24 {
+            let master = Repository::with_characters(|ch| ch[cn].data[63] as i32);
+            if master > 0
+                && (master as usize) < core::constants::MAXCHARS
+                && Repository::with_characters(|ch| ch[master as usize].points_tot)
+                    > Repository::with_characters(|ch| ch[cn].points_tot)
+            {
+                p = helpers::scale_exps2(master, rank, p);
+            } else {
+                p = helpers::scale_exps2(cn as i32, rank, p);
+            }
+        }
+
+        if p != 0 {
+            Repository::with_characters_mut(|characters| {
+                characters[cn].points += p;
+                characters[cn].points_tot += p;
+            });
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                &format!("You get {} experience points.\n", p),
+            );
+            self.do_notify_character(cn as u32, core::constants::NT_GOTEXP as i32, p, 0, 0, 0);
+            log::info!("TODO: chlog({}, 'Gets {} EXP')", cn, p);
+            self.do_update_char(cn);
+            self.do_check_new_level(cn);
+        }
+    }
+
+    pub fn get_fight_skill(&self, cn: usize) -> i32 {
+        use core::constants::{
+            ItemFlags, SK_AXE, SK_DAGGER, SK_HAND, SK_KARATE, SK_STAFF, SK_SWORD, SK_TWOHAND,
+            WN_RHAND,
+        };
+
+        // Read worn right-hand item index and the relevant skill values.
+        let (in_idx, s_hand, s_karate, s_sword, s_dagger, s_axe, s_staff, s_twohand) =
+            Repository::with_characters(|characters| {
+                let in_idx = characters[cn].worn[WN_RHAND] as usize;
+                (
+                    in_idx,
+                    characters[cn].skill[SK_HAND][5] as i32,
+                    characters[cn].skill[SK_KARATE][5] as i32,
+                    characters[cn].skill[SK_SWORD][5] as i32,
+                    characters[cn].skill[SK_DAGGER][5] as i32,
+                    characters[cn].skill[SK_AXE][5] as i32,
+                    characters[cn].skill[SK_STAFF][5] as i32,
+                    characters[cn].skill[SK_TWOHAND][5] as i32,
+                )
+            });
+
+        if in_idx == 0 {
+            return std::cmp::max(s_karate, s_hand);
+        }
+
+        // Get item flags for the item in right hand.
+        let flags = Repository::with_items(|items| items[in_idx].flags);
+
+        if (flags & ItemFlags::IF_WP_SWORD.bits()) != 0 {
+            return s_sword;
+        }
+        if (flags & ItemFlags::IF_WP_DAGGER.bits()) != 0 {
+            return s_dagger;
+        }
+        if (flags & ItemFlags::IF_WP_AXE.bits()) != 0 {
+            return s_axe;
+        }
+        if (flags & ItemFlags::IF_WP_STAFF.bits()) != 0 {
+            return s_staff;
+        }
+        if (flags & ItemFlags::IF_WP_TWOHAND.bits()) != 0 {
+            return s_twohand;
+        }
+
+        std::cmp::max(s_karate, s_hand)
+    }
+
+    pub fn do_char_can_flee(&self, cn: usize) -> i32 {
+        use core::constants::{SK_PERCEPT, SK_STEALTH, TICKS};
+
+        // First, remove stale enemy entries where the relation is not mutual
+        Repository::with_characters_mut(|characters| {
+            for m in 0..4 {
+                let co = characters[cn].enemy[m] as usize;
+                if co != 0 && characters[co].current_enemy as usize != cn {
+                    characters[cn].enemy[m] = 0;
+                }
+            }
+            for m in 0..4 {
+                let co = characters[cn].enemy[m] as usize;
+                if co != 0 && characters[co].attack_cn as usize != cn {
+                    characters[cn].enemy[m] = 0;
+                }
+            }
+        });
+
+        // If no enemies remain, fleeing succeeds
+        let no_enemies = Repository::with_characters(|characters| {
+            let e0 = characters[cn].enemy[0];
+            let e1 = characters[cn].enemy[1];
+            let e2 = characters[cn].enemy[2];
+            let e3 = characters[cn].enemy[3];
+            e0 == 0 && e1 == 0 && e2 == 0 && e3 == 0
+        });
+        if no_enemies {
+            return 1;
+        }
+
+        // If escape timer active, can't flee
+        let escape_timer = Repository::with_characters(|characters| characters[cn].escape_timer);
+        if escape_timer != 0 {
+            return 0;
+        }
+
+        // Sum perception of enemies
+        let per = Repository::with_characters(|characters| {
+            let mut per = 0i32;
+            for m in 0..4 {
+                let co = characters[cn].enemy[m] as usize;
+                if co != 0 {
+                    per += characters[co].skill[SK_PERCEPT][5] as i32;
+                }
+            }
+            per
+        });
+
+        let ste =
+            Repository::with_characters(|characters| characters[cn].skill[SK_STEALTH][5] as i32);
+
+        let mut chance = if per == 0 { 0 } else { ste * 15 / per };
+        if chance < 0 {
+            chance = 0;
+        }
+        if chance > 18 {
+            chance = 18;
+        }
+
+        let mut rng = rand::thread_rng();
+        if rng.gen_range(0..20) <= chance {
+            self.do_character_log(cn, core::types::FontColor::Green, "You manage to escape!\n");
+            Repository::with_characters_mut(|characters| {
+                for m in 0..4 {
+                    characters[cn].enemy[m] = 0;
+                }
+            });
+            State::remove_enemy(cn);
+            return 1;
+        }
+
+        Repository::with_characters_mut(|characters| {
+            characters[cn].escape_timer = TICKS as u16;
+        });
+        self.do_character_log(cn, core::types::FontColor::Red, "You cannot escape!\n");
+
+        0
+    }
+
+    pub fn do_ransack_corpse(&self, cn: usize, co: usize, msg: &str) {
+        use core::constants::{PL_BELT, SK_SENSE};
+
+        let mut rng = rand::thread_rng();
+
+        let sense_skill =
+            Repository::with_characters(|characters| characters[cn].skill[SK_SENSE][5] as i32);
+
+        // Check for unique weapon in right hand
+        let rhand = Repository::with_characters(|characters| {
+            characters[co].worn[core::constants::WN_RHAND]
+        });
+        if rhand != 0 {
+            let unique = Repository::with_items(|items| {
+                if rhand < items.len() {
+                    items[rhand].is_unique()
+                } else {
+                    false
+                }
+            });
+            if unique && sense_skill > rng.gen_range(0..200) {
+                let message = msg.replacen("%s", "a rare weapon", 1);
+                self.do_character_log(cn, FontColor::Yellow, &message);
+            }
+        }
+
+        // Iterate inventory slots
+        for n in 0..40 {
+            let in_idx = Repository::with_characters(|characters| characters[co].item[n]);
+            if in_idx == 0 {
+                continue;
+            }
+
+            let (flags, temp, placement, unique) = Repository::with_items(|items| {
+                if in_idx < items.len() {
+                    let it = &items[in_idx];
+                    (it.flags, it.temp, it.placement, it.is_unique())
+                } else {
+                    (0u64, 0u16, 0u16, false)
+                }
+            });
+
+            if (flags & ItemFlags::IF_MAGIC.bits()) == 0 {
+                continue;
+            }
+
+            if unique && sense_skill > rng.gen_range(0..200) {
+                let message = msg.replacen("%s", "a rare weapon", 1);
+                self.do_character_log(cn, FontColor::Yellow, &message);
+                continue;
+            }
+
+            // scrolls: ranges 699-716, 175-178, 181-189
+            let is_scroll = (699..=716).contains(&(temp as i32))
+                || (175..=178).contains(&(temp as i32))
+                || (181..=189).contains(&(temp as i32));
+            if is_scroll && sense_skill > rng.gen_range(0..200) {
+                let message = msg.replacen("%s", "a magical scroll", 1);
+                self.do_character_log(cn, FontColor::Yellow, &message);
+                continue;
+            }
+
+            // potions: explicit list
+            let is_potion = matches!(
+                temp as i32,
+                101 | 102 | 127 | 131 | 135 | 148 | 224 | 273 | 274 | 449
+            );
+            if is_potion && sense_skill > rng.gen_range(0..200) {
+                let message = msg.replacen("%s", "a magical potion", 1);
+                self.do_character_log(cn, FontColor::Yellow, &message);
+                continue;
+            }
+
+            // belt / placement check
+            if (placement & PL_BELT) != 0 && sense_skill > rng.gen_range(0..200) {
+                let message = msg.replacen("%s", "a magical belt", 1);
+                self.do_character_log(cn, FontColor::Yellow, &message);
+                continue;
+            }
+        }
+    }
 
     pub fn remove_enemy(co: usize) {
         Repository::with_characters_mut(|characters| {
@@ -7729,9 +8045,209 @@ impl State {
         });
     }
 
-    pub fn do_char_score(&self, cn: usize) -> i32 {}
+    pub fn do_char_score(&self, cn: usize) -> i32 {
+        let pts = Repository::with_characters(|characters| characters[cn].points_tot);
+        let pts = if pts < 0 { 0 } else { pts } as f64;
+        ((pts.sqrt() as i32) / 7) + 7
+    }
 
-    pub fn do_say(&self, cn: usize, text: &str) {}
+    pub fn do_say(&self, cn: usize, text: &str) {
+        // Rate limiting for players (skip for direct '|' logs)
+        if Repository::with_characters(|ch| {
+            (ch[cn].flags & CharacterFlags::CF_PLAYER.bits()) != 0 && !text.starts_with('|')
+        }) {
+            let can_proceed = Repository::with_characters_mut(|ch| {
+                ch[cn].data[71] += core::constants::CNTSAY;
+                ch[cn].data[71] <= core::constants::MAXSAY
+            });
+
+            if !can_proceed {
+                self.do_character_log(
+                    cn,
+                    FontColor::Green,
+                    "Oops, you're a bit too fast for me!\n",
+                );
+                return;
+            }
+        }
+
+        // GOD password: grant god flags
+        if text == core::constants::GODPASSWORD {
+            Repository::with_characters_mut(|ch| {
+                ch[cn].flags |= (CharacterFlags::CF_GREATERGOD
+                    | CharacterFlags::CF_GOD
+                    | CharacterFlags::CF_IMMORTAL
+                    | CharacterFlags::CF_CREATOR
+                    | CharacterFlags::CF_STAFF
+                    | CharacterFlags::CF_IMP)
+                    .bits();
+            });
+
+            self.do_character_log(cn, FontColor::Red, "Yes, Sire, I recognise you!\n");
+
+            let (x, y) = Repository::with_characters(|ch| (ch[cn].x as i32, ch[cn].y as i32));
+            self.do_area_log(
+                cn,
+                0,
+                x,
+                y,
+                FontColor::Red,
+                "ASTONIA RECOGNISES ITS CREATOR!\n",
+            );
+
+            return;
+        }
+
+        // Special "Skua!/Purple!" behaviour
+        Repository::with_characters_mut(|ch| {
+            let kindred = ch[cn].kindred as i32;
+            let is_skua = text == "Skua!" && (kindred & core::constants::KIN_PURPLE as i32) == 0;
+            let is_purple =
+                text == "Purple!" && (kindred & core::constants::KIN_PURPLE as i32) != 0;
+            if (is_skua || is_purple) && ch[cn].luck > 100 {
+                let mut rng = rand::thread_rng();
+                if ch[cn].a_hp < ch[cn].hp[5] as i32 * 200 {
+                    ch[cn].a_hp += 50000 + rng.gen_range(0..100000);
+                    let cap = ch[cn].hp[5] as i32 * 1000;
+                    if ch[cn].a_hp > cap {
+                        ch[cn].a_hp = cap;
+                    }
+                    ch[cn].luck -= 25;
+                }
+                if ch[cn].a_end < ch[cn].end[5] as i32 * 200 {
+                    ch[cn].a_end += 50000 + rng.gen_range(0..100000);
+                    let cap = ch[cn].end[5] as i32 * 1000;
+                    if ch[cn].a_end > cap {
+                        ch[cn].a_end = cap;
+                    }
+                    ch[cn].luck -= 10;
+                }
+                if ch[cn].a_mana < ch[cn].mana[5] as i32 * 200 {
+                    ch[cn].a_mana += 50000 + rng.gen_range(0..100000);
+                    let cap = ch[cn].mana[5] as i32 * 1000;
+                    if ch[cn].a_mana > cap {
+                        ch[cn].a_mana = cap;
+                    }
+                    ch[cn].luck -= 50;
+                }
+            }
+        });
+
+        if text == "help" {
+            self.do_character_log(cn, FontColor::Red, "Use #help instead.\n");
+        }
+
+        // direct log write from client
+        if text.starts_with('|') {
+            log::info!("TODO: chlog({}, '%s')", cn);
+            return;
+        }
+
+        if text.starts_with('#') || text.starts_with('/') {
+            self.do_command(cn, &text[1..]);
+            return;
+        }
+
+        // shutup check
+        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::CF_SHUTUP.bits()) != 0)
+        {
+            self.do_character_log(
+                cn,
+                FontColor::Red,
+                "You try to say something, but you only produce a croaking sound.\n",
+            );
+            return;
+        }
+
+        // Underwater: replace with "Blub!" unless blue pill (temp==648) is present
+        let mut ptr: &str = text;
+        let is_underwater = Repository::with_characters(|ch| {
+            let m = ch[cn].x as usize + ch[cn].y as usize * core::constants::SERVER_MAPX as usize;
+            Repository::with_map(|map| map[m].flags & core::constants::MF_UWATER as u64 != 0)
+        });
+
+        if is_underwater {
+            let mut found_blue = false;
+            Repository::with_characters(|ch| {
+                Repository::with_items(|items| {
+                    for n in 0..20usize {
+                        let in_idx = ch[cn].spell[n] as usize;
+                        if in_idx != 0 && in_idx < items.len() && items[in_idx].temp == 648 {
+                            found_blue = true;
+                            break;
+                        }
+                    }
+                })
+            });
+
+            if !found_blue {
+                ptr = "Blub!";
+            }
+        }
+
+        // detect "name: \"quote\"" fake pattern
+        let mut m_val = 0i32;
+        for c in text.chars() {
+            if m_val == 0 && c.is_alphabetic() {
+                m_val = 1;
+                continue;
+            }
+            if m_val == 1 && c.is_alphabetic() {
+                continue;
+            }
+            if m_val == 1 && c == ':' {
+                m_val = 2;
+                continue;
+            }
+            if m_val == 2 && c == ' ' {
+                m_val = 3;
+                continue;
+            }
+            if m_val == 3 && c == '"' {
+                m_val = 4;
+                break;
+            }
+            m_val = 0;
+        }
+
+        // Show to area (selective for players/usurp)
+        let is_player_or_usurp = Repository::with_characters(|ch| {
+            (ch[cn].flags & (CharacterFlags::CF_PLAYER.bits() | CharacterFlags::CF_USURP.bits()))
+                != 0
+        });
+
+        let (cx, cy, name) = Repository::with_characters(|ch| {
+            (
+                ch[cn].x as usize,
+                ch[cn].y as usize,
+                ch[cn].get_name().to_string(),
+            )
+        });
+
+        if is_player_or_usurp {
+            self.do_area_say1(cn, cx, cy, ptr);
+        } else {
+            let msg = format!("{:.30}: \"{}\"\n", name, ptr);
+            self.do_area_log(0, 0, cx as i32, cy as i32, FontColor::Red, &msg);
+        }
+
+        if m_val == 4 {
+            God::slap(0, cn);
+            log::info!(
+                "TODO: chlog({}, 'Punished for trying to fake another character')",
+                cn
+            );
+        }
+
+        if is_player_or_usurp {
+            log::info!("TODO: chlog({}, 'Says \"{}\" {}', ptr != text)", cn, text);
+        }
+
+        // Lab 9 support
+        crate::lab9::Labyrinth9::with_mut(|lab9| {
+            let _ = lab9.lab9_guesser_says(cn, text);
+        });
+    }
 
     pub fn do_command(&self, cn: usize, ptr: &str) {}
 
