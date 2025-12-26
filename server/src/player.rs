@@ -285,7 +285,7 @@ pub fn plr_logout(character_id: usize, player_id: usize, reason: enums::LogoutRe
                 character.flags |= enums::CharacterFlags::SaveMe.bits();
 
                 if character.is_building() {
-                    God::build(character, character_id, 0);
+                    God::build(character_id, 0);
                 }
             });
         }
@@ -416,7 +416,7 @@ pub fn plr_map_set(cn: usize) {
         if is_tavern && is_player {
             Repository::with_characters_mut(|characters| {
                 if characters[cn].is_building() {
-                    God::build(&mut characters[cn].clone(), cn, 0);
+                    God::build(cn, 0);
                 }
                 characters[cn].tavern_x = characters[cn].x as u16;
                 characters[cn].tavern_y = characters[cn].y as u16;

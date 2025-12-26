@@ -7722,6 +7722,8 @@ impl State {
     }
 
     pub fn do_give_exp(&mut self, cn: usize, p: i32, gflag: i32, rank: i32) {
+        use crate::helpers;
+
         if p < 0 {
             log::error!("PANIC: do_give_exp got negative amount");
             return;
@@ -8813,21 +8815,301 @@ impl State {
         EffectManager::fx_add_effect(5, 0, x as i32, y as i32, 0);
     }
 
-    pub fn do_make_soulstone(&self, cn: usize, cexp: i32) {}
+    pub fn do_make_soulstone(&self, cn: usize, cexp: i32) {
+        if let Some(in_idx) = God::create_item(1146) {
+            let rank = crate::helpers::points2rank(cexp as u32) as u32;
 
-    pub fn do_list_all_flags(&self, cn: usize, flag: u64) {}
+            Repository::with_items_mut(|items| {
+                let it = &mut items[in_idx];
 
-    pub fn do_list_net(&self, cn: usize, co: usize) {}
+                // set name
+                it.name = [0; 40];
+                for (i, &b) in b"Soulstone".iter().enumerate() {
+                    it.name[i] = b;
+                }
 
-    pub fn do_respawn(&self, cn: usize, co: usize) {}
+                // set reference
+                it.reference = [0; 40];
+                for (i, &b) in b"soulstone".iter().enumerate() {
+                    it.reference[i] = b;
+                }
 
-    pub fn do_npclist(&self, cn: usize, name: &str) {}
+                // set description
+                let desc = format!("Level {} soulstone, holding {} exp.", rank, cexp);
+                it.description = [0; 200];
+                let desc_bytes = desc.as_bytes();
+                for i in 0..std::cmp::min(desc_bytes.len(), it.description.len()) {
+                    it.description[i] = desc_bytes[i];
+                }
 
-    pub fn do_leave(&self, cn: usize) {}
+                it.data[0] = rank;
+                it.data[1] = cexp as u32;
+                it.temp = 0;
+                it.driver = 68;
+            });
 
-    pub fn do_enter(&self, cn: usize) {}
+            God::give_character_item(cn, in_idx);
+        }
+    }
 
-    pub fn do_stat(&self, cn: usize) {}
+    pub fn do_list_all_flags(&self, cn: usize, flag: u64) {
+        for n in 1..core::constants::MAXCHARS as usize {
+            let show = Repository::with_characters(|chars| {
+                let ch = &chars[n];
+                if ch.used == core::constants::USE_EMPTY {
+                    return false;
+                }
+                if (ch.flags & CharacterFlags::CF_PLAYER.bits()) == 0 {
+                    return false;
+                }
+                (ch.flags & flag) != 0
+            });
+
+            if show {
+                let name = Repository::with_characters(|ch| ch[n].get_name().to_string());
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!("{:04} {}\n", n, name),
+                );
+            }
+        }
+    }
+
+    pub fn do_list_net(&self, cn: usize, co: usize) {
+        let header = Repository::with_characters(|chars| {
+            format!(
+                "{} is know to log on from the following addresses:\n",
+                chars[co].get_name()
+            )
+        });
+        self.do_character_log(cn, core::types::FontColor::Yellow, &header);
+
+        for n in 80..90 {
+            let ip = Repository::with_characters(|chars| chars[co].data[n]);
+            let a = (ip & 255) as u8;
+            let b = ((ip >> 8) & 255) as u8;
+            let c = ((ip >> 16) & 255) as u8;
+            let d = ((ip >> 24) & 255) as u8;
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!("{}.{}.{}.{}\n", a, b, c, d),
+            );
+        }
+    }
+
+    pub fn do_respawn(&self, cn: usize, co: usize) {
+        if co < 1 || co >= core::constants::MAXTCHARS as usize {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "That template number is a bit strange, don't you think so, dude?\n",
+            );
+            return;
+        }
+        Repository::with_globals_mut(|globals| {
+            globals.reset_char = co as i32;
+        });
+    }
+
+    pub fn do_npclist(&self, cn: usize, name: &str) {
+        if name.is_empty() {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "Gimme a name to work with, dude!\n",
+            );
+            return;
+        }
+        if name.len() < 3 || name.len() > 35 {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "What kind of name is that, dude?\n",
+            );
+            return;
+        }
+
+        let mut foundalive = 0;
+        let mut foundtemp = 0;
+
+        for n in 1..core::constants::MAXCHARS as usize {
+            let matched = Repository::with_characters(|chars| {
+                let ch = &chars[n];
+                if ch.used == core::constants::USE_EMPTY {
+                    return false;
+                }
+                if (ch.flags & CharacterFlags::CF_PLAYER.bits()) != 0 {
+                    return false;
+                }
+                ch.get_name().to_lowercase().contains(&name.to_lowercase())
+            });
+
+            if matched {
+                foundalive += 1;
+                let (n_name, n_desc) = Repository::with_characters(|chars| {
+                    (
+                        chars[n].get_name().to_string(),
+                        String::from_utf8_lossy(&chars[n].description).to_string(),
+                    )
+                });
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!("C{:4} {:20.20} {:.20}\n", n, n_name, n_desc),
+                );
+            }
+        }
+
+        for n in 1..core::constants::MAXTCHARS as usize {
+            let matched = Repository::with_character_templates(|temps| {
+                if temps[n].used == core::constants::USE_EMPTY {
+                    return false;
+                }
+                if (temps[n].flags & CharacterFlags::CF_PLAYER.bits()) != 0 {
+                    return false;
+                }
+                let name_s = {
+                    let end = temps[n]
+                        .name
+                        .iter()
+                        .position(|&c| c == 0)
+                        .unwrap_or(temps[n].name.len());
+                    std::str::from_utf8(&temps[n].name[..end]).unwrap_or("")
+                };
+                name_s.to_lowercase().contains(&name.to_lowercase())
+            });
+
+            if matched {
+                foundtemp += 1;
+                let (t_name, t_desc) = Repository::with_character_templates(|temps| {
+                    let end = temps[n]
+                        .name
+                        .iter()
+                        .position(|&c| c == 0)
+                        .unwrap_or(temps[n].name.len());
+                    let name_s = std::str::from_utf8(&temps[n].name[..end])
+                        .unwrap_or("")
+                        .to_string();
+                    let desc_s = String::from_utf8_lossy(&temps[n].description).to_string();
+                    (name_s, desc_s)
+                });
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!("T{:4} {:20.20} {:.20}\n", n, t_name, t_desc),
+                );
+            }
+        }
+
+        if foundalive != 0 || foundtemp != 0 {
+            self.do_character_log(cn, core::types::FontColor::Yellow, " \n");
+        }
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            &format!(
+                "{} characters, {} templates by that name\n",
+                foundalive, foundtemp
+            ),
+        );
+    }
+
+    pub fn do_leave(&self, cn: usize) {
+        let name = Repository::with_characters(|ch| ch[cn].get_name().to_string());
+        self.do_announce(cn, 0, &format!("{} left the game.\n", name));
+        Repository::with_characters_mut(|characters| {
+            characters[cn].flags |=
+                (CharacterFlags::CF_NOWHO.bits() | CharacterFlags::CF_INVISIBLE.bits());
+        });
+    }
+
+    pub fn do_enter(&self, cn: usize) {
+        Repository::with_characters_mut(|characters| {
+            characters[cn].flags &=
+                !(CharacterFlags::CF_NOWHO.bits() | CharacterFlags::CF_INVISIBLE.bits());
+        });
+        let name = Repository::with_characters(|ch| ch[cn].get_name().to_string());
+        self.do_announce(cn, 0, &format!("{} entered the game.\n", name));
+    }
+
+    pub fn do_stat(&self, cn: usize) {
+        Repository::with_globals(|globals| {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                &format!("items: {}/{}\n", globals.item_cnt, core::constants::MAXITEM),
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                &format!(
+                    "chars: {}/{}\n",
+                    globals.character_cnt,
+                    core::constants::MAXCHARS
+                ),
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                &format!(
+                    "effes: {}/{}\n",
+                    globals.effect_cnt,
+                    core::constants::MAXEFFECT
+                ),
+            );
+
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                &format!("newmoon={}\n", globals.newmoon),
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                &format!("fullmoon={}\n", globals.fullmoon),
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                &format!("mdday={} (%28={})\n", globals.mdday, globals.mdday % 28),
+            );
+
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                &format!(
+                    "mayhem={}, looting={}, close={}, cap={}, speedy={}\n",
+                    if (globals.flags & core::constants::GF_MAYHEM) != 0 {
+                        "yes"
+                    } else {
+                        "no"
+                    },
+                    if (globals.flags & core::constants::GF_LOOTING) != 0 {
+                        "yes"
+                    } else {
+                        "no"
+                    },
+                    if (globals.flags & core::constants::GF_CLOSEENEMY) != 0 {
+                        "yes"
+                    } else {
+                        "no"
+                    },
+                    if (globals.flags & core::constants::GF_CAP) != 0 {
+                        "yes"
+                    } else {
+                        "no"
+                    },
+                    if (globals.flags & core::constants::GF_SPEEDY) != 0 {
+                        "yes"
+                    } else {
+                        "no"
+                    }
+                ),
+            );
+        });
+    }
 
     pub fn do_become_purple(&self, cn: usize) {
         // Ported from svr_do.cpp
@@ -8885,77 +9167,1393 @@ impl State {
         }
     }
 
-    pub fn do_create_note(&self, cn: usize, text: &str) {}
+    // Ported implementations for various commands from svr_do.cpp (see plan)
 
-    pub fn do_emote(&self, cn: usize, text: &str) {}
+    pub fn do_create_note(&self, cn: usize, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        if text.len() >= 199 {
+            return;
+        }
 
-    pub fn do_check_pent_count(&self, cn: usize) {}
+        log::info!("created note: {}.", text);
 
-    pub fn do_view_exp_to_rank(&self, cn: usize) {}
+        for m in 0..40 {
+            let slot = Repository::with_characters(|chars| chars[cn].item[m]);
+            if slot == 0 {
+                if let Some(in_idx) = God::create_item(132) {
+                    Repository::with_items_mut(|items| {
+                        items[in_idx].temp = 0;
+                        items[in_idx].description = [0; 200];
+                        let bytes = text.as_bytes();
+                        for i in 0..std::cmp::min(bytes.len(), items[in_idx].description.len()) {
+                            items[in_idx].description[i] = bytes[i];
+                        }
+                        items[in_idx].flags |= core::constants::ItemFlags::IF_NOEXPIRE.bits();
+                        items[in_idx].carried = cn as u16;
+                    });
+                    Repository::with_characters_mut(|chars| {
+                        chars[cn].item[m] = in_idx as u32;
+                        chars[cn].set_do_update_flags();
+                    });
+                    self.do_update_char(cn);
+                    return;
+                }
+            }
+        }
 
-    pub fn rank2points(&self, rank: i32) -> i32 {}
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            "You failed to create a note. Inventory is full!\n",
+        );
+    }
 
-    pub fn do_gold(&self, cn: usize, val: i32) {}
+    pub fn do_emote(&self, cn: usize, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        if text.contains('%') {
+            return;
+        }
 
-    pub fn do_god_give(&self, cn: usize, co: usize) {}
+        let shutup = Repository::with_characters(|ch| {
+            (ch[cn].flags & CharacterFlags::CF_SHUTUP.bits()) != 0
+        });
+        let invis = Repository::with_characters(|ch| {
+            (ch[cn].flags & CharacterFlags::CF_INVISIBLE.bits()) != 0
+        });
 
-    pub fn do_lag(&self, cn: usize, lag: i32) {}
+        if shutup {
+            self.do_character_log(cn, core::types::FontColor::Red, "You feel guilty.\n");
+            log::info!("emote: feels guilty ({})", text);
+        } else if invis {
+            self.do_area_log(
+                0,
+                0,
+                Repository::with_characters(|ch| ch[cn].x as i32),
+                Repository::with_characters(|ch| ch[cn].y as i32),
+                core::types::FontColor::Green,
+                &format!("Somebody {}.\n", text),
+            );
+            log::info!("emote(inv): {}", text);
+        } else {
+            let name = Repository::with_characters(|ch| ch[cn].get_name().to_string());
+            self.do_area_log(
+                0,
+                0,
+                Repository::with_characters(|ch| ch[cn].x as i32),
+                Repository::with_characters(|ch| ch[cn].y as i32),
+                core::types::FontColor::Green,
+                &format!("{} {}.\n", name, text),
+            );
+            log::info!("emote: {}", text);
+        }
+    }
 
-    pub fn do_depot(&self, cn: usize) {}
+    pub fn do_check_pent_count(&self, cn: usize) {
+        let mut active = 0;
+        Repository::with_items(|items| {
+            for it in items.iter() {
+                if it.used == core::constants::USE_EMPTY {
+                    continue;
+                }
+                if it.driver != 33 {
+                    continue;
+                }
+                if it.active != std::u32::MAX {
+                    // active == -1 in C
+                    continue;
+                }
+                active += 1;
+            }
+        });
 
-    pub fn do_balance(&self, cn: usize) {}
+        // penta_needed is external in original; use 0 as placeholder
+        let penta_needed: i32 = 0;
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            &format!(
+                "There are {} pentagrams active. {} needed to solve.\n",
+                active, penta_needed
+            ),
+        );
+    }
 
-    pub fn do_withdraw(&self, cn: usize, g: i32, s: i32) {}
+    pub fn do_view_exp_to_rank(&self, cn: usize) {
+        let current_rank =
+            crate::helpers::points2rank(Repository::with_characters(|ch| ch[cn].points_tot as u32))
+                as usize;
+        let exp_to_next = self.rank2points(current_rank as i32);
+        let exp_needed = exp_to_next - Repository::with_characters(|ch| ch[cn].points_tot);
+        let next_name = crate::helpers::RANK_NAMES
+            .get(current_rank + 1)
+            .unwrap_or(&"Unknown");
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            &format!("You need {} exp for {}.\n", exp_needed, next_name),
+        );
+    }
 
-    pub fn do_deposit(&self, cn: usize, g: i32, s: i32) {}
+    pub fn rank2points(&self, rank: i32) -> i32 {
+        match rank {
+            0 => 50,
+            1 => 850,
+            2 => 4900,
+            3 => 17700,
+            4 => 48950,
+            5 => 113750,
+            6 => 233800,
+            7 => 438600,
+            8 => 766650,
+            9 => 1266650,
+            10 => 1998700,
+            11 => 3035500,
+            12 => 4463550,
+            13 => 6384350,
+            14 => 8915600,
+            15 => 12192400,
+            16 => 16368450,
+            17 => 21617250,
+            18 => 28133300,
+            19 => 36133300,
+            20 => 49014500,
+            21 => 63000600,
+            22 => 80977100,
+            _ => -1,
+        }
+    }
 
-    pub fn do_fightback(&self, cn: usize) {}
+    pub fn do_gold(&self, cn: usize, val: i32) {
+        let citem = Repository::with_characters(|ch| ch[cn].citem);
+        if citem != 0 {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "Please remove the item from your mouse cursor first.\n",
+            );
+            return;
+        }
+        if val < 1 {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "That's not very much, is it?\n",
+            );
+            return;
+        }
+        let mut v = val * 100;
+        let have = Repository::with_characters(|ch| ch[cn].gold);
+        if v > have || v < 0 {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "You don't have that much gold!\n",
+            );
+            return;
+        }
 
-    pub fn do_follow(&self, cn: usize, name: &str) {}
+        Repository::with_characters_mut(|chars| {
+            chars[cn].gold -= v;
+            chars[cn].citem = 0x8000_0000u32 | (v as u32);
+            chars[cn].set_do_update_flags();
+        });
 
-    pub fn do_ignore(&self, cn: usize, name: &str, flag: i32) {}
+        self.do_update_char(cn);
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            &format!("You take {}G from your purse.\n", val),
+        );
+    }
 
-    pub fn do_group(&self, cn: usize, name: &str) {}
+    pub fn do_god_give(&self, cn: usize, co: usize) {
+        let in_id = Repository::with_characters(|ch| ch[cn].citem as usize);
+        if in_id == 0 {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "You have nothing under your mouse cursor!\n",
+            );
+            return;
+        }
+        if !God::give_character_item(co, in_id) {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "god_give_char() returned error.\n",
+            );
+            return;
+        }
+        let (iname, cname) = Repository::with_characters(|chars| {
+            let name = Repository::with_items(|items| items[in_id].get_name().to_string());
+            (name, chars[co].get_name().to_string())
+        });
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            &format!("{} given to {}.\n", iname, cname),
+        );
+        log::info!("IMP: Gave {} (t={}) to {} ({})", iname, in_id, cname, co);
+        Repository::with_characters_mut(|chars| {
+            chars[cn].citem = 0;
+            chars[cn].set_do_update_flags();
+        });
+    }
 
-    pub fn do_allow(&self, cn: usize, co: usize) {}
+    pub fn do_lag(&self, cn: usize, lag: i32) {
+        if lag == 0 {
+            let prev = Repository::with_characters(|ch| ch[cn].data[19]);
+            Repository::with_characters_mut(|ch| ch[cn].data[19] = 0);
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!(
+                    "Lag control turned off (was at {}).\n",
+                    prev / core::constants::TICKS
+                ),
+            );
+            return;
+        }
+        if lag > 20 || lag < 3 {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "Lag control needs a value between 3 and 20. Use 0 to turn it off.\n",
+            );
+            return;
+        }
+        Repository::with_characters_mut(|ch| {
+            ch[cn].data[19] = (lag * core::constants::TICKS) as i32
+        });
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            &format!(
+                "Lag control will turn you to stone if lag exceeds {} seconds.\n",
+                lag
+            ),
+        );
+    }
 
-    pub fn do_mark(&self, cn: usize, co: usize, msg: &str) {}
+    pub fn do_depot(&self, cn: usize) {
+        self.do_character_log(cn, core::types::FontColor::Yellow, "This is your bank depot. You can store up to 62 items here. But you have to pay a rent for each item.\n");
+        // delegate to look depot helper if present
+        if let Some(_) = None::<()> {
+            // placeholder
+        }
+    }
 
-    pub fn do_afk(&self, cn: usize, msg: &str) {}
+    pub fn do_balance(&self, cn: usize) {
+        let m = Repository::with_characters(|ch| {
+            ch[cn].x as usize + (ch[cn].y as usize * core::constants::SERVER_MAPX as usize)
+        });
+        let is_bank =
+            Repository::with_map(|map| (map[m].flags & core::constants::MF_BANK as u64) != 0);
+        if !is_bank {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "Sorry, balance works only in banks.\n",
+            );
+            return;
+        }
 
-    pub fn do_help(&self, cn: usize, topic: &str) {}
+        let (balance, depot_sold, depot_cost) = Repository::with_characters(|ch| {
+            (ch[cn].data[13], ch[cn].depot_sold as i32, ch[cn].depot_cost)
+        });
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            &format!("Your balance is {}G {}S.\n", balance / 100, balance % 100),
+        );
 
-    pub fn do_gtell(&self, cn: usize, text: &str) {}
+        // get_depot_cost placeholder
+        let tmp = 0;
+        if tmp != 0 {
+            self.do_character_log(cn, core::types::FontColor::Yellow, &format!("The rent for your depot is {}G {}S per Astonian day or {}G {}S per Earth day.\n", tmp / 100, tmp % 100, (tmp * 18) / 100, (tmp * 18) % 100));
+        }
 
-    pub fn do_nostaff(&self, cn: usize) {}
+        if depot_sold != 0 {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!(
+                    "The bank sold {} items from your depot to cover the costs.\n",
+                    depot_sold
+                ),
+            );
+            Repository::with_characters_mut(|ch| ch[cn].depot_sold = 0);
+        }
 
-    pub fn do_stell(&self, cn: usize, text: &str) {}
+        if depot_cost != 0 {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!(
+                    "{}G {}S were deducted from your bank account as rent for your depot.\n",
+                    depot_cost / 100,
+                    depot_cost % 100
+                ),
+            );
+            Repository::with_characters_mut(|ch| ch[cn].depot_cost = 0);
+        }
+    }
 
-    pub fn do_itell(&self, cn: usize, text: &str) {}
+    pub fn do_withdraw(&self, cn: usize, g: i32, s: i32) {
+        let m = Repository::with_characters(|ch| {
+            ch[cn].x as usize + (ch[cn].y as usize * core::constants::SERVER_MAPX as usize)
+        });
+        if Repository::with_map(|map| (map[m].flags & core::constants::MF_BANK as u64) == 0) {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "Sorry, withdraw works only in banks.\n",
+            );
+            return;
+        }
+        let v = 100 * g + s;
+        if v < 0 {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "If you want to deposit money, then say so!\n",
+            );
+            return;
+        }
+        let bank = Repository::with_characters(|ch| ch[cn].data[13]);
+        if v > bank {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "Sorry, you don't have that much money in the bank.\n",
+            );
+            return;
+        }
+        Repository::with_characters_mut(|chars| {
+            chars[cn].gold += v;
+            chars[cn].data[13] -= v;
+            chars[cn].set_do_update_flags();
+        });
+        self.do_update_char(cn);
+        let newbal = Repository::with_characters(|ch| ch[cn].data[13]);
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            &format!(
+                "You withdraw {}G {}; your new balance is {}G {}S.\n",
+                v / 100,
+                v % 100,
+                newbal / 100,
+                newbal % 100
+            ),
+        );
+    }
 
-    pub fn do_shout(&self, cn: usize, text: &str) {}
+    pub fn do_deposit(&self, cn: usize, g: i32, s: i32) {
+        let m = Repository::with_characters(|ch| {
+            ch[cn].x as usize + (ch[cn].y as usize * core::constants::SERVER_MAPX as usize)
+        });
+        if Repository::with_map(|map| (map[m].flags & core::constants::MF_BANK as u64) == 0) {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "Sorry, deposit works only in banks.\n",
+            );
+            return;
+        }
+        let v = 100 * g + s;
+        if v < 0 {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "If you want to withdraw money, then say so!\n",
+            );
+            return;
+        }
+        let have = Repository::with_characters(|ch| ch[cn].gold);
+        if v > have {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "Sorry, you don't have that much money.\n",
+            );
+            return;
+        }
+        Repository::with_characters_mut(|chars| {
+            chars[cn].gold -= v;
+            chars[cn].data[13] += v;
+            chars[cn].set_do_update_flags();
+        });
+        self.do_update_char(cn);
+        let newbal = Repository::with_characters(|ch| ch[cn].data[13]);
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            &format!(
+                "You deposited {}G {}; your new balance is {}G {}S.\n",
+                v / 100,
+                v % 100,
+                newbal / 100,
+                newbal % 100
+            ),
+        );
+    }
 
-    pub fn do_noshout(&self, cn: usize) {}
+    pub fn do_fightback(&self, cn: usize) {
+        Repository::with_characters_mut(|chars| {
+            if chars[cn].data[11] != 0 {
+                chars[cn].data[11] = 0;
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    "Auto-Fightback enabled.\n",
+                );
+            } else {
+                chars[cn].data[11] = 1;
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    "Auto-Fightback disabled.\n",
+                );
+            }
+        });
+    }
 
-    pub fn do_notell(&self, cn: usize) {}
+    pub fn do_follow(&self, cn: usize, name: &str) {
+        if name.is_empty() {
+            let co = Repository::with_characters(|ch| ch[cn].data[10] as usize);
+            if co != 0 {
+                let target = Repository::with_characters(|ch| ch[co].get_name().to_string());
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!(
+                        "You're following {}; type '#follow self' to stop.\n",
+                        target
+                    ),
+                );
+            } else {
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    "You're not following anyone.\n",
+                );
+            }
+            return;
+        }
 
-    pub fn do_tell(&self, cn: usize, con: &str, text: &str) {}
+        let co = self.do_lookup_char_self(name, cn) as usize;
+        if co == 0 {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                &format!("Sorry, I cannot find {}.\n", name),
+            );
+            return;
+        }
+        if co == cn {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "Now following no one.\n",
+            );
+            Repository::with_characters_mut(|chars| {
+                chars[cn].data[10] = 0;
+                chars[cn].goto_x = 0;
+            });
+            return;
+        }
 
-    pub fn do_is_ignore(&self, cn: usize, co: usize, flag: i32) -> i32 {}
+        let invis_src = Repository::with_characters(|ch| {
+            ch[co].flags & (CharacterFlags::CF_INVISIBLE.bits() | CharacterFlags::CF_NOWHO.bits())
+                != 0
+        });
+        if invis_src {
+            // approximate invis_level checks skipped
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                &format!("Sorry, I cannot find {}.\n", name),
+            );
+            return;
+        }
 
-    pub fn do_lookup_char_self(&self, name: &str, cn: usize) -> i32 {}
+        Repository::with_characters_mut(|chars| {
+            chars[cn].data[10] = co as i32;
+        });
+        let target = Repository::with_characters(|ch| ch[co].get_name().to_string());
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            &format!("Now following {}.\n", target),
+        );
+    }
 
-    pub fn do_lookup_char(&self, name: &str) -> i32 {}
+    pub fn do_ignore(&self, cn: usize, name: &str, flag: i32) {
+        let base = if flag == 0 { 30 } else { 50 };
+        if name.is_empty() {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "Your ignore group consists of:\n",
+            );
+            for n in base..(base + 10) {
+                let co = Repository::with_characters(|ch| ch[cn].data[n] as usize);
+                if co == 0 {
+                    continue;
+                }
+                let nm = Repository::with_characters(|ch| ch[co].get_name().to_string());
+                self.do_character_log(cn, core::types::FontColor::Yellow, &format!("{}\n", nm));
+            }
+            return;
+        }
 
-    pub fn do_imp_log(&self, font: core::types::FontColor, text: &str) {}
+        let co = self.do_lookup_char(name) as usize;
+        if co == 0 {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                &format!("Sorry, I cannot find \"{}\".\n", name),
+            );
+            return;
+        }
+        if co == cn {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "Ignoring yourself won't do you much good.\n",
+            );
+            return;
+        }
 
-    pub fn do_caution(&self, source: usize, author: usize, text: &str) {}
+        for n in base..(base + 10) {
+            if Repository::with_characters(|ch| ch[cn].data[n] as usize) == co {
+                Repository::with_characters_mut(|ch| ch[cn].data[n] = 0);
+                let nm = Repository::with_characters(|ch| ch[co].get_name().to_string());
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!("{} removed from your ignore group.\n", nm),
+                );
+                return;
+            }
+        }
 
-    pub fn do_announce(&self, source: usize, author: usize, text: &str) {}
+        if Repository::with_characters(|ch| (ch[co].flags & CharacterFlags::CF_PLAYER.bits()) == 0)
+        {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                &format!("Sorry, {} is not a player.\n", name),
+            );
+            return;
+        }
 
-    pub fn do_admin_log(&self, source: i32, text: &str) {}
+        for n in base..(base + 10) {
+            if Repository::with_characters(|ch| ch[cn].data[n]) == 0 {
+                Repository::with_characters_mut(|ch| ch[cn].data[n] = co as i32);
+                let nm = Repository::with_characters(|ch| ch[co].get_name().to_string());
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!("{} added to your ignore group.\n", nm),
+                );
+                return;
+            }
+        }
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            "Sorry, I can only handle ten ignore group members.\n",
+        );
+    }
 
-    pub fn do_staff_log(&self, font: core::types::FontColor, text: &str) {}
+    pub fn do_group(&self, cn: usize, name: &str) {
+        if name.is_empty() {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "Your group consists of:\n",
+            );
+            let me = Repository::with_characters(|ch| ch[cn].get_name().to_string());
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!("{}-15.15s ...\n", me),
+            );
+            return;
+        }
 
-    pub fn do_area_say1(&self, cn: usize, xs: usize, ys: usize, text: &str) {}
+        let co = self.do_lookup_char(name) as usize;
+        if co == 0 {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                &format!("Sorry, I cannot find \"{}\".\n", name),
+            );
+            return;
+        }
+        if co == cn {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "You're automatically part of your own group.\n",
+            );
+            return;
+        }
+        if Repository::with_characters(|ch| (ch[co].flags & CharacterFlags::CF_PLAYER.bits()) == 0)
+        {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                &format!("Sorry, {} is not a player.\n", name),
+            );
+            return;
+        }
+
+        for n in 1..10 {
+            if Repository::with_characters(|ch| ch[cn].data[n] as usize) == co {
+                Repository::with_characters_mut(|ch| ch[cn].data[n] = 0);
+                let nm = Repository::with_characters(|ch| ch[co].get_name().to_string());
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!("{} removed from your group.\n", nm),
+                );
+                self.do_character_log(
+                    co,
+                    core::types::FontColor::Red,
+                    &format!(
+                        "You are no longer part of {}'s group.\n",
+                        Repository::with_characters(|ch| ch[cn].get_name().to_string())
+                    ),
+                );
+                return;
+            }
+        }
+
+        for n in 1..10 {
+            if Repository::with_characters(|ch| ch[cn].data[n]) == 0 {
+                Repository::with_characters_mut(|ch| ch[cn].data[n] = co as i32);
+                let nm = Repository::with_characters(|ch| ch[co].get_name().to_string());
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!("{} added to your group.\n", nm),
+                );
+                self.do_character_log(
+                    co,
+                    core::types::FontColor::Red,
+                    &format!(
+                        "You are now part of {}'s group.\n",
+                        Repository::with_characters(|ch| ch[cn].get_name().to_string())
+                    ),
+                );
+                return;
+            }
+        }
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            "Sorry, I can only handle ten group members.\n",
+        );
+    }
+
+    pub fn do_allow(&self, cn: usize, co: usize) {
+        Repository::with_characters_mut(|ch| ch[cn].data[core::constants::CHD_ALLOW] = co as i32);
+        if co != 0 {
+            let name = Repository::with_characters(|ch| ch[co].get_name().to_string());
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!("{} is now allowed to access your grave.\n", name),
+            );
+        } else {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "Nobody may now access your grave.\n",
+            );
+        }
+    }
+
+    pub fn do_mark(&self, cn: usize, co: usize, msg: &str) {
+        if !core::types::Character::is_sane_character(co) {
+            self.do_character_log(cn, core::types::FontColor::Red, "That's not a player\n");
+            return;
+        }
+        if msg.is_empty() {
+            Repository::with_characters_mut(|ch| ch[co].text[3] = [0; 160]);
+            let old = Repository::with_characters(|ch| {
+                String::from_utf8_lossy(&ch[co].text[3]).to_string()
+            });
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!(
+                    "Removed mark \"{}\" from {}\n",
+                    old,
+                    Repository::with_characters(|ch| ch[co].get_name().to_string())
+                ),
+            );
+            return;
+        }
+        let mut buf = [0u8; 160];
+        let bytes = msg.as_bytes();
+        for i in 0..std::cmp::min(bytes.len(), 159) {
+            buf[i] = bytes[i];
+        }
+        Repository::with_characters_mut(|ch| ch[co].text[3] = buf);
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            &format!(
+                "Marked {} with \"{}\"\n",
+                Repository::with_characters(|ch| ch[co].get_name().to_string()),
+                msg
+            ),
+        );
+    }
+
+    pub fn do_afk(&self, cn: usize, msg: &str) {
+        Repository::with_characters_mut(|ch| {
+            if ch[cn].data[core::constants::CHD_AFK] != 0 {
+                ch[cn].data[core::constants::CHD_AFK] = 0;
+                self.do_character_log(cn, core::types::FontColor::Yellow, "Back.\n");
+            } else {
+                ch[cn].data[core::constants::CHD_AFK] = 1;
+                if !msg.is_empty() {
+                    self.do_character_log(
+                        cn,
+                        core::types::FontColor::Yellow,
+                        "Away. Use #afk again to show you're back. Message:\n",
+                    );
+                    let bytes = msg.as_bytes();
+                    for i in 0..std::cmp::min(bytes.len(), 48) {
+                        ch[cn].text[0][i] = bytes[i];
+                    }
+                    self.do_character_log(
+                        cn,
+                        core::types::FontColor::Blue,
+                        &format!("  \"{}\"\n", String::from_utf8_lossy(&ch[cn].text[0])),
+                    );
+                } else {
+                    self.do_character_log(
+                        cn,
+                        core::types::FontColor::Yellow,
+                        "Away. Use #afk again to show you're back.\n",
+                    );
+                    ch[cn].text[0][0] = 0;
+                }
+            }
+        });
+    }
+
+    pub fn do_help(&self, cn: usize, _topic: &str) {
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "The following commands are available:\n",
+        );
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            " #afk <message>         away from keyboard.\n",
+        );
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            " #allow <player>        to access your grave.\n",
+        );
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            " #gold <amount>         get X gold coins.\n",
+        );
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            " #group <player>        group with player.\n",
+        );
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            " #who                   see who's online.\n",
+        );
+    }
+
+    pub fn do_gtell(&self, cn: usize, text: &str) {
+        if text.is_empty() {
+            self.do_character_log(cn, core::types::FontColor::Red, "Group-Tell. Yes. group-tell it will be. But what do you want to tell the other group members?\n");
+            return;
+        }
+        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::CF_SHUTUP.bits()) != 0)
+        {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "You try to group-tell, but you only produce a croaking sound.\n",
+            );
+            return;
+        }
+        let mut found = false;
+        for n in core::constants::CHD_MINGROUP..=core::constants::CHD_MAXGROUP {
+            let co = Repository::with_characters(|ch| ch[cn].data[n] as usize);
+            if co != 0 {
+                if true
+                /* isgroup */
+                {
+                    Repository::with_characters(|ch| {
+                        self.do_character_log(
+                            co,
+                            core::types::FontColor::Blue,
+                            &format!("{} group-tells: \"{}\"\n", ch[cn].get_name(), text),
+                        );
+                    });
+                    found = true;
+                }
+            }
+        }
+        if found {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                &format!("Told the group: \"{}\"\n", text),
+            );
+            if Repository::with_characters(|ch| {
+                (ch[cn].flags & CharacterFlags::CF_PLAYER.bits()) != 0
+            }) {
+                log::info!("group-tells \"{}\"", text);
+            }
+        } else {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "You don't have a group to talk to!\n",
+            );
+        }
+    }
+
+    pub fn do_nostaff(&self, cn: usize) {
+        Repository::with_characters_mut(|ch| {
+            ch[cn].flags ^= CharacterFlags::CF_NOSTAFF.bits();
+        });
+        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::CF_NOSTAFF.bits()) != 0)
+        {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "You will no longer hear people using #stell.\n",
+            );
+        } else {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "You will hear people using #stell.\n",
+            );
+        }
+        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::CF_PLAYER.bits()) != 0)
+        {
+            log::info!(
+                "Set nostaff to {}",
+                if (Repository::with_characters(|ch| ch[cn].flags)
+                    & CharacterFlags::CF_NOSTAFF.bits())
+                    != 0
+                {
+                    "on"
+                } else {
+                    "off"
+                }
+            );
+        }
+    }
+
+    pub fn do_stell(&self, cn: usize, text: &str) {
+        if text.is_empty() {
+            self.do_character_log(cn, core::types::FontColor::Red, "Staff-Tell. Yes. staff-tell it will be. But what do you want to tell the other staff members?\n");
+            return;
+        }
+        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::CF_SHUTUP.bits()) != 0)
+        {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "You try to staff-tell, but you only produce a croaking sound.\n",
+            );
+            return;
+        }
+        self.do_staff_log(
+            core::types::FontColor::Blue,
+            &format!(
+                "{:.30} staff-tells: \"{:.200}\"\n",
+                Repository::with_characters(|ch| ch[cn].get_name().to_string()),
+                text
+            ),
+        );
+        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::CF_PLAYER.bits()) != 0)
+        {
+            log::info!("staff-tells \"{}\"", text);
+        }
+    }
+
+    pub fn do_itell(&self, cn: usize, text: &str) {
+        if text.is_empty() {
+            self.do_character_log(cn, core::types::FontColor::Red, "Imp-Tell. Yes. imp-tell it will be. But what do you want to tell the other imps?\n");
+            return;
+        }
+        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::CF_SHUTUP.bits()) != 0)
+        {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "You try to imp-tell, but you only produce a croaking sound.\n",
+            );
+            return;
+        }
+        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::CF_USURP.bits()) != 0) {
+            // simplified
+            self.do_imp_log(
+                core::types::FontColor::Blue,
+                &format!(
+                    "{:.30} (usurp) imp-tells: \"{:.170}\"\n",
+                    Repository::with_characters(|ch| ch[cn].get_name().to_string()),
+                    text
+                ),
+            );
+        } else {
+            self.do_imp_log(
+                core::types::FontColor::Blue,
+                &format!(
+                    "{:.30} imp-tells: \"{:.200}\"\n",
+                    Repository::with_characters(|ch| ch[cn].get_name().to_string()),
+                    text
+                ),
+            );
+        }
+        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::CF_PLAYER.bits()) != 0)
+        {
+            log::info!("imp-tells \"{}\"", text);
+        }
+    }
+
+    pub fn do_shout(&self, cn: usize, text: &str) {
+        if text.is_empty() {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "Shout. Yes. Shout it will be. But what do you want to shout?\n",
+            );
+            return;
+        }
+        if Repository::with_characters(|ch| ch[cn].a_end) < 50000 {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "You're too exhausted to shout!\n",
+            );
+            return;
+        }
+        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::CF_SHUTUP.bits()) != 0)
+        {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "You try to shout, but you only produce a croaking sound.\n",
+            );
+            return;
+        }
+        Repository::with_characters_mut(|ch| ch[cn].a_end -= 50000);
+        let buf = if Repository::with_characters(|ch| {
+            (ch[cn].flags & CharacterFlags::CF_INVISIBLE.bits()) != 0
+        }) {
+            format!("Somebody shouts: \"{}\"\n", text)
+        } else {
+            format!(
+                "{} shouts: \"{}\"\n",
+                Repository::with_characters(|ch| ch[cn].get_name().to_string()),
+                text
+            )
+        };
+
+        for n in 1..core::constants::MAXCHARS as usize {
+            let send = Repository::with_characters(|ch| {
+                ((ch[n].flags
+                    & (CharacterFlags::CF_PLAYER.bits() | CharacterFlags::CF_USURP.bits()))
+                    != 0
+                    || ch[n].temp == 15)
+                    && ch[n].used == core::constants::USE_ACTIVE
+            });
+            if send {
+                self.do_character_log(n, core::types::FontColor::Blue, &buf);
+            }
+        }
+        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::CF_PLAYER.bits()) != 0)
+        {
+            log::info!("Shouts \"{}\"", text);
+        }
+    }
+
+    pub fn do_noshout(&self, cn: usize) {
+        Repository::with_characters_mut(|ch| ch[cn].flags ^= CharacterFlags::CF_NOSHOUT.bits());
+        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::CF_NOSHOUT.bits()) != 0)
+        {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "You will no longer hear people #shout.\n",
+            );
+        } else {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "You will hear people #shout.\n",
+            );
+        }
+    }
+
+    pub fn do_notell(&self, cn: usize) {
+        Repository::with_characters_mut(|ch| ch[cn].flags ^= CharacterFlags::CF_NOTELL.bits());
+        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::CF_NOTELL.bits()) != 0)
+        {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "You will no longer hear people #tell you something.\n",
+            );
+        } else {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "You will hear if people #tell you something.\n",
+            );
+        }
+    }
+
+    pub fn do_tell(&self, cn: usize, con: &str, text: &str) {
+        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::CF_SHUTUP.bits()) != 0)
+        {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "You try to speak, but you only produce a croaking sound.\n",
+            );
+            return;
+        }
+        let co = self.do_lookup_char(con) as usize;
+        if co == 0 {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                &format!("Unknown name: {}\n", con),
+            );
+            return;
+        }
+        let ok = Repository::with_characters(|ch| {
+            (ch[co].flags & CharacterFlags::CF_PLAYER.bits()) != 0
+                && ch[co].used == core::constants::USE_ACTIVE
+                && !((ch[co].flags & CharacterFlags::CF_INVISIBLE.bits()) != 0 && /* invis_level */ false)
+                && (!((ch[co].flags & CharacterFlags::CF_NOTELL.bits()) != 0))
+        });
+        if !ok {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                &format!(
+                    "{} is not listening\n",
+                    Repository::with_characters(|ch| ch[co].get_name().to_string())
+                ),
+            );
+            return;
+        }
+        if Repository::with_characters(|ch| ch[co].data[0] != 0) {
+            if Repository::with_characters(|ch| ch[co].text[0][0] != 0) {
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!(
+                        "{} is away from keyboard; Message:\n",
+                        Repository::with_characters(|ch| ch[co].get_name().to_string())
+                    ),
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    &format!(
+                        "  \"{}\"\n",
+                        Repository::with_characters(
+                            |ch| String::from_utf8_lossy(&ch[co].text[0]).to_string()
+                        )
+                    ),
+                );
+            } else {
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!(
+                        "{} is away from keyboard.\n",
+                        Repository::with_characters(|ch| ch[co].get_name().to_string())
+                    ),
+                );
+            }
+        }
+        if text.is_empty() {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                &format!(
+                    "I understand that you want to tell {} something. But what?\n",
+                    Repository::with_characters(|ch| ch[co].get_name().to_string())
+                ),
+            );
+            return;
+        }
+        let buf = if Repository::with_characters(
+            |ch| (ch[cn].flags & CharacterFlags::CF_INVISIBLE.bits()) != 0 && /*invis_level*/ false,
+        ) {
+            format!("Somebody tells you: \"{}\"\n", text)
+        } else {
+            format!(
+                "{} tells you: \"{}\"\n",
+                Repository::with_characters(|ch| ch[cn].get_name().to_string()),
+                text
+            )
+        };
+        self.do_character_log(co, core::types::FontColor::Blue, &buf);
+        // ccp_tell omitted
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            &format!(
+                "Told {}: \"{}\"\n",
+                Repository::with_characters(|ch| ch[co].get_name().to_string()),
+                text
+            ),
+        );
+        if cn == co {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "Do you like talking to yourself?\n",
+            );
+        }
+        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::CF_PLAYER.bits()) != 0)
+        {
+            log::info!(
+                "Told {}: \"{}\"",
+                Repository::with_characters(|ch| ch[co].get_name().to_string()),
+                text
+            );
+        }
+    }
+
+    pub fn do_is_ignore(&self, cn: usize, co: usize, flag: i32) -> i32 {
+        if flag == 0 {
+            for n in 30..39 {
+                if Repository::with_characters(|ch| ch[co].data[n] as usize) == cn {
+                    return 1;
+                }
+            }
+        }
+        for n in 50..59 {
+            if Repository::with_characters(|ch| ch[co].data[n] as usize) == cn {
+                return 1;
+            }
+        }
+        0
+    }
+
+    pub fn do_lookup_char_self(&self, name: &str, cn: usize) -> i32 {
+        if name.eq_ignore_ascii_case("self") {
+            return cn as i32;
+        }
+        self.do_lookup_char(name)
+    }
+
+    pub fn do_lookup_char(&self, name: &str) -> i32 {
+        let len = name.len();
+        if len < 2 {
+            return 0;
+        }
+        let matchname = name.to_lowercase();
+        let mut bestmatch = 0;
+        let mut quality = 0;
+        for n in 1..core::constants::MAXCHARS as usize {
+            let used = Repository::with_characters(|ch| ch[n].used);
+            if used != core::constants::USE_ACTIVE && used != core::constants::USE_NONACTIVE {
+                continue;
+            }
+            if Repository::with_characters(|ch| (ch[n].flags & CharacterFlags::CF_BODY.bits()) != 0)
+            {
+                continue;
+            }
+            let nm = Repository::with_characters(|ch| ch[n].get_name().to_lowercase());
+            if !nm.starts_with(&matchname) {
+                continue;
+            }
+            if nm.len() == len {
+                bestmatch = n;
+                break;
+            }
+            let q = if Repository::with_characters(|ch| {
+                (ch[n].flags & (CharacterFlags::CF_PLAYER.bits() | CharacterFlags::CF_USURP.bits()))
+                    != 0
+            }) {
+                if Repository::with_characters(|ch| ch[n].x) != 0 {
+                    3
+                } else {
+                    2
+                }
+            } else {
+                1
+            };
+            if q > quality {
+                bestmatch = n;
+                quality = q;
+            }
+        }
+        bestmatch as i32
+    }
+
+    pub fn do_imp_log(&self, font: core::types::FontColor, text: &str) {
+        for n in 1..core::constants::MAXCHARS as usize {
+            if Repository::with_characters(|ch| {
+                ch[n].player != 0
+                    && (ch[n].flags
+                        & (CharacterFlags::CF_IMP.bits() | CharacterFlags::CF_USURP.bits()))
+                        != 0
+            }) {
+                self.do_log(n, font, text);
+            }
+        }
+    }
+
+    pub fn do_caution(&self, source: usize, author: usize, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        let anon = text.to_string();
+        let named = if author != 0 {
+            format!(
+                "[{}] {}",
+                Repository::with_characters(|ch| ch[author].get_name().to_string()),
+                anon
+            )
+        } else {
+            anon.clone()
+        };
+        for n in 1..core::constants::MAXCHARS as usize {
+            if !Repository::with_characters(|ch| ch[n].player != 0 || ch[n].temp == 15) {
+                continue;
+            }
+            if source != 0
+                && Repository::with_characters(|ch| {
+                    (Repository::with_characters(|ch2| ch2[source].flags)
+                        & (CharacterFlags::CF_INVISIBLE.bits() | CharacterFlags::CF_NOWHO.bits()))
+                        != 0
+                })
+            {
+                // visibility rules omitted
+            }
+            self.do_log(n, core::types::FontColor::Blue, &named);
+        }
+    }
+
+    pub fn do_announce(&self, source: usize, author: usize, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        let anon = text.to_string();
+        let named = if author != 0 {
+            format!(
+                "[{}] {}",
+                Repository::with_characters(|ch| ch[author].get_name().to_string()),
+                anon
+            )
+        } else {
+            anon.clone()
+        };
+        for n in 1..core::constants::MAXCHARS as usize {
+            if !Repository::with_characters(|ch| ch[n].player != 0 || ch[n].temp == 15) {
+                continue;
+            }
+            // visibility checks omitted
+            self.do_log(n, core::types::FontColor::Green, &named);
+        }
+    }
+
+    pub fn do_admin_log(&self, source: i32, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        for n in 1..core::constants::MAXCHARS as usize {
+            if !Repository::with_characters(|ch| ch[n].player != 0) {
+                continue;
+            }
+            if !Repository::with_characters(|ch| {
+                (ch[n].flags
+                    & (CharacterFlags::CF_STAFF.bits()
+                        | CharacterFlags::CF_IMP.bits()
+                        | CharacterFlags::CF_USURP.bits()))
+                    != 0
+            }) {
+                continue;
+            }
+            self.do_log(n, core::types::FontColor::Blue, text);
+        }
+    }
+
+    pub fn do_staff_log(&self, font: core::types::FontColor, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        for n in 1..core::constants::MAXCHARS as usize {
+            if Repository::with_characters(|ch| {
+                ch[n].player != 0
+                    && (ch[n].flags
+                        & (CharacterFlags::CF_STAFF.bits()
+                            | CharacterFlags::CF_IMP.bits()
+                            | CharacterFlags::CF_USURP.bits()))
+                        != 0
+                    && (ch[n].flags & CharacterFlags::CF_NOSTAFF.bits()) == 0
+            }) {
+                self.do_log(n, font, text);
+            }
+        }
+    }
+
+    pub fn do_area_say1(&self, cn: usize, xs: usize, ys: usize, text: &str) {
+        let msg_named = format!(
+            "{}: \"{}\"\n",
+            Repository::with_characters(|ch| ch[cn].get_name().to_string()),
+            text
+        );
+        let msg_invis = format!("Somebody says: \"{}\"\n", text);
+        let invis = Repository::with_characters(|ch| {
+            (ch[cn].flags & CharacterFlags::CF_INVISIBLE.bits()) != 0
+        });
+
+        // Spiral/radius algorithm omitted; use simple radius scan
+        for n in 1..core::constants::MAXCHARS as usize {
+            let listener =
+                Repository::with_characters(|ch| ch[n].used == core::constants::USE_ACTIVE);
+            if listener {
+                if !invis
+                    || Repository::with_characters(|ch| {
+                        Repository::with_characters(|c| c[cn].get_invisibility_level())
+                            <= Repository::with_characters(|c| c[n].get_invisibility_level())
+                    })
+                {
+                    self.do_log(
+                        n,
+                        core::types::FontColor::Blue,
+                        if !invis { &msg_named } else { &msg_invis },
+                    );
+                }
+            }
+        }
+    }
 }

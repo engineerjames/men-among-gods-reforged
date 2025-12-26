@@ -3908,7 +3908,7 @@ pub fn use_kill_undead(cn: usize, item_idx: usize) -> i32 {
                 });
 
                 if is_undead {
-                    State::with(|state| state.do_hurt(cn, co, 500, 2));
+                    State::with_mut(|state| state.do_hurt(cn, co, 500, 2));
                     EffectManager::fx_add_effect(5, 0, x, y, 0);
                 }
             }
