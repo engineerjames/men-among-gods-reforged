@@ -10542,10 +10542,8 @@ impl State {
                 Repository::with_characters(|ch| ch[n].used == core::constants::USE_ACTIVE);
             if listener {
                 if !invis
-                    || Repository::with_characters(|ch| {
-                        Repository::with_characters(|c| c[cn].get_invisibility_level())
-                            <= Repository::with_characters(|c| c[n].get_invisibility_level())
-                    })
+                    || Repository::with_characters(|c| c[cn].get_invisibility_level())
+                        <= Repository::with_characters(|c| c[n].get_invisibility_level())
                 {
                     self.do_log(
                         n,
