@@ -1744,12 +1744,12 @@ impl State {
             }
         }
 
-        // Set map injury flags and show FX (FX not implemented yet)
+        // Set map injury flags and show FX
         if type_hurt != 1 {
+            let (co_x, co_y) = Repository::with_characters(|ch| (ch[co].x, ch[co].y));
             Repository::with_map_mut(|map| {
-                let idx = (Repository::with_characters(|ch| ch[co].x as i32)
-                    + Repository::with_characters(|ch| ch[co].y as i32)
-                        * core::constants::SERVER_MAPX as i32) as usize;
+                let idx =
+                    (co_x as i32 + co_y as i32 * core::constants::SERVER_MAPX as i32) as usize;
                 if dam < 10000 {
                     map[idx].flags |= core::constants::MF_GFX_INJURED as u64;
                 } else if dam < 30000 {
@@ -1765,7 +1765,13 @@ impl State {
                         as u64;
                 }
             });
-            // TODO: fx_add_effect
+            crate::effect::EffectManager::fx_add_effect(
+                core::constants::FX_INJURED as i32,
+                8,
+                co_x as i32,
+                co_y as i32,
+                0,
+            );
         }
 
         // God save check
@@ -1794,22 +1800,26 @@ impl State {
                 });
 
                 self.do_character_log(co, core::types::FontColor::Yellow, "A god reached down and saved you from the killing blow. You must have done the gods a favor sometime in the past!\n");
+                let (co_x, co_y) = Repository::with_characters(|ch| (ch[co].x, ch[co].y));
                 self.do_area_log(
                     co,
                     0,
-                    Repository::with_characters(|ch| ch[co].x as i32),
-                    Repository::with_characters(|ch| ch[co].y as i32),
+                    co_x as i32,
+                    co_y as i32,
                     core::types::FontColor::Yellow,
                     &format!(
                         "A god reached down and saved {} from the killing blow.\n",
                         Repository::with_characters(|ch| ch[co].get_name().to_string())
                     ),
                 );
+                crate::effect::EffectManager::fx_add_effect(6, 0, co_x as i32, co_y as i32, 0);
                 God::transfer_char(
                     co,
                     Repository::with_characters(|ch| ch[co].temple_x as usize),
                     Repository::with_characters(|ch| ch[co].temple_y as usize),
                 );
+                let (new_x, new_y) = Repository::with_characters(|ch| (ch[co].x, ch[co].y));
+                crate::effect::EffectManager::fx_add_effect(6, 0, new_x as i32, new_y as i32, 0);
 
                 Repository::with_characters_mut(|characters| {
                     characters[cn].data[44] += 1;

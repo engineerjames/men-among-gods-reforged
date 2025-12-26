@@ -1,11 +1,13 @@
 use core::constants::MAXPLAYER;
+use core::types::{Character, ServerPlayer};
 use std::sync::{OnceLock, RwLock};
 
+use crate::god::God;
 use crate::lab9::Labyrinth9;
 use crate::network_manager::NetworkManager;
-use crate::player;
 use crate::repository::Repository;
 use crate::state::State;
+use crate::{player, populate};
 
 static PLAYERS: OnceLock<RwLock<[core::types::ServerPlayer; MAXPLAYER]>> = OnceLock::new();
 
@@ -48,6 +50,31 @@ impl Server {
         f(&mut players[..])
     }
 
+    fn tmplabcheck(item_idx: usize) {
+        Repository::with_characters(|ch| {
+            Repository::with_items_mut(|it| {
+                let cn = it[item_idx].carried as usize;
+                if cn == 0 || !ServerPlayer::is_sane_player(cn) {
+                    return;
+                }
+
+                // player is inside a lab?
+                if ch[cn].temple_x != 512 && ch[cn].temple_x != 558 && ch[cn].temple_x != 813 {
+                    return;
+                }
+
+                God::take_from_char(item_idx, cn);
+                it[item_idx].used = core::constants::USE_EMPTY;
+
+                log::warn!(
+                    "Removed Lab Item {} from player {}",
+                    it[item_idx].get_name(),
+                    cn
+                );
+            });
+        });
+    }
+
     pub fn initialize(&mut self) -> Result<(), String> {
         Server::initialize_players()?;
         Repository::initialize()?;
@@ -81,53 +108,63 @@ impl Server {
 
         // Initialize subsystems
         Labyrinth9::initialize()?;
-        // state.reset_changed_items();
+        populate::reset_changed_items();
 
         // remove lab items from all players (leave this here for a while!)
-        // for n in 1..MAXITEM {
-        //     if state.it[n].used == USE_EMPTY {
-        //         continue;
-        //     }
-        //     if state.it[n].has_laby_destroy() {
-        //         state.tmplabcheck(n);
-        //     }
-        //     if state.it[n].has_soulstone() {
-        //         // Copy from packed struct to avoid unaligned reference
-        //         let max_damage = { state.it[n].max_damage };
-        //         if max_damage == 0 {
-        //             state.it[n].max_damage = 60000;
-        //             let name = state.it[n].get_name();
-        //             //xlog!(state.logger, "Set {} ({}) max_damage to 60000", name, n);
-        //         }
-        //     }
-        // }
+        Repository::with_items_mut(|it| {
+            for n in 1..core::constants::MAXITEM {
+                if it[n].used == core::constants::USE_EMPTY {
+                    continue;
+                }
+                if it[n].has_laby_destroy() {
+                    Self::tmplabcheck(n);
+                }
+                if it[n].has_soulstone() {
+                    // Copy from packed struct to avoid unaligned reference
+                    let max_damage = { it[n].max_damage };
+                    if max_damage == 0 {
+                        it[n].max_damage = 60000;
+                        let name = it[n].get_name();
+                        log::info!("Set {} ({}) max_damage to 60000", name, n);
+                    }
+                }
+            }
+        });
 
         // Validate character template positions
-        // for n in 1..MAXTCHARS {
-        //     if state.ch_temp[n].used == USE_EMPTY {
-        //         continue;
-        //     }
+        Repository::with_character_templates_mut(|ch_temp| {
+            for n in 1..core::constants::MAXTCHARS {
+                if ch_temp[n].used == core::constants::USE_EMPTY {
+                    continue;
+                }
 
-        //     let x = state.ch_temp[n].data[29] % SERVER_MAPX;
-        //     let y = state.ch_temp[n].data[29] / SERVER_MAPX;
+                let x = ch_temp[n].data[29] % core::constants::SERVER_MAPX;
+                let y = ch_temp[n].data[29] / core::constants::SERVER_MAPX;
 
-        //     if x == 0 && y == 0 {
-        //         continue;
-        //     }
+                if x == 0 && y == 0 {
+                    continue;
+                }
 
-        //     let ch_x = state.ch_temp[n].x as i32;
-        //     let ch_y = state.ch_temp[n].y as i32;
+                let ch_x = ch_temp[n].x as i32;
+                let ch_y = ch_temp[n].y as i32;
 
-        //     if (x - ch_x).abs() + (y - ch_y).abs() > 200 {
-        //         // xlog!(state.logger, "RESET {} ({}): {} {} -> {} {}",
-        //         //     n,
-        //         //     std::str::from_utf8(&state.ch_temp[n].name)
-        //         //         .unwrap_or("*unknown*")
-        //         //         .trim_end_matches('\0'),
-        //         //     ch_x, ch_y, x, y);
-        //         state.ch_temp[n].data[29] = state.ch_temp[n].x as i32 + state.ch_temp[n].y as i32 * SERVER_MAPX;
-        //     }
-        // }
+                if (x - ch_x).abs() + (y - ch_y).abs() > 200 {
+                    log::warn!(
+                        "RESET {} ({}): {} {} -> {} {}",
+                        n,
+                        std::str::from_utf8(&ch_temp[n].name)
+                            .unwrap_or("*unknown*")
+                            .trim_end_matches('\0'),
+                        ch_x,
+                        ch_y,
+                        x,
+                        y
+                    );
+                    ch_temp[n].data[29] =
+                        ch_temp[n].x as i32 + ch_temp[n].y as i32 * core::constants::SERVER_MAPX;
+                }
+            }
+        });
 
         Ok(())
     }

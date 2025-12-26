@@ -27,6 +27,7 @@ use signal_hook::iterator::Signals;
 use core;
 
 use crate::repository::Repository;
+use crate::server::Server;
 
 fn setup_signal_handling(
     quit_flag: Arc<AtomicBool>,
@@ -144,6 +145,17 @@ fn main() -> Result<(), String> {
     while !quit_flag.load(Ordering::SeqCst) {
         server.tick();
     }
+
+    log::info!("Shutdown signal received, exiting main loop...");
+    Server::with_players_mut(|players| {
+        for n in 1..core::constants::MAXPLAYER {
+            player::plr_logout(players[n].usnr, n, enums::LogoutReason::Shutdown);
+        }
+    });
+
+    // TODO: Wait some amount of time and forceably close all sockets
+
+    // TODO: Equivalent of saving data back to disk here...
 
     log::info!("Server shutdown complete.");
 

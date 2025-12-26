@@ -396,8 +396,9 @@ impl State {
 
             // Deal damage to undead
             let damage = Repository::with_items(|items| items[item_idx].data[0]);
-            // TODO: Implement do_hurt
-            log::info!("TODO: do_hurt({}, {}, {}, 2)", cn, co, damage);
+            State::with_mut(|state| {
+                state.do_hurt(cn, co, damage as i32, 2);
+            });
 
             // Destroy the item
             Repository::with_items_mut(|items| {

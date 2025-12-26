@@ -7199,7 +7199,9 @@ pub fn trap1(cn: usize, item_idx: usize) {
             );
         });
         log::info!("Character {} stepped on Acid Trap", cn);
-        // TODO: do_hurt(0, cn, 350, 0);
+        State::with_mut(|state| {
+            state.do_hurt(0, cn, 350, 0);
+        });
     }
 }
 
@@ -7254,10 +7256,10 @@ pub fn start_trap(cn: usize, item_idx: usize) {
     match trap_type {
         0 => {
             log::info!("Character {} stepped on Arrow Trap", cn);
-            State::with(|state| {
+            State::with_mut(|state| {
                 state.do_character_log(cn, core::types::FontColor::Red, "You feel a sudden pain!");
+                state.do_hurt(0, cn, 250, 0);
             });
-            // TODO: do_hurt(0, cn, 250, 0);
         }
         1 => {
             log::info!("Character {} stepped on Attack Trigger Trap", cn);
