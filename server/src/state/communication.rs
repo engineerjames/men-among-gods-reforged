@@ -1182,7 +1182,7 @@ impl State {
     /// Port of `do_nostaff(int cn)` from `svr_do.cpp`
     ///
     /// Toggle whether character hears staff messages.
-    pub(crate) fn do_nostaff(&self, cn: usize) {
+    pub fn do_nostaff(&self, cn: usize) {
         Repository::with_characters_mut(|ch| {
             ch[cn].flags ^= CharacterFlags::CF_NOSTAFF.bits();
         });

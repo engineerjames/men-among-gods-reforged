@@ -2,12 +2,17 @@ use std::sync::{OnceLock, RwLock};
 
 use crate::path_finding::PathFinder;
 
+mod admin;
+mod combat;
+mod commands;
 mod commerce;
 mod communication;
 mod death;
+mod economy;
 mod inventory;
 mod logging;
 mod notifications;
+mod player_actions;
 mod stats;
 mod visibility;
 

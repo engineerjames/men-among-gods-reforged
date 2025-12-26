@@ -1586,8 +1586,6 @@ impl State {
     ///
     /// Returns the actual damage dealt (in points, not scaled).
     pub(crate) fn do_hurt(&mut self, cn: usize, co: usize, dam: i32, type_hurt: i32) -> i32 {
-        use core::constants::*;
-
         // Quick sanity/body check
         let is_body =
             Repository::with_characters(|ch| (ch[co].flags & CharacterFlags::CF_BODY.bits()) != 0);
@@ -1615,7 +1613,7 @@ impl State {
             if (ch[co].flags & CharacterFlags::CF_PLAYER.bits()) != 0 {
                 noexp = 1;
             }
-            if ch[co].temp == CT_COMPANION as u16
+            if ch[co].temp == core::constants::CT_COMPANION as u16
                 && (ch[co].flags & CharacterFlags::CF_THRALL.bits()) == 0
             {
                 noexp = 1;
@@ -1641,7 +1639,7 @@ impl State {
                 }
             });
 
-            if item_temp == SK_MSHIELD as u16 {
+            if item_temp == core::constants::SK_MSHIELD as u16 {
                 let active = item_active as i32;
                 let mut tmp = active / 1024 + 1;
                 tmp = (dam + tmp - co_armor as i32) * 5;
@@ -1665,7 +1663,7 @@ impl State {
                     });
                     Repository::with_items_mut(|items| {
                         if in_idx < items.len() {
-                            items[in_idx].used = USE_EMPTY;
+                            items[in_idx].used = core::constants::USE_EMPTY;
                         }
                     });
                     self.do_update_char(co);
@@ -1718,14 +1716,28 @@ impl State {
                 co as i32,
                 cn_x as i32,
                 cn_y as i32,
-                NT_SEEHIT as i32,
+                core::constants::NT_SEEHIT as i32,
                 cn as i32,
                 co as i32,
                 0,
                 0,
             );
-            self.do_notify_character(co as u32, NT_GOTHIT as i32, cn as i32, dam / 1000, 0, 0);
-            self.do_notify_character(cn as u32, NT_DIDHIT as i32, co as i32, dam / 1000, 0, 0);
+            self.do_notify_character(
+                co as u32,
+                core::constants::NT_GOTHIT as i32,
+                cn as i32,
+                dam / 1000,
+                0,
+                0,
+            );
+            self.do_notify_character(
+                cn as u32,
+                core::constants::NT_DIDHIT as i32,
+                co as i32,
+                dam / 1000,
+                0,
+                0,
+            );
         }
 
         if dam < 1 {
@@ -1751,16 +1763,21 @@ impl State {
         if type_hurt != 1 {
             Repository::with_map_mut(|map| {
                 let idx = (Repository::with_characters(|ch| ch[co].x as i32)
-                    + Repository::with_characters(|ch| ch[co].y as i32) * SERVER_MAPX as i32)
-                    as usize;
+                    + Repository::with_characters(|ch| ch[co].y as i32)
+                        * core::constants::SERVER_MAPX as i32) as usize;
                 if dam < 10000 {
-                    map[idx].flags |= MF_GFX_INJURED as u64;
+                    map[idx].flags |= core::constants::MF_GFX_INJURED as u64;
                 } else if dam < 30000 {
-                    map[idx].flags |= (MF_GFX_INJURED | MF_GFX_INJURED1) as u64;
+                    map[idx].flags |=
+                        (core::constants::MF_GFX_INJURED | core::constants::MF_GFX_INJURED1) as u64;
                 } else if dam < 50000 {
-                    map[idx].flags |= (MF_GFX_INJURED | MF_GFX_INJURED2) as u64;
+                    map[idx].flags |=
+                        (core::constants::MF_GFX_INJURED | core::constants::MF_GFX_INJURED2) as u64;
                 } else {
-                    map[idx].flags |= (MF_GFX_INJURED | MF_GFX_INJURED1 | MF_GFX_INJURED2) as u64;
+                    map[idx].flags |= (core::constants::MF_GFX_INJURED
+                        | core::constants::MF_GFX_INJURED1
+                        | core::constants::MF_GFX_INJURED2)
+                        as u64;
                 }
             });
             // TODO: fx_add_effect
@@ -1775,9 +1792,9 @@ impl State {
         if saved_by_god {
             let mf_arena = Repository::with_map(|map| {
                 let idx = (Repository::with_characters(|ch| ch[co].x as i32)
-                    + Repository::with_characters(|ch| ch[co].y as i32) * SERVER_MAPX as i32)
-                    as usize;
-                map[idx].flags & MF_ARENA as u64
+                    + Repository::with_characters(|ch| ch[co].y as i32)
+                        * core::constants::SERVER_MAPX as i32) as usize;
+                map[idx].flags & core::constants::MF_ARENA as u64
             });
 
             let mut rng = rand::thread_rng();
@@ -1813,13 +1830,20 @@ impl State {
                     characters[cn].data[44] += 1;
                 });
 
-                self.do_notify_character(cn as u32, NT_DIDKILL as i32, co as i32, 0, 0, 0);
+                self.do_notify_character(
+                    cn as u32,
+                    core::constants::NT_DIDKILL as i32,
+                    co as i32,
+                    0,
+                    0,
+                    0,
+                );
                 self.do_area_notify(
                     cn as i32,
                     co as i32,
                     Repository::with_characters(|ch| ch[cn].x as i32),
                     Repository::with_characters(|ch| ch[cn].y as i32),
-                    NT_SEEKILL as i32,
+                    core::constants::NT_SEEKILL as i32,
                     cn as i32,
                     co as i32,
                     0,
@@ -1885,13 +1909,20 @@ impl State {
                 );
             }
 
-            self.do_notify_character(cn as u32, NT_DIDKILL as i32, co as i32, 0, 0, 0);
+            self.do_notify_character(
+                cn as u32,
+                core::constants::NT_DIDKILL as i32,
+                co as i32,
+                0,
+                0,
+                0,
+            );
             self.do_area_notify(
                 cn as i32,
                 co as i32,
                 Repository::with_characters(|ch| ch[cn].x as i32),
                 Repository::with_characters(|ch| ch[cn].y as i32),
-                NT_SEEKILL as i32,
+                core::constants::NT_SEEKILL as i32,
                 cn as i32,
                 co as i32,
                 0,
@@ -1903,9 +1934,10 @@ impl State {
                 && cn != 0
                 && Repository::with_map(|map| {
                     let idx = (Repository::with_characters(|ch| ch[co].x as i32)
-                        + Repository::with_characters(|ch| ch[co].y as i32) * SERVER_MAPX as i32)
+                        + Repository::with_characters(|ch| ch[co].y as i32)
+                            * core::constants::SERVER_MAPX as i32)
                         as usize;
-                    map[idx].flags & MF_ARENA as u64 == 0
+                    map[idx].flags & core::constants::MF_ARENA as u64 == 0
                 })
                 && noexp == 0
             {

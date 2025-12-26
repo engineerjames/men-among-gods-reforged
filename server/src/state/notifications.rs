@@ -164,28 +164,9 @@ impl State {
     ///
     /// # Returns
     /// The calculated score value
-    pub(crate) fn get_score(&self, cn: usize) -> i32 {
+    pub fn do_char_score(&self, cn: usize) -> i32 {
         let pts = Repository::with_characters(|characters| characters[cn].points_tot);
         let pts = if pts < 0 { 0 } else { pts } as f64;
         ((pts.sqrt() as i32) / 7) + 7
     }
-}
-
-/// Remove a character from all other characters' enemy lists.
-/// This is typically called when a character logs out or dies.
-///
-/// Port of `remove_enemy` from `svr_do.cpp`
-///
-/// # Parameters
-/// - `co`: Character index to remove from enemy lists
-pub(crate) fn remove_from_enemies(co: usize) {
-    Repository::with_characters_mut(|characters| {
-        for n in 1..MAXCHARS as usize {
-            for m in 0..4 {
-                if characters[n].enemy[m] as usize == co {
-                    characters[n].enemy[m] = 0;
-                }
-            }
-        }
-    });
 }
