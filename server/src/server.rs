@@ -404,7 +404,7 @@ impl Server {
                 CharacterTickState::Empty => continue,
                 CharacterTickState::NeedsUpdate => {
                     cnt += 1;
-                    State::with(|state| {
+                    State::with_mut(|state| {
                         state.really_update_char(n);
                     });
 

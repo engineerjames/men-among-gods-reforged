@@ -2258,3 +2258,493 @@ fn plr_change_map(_nr: usize, _cn: usize) {
     // - Character sprites/status
     // - Item sprites/status
 }
+
+/// Port of `plr_tick` from `svr_tick.cpp`
+/// Handles player tick processing (lag detection and stoning)
+pub fn plr_tick(nr: usize) {
+    // Increment local tick counter
+    Server::with_players_mut(|players| {
+        players[nr].ltick = players[nr].ltick.wrapping_add(1);
+    });
+
+    let (state, cn) = Server::with_players(|players| (players[nr].state, players[nr].usnr));
+
+    if state != core::constants::ST_NORMAL {
+        return;
+    }
+
+    if cn == 0 {
+        return;
+    }
+
+    // Check lag-based stoning conditions
+    let (data_19, flags) = Repository::with_characters(|ch| (ch[cn].data[19], ch[cn].flags));
+
+    let is_player = (flags & enums::CharacterFlags::Player.bits()) != 0;
+    let is_stoned = (flags & enums::CharacterFlags::Stoned.bits()) != 0;
+
+    if data_19 == 0 || !is_player {
+        return;
+    }
+
+    let (ltick, rtick) = Server::with_players(|players| (players[nr].ltick, players[nr].rtick));
+
+    // Check if player should be stoned due to lag
+    if ltick > rtick.wrapping_add(data_19 as u32) && !is_stoned {
+        Repository::with_characters_mut(|ch| {
+            log::info!(
+                "Character '{}' turned to stone due to lag ({:.2}s)",
+                ch[cn].get_name(),
+                (ltick.wrapping_sub(rtick)) as f64 / 18.0
+            );
+            ch[cn].flags |= enums::CharacterFlags::Stoned.bits();
+        });
+        stone_gc(cn, true);
+    }
+    // Check if player should be unstoned (lag gone)
+    else if ltick
+        < rtick
+            .wrapping_add(data_19 as u32)
+            .wrapping_sub(core::constants::TICKS as u32)
+        && is_stoned
+    {
+        Repository::with_characters_mut(|ch| {
+            log::info!("Character '{}' unstoned, lag is gone", ch[cn].get_name());
+            ch[cn].flags &= !enums::CharacterFlags::Stoned.bits();
+        });
+        stone_gc(cn, false);
+    }
+}
+
+/// Port of `stone_gc` from `svr_tick.cpp`
+/// Handles stoning/unstoning of linked characters (e.g., usurped characters)
+fn stone_gc(cn: usize, mode: bool) {
+    let (is_player, co) = Repository::with_characters(|ch| {
+        let is_player = (ch[cn].flags & enums::CharacterFlags::Player.bits()) != 0;
+        let co = ch[cn].data[64] as usize;
+        (is_player, co)
+    });
+
+    if !is_player {
+        return;
+    }
+
+    if co == 0 {
+        return;
+    }
+
+    // Check if co is a valid active character
+    let is_valid = Repository::with_characters(|ch| {
+        co < core::constants::MAXCHARS
+            && ch[co].used == core::constants::USE_ACTIVE
+            && ch[co].data[63] == cn as i32
+    });
+
+    if !is_valid {
+        return;
+    }
+
+    Repository::with_characters_mut(|ch| {
+        if mode {
+            ch[co].flags |= enums::CharacterFlags::Stoned.bits();
+        } else {
+            ch[co].flags &= !enums::CharacterFlags::Stoned.bits();
+        }
+    });
+}
+
+/// Port of `plr_idle` from `svr_tick.cpp`
+/// Handles idle timeout checking for players
+pub fn plr_idle(nr: usize) {
+    let (ticker, lasttick, lasttick2, state, usnr) = Repository::with_globals(|globals| {
+        Server::with_players(|players| {
+            (
+                globals.ticker as u32,
+                players[nr].lasttick,
+                players[nr].lasttick2,
+                players[nr].state,
+                players[nr].usnr,
+            )
+        })
+    });
+
+    // Check protocol level idle (60 seconds)
+    if ticker.wrapping_sub(lasttick) > (core::constants::TICKS * 60) as u32 {
+        log::info!("Player {} idle too long (protocol level)", nr);
+        plr_logout(usnr, nr, enums::LogoutReason::IdleTooLong);
+    }
+
+    if state == core::constants::ST_EXIT {
+        return;
+    }
+
+    // Check player level idle (15 minutes)
+    if ticker.wrapping_sub(lasttick2) > (core::constants::TICKS * 60 * 15) as u32 {
+        log::info!("Player {} idle too long (player level)", nr);
+        plr_logout(usnr, nr, enums::LogoutReason::IdleTooLong);
+    }
+}
+
+/// Port of `plr_cmd` from `svr_tick.cpp`
+/// Dispatches player commands from inbuf
+pub fn plr_cmd(nr: usize) {
+    let (cmd, state) = Server::with_players(|players| (players[nr].inbuf[0], players[nr].state));
+
+    // Handle pre-login commands
+    match cmd {
+        core::constants::CL_NEWLOGIN => {
+            plr_challenge_newlogin(nr);
+            return;
+        }
+        core::constants::CL_CHALLENGE => {
+            plr_challenge(nr);
+            return;
+        }
+        core::constants::CL_LOGIN => {
+            plr_challenge_login(nr);
+            return;
+        }
+        core::constants::CL_CMD_UNIQUE => {
+            plr_unique(nr);
+            return;
+        }
+        core::constants::CL_PASSWD => {
+            plr_passwd(nr);
+            return;
+        }
+        _ => {}
+    }
+
+    // Only process other commands if in normal state
+    if state != core::constants::ST_NORMAL {
+        return;
+    }
+
+    // Update lasttick2 for non-automated commands
+    if cmd != core::constants::CL_CMD_AUTOLOOK
+        && cmd != core::constants::CL_PERF_REPORT
+        && cmd != core::constants::CL_CMD_CTICK
+    {
+        let ticker = Repository::with_globals(|globals| globals.ticker as u32);
+        Server::with_players_mut(|players| {
+            players[nr].lasttick2 = ticker;
+        });
+    }
+
+    // Handle commands that don't require stun check
+    match cmd {
+        core::constants::CL_PERF_REPORT => {
+            plr_perf_report(nr);
+            return;
+        }
+        core::constants::CL_CMD_LOOK => {
+            plr_cmd_look(nr, false);
+            return;
+        }
+        core::constants::CL_CMD_AUTOLOOK => {
+            plr_cmd_look(nr, true);
+            return;
+        }
+        core::constants::CL_CMD_SETUSER => {
+            plr_cmd_setuser(nr);
+            return;
+        }
+        core::constants::CL_CMD_STAT => {
+            plr_cmd_stat(nr);
+            return;
+        }
+        core::constants::CL_CMD_INPUT1 => {
+            plr_cmd_input(nr, 1);
+            return;
+        }
+        core::constants::CL_CMD_INPUT2 => {
+            plr_cmd_input(nr, 2);
+            return;
+        }
+        core::constants::CL_CMD_INPUT3 => {
+            plr_cmd_input(nr, 3);
+            return;
+        }
+        core::constants::CL_CMD_INPUT4 => {
+            plr_cmd_input(nr, 4);
+            return;
+        }
+        core::constants::CL_CMD_INPUT5 => {
+            plr_cmd_input(nr, 5);
+            return;
+        }
+        core::constants::CL_CMD_INPUT6 => {
+            plr_cmd_input(nr, 6);
+            return;
+        }
+        core::constants::CL_CMD_INPUT7 => {
+            plr_cmd_input(nr, 7);
+            return;
+        }
+        core::constants::CL_CMD_INPUT8 => {
+            plr_cmd_input(nr, 8);
+            return;
+        }
+        core::constants::CL_CMD_CTICK => {
+            plr_cmd_ctick(nr);
+            return;
+        }
+        _ => {}
+    }
+
+    let cn = Server::with_players(|players| players[nr].usnr);
+    let is_stunned = Repository::with_characters(|ch| ch[cn].stunned > 0);
+
+    if is_stunned {
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "You have been stunned. You cannot move.\n",
+            );
+        });
+    }
+
+    // Handle commands that show stun message but still execute
+    match cmd {
+        core::constants::CL_CMD_LOOK_ITEM => {
+            plr_cmd_look_item(nr);
+            return;
+        }
+        core::constants::CL_CMD_GIVE => {
+            plr_cmd_give(nr);
+            return;
+        }
+        core::constants::CL_CMD_TURN => {
+            plr_cmd_turn(nr);
+            return;
+        }
+        core::constants::CL_CMD_DROP => {
+            plr_cmd_drop(nr);
+            return;
+        }
+        core::constants::CL_CMD_PICKUP => {
+            plr_cmd_pickup(nr);
+            return;
+        }
+        core::constants::CL_CMD_ATTACK => {
+            plr_cmd_attack(nr);
+            return;
+        }
+        core::constants::CL_CMD_MODE => {
+            plr_cmd_mode(nr);
+            return;
+        }
+        core::constants::CL_CMD_MOVE => {
+            plr_cmd_move(nr);
+            return;
+        }
+        core::constants::CL_CMD_RESET => {
+            plr_cmd_reset(nr);
+            return;
+        }
+        core::constants::CL_CMD_SKILL => {
+            plr_cmd_skill(nr);
+            return;
+        }
+        core::constants::CL_CMD_INV_LOOK => {
+            plr_cmd_inv_look(nr);
+            return;
+        }
+        core::constants::CL_CMD_USE => {
+            plr_cmd_use(nr);
+            return;
+        }
+        core::constants::CL_CMD_INV => {
+            plr_cmd_inv(nr);
+            return;
+        }
+        core::constants::CL_CMD_EXIT => {
+            plr_cmd_exit(nr);
+            return;
+        }
+        _ => {}
+    }
+
+    // Commands blocked by stun
+    if is_stunned {
+        return;
+    }
+
+    match cmd {
+        core::constants::CL_CMD_SHOP => {
+            plr_cmd_shop(nr);
+        }
+        _ => {
+            log::warn!("Unknown CL command: {} for player {}", cmd, nr);
+        }
+    }
+}
+
+// ============================================================================
+// Command handler stubs - to be implemented
+// ============================================================================
+
+/// Handle new login challenge
+fn plr_challenge_newlogin(_nr: usize) {
+    // TODO: Implement challenge for new login
+}
+
+/// Handle login challenge response
+fn plr_challenge(_nr: usize) {
+    // TODO: Implement challenge verification
+}
+
+/// Handle existing login challenge
+fn plr_challenge_login(_nr: usize) {
+    // TODO: Implement challenge for existing login
+}
+
+/// Handle unique ID request
+fn plr_unique(_nr: usize) {
+    // TODO: Implement unique ID handling
+}
+
+/// Handle password change
+fn plr_passwd(_nr: usize) {
+    // TODO: Implement password handling
+}
+
+/// Handle performance report from client
+fn plr_perf_report(_nr: usize) {
+    // TODO: Implement performance report handling
+}
+
+/// Handle look command
+fn plr_cmd_look(_nr: usize, _autoflag: bool) {
+    // TODO: Implement look at character/NPC
+}
+
+/// Handle set user data command
+fn plr_cmd_setuser(_nr: usize) {
+    // TODO: Implement set user data (name, description, etc.)
+}
+
+/// Handle stat change command
+fn plr_cmd_stat(_nr: usize) {
+    // TODO: Implement stat point allocation
+}
+
+/// Handle text input commands (1-8)
+fn plr_cmd_input(nr: usize, part: u8) {
+    // Copy 15 bytes of input from inbuf to player input buffer
+    let offset = ((part - 1) as usize) * 15;
+    Server::with_players_mut(|players| {
+        for n in 0..15 {
+            players[nr].input[offset + n] = players[nr].inbuf[1 + n];
+        }
+    });
+
+    // If this is input8, process the complete message (do_say)
+    if part == 8 {
+        Server::with_players_mut(|players| {
+            players[nr].input[105 + 14] = 0; // null terminate
+        });
+        let (cn, input) = Server::with_players(|players| {
+            let mut input = [0u8; 128];
+            input.copy_from_slice(&players[nr].input);
+            (players[nr].usnr, input)
+        });
+        // TODO: Call do_say with cn and input
+        let _ = cn;
+        let _ = input;
+    }
+}
+
+/// Handle client tick update
+fn plr_cmd_ctick(nr: usize) {
+    let ticker = Repository::with_globals(|globals| globals.ticker as u32);
+    Server::with_players_mut(|players| {
+        // Read rtick from inbuf (4 bytes at offset 1)
+        let rtick = u32::from_le_bytes([
+            players[nr].inbuf[1],
+            players[nr].inbuf[2],
+            players[nr].inbuf[3],
+            players[nr].inbuf[4],
+        ]);
+        players[nr].rtick = rtick;
+        players[nr].lasttick = ticker;
+    });
+}
+
+/// Handle look at item on ground
+fn plr_cmd_look_item(_nr: usize) {
+    // TODO: Implement look at item on ground
+}
+
+/// Handle give item command
+fn plr_cmd_give(_nr: usize) {
+    // TODO: Implement give item to character
+}
+
+/// Handle turn command
+fn plr_cmd_turn(_nr: usize) {
+    // TODO: Implement turn direction
+}
+
+/// Handle drop item command
+fn plr_cmd_drop(_nr: usize) {
+    // TODO: Implement drop item
+}
+
+/// Handle pickup item command
+fn plr_cmd_pickup(_nr: usize) {
+    // TODO: Implement pickup item
+}
+
+/// Handle attack command
+fn plr_cmd_attack(_nr: usize) {
+    // TODO: Implement attack target
+}
+
+/// Handle speed mode command
+fn plr_cmd_mode(_nr: usize) {
+    // TODO: Implement speed mode change
+}
+
+/// Handle movement command
+fn plr_cmd_move(_nr: usize) {
+    // TODO: Implement movement
+}
+
+/// Handle reset command
+fn plr_cmd_reset(_nr: usize) {
+    // TODO: Implement reset (clear actions)
+}
+
+/// Handle skill use command
+fn plr_cmd_skill(_nr: usize) {
+    // TODO: Implement skill usage
+}
+
+/// Handle inventory look command
+fn plr_cmd_inv_look(_nr: usize) {
+    // TODO: Implement look at inventory item
+}
+
+/// Handle use command
+fn plr_cmd_use(_nr: usize) {
+    // TODO: Implement use item/object
+}
+
+/// Handle inventory manipulation command
+fn plr_cmd_inv(_nr: usize) {
+    // TODO: Implement inventory manipulation
+}
+
+/// Handle exit command (F12)
+fn plr_cmd_exit(nr: usize) {
+    log::info!("Player {} pressed F12", nr);
+    let cn = Server::with_players(|players| players[nr].usnr);
+    plr_logout(cn, nr, enums::LogoutReason::Exit);
+}
+
+/// Handle shop command
+fn plr_cmd_shop(_nr: usize) {
+    // TODO: Implement shop interaction
+}
