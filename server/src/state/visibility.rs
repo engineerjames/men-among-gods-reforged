@@ -1,0 +1,812 @@
+use core::constants::{CharacterFlags, ItemFlags};
+use core::types::Character;
+use std::cmp;
+
+use crate::repository::Repository;
+
+use super::State;
+
+impl State {
+    /// Add light from a specific point, spreading it to nearby tiles based on line of sight.
+    /// Port of `do_add_light(int x, int y, int strength)` from the original `helper.cpp`.
+    pub(crate) fn do_add_light(&mut self, x_center: i32, y_center: i32, mut strength: i32) {
+        // First add light to the center
+        let center_map_index =
+            (y_center as usize) * core::constants::SERVER_MAPX as usize + (x_center as usize);
+
+        Repository::with_map_mut(|map_tiles| {
+            map_tiles[center_map_index].add_light(strength);
+        });
+
+        let flag = if strength < 0 {
+            strength = -strength;
+            1
+        } else {
+            0
+        };
+
+        let xs = cmp::max(0, x_center - core::constants::LIGHTDIST);
+        let ys = cmp::max(0, y_center - core::constants::LIGHTDIST);
+        let xe = cmp::min(
+            core::constants::SERVER_MAPX as i32 - 1,
+            x_center + 1 + core::constants::LIGHTDIST,
+        );
+        let ye = cmp::min(
+            core::constants::SERVER_MAPY as i32 - 1,
+            y_center + 1 + core::constants::LIGHTDIST,
+        );
+
+        for y in ys..ye {
+            for x in xs..xe {
+                if x == x_center && y == y_center {
+                    continue;
+                }
+
+                let dx = (x - x_center).abs();
+                let dy = (y - y_center).abs();
+
+                if (dx * dx + dy * dy)
+                    > (core::constants::LIGHTDIST * core::constants::LIGHTDIST + 1)
+                {
+                    continue;
+                }
+
+                let v = self.can_see(None, x_center, y_center, x, y, core::constants::LIGHTDIST);
+
+                if v != 0 {
+                    let d = strength / (v * (x_center - x).abs() + (y_center - y).abs());
+                    let map_index =
+                        (y as usize) * core::constants::SERVER_MAPX as usize + (x as usize);
+
+                    Repository::with_map_mut(|map_tiles| {
+                        if flag == 1 {
+                            map_tiles[map_index].add_light(-d);
+                        } else {
+                            map_tiles[map_index].add_light(d);
+                        }
+                    });
+                }
+            }
+        }
+    }
+
+    /// Compute daylight for indoor tiles based on nearby outdoor tiles.
+    pub(crate) fn compute_dlight(&mut self, xc: i32, yc: i32) {
+        let xs = cmp::max(0, xc - core::constants::LIGHTDIST);
+        let ys = cmp::max(0, yc - core::constants::LIGHTDIST);
+        let xe = cmp::min(
+            core::constants::SERVER_MAPX as i32 - 1,
+            xc + 1 + core::constants::LIGHTDIST,
+        );
+        let ye = cmp::min(
+            core::constants::SERVER_MAPY as i32 - 1,
+            yc + 1 + core::constants::LIGHTDIST,
+        );
+
+        let mut best: i32 = 0;
+
+        for y in ys..ye {
+            for x in xs..xe {
+                let dx = xc - x;
+                let dy = yc - y;
+                if dx * dx + dy * dy > (core::constants::LIGHTDIST * core::constants::LIGHTDIST + 1)
+                {
+                    continue;
+                }
+
+                let m = (x + y * core::constants::SERVER_MAPX as i32) as usize;
+
+                let should_continue = Repository::with_map(|map| {
+                    map[m].flags & core::constants::MF_INDOORS as u64 != 0
+                });
+
+                if should_continue {
+                    continue;
+                }
+
+                let v = self.can_see(None, xc, yc, x, y, core::constants::LIGHTDIST);
+                if v == 0 {
+                    continue;
+                }
+
+                let denom = v * (dx.abs() + dy.abs());
+                if denom <= 0 {
+                    continue;
+                }
+
+                let d = 256 / denom;
+                if d > best {
+                    best = d;
+                }
+            }
+        }
+
+        if best > 256 {
+            best = 256;
+        }
+
+        let center_index = (xc + yc * core::constants::SERVER_MAPX as i32) as usize;
+
+        Repository::with_map_mut(|map| {
+            if center_index < map.len() {
+                map[center_index].dlight = best as u16;
+            }
+        });
+    }
+
+    /// Port of `add_lights(int x, int y)` from the original `helper.cpp`.
+    pub(crate) fn add_lights(&mut self, x: i32, y: i32) {
+        let x0 = x;
+        let y0 = y;
+
+        let xs = cmp::max(1, x0 - core::constants::LIGHTDIST);
+        let ys = cmp::max(1, y0 - core::constants::LIGHTDIST);
+        let xe = cmp::min(
+            core::constants::SERVER_MAPX as i32 - 2,
+            x0 + 1 + core::constants::LIGHTDIST,
+        );
+        let ye = cmp::min(
+            core::constants::SERVER_MAPY as i32 - 2,
+            y0 + 1 + core::constants::LIGHTDIST,
+        );
+
+        for yy in ys..ye {
+            for xx in xs..xe {
+                let m = (xx + yy * core::constants::SERVER_MAPX as i32) as usize;
+
+                let item_idx = Repository::with_map(|map| map[m].it as usize);
+                let light_value_from_item = Repository::with_items(|items| {
+                    if item_idx != 0 && item_idx < items.len() {
+                        let it = &items[item_idx];
+                        if it.active != 0 {
+                            it.light[1]
+                        } else {
+                            it.light[0]
+                        }
+                    } else {
+                        0
+                    }
+                });
+
+                if light_value_from_item != 0 {
+                    self.do_add_light(xx, yy, light_value_from_item as i32);
+                }
+
+                let cn = Repository::with_map(|map| map[m].ch as usize);
+
+                let light_value_from_character = Repository::with_characters(|characters| {
+                    if !Character::is_sane_character(cn) {
+                        0
+                    } else {
+                        characters[cn].light
+                    }
+                });
+
+                if light_value_from_character != 0 {
+                    self.do_add_light(xx, yy, light_value_from_character as i32);
+                }
+
+                let is_indoors = Repository::with_map(|map| {
+                    map[m].flags & core::constants::MF_INDOORS as u64 != 0
+                });
+                if is_indoors {
+                    self.compute_dlight(xx, yy);
+                }
+            }
+        }
+    }
+
+    /// Check if there's line of sight from (fx, fy) to (tx, ty).
+    /// Returns the visibility distance (1 = best, higher = worse), or 0 if not visible.
+    pub(crate) fn can_see(
+        &mut self,
+        character_id: Option<usize>,
+        fx: i32,
+        fy: i32,
+        tx: i32,
+        ty: i32,
+        max_distance: i32,
+    ) -> i32 {
+        Repository::with_see_map_mut(|see_map| {
+            Repository::with_characters(|characters| {
+                match character_id {
+                    Some(cn) => {
+                        if (fx != see_map[cn].x) || (fy != see_map[cn].y) {
+                            self.is_monster =
+                                characters[cn].is_monster() && !characters[cn].is_usurp_or_thrall();
+
+                            // Copy the visibility data from see_map to our working buffer
+                            self._visi.copy_from_slice(&see_map[cn].vis);
+
+                            self.can_map_see(fx, fy, max_distance);
+
+                            // Copy the updated visibility data back to see_map
+                            see_map[cn].vis.copy_from_slice(&self._visi);
+                            see_map[cn].x = fx;
+                            see_map[cn].y = fy;
+                            self.see_miss += 1;
+                        } else {
+                            // Copy the visibility data from see_map for checking
+                            self._visi.copy_from_slice(&see_map[cn].vis);
+                            self.see_hit += 1;
+                            self.ox = fx;
+                            self.oy = fy;
+                        }
+                    }
+                    None => {
+                        if (self.ox != fx) || (self.oy != fy) {
+                            self.is_monster = false;
+                            self.can_map_see(fx, fy, max_distance);
+                        }
+                    }
+                }
+            })
+        });
+
+        self.check_vis(tx, ty)
+    }
+
+    /// Build a visibility map for pathfinding from position (fx, fy).
+    pub(crate) fn can_map_go(&mut self, fx: i32, fy: i32, max_distance: i32) {
+        // Clear the visibility array
+        self._visi.fill(0);
+
+        self.ox = fx;
+        self.oy = fy;
+
+        self.add_vis(fx, fy, 1);
+
+        for dist in 1..(max_distance + 1) {
+            let xc = fx;
+            let yc = fy;
+
+            // Top and bottom horizontal lines
+            for x in (xc - dist)..=(xc + dist) {
+                let y = yc - dist;
+                if self.close_vis_see(x, y, dist as i8) {
+                    self.add_vis(x, y, dist + 1);
+                }
+
+                let y = yc + dist;
+                if self.close_vis_see(x, y, dist as i8) {
+                    self.add_vis(x, y, dist + 1);
+                }
+            }
+
+            // Left and right vertical lines (excluding corners already done)
+            for y in (yc - dist + 1)..=(yc + dist - 1) {
+                let x = xc - dist;
+                if self.close_vis_see(x, y, dist as i8) {
+                    self.add_vis(x, y, dist + 1);
+                }
+
+                let x = xc + dist;
+                if self.close_vis_see(x, y, dist as i8) {
+                    self.add_vis(x, y, dist + 1);
+                }
+            }
+        }
+    }
+
+    /// Build a visibility map for line of sight from position (fx, fy).
+    pub(crate) fn can_map_see(&mut self, fx: i32, fy: i32, max_distance: i32) {
+        // Clear the visibility array
+        self._visi.fill(0);
+
+        self.ox = fx;
+        self.oy = fy;
+
+        self.add_vis(fx, fy, 1);
+
+        for dist in 1..(max_distance + 1) {
+            let xc = fx;
+            let yc = fy;
+
+            // Top and bottom horizontal lines
+            for x in (xc - dist)..=(xc + dist) {
+                let y = yc - dist;
+                if self.close_vis_see(x, y, dist as i8) {
+                    self.add_vis(x, y, dist + 1);
+                }
+
+                let y = yc + dist;
+                if self.close_vis_see(x, y, dist as i8) {
+                    self.add_vis(x, y, dist + 1);
+                }
+            }
+
+            // Left and right vertical lines (excluding corners already done)
+            for y in (yc - dist + 1)..=(yc + dist - 1) {
+                let x = xc - dist;
+                if self.close_vis_see(x, y, dist as i8) {
+                    self.add_vis(x, y, dist + 1);
+                }
+
+                let x = xc + dist;
+                if self.close_vis_see(x, y, dist as i8) {
+                    self.add_vis(x, y, dist + 1);
+                }
+            }
+        }
+    }
+
+    /// Check if there's a valid path from (fx, fy) to (target_x, target_y).
+    pub(crate) fn can_go(&mut self, fx: i32, fy: i32, target_x: i32, target_y: i32) -> bool {
+        if self.visi != self._visi {
+            self.visi = self._visi.clone();
+            self.ox = 0;
+            self.oy = 0;
+        }
+
+        if self.ox != fx || self.oy != fy {
+            self.can_map_go(fx, fy, 15);
+        }
+
+        let tmp = self.check_vis(target_x, target_y);
+
+        tmp != 0
+    }
+
+    /// Check daylight at a specific position.
+    pub(crate) fn check_dlight(x: usize, y: usize) -> i32 {
+        let map_index = x + y * core::constants::SERVER_MAPX as usize;
+
+        Self::check_dlightm(map_index)
+    }
+
+    /// Check daylight at a specific map index.
+    pub(crate) fn check_dlightm(map_index: usize) -> i32 {
+        Repository::with_map(|map| {
+            Repository::with_globals(|globals| {
+                if map[map_index].flags & core::constants::MF_INDOORS as u64 == 0 {
+                    globals.dlight
+                } else {
+                    (globals.dlight * map[map_index].dlight as i32) / 256
+                }
+            })
+        })
+    }
+
+    /// Calculate adjusted light value based on character's perception skill and infrared ability.
+    pub(crate) fn do_character_calculate_light(&self, cn: usize, light: i32) -> i32 {
+        Repository::with_characters(|characters| {
+            let character = &characters[cn];
+            let mut adjusted_light = light;
+
+            if light == 0 && character.skill[core::constants::SK_PERCEPT][5] > 150 {
+                adjusted_light = 1;
+            }
+
+            adjusted_light = adjusted_light
+                * std::cmp::min(character.skill[core::constants::SK_PERCEPT][5] as i32, 10)
+                / 10;
+
+            if adjusted_light > 255 {
+                adjusted_light = 255;
+            }
+
+            if character.flags & CharacterFlags::CF_INFRARED.bits() != 0 && adjusted_light < 5 {
+                adjusted_light = 5;
+            }
+
+            adjusted_light
+        })
+    }
+
+    /// Check if character cn can see character co, taking into account distance, light, stealth, and line of sight.
+    /// Returns 0 if cannot see, 1 if very close, or distance value otherwise.
+    pub(crate) fn do_char_can_see(&mut self, cn: usize, co: usize) -> i32 {
+        if cn == co {
+            return 1;
+        }
+
+        Repository::with_characters(|characters| {
+            Repository::with_map(|map| {
+                if characters[co].used != core::constants::USE_ACTIVE {
+                    return 0;
+                }
+
+                if characters[co].flags & CharacterFlags::CF_INVISIBLE.bits() != 0
+                    && (characters[cn].get_invisibility_level()
+                        < characters[co].get_invisibility_level())
+                {
+                    return 0;
+                }
+
+                if characters[co].flags & CharacterFlags::CF_BODY.bits() != 0 {
+                    return 0;
+                }
+
+                let d1 = (characters[cn].x - characters[co].x).abs() as i32;
+                let d2 = (characters[cn].y - characters[co].y).abs() as i32;
+
+                let rd = d1 * d1 + d2 * d2;
+                let mut d = rd;
+
+                if d > 1000 {
+                    return 0;
+                }
+
+                // Modify by perception and stealth
+                match characters[co].mode {
+                    0 => {
+                        d = (d
+                            * (characters[co].skill[core::constants::SK_STEALTH][5] as i32 + 20))
+                            / 20;
+                    }
+                    1 => {
+                        d = (d
+                            * (characters[co].skill[core::constants::SK_STEALTH][5] as i32 + 50))
+                            / 50;
+                    }
+                    _ => {
+                        d = (d
+                            * (characters[co].skill[core::constants::SK_STEALTH][5] as i32 + 100))
+                            / 100;
+                    }
+                }
+
+                d -= characters[cn].skill[core::constants::SK_PERCEPT][5] as i32 * 2;
+
+                // Modify by light
+                if characters[cn].flags & CharacterFlags::CF_INFRARED.bits() == 0 {
+                    let map_index = characters[co].x as usize
+                        + characters[co].y as usize * core::constants::SERVER_MAPX as usize;
+                    let mut light = std::cmp::max(
+                        map[map_index].light as i32,
+                        State::check_dlight(characters[co].x as usize, characters[co].y as usize),
+                    );
+
+                    light = self.do_character_calculate_light(cn, light);
+
+                    if light == 0 {
+                        return 0;
+                    }
+
+                    if light > 64 {
+                        light = 64;
+                    }
+
+                    d += (64 - light) * 2;
+                }
+
+                if rd < 3 && d > 70 {
+                    d = 70;
+                }
+
+                if d > 200 {
+                    return 0;
+                }
+
+                if self.can_see(
+                    Some(cn),
+                    characters[cn].x as i32,
+                    characters[cn].y as i32,
+                    characters[co].x as i32,
+                    characters[co].y as i32,
+                    15,
+                ) == 0
+                {
+                    return 0;
+                }
+
+                if d < 1 {
+                    return 1;
+                }
+
+                d
+            })
+        })
+    }
+
+    /// Check if character cn can see item in_idx, taking into account distance, light, perception, and hidden status.
+    /// Returns 0 if cannot see, 1 if very close, or distance value otherwise.
+    pub(crate) fn do_char_can_see_item(&mut self, cn: usize, in_idx: usize) -> i32 {
+        Repository::with_characters(|characters| {
+            Repository::with_items(|items| {
+                Repository::with_map(|map| {
+                    // Check if item is active
+                    if items[in_idx].used != core::constants::USE_ACTIVE {
+                        return 0;
+                    }
+
+                    // Calculate raw distance (squared)
+                    let d1 = (characters[cn].x - items[in_idx].x as i16).abs() as i32;
+                    let d2 = (characters[cn].y - items[in_idx].y as i16).abs() as i32;
+
+                    let rd = d1 * d1 + d2 * d2;
+                    let mut d = rd;
+
+                    // Early exit for far distances
+                    if d > 1000 {
+                        return 0;
+                    }
+
+                    // Modify by perception
+                    d += 50 - characters[cn].skill[core::constants::SK_PERCEPT][5] as i32 * 2;
+
+                    // Modify by light (unless character has infrared)
+                    if characters[cn].flags & CharacterFlags::CF_INFRARED.bits() == 0 {
+                        let map_index = items[in_idx].x as usize
+                            + items[in_idx].y as usize * core::constants::SERVER_MAPX as usize;
+                        let mut light = std::cmp::max(
+                            map[map_index].light as i32,
+                            State::check_dlight(items[in_idx].x as usize, items[in_idx].y as usize),
+                        );
+
+                        light = self.do_character_calculate_light(cn, light);
+
+                        if light == 0 {
+                            return 0;
+                        }
+
+                        if light > 64 {
+                            light = 64;
+                        }
+
+                        d += (64 - light) * 3;
+                    }
+
+                    // Check for hidden items
+                    if items[in_idx].flags & core::constants::ItemFlags::IF_HIDDEN.bits() != 0 {
+                        d += items[in_idx].data[9] as i32;
+                    } else if rd < 3 && d > 200 {
+                        d = 200;
+                    }
+
+                    // Check distance threshold
+                    if d > 200 {
+                        return 0;
+                    }
+
+                    // Check line of sight
+                    let can_see = self.can_see(
+                        Some(cn),
+                        characters[cn].x as i32,
+                        characters[cn].y as i32,
+                        items[in_idx].x as i32,
+                        items[in_idx].y as i32,
+                        15,
+                    );
+
+                    if can_see == 0 {
+                        return 0;
+                    }
+
+                    // Return 1 for very close items, otherwise return distance
+                    if d < 1 {
+                        1
+                    } else {
+                        d
+                    }
+                })
+            })
+        })
+    }
+
+    /// Check the visibility value at target position (tx, ty) from the current origin.
+    /// Returns 0 if not visible, or the visibility distance (1 = best, higher = worse).
+    pub(crate) fn check_vis(&self, tx: i32, ty: i32) -> i32 {
+        let mut best = 99;
+
+        let x = tx - self.ox + 20;
+        let y = ty - self.oy + 20;
+
+        // Check all 8 adjacent cells for the best (lowest) visibility value
+        let offsets = [
+            (1, 0),
+            (-1, 0),
+            (0, 1),
+            (0, -1),
+            (1, 1),
+            (1, -1),
+            (-1, 1),
+            (-1, -1),
+        ];
+
+        for (dx, dy) in offsets.iter() {
+            let nx = x + dx;
+            let ny = y + dy;
+
+            if nx >= 0 && nx < 40 && ny >= 0 && ny < 40 {
+                let idx = (nx + ny * 40) as usize;
+                let val = self._visi[idx];
+                if val != 0 && val < best {
+                    best = val;
+                }
+            }
+        }
+
+        if best == 99 {
+            0
+        } else {
+            best as i32
+        }
+    }
+
+    /// Add a visibility value at position (x, y) to the internal visibility map.
+    pub(crate) fn add_vis(&mut self, x: i32, y: i32, value: i32) {
+        let vx = x - self.ox + 20;
+        let vy = y - self.oy + 20;
+
+        if vx >= 0 && vx < 40 && vy >= 0 && vy < 40 {
+            let idx = (vx + vy * 40) as usize;
+            if self._visi[idx] == 0 {
+                self._visi[idx] = value as i8;
+            }
+        }
+    }
+
+    /// Check if position (x, y) is visible and adjacent to an already visible tile.
+    pub(crate) fn close_vis_see(&self, x: i32, y: i32, value: i8) -> bool {
+        if !self.check_map_see(x, y) {
+            return false;
+        }
+
+        let vx = x - self.ox + 20;
+        let vy = y - self.oy + 20;
+
+        if vx < 0 || vx >= 40 || vy < 0 || vy >= 40 {
+            return false;
+        }
+
+        // Check all 8 adjacent cells
+        let offsets = [
+            (1, 0),
+            (-1, 0),
+            (0, 1),
+            (0, -1),
+            (1, 1),
+            (1, -1),
+            (-1, 1),
+            (-1, -1),
+        ];
+
+        for (dx, dy) in offsets.iter() {
+            let nx = vx + dx;
+            let ny = vy + dy;
+
+            if nx >= 0 && nx < 40 && ny >= 0 && ny < 40 {
+                let idx = (nx + ny * 40) as usize;
+                if self._visi[idx] == value {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    /// Check if a map tile at (x, y) allows line of sight.
+    pub(crate) fn check_map_see(&self, x: i32, y: i32) -> bool {
+        // Check boundaries
+        if x <= 0
+            || x >= core::constants::SERVER_MAPX as i32
+            || y <= 0
+            || y >= core::constants::SERVER_MAPY as i32
+        {
+            return false;
+        }
+
+        let m = (x + y * core::constants::SERVER_MAPX as i32) as usize;
+
+        // Check if it's a monster and the map blocks monsters
+        if self.is_monster {
+            let blocked = Repository::with_map(|map| {
+                map[m].flags & (core::constants::MF_SIGHTBLOCK | core::constants::MF_NOMONST) as u64
+                    != 0
+            });
+            if blocked {
+                return false;
+            }
+        } else {
+            // Check for sight blocking flags
+            let blocked = Repository::with_map(|map| {
+                map[m].flags & core::constants::MF_SIGHTBLOCK as u64 != 0
+            });
+            if blocked {
+                return false;
+            }
+        }
+
+        // Check if there's an item that blocks sight
+        let blocks_sight = Repository::with_map(|map| {
+            let item_idx = map[m].it as usize;
+            if item_idx != 0 {
+                Repository::with_items(|items| {
+                    item_idx < items.len()
+                        && items[item_idx].flags & core::constants::ItemFlags::IF_SIGHTBLOCK.bits()
+                            != 0
+                })
+            } else {
+                false
+            }
+        });
+
+        if blocks_sight {
+            return false;
+        }
+
+        true
+    }
+
+    /// Reset visibility cache for all characters near position (xc, yc).
+    pub(crate) fn reset_go(&mut self, xc: i32, yc: i32) {
+        Repository::with_see_map_mut(|see_map| {
+            for y in
+                std::cmp::max(0, yc - 18)..std::cmp::min(core::constants::SERVER_MAPY - 1, yc + 18)
+            {
+                for x in std::cmp::max(0, xc - 18)
+                    ..std::cmp::min(core::constants::SERVER_MAPX - 1, xc + 18)
+                {
+                    let cn = Repository::with_map(|map| {
+                        map[(x + y * core::constants::SERVER_MAPX) as usize].ch as usize
+                    });
+
+                    see_map[cn].x = 0;
+                    see_map[cn].y = 0;
+                }
+            }
+        });
+
+        self.ox = 0;
+        self.oy = 0;
+    }
+
+    /// Remove lights from characters and items in the area around (x, y).
+    /// Port of `remove_lights(int x, int y)` from the original `helper.cpp`.
+    pub(crate) fn remove_lights(&mut self, x: i32, y: i32) {
+        let xs = cmp::max(1, x - core::constants::LIGHTDIST);
+        let ys = cmp::max(1, y - core::constants::LIGHTDIST);
+        let xe = cmp::min(
+            core::constants::SERVER_MAPX as i32 - 2,
+            x + 1 + core::constants::LIGHTDIST,
+        );
+        let ye = cmp::min(
+            core::constants::SERVER_MAPY as i32 - 2,
+            y + 1 + core::constants::LIGHTDIST,
+        );
+
+        for yy in ys..ye {
+            for xx in xs..xe {
+                let m = (xx + yy * core::constants::SERVER_MAPX as i32) as usize;
+
+                let item_idx = Repository::with_map(|map| map[m].it as usize);
+                let light_value_from_item = Repository::with_items(|items| {
+                    if item_idx != 0 && item_idx < items.len() {
+                        let it = &items[item_idx];
+                        if it.active != 0 {
+                            it.light[1]
+                        } else {
+                            it.light[0]
+                        }
+                    } else {
+                        0
+                    }
+                });
+
+                if light_value_from_item != 0 {
+                    self.do_add_light(xx, yy, -(light_value_from_item as i32));
+                }
+
+                let cn = Repository::with_map(|map| map[m].ch as usize);
+
+                let light_value_from_character = Repository::with_characters(|characters| {
+                    if !Character::is_sane_character(cn) {
+                        0
+                    } else {
+                        characters[cn].light
+                    }
+                });
+
+                if light_value_from_character != 0 {
+                    self.do_add_light(xx, yy, -(light_value_from_character as i32));
+                }
+
+                Repository::with_map_mut(|map| {
+                    map[m].dlight = 0;
+                });
+            }
+        }
+    }
+}
