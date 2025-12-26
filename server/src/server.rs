@@ -1,5 +1,6 @@
 use core::constants::MAXPLAYER;
 use core::types::{Character, ServerPlayer};
+use std::net::TcpListener;
 use std::sync::{OnceLock, RwLock};
 
 use crate::god::God;
@@ -11,11 +12,13 @@ use crate::{player, populate};
 
 static PLAYERS: OnceLock<RwLock<[core::types::ServerPlayer; MAXPLAYER]>> = OnceLock::new();
 
-pub struct Server {}
+pub struct Server {
+    sock: Option<TcpListener>,
+}
 
 impl Server {
     pub fn new() -> Self {
-        Server {}
+        Server { sock: None }
     }
 
     pub fn initialize_players() -> Result<(), String> {
@@ -76,6 +79,17 @@ impl Server {
     }
 
     pub fn initialize(&mut self) -> Result<(), String> {
+        // Create and configure TCP socket (matching server.cpp socket setup)
+        let listener = TcpListener::bind("0.0.0.0:5555")
+            .map_err(|e| format!("Failed to bind socket: {}", e))?;
+
+        listener
+            .set_nonblocking(true)
+            .map_err(|e| format!("Failed to set non-blocking mode: {}", e))?;
+
+        self.sock = Some(listener);
+        log::info!("Socket bound to port 5555");
+
         Server::initialize_players()?;
         Repository::initialize()?;
         State::initialize()?;
