@@ -2933,19 +2933,422 @@ pub fn skill_recall(cn: usize) {
 }
 
 pub fn spell_stun(cn: usize, co: usize, power: i32) -> i32 {
-    unimplemented!()
+    use crate::repository::Repository;
+    use crate::state::State;
+    use core::types::FontColor;
+
+    if Repository::with_characters(|ch| (ch[co].flags & CharacterFlags::Immortal.bits()) != 0) {
+        return 0;
+    }
+
+    let in_opt = God::create_item(1);
+    if in_opt.is_none() {
+        // xlog equivalent omitted
+        return 0;
+    }
+    let in_idx = in_opt.unwrap();
+
+    let mut power = spell_immunity(
+        power,
+        Repository::with_characters(|ch| {
+            ch[co].skill[core::constants::SK_IMMUN as usize][5] as i32
+        }),
+    );
+    power = spell_race_mod(power, Repository::with_characters(|ch| ch[cn].kindred));
+
+    Repository::with_items_mut(|it| {
+        let mut name_bytes = [0u8; 40];
+        let name = b"Stun";
+        let len = name.len().min(40);
+        name_bytes[..len].copy_from_slice(&name[..len]);
+        it[in_idx].name = name_bytes;
+        it[in_idx].flags |= ItemFlags::IF_SPELL.bits();
+        it[in_idx].sprite[1] = 91;
+        it[in_idx].duration = (power + core::constants::TICKS) as u32;
+        it[in_idx].active = it[in_idx].duration;
+        it[in_idx].temp = core::constants::SK_STUN as u16;
+        it[in_idx].power = power as u32;
+    });
+
+    if Repository::with_characters(|ch| {
+        ch[co].skill[core::constants::SK_SENSE as usize][5] + 10 > power as u8
+    }) {
+        State::with(|state| {
+            state.do_character_log(
+                co,
+                FontColor::Green,
+                &format!(
+                    "{} cast stun on you.\n",
+                    Repository::with_characters(
+                        |ch| String::from_utf8_lossy(&ch[cn].reference).to_string()
+                    )
+                ),
+            )
+        });
+    } else {
+        State::with(|state| {
+            state.do_character_log(co, FontColor::Green, "You have been stunned.\n")
+        });
+    }
+
+    State::with(|state| {
+        state.do_character_log(
+            cn,
+            FontColor::Green,
+            &format!(
+                "{} was stunned.\n",
+                Repository::with_characters(
+                    |ch| String::from_utf8_lossy(&ch[co].reference).to_string()
+                )
+            ),
+        )
+    });
+
+    if Repository::with_characters(|ch| ch[co].flags & CharacterFlags::SpellIgnore.bits()) == 0 {
+        State::with(|state| {
+            state.do_notify_character(
+                co as u32,
+                core::constants::NT_GOTHIT as i32,
+                cn as i32,
+                0,
+                0,
+                0,
+            )
+        });
+    }
+    State::with(|state| {
+        state.do_notify_character(
+            cn as u32,
+            core::constants::NT_DIDHIT as i32,
+            co as i32,
+            0,
+            0,
+            0,
+        )
+    });
+
+    State::char_play_sound(
+        co,
+        Repository::with_characters(|ch| ch[cn].sound) as i32 + 7,
+        -150,
+        0,
+    );
+    State::char_play_sound(
+        cn,
+        Repository::with_characters(|ch| ch[cn].sound) as i32 + 1,
+        -150,
+        0,
+    );
+    // TODO: chlog(cn, "Cast Stun on %s", ch[co].name);
+
+    if driver_skill::add_spell(co, in_idx) == 0 {
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                FontColor::Green,
+                &format!(
+                    "Magical interference neutralised the {}'s effect.\n",
+                    "stun"
+                ),
+            )
+        });
+        return 0;
+    }
+
+    EffectManager::fx_add_effect(
+        5,
+        0,
+        Repository::with_characters(|ch| ch[co].x) as i32,
+        Repository::with_characters(|ch| ch[co].y) as i32,
+        0,
+    );
+
+    1
 }
 
 pub fn skill_stun(cn: usize) {
-    unimplemented!()
+    use crate::repository::Repository;
+    use crate::state::State;
+
+    let co = Repository::with_characters(|ch| {
+        if ch[cn].skill_target1 != 0 {
+            ch[cn].skill_target1 as usize
+        } else if ch[cn].attack_cn != 0 {
+            ch[cn].attack_cn as usize
+        } else {
+            cn
+        }
+    });
+
+    if cn == co {
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                "You cannot stun yourself!\n",
+            )
+        });
+        return;
+    }
+
+    if State::with_mut(|state| state.do_char_can_see(cn, co)) == 0 {
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                "You cannot see your target.\n",
+            )
+        });
+        return;
+    }
+
+    State::with(|state| state.remember_pvp(cn, co));
+    if is_exhausted(cn) != 0 {
+        return;
+    }
+
+    if State::with(|state| state.may_attack_msg(cn, co, true)) == 0 {
+        // TODO: chlog(cn, "Prevented from attacking %s (%d)", ch[co].name, co);
+        return;
+    }
+
+    if spellcost(cn, 20) != 0 {
+        return;
+    }
+
+    if chance_base(
+        cn,
+        Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_STUN as usize][5] as i32),
+        12,
+        Repository::with_characters(|ch| {
+            ch[co].skill[core::constants::SK_RESIST as usize][5] as i32
+        }),
+    ) != 0
+    {
+        if cn != co
+            && Repository::with_characters(|ch| ch[co].skill[core::constants::SK_SENSE as usize][5])
+                > Repository::with_characters(|ch| {
+                    ch[cn].skill[core::constants::SK_STUN as usize][5]
+                }) + 5
+        {
+            State::with(|state| {
+                state.do_character_log(
+                    co,
+                    core::types::FontColor::Green,
+                    &format!(
+                        "{} tried to cast stun on you but failed.\n",
+                        Repository::with_characters(|ch| String::from_utf8_lossy(
+                            &ch[cn].reference
+                        )
+                        .to_string())
+                    ),
+                )
+            });
+            if Repository::with_characters(|ch| ch[co].flags & CharacterFlags::SpellIgnore.bits())
+                == 0
+            {
+                State::with(|state| {
+                    state.do_notify_character(
+                        co as u32,
+                        core::constants::NT_GOTMISS as i32,
+                        cn as i32,
+                        0,
+                        0,
+                        0,
+                    )
+                });
+            }
+        }
+        return;
+    }
+
+    if Repository::with_characters(|ch| (ch[co].flags & CharacterFlags::Immortal.bits()) != 0) {
+        State::with(|state| {
+            state.do_character_log(cn, core::types::FontColor::Green, "You lost your focus.\n")
+        });
+        return;
+    }
+
+    let power =
+        Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_STUN as usize][5] as i32);
+    spell_stun(cn, co, power);
+
+    let co_orig = co;
+    let m = Repository::with_characters(|ch| ch[cn].x)
+        + Repository::with_characters(|ch| ch[cn].y) * core::constants::SERVER_MAPX as i16;
+
+    let adj = [
+        1isize,
+        -1isize,
+        core::constants::SERVER_MAPX as isize,
+        -(core::constants::SERVER_MAPX as isize),
+    ];
+    for delta in adj.iter() {
+        let idx = (m as isize + *delta) as usize;
+        let maybe_co =
+            Repository::with_map(|map| map.get(idx).and_then(|m| Some(m.ch))).unwrap_or(0) as usize;
+        if maybe_co != 0
+            && Repository::with_characters(|ch| ch[maybe_co].attack_cn) == cn as u16
+            && maybe_co != co_orig
+        {
+            let mut rng = rand::thread_rng();
+            let s_rand = rng.gen_range(0..20);
+            let o_rand = rng.gen_range(0..20);
+            if Repository::with_characters(|ch| {
+                ch[cn].skill[core::constants::SK_STUN as usize][5] as i32
+            }) + s_rand
+                > Repository::with_characters(|ch| {
+                    ch[maybe_co].skill[core::constants::SK_RESIST as usize][5] as i32
+                }) + o_rand
+            {
+                spell_stun(
+                    cn,
+                    maybe_co,
+                    Repository::with_characters(|ch| {
+                        ch[cn].skill[core::constants::SK_STUN as usize][5] as i32
+                    }),
+                );
+            }
+        }
+    }
+
+    EffectManager::fx_add_effect(
+        7,
+        0,
+        Repository::with_characters(|ch| ch[cn].x) as i32,
+        Repository::with_characters(|ch| ch[cn].y) as i32,
+        0,
+    );
+    add_exhaust(cn, core::constants::TICKS * 3);
 }
 
 pub fn remove_spells(cn: usize) {
-    unimplemented!()
+    use crate::repository::Repository;
+
+    for n in 0..20usize {
+        let in_idx = Repository::with_characters(|ch| ch[cn].spell[n] as usize);
+        if in_idx == 0 {
+            continue;
+        }
+        Repository::with_items_mut(|it| it[in_idx].used = core::constants::USE_EMPTY);
+        Repository::with_characters_mut(|ch| ch[cn].spell[n] = 0);
+    }
+    State::with(|state| state.do_update_char(cn));
 }
 
 pub fn skill_dispel(cn: usize) {
-    unimplemented!()
+    use crate::repository::Repository;
+    use crate::state::State;
+    use core::constants::*;
+
+    let co = Repository::with_characters(|ch| {
+        if ch[cn].skill_target1 != 0 {
+            ch[cn].skill_target1 as usize
+        } else {
+            cn
+        }
+    });
+
+    if State::with_mut(|state| state.do_char_can_see(cn, co)) == 0 {
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                "You cannot see your target.\n",
+            )
+        });
+        return;
+    }
+
+    if is_exhausted(cn) != 0 {
+        return;
+    }
+
+    // Try removing curse from target
+    let mut found_in: usize = 0;
+    let mut found_n: isize = -1;
+    for n in 0..20usize {
+        let in_idx = Repository::with_characters(|ch| ch[co].spell[n] as usize);
+        if in_idx == 0 {
+            continue;
+        }
+        if Repository::with_items(|it| it[in_idx].temp as u16) == SK_CURSE as u16 {
+            found_in = in_idx;
+            found_n = n as isize;
+            break;
+        }
+    }
+
+    // Try dispelling self (non-curse) if none and target is self
+    if found_in == 0 && co == cn {
+        for n in 0..20usize {
+            let in_idx = Repository::with_characters(|ch| ch[cn].spell[n] as usize);
+            if in_idx == 0 {
+                continue;
+            }
+            if Repository::with_items(|it| it[in_idx].temp as u16) != SK_CURSE as u16 {
+                found_in = in_idx;
+                found_n = n as isize;
+                break;
+            }
+        }
+    }
+
+    // Try dispelling someone else (any spell)
+    if found_in == 0 {
+        for n in 0..20usize {
+            let in_idx = Repository::with_characters(|ch| ch[co].spell[n] as usize);
+            if in_idx == 0 {
+                continue;
+            }
+            found_in = in_idx;
+            found_n = n as isize;
+            break;
+        }
+    }
+
+    if found_in == 0 {
+        State::with(|state| {
+            state.do_character_log(cn, core::types::FontColor::Green, "Nothing to dispel.\n")
+        });
+        return;
+    }
+
+    let pwr = Repository::with_items(|it| it[found_in].power as i32);
+
+    if spellcost(cn, 25) != 0 {
+        return;
+    }
+
+    if chance_base(
+        cn,
+        spell_race_mod(
+            Repository::with_characters(|ch| ch[cn].skill[SK_DISPEL as usize][5] as i32),
+            Repository::with_characters(|ch| ch[cn].kindred),
+        ),
+        12,
+        pwr,
+    ) != 0
+    {
+        return;
+    }
+
+    // Remove the spell
+    Repository::with_items_mut(|it| it[found_in].used = core::constants::USE_EMPTY);
+    if found_n >= 0 {
+        let idx = found_n as usize;
+        Repository::with_characters_mut(|ch| ch[co].spell[idx] = 0);
+    }
+
+    State::with(|state| state.do_character_log(cn, core::types::FontColor::Green, "Dispelled.\n"));
+    add_exhaust(cn, TICKS * 2);
+    EffectManager::fx_add_effect(
+        7,
+        0,
+        Repository::with_characters(|ch| ch[cn].x) as i32,
+        Repository::with_characters(|ch| ch[cn].y) as i32,
+        0,
+    );
 }
 
 pub fn skill_ghost(cn: usize) {
