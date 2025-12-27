@@ -1,9 +1,9 @@
 use crate::enums::CharacterFlags;
 use crate::path_finding::PathFinder;
-use crate::player;
 use crate::state::State;
 use crate::Repository;
 use crate::{core, driver};
+use crate::{driver_use, player};
 use rand::Rng;
 
 pub fn act_idle(cn: usize) {
@@ -1903,6 +1903,8 @@ pub fn driver_msg(cn: usize, msg_type: i32, dat1: i32, dat2: i32, dat3: i32, dat
     });
     if is_ccp {
         // TODO: driver_ccp::ccp_msg(cn, msg_type, dat1, dat2, dat3, dat4);
+        // Actually this should never be called...
+        log::error!("driver_ccp::ccp_msg not implemented for {}", cn);
     }
 
     match msg_type as u32 {
@@ -1937,7 +1939,7 @@ pub fn driver(cn: usize) {
         (ch[cn].flags & core::constants::CharacterFlags::CF_CCP.bits() as u64) != 0
     });
     if is_ccp {
-        log::debug!("ccp_driver not implemented for {}", cn);
+        log::error!("ccp_driver not implemented for {}", cn);
     }
 
     // use_nr (highest priority)
@@ -1959,7 +1961,7 @@ pub fn driver(cn: usize) {
         }
 
         let carried = use_nr < 20;
-        crate::driver_use::use_driver(cn, in_item, carried);
+        driver_use::use_driver(cn, in_item, carried);
 
         Repository::with_characters_mut(|ch| {
             if ch[cn].cerrno == core::constants::ERR_SUCCESS as u16 {
@@ -1977,7 +1979,7 @@ pub fn driver(cn: usize) {
     let skill_nr = Repository::with_characters(|ch| ch[cn].skill_nr);
     if skill_nr != 0 {
         // skill driver not fully ported yet; use plr_skill placeholder
-        crate::player::plr_skill(cn);
+        player::plr_skill(cn);
         Repository::with_characters_mut(|ch| {
             ch[cn].skill_nr = 0;
             ch[cn].last_action = core::constants::ERR_SUCCESS as i8;
@@ -1992,7 +1994,7 @@ pub fn driver(cn: usize) {
     let goto_x = Repository::with_characters(|ch| ch[cn].goto_x);
     if goto_x != 0 {
         let goto_y = Repository::with_characters(|ch| ch[cn].goto_y);
-        log::debug!(
+        log::error!(
             "drv_moveto not implemented; would moveto {}:{} for {}",
             goto_x,
             goto_y,
@@ -2004,7 +2006,7 @@ pub fn driver(cn: usize) {
     // attack_cn
     let attack_cn = Repository::with_characters(|ch| ch[cn].attack_cn);
     if attack_cn != 0 {
-        log::debug!("drv_attack_char not implemented for {}", cn);
+        log::error!("drv_attack_char not implemented for {}", cn);
         return;
     }
 
@@ -2020,23 +2022,23 @@ pub fn driver(cn: usize) {
                     != 0
             });
             if !is_player {
-                crate::driver::npc_driver_low(cn);
+                driver::npc_driver_low(cn);
             }
         }
         x if x == core::constants::DR_DROP => {
-            crate::player::plr_drop(cn);
+            player::plr_drop(cn);
         }
         x if x == core::constants::DR_PICKUP => {
-            crate::player::plr_pickup(cn);
+            player::plr_pickup(cn);
         }
         x if x == core::constants::DR_GIVE => {
-            crate::player::plr_give(cn);
+            player::plr_give(cn);
         }
         x if x == core::constants::DR_USE => {
-            crate::player::plr_use(cn);
+            player::plr_use(cn);
         }
         x if x == core::constants::DR_BOW => {
-            crate::player::plr_bow(cn);
+            player::plr_bow(cn);
             Repository::with_characters_mut(|ch| {
                 ch[cn].misc_action = core::constants::DR_IDLE as u16;
                 ch[cn].cerrno = core::constants::ERR_NONE as u16;
@@ -2044,7 +2046,7 @@ pub fn driver(cn: usize) {
             });
         }
         x if x == core::constants::DR_WAVE => {
-            crate::player::plr_wave(cn);
+            player::plr_wave(cn);
             Repository::with_characters_mut(|ch| {
                 ch[cn].misc_action = core::constants::DR_IDLE as u16;
                 ch[cn].cerrno = core::constants::ERR_NONE as u16;
