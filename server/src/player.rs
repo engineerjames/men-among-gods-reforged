@@ -1,5 +1,5 @@
 use crate::{
-    driver, driver_generic, driver_skill::skill_driver, enums, god::God,
+    driver, driver_generic, driver_skill::skill_driver, driver_use, enums, god::God,
     network_manager::NetworkManager, repository::Repository, server::Server, state::State,
 };
 
@@ -368,7 +368,7 @@ pub fn plr_map_remove(cn: usize) {
                             & core::constants::ItemFlags::IF_STEPACTION.bits())
                             != 0
                         {
-                            // TODO: Call step_driver_remove when implemented
+                            driver_use::step_driver_remove(cn, in_id as usize);
                         }
                     });
                 }
@@ -404,8 +404,112 @@ pub fn plr_map_set(cn: usize) {
             });
 
             if has_step_action {
-                // TODO: Call step_driver and handle return values
-                // For now, just set the character on the map
+                // Call step_driver and handle return values per original C++ logic
+                let ret = crate::driver_use::step_driver(cn, in_id as usize);
+
+                if ret == 1 {
+                    Repository::with_map_mut(|map| {
+                        map[m].to_ch = 0;
+                    });
+
+                    // compute destination: x + (x - frx), y + (y - fry)
+                    let (cx, cy, frx, fry, light) = Repository::with_characters(|characters| {
+                        (
+                            characters[cn].x as i32,
+                            characters[cn].y as i32,
+                            characters[cn].frx as i32,
+                            characters[cn].fry as i32,
+                            characters[cn].light,
+                        )
+                    });
+
+                    let nx = cx + (cx - frx);
+                    let ny = cy + (cy - fry);
+
+                    let target_empty = Repository::with_map(|map| {
+                        let idx =
+                            (nx as usize) + (ny as usize) * core::constants::SERVER_MAPX as usize;
+                        map[idx].ch == 0
+                    });
+
+                    if target_empty {
+                        Repository::with_characters_mut(|characters| {
+                            characters[cn].x = nx as i16;
+                            characters[cn].y = ny as i16;
+                            characters[cn].use_nr = 0;
+                            characters[cn].skill_nr = 0;
+                            characters[cn].attack_cn = 0;
+                            characters[cn].goto_x = 0;
+                            characters[cn].goto_y = 0;
+                            characters[cn].misc_action = 0;
+                        });
+
+                        Repository::with_map_mut(|map| {
+                            let idx = (nx as usize)
+                                + (ny as usize) * core::constants::SERVER_MAPX as usize;
+                            map[idx].ch = cn as u32;
+                        });
+
+                        if light != 0 {
+                            State::with_mut(|state| {
+                                state.do_add_light(nx as i32, ny as i32, light as i32);
+                            });
+                        }
+
+                        return;
+                    } else {
+                        // fall through and handle as ret == -1
+                    }
+                }
+
+                if ret == -1 {
+                    Repository::with_map_mut(|map| {
+                        map[m].to_ch = 0;
+                    });
+
+                    let (frx, fry, light) = Repository::with_characters(|characters| {
+                        (
+                            characters[cn].frx as i32,
+                            characters[cn].fry as i32,
+                            characters[cn].light,
+                        )
+                    });
+
+                    Repository::with_characters_mut(|characters| {
+                        characters[cn].x = frx as i16;
+                        characters[cn].y = fry as i16;
+                        characters[cn].use_nr = 0;
+                        characters[cn].skill_nr = 0;
+                        characters[cn].attack_cn = 0;
+                        characters[cn].goto_x = 0;
+                        characters[cn].goto_y = 0;
+                        characters[cn].misc_action = 0;
+                    });
+
+                    Repository::with_map_mut(|map| {
+                        let idx =
+                            (frx as usize) + (fry as usize) * core::constants::SERVER_MAPX as usize;
+                        map[idx].ch = cn as u32;
+                    });
+
+                    if light != 0 {
+                        State::with_mut(|state| {
+                            state.do_add_light(frx as i32, fry as i32, light as i32);
+                        });
+                    }
+
+                    return;
+                }
+
+                if ret == 2 {
+                    // TELEPORT_SUCCESS: just add light and return
+                    if light != 0 {
+                        State::with_mut(|state| {
+                            state.do_add_light(x as i32, y as i32, light as i32);
+                        });
+                    }
+                    return;
+                }
             }
         }
 
@@ -429,39 +533,48 @@ pub fn plr_map_set(cn: usize) {
             return;
         }
 
-        // Check for no magic zone
-        // TODO: Implement char_wears_item checks for items 466 and 481
+        // Check for no magic zone, respect items that exempt char from nomagic
         let is_nomagic =
             Repository::with_map(|map| (map[m].flags & core::constants::MF_NOMAGIC as u64) != 0);
 
-        if is_nomagic {
+        let wears_466 = State::with(|s| s.char_wears_item(cn, 466));
+        let wears_481 = State::with(|s| s.char_wears_item(cn, 481));
+
+        if is_nomagic && !wears_466 && !wears_481 {
             Repository::with_characters_mut(|characters| {
                 if (characters[cn].flags & enums::CharacterFlags::NoMagic.bits()) == 0 {
                     characters[cn].flags |= enums::CharacterFlags::NoMagic.bits();
-                    // TODO: Call remove_spells when implemented
-                    State::with(|state| {
-                        state.do_character_log(
-                            cn,
-                            core::types::FontColor::Red,
-                            "You feel your magic fail.\n",
-                        );
-                    });
                 }
             });
+
+            // remove all spells and notify
+            crate::driver_skill::remove_spells(cn);
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    "You feel your magic fail.\n",
+                );
+            });
         } else {
+            let mut was_nomagic = false;
             Repository::with_characters_mut(|characters| {
                 if (characters[cn].flags & enums::CharacterFlags::NoMagic.bits()) != 0 {
                     characters[cn].flags &= !enums::CharacterFlags::NoMagic.bits();
-                    // TODO: Call do_update_char when implemented
-                    State::with(|state| {
-                        state.do_character_log(
-                            cn,
-                            core::types::FontColor::Red,
-                            "You feel your magic return.\n",
-                        );
-                    });
+                    characters[cn].set_do_update_flags();
+                    was_nomagic = true;
                 }
             });
+
+            if was_nomagic {
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Red,
+                        "You feel your magic return.\n",
+                    );
+                });
+            }
         }
     }
 
