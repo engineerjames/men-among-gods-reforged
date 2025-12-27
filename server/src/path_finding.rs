@@ -9,7 +9,9 @@ use std::cmp::{max, min};
 use std::collections::BinaryHeap;
 
 use core::constants::*;
-use core::types::{Character, Item, Map};
+use core::types::{Character, Global, Item, Map};
+
+use crate::repository::Repository;
 
 const MAX_NODES: usize = 4096;
 
@@ -153,27 +155,38 @@ impl PathFinder {
     }
 
     /// Check if a map tile is passable
-    fn is_passable(&self, m: usize, mapblock: u64, map: &[Map], items: &[Item]) -> bool {
-        // Check map flags
-        if (map[m].flags & mapblock) != 0 {
-            return false;
-        }
-
-        // Check for characters blocking
-        if map[m].ch != 0 || map[m].to_ch != 0 {
-            return false;
-        }
-
-        // Check for blocking items
-        let item_idx = map[m].it as usize;
-        if item_idx != 0 && item_idx < items.len() {
-            let item = &items[item_idx];
-            if (item.flags & ItemFlags::IF_MOVEBLOCK.bits()) != 0 && item.driver != 2 {
+    fn is_passable(&self, m: usize, mapblock: u64) -> bool {
+        Repository::with_map(|map| {
+            // Check map flags
+            if (map[m].flags & mapblock) != 0 {
                 return false;
             }
-        }
 
-        true
+            // Check for characters blocking
+            if map[m].ch != 0 || map[m].to_ch != 0 {
+                return false;
+            }
+
+            // Check for blocking items
+            let item_idx = map[m].it as usize;
+            if item_idx != 0 && item_idx < core::constants::MAXITEM {
+                let should_return_false = Repository::with_items(|it| {
+                    if (it[item_idx].flags & ItemFlags::IF_MOVEBLOCK.bits()) != 0
+                        && it[item_idx].driver != 2
+                    {
+                        return true;
+                    }
+
+                    false
+                });
+
+                if should_return_false {
+                    return false;
+                }
+            }
+
+            true
+        })
     }
 
     /// Add a node to the search
@@ -254,8 +267,6 @@ impl PathFinder {
         &mut self,
         node: &Node,
         mapblock: u64,
-        map: &[Map],
-        items: &[Item],
         mode: u8,
         tx1: i16,
         ty1: i16,
@@ -273,10 +284,10 @@ impl PathFinder {
         let down_m = (base_x + (base_y + 1) * SERVER_MAPX) as usize;
         let up_m = (base_x + (base_y - 1) * SERVER_MAPX) as usize;
 
-        let can_right = self.is_passable(right_m, mapblock, map, items);
-        let can_left = self.is_passable(left_m, mapblock, map, items);
-        let can_down = self.is_passable(down_m, mapblock, map, items);
-        let can_up = self.is_passable(up_m, mapblock, map, items);
+        let can_right = self.is_passable(right_m, mapblock);
+        let can_left = self.is_passable(left_m, mapblock);
+        let can_down = self.is_passable(down_m, mapblock);
+        let can_up = self.is_passable(up_m, mapblock);
 
         let dir_to_use = if node.dir == 0 { node.cdir } else { node.dir };
 
@@ -357,7 +368,7 @@ impl PathFinder {
         // Right-Down
         if can_right && can_down {
             let rd_m = (base_x + 1 + (base_y + 1) * SERVER_MAPX) as usize;
-            if self.is_passable(rd_m, mapblock, map, items) {
+            if self.is_passable(rd_m, mapblock) {
                 let cost = node.cost + 3 + turn_count(node.cdir, DX_RIGHTDOWN);
                 self.add_node(
                     node.x + 1,
@@ -378,7 +389,7 @@ impl PathFinder {
         // Right-Up
         if can_right && can_up {
             let ru_m = (base_x + 1 + (base_y - 1) * SERVER_MAPX) as usize;
-            if self.is_passable(ru_m, mapblock, map, items) {
+            if self.is_passable(ru_m, mapblock) {
                 let cost = node.cost + 3 + turn_count(node.cdir, DX_RIGHTUP);
                 self.add_node(
                     node.x + 1,
@@ -399,7 +410,7 @@ impl PathFinder {
         // Left-Down
         if can_left && can_down {
             let ld_m = (base_x - 1 + (base_y + 1) * SERVER_MAPX) as usize;
-            if self.is_passable(ld_m, mapblock, map, items) {
+            if self.is_passable(ld_m, mapblock) {
                 let cost = node.cost + 3 + turn_count(node.cdir, DX_LEFTDOWN);
                 self.add_node(
                     node.x - 1,
@@ -420,7 +431,7 @@ impl PathFinder {
         // Left-Up
         if can_left && can_up {
             let lu_m = (base_x - 1 + (base_y - 1) * SERVER_MAPX) as usize;
-            if self.is_passable(lu_m, mapblock, map, items) {
+            if self.is_passable(lu_m, mapblock) {
                 let cost = node.cost + 3 + turn_count(node.cdir, DX_LEFTUP);
                 self.add_node(
                     node.x - 1,
@@ -446,8 +457,6 @@ impl PathFinder {
         fy: i16,
         cdir: u8,
         mapblock: u64,
-        map: &[Map],
-        items: &[Item],
         mode: u8,
         tx1: i16,
         ty1: i16,
@@ -503,9 +512,7 @@ impl PathFinder {
             }
 
             // Add successors
-            self.add_successors(
-                &current, mapblock, map, items, mode, tx1, ty1, tx2, ty2, max_step,
-            );
+            self.add_successors(&current, mapblock, mode, tx1, ty1, tx2, ty2, max_step);
         }
 
         None
@@ -518,124 +525,111 @@ impl PathFinder {
     /// * `x1`, `y1` - Primary target coordinates
     /// * `flag` - Mode: 0 = exact target, 1 = adjacent to target, 2 = two targets
     /// * `x2`, `y2` - Secondary target coordinates (used in mode 2)
-    /// * `map` - The game map
-    /// * `items` - Item array
-    /// * `current_tick` - Current game tick for bad target tracking
     ///
     /// # Returns
     /// Direction to move, or None if no path found
     pub fn find_path(
         &mut self,
-        character: &Character,
+        cn: usize,
         x1: i16,
         y1: i16,
         flag: u8,
         x2: i16,
         y2: i16,
-        map: &[Map],
-        items: &[Item],
-        current_tick: u32,
     ) -> Option<u8> {
         // Bounds checking
-        if character.x < 1 || character.x >= (SERVER_MAPX - 1) as i16 {
-            return None;
-        }
-        if character.y < 1 || character.y >= (SERVER_MAPY - 1) as i16 {
-            return None;
-        }
-        if x1 < 1 || x1 >= (SERVER_MAPX - 1) as i16 {
-            return None;
-        }
-        if y1 < 1 || y1 >= (SERVER_MAPY - 1) as i16 {
-            return None;
-        }
-        if x2 < 0 || x2 >= SERVER_MAPX as i16 {
-            return None;
-        }
-        if y2 < 0 || y2 >= SERVER_MAPY as i16 {
-            return None;
-        }
-
-        // Check if target is marked as bad
-        if self.is_bad_target(x1, y1, current_tick) {
-            return None;
-        }
-
-        // Determine movement blocking flags
-        let mapblock = if (character.kindred as u32 & KIN_MONSTER) != 0
-            && (character.flags
-                & (CharacterFlags::CF_USURP.bits() | CharacterFlags::CF_THRALL.bits()))
-                == 0
-        {
-            MF_NOMONST as u64 | MF_MOVEBLOCK as u64
-        } else {
-            MF_MOVEBLOCK as u64
-        };
-
-        let mapblock = if (character.flags
-            & (CharacterFlags::CF_PLAYER.bits() | CharacterFlags::CF_USURP.bits()))
-            == 0
-        {
-            mapblock | MF_DEATHTRAP as u64
-        } else {
-            mapblock
-        };
-
-        // Check if target is passable (for exact target mode)
-        if flag == 0 {
-            let target_m = (x1 as i32 + y1 as i32 * SERVER_MAPX) as usize;
-            if !self.is_passable(target_m, mapblock, map, items) {
+        // TODO: Confirm this is the right tick value
+        Repository::with_characters(|ch| {
+            let current_tick = Repository::with_globals(|globs| globs.ticker);
+            if ch[cn].x < 1 || ch[cn].x >= (SERVER_MAPX - 1) as i16 {
                 return None;
             }
-        }
+            if ch[cn].y < 1 || ch[cn].y >= (SERVER_MAPY - 1) as i16 {
+                return None;
+            }
+            if x1 < 1 || x1 >= (SERVER_MAPX - 1) as i16 {
+                return None;
+            }
+            if y1 < 1 || y1 >= (SERVER_MAPY - 1) as i16 {
+                return None;
+            }
+            if x2 < 0 || x2 >= SERVER_MAPX as i16 {
+                return None;
+            }
+            if y2 < 0 || y2 >= SERVER_MAPY as i16 {
+                return None;
+            }
 
-        // Calculate max steps
-        let distance = max((character.x - x1).abs(), (character.y - y1).abs()) as usize;
-        let mut max_step = if character.attack_cn != 0
-            || ((character.flags
+            // Check if target is marked as bad
+            if self.is_bad_target(x1, y1, current_tick as u32) {
+                return None;
+            }
+
+            // Determine movement blocking flags
+            let mapblock = if (ch[cn].kindred as u32 & KIN_MONSTER) != 0
+                && (ch[cn].flags
+                    & (CharacterFlags::CF_USURP.bits() | CharacterFlags::CF_THRALL.bits()))
+                    == 0
+            {
+                MF_NOMONST as u64 | MF_MOVEBLOCK as u64
+            } else {
+                MF_MOVEBLOCK as u64
+            };
+
+            let mapblock = if (ch[cn].flags
                 & (CharacterFlags::CF_PLAYER.bits() | CharacterFlags::CF_USURP.bits()))
                 == 0
-                && character.data[78] != 0)
-        {
-            distance * 4 + 50
-        } else {
-            distance * 8 + 100
-        };
+            {
+                mapblock | MF_DEATHTRAP as u64
+            } else {
+                mapblock
+            };
 
-        // Special case for temp == 498 (hack for grolmy in stunrun.c)
-        if character.temp == 498 {
-            max_step += 4000;
-        }
+            // Check if target is passable (for exact target mode)
+            if flag == 0 {
+                let target_m = (x1 as i32 + y1 as i32 * SERVER_MAPX) as usize;
+                if !self.is_passable(target_m, mapblock) {
+                    return None;
+                }
+            }
 
-        if max_step > MAX_NODES {
-            max_step = MAX_NODES;
-        }
+            // Calculate max steps
+            let distance = max((ch[cn].x - x1).abs(), (ch[cn].y - y1).abs()) as usize;
+            let mut max_step = if ch[cn].attack_cn != 0
+                || ((ch[cn].flags
+                    & (CharacterFlags::CF_PLAYER.bits() | CharacterFlags::CF_USURP.bits()))
+                    == 0
+                    && ch[cn].data[78] != 0)
+            {
+                distance * 4 + 50
+            } else {
+                distance * 8 + 100
+            };
 
-        // Reset state for new search
-        self.reset();
+            // Special case for temp == 498 (hack for grolmy in stunrun.c)
+            if ch[cn].temp == 498 {
+                max_step += 4000;
+            }
 
-        // Run A* search
-        let result = self.astar(
-            character.x,
-            character.y,
-            character.dir,
-            mapblock,
-            map,
-            items,
-            flag,
-            x1,
-            y1,
-            x2,
-            y2,
-            max_step,
-        );
+            if max_step > MAX_NODES {
+                max_step = MAX_NODES;
+            }
 
-        // Mark as bad target if failed
-        if result.is_none() {
-            self.add_bad_target(x1, y1, current_tick);
-        }
+            // Reset state for new search
+            self.reset();
 
-        result
+            // Run A* search
+            let result = self.astar(
+                ch[cn].x, ch[cn].y, ch[cn].dir, mapblock, flag, x1, y1, x2, y2, max_step,
+            );
+
+            // Mark as bad target if failed
+            if result.is_none() {
+                self.add_bad_target(x1, y1, current_tick as u32);
+            }
+
+            result
+        })
     }
 }
 

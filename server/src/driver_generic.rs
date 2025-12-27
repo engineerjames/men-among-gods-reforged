@@ -1,4 +1,5 @@
 use crate::enums::CharacterFlags;
+use crate::path_finding::PathFinder;
 use crate::player;
 use crate::state::State;
 use crate::Repository;
@@ -6,7 +7,7 @@ use crate::{core, driver};
 use rand::Rng;
 
 pub fn act_idle(cn: usize) {
-    let should_notify = Repository::with_globals(|g| (g.ticker & 15) == (cn as u64 & 15));
+    let should_notify = Repository::with_globals(|g| (g.ticker & 15) == (cn as i32 & 15));
     if should_notify {
         let (x, y) = Repository::with_characters(|ch| (ch[cn].x as i32, ch[cn].y as i32));
         State::with(|state| {
@@ -930,13 +931,697 @@ pub fn act_move_up(cn: usize) {
     });
 }
 
-pub fn drv_turncount(dir1: i32, dir2: i32) -> i32 {}
-pub fn char_give_char(cn: usize, co: usize) -> i32 {}
-pub fn char_attack_char(cn: usize, co: usize) -> i32 {}
-pub fn char_useto(cn: usize, x: i32, y: i32) -> i32 {}
-pub fn char_pickupto(cn: usize, x: i32, y: i32) -> i32 {}
-pub fn char_dropto(cn: usize, x: i32, y: i32) -> i32 {}
-pub fn char_moveto(cn: usize, x: i32, y: i32, flag: i32, x2: i32, y2: i32) -> i32 {}
+pub fn drv_turncount(dir1: i32, dir2: i32) -> i32 {
+    if dir1 == dir2 {
+        return 0;
+    }
+    if dir1 == core::constants::DX_UP as i32 {
+        match dir2 {
+            d if d == core::constants::DX_DOWN as i32 => return 4,
+            d if d == core::constants::DX_RIGHTUP as i32
+                || d == core::constants::DX_LEFTUP as i32 =>
+            {
+                return 1
+            }
+            d if d == core::constants::DX_RIGHT as i32 || d == core::constants::DX_LEFT as i32 => {
+                return 2
+            }
+            _ => return 3,
+        }
+    }
+    if dir1 == core::constants::DX_DOWN as i32 {
+        match dir2 {
+            d if d == core::constants::DX_UP as i32 => return 4,
+            d if d == core::constants::DX_RIGHTDOWN as i32
+                || d == core::constants::DX_LEFTDOWN as i32 =>
+            {
+                return 1
+            }
+            d if d == core::constants::DX_RIGHT as i32 || d == core::constants::DX_LEFT as i32 => {
+                return 2
+            }
+            _ => return 3,
+        }
+    }
+    if dir1 == core::constants::DX_LEFT as i32 {
+        match dir2 {
+            d if d == core::constants::DX_RIGHT as i32 => return 4,
+            d if d == core::constants::DX_LEFTUP as i32
+                || d == core::constants::DX_LEFTDOWN as i32 =>
+            {
+                return 1
+            }
+            d if d == core::constants::DX_UP as i32 || d == core::constants::DX_DOWN as i32 => {
+                return 2
+            }
+            _ => return 3,
+        }
+    }
+    if dir1 == core::constants::DX_RIGHT as i32 {
+        match dir2 {
+            d if d == core::constants::DX_LEFT as i32 => return 4,
+            d if d == core::constants::DX_RIGHTUP as i32
+                || d == core::constants::DX_RIGHTDOWN as i32 =>
+            {
+                return 1
+            }
+            d if d == core::constants::DX_UP as i32 || d == core::constants::DX_DOWN as i32 => {
+                return 2
+            }
+            _ => return 3,
+        }
+    }
+    if dir1 == core::constants::DX_LEFTUP as i32 {
+        match dir2 {
+            d if d == core::constants::DX_RIGHTDOWN as i32 => return 4,
+            d if d == core::constants::DX_UP as i32 || d == core::constants::DX_LEFT as i32 => {
+                return 1
+            }
+            d if d == core::constants::DX_RIGHTUP as i32
+                || d == core::constants::DX_LEFTDOWN as i32 =>
+            {
+                return 2
+            }
+            _ => return 3,
+        }
+    }
+    if dir1 == core::constants::DX_LEFTDOWN as i32 {
+        match dir2 {
+            d if d == core::constants::DX_RIGHTUP as i32 => return 4,
+            d if d == core::constants::DX_DOWN as i32 || d == core::constants::DX_LEFT as i32 => {
+                return 1
+            }
+            d if d == core::constants::DX_RIGHTDOWN as i32
+                || d == core::constants::DX_LEFTUP as i32 =>
+            {
+                return 2
+            }
+            _ => return 3,
+        }
+    }
+    if dir1 == core::constants::DX_RIGHTUP as i32 {
+        match dir2 {
+            d if d == core::constants::DX_LEFTDOWN as i32 => return 4,
+            d if d == core::constants::DX_UP as i32 || d == core::constants::DX_RIGHT as i32 => {
+                return 1
+            }
+            d if d == core::constants::DX_RIGHTDOWN as i32
+                || d == core::constants::DX_LEFTUP as i32 =>
+            {
+                return 2
+            }
+            _ => return 3,
+        }
+    }
+    if dir1 == core::constants::DX_RIGHTDOWN as i32 {
+        match dir2 {
+            d if d == core::constants::DX_LEFTUP as i32 => return 4,
+            d if d == core::constants::DX_DOWN as i32 || d == core::constants::DX_RIGHT as i32 => {
+                return 1
+            }
+            d if d == core::constants::DX_RIGHTUP as i32
+                || d == core::constants::DX_LEFTDOWN as i32 =>
+            {
+                return 2
+            }
+            _ => return 3,
+        }
+    }
+    99
+}
+
+pub fn char_give_char(cn: usize, co: usize) -> i32 {
+    // Port of C++ char_give_char
+    // quick error checks
+    let cerrno = Repository::with_characters(|ch| ch[cn].cerrno);
+    if cerrno == core::constants::ERR_FAILED as u16 {
+        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+        return -1;
+    }
+
+    let co_used = Repository::with_characters(|ch| ch[co].used);
+    let can_see = State::with_mut(|state| state.do_char_can_see(cn, co));
+    if co_used != core::constants::USE_ACTIVE as u8 || can_see == 0 || cn == co {
+        return -1;
+    }
+
+    let citem = Repository::with_characters(|ch| ch[cn].citem != 0);
+    if !citem {
+        return 1;
+    }
+
+    let (x, tox, y, toy, ax, ay) = Repository::with_characters(|ch| {
+        (
+            ch[co].x as i32,
+            ch[co].tox as i32,
+            ch[co].y as i32,
+            ch[co].toy as i32,
+            ch[cn].x as i32,
+            ch[cn].y as i32,
+        )
+    });
+
+    if (x == ax + 1 && (y == ay + 1 || y == ay - 1))
+        || (x == ax - 1 && (y == ay + 1 || y == ay - 1))
+    {
+        let err = char_moveto(cn, x, y, 2, tox, toy);
+        if err == -1 {
+            return -1;
+        } else {
+            return 0;
+        }
+    }
+
+    // give if possible
+    if (ax == x - 1 && ay == y) || (ax == tox - 1 && ay == toy) {
+        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_RIGHT as i32 {
+            act_turn_right(cn);
+            return 0;
+        }
+        act_give(cn);
+        return 0;
+    }
+    if (ax == x + 1 && ay == y) || (ax == tox + 1 && ay == toy) {
+        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_LEFT as i32 {
+            act_turn_left(cn);
+            return 0;
+        }
+        act_give(cn);
+        return 0;
+    }
+    if (ax == x && ay == y - 1) || (ax == tox && ay == toy - 1) {
+        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_DOWN as i32 {
+            act_turn_down(cn);
+            return 0;
+        }
+        act_give(cn);
+        return 0;
+    }
+    if (ax == x && ay == y + 1) || (ax == tox && ay == toy + 1) {
+        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_UP as i32 {
+            act_turn_up(cn);
+            return 0;
+        }
+        act_give(cn);
+        return 0;
+    }
+
+    let err = char_moveto(cn, x, y, 2, tox, toy);
+    if err == -1 {
+        return -1;
+    } else {
+        return 0;
+    }
+}
+
+pub fn char_attack_char(cn: usize, co: usize) -> i32 {
+    // Port of C++ char_attack_char
+    let cerrno = Repository::with_characters(|ch| ch[cn].cerrno);
+    if cerrno == core::constants::ERR_FAILED as u16 {
+        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+        return -1;
+    }
+
+    let co_used = Repository::with_characters(|ch| ch[co].used);
+    let can_see = State::with_mut(|state| state.do_char_can_see(cn, co));
+    let co_flags = Repository::with_characters(|ch| ch[co].flags);
+    if co_used != core::constants::USE_ACTIVE as u8
+        || can_see == 0
+        || cn == co
+        || (co_flags & CharacterFlags::Body.bits() as u64) != 0
+        || (co_flags & CharacterFlags::Stoned.bits() as u64) != 0
+    {
+        return -1;
+    }
+
+    let (x, tox, y, toy, ax, ay) = Repository::with_characters(|ch| {
+        (
+            ch[co].x as i32,
+            ch[co].tox as i32,
+            ch[co].y as i32,
+            ch[co].toy as i32,
+            ch[cn].x as i32,
+            ch[cn].y as i32,
+        )
+    });
+
+    // diagonal adjacency
+    if (x == ax + 1 && (y == ay + 1 || y == ay - 1))
+        || (x == ax - 1 && (y == ay + 1 || y == ay - 1))
+    {
+        let err = char_moveto(cn, x, y, 2, tox, toy);
+        if err == -1 {
+            return -1;
+        } else {
+            return 0;
+        }
+    }
+
+    // attack if possible
+    if (ax == x - 1 && ay == y) || (ax == tox - 1 && ay == toy) {
+        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_RIGHT as i32 {
+            act_turn_right(cn);
+            return 0;
+        }
+        act_attack(cn);
+        return 1;
+    }
+    if (ax == x + 1 && ay == y) || (ax == tox + 1 && ay == toy) {
+        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_LEFT as i32 {
+            act_turn_left(cn);
+            return 0;
+        }
+        act_attack(cn);
+        return 1;
+    }
+    if (ax == x && ay == y - 1) || (ax == tox && ay == toy - 1) {
+        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_DOWN as i32 {
+            act_turn_down(cn);
+            return 0;
+        }
+        act_attack(cn);
+        return 1;
+    }
+    if (ax == x && ay == y + 1) || (ax == tox && ay == toy + 1) {
+        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_UP as i32 {
+            act_turn_up(cn);
+            return 0;
+        }
+        act_attack(cn);
+        return 1;
+    }
+
+    let dist1 = (ax - x).abs() + (ay - y).abs();
+    let dist2 = (ax - tox).abs() + (ay - toy).abs();
+    let diff = dist1 - dist2;
+
+    let mut nx = x;
+    let mut ntx = tox;
+    let mut ny = y;
+    let mut nty = toy;
+
+    if dist1 > 20 && diff < 5 {
+        nx = ntx + (ntx - x) * 8;
+        ny = nty + (nty - y) * 8;
+        ntx = nx;
+        nty = ny;
+    } else if dist1 > 10 && diff < 4 {
+        nx = ntx + (ntx - x) * 5;
+        ny = nty + (nty - y) * 5;
+        ntx = nx;
+        nty = ny;
+    } else if dist1 > 5 && diff < 3 {
+        nx = ntx + (ntx - x) * 3;
+        ny = nty + (nty - y) * 3;
+        ntx = nx;
+        nty = ny;
+    } else if dist1 > 3 && diff < 2 {
+        nx = ntx + (ntx - x) * 2;
+        ny = nty + (nty - y) * 2;
+        ntx = nx;
+        nty = ny;
+    } else if dist1 > 2 && diff < 1 {
+        nx = ntx + (ntx - x);
+        ny = nty + (nty - y);
+        ntx = nx;
+        nty = ny;
+    }
+
+    let err = char_moveto(cn, nx, ny, 2, ntx, nty);
+    if err == -1 {
+        return -1;
+    } else {
+        return 0;
+    }
+}
+
+pub fn char_dropto(cn: usize, x: i32, y: i32) -> i32 {
+    // Port of C++ char_dropto
+    let cerrno = Repository::with_characters(|ch| ch[cn].cerrno);
+    if cerrno == core::constants::ERR_FAILED as u16 {
+        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+        return -1;
+    }
+
+    // nothing to drop?
+    let has_citem = Repository::with_characters(|ch| ch[cn].citem != 0);
+    if !has_citem {
+        return -1;
+    }
+
+    let cx = Repository::with_characters(|ch| ch[cn].x as i32);
+    let cy = Repository::with_characters(|ch| ch[cn].y as i32);
+    if cx == x - 1 && cy == y {
+        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_RIGHT as i32 {
+            act_turn_right(cn);
+            return 0;
+        }
+        act_drop(cn);
+        return 1;
+    }
+    if cx == x + 1 && cy == y {
+        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_LEFT as i32 {
+            act_turn_left(cn);
+            return 0;
+        }
+        act_drop(cn);
+        return 1;
+    }
+    if cx == x && cy == y - 1 {
+        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_DOWN as i32 {
+            act_turn_down(cn);
+            return 0;
+        }
+        act_drop(cn);
+        return 1;
+    }
+    if cx == x && cy == y + 1 {
+        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_UP as i32 {
+            act_turn_up(cn);
+            return 0;
+        }
+        act_drop(cn);
+        return 1;
+    }
+
+    // we're too far away... go there:
+    if char_moveto(cn, x, y, 1, 0, 0) == -1 {
+        return -1;
+    }
+    0
+}
+
+pub fn char_pickup(cn: usize, x: i32, y: i32) -> i32 {
+    let cerrno = Repository::with_characters(|ch| ch[cn].cerrno);
+    if cerrno == core::constants::ERR_FAILED as u16 {
+        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+        return -1;
+    }
+
+    let cx = Repository::with_characters(|ch| ch[cn].x as i32);
+    let cy = Repository::with_characters(|ch| ch[cn].y as i32);
+
+    if cx == x - 1 && cy == y {
+        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_RIGHT as i32 {
+            act_turn_right(cn);
+            return 0;
+        }
+        act_pickup(cn);
+        return 1;
+    }
+    if cx == x + 1 && cy == y {
+        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_LEFT as i32 {
+            act_turn_left(cn);
+            return 0;
+        }
+        act_pickup(cn);
+        return 1;
+    }
+    if cx == x && cy == y - 1 {
+        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_DOWN as i32 {
+            act_turn_down(cn);
+            return 0;
+        }
+        act_pickup(cn);
+        return 1;
+    }
+    if cx == x && cy == y + 1 {
+        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_UP as i32 {
+            act_turn_up(cn);
+            return 0;
+        }
+        act_pickup(cn);
+        return 1;
+    }
+
+    -1
+}
+
+pub fn char_pickupto(cn: usize, x: i32, y: i32) -> i32 {
+    // Port of C++ char_pickupto
+    let cerrno = Repository::with_characters(|ch| ch[cn].cerrno);
+    if cerrno == core::constants::ERR_FAILED as u16 {
+        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+        return -1;
+    }
+
+    // already an item in hand?
+    let has_citem = Repository::with_characters(|ch| ch[cn].citem != 0);
+    if has_citem {
+        return -1;
+    }
+
+    let ret = char_pickup(cn, x, y);
+    if ret == -1 {
+        if char_moveto(cn, x, y, 1, 0, 0) == -1 {
+            return -1;
+        } else {
+            return 0;
+        }
+    }
+    if ret == 1 {
+        return 1;
+    }
+    0
+}
+
+pub fn char_use(cn: usize, x: i32, y: i32) -> i32 {
+    let cerrno = Repository::with_characters(|ch| ch[cn].cerrno);
+    if cerrno == core::constants::ERR_FAILED as u16 {
+        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+        return -1;
+    }
+
+    let cx = Repository::with_characters(|ch| ch[cn].x as i32);
+    let cy = Repository::with_characters(|ch| ch[cn].y as i32);
+
+    if cx == x - 1 && cy == y {
+        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_RIGHT as i32 {
+            act_turn_right(cn);
+            return 0;
+        }
+        act_use(cn);
+        return 1;
+    }
+    if cx == x + 1 && cy == y {
+        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_LEFT as i32 {
+            act_turn_left(cn);
+            return 0;
+        }
+        act_use(cn);
+        return 1;
+    }
+    if cx == x && cy == y - 1 {
+        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_DOWN as i32 {
+            act_turn_down(cn);
+            return 0;
+        }
+        act_use(cn);
+        return 1;
+    }
+    if cx == x && cy == y + 1 {
+        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_UP as i32 {
+            act_turn_up(cn);
+            return 0;
+        }
+        act_use(cn);
+        return 1;
+    }
+
+    -1
+}
+
+pub fn char_useto(cn: usize, x: i32, y: i32) -> i32 {
+    // Port of C++ char_useto
+    let cerrno = Repository::with_characters(|ch| ch[cn].cerrno);
+    if cerrno == core::constants::ERR_FAILED as u16 {
+        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+        return -1;
+    }
+
+    let ret = char_use(cn, x, y);
+    if ret == -1 {
+        if char_moveto(cn, x, y, 1, 0, 0) == -1 {
+            return -1;
+        } else {
+            return 0;
+        }
+    }
+    if ret == 1 {
+        return 1;
+    }
+    0
+}
+
+pub fn char_moveto(cn: usize, x: i32, y: i32, flag: i32, x2: i32, y2: i32) -> i32 {
+    // Port of C++ char_moveto
+    let (cx, cy) = Repository::with_characters(|ch| (ch[cn].x as i32, ch[cn].y as i32));
+    if cx == x && cy == y && flag != 1 && flag != 3 {
+        return 1;
+    }
+
+    let cerrno = Repository::with_characters(|ch| ch[cn].cerrno);
+    if cerrno == core::constants::ERR_FAILED as u16 {
+        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+        return -1;
+    }
+
+    let unreach = Repository::with_characters(|ch| ch[cn].unreach);
+    let unreachx = Repository::with_characters(|ch| ch[cn].unreachx as i32);
+    let unreachy = Repository::with_characters(|ch| ch[cn].unreachy as i32);
+    let ticker = Repository::with_globals(|g| g.ticker as i64);
+    if unreach as i64 > ticker && unreachx == x && unreachy == y {
+        return -1;
+    }
+
+    let mut pathfinder = PathFinder::new();
+    let dir = pathfinder.find_path(cn, x as i16, y as i16, flag as u8, x2 as i16, y2 as i16);
+
+    if dir.is_none() {
+        Repository::with_characters_mut(|ch| {
+            ch[cn].unreach = Repository::with_globals(|g| g.ticker) + core::constants::TICKS as i32;
+            ch[cn].unreachx = x;
+            ch[cn].unreachy = y;
+        });
+        return -1;
+    }
+
+    // TODO: Do we still need this case?
+    // if dir == 0 {
+    //     return 0;
+    // }
+
+    match dir {
+        d if d == Some(core::constants::DX_RIGHTDOWN) => {
+            if Repository::with_characters(|ch| ch[cn].dir as i32)
+                != core::constants::DX_RIGHTDOWN as i32
+            {
+                act_turn_rightdown(cn);
+                return 0;
+            }
+            act_move_rightdown(cn);
+            return 0;
+        }
+        d if d == Some(core::constants::DX_RIGHTUP) => {
+            if Repository::with_characters(|ch| ch[cn].dir as i32)
+                != core::constants::DX_RIGHTUP as i32
+            {
+                act_turn_rightup(cn);
+                return 0;
+            }
+            act_move_rightup(cn);
+            return 0;
+        }
+        d if d == Some(core::constants::DX_LEFTDOWN) => {
+            if Repository::with_characters(|ch| ch[cn].dir as i32)
+                != core::constants::DX_LEFTDOWN as i32
+            {
+                act_turn_leftdown(cn);
+                return 0;
+            }
+            act_move_leftdown(cn);
+            return 0;
+        }
+        d if d == Some(core::constants::DX_LEFTUP) => {
+            if Repository::with_characters(|ch| ch[cn].dir as i32)
+                != core::constants::DX_LEFTUP as i32
+            {
+                act_turn_leftup(cn);
+                return 0;
+            }
+            act_move_leftup(cn);
+            return 0;
+        }
+        d if d == Some(core::constants::DX_RIGHT) => {
+            if Repository::with_characters(|ch| ch[cn].dir as i32)
+                != core::constants::DX_RIGHT as i32
+            {
+                act_turn_right(cn);
+                return 0;
+            }
+            let base_x = Repository::with_characters(|ch| ch[cn].x as usize);
+            let base_y = Repository::with_characters(|ch| ch[cn].y as usize);
+            let in_id = Repository::with_map(|map| {
+                map[(base_x + base_y * core::constants::SERVER_MAPX as usize) + 1].it
+            });
+            if in_id != 0
+                && Repository::with_items(|items| items[in_id as usize].active) == 0
+                && Repository::with_items(|items| items[in_id as usize].driver) == 2
+            {
+                act_use(cn);
+                return 0;
+            }
+            act_move_right(cn);
+            return 0;
+        }
+        d if d == Some(core::constants::DX_LEFT) => {
+            if Repository::with_characters(|ch| ch[cn].dir as i32)
+                != core::constants::DX_LEFT as i32
+            {
+                act_turn_left(cn);
+                return 0;
+            }
+            let base_x = Repository::with_characters(|ch| ch[cn].x as usize);
+            let base_y = Repository::with_characters(|ch| ch[cn].y as usize);
+            let in_id = Repository::with_map(|map| {
+                map[(base_x + base_y * core::constants::SERVER_MAPX as usize) - 1].it
+            });
+            if in_id != 0
+                && Repository::with_items(|items| items[in_id as usize].active) == 0
+                && Repository::with_items(|items| items[in_id as usize].driver) == 2
+            {
+                act_use(cn);
+                return 0;
+            }
+            act_move_left(cn);
+            return 0;
+        }
+        d if d == Some(core::constants::DX_DOWN) => {
+            if Repository::with_characters(|ch| ch[cn].dir as i32)
+                != core::constants::DX_DOWN as i32
+            {
+                act_turn_down(cn);
+                return 0;
+            }
+            let base_x = Repository::with_characters(|ch| ch[cn].x as usize);
+            let base_y = Repository::with_characters(|ch| ch[cn].y as usize);
+            let in_id = Repository::with_map(|map| {
+                map[(base_x + (base_y + 1) * core::constants::SERVER_MAPX as usize)].it
+            });
+            if in_id != 0
+                && Repository::with_items(|items| items[in_id as usize].active) == 0
+                && Repository::with_items(|items| items[in_id as usize].driver) == 2
+            {
+                act_use(cn);
+                return 0;
+            }
+            act_move_down(cn);
+            return 0;
+        }
+        d if d == Some(core::constants::DX_UP) => {
+            if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_UP as i32
+            {
+                act_turn_up(cn);
+                return 0;
+            }
+            let base_x = Repository::with_characters(|ch| ch[cn].x as usize);
+            let base_y = Repository::with_characters(|ch| ch[cn].y as usize);
+            let in_id = Repository::with_map(|map| {
+                map[(base_x + (base_y - 1) * core::constants::SERVER_MAPX as usize)].it
+            });
+            if in_id != 0
+                && Repository::with_items(|items| items[in_id as usize].active) == 0
+                && Repository::with_items(|items| items[in_id as usize].driver) == 2
+            {
+                act_use(cn);
+                return 0;
+            }
+            act_move_up(cn);
+            return 0;
+        }
+        _ => return -1,
+    }
+}
 
 pub fn drv_moveto(cn: usize, x: usize, y: usize) {
     // Mirror C++ drv_moveto
@@ -1077,7 +1762,7 @@ pub fn drv_use(cn: usize, nr: i32) {
 
 pub fn drv_attack_char(cn: usize, co: usize) {
     // Mirror C++ drv_attack_char
-    let ret = char_attack_char(cn, co as i32);
+    let ret = char_attack_char(cn, co);
     if ret == -1 {
         Repository::with_characters_mut(|ch| {
             ch[cn].attack_cn = 0;
@@ -1092,7 +1777,7 @@ pub fn drv_attack_char(cn: usize, co: usize) {
 
 pub fn drv_give_char(cn: usize, co: usize) {
     // Mirror C++ drv_give_char
-    let ret = char_give_char(cn, co as i32);
+    let ret = char_give_char(cn, co);
     if ret != 0 {
         Repository::with_characters_mut(|ch| ch[cn].misc_action = core::constants::DR_IDLE as u16);
     }
