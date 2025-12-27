@@ -1271,10 +1271,32 @@ impl State {
                     self.do_tell(cn, arg_get(1), args_get(1));
                     return;
                 }
+
                 if starts("tavern") && f_g && !f_m {
                     God::tavern(cn);
                     return;
                 }
+
+                if starts("temple") && f_giu {
+                    God::goto(cn, cn, "800", "800");
+                    return;
+                }
+
+                if starts("thrall") && f_giu {
+                    God::thrall(cn, arg_get(1), arg_get(2));
+                    return;
+                }
+
+                if starts("time") {
+                    // TODO: show_time(cn);
+                    return;
+                }
+
+                if starts("tinfo") && f_g {
+                    God::tinfo(cn, parse_usize(arg_get(1)));
+                    return;
+                }
+
                 if starts("top") && f_g {
                     God::top(cn);
                     return;
