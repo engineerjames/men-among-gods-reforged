@@ -1,6 +1,15 @@
 use core::constants::ItemFlags;
 
-use crate::{effect::EffectManager, enums, god::God, player, repository::Repository, state::State};
+use rand::Rng;
+
+use crate::{
+    effect::EffectManager,
+    enums::{self, CharacterFlags},
+    god::God,
+    player,
+    repository::Repository,
+    state::State,
+};
 
 pub fn friend_is_enemy(cn: usize, cc: usize) -> i32 {
     // Rust port of C++ friend_is_enemy
@@ -1165,43 +1174,1008 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
 }
 
 pub fn skill_bless(cn: usize) {
-    unimplemented!()
+    use crate::repository::Repository;
+    use crate::state::State;
+    use core::constants::*;
+    use core::types::FontColor;
+
+    let co = Repository::with_characters(|ch| {
+        if ch[cn].skill_target1 != 0 {
+            ch[cn].skill_target1 as usize
+        } else {
+            cn
+        }
+    });
+
+    if State::with_mut(|state| state.do_char_can_see(cn, co)) == 0 {
+        State::with(|state| {
+            state.do_character_log(cn, FontColor::Red, "You cannot see your target.\n")
+        });
+        return;
+    }
+
+    if is_exhausted(cn) != 0 {
+        return;
+    }
+
+    if crate::driver_skill::player_or_ghost(cn, co) == 0 {
+        let name_from = Repository::with_characters(|ch| ch[co].name.clone());
+        let name_to = Repository::with_characters(|ch| ch[cn].name.clone());
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                FontColor::Red,
+                &format!(
+                    "Changed target of spell from {} to {}.\n",
+                    String::from_utf8_lossy(&name_from),
+                    String::from_utf8_lossy(&name_to)
+                ),
+            )
+        });
+        // change target to self
+        let co = cn;
+        if spellcost(cn, 35) != 0 {
+            return;
+        }
+        if chance(cn, 18) != 0 {
+            if cn != co {
+                let sense = Repository::with_characters(|ch| ch[co].skill[SK_SENSE as usize][5]);
+                let bless_skill =
+                    Repository::with_characters(|ch| ch[cn].skill[SK_BLESS as usize][5]);
+                if sense > (bless_skill + 5) as u8 {
+                    let reference = Repository::with_characters(|ch| ch[cn].reference.clone());
+                    State::with(|state| {
+                        state.do_character_log(
+                            co,
+                            FontColor::Green,
+                            &format!(
+                                "{} tried to cast bless on you but failed.\n",
+                                String::from_utf8_lossy(&reference)
+                            ),
+                        )
+                    });
+                }
+            }
+            return;
+        }
+        spell_bless(
+            cn,
+            co,
+            Repository::with_characters(|ch| ch[cn].skill[SK_BLESS as usize][5] as i32),
+        );
+        add_exhaust(cn, TICKS as i32);
+        return;
+    }
+
+    if spellcost(cn, 35) != 0 {
+        return;
+    }
+    if chance(cn, 18) != 0 {
+        if cn != co {
+            let sense = Repository::with_characters(|ch| ch[co].skill[SK_SENSE as usize][5]);
+            let bless_skill = Repository::with_characters(|ch| ch[cn].skill[SK_BLESS as usize][5]);
+            if sense > (bless_skill + 5) as u8 {
+                let reference = Repository::with_characters(|ch| ch[cn].reference.clone());
+                State::with(|state| {
+                    state.do_character_log(
+                        co,
+                        FontColor::Green,
+                        &format!(
+                            "{} tried to cast bless on you but failed.\n",
+                            String::from_utf8_lossy(&reference)
+                        ),
+                    )
+                });
+            }
+        }
+        return;
+    }
+
+    spell_bless(
+        cn,
+        co,
+        Repository::with_characters(|ch| ch[cn].skill[SK_BLESS as usize][5] as i32),
+    );
+    add_exhaust(cn, TICKS as i32);
 }
 
 pub fn skill_wimp(cn: usize) {
-    unimplemented!()
+    use crate::repository::Repository;
+    use crate::state::State;
+    use core::constants::*;
+
+    // If Guardian Angel already active, remove it
+    for n in 0..20 {
+        let in_idx = Repository::with_characters(|ch| ch[cn].spell[n]);
+        if in_idx != 0 {
+            let temp = Repository::with_items(|it| it[in_idx as usize].temp);
+            if temp == SK_WIMPY as u16 {
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Green,
+                        "Guardian Angel no longer active.\n",
+                    )
+                });
+                Repository::with_items_mut(|it| {
+                    it[in_idx as usize].used = core::constants::USE_EMPTY;
+                });
+                Repository::with_characters_mut(|ch| {
+                    ch[cn].spell[n] = 0;
+                });
+                State::with(|state| state.do_update_char(cn));
+                // TODO: chlog(cn, "Removed Wimp")
+                return;
+            }
+        }
+    }
+
+    let a_end = Repository::with_characters(|ch| ch[cn].a_end);
+    if a_end < 20000 {
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "You're too exhausted to call on your Guardian Angel.\n",
+            )
+        });
+        return;
+    }
+
+    Repository::with_characters_mut(|ch| ch[cn].a_end -= 20000);
+
+    let in_opt = God::create_item(1);
+    if in_opt.is_none() {
+        log::error!("god_create_item failed in skill_wimp");
+        return;
+    }
+    let in_idx = in_opt.unwrap();
+
+    Repository::with_items_mut(|it| {
+        let mut name_bytes = [0u8; 40];
+        let name = b"Guardian Angel";
+        let len = name.len().min(40);
+        name_bytes[..len].copy_from_slice(&name[..len]);
+        it[in_idx].name = name_bytes;
+        it[in_idx].flags |= ItemFlags::IF_SPELL.bits() | ItemFlags::IF_PERMSPELL.bits();
+        it[in_idx].hp[0] = -1;
+        it[in_idx].end[0] = -1;
+        it[in_idx].mana[0] = -1;
+        it[in_idx].sprite[1] = 94;
+        it[in_idx].duration = 18 * 60 * 60 * 2;
+        it[in_idx].active = 18 * 60 * 60 * 2;
+        it[in_idx].temp = SK_WIMPY as u16;
+        it[in_idx].power =
+            Repository::with_characters(|ch| ch[cn].skill[SK_WIMPY as usize][5]) as u32;
+    });
+
+    if add_spell(cn, in_idx) == 0 {
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                &format!(
+                    "Magical interference neutralised the {}'s effect.\n",
+                    String::from_utf8_lossy(&Repository::with_items(|it| it[in_idx].name.clone()))
+                ),
+            )
+        });
+        return;
+    }
+    State::with(|state| {
+        state.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "Guardian Angel active!\n",
+        )
+    });
+    let sound = Repository::with_characters(|ch| ch[cn].sound);
+    State::char_play_sound(cn, sound as i32 + 1, -150, 0);
+    // TODO: chlog(cn, "Cast Wimp")
+    EffectManager::fx_add_effect(
+        7,
+        0,
+        Repository::with_characters(|ch| ch[cn].x) as i32,
+        Repository::with_characters(|ch| ch[cn].y) as i32,
+        0,
+    );
+    EffectManager::fx_add_effect(
+        6,
+        0,
+        Repository::with_characters(|ch| ch[cn].x) as i32,
+        Repository::with_characters(|ch| ch[cn].y) as i32,
+        0,
+    );
 }
 
 pub fn spell_mshield(cn: usize, co: usize, power: i32) -> i32 {
-    unimplemented!()
+    use crate::repository::Repository;
+    use crate::state::State;
+    use core::constants::*;
+    use core::types::FontColor;
+
+    let in_opt = God::create_item(1);
+    if in_opt.is_none() {
+        log::error!("god_create_item failed in skill_mshield");
+        return 0;
+    }
+    let in_ = in_opt.unwrap();
+
+    Repository::with_items_mut(|it| {
+        let mut name_bytes = [0u8; 40];
+        let name = b"Magic Shield";
+        let len = name.len().min(40);
+        name_bytes[..len].copy_from_slice(&name[..len]);
+        it[in_].name = name_bytes;
+        it[in_].flags |= ItemFlags::IF_SPELL.bits();
+        it[in_].sprite[1] = 95;
+        let dur = spell_race_mod(
+            power * 256,
+            Repository::with_characters(|ch| ch[cn].kindred as i32),
+        );
+        it[in_].duration = dur as u32;
+        it[in_].active = dur as u32;
+        it[in_].armor[1] = (it[in_].active / 1024) as i8 + 1;
+        it[in_].temp = SK_MSHIELD as u16;
+        it[in_].power = (it[in_].active / 256) as u32;
+    });
+
+    if cn != co {
+        if add_spell(co, in_) == 0 {
+            let name = Repository::with_items(|it| it[in_].name.clone());
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    FontColor::Green,
+                    &format!(
+                        "Magical interference neutralised the {}'s effect.\n",
+                        String::from_utf8_lossy(&name)
+                    ),
+                )
+            });
+            return 0;
+        }
+        let sense = Repository::with_characters(|ch| ch[co].skill[SK_SENSE as usize][5]);
+        if sense as i32 + 10 > power {
+            let reference = Repository::with_characters(|ch| ch[cn].reference.clone());
+            State::with(|state| {
+                state.do_character_log(
+                    co,
+                    FontColor::Green,
+                    &format!(
+                        "{} cast magic shield on you.\n",
+                        String::from_utf8_lossy(&reference)
+                    ),
+                )
+            });
+        } else {
+            State::with(|state| {
+                state.do_character_log(co, FontColor::Red, "Magic Shield active!\n")
+            });
+        }
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                FontColor::Green,
+                &format!(
+                    "{}'s Magic Shield activated.\n",
+                    String::from_utf8_lossy(&Repository::with_characters(|ch| ch[co].name.clone()))
+                ),
+            )
+        });
+        let sound = Repository::with_characters(|ch| ch[cn].sound);
+        State::char_play_sound(co, sound as i32 + 1, -150, 0);
+        State::char_play_sound(cn, sound as i32 + 1, -150, 0);
+        // TODO: chlog
+        EffectManager::fx_add_effect(
+            6,
+            0,
+            Repository::with_characters(|ch| ch[co].x) as i32,
+            Repository::with_characters(|ch| ch[co].y) as i32,
+            0,
+        );
+    } else {
+        if add_spell(cn, in_) == 0 {
+            let name = Repository::with_items(|it| it[in_].name.clone());
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    FontColor::Green,
+                    &format!(
+                        "Magical interference neutralised the {}'s effect.\n",
+                        String::from_utf8_lossy(&name)
+                    ),
+                )
+            });
+            return 0;
+        }
+        State::with(|state| state.do_character_log(cn, FontColor::Green, "Magic Shield active!\n"));
+        let sound = Repository::with_characters(|ch| ch[cn].sound);
+        State::char_play_sound(cn, sound as i32 + 1, -150, 0);
+        let flags = Repository::with_characters(|ch| ch[cn].flags);
+        if (flags & enums::CharacterFlags::Player.bits() as u64) != 0 {
+            // TODO: chlog(cn, "Cast Magic Shield")
+        }
+        EffectManager::fx_add_effect(
+            6,
+            0,
+            Repository::with_characters(|ch| ch[cn].x) as i32,
+            Repository::with_characters(|ch| ch[cn].y) as i32,
+            0,
+        );
+    }
+
+    EffectManager::fx_add_effect(
+        7,
+        0,
+        Repository::with_characters(|ch| ch[cn].x) as i32,
+        Repository::with_characters(|ch| ch[cn].y) as i32,
+        0,
+    );
+
+    1
 }
 
 pub fn skill_mshield(cn: usize) {
-    unimplemented!()
+    use crate::repository::Repository;
+
+    if is_exhausted(cn) != 0 {
+        return;
+    }
+
+    if spellcost(cn, 25) != 0 {
+        return;
+    }
+    if chance(cn, 18) != 0 {
+        return;
+    }
+
+    spell_mshield(
+        cn,
+        cn,
+        Repository::with_characters(|ch| {
+            ch[cn].skill[core::constants::SK_MSHIELD as usize][5] as i32
+        }),
+    );
+    add_exhaust(cn, (core::constants::TICKS * 3) as i32);
 }
 
 pub fn spell_heal(cn: usize, co: usize, power: i32) -> i32 {
-    unimplemented!()
+    use crate::repository::Repository;
+    use crate::state::State;
+    use core::types::FontColor;
+
+    if cn != co {
+        Repository::with_characters_mut(|ch| {
+            ch[co].a_hp += spell_race_mod(power * 2500, ch[cn].kindred as i32);
+            if ch[co].a_hp > (ch[co].hp[5] as i32) * 1000 {
+                ch[co].a_hp = (ch[co].hp[5] as i32) * 1000;
+            }
+        });
+        let sense =
+            Repository::with_characters(|ch| ch[co].skill[core::constants::SK_SENSE as usize][5]);
+        if sense as i32 + 10 > power {
+            let reference = Repository::with_characters(|ch| ch[cn].reference.clone());
+            State::with(|state| {
+                state.do_character_log(
+                    co,
+                    FontColor::Green,
+                    &format!(
+                        "{} cast heal on you.\n",
+                        String::from_utf8_lossy(&reference)
+                    ),
+                )
+            });
+        } else {
+            State::with(|state| {
+                state.do_character_log(co, FontColor::Red, "You have been healed.\n")
+            });
+        }
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                FontColor::Green,
+                &format!(
+                    "{} was healed.\n",
+                    String::from_utf8_lossy(&Repository::with_characters(|ch| ch[co].name.clone()))
+                ),
+            )
+        });
+        let sound = Repository::with_characters(|ch| ch[cn].sound);
+        State::char_play_sound(co, sound as i32 + 1, -150, 0);
+        State::char_play_sound(cn, sound as i32 + 1, -150, 0);
+        // TODO: chlog
+        EffectManager::fx_add_effect(
+            6,
+            0,
+            Repository::with_characters(|ch| ch[co].x) as i32,
+            Repository::with_characters(|ch| ch[co].y) as i32,
+            0,
+        );
+    } else {
+        Repository::with_characters_mut(|ch| {
+            ch[cn].a_hp += power * 2500;
+            if ch[cn].a_hp > (ch[cn].hp[5] as i32) * 1000 {
+                ch[cn].a_hp = (ch[cn].hp[5] as i32) * 1000;
+            }
+        });
+        State::with(|state| {
+            state.do_character_log(cn, FontColor::Green, "You have been healed.\n")
+        });
+        let sound = Repository::with_characters(|ch| ch[cn].sound);
+        State::char_play_sound(cn, sound as i32 + 1, -150, 0);
+        let flags = Repository::with_characters(|ch| ch[cn].flags);
+        if (flags & enums::CharacterFlags::Player.bits() as u64) != 0 {
+            // TODO: chlog(cn, "Cast Heal")
+        }
+        EffectManager::fx_add_effect(
+            6,
+            0,
+            Repository::with_characters(|ch| ch[cn].x) as i32,
+            Repository::with_characters(|ch| ch[cn].y) as i32,
+            0,
+        );
+    }
+
+    EffectManager::fx_add_effect(
+        7,
+        0,
+        Repository::with_characters(|ch| ch[cn].x) as i32,
+        Repository::with_characters(|ch| ch[cn].y) as i32,
+        0,
+    );
+
+    1
 }
 
 pub fn skill_heal(cn: usize) {
-    unimplemented!()
+    use crate::repository::Repository;
+    use crate::state::State;
+    use core::constants::*;
+    use core::types::FontColor;
+
+    let mut co = Repository::with_characters(|ch| {
+        if ch[cn].skill_target1 != 0 {
+            ch[cn].skill_target1 as usize
+        } else {
+            cn
+        }
+    });
+
+    if State::with_mut(|state| state.do_char_can_see(cn, co)) == 0 {
+        State::with(|state| {
+            state.do_character_log(cn, FontColor::Red, "You cannot see your target.\n")
+        });
+        return;
+    }
+
+    if is_exhausted(cn) != 0 {
+        return;
+    }
+
+    if crate::driver_skill::player_or_ghost(cn, co) == 0 {
+        let name_from = Repository::with_characters(|ch| ch[co].name.clone());
+        let name_to = Repository::with_characters(|ch| ch[cn].name.clone());
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                FontColor::Red,
+                &format!(
+                    "Changed target of spell from {} to {}.\n",
+                    String::from_utf8_lossy(&name_from),
+                    String::from_utf8_lossy(&name_to)
+                ),
+            )
+        });
+        co = cn;
+        if spellcost(cn, 25) != 0 {
+            return;
+        }
+        if chance(cn, 18) != 0 {
+            if cn != co {
+                let sense = Repository::with_characters(|ch| ch[co].skill[SK_SENSE as usize][5]);
+                let heal_skill =
+                    Repository::with_characters(|ch| ch[cn].skill[SK_HEAL as usize][5]);
+                if sense > (heal_skill + 5) as u8 {
+                    let reference = Repository::with_characters(|ch| ch[cn].reference.clone());
+                    State::with(|state| {
+                        state.do_character_log(
+                            co,
+                            FontColor::Green,
+                            &format!(
+                                "{} tried to cast heal on you but failed.\n",
+                                String::from_utf8_lossy(&reference)
+                            ),
+                        )
+                    });
+                }
+            }
+            return;
+        }
+        spell_heal(
+            cn,
+            co,
+            Repository::with_characters(|ch| ch[cn].skill[SK_HEAL as usize][5] as i32),
+        );
+        add_exhaust(cn, TICKS * 2);
+        return;
+    }
+
+    if spellcost(cn, 25) != 0 {
+        return;
+    }
+    if chance(cn, 18) != 0 {
+        if cn != co {
+            let sense = Repository::with_characters(|ch| ch[co].skill[SK_SENSE as usize][5]);
+            let heal_skill = Repository::with_characters(|ch| ch[cn].skill[SK_HEAL as usize][5]);
+            if sense > (heal_skill + 5) as u8 {
+                let reference = Repository::with_characters(|ch| ch[cn].reference.clone());
+                State::with(|state| {
+                    state.do_character_log(
+                        co,
+                        FontColor::Green,
+                        &format!(
+                            "{} tried to cast heal on you but failed.\n",
+                            String::from_utf8_lossy(&reference)
+                        ),
+                    )
+                });
+            }
+        }
+        return;
+    }
+
+    spell_heal(
+        cn,
+        co,
+        Repository::with_characters(|ch| ch[cn].skill[SK_HEAL as usize][5] as i32),
+    );
+
+    add_exhaust(cn, TICKS * 2);
 }
 
 pub fn spell_curse(cn: usize, co: usize, power: i32) -> i32 {
-    unimplemented!()
+    use crate::repository::Repository;
+    use crate::state::State;
+    use core::constants::*;
+    use core::types::FontColor;
+
+    let flags = Repository::with_characters(|ch| ch[co].flags);
+    if (flags & core::constants::CharacterFlags::CF_IMMORTAL.bits() as u64) != 0 {
+        return 0;
+    }
+
+    let in_opt = God::create_item(1);
+    if in_opt.is_none() {
+        log::error!("god_create_item failed in spell_curse");
+        return 0;
+    }
+    let in_idx = in_opt.unwrap();
+
+    let mut power = power;
+    power = spell_immunity(
+        power,
+        Repository::with_characters(|ch| ch[co].skill[SK_IMMUN as usize][5] as i32),
+    );
+    power = spell_race_mod(
+        power,
+        Repository::with_characters(|ch| ch[cn].kindred as i32),
+    );
+
+    Repository::with_items_mut(|it| {
+        let mut name_bytes = [0u8; 40];
+        let name = b"Curse";
+        let len = name.len().min(40);
+        name_bytes[..len].copy_from_slice(&name[..len]);
+        it[in_idx].name = name_bytes;
+        it[in_idx].flags |= ItemFlags::IF_SPELL.bits();
+        for n in 0..5 {
+            it[in_idx].attrib[n][1] = -((power / 3) as i8);
+        }
+        it[in_idx].sprite[1] = 89;
+        it[in_idx].duration = 18 * 60 * 2;
+        it[in_idx].active = 18 * 60 * 2;
+        it[in_idx].temp = SK_CURSE as u16;
+        it[in_idx].power = power as u32;
+    });
+
+    if add_spell(co, in_idx) == 0 {
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                FontColor::Green,
+                &format!(
+                    "Magical interference neutralised the {}'s effect.\n",
+                    String::from_utf8_lossy(&Repository::with_items(|it| it[in_idx].name.clone()))
+                ),
+            )
+        });
+        return 0;
+    }
+
+    let sense = Repository::with_characters(|ch| ch[co].skill[SK_SENSE as usize][5]);
+    if (sense as i32 + 10) > power {
+        let reference = Repository::with_characters(|ch| ch[cn].reference.clone());
+        State::with(|state| {
+            state.do_character_log(
+                co,
+                FontColor::Green,
+                &format!(
+                    "{} cast curse on you.\n",
+                    String::from_utf8_lossy(&reference)
+                ),
+            )
+        });
+    } else {
+        State::with(|state| {
+            state.do_character_log(co, FontColor::Green, "You have been cursed.\n")
+        });
+    }
+
+    let name = Repository::with_characters(|ch| ch[co].name.clone());
+    State::with(|state| {
+        state.do_character_log(
+            cn,
+            FontColor::Green,
+            &format!("{} was cursed.\n", String::from_utf8_lossy(&name)),
+        )
+    });
+
+    State::with(|state| state.do_notify_character(co as u32, NT_GOTHIT as i32, cn as i32, 0, 0, 0));
+    State::with(|state| state.do_notify_character(cn as u32, NT_DIDHIT as i32, co as i32, 0, 0, 0));
+
+    let sound = Repository::with_characters(|ch| ch[cn].sound);
+    State::char_play_sound(co, sound as i32 + 7, -150, 0);
+    State::char_play_sound(cn, sound as i32 + 1, -150, 0);
+    // TODO: chlog(cn, "Cast Curse on %s", ch[ co ].name );
+    EffectManager::fx_add_effect(
+        5,
+        0,
+        Repository::with_characters(|ch| ch[co].x) as i32,
+        Repository::with_characters(|ch| ch[co].y) as i32,
+        0,
+    );
+
+    1
 }
 
 pub fn skill_curse(cn: usize) {
-    unimplemented!()
+    use crate::repository::Repository;
+    use crate::state::State;
+
+    let mut co = Repository::with_characters(|ch| {
+        if ch[cn].skill_target1 != 0 {
+            ch[cn].skill_target1 as usize
+        } else if ch[cn].attack_cn != 0 {
+            ch[cn].attack_cn as usize
+        } else {
+            cn
+        }
+    });
+
+    if cn == co {
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "You cannot curse yourself.\n",
+            )
+        });
+        return;
+    }
+
+    if State::with_mut(|state| state.do_char_can_see(cn, co)) == 0 {
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "You cannot see your target.\n",
+            )
+        });
+        return;
+    }
+
+    State::with(|s| s.remember_pvp(cn, co));
+    if is_exhausted(cn) != 0 {
+        return;
+    }
+
+    if spellcost(cn, 35) != 0 {
+        return;
+    }
+
+    if State::with(|state| state.may_attack_msg(cn, co, true)) == 0 {
+        // TODO: chlog(cn, "Prevented from attacking %s (%d)", ch[ co ].name, co );
+        return;
+    }
+
+    if chance_base(
+        cn,
+        Repository::with_characters(|ch| {
+            ch[cn].skill[core::constants::SK_CURSE as usize][5] as i32
+        }),
+        10,
+        Repository::with_characters(|ch| {
+            ch[co].skill[core::constants::SK_RESIST as usize][5] as i32
+        }),
+    ) != 0
+    {
+        if cn != co
+            && Repository::with_characters(|ch| ch[co].skill[core::constants::SK_SENSE as usize][5])
+                > (Repository::with_characters(|ch| {
+                    ch[cn].skill[core::constants::SK_CURSE as usize][5]
+                }) + 5) as u8
+        {
+            let reference = Repository::with_characters(|ch| ch[cn].reference.clone());
+            State::with(|state| {
+                state.do_character_log(
+                    co,
+                    core::types::FontColor::Green,
+                    &format!(
+                        "{} tried to cast curse on you but failed.\n",
+                        String::from_utf8_lossy(&reference)
+                    ),
+                )
+            });
+            if Repository::with_characters(|ch| {
+                ch[co].flags & CharacterFlags::SpellIgnore.bits() as u64
+            }) == 0
+            {
+                State::with(|state| {
+                    state.do_notify_character(
+                        co as u32,
+                        core::constants::NT_GOTMISS as i32,
+                        cn as i32,
+                        0,
+                        0,
+                        0,
+                    )
+                });
+            }
+        }
+        return;
+    }
+
+    if (Repository::with_characters(|ch| ch[co].flags)
+        & core::constants::CharacterFlags::CF_IMMORTAL.bits() as u64)
+        != 0
+    {
+        State::with(|state| {
+            state.do_character_log(cn, core::types::FontColor::Red, "You lost your focus.\n")
+        });
+        return;
+    }
+
+    spell_curse(
+        cn,
+        co,
+        Repository::with_characters(|ch| {
+            ch[cn].skill[core::constants::SK_CURSE as usize][5] as i32
+        }),
+    );
+
+    let co_orig = co;
+    let m = Repository::with_characters(|ch| ch[cn].x)
+        + Repository::with_characters(|ch| ch[cn].y) * core::constants::SERVER_MAPX as i16;
+    let adj = [
+        1,
+        -1,
+        core::constants::SERVER_MAPX as i32,
+        -(core::constants::SERVER_MAPX as i32),
+    ];
+    for &d in adj.iter() {
+        let maybe_co = Repository::with_map(|map| map[(m as i32 + d) as usize].ch as usize);
+        if maybe_co != 0
+            && Repository::with_characters(|ch| ch[maybe_co].attack_cn as usize) == cn
+            && co_orig != maybe_co
+        {
+            let mut rng = rand::thread_rng();
+            if Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_CURSE as usize][5])
+                as i32
+                + rng.gen_range(0..20)
+                > Repository::with_characters(|ch| {
+                    ch[maybe_co].skill[core::constants::SK_RESIST as usize][5]
+                }) as i32
+                    + rng.gen_range(0..20)
+            {
+                spell_curse(
+                    cn,
+                    maybe_co,
+                    Repository::with_characters(|ch| {
+                        ch[cn].skill[core::constants::SK_CURSE as usize][5] as i32
+                    }),
+                );
+            }
+        }
+    }
+
+    EffectManager::fx_add_effect(
+        7,
+        0,
+        Repository::with_characters(|ch| ch[cn].x) as i32,
+        Repository::with_characters(|ch| ch[cn].y) as i32,
+        0,
+    );
+
+    add_exhaust(cn, core::constants::TICKS * 4);
 }
 
 pub fn warcry(cn: usize, co: usize, power: i32) -> i32 {
-    unimplemented!()
+    if Repository::with_characters(|ch| ch[cn].attack_cn as usize) != co
+        && Repository::with_characters(|ch| ch[co].alignment) == 10000
+    {
+        return 0;
+    }
+
+    if State::with(|state| state.may_attack_msg(cn, co, false)) == 0 {
+        return 0;
+    }
+
+    if power
+        < Repository::with_characters(|ch| ch[co].skill[core::constants::SK_RESIST as usize][5])
+            as i32
+    {
+        return 0;
+    }
+
+    for n in 1..10 {
+        if Repository::with_characters(|ch| ch[cn].data[n]) as usize == co {
+            return 0;
+        }
+    }
+
+    if (Repository::with_characters(|ch| ch[co].flags)
+        & core::constants::CharacterFlags::CF_IMMORTAL.bits() as u64)
+        != 0
+    {
+        return 0;
+    }
+
+    if Repository::with_characters(|ch| ch[co].flags & CharacterFlags::SpellIgnore.bits() as u64)
+        == 0
+    {
+        State::with(|state| {
+            state.do_notify_character(
+                co as u32,
+                core::constants::NT_GOTHIT as i32,
+                cn as i32,
+                0,
+                0,
+                0,
+            )
+        });
+    }
+
+    let in_opt = God::create_item(1);
+    if in_opt.is_none() {
+        log::error!("god_create_item failed in skill_warcry");
+        return 0;
+    }
+    let in_idx = in_opt.unwrap();
+
+    Repository::with_items_mut(|it| {
+        let mut name_bytes = [0u8; 40];
+        let name = b"War-Stun";
+        let len = name.len().min(40);
+        name_bytes[..len].copy_from_slice(&name[..len]);
+        it[in_idx].name = name_bytes;
+        it[in_idx].flags |= ItemFlags::IF_SPELL.bits();
+        it[in_idx].sprite[1] = 91;
+        it[in_idx].duration = core::constants::TICKS as u32 * 3;
+        it[in_idx].active = core::constants::TICKS as u32 * 3;
+        it[in_idx].temp = core::constants::SK_WARCRY2 as u16;
+        it[in_idx].power = power as u32;
+    });
+
+    add_spell(co, in_idx);
+
+    let in2_opt = God::create_item(1);
+    if in2_opt.is_none() {
+        log::error!("god_create_item failed in skill_warcry");
+        return 0;
+    }
+    let in2 = in2_opt.unwrap();
+    Repository::with_items_mut(|it| {
+        let mut name_bytes = [0u8; 40];
+        let name = b"Warcry";
+        let len = name.len().min(40);
+        name_bytes[..len].copy_from_slice(&name[..len]);
+        it[in2].name = name_bytes;
+        it[in2].flags |= ItemFlags::IF_SPELL.bits();
+        for n in 0..5 {
+            it[in2].attrib[n][1] = -15;
+        }
+        it[in2].sprite[1] = 89;
+        it[in2].duration = 18 * 60;
+        it[in2].active = 18 * 60;
+        it[in2].temp = core::constants::SK_WARCRY as u16;
+        it[in2].power = (power / 2) as u32;
+    });
+
+    add_spell(co, in2);
+
+    EffectManager::fx_add_effect(
+        5,
+        0,
+        Repository::with_characters(|ch| ch[co].x) as i32,
+        Repository::with_characters(|ch| ch[co].y) as i32,
+        0,
+    );
+
+    1
 }
 
 pub fn skill_warcry(cn: usize) {
-    unimplemented!()
+    if Repository::with_characters(|ch| ch[cn].a_end) < 150 * 1000 {
+        State::with(|state| {
+            state.do_character_log(cn, core::types::FontColor::Red, "You're too exhausted!\n")
+        });
+        return;
+    }
+
+    Repository::with_characters_mut(|ch| ch[cn].a_end -= 150 * 1000);
+
+    let power = Repository::with_characters(|ch| {
+        ch[cn].skill[core::constants::SK_WARCRY as usize][5] as i32
+    });
+
+    let xf = std::cmp::max(1, Repository::with_characters(|ch| ch[cn].x as i32) - 10);
+    let yf = std::cmp::max(1, Repository::with_characters(|ch| ch[cn].y as i32) - 10);
+    let xt = std::cmp::min(
+        core::constants::SERVER_MAPX as i32 - 1,
+        Repository::with_characters(|ch| ch[cn].x as i32) + 10,
+    );
+    let yt = std::cmp::min(
+        core::constants::SERVER_MAPY as i32 - 1,
+        Repository::with_characters(|ch| ch[cn].y as i32) + 10,
+    );
+
+    let mut hit = 0;
+    let mut miss = 0;
+    for x in xf..xt {
+        for y in yf..yt {
+            let m = (x + y * core::constants::SERVER_MAPX as i32) as usize;
+            let co = Repository::with_map(|map| map[m].ch as usize);
+            if co != 0 {
+                if warcry(cn, co, power) != 0 {
+                    State::with(|s| s.remember_pvp(cn, co));
+                    let name = Repository::with_characters(|ch| ch[cn].name.clone());
+                    State::with(|state| {
+                        state.do_character_log(
+                            co,
+                            core::types::FontColor::Green,
+                            &format!(
+                                "You hear {}'s warcry. You feel frightened and immobilized.\n",
+                                String::from_utf8_lossy(&name)
+                            ),
+                        )
+                    });
+                    hit += 1;
+                } else {
+                    let name = Repository::with_characters(|ch| ch[cn].name.clone());
+                    State::with(|state| {
+                        state.do_character_log(
+                            co,
+                            core::types::FontColor::Green,
+                            &format!("You hear {}'s warcry.\n", String::from_utf8_lossy(&name)),
+                        )
+                    });
+                    miss += 1;
+                }
+            }
+        }
+    }
+    State::with(|state| {
+        state.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            &format!(
+                "You cry out loud and clear. You affected {} of {} creatures in range.\n",
+                hit,
+                hit + miss
+            ),
+        )
+    });
 }
 
 pub fn item_info(cn: usize, in_: usize, look: i32) {
