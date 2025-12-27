@@ -1922,8 +1922,174 @@ pub fn driver_msg(cn: usize, msg_type: i32, dat1: i32, dat2: i32, dat3: i32, dat
     }
 }
 
+pub fn follow_driver(cn: usize, co: usize) -> bool {
+    // Bounds and validity checks
+    if co == 0 || co >= core::constants::MAXCHARS as usize {
+        return false;
+    }
+    let (tox, toy, dir) =
+        Repository::with_characters(|ch| (ch[co].tox as i32, ch[co].toy as i32, ch[co].dir as i32));
+    if tox < 5
+        || tox > core::constants::SERVER_MAPX as i32 - 6
+        || toy < 5
+        || toy > core::constants::SERVER_MAPY as i32 - 6
+    {
+        return false;
+    }
+
+    let is_companion = Repository::with_characters(|ch| {
+        (ch[cn].temp == core::constants::CT_COMPANION as u16) && ch[cn].data[63] as usize == co
+    });
+    let can_see = State::with_mut(|state| state.do_char_can_see(cn, co)) != 0;
+    if !(is_companion || can_see) {
+        return false;
+    }
+
+    // Calculate m (map index)
+    let mut m = tox + toy * core::constants::SERVER_MAPX as i32;
+    let mut dir_val = dir as u8;
+    match dir_val {
+        core::constants::DX_UP => m += core::constants::SERVER_MAPX as i32 * 2,
+        core::constants::DX_DOWN => m -= core::constants::SERVER_MAPX as i32 * 2,
+        core::constants::DX_LEFT => m += 2,
+        core::constants::DX_RIGHT => m -= 2,
+        core::constants::DX_LEFTUP => m += 2 + core::constants::SERVER_MAPX as i32 * 2,
+        core::constants::DX_LEFTDOWN => m += 2 - core::constants::SERVER_MAPX as i32 * 2,
+        core::constants::DX_RIGHTUP => m -= 2 - core::constants::SERVER_MAPX as i32 * -2,
+        core::constants::DX_RIGHTDOWN => m -= 2 + core::constants::SERVER_MAPX as i32 * 2,
+        _ => {}
+    }
+
+    // Check adjacency in map
+    let map_len = Repository::with_map(|map| map.len());
+    let mut is_adjacent = false;
+    let mut check_indices = vec![
+        m,
+        m + 1,
+        m - 1,
+        m + core::constants::SERVER_MAPX as i32,
+        m - core::constants::SERVER_MAPX as i32,
+        m + 1 + core::constants::SERVER_MAPX as i32,
+        m + 1 - core::constants::SERVER_MAPX as i32,
+        m - 1 + core::constants::SERVER_MAPX as i32,
+        m - 1 - core::constants::SERVER_MAPX as i32,
+    ];
+    for idx in check_indices.iter() {
+        if *idx < 0 || *idx as usize >= map_len {
+            continue;
+        }
+        let ch_val = Repository::with_map(|map| map[*idx as usize].ch);
+        if ch_val as usize == cn {
+            is_adjacent = true;
+            break;
+        }
+    }
+
+    if is_adjacent {
+        let cur_dir = Repository::with_characters(|ch| ch[cn].dir as i32);
+        if cur_dir as u8 == dir_val {
+            Repository::with_characters_mut(|ch| {
+                ch[cn].misc_action = core::constants::DR_IDLE as u16
+            });
+            return true;
+        }
+        Repository::with_characters_mut(|ch| ch[cn].misc_action = core::constants::DR_TURN as u16);
+        let (x, y) = Repository::with_characters(|ch| (ch[cn].x as i32, ch[cn].y as i32));
+        match dir_val {
+            core::constants::DX_UP => {
+                Repository::with_characters_mut(|ch| {
+                    ch[cn].misc_target1 = x as u16;
+                    ch[cn].misc_target2 = (y - 1) as u16;
+                });
+            }
+            core::constants::DX_DOWN => {
+                Repository::with_characters_mut(|ch| {
+                    ch[cn].misc_target1 = x as u16;
+                    ch[cn].misc_target2 = (y + 1) as u16;
+                });
+            }
+            core::constants::DX_LEFT => {
+                Repository::with_characters_mut(|ch| {
+                    ch[cn].misc_target1 = (x - 1) as u16;
+                    ch[cn].misc_target2 = y as u16;
+                });
+            }
+            core::constants::DX_RIGHT => {
+                Repository::with_characters_mut(|ch| {
+                    ch[cn].misc_target1 = (x + 1) as u16;
+                    ch[cn].misc_target2 = y as u16;
+                });
+            }
+            core::constants::DX_LEFTUP => {
+                Repository::with_characters_mut(|ch| {
+                    ch[cn].misc_target1 = (x - 1) as u16;
+                    ch[cn].misc_target2 = (y - 1) as u16;
+                });
+            }
+            core::constants::DX_LEFTDOWN => {
+                Repository::with_characters_mut(|ch| {
+                    ch[cn].misc_target1 = (x - 1) as u16;
+                    ch[cn].misc_target2 = (y + 1) as u16;
+                });
+            }
+            core::constants::DX_RIGHTUP => {
+                Repository::with_characters_mut(|ch| {
+                    ch[cn].misc_target1 = (x + 1) as u16;
+                    ch[cn].misc_target2 = (y - 1) as u16;
+                });
+            }
+            core::constants::DX_RIGHTDOWN => {
+                Repository::with_characters_mut(|ch| {
+                    ch[cn].misc_target1 = (x + 1) as u16;
+                    ch[cn].misc_target2 = (y + 1) as u16;
+                });
+            }
+            _ => {
+                Repository::with_characters_mut(|ch| {
+                    ch[cn].misc_action = core::constants::DR_IDLE as u16
+                });
+            }
+        }
+        return true;
+    }
+
+    // Try to find a valid target tile
+    let mut found = false;
+    let mut new_m = m;
+    let offsets = [
+        0,
+        1,
+        -1,
+        core::constants::SERVER_MAPX as i32,
+        -core::constants::SERVER_MAPX as i32,
+        1 + core::constants::SERVER_MAPX as i32,
+        1 - core::constants::SERVER_MAPX as i32,
+        -1 + core::constants::SERVER_MAPX as i32,
+        -1 - core::constants::SERVER_MAPX as i32,
+    ];
+    for off in offsets.iter() {
+        let try_m = m + off;
+        if try_m < 0 || try_m as usize >= map_len {
+            continue;
+        }
+        if player::plr_check_target(try_m as usize) {
+            new_m = try_m;
+            found = true;
+            break;
+        }
+    }
+    if !found {
+        return false;
+    }
+    Repository::with_characters_mut(|ch| {
+        ch[cn].goto_x = (new_m % core::constants::SERVER_MAPX as i32) as u16;
+        ch[cn].goto_y = (new_m / core::constants::SERVER_MAPX as i32) as u16;
+    });
+    true
+}
+
 pub fn driver(cn: usize) {
-    // If not player or usurp -> run NPC high-priority driver
+    // 1. If not player or usurp -> run NPC high-priority driver
     let is_player_or_usurp = Repository::with_characters(|ch| {
         (ch[cn].flags
             & (core::constants::CharacterFlags::CF_PLAYER.bits()
@@ -1934,83 +2100,61 @@ pub fn driver(cn: usize) {
         driver::npc_driver_high(cn);
     }
 
-    // CCP handling (not ported) -> log for now
+    // 2. If CCP, run CCP driver (feature-gated)
     let is_ccp = Repository::with_characters(|ch| {
         (ch[cn].flags & core::constants::CharacterFlags::CF_CCP.bits() as u64) != 0
     });
+    #[cfg(feature = "REAL_CCP")]
+    if is_ccp {
+        crate::driver_ccp::ccp_driver(cn);
+    }
+    #[cfg(not(feature = "REAL_CCP"))]
     if is_ccp {
         log::error!("ccp_driver not implemented for {}", cn);
     }
 
-    // use_nr (highest priority)
+    // 3. use_nr (highest priority)
     let use_nr = Repository::with_characters(|ch| ch[cn].use_nr);
     if use_nr != 0 {
-        let in_item = Repository::with_characters(|ch| {
-            if use_nr < 20 {
-                ch[cn].worn[use_nr as usize] as usize
-            } else {
-                ch[cn].item[(use_nr - 20) as usize] as usize
-            }
-        });
-        if in_item == 0 {
-            Repository::with_characters_mut(|ch| {
-                ch[cn].last_action = core::constants::ERR_FAILED as i8;
-                ch[cn].use_nr = 0;
-            });
-            return;
-        }
-
-        let carried = use_nr < 20;
-        driver_use::use_driver(cn, in_item, carried);
-
-        Repository::with_characters_mut(|ch| {
-            if ch[cn].cerrno == core::constants::ERR_SUCCESS as u16 {
-                ch[cn].last_action = core::constants::ERR_SUCCESS as i8;
-            } else if ch[cn].cerrno == core::constants::ERR_FAILED as u16 {
-                ch[cn].last_action = core::constants::ERR_FAILED as i8;
-            }
-            ch[cn].cerrno = core::constants::ERR_NONE as u16;
-            ch[cn].use_nr = 0;
-        });
+        drv_use(cn, use_nr as i32);
         return;
     }
 
-    // skill_nr
+    // 4. skill_nr
     let skill_nr = Repository::with_characters(|ch| ch[cn].skill_nr);
     if skill_nr != 0 {
-        // skill driver not fully ported yet; use plr_skill placeholder
-        player::plr_skill(cn);
-        Repository::with_characters_mut(|ch| {
-            ch[cn].skill_nr = 0;
-            ch[cn].last_action = core::constants::ERR_SUCCESS as i8;
-            ch[cn].cerrno = core::constants::ERR_NONE as u16;
-        });
+        drv_skill(cn);
         return;
     }
 
-    // player medium-priority driver (not fully ported) would go here
+    // 5. If player/usurp and not attacking, run player_driver_med
+    let is_player_or_usurp = Repository::with_characters(|ch| {
+        (ch[cn].flags
+            & (core::constants::CharacterFlags::CF_PLAYER.bits()
+                | core::constants::CharacterFlags::CF_USURP.bits()) as u64)
+            != 0
+    });
+    let attack_cn = Repository::with_characters(|ch| ch[cn].attack_cn);
+    if is_player_or_usurp && attack_cn == 0 {
+        player::player_driver_med(cn);
+    }
 
-    // goto_x (moveto)
+    // 6. goto_x (moveto)
     let goto_x = Repository::with_characters(|ch| ch[cn].goto_x);
     if goto_x != 0 {
         let goto_y = Repository::with_characters(|ch| ch[cn].goto_y);
-        log::error!(
-            "drv_moveto not implemented; would moveto {}:{} for {}",
-            goto_x,
-            goto_y,
-            cn
-        );
+        drv_moveto(cn, goto_x as usize, goto_y as usize);
         return;
     }
 
-    // attack_cn
+    // 7. attack_cn
     let attack_cn = Repository::with_characters(|ch| ch[cn].attack_cn);
     if attack_cn != 0 {
-        log::error!("drv_attack_char not implemented for {}", cn);
+        drv_attack_char(cn, attack_cn as usize);
         return;
     }
 
-    // misc_action dispatch
+    // 8. misc_action dispatch
     let misc_action = Repository::with_characters(|ch| ch[cn].misc_action);
     match misc_action as u32 {
         x if x == core::constants::DR_IDLE => {
@@ -2026,53 +2170,53 @@ pub fn driver(cn: usize) {
             }
         }
         x if x == core::constants::DR_DROP => {
-            player::plr_drop(cn);
+            drv_dropto(
+                cn,
+                Repository::with_characters(|ch| ch[cn].misc_target1 as usize),
+                Repository::with_characters(|ch| ch[cn].misc_target2 as usize),
+            );
         }
         x if x == core::constants::DR_PICKUP => {
-            player::plr_pickup(cn);
+            drv_pickupto(
+                cn,
+                Repository::with_characters(|ch| ch[cn].misc_target1 as usize),
+                Repository::with_characters(|ch| ch[cn].misc_target2 as usize),
+            );
         }
         x if x == core::constants::DR_GIVE => {
-            player::plr_give(cn);
+            drv_give_char(
+                cn,
+                Repository::with_characters(|ch| ch[cn].misc_target1 as usize),
+            );
         }
         x if x == core::constants::DR_USE => {
-            player::plr_use(cn);
+            drv_useto(
+                cn,
+                Repository::with_characters(|ch| ch[cn].misc_target1 as usize),
+                Repository::with_characters(|ch| ch[cn].misc_target2 as usize),
+            );
         }
         x if x == core::constants::DR_BOW => {
-            player::plr_bow(cn);
-            Repository::with_characters_mut(|ch| {
-                ch[cn].misc_action = core::constants::DR_IDLE as u16;
-                ch[cn].cerrno = core::constants::ERR_NONE as u16;
-                ch[cn].last_action = core::constants::ERR_SUCCESS as i8;
-            });
+            drv_bow(cn);
         }
         x if x == core::constants::DR_WAVE => {
-            player::plr_wave(cn);
-            Repository::with_characters_mut(|ch| {
-                ch[cn].misc_action = core::constants::DR_IDLE as u16;
-                ch[cn].cerrno = core::constants::ERR_NONE as u16;
-                ch[cn].last_action = core::constants::ERR_SUCCESS as i8;
-            });
+            drv_wave(cn);
         }
         x if x == core::constants::DR_TURN => {
-            let tx = Repository::with_characters(|ch| ch[cn].misc_target1 as i32);
-            let ty = Repository::with_characters(|ch| ch[cn].misc_target2 as i32);
-            let cx = Repository::with_characters(|ch| ch[cn].x as i32);
-            let cy = Repository::with_characters(|ch| ch[cn].y as i32);
-            let dir = crate::helpers::drv_dcoor2dir(tx - cx, ty - cy);
-            if dir == Repository::with_characters(|ch| ch[cn].dir as i32) {
-                Repository::with_characters_mut(|ch| {
-                    ch[cn].misc_action = core::constants::DR_IDLE as u16;
-                    ch[cn].last_action = core::constants::ERR_SUCCESS as i8;
-                });
-            } else {
-                if dir != -1 {
-                    act_turn(cn, dir);
-                } else {
-                    Repository::with_characters_mut(|ch| {
-                        ch[cn].last_action = core::constants::ERR_FAILED as i8
-                    });
-                }
-            }
+            drv_turnto(
+                cn,
+                Repository::with_characters(|ch| ch[cn].misc_target1 as usize),
+                Repository::with_characters(|ch| ch[cn].misc_target2 as usize),
+            );
+        }
+        x if x == core::constants::DR_SINGLEBUILD => {
+            // not implemented
+        }
+        x if x == core::constants::DR_AREABUILD1 => {
+            // not implemented
+        }
+        x if x == core::constants::DR_AREABUILD2 => {
+            // not implemented
         }
         _ => {
             log::error!("player_driver(): unknown misc_action {}", misc_action);

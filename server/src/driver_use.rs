@@ -4,7 +4,7 @@ use crate::helpers::points2rank;
 use crate::lab9::Labyrinth9;
 use crate::repository::Repository;
 use crate::state::State;
-use crate::{player, populate};
+use crate::{driver_skill, player, populate};
 use core::constants::USE_EMPTY;
 use core::constants::{CharacterFlags, MAXITEM};
 use core::constants::{ItemFlags, SERVER_MAPX, SK_LOCK};
@@ -7864,25 +7864,6 @@ pub fn step_teleport(cn: usize, item_idx: usize) -> i32 {
     2 // TELEPORT_SUCCESS
 }
 
-pub fn add_spell(cn: usize, item_idx: usize) {
-    // Find empty spell slot
-    for n in 0..20 {
-        let spell_id = Repository::with_characters(|characters| characters[cn].spell[n]);
-        if spell_id == 0 {
-            Repository::with_characters_mut(|characters| {
-                characters[cn].spell[n] = item_idx as u32;
-            });
-            Repository::with_items_mut(|items| {
-                items[item_idx].carried = cn as u16;
-            });
-            // TODO: do_update_char(cn);
-            return;
-        }
-    }
-
-    log::error!("add_spell: no free spell slot for character {}", cn);
-}
-
 pub fn step_firefloor(cn: usize, item_idx: usize) -> i32 {
     State::with(|state| {
         state.do_character_log(cn, core::types::FontColor::Red, "Outch!");
@@ -7910,7 +7891,7 @@ pub fn step_firefloor(cn: usize, item_idx: usize) -> i32 {
         items[in2].sprite[1] = sprite1;
     });
 
-    add_spell(cn, in2);
+    driver_skill::add_spell(cn, in2);
 
     0
 }

@@ -1325,6 +1325,22 @@ pub fn plr_skill(cn: usize) {
     log::debug!("Would call skill_driver({}, {})", cn, skill_target);
 }
 
+pub fn player_driver_med(cn: usize) {
+    Repository::with_characters(|ch| {
+        if ch[cn].data[12] + core::constants::TICKS * 15
+            > Repository::with_globals(|globs| globs.ticker)
+        {
+            return;
+        }
+
+        let co = ch[cn].data[10];
+
+        if co != 0 {
+            driver_generic::follow_driver(cn, co as usize);
+        }
+    });
+}
+
 /// Port of `plr_drop` from `svr_act.cpp`
 pub fn plr_drop(cn: usize) {
     Repository::with_characters(|characters| {

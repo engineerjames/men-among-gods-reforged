@@ -2,6 +2,7 @@ mod area;
 mod driver;
 mod driver_ccp;
 mod driver_generic;
+mod driver_skill;
 mod driver_special;
 mod driver_use;
 mod effect;

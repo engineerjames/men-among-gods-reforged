@@ -103,7 +103,7 @@ int chance( int cn, int d20 )
   return 0;
 }
 
-int spell_immunity( int power, int immun )
+int spell_immunity( int power, int immun ) // Don't need this one
 {
   immun /= 2;
   if ( power <= immun )
