@@ -2571,19 +2571,26 @@ pub fn use_grave(cn: usize, item_idx: usize) -> i32 {
         }
     }
 
-    // TODO: Implement pop_create_char and god_drop_char_fuzzy
-    // cc = pop_create_char(328, 0);
-    // if !god_drop_char_fuzzy(cc, x, y) {
-    //     god_destroy_items(cc);
-    //     characters[cc].used = USE_EMPTY;
-    //     return 1;
-    // }
-    //
-    // Create link between item and character
-    // characters[cc].data[0] = item_idx as i32;
-    // items[item_idx].data[0] = cc as i32;
+    let cc = populate::pop_create_char(328, false);
 
-    log::warn!("use_grave: pop_create_char not implemented yet");
+    let (item_x, item_y) = Repository::with_items(|it| (it[item_idx].x, it[item_idx].y));
+
+    if !God::drop_char_fuzzy(cc, item_x as usize, item_y as usize) {
+        God::destroy_items(cc);
+        Repository::with_characters_mut(|characters| {
+            characters[cc].used = USE_EMPTY;
+        });
+        return 1;
+    }
+
+    // Create link between item and character
+    Repository::with_characters_mut(|characters| {
+        characters[cc].data[0] = item_idx as i32;
+    });
+
+    Repository::with_items_mut(|items| {
+        items[item_idx].data[0] = cc as u32;
+    });
 
     1
 }

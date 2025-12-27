@@ -235,19 +235,10 @@ impl State {
     /// # Arguments
     /// * `cn` - Character issuing the command (admin/god)
     /// * `cv` - Character ID string to look up
-    pub(crate) fn do_look_player_depot(&self, cn: usize, cv: &str) {
-        // Parse character ID from string
-        let co = match cv.trim().parse::<usize>() {
-            Ok(id) => id,
-            Err(_) => {
-                self.do_character_log(cn, FontColor::Red, &format!("Bad character: {}!\n", cv));
-                return;
-            }
-        };
-
+    pub(crate) fn do_look_player_depot(&self, cn: usize, co: usize) {
         // Validate character ID
         if co == 0 || co >= core::constants::MAXCHARS {
-            self.do_character_log(cn, FontColor::Red, &format!("Bad character: {}!\n", cv));
+            self.do_character_log(cn, FontColor::Red, &format!("Bad character: {}!\n", co));
             return;
         }
 
@@ -303,19 +294,10 @@ impl State {
     /// # Arguments
     /// * `cn` - Character issuing the command (admin/god)
     /// * `cv` - Character ID string to look up
-    pub fn do_look_player_inventory(&self, cn: usize, cv: &str) {
-        // Parse character ID from string
-        let co = match cv.trim().parse::<usize>() {
-            Ok(id) => id,
-            Err(_) => {
-                self.do_character_log(cn, FontColor::Red, &format!("Bad character: {}!\n", cv));
-                return;
-            }
-        };
-
+    pub fn do_look_player_inventory(&self, cn: usize, co: usize) {
         // Validate character ID
         if co == 0 || co >= core::constants::MAXCHARS {
-            self.do_character_log(cn, FontColor::Red, &format!("Bad character: {}!\n", cv));
+            self.do_character_log(cn, FontColor::Red, &format!("Bad character: {}!\n", co));
             return;
         }
 
@@ -371,19 +353,10 @@ impl State {
     /// # Arguments
     /// * `cn` - Character issuing the command (admin/god)
     /// * `cv` - Character ID string to look up
-    pub(crate) fn do_look_player_equipment(&self, cn: usize, cv: &str) {
-        // Parse character ID from string
-        let co = match cv.trim().parse::<usize>() {
-            Ok(id) => id,
-            Err(_) => {
-                self.do_character_log(cn, FontColor::Red, &format!("Bad character: {}!\n", cv));
-                return;
-            }
-        };
-
+    pub(crate) fn do_look_player_equipment(&self, cn: usize, co: usize) {
         // Validate character ID
         if co == 0 || co >= core::constants::MAXCHARS {
-            self.do_character_log(cn, FontColor::Red, &format!("Bad character: {}!\n", cv));
+            self.do_character_log(cn, FontColor::Red, &format!("Bad character: {}!\n", co));
             return;
         }
 

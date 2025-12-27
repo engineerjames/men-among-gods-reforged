@@ -367,6 +367,7 @@ pub fn act_attack(cn: usize) {
         (ch[cn].flags & CharacterFlags::Simple.bits() as u64) != 0
     });
 
+    #[allow(unused_assignments)]
     let mut v: i8 = 0;
     if !is_simple {
         loop {
@@ -1508,7 +1509,7 @@ pub fn char_moveto(cn: usize, x: i32, y: i32, flag: i32, x2: i32, y2: i32) -> i3
             let base_x = Repository::with_characters(|ch| ch[cn].x as usize);
             let base_y = Repository::with_characters(|ch| ch[cn].y as usize);
             let in_id = Repository::with_map(|map| {
-                map[(base_x + (base_y - 1) * core::constants::SERVER_MAPX as usize)].it
+                map[base_x + (base_y - 1) * core::constants::SERVER_MAPX as usize].it
             });
             if in_id != 0
                 && Repository::with_items(|items| items[in_id as usize].active) == 0
@@ -1848,7 +1849,7 @@ pub fn follow_driver(cn: usize, co: usize) -> bool {
 
     // Calculate m (map index)
     let mut m = tox + toy * core::constants::SERVER_MAPX as i32;
-    let mut dir_val = dir as u8;
+    let dir_val = dir as u8;
     match dir_val {
         core::constants::DX_UP => m += core::constants::SERVER_MAPX as i32 * 2,
         core::constants::DX_DOWN => m -= core::constants::SERVER_MAPX as i32 * 2,

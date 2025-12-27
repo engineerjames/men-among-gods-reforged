@@ -2484,7 +2484,7 @@ impl God {
         });
     }
 
-    pub fn gold_char(cn: usize, co: usize, value: i32, silver: &str) {
+    pub fn gold_char(cn: usize, co: usize, value: i32, silver: i32) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
         }
@@ -2492,10 +2492,8 @@ impl God {
         let mut total_silver = value * 100; // value is in gold
 
         // If silver string is provided, parse additional silver
-        if !silver.is_empty() {
-            if let Ok(silver_val) = silver.parse::<i32>() {
-                total_silver += silver_val;
-            }
+        if silver != 0 {
+            total_silver += silver;
         }
 
         Repository::with_characters_mut(|characters| {

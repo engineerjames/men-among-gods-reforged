@@ -1010,6 +1010,8 @@ const AREAS: &[Area] = &[
     },
 ];
 
+// Unused in original implementation as well
+#[allow(dead_code)]
 pub fn is_in_pentagram_quest(cn: usize) -> bool {
     if cn < 1 || cn >= crate::core::constants::MAXCHARS as usize {
         return false;
@@ -1029,6 +1031,8 @@ pub fn is_in_pentagram_quest(cn: usize) -> bool {
     false
 }
 
+// Unused in original implementation as well
+#[allow(dead_code)]
 pub fn get_area(cn: usize, verbose: bool) -> String {
     if cn < 1 || cn >= crate::core::constants::MAXCHARS as usize {
         return String::new();

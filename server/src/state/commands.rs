@@ -1,8 +1,10 @@
+use core::constants::{GF_CLOSEENEMY, GF_LOOTING, GF_MAYHEM, GF_SPEEDY};
 use core::types::FontColor;
 
 use crate::effect::EffectManager;
 use crate::enums::CharacterFlags;
 use crate::god::God;
+use crate::player::cl_list;
 use crate::repository::Repository;
 use crate::state::State;
 
@@ -698,6 +700,10 @@ impl State {
                     );
                     return;
                 }
+                if starts("closenemey") && f_g {
+                    God::set_gflag(cn, GF_CLOSEENEMY);
+                    return;
+                }
                 if starts("create") && f_g {
                     God::create(cn, parse_i32(arg_get(1)) as i32);
                     return;
@@ -722,6 +728,11 @@ impl State {
                 }
                 if starts("delban") && f_giu {
                     God::del_ban(cn, parse_usize(arg_get(1)));
+                    return;
+                }
+                if starts("diffi") && f_g {
+                    // TODO: Intentionally left unimplemented - wtf was this for?
+                    log::warn!("TODO: diffi command not implemented - original purpose unclear");
                     return;
                 }
             }
@@ -753,6 +764,9 @@ impl State {
                     God::exit_usurp(cn);
                     return;
                 }
+                if starts("eras") && f_g {
+                    return; // to avoid ambiguity with "erase"
+                }
                 if starts("erase") && f_g {
                     God::erase(cn, parse_usize(arg_get(1)), 0);
                     return;
@@ -781,8 +795,29 @@ impl State {
                     self.do_gold(cn, parse_i32(arg_get(1)));
                     return;
                 }
+                if starts("golden") && f_g {
+                    God::set_flag(
+                        cn,
+                        parse_usize(arg_get(1)),
+                        core::constants::CharacterFlags::CF_GOLDEN.bits() as u64,
+                    );
+                    return;
+                }
                 if starts("group") && !f_m {
                     self.do_group(cn, args_get(0));
+                    return;
+                }
+                if starts("gargoyle") && f_gi {
+                    God::gargoyle(cn);
+                    return;
+                }
+                if starts("ggold") && f_g {
+                    God::gold_char(
+                        cn,
+                        parse_usize(arg_get(1)),
+                        parse_i32(arg_get(2)),
+                        parse_i32(arg_get(3)),
+                    );
                     return;
                 }
                 if starts("give") && f_giu {
@@ -799,6 +834,38 @@ impl State {
                         parse_usize(arg_get(1)),
                         core::constants::CharacterFlags::CF_GOD.bits() as u64,
                     );
+                    return;
+                }
+                if starts("greatergod") && f_gg {
+                    God::set_flag(
+                        cn,
+                        parse_usize(arg_get(1)),
+                        core::constants::CharacterFlags::CF_GREATERGOD.bits() as u64,
+                    );
+                    return;
+                }
+
+                if starts("greaterinv") && f_gg {
+                    God::set_flag(
+                        cn,
+                        parse_usize(arg_get(1)),
+                        core::constants::CharacterFlags::CF_GREATERINV.bits() as u64,
+                    );
+                    return;
+                }
+
+                if starts("grolm") && f_gi {
+                    God::grolm(cn);
+                    return;
+                }
+
+                if starts("grolminfo") && f_gi {
+                    God::grolm_info(cn);
+                    return;
+                }
+
+                if starts("grolmstart") && f_g {
+                    God::grolm_start(cn);
                     return;
                 }
             }
@@ -845,7 +912,7 @@ impl State {
                     );
                     return;
                 }
-                if starts("info") && f_giu {
+                if starts("info") && f_gius {
                     God::info(cn, parse_usize(arg_get(1)));
                     return;
                 }
@@ -868,6 +935,10 @@ impl State {
                         parse_usize(arg_get(1)),
                         core::constants::CharacterFlags::CF_INVISIBLE.bits() as u64,
                     );
+                    return;
+                }
+                if starts("ipshow") && f_giu {
+                    self.do_list_net(cn, parse_usize(arg_get(1)));
                     return;
                 }
                 if starts("itell") && f_giu {
@@ -895,18 +966,68 @@ impl State {
                     self.do_look_char(cn, parse_usize(arg_get(1)), 1, 0, 0);
                     return;
                 }
+                if starts("lookdepot") && f_gg {
+                    self.do_look_player_depot(cn, parse_usize(arg_get(1)));
+                    return;
+                }
+                if starts("lookinv") && f_gg {
+                    self.do_look_player_inventory(cn, parse_usize(arg_get(1)));
+                    return;
+                }
+                if starts("lookequip") && f_gg {
+                    self.do_look_player_equipment(cn, parse_usize(arg_get(1)));
+                    return;
+                }
+                if starts("looting") && f_g {
+                    God::set_gflag(cn, GF_LOOTING);
+                    return;
+                }
+                if starts("lower") && f_g {
+                    God::lower_char(cn, parse_usize(arg_get(1)), parse_i32(arg_get(2)));
+                    return;
+                }
+                if starts("luck") && f_giu {
+                    God::luck(cn, parse_usize(arg_get(1)), parse_i32(arg_get(2)));
+                    return;
+                }
+                if starts("listban") && f_giu {
+                    God::list_ban(cn);
+                    return;
+                }
                 if starts("listimps") && f_giu {
                     God::implist(cn);
                     return;
                 }
+                if starts("listgolden") && f_giu {
+                    self.do_list_all_flags(cn, core::constants::CharacterFlags::CF_GOLDEN.bits());
+                    return;
+                }
+                if starts("listblack") && f_giu {
+                    self.do_list_all_flags(cn, core::constants::CharacterFlags::CF_BLACK.bits());
+                    return;
+                }
             }
             'm' => {
+                if starts("mayhem") && f_g {
+                    God::set_gflag(cn, GF_MAYHEM);
+                    return;
+                }
+                if starts("mark") && f_giu {
+                    self.do_mark(cn, parse_usize(arg_get(1)), args_get(1));
+                    return;
+                }
                 if starts("me") {
                     self.do_emote(cn, args_get(0));
                     return;
                 }
                 if starts("mirror") && f_giu {
                     God::mirror(cn, arg_get(1), arg_get(2));
+                    return;
+                }
+                if starts("mailpass") && f_g {
+                    // TODO: Left unimplemented for now
+                    log::warn!("TODO: mailpass command not implemented");
+                    //God::mail_password(cn, arg_get(1), arg_get(2));
                     return;
                 }
             }
@@ -927,12 +1048,41 @@ impl State {
                     God::set_name(cn, parse_usize(arg_get(1)), args_get(1));
                     return;
                 }
+                if starts("nodesc") && f_giu {
+                    God::reset_description(cn, parse_usize(arg_get(1)));
+                    return;
+                }
+                if starts("nolist") && f_gi {
+                    God::set_flag(
+                        cn,
+                        parse_usize(arg_get(1)),
+                        core::constants::CharacterFlags::CF_NOLIST.bits() as u64,
+                    );
+                    return;
+                }
+                if starts("noluck") && f_giu {
+                    God::luck(cn, parse_usize(arg_get(1)), -parse_i32(arg_get(2)));
+                    return;
+                }
+                if starts("nowho") && f_gi {
+                    God::set_flag(
+                        cn,
+                        parse_usize(arg_get(1)),
+                        core::constants::CharacterFlags::CF_NOWHO.bits() as u64,
+                    );
+                    return;
+                }
                 if starts("npclist") && f_giu {
                     self.do_npclist(cn, args_get(0));
                     return;
                 }
             }
             'p' => {
+                if starts("password") && f_g {
+                    // change another's password
+                    God::change_pass(cn, parse_usize(arg_get(1)), arg_get(2));
+                    return;
+                }
                 if starts("password") {
                     // change own password
                     God::change_pass(cn, cn, arg_get(1));
@@ -942,12 +1092,47 @@ impl State {
                     self.do_check_pent_count(cn);
                     return;
                 }
+                if starts("poh") && f_pol {
+                    God::set_flag(cn, parse_usize(arg_get(1)), CharacterFlags::Poh.bits());
+                    return;
+                }
+                if starts("pol") && f_pol {
+                    God::set_flag(
+                        cn,
+                        parse_usize(arg_get(1)),
+                        CharacterFlags::PohLeader.bits(),
+                    );
+                    return;
+                }
+
+                if starts("prof") && f_g {
+                    God::set_flag(cn, cn, CharacterFlags::PohLeader.bits());
+                    return;
+                }
+
                 if starts("purple") && !f_g && !f_m {
                     self.do_become_purple(cn);
                     return;
                 }
+
                 if starts("purple") && f_g {
                     God::set_purple(cn, parse_usize(arg_get(1)));
+                    return;
+                }
+
+                if starts("perase") && f_g {
+                    God::erase(cn, parse_usize(arg_get(1)), 1);
+                    return;
+                }
+
+                if starts("pktcnt") && f_g {
+                    // TODO: pkt_list();
+                    log::warn!("TODO: pktcnt command not implemented - original purpose unclear");
+                    return;
+                }
+
+                if starts("pktcl") && f_g {
+                    cl_list();
                     return;
                 }
             }
@@ -956,10 +1141,17 @@ impl State {
                     self.do_view_exp_to_rank(cn);
                     return;
                 }
+
                 if starts("raise") && f_giu {
                     God::raise_char(cn, parse_usize(arg_get(1)), parse_i32(arg_get(2)));
                     return;
                 }
+
+                if starts("recall") && f_giu {
+                    God::goto(cn, cn, "512", "512");
+                    return;
+                }
+
                 if starts("respawn") && f_giu {
                     self.do_respawn(cn, parse_usize(arg_get(1)));
                     return;
@@ -970,22 +1162,105 @@ impl State {
                     self.do_shout(cn, args_get(0));
                     return;
                 }
+
+                if starts("safe") && f_g {
+                    God::set_flag(
+                        cn,
+                        parse_usize(arg_get(1)),
+                        core::constants::CharacterFlags::CF_SAFE.bits() as u64,
+                    );
+                    return;
+                }
+
+                if starts("save") && f_g {
+                    God::save(cn, parse_usize(arg_get(1)));
+                    return;
+                }
+
                 if starts("seen") {
                     self.do_seen(cn, arg_get(1));
                     return;
                 }
+
+                if starts("send") {
+                    God::goto(cn, parse_usize(arg_get(1)), arg_get(2), arg_get(3));
+                    return;
+                }
+
                 if starts("shutup") && f_gius {
                     God::shutup(cn, parse_usize(arg_get(1)));
                     return;
                 }
+
+                if starts("skill") && f_g {
+                    God::skill(
+                        cn,
+                        parse_usize(arg_get(1)),
+                        crate::driver_skill::skill_lookup(arg_get(2)),
+                        parse_i32(arg_get(3)),
+                    );
+                    return;
+                }
+
                 if starts("skua") {
                     self.do_become_skua(cn);
                     return;
                 }
+
                 if starts("slap") && f_giu {
                     God::slap(cn, parse_usize(arg_get(1)));
                     return;
                 }
+
+                if starts("sort") {
+                    self.do_sort(cn, arg_get(1));
+                    return;
+                }
+
+                if starts("soulstone") && f_g {
+                    self.do_make_soulstone(cn, parse_i32(arg_get(1)));
+                    return;
+                }
+
+                if starts("speedy") && f_g {
+                    God::set_gflag(cn, GF_SPEEDY);
+                    return;
+                }
+
+                if starts("spellignore") && !f_m {
+                    self.do_spellignore(cn);
+                    return;
+                }
+
+                if starts("sprite") && f_giu {
+                    God::spritechange(cn, parse_usize(arg_get(1)), parse_i32(arg_get(2)));
+                    return;
+                }
+
+                if starts("stell") && f_giu {
+                    State::with(|state| state.do_stell(cn, args_get(0)));
+                    return;
+                }
+
+                if starts("stat") && f_g {
+                    self.do_stat(cn);
+                    return;
+                }
+
+                if starts("staff") && f_g {
+                    God::set_flag(
+                        cn,
+                        parse_usize(arg_get(1)),
+                        core::constants::CharacterFlags::CF_STAFF.bits() as u64,
+                    );
+                    return;
+                }
+
+                if starts("steal") && f_gg {
+                    self.do_steal_player(cn, arg_get(1), arg_get(2));
+                    return;
+                }
+
                 if starts("summon") && f_g {
                     God::summon(cn, arg_get(1), arg_get(2), arg_get(3));
                     return;

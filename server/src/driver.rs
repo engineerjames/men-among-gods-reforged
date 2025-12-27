@@ -36,14 +36,6 @@ pub fn npc_dist(cn: usize, co: usize) -> i32 {
     })
 }
 
-pub struct Driver {}
-
-impl Driver {
-    pub fn msg(character_id: u32, notify_type: i32, dat1: i32, dat2: i32, dat3: i32, dat4: i32) {
-        npc_msg(character_id as usize, notify_type, dat1, dat2, dat3, dat4);
-    }
-}
-
 // ****************************************************
 // NPC Message Handling and AI Functions
 // ****************************************************
@@ -1396,7 +1388,7 @@ pub fn npc_driver_low(cn: usize) {
             characters[cn].data[58] = 0;
         });
 
-        let mut data_61 = Repository::with_characters(|characters| characters[cn].data[61]);
+        let data_61 = Repository::with_characters(|characters| characters[cn].data[61]);
         if data_61 < 1 {
             Repository::with_characters_mut(|characters| {
                 characters[cn].data[61] = data_60;

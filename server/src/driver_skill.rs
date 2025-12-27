@@ -65,6 +65,8 @@ const SKILL_NAMES: [&str; 50] = [
     "",
 ];
 
+// This function is unused in the original implementation as well.
+#[allow(dead_code)]
 pub fn friend_is_enemy(cn: usize, cc: usize) -> i32 {
     // Rust port of C++ friend_is_enemy
     let co = Repository::with_characters(|ch| ch[cn].attack_cn as usize);
@@ -182,6 +184,8 @@ pub fn spell_immunity(power: i32, immun: i32) -> i32 {
 }
 pub fn spell_race_mod(power: i32, kindred: i32) -> i32 {
     // Ported from C++ spell_race_mod(int power, int kindred)
+
+    #[allow(unused_assignments)]
     let mut modf = 1.0;
     if (kindred & core::constants::KIN_ARCHHARAKIM as i32) != 0 {
         modf = 1.05;
@@ -314,7 +318,7 @@ pub fn is_exhausted(cn: usize) -> i32 {
     0
 }
 
-pub fn add_exhaust(cn: usize, len: i32) {
+pub fn add_exhaust(cn: usize, exhaust_length: i32) {
     // Ported from C++ add_exhaust(int cn, int len)
     use core::constants::*;
     let in_ = God::create_item(1);
@@ -331,8 +335,8 @@ pub fn add_exhaust(cn: usize, len: i32) {
         item.name = name_bytes;
         item.flags |= ItemFlags::IF_SPELL.bits();
         item.sprite[1] = 97;
-        item.duration = len as u32;
-        item.active = len as u32;
+        item.duration = exhaust_length as u32;
+        item.active = exhaust_length as u32;
         item.temp = SK_BLAST as u16;
         item.power = 255;
     });
@@ -1897,7 +1901,7 @@ pub fn skill_curse(cn: usize) {
     use crate::repository::Repository;
     use crate::state::State;
 
-    let mut co = Repository::with_characters(|ch| {
+    let co = Repository::with_characters(|ch| {
         if ch[cn].skill_target1 != 0 {
             ch[cn].skill_target1 as usize
         } else if ch[cn].attack_cn != 0 {
@@ -2232,7 +2236,7 @@ pub fn skill_warcry(cn: usize) {
     });
 }
 
-pub fn item_info(cn: usize, in_: usize, look: i32) {
+pub fn item_info(cn: usize, in_: usize, _look: i32) {
     use crate::repository::Repository;
     use crate::state::State;
     use core::types::FontColor;
@@ -2399,17 +2403,17 @@ pub fn char_info(cn: usize, co: usize) {
     let at_name = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
 
     // Header
-    let name = Repository::with_characters(|ch| ch[co].name.clone());
+    let name_bytes = Repository::with_characters(|ch| ch[co].name.clone());
     State::with(|state| {
         state.do_character_log(
             cn,
             FontColor::Green,
-            &format!("{}:\n", String::from_utf8_lossy(&name)),
+            &format!("{}:\n", String::from_utf8_lossy(&name_bytes)),
         )
     });
     State::with(|state| state.do_character_log(cn, FontColor::Green, " \n"));
 
-    // Active spells
+    // Active spells (0..19)
     let mut flag = false;
     for n in 0..20 {
         let in_idx = Repository::with_characters(|ch| ch[co].spell[n] as usize);
@@ -2440,12 +2444,11 @@ pub fn char_info(cn: usize, co: usize) {
     }
     State::with(|state| state.do_character_log(cn, FontColor::Green, " \n"));
 
-    // Skills two-column placeholder using indices
+    // Skills two-column using static SKILL_NAMES
     let mut n1: i32 = -1;
     let mut n2: i32 = -1;
     for n in 0..50 {
         let s0 = Repository::with_characters(|ch| ch[co].skill[n][0]);
-        let s5 = Repository::with_characters(|ch| ch[co].skill[n][5]);
         if s0 != 0 && n1 == -1 {
             n1 = n as i32;
         } else if s0 != 0 && n2 == -1 {
@@ -2457,18 +2460,15 @@ pub fn char_info(cn: usize, co: usize) {
             let s1_5 = Repository::with_characters(|ch| ch[co].skill[n1 as usize][5]);
             let s2_0 = Repository::with_characters(|ch| ch[co].skill[n2 as usize][0]);
             let s2_5 = Repository::with_characters(|ch| ch[co].skill[n2 as usize][5]);
+            let name1 = SKILL_NAMES[n1 as usize];
+            let name2 = SKILL_NAMES[n2 as usize];
             State::with(|state| {
                 state.do_character_log(
                     cn,
                     FontColor::Green,
                     &format!(
-                        "{:<12} {:3}/{:3}  !  {:<12} {:3}/{:3}\n",
-                        format!("Skill {:02}", n1),
-                        s1_0,
-                        s1_5,
-                        format!("Skill {:02}", n2),
-                        s2_0,
-                        s2_5
+                        "{:<12.12} {:3}/{:3}  !  {:<12.12} {:3}/{:3}\n",
+                        name1, s1_0, s1_5, name2, s2_0, s2_5
                     ),
                 )
             });
@@ -2476,42 +2476,56 @@ pub fn char_info(cn: usize, co: usize) {
             n2 = -1;
         }
     }
+
     if n1 != -1 {
         let s1_0 = Repository::with_characters(|ch| ch[co].skill[n1 as usize][0]);
         let s1_5 = Repository::with_characters(|ch| ch[co].skill[n1 as usize][5]);
+        let name1 = SKILL_NAMES[n1 as usize];
         State::with(|state| {
             state.do_character_log(
                 cn,
                 FontColor::Green,
-                &format!("{:<12} {:3}/{:3}\n", format!("Skill {:02}", n1), s1_0, s1_5),
+                &format!("{:<12.12} {:3}/{:3}\n", name1, s1_0, s1_5),
             )
         });
     }
 
     // Attributes
-    for row in &[(0usize, 1usize), (2usize, 3usize)] {
-        let a0_0 = Repository::with_characters(|ch| ch[co].attrib[row.0][0]);
-        let a0_5 = Repository::with_characters(|ch| ch[co].attrib[row.0][5]);
-        let a1_0 = Repository::with_characters(|ch| ch[co].attrib[row.1][0]);
-        let a1_5 = Repository::with_characters(|ch| ch[co].attrib[row.1][5]);
-        State::with(|state| {
-            state.do_character_log(
-                cn,
-                FontColor::Green,
-                &format!(
-                    "{:<12} {:3}/{:3}  !  {:<12} {:3}/{:3}\n",
-                    at_name[row.0], a0_0, a0_5, at_name[row.1], a1_0, a1_5
-                ),
-            )
-        });
-    }
+    let a0_0 = Repository::with_characters(|ch| ch[co].attrib[0][0]);
+    let a0_5 = Repository::with_characters(|ch| ch[co].attrib[0][5]);
+    let a1_0 = Repository::with_characters(|ch| ch[co].attrib[1][0]);
+    let a1_5 = Repository::with_characters(|ch| ch[co].attrib[1][5]);
+    State::with(|state| {
+        state.do_character_log(
+            cn,
+            FontColor::Green,
+            &format!(
+                "{:<12.12} {:3}/{:3}  !  {:<12.12} {:3}/{:3}\n",
+                at_name[0], a0_0, a0_5, at_name[1], a1_0, a1_5
+            ),
+        )
+    });
+    let a2_0 = Repository::with_characters(|ch| ch[co].attrib[2][0]);
+    let a2_5 = Repository::with_characters(|ch| ch[co].attrib[2][5]);
+    let a3_0 = Repository::with_characters(|ch| ch[co].attrib[3][0]);
+    let a3_5 = Repository::with_characters(|ch| ch[co].attrib[3][5]);
+    State::with(|state| {
+        state.do_character_log(
+            cn,
+            FontColor::Green,
+            &format!(
+                "{:<12.12} {:3}/{:3}  !  {:<12.12} {:3}/{:3}\n",
+                at_name[2], a2_0, a2_5, at_name[3], a3_0, a3_5
+            ),
+        )
+    });
     let a4_0 = Repository::with_characters(|ch| ch[co].attrib[4][0]);
     let a4_5 = Repository::with_characters(|ch| ch[co].attrib[4][5]);
     State::with(|state| {
         state.do_character_log(
             cn,
             FontColor::Green,
-            &format!("{:<12} {:3}/{:3}\n", at_name[4], a4_0, a4_5),
+            &format!("{:<12.12} {:3}/{:3}\n", at_name[4], a4_0, a4_5),
         )
     });
 
@@ -3405,7 +3419,6 @@ pub fn skill_dispel(cn: usize) {
 }
 
 pub fn skill_ghost(cn: usize) {
-    use crate::repository::Repository;
     use crate::state::State;
     use core::types::FontColor;
 
