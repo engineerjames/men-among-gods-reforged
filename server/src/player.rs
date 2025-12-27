@@ -1,6 +1,6 @@
 use crate::{
-    driver, enums, god::God, network_manager::NetworkManager, repository::Repository,
-    server::Server, state::State,
+    driver, driver_generic, enums, god::God, network_manager::NetworkManager,
+    repository::Repository, server::Server, state::State,
 };
 
 const SPEEDTAB: [[u8; 20]; 20] = [
@@ -1602,50 +1602,11 @@ pub fn plr_reset_status(cn: usize) {
     });
 }
 
-pub fn act_drop(cn: usize) {
-    plr_drop(cn);
-}
-
-pub fn act_use(cn: usize) {
-    plr_use(cn);
-}
-
-pub fn act_pickup(cn: usize) {
-    plr_pickup(cn);
-}
-
-pub fn act_skill(cn: usize) {
-    plr_skill(cn);
-}
-
-pub fn act_wave(cn: usize) {
-    plr_wave(cn);
-}
-
-pub fn act_idle(cn: usize) {
-    if Repository::with_globals(|globals| (globals.ticker & 15) == (cn as i32 & 15)) {
-        let (x, y) = Repository::with_characters(|characters| (characters[cn].x, characters[cn].y));
-        State::with(|state| {
-            state.do_area_notify(
-                cn as i32,
-                0,
-                x as i32,
-                y as i32,
-                core::constants::NT_SEE as i32,
-                cn as i32,
-                0,
-                0,
-                0,
-            )
-        });
-    }
-}
-
 pub fn plr_doact(cn: usize) {
     plr_reset_status(cn);
     if Repository::with_characters(|characters| characters[cn].group_active()) {
         // driver call not implemented yet; log for now
-        driver::driver(cn);
+        driver_generic::driver(cn);
         log::info!("plr_doact: group active for {} - driver call TODO", cn);
     }
 }
@@ -1660,19 +1621,19 @@ pub fn plr_act(cn: usize) {
     });
 
     if stunned != 0 {
-        act_idle(cn);
+        driver_generic::act_idle(cn);
         return;
     }
 
     if flags & enums::CharacterFlags::Stoned.bits() != 0 {
-        act_idle(cn);
+        driver_generic::act_idle(cn);
         return;
     }
 
     match status {
         // idle states: call idle and driver
         0..=7 => {
-            act_idle(cn);
+            driver_generic::act_idle(cn);
             plr_doact(cn);
             return;
         }
@@ -2111,7 +2072,7 @@ pub fn plr_act(cn: usize) {
         }
 
         _ => {
-            act_idle(cn);
+            driver_generic::act_idle(cn);
             return;
         }
     }
