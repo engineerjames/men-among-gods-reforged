@@ -1,6 +1,6 @@
 use crate::{
-    enums, god::God, network_manager::NetworkManager, repository::Repository, server::Server,
-    state::State,
+    driver, enums, god::God, network_manager::NetworkManager, repository::Repository,
+    server::Server, state::State,
 };
 
 const SPEEDTAB: [[u8; 20]; 20] = [
@@ -1645,6 +1645,7 @@ pub fn plr_doact(cn: usize) {
     plr_reset_status(cn);
     if Repository::with_characters(|characters| characters[cn].group_active()) {
         // driver call not implemented yet; log for now
+        driver::driver(cn);
         log::info!("plr_doact: group active for {} - driver call TODO", cn);
     }
 }
@@ -1669,75 +1670,450 @@ pub fn plr_act(cn: usize) {
     }
 
     match status {
-        0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 => {
+        // idle states: call idle and driver
+        0..=7 => {
             act_idle(cn);
             plr_doact(cn);
+            return;
         }
-        8 => {
+
+        // walk up: 16..22 increment, 23 execute
+        16..=22 => {
             if speedo(cn) != 0 {
-                plr_doact(cn)
-            } else {
-                plr_move_up(cn)
+                Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
+            return;
         }
-        9 => {
+        23 => {
             if speedo(cn) != 0 {
-                plr_doact(cn)
-            } else {
-                plr_move_down(cn)
+                Repository::with_characters_mut(|ch| ch[cn].status = 16);
+                plr_move_up(cn);
+                plr_doact(cn);
             }
+            return;
         }
-        10 => {
+
+        // walk down: 24..30 then 31
+        24..=30 => {
             if speedo(cn) != 0 {
-                plr_doact(cn)
-            } else {
-                plr_move_left(cn)
+                Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
+            return;
         }
-        11 => {
+        31 => {
             if speedo(cn) != 0 {
-                plr_doact(cn)
-            } else {
-                plr_move_right(cn)
+                Repository::with_characters_mut(|ch| ch[cn].status = 24);
+                plr_move_down(cn);
+                plr_doact(cn);
             }
+            return;
         }
-        12 => {
+
+        // walk left: 32..38 then 39
+        32..=38 => {
             if speedo(cn) != 0 {
-                plr_doact(cn)
-            } else {
-                plr_move_leftup(cn)
+                Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
+            return;
         }
-        13 => {
+        39 => {
             if speedo(cn) != 0 {
-                plr_doact(cn)
-            } else {
-                plr_move_leftdown(cn)
+                Repository::with_characters_mut(|ch| ch[cn].status = 32);
+                plr_move_left(cn);
+                plr_doact(cn);
             }
+            return;
         }
-        14 => {
+
+        // walk right: 40..46 then 47
+        40..=46 => {
             if speedo(cn) != 0 {
-                plr_doact(cn)
-            } else {
-                plr_move_rightup(cn)
+                Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
+            return;
         }
-        15 => {
+        47 => {
             if speedo(cn) != 0 {
-                plr_doact(cn)
-            } else {
-                plr_move_rightdown(cn)
+                Repository::with_characters_mut(|ch| ch[cn].status = 40);
+                plr_move_right(cn);
+                plr_doact(cn);
             }
+            return;
         }
-        16 => plr_attack(cn, 0),
-        17 => plr_give(cn),
-        18 => plr_pickup(cn),
-        19 => plr_bow(cn),
-        20 => plr_drop(cn),
-        21 => plr_use(cn),
-        22 => plr_skill(cn),
-        23 => plr_wave(cn),
-        _ => act_idle(cn),
+
+        // left+up: 48..58 then 59
+        48..=58 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+            }
+            return;
+        }
+        59 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status = 48);
+                plr_move_leftup(cn);
+                plr_doact(cn);
+            }
+            return;
+        }
+
+        // left+down: 60..70 then 71
+        60..=70 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+            }
+            return;
+        }
+        71 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status = 60);
+                plr_move_leftdown(cn);
+                plr_doact(cn);
+            }
+            return;
+        }
+
+        // right+up: 72..82 then 83
+        72..=82 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+            }
+            return;
+        }
+        83 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status = 72);
+                plr_move_rightup(cn);
+                plr_doact(cn);
+            }
+            return;
+        }
+
+        // right+down: 84..94 then 95
+        84..=94 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+            }
+            return;
+        }
+        95 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status = 84);
+                plr_move_rightdown(cn);
+                plr_doact(cn);
+            }
+            return;
+        }
+
+        // turns: grouped ranges mapping to final turn actions
+        96..=98 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+            }
+            return;
+        }
+        99 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status = 96);
+                plr_turn_leftup(cn);
+                plr_doact(cn);
+            }
+            return;
+        }
+
+        100..=102 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+            }
+            return;
+        }
+        103 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status = 96);
+                plr_turn_left(cn);
+                plr_doact(cn);
+            }
+            return;
+        }
+
+        104..=106 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+            }
+            return;
+        }
+        107 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status = 104);
+                plr_turn_rightup(cn);
+                plr_doact(cn);
+            }
+            return;
+        }
+
+        108..=110 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+            }
+            return;
+        }
+        111 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status = 108);
+                plr_turn_right(cn);
+                plr_doact(cn);
+            }
+            return;
+        }
+
+        112..=114 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+            }
+            return;
+        }
+        115 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status = 112);
+                plr_turn_leftdown(cn);
+                plr_doact(cn);
+            }
+            return;
+        }
+
+        116..=118 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+            }
+            return;
+        }
+        119 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status = 116);
+                plr_turn_left(cn);
+                plr_doact(cn);
+            }
+            return;
+        }
+
+        120..=122 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+            }
+            return;
+        }
+        123 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status = 120);
+                plr_turn_rightdown(cn);
+                plr_doact(cn);
+            }
+            return;
+        }
+
+        124..=126 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+            }
+            return;
+        }
+        127 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status = 124);
+                plr_turn_right(cn);
+                plr_doact(cn);
+            }
+            return;
+        }
+
+        128..=130 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+            }
+            return;
+        }
+        131 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status = 128);
+                plr_turn_leftup(cn);
+                plr_doact(cn);
+            }
+            return;
+        }
+
+        132..=134 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+            }
+            return;
+        }
+        135 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status = 132);
+                plr_turn_up(cn);
+                plr_doact(cn);
+            }
+            return;
+        }
+
+        136..=138 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+            }
+            return;
+        }
+        139 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status = 136);
+                plr_turn_leftdown(cn);
+                plr_doact(cn);
+            }
+            return;
+        }
+
+        140..=142 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+            }
+            return;
+        }
+        143 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status = 140);
+                plr_turn_down(cn);
+                plr_doact(cn);
+            }
+            return;
+        }
+
+        144..=146 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+            }
+            return;
+        }
+        147 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status = 144);
+                plr_turn_rightup(cn);
+                plr_doact(cn);
+            }
+            return;
+        }
+
+        148..=150 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+            }
+            return;
+        }
+        151 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status = 148);
+                plr_turn_up(cn);
+                plr_doact(cn);
+            }
+            return;
+        }
+
+        152..=154 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+            }
+            return;
+        }
+        155 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status = 152);
+                plr_turn_rightdown(cn);
+                plr_doact(cn);
+            }
+            return;
+        }
+
+        156..=158 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+            }
+            return;
+        }
+        159 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status = 156);
+                plr_turn_down(cn);
+                plr_doact(cn);
+            }
+            return;
+        }
+
+        // misc actions: 160..166 increment, 167 execute misc then doact
+        160..=166 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+            }
+            return;
+        }
+        167 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status = 160);
+                plr_misc(cn);
+                plr_doact(cn);
+            }
+            return;
+        }
+
+        // misc down 168..174 then 175
+        168..=174 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+            }
+            return;
+        }
+        175 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status = 168);
+                plr_misc(cn);
+                plr_doact(cn);
+            }
+            return;
+        }
+
+        // misc left 176..182 then 183
+        176..=182 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+            }
+            return;
+        }
+        183 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status = 176);
+                plr_misc(cn);
+                plr_doact(cn);
+            }
+            return;
+        }
+
+        // misc right 184..190 then 191
+        184..=190 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+            }
+            return;
+        }
+        191 => {
+            if speedo(cn) != 0 {
+                Repository::with_characters_mut(|ch| ch[cn].status = 184);
+                plr_misc(cn);
+                plr_doact(cn);
+            }
+            return;
+        }
+
+        _ => {
+            act_idle(cn);
+            return;
+        }
     }
 }
 

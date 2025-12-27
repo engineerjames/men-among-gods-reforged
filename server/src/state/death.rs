@@ -648,8 +648,7 @@ impl State {
 
     /// Handle lab keeper death (special case)
     pub(crate) fn handle_labkeeper_death(&self, co: usize, cn: usize) {
-        // TODO: Implement plr_map_remove
-        log::info!("TODO: Remove character {} from map", co);
+        player::plr_map_remove(cn);
 
         // Destroy all items
         // TODO: Seems like we're getting rid of the items twice?

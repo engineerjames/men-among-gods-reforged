@@ -581,7 +581,7 @@ impl God {
                 companion.citem = 0;
 
                 // Destroy item holder (companion)
-                // TODO: plr_map_remove(companion_id) when map system is implemented
+                player::plr_map_remove(companion_id);
                 companion.used = core::constants::USE_EMPTY;
                 characters[character_id].data[core::constants::CHD_COMPANION] = 0;
             }

@@ -1,8 +1,8 @@
-use crate::driver;
 use crate::effect::EffectManager;
 use crate::god::God;
 use crate::repository::Repository;
 use crate::state::State;
+use crate::{driver, player};
 use core::constants::*;
 use core::types::Character;
 
@@ -1129,8 +1129,8 @@ pub fn npc_malte_low(cn: usize) -> i32 {
                 state.do_sayx(cn, "Good luck my friend. And thank you for freeing me!")
             });
 
-            // TODO: plr_map_remove(cn);
-            // TODO: god_destroy_items(cn);
+            player::plr_map_remove(cn);
+            God::destroy_items(cn);
 
             Repository::with_characters_mut(|ch| {
                 ch[cn].used = USE_EMPTY;
