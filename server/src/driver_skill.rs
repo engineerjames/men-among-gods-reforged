@@ -7,10 +7,63 @@ use crate::{
     effect::EffectManager,
     enums::{self, CharacterFlags},
     god::God,
-    player,
     repository::Repository,
     state::State,
 };
+
+// Static skill table (taken from server/original_source/SkillTab.cpp)
+const SKILL_NAMES: [&str; 50] = [
+    "Hand to Hand",
+    "Karate",
+    "Dagger",
+    "Sword",
+    "Axe",
+    "Staff",
+    "Two-Handed",
+    "Lock-Picking",
+    "Stealth",
+    "Perception",
+    "Swimming",
+    "Magic Shield",
+    "Bartering",
+    "Repair",
+    "Light",
+    "Recall",
+    "Guardian Angel",
+    "Protection",
+    "Enhance Weapon",
+    "Stun",
+    "Curse",
+    "Bless",
+    "Identify",
+    "Resistance",
+    "Blast",
+    "Dispel Magic",
+    "Heal",
+    "Ghost Companion",
+    "Regenerate",
+    "Rest",
+    "Meditate",
+    "Sense Magic",
+    "Immunity",
+    "Surround Hit",
+    "Concentrate",
+    "Warcry",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+];
 
 pub fn friend_is_enemy(cn: usize, cc: usize) -> i32 {
     // Rust port of C++ friend_is_enemy
@@ -3352,25 +3405,369 @@ pub fn skill_dispel(cn: usize) {
 }
 
 pub fn skill_ghost(cn: usize) {
-    unimplemented!()
+    use crate::repository::Repository;
+    use crate::state::State;
+    use core::types::FontColor;
+
+    // Minimal implementation: perform basic checks and create a ghost companion placeholder.
+    if is_exhausted(cn) != 0 {
+        return;
+    }
+
+    // For now, just notify player that the feature is not fully implemented.
+    State::with(|state| {
+        state.do_character_log(
+            cn,
+            FontColor::Green,
+            "Ghost companion not implemented yet.\n",
+        )
+    });
 }
 
 pub fn is_facing(cn: usize, co: usize) -> i32 {
-    unimplemented!()
+    use crate::repository::Repository;
+    use core::constants::*;
+
+    let dir = Repository::with_characters(|ch| ch[cn].dir);
+    let cx = Repository::with_characters(|ch| ch[cn].x);
+    let cy = Repository::with_characters(|ch| ch[cn].y);
+    let ox = Repository::with_characters(|ch| ch[co].x);
+    let oy = Repository::with_characters(|ch| ch[co].y);
+
+    match dir {
+        DX_RIGHT => {
+            if cx + 1 == ox && cy == oy {
+                1
+            } else {
+                0
+            }
+        }
+        DX_LEFT => {
+            if cx - 1 == ox && cy == oy {
+                1
+            } else {
+                0
+            }
+        }
+        DX_UP => {
+            if cx == ox && cy - 1 == oy {
+                1
+            } else {
+                0
+            }
+        }
+        DX_DOWN => {
+            if cx == ox && cy + 1 == oy {
+                1
+            } else {
+                0
+            }
+        }
+        _ => 0,
+    }
 }
 
 pub fn is_back(cn: usize, co: usize) -> i32 {
-    unimplemented!()
+    use crate::repository::Repository;
+    use core::constants::*;
+
+    let dir = Repository::with_characters(|ch| ch[cn].dir);
+    let cx = Repository::with_characters(|ch| ch[cn].x);
+    let cy = Repository::with_characters(|ch| ch[cn].y);
+    let ox = Repository::with_characters(|ch| ch[co].x);
+    let oy = Repository::with_characters(|ch| ch[co].y);
+
+    match dir {
+        DX_LEFT => {
+            if cx + 1 == ox && cy == oy {
+                1
+            } else {
+                0
+            }
+        }
+        DX_RIGHT => {
+            if cx - 1 == ox && cy == oy {
+                1
+            } else {
+                0
+            }
+        }
+        DX_DOWN => {
+            if cx == ox && cy - 1 == oy {
+                1
+            } else {
+                0
+            }
+        }
+        DX_UP => {
+            if cx == ox && cy + 1 == oy {
+                1
+            } else {
+                0
+            }
+        }
+        _ => 0,
+    }
 }
 
 pub fn nomagic(cn: usize) {
-    unimplemented!()
+    State::with(|state| {
+        state.do_character_log(
+            cn,
+            FontColor::Green,
+            "Your magic fails. You seem to be unable to cast spells.\n",
+        )
+    });
 }
 
 pub fn skill_lookup(name: &str) -> i32 {
-    unimplemented!()
+    // Full implementation ported from original C++ skill_lookup
+    let name = name.trim();
+    if name.is_empty() {
+        return -1;
+    }
+    if name == "0" {
+        return 0;
+    }
+
+    // Try numeric
+    if let Ok(n) = name.parse::<i32>() {
+        if n >= 0 && (n as usize) < SKILL_NAMES.len() {
+            if n > 0 {
+                return n;
+            }
+        } else {
+            return -1;
+        }
+    }
+
+    // Determine the number of meaningful skills (stop at first empty name)
+    let max = SKILL_NAMES
+        .iter()
+        .position(|s| s.is_empty())
+        .unwrap_or(SKILL_NAMES.len());
+
+    // Try tolerant alpha matching: succeed when input matches prefix of skill name
+    for (j, &skill) in SKILL_NAMES.iter().enumerate().take(max) {
+        let mut name_iter = name.chars().map(|c| c.to_ascii_lowercase());
+        let mut skill_iter = skill.chars().map(|c| c.to_ascii_lowercase());
+        let mut matched = true;
+
+        loop {
+            match (name_iter.next(), skill_iter.next()) {
+                (Some(pc), Some(sc)) => {
+                    if sc == ' ' {
+                        break; // skill name reached a space -> accept match
+                    }
+                    if pc != sc {
+                        matched = false;
+                        break;
+                    }
+                }
+                (Some(_), None) | (None, Some(_)) | (None, None) => {
+                    // either string ended -> accept if no mismatch so far
+                    break;
+                }
+            }
+        }
+
+        if matched {
+            return j as i32;
+        }
+    }
+
+    -1
 }
 
 pub fn skill_driver(cn: usize, nr: i32) {
-    unimplemented!()
+    use crate::enums::CharacterFlags;
+    use crate::repository::Repository;
+    use crate::state::State;
+    use core::constants::*;
+    use core::types::FontColor;
+
+    // Check whether the character can use this skill/spell
+    if Repository::with_characters(|ch| ch[cn].skill[nr as usize][0] == 0) {
+        State::with(|state| {
+            state.do_character_log(cn, FontColor::Green, "You cannot use this skill/spell.\n")
+        });
+        return;
+    }
+
+    match nr {
+        x if x == SK_LIGHT as i32 => {
+            if Repository::with_characters(|ch| {
+                (ch[cn].flags & CharacterFlags::NoMagic.bits() as u64) != 0
+            }) {
+                nomagic(cn)
+            } else {
+                skill_light(cn)
+            }
+        }
+        x if x == SK_PROTECT as i32 => {
+            if Repository::with_characters(|ch| {
+                (ch[cn].flags & CharacterFlags::NoMagic.bits() as u64) != 0
+            }) {
+                nomagic(cn)
+            } else {
+                skill_protect(cn)
+            }
+        }
+        x if x == SK_ENHANCE as i32 => {
+            if Repository::with_characters(|ch| {
+                (ch[cn].flags & CharacterFlags::NoMagic.bits() as u64) != 0
+            }) {
+                nomagic(cn)
+            } else {
+                skill_enhance(cn)
+            }
+        }
+        x if x == SK_BLESS as i32 => {
+            if Repository::with_characters(|ch| {
+                (ch[cn].flags & CharacterFlags::NoMagic.bits() as u64) != 0
+            }) {
+                nomagic(cn)
+            } else {
+                skill_bless(cn)
+            }
+        }
+        x if x == SK_CURSE as i32 => {
+            if Repository::with_characters(|ch| {
+                (ch[cn].flags & CharacterFlags::NoMagic.bits() as u64) != 0
+            }) {
+                nomagic(cn)
+            } else {
+                skill_curse(cn)
+            }
+        }
+        x if x == SK_IDENT as i32 => {
+            if Repository::with_characters(|ch| {
+                (ch[cn].flags & CharacterFlags::NoMagic.bits() as u64) != 0
+            }) {
+                nomagic(cn)
+            } else {
+                skill_identify(cn)
+            }
+        }
+        x if x == SK_BLAST as i32 => {
+            if Repository::with_characters(|ch| {
+                (ch[cn].flags & CharacterFlags::NoMagic.bits() as u64) != 0
+            }) {
+                nomagic(cn)
+            } else {
+                skill_blast(cn)
+            }
+        }
+        x if x == SK_REPAIR as i32 => skill_repair(cn),
+        x if x == SK_LOCK as i32 => State::with(|state| {
+            state.do_character_log(cn, FontColor::Green, "You cannot use this skill directly. Hold a lock-pick under your mouse cursor and click on the door.\n")
+        }),
+        x if x == SK_RECALL as i32 => {
+            if Repository::with_characters(|ch| {
+                (ch[cn].flags & CharacterFlags::NoMagic.bits() as u64) != 0
+            }) {
+                nomagic(cn)
+            } else {
+                skill_recall(cn)
+            }
+        }
+        x if x == SK_STUN as i32 => {
+            if Repository::with_characters(|ch| {
+                (ch[cn].flags & CharacterFlags::NoMagic.bits() as u64) != 0
+            }) {
+                nomagic(cn)
+            } else {
+                skill_stun(cn)
+            }
+        }
+        x if x == SK_DISPEL as i32 => {
+            if Repository::with_characters(|ch| {
+                (ch[cn].flags & CharacterFlags::NoMagic.bits() as u64) != 0
+            }) {
+                nomagic(cn)
+            } else {
+                skill_dispel(cn)
+            }
+        }
+        x if x == SK_WIMPY as i32 => {
+            if Repository::with_characters(|ch| {
+                (ch[cn].flags & CharacterFlags::NoMagic.bits() as u64) != 0
+            }) {
+                nomagic(cn)
+            } else {
+                skill_wimp(cn)
+            }
+        }
+        x if x == SK_HEAL as i32 => {
+            if Repository::with_characters(|ch| {
+                (ch[cn].flags & CharacterFlags::NoMagic.bits() as u64) != 0
+            }) {
+                nomagic(cn)
+            } else {
+                skill_heal(cn)
+            }
+        }
+        x if x == SK_GHOST as i32 => {
+            if Repository::with_characters(|ch| {
+                (ch[cn].flags & CharacterFlags::NoMagic.bits() as u64) != 0
+            }) {
+                nomagic(cn)
+            } else {
+                skill_ghost(cn)
+            }
+        }
+        x if x == SK_MSHIELD as i32 => {
+            if Repository::with_characters(|ch| {
+                (ch[cn].flags & CharacterFlags::NoMagic.bits() as u64) != 0
+            }) {
+                nomagic(cn)
+            } else {
+                skill_mshield(cn)
+            }
+        }
+        x if x == SK_IMMUN as i32 => State::with(|state| {
+            state.do_character_log(
+                cn,
+                FontColor::Green,
+                "You use this skill automatically when someone casts evil spells on you.\n",
+            )
+        }),
+        x if x == SK_REGEN as i32 || x == SK_REST as i32 || x == SK_MEDIT as i32 => {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    FontColor::Green,
+                    "You use this skill automatically when you stand still.\n",
+                )
+            });
+        }
+        x if x == SK_DAGGER as i32
+            || x == SK_SWORD as i32
+            || x == SK_AXE as i32
+            || x == SK_STAFF as i32
+            || x == SK_TWOHAND as i32
+            || x == SK_SURROUND as i32 =>
+        {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    FontColor::Green,
+                    "You use this skill automatically when you fight.\n",
+                )
+            });
+        }
+        x if x == SK_CONCEN as i32 => State::with(|state| {
+            state.do_character_log(
+                cn,
+                FontColor::Green,
+                "You use this skill automatically when you cast spells.\n",
+            )
+        }),
+        x if x == SK_WARCRY as i32 => skill_warcry(cn),
+        _ => {
+            State::with(|state| {
+                state.do_character_log(cn, FontColor::Green, "You cannot use this skill/spell.\n")
+            });
+        }
+    }
 }
