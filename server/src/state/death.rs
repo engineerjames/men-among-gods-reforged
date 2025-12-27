@@ -665,8 +665,7 @@ impl State {
             characters[co].used = core::constants::USE_EMPTY;
         });
 
-        // TODO: Implement use_labtransfer2
-        log::info!("TODO: Lab transfer for character {} killed by {}", co, cn);
+        self.use_labtransfer2(cn, co);
     }
 
     /// Handle item drops on death based on wimpy (guardian angel) chance

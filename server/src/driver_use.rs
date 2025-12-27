@@ -1709,7 +1709,9 @@ pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
     });
     God::take_from_char(item_idx, cn);
 
-    // TODO: do_update_char(cn);
+    Repository::with_characters_mut(|characters| {
+        characters[cn].set_do_update_flags();
+    });
 
     1
 }
@@ -4696,7 +4698,7 @@ pub fn use_lab8_key(cn: usize, item_idx: usize) -> i32 {
     use crate::god::God;
     use crate::repository::Repository;
     use crate::state::State;
-    use core::constants::{ItemFlags, USE_EMPTY};
+    use core::constants::USE_EMPTY;
 
     // data[0] = matching key part
     // data[1] = resulting key part

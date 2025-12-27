@@ -602,7 +602,7 @@ impl State {
         let cmd = arg[0].to_lowercase();
 
         // Read flags for this character
-        let (f_gg, f_c, f_g, f_i, f_s, f_p, f_u, f_sh, f_poh, f_pol) =
+        let (f_gg, f_c, f_g, f_i, f_s, f_p, f_u, f_sh, f_pol) =
             Repository::with_characters(|characters| {
                 let flags = characters[cn].flags;
                 (
@@ -614,7 +614,6 @@ impl State {
                     (flags & core::constants::CharacterFlags::CF_PLAYER.bits()) != 0,
                     (flags & core::constants::CharacterFlags::CF_USURP.bits()) != 0,
                     (flags & core::constants::CharacterFlags::CF_SHUTUP.bits()) != 0,
-                    (flags & core::constants::CharacterFlags::CF_POH.bits()) != 0,
                     (flags
                         & (core::constants::CharacterFlags::CF_POH_LEADER.bits()
                             | core::constants::CharacterFlags::CF_GOD.bits()))

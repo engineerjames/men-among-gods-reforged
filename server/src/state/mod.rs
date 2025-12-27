@@ -1,7 +1,5 @@
 use std::sync::{OnceLock, RwLock};
 
-use crate::path_finding::PathFinder;
-
 mod admin;
 mod combat;
 mod commands;
@@ -18,7 +16,6 @@ mod visibility;
 static STATE: OnceLock<RwLock<State>> = OnceLock::new();
 
 pub struct State {
-    pathfinder: PathFinder,
     _visi: [i8; 40 * 40],
     visi: [i8; 40 * 40],
     see_miss: u64,
@@ -31,7 +28,6 @@ pub struct State {
 impl State {
     fn new() -> Self {
         State {
-            pathfinder: PathFinder::new(),
             _visi: [0; 40 * 40],
             visi: [0; 40 * 40],
             see_miss: 0,

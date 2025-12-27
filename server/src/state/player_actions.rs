@@ -1,9 +1,10 @@
 use core::constants::CharacterFlags;
 use core::types::FontColor;
 
-use crate::helpers;
+use crate::god::God;
 use crate::repository::Repository;
 use crate::state::State;
+use crate::{driver_use, helpers};
 
 impl State {
     /// Port of `do_swap_item(int cn, int n)` from `svr_do.cpp`
@@ -229,6 +230,65 @@ impl State {
         });
 
         result
+    }
+
+    pub fn use_labtransfer2(&self, cn: usize, co: usize) {
+        // Port of use_labtransfer2 from helper.cpp
+        // If cn is a companion and its master matches the corpse owner, notify master and teleport them.
+        let maybe_cc = Repository::with_characters(|ch| ch[cn].data[63] as usize);
+        let is_companion =
+            Repository::with_characters(|ch| (ch[cn].temp == core::constants::CT_COMPANION as u16));
+
+        if is_companion && maybe_cc == Repository::with_characters(|ch| ch[co].data[0] as usize) {
+            let cc = maybe_cc;
+            self.do_character_log(
+                cc,
+                core::types::FontColor::Yellow,
+                "Your Companion killed your enemy.\n",
+            );
+            driver_use::finish_laby_teleport(
+                cc,
+                Repository::with_characters(|ch| ch[co].data[1] as usize),
+                Repository::with_characters(|ch| ch[co].data[2] as usize),
+            );
+            God::transfer_char(cn, 512, 512);
+            log::info!("Labkeeper room solved by GC: cc={}", cc);
+            return;
+        }
+
+        // If the corpse's designated killer isn't cn, inform and bail out
+        let corpse_owner = Repository::with_characters(|ch| ch[co].data[0] as usize);
+        if corpse_owner != cn {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "Sorry, this killing does not count, as you're not the designated killer.\n",
+            );
+            log::info!(
+                "Sorry, this killing does not count, as you're not the designated killer (cn={})",
+                cn
+            );
+            return;
+        }
+
+        // Finish teleport for the player
+        let tx = Repository::with_characters(|ch| ch[co].data[1] as usize);
+        let ty = Repository::with_characters(|ch| ch[co].data[2] as usize);
+        driver_use::finish_laby_teleport(cn, tx, ty);
+        log::info!("Solved Labkeeper Room: cn={}", cn);
+
+        // If cn has a GC in data[64] which is sane and a companion, transfer it as well
+        let cc2 = Repository::with_characters(|ch| ch[cn].data[64] as usize);
+        // The C++ checks IS_SANENPC(cc) && IS_COMPANION(cc). We'll approximate by checking used/temp flags.
+        if cc2 != 0 {
+            let is_sane_and_companion = Repository::with_characters(|ch| {
+                ch[cc2].used != core::constants::USE_EMPTY
+                    && (ch[cc2].temp == core::constants::CT_COMPANION as u16)
+            });
+            if is_sane_and_companion {
+                God::transfer_char(cc2, 512, 512);
+            }
+        }
     }
 
     /// Calculate a character's score based on their total points.

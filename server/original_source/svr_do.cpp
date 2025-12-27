@@ -2072,7 +2072,7 @@ void do_command( int cn, char* ptr )
       do_gold( cn, atoi( arg[ 1 ] ) );
       return;
     }
-    if ( prefix( cmd, "golden" ) && f_g ) // TODO: This may not need to be here? Check OG impl.
+    if ( prefix( cmd, "golden" ) && f_g ) 
     {
       god_set_flag( cn, dbatoi( arg[ 1 ] ), CF_GOLDEN );
       return;
