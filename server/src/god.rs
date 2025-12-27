@@ -1,6 +1,7 @@
 use core::types::{Character, Map};
 
 use crate::{
+    effect::EffectManager,
     enums::{CharacterFlags, LogoutReason},
     player,
     repository::Repository,
@@ -1243,6 +1244,8 @@ impl God {
         })
     }
 
+    // This function is unused in the original implementation
+    #[allow(dead_code)]
     pub fn remove_item(cn: usize, item_id: usize) -> i32 {
         if !Character::is_sane_character(cn) || !core::types::Item::is_sane_item(item_id) {
             return 0;
@@ -1724,71 +1727,214 @@ impl God {
             return;
         }
 
-        let target_cn = Self::find_next_char(1, spec1, spec2);
-
-        if target_cn <= 0 {
+        if spec1.is_empty() {
             State::with(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Red,
-                    &format!("Could not find character matching '{}' '{}'", spec1, spec2),
-                );
+                state.do_character_log(cn, core::types::FontColor::Red, "summon whom?");
             });
             return;
         }
 
-        let (x, y) = Repository::with_characters(|characters| {
+        // Two modes: single-arg numeric (direct char id) or name/rank search (spec2 present)
+        let mut co: usize = 0;
+
+        if spec2.is_empty() {
+            // single-arg: treat spec1 as character number
+            co = spec1.parse::<usize>().unwrap_or(0);
+
+            if co == 0 || !Character::is_sane_character(co) || Self::invis(cn, co) != 0 {
+                State::with(|state| {
+                    state.do_character_log(cn, core::types::FontColor::Red, "No such character.");
+                });
+                return;
+            }
+
+            // check for recently-dead/corpse
+            let corpse_owner = Repository::with_characters(|characters| {
+                if (characters[co].flags & core::constants::CharacterFlags::CF_BODY.bits()) != 0 {
+                    Some(characters[co].data[core::constants::CHD_CORPSEOWNER])
+                } else {
+                    None
+                }
+            });
+
+            if let Some(owner) = corpse_owner {
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Red,
+                        &format!("Character recently deceased; try {}.", owner),
+                    );
+                });
+                return;
+            }
+
+            if co == cn {
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Red,
+                        "You can't summon yourself!",
+                    );
+                });
+                return;
+            }
+        } else {
+            // at least 2 args: find by name/rank, support spec3 (which)
+            let mut count = 0usize;
+
+            // validate numeric rank if spec2 starts with digit
+            if spec2
+                .chars()
+                .next()
+                .map(|c| c.is_ascii_digit())
+                .unwrap_or(false)
+            {
+                if let Ok(rank) = spec2.parse::<usize>() {
+                    if rank >= core::constants::RANKS {
+                        State::with(|state| {
+                            state.do_character_log(
+                                cn,
+                                core::types::FontColor::Red,
+                                &format!("No such rank: {}", spec2),
+                            );
+                        });
+                        return;
+                    }
+                }
+            }
+
+            let which = spec3.parse::<usize>().unwrap_or(1).max(1);
+
+            while count < which {
+                let found = Self::find_next_char(co, spec1, spec2) as usize;
+                if found == 0 {
+                    break;
+                }
+                co = found;
+
+                // ignore self
+                if co == cn {
+                    continue;
+                }
+
+                // ignore bodies
+                let is_body = Repository::with_characters(|characters| {
+                    (characters[co].flags & core::constants::CharacterFlags::CF_BODY.bits()) != 0
+                });
+                if is_body {
+                    continue;
+                }
+
+                // ignore sleeping players
+                let skip_sleeping = Repository::with_characters(|characters| {
+                    characters[co].is_player() && characters[co].used != core::constants::USE_ACTIVE
+                });
+                if skip_sleeping {
+                    continue;
+                }
+
+                // invisibility check: ignore whom we can't see
+                if Self::invis(cn, co) != 0 {
+                    continue;
+                }
+
+                count += 1;
+            }
+
+            if co == 0 {
+                // Not found — produce message similar to original C++ but simpler here
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Red,
+                        &format!("Couldn't find a {} {}.", spec1, spec2),
+                    );
+                });
+                return;
+            }
+        }
+
+        // At this point we have a target `co` to summon
+        let (x, y, xo, yo) = Repository::with_characters(|characters| {
             let summoner = &characters[cn];
             let mut target_x = summoner.x as i32;
             let mut target_y = summoner.y as i32;
 
-            // Calculate position in front of summoner based on direction
+            // position in front of summoner based on direction
             match summoner.dir {
                 0 => target_x += 1, // DX_RIGHT
                 1 => {
                     target_x += 1;
                     target_y -= 1;
-                } // DX_RIGHTUP
-                2 => target_y -= 1, // DX_UP
+                }
+                2 => target_y -= 1,
                 3 => {
                     target_x -= 1;
                     target_y -= 1;
-                } // DX_LEFTUP
-                4 => target_x -= 1, // DX_LEFT
+                }
+                4 => target_x -= 1,
                 5 => {
                     target_x -= 1;
                     target_y += 1;
-                } // DX_LEFTDOWN
-                6 => target_y += 1, // DX_DOWN
+                }
+                6 => target_y += 1,
                 7 => {
                     target_x += 1;
                     target_y += 1;
-                } // DX_RIGHTDOWN
+                }
                 _ => {}
             }
 
-            (
-                target_x
-                    .max(1)
-                    .min((core::constants::SERVER_MAPX - 2) as i32) as usize,
-                target_y
-                    .max(1)
-                    .min((core::constants::SERVER_MAPY - 2) as i32) as usize,
-            )
+            let tx = target_x
+                .max(1)
+                .min((core::constants::SERVER_MAPX - 2) as i32) as usize;
+            let ty = target_y
+                .max(1)
+                .min((core::constants::SERVER_MAPY - 2) as i32) as usize;
+
+            let xo = characters[co].x as i32;
+            let yo = characters[co].y as i32;
+
+            (tx, ty, xo, yo)
         });
 
-        Self::transfer_char(target_cn as usize, x, y);
+        if !Self::transfer_char(co, x, y) {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    "god_transfer_char() failed.",
+                );
+            });
+            // show effects at original and current position
+            EffectManager::fx_add_effect(12, 0, xo as i32, yo as i32, 0);
+            // use repository to fetch updated position for safety
+            Repository::with_characters(|characters| {
+                EffectManager::fx_add_effect(
+                    12,
+                    0,
+                    characters[co].x as i32,
+                    characters[co].y as i32,
+                    0,
+                );
+            });
+            return;
+        }
 
         State::with(|state| {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
                 &format!(
-                    "Summoned character {} to position ({}, {})",
-                    target_cn, x, y
+                    "{} was summoned.",
+                    Repository::with_characters(|characters| {
+                        String::from_utf8_lossy(&characters[co].name).to_string()
+                    })
                 ),
             );
         });
+
+        log::info!("IMP: summoned character {}.", co);
     }
 
     pub fn mirror(cn: usize, spec1: &str, spec2: &str) {
@@ -2478,7 +2624,6 @@ impl God {
                 state.do_character_killed(co, 0);
             });
 
-            // TODO: chlog(cn, "IMP: Erased NPC %d (%-.20s).", co, ch[co].name);
             State::with(|state| {
                 state.do_character_log(
                     cn,

@@ -95,82 +95,12 @@ impl State {
             s2 += co_luck / 250 - 1;
         }
 
-        // Facing/back checks - approximate using direction and coordinates
-        let not_facing = Repository::with_characters(|characters| {
-            let (cx, cy, cdir, tx, ty) = (
-                characters[co].x as i32,
-                characters[co].y as i32,
-                characters[co].dir,
-                characters[cn].x as i32,
-                characters[cn].y as i32,
-            );
-            let dx = tx - cx;
-            let dy = ty - cy;
-            if dx == 0 && dy == 0 {
-                false
-            } else {
-                let adx = dx.abs();
-                let ady = dy.abs();
-                let desired = if adx >= ady {
-                    if dx > 0 {
-                        core::constants::DX_RIGHT
-                    } else {
-                        core::constants::DX_LEFT
-                    }
-                } else {
-                    if dy > 0 {
-                        core::constants::DX_DOWN
-                    } else {
-                        core::constants::DX_UP
-                    }
-                };
-                cdir != desired
-            }
-        });
-        if not_facing {
+        // Use canonical helpers for facing/back checks
+        if crate::driver_skill::is_facing(co, cn) == 0 {
             s2 -= 10;
         }
 
-        let is_back = Repository::with_characters(|characters| {
-            let (cx, cy, cdir, tx, ty) = (
-                characters[co].x as i32,
-                characters[co].y as i32,
-                characters[co].dir,
-                characters[cn].x as i32,
-                characters[cn].y as i32,
-            );
-            let dx = tx - cx;
-            let dy = ty - cy;
-            if dx == 0 && dy == 0 {
-                false
-            } else {
-                let adx = dx.abs();
-                let ady = dy.abs();
-                let desired = if adx >= ady {
-                    if dx > 0 {
-                        core::constants::DX_RIGHT
-                    } else {
-                        core::constants::DX_LEFT
-                    }
-                } else {
-                    if dy > 0 {
-                        core::constants::DX_DOWN
-                    } else {
-                        core::constants::DX_UP
-                    }
-                };
-                // back if target's dir is opposite
-                let opposite = match desired {
-                    core::constants::DX_RIGHT => core::constants::DX_LEFT,
-                    core::constants::DX_LEFT => core::constants::DX_RIGHT,
-                    core::constants::DX_UP => core::constants::DX_DOWN,
-                    core::constants::DX_DOWN => core::constants::DX_UP,
-                    _ => desired,
-                };
-                cdir == opposite
-            }
-        });
-        if is_back {
+        if crate::driver_skill::is_back(co, cn) != 0 {
             s2 -= 10;
         }
 

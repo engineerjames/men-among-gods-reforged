@@ -846,7 +846,7 @@ impl State {
                 );
                 log::info!("Character {} lost {} permanent hitpoints.", co, hp_tmp);
                 for _ in 0..hp_tmp {
-                    // TODO: Implement do_lower_hp
+                    self.do_lower_hp(co);
                 }
             } else {
                 self.do_character_log(
@@ -869,7 +869,7 @@ impl State {
                 );
                 log::info!("Character {} lost {} permanent mana.", co, mana_tmp);
                 for _ in 0..mana_tmp {
-                    // TODO: Implement do_lower_mana
+                    self.do_lower_mana(co);
                 }
             } else {
                 self.do_character_log(

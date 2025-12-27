@@ -679,7 +679,10 @@ impl State {
             }
             'c' => {
                 if starts("cap") && f_g {
-                    // set_cap not implemented; log for now
+                    // TODO: `set_cap(int cn,int nr)` from original C++
+                    // Original call: set_cap(cn, atoi(arg[1]));
+                    // Not implemented elsewhere in Rust yet; preserve as TODO.
+                    log::warn!("TODO: set_cap not implemented - call set_cap({}, arg1)", cn);
                     self.do_character_log(cn, FontColor::Red, "cap command not implemented\n");
                     return;
                 }
@@ -724,7 +727,13 @@ impl State {
             }
             'e' => {
                 if starts("effect") && f_g {
-                    // effectlist not implemented; placeholder
+                    // TODO: `effectlist(int cn)` from original C++
+                    // Original call: effectlist(cn);
+                    // No Rust equivalent found; leave TODO for later implementation.
+                    log::warn!(
+                        "TODO: effectlist not implemented - would list active effects for {}",
+                        cn
+                    );
                     self.do_character_log(cn, FontColor::Red, "effectlist not implemented\n");
                     return;
                 }
@@ -884,6 +893,10 @@ impl State {
                 if starts("look") && f_gius {
                     // do_look_char expects numbers in original; use parse
                     self.do_look_char(cn, parse_usize(arg_get(1)), 1, 0, 0);
+                    return;
+                }
+                if starts("listimps") && f_giu {
+                    God::implist(cn);
                     return;
                 }
             }

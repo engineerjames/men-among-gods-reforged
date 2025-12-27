@@ -11,7 +11,6 @@ mod death;
 mod economy;
 mod inventory;
 mod logging;
-mod notifications;
 mod player_actions;
 mod stats;
 mod visibility;

@@ -231,6 +231,22 @@ impl State {
         result
     }
 
+    /// Calculate a character's score based on their total points.
+    /// Score is computed as: (sqrt(points_tot) / 7) + 7
+    ///
+    /// Port of `do_char_score` from `svr_do.cpp`
+    ///
+    /// # Parameters
+    /// - `cn`: Character index
+    ///
+    /// # Returns
+    /// The calculated score value
+    pub fn do_char_score(&self, cn: usize) -> i32 {
+        let pts = Repository::with_characters(|characters| characters[cn].points_tot);
+        let pts = if pts < 0 { 0 } else { pts } as f64;
+        ((pts.sqrt() as i32) / 7) + 7
+    }
+
     /// Port of `do_seen(int cn, char* cco)` from `svr_do.cpp`
     ///
     /// Tell when a certain player last logged on.

@@ -1195,8 +1195,7 @@ impl State {
         }
 
         if text.starts_with('#') || text.starts_with('/') {
-            // TODO: self.do_command(cn, &text[1..]);
-            log::info!("TODO: do_command({}, '{}')", cn, &text[1..]);
+            self.do_command(cn, &text[1..]);
             return;
         }
 
