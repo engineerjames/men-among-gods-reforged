@@ -320,8 +320,13 @@ impl State {
                     String::from_utf8_lossy(&ch[cn].name).to_string()
                 });
 
-                // TODO: Implement do_char_log to send message to co
-                log::info!("TODO: do_char_log({}, '{} looks at you.')", co, cn_name);
+                State::with(|state| {
+                    state.do_character_log(
+                        co,
+                        FontColor::Yellow,
+                        &format!("{} looks at you.\n", cn_name),
+                    );
+                });
             }
 
             // Show death information for players
@@ -345,15 +350,16 @@ impl State {
                         String::from_utf8_lossy(&ch[killer_idx].reference).to_string()
                     })
                 } else {
-                    // TODO: Access ch_temp for non-character killer names
-                    "unknown killer".to_string()
+                    let idx = co_data15 as usize;
+                    Repository::with_character_templates(|ct| {
+                        String::from_utf8_lossy(&ct[idx].reference).to_string()
+                    })
                 };
 
                 let area = {
                     let map_x = co_data17 % core::constants::SERVER_MAPX;
                     let map_y = co_data17 / core::constants::SERVER_MAPX;
-                    // TODO: Implement get_area_m function
-                    format!("area at {},{}", map_x, map_y)
+                    crate::area::get_area_m(map_x as i32, map_y as i32, true)
                 };
 
                 self.do_character_log(
@@ -428,6 +434,11 @@ impl State {
         if visibility > 75 {
             visibility = 100;
         }
+
+        // Shared random diffs used for visibility-obscured displays (match original C++ behaviour)
+        let mut hp_diff: i32 = 0;
+        let mut end_diff: i32 = 0;
+        let mut mana_diff: i32 = 0;
 
         // Send SV_LOOK1 packet (main equipment slots)
         let mut buf = [0u8; 16];
@@ -507,18 +518,19 @@ impl State {
             let points_bytes = points_tot.to_le_bytes();
             buf[5..9].copy_from_slice(&points_bytes);
 
-            // Apply random variation if visibility is poor
-            let (hp_diff, end_diff, mana_diff) = if visibility > 75 {
+            // Apply random variation if visibility is poor (populate shared diffs)
+            if visibility > 75 {
                 let mut rng = rand::thread_rng();
-                let hp_d = hp5 / 2 - rng.gen_range(0..=hp5);
-                let end_d = end5 / 2 - rng.gen_range(0..=end5);
-                let mana_d = mana5 / 2 - rng.gen_range(0..=mana5);
-                (hp_d, end_d, mana_d)
+                hp_diff = (hp5 as i32) / 2 - rng.gen_range(0..=(hp5 as i32));
+                end_diff = (end5 as i32) / 2 - rng.gen_range(0..=(end5 as i32));
+                mana_diff = (mana5 as i32) / 2 - rng.gen_range(0..=(mana5 as i32));
             } else {
-                (0, 0, 0)
-            };
+                hp_diff = 0;
+                end_diff = 0;
+                mana_diff = 0;
+            }
 
-            let hp_display = ((hp5 + hp_diff) as u32).to_le_bytes();
+            let hp_display = ((hp5 as i32 + hp_diff) as u32).to_le_bytes();
             buf[9..13].copy_from_slice(&hp_display);
         } else {
             // Obscured
@@ -546,18 +558,9 @@ impl State {
             )
         });
 
-        let (hp_diff, end_diff, mana_diff) = if visibility > 75 {
-            let mut rng = rand::thread_rng();
-            let hp5 = Repository::with_characters(|ch| ch[co].hp[5]);
-            let hp_d = hp5 / 2 - rng.gen_range(0..=hp5);
-            let end_d = end5 / 2 - rng.gen_range(0..=end5);
-            let mana_d = mana5 / 2 - rng.gen_range(0..=mana5);
-            (hp_d, end_d, mana_d)
-        } else {
-            (0, 0, 0)
-        };
+        // reuse previously computed hp_diff, end_diff, mana_diff (populated in SV_LOOK2)
 
-        let end_display = (end5 + end_diff) as u16;
+        let end_display = (end5 as i32 + end_diff) as u16;
         buf[1] = (end_display & 0xFF) as u8;
         buf[2] = (end_display >> 8) as u8;
 
@@ -577,7 +580,7 @@ impl State {
         buf[9] = (co_id_u16 & 0xFF) as u8;
         buf[10] = (co_id_u16 >> 8) as u8;
 
-        let mana_display = (mana5 + mana_diff) as u16;
+        let mana_display = (mana5 as i32 + mana_diff) as u16;
         buf[11] = (mana_display & 0xFF) as u8;
         buf[12] = (mana_display >> 8) as u8;
 

@@ -1,6 +1,6 @@
 use crate::{
-    driver, driver_generic, enums, god::God, network_manager::NetworkManager,
-    repository::Repository, server::Server, state::State,
+    driver, driver_generic, driver_skill::skill_driver, enums, god::God,
+    network_manager::NetworkManager, repository::Repository, server::Server, state::State,
 };
 
 const SPEEDTAB: [[u8; 20]; 20] = [
@@ -1321,8 +1321,7 @@ pub fn plr_skill(cn: usize) {
 
     let skill_target = Repository::with_characters(|characters| characters[cn].skill_target2);
 
-    // TODO: Call skill_driver when implemented
-    log::debug!("Would call skill_driver({}, {})", cn, skill_target);
+    skill_driver(cn, skill_target as i32);
 }
 
 pub fn player_driver_med(cn: usize) {

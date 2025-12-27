@@ -1,9 +1,9 @@
 use crate::enums::CharacterFlags;
 use crate::path_finding::PathFinder;
+use crate::player;
 use crate::state::State;
 use crate::Repository;
 use crate::{core, driver};
-use crate::{driver_use, player};
 use rand::Rng;
 
 pub fn act_idle(cn: usize) {
@@ -593,7 +593,27 @@ pub fn act_turn_down(cn: usize) {
     }
 }
 
-pub fn act_turn_up(cn: usize) {}
+pub fn act_turn_up(cn: usize) {
+    Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+
+    let dir = Repository::with_characters(|ch| ch[cn].dir);
+
+    if dir == core::constants::DX_DOWN {
+        act_turn_rightdown(cn);
+    } else if dir == core::constants::DX_LEFTDOWN {
+        act_turn_left(cn);
+    } else if dir == core::constants::DX_RIGHTDOWN {
+        act_turn_right(cn);
+    } else if dir == core::constants::DX_LEFT {
+        act_turn_leftup(cn);
+    } else if dir == core::constants::DX_RIGHT {
+        act_turn_rightup(cn);
+    } else if dir == core::constants::DX_LEFTUP {
+        Repository::with_characters_mut(|ch| ch[cn].status = 132);
+    } else {
+        Repository::with_characters_mut(|ch| ch[cn].status = 148);
+    }
+}
 
 pub fn act_move_rightdown(cn: usize) {
     Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
@@ -929,125 +949,6 @@ pub fn act_move_up(cn: usize) {
         ch[cn].tox = x as i16;
         ch[cn].toy = (y - 1) as i16;
     });
-}
-
-pub fn drv_turncount(dir1: i32, dir2: i32) -> i32 {
-    if dir1 == dir2 {
-        return 0;
-    }
-    if dir1 == core::constants::DX_UP as i32 {
-        match dir2 {
-            d if d == core::constants::DX_DOWN as i32 => return 4,
-            d if d == core::constants::DX_RIGHTUP as i32
-                || d == core::constants::DX_LEFTUP as i32 =>
-            {
-                return 1
-            }
-            d if d == core::constants::DX_RIGHT as i32 || d == core::constants::DX_LEFT as i32 => {
-                return 2
-            }
-            _ => return 3,
-        }
-    }
-    if dir1 == core::constants::DX_DOWN as i32 {
-        match dir2 {
-            d if d == core::constants::DX_UP as i32 => return 4,
-            d if d == core::constants::DX_RIGHTDOWN as i32
-                || d == core::constants::DX_LEFTDOWN as i32 =>
-            {
-                return 1
-            }
-            d if d == core::constants::DX_RIGHT as i32 || d == core::constants::DX_LEFT as i32 => {
-                return 2
-            }
-            _ => return 3,
-        }
-    }
-    if dir1 == core::constants::DX_LEFT as i32 {
-        match dir2 {
-            d if d == core::constants::DX_RIGHT as i32 => return 4,
-            d if d == core::constants::DX_LEFTUP as i32
-                || d == core::constants::DX_LEFTDOWN as i32 =>
-            {
-                return 1
-            }
-            d if d == core::constants::DX_UP as i32 || d == core::constants::DX_DOWN as i32 => {
-                return 2
-            }
-            _ => return 3,
-        }
-    }
-    if dir1 == core::constants::DX_RIGHT as i32 {
-        match dir2 {
-            d if d == core::constants::DX_LEFT as i32 => return 4,
-            d if d == core::constants::DX_RIGHTUP as i32
-                || d == core::constants::DX_RIGHTDOWN as i32 =>
-            {
-                return 1
-            }
-            d if d == core::constants::DX_UP as i32 || d == core::constants::DX_DOWN as i32 => {
-                return 2
-            }
-            _ => return 3,
-        }
-    }
-    if dir1 == core::constants::DX_LEFTUP as i32 {
-        match dir2 {
-            d if d == core::constants::DX_RIGHTDOWN as i32 => return 4,
-            d if d == core::constants::DX_UP as i32 || d == core::constants::DX_LEFT as i32 => {
-                return 1
-            }
-            d if d == core::constants::DX_RIGHTUP as i32
-                || d == core::constants::DX_LEFTDOWN as i32 =>
-            {
-                return 2
-            }
-            _ => return 3,
-        }
-    }
-    if dir1 == core::constants::DX_LEFTDOWN as i32 {
-        match dir2 {
-            d if d == core::constants::DX_RIGHTUP as i32 => return 4,
-            d if d == core::constants::DX_DOWN as i32 || d == core::constants::DX_LEFT as i32 => {
-                return 1
-            }
-            d if d == core::constants::DX_RIGHTDOWN as i32
-                || d == core::constants::DX_LEFTUP as i32 =>
-            {
-                return 2
-            }
-            _ => return 3,
-        }
-    }
-    if dir1 == core::constants::DX_RIGHTUP as i32 {
-        match dir2 {
-            d if d == core::constants::DX_LEFTDOWN as i32 => return 4,
-            d if d == core::constants::DX_UP as i32 || d == core::constants::DX_RIGHT as i32 => {
-                return 1
-            }
-            d if d == core::constants::DX_RIGHTDOWN as i32
-                || d == core::constants::DX_LEFTUP as i32 =>
-            {
-                return 2
-            }
-            _ => return 3,
-        }
-    }
-    if dir1 == core::constants::DX_RIGHTDOWN as i32 {
-        match dir2 {
-            d if d == core::constants::DX_LEFTUP as i32 => return 4,
-            d if d == core::constants::DX_DOWN as i32 || d == core::constants::DX_RIGHT as i32 => {
-                return 1
-            }
-            d if d == core::constants::DX_RIGHTUP as i32
-                || d == core::constants::DX_LEFTDOWN as i32 =>
-            {
-                return 2
-            }
-            _ => return 3,
-        }
-    }
-    99
 }
 
 pub fn char_give_char(cn: usize, co: usize) -> i32 {
@@ -1586,7 +1487,7 @@ pub fn char_moveto(cn: usize, x: i32, y: i32, flag: i32, x2: i32, y2: i32) -> i3
             let base_x = Repository::with_characters(|ch| ch[cn].x as usize);
             let base_y = Repository::with_characters(|ch| ch[cn].y as usize);
             let in_id = Repository::with_map(|map| {
-                map[(base_x + (base_y + 1) * core::constants::SERVER_MAPX as usize)].it
+                map[base_x + (base_y + 1) * core::constants::SERVER_MAPX as usize].it
             });
             if in_id != 0
                 && Repository::with_items(|items| items[in_id as usize].active) == 0
@@ -1963,7 +1864,7 @@ pub fn follow_driver(cn: usize, co: usize) -> bool {
     // Check adjacency in map
     let map_len = Repository::with_map(|map| map.len());
     let mut is_adjacent = false;
-    let mut check_indices = vec![
+    let check_indices = vec![
         m,
         m + 1,
         m - 1,

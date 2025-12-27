@@ -9,7 +9,6 @@ use std::cmp::{max, min};
 use std::collections::BinaryHeap;
 
 use core::constants::*;
-use core::types::{Character, Global, Item, Map};
 
 use crate::repository::Repository;
 
