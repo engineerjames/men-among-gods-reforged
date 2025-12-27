@@ -2229,7 +2229,7 @@ pub fn skua_protect(cn: usize, item_idx: usize) -> i32 {
             );
         });
 
-        // TODO: Implement spell_from_item(cn, item_idx)
+        driver_skill::spell_from_item(cn, item_idx);
 
         // Get replacement weapon template from data[2]
         let replacement_template = Repository::with_items(|items| items[item_idx].data[2] as usize);
@@ -2311,7 +2311,7 @@ pub fn purple_protect(cn: usize, item_idx: usize) -> i32 {
             );
         });
 
-        // TODO: Implement spell_from_item(cn, item_idx)
+        driver_skill::spell_from_item(cn, item_idx);
 
         // Get replacement weapon template from data[2]
         let replacement_template = Repository::with_items(|items| items[item_idx].data[2] as usize);

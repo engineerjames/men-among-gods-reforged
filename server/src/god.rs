@@ -1470,6 +1470,7 @@ impl God {
             });
         });
     }
+
     pub fn unique(cn: usize) {
         if !Character::is_sane_character(cn) {
             return;

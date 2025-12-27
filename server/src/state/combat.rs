@@ -3,6 +3,7 @@ use core::types::FontColor;
 
 use rand::Rng;
 
+use crate::driver;
 use crate::repository::Repository;
 use crate::state::State;
 
@@ -51,6 +52,341 @@ impl State {
         }
 
         std::cmp::max(s_karate, s_hand)
+    }
+
+    pub(crate) fn do_attack(&mut self, cn: usize, co: usize, surround: i32) {
+        // Basic attack handling: permission checks, enemy bookkeeping,
+        // hit/miss roll, damage calculation, item damage and surround hits.
+
+        if self.may_attack(cn, co, true) == 0 {
+            Repository::with_characters_mut(|characters| {
+                characters[cn].attack_cn = 0;
+                characters[cn].cerrno = core::constants::ERR_FAILED as u16;
+            });
+            return;
+        }
+
+        let co_stoned = Repository::with_characters(|characters| {
+            (characters[co].flags & core::constants::CharacterFlags::CF_STONED.bits()) != 0
+        });
+        if co_stoned {
+            Repository::with_characters_mut(|characters| {
+                characters[cn].attack_cn = 0;
+                characters[cn].cerrno = core::constants::ERR_FAILED as u16;
+            });
+            return;
+        }
+
+        // Ensure the target remembers the attacker (npc enemy list etc.)
+        driver::npc_add_enemy(co, cn, true);
+        self.remember_pvp(cn, co);
+
+        // Read base fight skills
+        let mut s1 = self.get_fight_skill(cn);
+        let mut s2 = self.get_fight_skill(co);
+
+        // Apply negative luck adjustments if present (C++: luck < 0 -> luck/250 - 1)
+        let (cn_luck, co_luck) =
+            Repository::with_characters(|characters| (characters[cn].luck, characters[co].luck));
+        if cn_luck < 0 {
+            s1 += cn_luck / 250 - 1;
+        }
+        if co_luck < 0 {
+            s2 += co_luck / 250 - 1;
+        }
+
+        // Facing/back checks - approximate using direction and coordinates
+        let not_facing = Repository::with_characters(|characters| {
+            let (cx, cy, cdir, tx, ty) = (
+                characters[co].x as i32,
+                characters[co].y as i32,
+                characters[co].dir,
+                characters[cn].x as i32,
+                characters[cn].y as i32,
+            );
+            let dx = tx - cx;
+            let dy = ty - cy;
+            if dx == 0 && dy == 0 {
+                false
+            } else {
+                let adx = dx.abs();
+                let ady = dy.abs();
+                let desired = if adx >= ady {
+                    if dx > 0 {
+                        core::constants::DX_RIGHT
+                    } else {
+                        core::constants::DX_LEFT
+                    }
+                } else {
+                    if dy > 0 {
+                        core::constants::DX_DOWN
+                    } else {
+                        core::constants::DX_UP
+                    }
+                };
+                cdir != desired
+            }
+        });
+        if not_facing {
+            s2 -= 10;
+        }
+
+        let is_back = Repository::with_characters(|characters| {
+            let (cx, cy, cdir, tx, ty) = (
+                characters[co].x as i32,
+                characters[co].y as i32,
+                characters[co].dir,
+                characters[cn].x as i32,
+                characters[cn].y as i32,
+            );
+            let dx = tx - cx;
+            let dy = ty - cy;
+            if dx == 0 && dy == 0 {
+                false
+            } else {
+                let adx = dx.abs();
+                let ady = dy.abs();
+                let desired = if adx >= ady {
+                    if dx > 0 {
+                        core::constants::DX_RIGHT
+                    } else {
+                        core::constants::DX_LEFT
+                    }
+                } else {
+                    if dy > 0 {
+                        core::constants::DX_DOWN
+                    } else {
+                        core::constants::DX_UP
+                    }
+                };
+                // back if target's dir is opposite
+                let opposite = match desired {
+                    core::constants::DX_RIGHT => core::constants::DX_LEFT,
+                    core::constants::DX_LEFT => core::constants::DX_RIGHT,
+                    core::constants::DX_UP => core::constants::DX_DOWN,
+                    core::constants::DX_DOWN => core::constants::DX_UP,
+                    _ => desired,
+                };
+                cdir == opposite
+            }
+        });
+        if is_back {
+            s2 -= 10;
+        }
+
+        // Reduce defender skill if stunned or not currently attacking
+        let def_stunned_or_no_attack = Repository::with_characters(|characters| {
+            characters[co].stunned != 0 || characters[co].attack_cn == 0
+        });
+        if def_stunned_or_no_attack {
+            s2 -= 10;
+        }
+
+        // TODO: GF_MAYHEM global flag adjustments (increase s1/s2 for NPCs)
+
+        // Now compute diff -> chance/bonus mapping per original C++ table
+        let diff = s1 - s2;
+        let mut chance: i32;
+        let mut bonus: i32 = 0;
+        if diff < -40 {
+            chance = 1;
+            bonus = -16;
+        } else if diff < -36 {
+            chance = 2;
+            bonus = -8;
+        } else if diff < -32 {
+            chance = 3;
+            bonus = -4;
+        } else if diff < -28 {
+            chance = 4;
+            bonus = -2;
+        } else if diff < -24 {
+            chance = 5;
+            bonus = -1;
+        } else if diff < -20 {
+            chance = 6;
+        } else if diff < -16 {
+            chance = 7;
+        } else if diff < -12 {
+            chance = 8;
+        } else if diff < -8 {
+            chance = 9;
+        } else if diff < -4 {
+            chance = 10;
+        } else if diff < 0 {
+            chance = 11;
+        } else if diff == 0 {
+            chance = 12;
+        } else if diff < 4 {
+            chance = 13;
+        } else if diff < 8 {
+            chance = 14;
+        } else if diff < 12 {
+            chance = 15;
+        } else if diff < 16 {
+            chance = 16;
+            bonus = 1;
+        } else if diff < 20 {
+            chance = 17;
+            bonus = 2;
+        } else if diff < 24 {
+            chance = 18;
+            bonus = 3;
+        } else if diff < 28 {
+            chance = 19;
+            bonus = 4;
+        } else if diff < 32 {
+            chance = 19;
+            bonus = 5;
+        } else if diff < 36 {
+            chance = 19;
+            bonus = 10;
+        } else if diff < 40 {
+            chance = 19;
+            bonus = 15;
+        } else {
+            chance = 19;
+            bonus = 20;
+        }
+
+        let mut rng = rand::thread_rng();
+        let die = rng.gen_range(1..=20);
+        let hit = die <= chance;
+
+        if hit {
+            // Damage calculation follows original pattern
+            let strn = Repository::with_characters(|characters| {
+                characters[cn].attrib[core::constants::AT_STREN as usize][5] as i32
+            });
+
+            // Base damage uses character.weapon
+            let base_weapon =
+                Repository::with_characters(|characters| characters[cn].weapon as i32);
+            let mut dam = base_weapon + rng.gen_range(1..=6);
+            if strn > 3 {
+                let extra_max = (strn / 2) as i32;
+                if extra_max > 0 {
+                    dam += rng.gen_range(0..extra_max);
+                }
+            }
+            if die == 2 {
+                dam += rng.gen_range(1..=6);
+            }
+            if die == 1 {
+                dam += rng.gen_range(1..=6) + rng.gen_range(1..=6) + 2;
+            }
+
+            let odam = dam;
+            dam += bonus;
+
+            // Apply weapon wear if wielding (only for players in original)
+            let rhand = Repository::with_characters(|characters| {
+                characters[cn].worn[core::constants::WN_RHAND] as usize
+            });
+            if rhand != 0 {
+                crate::driver_use::item_damage_weapon(cn, dam);
+            }
+
+            // Apply damage and capture actual applied damage
+            let applied = self.do_hurt(cn, co, dam, 0);
+
+            // Play sounds depending on whether damage occurred (match original behaviour)
+            let (tx, ty, base_sound) = Repository::with_characters(|characters| {
+                (
+                    characters[co].x as i32,
+                    characters[co].y as i32,
+                    characters[cn].sound as i32,
+                )
+            });
+            if applied < 1 {
+                State::do_area_sound(co, 0, tx, ty, base_sound + 3);
+                State::char_play_sound(co, base_sound + 3, -150, 0);
+            } else {
+                State::do_area_sound(co, 0, tx, ty, base_sound + 4);
+                State::char_play_sound(co, base_sound + 4, -150, 0);
+            }
+
+            // Surrounding strikes (cardinal neighbors around attacker)
+            if surround != 0 {
+                let surround_skill = Repository::with_characters(|characters| {
+                    characters[cn].skill[core::constants::SK_SURROUND][5] as i32
+                });
+                if surround_skill > 0 {
+                    let (ax, ay) = Repository::with_characters(|characters| {
+                        (characters[cn].x as i32, characters[cn].y as i32)
+                    });
+                    // cardinal neighbor offsets: +1, -1, +MAPX, -MAPX -> translate to coords
+                    let mapx = core::constants::SERVER_MAPX as i32;
+                    let neighbors = [(ax + 1, ay), (ax - 1, ay), (ax, ay + 1), (ax, ay - 1)];
+                    for (nx, ny) in neighbors.iter() {
+                        if *nx < 0
+                            || *ny < 0
+                            || *nx >= core::constants::SERVER_MAPX as i32
+                            || *ny >= core::constants::SERVER_MAPY as i32
+                        {
+                            continue;
+                        }
+                        let idx = (*nx + *ny * core::constants::SERVER_MAPX as i32) as usize;
+                        let co2 = Repository::with_map(|map| map[idx].ch as usize);
+                        if co2 == 0 || co2 == cn || co2 == co {
+                            continue;
+                        }
+                        if Repository::with_characters(|characters| {
+                            characters[co2].attack_cn as usize
+                        }) != cn
+                        {
+                            continue;
+                        }
+                        if surround_skill + rng.gen_range(0..20) > self.get_fight_skill(co2) {
+                            let sdam = odam - odam / 4;
+                            self.do_hurt(cn, co2, sdam, 0);
+                        }
+                    }
+                }
+            }
+        } else {
+            // Miss: play miss sound and notify
+            // Miss: play miss sound and notify observers and participants
+            let base_sound = Repository::with_characters(|characters| characters[cn].sound as i32);
+            State::do_area_sound(
+                co,
+                0,
+                Repository::with_characters(|ch| ch[co].x) as i32,
+                Repository::with_characters(|ch| ch[co].y) as i32,
+                base_sound + 5,
+            );
+            State::char_play_sound(co, base_sound + 5, -150, 0);
+
+            // Notify area that attacker missed
+            let (ax, ay) = Repository::with_characters(|ch| (ch[cn].x as i32, ch[cn].y as i32));
+            self.do_area_notify(
+                cn as i32,
+                co as i32,
+                ax,
+                ay,
+                core::constants::NT_SEEMISS as i32,
+                cn as i32,
+                co as i32,
+                0,
+                0,
+            );
+            self.do_notify_character(
+                co as u32,
+                core::constants::NT_GOTMISS as i32,
+                cn as i32,
+                0,
+                0,
+                0,
+            );
+            self.do_notify_character(
+                cn as u32,
+                core::constants::NT_DIDMISS as i32,
+                co as i32,
+                0,
+                0,
+                0,
+            );
+        }
     }
 
     /// Port of `do_char_can_flee(int cn)` from `svr_do.cpp`

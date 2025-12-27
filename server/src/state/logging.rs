@@ -1,10 +1,12 @@
 use core::constants::{CharacterFlags, MAXCHARS, MAXPLAYER};
 use core::types::ServerPlayer;
 use std::cmp;
+use std::sync::OnceLock;
 
 use crate::network_manager::NetworkManager;
 use crate::repository::Repository;
 use crate::server::Server;
+use crate::talk::npc_hear;
 
 use super::State;
 
@@ -408,32 +410,114 @@ impl State {
 
     /// Sends a say message to all characters in an area.
     /// Handles visibility - invisible speakers show as "Somebody says".
-    pub(crate) fn do_area_say1(&self, cn: usize, xs: usize, ys: usize, text: &str) {
+    pub(crate) fn do_area_say1(&mut self, cn: usize, xs: usize, ys: usize, text: &str) {
+        // Build messages
         let msg_named = format!(
             "{}: \"{}\"\n",
             Repository::with_characters(|ch| ch[cn].get_name().to_string()),
             text
         );
         let msg_invis = format!("Somebody says: \"{}\"\n", text);
+
+        // Check invisibility of speaker
         let invis = Repository::with_characters(|ch| {
             (ch[cn].flags & CharacterFlags::CF_INVISIBLE.bits()) != 0
         });
 
-        // Spiral/radius algorithm omitted; use simple radius scan
-        for n in 1..core::constants::MAXCHARS as usize {
-            let listener =
-                Repository::with_characters(|ch| ch[n].used == core::constants::USE_ACTIVE);
-            if listener {
-                if !invis
-                    || Repository::with_characters(|c| c[cn].get_invisibility_level())
-                        <= Repository::with_characters(|c| c[n].get_invisibility_level())
-                {
-                    self.do_log(
-                        n,
-                        core::types::FontColor::Blue,
-                        if !invis { &msg_named } else { &msg_invis },
-                    );
+        // Static spiral generation (port of initspiral / areaspiral[] from original C++)
+        static AREASPIRAL: OnceLock<Vec<i32>> = OnceLock::new();
+        let areaspiral = AREASPIRAL.get_or_init(|| {
+            let areasize: i32 = 12; // matches original AREASIZE
+            let span = 2 * areasize + 1;
+            let spsize = (span * span) as usize;
+            let mut v: Vec<i32> = Vec::with_capacity(spsize);
+            v.push(0); // center
+
+            let mapx = core::constants::SERVER_MAPX as i32;
+            for dist in 1..=areasize {
+                v.push(-mapx); // N
+                for _ in 0..(2 * dist - 1) {
+                    v.push(-1); // W
                 }
+                for _ in 0..(2 * dist) {
+                    v.push(mapx); // S
+                }
+                for _ in 0..(2 * dist) {
+                    v.push(1); // E
+                }
+                for _ in 0..(2 * dist) {
+                    v.push(-mapx); // N
+                }
+            }
+
+            // Ensure the vector length equals SPIRALSIZE; pad with zeros if necessary
+            while v.len() < spsize {
+                v.push(0);
+            }
+            v
+        });
+
+        // Start map index at speaker location
+        let mut m: i32 = (ys as i32) * core::constants::SERVER_MAPX as i32 + xs as i32;
+
+        let mut npcs: Vec<usize> = Vec::with_capacity(20);
+
+        for (j, &offset) in areaspiral.iter().enumerate() {
+            m += offset;
+            let map_area_size =
+                (core::constants::SERVER_MAPX as i32) * (core::constants::SERVER_MAPY as i32);
+            if m < 0 || m >= map_area_size {
+                continue;
+            }
+
+            let cc = Repository::with_map(|map| map[m as usize].ch as usize);
+
+            if cc == 0 {
+                continue;
+            }
+
+            // Check if cc is a sane character (active/used). If helper missing, leave TODO
+            let sane = Repository::with_characters(|ch| {
+                ch[cc].used == core::constants::USE_ACTIVE || ch[cc].temp == 15
+            });
+            if !sane {
+                continue;
+            }
+
+            // If listener is a player (or usurp), handle visibility immediately
+            let is_player_or_usurp = Repository::with_characters(|ch| {
+                (ch[cc].flags
+                    & (CharacterFlags::CF_PLAYER.bits() | CharacterFlags::CF_USURP.bits()))
+                    != 0
+            });
+
+            if is_player_or_usurp {
+                // Respect speaker invisibility and listener's invis level
+                let show_named = !invis
+                    || Repository::with_characters(|ch| ch[cn].get_invisibility_level())
+                        <= Repository::with_characters(|ch| ch[cc].get_invisibility_level());
+                if show_named {
+                    self.do_log(cc, core::types::FontColor::Blue, &msg_named);
+                } else {
+                    self.do_log(cc, core::types::FontColor::Blue, &msg_invis);
+                }
+            } else {
+                // Listener is NPC: store for second pass
+                if !invis && npcs.len() < 20 {
+                    // Only address mobs inside radius 6 (first 169 entries)
+                    if j < 169 {
+                        npcs.push(cc);
+                    }
+                }
+            }
+        }
+
+        // Second pass: let NPCs hear if they can see the speaker
+        for &npc in &npcs {
+            let can_see = self.do_char_can_see(npc, cn);
+
+            if can_see != 0 {
+                npc_hear(npc, cn, text);
             }
         }
     }

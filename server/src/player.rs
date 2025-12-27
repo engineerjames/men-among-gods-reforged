@@ -992,8 +992,9 @@ pub fn plr_attack(cn: usize, surround: i32) {
     let attack_cn = Repository::with_characters(|characters| characters[cn].attack_cn as usize);
 
     if attack_cn == co {
-        // TODO: Call do_attack when implemented
-        log::debug!("Would call do_attack({}, {}, {})", cn, co, surround);
+        State::with_mut(|state| {
+            state.do_attack(cn, co, surround);
+        });
     }
 }
 
@@ -1452,6 +1453,8 @@ pub fn player_driver_med(cn: usize) {
         }
     });
 }
+
+pub fn cl_list() {}
 
 /// Port of `plr_drop` from `svr_act.cpp`
 pub fn plr_drop(cn: usize) {
@@ -3671,17 +3674,24 @@ fn plr_cmd_input(nr: usize, part: u8) {
 
     // If this is input8, process the complete message (do_say)
     if part == 8 {
+        // Ensure the input buffer is NUL-terminated at the last byte (matches C behaviour)
         Server::with_players_mut(|players| {
-            players[nr].input[105 + 14] = 0; // null terminate
+            // 8 * 15 == 120, last index is 119
+            players[nr].input[105 + 14] = 0;
         });
-        let (cn, input) = Server::with_players(|players| {
-            let mut input = [0u8; 128];
-            input.copy_from_slice(&players[nr].input);
-            (players[nr].usnr, input)
+
+        // Copy the player's input buffer out so we can convert it to a Rust string
+        let (cn, raw) =
+            Server::with_players(|players| (players[nr].usnr, players[nr].input.to_vec()));
+
+        // Find the first NUL and decode bytes up to that point as UTF-8 (lossy to be safe)
+        let len = raw.iter().position(|&b| b == 0).unwrap_or(raw.len());
+        let text = String::from_utf8_lossy(&raw[..len]).to_string();
+
+        // Call the server state handler (port of C++ do_say)
+        State::with_mut(|state| {
+            state.do_say(cn, &text);
         });
-        // TODO: Call do_say with cn and input
-        let _ = cn;
-        let _ = input;
     }
 }
 
