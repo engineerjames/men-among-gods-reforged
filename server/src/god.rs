@@ -1239,6 +1239,14 @@ impl God {
             character.set_do_update_flags();
 
             State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!(
+                        "You have changed the password for character '{}'.\n",
+                        character.get_name()
+                    ),
+                );
                 log::info!("Password changed for character {}", character.get_name());
             });
 
@@ -1434,7 +1442,6 @@ impl God {
             need,
             player_flag,
             temp_val,
-            sprite,
             hp_cur,
             hp_max,
             end_cur,
@@ -1450,8 +1457,6 @@ impl God {
             gethit_dam,
             current_online_time,
             total_online_time,
-            armor,
-            weapon,
             alignment,
         ) = Repository::with_characters(|ch| {
             let t = &ch[co];
@@ -1468,7 +1473,6 @@ impl God {
                 need,
                 player_flag,
                 t.temp as i32,
-                t.sprite as i32,
                 t.hp[5] as i32,
                 t.hp[0] as i32,
                 t.end[5] as i32,
@@ -1484,8 +1488,6 @@ impl God {
                 t.gethit_dam as i32,
                 t.current_online_time as i32,
                 t.total_online_time as i32,
-                t.armor as i32,
-                t.weapon as i32,
                 t.alignment as i32,
             )
         });
@@ -1682,11 +1684,7 @@ impl God {
                     ),
                 );
                 // Group/Single Awake/Spells
-                let group_count = if (data_vals[42] != 0) {
-                    data_vals[42]
-                } else {
-                    0
-                };
+                let group_count = if data_vals[42] != 0 { data_vals[42] } else { 0 };
                 let single_awake = data_vals[92];
                 let spells = data_vals[96];
                 state.do_character_log(
@@ -3193,6 +3191,11 @@ impl God {
 
         if temp < 0 || temp >= core::constants::MAXTCHARS as i32 {
             State::with(|state| {
+                state.do_character_log(
+                    co,
+                    core::types::FontColor::Red,
+                    &format!("Invalid character template: {}", temp),
+                );
                 log::error!("Invalid character template: {}", temp);
             });
             return;
@@ -3203,6 +3206,11 @@ impl God {
 
             if template.used == core::constants::USE_EMPTY {
                 State::with(|state| {
+                    state.do_character_log(
+                        co,
+                        core::types::FontColor::Red,
+                        &format!("Template {} is not in use", temp),
+                    );
                     log::error!("Template {} is not in use", temp);
                 });
                 return;
@@ -3230,6 +3238,15 @@ impl God {
                 character.set_do_update_flags();
 
                 State::with(|state| {
+                    state.do_character_log(
+                        co,
+                        core::types::FontColor::Green,
+                        &format!(
+                            "Changed race of character {} to template {}",
+                            character.get_name(),
+                            temp
+                        ),
+                    );
                     log::info!(
                         "Changed race of character {} to template {}",
                         character.get_name(),
@@ -3270,6 +3287,8 @@ impl God {
         })
     }
 
+    // TODO: Implement actual mail logic
+    #[allow(dead_code)]
     pub fn mail_pass(cn: usize, co: usize) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
