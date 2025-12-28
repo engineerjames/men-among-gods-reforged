@@ -1,10 +1,12 @@
 use core::types::{Character, Map};
 
 use crate::{
+    driver_skill,
     effect::EffectManager,
     enums::{CharacterFlags, LogoutReason},
     player,
     repository::Repository,
+    server::Server,
     state::State,
 };
 use rand::Rng;
@@ -1373,52 +1375,363 @@ impl God {
     }
 
     pub fn info(cn: usize, co: usize) {
-        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
+        if !Character::is_sane_character(cn) {
+            return;
+        }
+        if !Character::is_sane_character(co) {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    "There's no such character.\n",
+                );
+            });
             return;
         }
 
-        Repository::with_characters(|characters| {
-            let target = &characters[co];
-
+        // Access checks: sane NPCs are hidden from non-gods/imp/usurp; gods hidden from non-gods
+        let denied = Repository::with_characters(|ch| {
+            let target = &ch[co];
+            let caller = &ch[cn];
+            let is_sane_npc =
+                (target.flags & core::constants::CharacterFlags::CF_PLAYER.bits() as u64) == 0;
+            let caller_is_priv = (caller.flags
+                & (core::constants::CharacterFlags::CF_GOD.bits() as u64))
+                != 0
+                || (caller.flags & (core::constants::CharacterFlags::CF_IMP.bits() as u64)) != 0
+                || (caller.flags & (core::constants::CharacterFlags::CF_USURP.bits() as u64)) != 0;
+            (is_sane_npc && !caller_is_priv)
+                || (((target.flags & core::constants::CharacterFlags::CF_GOD.bits() as u64) != 0)
+                    && (caller.flags & core::constants::CharacterFlags::CF_GOD.bits() as u64) == 0)
+        });
+        if denied {
             State::with(|state| {
-                let sprite_to_print = target.sprite;
-                let hp_current_to_print = target.hp[5];
-                let hp_max_to_print = target.hp[0];
-                let end_current_to_print = target.end[5];
-                let end_max_to_print = target.end[0];
-                let mana_current_to_print = target.mana[5];
-                let mana_max_to_print = target.mana[0];
+                state.do_character_log(cn, core::types::FontColor::Red, "Access denied.\n");
+            });
+            return;
+        }
+
+        // Print detailed character info via char_info first (matches C++ flow)
+        driver_skill::char_info(cn, co);
+
+        // cnum_str: only visible to IMP/USURP
+        let cnum_str = Repository::with_characters(|ch| {
+            let caller = &ch[cn];
+            if (caller.flags & (core::constants::CharacterFlags::CF_IMP.bits() as u64)) != 0
+                || (caller.flags & (core::constants::CharacterFlags::CF_USURP.bits() as u64)) != 0
+            {
+                format!(" ({})", co)
+            } else {
+                String::new()
+            }
+        });
+
+        // Determine position visibility
+        let (
+            pos_x,
+            pos_y,
+            pts,
+            need,
+            player_flag,
+            temp_val,
+            sprite,
+            hp_cur,
+            hp_max,
+            end_cur,
+            end_max,
+            mana_cur,
+            mana_max,
+            speed,
+            gold,
+            gold_data13,
+            kindred,
+            data_vals,
+            luck,
+            gethit_dam,
+            current_online_time,
+            total_online_time,
+            armor,
+            weapon,
+            alignment,
+        ) = Repository::with_characters(|ch| {
+            let t = &ch[co];
+            let posx = t.x as i32;
+            let posy = t.y as i32;
+            let p = t.points_tot as i32;
+            let need = crate::helpers::points_tolevel(t.points_tot as u32) as i32;
+            let player_flag =
+                (t.flags & (core::constants::CharacterFlags::CF_PLAYER.bits() as u64)) != 0;
+            (
+                posx,
+                posy,
+                p,
+                need,
+                player_flag,
+                t.temp as i32,
+                t.sprite as i32,
+                t.hp[5] as i32,
+                t.hp[0] as i32,
+                t.end[5] as i32,
+                t.end[0] as i32,
+                t.mana[5] as i32,
+                t.mana[0] as i32,
+                t.speed as i32,
+                t.gold as i32,
+                t.data[13],
+                t.kindred,
+                t.data,
+                t.luck,
+                t.gethit_dam as i32,
+                t.current_online_time as i32,
+                t.total_online_time as i32,
+                t.armor as i32,
+                t.weapon as i32,
+                t.alignment as i32,
+            )
+        });
+
+        // Hide position if invisible to caller (approximate original invis_level check)
+        let mut px = pos_x;
+        let mut py = pos_y;
+        let hide_pos = Repository::with_characters(|ch| {
+            let tflags = ch[co].flags;
+            let invis_or_nowho =
+                (tflags & (core::constants::CharacterFlags::CF_INVISIBLE.bits() as u64)) != 0
+                    || (tflags & (core::constants::CharacterFlags::CF_NOWHO.bits() as u64)) != 0;
+            invis_or_nowho
+        });
+        if hide_pos {
+            if Self::invis(cn, co) != 0
+                && Repository::with_characters(|ch| {
+                    let caller = &ch[cn];
+                    !((caller.flags & (core::constants::CharacterFlags::CF_IMP.bits() as u64)) != 0
+                        || (caller.flags
+                            & (core::constants::CharacterFlags::CF_USURP.bits() as u64))
+                            != 0)
+                })
+            {
+                px = 0;
+                py = 0;
+            }
+        }
+
+        let pos_str = if px != 0 || py != 0 {
+            format!(" Pos={},{}.", px, py)
+        } else {
+            String::new()
+        };
+
+        // Print header line depending on player or NPC
+        if player_flag {
+            let rank = crate::helpers::points2rank(pts as u32) as usize;
+            let rank_short = crate::helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
+            State::with(|state| {
                 state.do_character_log(
                     cn,
-                    core::types::FontColor::Green,
+                    core::types::FontColor::Yellow,
                     &format!(
-                        "Character Info for {}: ID={}, Sprite={}, HP={}/{}, End={}/{}, Mana={}/{}",
-                        target.get_name(),
-                        co,
-                        sprite_to_print,
-                        hp_current_to_print,
-                        hp_max_to_print,
-                        end_current_to_print,
-                        end_max_to_print,
-                        mana_current_to_print,
-                        mana_max_to_print
+                        "{} {}{}{} Pts/need={}/{}.",
+                        rank_short,
+                        Repository::with_characters(|ch| ch[co].get_name().to_string()),
+                        cnum_str,
+                        pos_str,
+                        pts,
+                        need
+                    ),
+                )
+            });
+        } else {
+            // NPC
+            let temp_str = Repository::with_characters(|ch| {
+                let caller = &ch[cn];
+                if (caller.flags & (core::constants::CharacterFlags::CF_IMP.bits() as u64)) != 0
+                    || (caller.flags & (core::constants::CharacterFlags::CF_USURP.bits() as u64))
+                        != 0
+                {
+                    format!(" Temp={}", temp_val)
+                } else {
+                    String::new()
+                }
+            });
+            let rank = crate::helpers::points2rank(pts as u32) as usize;
+            let rank_short = crate::helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!(
+                        "{} {}{}{}{}.",
+                        rank_short,
+                        Repository::with_characters(|ch| ch[co].get_name().to_string()),
+                        cnum_str,
+                        pos_str,
+                        temp_str
+                    ),
+                )
+            });
+        }
+
+        // HP/End/Mana line
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!(
+                    "HP={}/{}, End={}/{}, Mana={}/{}.\n",
+                    hp_cur, hp_max, end_cur, end_max, mana_cur, mana_max
+                ),
+            );
+        });
+
+        // Speed/Gold line
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!(
+                    "Speed={}. Gold={}.{:02}G ({}.{:02}G).\n",
+                    speed,
+                    gold / 100,
+                    gold % 100,
+                    gold_data13 / 100,
+                    gold_data13 % 100
+                ),
+            );
+        });
+
+        // Last PvP attack for purple players
+        if player_flag
+            && (kindred & core::constants::KIN_PURPLE as i32) != 0
+            && data_vals[core::constants::CHD_ATTACKTIME as usize] != 0
+        {
+            let dt = Repository::with_characters(|ch| {
+                Repository::with_globals(|g| g.ticker) as i32
+                    - ch[co].data[core::constants::CHD_ATTACKTIME as usize]
+            });
+            if Repository::with_characters(|ch| {
+                (ch[cn].flags & (core::constants::CharacterFlags::CF_IMP.bits() as u64)) != 0
+            }) {
+                let victim = Repository::with_characters(|ch| {
+                    ch[co].data[core::constants::CHD_ATTACKVICT as usize] as usize
+                });
+                if Character::is_sane_character(victim) {
+                    let victim_name =
+                        Repository::with_characters(|ch| ch[victim].get_name().to_string());
+                    State::with(|state| {
+                        state.do_character_log(
+                            cn,
+                            core::types::FontColor::Yellow,
+                            &format!(
+                                "Last PvP attack: {}, against {}.\n",
+                                crate::helpers::ago_string(dt),
+                                victim_name
+                            ),
+                        )
+                    });
+                }
+            } else {
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Yellow,
+                        &format!("Last PvP attack: {}.\n", crate::helpers::ago_string(dt)),
+                    )
+                });
+            }
+        }
+
+        // Additional info for IMP/USURP
+        let caller_priv = Repository::with_characters(|ch| {
+            let c = &ch[cn];
+            (c.flags & (core::constants::CharacterFlags::CF_IMP.bits() as u64)) != 0
+                || (c.flags & (core::constants::CharacterFlags::CF_USURP.bits() as u64)) != 0
+        });
+        if caller_priv {
+            // Print several data fields similar to C++ output
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!(
+                        "Killed {} NPCs below rank, {} NPCs at rank, {} NPCs above rank.\n",
+                        data_vals[23], data_vals[24], data_vals[25]
                     ),
                 );
-
-                let x_to_print = target.x;
-                let y_to_print = target.y;
-                let flags_to_print = target.flags;
-                let points_to_print = target.points;
                 state.do_character_log(
                     cn,
-                    core::types::FontColor::Green,
+                    core::types::FontColor::Yellow,
                     &format!(
-                        "  Position: ({}, {}), Flags: {:x}, Points: {}",
-                        x_to_print, y_to_print, flags_to_print, points_to_print
+                        "Killed {} players outside arena, killed {} shopkeepers.\n",
+                        data_vals[29], data_vals[40]
+                    ),
+                );
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!(
+                        "BS: Killed {} NPCs below rank, {} NPCs at rank, {} NPCs above rank, {} candles returned.\n",
+                        data_vals[26], data_vals[27], data_vals[28], data_vals[43]
+                    ),
+                );
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!(
+                        "Armor={}, Weapon={}. Alignment={}.\n",
+                        data_vals[0], data_vals[1], alignment
+                    ),
+                );
+                // Group/Single Awake/Spells
+                let group_count = if (data_vals[42] != 0) {
+                    data_vals[42]
+                } else {
+                    0
+                };
+                let single_awake = data_vals[92];
+                let spells = data_vals[96];
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!(
+                        "Group={} ({}), Single Awake={}, Spells={}.\n",
+                        data_vals[42], group_count, single_awake, spells
+                    ),
+                );
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!("Luck={}, Gethit_Dam={}.\n", luck, gethit_dam),
+                );
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!(
+                        "Current Online Time: {}s, Total Online Time: {}s.\n",
+                        current_online_time, total_online_time
                     ),
                 );
             });
-        });
+
+            // Self-destruct time for sane NPCs
+            if Repository::with_characters(|ch| {
+                (ch[co].flags & (core::constants::CharacterFlags::CF_PLAYER.bits() as u64)) == 0
+                    && ch[co].data[64] != 0
+            }) {
+                let t = Repository::with_characters(|ch| {
+                    ch[co].data[64] - Repository::with_globals(|g| g.ticker)
+                });
+                let t_secs = t / core::constants::TICKS;
+                let mins = t_secs / 60;
+                let secs = t_secs % 60;
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Yellow,
+                        &format!("Will self destruct in {}m {}s.\n", mins, secs),
+                    );
+                });
+            }
+        }
     }
 
     pub fn iinfo(cn: usize, item_index: usize) {
@@ -3179,7 +3492,7 @@ impl God {
             .trim_end_matches('\0')
             .to_string();
 
-        // TODO: chlog(cn, "IMP: Usurping %s (%d, t=%d)", ch[co].name, co, ch[co].temp);
+        log::info!("Usurping {} ({} , t={})", name_str, co, co_temp);
 
         // Get player number from cn
         let nr = Repository::with_characters(|characters| characters[cn].player);
@@ -3191,7 +3504,11 @@ impl God {
             // Set player number on target
             characters[co].player = nr;
 
-            // TODO: player[nr].usnr = co; (when player array is implemented)
+            Server::with_players_mut(|players| {
+                if let Some(player) = players.get_mut(nr as usize) {
+                    player.usnr = co;
+                }
+            });
 
             // Handle nested usurp: if cn is already usurping someone
             if characters[cn].flags & core::constants::CharacterFlags::CF_USURP.bits() != 0 {
@@ -3212,20 +3529,18 @@ impl God {
                 characters[cn].tavern_y = characters[cn].y as u16;
 
                 // Transfer character to (10, 10)
-                let cn_x = characters[cn].x;
-                let cn_y = characters[cn].y;
-                // TODO: god_transfer_char(cn, 10, 10) when implemented
-                // For now, just set the position
-                characters[cn].x = 10;
-                characters[cn].y = 10;
+                // god_transfer_char(cn, 10, 10) when implemented
+                God::transfer_char(cn, 10, 10);
 
                 // Set AFK if not already AFK
                 if characters[cn].data[core::constants::CHD_AFK] == 0 {
-                    // TODO: do_afk(cn, NULL) when implemented
+                    State::with(|state| {
+                        state.do_afk(cn, "");
+                    });
                 }
             }
 
-            // TODO: plr_logout(cn, nr, LO_USURP) when implemented
+            player::plr_logout(cn, nr as usize, LogoutReason::Usurp);
 
             characters[co].set_do_update_flags();
         });
@@ -3257,14 +3572,18 @@ impl God {
                 // Transfer player back to original character
                 characters[co].player = nr;
 
-                // TODO: player[nr].usnr = co; (when player array is implemented)
+                Server::with_players_mut(|players| {
+                    if let Some(player) = players.get_mut(nr as usize) {
+                        player.usnr = co;
+                    }
+                });
 
                 // Transfer character back to recall position (512, 512)
-                // TODO: god_transfer_char(co, 512, 512) when implemented
-                characters[co].x = 512;
-                characters[co].y = 512;
+                God::transfer_char(co, 512, 512);
 
-                // TODO: do_afk(co, NULL) when implemented
+                State::with(|state| {
+                    state.do_afk(co, "");
+                });
 
                 characters[cn].set_do_update_flags();
             }
@@ -3287,7 +3606,7 @@ impl God {
                 .trim_end_matches('\0')
                 .to_string();
 
-            // TODO: chlog(cn, "IMP: is now playing %s (%d)", ch[co].name, co);
+            log::info!("IMP: {} is now playing {} ({})", cn, name_str, co);
 
             Self::usurp(cn, co);
         }
@@ -3421,7 +3740,7 @@ impl God {
                 .trim_end_matches('\0')
                 .to_string();
 
-            // TODO: chlog(cn, "is now playing %s (%d)", ch[co].name, co);
+            log::info!("IMP: {} is now playing {} ({})", cn, name_str, co);
 
             Self::usurp(cn, co);
         }
@@ -3601,7 +3920,7 @@ impl God {
             .trim_end_matches('\0')
             .to_string();
 
-        // TODO: chlog(cn, "IMP: Forced %s (%d) to \"%s\"", ch[co].name, co, text);
+        log::info!("IMP: {} forced {} ({}) to \"{}\"", cn, name_str, co, text);
 
         // Make the character say the text
         State::with(|state| {
@@ -3615,50 +3934,6 @@ impl God {
                 core::types::FontColor::Green,
                 &format!("{} was forced.", name_str),
             );
-        });
-    }
-
-    pub fn enemy(cn: usize, npc: &str, victim: &str) {
-        if !Character::is_sane_character(cn) {
-            return;
-        }
-
-        let npc_cn = Self::find_next_char(1, npc, "");
-        let victim_cn = Self::find_next_char(1, victim, "");
-
-        if npc_cn <= 0 {
-            State::with(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Red,
-                    &format!("Could not find NPC '{}'", npc),
-                );
-            });
-            return;
-        }
-
-        if victim_cn <= 0 {
-            State::with(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Red,
-                    &format!("Could not find victim '{}'", victim),
-                );
-            });
-            return;
-        }
-
-        Repository::with_characters_mut(|characters| {
-            let npc_char = &mut characters[npc_cn as usize];
-            npc_char.attack_cn = victim_cn as u16;
-
-            State::with(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Green,
-                    &format!("Set NPC {} to attack character {}", npc_cn, victim_cn),
-                );
-            });
         });
     }
 

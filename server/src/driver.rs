@@ -2161,7 +2161,7 @@ pub fn update_shop(cn: usize) {
             // For now, use a simple check
             if (flags & ItemFlags::IF_DONATE.bits()) != 0 {
                 // Call god_donate_item (doesn't exist yet)
-                // god_donate_item(in_idx as usize, 0);
+                God::donate_item(in_idx as usize, 0);
                 Repository::with_items_mut(|items| {
                     items[in_idx as usize].used = USE_EMPTY;
                 });
@@ -2184,17 +2184,15 @@ pub fn update_shop(cn: usize) {
             continue;
         }
 
-        // Call god_create_item (doesn't exist yet)
-        // let in_idx = god_create_item(temp);
-        let in_idx = 0; // Placeholder
+        let in_idx = God::create_item(temp as usize);
 
-        if in_idx != 0 {
-            // Call god_give_char (doesn't exist yet)
-            // if !god_give_char(in_idx, cn) {
-            //     Repository::with_items_mut(|items| {
-            //         items[in_idx].used = USE_EMPTY;
-            //     });
-            // }
+        if in_idx.is_some() {
+            // Call god_give_char
+            if !God::give_character_item(in_idx.unwrap() as usize, cn) {
+                Repository::with_items_mut(|items| {
+                    items[in_idx.unwrap() as usize].used = USE_EMPTY;
+                });
+            }
         }
     }
 

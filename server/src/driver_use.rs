@@ -1605,7 +1605,9 @@ pub fn use_bag(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
+    use crate::driver_skill;
     use crate::god::God;
+    use crate::helpers;
     use crate::repository::Repository;
     use crate::state::State;
     use core::constants::{MAXSKILL, USE_EMPTY};
@@ -1637,10 +1639,11 @@ pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
         if teaches_only {
             // TODO: Get skill name from static_skilltab
             State::with(|state| {
+                let name = driver_skill::skill_name(skill_nr);
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
-                    &format!("You already know skill {}.\\n", skill_nr),
+                    &format!("You already know {}.\n", name),
                 );
             });
             return 0;
@@ -1659,32 +1662,41 @@ pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
 
         // Raise skill by one
         State::with(|state| {
+            let name = driver_skill::skill_name(skill_nr);
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                &format!("Raised skill {} by one.\\n", skill_nr),
+                &format!("Raised {} by one.\n", name),
             );
         });
 
-        // TODO: Implement skill_needed calculation
-        let pts = 100; // Placeholder
+        // Calculate points needed and apply
+        let v = current_val as i32;
+        let diff = difficulty as i32;
+        let pts = helpers::skill_needed(v, diff);
         Repository::with_characters_mut(|characters| {
             characters[cn].points_tot += pts;
             characters[cn].skill[skill_nr][0] += 1;
         });
 
-        // TODO: do_check_new_level(cn);
-        log::info!("TODO: do_check_new_level({})", cn);
+        // Trigger level check
+        State::with(|state| {
+            state.do_check_new_level(cn);
+        });
+        log::info!(
+            "Used scroll to raise skill {} for {} (pts={})",
+            skill_nr,
+            cn,
+            pts
+        );
     } else if max_val == 0 {
         // Cannot learn this skill
         State::with(|state| {
+            let name = driver_skill::skill_name(skill_nr);
             state.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
-                &format!(
-                    "This scroll teaches skill {}, which you cannot learn.\\n",
-                    skill_nr
-                ),
+                &format!("This scroll teaches {}, which you cannot learn.\n", name),
             );
         });
         return 0;
@@ -1694,13 +1706,14 @@ pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
             characters[cn].skill[skill_nr][0] = 1;
         });
         State::with(|state| {
+            let name = driver_skill::skill_name(skill_nr);
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                &format!("You learned skill {}!\\n", skill_nr),
+                &format!("You learned {}!\n", name),
             );
         });
-        // TODO: chlog(cn, "Used scroll to learn skill")
+        log::info!("Used scroll to learn {} (cn={})", skill_nr, cn);
     }
 
     // Consume scroll
@@ -4369,11 +4382,10 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
         });
 
         // Change race: 13 for male Seyan'Du, 79 for female Seyan'Du
-        // TODO: Implement god_racechange
         if is_male {
-            log::info!("TODO: god_racechange({}, 13)", cn);
+            God::racechange(cn, 13);
         } else {
-            log::info!("TODO: god_racechange({}, 79)", cn);
+            God::racechange(cn, 79);
         }
 
         // Give Seyan'Du sword (template 682)
@@ -4965,7 +4977,6 @@ pub fn change_to_archtemplar(cn: usize) {
     use crate::repository::Repository;
     use crate::state::State;
 
-    // TODO: Implement god_minor_racechange
     const KIN_MALE: i32 = 0x00000001;
 
     // Check agility requirement
@@ -5003,9 +5014,7 @@ pub fn change_to_archtemplar(cn: usize) {
     });
 
     let new_race = if is_male { 544 } else { 549 };
-    // TODO: god_minor_racechange(cn, new_race);
-    log::info!("TODO: god_minor_racechange({}, {})", cn, new_race);
-
+    God::minor_racechange(cn, new_race);
     State::with(|state| {
         state.do_character_log(
             cn,
@@ -5021,8 +5030,6 @@ pub fn change_to_archtemplar(cn: usize) {
 pub fn change_to_archharakim(cn: usize) {
     use crate::repository::Repository;
     use crate::state::State;
-
-    // TODO: Implement god_minor_racechange
 
     // Check willpower requirement
     let willpower = Repository::with_characters(|characters| characters[cn].attrib[3][0]);
@@ -5060,8 +5067,7 @@ pub fn change_to_archharakim(cn: usize) {
     });
 
     let new_race = if is_male { 545 } else { 550 };
-    // TODO: god_minor_racechange(cn, new_race);
-    log::info!("TODO: god_minor_racechange({}, {})", cn, new_race);
+    God::minor_racechange(cn, new_race);
 
     State::with(|state| {
         state.do_character_log(
@@ -5079,7 +5085,6 @@ pub fn change_to_warrior(cn: usize) {
     use crate::repository::Repository;
     use crate::state::State;
 
-    // TODO: Implement god_minor_racechange
     const KIN_MALE: i32 = 0x00000001;
 
     // Check agility requirement
@@ -5117,8 +5122,7 @@ pub fn change_to_warrior(cn: usize) {
     });
 
     let new_race = if is_male { 547 } else { 552 };
-    // TODO: god_minor_racechange(cn, new_race);
-    log::info!("TODO: god_minor_racechange({}, {})", cn, new_race);
+    God::minor_racechange(cn, new_race);
 
     State::with(|state| {
         state.do_character_log(
@@ -5136,7 +5140,6 @@ pub fn change_to_sorcerer(cn: usize) {
     use crate::repository::Repository;
     use crate::state::State;
 
-    // TODO: Implement god_minor_racechange
     const KIN_MALE: i32 = 0x00000001;
 
     // Check willpower requirement
@@ -5174,8 +5177,7 @@ pub fn change_to_sorcerer(cn: usize) {
     });
 
     let new_race = if is_male { 546 } else { 551 };
-    // TODO: god_minor_racechange(cn, new_race);
-    log::info!("TODO: god_minor_racechange({}, {})", cn, new_race);
+    God::minor_racechange(cn, new_race);
 
     State::with(|state| {
         state.do_character_log(

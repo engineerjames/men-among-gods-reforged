@@ -2,11 +2,36 @@ use core::constants::CharacterFlags;
 
 use crate::repository::Repository;
 
-const WHO_RANK_NAME: [&str; core::constants::RANKS] = [
+pub const WHO_RANK_NAME: [&str; core::constants::RANKS] = [
     " Pvt ", " PFC ", " LCp ", " Cpl ", " Sgt ", " SSg ", " MSg ", " 1Sg ", " SgM ", "2Lieu",
     "1Lieu", "Captn", "Major", "LtCol", "Colnl", "BrGen", "MaGen", "LtGen", "Genrl", "FDMAR",
     "KNIGT", "BARON", " EARL", "WARLD",
 ];
+
+/// Return a human-friendly time-delta string from a tick-delta (ticks)
+pub fn ago_string(dt: i32) -> String {
+    let minutes = dt / (60 * core::constants::TICKS);
+    if minutes <= 0 {
+        return "just now".to_string();
+    }
+    if minutes < 60 {
+        return format!("{} minutes ago", minutes);
+    }
+    let hours = minutes / 60;
+    if hours <= 36 {
+        return format!("{} hours ago", hours);
+    }
+    let days = hours / 24;
+    if days <= 45 {
+        return format!("{} days ago", days);
+    }
+    let months = days / 30;
+    if months <= 24 {
+        return format!("{} months ago", months);
+    }
+    let years = months / 12;
+    format!("{} years ago", years)
+}
 
 pub const RANK_NAMES: [&str; core::constants::RANKS] = [
     "Private",

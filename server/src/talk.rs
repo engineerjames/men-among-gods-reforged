@@ -2589,9 +2589,8 @@ pub fn answer_buyexp(cn: usize, co: usize) {
 
         let co_name = characters[co].get_name().to_string();
 
-        // TODO: Call do_check_new_level(co);
-
         State::with(|state| {
+            state.do_check_new_level(co);
             state.do_sayx(cn, &format!("Now I'll teach you a bit about life, the world and everything, {}. Thank you for your help!", co_name));
             state.do_character_log(
                 co,

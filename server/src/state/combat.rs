@@ -54,6 +54,163 @@ impl State {
         std::cmp::max(s_karate, s_hand)
     }
 
+    pub(crate) fn do_enemy(&self, cn: usize, npc: &str, victim: &str) {
+        // Port of do_enemy(int cn, char* npc, char* victim)
+        if npc.is_empty() {
+            self.do_character_log(cn, FontColor::Red, "Make whom the enemy of whom?\n");
+            return;
+        }
+
+        let co = npc.parse::<usize>().unwrap_or(0);
+        if co == 0 {
+            self.do_character_log(
+                cn,
+                FontColor::Red,
+                &format!("No such character: '{}'.\n", npc),
+            );
+            return;
+        }
+
+        if !core::types::Character::is_sane_character(co) {
+            self.do_character_log(
+                cn,
+                FontColor::Red,
+                "That character is currently not in use.\n",
+            );
+            return;
+        }
+
+        // Only works on NPCs
+        let is_player = Repository::with_characters(|ch| {
+            (ch[co].flags & CharacterFlags::CF_PLAYER.bits()) != 0
+        });
+        if is_player {
+            let name =
+                Repository::with_characters(|ch| String::from_utf8_lossy(&ch[co].name).to_string());
+            self.do_character_log(
+                cn,
+                FontColor::Red,
+                &format!("#ENEMY only works on NPCs; {} is a player.\n", name),
+            );
+            return;
+        }
+
+        if victim.is_empty() {
+            // list enemies
+            driver::npc_list_enemies(co, cn);
+            return;
+        }
+
+        let cv = victim.parse::<usize>().unwrap_or(0);
+        if cv == 0 {
+            self.do_character_log(
+                cn,
+                FontColor::Red,
+                &format!("No such character: '{}'.\n", victim),
+            );
+            return;
+        }
+
+        if !core::types::Character::is_sane_character(cv) {
+            self.do_character_log(
+                cn,
+                FontColor::Red,
+                "That character is currently not in use.\n",
+            );
+            return;
+        }
+
+        if driver::npc_is_enemy(co, cv) {
+            if !driver::npc_remove_enemy(co, cv) {
+                let vname = Repository::with_characters(|ch| {
+                    String::from_utf8_lossy(&ch[cv].name).to_string()
+                });
+                let cname = Repository::with_characters(|ch| {
+                    String::from_utf8_lossy(&ch[co].name).to_string()
+                });
+                self.do_character_log(
+                    cn,
+                    FontColor::Red,
+                    &format!("Can't remove {} from {}'s enemy list!\n", vname, cname),
+                );
+                log::error!(
+                    "#ENEMY failed to remove {} from {}'s enemy list.",
+                    vname,
+                    cname
+                );
+            } else {
+                let vname = Repository::with_characters(|ch| {
+                    String::from_utf8_lossy(&ch[cv].name).to_string()
+                });
+                let cname = Repository::with_characters(|ch| {
+                    String::from_utf8_lossy(&ch[co].name).to_string()
+                });
+                self.do_character_log(
+                    cn,
+                    FontColor::Yellow,
+                    &format!("Removed {} from {}'s enemy list.\n", vname, cname),
+                );
+                log::info!("IMP: Removed {} from {}'s enemy list.", vname, cname);
+            }
+            return;
+        }
+
+        // Refuse if same group
+        let same_group = Repository::with_characters(|ch| {
+            ch[co].data[core::constants::CHD_GROUP as usize]
+                == ch[cv].data[core::constants::CHD_GROUP as usize]
+        });
+        if same_group {
+            let cname =
+                Repository::with_characters(|ch| String::from_utf8_lossy(&ch[co].name).to_string());
+            let vname =
+                Repository::with_characters(|ch| String::from_utf8_lossy(&ch[cv].name).to_string());
+            self.do_character_log(
+                cn,
+                FontColor::Red,
+                &format!("{} refuses to fight {}.\n", cname, vname),
+            );
+            return;
+        }
+
+        if !driver::npc_add_enemy(co, cv, true) {
+            let cname =
+                Repository::with_characters(|ch| String::from_utf8_lossy(&ch[co].name).to_string());
+            self.do_character_log(
+                cn,
+                FontColor::Red,
+                &format!("{} can't handle any more enemies.\n", cname),
+            );
+            return;
+        }
+
+        // If caller has text[1], make NPC say its text[1] with victim name substitution
+        let caller_has_text1 = Repository::with_characters(|ch| !ch[cn].text[1].is_empty());
+        if caller_has_text1 {
+            let victim_name =
+                Repository::with_characters(|ch| String::from_utf8_lossy(&ch[cv].name).to_string());
+            driver::npc_saytext_n(co, 1, Some(&victim_name));
+        }
+
+        // Log chlogs via info for now
+        let vname =
+            Repository::with_characters(|ch| String::from_utf8_lossy(&ch[cv].name).to_string());
+        let cname =
+            Repository::with_characters(|ch| String::from_utf8_lossy(&ch[co].name).to_string());
+        log::info!("IMP: Made {} an enemy of {}", vname, cname);
+        log::info!(
+            "Added {} to kill list (#ENEMY by {})",
+            vname,
+            Repository::with_characters(|ch| String::from_utf8_lossy(&ch[cn].name).to_string())
+        );
+
+        self.do_character_log(
+            cn,
+            FontColor::Yellow,
+            &format!("{} is now an enemy of {}.\n", vname, cname),
+        );
+    }
+
     pub(crate) fn do_attack(&mut self, cn: usize, co: usize, surround: i32) {
         // Basic attack handling: permission checks, enemy bookkeeping,
         // hit/miss roll, damage calculation, item damage and surround hits.

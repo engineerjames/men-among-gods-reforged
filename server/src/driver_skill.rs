@@ -65,6 +65,15 @@ const SKILL_NAMES: [&str; 50] = [
     "",
 ];
 
+/// Return skill name for external callers (bounds-checked)
+pub fn skill_name(n: usize) -> &'static str {
+    if n < SKILL_NAMES.len() {
+        SKILL_NAMES[n]
+    } else {
+        ""
+    }
+}
+
 // This function is unused in the original implementation as well.
 #[allow(dead_code)]
 pub fn friend_is_enemy(cn: usize, cc: usize) -> i32 {

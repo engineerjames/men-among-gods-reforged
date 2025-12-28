@@ -1093,8 +1093,7 @@ impl State {
             self.do_notify_character(cn as u32, core::constants::NT_GOTEXP as i32, p, 0, 0, 0);
             log::info!("TODO: chlog({}, 'Gets {} EXP')", cn, p);
             self.do_update_char(cn);
-            // TODO: self.do_check_new_level(cn);
-            log::info!("TODO: do_check_new_level({})", cn);
+            self.do_check_new_level(cn);
         }
     }
 

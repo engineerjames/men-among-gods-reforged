@@ -752,7 +752,7 @@ impl State {
                     return;
                 }
                 if starts("enemy") && f_giu {
-                    self.do_mark(cn, parse_usize(arg_get(1)), args_get(1));
+                    self.do_enemy(cn, arg_get(1), arg_get(2));
                     return;
                 }
                 if starts("enter") && f_gi {
