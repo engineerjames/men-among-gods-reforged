@@ -2798,15 +2798,10 @@ pub fn plr_change(nr: usize) {
         Server::with_players_mut(|players| {
             let player = &mut players[nr];
 
-            // Copy packed fields to local variables
-            let hp = player.cpl.hp;
-            let end = player.cpl.end;
-            let mana = player.cpl.mana;
-
             // Name updates
             if player.cpl.name != character.name {
                 player.cpl.name = character.name.clone();
-                // Send name updates in three parts
+                // Send name updates in three parts (handled in plr_change_stats, but keep for safety)
                 NetworkManager::with(|network| {
                     network.csend(nr, &[core::constants::SV_SETCHAR_NAME1], 16);
                     network.csend(nr, &[core::constants::SV_SETCHAR_NAME2], 16);
@@ -2818,35 +2813,120 @@ pub fn plr_change(nr: usize) {
             if player.cpl.mode != character.mode as i32 {
                 player.cpl.mode = character.mode as i32;
                 NetworkManager::with(|network| {
-                    network.csend(nr, &[core::constants::SV_SETCHAR_MODE], 2);
+                    let mut buf = [0u8; 2];
+                    buf[0] = core::constants::SV_SETCHAR_MODE;
+                    buf[1] = character.mode as u8;
+                    network.xsend(nr, &buf, 2);
                 });
             }
 
-            // Attributes, powers, and skills
+            // Attributes
             for i in 0..5 {
                 if player.cpl.attrib[i] != character.attrib[i] {
                     player.cpl.attrib[i] = character.attrib[i];
-                    // Send attribute update
+                    NetworkManager::with(|network| {
+                        let mut buf: [u8; 8] = [0; 8];
+                        buf[0] = core::constants::SV_SETCHAR_ATTRIB;
+                        buf[1] = i as u8;
+                        buf[2..8].copy_from_slice(&character.attrib[i]);
+                        network.xsend(nr, &buf, 8);
+                    });
                 }
             }
 
-            // Items, worn items, and spells
+            // Items
             for i in 0..40 {
                 if player.cpl.item[i] != character.item[i] as i32 {
                     player.cpl.item[i] = character.item[i] as i32;
-                    // Send item update
+                    let in_idx = character.item[i] as usize;
+                    let mut sprite: i16 = 0;
+                    let mut placement: i16 = 0;
+                    if in_idx != 0 && in_idx < core::constants::MAXITEM as usize {
+                        Repository::with_items(|items| {
+                            let it = &items[in_idx];
+                            sprite = if it.active != 0 {
+                                it.sprite[1]
+                            } else {
+                                it.sprite[0]
+                            };
+                            placement = it.placement as i16;
+                        });
+                    }
+                    NetworkManager::with(|network| {
+                        let mut buf: [u8; 9] = [0; 9];
+                        buf[0] = core::constants::SV_SETCHAR_ITEM;
+                        let idx_bytes = (i as u32).to_le_bytes();
+                        buf[1..5].copy_from_slice(&idx_bytes);
+                        buf[5] = (sprite & 0xff) as u8;
+                        buf[6] = ((sprite >> 8) & 0xff) as u8;
+                        buf[7] = (placement & 0xff) as u8;
+                        buf[8] = ((placement >> 8) & 0xff) as u8;
+                        network.xsend(nr, &buf, 9);
+                    });
                 }
             }
 
+            // Worn Items
             for i in 0..20 {
                 if player.cpl.worn[i] != character.worn[i] as i32 {
                     player.cpl.worn[i] = character.worn[i] as i32;
-                    // Send worn item update
+                    let in_idx = character.worn[i] as usize;
+                    let mut sprite: i16 = 0;
+                    let mut placement: i16 = 0;
+                    if in_idx != 0 && in_idx < core::constants::MAXITEM as usize {
+                        Repository::with_items(|items| {
+                            let it = &items[in_idx];
+                            sprite = if it.active != 0 {
+                                it.sprite[1]
+                            } else {
+                                it.sprite[0]
+                            };
+                            placement = it.placement as i16;
+                        });
+                    }
+                    NetworkManager::with(|network| {
+                        let mut buf: [u8; 9] = [0; 9];
+                        buf[0] = core::constants::SV_SETCHAR_WORN;
+                        let idx_bytes = (i as u32).to_le_bytes();
+                        buf[1..5].copy_from_slice(&idx_bytes);
+                        buf[5] = (sprite & 0xff) as u8;
+                        buf[6] = ((sprite >> 8) & 0xff) as u8;
+                        buf[7] = (placement & 0xff) as u8;
+                        buf[8] = ((placement >> 8) & 0xff) as u8;
+                        network.xsend(nr, &buf, 9);
+                    });
                 }
+            }
 
+            // Spells
+            for i in 0..20 {
                 if player.cpl.spell[i] != character.spell[i] as i32 {
                     player.cpl.spell[i] = character.spell[i] as i32;
-                    // Send spell update
+                    let in_idx = character.spell[i] as usize;
+                    let mut sprite: i16 = 0;
+                    let mut active_frac: i16 = 0;
+                    if in_idx != 0 && in_idx < core::constants::MAXITEM as usize {
+                        Repository::with_items(|items| {
+                            let it = &items[in_idx];
+                            sprite = it.sprite[1];
+                            active_frac = if it.duration > 0 {
+                                (it.active * 16 / it.duration) as i16
+                            } else {
+                                0
+                            };
+                        });
+                    }
+                    NetworkManager::with(|network| {
+                        let mut buf: [u8; 9] = [0; 9];
+                        buf[0] = core::constants::SV_SETCHAR_SPELL;
+                        let idx_bytes = (i as u32).to_le_bytes();
+                        buf[1..5].copy_from_slice(&idx_bytes);
+                        buf[5] = (sprite & 0xff) as u8;
+                        buf[6] = ((sprite >> 8) & 0xff) as u8;
+                        buf[7] = (active_frac & 0xff) as u8;
+                        buf[8] = ((active_frac >> 8) & 0xff) as u8;
+                        network.xsend(nr, &buf, 9);
+                    });
                 }
             }
         });
@@ -2854,7 +2934,7 @@ pub fn plr_change(nr: usize) {
 }
 
 /// Send full stats update to player
-fn plr_change_stats(nr: usize, cn: usize, ticker: i32) {
+fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
     // Send name in three parts if changed
     let name_changed = Repository::with_characters(|characters| {
         let ch = &characters[cn];
@@ -2935,9 +3015,18 @@ fn plr_change_stats(nr: usize, cn: usize, ticker: i32) {
         let different = Repository::with_characters(|characters| {
             let ch = &characters[cn];
             Server::with_players(|players| match idx {
-                0 => players[nr].cpl.hp != ch.hp,
-                1 => players[nr].cpl.end != ch.end,
-                2 => players[nr].cpl.mana != ch.mana,
+                0 => {
+                    let ch_hp = ch.hp;
+                    players[nr].cpl.hp != ch_hp
+                }
+                1 => {
+                    let end = ch.end;
+                    players[nr].cpl.end != end
+                }
+                2 => {
+                    let mana = ch.mana;
+                    players[nr].cpl.mana != mana
+                }
                 _ => false,
             })
         });
@@ -2946,11 +3035,23 @@ fn plr_change_stats(nr: usize, cn: usize, ticker: i32) {
             buf[0] = *code;
             Repository::with_characters(|characters| {
                 let ch = &characters[cn];
-                let arr: &[u16; 6] = match idx {
-                    0 => &ch.hp,
-                    1 => &ch.end,
-                    2 => &ch.mana,
-                    _ => &ch.hp,
+                let arr: [u16; 6] = match idx {
+                    0 => {
+                        let hp = ch.hp;
+                        hp
+                    }
+                    1 => {
+                        let end = ch.end;
+                        end
+                    }
+                    2 => {
+                        let mana = ch.mana;
+                        mana
+                    }
+                    _ => {
+                        let hp = ch.hp;
+                        hp
+                    }
                 };
                 for i in 0..6 {
                     let off = 1 + i * 2;
