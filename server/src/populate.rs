@@ -1,4 +1,4 @@
-use crate::{god::God, repository::Repository, state::State};
+use crate::{driver_skill, god::God, repository::Repository, state::State};
 
 /// Port of `init_lights` from `populate.cpp`
 /// Initialize lighting on the map
@@ -860,13 +860,52 @@ pub fn skillcost(val: i32, dif: i32, start: i32) -> i32 {
 /// Updates skills for all characters
 pub fn pop_skill() {
     for cn in 1..core::constants::MAXCHARS as usize {
-        let used = Repository::with_characters(|characters| characters[cn].used);
-        if used != core::constants::USE_ACTIVE {
+        let is_player = Repository::with_characters(|characters| {
+            (characters[cn].flags & core::constants::CharacterFlags::CF_PLAYER.bits()) != 0
+                && characters[cn].used == core::constants::USE_ACTIVE
+        });
+        if !is_player {
             continue;
         }
 
-        // TODO: Implement skill update logic when skill system is defined
-        log::debug!("Updating skills for character {}", cn);
+        let t = Repository::with_characters(|characters| characters[cn].temp as usize);
+
+        let template_skills = Repository::with_character_templates(|templates| templates[t].skill);
+
+        for n in 0..50usize {
+            let temp_skill = template_skills[n];
+
+            Repository::with_characters_mut(|characters| {
+                let ch = &mut characters[cn];
+
+                if ch.skill[n][0] == 0 && temp_skill[0] != 0 {
+                    ch.skill[n][0] = temp_skill[0];
+                    log::info!("added {} to {}", driver_skill::skill_name(n), ch.get_name());
+                }
+
+                if temp_skill[2] < ch.skill[n][0] {
+                    let p = skillcost(
+                        ch.skill[n][0] as i32,
+                        ch.skill[n][3] as i32,
+                        temp_skill[2] as i32,
+                    );
+                    log::info!(
+                        "reduced {} on {} from {} to {}, added {} exp",
+                        driver_skill::skill_name(n),
+                        ch.get_name(),
+                        ch.skill[n][0],
+                        temp_skill[2],
+                        p
+                    );
+                    ch.skill[n][0] = temp_skill[2];
+                    ch.points += p;
+                }
+
+                ch.skill[n][1] = temp_skill[1];
+                ch.skill[n][2] = temp_skill[2];
+                ch.skill[n][3] = temp_skill[3];
+            });
+        }
     }
     log::info!("Changed Skills.");
 }
@@ -957,6 +996,7 @@ pub fn pop_tick() {
 
 /// Port of `pop_reset_all` from `populate.cpp`
 /// Resets all character and item templates
+#[allow(dead_code)]
 pub fn pop_reset_all() {
     for n in 1..core::constants::MAXTCHARS as usize {
         reset_char(n);
@@ -1020,6 +1060,7 @@ pub fn pop_wipe() {
 
 /// Port of `pop_remove` from `populate.cpp`
 /// Saves all players to disk
+#[allow(dead_code)]
 pub fn pop_remove() {
     log::info!("Saving players...");
 
@@ -1048,6 +1089,7 @@ pub fn pop_remove() {
 
 /// Port of `pop_load` from `populate.cpp`
 /// Loads game data from disk
+#[allow(dead_code)]
 pub fn pop_load() {
     log::info!("Loading game data...");
 

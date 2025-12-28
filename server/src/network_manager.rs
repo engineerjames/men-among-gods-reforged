@@ -58,6 +58,8 @@ impl NetworkManager {
         f(&*manager)
     }
 
+    // TODO: We might not need this...
+    #[allow(dead_code)]
     pub fn with_mut<F, R>(f: F) -> R
     where
         F: FnOnce(&mut NetworkManager) -> R,

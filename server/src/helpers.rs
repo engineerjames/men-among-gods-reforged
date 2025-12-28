@@ -395,10 +395,14 @@ pub fn absrankdiff(cn: i32, co: i32) -> u32 {
     rankdiff(cn, co).abs() as u32
 }
 
+// Unused in original implementation
+#[allow(dead_code)]
 pub fn in_attackrange(cn: i32, co: i32) -> bool {
     absrankdiff(cn, co) <= core::constants::ATTACK_RANGE as u32
 }
 
+// Unused in original implementation
+#[allow(dead_code)]
 pub fn in_grouprange(cn: i32, co: i32) -> bool {
     absrankdiff(cn, co) <= core::constants::GROUP_RANGE as u32
 }
