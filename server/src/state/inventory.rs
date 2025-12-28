@@ -838,12 +838,13 @@ impl State {
                 Repository::with_items(|items| (items[item_idx].temp, items[item_idx].data[0]));
 
             if item_temp == core::constants::IT_TOMBSTONE as u16 && item_data_0 != 0 {
-                // TODO: Implement do_ransack_corpse
-                log::info!(
-                    "TODO: Call do_ransack_corpse({}, {}, 'In the tombstone you notice %s!\\n')",
-                    cn,
-                    item_data_0
-                );
+                State::with(|state| {
+                    state.do_ransack_corpse(
+                        item_data_0 as usize,
+                        cn,
+                        "In the tombstone you notice %s!\n",
+                    );
+                });
             }
 
             // Special case: driver 57 (career pole check)

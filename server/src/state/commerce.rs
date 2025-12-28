@@ -293,20 +293,16 @@ impl State {
                                 let item_name = Repository::with_items(|items| {
                                     String::from_utf8_lossy(&items[item_idx].name).to_string()
                                 });
-                                let item_ref = Repository::with_items(|items| {
-                                    String::from_utf8_lossy(&items[item_idx].reference).to_string()
-                                });
 
                                 self.do_character_log(
                                     cn,
                                     FontColor::Yellow,
-                                    &format!("You took a {}.\n", item_ref),
+                                    &format!("You took a {}.\n", item_name),
                                 );
                             }
                         } else {
                             // Failed to give item - put it back
-                            // TODO: Implement god_give_char to return item
-                            log::info!("TODO: god_give_char({}, {}) to return item", item_idx, co);
+                            God::give_character_item(co, item_idx);
 
                             let item_ref = Repository::with_items(|items| {
                                 String::from_utf8_lossy(&items[item_idx].reference).to_string()
@@ -341,8 +337,7 @@ impl State {
                             Repository::with_characters(|ch| ch[co].worn[worn_slot] as usize);
 
                         if item_idx != 0 {
-                            // TODO: Implement god_take_from_char
-                            log::info!("TODO: god_take_from_char({}, {})", item_idx, co);
+                            God::take_from_char(item_idx, co);
 
                             let gave_success = God::give_character_item(cn, item_idx);
 
@@ -363,12 +358,8 @@ impl State {
                                     &format!("You took a {}.\n", item_ref),
                                 );
                             } else {
-                                // TODO: Implement god_give_char to return item
-                                log::info!(
-                                    "TODO: god_give_char({}, {}) to return item",
-                                    item_idx,
-                                    co
-                                );
+                                // Failed to give item - put it back
+                                God::give_character_item(co, item_idx);
 
                                 let item_ref = Repository::with_items(|items| {
                                     String::from_utf8_lossy(&items[item_idx].reference).to_string()

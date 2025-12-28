@@ -349,15 +349,16 @@ impl State {
         }
 
         // Remove from enemy lists
-        // TODO: Implement remove_enemy
-        log::info!(
-            "TODO: Remove character {} from all enemy lists",
-            character_id
-        );
+        State::remove_enemy(character_id);
 
         // Schedule respawn and show death animation
-        // TODO: Implement fx_add_effect for death animation
-        log::info!("TODO: Add death effect at position ({}, {})", co_x, co_y);
+        EffectManager::fx_add_effect(
+            5,
+            co_x as i32,
+            co_y as i32,
+            0,
+            Repository::with_characters(|ch| ch[character_id].player),
+        );
     }
 
     /// Handle player death including resurrection and grave creation
@@ -472,7 +473,6 @@ impl State {
         }
 
         // Update player character
-        // TODO: Implement do_update_char
         Repository::with_characters_mut(|ch| {
             ch[co].set_do_update_flags();
         });
@@ -506,8 +506,7 @@ impl State {
             ch[cc].set_do_update_flags();
         });
 
-        // TODO: Implement plr_map_set
-        log::info!("TODO: Set map for grave character {}", cc);
+        player::plr_map_set(cc);
     }
 
     /// Handle NPC death
@@ -636,8 +635,13 @@ impl State {
         };
 
         if is_cn_player {
-            // TODO: Implement do_ransack_corpse
-            log::info!("TODO: Ransack corpse {} by player {}", co, cn);
+            State::with(|state| {
+                state.do_ransack_corpse(
+                    co,
+                    cn,
+                    "You notice %s tumble into the grave of your victim.\n",
+                );
+            });
         }
 
         // Update character

@@ -273,7 +273,7 @@ impl State {
 
         // Now compute diff -> chance/bonus mapping per original C++ table
         let diff = s1 - s2;
-        let mut chance: i32;
+        let chance: i32;
         let mut bonus: i32 = 0;
         if diff < -40 {
             chance = 1;
@@ -403,7 +403,6 @@ impl State {
                         (characters[cn].x as i32, characters[cn].y as i32)
                     });
                     // cardinal neighbor offsets: +1, -1, +MAPX, -MAPX -> translate to coords
-                    let mapx = core::constants::SERVER_MAPX as i32;
                     let neighbors = [(ax + 1, ay), (ax - 1, ay), (ax, ay + 1), (ax, ay - 1)];
                     for (nx, ny) in neighbors.iter() {
                         if *nx < 0

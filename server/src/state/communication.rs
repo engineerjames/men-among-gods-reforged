@@ -212,10 +212,9 @@ impl State {
         }
 
         // Handle text descriptions and logging (only if not autoflag)
-        let (is_merchant, co_flags, co_temp) = Repository::with_characters(|ch| {
+        let (is_merchant, co_temp) = Repository::with_characters(|ch| {
             (
                 ch[co].flags & CharacterFlags::CF_MERCHANT.bits() != 0,
-                ch[co].flags,
                 ch[co].temp,
             )
         });
@@ -480,7 +479,7 @@ impl State {
         buf[0] = core::constants::SV_LOOK2;
 
         if visibility <= 75 {
-            let (worn9, worn10, sprite, points_tot, hp5, end5, mana5, a_hp, a_end, a_mana) =
+            let (worn9, worn10, sprite, points_tot, hp5, end5, mana5) =
                 Repository::with_characters(|ch| {
                     let w9 = if ch[co].worn[9] != 0 {
                         Repository::with_items(|items| items[ch[co].worn[9] as usize].sprite[0])
@@ -500,9 +499,6 @@ impl State {
                         ch[co].hp[5],
                         ch[co].end[5],
                         ch[co].mana[5],
-                        ch[co].a_hp,
-                        ch[co].a_end,
-                        ch[co].a_mana,
                     )
                 });
 
@@ -1320,51 +1316,63 @@ impl State {
             );
             return;
         }
-        let ok = Repository::with_characters(|ch| {
-            (ch[co].flags & CharacterFlags::CF_PLAYER.bits()) != 0
-                && ch[co].used == core::constants::USE_ACTIVE
-                && !((ch[co].flags & CharacterFlags::CF_INVISIBLE.bits()) != 0 && /* invis_level */ false)
-                && (!((ch[co].flags & CharacterFlags::CF_NOTELL.bits()) != 0))
-        });
-        if !ok {
+        let (co_flags, co_used, co_invis, cn_flags, co_name, cn_name) =
+            Repository::with_characters(|ch| {
+                (
+                    ch[co].flags,
+                    ch[co].used,
+                    (ch[co].flags & CharacterFlags::CF_INVISIBLE.bits()) != 0,
+                    ch[cn].flags,
+                    ch[co].get_name().to_string(),
+                    ch[cn].get_name().to_string(),
+                )
+            });
+        let cn_is_god = (cn_flags & CharacterFlags::CF_GOD.bits()) != 0;
+        let cn_is_player = (cn_flags & CharacterFlags::CF_PLAYER.bits()) != 0;
+        let co_is_player = (co_flags & CharacterFlags::CF_PLAYER.bits()) != 0;
+        let co_notell = (co_flags & CharacterFlags::CF_NOTELL.bits()) != 0;
+        let co_active = co_used == core::constants::USE_ACTIVE;
+        let cn_invis = (cn_flags & CharacterFlags::CF_INVISIBLE.bits()) != 0;
+        let cn_invis_level = crate::helpers::invis_level(cn);
+        let co_invis_level = crate::helpers::invis_level(co);
+        // do_is_ignore
+        let is_ignored = !cn_is_god && self.do_is_ignore(cn, co, 0) != 0;
+        // C++: ! (player) || not active || (invis && invis_level) || (not god && (notell || ignore))
+        if !co_is_player
+            || !co_active
+            || (co_invis && cn_invis_level < co_invis_level)
+            || (!cn_is_god && (co_notell || is_ignored))
+        {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,
-                &format!(
-                    "{} is not listening\n",
-                    Repository::with_characters(|ch| ch[co].get_name().to_string())
-                ),
+                &format!("{} is not listening\n", co_name),
             );
             return;
         }
-        if Repository::with_characters(|ch| ch[co].data[0] != 0) {
-            if Repository::with_characters(|ch| ch[co].text[0][0] != 0) {
+        // AFK message
+        let co_afk = Repository::with_characters(|ch| ch[co].data[0] != 0);
+        if co_afk {
+            let co_afk_msg = Repository::with_characters(|ch| ch[co].text[0][0] != 0);
+            if co_afk_msg {
+                let msg = Repository::with_characters(|ch| {
+                    String::from_utf8_lossy(&ch[co].text[0]).to_string()
+                });
                 self.do_character_log(
                     cn,
                     core::types::FontColor::Red,
-                    &format!(
-                        "{} is away from keyboard; Message:\n",
-                        Repository::with_characters(|ch| ch[co].get_name().to_string())
-                    ),
+                    &format!("{} is away from keyboard; Message:\n", co_name),
                 );
                 self.do_character_log(
                     cn,
                     core::types::FontColor::Blue,
-                    &format!(
-                        "  \"{}\"\n",
-                        Repository::with_characters(
-                            |ch| String::from_utf8_lossy(&ch[co].text[0]).to_string()
-                        )
-                    ),
+                    &format!("  \"{}\"\n", msg),
                 );
             } else {
                 self.do_character_log(
                     cn,
                     core::types::FontColor::Red,
-                    &format!(
-                        "{} is away from keyboard.\n",
-                        Repository::with_characters(|ch| ch[co].get_name().to_string())
-                    ),
+                    &format!("{} is away from keyboard.\n", co_name),
                 );
             }
         }
@@ -1374,32 +1382,22 @@ impl State {
                 core::types::FontColor::Red,
                 &format!(
                     "I understand that you want to tell {} something. But what?\n",
-                    Repository::with_characters(|ch| ch[co].get_name().to_string())
+                    co_name
                 ),
             );
             return;
         }
-        let buf = if Repository::with_characters(
-            |ch| (ch[cn].flags & CharacterFlags::CF_INVISIBLE.bits()) != 0 && /*invis_level*/ false,
-        ) {
-            format!("Somebody tells you: \"{}\"\n", text)
+        let buf = if cn_invis && cn_invis_level > co_invis_level {
+            format!("Somebody tells you: \"{:.200}\"\n", text)
         } else {
-            format!(
-                "{} tells you: \"{}\"\n",
-                Repository::with_characters(|ch| ch[cn].get_name().to_string()),
-                text
-            )
+            format!("{} tells you: \"{:.200}\"\n", cn_name, text)
         };
         self.do_character_log(co, core::types::FontColor::Blue, &buf);
         // ccp_tell omitted
         self.do_character_log(
             cn,
             core::types::FontColor::Yellow,
-            &format!(
-                "Told {}: \"{}\"\n",
-                Repository::with_characters(|ch| ch[co].get_name().to_string()),
-                text
-            ),
+            &format!("Told {}: \"{:.200}\"\n", co_name, text),
         );
         if cn == co {
             self.do_character_log(
@@ -1408,13 +1406,8 @@ impl State {
                 "Do you like talking to yourself?\n",
             );
         }
-        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::CF_PLAYER.bits()) != 0)
-        {
-            log::info!(
-                "Told {}: \"{}\"",
-                Repository::with_characters(|ch| ch[co].get_name().to_string()),
-                text
-            );
+        if cn_is_player {
+            log::info!("Told {}: \"{}\"", co_name, text);
         }
     }
 
