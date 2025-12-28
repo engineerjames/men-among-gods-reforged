@@ -1,5 +1,7 @@
+use crate::driver_generic;
 use crate::effect::EffectManager;
 use crate::helpers;
+use crate::player;
 use crate::{driver_special, god::God, repository::Repository, state::State};
 use core::constants::*;
 use rand::Rng;
@@ -1131,7 +1133,6 @@ pub fn die_companion(cn: usize) {
 pub fn npc_driver_high(cn: usize) -> i32 {
     // Check for special driver
     let special_driver = Repository::with_characters(|chars| chars[cn].data[25]);
-
     if special_driver != 0 {
         return match special_driver {
             1 => driver_special::npc_stunrun_high(cn),
@@ -1144,8 +1145,485 @@ pub fn npc_driver_high(cn: usize) -> i32 {
         };
     }
 
-    // TODO: Implement full high priority driver logic
-    // This is a very large function with many subsystems
+    let ticker = Repository::with_globals(|g| g.ticker);
+    let _flags = Repository::with_globals(|g| g.flags);
+
+    // reset panic mode if expired
+    Repository::with_characters_mut(|characters| {
+        if characters[cn].data[78] < ticker as i32 {
+            characters[cn].data[78] = 0;
+        }
+    });
+
+    // self destruct
+    {
+        let mut do_die = false;
+        Repository::with_characters_mut(|characters| {
+            let d64 = characters[cn].data[64];
+            if d64 != 0 {
+                if d64 < (TICKS * 60 * 15) as i32 {
+                    characters[cn].data[64] = d64 + ticker as i32;
+                }
+                if characters[cn].data[64] < ticker as i32 {
+                    // NPC should self-destruct
+                    // TODO: Port do_sayx(cn, "Free!")
+                    characters[cn].used = USE_EMPTY;
+                    do_die = true;
+                }
+            }
+        });
+        if do_die {
+            God::destroy_items(cn);
+            player::plr_map_remove(cn);
+            npc_remove_enemy(cn, 0);
+            return 1;
+        }
+    }
+
+    // Count down master-no-see timer for player ghost companions
+    {
+        let (temp, data64) = Repository::with_characters(|characters| {
+            (characters[cn].temp, characters[cn].data[64])
+        });
+        if temp == CT_COMPANION as u16 && data64 == 0 {
+            let co = Repository::with_characters(|characters| characters[cn].data[CHD_MASTER]);
+            let master_ok = Repository::with_characters(|characters| {
+                let co = co as usize;
+                if co >= characters.len() {
+                    return false;
+                }
+                characters[co].used != USE_EMPTY && characters[co].data[64] == cn as i32
+            });
+            if !master_ok {
+                log::warn!("{} killed for bad master({})", cn, co);
+                die_companion(cn);
+                return 1;
+            }
+
+            let should_self_destruct = Repository::with_globals(|g| g.ticker)
+                > Repository::with_characters(|characters| characters[cn].data[98]);
+            if should_self_destruct {
+                Repository::with_characters_mut(|characters| {
+                    let co = characters[cn].data[CHD_MASTER] as usize;
+                    if co < characters.len() {
+                        characters[co].luck -= 1;
+                    }
+                });
+                log::info!("{} Self-destructed because of neglect by master", cn);
+                die_companion(cn);
+                return 1;
+            }
+        }
+    }
+
+    // heal us if we're hurt
+    {
+        let (a_hp, hp5) =
+            Repository::with_characters(|characters| (characters[cn].a_hp, characters[cn].hp[5]));
+        if a_hp < hp5 as i32 * 600 {
+            if npc_try_spell(cn, cn, SK_HEAL as usize) {
+                return 1;
+            }
+        }
+    }
+
+    // donate/destroy citem if that's our job
+    {
+        let citem = Repository::with_characters(|characters| characters[cn].citem as usize);
+        let donate_dest = Repository::with_characters(|characters| characters[cn].data[47]);
+        if citem != 0 && donate_dest != 0 {
+            let take_action = Repository::with_items(|items| {
+                let it = &items[citem];
+                it.damage_state != 0
+                    || (it.flags & ItemFlags::IF_SHOPDESTROY.bits() != 0)
+                    || (it.flags & ItemFlags::IF_DONATE.bits() == 0)
+            });
+            if take_action {
+                Repository::with_items_mut(|items| items[citem].used = USE_EMPTY);
+                Repository::with_characters_mut(|characters| characters[cn].citem = 0);
+            } else {
+                // reset ages/damage
+                Repository::with_items_mut(|items| {
+                    items[citem].current_age[0] = 0;
+                    items[citem].current_age[1] = 0;
+                    items[citem].current_damage = 0;
+                });
+                God::donate_item(citem, donate_dest);
+                Repository::with_characters_mut(|characters| characters[cn].citem = 0);
+            }
+        }
+    }
+
+    // donate item[39]
+    {
+        let it39 = Repository::with_characters(|characters| characters[cn].item[39] as usize);
+        let donate_dest = Repository::with_characters(|characters| characters[cn].data[47]);
+        if it39 != 0 && donate_dest != 0 {
+            let take_action = Repository::with_items(|items| {
+                let it = &items[it39];
+                it.damage_state != 0
+                    || (it.flags & ItemFlags::IF_SHOPDESTROY.bits() != 0)
+                    || (it.flags & ItemFlags::IF_DONATE.bits() == 0)
+            });
+            if take_action {
+                Repository::with_items_mut(|items| items[it39].used = USE_EMPTY);
+                Repository::with_characters_mut(|characters| characters[cn].item[39] = 0);
+            } else {
+                Repository::with_items_mut(|items| {
+                    items[it39].current_age[0] = 0;
+                    items[it39].current_age[1] = 0;
+                    items[it39].current_damage = 0;
+                });
+                God::donate_item(it39, donate_dest);
+                Repository::with_characters_mut(|characters| characters[cn].item[39] = 0);
+            }
+        }
+    }
+
+    // generic spell management
+    {
+        let (a_mana, med_skill) = Repository::with_characters(|characters| {
+            (
+                characters[cn].a_mana,
+                characters[cn].skill[SK_MEDIT as usize][0],
+            )
+        });
+        if a_mana > (Repository::with_characters(|characters| characters[cn].mana[5]) as i32) * 850
+            && med_skill != 0
+        {
+            if a_mana > 75000 && npc_try_spell(cn, cn, SK_BLESS as usize) {
+                return 1;
+            }
+            if npc_try_spell(cn, cn, SK_PROTECT as usize) {
+                return 1;
+            }
+            if npc_try_spell(cn, cn, SK_MSHIELD as usize) {
+                return 1;
+            }
+            if npc_try_spell(cn, cn, SK_ENHANCE as usize) {
+                return 1;
+            }
+            if npc_try_spell(cn, cn, SK_BLESS as usize) {
+                return 1;
+            }
+        }
+    }
+
+    // generic endurance management (mode switching)
+    {
+        let data58 = Repository::with_characters(|characters| characters[cn].data[58]);
+        let a_end = Repository::with_characters(|characters| characters[cn].a_end);
+        if data58 > 1 && a_end > 10000 {
+            Repository::with_characters_mut(|characters| {
+                if characters[cn].mode != 2 {
+                    characters[cn].mode = 2;
+                    State::with(|s| s.do_update_char(cn));
+                }
+            });
+        } else if data58 == 1 && a_end > 10000 {
+            Repository::with_characters_mut(|characters| {
+                if characters[cn].mode != 1 {
+                    characters[cn].mode = 1;
+                    State::with(|s| s.do_update_char(cn));
+                }
+            });
+        } else {
+            Repository::with_characters_mut(|characters| {
+                if characters[cn].mode != 0 {
+                    characters[cn].mode = 0;
+                    State::with(|s| s.do_update_char(cn));
+                }
+            });
+        }
+    }
+
+    // create light (approximation: attempt spell if conditions met)
+    {
+        let (data62, _data58) = Repository::with_characters(|characters| {
+            (characters[cn].data[62], characters[cn].data[58])
+        });
+        if data62 > _data58 as i32 {
+            let (cx, cy) = Repository::with_characters(|characters| {
+                (characters[cn].x as usize, characters[cn].y as usize)
+            });
+            let light = State::check_dlight(cx, cy);
+            if light < 20 {
+                if npc_try_spell(cn, cn, SK_LIGHT as usize) {
+                    return 1;
+                }
+            }
+        }
+    }
+
+    // make sure protected character survives
+    {
+        let co = Repository::with_characters(|characters| characters[cn].data[63] as usize);
+        if co != 0 {
+            let (a_hp, hp5) = Repository::with_characters(|characters| {
+                (characters[co].a_hp, characters[co].hp[5])
+            });
+            if a_hp < hp5 as i32 * 600 {
+                if npc_try_spell(cn, co, SK_HEAL as usize) {
+                    return 1;
+                }
+            }
+        }
+    }
+
+    // help friend
+    {
+        let co = Repository::with_characters(|characters| characters[cn].data[65] as usize);
+        if co != 0 {
+            let cc = Repository::with_characters(|characters| characters[co].attack_cn as usize);
+
+            if Repository::with_characters(|characters| characters[cn].a_mana)
+                > (get_spellcost(cn, SK_BLESS as usize) * 2
+                    + get_spellcost(cn, SK_PROTECT as usize)
+                    + get_spellcost(cn, SK_ENHANCE as usize)) as i32
+            {
+                if npc_try_spell(cn, cn, SK_BLESS as usize) {
+                    return 1;
+                }
+            }
+
+            if Repository::with_characters(|characters| characters[co].a_hp)
+                < Repository::with_characters(|characters| characters[co].hp[5]) as i32 * 600
+            {
+                if npc_try_spell(cn, co, SK_HEAL as usize) {
+                    return 1;
+                }
+            }
+
+            if !npc_can_spell(co, cn, SK_PROTECT as usize)
+                && npc_try_spell(cn, co, SK_PROTECT as usize)
+            {
+                return 1;
+            }
+            if !npc_can_spell(co, cn, SK_ENHANCE as usize)
+                && npc_try_spell(cn, co, SK_ENHANCE as usize)
+            {
+                return 1;
+            }
+            if !npc_can_spell(co, cn, SK_BLESS as usize) && npc_try_spell(cn, co, SK_BLESS as usize)
+            {
+                return 1;
+            }
+
+            if cc != 0
+                && Repository::with_characters(|characters| characters[co].a_hp)
+                    < Repository::with_characters(|characters| characters[co].hp[5]) as i32 * 650
+                && npc_is_enemy(cn, cc)
+            {
+                if npc_try_spell(cn, cc, SK_BLAST as usize) {
+                    return 1;
+                }
+            }
+            Repository::with_characters_mut(|characters| characters[cn].data[65] = 0);
+        }
+    }
+
+    // generic fight-magic management
+    {
+        let co = Repository::with_characters(|characters| characters[cn].attack_cn as usize);
+        let in_fight =
+            co != 0 || Repository::with_characters(|characters| characters[cn].data[78]) != 0;
+        if in_fight {
+            if npc_quaff_potion(cn, 833, 254) {
+                return 1;
+            }
+            if npc_quaff_potion(cn, 267, 254) {
+                return 1;
+            }
+
+            if co != 0
+                && (Repository::with_characters(|characters| characters[cn].a_hp)
+                    < Repository::with_characters(|characters| characters[cn].hp[5]) as i32 * 600
+                    || rand::thread_rng().gen_range(0..10) == 0)
+            {
+                if npc_try_spell(cn, co, SK_BLAST as usize) {
+                    return 1;
+                }
+            }
+
+            if co != 0
+                && Repository::with_globals(|g| g.ticker)
+                    > Repository::with_characters(|characters| characters[cn].data[75])
+            {
+                if npc_try_spell(cn, co, SK_STUN as usize) {
+                    Repository::with_characters_mut(|characters| {
+                        characters[cn].data[75] = Repository::with_characters(|chars| {
+                            chars[cn].skill[SK_STUN as usize][5]
+                        }) as i32
+                            + 18 * 8
+                    });
+                    return 1;
+                }
+            }
+
+            if Repository::with_characters(|characters| characters[cn].a_mana) > 75000
+                && npc_try_spell(cn, cn, SK_BLESS as usize)
+            {
+                return 1;
+            }
+            if npc_try_spell(cn, cn, SK_PROTECT as usize) {
+                return 1;
+            }
+            if npc_try_spell(cn, cn, SK_MSHIELD as usize) {
+                return 1;
+            }
+            if npc_try_spell(cn, cn, SK_ENHANCE as usize) {
+                return 1;
+            }
+            if npc_try_spell(cn, cn, SK_BLESS as usize) {
+                return 1;
+            }
+            if co != 0 && npc_try_spell(cn, co, SK_CURSE as usize) {
+                return 1;
+            }
+            if co != 0
+                && Repository::with_globals(|g| g.ticker)
+                    > Repository::with_characters(|characters| characters[cn].data[74])
+                        + (TICKS * 10) as i32
+                && npc_try_spell(cn, co, SK_GHOST as usize)
+            {
+                Repository::with_characters_mut(|characters| {
+                    characters[cn].data[74] = Repository::with_globals(|g| g.ticker) as i32
+                });
+                return 1;
+            }
+
+            if co != 0
+                && Repository::with_characters(|characters| characters[co].armor) + 5
+                    > Repository::with_characters(|characters| characters[cn].weapon)
+            {
+                if npc_try_spell(cn, co, SK_BLAST as usize) {
+                    return 1;
+                }
+            }
+        }
+    }
+
+    // did we panic?
+    if Repository::with_characters(|characters| characters[cn].data[78]) != 0
+        && Repository::with_characters(|characters| characters[cn].attack_cn) == 0
+        && Repository::with_characters(|characters| characters[cn].goto_x) == 0
+    {
+        let (x, y) = Repository::with_characters(|characters| (characters[cn].x, characters[cn].y));
+        let rx = rand::thread_rng().gen_range(0..10) as i32;
+        let ry = rand::thread_rng().gen_range(0..10) as i32;
+        Repository::with_characters_mut(|characters| {
+            characters[cn].goto_x = (x as i32 + 5 - rx) as u16;
+            characters[cn].goto_y = (y as i32 + 5 - ry) as u16;
+        });
+        return 1;
+    }
+
+    // are we on protect and want to follow our master?
+    {
+        let co = Repository::with_characters(|characters| characters[cn].data[69] as usize);
+        if Repository::with_characters(|characters| characters[cn].attack_cn) == 0 && co != 0 {
+            if driver_generic::follow_driver(cn, co) {
+                Repository::with_characters_mut(|characters| characters[cn].data[58] = 2);
+                return 1;
+            }
+        }
+    }
+
+    // don't scan if we don't use the information
+    if Repository::with_characters(|characters| characters[cn].data[41]) == 0
+        && Repository::with_characters(|characters| characters[cn].data[47]) == 0
+    {
+        return 0;
+    }
+
+    // save some work
+    if Repository::with_characters(|characters| characters[cn].data[41]) != 0
+        && Repository::with_characters(|characters| characters[cn].misc_action) == DR_USE as u16
+    {
+        return 0;
+    }
+    if Repository::with_characters(|characters| characters[cn].data[47]) != 0
+        && Repository::with_characters(|characters| characters[cn].misc_action) == DR_PICKUP as u16
+    {
+        return 0;
+    }
+    if Repository::with_characters(|characters| characters[cn].data[47]) != 0
+        && Repository::with_characters(|characters| characters[cn].misc_action) == DR_USE as u16
+    {
+        return 0;
+    }
+
+    // scan nearby map for items of interest
+    let ch_pos = Repository::with_characters(|characters| (characters[cn].x, characters[cn].y));
+    // indoor detection
+    let indoor1 = Repository::with_map(|map| {
+        let idx = ch_pos.0 as usize + ch_pos.1 as usize * SERVER_MAPX as usize;
+        (map[idx].flags & MF_INDOORS as u64) != 0
+    });
+    let min_y = std::cmp::max(ch_pos.1 as i32 - 8, 1) as usize;
+    let max_y = std::cmp::min(ch_pos.1 as i32 + 8, SERVER_MAPY as i32 - 1) as usize;
+    let min_x = std::cmp::max(ch_pos.0 as i32 - 8, 1) as usize;
+    let max_x = std::cmp::min(ch_pos.0 as i32 + 8, SERVER_MAPX as i32 - 1) as usize;
+
+    for y in min_y..=max_y {
+        for x in min_x..=max_x {
+            let m = x + y * SERVER_MAPX as usize;
+            let map_it = Repository::with_map(|map| map[m].it as usize);
+            if map_it == 0 {
+                continue;
+            }
+
+            let indoor2 = Repository::with_map(|map| (map[m].flags & MF_INDOORS as u64) != 0);
+            let it_temp = Repository::with_items(|items| items[map_it].temp as i32);
+
+            if it_temp == Repository::with_characters(|characters| characters[cn].data[41]) {
+                // check active and light conditions - TODO: check actual map light/dlight
+                let active = Repository::with_items(|items| items[map_it].active);
+                if active == 0 {
+                    Repository::with_characters_mut(|characters| {
+                        characters[cn].misc_action = DR_USE as u16;
+                        characters[cn].misc_target1 = x as u16;
+                        characters[cn].misc_target2 = y as u16;
+                        characters[cn].goto_x = 0u16;
+                        characters[cn].data[58] = 1;
+                    });
+                    return 1;
+                }
+                // TODO: handle case when active and dlight > 200 and !indoor2
+            }
+
+            if Repository::with_characters(|characters| characters[cn].data[47]) != 0
+                && indoor1 == indoor2
+            {
+                let flags = Repository::with_items(|items| items[map_it].flags);
+                if flags & ItemFlags::IF_TAKE.bits() != 0 {
+                    // TODO: check can_go and do_char_can_see_item
+                    Repository::with_characters_mut(|characters| {
+                        characters[cn].misc_action = DR_PICKUP as u16;
+                        characters[cn].misc_target1 = x as u16;
+                        characters[cn].misc_target2 = y as u16;
+                        characters[cn].goto_x = 0u16;
+                        characters[cn].data[58] = 1;
+                    });
+                    return 1;
+                }
+                if Repository::with_items(|items| items[map_it].driver) == 7 {
+                    let map_idx = m;
+                    if player::plr_check_target(map_idx) {
+                        Repository::with_characters_mut(|characters| {
+                            characters[cn].misc_action = DR_PICKUP as u16;
+                            characters[cn].misc_target1 = x as u16;
+                            characters[cn].misc_target2 = y as u16;
+                            characters[cn].goto_x = 0u16;
+                            characters[cn].data[58] = 1;
+                        });
+                        return 1;
+                    }
+                }
+            }
+        }
+    }
+
     0
 }
 

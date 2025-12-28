@@ -231,7 +231,7 @@ pub fn spell_race_mod(power: i32, kindred: i32) -> i32 {
 pub fn add_spell(cn: usize, in_: usize) -> i32 {
     // Ported from C++ add_spell(int cn, int in)
     let mut n = 0;
-    let mut in2 = 0;
+    let in2: usize;
     let mut weak = 999;
     let mut weakest = 99;
     let m = Repository::with_characters(|ch| {
@@ -2555,7 +2555,7 @@ pub fn skill_identify(cn: usize) {
     }
 
     let citem = Repository::with_characters(|ch| ch[cn].citem as usize);
-    let mut in_idx = 0usize;
+    let in_idx: usize;
     let mut co = 0usize;
     let power: i32;
 
@@ -2901,9 +2901,7 @@ pub fn skill_repair(cn: usize) {
     } else {
         18
     };
-    if chan < 0 {
-        chan = 0;
-    }
+
     if chan > 18 {
         chan = 18;
     }

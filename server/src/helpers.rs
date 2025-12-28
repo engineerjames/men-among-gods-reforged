@@ -1,3 +1,135 @@
+use core::{constants::CharacterFlags, types::FontColor};
+
+use crate::{driver, god::God, populate, repository::Repository, state::State};
+
+/// Port of C++ use_labtransfer(int cn, int nr, int exp)
+/// Attempts to spawn a lab enemy and transfer the player, returning true on success, false on failure.
+pub fn use_labtransfer(cn: usize, nr: i32, exp: i32) -> bool {
+    use crate::repository::Repository;
+    use core::constants::{CharacterFlags, SERVER_MAPX};
+    // 1. Check if area is busy (any player or labkeeper in 164..184 x 159..178)
+    let mut busy_name: Option<String> = None;
+    'outer: for y in 159..179 {
+        for x in 164..=184 {
+            let co =
+                Repository::with_map(|map| map[x + y * SERVER_MAPX as i32 as usize].ch as usize);
+            if co != 0 {
+                let flags = Repository::with_characters(|ch| ch[co].flags);
+                if flags & (CharacterFlags::CF_PLAYER.bits() | CharacterFlags::CF_LABKEEPER.bits())
+                    != 0
+                {
+                    let name = Repository::with_characters(|ch| ch[co].get_name().to_string());
+                    busy_name = Some(name);
+                    break 'outer;
+                }
+            }
+        }
+    }
+    if let Some(name) = busy_name {
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                FontColor::Red,
+                &format!("Sorry, the area is still busy. {} is there.\n", name),
+            );
+            log::info!(
+                "Player {} attempted to enter lab {}, but area is busy with {}",
+                Repository::with_characters(|ch| ch[cn].get_name().to_string()),
+                nr,
+                name
+            );
+        });
+        return false;
+    }
+
+    // 2. Spawn the correct enemy type for the lab number
+    let template = match nr {
+        1 => 137, // grolms
+        2 => 156, // lizard
+        3 => 278, // spellcaster
+        4 => 315, // knight
+        5 => 328, // undead
+        6 => 458, // light&dark
+        7 => 462, // underwater
+        8 => 845, // forest/golem
+        9 => 919, // riddle
+        _ => {
+            // do_char_log(cn, 0, "Sorry, could not determine which enemy to send you.\n");
+            // chlog(cn, "Sorry, could not determine which enemy to send you");
+            return false;
+        }
+    };
+
+    // pop_create_char(template, 0): create the enemy character (assume function exists)
+    let co = populate::pop_create_char(template, false);
+    if co == 0 {
+        // do_char_log(cn, 0, "Sorry, could not create your enemy.\n");
+        // chlog(cn, "Sorry, could not create your enemy");
+        State::with(|state| {
+            state.do_character_log(cn, FontColor::Red, "Sorry, could not create your enemy.\n");
+            log::error!(
+                "use_labtransfer: pop_create_char({}) failed for player {}",
+                template,
+                Repository::with_characters(|ch| ch[cn].get_name().to_string())
+            );
+        });
+        return false;
+    }
+
+    // god_drop_char(co, 174, 172): place the enemy (assume function exists)
+    if !God::drop_char(co, 174, 172) {
+        State::with(|state| {
+            state.do_character_log(cn, FontColor::Red, "Sorry, could not place your enemy.\n");
+            log::error!(
+                "use_labtransfer: god_drop_char({}, 174, 172) failed for player {}",
+                co,
+                Repository::with_characters(|ch| ch[cn].get_name().to_string())
+            );
+        });
+        God::destroy_items(co);
+        Repository::with_characters_mut(|ch| ch[co].used = core::constants::USE_EMPTY);
+        return false;
+    }
+
+    // Set up enemy data fields and flags
+    Repository::with_characters_mut(|ch| {
+        ch[co].data[64] =
+            Repository::with_globals(|globs| globs.ticker) + 5 * 60 * core::constants::TICKS; // die in 2 min
+        ch[co].data[24] = 0; // do not interfere in fights
+        ch[co].data[36] = 0; // no walking around
+        ch[co].data[43] = 0; // don't attack anyone
+        ch[co].data[80] = 0; // no enemies
+        ch[co].data[0] = cn as i32; // person to make solve
+        ch[co].data[1] = nr; // labnr
+        ch[co].data[2] = exp; // exp plr is supposed to get
+        ch[co].flags |= CharacterFlags::CF_LABKEEPER.bits() | CharacterFlags::CF_NOSLEEP.bits();
+        ch[co].flags &= !CharacterFlags::CF_RESPAWN.bits();
+    });
+
+    // npc_add_enemy(co, cn, 1): make him attack the solver (assume function exists)
+    driver::npc_add_enemy(co, cn, true);
+
+    // god_transfer_char(cn, 174, 166): transfer player (assume function exists)
+    if !God::transfer_char(cn, 174, 166) {
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                FontColor::Red,
+                "Sorry, could not transfer you to your enemy.\n",
+            );
+            log::error!(
+                "use_labtransfer: god_transfer_char({}, 174, 166) failed",
+                Repository::with_characters(|ch| ch[cn].get_name().to_string())
+            );
+        });
+        God::destroy_items(co);
+        Repository::with_characters_mut(|ch| ch[co].used = core::constants::USE_EMPTY);
+        return false;
+    }
+    // chlog(cn, "Entered Labkeeper room");
+    true
+}
+
 /// Returns the monster class name for a given class number, or an error string if out of bounds.
 pub fn get_class_name(nr: i32) -> &'static str {
     // List from C++ npc_class[]
@@ -89,6 +221,7 @@ pub fn get_class_name(nr: i32) -> &'static str {
     }
     NPC_CLASS[nr]
 }
+
 /// Returns true if the class was already marked as killed, false if this is the first kill. Side effect: sets the bit for this class.
 pub fn killed_class(cn: usize, val: i32) -> bool {
     Repository::with_characters_mut(|characters| {
@@ -106,9 +239,6 @@ pub fn killed_class(cn: usize, val: i32) -> bool {
         tmp != 0
     })
 }
-use core::constants::CharacterFlags;
-
-use crate::repository::Repository;
 
 pub const WHO_RANK_NAME: [&str; core::constants::RANKS] = [
     " Pvt ", " PFC ", " LCp ", " Cpl ", " Sgt ", " SSg ", " MSg ", " 1Sg ", " SgM ", "2Lieu",

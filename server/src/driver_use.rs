@@ -1,6 +1,6 @@
 use crate::effect::EffectManager;
 use crate::god::God;
-use crate::helpers::points2rank;
+use crate::helpers::{self, points2rank};
 use crate::lab9::Labyrinth9;
 use crate::repository::Repository;
 use crate::state::State;
@@ -1184,12 +1184,7 @@ pub fn teleport(cn: usize, item_idx: usize) -> i32 {
     if data2 != 0 {
         // TODO: Implement use_labtransfer(cn, data[2], data[3])
         let data3 = Repository::with_items(|items| items[item_idx].data[3]);
-        log::warn!(
-            "use_labtransfer({}, {}, {}) not yet implemented",
-            cn,
-            data2,
-            data3
-        );
+        helpers::use_labtransfer(cn, data2 as i32, data3 as i32);
         return 1;
     }
 
@@ -1214,20 +1209,45 @@ pub fn teleport2(cn: usize, item_idx: usize) -> i32 {
     use crate::state::State;
     use core::constants::{ItemFlags, SK_RECALL};
 
-    // TODO: Just do a re-implementation of this function...
-
     if cn == 0 {
         return 1;
     }
 
-    // TODO: Implement chlog(cn, "Used teleport scroll to %d,%d (%s)", ...)
+    // Log teleport scroll usage
+    let (dest_x, dest_y, area_name) = Repository::with_items(|items| {
+        let x = items[item_idx].data[0];
+        let y = items[item_idx].data[1];
+        // get_area_m is not implemented, so just use a placeholder
+        let area = format!("({}, {})", x, y);
+        (x, y, area)
+    });
+    log::info!(
+        "Used teleport scroll to {},{} ({})",
+        dest_x,
+        dest_y,
+        area_name
+    );
 
     // Check if lag scroll is too old (more than 4 minutes)
-    let scroll_time = Repository::with_items(|items| items[item_idx].data[2]);
-    if scroll_time != 0 {
-        // TODO: Get globs->ticker and check if scroll_time + TICKS * 60 * 4 < ticker
-        // For now, skip this check
-        // TODO: Implement chlog for time difference
+    let (scroll_time, power) =
+        Repository::with_items(|items| (items[item_idx].data[2], items[item_idx].power));
+    let ticker = Repository::with_globals(|globs| globs.ticker);
+    use core::constants::TICKS;
+    if scroll_time != 0 && scroll_time + TICKS as u32 * 60 * 4 < ticker as u32 {
+        let diff = ticker as i32 - scroll_time as i32;
+        log::info!(
+            "Lag Scroll Time Difference: {} ticks ({:.2}s)",
+            diff,
+            diff as f64 / TICKS as f64
+        );
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "Sorry, this lag scroll was too old. You need to use it four minutes after lagging out or earlier!\n",
+            );
+        });
+        return 1;
     }
 
     // Create a recall spell item
@@ -1240,21 +1260,10 @@ pub fn teleport2(cn: usize, item_idx: usize) -> i32 {
     };
 
     // Configure the spell item
-    let (power, dest_x, dest_y) = Repository::with_items(|items| {
-        (
-            items[item_idx].power,
-            items[item_idx].data[0],
-            items[item_idx].data[1],
-        )
-    });
-
     Repository::with_items_mut(|items| {
         let spell = &mut items[spell_item];
-
-        // Set name
         let name = b"Teleport";
         spell.name[..name.len()].copy_from_slice(name);
-
         spell.flags |= ItemFlags::IF_SPELL.bits();
         spell.sprite[1] = 90;
         spell.duration = 180;
@@ -1265,26 +1274,14 @@ pub fn teleport2(cn: usize, item_idx: usize) -> i32 {
         spell.data[1] = dest_y;
     });
 
-    // Try to add spell to character
-    // TODO: Implement add_spell(cn, spell_item)
-    // For now, try to add to first empty spell slot
-    let added = Repository::with_characters_mut(|characters| {
-        for n in 0..20 {
-            if characters[cn].spell[n] == 0 {
-                characters[cn].spell[n] = spell_item as u32;
-                return true;
-            }
-        }
-        false
-    });
-
-    if !added {
+    // Use add_spell to add the spell to the character
+    let added = driver_skill::add_spell(cn, spell_item);
+    if added == 0 {
         let spell_name = Repository::with_items(|items| {
             String::from_utf8_lossy(&items[spell_item].name)
                 .trim_end_matches('\0')
                 .to_string()
         });
-
         State::with(|state| {
             state.do_character_log(
                 cn,
@@ -1298,7 +1295,9 @@ pub fn teleport2(cn: usize, item_idx: usize) -> i32 {
         return 0;
     }
 
-    // TODO: Implement fx_add_effect(7, 0, x, y, 0)
+    // Add teleport effect (fx_add_effect(7, 0, x, y, 0))
+    let (x, y) = Repository::with_characters(|characters| (characters[cn].x, characters[cn].y));
+    crate::effect::EffectManager::fx_add_effect(7, 0, x as i32, y as i32, 0);
     1
 }
 
@@ -1897,7 +1896,6 @@ pub fn use_scroll4(cn: usize, item_idx: usize) -> i32 {
             &format!("Raised Endurance by {}.\n", amount),
         );
     });
-    // TODO: Implement chlog
 
     // Calculate total points needed: sum of (v*diff)/2 for each point
     let v = current_end as i32;
