@@ -2294,86 +2294,469 @@ pub fn plr_state(nr: usize) {
 
 /// Port of `plr_newlogin` from `svr_tick.cpp`
 /// Handles new player login (stub - to be implemented)
-fn plr_newlogin(_nr: usize) {
-    // TODO: Implement new player login logic
-    // This creates a new character for the player
+fn plr_newlogin(nr: usize) {
+    // Port of C++ `plr_newlogin` from `svr_tick.cpp`.
+
+    // version check
+    let version = Server::with_players(|players| players[nr].version as u32);
+    if version < core::constants::MINVERSION as u32 {
+        log::warn!("Client too old ({}). Logout demanded", version);
+        plr_logout(0, nr, enums::LogoutReason::VersionMismatch);
+        return;
+    }
+
+    // ban check
+    let addr = Server::with_players(|players| players[nr].addr);
+    if God::is_banned(addr as i32) {
+        log::info!("Banned, sent away");
+        plr_logout(0, nr, enums::LogoutReason::Kicked);
+        return;
+    }
+
+    // TODO: `cap()` handling (player cap/queue) not implemented yet.
+
+    // sanitize race
+    let mut temp = Server::with_players(|players| players[nr].race as i32);
+    if temp != 2 && temp != 3 && temp != 4 && temp != 76 && temp != 77 && temp != 78 {
+        temp = 2;
+    }
+
+    // create new character from template
+    let maybe_cn = God::create_char(temp as usize, true);
+    let cn = match maybe_cn {
+        Some(v) => v as usize,
+        None => {
+            log::error!("plr_newlogin: failed to create character");
+            plr_logout(0, nr, enums::LogoutReason::Failure);
+            return;
+        }
+    };
+
+    Repository::with_characters_mut(|characters| {
+        characters[cn].player = nr as i32;
+        characters[cn].temple_x = core::constants::HOME_MERCENARY_X as u16;
+        characters[cn].temple_y = core::constants::HOME_MERCENARY_Y as u16;
+        characters[cn].tavern_x = core::constants::HOME_MERCENARY_X as u16;
+        characters[cn].tavern_y = core::constants::HOME_MERCENARY_Y as u16;
+        characters[cn].points = 0;
+        characters[cn].points_tot = 0;
+        characters[cn].luck = 205;
+    });
+
+    Repository::with_globals_mut(|globals| {
+        globals.players_created += 1;
+    });
+
+    // Try dropping the character near the home temple (three attempts)
+    if !God::drop_char_fuzzy_large(
+        cn,
+        core::constants::HOME_MERCENARY_X as usize,
+        core::constants::HOME_MERCENARY_Y as usize,
+        core::constants::HOME_MERCENARY_X as usize,
+        core::constants::HOME_MERCENARY_Y as usize,
+    ) && !God::drop_char_fuzzy_large(
+        cn,
+        (core::constants::HOME_MERCENARY_X + 3) as usize,
+        core::constants::HOME_MERCENARY_Y as usize,
+        core::constants::HOME_MERCENARY_X as usize,
+        core::constants::HOME_MERCENARY_Y as usize,
+    ) && !God::drop_char_fuzzy_large(
+        cn,
+        core::constants::HOME_MERCENARY_X as usize,
+        (core::constants::HOME_MERCENARY_Y + 3) as usize,
+        core::constants::HOME_MERCENARY_X as usize,
+        core::constants::HOME_MERCENARY_Y as usize,
+    ) {
+        log::error!("plr_newlogin(): could not drop new character");
+        plr_logout(cn, nr, enums::LogoutReason::NoRoom);
+        Repository::with_characters_mut(|characters| {
+            characters[cn].used = core::constants::USE_EMPTY;
+        });
+        return;
+    }
+
+    // Set creation/login dates and flags, record address and add to net history
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as u32;
+
+    Repository::with_characters_mut(|characters| {
+        let ch = &mut characters[cn];
+        ch.creation_date = now;
+        ch.login_date = now;
+        ch.flags |= enums::CharacterFlags::NewUser.bits() | enums::CharacterFlags::Player.bits();
+        ch.addr = Server::with_players(|players| players[nr].addr);
+
+        // char_add_net behaviour: shift data[80..89] and insert lower 24 bits of addr
+        let net = (ch.addr & 0x00ffffff) as i32;
+        let mut n = 80usize;
+        while n < 89 {
+            if (ch.data[n] & 0x00ffffff) == net {
+                break;
+            }
+            n += 1;
+        }
+        for m in (81..=n).rev() {
+            ch.data[m] = ch.data[m - 1];
+        }
+        ch.data[80] = net;
+
+        ch.mode = 1;
+    });
+
+    // update character to clients
+    State::with(|state| {
+        state.do_update_char(cn);
+    });
+
+    // set player mapping and send SV_NEWPLAYER + SV_TICK
+    Repository::with_characters(|characters| {
+        let pass1 = characters[cn].pass1;
+        let pass2 = characters[cn].pass2;
+
+        Server::with_players_mut(|players| {
+            players[nr].usnr = cn;
+            players[nr].pass1 = pass1;
+            players[nr].pass2 = pass2;
+        });
+
+        let mut buf: [u8; 16] = [0; 16];
+        buf[0] = core::constants::SV_NEWPLAYER;
+        buf[1..5].copy_from_slice(&(cn as u32).to_le_bytes());
+        buf[5..9].copy_from_slice(&pass1.to_le_bytes());
+        buf[9..13].copy_from_slice(&pass2.to_le_bytes());
+        let ver_bytes = core::constants::VERSION.to_le_bytes();
+        buf[13] = ver_bytes[0];
+        buf[14] = ver_bytes[1];
+        buf[15] = ver_bytes[2];
+
+        NetworkManager::with(|network| {
+            network.csend(nr, &buf, 16);
+        });
+    });
+
+    // finalize player state
+    let ticker = Repository::with_globals(|globals| globals.ticker as u32);
+    Server::with_players_mut(|players| {
+        players[nr].state = core::constants::ST_NORMAL;
+        players[nr].lasttick = ticker;
+        players[nr].ltick = 0;
+        players[nr].ticker_started = 1;
+    });
+
+    // send tick
+    let mut tbuf: [u8; 2] = [0; 2];
+    tbuf[0] = core::constants::SV_TICK;
+    tbuf[1] = Repository::with_globals(|globals| (globals.ticker % 20) as u8);
+    NetworkManager::with(|network| {
+        network.xsend(nr, &tbuf, 2);
+    });
+
+    log::info!("Created new character");
+
+    // intro messages
+    let intro1 = "Welcome to Men Among Gods, my friend!\n";
+    let intro2 = "May your visit here be... interesting.\n";
+    let intro3 = " \n";
+    let intro4 = "Use #help (or /help) to get a listing of the text commands.\n";
+
+    State::with(|state| {
+        state.do_character_log(cn, core::types::FontColor::Yellow, intro1);
+        state.do_character_log(cn, core::types::FontColor::Yellow, intro3);
+        state.do_character_log(cn, core::types::FontColor::Yellow, intro2);
+        state.do_character_log(cn, core::types::FontColor::Yellow, intro3);
+        state.do_character_log(cn, core::types::FontColor::Yellow, intro4);
+        state.do_character_log(cn, core::types::FontColor::Yellow, intro3);
+    });
+
+    // change password if client provided one and character has no CF_PASSWD
+    let needs_pass = Server::with_players(|players| players[nr].passwd[0] != 0);
+    if needs_pass {
+        Repository::with_characters(|characters| {
+            if (characters[cn].flags & enums::CharacterFlags::Passwd.bits()) == 0 {
+                // extract password string
+                let pass = Server::with_players(|players| {
+                    String::from_utf8_lossy(&players[nr].passwd)
+                        .trim_end_matches(char::from(0))
+                        .to_string()
+                });
+                God::change_pass(cn, cn, &pass);
+            }
+        });
+    }
+
+    // announce
+    let name = Repository::with_characters(|characters| characters[cn].get_name().to_string());
+    State::with(|state| {
+        state.do_announce(cn, 0, &format!("{} entered the game.\n", name));
+    });
 }
 
 /// Port of `plr_login` from `svr_tick.cpp`
 /// Handles existing player login (stub - to be implemented)
-fn plr_login(_nr: usize) {
-    // TODO: Implement existing player login logic
-    // This loads an existing character for the player
-}
+fn plr_login(nr: usize) {
+    // version check
+    let version = Server::with_players(|players| players[nr].version as u32);
+    if version < core::constants::MINVERSION as u32 {
+        log::warn!("Client too old ({}). Logout demanded", version);
+        plr_logout(0, nr, enums::LogoutReason::VersionMismatch);
+        return;
+    }
 
-/// Port of `plr_clear_map` from `svr_tick.cpp`
-/// Clears all player map data (used when entering speed savings mode)
-fn plr_clear_map() {
-    Server::with_players_mut(|players| {
-        for n in 1..core::constants::MAXPLAYER {
-            // Zero out smap
-            for m in 0..(core::constants::TILEX * core::constants::TILEY) as usize {
-                players[n].smap[m] = core::types::CMap::default();
-            }
-            // Force do_all in plr_getmap by resetting vx
-            players[n].vx = 0;
+    // get character number requested by player
+    let cn = Server::with_players(|players| players[nr].usnr as usize);
+
+    if cn == 0 || cn >= core::constants::MAXCHARS {
+        log::warn!("Login as {} denied (illegal cn)", cn);
+        plr_logout(0, nr, enums::LogoutReason::ParamsInvalid);
+        return;
+    }
+
+    // password/pass1/pass2 check
+    let pass_ok = Repository::with_characters(|characters| {
+        let ch = &characters[cn];
+        let p1 = ch.pass1;
+        let p2 = ch.pass2;
+        let player_p1 = Server::with_players(|players| players[nr].pass1);
+        let player_p2 = Server::with_players(|players| players[nr].pass2);
+        p1 == player_p1 && p2 == player_p2
+    });
+
+    if !pass_ok {
+        log::warn!("Login as {} denied (pass1/pass2)", cn);
+        plr_logout(0, nr, enums::LogoutReason::PasswordIncorrect);
+        return;
+    }
+
+    // If character has explicit password flag, compare stored passwd
+    let has_passwd_mismatch = Repository::with_characters(|characters| {
+        let ch = &characters[cn];
+        if (ch.flags & enums::CharacterFlags::Passwd.bits()) != 0 {
+            let stored = ch.passwd;
+            let client = Server::with_players(|players| players[nr].passwd);
+            stored != client
+        } else {
+            false
         }
     });
-}
 
-/// Port of `plr_getmap` from `svr_tick.cpp`
-/// Gets the map view for a player, with speed savings mode support
-pub fn plr_getmap(nr: usize) {
-    let (load_avg, has_speedy_flag) = Repository::with_globals(|globals| {
-        (
-            globals.load_avg,
-            (globals.flags & core::constants::GF_SPEEDY) != 0,
-        )
+    if has_passwd_mismatch {
+        log::warn!("Login as {} denied (password)", cn);
+        plr_logout(0, nr, enums::LogoutReason::PasswordIncorrect);
+        return;
+    }
+
+    // Deleted account
+    let is_deleted =
+        Repository::with_characters(|characters| characters[cn].used == core::constants::USE_EMPTY);
+    if is_deleted {
+        log::warn!("Login as {} denied (deleted)", cn);
+        plr_logout(0, nr, enums::LogoutReason::PasswordIncorrect);
+        return;
+    }
+
+    // Already active
+    let already_active = Repository::with_characters(|characters| {
+        characters[cn].used != core::constants::USE_EMPTY as u8
+            && (characters[cn].flags & enums::CharacterFlags::ComputerControlledPlayer.bits()) == 0
+    });
+    if already_active {
+        log::warn!("Login as {} who is already active", cn);
+        let active_player =
+            Repository::with_characters(|characters| characters[cn].player as usize);
+        plr_logout(cn, active_player, enums::LogoutReason::IdleTooLong);
+        return;
+    }
+
+    // Kicked
+    let is_kicked = Repository::with_characters(|characters| {
+        (characters[cn].flags & enums::CharacterFlags::Kicked.bits()) != 0
+    });
+    if is_kicked {
+        log::warn!("Login as {} denied (kicked)", cn);
+        plr_logout(0, nr, enums::LogoutReason::Kicked);
+        return;
+    }
+
+    // Ban check (skip golden/god)
+    let banned = Server::with_players(|players| players[nr].addr);
+    let exempt = Repository::with_characters(|characters| {
+        (characters[cn].flags
+            & (enums::CharacterFlags::Golden.bits() | enums::CharacterFlags::God.bits()))
+            != 0
+    });
+    if !exempt && God::is_banned(banned as i32) {
+        log::info!("{} is banned, sent away", cn);
+        plr_logout(0, nr, enums::LogoutReason::Kicked);
+        return;
+    }
+
+    // TODO: cap() handling (player cap/queue) not implemented - skip
+
+    // attach player to character
+    Repository::with_characters_mut(|characters| {
+        characters[cn].player = nr as i32;
+        // If not CCP and is god, mark invisible
+        if (characters[cn].flags & enums::CharacterFlags::ComputerControlledPlayer.bits()) == 0
+            && (characters[cn].flags & enums::CharacterFlags::God.bits()) != 0
+        {
+            characters[cn].flags |= enums::CharacterFlags::Invisible.bits();
+        }
     });
 
-    let mode = PLR_GETMAP_MODE.load(std::sync::atomic::Ordering::Relaxed);
+    // finalize player state
+    let ticker = Repository::with_globals(|globals| globals.ticker as u32);
+    Server::with_players_mut(|players| {
+        players[nr].state = core::constants::ST_NORMAL;
+        players[nr].lasttick = ticker;
+        players[nr].ltick = 0;
+        players[nr].ticker_started = 1;
+    });
 
-    // Enter speed savings mode if load is too high
-    if load_avg > 8000 && mode == 0 && has_speedy_flag {
-        PLR_GETMAP_MODE.store(1, std::sync::atomic::Ordering::Relaxed);
-        plr_clear_map();
-        State::with(|state| {
-            state.do_announce(
-                0,
-                0,
-                "Entered speed savings mode. Display will be imperfect.\n",
-            );
+    // send LOGIN_OK
+    let mut buf: [u8; 16] = [0; 16];
+    buf[0] = core::constants::SV_LOGIN_OK;
+    buf[1..5].copy_from_slice(&core::constants::VERSION.to_le_bytes());
+    NetworkManager::with(|network| {
+        network.csend(nr, &buf, 16);
+    });
+
+    // send tick
+    let mut tbuf: [u8; 2] = [0; 2];
+    tbuf[0] = core::constants::SV_TICK;
+    tbuf[1] = Repository::with_globals(|globals| (globals.ticker % 20) as u8);
+    NetworkManager::with(|network| {
+        network.xsend(nr, &tbuf, 2);
+    });
+
+    // mark active and set login date, addr, add net history
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as u32;
+
+    Repository::with_characters_mut(|characters| {
+        let ch = &mut characters[cn];
+        ch.used = core::constants::USE_ACTIVE;
+        ch.login_date = now;
+        ch.addr = Server::with_players(|players| players[nr].addr);
+        ch.current_online_time = 0;
+
+        // char_add_net behaviour: shift data[80..89] and insert lower 24 bits
+        let net = (ch.addr & 0x00ffffff) as i32;
+        let mut nidx = 80usize;
+        while nidx < 89 {
+            if (ch.data[nidx] & 0x00ffffff) == net {
+                break;
+            }
+            nidx += 1;
+        }
+        for m in (81..=nidx).rev() {
+            ch.data[m] = ch.data[m - 1];
+        }
+        ch.data[80] = net;
+    });
+
+    // ensure client player mode default
+    Server::with_players_mut(|players| players[nr].cpl.mode = -1);
+
+    // Try to drop character at tavern/nearby
+    let tav_x = Repository::with_characters(|characters| characters[cn].tavern_x as usize);
+    let tav_y = Repository::with_characters(|characters| characters[cn].tavern_y as usize);
+    if !God::drop_char_fuzzy_large(cn, tav_x, tav_y, tav_x, tav_y)
+        && !God::drop_char_fuzzy_large(cn, tav_x + 3, tav_y, tav_x, tav_y)
+        && !God::drop_char_fuzzy_large(cn, tav_x, tav_y + 3, tav_x, tav_y)
+    {
+        log::error!("plr_login(): could not drop new character");
+        plr_logout(cn, nr, enums::LogoutReason::NoRoom);
+        return;
+    }
+
+    // remove illegal active recall spells
+    for i in 0..20usize {
+        let has_recall = Repository::with_characters(|characters| characters[cn].spell[i] != 0);
+        if has_recall {
+            let spell_idx =
+                Repository::with_characters(|characters| characters[cn].spell[i] as usize);
+            let is_recall = Repository::with_items(|items| {
+                items[spell_idx].temp == core::constants::SK_RECALL as u16
+            });
+            if is_recall {
+                Repository::with_items_mut(|items| {
+                    items[spell_idx].used = core::constants::USE_EMPTY;
+                });
+                Repository::with_characters_mut(|characters| {
+                    characters[cn].spell[i] = 0;
+                });
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Red,
+                        "CHEATER: removed active teleport\n",
+                    );
+                });
+            }
+        }
+    }
+
+    // update client about char
+    State::with(|state| {
+        state.do_update_char(cn);
+    });
+
+    log::info!("Login successful");
+
+    // intro messages
+    let intro1 = "Welcome to Men Among Gods, my friend!\n";
+    let intro2 = "May your visit here be... interesting.\n";
+    let intro3 = " \n";
+    let intro4 = "Use #help (or /help) to get a listing of the text commands.\n";
+
+    State::with(|state| {
+        state.do_character_log(cn, core::types::FontColor::Yellow, intro1);
+        state.do_character_log(cn, core::types::FontColor::Yellow, intro3);
+        state.do_character_log(cn, core::types::FontColor::Yellow, intro2);
+        state.do_character_log(cn, core::types::FontColor::Yellow, intro3);
+        state.do_character_log(cn, core::types::FontColor::Yellow, intro4);
+        state.do_character_log(cn, core::types::FontColor::Yellow, intro3);
+    });
+
+    // do password change if provided
+    let needs_pass = Server::with_players(|players| players[nr].passwd[0] != 0);
+    if needs_pass {
+        Repository::with_characters(|characters| {
+            if (characters[cn].flags & enums::CharacterFlags::Passwd.bits()) == 0 {
+                let pass = Server::with_players(|players| {
+                    String::from_utf8_lossy(&players[nr].passwd)
+                        .trim_end_matches(char::from(0))
+                        .to_string()
+                });
+                God::change_pass(cn, cn, &pass);
+            }
         });
     }
 
-    // Leave speed savings mode if load is acceptable
-    if (!has_speedy_flag || load_avg < 6500) && mode != 0 {
-        PLR_GETMAP_MODE.store(0, std::sync::atomic::Ordering::Relaxed);
-        State::with(|state| {
-            state.do_announce(0, 0, "Left speed savings mode.\n");
-        });
-    }
+    // If god, remind invisibility
+    Repository::with_characters(|characters| {
+        if (characters[cn].flags & enums::CharacterFlags::ComputerControlledPlayer.bits()) == 0
+            && (characters[cn].flags & enums::CharacterFlags::God.bits()) != 0
+        {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "Remember, you are invisible!\n",
+                )
+            });
+        }
+    });
 
-    let current_mode = PLR_GETMAP_MODE.load(std::sync::atomic::Ordering::Relaxed);
-    if current_mode == 0 {
-        plr_getmap_complete(nr);
-    } else {
-        plr_getmap_fast(nr);
-    }
-}
-
-/// Port of `plr_getmap_complete` from `svr_tick.cpp`
-/// Full map update for player (stub - to be implemented)
-fn plr_getmap_complete(_nr: usize) {
-    // TODO: Implement complete map gathering
-    // This computes visibility and populates the player's smap
-}
-
-/// Port of `plr_getmap_fast` from `svr_tick.cpp`
-/// Fast map update for player in speed savings mode (stub - to be implemented)
-fn plr_getmap_fast(_nr: usize) {
-    // TODO: Implement fast map gathering
-    // This is a reduced version for high load situations
+    // announce
+    let name = Repository::with_characters(|characters| characters[cn].get_name().to_string());
+    State::with(|state| {
+        state.do_announce(cn, 0, &format!("{} entered the game.\n", name));
+    });
 }
 
 /// Port of `plr_change` from `svr_tick.cpp`
@@ -2409,14 +2792,437 @@ pub fn plr_change(nr: usize) {
     plr_change_position(nr, cn);
     plr_change_target(nr, cn);
 
-    // Send map tile changes (light, sprites, characters, items)
-    plr_change_map(nr, cn);
+    // Additional updates for name, mode, attributes, skills, items, and spells
+    Repository::with_characters(|characters| {
+        let character = &characters[cn];
+        Server::with_players_mut(|players| {
+            let player = &mut players[nr];
+
+            // Copy packed fields to local variables
+            let hp = player.cpl.hp;
+            let end = player.cpl.end;
+            let mana = player.cpl.mana;
+
+            // Name updates
+            if player.cpl.name != character.name {
+                player.cpl.name = character.name.clone();
+                // Send name updates in three parts
+                NetworkManager::with(|network| {
+                    network.csend(nr, &[core::constants::SV_SETCHAR_NAME1], 16);
+                    network.csend(nr, &[core::constants::SV_SETCHAR_NAME2], 16);
+                    network.csend(nr, &[core::constants::SV_SETCHAR_NAME3], 16);
+                });
+            }
+
+            // Mode updates
+            if player.cpl.mode != character.mode as i32 {
+                player.cpl.mode = character.mode as i32;
+                NetworkManager::with(|network| {
+                    network.csend(nr, &[core::constants::SV_SETCHAR_MODE], 2);
+                });
+            }
+
+            // Attributes, powers, and skills
+            for i in 0..5 {
+                if player.cpl.attrib[i] != character.attrib[i] {
+                    player.cpl.attrib[i] = character.attrib[i];
+                    // Send attribute update
+                }
+            }
+
+            // Items, worn items, and spells
+            for i in 0..40 {
+                if player.cpl.item[i] != character.item[i] as i32 {
+                    player.cpl.item[i] = character.item[i] as i32;
+                    // Send item update
+                }
+            }
+
+            for i in 0..20 {
+                if player.cpl.worn[i] != character.worn[i] as i32 {
+                    player.cpl.worn[i] = character.worn[i] as i32;
+                    // Send worn item update
+                }
+
+                if player.cpl.spell[i] != character.spell[i] as i32 {
+                    player.cpl.spell[i] = character.spell[i] as i32;
+                    // Send spell update
+                }
+            }
+        });
+    });
 }
 
 /// Send full stats update to player
-fn plr_change_stats(_nr: usize, _cn: usize, _ticker: i32) {
-    // TODO: Implement full stats update
-    // This sends all skill values, attributes, etc.
+fn plr_change_stats(nr: usize, cn: usize, ticker: i32) {
+    // Send name in three parts if changed
+    let name_changed = Repository::with_characters(|characters| {
+        let ch = &characters[cn];
+        Server::with_players(|players| &players[nr].cpl.name[..] != &ch.name[..])
+    });
+
+    if name_changed {
+        Repository::with_characters(|characters| {
+            let ch = &characters[cn];
+            // part1: 15 bytes
+            let mut buf: [u8; 16] = [0; 16];
+            buf[0] = core::constants::SV_SETCHAR_NAME1;
+            buf[1..16].copy_from_slice(&ch.name[0..15]);
+            NetworkManager::with(|network| network.xsend(nr, &buf, 16));
+
+            // part2: next 15 bytes
+            let mut buf2: [u8; 16] = [0; 16];
+            buf2[0] = core::constants::SV_SETCHAR_NAME2;
+            buf2[1..16].copy_from_slice(&ch.name[15..30]);
+            NetworkManager::with(|network| network.xsend(nr, &buf2, 16));
+
+            // part3: last 10 bytes + temp (u16 -> u32 slot)
+            let mut buf3: [u8; 16] = [0; 16];
+            buf3[0] = core::constants::SV_SETCHAR_NAME3;
+            buf3[1..11].copy_from_slice(&ch.name[30..40]);
+            let temp_bytes = (ch.temp as u32).to_le_bytes();
+            buf3[11..15].copy_from_slice(&temp_bytes[0..4]);
+            NetworkManager::with(|network| network.xsend(nr, &buf3, 16));
+
+            // copy into cpl
+            Server::with_players_mut(|players| players[nr].cpl.name.copy_from_slice(&ch.name));
+        });
+    }
+
+    // mode
+    Repository::with_characters(|characters| {
+        let mode = characters[cn].mode as i32;
+        Server::with_players(|players| players[nr].cpl.mode != mode)
+    });
+    // send mode if different
+    let need_mode = Repository::with_characters(|characters| {
+        let mode = characters[cn].mode as i32;
+        Server::with_players(|players| players[nr].cpl.mode != mode)
+    });
+    if need_mode {
+        let mode = Repository::with_characters(|characters| characters[cn].mode as u8);
+        let mut buf: [u8; 2] = [0; 2];
+        buf[0] = core::constants::SV_SETCHAR_MODE;
+        buf[1] = mode;
+        NetworkManager::with(|network| network.xsend(nr, &buf, 2));
+        Server::with_players_mut(|players| players[nr].cpl.mode = mode as i32);
+    }
+
+    // attribs (5 x 6 bytes)
+    for a in 0..5usize {
+        let changed = Repository::with_characters(|characters| {
+            let chv = &characters[cn].attrib[a];
+            Server::with_players(|players| players[nr].cpl.attrib[a] != *chv)
+        });
+        if changed {
+            let bytes = Repository::with_characters(|characters| characters[cn].attrib[a]);
+            let mut buf: [u8; 8] = [0; 8];
+            buf[0] = core::constants::SV_SETCHAR_ATTRIB;
+            buf[1] = a as u8;
+            buf[2..8].copy_from_slice(&bytes);
+            NetworkManager::with(|network| network.xsend(nr, &buf, 8));
+            Server::with_players_mut(|players| players[nr].cpl.attrib[a] = bytes);
+        }
+    }
+
+    // hp, end, mana arrays (6 u16 each)
+    let powers = [
+        core::constants::SV_SETCHAR_HP,
+        core::constants::SV_SETCHAR_ENDUR,
+        core::constants::SV_SETCHAR_MANA,
+    ];
+    for (idx, code) in powers.iter().enumerate() {
+        let different = Repository::with_characters(|characters| {
+            let ch = &characters[cn];
+            Server::with_players(|players| match idx {
+                0 => players[nr].cpl.hp != ch.hp,
+                1 => players[nr].cpl.end != ch.end,
+                2 => players[nr].cpl.mana != ch.mana,
+                _ => false,
+            })
+        });
+        if different {
+            let mut buf: [u8; 13] = [0; 13];
+            buf[0] = *code;
+            Repository::with_characters(|characters| {
+                let ch = &characters[cn];
+                let arr: &[u16; 6] = match idx {
+                    0 => &ch.hp,
+                    1 => &ch.end,
+                    2 => &ch.mana,
+                    _ => &ch.hp,
+                };
+                for i in 0..6 {
+                    let off = 1 + i * 2;
+                    let v = arr[i];
+                    buf[off] = (v & 0xff) as u8;
+                    buf[off + 1] = (v >> 8) as u8;
+                }
+            });
+            NetworkManager::with(|network| network.xsend(nr, &buf, 13));
+            // copy into cpl
+            Server::with_players_mut(|players| {
+                Repository::with_characters(|characters| {
+                    let ch = &characters[cn];
+                    match idx {
+                        0 => players[nr].cpl.hp = ch.hp,
+                        1 => players[nr].cpl.end = ch.end,
+                        2 => players[nr].cpl.mana = ch.mana,
+                        _ => {}
+                    }
+                });
+            });
+        }
+    }
+
+    // skills (0..50)
+    for s in 0..50usize {
+        let changed = Repository::with_characters(|characters| {
+            let chv = &characters[cn].skill[s];
+            Server::with_players(|players| players[nr].cpl.skill[s] != *chv)
+        });
+        if changed {
+            let bytes = Repository::with_characters(|characters| characters[cn].skill[s]);
+            let mut buf: [u8; 8] = [0; 8];
+            buf[0] = core::constants::SV_SETCHAR_SKILL;
+            buf[1] = s as u8;
+            buf[2..8].copy_from_slice(&bytes);
+            NetworkManager::with(|network| network.xsend(nr, &buf, 8));
+            Server::with_players_mut(|players| players[nr].cpl.skill[s] = bytes);
+        }
+    }
+
+    // items (40)
+    for i in 0..40usize {
+        let changed = Repository::with_characters(|characters| {
+            let ch_in = characters[cn].item[i] as i32;
+            Server::with_players(|players| players[nr].cpl.item[i] != ch_in)
+        });
+        if changed {
+            let in_idx = Repository::with_characters(|characters| characters[cn].item[i] as usize);
+            let mut sprite: i16 = 0;
+            let mut placement: i16 = 0;
+            if in_idx != 0 && in_idx < core::constants::MAXITEM as usize {
+                Repository::with_items(|items| {
+                    let it = &items[in_idx];
+                    sprite = if it.active != 0 {
+                        it.sprite[1]
+                    } else {
+                        it.sprite[0]
+                    };
+                    placement = it.placement as i16;
+                });
+            }
+            let mut buf: [u8; 9] = [0; 9];
+            buf[0] = core::constants::SV_SETCHAR_ITEM;
+            let idx_bytes = (i as u32).to_le_bytes();
+            buf[1..5].copy_from_slice(&idx_bytes);
+            buf[5] = (sprite & 0xff) as u8;
+            buf[6] = ((sprite >> 8) & 0xff) as u8;
+            buf[7] = (placement & 0xff) as u8;
+            buf[8] = ((placement >> 8) & 0xff) as u8;
+            NetworkManager::with(|network| network.xsend(nr, &buf, 9));
+            Server::with_players_mut(|players| players[nr].cpl.item[i] = in_idx as i32);
+        }
+    }
+
+    // worn (20)
+    for i in 0..20usize {
+        let changed = Repository::with_characters(|characters| {
+            let ch_in = characters[cn].worn[i] as i32;
+            Server::with_players(|players| players[nr].cpl.worn[i] != ch_in)
+        });
+        if changed {
+            let in_idx = Repository::with_characters(|characters| characters[cn].worn[i] as usize);
+            let mut sprite: i16 = 0;
+            let mut placement: i16 = 0;
+            if in_idx != 0 && in_idx < core::constants::MAXITEM as usize {
+                Repository::with_items(|items| {
+                    let it = &items[in_idx];
+                    sprite = if it.active != 0 {
+                        it.sprite[1]
+                    } else {
+                        it.sprite[0]
+                    };
+                    placement = it.placement as i16;
+                });
+            }
+            let mut buf: [u8; 9] = [0; 9];
+            buf[0] = core::constants::SV_SETCHAR_WORN;
+            let idx_bytes = (i as u32).to_le_bytes();
+            buf[1..5].copy_from_slice(&idx_bytes);
+            buf[5] = (sprite & 0xff) as u8;
+            buf[6] = ((sprite >> 8) & 0xff) as u8;
+            buf[7] = (placement & 0xff) as u8;
+            buf[8] = ((placement >> 8) & 0xff) as u8;
+            NetworkManager::with(|network| network.xsend(nr, &buf, 9));
+            Server::with_players_mut(|players| players[nr].cpl.worn[i] = in_idx as i32);
+        }
+    }
+
+    // spells (20)
+    for i in 0..20usize {
+        let changed = Repository::with_characters(|characters| {
+            let ch_in = characters[cn].spell[i] as i32;
+            Server::with_players(|players| players[nr].cpl.spell[i] != ch_in)
+        });
+        if changed {
+            let in_idx = Repository::with_characters(|characters| characters[cn].spell[i] as usize);
+            let mut sprite: i16 = 0;
+            let mut active_frac: i16 = 0;
+            if in_idx != 0 && in_idx < core::constants::MAXITEM as usize {
+                Repository::with_items(|items| {
+                    let it = &items[in_idx];
+                    sprite = it.sprite[1];
+                    active_frac = if it.duration > 0 {
+                        (it.active * 16 / it.duration) as i16
+                    } else {
+                        0
+                    };
+                });
+            }
+            let mut buf: [u8; 9] = [0; 9];
+            buf[0] = core::constants::SV_SETCHAR_SPELL;
+            let idx_bytes = (i as u32).to_le_bytes();
+            buf[1..5].copy_from_slice(&idx_bytes);
+            buf[5] = (sprite & 0xff) as u8;
+            buf[6] = ((sprite >> 8) & 0xff) as u8;
+            buf[7] = (active_frac & 0xff) as u8;
+            buf[8] = ((active_frac >> 8) & 0xff) as u8;
+            NetworkManager::with(|network| network.xsend(nr, &buf, 9));
+            Server::with_players_mut(|players| {
+                players[nr].cpl.spell[i] = in_idx as i32;
+                players[nr].cpl.active[i] = active_frac as i8;
+            });
+        }
+    }
+
+    // citem
+    let citem_changed = Repository::with_characters(|characters| {
+        characters[cn].citem as i32 != Server::with_players(|players| players[nr].cpl.citem)
+    });
+    if citem_changed {
+        let in_idx = Repository::with_characters(|characters| characters[cn].citem as usize);
+        let mut sprite: i16 = 0;
+        let mut placement: i16 = 0;
+        if in_idx != 0 && in_idx < core::constants::MAXITEM as usize {
+            Repository::with_items(|items| {
+                let it = &items[in_idx];
+                sprite = if it.active != 0 {
+                    it.sprite[1]
+                } else {
+                    it.sprite[0]
+                };
+                placement = it.placement as i16;
+            });
+        }
+        let mut buf: [u8; 5] = [0; 5];
+        buf[0] = core::constants::SV_SETCHAR_OBJ;
+        buf[1] = (sprite & 0xff) as u8;
+        buf[2] = ((sprite >> 8) & 0xff) as u8;
+        buf[3] = (placement & 0xff) as u8;
+        buf[4] = ((placement >> 8) & 0xff) as u8;
+        NetworkManager::with(|network| network.xsend(nr, &buf, 5));
+        Server::with_players_mut(|players| players[nr].cpl.citem = in_idx as i32);
+    }
+
+    // a_hp, a_end, a_mana (these are scaled)
+    let a_hp_val =
+        Repository::with_characters(|characters| ((characters[cn].a_hp + 500) / 1000) as i32);
+    if Server::with_players(|players| players[nr].cpl.a_hp) != a_hp_val {
+        let mut buf: [u8; 3] = [0; 3];
+        buf[0] = core::constants::SV_SETCHAR_AHP;
+        buf[1] = (a_hp_val & 0xff) as u8;
+        buf[2] = ((a_hp_val >> 8) & 0xff) as u8;
+        NetworkManager::with(|network| network.xsend(nr, &buf, 3));
+        Server::with_players_mut(|players| players[nr].cpl.a_hp = a_hp_val);
+    }
+
+    let a_end_val =
+        Repository::with_characters(|characters| ((characters[cn].a_end + 500) / 1000) as i32);
+    if Server::with_players(|players| players[nr].cpl.a_end) != a_end_val {
+        let mut buf: [u8; 3] = [0; 3];
+        buf[0] = core::constants::SV_SETCHAR_AHP + 1; // SV_SETCHAR_AEND
+        buf[1] = (a_end_val & 0xff) as u8;
+        buf[2] = ((a_end_val >> 8) & 0xff) as u8;
+        NetworkManager::with(|network| network.xsend(nr, &buf, 3));
+        Server::with_players_mut(|players| players[nr].cpl.a_end = a_end_val);
+    }
+
+    let a_mana_val =
+        Repository::with_characters(|characters| ((characters[cn].a_mana + 500) / 1000) as i32);
+    if Server::with_players(|players| players[nr].cpl.a_mana) != a_mana_val {
+        let mut buf: [u8; 3] = [0; 3];
+        buf[0] = core::constants::SV_SETCHAR_AHP + 2; // SV_SETCHAR_AMANA
+        buf[1] = (a_mana_val & 0xff) as u8;
+        buf[2] = ((a_mana_val >> 8) & 0xff) as u8;
+        NetworkManager::with(|network| network.xsend(nr, &buf, 3));
+        Server::with_players_mut(|players| players[nr].cpl.a_mana = a_mana_val);
+    }
+
+    // dir
+    let dir_changed = Repository::with_characters(|characters| {
+        characters[cn].dir as i32 != Server::with_players(|players| players[nr].cpl.dir)
+    });
+    if dir_changed {
+        let dir = Repository::with_characters(|characters| characters[cn].dir as u8);
+        let mut buf: [u8; 16] = [0; 16];
+        buf[0] = core::constants::SV_SETCHAR_MODE + 1; // SV_SETCHAR_DIR assumed next
+        buf[1] = dir;
+        NetworkManager::with(|network| network.xsend(nr, &buf, 2));
+        Server::with_players_mut(|players| players[nr].cpl.dir = dir as i32);
+    }
+
+    // points and gold
+    let points_changed = Repository::with_characters(|characters| {
+        let ch = &characters[cn];
+        Server::with_players(|players| {
+            players[nr].cpl.points != ch.points
+                || players[nr].cpl.points_tot != ch.points_tot
+                || players[nr].cpl.kindred != ch.kindred
+        })
+    });
+    if points_changed {
+        Repository::with_characters(|characters| {
+            let ch = &characters[cn];
+            let mut buf: [u8; 10] = [0; 10];
+            buf[0] = core::constants::SV_SETCHAR_PTS;
+            buf[1..5].copy_from_slice(&ch.points.to_le_bytes());
+            buf[5..9].copy_from_slice(&ch.points_tot.to_le_bytes());
+            buf[9] = ch.kindred as u8;
+            NetworkManager::with(|network| network.xsend(nr, &buf, 10));
+            Server::with_players_mut(|players| {
+                players[nr].cpl.points = ch.points;
+                players[nr].cpl.points_tot = ch.points_tot;
+                players[nr].cpl.kindred = ch.kindred;
+            });
+        });
+    }
+
+    let gold_changed = Repository::with_characters(|characters| {
+        let ch = &characters[cn];
+        Server::with_players(|players| {
+            players[nr].cpl.gold != ch.gold
+                || players[nr].cpl.armor != ch.armor as i32
+                || players[nr].cpl.weapon != ch.weapon as i32
+        })
+    });
+    if gold_changed {
+        Repository::with_characters(|characters| {
+            let ch = &characters[cn];
+            let mut buf: [u8; 13] = [0; 13];
+            buf[0] = core::constants::SV_SETCHAR_GOLD;
+            buf[1..5].copy_from_slice(&ch.gold.to_le_bytes());
+            buf[5..7].copy_from_slice(&(ch.armor as i16).to_le_bytes());
+            buf[7..9].copy_from_slice(&(ch.weapon as i16).to_le_bytes());
+            NetworkManager::with(|network| network.xsend(nr, &buf, 13));
+            Server::with_players_mut(|players| {
+                players[nr].cpl.gold = ch.gold;
+                players[nr].cpl.armor = ch.armor as i32;
+                players[nr].cpl.weapon = ch.weapon as i32;
+            });
+        });
+    }
 }
 
 /// Send HP change to player
@@ -2509,9 +3315,7 @@ fn plr_change_dir(nr: usize, cn: usize) {
             network.xsend(nr, &buf, 2);
         });
 
-        Server::with_players_mut(|players| {
-            players[nr].cpl.dir = current_dir as i32;
-        });
+        Server::with_players_mut(|players| players[nr].cpl.dir = current_dir as i32);
     }
 }
 
@@ -2532,7 +3336,7 @@ fn plr_change_points(nr: usize, cn: usize) {
         });
 
     if points != cpl_points || points_tot != cpl_points_tot || kindred != cpl_kindred {
-        let mut buf: [u8; 16] = [0; 16];
+        let mut buf: [u8; 10] = [0; 10];
         buf[0] = core::constants::SV_SETCHAR_PTS;
 
         // points (4 bytes)
@@ -2716,16 +3520,6 @@ fn plr_change_target(nr: usize, cn: usize) {
             players[nr].cpl.misc_target2 = misc_target2 as i32;
         });
     }
-}
-
-/// Send map tile changes to player (light, sprites, characters, items)
-fn plr_change_map(_nr: usize, _cn: usize) {
-    // TODO: Implement map change detection and sending
-    // This iterates through visible tiles and sends changes for:
-    // - Light values
-    // - Background sprites
-    // - Character sprites/status
-    // - Item sprites/status
 }
 
 /// Port of `plr_tick` from `svr_tick.cpp`
@@ -3733,9 +4527,7 @@ fn plr_cmd_look_item(_nr: usize) {
         map[(x + y * core::constants::SERVER_MAPX as i32) as usize].it as usize
     });
 
-    State::with_mut(|state| {
-        state.do_look_item(cn, in_idx);
-    });
+    State::with_mut(|s| s.do_look_item(cn, in_idx));
 }
 
 /// Handle give item command
@@ -3750,7 +4542,7 @@ fn plr_cmd_give(_nr: usize) {
         ]) as usize
     });
 
-    if co >= core::constants::MAXCHARS {
+    if co >= core::constants::MAXCHARS as usize {
         return;
     }
 

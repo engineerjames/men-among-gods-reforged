@@ -240,7 +240,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
         return 0;
     }
 
-    let mut in_id = God::create_item(1106); // Rainbow belt template
+    let in_id = God::create_item(1106); // Rainbow belt template
     if in_id.is_none() {
         return 0;
     }
