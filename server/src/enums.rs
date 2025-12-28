@@ -1,5 +1,6 @@
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)] // TODO: Check usage and remove if unnecessary
 pub enum LogoutReason {
     Unknown = 0,
     ChallengeFailed = 1,

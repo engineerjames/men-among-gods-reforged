@@ -1,5 +1,5 @@
 use crate::{
-    driver, driver_generic, driver_skill::skill_driver, driver_use, enums, god::God,
+    driver_generic, driver_skill::skill_driver, driver_use, enums, god::God,
     network_manager::NetworkManager, repository::Repository, server::Server, state::State,
 };
 
@@ -380,12 +380,11 @@ pub fn plr_map_remove(cn: usize) {
 /// Port of `plr_map_set` from `svr_act.cpp`
 /// Set character to map and remove target character
 pub fn plr_map_set(cn: usize) {
-    let (x, y, flags, dir, light) = Repository::with_characters(|characters| {
+    let (x, y, flags, light) = Repository::with_characters(|characters| {
         (
             characters[cn].x,
             characters[cn].y,
             characters[cn].flags,
-            characters[cn].dir,
             characters[cn].light,
         )
     });
@@ -1081,7 +1080,7 @@ pub fn plr_pickup(cn: usize) {
         return;
     }
 
-    let (m, x, y, dir) = Repository::with_characters(|characters| {
+    let (m, x, y) = Repository::with_characters(|characters| {
         let dir = characters[cn].dir;
         let (m, x, y) = match dir {
             core::constants::DX_UP if characters[cn].y > 0 => {
@@ -1110,7 +1109,7 @@ pub fn plr_pickup(cn: usize) {
             }
             _ => (None, 0, 0),
         };
-        (m, x, y, dir)
+        (m, x, y)
     });
 
     let Some(m) = m else {
@@ -1351,7 +1350,7 @@ pub fn plr_use(cn: usize) {
         });
     });
 
-    let (m, dir) = Repository::with_characters(|characters| {
+    let m = Repository::with_characters(|characters| {
         let dir = characters[cn].dir;
         let m = match dir {
             core::constants::DX_UP if characters[cn].y > 0 => Some(
@@ -1380,7 +1379,8 @@ pub fn plr_use(cn: usize) {
             }
             _ => None,
         };
-        (m, dir)
+
+        m
     });
 
     let Some(m) = m else {
@@ -3806,13 +3806,8 @@ fn plr_cmd_drop(_nr: usize) {
     // Building-mode special handling
     let is_building = Repository::with_characters(|ch| ch[cn].is_building());
     if is_building {
-        let (action, tx, ty, citem) = Repository::with_characters(|ch| {
-            (
-                ch[cn].misc_action,
-                ch[cn].misc_target1,
-                ch[cn].misc_target2,
-                ch[cn].citem,
-            )
+        let (action, tx, ty) = Repository::with_characters(|ch| {
+            (ch[cn].misc_action, ch[cn].misc_target1, ch[cn].misc_target2)
         });
 
         if action == core::constants::DR_AREABUILD2 as u16 {
@@ -3883,6 +3878,7 @@ fn plr_cmd_pickup(_nr: usize) {
     let is_building = Repository::with_characters(|ch| ch[cn].is_building());
     if is_building {
         // build_remove not implemented; ignore for now
+        // TODO: Implement ^
         return;
     }
 
@@ -4136,7 +4132,7 @@ fn plr_cmd_inv(_nr: usize) {
         // Now handle citem/gold swap or placing citem into slot
         Repository::with_characters_mut(|ch| {
             if (ch[cn].citem & 0x80000000) != 0 {
-                let mut tmpval = ch[cn].citem & 0x7fffffff;
+                let tmpval = ch[cn].citem & 0x7fffffff;
                 if tmpval > 0 {
                     ch[cn].gold += tmpval as i32;
                 }
