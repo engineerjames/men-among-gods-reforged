@@ -46,12 +46,8 @@ impl EffectManager {
         let mut cnt = 0;
 
         for n in 1..core::constants::MAXEFFECT as usize {
-            let (used, effect_type, duration) = Repository::with_effects(|effects| {
-                (
-                    effects[n].used,
-                    effects[n].effect_type as i32,
-                    effects[n].duration as i32,
-                )
+            let (used, effect_type) = Repository::with_effects(|effects| {
+                (effects[n].used, effects[n].effect_type as i32)
             });
 
             if used == core::constants::USE_EMPTY {

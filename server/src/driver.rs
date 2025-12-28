@@ -1948,11 +1948,13 @@ pub fn npc_driver_low(cn: usize) {
                     continue;
                 }
 
-                // Call can_go (doesn't exist yet)
-                // if !can_go(ch_x as i32, ch_y as i32, x, y) {
-                //     panic = attempt + 1;
-                //     continue;
-                // }
+                if State::with_mut(|state| {
+                    state.can_go(ch_x as i32, ch_y as i32, x as i32, y as i32)
+                }) == false
+                {
+                    panic = attempt + 1;
+                    continue;
+                }
 
                 panic = attempt;
                 break;

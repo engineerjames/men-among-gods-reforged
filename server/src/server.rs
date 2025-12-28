@@ -1,9 +1,9 @@
 use chrono::Timelike;
 use core::constants::MAXPLAYER;
-use core::types::{Character, ServerPlayer};
+use core::types::ServerPlayer;
 use std::io::ErrorKind;
 use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::net::TcpListener;
 use std::sync::{OnceLock, RwLock};
 use std::time::{Duration, Instant};
 
@@ -580,12 +580,10 @@ impl Server {
             .as_secs() as i64;
 
         // Grab relevant fields for decision without holding a mutable lock
-        let (points_tot, login_date, name_opt) = Repository::with_characters(|ch| {
+        let (points_tot, login_date) = Repository::with_characters(|ch| {
             let pts = ch[_cn].points_tot;
             let ld = ch[_cn].login_date;
-            // try to clone name where possible; fall back to empty string
-            let n = ch[_cn].name.clone();
-            (pts, ld, n)
+            (pts, ld)
         });
 
         let mut erase = false;
@@ -953,7 +951,7 @@ impl Server {
                 }
 
                 let ilen = players[n].tptr;
-                let mut olen = ilen + 2;
+                let olen = ilen + 2;
 
                 if olen > 16 {
                     // compress into encoder's inner buffer
@@ -1088,10 +1086,8 @@ impl Server {
         }
     }
 
-    fn new_player(&mut self, _stream: std::net::TcpStream, _addr: std::net::IpAddr) {
+    fn new_player(&mut self, stream: std::net::TcpStream, addr: std::net::IpAddr) {
         // Accept and initialize a new player slot. Mirrors server.cpp::new_player
-        let mut stream = _stream;
-        let addr = _addr;
 
         // Set non-blocking mode on the socket
         let _ = stream.set_nonblocking(true);

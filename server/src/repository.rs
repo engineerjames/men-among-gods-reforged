@@ -414,6 +414,8 @@ impl Repository {
         f(&repo.globals)
     }
 
+    // TODO: Not sure if we need this yet...
+    #[allow(dead_code)]
     pub fn with_see_map<F, R>(f: F) -> R
     where
         F: FnOnce(&[core::types::SeeMap]) -> R,

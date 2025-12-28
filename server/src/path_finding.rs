@@ -275,7 +275,6 @@ impl PathFinder {
     ) {
         let base_x = node.x as i32;
         let base_y = node.y as i32;
-        let base_m = (base_x + base_y * SERVER_MAPX) as usize;
 
         // Cardinal directions
         let right_m = (base_x + 1 + base_y * SERVER_MAPX) as usize;
