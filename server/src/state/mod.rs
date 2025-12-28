@@ -23,6 +23,7 @@ pub struct State {
     ox: i32,
     oy: i32,
     is_monster: bool,
+    pub penta_needed: usize,
 }
 
 impl State {
@@ -35,6 +36,7 @@ impl State {
             ox: 0,
             oy: 0,
             is_monster: false,
+            penta_needed: 5,
         }
     }
 

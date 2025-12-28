@@ -66,38 +66,27 @@ fn handle_command_line_args(args: &[String]) {
         let cmd = args[1].to_lowercase();
         match cmd.as_str() {
             "pop" => {
-                // state.populate();
-                // state.unload();
-                process::exit(0);
-            }
-            "rem" => {
-                // state.pop_remove();
-                // state.unload();
+                populate::populate();
                 process::exit(0);
             }
             "wipe" => {
-                // state.pop_wipe();
-                // state.unload();
+                populate::pop_wipe();
                 process::exit(0);
             }
             "light" => {
-                // state.init_lights();
-                // state.unload();
+                populate::init_lights();
                 process::exit(0);
             }
             "skill" => {
-                // state.pop_skill();
-                // state.unload();
+                populate::pop_skill();
                 process::exit(0);
             }
             "load" => {
-                // state.pop_load_all_chars();
-                // state.unload();
+                populate::pop_load_all_chars();
                 process::exit(0);
             }
             "save" => {
-                // state.pop_save_all_chars();
-                // state.unload();
+                populate::pop_save_all_chars();
                 process::exit(0);
             }
             _ => {}

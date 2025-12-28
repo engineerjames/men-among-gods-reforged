@@ -1,3 +1,4 @@
+use crate::area::is_in_pentagram_quest;
 use crate::effect::EffectManager;
 use crate::god::God;
 use crate::helpers::{self, points2rank};
@@ -5,16 +6,16 @@ use crate::lab9::Labyrinth9;
 use crate::repository::Repository;
 use crate::state::State;
 use crate::{driver_skill, player, populate};
-use core::constants::USE_EMPTY;
-use core::constants::{CharacterFlags, MAXITEM};
-use core::constants::{ItemFlags, SERVER_MAPX, SK_LOCK};
+use core::constants::{
+    CharacterFlags, ItemFlags, KIN_HARAKIM, KIN_MERCENARY, KIN_SORCERER, KIN_TEMPLAR, KIN_WARRIOR,
+    MAXITEM, MAXSKILL, MF_NOEXPIRE, NT_HITME, SERVER_MAPX, SERVER_MAPY, SK_LOCK, SK_RECALL,
+    USE_ACTIVE, USE_EMPTY,
+};
 use rand::Rng;
 use std::u32;
 
 // Helper function to take an item from a character
 fn take_item_from_char(item_idx: usize, cn: usize) {
-    use crate::repository::Repository;
-
     Repository::with_characters_mut(|characters| {
         let ch = &mut characters[cn];
 
@@ -48,12 +49,10 @@ fn take_item_from_char(item_idx: usize, cn: usize) {
         items[item_idx].carried = 0;
     });
 
-    // TODO: do_update_char when implemented
+    State::with(|state| state.do_update_char(cn));
 }
 
-pub fn sub_door_driver(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-
+pub fn sub_door_driver(_cn: usize, item_idx: usize) -> i32 {
     Repository::with_items(|items| {
         let item = &items[item_idx];
 
@@ -1204,11 +1203,6 @@ pub fn teleport(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn teleport2(cn: usize, item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::{ItemFlags, SK_RECALL};
-
     if cn == 0 {
         return 1;
     }
@@ -1301,12 +1295,7 @@ pub fn teleport2(cn: usize, item_idx: usize) -> i32 {
     1
 }
 
-pub fn use_labyrinth(cn: usize, item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::{SK_RECALL, USE_EMPTY};
-
+pub fn use_labyrinth(cn: usize, _item_idx: usize) -> i32 {
     // Remove nolab items from citem
     let citem = Repository::with_characters(|characters| characters[cn].citem);
     if citem != 0 && is_nolab_item(citem as usize) {
@@ -1604,13 +1593,6 @@ pub fn use_bag(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
-    use crate::driver_skill;
-    use crate::god::God;
-    use crate::helpers;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::{MAXSKILL, USE_EMPTY};
-
     // Get skill number from data[0]
     let (skill_nr, teaches_only) = Repository::with_items(|items| {
         (
@@ -1623,15 +1605,13 @@ pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
         return 0;
     }
 
-    let (current_val, max_val, difficulty, points_tot) =
-        Repository::with_characters(|characters| {
-            (
-                characters[cn].skill[skill_nr][0],
-                characters[cn].skill[skill_nr][2],
-                characters[cn].skill[skill_nr][3],
-                characters[cn].points_tot,
-            )
-        });
+    let (current_val, max_val, difficulty) = Repository::with_characters(|characters| {
+        (
+            characters[cn].skill[skill_nr][0],
+            characters[cn].skill[skill_nr][2],
+            characters[cn].skill[skill_nr][3],
+        )
+    });
 
     if current_val != 0 {
         // Already know the skill
@@ -1828,7 +1808,6 @@ pub fn use_scroll3(cn: usize, item_idx: usize) -> i32 {
             &format!("Raised Hitpoints by {}.\n", amount),
         );
     });
-    // TODO: Implement chlog
 
     // Calculate total points needed: sum of v*diff for each point
     let v = current_hp as i32;
@@ -1930,10 +1909,6 @@ pub fn use_scroll4(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_scroll5(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::USE_EMPTY;
-
     // Get the amount to raise from data[0]
     let amount = Repository::with_items(|items| items[item_idx].data[0] as i32);
 
@@ -1963,12 +1938,12 @@ pub fn use_scroll5(cn: usize, item_idx: usize) -> i32 {
             &format!("Raised Mana by {}.\n", amount),
         );
     });
-    // TODO: Implement chlog
 
     // Calculate total points needed: sum of v*diff for each point
     let v = current_mana as i32;
     let diff = difficulty as i32;
     let mut pts = 0;
+
     for n in 0..amount {
         pts += (n + v) * diff;
     }
@@ -1997,12 +1972,502 @@ pub fn use_scroll5(cn: usize, item_idx: usize) -> i32 {
     1
 }
 
-pub fn use_crystal_sub(cn: usize, item_idx: usize) -> i32 {
-    // This is a complex function that creates random dungeon NPCs
-    // For now, just return a placeholder
-    // TODO: Full implementation requires pop_create_char, god_create_char, and equipment system
-    log::warn!("use_crystal_sub not fully implemented yet");
-    0
+pub fn use_crystal_sub(_cn: usize, item_idx: usize) -> i32 {
+    // Get group id
+    let group = Repository::with_items(|items| items[item_idx].data[0]);
+
+    // Count existing NPCs in the same group and bucket their base values
+    let mut baseg = [0i32; 20];
+    let mut cnt = 0i32;
+    Repository::with_characters(|characters| {
+        for n in 1..core::constants::MAXCHARS as usize {
+            let ch = &characters[n];
+            if ch.used == core::constants::USE_ACTIVE
+                && (ch.flags & core::constants::CharacterFlags::CF_BODY.bits()) == 0
+                && ch.data[42] == group as i32
+            {
+                let mut base = ch.data[0];
+                if base > 99 {
+                    base = 99;
+                }
+                let idx = (base / 5) as usize;
+                if idx < baseg.len() {
+                    baseg[idx] += 1;
+                }
+                cnt += 1;
+            }
+        }
+    });
+
+    // compute how many are still missing
+    let need = Repository::with_items(|items| items[item_idx].data[1] as i32) - cnt;
+    if need <= 0 {
+        return 0;
+    }
+
+    // find smallest bucket
+    let mut sbase = 0usize;
+    let mut tmpmin = i32::MAX;
+    for i in 0..baseg.len() {
+        if baseg[i] < tmpmin {
+            tmpmin = baseg[i];
+            sbase = i;
+        }
+    }
+
+    log::info!(
+        "Randoms: smallest base is {} with {} (miss={})",
+        sbase,
+        tmpmin,
+        need
+    );
+
+    // choose a random template from temps
+    let temps: [usize; 6] = [2, 4, 76, 78, 150, 151];
+    let mut rng = rand::thread_rng();
+    let tmp = temps[rng.gen_range(0..temps.len())];
+
+    // create char
+    let cc_i32 = match God::create_char(tmp, false) {
+        Some(id) => id,
+        None => return 0,
+    };
+    let cc = cc_i32 as usize;
+
+    // attempt to drop at crystal position
+    let (item_x, item_y) = Repository::with_items(|items| (items[item_idx].x, items[item_idx].y));
+    if !God::drop_char_fuzzy(cc, item_x as usize, item_y as usize) {
+        God::destroy_items(cc);
+        Repository::with_characters_mut(|characters| {
+            characters[cc].used = core::constants::USE_EMPTY;
+        });
+        return 0;
+    }
+
+    // set group
+    Repository::with_characters_mut(|characters| {
+        characters[cc].data[42] = group as i32;
+    });
+
+    // pick spawn tile until valid
+    let m = loop {
+        let m_try = (rng.gen_range(0..64) + 128)
+            + (rng.gen_range(0..64) + 64) * core::constants::SERVER_MAPX as usize;
+        if player::plr_check_target(m_try) {
+            break m_try;
+        }
+    };
+
+    // configure the character
+    Repository::with_characters_mut(|characters| {
+        let ch = &mut characters[cc];
+        ch.goto_x = (m % core::constants::SERVER_MAPX as usize) as u16;
+        ch.goto_y = (m / core::constants::SERVER_MAPX as usize) as u16;
+        ch.data[60] = 18 * 20;
+        ch.data[62] = 1;
+
+        // texts (format strings)
+        let t0 = b"Yes! Die, %s!";
+        ch.text[0][..t0.len()].copy_from_slice(t0);
+        ch.text[0][t0.len()..].fill(0);
+        let t1 = b"Yahoo! An enemy! Prepare to die, %s!";
+        ch.text[1][..t1.len()].copy_from_slice(t1);
+        ch.text[1][t1.len()..].fill(0);
+        let t3 = b"Thank you %s! Everything is better than being here.";
+        ch.text[3][..t3.len()].copy_from_slice(t3);
+        ch.text[3][t3.len()..].fill(0);
+        ch.data[48] = 33;
+
+        // base and attributes
+        let base = (sbase * 5) as i32 + rng.gen_range(0..5) as i32;
+        ch.data[0] = base;
+
+        for n in 0..5 {
+            let mut t = base + rng.gen_range(0..15) as i32;
+            let diff = std::cmp::max(1, ch.attrib[n][3] as i32);
+            t = t * 3 / diff;
+            let maxv = ch.attrib[n][2] as i32;
+            let v = std::cmp::max(10, std::cmp::min(maxv, t));
+            ch.attrib[n][0] = v as u8;
+        }
+
+        for n in 0..50 {
+            let mut t = base + rng.gen_range(0..15) as i32;
+            let diff = std::cmp::max(1, ch.skill[n][3] as i32);
+            t = t * 3 / diff;
+            if ch.skill[n][2] != 0 {
+                let maxv = ch.skill[n][2] as i32;
+                ch.skill[n][0] = std::cmp::min(maxv, t) as u8;
+            }
+        }
+
+        ch.hp[0] = std::cmp::max(
+            50,
+            std::cmp::min(ch.hp[2] as i32, base * 5 + rng.gen_range(0..50) as i32),
+        ) as u16;
+        ch.end[0] = std::cmp::max(
+            50,
+            std::cmp::min(ch.end[2] as i32, base * 5 + rng.gen_range(0..50) as i32),
+        ) as u16;
+        ch.mana[0] = std::cmp::max(
+            50,
+            std::cmp::min(ch.mana[2] as i32, base * 5 + rng.gen_range(0..50) as i32),
+        ) as u16;
+
+        // calculate experience points
+        let mut pts = 0i32;
+        for z in 0..5 {
+            for m in 10..(ch.attrib[z][0] as i32) {
+                pts += helpers::attrib_needed(m, 3);
+            }
+        }
+        for m in 50..(ch.hp[0] as i32) {
+            pts += helpers::hp_needed(m, 3);
+        }
+        for m in 50..(ch.end[0] as i32) {
+            pts += helpers::end_needed(m, 2);
+        }
+        for m in 50..(ch.mana[0] as i32) {
+            pts += helpers::mana_needed(m, 3);
+        }
+        for z in 0..50 {
+            for m in 1..(ch.skill[z][0] as i32) {
+                pts += helpers::skill_needed(m, 2);
+            }
+        }
+
+        ch.points_tot = pts;
+        ch.gold = base * base + 1;
+        ch.a_hp = 999999;
+        ch.a_end = 999999;
+        if ch.skill[core::constants::SK_MEDIT as usize][0] > 0 {
+            ch.a_mana = 1000000;
+        } else {
+            let mut v = 1i32;
+            for _ in 0..6 {
+                v *= rng.gen_range(0..4) as i32;
+            }
+            ch.a_mana = v * 100;
+        }
+
+        ch.alignment = -(rng.gen_range(0..7500) as i16);
+    });
+
+    log::info!("Created random dungeon NPC from crystal (template {})", tmp);
+
+    // Equip character based on attributes/skills
+    {
+        Repository::with_characters(|characters| {
+            let _ch = characters[cc].clone();
+        });
+
+        Repository::with_characters_mut(|characters| {
+            let ch_mut = &mut characters[cc];
+            if ch_mut.attrib[core::constants::AT_AGIL as usize][0] as i32 >= 90
+                && ch_mut.attrib[core::constants::AT_STREN as usize][0] as i32 >= 90
+            {
+                let tmp = populate::pop_create_item(94, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_HEAD as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(95, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_BODY as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(98, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_ARMS as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(97, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_LEGS as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(99, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_FEET as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(96, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_CLOAK as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+            } else if ch_mut.attrib[core::constants::AT_AGIL as usize][0] as i32 >= 72
+                && ch_mut.attrib[core::constants::AT_STREN as usize][0] as i32 >= 72
+            {
+                let tmp = populate::pop_create_item(75, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_HEAD as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(76, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_BODY as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(79, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_ARMS as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(78, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_LEGS as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(80, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_FEET as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(77, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_CLOAK as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+            } else if ch_mut.attrib[core::constants::AT_AGIL as usize][0] as i32 >= 40
+                && ch_mut.attrib[core::constants::AT_STREN as usize][0] as i32 >= 40
+            {
+                let tmp = populate::pop_create_item(69, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_HEAD as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(71, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_BODY as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(73, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_ARMS as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(72, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_LEGS as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(74, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_FEET as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(70, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_CLOAK as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+            } else if ch_mut.attrib[core::constants::AT_AGIL as usize][0] as i32 >= 24
+                && ch_mut.attrib[core::constants::AT_STREN as usize][0] as i32 >= 24
+            {
+                let tmp = populate::pop_create_item(63, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_HEAD as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(65, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_BODY as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(67, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_ARMS as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(66, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_LEGS as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(68, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_FEET as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(64, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_CLOAK as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+            } else if ch_mut.attrib[core::constants::AT_AGIL as usize][0] as i32 >= 16
+                && ch_mut.attrib[core::constants::AT_STREN as usize][0] as i32 >= 16
+            {
+                let tmp = populate::pop_create_item(57, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_HEAD as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(59, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_BODY as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(61, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_ARMS as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(60, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_LEGS as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(62, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_FEET as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(58, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_CLOAK as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+            } else if ch_mut.attrib[core::constants::AT_AGIL as usize][0] as i32 >= 12
+                && ch_mut.attrib[core::constants::AT_STREN as usize][0] as i32 >= 12
+            {
+                let tmp = populate::pop_create_item(51, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_HEAD as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(53, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_BODY as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(55, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_ARMS as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(54, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_LEGS as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(56, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_FEET as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(52, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_CLOAK as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+            } else if ch_mut.attrib[core::constants::AT_AGIL as usize][0] as i32 >= 10
+                && ch_mut.attrib[core::constants::AT_STREN as usize][0] as i32 >= 10
+            {
+                let tmp = populate::pop_create_item(39, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_HEAD as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(42, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_BODY as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(44, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_ARMS as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(43, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_LEGS as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(41, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_FEET as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+                let tmp = populate::pop_create_item(40, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_CLOAK as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+            }
+
+            // choose weapon based on skills/attribs (partial port of original logic)
+            if ch_mut.skill[core::constants::SK_TWOHAND as usize][0] as i32 >= 60
+                && ch_mut.attrib[core::constants::AT_AGIL as usize][0] as i32 >= 50
+                && ch_mut.attrib[core::constants::AT_STREN as usize][0] as i32 >= 75
+            {
+                let tmp = populate::pop_create_item(125, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_RHAND as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+            } else if ch_mut.skill[core::constants::SK_TWOHAND as usize][0] as i32 >= 45
+                && ch_mut.attrib[core::constants::AT_AGIL as usize][0] as i32 >= 40
+                && ch_mut.attrib[core::constants::AT_STREN as usize][0] as i32 >= 60
+            {
+                let tmp = populate::pop_create_item(38, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_RHAND as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+            } else if ch_mut.skill[core::constants::SK_TWOHAND as usize][0] as i32 >= 30
+                && ch_mut.attrib[core::constants::AT_AGIL as usize][0] as i32 >= 30
+                && ch_mut.attrib[core::constants::AT_STREN as usize][0] as i32 >= 40
+            {
+                let tmp = populate::pop_create_item(37, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_RHAND as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+            } else if ch_mut.skill[core::constants::SK_TWOHAND as usize][0] as i32 >= 15
+                && ch_mut.attrib[core::constants::AT_AGIL as usize][0] as i32 >= 20
+                && ch_mut.attrib[core::constants::AT_STREN as usize][0] as i32 >= 24
+            {
+                let tmp = populate::pop_create_item(36, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_RHAND as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+            } else if ch_mut.skill[core::constants::SK_TWOHAND as usize][0] as i32 >= 1
+                && ch_mut.attrib[core::constants::AT_AGIL as usize][0] as i32 >= 10
+                && ch_mut.attrib[core::constants::AT_STREN as usize][0] as i32 >= 12
+            {
+                let tmp = populate::pop_create_item(35, cc);
+                if tmp != 0 {
+                    ch_mut.worn[core::constants::WN_RHAND as usize] = tmp as u32;
+                    Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
+                }
+            }
+        });
+    }
+
+    // occasional extra items (partial port)
+    let mut rng2 = rand::thread_rng();
+    if rng2.gen_range(0..30) == 0 && Repository::with_characters(|ch| ch[cc].data[0] > 5) {
+        if let Some(it) = God::create_item(rand::random::<usize>() % 2 + 273) {
+            God::give_character_item(cc, it);
+        }
+    }
+    if rng2.gen_range(0..60) == 0 && Repository::with_characters(|ch| ch[cc].data[0] > 15) {
+        if let Some(it) = God::create_item(rand::random::<usize>() % 2 + 192) {
+            God::give_character_item(cc, it);
+        }
+    }
+    if rng2.gen_range(0..150) == 0 && Repository::with_characters(|ch| ch[cc].data[0] > 20) {
+        if let Some(it) = God::create_item(rand::random::<usize>() % 9 + 181) {
+            God::give_character_item(cc, it);
+        }
+    }
+
+    // update character state
+    State::with(|state| state.do_update_char(cc));
+
+    need
 }
 
 pub fn use_crystal(cn: usize, item_idx: usize) -> i32 {
@@ -2020,9 +2485,7 @@ pub fn use_crystal(cn: usize, item_idx: usize) -> i32 {
     }
 }
 
-pub fn use_mine_respawn(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-
+pub fn use_mine_respawn(_cn: usize, item_idx: usize) -> i32 {
     // Get group, template, and max count from item data
     let (group, template, max_cnt) = Repository::with_items(|items| {
         let item = &items[item_idx];
@@ -2035,14 +2498,21 @@ pub fn use_mine_respawn(cn: usize, item_idx: usize) -> i32 {
 
     // Check if mine wall items exist (data[3-9])
     for n in 3..10 {
-        let map_idx = Repository::with_items(|items| items[item_idx].data[n]);
+        let map_idx = Repository::with_items(|items| items[item_idx].data[n] as usize);
         if map_idx == 0 {
             break;
         }
 
         // Check if there's a mine wall item at that location
-        // TODO: Check map[m].it and verify driver == 26
-        // For now, skip this validation
+        let in2 = Repository::with_map(|map| map[map_idx].it as usize);
+        if in2 == 0 {
+            return 0;
+        }
+
+        let driver = Repository::with_items(|items| items[in2].driver);
+        if driver != 26 {
+            return 0;
+        }
     }
 
     // Count active NPCs in this group
@@ -2064,18 +2534,31 @@ pub fn use_mine_respawn(cn: usize, item_idx: usize) -> i32 {
         return 0;
     }
 
-    // TODO: Implement pop_create_char and god_drop_char_fuzzy
-    log::warn!("use_mine_respawn: pop_create_char not implemented yet");
+    // create the NPC from template
+    let cc = populate::pop_create_char(template, false);
+    if cc == 0 {
+        return 0;
+    }
+
+    // drop the character near the mine item
+    let (item_x, item_y) = Repository::with_items(|items| (items[item_idx].x, items[item_idx].y));
+    if !God::drop_char_fuzzy(cc, item_x as usize, item_y as usize) {
+        log::warn!("use_mine_respawn ({},{}): drop_char failed", item_x, item_y);
+        // cleanup on failure
+        God::destroy_items(cc);
+        Repository::with_characters_mut(|characters| {
+            characters[cc].used = core::constants::USE_EMPTY;
+        });
+        return 0;
+    }
+
+    // ensure the new character is visible/updated
+    State::with(|state| state.do_update_char(cc));
 
     1
 }
 
 pub fn rat_eye(cn: usize, item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::{ItemFlags, USE_EMPTY};
-
     if cn == 0 {
         return 0;
     }
@@ -2350,9 +2833,7 @@ pub fn purple_protect(cn: usize, item_idx: usize) -> i32 {
     1
 }
 
-pub fn use_lever(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-
+pub fn use_lever(_cn: usize, item_idx: usize) -> i32 {
     // Get the map coordinate from item data[0]
     let m = Repository::with_items(|items| items[item_idx].data[0] as usize);
 
@@ -2563,7 +3044,7 @@ pub fn use_pile(cn: usize, item_idx: usize) -> i32 {
     1
 }
 
-pub fn use_grave(cn: usize, item_idx: usize) -> i32 {
+pub fn use_grave(_cn: usize, item_idx: usize) -> i32 {
     // Get previously spawned character
     let cc = Repository::with_items(|items| items[item_idx].data[0] as usize);
 
@@ -2674,9 +3155,9 @@ pub fn mine_wall(cn: usize, item_idx: usize) -> i32 {
     result_data_2 as i32
 }
 
-pub fn mine_state(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-
+// Un-called in the original code
+#[allow(dead_code)]
+pub fn mine_state(_cn: usize, item_idx: usize) -> i32 {
     if item_idx == 0 {
         return 0;
     }
@@ -2807,10 +3288,6 @@ pub fn use_mine(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_mine_fast(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::{SERVER_MAPX, USE_EMPTY};
-
     if cn == 0 {
         return 0;
     }
@@ -2957,19 +3434,11 @@ pub fn build_ring(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn build_amulet(cn: usize, item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::{ItemFlags, USE_EMPTY};
-
     // Get amulet piece template
     let t1 = Repository::with_items(|items| items[item_idx].temp);
 
     // Get citem
-    let (in2, t2) = Repository::with_characters(|characters| {
-        let in2 = characters[cn].citem as usize;
-        (in2, in2)
-    });
+    let in2 = Repository::with_characters(|characters| characters[cn].citem as usize);
 
     if in2 == 0 || (in2 & 0x80000000) != 0 {
         State::with(|state| {
@@ -3327,10 +3796,10 @@ pub fn solved_pentagram(cn: usize, item_idx: usize) -> i32 {
         );
     });
 
-    // TODO: Implement chlog
     log::info!("Character {} solved pentagram quest", cn);
 
     let cn_name = Repository::with_characters(|characters| characters[cn].name.clone());
+    let mut characters_in_pents: usize = 0;
 
     // Notify all players and award pending exp
     for n in 1..core::constants::MAXCHARS {
@@ -3373,11 +3842,14 @@ pub fn solved_pentagram(cn: usize, item_idx: usize) -> i32 {
 
         // Award pending bonus exp
         if has_bonus != 0 {
-            // TODO: Implement do_give_exp
-            log::info!("TODO: do_give_exp({}, {}, 0, -1)", n, has_bonus);
+            State::with_mut(|state| state.do_give_exp(n, has_bonus, 0, -1));
             Repository::with_characters_mut(|characters| {
                 characters[n].data[18] = 0;
             });
+        }
+
+        if is_in_pentagram_quest(n) {
+            characters_in_pents += 1;
         }
     }
 
@@ -3406,41 +3878,18 @@ pub fn solved_pentagram(cn: usize, item_idx: usize) -> i32 {
         }
     });
 
-    // TODO: Update penta_needed based on active players
-    log::info!("TODO: Update penta_needed calculation");
+    let new_solve = State::with_mut(|state| {
+        state.penta_needed = characters_in_pents * 5 + rand::random::<usize>() % 6;
+        state.penta_needed
+    });
+
+    log::info!(
+        "Pentagram quest solved. Characters in pents: {}, new penta_needed: {}",
+        characters_in_pents,
+        new_solve
+    );
 
     0
-}
-
-pub fn is_in_pentagram_quest(cn: usize) -> bool {
-    use crate::repository::Repository;
-    use core::constants::MAXCHARS;
-
-    if cn < 1 || cn >= MAXCHARS {
-        return false;
-    }
-
-    // Pentagram quest area indices: 67, 68, 110, 113, 123
-    // TODO: These should be loaded from area configuration
-    // For now, check approximate coordinates based on C++ area.cpp
-    let (x, y) = Repository::with_characters(|characters| (characters[cn].x, characters[cn].y));
-
-    // Pentagram quest areas (approximate from C++ area.cpp)
-    let areas = [
-        (67, 0, 0, 0, 0),          // TODO: Fill in actual coordinates
-        (68, 0, 0, 0, 0),          // TODO: Fill in actual coordinates
-        (110, 0, 0, 0, 0),         // TODO: Fill in actual coordinates
-        (113, 0, 0, 0, 0),         // TODO: Fill in actual coordinates
-        (123, 469, 457, 473, 459), // Pentagram Quest area
-    ];
-
-    for (_idx, x1, y1, x2, y2) in areas.iter() {
-        if x as i32 >= *x1 && y as i32 >= *y1 && x as i32 <= *x2 && y as i32 <= *y2 {
-            return true;
-        }
-    }
-
-    false
 }
 
 pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
@@ -3458,7 +3907,7 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
         } else {
             // Respawn enemies if needed
             for m in 1..4 {
-                let (co, needs_spawn) = Repository::with_items(|items| {
+                let needs_spawn = Repository::with_items(|items| {
                     let co = items[item_idx].data[m] as usize;
                     let needs_spawn = if co == 0 {
                         true
@@ -3475,7 +3924,7 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
                             }
                         })
                     };
-                    (co, needs_spawn)
+                    needs_spawn
                 });
 
                 if needs_spawn {
@@ -3677,7 +4126,6 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
         );
     });
 
-    // TODO: Implement chlog
     log::info!(
         "Character {} activated pentagram {} ({} of needed)",
         cn,
@@ -3694,7 +4142,7 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
 
     // Spawn enemies
     for m in 1..4 {
-        let (co, needs_spawn) = Repository::with_items(|items| {
+        let needs_spawn = Repository::with_items(|items| {
             let co = items[item_idx].data[m] as usize;
             let needs_spawn = if co == 0 {
                 true
@@ -3711,7 +4159,7 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
                     }
                 })
             };
-            (co, needs_spawn)
+            needs_spawn
         });
 
         if needs_spawn {
@@ -3725,12 +4173,7 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
     1
 }
 
-pub fn use_shrine(cn: usize, item_idx: usize) -> i32 {
-    use crate::helpers::points2rank;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::{ItemFlags, USE_EMPTY};
-
+pub fn use_shrine(cn: usize, _item_idx: usize) -> i32 {
     if cn == 0 {
         return 0;
     }
@@ -3748,6 +4191,196 @@ pub fn use_shrine(cn: usize, item_idx: usize) -> i32 {
         return 0;
     }
 
+    // Special-case: ONE FIRE POINT / ONE FAKE POINT
+    if (in2 & 0x80000000) == 0 {
+        let desc = Repository::with_items(|items| {
+            if in2 >= items.len() {
+                String::new()
+            } else {
+                String::from_utf8_lossy(&items[in2].description)
+                    .trim_end_matches('\0')
+                    .to_string()
+            }
+        });
+
+        if desc == "ONE FIRE POINT" || desc == "ONE FAKE POINT" {
+            let is_fire = desc == "ONE FIRE POINT";
+
+            if is_fire {
+                Repository::with_characters_mut(|characters| {
+                    characters[cn].data[70] += 1;
+                });
+                State::with(|state| {
+                    let fp = Repository::with_characters(|characters| characters[cn].data[70]);
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Yellow,
+                        &format!(
+                            "One fire point accounted for. You now have {} fire points.\n",
+                            fp
+                        ),
+                    );
+                });
+            } else {
+                let fp = Repository::with_characters(|characters| characters[cn].data[70]);
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Yellow,
+                        &format!("Err, that's a fake point. You have {} fire points.\n", fp),
+                    );
+                });
+            }
+
+            Repository::with_items_mut(|items| {
+                if in2 < items.len() {
+                    items[in2].used = USE_EMPTY;
+                }
+            });
+            Repository::with_characters_mut(|characters| {
+                characters[cn].citem = 0;
+            });
+
+            let (better, worse, equal, bestval, bestcn, bestcount) =
+                Repository::with_characters(|characters| {
+                    let mut better = 0;
+                    let mut worse = 0;
+                    let mut equal = 0;
+                    let mut bestval = 0;
+                    let mut bestcn = 0;
+                    let mut bestcount = 0;
+
+                    for m in 1..core::constants::MAXCHARS {
+                        if characters[m].used == core::constants::USE_EMPTY {
+                            continue;
+                        }
+                        if (characters[m].flags & core::constants::CharacterFlags::CF_PLAYER.bits())
+                            == 0
+                        {
+                            continue;
+                        }
+                        if characters[m].data[70] == 0 {
+                            continue;
+                        }
+
+                        if characters[m].data[70] > characters[cn].data[70] {
+                            better += 1;
+                        } else if characters[m].data[70] < characters[cn].data[70] {
+                            worse += 1;
+                        } else {
+                            equal += 1;
+                        }
+
+                        if characters[m].data[70] > bestval {
+                            bestval = characters[m].data[70];
+                            bestcn = m;
+                            bestcount = 0;
+                        }
+                        if characters[m].data[70] == bestval {
+                            bestcount += 1;
+                        }
+                    }
+
+                    (better, worse, equal, bestval, bestcn, bestcount)
+                });
+
+            if equal > 1 {
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Yellow,
+                        &format!(
+                            "Your rank is {}, there are {} participating players of the same rank, {} are worse.\n",
+                            better + 1,
+                            equal - 1,
+                            worse
+                        ),
+                    );
+                });
+            } else {
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Yellow,
+                        &format!(
+                            "Your rank is {} and {} participating players are worse.\n",
+                            better + 1,
+                            worse
+                        ),
+                    );
+                });
+            }
+
+            State::with(|state| {
+                state.do_character_log(cn, core::types::FontColor::Yellow, " \n");
+            });
+
+            if bestcount == 1 {
+                let name = Repository::with_characters(|characters| {
+                    String::from_utf8_lossy(&characters[bestcn].name)
+                        .trim_end_matches('\0')
+                        .to_string()
+                });
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Yellow,
+                        &format!(
+                            "First place holder is {} with {} fire points.\n",
+                            name, bestval
+                        ),
+                    );
+                });
+            } else {
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Yellow,
+                        &format!(
+                            "First place is shared by {} players, all with {} fire points:\n",
+                            bestcount, bestval
+                        ),
+                    );
+                    state.do_character_log(cn, core::types::FontColor::Yellow, " \n");
+                });
+
+                Repository::with_characters(|characters| {
+                    for m in 1..core::constants::MAXCHARS {
+                        if characters[m].used == core::constants::USE_EMPTY {
+                            continue;
+                        }
+                        if (characters[m].flags & core::constants::CharacterFlags::CF_PLAYER.bits())
+                            == 0
+                        {
+                            continue;
+                        }
+                        if characters[m].data[70] == 0 {
+                            continue;
+                        }
+                        if characters[m].data[70] == bestval {
+                            let name = String::from_utf8_lossy(&characters[m].name)
+                                .trim_end_matches('\0')
+                                .to_string();
+                            State::with(|state| {
+                                state.do_character_log(
+                                    cn,
+                                    core::types::FontColor::Yellow,
+                                    &format!("{}\n", name),
+                                );
+                            });
+                        }
+                    }
+                });
+            }
+
+            State::with(|state| {
+                state.do_character_log(cn, core::types::FontColor::Yellow, " \n");
+            });
+
+            return 0;
+        }
+    }
+
     // Calculate item value
     let val = if (in2 & 0x80000000) != 0 {
         // Money
@@ -3758,12 +4391,12 @@ pub fn use_shrine(cn: usize, item_idx: usize) -> i32 {
         val
     } else {
         // Item
-        let (value, is_unique) = Repository::with_items(|items| {
+        let value = Repository::with_items(|items| {
             let mut val = items[in2].value;
             if (items[in2].flags & ItemFlags::IF_UNIQUE.bits()) != 0 {
                 val *= 4;
             }
-            (val, (items[in2].flags & ItemFlags::IF_UNIQUE.bits()) != 0)
+            val
         });
 
         Repository::with_items_mut(|items| {
@@ -3775,7 +4408,7 @@ pub fn use_shrine(cn: usize, item_idx: usize) -> i32 {
         value as i32
     };
 
-    let mut val = val + (rand::random::<i32>() % (val + 1));
+    let val = val + (rand::random::<i32>() % (val + 1));
 
     // Calculate rank threshold
     let rank = Repository::with_characters(|characters| {
@@ -3837,7 +4470,6 @@ pub fn use_shrine(cn: usize, item_idx: usize) -> i32 {
             Repository::with_characters_mut(|characters| {
                 characters[cn].luck += m;
             });
-            // TODO: chlog for luck change
         }
     } else {
         // Offering not good enough
@@ -5189,10 +5821,7 @@ pub fn change_to_sorcerer(cn: usize) {
     });
 }
 
-pub fn shrine_of_change(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-
+pub fn shrine_of_change(cn: usize, _item_idx: usize) -> i32 {
     // Requires specific potions to change character class
     // Potion of Life (148) -> Archtemplar/Archharakim
     // Greater Healing Potion (127/274) -> Warrior
@@ -5285,9 +5914,6 @@ pub fn shrine_of_change(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn explorer_point(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-
     // data[0-3] = bitmask for visited flags (stored in character data[46-49])
     // data[4] = base experience reward
 
@@ -5355,18 +5981,13 @@ pub fn explorer_point(cn: usize, item_idx: usize) -> i32 {
             points_tot
         );
 
-        // TODO: do_give_exp(cn, exp, 0, -1);
-        log::info!("TODO: do_give_exp({}, {}, 0, -1)", cn, exp);
+        State::with_mut(|state| state.do_give_exp(cn, exp as i32, 0, -1))
     }
 
     0
 }
 
-pub fn use_garbage(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::USE_EMPTY;
-
+pub fn use_garbage(cn: usize, _item_idx: usize) -> i32 {
     if cn == 0 {
         return 0;
     }
@@ -5427,10 +6048,6 @@ pub fn use_garbage(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_driver(cn: usize, item_idx: usize, carried: bool) {
-    // TODO: This is a massive dispatcher function with 69+ cases
-    // For now, implement the basic structure and most common cases
-    // The full implementation requires all the individual use_* functions to exist
-
     if item_idx == 0 || cn >= 10000 {
         return;
     }
@@ -5438,15 +6055,19 @@ pub fn use_driver(cn: usize, item_idx: usize, carried: bool) {
     // Check if character is in build mode
     if cn != 0 {
         let in_build_mode = Repository::with_characters(|characters| {
-            // TODO: Check CF_BUILDMODE flag
-            false // Placeholder
+            (characters[cn].flags & core::constants::CharacterFlags::CF_BUILDMODE.bits()) != 0
         });
         if in_build_mode {
             return;
         }
     }
 
-    // TODO: Set cerrno to ERR_FAILED if cn != 0 && !carried
+    // Default to failed action for non-carried use; will be updated on success
+    if cn != 0 && !carried {
+        Repository::with_characters_mut(|characters| {
+            characters[cn].cerrno = core::constants::ERR_FAILED as u16;
+        });
+    }
 
     let has_use_flag = Repository::with_items(|items| {
         (items[item_idx].flags & core::constants::ItemFlags::IF_USE.bits()) != 0
@@ -5458,8 +6079,15 @@ pub fn use_driver(cn: usize, item_idx: usize, carried: bool) {
 
     // Check if tile is occupied (for non-carried items)
     if !carried {
-        // TODO: Check if map[m].ch || map[m].to_ch
-        // For now, skip this check
+        let (it_x, it_y) =
+            Repository::with_items(|items| (items[item_idx].x as i32, items[item_idx].y as i32));
+        if it_x > 0 {
+            let m = (it_x + it_y * core::constants::SERVER_MAPX as i32) as usize;
+            let occupied = Repository::with_map(|map| map[m].ch != 0 || map[m].to_ch != 0);
+            if occupied {
+                return;
+            }
+        }
     }
 
     let has_usespecial = Repository::with_items(|items| {
@@ -5561,12 +6189,20 @@ pub fn use_driver(cn: usize, item_idx: usize, carried: bool) {
 
         if cn != 0 {
             if ret == 0 {
-                // TODO: Set ch[cn].cerrno = ERR_FAILED if !carried
+                if !carried {
+                    Repository::with_characters_mut(|characters| {
+                        characters[cn].cerrno = core::constants::ERR_FAILED as u16;
+                    });
+                }
             } else if !carried {
-                // TODO: Set ch[cn].cerrno = ERR_SUCCESS
+                Repository::with_characters_mut(|characters| {
+                    characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
+                });
             }
+
+            // Ensure client update for the acting character
+            State::with(|state| state.do_update_char(cn));
         }
-        // TODO: do_update_char(cn);
     }
 
     if cn == 0 {
@@ -5583,26 +6219,68 @@ pub fn use_driver(cn: usize, item_idx: usize, carried: bool) {
     });
 
     if active != 0 && has_usedeactivate {
-        Repository::with_items_mut(|items| {
-            items[item_idx].active = 0;
-            // TODO: Handle light changes
-            if carried {
-                items[item_idx].flags |= core::constants::ItemFlags::IF_UPDATE.bits();
-            }
+        // deactivate: set active=0 and adjust lighting
+        let (light0, light1, it_x, it_y) = Repository::with_items(|items| {
+            (
+                items[item_idx].light[0],
+                items[item_idx].light[1],
+                items[item_idx].x,
+                items[item_idx].y,
+            )
         });
-        // TODO: do_update_char(cn) if carried
-        // TODO: Set ch[cn].cerrno = ERR_SUCCESS if cn && !carried
+
+        Repository::with_items_mut(|items| items[item_idx].active = 0);
+
+        if light0 != light1 && it_x > 0 {
+            State::with_mut(|state| {
+                state.do_add_light(it_x as i32, it_y as i32, light0 as i32 - light1 as i32);
+            });
+        }
+
+        if carried {
+            Repository::with_items_mut(|items| {
+                items[item_idx].flags |= core::constants::ItemFlags::IF_UPDATE.bits();
+            });
+            State::with(|state| state.do_update_char(cn));
+        }
+
+        if cn != 0 && !carried {
+            Repository::with_characters_mut(|characters| {
+                characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
+            });
+        }
     } else if active == 0 && has_useactivate {
+        // activate: set active=duration and adjust lighting
         let duration = Repository::with_items(|items| items[item_idx].duration);
-        Repository::with_items_mut(|items| {
-            items[item_idx].active = duration;
-            // TODO: Handle light changes
-            if carried {
-                items[item_idx].flags |= core::constants::ItemFlags::IF_UPDATE.bits();
-            }
+        let (light0, light1, it_x, it_y) = Repository::with_items(|items| {
+            (
+                items[item_idx].light[0],
+                items[item_idx].light[1],
+                items[item_idx].x,
+                items[item_idx].y,
+            )
         });
-        // TODO: do_update_char(cn) if carried
-        // TODO: Set ch[cn].cerrno = ERR_SUCCESS if cn && !carried
+
+        Repository::with_items_mut(|items| items[item_idx].active = duration);
+
+        if light0 != light1 && it_x > 0 {
+            State::with_mut(|state| {
+                state.do_add_light(it_x as i32, it_y as i32, light1 as i32 - light0 as i32);
+            });
+        }
+
+        if carried {
+            Repository::with_items_mut(|items| {
+                items[item_idx].flags |= core::constants::ItemFlags::IF_UPDATE.bits();
+            });
+            State::with(|state| state.do_update_char(cn));
+        }
+
+        if cn != 0 && !carried {
+            Repository::with_characters_mut(|characters| {
+                characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
+            });
+        }
     }
 
     // Handle IF_USEDESTROY items (potions, etc.)
@@ -5612,11 +6290,103 @@ pub fn use_driver(cn: usize, item_idx: usize, carried: bool) {
         });
 
         if has_usedestroy {
-            // TODO: Check min_rank requirement
-            // TODO: Apply hp, end, mana changes
-            // TODO: Remove item from inventory
-            // For now, just log it
-            log::info!("TODO: Handle IF_USEDESTROY for item {}", item_idx);
+            // Check min_rank requirement
+            let min_rank = Repository::with_items(|items| items[item_idx].min_rank);
+            let curr_rank = Repository::with_characters(|characters| {
+                crate::helpers::points2rank(characters[cn].points_tot as u32)
+            });
+            if min_rank as i32 > curr_rank as i32 {
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Red,
+                        "You're not experienced enough to use this.\n",
+                    );
+                });
+                return;
+            }
+
+            // Log usage
+            let item_name = Repository::with_items(|items| {
+                String::from_utf8_lossy(&items[item_idx].name).to_string()
+            });
+            log::info!("Used {}", item_name);
+
+            // Apply hp/end/mana changes
+            Repository::with_items(|items| {
+                (
+                    items[item_idx].hp[0],
+                    items[item_idx].end[0],
+                    items[item_idx].mana[0],
+                )
+            });
+            Repository::with_characters_mut(|characters| {
+                let hp = Repository::with_items(|items| items[item_idx].hp[0]);
+                let end = Repository::with_items(|items| items[item_idx].end[0]);
+                let mana = Repository::with_items(|items| items[item_idx].mana[0]);
+
+                characters[cn].a_hp += hp as i32 * 1000;
+                if characters[cn].a_hp < 0 {
+                    characters[cn].a_hp = 0;
+                }
+                characters[cn].a_end += end as i32 * 1000;
+                if characters[cn].a_end < 0 {
+                    characters[cn].a_end = 0;
+                }
+                characters[cn].a_mana += mana as i32 * 1000;
+                if characters[cn].a_mana < 0 {
+                    characters[cn].a_mana = 0;
+                }
+            });
+
+            // If item grants a spell-like effect, apply it
+            let duration = Repository::with_items(|items| items[item_idx].duration);
+            if duration != 0 {
+                driver_skill::spell_from_item(cn, item_idx);
+            }
+
+            // Remove item from character
+            God::take_from_char(item_idx, cn);
+            Repository::with_items_mut(|items| items[item_idx].used = USE_EMPTY);
+
+            // If character died as a result, announce and handle death
+            let a_hp = Repository::with_characters(|characters| characters[cn].a_hp);
+            if a_hp < 500 {
+                let (x, y) = Repository::with_characters(|characters| {
+                    (characters[cn].x as i32, characters[cn].y as i32)
+                });
+                State::with(|state| {
+                    state.do_area_log(
+                        cn,
+                        0,
+                        x,
+                        y,
+                        core::types::FontColor::Yellow,
+                        &format!(
+                            "{} was killed by {}.\n",
+                            Repository::with_characters(|ch| ch[cn].get_name().to_string()),
+                            Repository::with_items(|it| String::from_utf8_lossy(
+                                &it[item_idx].reference
+                            )
+                            .to_string())
+                        ),
+                    );
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Yellow,
+                        &format!(
+                            "You were killed by {}.\n",
+                            Repository::with_items(|it| String::from_utf8_lossy(
+                                &it[item_idx].reference
+                            )
+                            .to_string())
+                        ),
+                    );
+                    state.do_character_killed(cn, 0);
+                });
+            }
+
+            State::with(|state| state.do_update_char(cn));
         }
     }
 }
@@ -5989,11 +6759,10 @@ fn soul_trans_equipment(cn: usize, soulstone_idx: usize, item_idx: usize) {
 }
 
 pub fn item_age(item_idx: usize) -> i32 {
-    let (active, current_age_act, max_age_act, current_damage, max_damage) =
+    let (current_age_act, max_age_act, current_damage, max_damage) =
         Repository::with_items(|items| {
             let act = if items[item_idx].active != 0 { 1 } else { 0 };
             (
-                act,
                 items[item_idx].current_age[act],
                 items[item_idx].max_age[act],
                 items[item_idx].current_damage,
@@ -6263,35 +7032,39 @@ pub fn item_damage_weapon(cn: usize, damage: i32) {
 }
 
 pub fn lightage(item_idx: usize, multi: i32) {
-    use crate::repository::Repository;
-
-    // TODO: Need access to map data for light levels
-    // For now, this is a placeholder that shows the logic structure
-
-    let (carried, x, y) = Repository::with_items(|items| {
+    // Read basic item info
+    let (carried, it_x, it_y, active) = Repository::with_items(|items| {
         (
             items[item_idx].carried,
-            items[item_idx].x,
-            items[item_idx].y,
+            items[item_idx].x as i32,
+            items[item_idx].y as i32,
+            items[item_idx].active,
         )
     });
 
-    // Get map position
-    let _m = if carried != 0 {
-        // If carried by character, use character's position
+    // Determine map coordinates: if carried by a character, use that character's position
+    let (mx, my) = if carried != 0 {
+        let cn = carried as usize;
         Repository::with_characters(|characters| {
-            let cn = carried as usize;
-            characters[cn].x as i32 + characters[cn].y as i32 * 512 // SERVER_MAPX
+            if cn >= core::constants::MAXCHARS || characters[cn].used == USE_EMPTY {
+                (it_x, it_y)
+            } else {
+                (characters[cn].x as i32, characters[cn].y as i32)
+            }
         })
     } else {
-        // Use item's position
-        x as i32 + y as i32 * 512 // SERVER_MAPX
+        (it_x, it_y)
     };
 
-    // TODO: Access map[m].light
-    // For now, assume moderate light
-    let mut light = 100; // Placeholder
+    // Validate coordinates
+    if mx < 0 || my < 0 || mx >= SERVER_MAPX || my >= SERVER_MAPY {
+        return;
+    }
 
+    let m = (mx + my * SERVER_MAPX) as usize;
+
+    // Read map light
+    let mut light = Repository::with_map(|map| map[m].light as i32);
     if light < 1 {
         return;
     }
@@ -6301,17 +7074,15 @@ pub fn lightage(item_idx: usize, multi: i32) {
 
     light *= multi;
 
-    let act = Repository::with_items(|items| if items[item_idx].active != 0 { 1 } else { 0 });
+    let act = if active != 0 { 1usize } else { 0usize };
 
     Repository::with_items_mut(|items| {
-        items[item_idx].current_age[act] += light as u32 * 2;
+        items[item_idx].current_age[act] =
+            items[item_idx].current_age[act].wrapping_add((light as u32) * 2);
     });
 }
 
 pub fn age_message(cn: usize, item_idx: usize, where_is: &str) {
-    use crate::repository::Repository;
-    use crate::state::State;
-
     let (driver, damage_state, reference) = Repository::with_items(|items| {
         (
             items[item_idx].driver,
@@ -6367,12 +7138,14 @@ pub fn age_message(cn: usize, item_idx: usize, where_is: &str) {
 }
 
 pub fn char_item_expire(cn: usize) {
-    use crate::repository::Repository;
-    use core::constants::{ItemFlags, USE_EMPTY};
-
-    // TODO: Check IS_BUILDING flag
     // Static clock for ice cloak aging (ages more slowly when not worn)
     static mut CLOCK4: i32 = 0;
+
+    if Repository::with_characters(|characters| {
+        (characters[cn].flags & core::constants::CharacterFlags::CF_BUILDMODE.bits()) != 0
+    }) {
+        return;
+    }
 
     let mut must_update = false;
 
@@ -6527,43 +7300,50 @@ pub fn char_item_expire(cn: usize) {
     }
 
     if must_update {
-        // TODO: do_update_char(cn);
+        State::with(|state| {
+            state.do_update_char(cn);
+        });
     }
 }
 
 pub fn may_deactivate(item_idx: usize) -> bool {
-    use crate::repository::Repository;
-
     // Special check for driver 1 (create_item with mines)
     let driver = Repository::with_items(|items| items[item_idx].driver);
     if driver != 1 {
         return true;
     }
 
-    // Check data[1-9] for mine states
+    // Check data[1..9] for mine states; each stores a map tile index.
+    let max_tiles = (SERVER_MAPX * SERVER_MAPY) as usize;
     for n in 1..10 {
-        let m = Repository::with_items(|items| items[item_idx].data[n]);
+        let m = Repository::with_items(|items| items[item_idx].data[n]) as usize;
         if m == 0 {
+            // empty slot => can deactivate
             return true;
         }
 
-        // TODO: Access map[m].it to check if mine exists and has correct driver
-        // For now, assume it can deactivate
-        // Original code checks:
-        // if ((in2 = map[m].it) == 0) return 0;
-        // if (it[in2].driver != 26) return 0;
+        // Validate tile index bounds
+        if m >= max_tiles {
+            return false;
+        }
+
+        // Check if there is an item on the stored map tile and that
+        // the item has driver 26 (the mine driver). If not, cannot deactivate.
+        let it_idx = Repository::with_map(|map| map[m].it);
+        if it_idx == 0 {
+            return false;
+        }
+
+        let it_driver = Repository::with_items(|items| items[it_idx as usize].driver);
+        if it_driver != 26 {
+            return false;
+        }
     }
 
     true
 }
 
 pub fn pentagram(item_idx: usize) {
-    use crate::god::God;
-    use crate::populate::pop_create_char;
-    use crate::repository::Repository;
-    use core::constants::USE_EMPTY;
-    use rand::Rng;
-
     let active = Repository::with_items(|items| items[item_idx].active);
     if active != 0 {
         return;
@@ -6584,40 +7364,21 @@ pub fn pentagram(item_idx: usize) {
         } else {
             Repository::with_characters(|characters| {
                 let cn = stored_cn as usize;
-                characters[cn].data[0] != item_idx as i32 || characters[cn].used == USE_EMPTY
-                // TODO: Check CF_BODY flag
-                // || (characters[cn].flags & CF_BODY) != 0
+                let dead_or_mismatch = characters[cn].data[0] != item_idx as i32
+                    || characters[cn].used == USE_EMPTY
+                    || (characters[cn].flags & core::constants::CharacterFlags::CF_BODY.bits())
+                        != 0;
+                dead_or_mismatch
             })
         };
 
         if should_spawn {
-            // TODO: Implement spawn_penta_enemy function
-            // For now, create a basic enemy
-            let new_cn = populate::pop_create_char(364, false); // Basic pentagram enemy template
+            // Use the dedicated spawn helper which encapsulates template selection
+            let new_cn = spawn_penta_enemy(item_idx);
             if new_cn != 0 {
-                let (x, y) = Repository::with_items(|items| {
-                    (items[item_idx].x as usize, items[item_idx].y as usize)
+                Repository::with_items_mut(|items| {
+                    items[item_idx].data[n] = new_cn as u32;
                 });
-
-                Repository::with_characters_mut(|characters| {
-                    // TODO: Remove CF_RESPAWN flag
-                    characters[new_cn].data[0] = item_idx as i32;
-                    characters[new_cn].data[29] = (x + y * 512) as i32; // SERVER_MAPX
-                    characters[new_cn].data[60] = 12 * 60 * 2; // TICKS * 60 * 2
-                    characters[new_cn].data[73] = 8;
-                    characters[new_cn].dir = 1;
-                });
-
-                if !God::drop_char_fuzzy(new_cn, x, y) {
-                    God::destroy_items(new_cn);
-                    Repository::with_characters_mut(|characters| {
-                        characters[new_cn].used = USE_EMPTY;
-                    });
-                } else {
-                    Repository::with_items_mut(|items| {
-                        items[item_idx].data[n] = new_cn as u32;
-                    });
-                }
             }
             break;
         }
@@ -6645,8 +7406,11 @@ pub fn spiderweb(item_idx: usize) {
         } else {
             Repository::with_characters(|characters| {
                 let cn = stored_cn as usize;
-                characters[cn].data[0] != item_idx as i32 || characters[cn].used == USE_EMPTY
-                // TODO: Check CF_BODY flag
+                let dead_or_mismatch = characters[cn].data[0] != item_idx as i32
+                    || characters[cn].used == USE_EMPTY
+                    || (characters[cn].flags & core::constants::CharacterFlags::CF_BODY.bits())
+                        != 0;
+                dead_or_mismatch
             })
         };
 
@@ -6663,9 +7427,10 @@ pub fn spiderweb(item_idx: usize) {
             });
 
             Repository::with_characters_mut(|characters| {
-                // TODO: Remove CF_RESPAWN flag
+                // Ensure respawn flag is cleared for this spawned instance
+                characters[cn].flags &= !core::constants::CharacterFlags::CF_RESPAWN.bits();
                 characters[cn].data[0] = item_idx as i32;
-                characters[cn].data[29] = (x + y * 512) as i32; // SERVER_MAPX
+                characters[cn].data[29] = (x + y * core::constants::SERVER_MAPX as usize) as i32;
                 characters[cn].data[60] = 12 * 60 * 2; // TICKS * 60 * 2
                 characters[cn].data[73] = 8;
                 characters[cn].dir = 1;
@@ -6707,8 +7472,11 @@ pub fn greenlingball(item_idx: usize) {
         } else {
             Repository::with_characters(|characters| {
                 let cn = stored_cn as usize;
-                characters[cn].data[0] != item_idx as i32 || characters[cn].used == USE_EMPTY
-                // TODO: Check CF_BODY flag
+                let dead_or_mismatch = characters[cn].data[0] != item_idx as i32
+                    || characters[cn].used == USE_EMPTY
+                    || (characters[cn].flags & core::constants::CharacterFlags::CF_BODY.bits())
+                        != 0;
+                dead_or_mismatch
             })
         };
 
@@ -6725,9 +7493,10 @@ pub fn greenlingball(item_idx: usize) {
             });
 
             Repository::with_characters_mut(|characters| {
-                // TODO: Remove CF_RESPAWN flag
+                // Ensure respawn flag is cleared for this spawned instance
+                characters[cn].flags &= !core::constants::CharacterFlags::CF_RESPAWN.bits();
                 characters[cn].data[0] = item_idx as i32;
-                characters[cn].data[29] = (x + y * 512) as i32; // SERVER_MAPX
+                characters[cn].data[29] = (x + y * core::constants::SERVER_MAPX as usize) as i32;
                 characters[cn].data[60] = 12 * 60 * 2; // TICKS * 60 * 2
                 characters[cn].data[73] = 8;
                 characters[cn].dir = 1;
@@ -6784,13 +7553,6 @@ pub fn expire_driver(item_idx: usize) {
 }
 
 pub fn item_tick_expire() {
-    use crate::god::God;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::{
-        ItemFlags, MF_NOEXPIRE, SERVER_MAPX, SERVER_MAPY, USE_ACTIVE, USE_EMPTY,
-    };
-
     static mut Y: usize = 0;
     const EXP_TIME: i32 = (SERVER_MAPY / 4) as i32;
 
@@ -7011,8 +7773,7 @@ pub fn item_tick_gc() {
             // Reset to template 683
             Repository::with_items_mut(|items| {
                 Repository::with_item_templates(|item_templates| {
-                    let (x, y, carried, temp) =
-                        (items[n].x, items[n].y, items[n].carried, items[n].temp);
+                    let (x, y, carried) = (items[n].x, items[n].y, items[n].carried);
                     items[n] = item_templates[683].clone();
                     items[n].x = x;
                     items[n].y = y;
@@ -7024,7 +7785,7 @@ pub fn item_tick_gc() {
 
             let cn = Repository::with_items(|items| items[n].carried);
             if cn != 0 {
-                // TODO: Implement do_update_char
+                State::with(|state| state.do_update_char(cn as usize));
                 log::info!("reset sword from character {}", cn);
             }
         }
@@ -7280,8 +8041,17 @@ pub fn start_trap(cn: usize, item_idx: usize) {
                 );
             });
             State::with_mut(|state| {
-                state.do_area_notify(cn as i32, 0, x as i32, y as i32, 8, cn as i32, 0, 0, 0);
-                // NT_HITME = 8
+                state.do_area_notify(
+                    cn as i32,
+                    0,
+                    x as i32,
+                    y as i32,
+                    NT_HITME as i32,
+                    cn as i32,
+                    0,
+                    0,
+                    0,
+                );
             });
         }
         2 => trap1(cn, item_idx),
@@ -7319,10 +8089,7 @@ pub fn step_trap(cn: usize, item_idx: usize) -> i32 {
     0
 }
 
-pub fn step_trap_remove(cn: usize, item_idx: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-
+pub fn step_trap_remove(_cn: usize, item_idx: usize) {
     let (active, light0, light1, x, y) = Repository::with_items(|items| {
         let item = &items[item_idx];
         (item.active, item.light[0], item.light[1], item.x, item.y)
@@ -7340,13 +8107,7 @@ pub fn step_trap_remove(cn: usize, item_idx: usize) {
     }
 }
 
-pub fn step_portal1_lab13(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::{
-        KIN_HARAKIM, KIN_MERCENARY, KIN_SORCERER, KIN_TEMPLAR, KIN_WARRIOR, USE_EMPTY,
-    };
-
+pub fn step_portal1_lab13(cn: usize, _item_idx: usize) -> i32 {
     // Check kindred
     let kindred = Repository::with_characters(|characters| characters[cn].kindred) as u32;
     if (kindred & KIN_HARAKIM) == 0
@@ -7416,12 +8177,13 @@ pub fn step_portal1_lab13(cn: usize, item_idx: usize) -> i32 {
             });
         }
     }
-    // TODO: do_update_char(cn);
+
+    State::with(|state| state.do_update_char(cn));
 
     1
 }
 
-pub fn step_portal2_lab13(cn: usize, item_idx: usize) -> i32 {
+pub fn step_portal2_lab13(cn: usize, _item_idx: usize) -> i32 {
     let is_player = Repository::with_characters(|characters| {
         (characters[cn].flags & CharacterFlags::CF_PLAYER.bits()) != 0
     });

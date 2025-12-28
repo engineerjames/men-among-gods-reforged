@@ -340,7 +340,6 @@ pub struct Labyrinth9 {
     riddleno: [i32; core::constants::RIDDLEGIVERS],
     riddle_timeout: [i32; core::constants::RIDDLEGIVERS],
     riddle_attempts: [i32; core::constants::RIDDLEGIVERS],
-    destinations: &'static [Destination; core::constants::RIDDLEGIVERS],
     riddles: &'static [[Riddle; core::constants::MAX_RIDDLES]; core::constants::RIDDLEGIVERS],
     switch_questions:
         &'static [[SwitchQuestions; core::constants::BANK_QUESTIONS]; core::constants::BANKS],
@@ -355,7 +354,6 @@ impl Labyrinth9 {
             riddleno: [0; core::constants::RIDDLEGIVERS],
             riddle_timeout: [0; core::constants::RIDDLEGIVERS],
             riddle_attempts: [0; core::constants::RIDDLEGIVERS],
-            destinations: &DESTINATIONS,
             riddles: &RIDDLES,
             switch_questions: &SWITCH_QUESTIONS,
             banks: &BANKS,

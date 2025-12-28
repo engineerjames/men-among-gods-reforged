@@ -355,8 +355,7 @@ impl State {
             }
         });
 
-        // penta_needed is external in original; use 0 as placeholder
-        let penta_needed: i32 = 0;
+        let penta_needed: usize = State::with(|state| state.penta_needed);
         self.do_character_log(
             cn,
             core::types::FontColor::Yellow,

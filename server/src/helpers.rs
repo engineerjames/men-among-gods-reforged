@@ -455,64 +455,6 @@ pub fn drv_dcoor2dir(dx: i32, dy: i32) -> i32 {
     }
 }
 
-pub fn turncount(dir1: u8, dir2: u8) -> i32 {
-    if dir1 == dir2 {
-        return 0;
-    }
-
-    match dir1 {
-        core::constants::DX_UP => match dir2 {
-            core::constants::DX_DOWN => 4,
-            core::constants::DX_RIGHTUP | core::constants::DX_LEFTUP => 1,
-            core::constants::DX_RIGHT | core::constants::DX_LEFT => 2,
-            _ => 3,
-        },
-        core::constants::DX_DOWN => match dir2 {
-            core::constants::DX_UP => 4,
-            core::constants::DX_RIGHTDOWN | core::constants::DX_LEFTDOWN => 1,
-            core::constants::DX_RIGHT | core::constants::DX_LEFT => 2,
-            _ => 3,
-        },
-        core::constants::DX_LEFT => match dir2 {
-            core::constants::DX_RIGHT => 4,
-            core::constants::DX_LEFTUP | core::constants::DX_LEFTDOWN => 1,
-            core::constants::DX_UP | core::constants::DX_DOWN => 2,
-            _ => 3,
-        },
-        core::constants::DX_RIGHT => match dir2 {
-            core::constants::DX_LEFT => 4,
-            core::constants::DX_RIGHTUP | core::constants::DX_RIGHTDOWN => 1,
-            core::constants::DX_UP | core::constants::DX_DOWN => 2,
-            _ => 3,
-        },
-        core::constants::DX_LEFTUP => match dir2 {
-            core::constants::DX_RIGHTDOWN => 4,
-            core::constants::DX_UP | core::constants::DX_LEFT => 1,
-            core::constants::DX_RIGHTUP | core::constants::DX_LEFTDOWN => 2,
-            _ => 3,
-        },
-        core::constants::DX_LEFTDOWN => match dir2 {
-            core::constants::DX_RIGHTUP => 4,
-            core::constants::DX_DOWN | core::constants::DX_LEFT => 1,
-            core::constants::DX_RIGHTDOWN | core::constants::DX_LEFTUP => 2,
-            _ => 3,
-        },
-        core::constants::DX_RIGHTUP => match dir2 {
-            core::constants::DX_LEFTDOWN => 4,
-            core::constants::DX_UP | core::constants::DX_RIGHT => 1,
-            core::constants::DX_RIGHTDOWN | core::constants::DX_LEFTUP => 2,
-            _ => 3,
-        },
-        core::constants::DX_RIGHTDOWN => match dir2 {
-            core::constants::DX_LEFTUP => 4,
-            core::constants::DX_DOWN | core::constants::DX_RIGHT => 1,
-            core::constants::DX_RIGHTUP | core::constants::DX_LEFTDOWN => 2,
-            _ => 3,
-        },
-        _ => 99,
-    }
-}
-
 pub fn invis_level(cn: usize) -> i32 {
     Repository::with_characters(|characters| {
         if characters[cn].flags & CharacterFlags::CF_GREATERINV.bits() != 0 {

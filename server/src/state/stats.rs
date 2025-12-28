@@ -4,9 +4,9 @@ use rand::Rng;
 
 use crate::effect::EffectManager;
 use crate::god::God;
-use crate::helpers;
 use crate::repository::Repository;
 use crate::state::State;
+use crate::{driver_use, helpers};
 
 impl State {
     /// Helper function to check if character wears a specific item
@@ -1067,8 +1067,7 @@ impl State {
         });
 
         if used == core::constants::USE_ACTIVE && is_player {
-            // TODO: Implement char_item_expire
-            log::info!("TODO: Call char_item_expire for cn={}", cn);
+            driver_use::char_item_expire(cn);
         }
     }
 
