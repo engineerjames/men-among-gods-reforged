@@ -1,5 +1,3 @@
-use core::types::FontColor;
-
 use crate::god::God;
 use crate::repository::Repository;
 use crate::state::State;
@@ -191,7 +189,7 @@ impl State {
             );
             return;
         }
-        let mut v = val * 100;
+        let v = val * 100;
         let have = Repository::with_characters(|ch| ch[cn].gold);
         if v > have || v < 0 {
             self.do_character_log(

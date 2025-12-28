@@ -72,7 +72,7 @@ impl State {
         // TODO: Implement do_update_char equivalent
         // For now, this will at least sort the inventory in memory
         use crate::network_manager::NetworkManager;
-        NetworkManager::with(|nm| {
+        NetworkManager::with(|_nm| {
             let player_id = Repository::with_characters(|characters| characters[cn].player);
             if player_id > 0 && player_id < MAXPLAYER as i32 {
                 // TODO: Send character inventory update to client
@@ -217,7 +217,7 @@ impl State {
     /// # Returns
     /// * `true` - Item may be given/transferred
     /// * `false` - Item cannot be given (e.g., lag scrolls)
-    pub(crate) fn do_maygive(&self, cn: usize, co: usize, item_idx: usize) -> bool {
+    pub(crate) fn do_maygive(&self, _cn: usize, _co: usize, item_idx: usize) -> bool {
         // Check if item index is valid
         if item_idx < 1 || item_idx >= core::constants::MAXITEM {
             return true; // Invalid items are considered "may give" (will be handled elsewhere)
@@ -350,11 +350,10 @@ impl State {
         }
 
         // Log the give action
-        let (item_name, cn_name, co_name) = Repository::with_characters(|characters| {
+        let (item_name, co_name) = Repository::with_characters(|characters| {
             Repository::with_items(|items| {
                 (
                     items[item_idx].get_name().to_string(),
-                    characters[cn].get_name().to_string(),
                     characters[co].get_name().to_string(),
                 )
             })

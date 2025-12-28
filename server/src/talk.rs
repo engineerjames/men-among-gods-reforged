@@ -1877,6 +1877,8 @@ const KNOW: [Know; 227] = [
     },
 ];
 
+use crate::driver;
+use crate::effect::EffectManager;
 use crate::god::God;
 use crate::repository::Repository;
 use crate::state::State;
@@ -1966,14 +1968,15 @@ pub fn answer_transfer(cn: usize, co: usize) {
     });
 
     // Add visual effects (fx_add_effect equivalent - would need to be implemented)
-    // fx_add_effect(6, 0, co_x, co_y, 0);
-    // fx_add_effect(7, 0, cn_x, cn_y, 0);
+    EffectManager::fx_add_effect(6, 0, _co_x as i32, _co_y as i32, 0);
+    EffectManager::fx_add_effect(7, 0, _cn_x as i32, _cn_y as i32, 0);
 
     // Give experience (do_give_exp equivalent - would need to be implemented)
-    // do_give_exp(co, exp_to_give, 1, -1);
+    State::with_mut(|state| {
+        state.do_give_exp(co, exp_to_give, 1, -1);
+    });
 
-    // Die companion (die_companion equivalent - would need to be implemented)
-    // die_companion(cn);
+    driver::die_companion(cn);
 
     Repository::with_characters_mut(|characters| {
         if characters[co].luck > 0 {

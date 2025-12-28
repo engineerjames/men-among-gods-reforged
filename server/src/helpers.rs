@@ -1,3 +1,111 @@
+/// Returns the monster class name for a given class number, or an error string if out of bounds.
+pub fn get_class_name(nr: i32) -> &'static str {
+    // List from C++ npc_class[]
+    const NPC_CLASS: [&str; 77] = [
+        "",
+        "Weak Thief",
+        "Thief",
+        "Ghost",
+        "Weak Skeleton",
+        "Strong Skeleton",
+        "Skeleton",
+        "Outlaw",
+        "Grolm Fighter",
+        "Grolm Warrior",
+        "Grolm Knight",
+        "Lizard Youngster",
+        "Lizard Youth",
+        "Lizard Worker",
+        "Lizard Fighter",
+        "Lizard Warrior",
+        "Lizard Mage",
+        "Ratling",
+        "Ratling Fighter",
+        "Ratling Warrior",
+        "Ratling Knight",
+        "Ratling Baron",
+        "Ratling Count",
+        "Ratling Duke",
+        "Ratling Prince",
+        "Ratling King",
+        "Spellcaster",
+        "Knight",
+        "Weak Golem",
+        "Captain Gargoyle",
+        "Undead",
+        "Very Strong Ice Gargoyle",
+        "Strong Outlaw",
+        "Private Grolm",
+        "PFC Grolm",
+        "Lance Corp Grolm",
+        "Corporal Grolm",
+        "Sergeant Grolm",
+        "Staff Sergeant Grolm",
+        "Master Sergeant Grolm",
+        "First Sergeant Grolm",
+        "Sergeant Major Grolm",
+        "2nd Lieutenant Grolm",
+        "1st Lieutenant Grolm",
+        "Major Gargoyle",
+        "Lt. Colonel Gargoyle",
+        "Colonel Gargoyle",
+        "Brig. General Gargoyle",
+        "Major General Gargoyle",
+        "Lieutenant Gargoyle",
+        "Weak Spider",
+        "Spider",
+        "Strong Spider",
+        "Very Strong Outlaw",
+        "Lizard Knight",
+        "Lizard Archmage",
+        "Undead Lord",
+        "Undead King",
+        "Very Weak Ice Gargoyle",
+        "Strong Golem",
+        "Strong Ghost",
+        "Shiva",
+        "Flame",
+        "Weak Ice Gargoyle",
+        "Ice Gargoyle",
+        "Strong Ice Gargoyle",
+        "Greenling",
+        "Greenling Fighter",
+        "Greenling Warrior",
+        "Greenling Knight",
+        "Greenling Baron",
+        "Greenling Count",
+        "Greenling Duke",
+        "Greenling Prince",
+        "Greenling King",
+        "Strong Thief",
+        "Major Grolm",
+    ];
+    if nr < 0 {
+        return "err... nothing";
+    }
+    let nr = nr as usize;
+    if nr >= NPC_CLASS.len() {
+        return "umm... whatzit";
+    }
+    NPC_CLASS[nr]
+}
+/// Returns true if the class was already marked as killed, false if this is the first kill. Side effect: sets the bit for this class.
+pub fn killed_class(cn: usize, val: i32) -> bool {
+    Repository::with_characters_mut(|characters| {
+        let (bit, data_idx) = if val < 32 {
+            (1 << val, 60)
+        } else if val < 64 {
+            (1 << (val - 32), 61)
+        } else if val < 96 {
+            (1 << (val - 64), 62)
+        } else {
+            (1 << (val - 96), 63)
+        };
+        let tmp = characters[cn].data[data_idx] & bit;
+        characters[cn].data[data_idx] |= bit;
+        tmp != 0
+    })
+}
 use core::constants::CharacterFlags;
 
 use crate::repository::Repository;

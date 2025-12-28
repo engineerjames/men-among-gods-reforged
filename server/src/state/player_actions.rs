@@ -237,7 +237,7 @@ impl State {
         // If cn is a companion and its master matches the corpse owner, notify master and teleport them.
         let maybe_cc = Repository::with_characters(|ch| ch[cn].data[63] as usize);
         let is_companion =
-            Repository::with_characters(|ch| (ch[cn].temp == core::constants::CT_COMPANION as u16));
+            Repository::with_characters(|ch| ch[cn].temp == core::constants::CT_COMPANION as u16);
 
         if is_companion && maybe_cc == Repository::with_characters(|ch| ch[co].data[0] as usize) {
             let cc = maybe_cc;

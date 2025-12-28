@@ -48,9 +48,9 @@ impl State {
         }
 
         // Get map flags for both characters
-        let (co_x, co_y, co_flags, co_temp, co_sound) = Repository::with_characters(|characters| {
+        let (co_x, co_y, co_temp, co_sound) = Repository::with_characters(|characters| {
             let co = &characters[character_id];
-            (co.x, co.y, co.flags, co.temp, co.sound)
+            (co.x, co.y, co.temp, co.sound)
         });
 
         let mut map_flags = Repository::with_map(|map| {
@@ -223,14 +223,29 @@ impl State {
                     if co_is_player {
                         characters[killer_id].data[29] += 1;
                     } else {
-                        // TODO: Implement killed_class and get_class_name
                         // Check for first kill of this monster class
-                        if characters[character_id].monster_class != 0 {
-                            let monster_class_to_log = characters[character_id].monster_class;
-                            log::info!(
-                                "TODO: Check if first kill of monster class {}",
-                                monster_class_to_log,
-                            );
+                        let monster_class = characters[character_id].monster_class;
+                        if monster_class != 0 {
+                            // killed_class: returns true if already killed, false if first kill
+                            if !helpers::killed_class(killer_id, monster_class) {
+                                let class_name = helpers::get_class_name(monster_class);
+                                State::with_mut(|state| {
+                                    state.do_character_log(
+                                        killer_id,
+                                        core::types::FontColor::Yellow,
+                                        &format!(
+                                            "You just killed your first {}. Good job.\n",
+                                            class_name
+                                        ),
+                                    );
+                                    state.do_give_exp(
+                                        killer_id,
+                                        state.do_char_score(character_id) * 25,
+                                        0,
+                                        -1,
+                                    );
+                                });
+                            }
                         }
                     }
                 });
@@ -352,25 +367,25 @@ impl State {
         State::remove_enemy(character_id);
 
         // Schedule respawn and show death animation
-        EffectManager::fx_add_effect(
-            5,
+        let fn_idx = EffectManager::fx_add_effect(
+            3,
             co_x as i32,
             co_y as i32,
-            0,
+            character_id as i32,
             Repository::with_characters(|ch| ch[character_id].player),
         );
+        // Set data[3] = killer_id for the effect, if possible
+        Repository::with_effects_mut(|effects| {
+            if fn_idx.unwrap() < effects.len() {
+                effects[fn_idx.unwrap()].data[3] = killer_id as u32;
+            }
+        });
     }
 
     /// Handle player death including resurrection and grave creation
     pub(crate) fn handle_player_death(&self, co: usize, cn: usize, map_flags: u64) {
         // Remember template if we're to respawn this character
-        let temp = Repository::with_characters(|characters| {
-            if characters[co].flags & CharacterFlags::CF_RESPAWN.bits() != 0 {
-                characters[co].temp
-            } else {
-                0
-            }
-        });
+        // TODO: Re-evaluate if we need to do anything here.
 
         // Check for Guardian Angel (Wimpy skill)
         let wimp = Repository::with_characters(|characters| {

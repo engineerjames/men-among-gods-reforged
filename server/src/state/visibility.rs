@@ -1,4 +1,4 @@
-use core::constants::{CharacterFlags, ItemFlags};
+use core::constants::CharacterFlags;
 use core::types::Character;
 use std::cmp;
 

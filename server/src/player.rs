@@ -1049,8 +1049,9 @@ pub fn plr_give(cn: usize) {
         return;
     }
 
-    // TODO: Call do_give when implemented
-    log::debug!("Would call do_give({}, {})", cn, co);
+    State::with(|state| {
+        state.do_give(cn, co);
+    });
 }
 
 /// Port of `plr_pickup` from `svr_act.cpp`

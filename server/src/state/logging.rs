@@ -329,11 +329,9 @@ impl State {
                 continue;
             }
             if source != 0
-                && Repository::with_characters(|ch| {
-                    (Repository::with_characters(|ch2| ch2[source].flags)
-                        & (CharacterFlags::CF_INVISIBLE.bits() | CharacterFlags::CF_NOWHO.bits()))
-                        != 0
-                })
+                && (Repository::with_characters(|ch2| ch2[source].flags)
+                    & (CharacterFlags::CF_INVISIBLE.bits() | CharacterFlags::CF_NOWHO.bits()))
+                    != 0
             {
                 // visibility rules omitted
             }
@@ -358,23 +356,51 @@ impl State {
             anon.clone()
         };
         for n in 1..core::constants::MAXCHARS as usize {
+            // Exclude if not a player and not temp==15
             if !Repository::with_characters(|ch| ch[n].player != 0 || ch[n].temp == 15) {
                 continue;
             }
-            // visibility checks omitted
-            self.do_log(n, core::types::FontColor::Green, &named);
+            // C++: if ( ( ch[ source ].flags & ( CF_INVISIBLE | CF_NOWHO ) ) && invis_level( source ) > invis_level( n ) ) continue;
+            if source != 0 {
+                let (src_flags, src_invis_level) = Repository::with_characters(|ch| {
+                    let f = ch[source].flags;
+                    let lvl = crate::helpers::invis_level(source);
+                    (f, lvl)
+                });
+                let n_invis_level = crate::helpers::invis_level(n);
+                if (src_flags
+                    & (core::constants::CharacterFlags::CF_INVISIBLE.bits()
+                        | core::constants::CharacterFlags::CF_NOWHO.bits()))
+                    != 0
+                    && src_invis_level > n_invis_level
+                {
+                    continue;
+                }
+                // If source is not 0 and source's invis_level <= n's, show named, else anon
+                if src_invis_level <= n_invis_level {
+                    self.do_log(n, core::types::FontColor::Green, &named);
+                } else {
+                    self.do_log(n, core::types::FontColor::Green, &anon);
+                }
+            } else {
+                self.do_log(n, core::types::FontColor::Green, &named);
+            }
         }
     }
 
     /// Sends a log message to all staff, IMPs, and USURPed characters.
+    #[allow(dead_code)]
     pub(crate) fn do_admin_log(&self, source: i32, text: &str) {
         if text.is_empty() {
             return;
         }
+
         for n in 1..core::constants::MAXCHARS as usize {
+            // Exclude if not a player
             if !Repository::with_characters(|ch| ch[n].player != 0) {
                 continue;
             }
+            // Only to staff, IMP, or USURP
             if !Repository::with_characters(|ch| {
                 (ch[n].flags
                     & (CharacterFlags::CF_STAFF.bits()
@@ -383,6 +409,23 @@ impl State {
                     != 0
             }) {
                 continue;
+            }
+            // C++: if ( ( ch[ source ].flags & ( CF_INVISIBLE | CF_NOWHO ) ) && invis_level( source ) > invis_level( n ) ) continue;
+            if source > 0 {
+                let (src_flags, src_invis_level) = Repository::with_characters(|ch| {
+                    let f = ch[source as usize].flags;
+                    let lvl = crate::helpers::invis_level(source as usize);
+                    (f, lvl)
+                });
+                let n_invis_level = crate::helpers::invis_level(n);
+                if (src_flags
+                    & (core::constants::CharacterFlags::CF_INVISIBLE.bits()
+                        | core::constants::CharacterFlags::CF_NOWHO.bits()))
+                    != 0
+                    && src_invis_level > n_invis_level
+                {
+                    continue;
+                }
             }
             self.do_log(n, core::types::FontColor::Blue, text);
         }

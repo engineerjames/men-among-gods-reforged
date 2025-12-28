@@ -914,8 +914,6 @@ impl State {
                                     || item_temp == core::constants::SK_PROTECT as u16
                                     || item_temp == core::constants::SK_ENHANCE as u16
                                 {
-                                    let cn_name =
-                                        Repository::with_characters(|ch| ch[cn].name.clone());
                                     let co_name =
                                         Repository::with_characters(|ch| ch[co].name.clone());
 
