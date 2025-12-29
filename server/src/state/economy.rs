@@ -6,6 +6,12 @@ impl State {
     /// Port of `do_balance(int cn)` from `svr_do.cpp`
     ///
     /// Display character's bank balance.
+    ///
+    /// Shows the player's current bank balance and any depot-related messages
+    /// such as items sold to cover costs or rent deductions.
+    ///
+    /// # Arguments
+    /// * `cn` - Character id requesting their balance
     pub(crate) fn do_balance(&self, cn: usize) {
         let m = Repository::with_characters(|ch| {
             ch[cn].x as usize + (ch[cn].y as usize * core::constants::SERVER_MAPX as usize)
@@ -65,6 +71,15 @@ impl State {
     /// Port of `do_withdraw(int cn, int g, int s)` from `svr_do.cpp`
     ///
     /// Withdraw gold/silver from bank.
+    ///
+    /// Validates that the caller is in a bank, that the requested amount is
+    /// non-negative and available in the account, then transfers funds from
+    /// the character's bank balance to their carried gold.
+    ///
+    /// # Arguments
+    /// * `cn` - Character id performing the withdrawal
+    /// * `g` - Gold portion to withdraw
+    /// * `s` - Silver portion to withdraw
     pub(crate) fn do_withdraw(&self, cn: usize, g: i32, s: i32) {
         let m = Repository::with_characters(|ch| {
             ch[cn].x as usize + (ch[cn].y as usize * core::constants::SERVER_MAPX as usize)
@@ -118,6 +133,15 @@ impl State {
     /// Port of `do_deposit(int cn, int g, int s)` from `svr_do.cpp`
     ///
     /// Deposit gold/silver into bank.
+    ///
+    /// Validates the caller is in a bank and that they have the specified
+    /// funds, then moves the specified gold/silver from carried gold into
+    /// their bank account.
+    ///
+    /// # Arguments
+    /// * `cn` - Character id performing the deposit
+    /// * `g` - Gold portion to deposit
+    /// * `s` - Silver portion to deposit
     pub(crate) fn do_deposit(&self, cn: usize, g: i32, s: i32) {
         let m = Repository::with_characters(|ch| {
             ch[cn].x as usize + (ch[cn].y as usize * core::constants::SERVER_MAPX as usize)
@@ -170,7 +194,15 @@ impl State {
 
     /// Port of `do_gold(int cn, int val)` from `svr_do.cpp`
     ///
-    /// Admin command to give gold to a character.
+    /// Admin command to take gold from the character's purse and prepare it
+    /// as a cursor item for transfer.
+    ///
+    /// Ensures there is no item on the cursor, validates the value, and then
+    /// sets `citem` to a special encoded value representing the gold taken.
+    ///
+    /// # Arguments
+    /// * `cn` - Character id executing the command
+    /// * `val` - Amount of gold (in full gold units) to take from the purse
     pub(crate) fn do_gold(&self, cn: usize, val: i32) {
         let citem = Repository::with_characters(|ch| ch[cn].citem);
         if citem != 0 {
@@ -214,6 +246,15 @@ impl State {
         );
     }
 
+    /// Port of `do_god_give(cn, co)` from `svr_do.cpp`
+    ///
+    /// Give the item currently on the caller's cursor to the target character
+    /// using the `God::give_character_item` helper. Clears the caller's cursor
+    /// and logs the transfer on success.
+    ///
+    /// # Arguments
+    /// * `cn` - Character id giving the item
+    /// * `co` - Target character id receiving the item
     pub fn do_god_give(&self, cn: usize, co: usize) {
         let in_id = Repository::with_characters(|ch| ch[cn].citem as usize);
         if in_id == 0 {
@@ -248,6 +289,15 @@ impl State {
         });
     }
 
+    /// Port of `do_lag(cn, lag)` from `svr_do.cpp`
+    ///
+    /// Sets or clears an automated lag-control timer for a player. When set,
+    /// the server will (in game logic elsewhere) take action if the player's
+    /// lag exceeds the configured threshold.
+    ///
+    /// # Arguments
+    /// * `cn` - Character id to modify lag control for
+    /// * `lag` - Seconds threshold (0 to disable)
     pub(crate) fn do_lag(&self, cn: usize, lag: i32) {
         if lag == 0 {
             let prev = Repository::with_characters(|ch| ch[cn].data[19]);
@@ -286,6 +336,12 @@ impl State {
     /// Port of `rank2points(int rank)` from `svr_do.cpp`
     ///
     /// Calculate points needed for a given rank.
+    ///
+    /// Returns the points threshold for the provided rank or -1 for invalid
+    /// ranks not handled by the mapping.
+    ///
+    /// # Arguments
+    /// * `rank` - Rank index to lookup
     pub(crate) fn rank2points(&self, rank: i32) -> i32 {
         match rank {
             0 => 50,
@@ -318,6 +374,13 @@ impl State {
     /// Port of `do_view_exp_to_rank(int cn)` from `svr_do.cpp`
     ///
     /// Display experience needed to next rank.
+    ///
+    /// Calculates the player's current rank and the experience required for
+    /// the next rank, then sends a message to the player with the amount and
+    /// the name of the next rank.
+    ///
+    /// # Arguments
+    /// * `cn` - Character id to view requirements for
     pub(crate) fn do_view_exp_to_rank(&self, cn: usize) {
         let current_rank =
             crate::helpers::points2rank(Repository::with_characters(|ch| ch[cn].points_tot as u32))
@@ -337,6 +400,12 @@ impl State {
     /// Port of `do_check_pent_count(int cn)` from `svr_do.cpp`
     ///
     /// Check pentagram item count for character.
+    ///
+    /// Scans the global item list for active pentagram drivers and reports
+    /// how many are active versus how many are required to solve the puzzle.
+    ///
+    /// # Arguments
+    /// * `cn` - Character id to receive the report
     pub(crate) fn do_check_pent_count(&self, cn: usize) {
         let mut active = 0;
         Repository::with_items(|items| {

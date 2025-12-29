@@ -1,13 +1,22 @@
-use crate::driver_generic;
+use crate::driver;
 use crate::effect::EffectManager;
 use crate::helpers;
 use crate::player;
-use crate::{driver_special, god::God, repository::Repository, state::State};
+use crate::{god::God, repository::Repository, state::State};
 use core::constants::*;
 use rand::Rng;
 
 // Helper functions
 
+/// Returns the X offset for a given frustration value.
+///
+/// # Arguments
+///
+/// * `f` - Frustration value
+///
+/// # Returns
+///
+/// The X offset as an i32.
 pub fn get_frust_x_off(f: i32) -> i32 {
     match f % 5 {
         0 => 0,
@@ -19,6 +28,15 @@ pub fn get_frust_x_off(f: i32) -> i32 {
     }
 }
 
+/// Returns the Y offset for a given frustration value.
+///
+/// # Arguments
+///
+/// * `f` - Frustration value
+///
+/// # Returns
+///
+/// The Y offset as an i32.
 pub fn get_frust_y_off(f: i32) -> i32 {
     match (f / 5) % 5 {
         0 => 0,
@@ -30,6 +48,16 @@ pub fn get_frust_y_off(f: i32) -> i32 {
     }
 }
 
+/// Calculates the maximum of the absolute X or Y distance between two characters.
+///
+/// # Arguments
+///
+/// * `cn` - First character number (index)
+/// * `co` - Second character number (index)
+///
+/// # Returns
+///
+/// The maximum of the absolute X or Y distance as i32.
 pub fn npc_dist(cn: usize, co: usize) -> i32 {
     Repository::with_characters(|characters| {
         let ch_cn = &characters[cn];
@@ -42,6 +70,17 @@ pub fn npc_dist(cn: usize, co: usize) -> i32 {
 // NPC Message Handling and AI Functions
 // ****************************************************
 
+/// Adds an enemy to the NPC's enemy list if conditions are met.
+///
+/// # Arguments
+///
+/// * `cn` - NPC character number
+/// * `co` - Enemy character number
+/// * `always` - If true, always add as enemy regardless of some conditions
+///
+/// # Returns
+///
+/// `true` if the enemy was added, `false` otherwise.
 pub fn npc_add_enemy(cn: usize, co: usize, always: bool) -> bool {
     Repository::with_characters_mut(|characters| {
         // Don't attack anyone of the same group
@@ -778,9 +817,9 @@ pub fn npc_msg(cn: usize, msg_type: i32, dat1: i32, dat2: i32, dat3: i32, dat4: 
 
     if special_driver != 0 {
         return match special_driver {
-            1 => driver_special::npc_stunrun_msg(cn, msg_type as u8, dat1, dat2, dat3, dat4),
-            2 => driver_special::npc_cityattack_msg(cn, msg_type, dat1, dat2, dat3, dat4),
-            3 => driver_special::npc_malte_msg(cn, msg_type, dat1, dat2, dat3, dat4),
+            1 => driver::npc_stunrun_msg(cn, msg_type as u8, dat1, dat2, dat3, dat4),
+            2 => driver::npc_cityattack_msg(cn, msg_type, dat1, dat2, dat3, dat4),
+            3 => driver::npc_malte_msg(cn, msg_type, dat1, dat2, dat3, dat4),
             _ => {
                 log::error!("Unknown special driver {} for {}", special_driver, cn);
                 0
@@ -1066,26 +1105,28 @@ pub fn npc_quaff_potion(cn: usize, itemp: i32, stemp: i32) -> bool {
         }
 
         // Find potion and quaff it
-        let (should_quaff, name): (bool, String) = Repository::with_items(|it| {
-            for n in 0..40 {
-                let item_index = ch[cn].item[n];
+        let (should_quaff, name, item_index): (bool, String, usize) =
+            Repository::with_items(|it| {
+                for n in 0..40 {
+                    let item_index = ch[cn].item[n];
 
-                if item_index == 0 {
-                    continue;
+                    if item_index == 0 {
+                        continue;
+                    }
+
+                    if it[item_index as usize].temp == itemp as u16 {
+                        return (
+                            true,
+                            String::from_utf8_lossy(&it[item_index as usize].name)
+                                .into_owned()
+                                .into(),
+                            item_index as usize,
+                        );
+                    }
                 }
 
-                if it[item_index as usize].temp == itemp as u16 {
-                    return (
-                        true,
-                        String::from_utf8_lossy(&it[item_index as usize].name)
-                            .into_owned()
-                            .into(),
-                    );
-                }
-            }
-
-            (false, String::new().into())
-        });
+                (false, String::new().into(), 0)
+            });
 
         if !should_quaff {
             return false;
@@ -1106,7 +1147,7 @@ pub fn npc_quaff_potion(cn: usize, itemp: i32, stemp: i32) -> bool {
             )
         });
 
-        // TODO: use_driver(cn, in, 1);
+        driver::use_driver(cn, item_index, true);
 
         true
     })
@@ -1135,9 +1176,9 @@ pub fn npc_driver_high(cn: usize) -> i32 {
     let special_driver = Repository::with_characters(|chars| chars[cn].data[25]);
     if special_driver != 0 {
         return match special_driver {
-            1 => driver_special::npc_stunrun_high(cn),
-            2 => driver_special::npc_cityattack_high(cn),
-            3 => driver_special::npc_malte_high(cn),
+            1 => driver::npc_stunrun_high(cn),
+            2 => driver::npc_cityattack_high(cn),
+            3 => driver::npc_malte_high(cn),
             _ => {
                 log::error!("Unknown special driver {} for {}", special_driver, cn);
                 0
@@ -1522,7 +1563,7 @@ pub fn npc_driver_high(cn: usize) -> i32 {
     {
         let co = Repository::with_characters(|characters| characters[cn].data[69] as usize);
         if Repository::with_characters(|characters| characters[cn].attack_cn) == 0 && co != 0 {
-            if driver_generic::follow_driver(cn, co) {
+            if driver::follow_driver(cn, co) {
                 Repository::with_characters_mut(|characters| characters[cn].data[58] = 2);
                 return 1;
             }
@@ -1637,9 +1678,9 @@ pub fn npc_driver_low(cn: usize) {
 
     if special_driver != 0 {
         match special_driver {
-            1 => driver_special::npc_stunrun_low(cn),
-            2 => driver_special::npc_cityattack_low(cn),
-            3 => driver_special::npc_malte_low(cn),
+            1 => driver::npc_stunrun_low(cn),
+            2 => driver::npc_cityattack_low(cn),
+            3 => driver::npc_malte_low(cn),
             _ => {
                 log::error!("Unknown special driver {} for {}", special_driver, cn);
                 -1

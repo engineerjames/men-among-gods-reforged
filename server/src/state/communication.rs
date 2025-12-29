@@ -2,15 +2,21 @@ use crate::god::God;
 use crate::network_manager::NetworkManager;
 use crate::repository::Repository;
 use crate::state::State;
-use crate::{driver_generic, helpers};
+use crate::{driver, helpers};
 use core::constants::CharacterFlags;
 use core::types::FontColor;
 use rand::Rng;
 
 impl State {
-    /// Port of `do_area_notify(int cn, int co, int xs, int ys, int notify_type, int dat1, int dat2, int dat3, int dat4)` from `svr_do.cpp`
+    /// Notifies all characters in an area about an event, excluding `cn` and `co`.
     ///
-    /// Notify all characters in an area about something, excluding cn and co.
+    /// # Arguments
+    ///
+    /// * `cn` - Character to exclude from notification
+    /// * `co` - Another character to exclude
+    /// * `xs`, `ys` - Center coordinates of the area
+    /// * `notify_type` - Type of notification
+    /// * `dat1`, `dat2`, `dat3`, `dat4` - Additional data for the notification
     pub(crate) fn do_area_notify(
         &self,
         cn: i32,
@@ -47,9 +53,13 @@ impl State {
         });
     }
 
-    /// Port of `do_notify_character(int character_id, int notify_type, int dat1, int dat2, int dat3, int dat4)` from `svr_do.cpp`
+    /// Sends a notification message to a specific character.
     ///
-    /// Send a notification message to a specific character.
+    /// # Arguments
+    ///
+    /// * `character_id` - Target character ID
+    /// * `notify_type` - Type of notification
+    /// * `dat1`, `dat2`, `dat3`, `dat4` - Additional data for the notification
     pub(crate) fn do_notify_character(
         &self,
         character_id: u32,
@@ -59,14 +69,16 @@ impl State {
         dat3: i32,
         dat4: i32,
     ) {
-        driver_generic::driver_msg(character_id as usize, notify_type, dat1, dat2, dat3, dat4);
+        driver::driver_msg(character_id as usize, notify_type, dat1, dat2, dat3, dat4);
     }
 
-    /// Port of `do_npc_shout(int cn, int shout_type, int dat1, int dat2, int dat3, int dat4)` from `svr_do.cpp`
+    /// Finds the 3 closest NPCs to the shouter and notifies them.
     ///
-    /// This routine finds the 3 closest NPCs to the one doing the shouting,
-    /// so that they can come to the shouter's rescue or something.
-    /// Use this one sparingly! It uses quite a bit of computation time!
+    /// # Arguments
+    ///
+    /// * `cn` - NPC character number (shouter)
+    /// * `shout_type` - Type of shout
+    /// * `dat1`, `dat2`, `dat3`, `dat4` - Additional data for the shout
     pub(crate) fn do_npc_shout(
         &self,
         cn: usize,

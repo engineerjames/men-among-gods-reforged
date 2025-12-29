@@ -10,6 +10,15 @@ pub struct Area {
 }
 
 impl Area {
+    /// Returns true when the coordinate (`x`,`y`) lies within this area.
+    ///
+    /// Port of simple bounding-box containment check from the original C
+    /// sources. Used by area lookup helpers to determine whether a position
+    /// belongs to a named region.
+    ///
+    /// # Arguments
+    /// * `x` - X coordinate to test
+    /// * `y` - Y coordinate to test
     pub fn contains(&self, x: i32, y: i32) -> bool {
         x >= self.x1 && y >= self.y1 && x <= self.x2 && y <= self.y2
     }

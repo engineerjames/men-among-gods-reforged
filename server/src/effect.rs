@@ -82,6 +82,10 @@ impl EffectManager {
     }
 
     /// Type 1: Remove injury flag from map
+    /// Handle effect type 1: remove map injury graphics and expire
+    ///
+    /// Internal helper invoked by `effect_tick` when processing effects of
+    /// type 1. Decrements duration and clears map injury flags when expired.
     fn handle_effect_type_1(n: usize) {
         Repository::with_effects_mut(|effects| {
             effects[n].duration -= 1;
@@ -102,6 +106,11 @@ impl EffectManager {
     }
 
     /// Type 2: Timer for character respawn
+    /// Handle effect type 2: respawn timer
+    ///
+    /// Internal helper for timed respawn effects. When the timer reaches
+    /// zero, it attempts to reserve the map tile and transitions the effect
+    /// to type 8 (respawn mist) if successful.
     fn handle_effect_type_2(n: usize) {
         Repository::with_effects_mut(|effects| {
             if effects[n].duration > 0 {
@@ -124,6 +133,10 @@ impl EffectManager {
     }
 
     /// Type 3: Death mist
+    /// Handle effect type 3: death mist (grave placement)
+    ///
+    /// Drives the death-mist animation and, at the appropriate tick, will
+    /// either create a grave/tomb or destroy items when space is unavailable.
     fn handle_effect_type_3(n: usize) {
         Repository::with_effects_mut(|effects| {
             effects[n].duration += 1;
@@ -183,6 +196,10 @@ impl EffectManager {
     }
 
     /// Type 4: Tombstone
+    /// Handle effect type 4: tombstone completion
+    ///
+    /// Finalizes a tombstone/effect sequence, creating the tombstone item
+    /// and placing it on the map when its duration completes.
     fn handle_effect_type_4(n: usize) {
         Repository::with_effects_mut(|effects| {
             effects[n].duration += 1;
@@ -276,6 +293,10 @@ impl EffectManager {
     }
 
     /// Type 5: Evil magic
+    /// Handle effect type 5: evil magic animation
+    ///
+    /// Updates evil-magic graphic flags and expires the effect after the
+    /// configured duration.
     fn handle_effect_type_5(n: usize) {
         Repository::with_effects_mut(|effects| {
             effects[n].duration += 1;
@@ -298,6 +319,10 @@ impl EffectManager {
     }
 
     /// Type 6: Good magic
+    /// Handle effect type 6: good magic animation
+    ///
+    /// Updates good-magic graphic flags and expires the effect after the
+    /// configured duration.
     fn handle_effect_type_6(n: usize) {
         Repository::with_effects_mut(|effects| {
             effects[n].duration += 1;
@@ -320,6 +345,10 @@ impl EffectManager {
     }
 
     /// Type 7: Caster magic
+    /// Handle effect type 7: caster magic animation
+    ///
+    /// Updates caster-magic graphic flags and expires the effect after the
+    /// configured duration.
     fn handle_effect_type_7(n: usize) {
         Repository::with_effects_mut(|effects| {
             effects[n].duration += 1;
@@ -342,6 +371,10 @@ impl EffectManager {
     }
 
     /// Type 8: Respawn mist
+    /// Handle effect type 8: respawn mist
+    ///
+    /// Handles the visual respawn mist effect and, at mid-life, may spawn
+    /// the NPC via the populate helper when the tile becomes available.
     fn handle_effect_type_8(n: usize) {
         Repository::with_effects_mut(|effects| {
             effects[n].duration += 1;
@@ -389,6 +422,10 @@ impl EffectManager {
     }
 
     /// Type 9: Controlled item animation with optional monster creation
+    /// Handle effect type 9: controlled item animation / optional spawn
+    ///
+    /// Animates an item and, when complete, optionally creates a monster
+    /// at the item's location and removes the item.
     fn handle_effect_type_9(n: usize) {
         Repository::with_effects_mut(|effects| {
             effects[n].duration -= 1;
@@ -431,6 +468,10 @@ impl EffectManager {
     }
 
     /// Type 10: Respawn object
+    /// Handle effect type 10: respawn object
+    ///
+    /// Attempts to respawn a map object (item) after a delay. If the tile is
+    /// blocked (e.g. beams present) the respawn is rescheduled.
     fn handle_effect_type_10(n: usize) {
         Repository::with_effects_mut(|effects| {
             if effects[n].duration > 0 {
@@ -485,6 +526,10 @@ impl EffectManager {
     }
 
     /// Type 11: Remove queued spell flags
+    /// Handle effect type 11: queued-spell flag remover
+    ///
+    /// Clears queued-spell flags on the target character when the effect
+    /// duration elapses.
     fn handle_effect_type_11(n: usize) {
         Repository::with_effects_mut(|effects| {
             effects[n].duration -= 1;
@@ -500,6 +545,10 @@ impl EffectManager {
     }
 
     /// Type 12: Death mist (alternative)
+    /// Handle effect type 12: alternative death mist
+    ///
+    /// Similar to type 3 but used for alternative death-mist sequences; it
+    /// increments the animation and clears map flags on completion.
     fn handle_effect_type_12(n: usize) {
         Repository::with_effects_mut(|effects| {
             effects[n].duration += 1;
@@ -548,6 +597,10 @@ impl EffectManager {
 
     // Helper functions
 
+    /// Find a nearby map cell suitable for dropping items.
+    ///
+    /// Scans a set of offsets around `base_map_index` returning the first
+    /// index where `can_drop` returns true. Returns `0` when none found.
     fn find_drop_position(base_map_index: usize) -> usize {
         let offsets = [
             0,
@@ -587,6 +640,11 @@ impl EffectManager {
         0
     }
 
+    /// Create a grave/tomb at `map_index` for character `co` if items/gold exist.
+    ///
+    /// If the character has items or gold the tile is reserved and an effect
+    /// is added to create a tombstone. Otherwise items are destroyed and the
+    /// character slot may be freed or scheduled for respawn.
     fn handle_grave_creation(map_index: usize, co: usize, killer_cn: i32) {
         let (has_items, has_gold) = Repository::with_characters(|characters| {
             let mut flag = false;
@@ -687,6 +745,10 @@ impl EffectManager {
         }
     }
 
+    /// Check the neighborhood of `map_index` for active beam items.
+    ///
+    /// Returns `true` if any nearby tile contains an active beam item (used
+    /// to prevent object respawn in beam-protected areas).
     fn check_surrounding_beams(map_index: usize) -> bool {
         let offsets = [
             0,

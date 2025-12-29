@@ -5,12 +5,19 @@ use core::constants::{CharacterFlags, ItemFlags, MAXPLAYER};
 use core::types::FontColor;
 
 impl State {
-    /// Store the carried item (citem) into the first available inventory slot
-    /// Port of `do_store_item(int cn)` from `svr_do.cpp`
+    /// Port of `do_store_item(int cn)` from `svr_do.cpp`.
     ///
-    /// Returns:
-    /// - The inventory slot number (0-39) where the item was stored on success
-    /// - -1 if the operation failed (citem is invalid or inventory is full)
+    /// Attempts to store the item currently on the character's cursor (`citem`)
+    /// into the first free inventory slot. Performs basic validation (invalid
+    /// cursor-encoded values are rejected) and marks the character for update
+    /// when the operation succeeds.
+    ///
+    /// # Returns
+    /// * `Ok(slot)` - Inventory slot index (0..39) where the item was placed
+    /// * `Err(-1)` - Failure (invalid `citem` or no free slot)
+    ///
+    /// # Arguments
+    /// * `cn` - Character id performing the store operation
     pub(crate) fn do_store_item(&self, cn: usize) -> i32 {
         Repository::with_characters_mut(|characters| {
             let ch = &mut characters[cn];
@@ -45,8 +52,20 @@ impl State {
         })
     }
 
-    /// Sort character inventory based on order string
-    /// Port of do_sort from svr_do.cpp
+    /// Port of `do_sort(cn, order)` from `svr_do.cpp`.
+    ///
+    /// Sorts a character's inventory according to a custom order string. The
+    /// order string contains single-letter sort keys (for example 'w' for
+    /// weapons, 'a' for armor, 'v' for value, etc.) which are applied in
+    /// sequence. Empty inventory slots are moved to the end.
+    ///
+    /// This function performs an in-memory reorder and marks the character's
+    /// inventory for later synchronization with the client; network send
+    /// logic is left as a TODO in this implementation.
+    ///
+    /// # Arguments
+    /// * `cn` - Character id whose inventory will be sorted
+    /// * `order` - Sort order string composed of single-character keys
     pub(crate) fn do_sort(&self, cn: usize, order: &str) {
         // Check if character is in building mode
         let is_building = Repository::with_characters(|characters| characters[cn].is_building());
@@ -80,8 +99,20 @@ impl State {
         });
     }
 
-    /// Comparison function for sorting items
-    /// Port of qsort_proc from svr_do.cpp
+    /// Port of the `qsort_proc(in1, in2, order)` comparator from `svr_do.cpp`.
+    ///
+    /// Comparison routine used by `do_sort` to order two item indices based on
+    /// the provided `order` string. Handles empty slots, type-based checks
+    /// (weapon/armor/consumable), and numeric comparisons (hp/end/mana/value),
+    /// with a stable fallback on `temp` to preserve determinism.
+    ///
+    /// # Arguments
+    /// * `in1` - Item index for the first item (0 means empty slot)
+    /// * `in2` - Item index for the second item (0 means empty slot)
+    /// * `order` - Sort order string influencing comparison
+    ///
+    /// # Returns
+    /// * `Ordering` indicating the sort relation of `in1` and `in2`.
     pub(crate) fn qsort_compare(&self, in1: usize, in2: usize, order: &str) -> std::cmp::Ordering {
         use std::cmp::Ordering;
 
@@ -204,19 +235,21 @@ impl State {
         })
     }
 
-    /// Port of `do_maygive(int cn, int co, int in)` from `svr_do.cpp`
+    /// Port of `do_maygive(cn, co, in)` from `svr_do.cpp`.
     ///
-    /// Checks if an item may be given from one character to another.
-    /// This function validates whether an item can be transferred/dropped.
+    /// Determines whether an item may be given or dropped from one character
+    /// to another. Currently implements a small set of protections (for
+    /// example preventing giving lag-scroll items). The function returns
+    /// `true` for items that are allowed to be transferred.
     ///
     /// # Arguments
-    /// * `cn` - The giver character (not used in current implementation but kept for API compatibility)
-    /// * `co` - The receiver character (not used in current implementation but kept for API compatibility)
-    /// * `item_idx` - The index of the item to check
+    /// * `_cn` - Giver character id (retained for API compatibility)
+    /// * `_co` - Receiver character id (retained for API compatibility)
+    /// * `item_idx` - Item index to check
     ///
     /// # Returns
-    /// * `true` - Item may be given/transferred
-    /// * `false` - Item cannot be given (e.g., lag scrolls)
+    /// * `true` if the item may be given/dropped
+    /// * `false` if the item is disallowed (e.g., lag scroll)
     pub(crate) fn do_maygive(&self, _cn: usize, _co: usize, item_idx: usize) -> bool {
         // Check if item index is valid
         if item_idx < 1 || item_idx >= core::constants::MAXITEM {
@@ -239,18 +272,23 @@ impl State {
         true // All other items may be given
     }
 
-    /// Port of `do_give(int cn, int co)` from `svr_do.cpp`
+    /// Port of `do_give(cn, co)` from `svr_do.cpp`.
     ///
-    /// Transfers the carried item (citem) from character cn to character co.
-    /// Handles both gold and regular items.
+    /// Transfers the item currently on `cn`'s cursor (`citem`) to `co`.
+    /// Behavior includes:
+    /// - Handling encoded gold values (high-bit set) as currency transfers
+    /// - Validating that an item may be given (`do_maygive`)
+    /// - Special driver logic (e.g. holy water vs undead)
+    /// - Respecting receiver's current cursor state (placing into their
+    ///   inventory if needed via `God::give_character_item`)
+    /// - Sending notifications and logging actions
     ///
     /// # Arguments
-    /// * `cn` - The giver character
-    /// * `co` - The receiver character
+    /// * `cn` - Giver character id
+    /// * `co` - Receiver character id
     ///
     /// # Returns
-    /// * `true` - Item was successfully given
-    /// * `false` - Failed to give item
+    /// * `true` on success, `false` on failure
     pub(crate) fn do_give(&self, cn: usize, co: usize) -> bool {
         // Check if giver has a carried item
         let citem = Repository::with_characters(|characters| characters[cn].citem);
@@ -486,15 +524,17 @@ impl State {
         true
     }
 
-    /// Port of `do_item_value(int in)` from `svr_do.cpp`
+    /// Port of `do_item_value(in)` from `svr_do.cpp`.
     ///
-    /// Returns the value of an item (for buying/selling/trading).
+    /// Returns the stored value of an item used in economic calculations.
+    /// Performs bounds-checking on the provided index and returns 0 for
+    /// invalid indices.
     ///
     /// # Arguments
-    /// * `item_idx` - The index of the item
+    /// * `item_idx` - Item index to query
     ///
     /// # Returns
-    /// * Item value in gold, or 0 if item index is invalid
+    /// * Item value in copper/lowest unit (u32), or 0 when `item_idx` invalid
     pub(crate) fn do_item_value(&self, item_idx: usize) -> u32 {
         if item_idx < 1 || item_idx >= core::constants::MAXITEM {
             return 0;
@@ -503,14 +543,21 @@ impl State {
         Repository::with_items(|items| items[item_idx].value)
     }
 
-    /// Port of `do_look_item(int cn, int in)` from `svr_do.cpp`
+    /// Port of `do_look_item(cn, in)` from `svr_do.cpp`.
     ///
-    /// Displays detailed information about an item to a character.
-    /// Shows description, condition, and compares with carried item if applicable.
+    /// Presents detailed information about an item to a character, including:
+    /// - Description text and build-mode metadata
+    /// - Condition/aging/damage status and colored messaging
+    /// - Comparison with the currently carried item (if any)
+    /// - Special-case driver behavior (tombstone ransack, career pole checks)
+    ///
+    /// Access checks are performed to ensure the viewer either owns or can see
+    /// the item. Additional god/build-mode information is printed when
+    /// applicable.
     ///
     /// # Arguments
-    /// * `cn` - Character looking at the item
-    /// * `item_idx` - The item being examined
+    /// * `cn` - Viewer character id
+    /// * `item_idx` - Item index to inspect
     pub(crate) fn do_look_item(&mut self, cn: usize, item_idx: usize) {
         // Determine if item is active
         let act = Repository::with_items(|items| if items[item_idx].active != 0 { 1 } else { 0 });

@@ -2,8 +2,17 @@ use core::{constants::CharacterFlags, types::FontColor};
 
 use crate::{driver, god::God, populate, repository::Repository, state::State};
 
-/// Port of C++ use_labtransfer(int cn, int nr, int exp)
-/// Attempts to spawn a lab enemy and transfer the player, returning true on success, false on failure.
+/// Port of `use_labtransfer(int cn, int nr, int exp)` from `svr_do.cpp`
+///
+/// Attempts to spawn the appropriate lab enemy for `nr` and transfer the
+/// player `cn` into the encounter room. On success the enemy is created,
+/// positioned and instructed to attack the player; the player is then moved
+/// into the lab. Returns `true` on success, `false` on failure.
+///
+/// # Arguments
+/// * `cn` - Player character initiating the lab transfer
+/// * `nr` - Lab number (determines enemy template)
+/// * `exp` - Experience reward associated with the lab
 pub fn use_labtransfer(cn: usize, nr: i32, exp: i32) -> bool {
     use crate::repository::Repository;
     use core::constants::{CharacterFlags, SERVER_MAPX};
@@ -131,6 +140,14 @@ pub fn use_labtransfer(cn: usize, nr: i32, exp: i32) -> bool {
 }
 
 /// Returns the monster class name for a given class number, or an error string if out of bounds.
+/// Returns the monster class name for a given class ID.
+///
+/// Port of the `npc_class[]` lookup from the original server. Returns a
+/// human-friendly string for `nr`, or a short error message when out of
+/// bounds.
+///
+/// # Arguments
+/// * `nr` - Numeric monster class identifier
 pub fn get_class_name(nr: i32) -> &'static str {
     // List from C++ npc_class[]
     const NPC_CLASS: [&str; 77] = [
@@ -223,6 +240,16 @@ pub fn get_class_name(nr: i32) -> &'static str {
 }
 
 /// Returns true if the class was already marked as killed, false if this is the first kill. Side effect: sets the bit for this class.
+/// Marks a monster class as killed for player `cn` and returns whether it
+/// had already been killed.
+///
+/// Sets the appropriate bit in the player's data fields to remember that
+/// class `val` has been killed. Returns `true` if the bit was already set
+/// (class previously killed), `false` otherwise.
+///
+/// # Arguments
+/// * `cn` - Character index owning the kill record
+/// * `val` - Monster class id
 pub fn killed_class(cn: usize, val: i32) -> bool {
     Repository::with_characters_mut(|characters| {
         let (bit, data_idx) = if val < 32 {
@@ -240,13 +267,20 @@ pub fn killed_class(cn: usize, val: i32) -> bool {
     })
 }
 
+/// Short rank names used in compact `who` displays.
 pub const WHO_RANK_NAME: [&str; core::constants::RANKS] = [
     " Pvt ", " PFC ", " LCp ", " Cpl ", " Sgt ", " SSg ", " MSg ", " 1Sg ", " SgM ", "2Lieu",
     "1Lieu", "Captn", "Major", "LtCol", "Colnl", "BrGen", "MaGen", "LtGen", "Genrl", "FDMAR",
     "KNIGT", "BARON", " EARL", "WARLD",
 ];
 
-/// Return a human-friendly time-delta string from a tick-delta (ticks)
+/// Port of `ago_string` utility.
+///
+/// Converts a tick delta into a human-friendly relative time string (for
+/// example "5 minutes ago"). Used in character listings and logs.
+///
+/// # Arguments
+/// * `dt` - Delta in server ticks
 pub fn ago_string(dt: i32) -> String {
     let minutes = dt / (60 * core::constants::TICKS);
     if minutes <= 0 {
@@ -271,6 +305,7 @@ pub fn ago_string(dt: i32) -> String {
     format!("{} years ago", years)
 }
 
+/// Full rank names matching `WHO_RANK_NAME` indices.
 pub const RANK_NAMES: [&str; core::constants::RANKS] = [
     "Private",
     "Private First Class",
@@ -299,6 +334,13 @@ pub const RANK_NAMES: [&str; core::constants::RANKS] = [
 ];
 
 // WTF is this some kind of weird hash function?
+/// Generate a pseudo-unique integer id for character `cn`.
+///
+/// This reproduces the original weird hashing used by the server to create
+/// a compact identifier from the character name and password fields.
+///
+/// # Arguments
+/// * `cn` - Character index
 pub fn char_id(cn: usize) -> i32 {
     Repository::with_characters(|characters| {
         let mut id = 0;
@@ -314,6 +356,13 @@ pub fn char_id(cn: usize) -> i32 {
     })
 }
 
+/// Map total points to a rank index.
+///
+/// Implements the server's `points2rank` thresholds to convert experience
+/// points into a discrete rank used for comparison and display.
+///
+/// # Arguments
+/// * `value` - Total experience points
 pub fn points2rank(value: u32) -> u32 {
     match value {
         0..50 => 0,
@@ -343,12 +392,14 @@ pub fn points2rank(value: u32) -> u32 {
     }
 }
 
-/* Calculates experience to next level from current experience and the
-points2rank() function. As no inverse function is supplied we use a
-binary search to determine the experience for the next level.
-If the given number of points corresponds to the highest level,
-return 0. */
-// TODO: This seems far overcomplicated... write tests
+/// Calculate experience required to reach the next rank from `current_experience`.
+///
+/// Uses `points2rank` and a binary search to find the minimal additional
+/// experience required to reach the next rank. Returns `0` when already at
+/// the maximum rank.
+///
+/// # Arguments
+/// * `current_experience` - Current total experience points
 pub fn points_tolevel(current_experience: u32) -> u32 {
     let curr_level = points2rank(current_experience);
     if curr_level == 23 {
@@ -382,6 +433,14 @@ pub fn points_tolevel(current_experience: u32) -> u32 {
     p0 + 1
 }
 
+/// Rank difference (co - cn).
+///
+/// Convenience helper that returns the signed rank difference between two
+/// characters, based on their total experience.
+///
+/// # Arguments
+/// * `cn` - First character index
+/// * `co` - Second character index
 pub fn rankdiff(cn: i32, co: i32) -> i32 {
     let cn_experience =
         Repository::with_characters(|characters| characters[cn as usize].points_tot as u32);
@@ -391,22 +450,45 @@ pub fn rankdiff(cn: i32, co: i32) -> i32 {
     points2rank(co_experience) as i32 - points2rank(cn_experience) as i32
 }
 
+/// Absolute rank difference between two characters.
+///
+/// # Arguments
+/// * `cn` - First character index
+/// * `co` - Second character index
 pub fn absrankdiff(cn: i32, co: i32) -> u32 {
     rankdiff(cn, co).abs() as u32
 }
 
-// Unused in original implementation
+/// Check whether two characters are within attack range (unused helper).
+///
+/// # Arguments
+/// * `cn` - First character index
+/// * `co` - Second character index
 #[allow(dead_code)]
 pub fn in_attackrange(cn: i32, co: i32) -> bool {
     absrankdiff(cn, co) <= core::constants::ATTACK_RANGE as u32
 }
 
-// Unused in original implementation
+/// Check whether two characters are within group range (unused helper).
+///
+/// # Arguments
+/// * `cn` - First character index
+/// * `co` - Second character index
 #[allow(dead_code)]
 pub fn in_grouprange(cn: i32, co: i32) -> bool {
     absrankdiff(cn, co) <= core::constants::GROUP_RANGE as u32
 }
 
+/// Scale experience `exp` according to relative rank difference.
+///
+/// Uses the server's `SCALE_TAB` to adjust awarded experience based on the
+/// target's rank versus the player (`cn`). Returns the scaled integer
+/// experience value.
+///
+/// # Arguments
+/// * `cn` - Player character index
+/// * `co_rank` - Opponent's rank index
+/// * `exp` - Base experience to scale
 pub fn scale_exps2(cn: i32, co_rank: i32, exp: i32) -> i32 {
     const SCALE_TAB: [f32; 49] = [
         0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07,
@@ -431,12 +513,28 @@ pub fn scale_exps2(cn: i32, co_rank: i32, exp: i32) -> i32 {
     (exp as f32 * SCALE_TAB[diff as usize]) as i32
 }
 
+/// Scale experience `exp` using `co`'s experience to determine rank.
+///
+/// Wrapper around `scale_exps2` that computes the opponent's rank from
+/// their total points.
+///
+/// # Arguments
+/// * `cn` - Player character index
+/// * `co` - Opponent character index
+/// * `exp` - Base experience to scale
 pub fn scale_exps(cn: i32, co: i32, exp: i32) -> i32 {
     let co_experience =
         Repository::with_characters(|characters| characters[co as usize].points_tot as u32);
     scale_exps2(cn, points2rank(co_experience) as i32, exp)
 }
 
+/// Convert a delta coordinate (dx, dy) into a direction constant.
+///
+/// Returns one of the `DX_*` direction constants or `-1` for invalid input.
+///
+/// # Arguments
+/// * `dx` - Delta X
+/// * `dy` - Delta Y
 pub fn drv_dcoor2dir(dx: i32, dy: i32) -> i32 {
     match (dx.cmp(&0), dy.cmp(&0)) {
         (std::cmp::Ordering::Greater, std::cmp::Ordering::Greater) => {
@@ -459,6 +557,13 @@ pub fn drv_dcoor2dir(dx: i32, dy: i32) -> i32 {
     }
 }
 
+/// Compute effective invisibility level for character `cn`.
+///
+/// Higher values indicate stronger invisibility. This mirrors the C++
+/// invisibility hierarchy (greater inv, god, imp/usurp, staff, default).
+///
+/// # Arguments
+/// * `cn` - Character index
 pub fn invis_level(cn: usize) -> i32 {
     Repository::with_characters(|characters| {
         if characters[cn].flags & CharacterFlags::CF_GREATERINV.bits() != 0 {
@@ -478,32 +583,59 @@ pub fn invis_level(cn: usize) -> i32 {
     })
 }
 
-/// Helper function to calculate points needed to raise an attribute
-/// Port of attrib_needed from svr_do.cpp
+/// Helper: points needed to raise an attribute.
+///
+/// Port of `attrib_needed` from `svr_do.cpp`. Computes the cost in points
+/// to raise an attribute value `v` by incremental difficulty `diff`.
+///
+/// # Arguments
+/// * `v` - Current attribute value
+/// * `diff` - Difficulty multiplier
 pub fn attrib_needed(v: i32, diff: i32) -> i32 {
     v * v * v * diff / 20
 }
 
-/// Helper function to calculate points needed to raise HP
-/// Port of hp_needed from svr_do.cpp
+/// Helper: points needed to raise HP.
+///
+/// Port of `hp_needed` from the original server.
+///
+/// # Arguments
+/// * `v` - Current HP value
+/// * `diff` - Difficulty increment
 pub fn hp_needed(v: i32, diff: i32) -> i32 {
     v * diff
 }
 
-/// Helper function to calculate points needed to raise endurance
-/// Port of end_needed from svr_do.cpp
+/// Helper: points needed to raise endurance.
+///
+/// Port of `end_needed` from the original server.
+///
+/// # Arguments
+/// * `v` - Current endurance value
+/// * `diff` - Difficulty increment
 pub fn end_needed(v: i32, diff: i32) -> i32 {
     v * diff / 2
 }
 
-/// Helper function to calculate points needed to raise mana
-/// Port of mana_needed from svr_do.cpp
+/// Helper: points needed to raise mana.
+///
+/// Port of `mana_needed` from `svr_do.cpp`.
+///
+/// # Arguments
+/// * `v` - Current mana value
+/// * `diff` - Difficulty increment
 pub fn mana_needed(v: i32, diff: i32) -> i32 {
     v * diff
 }
 
-/// Helper function to calculate points needed to raise a skill
-/// Port of skill_needed from svr_do.cpp
+/// Helper: points needed to raise a skill.
+///
+/// Port of `skill_needed` from `svr_do.cpp`. Returns the cost in points
+/// required to raise skill value `v` considering difficulty `diff`.
+///
+/// # Arguments
+/// * `v` - Current skill value
+/// * `diff` - Difficulty increment
 pub fn skill_needed(v: i32, diff: i32) -> i32 {
     std::cmp::max(v, v * v * v * diff / 40)
 }

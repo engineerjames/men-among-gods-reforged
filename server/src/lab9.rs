@@ -1,3 +1,10 @@
+// Port of various `lab9` helper routines from the original server.
+//
+// This file currently holds lab-related utilities (lab transfers, special
+// encounters). Individual functions are documented where implemented in
+// `helpers.rs` and other modules; keep this file as a container for any
+// direct ports from the original `lab9.cpp`/`lab9.h` if they are added.
+
 use core::{constants::ItemFlags, types::Character};
 use std::sync::{OnceLock, RwLock};
 

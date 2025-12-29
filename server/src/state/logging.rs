@@ -11,8 +11,18 @@ use crate::talk::npc_hear;
 use super::State;
 
 impl State {
-    /// Sends a log message to a character if they have an associated player.
-    /// Warns if the character has no player (unless temp == 15).
+    /// Port of `do_character_log(character_id, font, message)` from the original
+    /// server sources.
+    ///
+    /// Sends a log message to a character's associated player connection. If the
+    /// character has no player attached (and is not a special temp viewer), the
+    /// message is skipped. This wrapper validates the character->player mapping
+    /// before delegating to `do_log`.
+    ///
+    /// # Arguments
+    /// * `character_id` - Character id to receive the message
+    /// * `font` - Font/color to use for the message
+    /// * `message` - The text to send
     pub(crate) fn do_character_log(
         &self,
         character_id: usize,
@@ -34,8 +44,17 @@ impl State {
         });
     }
 
-    /// Sends a log message to a character's player.
-    /// Splits long messages into 15-byte chunks and sends them via SV_LOG packets.
+    /// Port of `do_log(character_id, font, message)` from the original server.
+    ///
+    /// Sends a log message directly to the player's network connection. Long
+    /// lines are split into 15-byte chunks and transmitted as `SV_LOG` packets.
+    /// Performs validation of the associated player and finds the matching
+    /// player index before sending.
+    ///
+    /// # Arguments
+    /// * `character_id` - Character whose player will receive the message
+    /// * `font` - Color/font modifier for the message
+    /// * `message` - Message text (may be longer than a single packet)
     pub(crate) fn do_log(&self, character_id: usize, font: core::types::FontColor, message: &str) {
         let mut buffer: [u8; 16] = [0; 16];
 
@@ -95,8 +114,19 @@ impl State {
         });
     }
 
-    /// Sends a log message to all characters in an area (within 12 tile radius).
-    /// Excludes cn and co from receiving the message.
+    /// Port of `do_area_log(cn, co, xs, ys, font, message)` from the original
+    /// server.
+    ///
+    /// Broadcasts a log message to all characters within a 12-tile radius of
+    /// `(xs, ys)`, excluding the specified `cn` and `co` characters. Recipients
+    /// are filtered for active players and sane characters.
+    ///
+    /// # Arguments
+    /// * `cn` - Character to exclude (usually source)
+    /// * `co` - Second character to exclude
+    /// * `xs, ys` - Source coordinates for the area
+    /// * `font` - Color/font for the message
+    /// * `message` - Text to broadcast
     pub(crate) fn do_area_log(
         &self,
         cn: usize,
@@ -144,9 +174,16 @@ impl State {
         }
     }
 
-    /// Sends a message from a character to nearby characters.
-    /// Formats the message as "Name: "message"" and sends it to the area.
-    /// Uses blue color for players, yellow for NPCs.
+    /// Port of `do_sayx(character_id, message)` from the original server.
+    ///
+    /// Formats and relays a speech message from `character_id` to nearby
+    /// characters. The message is prefixed with the speaker's name and uses
+    /// different colors for players (blue) and NPCs (yellow). Option prefixes
+    /// (like `#<sound>`) are processed by `process_options`.
+    ///
+    /// # Arguments
+    /// * `character_id` - Speaker character id
+    /// * `message` - Raw speech text
     pub(crate) fn do_sayx(&self, character_id: usize, message: &str) {
         let mut buf = message.to_string();
         Self::process_options(character_id, &mut buf);
@@ -175,8 +212,17 @@ impl State {
         self.do_area_log(0, 0, x, y, font, &line);
     }
 
-    /// Plays a sound to a specific character.
-    /// Internal helper function used by do_area_sound.
+    /// Port of `char_play_sound(character_id, sound, vol, pan)` from the
+    /// original server.
+    ///
+    /// Low-level helper that sends a `SV_PLAYSOUND` packet to a single
+    /// character's player connection. Validates the player mapping first.
+    ///
+    /// # Arguments
+    /// * `character_id` - Target character id
+    /// * `sound` - Sound id to play
+    /// * `vol` - Volume modifier
+    /// * `pan` - Stereo pan modifier
     pub(crate) fn char_play_sound(character_id: usize, sound: i32, vol: i32, pan: i32) {
         let matching_player_id = Server::with_players(|players| {
             for i in 0..MAXPLAYER as usize {
@@ -202,9 +248,17 @@ impl State {
         });
     }
 
-    /// Plays a sound to all characters in an area (within 8 tile radius).
-    /// Volume and pan are calculated based on distance from the sound source.
-    /// Excludes cn and co from hearing the sound.
+    /// Port of `do_area_sound(cn, co, xs, ys, nr)` from the original server.
+    ///
+    /// Broadcasts a sound event to nearby characters within an 8-tile radius,
+    /// computing volume and pan based on distance. Characters `cn` and `co`
+    /// are excluded from hearing the sound.
+    ///
+    /// # Arguments
+    /// * `cn` - Character to exclude (usually source)
+    /// * `co` - Second character to exclude
+    /// * `xs, ys` - Coordinates of the sound source
+    /// * `nr` - Sound id
     pub(crate) fn do_area_sound(cn: usize, co: usize, xs: i32, ys: i32, nr: i32) {
         let x_min = cmp::max(0, xs - 8);
         let x_max = cmp::min(core::constants::SERVER_MAPX as i32, xs + 9);
@@ -256,12 +310,15 @@ impl State {
         }
     }
 
-    /// Port of original `process_options(int cn, char* buf)` from `svr_do.cpp`.
+    /// Port of `process_options(character_id, buf)` from `svr_do.cpp`.
     ///
-    /// Supports a leading `#<digits>###` option prefix:
-    /// - Parses the integer sound id after the first '#'
-    /// - Strips the `#<digits>` and any additional leading '#' characters
-    /// - If the parsed sound id is non-zero, plays it to nearby players (excluding the speaker)
+    /// Parses an optional leading `#<digits>###` prefix in the speech buffer.
+    /// If a numeric sound id is parsed, the sound is played in the speaker's
+    /// area and the option prefix is removed from `buf`.
+    ///
+    /// # Arguments
+    /// * `character_id` - Speaker character id
+    /// * `buf` - Mutable message buffer to strip options from
     pub(crate) fn process_options(character_id: usize, buf: &mut String) {
         if !buf.starts_with('#') {
             return;
@@ -295,7 +352,14 @@ impl State {
         }
     }
 
-    /// Sends a log message to all IMPs and USURPed characters.
+    /// Port of `do_imp_log(font, text)` from the original server.
+    ///
+    /// Sends a log message to all IMP and USURPed characters (administrative
+    /// recipients). Empty text is ignored.
+    ///
+    /// # Arguments
+    /// * `font` - Font/color to use
+    /// * `text` - Message text
     pub(crate) fn do_imp_log(&self, font: core::types::FontColor, text: &str) {
         for n in 1..core::constants::MAXCHARS as usize {
             if Repository::with_characters(|ch| {
@@ -309,8 +373,16 @@ impl State {
         }
     }
 
-    /// Sends a caution message to all active characters.
-    /// If author is provided, prefixes the message with [author name].
+    /// Port of `do_caution(source, author, text)` from the original server.
+    ///
+    /// Sends a caution/broadcast message to all active characters. When an
+    /// `author` is supplied, the message is prefixed with `[author name]`.
+    /// Visibility rules for invisible sources are respected.
+    ///
+    /// # Arguments
+    /// * `source` - Source character id (for visibility checks)
+    /// * `author` - Optional author character id to prefix the message
+    /// * `text` - Message text
     pub(crate) fn do_caution(&self, source: usize, author: usize, text: &str) {
         if text.is_empty() {
             return;
@@ -340,8 +412,17 @@ impl State {
         }
     }
 
-    /// Sends an announcement message to all active characters.
-    /// If author is provided, prefixes the message with [author name].
+    /// Port of `do_announce(source, author, text)` from the original server.
+    ///
+    /// Sends an announcement message to all active characters and respects
+    /// invisibility levels so that the source may appear anonymous to some
+    /// recipients. When `author` is provided, the message is prefixed with
+    /// `[author name]`.
+    ///
+    /// # Arguments
+    /// * `source` - Source character id for visibility rules
+    /// * `author` - Optional author to prefix the message
+    /// * `text` - Announcement text
     pub(crate) fn do_announce(&self, source: usize, author: usize, text: &str) {
         if text.is_empty() {
             return;
@@ -389,7 +470,11 @@ impl State {
         }
     }
 
-    /// Sends a log message to all staff, IMPs, and USURPed characters.
+    /// Port of `do_admin_log(source, text)` from the original server.
+    ///
+    /// Sends an administrative log message to staff, IMPs and USURPed
+    /// characters only. Visibility/invisibility rules are applied when a
+    /// `source` is provided.
     #[allow(dead_code)]
     pub(crate) fn do_admin_log(&self, source: i32, text: &str) {
         if text.is_empty() {
@@ -432,7 +517,14 @@ impl State {
         }
     }
 
-    /// Sends a log message to all staff, IMPs, and USURPed characters who don't have CF_NOSTAFF set.
+    /// Port of `do_staff_log(font, text)` from the original server.
+    ///
+    /// Sends a message to staff/IMP/USURPed characters that do not have the
+    /// `CF_NOSTAFF` flag set. Empty text is ignored.
+    ///
+    /// # Arguments
+    /// * `font` - Font/color to use
+    /// * `text` - Message text
     pub(crate) fn do_staff_log(&self, font: core::types::FontColor, text: &str) {
         if text.is_empty() {
             return;
@@ -452,8 +544,17 @@ impl State {
         }
     }
 
-    /// Sends a say message to all characters in an area.
-    /// Handles visibility - invisible speakers show as "Somebody says".
+    /// Port of `do_area_say1(cn, xs, ys, text)` from the original server.
+    ///
+    /// Broadcasts a speech message originating at map coordinates `(xs, ys)`
+    /// to nearby characters using a spiral area search. Player listeners are
+    /// sent named or anonymous messages depending on visibility; NPCs are
+    /// handled in a second pass via `npc_hear` if they can see the speaker.
+    ///
+    /// # Arguments
+    /// * `cn` - Speaker character id
+    /// * `xs, ys` - Coordinates of the speech origin
+    /// * `text` - Message text
     pub(crate) fn do_area_say1(&mut self, cn: usize, xs: usize, ys: usize, text: &str) {
         // Build messages
         let msg_named = format!(

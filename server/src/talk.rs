@@ -1884,10 +1884,18 @@ use crate::repository::Repository;
 use crate::state::State;
 
 /// Port of `obey(int cn, int co)` from `talk.cpp`
+///
+/// Checks whether the character `cn` will obey character `co`.
+/// This is used for companion / kindred obedience checks.
+///
 /// Returns:
-/// - 1 if co is the master of cn (companion)
-/// - 2 if cn will obey co based on kindred/data flags
-/// - 0 otherwise
+/// - `1` if `co` is the companion master of `cn` (data[63])
+/// - `2` if `cn` will obey `co` because of kindred/obedience flags (data[26] & data[28])
+/// - `0` otherwise
+///
+/// # Arguments
+/// * `cn` - Character that may obey
+/// * `co` - Character that may be obeyed
 pub fn obey(cn: usize, co: usize) -> i32 {
     Repository::with_characters(|characters| {
         // Check if co is the companion master (data[63])
@@ -1905,7 +1913,13 @@ pub fn obey(cn: usize, co: usize) -> i32 {
 }
 
 /// Port of `answer_spellinfo(int cn, int co)` from `talk.cpp`
-/// Lists all active spells on the companion
+///
+/// Lists all active spells attached to the companion and speaks the name and remaining time.
+/// If no spells are found, the companion tells the master it has no spells.
+///
+/// # Arguments
+/// * `cn` - Companion character (the one with spells)
+/// * `co` - Master character (viewer)
 pub fn answer_spellinfo(cn: usize, co: usize) {
     if obey(cn, co) != 1 {
         return;
@@ -1939,7 +1953,14 @@ pub fn answer_spellinfo(cn: usize, co: usize) {
 }
 
 /// Port of `answer_transfer(int cn, int co)` from `talk.cpp`
-/// Transfers companion's experience to master and destroys the companion
+///
+/// Transfers the companion's accumulated experience to the master and destroys the companion.
+/// The companion announces its obedience, visual FX are triggered, the master receives experience
+/// and the companion entity is removed.
+///
+/// # Arguments
+/// * `cn` - Companion character to transfer (and destroy)
+/// * `co` - Master character who receives experience
 pub fn answer_transfer(cn: usize, co: usize) {
     if obey(cn, co) != 1 {
         return;
@@ -1993,7 +2014,15 @@ pub fn answer_transfer(cn: usize, co: usize) {
 }
 
 /// Port of `answer_follow(int cn, int co)` from `talk.cpp`
-/// Makes companion follow the master
+///
+/// Commands a companion to follow its master:
+/// - Clears temporary action data, stops attacking/goto actions
+/// - Sets follow target (data[69]) and clears wait position
+/// - Companion speaks confirmation
+///
+/// # Arguments
+/// * `cn` - Companion character
+/// * `co` - Master character to follow
 pub fn answer_follow(cn: usize, co: usize) {
     if obey(cn, co) != 1 {
         return;
@@ -2021,7 +2050,15 @@ pub fn answer_follow(cn: usize, co: usize) {
 }
 
 /// Port of `answer_wait(int cn, int co)` from `talk.cpp`
-/// Makes companion wait at current position
+///
+/// Commands a companion to wait at its current tile:
+/// - Clears temporary action data, stops attacking/goto actions
+/// - Stores wait position and facing (data[29..30]) and clears follow target
+/// - Companion speaks confirmation
+///
+/// # Arguments
+/// * `cn` - Companion character
+/// * `co` - Master character issuing the command
 pub fn answer_wait(cn: usize, co: usize) {
     if obey(cn, co) != 1 {
         return;
@@ -2055,7 +2092,15 @@ pub fn answer_wait(cn: usize, co: usize) {
 }
 
 /// Port of `answer_stop(int cn, int co)` from `talk.cpp`
-/// Makes companion stop current action
+///
+/// Commands a companion to stop its current actions and resets action timers:
+/// - Clears temporary action data and stops attacking/goto actions
+/// - Clears behaviour flags and stores the current ticker in data[27]
+/// - Companion acknowledges the command
+///
+/// # Arguments
+/// * `cn` - Companion character
+/// * `co` - Master character issuing the command
 pub fn answer_stop(cn: usize, co: usize) {
     if obey(cn, co) == 0 {
         return;
@@ -2084,7 +2129,15 @@ pub fn answer_stop(cn: usize, co: usize) {
 }
 
 /// Port of `answer_move(int cn, int co)` from `talk.cpp`
-/// Makes companion move randomly nearby
+///
+/// Commands a companion to move to a random nearby tile:
+/// - Picks a nearby target tile for `goto_x/goto_y` within map bounds
+/// - Stops attacking and miscellaneous actions
+/// - Companion acknowledges the command
+///
+/// # Arguments
+/// * `cn` - Companion character
+/// * `co` - Master character issuing the command
 pub fn answer_move(cn: usize, co: usize) {
     if obey(cn, co) == 0 {
         return;
@@ -2114,7 +2167,16 @@ pub fn answer_move(cn: usize, co: usize) {
 }
 
 /// Port of `answer_attack(int cn, int co, char* text)` from `talk.cpp`
-/// Makes companion attack a specified target
+///
+/// Instructs a companion to attack a named target parsed from `text`.
+/// - Parses the target name from `text`, finds the closest matching active character
+/// - Performs checks to avoid attacking the master or self and sets `attack_cn`/data[80]
+/// - Companion announces the order
+///
+/// # Arguments
+/// * `cn` - Companion character to perform the attack
+/// * `co` - Master character issuing the command
+/// * `text` - Spoken text containing the target name
 pub fn answer_attack(cn: usize, co: usize, text: &str) {
     if obey(cn, co) == 0 {
         return;
@@ -2245,7 +2307,14 @@ pub fn answer_attack(cn: usize, co: usize, text: &str) {
 }
 
 /// Port of `answer_quiet(int cn, int co)` from `talk.cpp`
-/// Toggles companion's talkative mode
+///
+/// Toggles whether a companion speaks/responds:
+/// - If companion was quiet, restores template talkative flag and thanks master
+/// - If companion was talkative, silences it by clearing the CHD_TALKATIVE flag
+///
+/// # Arguments
+/// * `cn` - Companion character
+/// * `co` - Master character
 pub fn answer_quiet(cn: usize, co: usize) {
     Repository::with_characters(|characters| {
         let is_talkative = characters[cn].data[core::constants::CHD_TALKATIVE] != 0;
@@ -2283,7 +2352,13 @@ pub fn answer_quiet(cn: usize, co: usize) {
 }
 
 /// Port of `answer_health(int cn, int co)` from `talk.cpp`
-/// Reports companion's health status
+///
+/// Reports the companion's current health to the master using simple thresholds.
+/// - Compares `a_hp` against derived thresholds and speaks an appropriate message
+///
+/// # Arguments
+/// * `cn` - Companion character whose health is reported
+/// * `co` - Master character listening
 pub fn answer_health(cn: usize, co: usize) {
     Repository::with_characters(|characters| {
         let a_hp = characters[cn].a_hp;
@@ -2303,7 +2378,13 @@ pub fn answer_health(cn: usize, co: usize) {
 }
 
 /// Port of `answer_shop(int cn, int co)` from `talk.cpp`
-/// Explains how to use shop
+///
+/// Explains how to use the shop interface or tells the player that the NPC is not a merchant.
+/// - If NPC is a merchant, instructs player to ALT+right-click to buy/sell
+///
+/// # Arguments
+/// * `cn` - NPC being asked
+/// * `co` - Player asking
 pub fn answer_shop(cn: usize, co: usize) {
     Repository::with_characters(|characters| {
         let is_merchant =
@@ -2327,7 +2408,14 @@ pub fn answer_shop(cn: usize, co: usize) {
 }
 
 /// Port of `answer_greeting(int cn, int co)` from `talk.cpp`
-/// Greets the player
+///
+/// Makes the NPC greet the player using its configured greeting text.
+/// - Replaces `%s` with the player's name
+/// - Handles special cases (e.g., Purple One cultist greeting allies)
+///
+/// # Arguments
+/// * `cn` - NPC character
+/// * `co` - Player character being greeted
 pub fn answer_greeting(cn: usize, co: usize) {
     Repository::with_characters(|characters| {
         let greeting_text = String::from_utf8_lossy(&characters[cn].text[2])
@@ -2354,7 +2442,12 @@ pub fn answer_greeting(cn: usize, co: usize) {
 }
 
 /// Port of `answer_whoami(int cn, int co)` from `talk.cpp`
-/// Tells who the NPC is
+///
+/// NPC replies with its displayed name ("I am <name>.").
+///
+/// # Arguments
+/// * `cn` - NPC character
+/// * `_co` - (unused) Player who asked
 pub fn answer_whoami(cn: usize, _co: usize) {
     Repository::with_characters(|characters| {
         let name = characters[cn].get_name().to_string();
@@ -2365,7 +2458,14 @@ pub fn answer_whoami(cn: usize, _co: usize) {
 }
 
 /// Port of `answer_where(int cn, int co)` from `talk.cpp`
-/// Tells the current area
+///
+/// Tells the player the NPC's current area or location.
+///
+/// Note: This currently uses a placeholder message; original implementation fetched area info.
+///
+/// # Arguments
+/// * `cn` - NPC character
+/// * `_co` - (unused) Player who asked
 pub fn answer_where(cn: usize, _co: usize) {
     // TODO: Implement get_area function
     State::with(|state| {
@@ -2374,7 +2474,13 @@ pub fn answer_where(cn: usize, _co: usize) {
 }
 
 /// Port of `answer_time(int cn, int co)` from `talk.cpp`
-/// Tells the current game time
+///
+/// Tells the current in-game day, year and time in Astonian Standard Time.
+/// The day number is formatted with an ordinal suffix (st/nd/rd/th).
+///
+/// # Arguments
+/// * `cn` - NPC character speaking
+/// * `_co` - (unused) Player who asked
 pub fn answer_time(cn: usize, _co: usize) {
     Repository::with_globals(|globals| {
         let day = globals.mdday;
@@ -2402,7 +2508,15 @@ pub fn answer_time(cn: usize, _co: usize) {
 }
 
 /// Port of `stronghold_points(int cn)` from `talk.cpp`
-/// Calculates stronghold points for a character
+///
+/// Calculates the number of stronghold (cityguard) points a character has.
+/// Computation factors in kills, candles and points already spent.
+///
+/// # Arguments
+/// * `cn` - Character whose points are calculated
+///
+/// # Returns
+/// Total available stronghold points
 pub fn stronghold_points(cn: usize) -> i32 {
     Repository::with_characters(|characters| {
         characters[cn].data[26] / 25 +      // kills below rank
@@ -2414,7 +2528,15 @@ pub fn stronghold_points(cn: usize) -> i32 {
 }
 
 /// Port of `stronghold_exp_per_pt(int cn)` from `talk.cpp`
-/// Calculates experience per point for stronghold
+///
+/// Calculates how much experience is granted per stronghold point based on the character's
+/// accumulated experience total. The value is clamped between 1 and 125.
+///
+/// # Arguments
+/// * `cn` - Character whose experience is used to compute the rate
+///
+/// # Returns
+/// Experience per point (clamped between 1 and 125)
 pub fn stronghold_exp_per_pt(cn: usize) -> i32 {
     Repository::with_characters(|characters| {
         let exp_per_pt = characters[cn].points_tot / 45123;
@@ -2423,7 +2545,14 @@ pub fn stronghold_exp_per_pt(cn: usize) -> i32 {
 }
 
 /// Port of `answer_points(int cn, int co, int nr)` from `talk.cpp`
-/// Tells player their stronghold points
+///
+/// Tells the player how many stronghold points they currently have and what they can
+/// exchange them for (gold, health, mana, experience).
+///
+/// # Arguments
+/// * `cn` - NPC character speaking
+/// * `co` - Player character whose points are described
+/// * `_know_idx` - Knowledge index that triggered this answer (unused)
 pub fn answer_points(cn: usize, co: usize, _know_idx: usize) {
     let exp = stronghold_exp_per_pt(co);
     let pts = stronghold_points(co);
@@ -2437,7 +2566,13 @@ pub fn answer_points(cn: usize, co: usize, _know_idx: usize) {
 }
 
 /// Port of `answer_buygold(int cn, int co)` from `talk.cpp`
-/// Exchanges stronghold points for gold
+///
+/// Exchanges up to 100 stronghold points for gold (1 point => 100 gold coins).
+/// If the player has no points, the NPC refuses.
+///
+/// # Arguments
+/// * `cn` - NPC character handling the exchange
+/// * `co` - Player character spending points
 pub fn answer_buygold(cn: usize, co: usize) {
     let mut pts = stronghold_points(co);
     pts = pts.min(100);
@@ -2477,7 +2612,13 @@ pub fn answer_buygold(cn: usize, co: usize) {
 }
 
 /// Port of `answer_buyhealth(int cn, int co)` from `talk.cpp`
-/// Exchanges stronghold points for healing potion
+///
+/// Exchanges 6 stronghold points for a healing potion. If the player does not have
+/// enough points, the NPC informs them. The potion item is created and given to the player.
+///
+/// # Arguments
+/// * `cn` - NPC vendor
+/// * `co` - Player purchasing the potion
 pub fn answer_buyhealth(cn: usize, co: usize) {
     let pts = stronghold_points(co);
 
@@ -2520,7 +2661,13 @@ pub fn answer_buyhealth(cn: usize, co: usize) {
 }
 
 /// Port of `answer_buymana(int cn, int co)` from `talk.cpp`
-/// Exchanges stronghold points for mana potion
+///
+/// Exchanges 9 stronghold points for a mana potion. If the player does not have
+/// enough points, the NPC informs them. The potion item is created and given to the player.
+///
+/// # Arguments
+/// * `cn` - NPC vendor
+/// * `co` - Player purchasing the potion
 pub fn answer_buymana(cn: usize, co: usize) {
     let pts = stronghold_points(co);
 
@@ -2563,7 +2710,14 @@ pub fn answer_buymana(cn: usize, co: usize) {
 }
 
 /// Port of `answer_buyexp(int cn, int co)` from `talk.cpp`
-/// Exchanges stronghold points for experience
+///
+/// Exchanges all available stronghold points for experience at the calculated rate.
+/// - Deducts the points, awards experience and updates totals
+/// - Triggers level check and informs the player
+///
+/// # Arguments
+/// * `cn` - NPC vendor
+/// * `co` - Player purchasing experience
 pub fn answer_buyexp(cn: usize, co: usize) {
     let pts = stronghold_points(co);
     let exp = stronghold_exp_per_pt(co);
@@ -2612,7 +2766,16 @@ pub fn answer_buyexp(cn: usize, co: usize) {
 }
 
 /// Port of `special_answer(int cn, int co, int spec, char* word, int nr)` from `talk.cpp`
-/// Dispatches special answer handlers
+///
+/// Dispatches special handlers for knowledge entries that have a `special` field.
+/// This routes the call to the appropriate `answer_*` handler based on `special`.
+///
+/// # Arguments
+/// * `cn` - NPC speaking
+/// * `co` - Player who triggered the knowledge entry
+/// * `special` - Special handler identifier
+/// * `word` - Original spoken text
+/// * `know_idx` - Index of the matched knowledge entry
 pub fn special_answer(cn: usize, co: usize, special: i32, word: &str, know_idx: usize) {
     match special {
         HEALTH => answer_health(cn, co),
@@ -2638,12 +2801,29 @@ pub fn special_answer(cn: usize, co: usize, special: i32, word: &str, know_idx: 
     }
 }
 
-/// Helper function to convert string to lowercase
+/// Helper: Port of `str_lower` behavior from `talk.cpp` (utility)
+///
+/// Returns a lowercase copy of the input string. Used to normalize NPC/player input
+/// for matching purposes.
+///
+/// # Arguments
+/// * `s` - Input string
+///
+/// # Returns
+/// Lowercased `String`
 fn str_lower(s: &str) -> String {
     s.to_lowercase()
 }
 
-/// Helper function to check if a word is a fillword
+/// Helper: checks whether a word is a "fill"/stopword and should be ignored in matching.
+///
+/// The fillword list contains common words that do not carry semantic meaning in NPC queries.
+///
+/// # Arguments
+/// * `word` - Word to check
+///
+/// # Returns
+/// `true` if the word is a fillword and should be ignored, `false` otherwise
 fn is_fillword(word: &str) -> bool {
     const FILLWORDS: &[&str] = &[
         "the", "a", "an", "do", "'", "of", "is", "that", "those", "these", "they", "-", "does",
@@ -2652,7 +2832,13 @@ fn is_fillword(word: &str) -> bool {
     FILLWORDS.contains(&word)
 }
 
-/// Helper function to replace synonyms
+/// Helper: normalizes simple synonyms/variants used in player speech.
+///
+/// Mutates `word` in-place if it matches a known synonym (e.g. numeric shortforms or plural forms)
+/// to improve matching against the knowledge base.
+///
+/// # Arguments
+/// * `word` - Word to normalize (modified in-place)
 fn replace_synonym(word: &mut String) {
     const SYNONYMS: &[(&str, &str)] = &[
         ("1", "one"),
@@ -2717,7 +2903,18 @@ fn replace_synonym(word: &mut String) {
 }
 
 /// Port of `npc_hear(int cn, int co, char* text)` from `talk.cpp`
-/// Main NPC conversation handler
+///
+/// Main NPC conversation handler. Parses `text`, normalizes words, matches against the NPC's
+/// knowledge base (`KNOW` entries) and either speaks a predefined answer or dispatches a
+/// special handler. Key behaviors:
+/// - Supports punctuation-based tokens (! ? $) and fillword/synonym normalization
+/// - Determines confidence of a match and only answers if the confidence and talk level permit
+/// - Handles a special stop keyword and enemy checks
+///
+/// # Arguments
+/// * `cn` - NPC character
+/// * `co` - Player who spoke to the NPC
+/// * `text` - Text that the player spoke
 pub fn npc_hear(cn: usize, co: usize, text: &str) {
     // Check for stop keyword
     let stop_keyword = Repository::with_characters(|characters| {

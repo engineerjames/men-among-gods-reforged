@@ -10,20 +10,21 @@ use crate::{helpers, player};
 use super::State;
 
 impl State {
-    /// Handle character death
+    /// Port of `do_character_killed(character_id, killer_id)` from the original
+    /// server sources.
     ///
-    /// This is the main entry point for handling character death. It:
-    /// - Sends death notifications
-    /// - Plays death sound effects
-    /// - Handles killer rewards and penalties
-    /// - Alignment changes for killers
-    /// - Item dropping and grave creation
-    /// - Player resurrection
-    /// - NPC respawn
+    /// Top-level handler invoked when a character dies. Responsibilities:
+    /// - Send death notifications to nearby characters
+    /// - Play appropriate death sound effects
+    /// - Log the kill and update killer/player statistics
+    /// - Apply alignment, luck and penalty changes for killers
+    /// - Handle special-case followers and companion cleanup
+    /// - Create a grave/body clone and schedule respawn effects
+    /// - Route player vs NPC death handling (resurrection, respawn)
     ///
     /// # Arguments
-    /// * `character_id` - The character who died (co in C++)
-    /// * `killer_id` - The character who did the killing (cn in C++, can be 0)
+    /// * `character_id` - The character who died
+    /// * `killer_id` - The character who killed them (0 if none)
     pub(crate) fn do_character_killed(&self, character_id: usize, killer_id: usize) {
         // Send death notification
         self.do_notify_character(
@@ -382,7 +383,20 @@ impl State {
         });
     }
 
-    /// Handle player death including resurrection and grave creation
+    /// Port of `handle_player_death(co, cn, map_flags)` from the original server
+    /// sources.
+    ///
+    /// Handles player-specific death processing:
+    /// - Check for Guardian Angel / wimpy skill and compute `wimp` chance
+    /// - Allocate a free character slot and clone the dead character into a grave/body
+    /// - Drop items and money into the grave according to `wimp` chance
+    /// - Transfer the player to their temple and resurrect with minimal HP
+    /// - Reset status and apply permanent stat penalties when applicable
+    ///
+    /// # Arguments
+    /// * `co` - Character id of the dead player
+    /// * `cn` - Killer id
+    /// * `map_flags` - Map flags at the death location (used for arena/wimp checks)
     pub(crate) fn handle_player_death(&self, co: usize, cn: usize, map_flags: u64) {
         // Remember template if we're to respawn this character
         // TODO: Re-evaluate if we need to do anything here.
@@ -524,7 +538,18 @@ impl State {
         player::plr_map_set(cc);
     }
 
-    /// Handle NPC death
+    /// Port of `handle_npc_death(co, cn)` from the original server sources.
+    ///
+    /// Handles non-player character (NPC) death processing:
+    /// - Increment NPC death counters
+    /// - Reset NPC status and active actions
+    /// - Handle `USURP` (player controlling an NPC) transfer if present
+    /// - Convert the NPC into a corpse/body and set respawn flags where appropriate
+    /// - Destroy active spells and allow player ransack when killer is a player
+    ///
+    /// # Arguments
+    /// * `co` - NPC character id who died
+    /// * `cn` - Killer id
     pub(crate) fn handle_npc_death(&self, co: usize, cn: usize) {
         // Update NPC death statistics
         Repository::with_globals_mut(|globals| {
@@ -665,7 +690,16 @@ impl State {
         });
     }
 
-    /// Handle lab keeper death (special case)
+    /// Port of `handle_labkeeper_death(co, cn)` from the original server sources.
+    ///
+    /// Special-case handling for laboratory/shop keepers:
+    /// - Remove player mapping for the killer
+    /// - Destroy labkeeper items and clear inventory
+    /// - Free the character slot and perform lab transfer logic
+    ///
+    /// # Arguments
+    /// * `co` - Labkeeper character id who died
+    /// * `cn` - Killer id
     pub(crate) fn handle_labkeeper_death(&self, co: usize, cn: usize) {
         player::plr_map_remove(cn);
 
@@ -687,7 +721,20 @@ impl State {
         self.use_labtransfer2(cn, co);
     }
 
-    /// Handle item drops on death based on wimpy (guardian angel) chance
+    /// Port of `handle_item_drops(co, cc, wimp, cn)` from the original server sources.
+    ///
+    /// Determines and performs which items/money are dropped into the grave when a
+    /// character dies. Behavior:
+    /// - Gold may be dropped based on `wimp` chance
+    /// - Inventory, carried, and worn items are considered for dropping or keeping
+    /// - Respects `do_maygive` to determine whether an item can be transferred to killer
+    /// - Active spells are always destroyed on death
+    ///
+    /// # Arguments
+    /// * `co` - Original (dead) character id
+    /// * `cc` - Clone/grave character id (where dropped items are carried)
+    /// * `wimp` - Guardian angel / wimpy chance (0-255). Higher means less dropping
+    /// * `cn` - Killer id
     pub(crate) fn handle_item_drops(&self, co: usize, cc: usize, wimp: i32, cn: usize) {
         use core::constants::*;
 
@@ -848,7 +895,15 @@ impl State {
         }
     }
 
-    /// Apply permanent stat loss on death
+    /// Port of `apply_death_penalties(co)` from the original server sources.
+    ///
+    /// Applies permanent penalties to a character after death:
+    /// - Decreases permanent hitpoints according to configured rules
+    /// - Decreases permanent mana according to configured rules
+    /// - Notifies the player and invokes internal lowering helpers
+    ///
+    /// # Arguments
+    /// * `co` - Character id to apply permanent penalties to
     pub(crate) fn apply_death_penalties(&self, co: usize) {
         Repository::with_characters_mut(|characters| {
             // HP penalty
@@ -873,6 +928,8 @@ impl State {
                     "You would have lost permanent hitpoints, but you're already at the minimum.\n",
                 );
             }
+
+            // TODO: Endurance penalty?
 
             // Mana penalty
             let mut mana_tmp = characters[co].mana[0] / 10;

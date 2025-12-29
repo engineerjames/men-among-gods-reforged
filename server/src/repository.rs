@@ -10,7 +10,12 @@ use std::{env, fs};
 
 static REPOSITORY: OnceLock<ReentrantMutex<UnsafeCell<Repository>>> = OnceLock::new();
 
-// Contains the data repository for the server
+/// The in-memory data repository used by the server.
+///
+/// Holds maps, items, characters, globals, and other game data loaded from the
+/// `.dat` files. Accessed via thread-safe accessors via the public `with_*`
+/// helper methods which acquire a reentrant mutex and provide closures access
+/// to the internal storage.
 pub struct Repository {
     map: Vec<core::types::Map>,
     items: Vec<core::types::Item>,
@@ -28,6 +33,12 @@ pub struct Repository {
 }
 
 impl Repository {
+    /// Create a new `Repository` initialized with default values.
+    ///
+    /// Allocates and initializes all in-memory collections with sizes based on
+    /// constants (for example `MAXITEM`, `MAXCHARS`, `SERVER_MAPX` × `SERVER_MAPY`)
+    /// and attempts to discover the current executable path to resolve the
+    /// `.dat` directory via `get_dat_file_path`.
     fn new() -> Self {
         Self {
             // TODO: Evaluate how we can prevent accidental copying of any of these types...
@@ -58,6 +69,11 @@ impl Repository {
             },
         }
     }
+    /// Load all game data from disk into memory.
+    ///
+    /// This calls each of the `load_*` helper methods in sequence and returns an
+    /// error if any step fails. After a successful `load`, the repository
+    /// contains populated `map`, `items`, `characters`, `globals`, etc.
     pub fn load(&mut self) -> Result<(), String> {
         self.load_map()?;
         self.load_items()?;
@@ -73,6 +89,11 @@ impl Repository {
         Ok(())
     }
 
+    /// Resolve the absolute path to a `.dat` file given its file name.
+    ///
+    /// The path is computed relative to the parent directory of the running
+    /// executable (the `executable_path` stored on construction). Returns a
+    /// `PathBuf` pointing to `<exe_parent>/.dat/<file_name>`.
     fn get_dat_file_path(&self, file_name: &str) -> PathBuf {
         let exe_path = Path::new(&self.executable_path);
 
@@ -85,6 +106,11 @@ impl Repository {
         return full_path;
     }
 
+    /// Load `map.dat` and populate the `map` vector.
+    ///
+    /// Validates the file size against the expected tile count and parses each
+    /// `Map` entry via `core::types::Map::from_bytes`. Returns an error if the
+    /// file cannot be read or its size doesn't match expectations.
     fn load_map(&mut self) -> Result<(), String> {
         let map_path = self.get_dat_file_path("map.dat");
         log::info!("Loading map data from {:?}", map_path);
@@ -121,6 +147,11 @@ impl Repository {
         Ok(())
     }
 
+    /// Load `item.dat` and populate the `items` array.
+    ///
+    /// Verifies the file size equals `MAXITEM * size_of::<Item>()` and parses
+    /// each `Item` via `core::types::Item::from_bytes`. Returns an error on
+    /// read or parse failures.
     fn load_items(&mut self) -> Result<(), String> {
         let items_path = self.get_dat_file_path("item.dat");
         log::info!("Loading items data from {:?}", items_path);
@@ -156,6 +187,10 @@ impl Repository {
         Ok(())
     }
 
+    /// Load `titem.dat` and populate the `item_templates` array.
+    ///
+    /// Validates length and parses each template entry. This is used when
+    /// resetting or creating items from templates at runtime.
     fn load_item_templates(&mut self) -> Result<(), String> {
         let item_templates_path = self.get_dat_file_path("titem.dat");
         log::info!("Loading item templates data from {:?}", item_templates_path);
@@ -192,6 +227,10 @@ impl Repository {
         Ok(())
     }
 
+    /// Load `char.dat` and populate the `characters` array.
+    ///
+    /// Validates the file size equals `MAXCHARS * size_of::<Character>()` and
+    /// parses each `Character` via `core::types::Character::from_bytes`.
     fn load_characters(&mut self) -> Result<(), String> {
         let characters_path = self.get_dat_file_path("char.dat");
         log::info!("Loading characters data from {:?}", characters_path);
@@ -222,6 +261,10 @@ impl Repository {
         Ok(())
     }
 
+    /// Load `tchar.dat` and populate the `character_templates` array.
+    ///
+    /// Validates file size and parses each template entry used for NPC spawning
+    /// and template-based resets.
     fn load_character_templates(&mut self) -> Result<(), String> {
         let character_templates_path = self.get_dat_file_path("tchar.dat");
         log::info!(
@@ -256,6 +299,10 @@ impl Repository {
         Ok(())
     }
 
+    /// Load `effect.dat` and populate the `effects` array.
+    ///
+    /// Validates file size and parses each `Effect` entry. Effects represent
+    /// transient or persistent world effects used by the server.
     fn load_effects(&mut self) -> Result<(), String> {
         let effects_path = self.get_dat_file_path("effect.dat");
         log::info!("Loading effects data from {:?}", effects_path);
@@ -291,6 +338,11 @@ impl Repository {
         Ok(())
     }
 
+    /// Load `global.dat` and parse into the `globals` structure.
+    ///
+    /// The file is expected to contain at least `size_of::<Global>()` bytes.
+    /// The first bytes are parsed into `core::types::Global` using
+    /// `from_bytes` and stored in `self.globals`.
     fn load_globals(&mut self) -> Result<(), String> {
         let globals_path = self.get_dat_file_path("global.dat");
         log::info!("Loading globals data from {:?}", globals_path);
@@ -314,6 +366,10 @@ impl Repository {
         Ok(())
     }
 
+    /// Load `badnames.txt` into memory.
+    ///
+    /// Each line is treated as a banned name pattern and stored in
+    /// `self.bad_names` for name validation checks.
     fn load_bad_names(&mut self) -> Result<(), String> {
         let bad_names_path = self.get_dat_file_path("badnames.txt");
         log::info!("Loading bad names from {:?}", bad_names_path);
@@ -331,6 +387,10 @@ impl Repository {
         Ok(())
     }
 
+    /// Load `badwords.txt` into memory.
+    ///
+    /// Each line is treated as a banned chat word or filter term and stored
+    /// in `self.bad_words` for chat filtering.
     fn load_bad_words(&mut self) -> Result<(), String> {
         let bad_words_path = self.get_dat_file_path("badwords.txt");
         log::info!("Loading bad words from {:?}", bad_words_path);
@@ -348,6 +408,10 @@ impl Repository {
         Ok(())
     }
 
+    /// Load the Message of the Day from `motd.txt`.
+    ///
+    /// Falls back to a default string if the file is not present. The MOTD is
+    /// truncated to 130 characters if it is too long to avoid client issues.
     fn load_message_of_the_day(&mut self) -> Result<(), String> {
         let motd_path = self.get_dat_file_path("motd.txt");
         log::info!("Loading message of the day from {:?}", motd_path);
@@ -366,6 +430,10 @@ impl Repository {
         Ok(())
     }
 
+    /// Load the ban list from `banlist.dat` if present.
+    ///
+    /// This currently logs and leaves `ban_list` empty when no file is present;
+    /// parsing and population of `ban_list` is TODO.
     fn load_ban_list(&mut self) -> Result<(), String> {
         let banlist_path = self.get_dat_file_path("banlist.dat");
         log::info!("Loading ban list from {:?}", banlist_path);
@@ -385,6 +453,11 @@ impl Repository {
     }
 
     // Initialize the global repository
+    /// Initialize the global `Repository` singleton.
+    ///
+    /// Loads data from disk and stores the `Repository` inside the global
+    /// `REPOSITORY` OnceLock guarded by a `ReentrantMutex`. Returns an error if
+    /// initialization or loading fails, or if the repository was already set.
     pub fn initialize() -> Result<(), String> {
         let mut repo = Repository::new();
         repo.load()?;
@@ -395,6 +468,11 @@ impl Repository {
     }
 
     // Access helpers for the global repository protected by a reentrant mutex
+    /// Internal helper: acquire the global repository for read-only access.
+    ///
+    /// Locks the global `REPOSITORY` reentrant mutex and passes a shared
+    /// reference to the provided closure `f`. This guarantees safe concurrent
+    /// read access through the closure while the lock is held.
     fn with_repo<F, R>(f: F) -> R
     where
         F: FnOnce(&Repository) -> R,
@@ -408,6 +486,11 @@ impl Repository {
         f(repo_ref)
     }
 
+    /// Internal helper: acquire the global repository for mutable access.
+    ///
+    /// Locks the global `REPOSITORY` reentrant mutex and passes a unique
+    /// mutable reference to the provided closure `f`. Reentrancy allows nested
+    /// calls from the same thread.
     fn with_repo_mut<F, R>(f: F) -> R
     where
         F: FnOnce(&mut Repository) -> R,
@@ -424,6 +507,10 @@ impl Repository {
     }
 
     // Static accessor methods for read-only access
+    /// Execute `f` with a read-only slice of the map tiles.
+    ///
+    /// The closure `f` is called while holding the repository lock, guaranteeing
+    /// safe concurrent access to the map data.
     pub fn with_map<F, R>(f: F) -> R
     where
         F: FnOnce(&[core::types::Map]) -> R,
@@ -431,6 +518,9 @@ impl Repository {
         Self::with_repo(|repo| f(&repo.map[..]))
     }
 
+    /// Execute `f` with a read-only slice of all item instances.
+    ///
+    /// Use this to safely read item fields while the repository lock is held.
     pub fn with_items<F, R>(f: F) -> R
     where
         F: FnOnce(&[core::types::Item]) -> R,
@@ -438,6 +528,9 @@ impl Repository {
         Self::with_repo(|repo| f(&repo.items[..]))
     }
 
+    /// Execute `f` with a read-only slice of item templates.
+    ///
+    /// Item templates are static data used to create or reset item instances.
     pub fn with_item_templates<F, R>(f: F) -> R
     where
         F: FnOnce(&[core::types::Item]) -> R,
@@ -445,6 +538,10 @@ impl Repository {
         Self::with_repo(|repo| f(&repo.item_templates[..]))
     }
 
+    /// Execute `f` with a read-only slice of characters.
+    ///
+    /// Characters include both player and NPC instances. Read access is
+    /// synchronized via the repository mutex.
     pub fn with_characters<F, R>(f: F) -> R
     where
         F: FnOnce(&[core::types::Character]) -> R,
@@ -452,6 +549,9 @@ impl Repository {
         Self::with_repo(|repo| f(&repo.characters[..]))
     }
 
+    /// Execute `f` with a read-only slice of effects.
+    ///
+    /// Effects are transient world-state objects processed during ticks.
     pub fn with_effects<F, R>(f: F) -> R
     where
         F: FnOnce(&[core::types::Effect]) -> R,
@@ -459,6 +559,10 @@ impl Repository {
         Self::with_repo(|repo| f(&repo.effects[..]))
     }
 
+    /// Execute `f` with a read-only reference to the global server state.
+    ///
+    /// Use this to query global counters and configuration loaded from
+    /// `global.dat`.
     pub fn with_globals<F, R>(f: F) -> R
     where
         F: FnOnce(&core::types::Global) -> R,
@@ -468,6 +572,8 @@ impl Repository {
 
     // TODO: Not sure if we need this yet...
     #[allow(dead_code)]
+    /// Execute `f` with a read-only slice of `SeeMap` data used for visibility
+    /// calculations. This function is currently unused but kept for completeness.
     pub fn with_see_map<F, R>(f: F) -> R
     where
         F: FnOnce(&[core::types::SeeMap]) -> R,
@@ -475,6 +581,10 @@ impl Repository {
         Self::with_repo(|repo| f(&repo.see_map[..]))
     }
 
+    /// Execute `f` with a mutable slice of the map tiles.
+    ///
+    /// Provides exclusive mutable access to the map while the repository lock
+    /// is held; use this to perform map updates safely.
     pub fn with_map_mut<F, R>(f: F) -> R
     where
         F: FnOnce(&mut [core::types::Map]) -> R,
@@ -482,6 +592,10 @@ impl Repository {
         Self::with_repo_mut(|repo| f(&mut repo.map[..]))
     }
 
+    /// Execute `f` with a mutable slice of item instances.
+    ///
+    /// Use this to modify items (create, reset, update) while holding the
+    /// repository mutex to ensure consistency.
     pub fn with_items_mut<F, R>(f: F) -> R
     where
         F: FnOnce(&mut [core::types::Item]) -> R,
@@ -489,6 +603,9 @@ impl Repository {
         Self::with_repo_mut(|repo| f(&mut repo.items[..]))
     }
 
+    /// Execute `f` with a mutable slice of item templates.
+    ///
+    /// Allows modifying or resetting item templates in a synchronized way.
     pub fn with_item_templates_mut<F, R>(f: F) -> R
     where
         F: FnOnce(&mut [core::types::Item]) -> R,
@@ -496,6 +613,10 @@ impl Repository {
         Self::with_repo_mut(|repo| f(&mut repo.item_templates[..]))
     }
 
+    /// Execute `f` with a read-only slice of character templates.
+    ///
+    /// Character templates are used to spawn NPCs and to reset template
+    /// instances.
     pub fn with_character_templates<F, R>(f: F) -> R
     where
         F: FnOnce(&[core::types::Character]) -> R,
@@ -503,6 +624,9 @@ impl Repository {
         Self::with_repo(|repo| f(&repo.character_templates[..]))
     }
 
+    /// Execute `f` with a mutable slice of character templates.
+    ///
+    /// Use this to change templates and mark respawns in a synchronized way.
     pub fn with_character_templates_mut<F, R>(f: F) -> R
     where
         F: FnOnce(&mut [core::types::Character]) -> R,
@@ -510,6 +634,10 @@ impl Repository {
         Self::with_repo_mut(|repo| f(&mut repo.character_templates[..]))
     }
 
+    /// Execute `f` with a mutable slice of character instances.
+    ///
+    /// This allows adding/removing/modifying characters while holding the
+    /// repository lock to maintain consistency.
     pub fn with_characters_mut<F, R>(f: F) -> R
     where
         F: FnOnce(&mut [core::types::Character]) -> R,
@@ -517,6 +645,9 @@ impl Repository {
         Self::with_repo_mut(|repo| f(&mut repo.characters[..]))
     }
 
+    /// Execute `f` with a mutable slice of effects.
+    ///
+    /// Use this to create or clear effects during world ticks.
     pub fn with_effects_mut<F, R>(f: F) -> R
     where
         F: FnOnce(&mut [core::types::Effect]) -> R,
@@ -524,6 +655,10 @@ impl Repository {
         Self::with_repo_mut(|repo| f(&mut repo.effects[..]))
     }
 
+    /// Execute `f` with a mutable reference to the global server state.
+    ///
+    /// Use this to increment counters, set flags, or update global settings
+    /// in a thread-safe manner.
     pub fn with_globals_mut<F, R>(f: F) -> R
     where
         F: FnOnce(&mut core::types::Global) -> R,
@@ -531,6 +666,9 @@ impl Repository {
         Self::with_repo_mut(|repo| f(&mut repo.globals))
     }
 
+    /// Execute `f` with a mutable slice of `SeeMap` data.
+    ///
+    /// This allows updates to visibility state; kept for completeness.
     pub fn with_see_map_mut<F, R>(f: F) -> R
     where
         F: FnOnce(&mut [core::types::SeeMap]) -> R,
@@ -538,6 +676,10 @@ impl Repository {
         Self::with_repo_mut(|repo| f(&mut repo.see_map[..]))
     }
 
+    /// Execute `f` with a read-only reference to the ban list.
+    ///
+    /// The ban list is optionally loaded from `banlist.dat`; parsing is still
+    /// TODO. Use this to check bans in a thread-safe manner.
     pub fn with_ban_list<F, R>(f: F) -> R
     where
         F: FnOnce(&Vec<core::types::Ban>) -> R,
@@ -545,6 +687,9 @@ impl Repository {
         Self::with_repo(|repo| f(&repo.ban_list))
     }
 
+    /// Execute `f` with a mutable reference to the ban list.
+    ///
+    /// Allows adding or removing ban entries in a synchronized manner.
     pub fn with_ban_list_mut<F, R>(f: F) -> R
     where
         F: FnOnce(&mut Vec<core::types::Ban>) -> R,

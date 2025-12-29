@@ -17,6 +17,11 @@ mod real_ccp {
     }
 
     impl CcpMem {
+        /// Creates a new `CcpMem` instance with default values.
+        ///
+        /// # Returns
+        ///
+        /// A new `CcpMem` struct with initialized fields.
         fn new() -> Self {
             let sx = (constants::SERVER_MAPX / 10) as usize;
             let sy = (constants::SERVER_MAPY / 10) as usize;
@@ -33,6 +38,16 @@ mod real_ccp {
     static CCP_MEMS: LazyLock<Mutex<Vec<Option<CcpMem>>>> =
         LazyLock::new(|| Mutex::new(vec![None; constants::MAXCHARS as usize]));
 
+    /// Provides mutable access to the `CcpMem` for a given character number, initializing if needed.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Character number (index)
+    /// * `f` - Closure to execute with mutable reference to `CcpMem`
+    ///
+    /// # Returns
+    ///
+    /// The return value of the closure `f`.
     fn get_ccp_mem_mut<F, R>(cn: usize, f: F) -> R
     where
         F: FnOnce(&mut CcpMem) -> R,
@@ -50,6 +65,12 @@ mod real_ccp {
         f(slot.as_mut().unwrap())
     }
 
+    /// Adjusts the sector score for the character's current sector by a given value.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Character number (index)
+    /// * `val` - Value to add to the sector score
     pub fn ccp_sector_score(cn: usize, val: i32) {
         get_ccp_mem_mut(cn, |mem| {
             let (x, y) = Repository::with_characters(|ch| (ch[cn].x as i32, ch[cn].y as i32));
@@ -61,6 +82,13 @@ mod real_ccp {
         });
     }
 
+    /// Handles a tell (private message) to a CCP character.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - CCP character number
+    /// * `co` - Sender character number
+    /// * `text` - Message text
     pub fn ccp_tell(cn: usize, co: usize, text: &str) {
         // Mirror C++ behaviour: if target is CCP, ignore; otherwise send a canned reply.
         if Repository::with_characters(|ch| {
@@ -78,6 +106,13 @@ mod real_ccp {
         });
     }
 
+    /// Handles a shout message directed at a CCP character.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - CCP character number
+    /// * `co` - Sender character number
+    /// * `text` - Message text
     pub fn ccp_shout(cn: usize, co: usize, text: &str) {
         // simplified port of original logic
         get_ccp_mem_mut(cn, |mem| {
@@ -93,6 +128,16 @@ mod real_ccp {
         });
     }
 
+    /// Sets the enemy for the CCP character and determines enemy strength.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - CCP character number
+    /// * `co` - Enemy character number
+    ///
+    /// # Returns
+    ///
+    /// Returns 1 after setting the enemy.
     pub fn ccp_set_enemy(cn: usize, co: usize) -> i32 {
         get_ccp_mem_mut(cn, |mem| {
             mem.fighting = co as i32;
@@ -149,6 +194,12 @@ mod real_ccp {
         })
     }
 
+    /// Handles logic when the CCP character is attacked by another character.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - CCP character number
+    /// * `co` - Attacker character number
     pub fn ccp_gotattack(cn: usize, co: usize) {
         get_ccp_mem_mut(cn, |mem| {
             if mem.fighting == co as i32 {
@@ -162,6 +213,12 @@ mod real_ccp {
         });
     }
 
+    /// Handles logic when the CCP character sees another character.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - CCP character number
+    /// * `co` - Seen character number
     pub fn ccp_seen(cn: usize, co: usize) {
         get_ccp_mem_mut(cn, |mem| {
             if Repository::with_characters(|ch| ch[co].attack_cn) == cn as i32 {
@@ -234,6 +291,15 @@ mod real_ccp {
         });
     }
 
+    /// Attempts to raise the CCP character's attributes or skills, or level up.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - CCP character number
+    ///
+    /// # Returns
+    ///
+    /// Returns 1 if an attribute or skill was raised, or level was increased.
     pub fn ccp_raise(cn: usize) -> i32 {
         let skill_list = [
             crate::core::enums::SK_DAGGER,
@@ -272,12 +338,26 @@ mod real_ccp {
         1
     }
 
+    /// Gets the current level stored in the CCP character's memory.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - CCP character number
+    ///
+    /// # Returns
+    ///
+    /// The current level as an i32.
     fn get_ccp_mem_level(cn: usize) -> i32 {
         let mut lvl = 1;
         get_ccp_mem_mut(cn, |mem| lvl = mem.level);
         lvl
     }
 
+    /// Handles logic when the CCP character gains experience.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - CCP character number
     pub fn ccp_gotexp(cn: usize) {
         let mut dontpanic = 10;
         while dontpanic > 0 && ccp_raise(cn) != 0 {
@@ -285,6 +365,14 @@ mod real_ccp {
         }
     }
 
+    /// Handles messages sent to the CCP character, dispatching to appropriate handlers.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - CCP character number
+    /// * `msg_type` - Message type identifier
+    /// * `dat1` - First data parameter (meaning depends on message type)
+    /// * `_dat2`, `_dat3`, `_dat4` - Unused data parameters
     pub fn ccp_msg(cn: usize, msg_type: i32, dat1: i32, _dat2: i32, _dat3: i32, _dat4: i32) {
         match msg_type {
             crate::core::enums::NT_GOTMISS | crate::core::enums::NT_GOTHIT => {
@@ -296,6 +384,15 @@ mod real_ccp {
         }
     }
 
+    /// Checks if the CCP character is at their recall (temple) point.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - CCP character number
+    ///
+    /// # Returns
+    ///
+    /// `true` if at recall point, `false` otherwise.
     pub fn ccp_at_recall_point(cn: usize) -> bool {
         let (x, y, tx, ty) = Repository::with_characters(|ch| {
             (ch[cn].x, ch[cn].y, ch[cn].temple_x, ch[cn].temple_y)
@@ -303,6 +400,11 @@ mod real_ccp {
         ((x - tx).abs() + (y - ty).abs()) < 5
     }
 
+    /// Moves the CCP character toward the sector with the highest score.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - CCP character number
     pub fn ccp_goto_sector(cn: usize) {
         get_ccp_mem_mut(cn, |mem| {
             let (x, y) = Repository::with_characters(|ch| (ch[cn].x as i32, ch[cn].y as i32));
@@ -361,6 +463,11 @@ mod real_ccp {
         });
     }
 
+    /// Main driver function for CCP character AI logic.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - CCP character number
     pub fn ccp_driver(cn: usize) {
         get_ccp_mem_mut(cn, |mem| {
             let can_recall = Repository::with_characters(|ch| ch[cn].a_hp < ch[cn].hp[5] * 500);

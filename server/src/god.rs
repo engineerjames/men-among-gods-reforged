@@ -1,7 +1,7 @@
 use core::types::{Character, Map};
 
 use crate::{
-    driver_skill,
+    driver,
     effect::EffectManager,
     enums::{CharacterFlags, LogoutReason},
     player,
@@ -13,6 +13,14 @@ use rand::Rng;
 
 pub struct God {}
 impl God {
+    /// Port of `create_item(int template_id)` from `svr_god.cpp`.
+    ///
+    /// Create a new item from the specified template. Returns the newly
+    /// allocated item index on success or `None` if creation failed
+    /// (invalid template, unique-item conflict, or no free slots).
+    ///
+    /// # Arguments
+    /// * `template_id` - Item template identifier
     pub fn create_item(template_id: usize) -> Option<usize> {
         if !core::types::Item::is_sane_item_template(template_id) {
             return None;
@@ -60,6 +68,9 @@ impl God {
     }
 
     // TODO: Optimize this later
+    /// Find a free item slot in the global item array.
+    ///
+    /// Returns `Some(index)` when a free slot is found, otherwise `None`.
     fn get_free_item(items: &[core::types::Item]) -> Option<usize> {
         for i in 1..core::constants::MAXITEM as usize {
             if items[i].used == core::constants::USE_EMPTY {
@@ -70,6 +81,15 @@ impl God {
     }
 
     // Implementation of god_give_char from svr_god.cpp
+    /// Give an existing item instance to a character's inventory.
+    ///
+    /// Performs basic sanity checks and places `item_id` into the first
+    /// available inventory slot of `character_id`. Returns `true` on
+    /// success.
+    ///
+    /// # Arguments
+    /// * `character_id` - Recipient character index
+    /// * `item_id` - Item index to give
     pub fn give_character_item(character_id: usize, item_id: usize) -> bool {
         if !core::types::Item::is_sane_item(item_id) {
             log::error!("Invalid item ID {} when giving item.", item_id);
@@ -114,6 +134,14 @@ impl God {
         })
     }
 
+    /// Manage build mode for a character.
+    ///
+    /// Starts, stops, or equips build-mode resources depending on
+    /// `build_type` and the character's current build state.
+    ///
+    /// # Arguments
+    /// * `character_id` - Character index
+    /// * `build_type` - Build action selector
     pub fn build(character_id: usize, build_type: u32) {
         let (character_is_building, name) = Repository::with_characters(|characters| {
             let character = &characters[character_id];
@@ -132,6 +160,14 @@ impl God {
         }
     }
 
+    /// Equip builder-only items and map flags for a builder character.
+    ///
+    /// Populates the character's temporary item slots with map flags and
+    /// sprite ids used while in build mode.
+    ///
+    /// # Arguments
+    /// * `character_id` - Character index
+    /// * `build_type` - Equipment variant
     pub fn build_equip(character_id: usize, build_type: u32) {
         Repository::with_characters_mut(|characters| {
             let character = &mut characters[character_id];
@@ -440,6 +476,13 @@ impl God {
         })
     }
 
+    /// Start build mode for a character, creating helper companion state.
+    ///
+    /// Allocates a temporary helper character to hold items and prepares the
+    /// player to place map objects. Returns `true` on success.
+    ///
+    /// # Arguments
+    /// * `character_id` - Character entering build mode
     pub fn build_start(character_id: usize) -> bool {
         let companion = Repository::with_characters(|characters| {
             let character = &characters[character_id];
@@ -518,6 +561,12 @@ impl God {
         return true;
     }
 
+    /// Stop build mode and restore player's inventory from the helper.
+    ///
+    /// Transfers items back to the player and cleans up temporary state.
+    ///
+    /// # Arguments
+    /// * `character_id` - Character exiting build mode
     pub fn build_stop(character_id: usize) {
         if !core::types::Character::is_sane_character(character_id) {
             log::error!("Invalid character ID {} in build_stop", character_id);
@@ -617,6 +666,14 @@ impl God {
         });
     }
 
+    /// Transfer a character to exact coordinates `(x, y)` if possible.
+    ///
+    /// Attempts a precise placement and falls back to nearby tiles when the
+    /// target tile is blocked. Returns `true` when the character was placed.
+    ///
+    /// # Arguments
+    /// * `character_id` - Character index
+    /// * `x`, `y` - Target coordinates
     pub fn transfer_char(character_id: usize, x: usize, y: usize) -> bool {
         if !Character::is_sane_character(character_id) || !Map::is_sane_coordinates(x, y) {
             log::error!(
@@ -653,6 +710,13 @@ impl God {
         return false;
     }
 
+    /// Place a character near `(x,y)` using a predefined small offset table.
+    ///
+    /// Tries multiple nearby tiles until a free space is found.
+    ///
+    /// # Arguments
+    /// * `character_id` - Character to place
+    /// * `x`, `y` - Central coordinates
     pub fn drop_char_fuzzy(character_id: usize, x: usize, y: usize) -> bool {
         let positions_to_try: [(usize, usize); 25] = [
             (x + 0, y + 0),
@@ -700,6 +764,14 @@ impl God {
         false
     }
 
+    /// Place a character using a larger fuzzy search around a center point.
+    ///
+    /// Useful when placing characters in crowded or constrained areas.
+    ///
+    /// # Arguments
+    /// * `character_id` - Character to place
+    /// * `x`, `y` - Desired coordinates
+    /// * `center_x`, `center_y` - Center for the larger search pattern
     pub fn drop_char_fuzzy_large(
         character_id: usize,
         x: usize,
@@ -759,6 +831,14 @@ impl God {
         false
     }
 
+    /// Create and initialize a character from a template id.
+    ///
+    /// Allocates a character slot, copies template defaults and optionally
+    /// equips starting items. Returns `Some(index)` on success.
+    ///
+    /// # Arguments
+    /// * `template_id` - Template identifier
+    /// * `with_items` - Whether to populate starting items
     pub fn create_char(template_id: usize, with_items: bool) -> Option<i32> {
         let unused_index = Repository::with_characters(|characters| {
             // TODO: Refactor this into its own function
@@ -951,6 +1031,13 @@ impl God {
         })
     }
 
+    /// Destroy all items owned or carried by `char_id`.
+    ///
+    /// Empties the character's inventory and removes item instances from the
+    /// world, marking slots as free.
+    ///
+    /// # Arguments
+    /// * `char_id` - Character index whose items will be destroyed
     pub fn destroy_items(char_id: usize) {
         if !core::types::Character::is_sane_character(char_id) {
             log::error!("Invalid character ID {} in destroy_items", char_id);
@@ -1028,6 +1115,9 @@ impl God {
         });
     }
 
+    /// Generate a pseudo-random name from syllable tables.
+    ///
+    /// Used for NPCs and temporary characters created by the server.
     pub fn randomly_generate_name() -> String {
         let syl1 = [
             "thi", "ar", "an", "un", "iss", "ish", "urs", "ur", "ent", "esh", "ash", "jey", "jay",
@@ -1067,6 +1157,13 @@ impl God {
         name
     }
 
+    /// Remove `item_id` from character `cn` and drop it onto their map tile.
+    ///
+    /// Returns `true` on success.
+    ///
+    /// # Arguments
+    /// * `item_id` - Item index to take
+    /// * `cn` - Character index from which to remove the item
     pub fn take_from_char(item_id: usize, cn: usize) -> bool {
         if !core::types::Item::is_sane_item(item_id) {
             return false;
@@ -1124,6 +1221,13 @@ impl God {
         })
     }
 
+    /// Drop an item at the given coordinates `x,y` on the map.
+    ///
+    /// Performs sanity checks and writes the item id to the map tile.
+    ///
+    /// # Arguments
+    /// * `item_id` - Item instance index
+    /// * `x`, `y` - Target map coordinates
     pub fn drop_item(item_id: usize, x: usize, y: usize) -> bool {
         if !Map::is_sane_coordinates(x, y) {
             return false;
@@ -1174,6 +1278,13 @@ impl God {
         true
     }
 
+    /// Place a character at the exact tile `(x,y)` if it is a valid move.
+    ///
+    /// Performs map validation and updates the character's position state.
+    ///
+    /// # Arguments
+    /// * `character_id` - Character to place
+    /// * `x`, `y` - Tile coordinates
     pub fn drop_char(character_id: usize, x: usize, y: usize) -> bool {
         if !Map::is_sane_coordinates(x, y) {
             return false;
@@ -1216,6 +1327,14 @@ impl God {
         true
     }
 
+    /// Change the password for character `co` as requested by `cn`.
+    ///
+    /// Validates permission and updates the stored password fields.
+    ///
+    /// # Arguments
+    /// * `cn` - Requesting character
+    /// * `co` - Target character
+    /// * `pass` - New password string
     pub fn change_pass(cn: usize, co: usize, pass: &str) -> i32 {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return 0;
@@ -1256,6 +1375,11 @@ impl God {
 
     // This function is unused in the original implementation
     #[allow(dead_code)]
+    /// Remove an item from a character's inventory (unused helper).
+    ///
+    /// # Arguments
+    /// * `cn` - Character index
+    /// * `item_id` - Item index to remove
     pub fn remove_item(cn: usize, item_id: usize) -> i32 {
         if !Character::is_sane_character(cn) || !core::types::Item::is_sane_item(item_id) {
             return 0;
@@ -1292,6 +1416,13 @@ impl God {
         })
     }
 
+    /// Attempt to drop an item near `(x,y)` using a small search pattern.
+    ///
+    /// Useful when the exact tile is blocked.
+    ///
+    /// # Arguments
+    /// * `nr` - Item id
+    /// * `x`, `y` - Central coordinates
     pub fn drop_item_fuzzy(nr: usize, x: usize, y: usize) -> bool {
         let positions_to_try: [(usize, usize); 25] = [
             (x + 0, y + 0),
@@ -1330,6 +1461,14 @@ impl God {
         false
     }
 
+    /// Teleport `co` to coordinates parsed from `cx`/`cy` at the request of `cn`.
+    ///
+    /// Parses the coordinate strings and delegates to transfer logic.
+    ///
+    /// # Arguments
+    /// * `cn` - Requesting character
+    /// * `co` - Target character
+    /// * `cx`, `cy` - Coordinate strings
     pub fn goto(cn: usize, co: usize, cx: &str, cy: &str) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
@@ -1382,6 +1521,14 @@ impl God {
         });
     }
 
+    /// Show comprehensive information about character `co` to `cn`.
+    ///
+    /// Mirrors the admin `info` command, revealing attributes, positions,
+    /// flags and privileged data depending on caller permissions.
+    ///
+    /// # Arguments
+    /// * `cn` - Requesting character
+    /// * `co` - Target character
     pub fn info(cn: usize, co: usize) {
         if !Character::is_sane_character(cn) {
             return;
@@ -1420,7 +1567,7 @@ impl God {
         }
 
         // Print detailed character info via char_info first (matches C++ flow)
-        driver_skill::char_info(cn, co);
+        driver::char_info(cn, co);
 
         // cnum_str: only visible to IMP/USURP
         let cnum_str = Repository::with_characters(|ch| {
@@ -1732,6 +1879,11 @@ impl God {
         }
     }
 
+    /// Inspect a concrete item instance and display details to `cn`.
+    ///
+    /// # Arguments
+    /// * `cn` - Requesting character
+    /// * `item_index` - Item instance index
     pub fn iinfo(cn: usize, item_index: usize) {
         if !Character::is_sane_character(cn) || !core::types::Item::is_sane_item(item_index) {
             return;
@@ -1760,6 +1912,11 @@ impl God {
         });
     }
 
+    /// Inspect an item template and display its fields to `cn`.
+    ///
+    /// # Arguments
+    /// * `cn` - Requesting character
+    /// * `template` - Item template id
     pub fn tinfo(cn: usize, template: usize) {
         if !Character::is_sane_character(cn) || !core::types::Item::is_sane_item_template(template)
         {
@@ -1785,6 +1942,10 @@ impl God {
         });
     }
 
+    /// List or check unique items on the server for admin inspection.
+    ///
+    /// # Arguments
+    /// * `cn` - Requesting character
     pub fn unique(cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
@@ -1812,6 +1973,12 @@ impl God {
         });
     }
 
+    /// Produce a 'who' listing visible to `cn`.
+    ///
+    /// Formatting and visibility respects flags and privacy levels.
+    ///
+    /// # Arguments
+    /// * `cn` - Requesting character
     pub fn who(cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
@@ -1846,6 +2013,10 @@ impl God {
         });
     }
 
+    /// Show implemented admin commands or privileges.
+    ///
+    /// # Arguments
+    /// * `cn` - Requesting character
     pub fn implist(cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
@@ -1878,6 +2049,10 @@ impl God {
         });
     }
 
+    /// Show a compact user 'who' listing to `cn` (counts/brief data).
+    ///
+    /// # Arguments
+    /// * `cn` - Requesting character
     pub fn user_who(cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
@@ -1911,6 +2086,10 @@ impl God {
         });
     }
 
+    /// Display a simple top-players leaderboard to `cn`.
+    ///
+    /// # Arguments
+    /// * `cn` - Requesting character
     pub fn top(cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
@@ -1941,6 +2120,13 @@ impl God {
         });
     }
 
+    /// Admin create item command: spawn item template `x` for `cn`.
+    ///
+    /// Attempts to create from template and deliver it to the caller.
+    ///
+    /// # Arguments
+    /// * `cn` - Requesting character
+    /// * `x` - Template id
     pub fn create(cn: usize, x: i32) {
         if !Character::is_sane_character(cn) {
             return;
@@ -1977,6 +2163,14 @@ impl God {
         }
     }
 
+    /// Find the next character matching the given specs starting at index.
+    ///
+    /// Used by admin search utilities to resolve partial names or rank
+    /// specifiers.
+    ///
+    /// # Arguments
+    /// * `start_index` - Index to start the search from
+    /// * `spec1`, `spec2` - Match specifications
     pub fn find_next_char(start_index: usize, spec1: &str, spec2: &str) -> i32 {
         Repository::with_characters(|characters| {
             for i in start_index..core::constants::MAXCHARS as usize {
@@ -2012,6 +2206,14 @@ impl God {
         })
     }
 
+    /// Determine effective invisibility level between `looker` and `target`.
+    ///
+    /// Returns an integer representing the invisibility relationship used
+    /// for access checks and hiding positional data.
+    ///
+    /// # Arguments
+    /// * `looker` - Character performing the check
+    /// * `target` - Target character
     pub fn invis(looker: usize, target: usize) -> i32 {
         if !Character::is_sane_character(looker) || !Character::is_sane_character(target) {
             return 1;
@@ -2033,6 +2235,13 @@ impl God {
         })
     }
 
+    /// Summon another character to the caller's location.
+    ///
+    /// Supports direct numeric summon or name/rank based lookup.
+    ///
+    /// # Arguments
+    /// * `cn` - Summoning character
+    /// * `spec1`, `spec2`, `spec3` - Summon parameters
     pub fn summon(cn: usize, spec1: &str, spec2: &str, spec3: &str) {
         if !Character::is_sane_character(cn) {
             return;
@@ -2248,6 +2457,13 @@ impl God {
         log::info!("IMP: summoned character {}.", co);
     }
 
+    /// Create a temporary mirror copy of a target character for inspection.
+    ///
+    /// Duplicates attributes into a new temporary character instance.
+    ///
+    /// # Arguments
+    /// * `cn` - Requesting character
+    /// * `spec1`, `spec2` - Mirror parameters
     pub fn mirror(cn: usize, spec1: &str, spec2: &str) {
         if !Character::is_sane_character(cn) {
             return;
@@ -2423,6 +2639,13 @@ impl God {
         });
     }
 
+    /// Create a thrall (controlled NPC) bound to the caller.
+    ///
+    /// Returns the thrall character index or 0 on failure.
+    ///
+    /// # Arguments
+    /// * `cn` - Requesting character
+    /// * `spec1`, `spec2` - Target and options
     pub fn thrall(cn: usize, spec1: &str, spec2: &str) -> i32 {
         if !Character::is_sane_character(cn) {
             return 0;
@@ -2693,6 +2916,10 @@ impl God {
         })
     }
 
+    /// Place a character in tavern mode (special safe area/status).
+    ///
+    /// # Arguments
+    /// * `cn` - Target character
     pub fn tavern(cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
@@ -2715,6 +2942,14 @@ impl God {
         });
     }
 
+    /// Raise an attribute/stat for a target character by `value` steps.
+    ///
+    /// Admin command used to adjust character stats.
+    ///
+    /// # Arguments
+    /// * `cn` - Requesting character
+    /// * `co` - Target character
+    /// * `value` - Increase amount
     pub fn raise_char(cn: usize, co: usize, value: i32) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
@@ -2755,6 +2990,14 @@ impl God {
         });
     }
 
+    /// Lower an attribute/stat for a target character by `value` steps.
+    ///
+    /// Admin command used to adjust character stats downward.
+    ///
+    /// # Arguments
+    /// * `cn` - Requesting character
+    /// * `co` - Target character
+    /// * `value` - Decrease amount
     pub fn lower_char(cn: usize, co: usize, value: i32) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
@@ -2795,6 +3038,15 @@ impl God {
         });
     }
 
+    /// Add gold/silver to a character's coin purse.
+    ///
+    /// `value` is the gold amount; `silver` can add extra silver pieces.
+    ///
+    /// # Arguments
+    /// * `cn` - Requesting character
+    /// * `co` - Recipient character
+    /// * `value` - Gold amount
+    /// * `silver` - Silver amount
     pub fn gold_char(cn: usize, co: usize, value: i32, silver: i32) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
@@ -2826,6 +3078,15 @@ impl God {
         });
     }
 
+    /// Permanently erase a character or NPC from the world.
+    ///
+    /// With `erase_player` set, player accounts may be removed; safety
+    /// checks prevent accidental deletion of important characters.
+    ///
+    /// # Arguments
+    /// * `cn` - Requesting character
+    /// * `co` - Target character
+    /// * `erase_player` - If non-zero, allow player erasure
     pub fn erase(cn: usize, co: usize, erase_player: i32) {
         if co == 0 {
             State::with(|state| {
@@ -2943,6 +3204,14 @@ impl God {
         }
     }
 
+    /// Kick a character from the server (mark as kicked and perform cleanup).
+    ///
+    /// Administrative action that ensures the target is disconnected and
+    /// flagged appropriately.
+    ///
+    /// # Arguments
+    /// * `cn` - Requesting character
+    /// * `co` - Target character to kick
     pub fn kick(cn: usize, co: usize) {
         // Check co == 0
         if co == 0 {
@@ -3010,6 +3279,15 @@ impl God {
         });
     }
 
+    /// Set a specific skill value for target character `co`.
+    ///
+    /// Validates the skill index and clamps the value before assignment.
+    ///
+    /// # Arguments
+    /// * `cn` - Requesting character
+    /// * `co` - Target character
+    /// * `n` - Skill index
+    /// * `val` - New skill value
     pub fn skill(cn: usize, co: usize, n: i32, val: i32) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
@@ -3049,6 +3327,14 @@ impl God {
         });
     }
 
+    /// Donate an item to one of the server's donation locations.
+    ///
+    /// Drops the item at the configured temple coordinates; `place` selects
+    /// which temple to use.
+    ///
+    /// # Arguments
+    /// * `item_id` - Item instance index
+    /// * `place` - Donation site selector
     pub fn donate_item(item_id: usize, place: i32) {
         // Donation locations:
         // Temple of Skua: (497, 512)
@@ -3081,6 +3367,10 @@ impl God {
         }
     }
 
+    /// Set raw flag bits on a target character.
+    ///
+    /// Administrative helper to OR the provided `flag` into the target's
+    /// flag field.
     pub fn set_flag(cn: usize, co: usize, flag: u64) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
@@ -3118,6 +3408,9 @@ impl God {
         });
     }
 
+    /// Set a global server flag (admin operation).
+    ///
+    /// Modifies server-level flags used to enable or disable features.
     pub fn set_gflag(cn: usize, flag: i32) {
         if !Character::is_sane_character(cn) {
             return;
@@ -3148,6 +3441,9 @@ impl God {
         });
     }
 
+    /// Toggle the purple (privileged) status for a character.
+    ///
+    /// Grants or removes purple display/privileges from `co`.
     pub fn set_purple(cn: usize, co: usize) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
@@ -3184,6 +3480,9 @@ impl God {
         });
     }
 
+    /// Change the race/template of character `co` to `temp`.
+    ///
+    /// Applies template defaults and may reconfigure stats and equipment.
     pub fn racechange(co: usize, temp: i32) {
         if !Character::is_sane_character(co) {
             return;
@@ -3257,6 +3556,9 @@ impl God {
         });
     }
 
+    /// Save character `co` to persistent storage.
+    ///
+    /// Returns `1` on success and performs necessary write operations.
     pub fn save(cn: usize, co: usize) -> i32 {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return 0;
@@ -3289,6 +3591,7 @@ impl God {
 
     // TODO: Implement actual mail logic
     #[allow(dead_code)]
+    /// Placeholder for mail-related password operations.
     pub fn mail_pass(cn: usize, co: usize) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
@@ -3308,6 +3611,7 @@ impl God {
         });
     }
 
+    /// Command to make `co` perform a slap animation (cosmetic/admin).
     pub fn slap(cn: usize, co: usize) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
@@ -3336,6 +3640,9 @@ impl God {
         });
     }
 
+    /// Change a character's sprite id.
+    ///
+    /// Performs validation of the sprite id before updating the character.
     pub fn spritechange(cn: usize, co: usize, sprite: i32) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
@@ -3371,6 +3678,7 @@ impl God {
         });
     }
 
+    /// Adjust the `luck` stat for a character.
     pub fn luck(cn: usize, co: usize, value: i32) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
@@ -3393,6 +3701,7 @@ impl God {
         });
     }
 
+    /// Reset a character's description to a blank/default value.
     pub fn reset_description(cn: usize, co: usize) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
@@ -3424,6 +3733,9 @@ impl God {
         });
     }
 
+    /// Set or change the visible name of a character, with validation.
+    ///
+    /// Ensures the new name meets length and character constraints.
     pub fn set_name(cn: usize, co: usize, name: &str) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
@@ -3461,6 +3773,13 @@ impl God {
         });
     }
 
+    /// Usurp an NPC: take control of its slot as an admin operation.
+    ///
+    /// Transfers the caller into the NPC slot and preserves relevant state.
+    ///
+    /// # Arguments
+    /// * `cn` - Requesting character
+    /// * `co` - NPC to usurp
     pub fn usurp(cn: usize, co: usize) {
         // Check co == 0
         if co == 0 {
@@ -3565,6 +3884,10 @@ impl God {
         });
     }
 
+    /// Exit usurpation mode and restore the original player character.
+    ///
+    /// # Arguments
+    /// * `cn` - Character exiting usurp mode
     pub fn exit_usurp(cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
@@ -3609,6 +3932,7 @@ impl God {
         });
     }
 
+    /// Spawn a Grolm NPC near the caller for testing or event purposes.
     pub fn grolm(cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
@@ -3631,6 +3955,7 @@ impl God {
         }
     }
 
+    /// Show internal debug/state information for the Grolm NPC.
     pub fn grolm_info(cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
@@ -3692,6 +4017,7 @@ impl God {
         });
     }
 
+    /// Start scripted movement or behaviour for the Grolm NPC.
     pub fn grolm_start(cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
@@ -3743,6 +4069,7 @@ impl God {
         });
     }
 
+    /// Spawn a Gargoyle NPC near the caller for testing or event purposes.
     pub fn gargoyle(cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
@@ -3765,6 +4092,8 @@ impl God {
         }
     }
 
+    /// Perform a minor race/template change on the caller while preserving
+    /// key attributes.
     pub fn minor_racechange(cn: usize, temp: i32) {
         if !Character::is_sane_character(cn) {
             return;
@@ -3861,6 +4190,14 @@ impl God {
         });
     }
 
+    /// Force a target to say text as if they had typed it.
+    ///
+    /// Administrative command used to make NPCs or players speak.
+    ///
+    /// # Arguments
+    /// * `cn` - Requesting character
+    /// * `whom` - Target specification
+    /// * `text` - Text to force
     pub fn force(cn: usize, whom: &str, text: &str) {
         // Check cn <= 0
         if cn == 0 {
@@ -3956,6 +4293,10 @@ impl God {
         });
     }
 
+    /// Check whether an IP address is present in the ban list.
+    ///
+    /// # Arguments
+    /// * `addr` - IPv4 address as integer
     pub fn is_banned(addr: i32) -> bool {
         let addr = addr as u32;
 
@@ -3969,6 +4310,9 @@ impl God {
         })
     }
 
+    /// Add a single ban entry for a specific address.
+    ///
+    /// Records the issuer `cn` and optionally the victim `co`.
     pub fn add_single_ban(cn: usize, co: usize, addr: u32) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
@@ -4006,6 +4350,7 @@ impl God {
         });
     }
 
+    /// Ban the current address of the target character `co`.
     pub fn add_ban(cn: usize, co: usize) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
@@ -4018,6 +4363,7 @@ impl God {
         Self::add_single_ban(cn, co, addr);
     }
 
+    /// Delete a ban list entry by its index `nr`.
     pub fn del_ban(cn: usize, nr: usize) {
         if !Character::is_sane_character(cn) {
             return;
@@ -4047,6 +4393,7 @@ impl God {
         });
     }
 
+    /// List all active ban entries to the requesting character.
     pub fn list_ban(cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
@@ -4076,6 +4423,7 @@ impl God {
         });
     }
 
+    /// Mute a character `co` so they cannot speak publicly.
     pub fn shutup(cn: usize, co: usize) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
