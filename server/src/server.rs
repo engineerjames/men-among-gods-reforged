@@ -24,7 +24,7 @@ static PLAYERS: OnceLock<ReentrantMutex<UnsafeCell<Box<[core::types::ServerPlaye
     OnceLock::new();
 
 // TICK constant - microseconds per tick (matching C++ TICK value)
-const TICK: u64 = 40000; // 40ms per tick
+const TICK: u64 = 1_000_000 / TICKS; // 40ms per tick
 const TICKS: u64 = 25; // ticks per second
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -39,6 +39,8 @@ enum CharacterTickState {
 pub struct Server {
     sock: Option<TcpListener>,
     last_tick_time: Option<Instant>,
+    tick_counter: u64,
+    last_rate_instant: Instant,
 }
 
 impl Server {
@@ -46,6 +48,8 @@ impl Server {
         Server {
             sock: None,
             last_tick_time: None,
+            tick_counter: 0,
+            last_rate_instant: Instant::now(),
         }
     }
 
@@ -265,6 +269,20 @@ impl Server {
     }
 
     fn game_tick(&mut self) {
+        // Track actual tick rate and log every 5 seconds
+        self.tick_counter = self.tick_counter.wrapping_add(1);
+        let now_rate = Instant::now();
+        let rate_interval = Duration::from_secs(5);
+        if now_rate.duration_since(self.last_rate_instant) >= rate_interval {
+            let elapsed = now_rate
+                .duration_since(self.last_rate_instant)
+                .as_secs_f64();
+            let measured = (self.tick_counter as f64) / elapsed;
+            log::info!("Tick rate: {:.2} tps (expected: {} tps)", measured, TICKS);
+            self.tick_counter = 0;
+            self.last_rate_instant = now_rate;
+        }
+
         // Get current hour for statistics
         let hour = chrono::Local::now().hour() as usize;
 

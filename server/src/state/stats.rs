@@ -868,7 +868,9 @@ impl State {
             } else {
                 // Temporary spell - decrement timer
                 Repository::with_items_mut(|items| {
-                    items[spell_item as usize].active -= 1;
+                    if items[spell_item as usize].active > 0 {
+                        items[spell_item as usize].active -= 1;
+                    }
                 });
 
                 let active = Repository::with_items(|items| items[spell_item as usize].active);
