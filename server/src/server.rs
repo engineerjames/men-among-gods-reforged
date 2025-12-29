@@ -5,7 +5,7 @@ use std::io::ErrorKind;
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::sync::{OnceLock, RwLock};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::effect::EffectManager;
 use crate::enums::CharacterFlags;
@@ -115,8 +115,8 @@ impl Server {
         self.sock = Some(listener);
         log::info!("Socket bound to port 5555");
 
+        // Repository is already initialized at this point (currently)
         Server::initialize_players()?;
-        Repository::initialize()?;
         State::initialize()?;
         NetworkManager::initialize()?;
 
@@ -266,12 +266,6 @@ impl Server {
         });
 
         let ticker = Repository::with_globals(|globals| globals.ticker);
-
-        // Periodically save characters (every 32 ticks)
-        if (ticker & 31) == 0 {
-            let char_idx = (ticker as usize) % core::constants::MAXCHARS;
-            populate::pop_save_char(char_idx);
-        }
 
         // Send tick to players and count online
         let mut online = 0;
@@ -567,9 +561,8 @@ impl Server {
         })
     }
 
-    fn check_expire(&self, _cn: usize) {
+    fn check_expire(&self, cn: usize) {
         // Check character expiration similar to the original C++ logic.
-        use std::time::{SystemTime, UNIX_EPOCH};
 
         let week: i64 = 60 * 60 * 24 * 7;
         let day: i64 = 60 * 60 * 24;
@@ -581,8 +574,8 @@ impl Server {
 
         // Grab relevant fields for decision without holding a mutable lock
         let (points_tot, login_date) = Repository::with_characters(|ch| {
-            let pts = ch[_cn].points_tot;
-            let ld = ch[_cn].login_date;
+            let pts = ch[cn].points_tot;
+            let ld = ch[cn].login_date;
             (pts, ld)
         });
 
@@ -616,22 +609,22 @@ impl Server {
             // Log and mark the character as unused. Detailed item cleanup
             // (god_destroy_items) should be implemented elsewhere if needed.
             Repository::with_characters_mut(|ch| {
-                let total_exp = ch[_cn].points_tot;
+                let total_exp = ch[cn].points_tot;
                 log::info!(
                     "erased player {}, {} exp",
-                    String::from_utf8_lossy(&ch[_cn].name),
+                    String::from_utf8_lossy(&ch[cn].name),
                     total_exp,
                 );
-                ch[_cn].used = core::constants::USE_EMPTY;
+                ch[cn].used = core::constants::USE_EMPTY;
             });
         }
     }
 
-    fn check_valid(&self, _cn: usize) -> bool {
+    fn check_valid(&self, cn: usize) -> bool {
         // Full validation ported from the original C++ check_valid
 
         // Bounds check
-        let (x, y) = Repository::with_characters(|ch| (ch[_cn].x, ch[_cn].y));
+        let (x, y) = Repository::with_characters(|ch| (ch[cn].x, ch[cn].y));
         if x < 1
             || y < 1
             || x > (core::constants::SERVER_MAPX as i16 - 2)
@@ -640,12 +633,12 @@ impl Server {
             Repository::with_characters_mut(|ch| {
                 log::warn!(
                     "Killed character {} ({}) for invalid data",
-                    String::from_utf8_lossy(&ch[_cn].name),
-                    _cn
+                    String::from_utf8_lossy(&ch[cn].name),
+                    cn
                 );
                 // Best-effort: destroy carried items and mark as unused
-                God::destroy_items(_cn);
-                ch[_cn].used = core::constants::USE_EMPTY;
+                God::destroy_items(cn);
+                ch[cn].used = core::constants::USE_EMPTY;
             });
             return false;
         }
@@ -653,41 +646,41 @@ impl Server {
         // Map consistency check: map[n].ch should point to this character
         let map_idx = (x as usize) + (y as usize) * core::constants::SERVER_MAPX as usize;
         let map_ch = Repository::with_map(|map| map[map_idx].ch as usize);
-        if map_ch != _cn {
+        if map_ch != cn {
             Repository::with_characters(|ch| {
                 log::warn!(
                     "Not on map (map has {}), fixing char {} at {}",
                     map_ch,
-                    _cn,
-                    ch[_cn].get_name()
+                    cn,
+                    ch[cn].get_name()
                 );
             });
 
             if map_ch != 0 {
                 // Try to drop character items near their position as in original
                 let (cx, cy) =
-                    Repository::with_characters(|ch| (ch[_cn].x as usize, ch[_cn].y as usize));
-                if !God::drop_char_fuzzy_large(_cn, cx, cy, cx, cy) {
+                    Repository::with_characters(|ch| (ch[cn].x as usize, ch[cn].y as usize));
+                if !God::drop_char_fuzzy_large(cn, cx, cy, cx, cy) {
                     // couldn't drop items; leave as-is (original tried a few options)
                 }
             } else {
                 // claim the map tile for this character
-                Repository::with_map_mut(|map| map[map_idx].ch = _cn as u32);
+                Repository::with_map_mut(|map| map[map_idx].ch = cn as u32);
             }
         }
 
         // If character is in build mode accept validity
-        let is_building = Repository::with_characters(|ch| ch[_cn].is_building());
+        let is_building = Repository::with_characters(|ch| ch[cn].is_building());
         if is_building {
             return true;
         }
 
         // Validate carried items (inventory)
         for slot in 0..40 {
-            let in_id = Repository::with_characters(|ch| ch[_cn].item[slot] as usize);
+            let in_id = Repository::with_characters(|ch| ch[cn].item[slot] as usize);
             if in_id != 0 {
                 let bad = Repository::with_items(|it| {
-                    it[in_id].carried as usize != _cn
+                    it[in_id].carried as usize != cn
                         || it[in_id].used != core::constants::USE_ACTIVE
                 });
                 if bad {
@@ -698,11 +691,11 @@ impl Server {
                                 in_id,
                                 it[in_id].get_name(),
                                 it[in_id].used,
-                                _cn,
-                                String::from_utf8_lossy(&ch[_cn].name)
+                                cn,
+                                String::from_utf8_lossy(&ch[cn].name)
                             );
                         });
-                        ch[_cn].item[slot] = 0;
+                        ch[cn].item[slot] = 0;
                     });
                 }
             }
@@ -710,10 +703,10 @@ impl Server {
 
         // Validate depot items
         for slot in 0..62 {
-            let in_id = Repository::with_characters(|ch| ch[_cn].depot[slot] as usize);
+            let in_id = Repository::with_characters(|ch| ch[cn].depot[slot] as usize);
             if in_id != 0 {
                 let bad = Repository::with_items(|it| {
-                    it[in_id].carried as usize != _cn
+                    it[in_id].carried as usize != cn
                         || it[in_id].used != core::constants::USE_ACTIVE
                 });
                 if bad {
@@ -724,11 +717,11 @@ impl Server {
                                 in_id,
                                 it[in_id].get_name(),
                                 it[in_id].used,
-                                _cn,
-                                String::from_utf8_lossy(&ch[_cn].name)
+                                cn,
+                                String::from_utf8_lossy(&ch[cn].name)
                             );
                         });
-                        ch[_cn].depot[slot] = 0;
+                        ch[cn].depot[slot] = 0;
                     });
                 }
             }
@@ -736,10 +729,10 @@ impl Server {
 
         // Validate worn and spell items
         for slot in 0..20 {
-            let worn_id = Repository::with_characters(|ch| ch[_cn].worn[slot] as usize);
+            let worn_id = Repository::with_characters(|ch| ch[cn].worn[slot] as usize);
             if worn_id != 0 {
                 let bad = Repository::with_items(|it| {
-                    it[worn_id].carried as usize != _cn
+                    it[worn_id].carried as usize != cn
                         || it[worn_id].used != core::constants::USE_ACTIVE
                 });
                 if bad {
@@ -750,19 +743,19 @@ impl Server {
                                 worn_id,
                                 it[worn_id].get_name(),
                                 it[worn_id].used,
-                                _cn,
-                                String::from_utf8_lossy(&ch[_cn].name)
+                                cn,
+                                String::from_utf8_lossy(&ch[cn].name)
                             );
                         });
-                        ch[_cn].worn[slot] = 0;
+                        ch[cn].worn[slot] = 0;
                     });
                 }
             }
 
-            let spell_id = Repository::with_characters(|ch| ch[_cn].spell[slot] as usize);
+            let spell_id = Repository::with_characters(|ch| ch[cn].spell[slot] as usize);
             if spell_id != 0 {
                 let bad = Repository::with_items(|it| {
-                    it[spell_id].carried as usize != _cn
+                    it[spell_id].carried as usize != cn
                         || it[spell_id].used != core::constants::USE_ACTIVE
                 });
                 if bad {
@@ -773,11 +766,11 @@ impl Server {
                                 spell_id,
                                 it[spell_id].get_name(),
                                 it[spell_id].used,
-                                _cn,
-                                String::from_utf8_lossy(&ch[_cn].name)
+                                cn,
+                                String::from_utf8_lossy(&ch[cn].name)
                             );
                         });
-                        ch[_cn].spell[slot] = 0;
+                        ch[cn].spell[slot] = 0;
                     });
                 }
             }
@@ -785,17 +778,17 @@ impl Server {
 
         // If stoned and not a player, verify the stoned target is valid
         let is_stoned_nonplayer = Repository::with_characters(|ch| {
-            (ch[_cn].flags & crate::enums::CharacterFlags::Stoned.bits()) != 0
-                && (ch[_cn].flags & crate::enums::CharacterFlags::Player.bits()) == 0
+            (ch[cn].flags & crate::enums::CharacterFlags::Stoned.bits()) != 0
+                && (ch[cn].flags & crate::enums::CharacterFlags::Player.bits()) == 0
         });
         if is_stoned_nonplayer {
-            let co = Repository::with_characters(|ch| ch[_cn].data[63] as usize);
+            let co = Repository::with_characters(|ch| ch[cn].data[63] as usize);
             let ok = Repository::with_characters(|ch| {
                 co != 0 && ch[co].used == core::constants::USE_ACTIVE
             });
             if !ok {
                 Repository::with_characters_mut(|ch| {
-                    ch[_cn].flags &= !crate::enums::CharacterFlags::Stoned.bits();
+                    ch[cn].flags &= !crate::enums::CharacterFlags::Stoned.bits();
                     log::info!("oops, stoned removed");
                 });
             }
@@ -932,8 +925,6 @@ impl Server {
     }
 
     fn compress_ticks(&mut self) {
-        use std::io::Write;
-
         // For each connected player, compress their tick buffer (`tbuf`) if worthwhile
         Server::with_players_mut(|players| {
             for n in 1..players.len() {
@@ -1192,9 +1183,9 @@ impl Server {
         });
     }
 
-    fn send_player(&self, _player_idx: usize) {
+    fn send_player(&self, player_idx: usize) {
         // Send pending data from player's output buffer to their socket.
-        let idx = _player_idx;
+        let idx = player_idx;
         Server::with_players_mut(|players| {
             if idx >= players.len() {
                 return;

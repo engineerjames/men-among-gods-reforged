@@ -1,47 +1,59 @@
-use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::{OnceLock, RwLock};
+use std::{env, fs};
 
 // TODO: Currently this only reads data files into memory.
 // So if you close down the server and restart, any changes made during runtime will be lost.
 // In the future, we will want to implement saving changes back to the data files.
 
-static REPOSITORY: OnceLock<RwLock<Repository>> = OnceLock::new();
+static REPOSITORY: OnceLock<RwLock<Box<Repository>>> = OnceLock::new();
 
 // Contains the data repository for the server
 pub struct Repository {
-    map: [core::types::Map;
-        core::constants::SERVER_MAPX as usize * core::constants::SERVER_MAPY as usize],
-    items: [core::types::Item; core::constants::MAXITEM as usize],
-    item_templates: [core::types::Item; core::constants::MAXTITEM as usize],
-    characters: [core::types::Character; core::constants::MAXCHARS as usize],
-    character_templates: [core::types::Character; core::constants::MAXTCHARS as usize],
-    effects: [core::types::Effect; core::constants::MAXEFFECT as usize],
+    map: Vec<core::types::Map>,
+    items: Vec<core::types::Item>,
+    item_templates: Vec<core::types::Item>,
+    characters: Vec<core::types::Character>,
+    character_templates: Vec<core::types::Character>,
+    effects: Vec<core::types::Effect>,
     globals: core::types::Global,
-    see_map: [core::types::SeeMap; core::constants::MAXCHARS as usize],
+    see_map: Vec<core::types::SeeMap>,
     bad_names: Vec<String>,
     bad_words: Vec<String>,
     message_of_the_day: String,
     ban_list: Vec<core::types::Ban>,
+    executable_path: String,
 }
 
 impl Repository {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             // TODO: Evaluate how we can prevent accidental copying of any of these types...
-            map: [core::types::Map::default();
-                core::constants::SERVER_MAPX as usize * core::constants::SERVER_MAPY as usize],
-            items: [core::types::Item::default(); core::constants::MAXITEM as usize],
-            item_templates: [core::types::Item::default(); core::constants::MAXTITEM as usize],
-            characters: [core::types::Character::default(); core::constants::MAXCHARS as usize],
-            character_templates: [core::types::Character::default();
-                core::constants::MAXTCHARS as usize],
-            effects: [core::types::Effect::default(); core::constants::MAXEFFECT as usize],
+            map: vec![
+                core::types::Map::default();
+                core::constants::SERVER_MAPX as usize * core::constants::SERVER_MAPY as usize
+            ],
+            items: vec![core::types::Item::default(); core::constants::MAXITEM as usize],
+            item_templates: vec![core::types::Item::default(); core::constants::MAXTITEM as usize],
+            characters: vec![core::types::Character::default(); core::constants::MAXCHARS as usize],
+            character_templates: vec![
+                core::types::Character::default();
+                core::constants::MAXTCHARS as usize
+            ],
+            effects: vec![core::types::Effect::default(); core::constants::MAXEFFECT as usize],
             globals: core::types::Global::default(),
-            see_map: [core::types::SeeMap::default(); core::constants::MAXCHARS as usize],
+            see_map: vec![core::types::SeeMap::default(); core::constants::MAXCHARS as usize],
             bad_names: Vec::new(),
             bad_words: Vec::new(),
             message_of_the_day: String::new(),
             ban_list: Vec::new(),
+            executable_path: match env::current_exe() {
+                Ok(exe_path) => exe_path.to_string_lossy().to_string(),
+                Err(e) => {
+                    log::error!("Failed to get executable path: {}", e);
+                    String::new()
+                }
+            },
         }
     }
     pub fn load(&mut self) -> Result<(), String> {
@@ -59,9 +71,22 @@ impl Repository {
         Ok(())
     }
 
+    fn get_dat_file_path(&self, file_name: &str) -> PathBuf {
+        let exe_path = Path::new(&self.executable_path);
+
+        let full_path = exe_path
+            .parent()
+            .unwrap_or_else(|| Path::new(""))
+            .join(".dat")
+            .join(file_name);
+
+        return full_path;
+    }
+
     fn load_map(&mut self) -> Result<(), String> {
-        log::info!("Loading map data...");
-        let map_data = fs::read(".dat/map.dat").map_err(|e| e.to_string())?;
+        let map_path = self.get_dat_file_path("map.dat");
+        log::info!("Loading map data from {:?}", map_path);
+        let map_data = fs::read(&map_path).map_err(|e| e.to_string())?;
 
         let expected_map_size = core::constants::SERVER_MAPX as usize
             * core::constants::SERVER_MAPY as usize
@@ -333,7 +358,7 @@ impl Repository {
 
     // Initialize the global repository
     pub fn initialize() -> Result<(), String> {
-        let mut repo = Repository::new();
+        let mut repo = Box::new(Repository::new());
         repo.load()?;
         REPOSITORY
             .set(RwLock::new(repo))
@@ -351,7 +376,7 @@ impl Repository {
             .expect("Repository not initialized")
             .read()
             .unwrap();
-        f(&repo.map)
+        f(&repo.map[..])
     }
 
     pub fn with_items<F, R>(f: F) -> R
@@ -363,7 +388,7 @@ impl Repository {
             .expect("Repository not initialized")
             .read()
             .unwrap();
-        f(&repo.items)
+        f(&repo.items[..])
     }
 
     pub fn with_item_templates<F, R>(f: F) -> R
@@ -375,7 +400,7 @@ impl Repository {
             .expect("Repository not initialized")
             .read()
             .unwrap();
-        f(&repo.item_templates)
+        f(&repo.item_templates[..])
     }
 
     pub fn with_characters<F, R>(f: F) -> R
@@ -387,7 +412,7 @@ impl Repository {
             .expect("Repository not initialized")
             .read()
             .unwrap();
-        f(&repo.characters)
+        f(&repo.characters[..])
     }
 
     pub fn with_effects<F, R>(f: F) -> R
@@ -399,7 +424,7 @@ impl Repository {
             .expect("Repository not initialized")
             .read()
             .unwrap();
-        f(&repo.effects)
+        f(&repo.effects[..])
     }
 
     pub fn with_globals<F, R>(f: F) -> R
@@ -425,7 +450,7 @@ impl Repository {
             .expect("Repository not initialized")
             .read()
             .unwrap();
-        f(&repo.see_map)
+        f(&repo.see_map[..])
     }
 
     pub fn with_map_mut<F, R>(f: F) -> R
@@ -437,7 +462,7 @@ impl Repository {
             .expect("Repository not initialized")
             .write()
             .unwrap();
-        f(&mut repo.map)
+        f(&mut repo.map[..])
     }
 
     pub fn with_items_mut<F, R>(f: F) -> R
@@ -449,7 +474,7 @@ impl Repository {
             .expect("Repository not initialized")
             .write()
             .unwrap();
-        f(&mut repo.items)
+        f(&mut repo.items[..])
     }
 
     pub fn with_item_templates_mut<F, R>(f: F) -> R
@@ -461,7 +486,7 @@ impl Repository {
             .expect("Repository not initialized")
             .write()
             .unwrap();
-        f(&mut repo.item_templates)
+        f(&mut repo.item_templates[..])
     }
 
     pub fn with_character_templates<F, R>(f: F) -> R
@@ -473,7 +498,7 @@ impl Repository {
             .expect("Repository not initialized")
             .read()
             .unwrap();
-        f(&repo.character_templates)
+        f(&repo.character_templates[..])
     }
 
     pub fn with_character_templates_mut<F, R>(f: F) -> R
@@ -485,7 +510,7 @@ impl Repository {
             .expect("Repository not initialized")
             .write()
             .unwrap();
-        f(&mut repo.character_templates)
+        f(&mut repo.character_templates[..])
     }
 
     pub fn with_characters_mut<F, R>(f: F) -> R
@@ -497,7 +522,7 @@ impl Repository {
             .expect("Repository not initialized")
             .write()
             .unwrap();
-        f(&mut repo.characters)
+        f(&mut repo.characters[..])
     }
 
     pub fn with_effects_mut<F, R>(f: F) -> R
@@ -509,7 +534,7 @@ impl Repository {
             .expect("Repository not initialized")
             .write()
             .unwrap();
-        f(&mut repo.effects)
+        f(&mut repo.effects[..])
     }
 
     pub fn with_globals_mut<F, R>(f: F) -> R
@@ -533,7 +558,7 @@ impl Repository {
             .expect("Repository not initialized")
             .write()
             .unwrap();
-        f(&mut repo.see_map)
+        f(&mut repo.see_map[..])
     }
 
     pub fn with_ban_list<F, R>(f: F) -> R
