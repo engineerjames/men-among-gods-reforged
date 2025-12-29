@@ -2471,7 +2471,7 @@ pub fn answer_where(cn: usize, _co: usize) {
     State::with(|state| {
         state.do_sayx(cn, "I am here."); // Placeholder until get_area is implemented
     });
-} 
+}
 
 /// Port of `answer_time(int cn, int co)` from `talk.cpp`
 ///
@@ -2505,7 +2505,7 @@ pub fn answer_time(cn: usize, _co: usize) {
             );
         });
     });
-} 
+}
 
 /// Port of `stronghold_points(int cn)` from `talk.cpp`
 ///
@@ -2525,7 +2525,7 @@ pub fn stronghold_points(cn: usize) -> i32 {
         characters[cn].data[43] * 25 -      // candles
         characters[cn].data[41] // points spent
     })
-} 
+}
 
 /// Port of `stronghold_exp_per_pt(int cn)` from `talk.cpp`
 ///
@@ -2542,7 +2542,7 @@ pub fn stronghold_exp_per_pt(cn: usize) -> i32 {
         let exp_per_pt = characters[cn].points_tot / 45123;
         exp_per_pt.max(1).min(125)
     })
-} 
+}
 
 /// Port of `answer_points(int cn, int co, int nr)` from `talk.cpp`
 ///
@@ -2563,7 +2563,7 @@ pub fn answer_points(cn: usize, co: usize, _know_idx: usize) {
             pts, exp
         ));
     });
-} 
+}
 
 /// Port of `answer_buygold(int cn, int co)` from `talk.cpp`
 ///
@@ -2609,7 +2609,7 @@ pub fn answer_buygold(cn: usize, co: usize) {
     });
 
     log::info!("Character {} bought gold from cityguard ({} pts)", co, pts);
-} 
+}
 
 /// Port of `answer_buyhealth(int cn, int co)` from `talk.cpp`
 ///
@@ -2658,7 +2658,7 @@ pub fn answer_buyhealth(cn: usize, co: usize) {
 
         log::info!("Character {} bought healing potion from cityguard", co);
     }
-} 
+}
 
 /// Port of `answer_buymana(int cn, int co)` from `talk.cpp`
 ///
@@ -2707,7 +2707,7 @@ pub fn answer_buymana(cn: usize, co: usize) {
 
         log::info!("Character {} bought mana potion from cityguard", co);
     }
-} 
+}
 
 /// Port of `answer_buyexp(int cn, int co)` from `talk.cpp`
 ///
@@ -2763,7 +2763,7 @@ pub fn answer_buyexp(cn: usize, co: usize) {
         total_exp,
         pts
     );
-} 
+}
 
 /// Port of `special_answer(int cn, int co, int spec, char* word, int nr)` from `talk.cpp`
 ///
@@ -2799,7 +2799,7 @@ pub fn special_answer(cn: usize, co: usize, special: i32, word: &str, know_idx: 
         QUIET => answer_quiet(cn, co),
         _ => {}
     }
-} 
+}
 
 /// Helper: Port of `str_lower` behavior from `talk.cpp` (utility)
 ///
@@ -2813,7 +2813,7 @@ pub fn special_answer(cn: usize, co: usize, special: i32, word: &str, know_idx: 
 /// Lowercased `String`
 fn str_lower(s: &str) -> String {
     s.to_lowercase()
-} 
+}
 
 /// Helper: checks whether a word is a "fill"/stopword and should be ignored in matching.
 ///
@@ -2830,7 +2830,7 @@ fn is_fillword(word: &str) -> bool {
         "can", "oh", "me", "about", "to", "if", "for",
     ];
     FILLWORDS.contains(&word)
-} 
+}
 
 /// Helper: normalizes simple synonyms/variants used in player speech.
 ///
@@ -2900,7 +2900,7 @@ fn replace_synonym(word: &mut String) {
             return;
         }
     }
-} 
+}
 
 /// Port of `npc_hear(int cn, int co, char* text)` from `talk.cpp`
 ///
