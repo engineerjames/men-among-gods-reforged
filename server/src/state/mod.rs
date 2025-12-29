@@ -1,4 +1,6 @@
-use std::sync::{OnceLock, RwLock};
+use parking_lot::ReentrantMutex;
+use std::cell::UnsafeCell;
+use std::sync::OnceLock;
 
 mod admin;
 mod combat;
@@ -13,7 +15,7 @@ mod player_actions;
 mod stats;
 mod visibility;
 
-static STATE: OnceLock<RwLock<State>> = OnceLock::new();
+static STATE: OnceLock<ReentrantMutex<UnsafeCell<State>>> = OnceLock::new();
 
 pub struct State {
     _visi: [i8; 40 * 40],
@@ -43,24 +45,47 @@ impl State {
     pub fn initialize() -> Result<(), String> {
         let state = State::new();
         STATE
-            .set(RwLock::new(state))
+            .set(ReentrantMutex::new(UnsafeCell::new(state)))
             .map_err(|_| "State already initialized".to_string())?;
         Ok(())
+    }
+
+    // Internal helpers that lock and create references from the UnsafeCell
+    fn with_state<F, R>(f: F) -> R
+    where
+        F: FnOnce(&State) -> R,
+    {
+        let lock = STATE.get().expect("State not initialized");
+        let guard = lock.lock();
+        let inner: &UnsafeCell<State> = &*guard;
+        // SAFETY: We are holding the mutex so no other thread can create mutable aliases.
+        let state_ref: &State = unsafe { &*inner.get() };
+        f(state_ref)
+    }
+
+    fn with_state_mut<F, R>(f: F) -> R
+    where
+        F: FnOnce(&mut State) -> R,
+    {
+        let lock = STATE.get().expect("State not initialized");
+        let guard = lock.lock();
+        let inner: &UnsafeCell<State> = &*guard;
+        // SAFETY: We are holding the mutex so we can create a unique mutable reference.
+        let state_mut: &mut State = unsafe { &mut *inner.get() };
+        f(state_mut)
     }
 
     pub fn with<F, R>(f: F) -> R
     where
         F: FnOnce(&State) -> R,
     {
-        let state = STATE.get().expect("State not initialized").read().unwrap();
-        f(&*state)
+        Self::with_state(f)
     }
 
     pub fn with_mut<F, R>(f: F) -> R
     where
         F: FnOnce(&mut State) -> R,
     {
-        let mut state = STATE.get().expect("State not initialized").write().unwrap();
-        f(&mut *state)
+        Self::with_state_mut(f)
     }
 }

@@ -1,10 +1,12 @@
 use chrono::Timelike;
 use core::constants::MAXPLAYER;
 use core::types::ServerPlayer;
+use parking_lot::ReentrantMutex;
+use std::cell::UnsafeCell;
 use std::io::ErrorKind;
 use std::io::{Read, Write};
 use std::net::TcpListener;
-use std::sync::{OnceLock, RwLock};
+use std::sync::OnceLock;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::effect::EffectManager;
@@ -18,7 +20,8 @@ use crate::{driver_use, player, populate};
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
 
-static PLAYERS: OnceLock<RwLock<Box<[core::types::ServerPlayer; MAXPLAYER]>>> = OnceLock::new();
+static PLAYERS: OnceLock<ReentrantMutex<UnsafeCell<Box<[core::types::ServerPlayer; MAXPLAYER]>>>> =
+    OnceLock::new();
 
 // TICK constant - microseconds per tick (matching C++ TICK value)
 const TICK: u64 = 40000; // 40ms per tick
@@ -54,7 +57,7 @@ impl Server {
             .map_err(|_| "Failed to convert Vec to Box<[ServerPlayer; MAXPLAYER]>")?;
 
         PLAYERS
-            .set(RwLock::new(players))
+            .set(ReentrantMutex::new(UnsafeCell::new(players)))
             .map_err(|_| "Players already initialized".to_string())?;
         Ok(())
     }
@@ -63,24 +66,25 @@ impl Server {
     where
         F: FnOnce(&[core::types::ServerPlayer]) -> R,
     {
-        let players = PLAYERS
-            .get()
-            .expect("Players not initialized")
-            .read()
-            .unwrap();
-        f(&players[..])
+        let lock = PLAYERS.get().expect("Players not initialized");
+        let guard = lock.lock();
+        let inner: &UnsafeCell<Box<[core::types::ServerPlayer; MAXPLAYER]>> = &*guard;
+        // SAFETY: We are holding the mutex so creating a shared reference is safe.
+        let boxed: &Box<[core::types::ServerPlayer; MAXPLAYER]> = unsafe { &*inner.get() };
+        f(&boxed[..])
     }
 
     pub fn with_players_mut<F, R>(f: F) -> R
     where
         F: FnOnce(&mut [core::types::ServerPlayer]) -> R,
     {
-        let mut players = PLAYERS
-            .get()
-            .expect("Players not initialized")
-            .write()
-            .unwrap();
-        f(&mut players[..])
+        let lock = PLAYERS.get().expect("Players not initialized");
+        let guard = lock.lock();
+        let inner: &UnsafeCell<Box<[core::types::ServerPlayer; MAXPLAYER]>> = &*guard;
+        // SAFETY: We are holding the mutex so creating a unique mutable reference is safe.
+        let boxed_mut: &mut Box<[core::types::ServerPlayer; MAXPLAYER]> =
+            unsafe { &mut *inner.get() };
+        f(&mut boxed_mut[..])
     }
 
     fn tmplabcheck(item_idx: usize) {

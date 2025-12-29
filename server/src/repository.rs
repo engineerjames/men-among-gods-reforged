@@ -1,12 +1,14 @@
+use parking_lot::ReentrantMutex;
+use std::cell::UnsafeCell;
 use std::path::{Path, PathBuf};
-use std::sync::{OnceLock, RwLock};
+use std::sync::OnceLock;
 use std::{env, fs};
 
 // TODO: Currently this only reads data files into memory.
 // So if you close down the server and restart, any changes made during runtime will be lost.
 // In the future, we will want to implement saving changes back to the data files.
 
-static REPOSITORY: OnceLock<RwLock<Box<Repository>>> = OnceLock::new();
+static REPOSITORY: OnceLock<ReentrantMutex<UnsafeCell<Repository>>> = OnceLock::new();
 
 // Contains the data repository for the server
 pub struct Repository {
@@ -384,12 +386,41 @@ impl Repository {
 
     // Initialize the global repository
     pub fn initialize() -> Result<(), String> {
-        let mut repo = Box::new(Repository::new());
+        let mut repo = Repository::new();
         repo.load()?;
         REPOSITORY
-            .set(RwLock::new(repo))
+            .set(ReentrantMutex::new(UnsafeCell::new(repo)))
             .map_err(|_| "Repository already initialized".to_string())?;
         Ok(())
+    }
+
+    // Access helpers for the global repository protected by a reentrant mutex
+    fn with_repo<F, R>(f: F) -> R
+    where
+        F: FnOnce(&Repository) -> R,
+    {
+        let lock = REPOSITORY.get().expect("Repository not initialized");
+        let guard = lock.lock();
+        let inner: &UnsafeCell<Repository> = &*guard;
+        // SAFETY: We only create a shared reference here while holding the mutex; there are no
+        // concurrent &mut aliases when the mutex is locked.
+        let repo_ref: &Repository = unsafe { &*inner.get() };
+        f(repo_ref)
+    }
+
+    fn with_repo_mut<F, R>(f: F) -> R
+    where
+        F: FnOnce(&mut Repository) -> R,
+    {
+        let lock = REPOSITORY.get().expect("Repository not initialized");
+        let guard = lock.lock();
+        let inner: &UnsafeCell<Repository> = &*guard;
+        // SAFETY: We create a unique mutable reference from the raw pointer held inside UnsafeCell.
+        // This is safe because the ReentrantMutex provides mutual exclusion across threads and we
+        // only call this function while holding the mutex. Reentrancy ensures nested calls succeed
+        // on the same thread.
+        let repo_mut: &mut Repository = unsafe { &mut *inner.get() };
+        f(repo_mut)
     }
 
     // Static accessor methods for read-only access
@@ -397,72 +428,42 @@ impl Repository {
     where
         F: FnOnce(&[core::types::Map]) -> R,
     {
-        let repo = REPOSITORY
-            .get()
-            .expect("Repository not initialized")
-            .read()
-            .unwrap();
-        f(&repo.map[..])
+        Self::with_repo(|repo| f(&repo.map[..]))
     }
 
     pub fn with_items<F, R>(f: F) -> R
     where
         F: FnOnce(&[core::types::Item]) -> R,
     {
-        let repo = REPOSITORY
-            .get()
-            .expect("Repository not initialized")
-            .read()
-            .unwrap();
-        f(&repo.items[..])
+        Self::with_repo(|repo| f(&repo.items[..]))
     }
 
     pub fn with_item_templates<F, R>(f: F) -> R
     where
         F: FnOnce(&[core::types::Item]) -> R,
     {
-        let repo = REPOSITORY
-            .get()
-            .expect("Repository not initialized")
-            .read()
-            .unwrap();
-        f(&repo.item_templates[..])
+        Self::with_repo(|repo| f(&repo.item_templates[..]))
     }
 
     pub fn with_characters<F, R>(f: F) -> R
     where
         F: FnOnce(&[core::types::Character]) -> R,
     {
-        let repo = REPOSITORY
-            .get()
-            .expect("Repository not initialized")
-            .read()
-            .unwrap();
-        f(&repo.characters[..])
+        Self::with_repo(|repo| f(&repo.characters[..]))
     }
 
     pub fn with_effects<F, R>(f: F) -> R
     where
         F: FnOnce(&[core::types::Effect]) -> R,
     {
-        let repo = REPOSITORY
-            .get()
-            .expect("Repository not initialized")
-            .read()
-            .unwrap();
-        f(&repo.effects[..])
+        Self::with_repo(|repo| f(&repo.effects[..]))
     }
 
     pub fn with_globals<F, R>(f: F) -> R
     where
         F: FnOnce(&core::types::Global) -> R,
     {
-        let repo = REPOSITORY
-            .get()
-            .expect("Repository not initialized")
-            .read()
-            .unwrap();
-        f(&repo.globals)
+        Self::with_repo(|repo| f(&repo.globals))
     }
 
     // TODO: Not sure if we need this yet...
@@ -471,143 +472,83 @@ impl Repository {
     where
         F: FnOnce(&[core::types::SeeMap]) -> R,
     {
-        let repo = REPOSITORY
-            .get()
-            .expect("Repository not initialized")
-            .read()
-            .unwrap();
-        f(&repo.see_map[..])
+        Self::with_repo(|repo| f(&repo.see_map[..]))
     }
 
     pub fn with_map_mut<F, R>(f: F) -> R
     where
         F: FnOnce(&mut [core::types::Map]) -> R,
     {
-        let mut repo = REPOSITORY
-            .get()
-            .expect("Repository not initialized")
-            .write()
-            .unwrap();
-        f(&mut repo.map[..])
+        Self::with_repo_mut(|repo| f(&mut repo.map[..]))
     }
 
     pub fn with_items_mut<F, R>(f: F) -> R
     where
         F: FnOnce(&mut [core::types::Item]) -> R,
     {
-        let mut repo = REPOSITORY
-            .get()
-            .expect("Repository not initialized")
-            .write()
-            .unwrap();
-        f(&mut repo.items[..])
+        Self::with_repo_mut(|repo| f(&mut repo.items[..]))
     }
 
     pub fn with_item_templates_mut<F, R>(f: F) -> R
     where
         F: FnOnce(&mut [core::types::Item]) -> R,
     {
-        let mut repo = REPOSITORY
-            .get()
-            .expect("Repository not initialized")
-            .write()
-            .unwrap();
-        f(&mut repo.item_templates[..])
+        Self::with_repo_mut(|repo| f(&mut repo.item_templates[..]))
     }
 
     pub fn with_character_templates<F, R>(f: F) -> R
     where
         F: FnOnce(&[core::types::Character]) -> R,
     {
-        let repo = REPOSITORY
-            .get()
-            .expect("Repository not initialized")
-            .read()
-            .unwrap();
-        f(&repo.character_templates[..])
+        Self::with_repo(|repo| f(&repo.character_templates[..]))
     }
 
     pub fn with_character_templates_mut<F, R>(f: F) -> R
     where
         F: FnOnce(&mut [core::types::Character]) -> R,
     {
-        let mut repo = REPOSITORY
-            .get()
-            .expect("Repository not initialized")
-            .write()
-            .unwrap();
-        f(&mut repo.character_templates[..])
+        Self::with_repo_mut(|repo| f(&mut repo.character_templates[..]))
     }
 
     pub fn with_characters_mut<F, R>(f: F) -> R
     where
         F: FnOnce(&mut [core::types::Character]) -> R,
     {
-        let mut repo = REPOSITORY
-            .get()
-            .expect("Repository not initialized")
-            .write()
-            .unwrap();
-        f(&mut repo.characters[..])
+        Self::with_repo_mut(|repo| f(&mut repo.characters[..]))
     }
 
     pub fn with_effects_mut<F, R>(f: F) -> R
     where
         F: FnOnce(&mut [core::types::Effect]) -> R,
     {
-        let mut repo = REPOSITORY
-            .get()
-            .expect("Repository not initialized")
-            .write()
-            .unwrap();
-        f(&mut repo.effects[..])
+        Self::with_repo_mut(|repo| f(&mut repo.effects[..]))
     }
 
     pub fn with_globals_mut<F, R>(f: F) -> R
     where
         F: FnOnce(&mut core::types::Global) -> R,
     {
-        let mut repo = REPOSITORY
-            .get()
-            .expect("Repository not initialized")
-            .write()
-            .unwrap();
-        f(&mut repo.globals)
+        Self::with_repo_mut(|repo| f(&mut repo.globals))
     }
 
     pub fn with_see_map_mut<F, R>(f: F) -> R
     where
         F: FnOnce(&mut [core::types::SeeMap]) -> R,
     {
-        let mut repo = REPOSITORY
-            .get()
-            .expect("Repository not initialized")
-            .write()
-            .unwrap();
-        f(&mut repo.see_map[..])
+        Self::with_repo_mut(|repo| f(&mut repo.see_map[..]))
     }
 
     pub fn with_ban_list<F, R>(f: F) -> R
     where
         F: FnOnce(&Vec<core::types::Ban>) -> R,
     {
-        let repo = REPOSITORY
-            .get()
-            .expect("Repository not initialized")
-            .read()
-            .unwrap();
-        f(&repo.ban_list)
+        Self::with_repo(|repo| f(&repo.ban_list))
     }
 
     pub fn with_ban_list_mut<F, R>(f: F) -> R
     where
         F: FnOnce(&mut Vec<core::types::Ban>) -> R,
     {
-        let mut repo = REPOSITORY
-            .get()
-            .expect("Repository not initialized")
-            .write()
-            .unwrap();
-        f(&mut repo.ban_list)
+        Self::with_repo_mut(|repo| f(&mut repo.ban_list))
     }
 }
