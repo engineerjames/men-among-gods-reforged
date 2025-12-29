@@ -10,9 +10,12 @@ use crate::repository::Repository;
 use crate::state::State;
 
 impl State {
-    /// Port of `do_create_note(int cn, char* text)` from `svr_do.cpp`
+    /// Creates a note item with custom text for the character.
     ///
-    /// Create a note item with custom text.
+    /// # Arguments
+    ///
+    /// * `cn` - Character number (index)
+    /// * `text` - The note text to create
     pub(crate) fn do_create_note(&self, cn: usize, text: &str) {
         if text.is_empty() {
             return;
@@ -54,9 +57,12 @@ impl State {
         );
     }
 
-    /// Port of `do_emote(int cn, char* text)` from `svr_do.cpp`
+    /// Performs an emote action for the character, broadcasting to the area.
     ///
-    /// Perform an emote action.
+    /// # Arguments
+    ///
+    /// * `cn` - Character number (index)
+    /// * `text` - The emote text
     pub(crate) fn do_emote(&self, cn: usize, text: &str) {
         if text.is_empty() {
             return;

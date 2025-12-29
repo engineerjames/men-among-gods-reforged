@@ -15,6 +15,7 @@ use rand::Rng;
 use std::u32;
 
 // Helper function to take an item from a character
+/// TODO: Document the purpose, inputs, and outputs of this function.
 fn take_item_from_char(item_idx: usize, cn: usize) {
     Repository::with_characters_mut(|characters| {
         let ch = &mut characters[cn];

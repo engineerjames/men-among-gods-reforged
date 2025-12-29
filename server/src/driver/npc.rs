@@ -8,6 +8,15 @@ use rand::Rng;
 
 // Helper functions
 
+/// Returns the X offset for a given frustration value.
+///
+/// # Arguments
+///
+/// * `f` - Frustration value
+///
+/// # Returns
+///
+/// The X offset as an i32.
 pub fn get_frust_x_off(f: i32) -> i32 {
     match f % 5 {
         0 => 0,
@@ -19,6 +28,15 @@ pub fn get_frust_x_off(f: i32) -> i32 {
     }
 }
 
+/// Returns the Y offset for a given frustration value.
+///
+/// # Arguments
+///
+/// * `f` - Frustration value
+///
+/// # Returns
+///
+/// The Y offset as an i32.
 pub fn get_frust_y_off(f: i32) -> i32 {
     match (f / 5) % 5 {
         0 => 0,
@@ -30,6 +48,16 @@ pub fn get_frust_y_off(f: i32) -> i32 {
     }
 }
 
+/// Calculates the maximum of the absolute X or Y distance between two characters.
+///
+/// # Arguments
+///
+/// * `cn` - First character number (index)
+/// * `co` - Second character number (index)
+///
+/// # Returns
+///
+/// The maximum of the absolute X or Y distance as i32.
 pub fn npc_dist(cn: usize, co: usize) -> i32 {
     Repository::with_characters(|characters| {
         let ch_cn = &characters[cn];
@@ -42,6 +70,17 @@ pub fn npc_dist(cn: usize, co: usize) -> i32 {
 // NPC Message Handling and AI Functions
 // ****************************************************
 
+/// Adds an enemy to the NPC's enemy list if conditions are met.
+///
+/// # Arguments
+///
+/// * `cn` - NPC character number
+/// * `co` - Enemy character number
+/// * `always` - If true, always add as enemy regardless of some conditions
+///
+/// # Returns
+///
+/// `true` if the enemy was added, `false` otherwise.
 pub fn npc_add_enemy(cn: usize, co: usize, always: bool) -> bool {
     Repository::with_characters_mut(|characters| {
         // Don't attack anyone of the same group

@@ -32,6 +32,16 @@ const SPEEDTAB: [[u8; 20]; 20] = [
     [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
 ];
 
+/// Port of `plr_logout(int cn, int player_id, LogoutReason reason)` from `svr_tick.cpp`
+///
+/// Handles player logout and cleanup: saves state, removes the player
+/// from maps, clears usurp/stoned flags, notifies the client (unless
+/// `Usurp`), and applies any exit punishments depending on `reason`.
+///
+/// # Arguments
+/// * `character_id` - Character index being logged out
+/// * `player_id` - Associated player slot id (0 if none)
+/// * `reason` - Reason for logout (enum)
 pub fn plr_logout(character_id: usize, player_id: usize, reason: enums::LogoutReason) {
     if reason != enums::LogoutReason::Shutdown {
         Repository::with_characters(|characters| {
@@ -322,6 +332,15 @@ pub fn plr_logout(character_id: usize, player_id: usize, reason: enums::LogoutRe
     }
 }
 
+/// Finalize player exit operations and clear player slot state.
+///
+/// Called after `plr_logout` to complete exit bookkeeping: updates the
+/// player's state, clears `ch.player`, and records the last tick.
+///
+/// # Arguments
+/// * `ticker` - Current server ticker
+/// * `character_id` - Character index being exited
+/// * `player_id` - Player slot index
 pub fn player_exit(ticker: u32, character_id: usize, player_id: usize) {
     Repository::with_characters_mut(|characters| {
         let ch = &mut characters[character_id];
@@ -346,7 +365,14 @@ pub fn player_exit(ticker: u32, character_id: usize, player_id: usize) {
 }
 
 /// Port of `plr_map_remove` from `svr_act.cpp`
-/// Remove character from map
+///
+/// Removes a character from the world map tile and clears any transient
+/// references associated with that tile (to_ch, step-action items, lights).
+/// It also undoes light contributions for the character and clears step
+/// drivers for stepped-on items when appropriate.
+///
+/// # Arguments
+/// * `cn` - Character index to remove from the map
 pub fn plr_map_remove(cn: usize) {
     Repository::with_characters(|characters| {
         let m = (characters[cn].x as usize)
@@ -385,7 +411,18 @@ pub fn plr_map_remove(cn: usize) {
 }
 
 /// Port of `plr_map_set` from `svr_act.cpp`
-/// Set character to map and remove target character
+///
+/// Places a character on the map and handles tile interactions that occur
+/// on arrival. This checks for step-action items (calling the step driver),
+/// taverns (triggering logout/tavern logic), "no magic" zones (removing
+/// spells and flagging the character), death traps (killing the character),
+/// and finally notifies nearby clients of the character's presence.
+///
+/// The function will also restore the character to a previous tile when
+/// teleport/step-driver returns special values, and updates lighting.
+///
+/// # Arguments
+/// * `cn` - Character index to place on the map
 pub fn plr_map_set(cn: usize) {
     let (x, y, flags, light) = Repository::with_characters(|characters| {
         (
@@ -631,6 +668,15 @@ pub fn plr_map_set(cn: usize) {
 }
 
 /// Port of `plr_move_up` from `svr_act.cpp`
+///
+/// Performs a move action upwards for the given character. This removes the
+/// character from its current tile, updates the previous position (frx,fry),
+/// adjusts the y coordinate and target coordinates, then re-inserts the
+/// character into the map via `plr_map_set` and marks the action as
+/// successful.
+///
+/// # Arguments
+/// * `cn` - Character index performing the move
 pub fn plr_move_up(cn: usize) {
     plr_map_remove(cn);
     Repository::with_characters_mut(|characters| {
@@ -647,6 +693,12 @@ pub fn plr_move_up(cn: usize) {
 }
 
 /// Port of `plr_move_down` from `svr_act.cpp`
+///
+/// Performs a move action downwards for the given character and updates
+/// internal position state similar to `plr_move_up`.
+///
+/// # Arguments
+/// * `cn` - Character index performing the move
 pub fn plr_move_down(cn: usize) {
     plr_map_remove(cn);
     Repository::with_characters_mut(|characters| {
@@ -663,6 +715,12 @@ pub fn plr_move_down(cn: usize) {
 }
 
 /// Port of `plr_move_left` from `svr_act.cpp`
+///
+/// Performs a move action left for the given character and updates
+/// position and map state as in other move helpers.
+///
+/// # Arguments
+/// * `cn` - Character index performing the move
 pub fn plr_move_left(cn: usize) {
     plr_map_remove(cn);
     Repository::with_characters_mut(|characters| {
@@ -679,6 +737,12 @@ pub fn plr_move_left(cn: usize) {
 }
 
 /// Port of `plr_move_right` from `svr_act.cpp`
+///
+/// Performs a move action right for the given character and updates
+/// position and map state as in other move helpers.
+///
+/// # Arguments
+/// * `cn` - Character index performing the move
 pub fn plr_move_right(cn: usize) {
     plr_map_remove(cn);
     Repository::with_characters_mut(|characters| {
@@ -695,6 +759,11 @@ pub fn plr_move_right(cn: usize) {
 }
 
 /// Port of `plr_move_leftup` from `svr_act.cpp`
+///
+/// Performs a diagonal up-left move for the character and updates map state.
+///
+/// # Arguments
+/// * `cn` - Character index performing the move
 pub fn plr_move_leftup(cn: usize) {
     plr_map_remove(cn);
     Repository::with_characters_mut(|characters| {
@@ -712,6 +781,11 @@ pub fn plr_move_leftup(cn: usize) {
 }
 
 /// Port of `plr_move_leftdown` from `svr_act.cpp`
+///
+/// Performs a diagonal down-left move for the character and updates map state.
+///
+/// # Arguments
+/// * `cn` - Character index performing the move
 pub fn plr_move_leftdown(cn: usize) {
     plr_map_remove(cn);
     Repository::with_characters_mut(|characters| {
@@ -729,6 +803,11 @@ pub fn plr_move_leftdown(cn: usize) {
 }
 
 /// Port of `plr_move_rightup` from `svr_act.cpp`
+///
+/// Performs a diagonal up-right move for the character and updates map state.
+///
+/// # Arguments
+/// * `cn` - Character index performing the move
 pub fn plr_move_rightup(cn: usize) {
     plr_map_remove(cn);
     Repository::with_characters_mut(|characters| {
@@ -746,6 +825,11 @@ pub fn plr_move_rightup(cn: usize) {
 }
 
 /// Port of `plr_move_rightdown` from `svr_act.cpp`
+///
+/// Performs a diagonal down-right move for the character and updates map state.
+///
+/// # Arguments
+/// * `cn` - Character index performing the move
 pub fn plr_move_rightdown(cn: usize) {
     plr_map_remove(cn);
     Repository::with_characters_mut(|characters| {
@@ -763,6 +847,12 @@ pub fn plr_move_rightdown(cn: usize) {
 }
 
 /// Port of `plr_turn_up` from `svr_act.cpp`
+///
+/// Sets the character's facing direction to up and notifies nearby
+/// observers about the change via area notification.
+///
+/// # Arguments
+/// * `cn` - Character index rotating to face up
 pub fn plr_turn_up(cn: usize) {
     Repository::with_characters_mut(|characters| {
         State::with(|state| {
@@ -784,6 +874,12 @@ pub fn plr_turn_up(cn: usize) {
 }
 
 /// Port of `plr_turn_leftup` from `svr_act.cpp`
+///
+/// Sets the character's facing direction to left-up and notifies nearby
+/// observers about the change.
+///
+/// # Arguments
+/// * `cn` - Character index rotating to face left-up
 pub fn plr_turn_leftup(cn: usize) {
     Repository::with_characters_mut(|characters| {
         State::with(|state| {
@@ -805,6 +901,12 @@ pub fn plr_turn_leftup(cn: usize) {
 }
 
 /// Port of `plr_turn_leftdown` from `svr_act.cpp`
+///
+/// Sets the character's facing direction to left-down and notifies nearby
+/// observers about the change.
+///
+/// # Arguments
+/// * `cn` - Character index rotating to face left-down
 pub fn plr_turn_leftdown(cn: usize) {
     Repository::with_characters_mut(|characters| {
         State::with(|state| {
@@ -826,6 +928,12 @@ pub fn plr_turn_leftdown(cn: usize) {
 }
 
 /// Port of `plr_turn_down` from `svr_act.cpp`
+///
+/// Sets the character's facing direction to down and notifies nearby
+/// observers about the change.
+///
+/// # Arguments
+/// * `cn` - Character index rotating to face down
 pub fn plr_turn_down(cn: usize) {
     Repository::with_characters_mut(|characters| {
         State::with(|state| {
@@ -847,6 +955,12 @@ pub fn plr_turn_down(cn: usize) {
 }
 
 /// Port of `plr_turn_rightdown` from `svr_act.cpp`
+///
+/// Sets the character's facing direction to right-down and notifies nearby
+/// observers about the change.
+///
+/// # Arguments
+/// * `cn` - Character index rotating to face right-down
 pub fn plr_turn_rightdown(cn: usize) {
     Repository::with_characters_mut(|characters| {
         State::with(|state| {
@@ -868,6 +982,12 @@ pub fn plr_turn_rightdown(cn: usize) {
 }
 
 /// Port of `plr_turn_rightup` from `svr_act.cpp`
+///
+/// Sets the character's facing direction to right-up and notifies nearby
+/// observers about the change.
+///
+/// # Arguments
+/// * `cn` - Character index rotating to face right-up
 pub fn plr_turn_rightup(cn: usize) {
     Repository::with_characters_mut(|characters| {
         State::with(|state| {
@@ -889,6 +1009,12 @@ pub fn plr_turn_rightup(cn: usize) {
 }
 
 /// Port of `plr_turn_left` from `svr_act.cpp`
+///
+/// Sets the character's facing direction to left and notifies nearby
+/// observers about the change.
+///
+/// # Arguments
+/// * `cn` - Character index rotating to face left
 pub fn plr_turn_left(cn: usize) {
     Repository::with_characters_mut(|characters| {
         State::with(|state| {
@@ -910,6 +1036,12 @@ pub fn plr_turn_left(cn: usize) {
 }
 
 /// Port of `plr_turn_right` from `svr_act.cpp`
+///
+/// Sets the character's facing direction to right and notifies nearby
+/// observers about the change.
+///
+/// # Arguments
+/// * `cn` - Character index rotating to face right
 pub fn plr_turn_right(cn: usize) {
     Repository::with_characters_mut(|characters| {
         State::with(|state| {
@@ -931,6 +1063,15 @@ pub fn plr_turn_right(cn: usize) {
 }
 
 /// Port of `plr_attack` from `svr_act.cpp`
+///
+/// Attempts to attack the tile directly in front of the character (based on
+/// facing direction). If a valid target character `co` is present and matches
+/// the currently set `attack_cn`, the server triggers `do_attack` to perform
+/// combat logic. If the target moved away, a message is sent to the attacker.
+///
+/// # Arguments
+/// * `cn` - Attacking character index
+/// * `surround` - Surround flag passed to `do_attack` (0 or 1)
 pub fn plr_attack(cn: usize, surround: i32) {
     let (mut x, mut y, dir) = Repository::with_characters(|characters| {
         State::with(|state| {
@@ -1005,6 +1146,14 @@ pub fn plr_attack(cn: usize, surround: i32) {
 }
 
 /// Port of `plr_give` from `svr_act.cpp`
+///
+/// Attempts to give the currently carried item to the character in the tile
+/// in front of the actor. If the target moved away or the direction is
+/// invalid, an error is set; otherwise `do_give` is invoked to handle transfer
+/// rules and client updates.
+///
+/// # Arguments
+/// * `cn` - Giver character index
 pub fn plr_give(cn: usize) {
     let (mut x, mut y, dir) = Repository::with_characters(|characters| {
         State::with(|state| {
@@ -1061,6 +1210,14 @@ pub fn plr_give(cn: usize) {
 }
 
 /// Port of `plr_pickup` from `svr_act.cpp`
+///
+/// Handles picking up an item from the adjacent tile in the character's
+/// facing direction. This checks for available slots, money vs items,
+/// step-action items blocking pickup, and updates character inventory,
+/// money, and lighting appropriately.
+///
+/// # Arguments
+/// * `cn` - Character index attempting to pick up an item
 pub fn plr_pickup(cn: usize) {
     Repository::with_characters(|characters| {
         State::with(|state| {
@@ -1266,6 +1423,13 @@ pub fn plr_pickup(cn: usize) {
 }
 
 /// Port of `plr_bow` from `svr_act.cpp`
+///
+/// Handles a social "bow" action: notifies nearby players with an area
+/// notification and logs a message for the actor and area. Sets the
+/// command result status to success.
+///
+/// # Arguments
+/// * `cn` - Character index performing the bow
 pub fn plr_bow(cn: usize) {
     Repository::with_characters(|characters| {
         State::with(|state| {
@@ -1303,6 +1467,13 @@ pub fn plr_bow(cn: usize) {
 }
 
 /// Port of `plr_wave` from `svr_act.cpp`
+///
+/// Handles a social "wave" action: notifies nearby players with an area
+/// notification and logs a message for the actor and area. Sets the
+/// command result status to success.
+///
+/// # Arguments
+/// * `cn` - Character index performing the wave
 pub fn plr_wave(cn: usize) {
     Repository::with_characters(|characters| {
         State::with(|state| {
@@ -1340,6 +1511,14 @@ pub fn plr_wave(cn: usize) {
 }
 
 /// Port of `plr_use` from `svr_act.cpp`
+///
+/// Attempts to use an item placed on the adjacent tile in front of the
+/// actor. Validates usage flags and, when implemented, would call the
+/// `use_driver` to perform item-specific logic. Currently it validates
+/// and logs debug information.
+///
+/// # Arguments
+/// * `cn` - Character index using the item
 pub fn plr_use(cn: usize) {
     Repository::with_characters(|characters| {
         State::with(|state| {
@@ -1424,6 +1603,12 @@ pub fn plr_use(cn: usize) {
 }
 
 /// Port of `plr_skill` from `svr_act.cpp`
+///
+/// Triggers the skill driver for the character using the current
+/// `skill_target2` value. Also sends an area notify for the action.
+///
+/// # Arguments
+/// * `cn` - Character index using the skill
 pub fn plr_skill(cn: usize) {
     Repository::with_characters(|characters| {
         State::with(|state| {
@@ -1446,6 +1631,14 @@ pub fn plr_skill(cn: usize) {
     driver::skill_driver(cn, skill_target as i32);
 }
 
+/// Periodic driver invoked at a medium rate for a player.
+///
+/// This function uses a rate-limiter (character data[12]) to avoid running
+/// too often. When appropriate it will call the follow driver if the
+/// character has a follow target set in `data[10]`.
+///
+/// # Arguments
+/// * `cn` - Character index to process
 pub fn player_driver_med(cn: usize) {
     Repository::with_characters(|ch| {
         if ch[cn].data[12] + core::constants::TICKS * 15
@@ -1462,9 +1655,21 @@ pub fn player_driver_med(cn: usize) {
     });
 }
 
+/// Client list stub (not implemented)
+///
+/// Placeholder for the client list command – intended to handle listing
+/// connected clients or similar functionality in the original server.
 pub fn cl_list() {}
 
 /// Port of `plr_drop` from `svr_act.cpp`
+///
+/// Drops the currently carried item (cursor/item in hand) onto the tile in
+/// front of the character. Handles special cases for money (creates a
+/// money-item template), building-mode drop semantics, step-action
+/// blockages, and updates lighting and map item references accordingly.
+///
+/// # Arguments
+/// * `cn` - Character index performing the drop
 pub fn plr_drop(cn: usize) {
     Repository::with_characters(|characters| {
         State::with(|state| {
@@ -1658,6 +1863,13 @@ pub fn plr_drop(cn: usize) {
 }
 
 /// Port of `plr_misc` from `svr_act.cpp`
+///
+/// Dispatches the character's misc action (`status2`) to the appropriate
+/// action handler (attack, pickup, drop, give, use, bow, wave, skill, ...).
+/// Sets character errno on unknown actions.
+///
+/// # Arguments
+/// * `cn` - Character index whose misc action to process
 pub fn plr_misc(cn: usize) {
     let status2 = Repository::with_characters(|characters| characters[cn].status2);
 
@@ -1682,6 +1894,17 @@ pub fn plr_misc(cn: usize) {
 }
 
 /// Port of `plr_check_target` from `svr_act.cpp`
+///
+/// Checks whether a map tile is a valid target for placing a character or
+/// item: it must not contain characters, and it must not be flagged as
+/// movement-blocked; items on the tile are allowed only when they aren't
+/// movement-blocking either.
+///
+/// # Arguments
+/// * `m` - Map index to inspect
+///
+/// # Returns
+/// `true` if tile is a valid empty target, `false` otherwise
 pub fn plr_check_target(m: usize) -> bool {
     Repository::with_map(|map| {
         if map[m].ch != 0 || map[m].to_ch != 0 {
@@ -1704,6 +1927,16 @@ pub fn plr_check_target(m: usize) -> bool {
 }
 
 /// Port of `plr_set_target` from `svr_act.cpp`
+///
+/// Marks the provided map tile as targeted by character `cn` by setting
+/// `to_ch`. Uses `plr_check_target` to validate the tile first.
+///
+/// # Arguments
+/// * `m` - Map index to set as target
+/// * `cn` - Character index that will be the target occupant
+///
+/// # Returns
+/// `true` on success, `false` if tile is not a valid target
 pub fn plr_set_target(m: usize, cn: usize) -> bool {
     if !plr_check_target(m) {
         return false;
@@ -1717,6 +1950,13 @@ pub fn plr_set_target(m: usize, cn: usize) -> bool {
 }
 
 /// Port of `plr_reset_status` from `svr_act.cpp`
+///
+/// Resets the character's `status` to the base idle status corresponding
+/// to its current `dir` (direction). Performs sanity checks for illegal
+/// `dir` values and logs an error if encountered.
+///
+/// # Arguments
+/// * `cn` - Character index whose status to reset
 pub fn plr_reset_status(cn: usize) {
     Repository::with_characters_mut(|characters| {
         characters[cn].status = match characters[cn].dir {
@@ -1741,6 +1981,14 @@ pub fn plr_reset_status(cn: usize) {
     });
 }
 
+/// Perform the character's current driving action.
+///
+/// Resets status bits and calls the driver for the character if their
+/// action group is active. This is the main per-tick driver entry for
+/// active characters.
+///
+/// # Arguments
+/// * `cn` - Character index to perform driver actions for
 pub fn plr_doact(cn: usize) {
     plr_reset_status(cn);
     if Repository::with_characters(|characters| characters[cn].group_active()) {
@@ -1748,6 +1996,15 @@ pub fn plr_doact(cn: usize) {
     }
 }
 
+/// Port of `plr_act` from `svr_tick.cpp`
+///
+/// Per-character action state machine executed each tick. Handles stunned/
+/// stoned conditions, executes idle/driver actions, advances walking/turning
+/// frames based on `speedo`, and triggers move/turn/misc handlers when a
+/// frame sequence completes.
+///
+/// # Arguments
+/// * `cn` - Character index to process
 pub fn plr_act(cn: usize) {
     let (stunned, flags, status) = Repository::with_characters(|characters| {
         (
@@ -2215,6 +2472,13 @@ pub fn plr_act(cn: usize) {
     }
 }
 
+/// Fast helper to compute the per-tick movement index for a character.
+///
+/// Uses a precomputed `SPEEDTAB` and the global ticker modulo to determine
+/// whether the character moves on the current sub-tick.
+///
+/// # Arguments
+/// * `n` - Character index
 pub fn speedo(n: usize) -> i32 {
     let speed = Repository::with_characters(|characters| characters[n].speed as usize);
     let ctick = Repository::with_globals(|globals| (globals.ticker % 20) as usize);
@@ -2234,7 +2498,15 @@ pub fn plr_clear_map() {
     });
 }
 
-/// Choose between fast or complete map update depending on server load and flags
+/// Choose and dispatch the appropriate map update implementation.
+///
+/// Decides between the full (`plr_getmap_complete`) or fast (`plr_getmap_fast`)
+/// small-map generation based on server load and global flags. When entering
+/// or leaving "speed savings" mode the function clears map caches and
+/// announces the mode change.
+///
+/// # Arguments
+/// * `nr` - Player slot index requesting the map update
 pub fn plr_getmap(nr: usize) {
     use std::sync::atomic::Ordering;
 
@@ -2270,9 +2542,6 @@ pub fn plr_getmap(nr: usize) {
     }
 }
 
-// TODO: Full ports of `plr_getmap_complete` and `plr_getmap_fast`.
-// Currently these are placeholders to allow compilation until the full
-// map-generation/visibility code is ported from the original C++.
 pub fn plr_getmap_complete(nr: usize) {
     // Conservative port of the original `plr_getmap_complete`.
     // This computes the player's small-map (`smap`) for the visible window
@@ -5027,7 +5296,14 @@ fn send_mod(nr: usize) {
 }
 
 /// Port of `plr_challenge_newlogin` from `svr_tick.cpp`
-/// Handle new login challenge - generates a random challenge and sends it to the client
+///
+/// Initiates a new-login challenge for a connecting client. Generates a random
+/// non-zero challenge, stores it on `players[nr]`, sets the player's state to
+/// `ST_NEW_CHALLENGE`, timestamps `lasttick`, sends the `SV_CHALLENGE` packet
+/// to the client, and sends mod data packets.
+///
+/// # Arguments
+/// * `nr` - Player slot index to challenge
 fn plr_challenge_newlogin(nr: usize) {
     use rand::Rng;
 
@@ -5064,7 +5340,15 @@ fn plr_challenge_newlogin(nr: usize) {
 }
 
 /// Port of `plr_challenge` from `svr_tick.cpp`
-/// Handle login challenge response - verifies the client's response
+///
+/// Verifies the client's response to a previously issued challenge. Reads the
+/// response, client version, and race from the inbuf, stores version/race on
+/// the player record, validates the response using `xcrypt`, and moves the
+/// player through the login state machine on success (or logs them out on
+/// failure).
+///
+/// # Arguments
+/// * `nr` - Player slot index handling the challenge response
 fn plr_challenge(nr: usize) {
     let (challenge, state) =
         Server::with_players(|players| (players[nr].challenge, players[nr].state));
@@ -5141,13 +5425,22 @@ fn plr_challenge(nr: usize) {
     log::debug!("Player {} challenge ok", nr);
 }
 
-/// Handle existing login challenge
+/// Handle existing login challenge (not yet implemented)
+///
+/// Stub for handling the challenge flow when an existing account is
+/// challenged during login; left as a TODO in the port.
 fn plr_challenge_login(_nr: usize) {
     // TODO: Implement challenge for existing login
 }
 
 /// Port of `plr_unique` from `svr_tick.cpp`
-/// Handle unique ID request - receives or generates a unique client identifier
+///
+/// Receives the client's unique 8-byte identifier or generates a server-side
+/// unique if the client provided none. The server stores the value in
+/// `players[nr].unique` and echoes back a generated unique when applicable.
+///
+/// # Arguments
+/// * `nr` - Player slot index sending the unique
 fn plr_unique(nr: usize) {
     // Read unique ID from inbuf (8 bytes as u64)
     let unique = Server::with_players(|players| {
@@ -5194,7 +5487,13 @@ fn plr_unique(nr: usize) {
 }
 
 /// Port of `plr_passwd` from `svr_tick.cpp`
-/// Handle password change - receives password hash from client
+///
+/// Receives a password fragment from the client and stores it in the
+/// player's `passwd` buffer (15 bytes). Computes a lightweight hash for
+/// debug/logging parity with original server behavior.
+///
+/// # Arguments
+/// * `nr` - Player slot index sending the password fragment
 fn plr_passwd(nr: usize) {
     // Copy 15 bytes of password from inbuf to player passwd
     Server::with_players_mut(|players| {
@@ -5218,7 +5517,13 @@ fn plr_passwd(nr: usize) {
 }
 
 /// Port of `plr_perf_report` from `svr_tick.cpp`
-/// Handle performance report from client - updates timeout
+///
+/// Parses a client's performance/timing report and uses it to refresh the
+/// player's network timeout (`lasttick`). The metric values are parsed for
+/// completeness but currently not acted upon.
+///
+/// # Arguments
+/// * `nr` - Player slot index reporting performance
 fn plr_perf_report(nr: usize) {
     // Read performance metrics from inbuf (unused but parsed for completeness)
     let (_ticksize, _skip, _idle) = Server::with_players(|players| {
@@ -5239,7 +5544,15 @@ fn plr_perf_report(nr: usize) {
 }
 
 /// Port of `plr_cmd_look` from `svr_tick.cpp`
-/// Handle look command - look at character/NPC or depot
+///
+/// Handles the client's LOOK command. If the high bit of the supplied id
+/// (`co`) is set, the player requested to see a depot slot (bank); otherwise
+/// it requests a character/NPC look. Delegates to `do_look_depot` or
+/// `do_look_char` in the server `State`.
+///
+/// # Arguments
+/// * `nr` - Player slot index issuing the look
+/// * `autoflag` - When true, treat the request as an automatic look
 fn plr_cmd_look(nr: usize, autoflag: bool) {
     let (cn, co) = Server::with_players(|players| {
         let co = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]) as usize;
@@ -5263,6 +5576,15 @@ fn plr_cmd_look(nr: usize, autoflag: bool) {
 }
 
 /// Handle set user data command
+///
+/// Receives chunks of account/profile data from the client (13-byte
+/// fragments) and writes them into the character's `text` buffers. When the
+/// final chunk is received for the description/name update it performs
+/// validation (name legality, uniqueness, description rules) and either
+/// commits changes or reports why they were rejected.
+///
+/// # Arguments
+/// * `_nr` - Player slot index sending the data
 fn plr_cmd_setuser(_nr: usize) {
     // Implementation based on original svr_tick.cpp
     // Read subtype, position and 13 bytes of data from player's inbuf
@@ -5543,6 +5865,13 @@ fn plr_cmd_setuser(_nr: usize) {
 }
 
 /// Handle stat change command
+///
+/// Applies attribute/HP/endurance/mana/skill raises requested by the
+/// client. Validates indices and performs repeated raise operations via
+/// `State` helper functions, then requests a character update.
+///
+/// # Arguments
+/// * `_nr` - Player slot index issuing the stat change
 fn plr_cmd_stat(_nr: usize) {
     // Read stat index and value from inbuf and apply raises
     let (cn, n, v) = Server::with_players(|players| {
@@ -5595,6 +5924,15 @@ fn plr_cmd_stat(_nr: usize) {
 }
 
 /// Handle text input commands (1-8)
+///
+/// Receives a 15-byte chunk of textual input from the client. When the
+/// eighth (final) chunk is received the function NUL-terminates the collected
+/// input, decodes it to a UTF-8 string, and forwards it to `do_say` for
+/// processing as a chat/message.
+///
+/// # Arguments
+/// * `nr` - Player slot index sending the input
+/// * `part` - Which 1..8 chunk this call contains
 fn plr_cmd_input(nr: usize, part: u8) {
     // Copy 15 bytes of input from inbuf to player input buffer
     let offset = ((part - 1) as usize) * 15;
@@ -5628,6 +5966,13 @@ fn plr_cmd_input(nr: usize, part: u8) {
 }
 
 /// Handle client tick update
+///
+/// Updates server-side bookkeeping for client timing. Reads `rtick` from the
+/// client's inbuf, stores it in `players[nr].rtick`, and refreshes the
+/// player's `lasttick` timeout to avoid idle/disconnect handling.
+///
+/// # Arguments
+/// * `nr` - Player slot index sending the tick
 fn plr_cmd_ctick(nr: usize) {
     let ticker = Repository::with_globals(|globals| globals.ticker as u32);
     Server::with_players_mut(|players| {
@@ -5644,6 +5989,13 @@ fn plr_cmd_ctick(nr: usize) {
 }
 
 /// Handle look at item on ground
+///
+/// Reads coordinates from the client's packet, validates them, and if the
+/// tile contains an item calls `do_look_item` to present details to the
+/// requesting character.
+///
+/// # Arguments
+/// * `_nr` - Player slot index issuing the request
 fn plr_cmd_look_item(_nr: usize) {
     // Read x,y from inbuf and call do_look_item
     let (x, y, cn) = Server::with_players(|players| {
@@ -5668,6 +6020,13 @@ fn plr_cmd_look_item(_nr: usize) {
 }
 
 /// Handle give item command
+///
+/// Reads a target character id from the client's packet and sets the
+/// giving character's misc action (`DR_GIVE`) and `misc_target1` to
+/// perform a give in the next tick.
+///
+/// # Arguments
+/// * `_nr` - Player slot index issuing the give
 fn plr_cmd_give(_nr: usize) {
     // Read target character id (4 bytes) and set give action
     let co = Server::with_players(|players| {
@@ -5697,6 +6056,13 @@ fn plr_cmd_give(_nr: usize) {
 }
 
 /// Handle turn command
+///
+/// Reads target coordinates from the client and sets a turn action
+/// (`DR_TURN`) so the character will turn toward the specified point on
+/// its next action tick. Ignored if the character is in building mode.
+///
+/// # Arguments
+/// * `_nr` - Player slot index issuing the turn
 fn plr_cmd_turn(_nr: usize) {
     // Read x,y and set turn action
     let (x, y, cn) = Server::with_players(|players| {
@@ -5725,6 +6091,13 @@ fn plr_cmd_turn(_nr: usize) {
 }
 
 /// Handle drop item command
+///
+/// Reads desired drop coordinates from the client and sets the character's
+/// `misc_action` to `DR_DROP`, with target coordinates recorded in
+/// `misc_target1/2`. Supports special behavior when in building mode.
+///
+/// # Arguments
+/// * `_nr` - Player slot index performing the drop
 fn plr_cmd_drop(_nr: usize) {
     let (x, y, cn) = Server::with_players(|players| {
         let x = u16::from_le_bytes([players[_nr].inbuf[1], players[_nr].inbuf[2]]) as i32;
@@ -5796,6 +6169,13 @@ fn plr_cmd_drop(_nr: usize) {
 }
 
 /// Handle pickup item command
+///
+/// Reads coordinates of the item to pick up and schedules a `DR_PICKUP`
+/// misc action on the character, which will be executed by the per-tick
+/// processing. Building-mode special cases are respected.
+///
+/// # Arguments
+/// * `_nr` - Player slot index issuing the pickup
 fn plr_cmd_pickup(_nr: usize) {
     let (x, y, cn) = Server::with_players(|players| {
         let x = u16::from_le_bytes([players[_nr].inbuf[1], players[_nr].inbuf[2]]) as i32;
@@ -5825,6 +6205,14 @@ fn plr_cmd_pickup(_nr: usize) {
 }
 
 /// Handle attack command
+///
+/// Parses the requested target character id and sets the attack variables on
+/// the character (`attack_cn`, clears `goto_x`, and resets misc actions)
+/// to attempt an attack on subsequent ticks. Also logs the attempt and
+/// remembers PvP context.
+///
+/// # Arguments
+/// * `_nr` - Player slot index issuing the attack
 fn plr_cmd_attack(_nr: usize) {
     let co = Server::with_players(|players| {
         u32::from_le_bytes([
@@ -5860,6 +6248,13 @@ fn plr_cmd_attack(_nr: usize) {
 }
 
 /// Handle speed mode command
+///
+/// Sets the character's movement mode (client-side speed preference). Valid
+/// modes are 0..2; after update the character record is refreshed to other
+/// clients via `do_update_char`.
+///
+/// # Arguments
+/// * `_nr` - Player slot index setting the mode
 fn plr_cmd_mode(_nr: usize) {
     let mode = Server::with_players(|players| {
         u16::from_le_bytes([players[_nr].inbuf[1], players[_nr].inbuf[2]])
@@ -5881,6 +6276,13 @@ fn plr_cmd_mode(_nr: usize) {
 }
 
 /// Handle movement command
+///
+/// Accepts a coordinate target from the client and writes it into
+/// `goto_x/goto_y` for the given character so the movement driver will try
+/// to move the character towards that target in subsequent ticks.
+///
+/// # Arguments
+/// * `_nr` - Player slot index sending the movement target
 fn plr_cmd_move(_nr: usize) {
     let (x, y, cn) = Server::with_players(|players| {
         let x = u16::from_le_bytes([players[_nr].inbuf[1], players[_nr].inbuf[2]]) as i32;
@@ -5901,6 +6303,13 @@ fn plr_cmd_move(_nr: usize) {
 }
 
 /// Handle reset command
+///
+/// Resets various action-related fields on the character (use/skill/attack/
+/// goto/misc) and stamps the timestamp so that the character stops any
+/// ongoing activity.
+///
+/// # Arguments
+/// * `_nr` - Player slot index requesting the reset
 fn plr_cmd_reset(_nr: usize) {
     let cn = Server::with_players(|players| players[_nr].usnr);
     let ticker = Repository::with_globals(|g| g.ticker as i32);
@@ -5918,6 +6327,13 @@ fn plr_cmd_reset(_nr: usize) {
 }
 
 /// Handle skill use command
+///
+/// Parses the requested skill index and target character and schedules the
+/// skill for execution by setting `skill_nr` and `skill_target1` on the
+/// initiating character. Validates indices and existence of the skill.
+///
+/// # Arguments
+/// * `_nr` - Player slot index invoking the skill
 fn plr_cmd_skill(_nr: usize) {
     let (n, co, cn) = Server::with_players(|players| {
         let n = u32::from_le_bytes([
@@ -5956,6 +6372,13 @@ fn plr_cmd_skill(_nr: usize) {
 }
 
 /// Handle inventory look command
+///
+/// Allows the player to inspect their inventory slot or (if building mode)
+/// set up area-building operations by selecting a slot as the carried item.
+/// Otherwise delegates to `do_look_item` for the item at the selected slot.
+///
+/// # Arguments
+/// * `_nr` - Player slot index issuing the command
 fn plr_cmd_inv_look(_nr: usize) {
     let (n, cn) = Server::with_players(|players| {
         let n = u16::from_le_bytes([players[_nr].inbuf[1], players[_nr].inbuf[2]]) as usize;
@@ -5984,6 +6407,13 @@ fn plr_cmd_inv_look(_nr: usize) {
 }
 
 /// Handle use command
+///
+/// Reads coordinates from the client and schedules a `DR_USE` misc action
+/// so that the item on the specified tile will be used by the character on
+/// the next tick.
+///
+/// # Arguments
+/// * `_nr` - Player slot index issuing the use
 fn plr_cmd_use(_nr: usize) {
     let (x, y, cn) = Server::with_players(|players| {
         let x = u16::from_le_bytes([players[_nr].inbuf[1], players[_nr].inbuf[2]]) as i32;
@@ -6005,6 +6435,14 @@ fn plr_cmd_use(_nr: usize) {
 }
 
 /// Handle inventory manipulation command
+///
+/// Multi-purpose handler for inventory operations (placing/withdrawing
+/// items and gold, swapping, selecting use slots, and viewing worn/inv
+/// items). The `what` parameter selects the sub-action type while `n` and
+/// `co` provide action-specific parameters.
+///
+/// # Arguments
+/// * `_nr` - Player slot index issuing the inventory command
 fn plr_cmd_inv(_nr: usize) {
     let (what, n, mut co, cn) = Server::with_players(|players| {
         let what = u32::from_le_bytes([
@@ -6183,6 +6621,12 @@ fn plr_cmd_inv(_nr: usize) {
 }
 
 /// Handle exit command (F12)
+///
+/// Performs an immediate logout for the requesting player slot by
+/// calling `plr_logout` with `LogoutReason::Exit`.
+///
+/// # Arguments
+/// * `nr` - Player slot index pressing F12
 fn plr_cmd_exit(nr: usize) {
     log::info!("Player {} pressed F12", nr);
     let cn = Server::with_players(|players| players[nr].usnr);
@@ -6190,6 +6634,13 @@ fn plr_cmd_exit(nr: usize) {
 }
 
 /// Handle shop command
+///
+/// Handles buying/selling interactions with shops or depot operations when
+/// the high bit of `co` is set (depot index). Delegates to `do_depot_char`
+/// or `do_shop_char` to perform the actual shop/depot logic.
+///
+/// # Arguments
+/// * `_nr` - Player slot index issuing the shop command
 fn plr_cmd_shop(_nr: usize) {
     let (co, n, cn) = Server::with_players(|players| {
         let co = u16::from_le_bytes([players[_nr].inbuf[1], players[_nr].inbuf[2]]) as usize;

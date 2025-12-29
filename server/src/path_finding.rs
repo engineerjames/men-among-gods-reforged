@@ -87,7 +87,10 @@ impl PathFinder {
         }
     }
 
-    /// Reset pathfinder state for a new search
+    /// Reset internal search state prior to running a new A* invocation.
+    ///
+    /// Clears node allocations, the open set, and visited flags so the
+    /// PathFinder can be reused for a subsequent search.
     fn reset(&mut self) {
         // Clear node map
         for slot in &mut self.node_map {
@@ -637,7 +640,21 @@ impl Default for PathFinder {
     }
 }
 
-/// Convert delta coordinates to direction
+/// Convert delta coordinates to a movement direction constant.
+///
+/// Port-style documentation:
+/// - Purpose: Translate a delta (dx, dy) into one of the eight
+///   direction constants (e.g. `DX_RIGHT`, `DX_LEFTUP`, etc.).
+/// - Responsibilities: Return the best-matching direction for a single
+///   step towards the given delta. If there is no movement (dx == 0
+///   and dy == 0) the function returns `0`.
+///
+/// # Arguments
+/// * `dx` - Signed delta in the X axis.
+/// * `dy` - Signed delta in the Y axis.
+///
+/// # Returns
+/// Direction constant (`u8`) or `0` for no movement.
 fn dcoor_to_dir(dx: i16, dy: i16) -> u8 {
     match (dx.signum(), dy.signum()) {
         (1, 1) => DX_RIGHTDOWN,
@@ -653,6 +670,21 @@ fn dcoor_to_dir(dx: i16, dy: i16) -> u8 {
 }
 
 /// Calculate number of turns needed to change from dir1 to dir2
+/// Calculate the number of turns required to change from `dir1` to `dir2`.
+///
+/// Port-style documentation:
+/// - Purpose: Provide a simple cost metric for changing facing direction
+///   used by the pathfinder when accounting for turn penalties.
+/// - Responsibilities: Return a small integer cost (commonly 0..4)
+///   representing how many "turn steps" are needed. Returns `99` for
+///   invalid/unrecognized directions.
+///
+/// # Arguments
+/// * `dir1` - Current direction constant.
+/// * `dir2` - Target direction constant.
+///
+/// # Returns
+/// Integer turn cost; `99` indicates an invalid input direction.
 fn turn_count(dir1: u8, dir2: u8) -> i32 {
     if dir1 == dir2 {
         return 0;

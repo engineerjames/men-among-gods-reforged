@@ -7,18 +7,17 @@ use crate::repository::Repository;
 use crate::state::State;
 
 impl State {
-    /// Port of `barter(int cn, int opr, int flag)` from `svr_do.cpp`
-    ///
     /// Calculates adjusted price based on character's barter skill.
-    /// Better barter skill gets better prices when buying or selling.
     ///
     /// # Arguments
+    ///
     /// * `cn` - Character index
     /// * `opr` - Original price of the item
     /// * `flag` - 1 if merchant is selling (player buying), 0 if merchant is buying (player selling)
     ///
     /// # Returns
-    /// * Adjusted price after applying barter skill
+    ///
+    /// Adjusted price after applying barter skill.
     pub(crate) fn barter(&self, cn: usize, opr: i32, flag: i32) -> i32 {
         let barter_skill =
             Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_BARTER][5] as i32);
@@ -48,16 +47,10 @@ impl State {
         pr
     }
 
-    /// Port of `do_shop_char(int cn, int co, int nr)` from `svr_do.cpp`
-    ///
-    /// Handles shopping interactions between a character and a merchant/body.
-    /// This function supports:
-    /// - Selling items to merchants (when character has citem)
-    /// - Buying items from merchants (nr < 62)
-    /// - Looting items from corpses (CF_BODY)
-    /// - Examining item descriptions (nr >= 62)
+    /// Handles shopping interactions between a character and a merchant or corpse.
     ///
     /// # Arguments
+    ///
     /// * `cn` - Character performing the action (player)
     /// * `co` - Target character (merchant or corpse)
     /// * `nr` - Action selector:

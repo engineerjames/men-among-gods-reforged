@@ -6,6 +6,11 @@ use crate::Repository;
 use crate::{core, driver};
 use rand::Rng;
 
+/// Notifies the area of the character's presence if the ticker matches.
+///
+/// # Arguments
+///
+/// * `cn` - Character number (index)
 pub fn act_idle(cn: usize) {
     let should_notify = Repository::with_globals(|g| (g.ticker & 15) == (cn as i32 & 15));
     if should_notify {
@@ -26,6 +31,11 @@ pub fn act_idle(cn: usize) {
     }
 }
 
+/// Attempts to make the character drop (flee) in the direction they are facing.
+///
+/// # Arguments
+///
+/// * `cn` - Character number (index)
 pub fn act_drop(cn: usize) {
     Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_SUCCESS as u16);
 
@@ -76,6 +86,11 @@ pub fn act_drop(cn: usize) {
     });
 }
 
+/// Attempts to make the character use an item or interact in the direction they are facing.
+///
+/// # Arguments
+///
+/// * `cn` - Character number (index)
 pub fn act_use(cn: usize) {
     Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_SUCCESS as u16);
 
@@ -126,6 +141,11 @@ pub fn act_use(cn: usize) {
     });
 }
 
+/// Attempts to make the character pick up an item in the direction they are facing.
+///
+/// # Arguments
+///
+/// * `cn` - Character number (index)
 pub fn act_pickup(cn: usize) {
     let simple_initial = Repository::with_characters(|ch| {
         (ch[cn].flags & CharacterFlags::Simple.bits() as u64) != 0
@@ -184,6 +204,11 @@ pub fn act_pickup(cn: usize) {
     });
 }
 
+/// Attempts to make the character use a skill in the direction they are facing.
+///
+/// # Arguments
+///
+/// * `cn` - Character number (index)
 pub fn act_skill(cn: usize) {
     let simple = Repository::with_characters(|ch| {
         (ch[cn].flags & CharacterFlags::Simple.bits() as u64) != 0
@@ -216,6 +241,11 @@ pub fn act_skill(cn: usize) {
     });
 }
 
+/// Attempts to make the character perform a wave action in the direction they are facing.
+///
+/// # Arguments
+///
+/// * `cn` - Character number (index)
 pub fn act_wave(cn: usize) {
     let simple = Repository::with_characters(|ch| {
         (ch[cn].flags & CharacterFlags::Simple.bits() as u64) != 0
@@ -264,6 +294,11 @@ pub fn act_wave(cn: usize) {
     });
 }
 
+/// Attempts to make the character perform a bow action in the direction they are facing.
+///
+/// # Arguments
+///
+/// * `cn` - Character number (index)
 pub fn act_bow(cn: usize) {
     let simple = Repository::with_characters(|ch| {
         (ch[cn].flags & CharacterFlags::Simple.bits() as u64) != 0
@@ -312,6 +347,11 @@ pub fn act_bow(cn: usize) {
     });
 }
 
+/// Attempts to make the character give an item in the direction they are facing.
+///
+/// # Arguments
+///
+/// * `cn` - Character number (index)
 pub fn act_give(cn: usize) {
     let simple = Repository::with_characters(|ch| {
         (ch[cn].flags & CharacterFlags::Simple.bits() as u64) != 0
@@ -360,6 +400,11 @@ pub fn act_give(cn: usize) {
     });
 }
 
+/// Attempts to make the character perform an attack in the direction they are facing.
+///
+/// # Arguments
+///
+/// * `cn` - Character number (index)
 pub fn act_attack(cn: usize) {
     Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
 
@@ -423,6 +468,12 @@ pub fn act_attack(cn: usize) {
     });
 }
 
+/// Turns the character to the specified direction.
+///
+/// # Arguments
+///
+/// * `cn` - Character number (index)
+/// * `dir` - Direction to turn to
 pub fn act_turn(cn: usize, dir: i32) {
     Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
 

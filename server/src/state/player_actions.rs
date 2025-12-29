@@ -232,6 +232,15 @@ impl State {
         result
     }
 
+    /// Port of `use_labtransfer2(cn, co)` from the original server sources.
+    ///
+    /// Helper used when a labkeeper corpse is looted and a lab transfer should
+    /// be completed. Performs companion/master notifications and teleports
+    /// involved characters when appropriate.
+    ///
+    /// # Arguments
+    /// * `cn` - Character id performing the lab transfer action
+    /// * `co` - Corpse character id associated with the lab transfer
     pub fn use_labtransfer2(&self, cn: usize, co: usize) {
         // Port of use_labtransfer2 from helper.cpp
         // If cn is a companion and its master matches the corpse owner, notify master and teleport them.
@@ -291,29 +300,32 @@ impl State {
         }
     }
 
-    /// Calculate a character's score based on their total points.
-    /// Score is computed as: (sqrt(points_tot) / 7) + 7
+    /// Port of `do_char_score(cn)` from `svr_do.cpp`.
     ///
-    /// Port of `do_char_score` from `svr_do.cpp`
+    /// Computes a derived score value from a character's total points used
+    /// for ranking/music or display. Formula: `(sqrt(points_tot) / 7) + 7`.
     ///
-    /// # Parameters
-    /// - `cn`: Character index
+    /// # Arguments
+    /// * `cn` - Character id to compute score for
     ///
     /// # Returns
-    /// The calculated score value
+    /// Calculated integer score
     pub fn do_char_score(&self, cn: usize) -> i32 {
         let pts = Repository::with_characters(|characters| characters[cn].points_tot);
         let pts = if pts < 0 { 0 } else { pts } as f64;
         ((pts.sqrt() as i32) / 7) + 7
     }
 
-    /// Port of `do_seen(int cn, char* cco)` from `svr_do.cpp`
+    /// Port of `do_seen(cn, cco)` from `svr_do.cpp`.
     ///
-    /// Tell when a certain player last logged on.
+    /// Lookup when a target character was last seen or logged in. For gods
+    /// and staff the output is a detailed timestamp; for normal players a
+    /// relative day count is provided. Rejects invisible/god-only targets for
+    /// regular players.
     ///
     /// # Arguments
-    /// * `cn` - Character asking about last seen time
-    /// * `target_name` - Name or ID of character to look up
+    /// * `cn` - Querying character id
+    /// * `target_name` - Name or numeric id string of the target
     pub fn do_seen(&self, cn: usize, target_name: &str) {
         if target_name.is_empty() {
             self.do_character_log(cn, core::types::FontColor::Red, "When was WHO last seen?\n");
@@ -443,9 +455,15 @@ impl State {
         });
     }
 
-    /// Port of `do_follow(int cn, char* name)` from `svr_do.cpp`
+    /// Port of `do_follow(cn, name)` from `svr_do.cpp`.
     ///
-    /// Set character to follow another character.
+    /// Sets or clears the follow target for the character `cn`. When called
+    /// with an empty `name` it reports the current follow target. Visibility
+    /// and sanity checks are performed when resolving the target name.
+    ///
+    /// # Arguments
+    /// * `cn` - Character setting follow
+    /// * `name` - Name of player to follow (empty to clear/report)
     pub(crate) fn do_follow(&self, cn: usize, name: &str) {
         if name.is_empty() {
             let co = Repository::with_characters(|ch| ch[cn].data[10] as usize);
@@ -516,9 +534,16 @@ impl State {
         );
     }
 
-    /// Port of `do_ignore(int cn, char* name, int flag)` from `svr_do.cpp`
+    /// Port of `do_ignore(cn, name, flag)` from `svr_do.cpp`.
     ///
-    /// Add or remove a character from the ignore list.
+    /// Adds or removes a player from the caller's ignore group. When `name`
+    /// is empty the current ignore list is displayed. The `flag` selects
+    /// between two ignore groups (different bases).
+    ///
+    /// # Arguments
+    /// * `cn` - Character modifying their ignore list
+    /// * `name` - Player name to add/remove (empty to display)
+    /// * `flag` - Selector for ignore group (0 or 1)
     pub(crate) fn do_ignore(&self, cn: usize, name: &str, flag: i32) {
         let base = if flag == 0 { 30 } else { 50 };
         if name.is_empty() {
@@ -598,9 +623,14 @@ impl State {
         );
     }
 
-    /// Port of `do_group(int cn, char* name)` from `svr_do.cpp`
+    /// Port of `do_group(cn, name)` from `svr_do.cpp`.
     ///
-    /// Invite someone to join group or manage group membership.
+    /// Invite/remove a player from the caller's group, or display group
+    /// membership when `name` is empty. Performs sanity and player checks.
+    ///
+    /// # Arguments
+    /// * `cn` - Caller character id
+    /// * `name` - Name of player to add/remove (empty to display)
     pub(crate) fn do_group(&self, cn: usize, name: &str) {
         if name.is_empty() {
             self.do_character_log(
@@ -692,9 +722,15 @@ impl State {
         );
     }
 
-    /// Port of `do_allow(int cn, int co)` from `svr_do.cpp`
+    /// Port of `do_allow(cn, co)` from `svr_do.cpp`.
     ///
-    /// Allow another character to take items from you.
+    /// Grants or revokes permission for `co` to access `cn`'s grave/corpse
+    /// items. Updates the appropriate CHD_ALLOW data field and informs the
+    /// player.
+    ///
+    /// # Arguments
+    /// * `cn` - Owner character id
+    /// * `co` - Character id to allow (0 to revoke)
     pub(crate) fn do_allow(&self, cn: usize, co: usize) {
         Repository::with_characters_mut(|ch| ch[cn].data[core::constants::CHD_ALLOW] = co as i32);
         if co != 0 {
@@ -713,9 +749,16 @@ impl State {
         }
     }
 
-    /// Port of `do_mark(int cn, int co, char* msg)` from `svr_do.cpp`
+    /// Port of `do_mark(cn, co, msg)` from `svr_do.cpp`.
     ///
-    /// Mark a character for tracking or special handling.
+    /// Sets or clears a short marker text for the given character. When
+    /// `msg` is empty the current mark is cleared and the old value shown to
+    /// the caller.
+    ///
+    /// # Arguments
+    /// * `cn` - Caller character id
+    /// * `co` - Target character id
+    /// * `msg` - Marker text (empty to clear)
     pub(crate) fn do_mark(&self, cn: usize, co: usize, msg: &str) {
         if !core::types::Character::is_sane_character(co) {
             self.do_character_log(cn, core::types::FontColor::Red, "That's not a player\n");
@@ -754,9 +797,14 @@ impl State {
         );
     }
 
-    /// Port of `do_afk(int cn, char* msg)` from `svr_do.cpp`
+    /// Port of `do_afk(cn, msg)` from `svr_do.cpp`.
     ///
-    /// Set or clear AFK status with optional message.
+    /// Toggles AFK status for the caller and optionally sets a short AFK
+    /// message which is stored in the character data field.
+    ///
+    /// # Arguments
+    /// * `cn` - Caller character id
+    /// * `msg` - AFK message (optional)
     pub(crate) fn do_afk(&self, cn: usize, msg: &str) {
         Repository::with_characters_mut(|ch| {
             if ch[cn].data[core::constants::CHD_AFK] != 0 {
@@ -791,9 +839,14 @@ impl State {
         });
     }
 
-    /// Port of `do_help(int cn, char* topic)` from `svr_do.cpp`
+    /// Port of `do_help(cn, topic)` from `svr_do.cpp`.
     ///
-    /// Display help information for a topic.
+    /// Sends a short help list of available commands to the caller. The
+    /// `topic` parameter is currently ignored in this simplified port.
+    ///
+    /// # Arguments
+    /// * `cn` - Caller character id
+    /// * `topic` - Help topic (currently unused)
     pub(crate) fn do_help(&self, cn: usize, _topic: &str) {
         self.do_character_log(
             cn,
@@ -827,9 +880,14 @@ impl State {
         );
     }
 
-    /// Port of `do_fightback(int cn)` from `svr_do.cpp`
+    /// Port of `do_fightback(cn)` from `svr_do.cpp`.
     ///
-    /// Toggle automatic fight-back when attacked.
+    /// Toggles the player's automatic fight-back setting. When enabled the
+    /// character will automatically retaliate when attacked (game logic for
+    /// auto-attack handled elsewhere).
+    ///
+    /// # Arguments
+    /// * `cn` - Character id toggling the setting
     pub(crate) fn do_fightback(&self, cn: usize) {
         Repository::with_characters_mut(|chars| {
             if chars[cn].data[11] != 0 {

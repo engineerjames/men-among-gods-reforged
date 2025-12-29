@@ -30,17 +30,19 @@ impl State {
 
     /// Port of `really_update_char(int cn)` from `svr_do.cpp`
     ///
-    /// Recalculates all character stats from base values, worn items, and active spells.
-    /// This is the core stat calculation function that determines:
+    /// Recalculates all character stats from base values, worn items, and
+    /// active spells. This is the central stat computation invoked after
+    /// equipment changes, spell effects or any change that affects derived
+    /// attributes. It computes:
     /// - Final attributes (strength, agility, etc.)
     /// - HP, endurance, and mana totals
-    /// - Skills with attribute bonuses
-    /// - Armor, weapon, and gethit damage values
-    /// - Light emission
-    /// - Movement speed
-    /// - Special flags (infrared, no regen flags)
+    /// - Skill modifiers from attributes and items
+    /// - Armor, weapon and gethit damage values
+    /// - Light emission and infra-vision
+    /// - Movement speed and temporary flags
     ///
-    /// Called after equipment changes, spell effects, or any stat modifications.
+    /// # Arguments
+    /// * `cn` - Character id to recompute
     pub(crate) fn really_update_char(&mut self, cn: usize) {
         // Clear regeneration prevention flags and sprite override
         Repository::with_characters_mut(|characters| {
@@ -494,9 +496,16 @@ impl State {
 
     /// Port of `do_regenerate(int cn)` from `svr_do.cpp`
     ///
-    /// Handles HP/endurance/mana regeneration based on character status, skills, and spells.
-    /// Also manages spell effects, underwater damage, and endurance drain from movement/combat.
-    /// Called every tick for active characters.
+    /// Handles HP/endurance/mana regeneration and related per-tick updates.
+    ///
+    /// Responsibilities:
+    /// - Apply HP/END/MANA regeneration rules (including moon/mayhem effects)
+    /// - Manage spell durations, shield behavior and active-item wear
+    /// - Apply underwater damage and item tear/wear for active players
+    /// - Clamp accumulated stats and set timers for low-resource states
+    ///
+    /// # Arguments
+    /// * `cn` - Character id to regenerate (called every tick)
     pub(crate) fn do_regenerate(&self, cn: usize) {
         // Check if character is stoned - no regeneration if stoned
         let is_stoned =
@@ -1201,19 +1210,18 @@ impl State {
         self.do_update_char(cn);
     }
 
-    /// Port of `do_raise_attrib(int cn, int nr)` from `svr_do.cpp`
+    /// Port of `do_raise_attrib(cn, nr)` from `svr_do.cpp`.
     ///
-    /// Attempts to raise an attribute using available character points.
-    /// Checks if the attribute can be raised (not at max, not zero) and if
-    /// the character has enough points to pay for the increase.
+    /// Attempts to raise a base attribute using available character points.
+    /// Validates bounds and point cost before incrementing the attribute and
+    /// deducting points.
     ///
     /// # Arguments
-    /// * `cn` - Character index
-    /// * `attrib` - Attribute index (0-4: BRAVE, WILL, INT, AGIL, STREN)
+    /// * `cn` - Character id
+    /// * `attrib` - Attribute index (0..4)
     ///
     /// # Returns
-    /// * `true` - Attribute was successfully raised
-    /// * `false` - Cannot raise attribute (at max, zero, or insufficient points)
+    /// * `true` if the attribute was raised, `false` otherwise
     pub(crate) fn do_raise_attrib(&self, cn: usize, attrib: i32) -> bool {
         let attrib_idx = attrib as usize;
         if attrib_idx >= 5 {
@@ -1250,9 +1258,16 @@ impl State {
         true
     }
 
-    /// Port of `do_raise_hp(int cn)` from `svr_do.cpp`
+    /// Port of `do_raise_hp(cn)` from `svr_do.cpp`.
     ///
-    /// Attempts to raise base HP using available character points.
+    /// Attempts to increase the character's base HP at the cost of
+    /// character points. Performs validation and updates derived stats.
+    ///
+    /// # Arguments
+    /// * `cn` - Character id
+    ///
+    /// # Returns
+    /// * `true` on success, `false` on failure
     pub(crate) fn do_raise_hp(&self, cn: usize) -> bool {
         let (current_val, max_val, diff, available_points) = Repository::with_characters(|ch| {
             (ch[cn].hp[0], ch[cn].hp[2], ch[cn].hp[3], ch[cn].points)
@@ -1276,9 +1291,16 @@ impl State {
         true
     }
 
-    /// Port of `do_raise_end(int cn)` from `svr_do.cpp`
+    /// Port of `do_raise_end(cn)` from `svr_do.cpp`.
     ///
-    /// Attempts to raise base endurance using available character points.
+    /// Attempts to increase the character's base endurance using available
+    /// character points. Updates derived stats on success.
+    ///
+    /// # Arguments
+    /// * `cn` - Character id
+    ///
+    /// # Returns
+    /// * `true` on success, `false` on failure
     pub(crate) fn do_raise_end(&self, cn: usize) -> bool {
         let (current_val, max_val, diff, available_points) = Repository::with_characters(|ch| {
             (ch[cn].end[0], ch[cn].end[2], ch[cn].end[3], ch[cn].points)
@@ -1304,9 +1326,16 @@ impl State {
         true
     }
 
-    /// Port of `do_raise_mana(int cn)` from `svr_do.cpp`
+    /// Port of `do_raise_mana(cn)` from `svr_do.cpp`.
     ///
-    /// Attempts to raise base mana using available character points.
+    /// Attempts to increase the character's base mana using available
+    /// character points. Validates and updates derived statistics.
+    ///
+    /// # Arguments
+    /// * `cn` - Character id
+    ///
+    /// # Returns
+    /// * `true` on success, `false` on failure
     pub(crate) fn do_raise_mana(&self, cn: usize) -> bool {
         let (current_val, max_val, diff, available_points) = Repository::with_characters(|ch| {
             (
@@ -1337,17 +1366,17 @@ impl State {
         true
     }
 
-    /// Port of `do_raise_skill(int cn, int nr)` from `svr_do.cpp`
+    /// Port of `do_raise_skill(cn, nr)` from `svr_do.cpp`.
     ///
-    /// Attempts to raise a skill using available character points.
+    /// Attempts to raise a skill for the character using available points.
+    /// Validates bounds, costs and updates the character on success.
     ///
     /// # Arguments
-    /// * `cn` - Character index
-    /// * `skill` - Skill index (0-49)
+    /// * `cn` - Character id
+    /// * `skill` - Skill index (0..49)
     ///
     /// # Returns
-    /// * `true` - Skill was successfully raised
-    /// * `false` - Cannot raise skill (at max, zero, or insufficient points)
+    /// * `true` when the skill was increased, `false` otherwise
     pub(crate) fn do_raise_skill(&self, cn: usize, skill: i32) -> bool {
         let skill_idx = skill as usize;
         if skill_idx >= 50 {
@@ -1382,10 +1411,16 @@ impl State {
         true
     }
 
-    /// Port of `do_lower_hp(int cn)` from `svr_do.cpp`
+    /// Port of `do_lower_hp(cn)` from `svr_do.cpp`.
     ///
-    /// Permanently lowers base HP and removes the points from total.
-    /// Used for death penalties.
+    /// Permanently reduces base HP for the character and adjusts point
+    /// distributions accordingly. Used when applying death penalties.
+    ///
+    /// # Arguments
+    /// * `cn` - Character id
+    ///
+    /// # Returns
+    /// * `true` when the operation succeeded
     pub(crate) fn do_lower_hp(&self, cn: usize) -> bool {
         let current_val = Repository::with_characters(|ch| ch[cn].hp[0]);
 
@@ -1411,10 +1446,16 @@ impl State {
         true
     }
 
-    /// Port of `do_lower_mana(int cn)` from `svr_do.cpp`
+    /// Port of `do_lower_mana(cn)` from `svr_do.cpp`.
     ///
-    /// Permanently lowers base mana and removes the points from total.
-    /// Used for death penalties.
+    /// Permanently reduces base mana for the character and adjusts point
+    /// totals accordingly. Used when applying death penalties.
+    ///
+    /// # Arguments
+    /// * `cn` - Character id
+    ///
+    /// # Returns
+    /// * `true` when the operation succeeded
     pub(crate) fn do_lower_mana(&self, cn: usize) -> bool {
         let current_val = Repository::with_characters(|ch| ch[cn].mana[0]);
 
@@ -1439,11 +1480,14 @@ impl State {
         true
     }
 
-    /// Port of `do_check_new_level(int cn)` from `svr_do.cpp`
+    /// Port of `do_check_new_level(cn)` from `svr_do.cpp`.
     ///
-    /// Checks if a character has gained enough points to level up.
-    /// Awards HP, endurance, and mana based on character kindred.
-    /// Announces level gains and has an NPC herald announce the new rank.
+    /// Evaluates whether the character has reached the next rank threshold
+    /// and grants the appropriate increases to HP/END/MANA. Also handles
+    /// announcements and any herald/NPC notifications required on level up.
+    ///
+    /// # Arguments
+    /// * `cn` - Character id to check for level advancement
     pub(crate) fn do_check_new_level(&self, cn: usize) {
         Repository::with_characters_mut(|characters| {
             // Only for players
@@ -1558,18 +1602,21 @@ impl State {
         });
     }
 
-    /// Port of `do_hurt(int cn, int co, int dam, int type)` from `svr_do.cpp`
+    /// Port of `do_hurt(cn, co, dam, type)` from `svr_do.cpp`.
     ///
-    /// Applies damage to a character. Handles:
-    /// - Armor damage for players
-    /// - Magic shield absorption
-    /// - Damage scaling by type
-    /// - Experience awards for damage dealt
-    /// - Death handling and notifications
-    /// - God saves for lucky characters
-    /// - Reactive damage (gethit)
+    /// Applies damage to a target character (`co`) inflicted by `cn`.
+    /// This routine handles armor degradation, magical shields, damage
+    /// scaling by type, experience awards for attackers, death handling,
+    /// possible god-saves, and reactive gethit damage.
     ///
-    /// Returns the actual damage dealt (in points, not scaled).
+    /// # Arguments
+    /// * `cn` - Attacker character id
+    /// * `co` - Target character id
+    /// * `dam` - Raw damage value (scaled internally)
+    /// * `type_hurt` - Damage type code (influences scaling/FX)
+    ///
+    /// # Returns
+    /// Actual damage dealt in game units (after internal scaling/truncation)
     pub(crate) fn do_hurt(&mut self, cn: usize, co: usize, dam: i32, type_hurt: i32) -> i32 {
         // Quick sanity/body check
         let is_body =

@@ -14,6 +14,7 @@ struct Seen {
     help: i32,
 }
 
+/// TODO: Document the purpose, inputs, and outputs of this function.
 pub fn npc_stunrun_high(cn: usize) -> i32 {
     let mut seen: [Seen; 30] = [const {
         Seen {

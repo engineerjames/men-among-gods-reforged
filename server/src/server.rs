@@ -20,13 +20,29 @@ use crate::{driver, player, populate};
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
 
+/// Global array of server player slots protected by a reentrant mutex.
+///
+/// Stored in a `OnceLock` and containing `MAXPLAYER` `ServerPlayer` entries.
+/// Accessors `Server::with_players` and `Server::with_players_mut` provide
+/// thread-safe read or mutable access via closures.
 static PLAYERS: OnceLock<ReentrantMutex<UnsafeCell<Box<[core::types::ServerPlayer; MAXPLAYER]>>>> =
     OnceLock::new();
 
-// TICK constant - microseconds per tick (matching C++ TICK value)
+/// Microseconds per tick (matching original C++ TICK value).
+/// Calculated as 1_000_000 / TICKS.
 const TICK: u64 = 1_000_000 / TICKS; // 40ms per tick
+
+/// Desired ticks per second for the server main loop.
 const TICKS: u64 = 25; // ticks per second
 
+/// Per-character scheduling hints used by `game_tick`.
+///
+/// Determines which processing path a character should take on a tick:
+/// - `Empty`: unused slot
+/// - `NeedsUpdate`: character flagged for immediate update
+/// - `CheckExpire`: non-active slot that should be checked for expiration
+/// - `Body`: a corpse/body that needs body handling
+/// - `Active`: normal active processing
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum CharacterTickState {
     Empty,
@@ -36,6 +52,10 @@ enum CharacterTickState {
     Active,
 }
 
+/// The server runtime object which manages networking and tick timing.
+///
+/// Holds the listener socket and timing state used by the main loop. Create
+/// with `Server::new()` and call `initialize()` prior to running ticks.
 pub struct Server {
     sock: Option<TcpListener>,
     last_tick_time: Option<Instant>,
@@ -44,6 +64,8 @@ pub struct Server {
 }
 
 impl Server {
+    /// Construct a new `Server` instance with uninitialized socket and
+    /// counters. Call `initialize()` to bind the port and set up subsystems.
     pub fn new() -> Self {
         Server {
             sock: None,
@@ -53,6 +75,11 @@ impl Server {
         }
     }
 
+    /// Allocate and initialize the global player slot array.
+    ///
+    /// Creates `MAXPLAYER` `ServerPlayer` entries and stores them inside the
+    /// `PLAYERS` `OnceLock`, wrapped with a `ReentrantMutex`. Returns an error
+    /// if the players array is already initialized or conversion fails.
     pub fn initialize_players() -> Result<(), String> {
         let players: Vec<ServerPlayer> = (1..=MAXPLAYER).map(|_x| ServerPlayer::new()).collect();
         let players: Box<[ServerPlayer; MAXPLAYER]> = players
@@ -66,6 +93,11 @@ impl Server {
         Ok(())
     }
 
+    /// Execute `f` with a read-only view of the player slots.
+    ///
+    /// This helper acquires the `PLAYERS` mutex and provides a shared slice of
+    /// `ServerPlayer` to the closure while the lock is held. Use this to
+    /// safely read player fields.
     pub fn with_players<F, R>(f: F) -> R
     where
         F: FnOnce(&[core::types::ServerPlayer]) -> R,
@@ -78,6 +110,11 @@ impl Server {
         f(&boxed[..])
     }
 
+    /// Execute `f` with a mutable view of the player slots.
+    ///
+    /// Provides exclusive mutable access to the player array while the
+    /// repository mutex is held. Use this to initialize or update player
+    /// connection state.
     pub fn with_players_mut<F, R>(f: F) -> R
     where
         F: FnOnce(&mut [core::types::ServerPlayer]) -> R,
@@ -91,10 +128,15 @@ impl Server {
         f(&mut boxed_mut[..])
     }
 
+    /// Check whether an item carried by a player is a 'labyrinth' item and
+    /// remove it when the player is inside designated lab coordinates.
+    ///
+    /// This mirrors the original `tmplabcheck` behavior and sets `used` to
+    /// `USE_EMPTY` and transfers ownership back to God when appropriate.
     fn tmplabcheck(item_idx: usize) {
         Repository::with_characters(|ch| {
             Repository::with_items_mut(|it| {
-                let cn = it[item_idx].carried as usize;
+                let cn = it[item_idx].carried as usize; 
                 if cn == 0 || !ServerPlayer::is_sane_player(cn) {
                     return;
                 }
@@ -116,6 +158,16 @@ impl Server {
         });
     }
 
+    /// Initialize the server: bind listening socket and initialize subsystems.
+    ///
+    /// Actions performed:
+    /// - Bind to 0.0.0.0:5555 and set the socket non-blocking
+    /// - Initialize the `PLAYERS` array, `State`, `NetworkManager` and other
+    ///   subsystems
+    /// - Mark repository data as dirty and perform startup cleanup (force
+    ///   logout of active characters from prior runs)
+    ///
+    /// Returns an error if socket bind or subsystem initialization fails.
     pub fn initialize(&mut self) -> Result<(), String> {
         // Create and configure TCP socket (matching server.cpp socket setup)
         let listener = TcpListener::bind("0.0.0.0:5555")
@@ -222,6 +274,12 @@ impl Server {
         Ok(())
     }
 
+    /// Advance the server by a single scheduling tick.
+    ///
+    /// When it's time, `tick` will call `game_tick()` to run world logic, then
+    /// compress and send tick updates to players, perform slower network I/O
+    /// periodically (every 8 ticks), and finally sleep to maintain the target
+    /// tick rate.
     pub fn tick(&mut self) {
         // Initialize last_tick_time if not set (equivalent to: if (ltime == 0) ltime = timel())
         if self.last_tick_time.is_none() {
@@ -268,6 +326,15 @@ impl Server {
         }
     }
 
+    /// Execute the main game tick logic.
+    ///
+    /// Responsibilities include:
+    /// - Updating tick-rate statistics
+    /// - Incrementing global counters and uptime
+    /// - Driving player ticks and processing commands
+    /// - Running character and NPC actions, expiration checks, and body handling
+    /// - Updating global statistics and letting subsystems tick (populate, effects,
+    ///   item driver)
     fn game_tick(&mut self) {
         // Track actual tick rate and log every 5 seconds
         self.tick_counter = self.tick_counter.wrapping_add(1);
@@ -557,6 +624,10 @@ impl Server {
     }
 
     // Helper enum for character tick state
+    /// Wake up one character in a round-robin fashion.
+    ///
+    /// This sets the single-character awake timer (`data[92]`) for one template
+    /// index each call, cycling through `MAXCHARS` over time.
     fn wakeup_character(&mut self) {
         // Wakeup one character per 64 ticks
         static WAKEUP: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
@@ -573,6 +644,11 @@ impl Server {
         WAKEUP.store(wakeup_idx + 1, std::sync::atomic::Ordering::Relaxed);
     }
 
+    /// Return true if the character `cn` should be considered active.
+    ///
+    /// Characters are active if they are players/usurpers, flagged with
+    /// `NoSleep`, currently `USE_ACTIVE`, or have a non-zero single-awake
+    /// timer (`data[92]`).
     fn group_active(&self, cn: usize) -> bool {
         Repository::with_characters(|ch| {
             if ((ch[cn].flags & CharacterFlags::Player.bits() != 0)
@@ -589,6 +665,12 @@ impl Server {
         })
     }
 
+    /// Check whether a non-active character `cn` should be expired/erased.
+    ///
+    /// Uses a tiered expiration policy based on total points and last login
+    /// date (e.g., zero-point characters are removed after 3 days; higher
+    /// ranks get longer grace periods). When expiration triggers, the
+    /// character is marked `USE_EMPTY` and logged.
     fn check_expire(&self, cn: usize) {
         // Check character expiration similar to the original C++ logic.
 
@@ -644,6 +726,16 @@ impl Server {
         }
     }
 
+    /// Validate character `cn`'s internal consistency and position.
+    ///
+    /// Performs several checks ported from the original C++ server:
+    /// - Bounds checks for `x`/`y` coordinates
+    /// - Map tile ownership consistency (`map[idx].ch`)
+    /// - Inventory consistency (carried, depot, worn, spell slots)
+    /// - Special-case checks (building mode, stoned non-player target validity)
+    ///
+    /// Returns `true` if character passes validation; otherwise cleans up and
+    /// returns `false`.
     fn check_valid(&self, cn: usize) -> bool {
         // Full validation ported from the original C++ check_valid
 
@@ -821,6 +913,11 @@ impl Server {
         true
     }
 
+    /// Handle global (world) time progression and daily events.
+    ///
+    /// Advances `mdtime`, rolls day/year counters, updates daylight/moon phase
+    /// and, when a new day begins, performs daily maintenance such as depot
+    /// payments and miscellaneous per-player adjustments.
     fn global_tick(&self) {
         // Port of svr_glob.cpp::global_tick
         const MD_HOUR: i32 = 3600;
@@ -948,6 +1045,11 @@ impl Server {
         }
     }
 
+    /// Compress outgoing per-player tick buffers using zlib when beneficial.
+    ///
+    /// Iterates connected players and attempts to compress their `tbuf` data
+    /// into each player's `zs` encoder. Updates buffer pointers and resets
+    /// `tptr` after compressing.
     fn compress_ticks(&mut self) {
         // For each connected player, compress their tick buffer (`tbuf`) if worthwhile
         Server::with_players_mut(|players| {
@@ -1059,6 +1161,12 @@ impl Server {
         });
     }
 
+    /// Accept new connections and perform per-player network IO.
+    ///
+    /// Accepts new TCP connections on the listener, assigning them a free
+    /// /// player slot via `new_player`. For existing connections, it calls
+    /// `rec_player` and `send_player` as necessary to handle receive and send
+    /// activity.
     fn handle_network_io(&mut self) {
         // Handle new connections
         if let Some(ref listener) = self.sock {
@@ -1101,6 +1209,11 @@ impl Server {
         }
     }
 
+    /// Accept a new incoming connection and assign it a player slot.
+    ///
+    /// Converts the peer address into a u32 (IPv4) and initializes a fresh
+    /// `ServerPlayer` including zlib compression state. If no free slot is
+    /// available, the connection is closed.
     fn new_player(&mut self, stream: std::net::TcpStream, addr: std::net::IpAddr) {
         // Accept and initialize a new player slot. Mirrors server.cpp::new_player
 
@@ -1152,6 +1265,11 @@ impl Server {
         });
     }
 
+    /// Read available bytes from a player's socket into their input buffer.
+    ///
+    /// This method attempts a non-blocking read into `inbuf` and updates
+    /// `in_len` accordingly. IO errors and disconnects are handled similarly
+    /// to the original server behavior.
     fn rec_player(&self, _player_idx: usize) {
         // Receive incoming bytes from a connected player's socket.
         let idx = _player_idx;
@@ -1207,6 +1325,10 @@ impl Server {
         });
     }
 
+    /// Flush pending output bytes from `obuf` to the player's TCP socket.
+    ///
+    /// Handles partial writes and advances the circular buffer pointers. On
+    /// fatal socket errors the player slot may be disconnected.
     fn send_player(&self, player_idx: usize) {
         // Send pending data from player's output buffer to their socket.
         let idx = player_idx;
@@ -1272,6 +1394,10 @@ impl Server {
 }
 
 impl Drop for Server {
+    /// Called when the `Server` is dropped (shutdown).
+    ///
+    /// Marks repository data as clean and performs any final logging; further
+    /// graceful shutdown steps may be added here in the future.
     fn drop(&mut self) {
         log::info!("Server shutting down, marking data as clean.");
         Repository::with_globals_mut(|globals| {

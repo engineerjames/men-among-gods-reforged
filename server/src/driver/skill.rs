@@ -65,7 +65,15 @@ const SKILL_NAMES: [&str; 50] = [
     "",
 ];
 
-/// Return skill name for external callers (bounds-checked)
+/// Returns the skill name for a given index, or an empty string if out of bounds.
+///
+/// # Arguments
+///
+/// * `n` - Index of the skill
+///
+/// # Returns
+///
+/// The skill name as a string slice, or an empty string if out of bounds.
 pub fn skill_name(n: usize) -> &'static str {
     if n < SKILL_NAMES.len() {
         SKILL_NAMES[n]
@@ -74,7 +82,16 @@ pub fn skill_name(n: usize) -> &'static str {
     }
 }
 
-// This function is unused in the original implementation as well.
+/// Determines if a friend is considered an enemy for the given character.
+///
+/// # Arguments
+///
+/// * `cn` - Character number (index)
+/// * `cc` - Friend character number (index)
+///
+/// # Returns
+///
+/// Returns 1 if the friend is an enemy, 0 otherwise.
 #[allow(dead_code)]
 pub fn friend_is_enemy(cn: usize, cc: usize) -> i32 {
     // Rust port of C++ friend_is_enemy
@@ -88,6 +105,7 @@ pub fn friend_is_enemy(cn: usize, cc: usize) -> i32 {
     }
     0
 }
+/// TODO: Document the purpose, inputs, and outputs of this function.
 pub fn player_or_ghost(cn: usize, co: usize) -> i32 {
     // Rust port of C++ player_or_ghost
     let cn_flags = Repository::with_characters(|ch| ch[cn].flags);

@@ -7,8 +7,16 @@ use crate::repository::Repository;
 use super::State;
 
 impl State {
-    /// Add light from a specific point, spreading it to nearby tiles based on line of sight.
-    /// Port of `do_add_light(int x, int y, int strength)` from the original `helper.cpp`.
+    /// Port of `do_add_light(x, y, strength)` from the original `helper.cpp`.
+    ///
+    /// Adds light originating at `(x_center, y_center)` and spreads it to
+    /// nearby tiles according to line-of-sight. Negative `strength` values
+    /// remove light. Uses `can_see` to attenuate contribution based on
+    /// obstructions.
+    ///
+    /// # Arguments
+    /// * `x_center, y_center` - Source coordinates for the light
+    /// * `strength` - Light strength (negative to subtract)
     pub(crate) fn do_add_light(&mut self, x_center: i32, y_center: i32, mut strength: i32) {
         // First add light to the center
         let center_map_index =
@@ -70,7 +78,14 @@ impl State {
         }
     }
 
-    /// Compute daylight for indoor tiles based on nearby outdoor tiles.
+    /// Port of `compute_dlight(xc, yc)` from the original helper code.
+    ///
+    /// For indoor tiles, computes a daylight contribution derived from nearby
+    /// outdoor tiles. Writes the computed `dlight` value into the map tile
+    /// at `(xc, yc)`.
+    ///
+    /// # Arguments
+    /// * `xc, yc` - Coordinates of the indoor tile to compute
     pub(crate) fn compute_dlight(&mut self, xc: i32, yc: i32) {
         let xs = cmp::max(0, xc - core::constants::LIGHTDIST);
         let ys = cmp::max(0, yc - core::constants::LIGHTDIST);
@@ -134,7 +149,14 @@ impl State {
         });
     }
 
-    /// Port of `add_lights(int x, int y)` from the original `helper.cpp`.
+    /// Port of `add_lights(x, y)` from the original `helper.cpp`.
+    ///
+    /// Scans a local neighborhood around `(x, y)` and applies light sources
+    /// contributed by items and characters. For indoor tiles it also invokes
+    /// `compute_dlight` to derive daylight contribution.
+    ///
+    /// # Arguments
+    /// * `x, y` - Center coordinates to scan for light sources
     pub(crate) fn add_lights(&mut self, x: i32, y: i32) {
         let x0 = x;
         let y0 = y;
@@ -196,8 +218,19 @@ impl State {
         }
     }
 
-    /// Check if there's line of sight from (fx, fy) to (tx, ty).
-    /// Returns the visibility distance (1 = best, higher = worse), or 0 if not visible.
+    /// Port of `can_see(fx,fy,tx,ty,max_distance)` from original code.
+    ///
+    /// Checks line-of-sight from `(fx,fy)` to `(tx,ty)` and returns a
+    /// visibility metric: `1` indicates perfect/very close visibility, larger
+    /// values indicate worse visibility, and `0` means not visible. When
+    /// `character_id` is provided the function may reuse a cached see-map and
+    /// update the per-character visibility cache.
+    ///
+    /// # Arguments
+    /// * `character_id` - Optional character id whose see cache to use/update
+    /// * `fx, fy` - Origin coordinates
+    /// * `tx, ty` - Target coordinates to check
+    /// * `max_distance` - Maximum radius to compute
     pub(crate) fn can_see(
         &mut self,
         character_id: Option<usize>,
@@ -246,7 +279,15 @@ impl State {
         self.check_vis(tx, ty)
     }
 
-    /// Build a visibility map for pathfinding from position (fx, fy).
+    /// Port of `can_map_go(fx,fy,max_distance)` from original helper code.
+    ///
+    /// Builds a visibility map used for pathfinding from origin `(fx,fy)`,
+    /// filling the internal `_visi` array with reachability values up to the
+    /// supplied `max_distance`.
+    ///
+    /// # Arguments
+    /// * `fx, fy` - Origin coordinates
+    /// * `max_distance` - Maximum radius to build
     pub(crate) fn can_map_go(&mut self, fx: i32, fy: i32, max_distance: i32) {
         // Clear the visibility array
         self._visi.fill(0);
@@ -288,7 +329,15 @@ impl State {
         }
     }
 
-    /// Build a visibility map for line of sight from position (fx, fy).
+    /// Port of `can_map_see(fx,fy,max_distance)` from original helper code.
+    ///
+    /// Builds a line-of-sight visibility map from origin `(fx,fy)` and fills
+    /// the internal `_visi` buffer with visibility strength values used by
+    /// `can_see` and related checks.
+    ///
+    /// # Arguments
+    /// * `fx, fy` - Origin coordinates
+    /// * `max_distance` - Maximum radius to compute
     pub(crate) fn can_map_see(&mut self, fx: i32, fy: i32, max_distance: i32) {
         // Clear the visibility array
         self._visi.fill(0);
@@ -330,7 +379,15 @@ impl State {
         }
     }
 
-    /// Check if there's a valid path from (fx, fy) to (target_x, target_y).
+    /// Port of `can_go(fx,fy,target_x,target_y)` from original helper code.
+    ///
+    /// Determines whether a valid path exists from `(fx,fy)` to
+    /// `(target_x,target_y)` using the internal visibility/path map. Returns
+    /// `true` when reachable, `false` otherwise.
+    ///
+    /// # Arguments
+    /// * `fx, fy` - Start coordinates
+    /// * `target_x, target_y` - Destination coordinates
     pub(crate) fn can_go(&mut self, fx: i32, fy: i32, target_x: i32, target_y: i32) -> bool {
         if self.visi != self._visi {
             self.visi = self._visi.clone();
@@ -347,14 +404,26 @@ impl State {
         tmp != 0
     }
 
-    /// Check daylight at a specific position.
+    /// Port of `check_dlight(x,y)` from original helper code.
+    ///
+    /// Returns the computed daylight value at tile `(x,y)`, taking into
+    /// account whether the tile is indoor or outdoor.
+    ///
+    /// # Arguments
+    /// * `x, y` - Tile coordinates
     pub(crate) fn check_dlight(x: usize, y: usize) -> i32 {
         let map_index = x + y * core::constants::SERVER_MAPX as usize;
 
         Self::check_dlightm(map_index)
     }
 
-    /// Check daylight at a specific map index.
+    /// Port of `check_dlightm(map_index)` from original helper code.
+    ///
+    /// Returns daylight for a tile given its flat map index, considering the
+    /// global daylight value and the tile's indoor multiplier.
+    ///
+    /// # Arguments
+    /// * `map_index` - Linear map index
     pub(crate) fn check_dlightm(map_index: usize) -> i32 {
         Repository::with_map(|map| {
             Repository::with_globals(|globals| {
@@ -367,7 +436,15 @@ impl State {
         })
     }
 
-    /// Calculate adjusted light value based on character's perception skill and infrared ability.
+    /// Port of `do_character_calculate_light(cn, light)` from original code.
+    ///
+    /// Adjusts a raw light value according to the character's perception
+    /// skill and infrared ability, clamping to valid bounds. Returns the
+    /// adjusted light value used in visibility calculations.
+    ///
+    /// # Arguments
+    /// * `cn` - Character id
+    /// * `light` - Raw light value
     pub(crate) fn do_character_calculate_light(&self, cn: usize, light: i32) -> i32 {
         Repository::with_characters(|characters| {
             let character = &characters[cn];
@@ -393,8 +470,16 @@ impl State {
         })
     }
 
-    /// Check if character cn can see character co, taking into account distance, light, stealth, and line of sight.
-    /// Returns 0 if cannot see, 1 if very close, or distance value otherwise.
+    /// Port of `do_char_can_see(cn, co)` from original server logic.
+    ///
+    /// Determines whether character `cn` can perceive character `co`, using
+    /// distance, stealth/perception skills, ambient light, and line-of-sight
+    /// checks. Returns `0` when not visible, `1` for immediate/very close
+    /// visibility, or a distance-derived metric otherwise.
+    ///
+    /// # Arguments
+    /// * `cn` - Observer character id
+    /// * `co` - Target character id
     pub(crate) fn do_char_can_see(&mut self, cn: usize, co: usize) -> i32 {
         if cn == co {
             return 1;
@@ -499,8 +584,16 @@ impl State {
         })
     }
 
-    /// Check if character cn can see item in_idx, taking into account distance, light, perception, and hidden status.
-    /// Returns 0 if cannot see, 1 if very close, or distance value otherwise.
+    /// Port of `do_char_can_see_item(cn, in_idx)` from original server logic.
+    ///
+    /// Determines whether the character `cn` can see the item `in_idx` by
+    /// considering distance, perception, ambient light, and item hiddenness.
+    /// Returns 0 if not visible, 1 when very close, or a positive distance
+    /// metric otherwise.
+    ///
+    /// # Arguments
+    /// * `cn` - Observer character id
+    /// * `in_idx` - Item index to test
     pub(crate) fn do_char_can_see_item(&mut self, cn: usize, in_idx: usize) -> i32 {
         Repository::with_characters(|characters| {
             Repository::with_items(|items| {
@@ -584,8 +677,14 @@ impl State {
         })
     }
 
-    /// Check the visibility value at target position (tx, ty) from the current origin.
-    /// Returns 0 if not visible, or the visibility distance (1 = best, higher = worse).
+    /// Returns the visibility value for `(tx,ty)` from the current origin.
+    ///
+    /// Uses the internal `_visi` buffer (built by `can_map_see`/`can_map_go`) to
+    /// inspect adjacent cells and return the best visibility metric. `0`
+    /// indicates not visible; otherwise a positive integer (1 = best).
+    ///
+    /// # Arguments
+    /// * `tx, ty` - Target coordinates relative to current origin
     pub(crate) fn check_vis(&self, tx: i32, ty: i32) -> i32 {
         let mut best = 99;
 
@@ -624,7 +723,14 @@ impl State {
         }
     }
 
-    /// Add a visibility value at position (x, y) to the internal visibility map.
+    /// Port of `add_vis(x,y,value)` from original helper code.
+    ///
+    /// Writes a visibility value into the internal `_visi` buffer at the
+    /// position `(x,y)` relative to the current origin if the slot is empty.
+    ///
+    /// # Arguments
+    /// * `x, y` - World coordinates to write
+    /// * `value` - Visibility value to store
     pub(crate) fn add_vis(&mut self, x: i32, y: i32, value: i32) {
         let vx = x - self.ox + 20;
         let vy = y - self.oy + 20;
@@ -637,7 +743,15 @@ impl State {
         }
     }
 
-    /// Check if position (x, y) is visible and adjacent to an already visible tile.
+    /// Port of `close_vis_see(x,y,value)` from original helper code.
+    ///
+    /// Returns `true` if tile `(x,y)` allows line-of-sight and is adjacent to
+    /// an already-visible tile with the specified `value`. Used by the wave
+    /// expansion algorithm while building visibility maps.
+    ///
+    /// # Arguments
+    /// * `x, y` - Tile coordinates
+    /// * `value` - Neighbor visibility value to match
     pub(crate) fn close_vis_see(&self, x: i32, y: i32, value: i8) -> bool {
         if !self.check_map_see(x, y) {
             return false;
@@ -677,7 +791,14 @@ impl State {
         false
     }
 
-    /// Check if a map tile at (x, y) allows line of sight.
+    /// Port of `check_map_see(x,y)` from original helper code.
+    ///
+    /// Returns `true` when the map tile at `(x,y)` does not block line of
+    /// sight. Considers map flags, monster/blocking rules, and items with
+    /// `IF_SIGHTBLOCK` flag.
+    ///
+    /// # Arguments
+    /// * `x, y` - Tile coordinates to test
     pub(crate) fn check_map_see(&self, x: i32, y: i32) -> bool {
         // Check boundaries
         if x <= 0
@@ -730,7 +851,13 @@ impl State {
         true
     }
 
-    /// Reset visibility cache for all characters near position (xc, yc).
+    /// Port of `reset_go(xc,yc)` from original helper code.
+    ///
+    /// Clears per-character see-map caches for characters in the area around
+    /// `(xc,yc)` so that subsequent visibility checks will be recomputed.
+    ///
+    /// # Arguments
+    /// * `xc, yc` - Center coordinates for the reset region
     pub(crate) fn reset_go(&mut self, xc: i32, yc: i32) {
         Repository::with_see_map_mut(|see_map| {
             for y in
@@ -753,8 +880,14 @@ impl State {
         self.oy = 0;
     }
 
-    /// Remove lights from characters and items in the area around (x, y).
-    /// Port of `remove_lights(int x, int y)` from the original `helper.cpp`.
+    /// Port of `remove_lights(x,y)` from the original `helper.cpp`.
+    ///
+    /// Removes light contributions created by items and characters within the
+    /// local neighborhood of `(x,y)`. This is the inverse of `add_lights` and
+    /// writes negative light contributions back into the map.
+    ///
+    /// # Arguments
+    /// * `x, y` - Center coordinates of the area to clear lights from
     pub(crate) fn remove_lights(&mut self, x: i32, y: i32) {
         let xs = cmp::max(1, x - core::constants::LIGHTDIST);
         let ys = cmp::max(1, y - core::constants::LIGHTDIST);

@@ -7,13 +7,21 @@ use crate::{enums, player, server::Server};
 static NETWORK_MANAGER: OnceLock<RwLock<NetworkManager>> = OnceLock::new();
 static PACKET_STATS: OnceLock<RwLock<PacketStats>> = OnceLock::new();
 
+/// Basic packet transmission statistics tracker.
+///
+/// Mirrors the original code's packet counters used to gather per-packet
+/// type byte counts and special counters for map/light packet classes.
 struct PacketStats {
+    /// Per-packet-id byte counters
     cnt: [usize; 256],
+    /// Accumulated bytes for short map packets
     pkt_mapshort: usize,
+    /// Accumulated bytes for light-related packets
     pkt_light: usize,
 }
 
 impl PacketStats {
+    /// Create a new PacketStats instance with counters zeroed.
     fn new() -> Self {
         PacketStats {
             cnt: [0usize; 256],
@@ -23,17 +31,27 @@ impl PacketStats {
     }
 }
 
+/// Central network manager singleton responsible for buffering and sending
+/// packets to players and tracking outgoing statistics.
 pub struct NetworkManager {
     // Network management fields and methods would go here.
 }
 
 impl NetworkManager {
+    /// Create a new `NetworkManager` instance.
+    ///
+    /// This constructs the manager but does not register it as the global
+    /// instance. Use `initialize()` to install the global singleton.
     pub fn new() -> Self {
         Self {
             // Initialize fields here.
         }
     }
 
+    /// Initialize the global NetworkManager and PacketStats singletons.
+    ///
+    /// Returns an error string if the manager or stats were already
+    /// initialized.
     pub fn initialize() -> Result<(), String> {
         let manager = NetworkManager::new();
         NETWORK_MANAGER
@@ -46,6 +64,10 @@ impl NetworkManager {
         Ok(())
     }
 
+    /// Execute a read-only closure with the global `NetworkManager`.
+    ///
+    /// # Arguments
+    /// * `f` - Closure that receives a reference to the manager
     pub fn with<F, R>(f: F) -> R
     where
         F: FnOnce(&NetworkManager) -> R,
@@ -60,6 +82,10 @@ impl NetworkManager {
 
     // TODO: We might not need this...
     #[allow(dead_code)]
+    /// Execute a mutable closure with the global `NetworkManager`.
+    ///
+    /// # Safety
+    /// The caller must ensure only one mutable access is active at a time.
     pub fn with_mut<F, R>(f: F) -> R
     where
         F: FnOnce(&mut NetworkManager) -> R,
@@ -72,6 +98,16 @@ impl NetworkManager {
         f(&mut *manager)
     }
 
+    /// Send bytes to a player's tick buffer without wrapping (bulk copy).
+    ///
+    /// Writes up to `length` bytes from `data` into the player's outgoing
+    /// tick buffer. If the player is too slow or the buffer would overflow
+    /// the connection is terminated and the player is logged out.
+    ///
+    /// # Arguments
+    /// * `player_id` - Target player index
+    /// * `data` - Source byte slice
+    /// * `length` - Number of bytes to copy
     pub fn xsend(&self, player_id: usize, data: &[u8], length: u8) {
         use crate::server::Server;
         use crate::{enums, player};
@@ -146,6 +182,16 @@ impl NetworkManager {
         });
     }
 
+    /// Send bytes into the player's circular output buffer (byte-at-a-time).
+    ///
+    /// Writes up to `length` bytes into the circular `obuf` for the player.
+    /// If the buffer is full the connection is considered too slow and the
+    /// player is disconnected.
+    ///
+    /// # Arguments
+    /// * `player_id` - Target player index
+    /// * `data` - Source byte slice
+    /// * `length` - Number of bytes to enqueue
     pub fn csend(&self, player_id: usize, data: &[u8], length: u8) {
         let send_len = std::cmp::min(length as usize, data.len());
 
