@@ -1,7 +1,7 @@
 use core::types::{Character, Map};
 
 use crate::{
-    driver_skill,
+    driver,
     effect::EffectManager,
     enums::{CharacterFlags, LogoutReason},
     player,
@@ -1420,7 +1420,7 @@ impl God {
         }
 
         // Print detailed character info via char_info first (matches C++ flow)
-        driver_skill::char_info(cn, co);
+        driver::char_info(cn, co);
 
         // cnum_str: only visible to IMP/USURP
         let cnum_str = Repository::with_characters(|ch| {

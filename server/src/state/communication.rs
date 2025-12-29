@@ -2,7 +2,7 @@ use crate::god::God;
 use crate::network_manager::NetworkManager;
 use crate::repository::Repository;
 use crate::state::State;
-use crate::{driver_generic, helpers};
+use crate::{driver, helpers};
 use core::constants::CharacterFlags;
 use core::types::FontColor;
 use rand::Rng;
@@ -59,7 +59,7 @@ impl State {
         dat3: i32,
         dat4: i32,
     ) {
-        driver_generic::driver_msg(character_id as usize, notify_type, dat1, dat2, dat3, dat4);
+        driver::driver_msg(character_id as usize, notify_type, dat1, dat2, dat3, dat4);
     }
 
     /// Port of `do_npc_shout(int cn, int shout_type, int dat1, int dat2, int dat3, int dat4)` from `svr_do.cpp`

@@ -253,11 +253,11 @@ impl State {
         }
 
         // Use canonical helpers for facing/back checks
-        if crate::driver_skill::is_facing(co, cn) == 0 {
+        if driver::is_facing(co, cn) == 0 {
             s2 -= 10;
         }
 
-        if crate::driver_skill::is_back(co, cn) != 0 {
+        if driver::is_back(co, cn) != 0 {
             s2 -= 10;
         }
 
@@ -371,7 +371,7 @@ impl State {
                 characters[cn].worn[core::constants::WN_RHAND] as usize
             });
             if rhand != 0 {
-                crate::driver_use::item_damage_weapon(cn, dam);
+                driver::item_damage_weapon(cn, dam);
             }
 
             // Apply damage and capture actual applied damage

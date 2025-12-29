@@ -6,7 +6,7 @@ use crate::effect::EffectManager;
 use crate::god::God;
 use crate::repository::Repository;
 use crate::state::State;
-use crate::{driver_use, helpers};
+use crate::{driver, helpers};
 
 impl State {
     /// Helper function to check if character wears a specific item
@@ -1070,7 +1070,7 @@ impl State {
         });
 
         if used == core::constants::USE_ACTIVE && is_player {
-            driver_use::char_item_expire(cn);
+            driver::char_item_expire(cn);
         }
     }
 
@@ -1583,7 +1583,7 @@ impl State {
             (ch[co].flags & CharacterFlags::CF_PLAYER.bits()) != 0
         });
         if co_is_player {
-            crate::driver_use::item_damage_armor(co, dam);
+            driver::item_damage_armor(co, dam);
         }
 
         // Determine noexp conditions

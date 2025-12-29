@@ -1,6 +1,7 @@
 use core::constants::{GF_CLOSEENEMY, GF_LOOTING, GF_MAYHEM, GF_SPEEDY};
 use core::types::FontColor;
 
+use crate::driver;
 use crate::effect::EffectManager;
 use crate::enums::CharacterFlags;
 use crate::god::God;
@@ -1195,7 +1196,7 @@ impl State {
                     God::skill(
                         cn,
                         parse_usize(arg_get(1)),
-                        crate::driver_skill::skill_lookup(arg_get(2)),
+                        driver::skill_lookup(arg_get(2)),
                         parse_i32(arg_get(3)),
                     );
                     return;

@@ -5,7 +5,7 @@ use crate::helpers::{self, points2rank};
 use crate::lab9::Labyrinth9;
 use crate::repository::Repository;
 use crate::state::State;
-use crate::{driver_skill, player, populate};
+use crate::{driver, player, populate};
 use core::constants::{
     CharacterFlags, ItemFlags, KIN_HARAKIM, KIN_MERCENARY, KIN_SORCERER, KIN_TEMPLAR, KIN_WARRIOR,
     MAXITEM, MAXSKILL, MF_NOEXPIRE, NT_HITME, SERVER_MAPX, SERVER_MAPY, SK_LOCK, SK_RECALL,
@@ -1269,7 +1269,7 @@ pub fn teleport2(cn: usize, item_idx: usize) -> i32 {
     });
 
     // Use add_spell to add the spell to the character
-    let added = driver_skill::add_spell(cn, spell_item);
+    let added = driver::add_spell(cn, spell_item);
     if added == 0 {
         let spell_name = Repository::with_items(|items| {
             String::from_utf8_lossy(&items[spell_item].name)
@@ -1618,7 +1618,7 @@ pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
         if teaches_only {
             // TODO: Get skill name from static_skilltab
             State::with(|state| {
-                let name = driver_skill::skill_name(skill_nr);
+                let name = driver::skill_name(skill_nr);
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
@@ -1641,7 +1641,7 @@ pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
 
         // Raise skill by one
         State::with(|state| {
-            let name = driver_skill::skill_name(skill_nr);
+            let name = driver::skill_name(skill_nr);
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
@@ -1671,7 +1671,7 @@ pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
     } else if max_val == 0 {
         // Cannot learn this skill
         State::with(|state| {
-            let name = driver_skill::skill_name(skill_nr);
+            let name = driver::skill_name(skill_nr);
             state.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
@@ -1685,7 +1685,7 @@ pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
             characters[cn].skill[skill_nr][0] = 1;
         });
         State::with(|state| {
-            let name = driver_skill::skill_name(skill_nr);
+            let name = driver::skill_name(skill_nr);
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
@@ -2725,7 +2725,7 @@ pub fn skua_protect(cn: usize, item_idx: usize) -> i32 {
             );
         });
 
-        driver_skill::spell_from_item(cn, item_idx);
+        driver::spell_from_item(cn, item_idx);
 
         // Get replacement weapon template from data[2]
         let replacement_template = Repository::with_items(|items| items[item_idx].data[2] as usize);
@@ -2807,7 +2807,7 @@ pub fn purple_protect(cn: usize, item_idx: usize) -> i32 {
             );
         });
 
-        driver_skill::spell_from_item(cn, item_idx);
+        driver::spell_from_item(cn, item_idx);
 
         // Get replacement weapon template from data[2]
         let replacement_template = Repository::with_items(|items| items[item_idx].data[2] as usize);
@@ -6342,7 +6342,7 @@ pub fn use_driver(cn: usize, item_idx: usize, carried: bool) {
             // If item grants a spell-like effect, apply it
             let duration = Repository::with_items(|items| items[item_idx].duration);
             if duration != 0 {
-                driver_skill::spell_from_item(cn, item_idx);
+                driver::spell_from_item(cn, item_idx);
             }
 
             // Remove item from character
@@ -8662,7 +8662,7 @@ pub fn step_firefloor(cn: usize, item_idx: usize) -> i32 {
         items[in2].sprite[1] = sprite1;
     });
 
-    driver_skill::add_spell(cn, in2);
+    driver::add_spell(cn, in2);
 
     0
 }

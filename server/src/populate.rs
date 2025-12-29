@@ -1,4 +1,4 @@
-use crate::{driver_skill, god::God, repository::Repository, state::State};
+use crate::{driver, god::God, repository::Repository, state::State};
 
 /// Port of `init_lights` from `populate.cpp`
 /// Initialize lighting on the map
@@ -880,7 +880,7 @@ pub fn pop_skill() {
 
                 if ch.skill[n][0] == 0 && temp_skill[0] != 0 {
                     ch.skill[n][0] = temp_skill[0];
-                    log::info!("added {} to {}", driver_skill::skill_name(n), ch.get_name());
+                    log::info!("added {} to {}", driver::skill_name(n), ch.get_name());
                 }
 
                 if temp_skill[2] < ch.skill[n][0] {
@@ -891,7 +891,7 @@ pub fn pop_skill() {
                     );
                     log::info!(
                         "reduced {} on {} from {} to {}, added {} exp",
-                        driver_skill::skill_name(n),
+                        driver::skill_name(n),
                         ch.get_name(),
                         ch.skill[n][0],
                         temp_skill[2],

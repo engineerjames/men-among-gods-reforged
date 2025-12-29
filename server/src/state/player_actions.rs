@@ -4,7 +4,7 @@ use core::types::FontColor;
 use crate::god::God;
 use crate::repository::Repository;
 use crate::state::State;
-use crate::{driver_use, helpers};
+use crate::{driver, helpers};
 
 impl State {
     /// Port of `do_swap_item(int cn, int n)` from `svr_do.cpp`
@@ -246,7 +246,7 @@ impl State {
                 core::types::FontColor::Yellow,
                 "Your Companion killed your enemy.\n",
             );
-            driver_use::finish_laby_teleport(
+            driver::finish_laby_teleport(
                 cc,
                 Repository::with_characters(|ch| ch[co].data[1] as usize),
                 Repository::with_characters(|ch| ch[co].data[2] as usize),
@@ -274,7 +274,7 @@ impl State {
         // Finish teleport for the player
         let tx = Repository::with_characters(|ch| ch[co].data[1] as usize);
         let ty = Repository::with_characters(|ch| ch[co].data[2] as usize);
-        driver_use::finish_laby_teleport(cn, tx, ty);
+        driver::finish_laby_teleport(cn, tx, ty);
         log::info!("Solved Labkeeper Room: cn={}", cn);
 
         // If cn has a GC in data[64] which is sane and a companion, transfer it as well

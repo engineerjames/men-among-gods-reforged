@@ -3,7 +3,7 @@ use core::{constants::ItemFlags, types::FontColor};
 use rand::Rng;
 
 use crate::{
-    driver_skill, driver_use,
+    driver,
     effect::EffectManager,
     enums::{self, CharacterFlags},
     god::God,
@@ -787,7 +787,7 @@ pub fn skill_protect(cn: usize) {
         return;
     }
 
-    if crate::driver_skill::player_or_ghost(cn, co) == 0 {
+    if driver::player_or_ghost(cn, co) == 0 {
         let name_from = Repository::with_characters(|ch| ch[co].name.clone());
         let name_to = Repository::with_characters(|ch| ch[cn].name.clone());
         State::with(|state| {
@@ -1011,7 +1011,7 @@ pub fn skill_enhance(cn: usize) {
         return;
     }
 
-    if crate::driver_skill::player_or_ghost(cn, co) == 0 {
+    if driver::player_or_ghost(cn, co) == 0 {
         let name_from = Repository::with_characters(|ch| ch[co].name.clone());
         let name_to = Repository::with_characters(|ch| ch[cn].name.clone());
         State::with(|state| {
@@ -1265,7 +1265,7 @@ pub fn skill_bless(cn: usize) {
         return;
     }
 
-    if crate::driver_skill::player_or_ghost(cn, co) == 0 {
+    if driver::player_or_ghost(cn, co) == 0 {
         let name_from = Repository::with_characters(|ch| ch[co].name.clone());
         let name_to = Repository::with_characters(|ch| ch[cn].name.clone());
         State::with(|state| {
@@ -1720,7 +1720,7 @@ pub fn skill_heal(cn: usize) {
         return;
     }
 
-    if crate::driver_skill::player_or_ghost(cn, co) == 0 {
+    if driver::player_or_ghost(cn, co) == 0 {
         let name_from = Repository::with_characters(|ch| ch[co].name.clone());
         let name_to = Repository::with_characters(|ch| ch[cn].name.clone());
         State::with(|state| {
@@ -2704,7 +2704,7 @@ pub fn skill_blast(cn: usize) {
         return;
     }
 
-    if driver_skill::chance(cn, 18) != 0 {
+    if driver::chance(cn, 18) != 0 {
         if cn != co
             && Repository::with_characters(|ch| ch[co].skill[core::constants::SK_SENSE as usize][5])
                 > Repository::with_characters(|ch| {
@@ -2930,12 +2930,12 @@ pub fn skill_repair(cn: usize) {
         State::with(|state| {
             state.do_character_log(cn, core::types::FontColor::Green, "You failed.\n")
         });
-        driver_use::item_damage_citem(cn, 1000000);
+        driver::item_damage_citem(cn, 1000000);
         if die - chan > 3 {
-            driver_use::item_damage_citem(cn, 1000000);
+            driver::item_damage_citem(cn, 1000000);
         }
         if die - chan > 6 {
-            driver_use::item_damage_citem(cn, 1000000);
+            driver::item_damage_citem(cn, 1000000);
         }
     }
     // TODO: chlog(cn, "Cast Repair");
@@ -3115,7 +3115,7 @@ pub fn spell_stun(cn: usize, co: usize, power: i32) -> i32 {
     );
     // TODO: chlog(cn, "Cast Stun on %s", ch[co].name);
 
-    if driver_skill::add_spell(co, in_idx) == 0 {
+    if driver::add_spell(co, in_idx) == 0 {
         State::with(|state| {
             state.do_character_log(
                 cn,

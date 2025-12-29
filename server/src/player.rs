@@ -1,6 +1,6 @@
 use crate::{
-    driver_generic, driver_skill::skill_driver, driver_use, enums, god::God,
-    network_manager::NetworkManager, repository::Repository, server::Server, state::State,
+    driver, enums, god::God, network_manager::NetworkManager, repository::Repository,
+    server::Server, state::State,
 };
 
 // Fast cut values (relative to the complete implementation)
@@ -375,7 +375,7 @@ pub fn plr_map_remove(cn: usize) {
                             & core::constants::ItemFlags::IF_STEPACTION.bits())
                             != 0
                         {
-                            driver_use::step_driver_remove(cn, in_id as usize);
+                            driver::step_driver_remove(cn, in_id as usize);
                         }
                     });
                 }
@@ -411,7 +411,7 @@ pub fn plr_map_set(cn: usize) {
 
             if has_step_action {
                 // Call step_driver and handle return values per original C++ logic
-                let ret = crate::driver_use::step_driver(cn, in_id as usize);
+                let ret = driver::step_driver(cn, in_id as usize);
 
                 if ret == 1 {
                     Repository::with_map_mut(|map| {
@@ -554,7 +554,7 @@ pub fn plr_map_set(cn: usize) {
             });
 
             // remove all spells and notify
-            crate::driver_skill::remove_spells(cn);
+            driver::remove_spells(cn);
             State::with(|state| {
                 state.do_character_log(
                     cn,
@@ -1443,7 +1443,7 @@ pub fn plr_skill(cn: usize) {
 
     let skill_target = Repository::with_characters(|characters| characters[cn].skill_target2);
 
-    skill_driver(cn, skill_target as i32);
+    driver::skill_driver(cn, skill_target as i32);
 }
 
 pub fn player_driver_med(cn: usize) {
@@ -1457,7 +1457,7 @@ pub fn player_driver_med(cn: usize) {
         let co = ch[cn].data[10];
 
         if co != 0 {
-            driver_generic::follow_driver(cn, co as usize);
+            driver::follow_driver(cn, co as usize);
         }
     });
 }
@@ -1744,7 +1744,7 @@ pub fn plr_reset_status(cn: usize) {
 pub fn plr_doact(cn: usize) {
     plr_reset_status(cn);
     if Repository::with_characters(|characters| characters[cn].group_active()) {
-        driver_generic::driver(cn);
+        driver::driver(cn);
     }
 }
 
@@ -1758,19 +1758,19 @@ pub fn plr_act(cn: usize) {
     });
 
     if stunned != 0 {
-        driver_generic::act_idle(cn);
+        driver::act_idle(cn);
         return;
     }
 
     if flags & enums::CharacterFlags::Stoned.bits() != 0 {
-        driver_generic::act_idle(cn);
+        driver::act_idle(cn);
         return;
     }
 
     match status {
         // idle states: call idle and driver
         0..=7 => {
-            driver_generic::act_idle(cn);
+            driver::act_idle(cn);
             plr_doact(cn);
             return;
         }
@@ -2209,7 +2209,7 @@ pub fn plr_act(cn: usize) {
         }
 
         _ => {
-            driver_generic::act_idle(cn);
+            driver::act_idle(cn);
             return;
         }
     }

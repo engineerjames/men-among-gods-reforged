@@ -1649,7 +1649,7 @@ pub fn drv_use(cn: usize, nr: i32) {
         return;
     }
 
-    crate::driver_use::use_driver(cn, in_item, true);
+    driver::use_driver(cn, in_item, true);
     Repository::with_characters_mut(|ch| {
         if ch[cn].cerrno == core::constants::ERR_SUCCESS as u16 {
             ch[cn].last_action = core::constants::ERR_SUCCESS as i8;

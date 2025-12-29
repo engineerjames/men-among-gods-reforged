@@ -16,7 +16,7 @@ use crate::lab9::Labyrinth9;
 use crate::network_manager::NetworkManager;
 use crate::repository::Repository;
 use crate::state::State;
-use crate::{driver_use, player, populate};
+use crate::{driver, player, populate};
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
 
@@ -551,7 +551,7 @@ impl Server {
         // Run subsystem ticks
         populate::pop_tick();
         EffectManager::effect_tick();
-        driver_use::item_tick();
+        driver::item_tick();
 
         self.global_tick();
     }
