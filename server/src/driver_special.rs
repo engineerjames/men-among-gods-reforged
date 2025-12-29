@@ -149,7 +149,7 @@ pub fn npc_stunrun_high(cn: usize) -> i32 {
     }
 
     // Adjust priorities based on mana
-    let low_mana = Repository::with_characters(|ch| ch[cn].a_mana < (ch[cn].mana[5] * 125) as i32);
+    let low_mana = Repository::with_characters(|ch| ch[cn].a_mana < (ch[cn].mana[5] as i32 * 125));
     if low_mana {
         stun -= 3;
         help -= 3;
@@ -168,7 +168,7 @@ pub fn npc_stunrun_high(cn: usize) -> i32 {
     });
 
     // If low HP, increase flee priority
-    let low_hp = Repository::with_characters(|ch| ch[cn].a_hp < (ch[cn].hp[5] * 666) as i32);
+    let low_hp = Repository::with_characters(|ch| ch[cn].a_hp < (ch[cn].hp[5] as i32 * 666));
     if low_hp {
         flee += 5;
     }
@@ -721,7 +721,7 @@ pub fn npc_cityattack_high(cn: usize) -> i32 {
     // Generic spell management
     let (high_mana, has_medit) = Repository::with_characters(|ch| {
         (
-            ch[cn].a_mana > (ch[cn].mana[5] * 850) as i32,
+            ch[cn].a_mana > (ch[cn].mana[5] as i32 * 850) as i32,
             ch[cn].skill[SK_MEDIT][0] != 0,
         )
     });

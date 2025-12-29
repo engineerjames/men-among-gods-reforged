@@ -60,7 +60,8 @@ impl State {
             )
         });
 
-        let map_index = (char_x + char_y * core::constants::SERVER_MAPX as i16) as usize;
+        let map_index =
+            (char_x as usize + char_y as usize * core::constants::SERVER_MAPX as usize) as usize;
         let has_nomagic_flag = Repository::with_map(|map| {
             map[map_index].flags & core::constants::MF_NOMAGIC as u64 != 0
         });

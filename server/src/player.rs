@@ -33,14 +33,15 @@ const SPEEDTAB: [[u8; 20]; 20] = [
 ];
 
 pub fn plr_logout(character_id: usize, player_id: usize, reason: enums::LogoutReason) {
-    // Logic to log out the player
-    Repository::with_characters(|characters| {
-        log::debug!(
-            "Logging out character '{}' for reason: {:?}",
-            characters[character_id].get_name(),
-            reason
-        );
-    });
+    if reason != enums::LogoutReason::Shutdown {
+        Repository::with_characters(|characters| {
+            log::debug!(
+                "Logging out character '{}' for reason: {:?}",
+                characters[character_id].get_name(),
+                reason
+            );
+        });
+    }
 
     let character_has_player = Repository::with_characters(|characters| {
         characters[character_id].player == player_id as i32
@@ -324,11 +325,6 @@ pub fn plr_logout(character_id: usize, player_id: usize, reason: enums::LogoutRe
 pub fn player_exit(ticker: u32, character_id: usize, player_id: usize) {
     Repository::with_characters_mut(|characters| {
         let ch = &mut characters[character_id];
-        log::info!(
-            "Player {} exiting for character '{}'",
-            player_id,
-            ch.get_name()
-        );
 
         Server::with_players_mut(|players| {
             players[player_id].state = core::constants::ST_EXIT;
@@ -338,6 +334,11 @@ pub fn player_exit(ticker: u32, character_id: usize, player_id: usize) {
                 && players[player_id].usnr < core::constants::MAXCHARS
                 && ch.player as usize == player_id
             {
+                log::info!(
+                    "Player {} exiting for character '{}'",
+                    player_id,
+                    ch.get_name()
+                );
                 ch.player = 0;
             }
         });
@@ -1743,9 +1744,7 @@ pub fn plr_reset_status(cn: usize) {
 pub fn plr_doact(cn: usize) {
     plr_reset_status(cn);
     if Repository::with_characters(|characters| characters[cn].group_active()) {
-        // driver call not implemented yet; log for now
         driver_generic::driver(cn);
-        log::info!("plr_doact: group active for {} - driver call TODO", cn);
     }
 }
 

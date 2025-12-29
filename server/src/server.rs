@@ -620,11 +620,7 @@ impl Server {
             // (god_destroy_items) should be implemented elsewhere if needed.
             Repository::with_characters_mut(|ch| {
                 let total_exp = ch[cn].points_tot;
-                log::info!(
-                    "erased player {}, {} exp",
-                    String::from_utf8_lossy(&ch[cn].name),
-                    total_exp,
-                );
+                log::info!("erased player {}, {} exp", ch[cn].get_name(), total_exp,);
                 ch[cn].used = core::constants::USE_EMPTY;
             });
         }
