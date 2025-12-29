@@ -363,6 +363,7 @@ impl Labyrinth9 {
     }
 
     pub fn initialize() -> Result<(), String> {
+        log::info!("Initializing Labyrinth 9...");
         let lab = Labyrinth9::new();
         LABYRINTH9
             .set(RwLock::new(lab))

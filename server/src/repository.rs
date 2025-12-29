@@ -120,8 +120,9 @@ impl Repository {
     }
 
     fn load_items(&mut self) -> Result<(), String> {
-        log::info!("Loading items data...");
-        let items_data = fs::read(".dat/items.dat").map_err(|e| e.to_string())?;
+        let items_path = self.get_dat_file_path("item.dat");
+        log::info!("Loading items data from {:?}", items_path);
+        let items_data = fs::read(&items_path).map_err(|e| e.to_string())?;
 
         let expected_items_size =
             core::constants::MAXITEM as usize * std::mem::size_of::<core::types::Item>();
@@ -154,8 +155,9 @@ impl Repository {
     }
 
     fn load_item_templates(&mut self) -> Result<(), String> {
-        log::info!("Loading item templates data...");
-        let item_templates_data = fs::read(".dat/titem.dat").map_err(|e| e.to_string())?;
+        let item_templates_path = self.get_dat_file_path("titem.dat");
+        log::info!("Loading item templates data from {:?}", item_templates_path);
+        let item_templates_data = fs::read(&item_templates_path).map_err(|e| e.to_string())?;
 
         let expected_item_templates_size =
             core::constants::MAXTITEM as usize * std::mem::size_of::<core::types::Item>();
@@ -189,8 +191,9 @@ impl Repository {
     }
 
     fn load_characters(&mut self) -> Result<(), String> {
-        log::info!("Loading characters data...");
-        let characters_data = fs::read(".dat/char.dat").map_err(|e| e.to_string())?;
+        let characters_path = self.get_dat_file_path("char.dat");
+        log::info!("Loading characters data from {:?}", characters_path);
+        let characters_data = fs::read(&characters_path).map_err(|e| e.to_string())?;
 
         let expected_characters_size =
             core::constants::MAXCHARS as usize * std::mem::size_of::<core::types::Character>();
@@ -218,8 +221,13 @@ impl Repository {
     }
 
     fn load_character_templates(&mut self) -> Result<(), String> {
-        log::info!("Loading character templates data...");
-        let character_templates_data = fs::read(".dat/tchar.dat").map_err(|e| e.to_string())?;
+        let character_templates_path = self.get_dat_file_path("tchar.dat");
+        log::info!(
+            "Loading character templates data from {:?}",
+            character_templates_path
+        );
+        let character_templates_data =
+            fs::read(&character_templates_path).map_err(|e| e.to_string())?;
         let expected_character_templates_size =
             core::constants::MAXTCHARS as usize * std::mem::size_of::<core::types::Character>();
         let actual_character_templates_size = character_templates_data.len();
@@ -247,8 +255,9 @@ impl Repository {
     }
 
     fn load_effects(&mut self) -> Result<(), String> {
-        log::info!("Loading effects data...");
-        let effects_data = fs::read(".dat/effects.dat").map_err(|e| e.to_string())?;
+        let effects_path = self.get_dat_file_path("effect.dat");
+        log::info!("Loading effects data from {:?}", effects_path);
+        let effects_data = fs::read(&effects_path).map_err(|e| e.to_string())?;
 
         let expected_effects_size =
             core::constants::MAXEFFECT as usize * std::mem::size_of::<core::types::Effect>();
@@ -281,18 +290,21 @@ impl Repository {
     }
 
     fn load_globals(&mut self) -> Result<(), String> {
-        log::info!("Loading globals data...");
-        let globals_data = fs::read(".dat/globals.dat").map_err(|e| e.to_string())?;
+        let globals_path = self.get_dat_file_path("global.dat");
+        log::info!("Loading globals data from {:?}", globals_path);
+        let globals_data = fs::read(&globals_path).map_err(|e| e.to_string())?;
 
-        if globals_data.len() != std::mem::size_of::<core::types::Global>() {
+        let expected_size = std::mem::size_of::<core::types::Global>();
+        if globals_data.len() < expected_size {
             return Err(format!(
-                "Globals data size mismatch: expected {}, got {}",
-                std::mem::size_of::<core::types::Global>(),
+                "Globals data size mismatch: expected at least {}, got {}",
+                expected_size,
                 globals_data.len()
             ));
         }
 
-        self.globals = core::types::Global::from_bytes(&globals_data)
+        let slice = &globals_data[..expected_size];
+        self.globals = core::types::Global::from_bytes(slice)
             .ok_or_else(|| "Failed to parse globals data".to_string())?;
 
         log::info!("Globals data loaded successfully.");
@@ -301,31 +313,44 @@ impl Repository {
     }
 
     fn load_bad_names(&mut self) -> Result<(), String> {
-        log::info!("Loading bad names...");
-        let bad_names_data = fs::read_to_string(".dat/bad_names.txt").map_err(|e| e.to_string())?;
+        let bad_names_path = self.get_dat_file_path("badnames.txt");
+        log::info!("Loading bad names from {:?}", bad_names_path);
+        let bad_names_data = fs::read_to_string(&bad_names_path).map_err(|e| e.to_string())?;
 
         for line in bad_names_data.lines() {
             self.bad_names.push(line.to_string());
         }
 
+        log::info!(
+            "Bad names loaded successfully. Loaded {} bad names.",
+            self.bad_names.len()
+        );
+
         Ok(())
     }
 
     fn load_bad_words(&mut self) -> Result<(), String> {
-        log::info!("Loading bad words...");
-        let bad_words_data = fs::read_to_string(".dat/bad_words.txt").map_err(|e| e.to_string())?;
+        let bad_words_path = self.get_dat_file_path("badwords.txt");
+        log::info!("Loading bad words from {:?}", bad_words_path);
+        let bad_words_data = fs::read_to_string(&bad_words_path).map_err(|e| e.to_string())?;
 
         for line in bad_words_data.lines() {
             self.bad_words.push(line.to_string());
         }
 
+        log::info!(
+            "Bad words loaded successfully. Loaded {} bad words.",
+            self.bad_words.len()
+        );
+
         Ok(())
     }
 
     fn load_message_of_the_day(&mut self) -> Result<(), String> {
-        log::info!("Loading message of the day...");
+        let motd_path = self.get_dat_file_path("motd.txt");
+        log::info!("Loading message of the day from {:?}", motd_path);
         let motd_data =
-            fs::read_to_string(".dat/motd.txt").unwrap_or("Live long and prosper!".to_string());
+            fs::read_to_string(&motd_path).unwrap_or("Live long and prosper!".to_string());
         self.message_of_the_day = motd_data;
 
         if self.message_of_the_day.len() > 130 {
@@ -340,8 +365,9 @@ impl Repository {
     }
 
     fn load_ban_list(&mut self) -> Result<(), String> {
-        log::info!("Loading ban list...");
-        let banlist_data = fs::read(".dat/banlist.dat");
+        let banlist_path = self.get_dat_file_path("banlist.dat");
+        log::info!("Loading ban list from {:?}", banlist_path);
+        let banlist_data = fs::read(&banlist_path);
 
         match banlist_data {
             Ok(_data) => {

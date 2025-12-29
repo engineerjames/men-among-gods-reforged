@@ -18,7 +18,7 @@ use crate::{driver_use, player, populate};
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
 
-static PLAYERS: OnceLock<RwLock<[core::types::ServerPlayer; MAXPLAYER]>> = OnceLock::new();
+static PLAYERS: OnceLock<RwLock<Box<[core::types::ServerPlayer; MAXPLAYER]>>> = OnceLock::new();
 
 // TICK constant - microseconds per tick (matching C++ TICK value)
 const TICK: u64 = 40000; // 40ms per tick
@@ -47,7 +47,12 @@ impl Server {
     }
 
     pub fn initialize_players() -> Result<(), String> {
-        let players = std::array::from_fn(|_| core::types::ServerPlayer::new());
+        let players: Vec<ServerPlayer> = (1..=MAXPLAYER).map(|_x| ServerPlayer::new()).collect();
+        let players: Box<[ServerPlayer; MAXPLAYER]> = players
+            .into_boxed_slice()
+            .try_into()
+            .map_err(|_| "Failed to convert Vec to Box<[ServerPlayer; MAXPLAYER]>")?;
+
         PLAYERS
             .set(RwLock::new(players))
             .map_err(|_| "Players already initialized".to_string())?;
@@ -129,6 +134,7 @@ impl Server {
         for i in 0..core::constants::MAXCHARS as usize {
             let should_logout = Repository::with_characters(|characters| {
                 characters[i].used == core::constants::USE_ACTIVE
+                    && characters[i].flags & CharacterFlags::Player.bits() != 0
             });
 
             if !should_logout {
@@ -149,7 +155,7 @@ impl Server {
         Labyrinth9::initialize()?;
         populate::reset_changed_items();
 
-        // remove lab items from all players (leave this here for a while!)
+        log::info!("Checking for lab items on players...");
         Repository::with_items_mut(|it| {
             for n in 1..core::constants::MAXITEM {
                 if it[n].used == core::constants::USE_EMPTY {
@@ -170,7 +176,7 @@ impl Server {
             }
         });
 
-        // Validate character template positions
+        log::info!("Validating character template positions...");
         Repository::with_character_templates_mut(|ch_temp| {
             for n in 1..core::constants::MAXTCHARS {
                 if ch_temp[n].used == core::constants::USE_EMPTY {

@@ -20,14 +20,17 @@ pub fn initialize_logger(
     file_path: Option<&str>,
 ) -> Result<(), SetLoggerError> {
     // Build a stderr logger - always for now.
-    let stderr = ConsoleAppender::builder().target(Target::Stderr).build();
+    let stderr = ConsoleAppender::builder()
+        .target(Target::Stderr)
+        .encoder(Box::new(PatternEncoder::new("{d} {l} {f}:{L} - {m}\n")))
+        .build();
 
     let mut config_builder = Config::builder();
 
     if file_path.is_some() {
         let logfile = FileAppender::builder()
             // Pattern: https://docs.rs/log4rs/*/log4rs/encode/pattern/index.html
-            .encoder(Box::new(PatternEncoder::new("{l} - {m}\n")))
+            .encoder(Box::new(PatternEncoder::new("{d} {l} {f}:{L} - {m}\n")))
             .build(file_path.unwrap())
             .unwrap();
 
