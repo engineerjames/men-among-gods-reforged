@@ -9,7 +9,7 @@ use crate::{driver, player, populate};
 use core::constants::{
     CharacterFlags, ItemFlags, KIN_HARAKIM, KIN_MERCENARY, KIN_SORCERER, KIN_TEMPLAR, KIN_WARRIOR,
     MAXITEM, MAXSKILL, MF_NOEXPIRE, NT_HITME, SERVER_MAPX, SERVER_MAPY, SK_LOCK, SK_RECALL,
-    USE_ACTIVE, USE_EMPTY,
+    SK_RESIST, USE_ACTIVE, USE_EMPTY,
 };
 use rand::Rng;
 use std::u32;
@@ -5155,8 +5155,7 @@ pub fn spell_scroll(cn: usize, item_idx: usize) -> i32 {
     }
 
     // Check if can see target
-    // TODO: Implement do_char_can_see
-    let can_see = true; // Placeholder
+    let can_see = State::with_mut(|state| state.do_char_can_see(cn, co)) != 0;
     if !can_see {
         State::with(|state| {
             state.do_character_log(
@@ -5170,66 +5169,54 @@ pub fn spell_scroll(cn: usize, item_idx: usize) -> i32 {
 
     // Check attack spells for may_attack
     if spell as usize == SK_CURSE || spell as usize == SK_STUN {
-        // TODO: Implement may_attack_msg
-        // if !may_attack_msg(cn, co, 1) {
-        //     chlog(cn, "Prevented from attacking %s (%d)", ch[co].name, co);
-        //     return 0;
-        // }
-        log::info!("TODO: may_attack_msg check for spell {}", spell);
+        if State::with(|state| state.may_attack_msg(cn, co, true) == 0) {
+            log::info!("Prevented from attacking target {}", co);
+            return 0;
+        }
     } else {
-        // TODO: Implement player_or_ghost check
-        // if !player_or_ghost(cn, co) {
-        //     Change target to self
-        //     co = cn;
-        // }
+        if driver::player_or_ghost(cn, co) == 0 {
+            // Change target to self
+            co = cn;
+        }
     }
 
     // Cast spell
     let ret = match spell as usize {
         SK_LIGHT => {
-            // TODO: Implement spell_light
-            log::info!("TODO: spell_light({}, {}, {})", cn, co, power);
+            driver::spell_light(cn, co, power as i32);
             1
         }
         SK_ENHANCE => {
-            // TODO: Implement spell_enhance
-            log::info!("TODO: spell_enhance({}, {}, {})", cn, co, power);
+            driver::spell_enhance(cn, co, power as i32);
             1
         }
         SK_PROTECT => {
-            // TODO: Implement spell_protect
-            log::info!("TODO: spell_protect({}, {}, {})", cn, co, power);
+            driver::spell_protect(cn, co, power as i32);
             1
         }
         SK_BLESS => {
-            // TODO: Implement spell_bless
-            log::info!("TODO: spell_bless({}, {}, {})", cn, co, power);
+            driver::spell_bless(cn, co, power as i32);
             1
         }
         SK_MSHIELD => {
-            // TODO: Implement spell_mshield
-            log::info!("TODO: spell_mshield({}, {}, {})", cn, co, power);
+            driver::spell_mshield(cn, co, power as i32);
             1
         }
         SK_CURSE => {
-            // TODO: Implement chance_base and spell_curse
-            // if chance_base(cn, power, 10, ch[co].skill[SK_RESIST][5]) {
-            //     1
-            // } else {
-            //     spell_curse(cn, co, power)
-            // }
-            log::info!("TODO: spell_curse({}, {}, {})", cn, co, power);
-            1
+            let target_resistance = Repository::with_characters(|ch| ch[co].skill[SK_RESIST][5]);
+            if driver::chance_base(cn, power as i32, 10, target_resistance as i32) != 0 {
+                1
+            } else {
+                driver::spell_curse(cn, co, power as i32)
+            }
         }
         SK_STUN => {
-            // TODO: Implement chance_base and spell_stun
-            // if chance_base(cn, power, 12, ch[co].skill[SK_RESIST][5]) {
-            //     1
-            // } else {
-            //     spell_stun(cn, co, power)
-            // }
-            log::info!("TODO: spell_stun({}, {}, {})", cn, co, power);
-            1
+            let target_resistance = Repository::with_characters(|ch| ch[co].skill[SK_RESIST][5]);
+            if driver::chance_base(cn, power as i32, 12, target_resistance as i32) != 0 {
+                1
+            } else {
+                driver::spell_stun(cn, co, power as i32)
+            }
         }
         _ => 0,
     };

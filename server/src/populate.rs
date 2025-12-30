@@ -718,7 +718,7 @@ pub fn pop_create_char(n: usize, drop: bool) -> usize {
         }
     }
 
-    // TODO: Call do_update_char when implemented
+    State::with(|state| state.do_update_char(cn));
 
     Repository::with_globals_mut(|globals| {
         globals.npcs_created += 1;

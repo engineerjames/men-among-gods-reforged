@@ -1587,8 +1587,7 @@ impl State {
                         char_name, rank_name
                     );
 
-                    // TODO: Implement do_shout
-                    log::info!("TODO: Herald {} would shout: {}", herald_cn, message);
+                    State::with(|state| state.do_shout(herald_cn, &message))
                 }
 
                 // Award stat increases
@@ -1596,8 +1595,9 @@ impl State {
                 characters[cn].end[1] = (end * rank) as u16;
                 characters[cn].mana[1] = (mana * rank) as u16;
 
-                // TODO: Implement do_update_char
-                log::info!("TODO: Call do_update_char for cn={}", cn);
+                State::with(|state| {
+                    state.do_update_char(cn);
+                });
             }
         });
     }

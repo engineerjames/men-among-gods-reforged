@@ -402,12 +402,8 @@ impl State {
                     target_name.parse::<usize>().unwrap_or(0)
                 }
             } else {
-                // TODO: Implement do_lookup_char_self - for now just return 0
-                log::info!(
-                    "TODO: Implement do_lookup_char_self for target_name={}",
-                    target_name
-                );
-                0
+                // Named lookup (supports "self")
+                self.do_lookup_char_self(target_name, cn) as usize
             };
 
             if co == 0 {

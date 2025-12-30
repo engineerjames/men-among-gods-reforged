@@ -6191,12 +6191,12 @@ fn plr_cmd_drop(_nr: usize) {
 /// processing. Building-mode special cases are respected.
 ///
 /// # Arguments
-/// * `_nr` - Player slot index issuing the pickup
-fn plr_cmd_pickup(_nr: usize) {
+/// * `nr` - Player slot index issuing the pickup
+fn plr_cmd_pickup(nr: usize) {
     let (x, y, cn) = Server::with_players(|players| {
-        let x = u16::from_le_bytes([players[_nr].inbuf[1], players[_nr].inbuf[2]]) as i32;
-        let y = u16::from_le_bytes([players[_nr].inbuf[3], players[_nr].inbuf[4]]) as i32;
-        (x, y, players[_nr].usnr)
+        let x = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]) as i32;
+        let y = u16::from_le_bytes([players[nr].inbuf[3], players[nr].inbuf[4]]) as i32;
+        (x, y, players[nr].usnr)
     });
 
     // Building-mode: removal in build mode should remove the temporary build object
@@ -6228,14 +6228,14 @@ fn plr_cmd_pickup(_nr: usize) {
 /// remembers PvP context.
 ///
 /// # Arguments
-/// * `_nr` - Player slot index issuing the attack
-fn plr_cmd_attack(_nr: usize) {
+/// * `nr` - Player slot index issuing the attack
+fn plr_cmd_attack(nr: usize) {
     let co = Server::with_players(|players| {
         u32::from_le_bytes([
-            players[_nr].inbuf[1],
-            players[_nr].inbuf[2],
-            players[_nr].inbuf[3],
-            players[_nr].inbuf[4],
+            players[nr].inbuf[1],
+            players[nr].inbuf[2],
+            players[nr].inbuf[3],
+            players[nr].inbuf[4],
         ])
     });
 
@@ -6243,7 +6243,7 @@ fn plr_cmd_attack(_nr: usize) {
         return;
     }
 
-    let cn = Server::with_players(|players| players[_nr].usnr);
+    let cn = Server::with_players(|players| players[nr].usnr);
     let ticker = Repository::with_globals(|g| g.ticker as i32);
 
     Repository::with_characters_mut(|ch| {
@@ -6270,17 +6270,17 @@ fn plr_cmd_attack(_nr: usize) {
 /// clients via `do_update_char`.
 ///
 /// # Arguments
-/// * `_nr` - Player slot index setting the mode
-fn plr_cmd_mode(_nr: usize) {
+/// * `nr` - Player slot index setting the mode
+fn plr_cmd_mode(nr: usize) {
     let mode = Server::with_players(|players| {
-        u16::from_le_bytes([players[_nr].inbuf[1], players[_nr].inbuf[2]])
+        u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]])
     });
 
     if mode > 2 {
         return;
     }
 
-    let cn = Server::with_players(|players| players[_nr].usnr);
+    let cn = Server::with_players(|players| players[nr].usnr);
 
     Repository::with_characters_mut(|ch| {
         ch[cn].mode = mode as u8;
@@ -6298,12 +6298,12 @@ fn plr_cmd_mode(_nr: usize) {
 /// to move the character towards that target in subsequent ticks.
 ///
 /// # Arguments
-/// * `_nr` - Player slot index sending the movement target
-fn plr_cmd_move(_nr: usize) {
+/// * `nr` - Player slot index sending the movement target
+fn plr_cmd_move(nr: usize) {
     let (x, y, cn) = Server::with_players(|players| {
-        let x = u16::from_le_bytes([players[_nr].inbuf[1], players[_nr].inbuf[2]]) as i32;
-        let y = u16::from_le_bytes([players[_nr].inbuf[3], players[_nr].inbuf[4]]) as i32;
-        (x, y, players[_nr].usnr)
+        let x = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]) as i32;
+        let y = u16::from_le_bytes([players[nr].inbuf[3], players[nr].inbuf[4]]) as i32;
+        (x, y, players[nr].usnr)
     });
 
     let ticker = Repository::with_globals(|g| g.ticker as i32);
@@ -6325,9 +6325,9 @@ fn plr_cmd_move(_nr: usize) {
 /// ongoing activity.
 ///
 /// # Arguments
-/// * `_nr` - Player slot index requesting the reset
-fn plr_cmd_reset(_nr: usize) {
-    let cn = Server::with_players(|players| players[_nr].usnr);
+/// * `nr` - Player slot index requesting the reset
+fn plr_cmd_reset(nr: usize) {
+    let cn = Server::with_players(|players| players[nr].usnr);
     let ticker = Repository::with_globals(|g| g.ticker as i32);
 
     Repository::with_characters_mut(|ch| {
@@ -6349,22 +6349,22 @@ fn plr_cmd_reset(_nr: usize) {
 /// initiating character. Validates indices and existence of the skill.
 ///
 /// # Arguments
-/// * `_nr` - Player slot index invoking the skill
-fn plr_cmd_skill(_nr: usize) {
+/// * `nr` - Player slot index invoking the skill
+fn plr_cmd_skill(nr: usize) {
     let (n, co, cn) = Server::with_players(|players| {
         let n = u32::from_le_bytes([
-            players[_nr].inbuf[1],
-            players[_nr].inbuf[2],
-            players[_nr].inbuf[3],
-            players[_nr].inbuf[4],
+            players[nr].inbuf[1],
+            players[nr].inbuf[2],
+            players[nr].inbuf[3],
+            players[nr].inbuf[4],
         ]) as usize;
         let co = u32::from_le_bytes([
-            players[_nr].inbuf[5],
-            players[_nr].inbuf[6],
-            players[_nr].inbuf[7],
-            players[_nr].inbuf[8],
+            players[nr].inbuf[5],
+            players[nr].inbuf[6],
+            players[nr].inbuf[7],
+            players[nr].inbuf[8],
         ]) as usize;
-        (n, co, players[_nr].usnr)
+        (n, co, players[nr].usnr)
     });
 
     // sanity checks: skill index must be within available skill table
@@ -6394,11 +6394,11 @@ fn plr_cmd_skill(_nr: usize) {
 /// Otherwise delegates to `do_look_item` for the item at the selected slot.
 ///
 /// # Arguments
-/// * `_nr` - Player slot index issuing the command
-fn plr_cmd_inv_look(_nr: usize) {
+/// * `nr` - Player slot index issuing the command
+fn plr_cmd_inv_look(nr: usize) {
     let (n, cn) = Server::with_players(|players| {
-        let n = u16::from_le_bytes([players[_nr].inbuf[1], players[_nr].inbuf[2]]) as usize;
-        (n, players[_nr].usnr)
+        let n = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]) as usize;
+        (n, players[nr].usnr)
     });
 
     if n > 39 {
@@ -6429,12 +6429,12 @@ fn plr_cmd_inv_look(_nr: usize) {
 /// the next tick.
 ///
 /// # Arguments
-/// * `_nr` - Player slot index issuing the use
-fn plr_cmd_use(_nr: usize) {
+/// * `nr` - Player slot index issuing the use
+fn plr_cmd_use(nr: usize) {
     let (x, y, cn) = Server::with_players(|players| {
-        let x = u16::from_le_bytes([players[_nr].inbuf[1], players[_nr].inbuf[2]]) as i32;
-        let y = u16::from_le_bytes([players[_nr].inbuf[3], players[_nr].inbuf[4]]) as i32;
-        (x, y, players[_nr].usnr)
+        let x = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]) as i32;
+        let y = u16::from_le_bytes([players[nr].inbuf[3], players[nr].inbuf[4]]) as i32;
+        (x, y, players[nr].usnr)
     });
 
     let ticker = Repository::with_globals(|g| g.ticker as i32);
@@ -6458,28 +6458,28 @@ fn plr_cmd_use(_nr: usize) {
 /// `co` provide action-specific parameters.
 ///
 /// # Arguments
-/// * `_nr` - Player slot index issuing the inventory command
-fn plr_cmd_inv(_nr: usize) {
+/// * `nr` - Player slot index issuing the inventory command
+fn plr_cmd_inv(nr: usize) {
     let (what, n, mut co, cn) = Server::with_players(|players| {
         let what = u32::from_le_bytes([
-            players[_nr].inbuf[1],
-            players[_nr].inbuf[2],
-            players[_nr].inbuf[3],
-            players[_nr].inbuf[4],
+            players[nr].inbuf[1],
+            players[nr].inbuf[2],
+            players[nr].inbuf[3],
+            players[nr].inbuf[4],
         ]) as usize;
         let n = u32::from_le_bytes([
-            players[_nr].inbuf[5],
-            players[_nr].inbuf[6],
-            players[_nr].inbuf[7],
-            players[_nr].inbuf[8],
+            players[nr].inbuf[5],
+            players[nr].inbuf[6],
+            players[nr].inbuf[7],
+            players[nr].inbuf[8],
         ]) as usize;
         let co = u32::from_le_bytes([
-            players[_nr].inbuf[9],
-            players[_nr].inbuf[10],
-            players[_nr].inbuf[11],
-            players[_nr].inbuf[12],
+            players[nr].inbuf[9],
+            players[nr].inbuf[10],
+            players[nr].inbuf[11],
+            players[nr].inbuf[12],
         ]) as usize;
-        (what, n, co, players[_nr].usnr)
+        (what, n, co, players[nr].usnr)
     });
 
     if co < 1 || co >= core::constants::MAXCHARS as usize {
@@ -6656,12 +6656,12 @@ fn plr_cmd_exit(nr: usize) {
 /// or `do_shop_char` to perform the actual shop/depot logic.
 ///
 /// # Arguments
-/// * `_nr` - Player slot index issuing the shop command
-fn plr_cmd_shop(_nr: usize) {
+/// * `nr` - Player slot index issuing the shop command
+fn plr_cmd_shop(nr: usize) {
     let (co, n, cn) = Server::with_players(|players| {
-        let co = u16::from_le_bytes([players[_nr].inbuf[1], players[_nr].inbuf[2]]) as usize;
-        let n = u16::from_le_bytes([players[_nr].inbuf[3], players[_nr].inbuf[4]]) as i32;
-        (co, n, players[_nr].usnr)
+        let co = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]) as usize;
+        let n = u16::from_le_bytes([players[nr].inbuf[3], players[nr].inbuf[4]]) as i32;
+        (co, n, players[nr].usnr)
     });
 
     if (co & 0x8000) != 0 {

@@ -71,8 +71,13 @@ impl State {
         let is_building = Repository::with_characters(|characters| characters[cn].is_building());
 
         if is_building {
-            // TODO: Add do_char_log to send message to character
-            log::info!("Character {} tried to sort while in build mode", cn);
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    FontColor::Red,
+                    "You cannot sort your inventory while in build mode.\n",
+                )
+            });
             return;
         }
 
