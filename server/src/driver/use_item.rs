@@ -5,11 +5,11 @@ use crate::helpers::{self, points2rank};
 use crate::lab9::Labyrinth9;
 use crate::repository::Repository;
 use crate::state::State;
-use crate::{driver, player, populate};
+use crate::{driver, player, populate, skilltab};
 use core::constants::{
     CharacterFlags, ItemFlags, KIN_HARAKIM, KIN_MERCENARY, KIN_SORCERER, KIN_TEMPLAR, KIN_WARRIOR,
     MAXITEM, MAXSKILL, MF_NOEXPIRE, NT_HITME, SERVER_MAPX, SERVER_MAPY, SK_LOCK, SK_RECALL,
-    SK_RESIST, USE_ACTIVE, USE_EMPTY,
+    SK_RESIST, USE_ACTIVE, USE_EMPTY, WN_RHAND,
 };
 use rand::Rng;
 use std::u32;
@@ -1182,7 +1182,6 @@ pub fn teleport(cn: usize, item_idx: usize) -> i32 {
     // Check if this is a lab-solved teleport (data[2] != 0)
     let data2 = Repository::with_items(|items| items[item_idx].data[2]);
     if data2 != 0 {
-        // TODO: Implement use_labtransfer(cn, data[2], data[3])
         let data3 = Repository::with_items(|items| items[item_idx].data[3]);
         helpers::use_labtransfer(cn, data2 as i32, data3 as i32);
         return 1;
@@ -1617,9 +1616,8 @@ pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
     if current_val != 0 {
         // Already know the skill
         if teaches_only {
-            // TODO: Get skill name from static_skilltab
             State::with(|state| {
-                let name = driver::skill_name(skill_nr);
+                let name = skilltab::get_skill_name(skill_nr);
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
@@ -1631,10 +1629,11 @@ pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
 
         if current_val >= max_val {
             State::with(|state| {
+                let name = skilltab::get_skill_name(skill_nr);
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
-                    &format!("You cannot raise skill {} any higher.\\n", skill_nr),
+                    &format!("You cannot raise skill {} any higher.\n", name),
                 );
             });
             return 0;
@@ -1642,7 +1641,7 @@ pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
 
         // Raise skill by one
         State::with(|state| {
-            let name = driver::skill_name(skill_nr);
+            let name = skilltab::get_skill_name(skill_nr);
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
@@ -1672,7 +1671,7 @@ pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
     } else if max_val == 0 {
         // Cannot learn this skill
         State::with(|state| {
-            let name = driver::skill_name(skill_nr);
+            let name = skilltab::get_skill_name(skill_nr);
             state.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
@@ -1686,7 +1685,7 @@ pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
             characters[cn].skill[skill_nr][0] = 1;
         });
         State::with(|state| {
-            let name = driver::skill_name(skill_nr);
+            let name = skilltab::get_skill_name(skill_nr);
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
@@ -1710,9 +1709,7 @@ pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_scroll2(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::USE_EMPTY;
+    const AT_NAME: [&str; 5] = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
 
     // Get the attribute number from data[0]
     let attrib_nr = Repository::with_items(|items| items[item_idx].data[0] as usize);
@@ -1726,12 +1723,14 @@ pub fn use_scroll2(cn: usize, item_idx: usize) -> i32 {
     });
 
     if current_val >= max_val {
-        // TODO: Get attribute name from at_name array
         State::with(|state| {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                &format!("You cannot raise attribute {} any higher.\n", attrib_nr),
+                &format!(
+                    "You cannot raise attribute {} any higher.\n",
+                    AT_NAME[attrib_nr]
+                ),
             );
         });
         return 0;
@@ -1746,7 +1745,7 @@ pub fn use_scroll2(cn: usize, item_idx: usize) -> i32 {
         state.do_character_log(
             cn,
             core::types::FontColor::Yellow,
-            &format!("Raised attribute {} by one.\n", attrib_nr),
+            &format!("Raised attribute {} by one.\n", AT_NAME[attrib_nr]),
         );
     });
     // TODO: Implement chlog
@@ -1776,10 +1775,6 @@ pub fn use_scroll2(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_scroll3(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::USE_EMPTY;
-
     // Get the amount to raise from data[0]
     let amount = Repository::with_items(|items| items[item_idx].data[0] as i32);
 
@@ -1843,10 +1838,6 @@ pub fn use_scroll3(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_scroll4(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::USE_EMPTY;
-
     // Get the amount to raise from data[0]
     let amount = Repository::with_items(|items| items[item_idx].data[0] as i32);
 
@@ -2668,10 +2659,6 @@ pub fn rat_eye(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn skua_protect(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::WN_RHAND;
-
     // Check if the weapon is wielded
     let is_wielded =
         Repository::with_characters(|characters| characters[cn].worn[WN_RHAND] == item_idx as u32);
@@ -2925,11 +2912,6 @@ pub fn use_spawn(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_pile(cn: usize, item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::{ItemFlags, USE_EMPTY};
-
     // Item templates for rewards at different levels
     const FIND: [usize; 90] = [
         // Level 0 (0-29): silver, small jewels, skeleton
@@ -3091,9 +3073,6 @@ pub fn use_grave(_cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn mine_wall(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-    use core::constants::ItemFlags;
-
     // If no item provided, get it from the map
     let (in_idx, x, y) = if item_idx == 0 {
         let (x, y) = Repository::with_characters(|characters| {
@@ -3116,18 +3095,20 @@ pub fn mine_wall(cn: usize, item_idx: usize) -> i32 {
     // Add rebuild wall effect if data[3] is set
     let should_rebuild = Repository::with_items(|items| items[in_idx].data[3] != 0);
     if should_rebuild {
+        // Use the template id as the effect parameter (matches original server behavior)
+        let temp = Repository::with_items(|items| items[in_idx].temp);
         EffectManager::fx_add_effect(
             10,
             core::constants::TICKS * 60 * 15,
             x as i32,
             y as i32,
-            0 as i32, // TODO: Not sure what to set this to--was originally 'temp'
+            temp as i32,
         );
-        log::info!("mine_wall: would add rebuild effect");
+        log::info!("mine_wall: added rebuild effect (temp={})", temp);
     }
 
     // Get original template, position, and carried status
-    let (temp, x, y, carried) = Repository::with_items(|items| {
+    let (temp, item_x, item_y, carried) = Repository::with_items(|items| {
         (
             items[in_idx].data[0] as usize,
             items[in_idx].x,
@@ -3136,24 +3117,21 @@ pub fn mine_wall(cn: usize, item_idx: usize) -> i32 {
         )
     });
 
-    // Transform the item back to its original state from template
-    // TODO: This requires item templates (it_temp) to be implemented
-    // For now, just reset key fields
-    let result_data_2 = Repository::with_items_mut(|items| {
-        let item = &mut items[in_idx];
-        // In the full implementation, we'd copy from it_temp[temp]
-        // For now, preserve position and carried status
-        item.x = x;
-        item.y = y;
-        item.carried = carried;
-        item.temp = temp as u16;
+    // Replace the item with a copy of the item template (it_temp[temp]) and
+    // restore position/carried/temp fields (this mirrors the original C++ behavior).
+    let template_copy = Repository::with_item_templates(|templates| templates[temp].clone());
+    Repository::with_items_mut(|items| {
+        items[in_idx] = template_copy;
+        items[in_idx].x = item_x;
+        items[in_idx].y = item_y;
+        items[in_idx].carried = carried;
+        items[in_idx].temp = temp as u16;
         if carried != 0 {
-            item.flags |= ItemFlags::IF_UPDATE.bits();
+            items[in_idx].flags |= ItemFlags::IF_UPDATE.bits();
         }
-        item.data[2]
     });
 
-    result_data_2 as i32
+    Repository::with_items(|items| items[in_idx].data[2] as i32) as i32
 }
 
 // Un-called in the original code
