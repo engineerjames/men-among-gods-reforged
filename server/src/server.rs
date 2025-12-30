@@ -136,7 +136,7 @@ impl Server {
     fn tmplabcheck(item_idx: usize) {
         Repository::with_characters(|ch| {
             Repository::with_items_mut(|it| {
-                let cn = it[item_idx].carried as usize; 
+                let cn = it[item_idx].carried as usize;
                 if cn == 0 || !ServerPlayer::is_sane_player(cn) {
                     return;
                 }
@@ -883,7 +883,7 @@ impl Server {
                                 it[spell_id].get_name(),
                                 it[spell_id].used,
                                 cn,
-                                String::from_utf8_lossy(&ch[cn].name)
+                                ch[cn].get_name()
                             );
                         });
                         ch[cn].spell[slot] = 0;
