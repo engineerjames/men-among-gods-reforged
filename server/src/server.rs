@@ -878,11 +878,8 @@ impl Server {
                     Repository::with_characters_mut(|ch| {
                         Repository::with_items(|it| {
                             log::warn!(
-                                "Reset spell item {} ({},{}) from char {} ({})",
-                                spell_id,
+                                "Reset spell item {} from char {}.",
                                 it[spell_id].get_name(),
-                                it[spell_id].used,
-                                cn,
                                 ch[cn].get_name()
                             );
                         });

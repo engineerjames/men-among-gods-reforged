@@ -147,7 +147,7 @@ mod real_ccp {
                     cn,
                     core::types::FontColor::Yellow,
                     format!(
-                        "co pts={}, cn pts={}\\n",
+                        "co pts={}, cn pts={}\n",
                         Repository::with_characters(|ch| ch[co].points_tot),
                         Repository::with_characters(|ch| ch[cn].points_tot)
                     )
@@ -181,7 +181,7 @@ mod real_ccp {
                     cn,
                     core::types::FontColor::Yellow,
                     format!(
-                        "set enemy {} ({}), strength={}\\n",
+                        "set enemy {} ({}), strength={}\n",
                         co,
                         Repository::with_characters(|ch| String::from_utf8_lossy(&ch[co].name)),
                         mem.enemy_strength
@@ -333,7 +333,7 @@ mod real_ccp {
         crate::server::do_char_log(
             cn,
             1,
-            format!("raise new level={}\\n", get_ccp_mem_level(cn)).as_str(),
+            format!("raise new level={}\n", get_ccp_mem_level(cn)).as_str(),
         );
         1
     }
@@ -436,7 +436,7 @@ mod real_ccp {
                 cn,
                 1,
                 format!(
-                    "x={}, y={}, best={}, bx={}, by={}\\n",
+                    "x={}, y={}, best={}, bx={}, by={}\n",
                     x / 10,
                     y / 10,
                     best,

@@ -2560,7 +2560,7 @@ pub fn rat_eye(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                "What do you want to do with it?\\n",
+                "What do you want to do with it?\n",
             );
         });
         return 0;
@@ -2573,7 +2573,7 @@ pub fn rat_eye(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                "Too difficult to do on the ground.\\n",
+                "Too difficult to do on the ground.\n",
             );
         });
         return 0;
@@ -2595,7 +2595,7 @@ pub fn rat_eye(cn: usize, item_idx: usize) -> i32 {
         Some(s) => s,
         None => {
             State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Green, "This doesnt fit.\\n");
+                state.do_character_log(cn, core::types::FontColor::Green, "This doesnt fit.\n");
             });
             return 0;
         }
@@ -2666,7 +2666,7 @@ pub fn skua_protect(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                "You cannot use Skua's weapon if you're not wielding it.\\n",
+                "You cannot use Skua's weapon if you're not wielding it.\n",
             );
         });
         return 0;
@@ -2681,13 +2681,9 @@ pub fn skua_protect(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                "How dare you to call on Skua to help you? Slave of the Purple One!\\n",
+                "How dare you to call on Skua to help you? Slave of the Purple One!\n",
             );
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                "Your weapon vanished.\\n",
-            );
+            state.do_character_log(cn, core::types::FontColor::Green, "Your weapon vanished.\n");
         });
 
         Repository::with_characters_mut(|characters| {
@@ -2765,11 +2761,7 @@ pub fn purple_protect(cn: usize, item_idx: usize) -> i32 {
                 core::types::FontColor::Green,
                 "How dare you to call on the Purple One to help you? Slave of Skua!\n",
             );
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                "Your weapon vanished.\\n",
-            );
+            state.do_character_log(cn, core::types::FontColor::Green, "Your weapon vanished.\n");
         });
 
         Repository::with_characters_mut(|characters| {
@@ -2789,7 +2781,7 @@ pub fn purple_protect(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                "He takes away His weapon and replaces it by a common one.\\n",
+                "He takes away His weapon and replaces it by a common one.\n",
             );
         });
 
@@ -3174,7 +3166,7 @@ pub fn use_mine(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                "You're too exhausted to continue digging.\\n",
+                "You're too exhausted to continue digging.\n",
             );
         });
         Repository::with_characters_mut(|characters| {
@@ -3228,7 +3220,7 @@ pub fn use_mine(cn: usize, item_idx: usize) -> i32 {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Green,
-                    "You don't want to kill yourself beating at this wall with your bare hands, so you stop.\\n",
+                    "You don't want to kill yourself beating at this wall with your bare hands, so you stop.\n",
                 );
             });
             Repository::with_characters_mut(|characters| {
@@ -3368,7 +3360,7 @@ pub fn build_ring(cn: usize, item_idx: usize) -> i32 {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Green,
-                        "This stone is too powerful for a silver ring.\\n",
+                        "This stone is too powerful for a silver ring.\n",
                     );
                 });
                 return 0;
@@ -3419,7 +3411,7 @@ pub fn build_amulet(cn: usize, item_idx: usize) -> i32 {
 
     if in2 == 0 || (in2 & 0x80000000) != 0 {
         State::with(|state| {
-            state.do_character_log(cn, core::types::FontColor::Yellow, "Nothing happens.\\n");
+            state.do_character_log(cn, core::types::FontColor::Yellow, "Nothing happens.\n");
         });
         return 0;
     }
@@ -3441,7 +3433,7 @@ pub fn build_amulet(cn: usize, item_idx: usize) -> i32 {
         466
     } else {
         State::with(|state| {
-            state.do_character_log(cn, core::types::FontColor::Yellow, "That doesn't fit.\\n");
+            state.do_character_log(cn, core::types::FontColor::Yellow, "That doesn't fit.\n");
         });
         return 0;
     };
@@ -3509,7 +3501,7 @@ pub fn use_gargoyle(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                "The Gargoyle could not materialize.\\n",
+                "The Gargoyle could not materialize.\n",
             );
         });
         return 0;
@@ -3569,7 +3561,7 @@ pub fn use_grolm(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                "The Grolm could not materialize.\\n",
+                "The Grolm could not materialize.\n",
             );
         });
         return 0;
@@ -3767,7 +3759,7 @@ pub fn solved_pentagram(cn: usize, item_idx: usize) -> i32 {
             cn,
             core::types::FontColor::Green,
             &format!(
-                "You solved the pentagram quest. Congratulations! You will get {} bonus experience points.\\n",
+                "You solved the pentagram quest. Congratulations! You will get {} bonus experience points.\n",
                 bonus
             ),
         );
@@ -3878,7 +3870,7 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Green,
-                    "This pentagram is already active.\\n",
+                    "This pentagram is already active.\n",
                 );
             });
         } else {
@@ -3946,7 +3938,7 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
                 cn,
                 core::types::FontColor::Green,
                 &format!(
-                    "You cannot use this pentagram. It is reserved for rank {} and below.\\n",
+                    "You cannot use this pentagram. It is reserved for rank {} and below.\n",
                     r2
                 ),
             );
@@ -3968,7 +3960,7 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
             cn,
             core::types::FontColor::Yellow,
             &format!(
-                "You activated the pentagram with the value {}. It is worth {} experience point{}.\\n",
+                "You activated the pentagram with the value {}. It is worth {} experience point{}.\n",
                 v,
                 exp_points,
                 if v == 1 { "" } else { "s" }
@@ -4069,7 +4061,7 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
                     cn,
                     core::types::FontColor::Yellow,
                     &format!(
-                        "Pentagram {:3}, worth {:5} point{}.\\n",
+                        "Pentagram {:3}, worth {:5} point{}.\n",
                         bv[n],
                         points,
                         if bv[n] == 1 { "" } else { "s" }
@@ -4089,7 +4081,7 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
             cn,
             core::types::FontColor::Yellow,
             &format!(
-                "Your pentagrammas are worth a total of {} experience points. Note that only the highest 5 pentagrammas count towards your experience bonus.\\n",
+                "Your pentagrammas are worth a total of {} experience points. Note that only the highest 5 pentagrammas count towards your experience bonus.\n",
                 exp
             ),
         );
@@ -4097,7 +4089,7 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
             cn,
             core::types::FontColor::Yellow,
             &format!(
-                "There are {} pentagrammas total, of which {} are active.\\n",
+                "There are {} pentagrammas total, of which {} are active.\n",
                 tot, act
             ),
         );
@@ -4162,7 +4154,7 @@ pub fn use_shrine(cn: usize, _item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
-                "You get the feeling that it would be apropriate to give the gods a present.\\n",
+                "You get the feeling that it would be apropriate to give the gods a present.\n",
             );
         });
         return 0;
@@ -4410,7 +4402,7 @@ pub fn use_shrine(cn: usize, _item_idx: usize) -> i32 {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Green,
-                    "You feel the hand of the Goddess of Magic touch your mind.\\n",
+                    "You feel the hand of the Goddess of Magic touch your mind.\n",
                 );
             });
             let (x, y) = Repository::with_characters(|characters| {
@@ -4451,7 +4443,7 @@ pub fn use_shrine(cn: usize, _item_idx: usize) -> i32 {
     } else {
         // Offering not good enough
         let (message, luck_change) = if val < rank / 8 {
-            ("You have angered the gods with your unworthy gift.\\n", -2)
+            ("You have angered the gods with your unworthy gift.\n", -2)
         } else if val < rank / 4 {
             ("The gods sneer at your gift.\n", -1)
         } else if val < rank / 2 {
@@ -4476,20 +4468,20 @@ pub fn use_shrine(cn: usize, _item_idx: usize) -> i32 {
 
     // Show luck status
     State::with(|state| {
-        state.do_character_log(cn, core::types::FontColor::Yellow, " \\n");
+        state.do_character_log(cn, core::types::FontColor::Yellow, " \n");
     });
 
     let luck = Repository::with_characters(|characters| characters[cn].luck);
     let luck_message = if luck < -10000 {
-        "You feel that the gods are mad at you.\\n"
+        "You feel that the gods are mad at you.\n"
     } else if luck < 0 {
-        "You feel that the gods are angry at you.\\n"
+        "You feel that the gods are angry at you.\n"
     } else if luck < 100 {
-        "You feel that the gods stance towards you is neutral.\\n"
+        "You feel that the gods stance towards you is neutral.\n"
     } else if luck < 1000 {
-        "You feel that the gods are pleased with you.\\n"
+        "You feel that the gods are pleased with you.\n"
     } else {
-        "You feel that the gods are very fond of you.\\n"
+        "You feel that the gods are very fond of you.\n"
     };
 
     State::with(|state| {
@@ -4669,7 +4661,7 @@ pub fn teleport3(cn: usize, item_idx: usize) -> i32 {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
-                    &format!("Your {} vanished.\\n", item_ref),
+                    &format!("Your {} vanished.\n", item_ref),
                 );
             });
         }
@@ -4785,7 +4777,7 @@ pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
-                "You have the feeling you're in the wrong place here.\\n",
+                "You have the feeling you're in the wrong place here.\n",
             );
         });
         return 0;
@@ -4841,7 +4833,7 @@ pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
-                    "Kwai, the great goddess of war, deemed you unworthy to receive a new blade.\\n",
+                    "Kwai, the great goddess of war, deemed you unworthy to receive a new blade.\n",
                 );
             });
             return 0;
@@ -4857,7 +4849,7 @@ pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
-                "Kwai, the great goddess of war, deemed you worthy to receive a new blade.\\n",
+                "Kwai, the great goddess of war, deemed you worthy to receive a new blade.\n",
             );
         });
         Repository::with_characters_mut(|characters| {
@@ -4879,7 +4871,7 @@ pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
-                "You found a new shrine of Kwai!\\n",
+                "You found a new shrine of Kwai!\n",
             );
         });
         Repository::with_characters_mut(|characters| {
@@ -4905,7 +4897,7 @@ pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
             cn,
             core::types::FontColor::Green,
             &format!(
-                "You have visited {} of the 20 shrines of Kwai.\\n",
+                "You have visited {} of the 20 shrines of Kwai.\n",
                 visited_bits
             ),
         );
@@ -4973,7 +4965,7 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
-                "You're already Seyan'Du, aren't you?\\n",
+                "You're already Seyan'Du, aren't you?\n",
             );
         });
     } else {
@@ -4982,7 +4974,7 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
                 cn,
                 core::types::FontColor::Yellow,
                 &format!(
-                    "The Seyan'Du welcome you among their ranks, {}!\\n",
+                    "The Seyan'Du welcome you among their ranks, {}!\n",
                     String::from_utf8_lossy(&cn_name)
                 ),
             );
@@ -5021,7 +5013,7 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
-                    &format!("Your {} vanished.\\n", String::from_utf8_lossy(&item_ref)),
+                    &format!("Your {} vanished.\n", String::from_utf8_lossy(&item_ref)),
                 );
             });
         }
@@ -5137,7 +5129,7 @@ pub fn spell_scroll(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
-                "You cannot see your target.\\n",
+                "You cannot see your target.\n",
             );
         });
         return 0;
@@ -5224,7 +5216,7 @@ pub fn use_blook_pentagram(cn: usize, item_idx: usize) -> i32 {
         state.do_character_log(
             cn,
             core::types::FontColor::Green,
-            "You try to wipe off the blood, but it seems to be coming back slowly.\\n",
+            "You try to wipe off the blood, but it seems to be coming back slowly.\n",
         );
     });
 
