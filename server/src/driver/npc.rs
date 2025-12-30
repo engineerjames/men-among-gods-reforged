@@ -3047,8 +3047,13 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
             characters[cn].data[92] = TICKS * 60;
         });
     } else {
-        // TODO: Check if group_active(cn)
-        // For now, just continue
+        // For non-player targets we only refresh the NPC's awake timer if
+        // its action group is currently active (matching the original logic).
+        if Repository::with_characters(|characters| characters[cn].group_active()) {
+            Repository::with_characters_mut(|characters| {
+                characters[cn].data[92] = TICKS * 60;
+            });
+        }
     }
 
     // Check if we can see the character
@@ -3105,8 +3110,7 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
     let attack_cn = Repository::with_characters(|characters| characters[cn].attack_cn);
     if attack_cn == 0 {
         // Only attack if we aren't fighting already
-        // TODO: Get proper char_id from State
-        let co_id = co as u32; // Placeholder
+        let co_id = helpers::char_id(co) as u32;
         let idx = co as i32 | ((co_id as i32) << 16);
 
         let mut found = false;

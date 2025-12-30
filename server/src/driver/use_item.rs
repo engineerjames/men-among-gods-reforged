@@ -9,13 +9,12 @@ use crate::{driver, player, populate, skilltab};
 use core::constants::{
     CharacterFlags, ItemFlags, KIN_HARAKIM, KIN_MERCENARY, KIN_SORCERER, KIN_TEMPLAR, KIN_WARRIOR,
     MAXITEM, MAXSKILL, MF_NOEXPIRE, NT_HITME, SERVER_MAPX, SERVER_MAPY, SK_LOCK, SK_RECALL,
-    SK_RESIST, USE_ACTIVE, USE_EMPTY, WN_RHAND,
+    SK_RESIST, TICKS, USE_ACTIVE, USE_EMPTY, WN_RHAND,
 };
 use rand::Rng;
 use std::u32;
 
 // Helper function to take an item from a character
-/// TODO: Document the purpose, inputs, and outputs of this function.
 fn take_item_from_char(item_idx: usize, cn: usize) {
     Repository::with_characters_mut(|characters| {
         let ch = &mut characters[cn];
@@ -1530,7 +1529,6 @@ pub fn use_bag(cn: usize, item_idx: usize) -> i32 {
                     .to_string()
             });
 
-            // TODO: Implement HIS_HER macro
             State::with(|state| {
                 state.do_character_log(
                     cn,
@@ -3524,13 +3522,13 @@ pub fn use_gargoyle(cn: usize, item_idx: usize) -> i32 {
     });
 
     // Configure gargoyle
+    let ticker = Repository::with_globals(|globs| globs.ticker);
     Repository::with_characters_mut(|characters| {
         characters[cc].data[42] = 65536 + cn as i32; // set group
         characters[cc].data[59] = 65536 + cn as i32; // protect all members
         characters[cc].data[63] = cn as i32; // obey and protect char
         characters[cc].data[69] = cn as i32; // follow char
-                                             // TODO: Set self destruction timer with globs->ticker + (TICKS * 60 * 15)
-                                             // characters[cc].data[64] = globs->ticker + (TICKS * 60 * 15);
+        characters[cc].data[64] = ticker + (TICKS * 60 * 15);
     });
 
     1
@@ -3584,13 +3582,13 @@ pub fn use_grolm(cn: usize, item_idx: usize) -> i32 {
     });
 
     // Configure grolm
+    let ticker = Repository::with_globals(|globs| globs.ticker);
     Repository::with_characters_mut(|characters| {
         characters[cc].data[42] = 65536 + cn as i32; // set group
         characters[cc].data[59] = 65536 + cn as i32; // protect all members
         characters[cc].data[63] = cn as i32; // obey and protect char
         characters[cc].data[69] = cn as i32; // follow char
-                                             // TODO: Set self destruction timer with globs->ticker + (TICKS * 60 * 15)
-                                             // characters[cc].data[64] = globs->ticker + (TICKS * 60 * 15);
+        characters[cc].data[64] = ticker + (TICKS * 60 * 15);
     });
 
     1
@@ -7650,11 +7648,49 @@ pub fn item_tick_expire() {
                         // Handle tomb (driver == 7)
                         if driver == 7 {
                             let co = Repository::with_items(|items| items[in_idx].data[0] as usize);
-                            // TODO: Implement full tomb handling with respawn logic
-                            God::destroy_items(co);
-                            Repository::with_characters_mut(|characters| {
-                                characters[co].used = USE_EMPTY;
-                            });
+                            // Validate character index
+                            if co != 0 && co < core::constants::MAXCHARS as usize {
+                                // Remember template and name for logging
+                                let (temp, name, respawn_flag) =
+                                    Repository::with_characters(|characters| {
+                                        (
+                                            characters[co].temp as usize,
+                                            String::from_utf8_lossy(&characters[co].name)
+                                                .to_string(),
+                                            (characters[co].flags
+                                                & core::constants::CharacterFlags::CF_RESPAWN
+                                                    .bits())
+                                                != 0,
+                                        )
+                                    });
+
+                                // Remove the character and its items
+                                God::destroy_items(co);
+                                Repository::with_characters_mut(|characters| {
+                                    characters[co].used = core::constants::USE_EMPTY;
+                                });
+
+                                if temp != 0 && respawn_flag {
+                                    // Schedule a respawn effect (type 2 = RSPAWN)
+                                    let ticks = core::constants::TICKS;
+                                    let mut rng = rand::thread_rng();
+                                    let dur = if temp == 189 || temp == 561 {
+                                        ticks * 60 * 20 + rng.gen_range(0..(ticks * 60 * 5))
+                                    } else {
+                                        ticks * 60 * 1 + rng.gen_range(0..(ticks * 60 * 1))
+                                    };
+
+                                    // Use the template's coordinates for the respawn location
+                                    let (tx, ty) = Repository::with_character_templates(|ct| {
+                                        (ct[temp].x as i32, ct[temp].y as i32)
+                                    });
+
+                                    EffectManager::fx_add_effect(2, dur, tx, ty, temp as i32);
+                                    log::info!("respawn {} ({}): YES", co, name);
+                                } else {
+                                    log::info!("respawn {} ({}): NO", co, name);
+                                }
+                            }
                         }
                     }
                 }

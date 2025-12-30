@@ -5448,12 +5448,83 @@ fn plr_challenge(nr: usize) {
     log::debug!("Player {} challenge ok", nr);
 }
 
-/// Handle existing login challenge (not yet implemented)
+/// Handle existing login challenge (port of `plr_challenge_login`)
 ///
-/// Stub for handling the challenge flow when an existing account is
-/// challenged during login; left as a TODO in the port.
-fn plr_challenge_login(_nr: usize) {
-    // TODO: Implement challenge for existing login
+/// Generates a random non-zero challenge, sets the player into the
+/// `ST_LOGIN_CHALLENGE` state, validates the requested character index
+/// supplied by the client, stores `pass1`/`pass2` fragments and sends the
+/// challenge (and mod packets) back to the client.
+fn plr_challenge_login(nr: usize) {
+    use rand::Rng;
+
+    log::debug!("Player {} challenge_login", nr);
+
+    // Generate random challenge value (0x3fffffff max, ensure non-zero)
+    let mut tmp = rand::thread_rng().gen_range(1..0x3fffffff_u32);
+    if tmp == 0 {
+        tmp = 42;
+    }
+
+    let ticker = Repository::with_globals(|globals| globals.ticker as u32);
+
+    Server::with_players_mut(|players| {
+        players[nr].challenge = tmp;
+        players[nr].state = core::constants::ST_LOGIN_CHALLENGE;
+        players[nr].lasttick = ticker;
+    });
+
+    // Send challenge to client
+    let mut buf: [u8; 16] = [0; 16];
+    buf[0] = core::constants::SV_CHALLENGE;
+    buf[1..5].copy_from_slice(&tmp.to_le_bytes());
+
+    NetworkManager::with(|network| {
+        network.csend(nr, &buf, 16);
+    });
+
+    log::debug!("Player {} challenge_login: sent challenge {:08X}", nr, tmp);
+
+    // Read desired character number and pass fragments from client's inbuf
+    let cn = Server::with_players(|players| {
+        u32::from_le_bytes([
+            players[nr].inbuf[1],
+            players[nr].inbuf[2],
+            players[nr].inbuf[3],
+            players[nr].inbuf[4],
+        ]) as usize
+    });
+
+    if cn < 1 || cn >= core::constants::MAXCHARS as usize {
+        log::warn!("Player {} sent wrong cn {} in challenge login", nr, cn);
+        plr_logout(0, nr, enums::LogoutReason::ChallengeFailed);
+        return;
+    }
+
+    // Store chosen character and pass fragments
+    let (pass1, pass2) = Server::with_players(|players| {
+        (
+            u32::from_le_bytes([
+                players[nr].inbuf[5],
+                players[nr].inbuf[6],
+                players[nr].inbuf[7],
+                players[nr].inbuf[8],
+            ]),
+            u32::from_le_bytes([
+                players[nr].inbuf[9],
+                players[nr].inbuf[10],
+                players[nr].inbuf[11],
+                players[nr].inbuf[12],
+            ]),
+        )
+    });
+
+    Server::with_players_mut(|players| {
+        players[nr].usnr = cn;
+        players[nr].pass1 = pass1;
+        players[nr].pass2 = pass2;
+    });
+
+    send_mod(nr);
 }
 
 /// Port of `plr_unique` from `svr_tick.cpp`

@@ -269,7 +269,23 @@ impl State {
             s2 -= 10;
         }
 
-        // TODO: GF_MAYHEM global flag adjustments (increase s1/s2 for NPCs)
+        // GF_MAYHEM: In mayhem mode, non-player characters get a skill bonus.
+        let mayhem =
+            Repository::with_globals(|globs| (globs.flags & core::constants::GF_MAYHEM) != 0);
+        if mayhem {
+            let (cn_is_player, co_is_player) = Repository::with_characters(|characters| {
+                (
+                    (characters[cn].flags & CharacterFlags::CF_PLAYER.bits()) != 0,
+                    (characters[co].flags & CharacterFlags::CF_PLAYER.bits()) != 0,
+                )
+            });
+            if !cn_is_player {
+                s1 += 10;
+            }
+            if !co_is_player {
+                s2 += 10;
+            }
+        }
 
         // Now compute diff -> chance/bonus mapping per original C++ table
         let diff = s1 - s2;
@@ -780,8 +796,7 @@ impl State {
                 }
 
                 // Record the attack
-                // TODO: Get actual ticker value from Server/State
-                let ticker = 0; // Placeholder
+                let ticker = Repository::with_globals(|globs| globs.ticker);
                 characters[cn_actual].data[core::constants::CHD_ATTACKTIME] = ticker;
                 characters[cn_actual].data[core::constants::CHD_ATTACKVICT] = co_actual as i32;
             });
