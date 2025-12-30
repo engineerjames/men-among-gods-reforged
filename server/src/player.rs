@@ -326,9 +326,7 @@ pub fn plr_logout(character_id: usize, player_id: usize, reason: enums::LogoutRe
             });
         }
 
-        Repository::with_globals(|globals| {
-            player_exit(globals.ticker as u32, character_id, player_id);
-        });
+        player_exit(player_id);
     }
 }
 
@@ -338,28 +336,37 @@ pub fn plr_logout(character_id: usize, player_id: usize, reason: enums::LogoutRe
 /// player's state, clears `ch.player`, and records the last tick.
 ///
 /// # Arguments
-/// * `ticker` - Current server ticker
-/// * `character_id` - Character index being exited
 /// * `player_id` - Player slot index
-pub fn player_exit(ticker: u32, character_id: usize, player_id: usize) {
-    Repository::with_characters_mut(|characters| {
-        let ch = &mut characters[character_id];
+pub fn player_exit(player_id: usize) {
+    if player_id == 0 || player_id >= core::constants::MAXPLAYER {
+        log::error!("player_exit: Invalid player id {}", player_id);
+        return;
+    }
 
-        Server::with_players_mut(|players| {
-            players[player_id].state = core::constants::ST_EXIT;
-            players[player_id].lasttick = ticker;
+    let ticker = Repository::with_globals(|globals| globals.ticker as u32);
 
-            if players[player_id].usnr > 0
-                && players[player_id].usnr < core::constants::MAXCHARS
-                && ch.player as usize == player_id
-            {
-                log::info!(
-                    "Player {} exiting for character '{}'",
-                    player_id,
-                    ch.get_name()
-                );
-                ch.player = 0;
+    Server::with_players_mut(|players| {
+        players[player_id].state = core::constants::ST_EXIT;
+        players[player_id].lasttick = ticker;
+
+        Repository::with_characters_mut(|characters| {
+            let char = characters
+                .iter_mut()
+                .find(|ch| ch.player as usize == player_id);
+
+            if char.is_none() {
+                log::error!("player_exit: No character found for player {}", player_id);
+                return;
             }
+
+            let char = char.unwrap();
+            log::info!(
+                "Player {} exiting for character '{}'",
+                player_id,
+                char.get_name()
+            );
+
+            char.player = 0;
         });
     });
 }

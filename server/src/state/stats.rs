@@ -6,7 +6,7 @@ use crate::effect::EffectManager;
 use crate::god::God;
 use crate::repository::Repository;
 use crate::state::State;
-use crate::{driver, helpers};
+use crate::{driver, helpers, skilltab};
 
 impl State {
     /// Helper function to check if character wears a specific item
@@ -378,12 +378,11 @@ impl State {
                     + characters[cn].skill[z][1] as i32
                     + skill_bonus[z];
 
-                // Add attribute bonuses (simplified - real implementation needs skilltab)
-                // For now, just add a generic attribute bonus
-                let attrib_contribution = (characters[cn].attrib[core::constants::AT_AGIL as usize]
-                    [5] as i32
-                    + characters[cn].attrib[core::constants::AT_STREN as usize][5] as i32
-                    + characters[cn].attrib[core::constants::AT_INT as usize][5] as i32)
+                // Add attribute bonuses using the proper skill->attribute mapping from `skilltab`
+                let attrs = skilltab::get_skill_attribs(z);
+                let attrib_contribution = (characters[cn].attrib[attrs[0]][5] as i32
+                    + characters[cn].attrib[attrs[1]][5] as i32
+                    + characters[cn].attrib[attrs[2]][5] as i32)
                     / 5;
                 final_skill += attrib_contribution;
 
