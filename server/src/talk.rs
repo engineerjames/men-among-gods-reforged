@@ -1,4 +1,4 @@
-use core::constants::CT_COMPANION;
+use core::constants::{CT_COMPANION, NT_GOTMISS};
 
 struct Know {
     word: [&'static str; 20],
@@ -1877,11 +1877,11 @@ const KNOW: [Know; 227] = [
     },
 ];
 
-use crate::driver;
 use crate::effect::EffectManager;
 use crate::god::God;
 use crate::repository::Repository;
 use crate::state::State;
+use crate::{driver, helpers};
 
 /// Port of `obey(int cn, int co)` from `talk.cpp`
 ///
@@ -2272,13 +2272,12 @@ pub fn answer_attack(cn: usize, co: usize, text: &str) {
                 return;
             }
 
-            // Check if attack is allowed (may_attack_msg equivalent - would need to be implemented)
-            // if !may_attack_msg(co, best_target, 0) {
-            //     State::with(|state| {
-            //         state.do_sayx(cn, &format!("The Gods would be angry if we did that, you didn't want to anger the Gods, {} did you?", characters[co].get_name()));
-            //     });
-            //     return;
-            // }
+            if State::with(|state| state.may_attack_msg(co, best_target, false)) == 0 {
+                State::with(|state| {
+                    state.do_sayx(cn, &format!("The Gods would be angry if we did that, you didn't want to anger the Gods, {} did you?", characters[co].get_name()));
+                });
+                return;
+            }
 
             let target_name = characters[best_target].get_name().to_string();
             let co_name = characters[co].get_name().to_string();
@@ -2287,9 +2286,9 @@ pub fn answer_attack(cn: usize, co: usize, text: &str) {
                 if best_target <= u16::MAX as usize {
                     characters_mut[cn].attack_cn = best_target as u16;
                 }
-                // TODO: char_id equivalent
-                // let idx = best_target | (char_id(best_target) << 16);
-                // characters_mut[cn].data[80] = idx as i32;
+
+                let idx = best_target | (helpers::char_id(best_target) as usize) << 16;
+                characters_mut[cn].data[80] = idx as i32;
                 characters_mut[cn].data[80] = best_target as i32;
 
                 State::with(|state| {
@@ -2300,8 +2299,10 @@ pub fn answer_attack(cn: usize, co: usize, text: &str) {
                 });
             });
 
-            // Notify target (do_notify_char equivalent)
-            // do_notify_char(best_target, NT_GOTMISS, co, 0, 0, 0);
+            // Notify target
+            State::with(|state| {
+                state.do_notify_character(best_target as u32, NT_GOTMISS as i32, co as i32, 0, 0, 0)
+            });
         });
     }
 }

@@ -5,17 +5,16 @@ use crate::helpers::{self, points2rank};
 use crate::lab9::Labyrinth9;
 use crate::repository::Repository;
 use crate::state::State;
-use crate::{driver, player, populate};
+use crate::{driver, player, populate, skilltab};
 use core::constants::{
     CharacterFlags, ItemFlags, KIN_HARAKIM, KIN_MERCENARY, KIN_SORCERER, KIN_TEMPLAR, KIN_WARRIOR,
     MAXITEM, MAXSKILL, MF_NOEXPIRE, NT_HITME, SERVER_MAPX, SERVER_MAPY, SK_LOCK, SK_RECALL,
-    USE_ACTIVE, USE_EMPTY,
+    SK_RESIST, TICKS, USE_ACTIVE, USE_EMPTY, WN_RHAND,
 };
 use rand::Rng;
 use std::u32;
 
 // Helper function to take an item from a character
-/// TODO: Document the purpose, inputs, and outputs of this function.
 fn take_item_from_char(item_idx: usize, cn: usize) {
     Repository::with_characters_mut(|characters| {
         let ch = &mut characters[cn];
@@ -1182,7 +1181,6 @@ pub fn teleport(cn: usize, item_idx: usize) -> i32 {
     // Check if this is a lab-solved teleport (data[2] != 0)
     let data2 = Repository::with_items(|items| items[item_idx].data[2]);
     if data2 != 0 {
-        // TODO: Implement use_labtransfer(cn, data[2], data[3])
         let data3 = Repository::with_items(|items| items[item_idx].data[3]);
         helpers::use_labtransfer(cn, data2 as i32, data3 as i32);
         return 1;
@@ -1531,7 +1529,6 @@ pub fn use_bag(cn: usize, item_idx: usize) -> i32 {
                     .to_string()
             });
 
-            // TODO: Implement HIS_HER macro
             State::with(|state| {
                 state.do_character_log(
                     cn,
@@ -1617,9 +1614,8 @@ pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
     if current_val != 0 {
         // Already know the skill
         if teaches_only {
-            // TODO: Get skill name from static_skilltab
             State::with(|state| {
-                let name = driver::skill_name(skill_nr);
+                let name = skilltab::get_skill_name(skill_nr);
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
@@ -1631,10 +1627,11 @@ pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
 
         if current_val >= max_val {
             State::with(|state| {
+                let name = skilltab::get_skill_name(skill_nr);
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
-                    &format!("You cannot raise skill {} any higher.\\n", skill_nr),
+                    &format!("You cannot raise skill {} any higher.\n", name),
                 );
             });
             return 0;
@@ -1642,7 +1639,7 @@ pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
 
         // Raise skill by one
         State::with(|state| {
-            let name = driver::skill_name(skill_nr);
+            let name = skilltab::get_skill_name(skill_nr);
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
@@ -1672,7 +1669,7 @@ pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
     } else if max_val == 0 {
         // Cannot learn this skill
         State::with(|state| {
-            let name = driver::skill_name(skill_nr);
+            let name = skilltab::get_skill_name(skill_nr);
             state.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
@@ -1686,7 +1683,7 @@ pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
             characters[cn].skill[skill_nr][0] = 1;
         });
         State::with(|state| {
-            let name = driver::skill_name(skill_nr);
+            let name = skilltab::get_skill_name(skill_nr);
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
@@ -1710,9 +1707,7 @@ pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_scroll2(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::USE_EMPTY;
+    const AT_NAME: [&str; 5] = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
 
     // Get the attribute number from data[0]
     let attrib_nr = Repository::with_items(|items| items[item_idx].data[0] as usize);
@@ -1726,12 +1721,14 @@ pub fn use_scroll2(cn: usize, item_idx: usize) -> i32 {
     });
 
     if current_val >= max_val {
-        // TODO: Get attribute name from at_name array
         State::with(|state| {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                &format!("You cannot raise attribute {} any higher.\n", attrib_nr),
+                &format!(
+                    "You cannot raise attribute {} any higher.\n",
+                    AT_NAME[attrib_nr]
+                ),
             );
         });
         return 0;
@@ -1746,7 +1743,7 @@ pub fn use_scroll2(cn: usize, item_idx: usize) -> i32 {
         state.do_character_log(
             cn,
             core::types::FontColor::Yellow,
-            &format!("Raised attribute {} by one.\n", attrib_nr),
+            &format!("Raised attribute {} by one.\n", AT_NAME[attrib_nr]),
         );
     });
     // TODO: Implement chlog
@@ -1776,10 +1773,6 @@ pub fn use_scroll2(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_scroll3(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::USE_EMPTY;
-
     // Get the amount to raise from data[0]
     let amount = Repository::with_items(|items| items[item_idx].data[0] as i32);
 
@@ -1843,10 +1836,6 @@ pub fn use_scroll3(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_scroll4(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::USE_EMPTY;
-
     // Get the amount to raise from data[0]
     let amount = Repository::with_items(|items| items[item_idx].data[0] as i32);
 
@@ -2668,10 +2657,6 @@ pub fn rat_eye(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn skua_protect(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::WN_RHAND;
-
     // Check if the weapon is wielded
     let is_wielded =
         Repository::with_characters(|characters| characters[cn].worn[WN_RHAND] == item_idx as u32);
@@ -2925,11 +2910,6 @@ pub fn use_spawn(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_pile(cn: usize, item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::{ItemFlags, USE_EMPTY};
-
     // Item templates for rewards at different levels
     const FIND: [usize; 90] = [
         // Level 0 (0-29): silver, small jewels, skeleton
@@ -3091,9 +3071,6 @@ pub fn use_grave(_cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn mine_wall(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-    use core::constants::ItemFlags;
-
     // If no item provided, get it from the map
     let (in_idx, x, y) = if item_idx == 0 {
         let (x, y) = Repository::with_characters(|characters| {
@@ -3116,18 +3093,20 @@ pub fn mine_wall(cn: usize, item_idx: usize) -> i32 {
     // Add rebuild wall effect if data[3] is set
     let should_rebuild = Repository::with_items(|items| items[in_idx].data[3] != 0);
     if should_rebuild {
+        // Use the template id as the effect parameter (matches original server behavior)
+        let temp = Repository::with_items(|items| items[in_idx].temp);
         EffectManager::fx_add_effect(
             10,
             core::constants::TICKS * 60 * 15,
             x as i32,
             y as i32,
-            0 as i32, // TODO: Not sure what to set this to--was originally 'temp'
+            temp as i32,
         );
-        log::info!("mine_wall: would add rebuild effect");
+        log::info!("mine_wall: added rebuild effect (temp={})", temp);
     }
 
     // Get original template, position, and carried status
-    let (temp, x, y, carried) = Repository::with_items(|items| {
+    let (temp, item_x, item_y, carried) = Repository::with_items(|items| {
         (
             items[in_idx].data[0] as usize,
             items[in_idx].x,
@@ -3136,24 +3115,21 @@ pub fn mine_wall(cn: usize, item_idx: usize) -> i32 {
         )
     });
 
-    // Transform the item back to its original state from template
-    // TODO: This requires item templates (it_temp) to be implemented
-    // For now, just reset key fields
-    let result_data_2 = Repository::with_items_mut(|items| {
-        let item = &mut items[in_idx];
-        // In the full implementation, we'd copy from it_temp[temp]
-        // For now, preserve position and carried status
-        item.x = x;
-        item.y = y;
-        item.carried = carried;
-        item.temp = temp as u16;
+    // Replace the item with a copy of the item template (it_temp[temp]) and
+    // restore position/carried/temp fields (this mirrors the original C++ behavior).
+    let template_copy = Repository::with_item_templates(|templates| templates[temp].clone());
+    Repository::with_items_mut(|items| {
+        items[in_idx] = template_copy;
+        items[in_idx].x = item_x;
+        items[in_idx].y = item_y;
+        items[in_idx].carried = carried;
+        items[in_idx].temp = temp as u16;
         if carried != 0 {
-            item.flags |= ItemFlags::IF_UPDATE.bits();
+            items[in_idx].flags |= ItemFlags::IF_UPDATE.bits();
         }
-        item.data[2]
     });
 
-    result_data_2 as i32
+    Repository::with_items(|items| items[in_idx].data[2] as i32) as i32
 }
 
 // Un-called in the original code
@@ -3546,13 +3522,13 @@ pub fn use_gargoyle(cn: usize, item_idx: usize) -> i32 {
     });
 
     // Configure gargoyle
+    let ticker = Repository::with_globals(|globs| globs.ticker);
     Repository::with_characters_mut(|characters| {
         characters[cc].data[42] = 65536 + cn as i32; // set group
         characters[cc].data[59] = 65536 + cn as i32; // protect all members
         characters[cc].data[63] = cn as i32; // obey and protect char
         characters[cc].data[69] = cn as i32; // follow char
-                                             // TODO: Set self destruction timer with globs->ticker + (TICKS * 60 * 15)
-                                             // characters[cc].data[64] = globs->ticker + (TICKS * 60 * 15);
+        characters[cc].data[64] = ticker + (TICKS * 60 * 15);
     });
 
     1
@@ -3606,13 +3582,13 @@ pub fn use_grolm(cn: usize, item_idx: usize) -> i32 {
     });
 
     // Configure grolm
+    let ticker = Repository::with_globals(|globs| globs.ticker);
     Repository::with_characters_mut(|characters| {
         characters[cc].data[42] = 65536 + cn as i32; // set group
         characters[cc].data[59] = 65536 + cn as i32; // protect all members
         characters[cc].data[63] = cn as i32; // obey and protect char
         characters[cc].data[69] = cn as i32; // follow char
-                                             // TODO: Set self destruction timer with globs->ticker + (TICKS * 60 * 15)
-                                             // characters[cc].data[64] = globs->ticker + (TICKS * 60 * 15);
+        characters[cc].data[64] = ticker + (TICKS * 60 * 15);
     });
 
     1
@@ -4953,7 +4929,7 @@ pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
         }
     });
 
-    // TODO: do_update_char(cn);
+    State::with(|state| state.do_update_char(cn));
 
     0
 }
@@ -5155,8 +5131,7 @@ pub fn spell_scroll(cn: usize, item_idx: usize) -> i32 {
     }
 
     // Check if can see target
-    // TODO: Implement do_char_can_see
-    let can_see = true; // Placeholder
+    let can_see = State::with_mut(|state| state.do_char_can_see(cn, co)) != 0;
     if !can_see {
         State::with(|state| {
             state.do_character_log(
@@ -5170,66 +5145,54 @@ pub fn spell_scroll(cn: usize, item_idx: usize) -> i32 {
 
     // Check attack spells for may_attack
     if spell as usize == SK_CURSE || spell as usize == SK_STUN {
-        // TODO: Implement may_attack_msg
-        // if !may_attack_msg(cn, co, 1) {
-        //     chlog(cn, "Prevented from attacking %s (%d)", ch[co].name, co);
-        //     return 0;
-        // }
-        log::info!("TODO: may_attack_msg check for spell {}", spell);
+        if State::with(|state| state.may_attack_msg(cn, co, true) == 0) {
+            log::info!("Prevented from attacking target {}", co);
+            return 0;
+        }
     } else {
-        // TODO: Implement player_or_ghost check
-        // if !player_or_ghost(cn, co) {
-        //     Change target to self
-        //     co = cn;
-        // }
+        if driver::player_or_ghost(cn, co) == 0 {
+            // Change target to self
+            co = cn;
+        }
     }
 
     // Cast spell
     let ret = match spell as usize {
         SK_LIGHT => {
-            // TODO: Implement spell_light
-            log::info!("TODO: spell_light({}, {}, {})", cn, co, power);
+            driver::spell_light(cn, co, power as i32);
             1
         }
         SK_ENHANCE => {
-            // TODO: Implement spell_enhance
-            log::info!("TODO: spell_enhance({}, {}, {})", cn, co, power);
+            driver::spell_enhance(cn, co, power as i32);
             1
         }
         SK_PROTECT => {
-            // TODO: Implement spell_protect
-            log::info!("TODO: spell_protect({}, {}, {})", cn, co, power);
+            driver::spell_protect(cn, co, power as i32);
             1
         }
         SK_BLESS => {
-            // TODO: Implement spell_bless
-            log::info!("TODO: spell_bless({}, {}, {})", cn, co, power);
+            driver::spell_bless(cn, co, power as i32);
             1
         }
         SK_MSHIELD => {
-            // TODO: Implement spell_mshield
-            log::info!("TODO: spell_mshield({}, {}, {})", cn, co, power);
+            driver::spell_mshield(cn, co, power as i32);
             1
         }
         SK_CURSE => {
-            // TODO: Implement chance_base and spell_curse
-            // if chance_base(cn, power, 10, ch[co].skill[SK_RESIST][5]) {
-            //     1
-            // } else {
-            //     spell_curse(cn, co, power)
-            // }
-            log::info!("TODO: spell_curse({}, {}, {})", cn, co, power);
-            1
+            let target_resistance = Repository::with_characters(|ch| ch[co].skill[SK_RESIST][5]);
+            if driver::chance_base(cn, power as i32, 10, target_resistance as i32) != 0 {
+                1
+            } else {
+                driver::spell_curse(cn, co, power as i32)
+            }
         }
         SK_STUN => {
-            // TODO: Implement chance_base and spell_stun
-            // if chance_base(cn, power, 12, ch[co].skill[SK_RESIST][5]) {
-            //     1
-            // } else {
-            //     spell_stun(cn, co, power)
-            // }
-            log::info!("TODO: spell_stun({}, {}, {})", cn, co, power);
-            1
+            let target_resistance = Repository::with_characters(|ch| ch[co].skill[SK_RESIST][5]);
+            if driver::chance_base(cn, power as i32, 12, target_resistance as i32) != 0 {
+                1
+            } else {
+                driver::spell_stun(cn, co, power as i32)
+            }
         }
         _ => 0,
     };
@@ -6919,7 +6882,7 @@ pub fn item_damage_worn(cn: usize, n: usize, damage: i32) {
             }
             _ => {}
         }
-        // TODO: do_update_char(cn);
+        State::with(|state| state.do_update_char(cn));
     }
 }
 
@@ -7685,11 +7648,49 @@ pub fn item_tick_expire() {
                         // Handle tomb (driver == 7)
                         if driver == 7 {
                             let co = Repository::with_items(|items| items[in_idx].data[0] as usize);
-                            // TODO: Implement full tomb handling with respawn logic
-                            God::destroy_items(co);
-                            Repository::with_characters_mut(|characters| {
-                                characters[co].used = USE_EMPTY;
-                            });
+                            // Validate character index
+                            if co != 0 && co < core::constants::MAXCHARS as usize {
+                                // Remember template and name for logging
+                                let (temp, name, respawn_flag) =
+                                    Repository::with_characters(|characters| {
+                                        (
+                                            characters[co].temp as usize,
+                                            String::from_utf8_lossy(&characters[co].name)
+                                                .to_string(),
+                                            (characters[co].flags
+                                                & core::constants::CharacterFlags::CF_RESPAWN
+                                                    .bits())
+                                                != 0,
+                                        )
+                                    });
+
+                                // Remove the character and its items
+                                God::destroy_items(co);
+                                Repository::with_characters_mut(|characters| {
+                                    characters[co].used = core::constants::USE_EMPTY;
+                                });
+
+                                if temp != 0 && respawn_flag {
+                                    // Schedule a respawn effect (type 2 = RSPAWN)
+                                    let ticks = core::constants::TICKS;
+                                    let mut rng = rand::thread_rng();
+                                    let dur = if temp == 189 || temp == 561 {
+                                        ticks * 60 * 20 + rng.gen_range(0..(ticks * 60 * 5))
+                                    } else {
+                                        ticks * 60 * 1 + rng.gen_range(0..(ticks * 60 * 1))
+                                    };
+
+                                    // Use the template's coordinates for the respawn location
+                                    let (tx, ty) = Repository::with_character_templates(|ct| {
+                                        (ct[temp].x as i32, ct[temp].y as i32)
+                                    });
+
+                                    EffectManager::fx_add_effect(2, dur, tx, ty, temp as i32);
+                                    log::info!("respawn {} ({}): YES", co, name);
+                                } else {
+                                    log::info!("respawn {} ({}): NO", co, name);
+                                }
+                            }
                         }
                     }
                 }
@@ -7960,7 +7961,7 @@ pub fn trap1(cn: usize, item_idx: usize) {
         Repository::with_characters_mut(|characters| {
             characters[cn].worn[slot] = 0;
         });
-        // TODO: do_update_char(cn);
+        State::with(|state| state.do_update_char(cn));
     } else {
         State::with(|state| {
             state.do_character_log(
@@ -7999,10 +8000,10 @@ pub fn trap2(cn: usize, tmp: usize) {
         return;
     }
 
-    // TODO: do_update_char(cc);
     Repository::with_characters_mut(|characters| {
         characters[cc].attack_cn = cn as u16;
     });
+    State::with(|state| state.do_update_char(cc));
 }
 
 pub fn start_trap(cn: usize, item_idx: usize) {
@@ -8368,7 +8369,7 @@ pub fn step_portal2_lab13(cn: usize, _item_idx: usize) -> i32 {
             });
         }
     }
-    // TODO: do_update_char(cn);
+    State::with(|state| state.do_update_char(cn));
 
     1
 }

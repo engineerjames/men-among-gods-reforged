@@ -305,6 +305,48 @@ pub fn ago_string(dt: i32) -> String {
     format!("{} years ago", years)
 }
 
+/// Show the current in-game time to character `cn`.
+///
+/// Port of the original `show_time(int cn)` which printed something like:
+/// "It's H:MM on the Dth of the Mth month of the year Y."
+pub fn show_time(cn: usize) {
+    // Read time values from globals
+    let (mdtime, mdday, mdyear) = Repository::with_globals(|g| (g.mdtime, g.mdday, g.mdyear));
+
+    let hour = mdtime / (60 * 60);
+    let minute = (mdtime / 60) % 60;
+    let day = (mdday % 28) + 1;
+    let month = (mdday / 28) + 1;
+    let year = mdyear;
+
+    fn ordinal_suffix(n: i32) -> &'static str {
+        let n_mod_100 = n % 100;
+        if n_mod_100 >= 11 && n_mod_100 <= 13 {
+            return "th";
+        }
+        match n % 10 {
+            1 => "st",
+            2 => "nd",
+            3 => "rd",
+            _ => "th",
+        }
+    }
+
+    let day_suf = ordinal_suffix(day);
+    let month_suf = ordinal_suffix(month);
+
+    State::with(|state| {
+        state.do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            &format!(
+                "It's {}:{:02} on the {}{} of the {}{} month of the year {}.\n",
+                hour, minute, day, day_suf, month, month_suf, year
+            ),
+        );
+    });
+}
+
 /// Full rank names matching `WHO_RANK_NAME` indices.
 pub const RANK_NAMES: [&str; core::constants::RANKS] = [
     "Private",

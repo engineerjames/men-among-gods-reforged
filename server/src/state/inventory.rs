@@ -1,8 +1,11 @@
+use crate::driver;
 use crate::god::God;
+
 use crate::repository::Repository;
 use crate::state::State;
-use core::constants::{CharacterFlags, ItemFlags, MAXPLAYER};
+use core::constants::{CharacterFlags, ItemFlags};
 use core::types::FontColor;
+use std::cmp::Ordering;
 
 impl State {
     /// Port of `do_store_item(int cn)` from `svr_do.cpp`.
@@ -59,10 +62,6 @@ impl State {
     /// weapons, 'a' for armor, 'v' for value, etc.) which are applied in
     /// sequence. Empty inventory slots are moved to the end.
     ///
-    /// This function performs an in-memory reorder and marks the character's
-    /// inventory for later synchronization with the client; network send
-    /// logic is left as a TODO in this implementation.
-    ///
     /// # Arguments
     /// * `cn` - Character id whose inventory will be sorted
     /// * `order` - Sort order string composed of single-character keys
@@ -71,8 +70,13 @@ impl State {
         let is_building = Repository::with_characters(|characters| characters[cn].is_building());
 
         if is_building {
-            // TODO: Add do_char_log to send message to character
-            log::info!("Character {} tried to sort while in build mode", cn);
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    FontColor::Red,
+                    "You cannot sort your inventory while in build mode.\n",
+                )
+            });
             return;
         }
 
@@ -88,15 +92,7 @@ impl State {
         });
 
         // Update character to send changes to client
-        // TODO: Implement do_update_char equivalent
-        // For now, this will at least sort the inventory in memory
-        use crate::network_manager::NetworkManager;
-        NetworkManager::with(|_nm| {
-            let player_id = Repository::with_characters(|characters| characters[cn].player);
-            if player_id > 0 && player_id < MAXPLAYER as i32 {
-                // TODO: Send character inventory update to client
-            }
-        });
+        State::with(|state| state.do_update_char(cn));
     }
 
     /// Port of the `qsort_proc(in1, in2, order)` comparator from `svr_do.cpp`.
@@ -114,8 +110,6 @@ impl State {
     /// # Returns
     /// * `Ordering` indicating the sort relation of `in1` and `in2`.
     pub(crate) fn qsort_compare(&self, in1: usize, in2: usize, order: &str) -> std::cmp::Ordering {
-        use std::cmp::Ordering;
-
         // Handle empty slots - they go to the end
         if in1 == 0 && in2 == 0 {
             return Ordering::Equal;
@@ -596,8 +590,7 @@ impl State {
         });
 
         if has_lookspecial {
-            // TODO: Implement look_driver
-            log::info!("TODO: Call look_driver({}, {})", cn, item_idx);
+            crate::driver::look_driver(cn, item_idx);
         } else {
             // Show item description
             let description = Repository::with_items(|items| items[item_idx].description.clone());
@@ -874,8 +867,7 @@ impl State {
                 });
 
                 if is_identified {
-                    // TODO: Implement item_info
-                    log::info!("TODO: Call item_info({}, {}, 1)", cn, item_idx);
+                    driver::item_info(cn, item_idx, 1);
                 }
             }
 

@@ -105,7 +105,7 @@ pub fn friend_is_enemy(cn: usize, cc: usize) -> i32 {
     }
     0
 }
-/// TODO: Document the purpose, inputs, and outputs of this function.
+
 pub fn player_or_ghost(cn: usize, co: usize) -> i32 {
     // Rust port of C++ player_or_ghost
     let cn_flags = Repository::with_characters(|ch| ch[cn].flags);

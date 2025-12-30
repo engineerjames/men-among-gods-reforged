@@ -316,6 +316,63 @@ impl State {
         ((pts.sqrt() as i32) / 7) + 7
     }
 
+    /// Port of `build_remove(x, y)` from `build.cpp`.
+    ///
+    /// Removes a build-mode object from the map at `(x, y)` if present and
+    /// updates lights and item tables accordingly.
+    pub(crate) fn do_build_remove(&mut self, x: i32, y: i32) {
+        // Bounds check
+        if x < 0
+            || x >= core::constants::SERVER_MAPX as i32
+            || y < 0
+            || y >= core::constants::SERVER_MAPY as i32
+        {
+            return;
+        }
+
+        let m = (x as usize) + (y as usize) * core::constants::SERVER_MAPX as usize;
+
+        // Clear sprite and movement/sight flags
+        Repository::with_map_mut(|map| {
+            map[m].fsprite = 0;
+            map[m].flags &=
+                !(core::constants::MF_MOVEBLOCK as u64 | core::constants::MF_SIGHTBLOCK as u64);
+        });
+
+        // If there's no item on the tile, we're done
+        let in_id = Repository::with_map(|map| map[m].it);
+        if in_id == 0 {
+            return;
+        }
+
+        // Adjust lighting based on item's active state
+        let (active, light_active, light_inactive) = Repository::with_items(|items| {
+            let item = &items[in_id as usize];
+            (item.active, item.light[1], item.light[0])
+        });
+
+        if active != 0 {
+            if light_active != 0 {
+                self.do_add_light(x, y, -(light_active as i32));
+            }
+        } else if light_inactive != 0 {
+            self.do_add_light(x, y, -(light_inactive as i32));
+        }
+
+        // Mark the item slot free and clear the map reference
+        Repository::with_items_mut(|items| {
+            if (in_id as usize) < items.len() {
+                items[in_id as usize].used = core::constants::USE_EMPTY;
+            }
+        });
+
+        Repository::with_map_mut(|map| {
+            map[m].it = 0;
+        });
+
+        log::info!("build: remove item from {},{}", x, y);
+    }
+
     /// Port of `do_seen(cn, cco)` from `svr_do.cpp`.
     ///
     /// Lookup when a target character was last seen or logged in. For gods
@@ -345,12 +402,8 @@ impl State {
                     target_name.parse::<usize>().unwrap_or(0)
                 }
             } else {
-                // TODO: Implement do_lookup_char_self - for now just return 0
-                log::info!(
-                    "TODO: Implement do_lookup_char_self for target_name={}",
-                    target_name
-                );
-                0
+                // Named lookup (supports "self")
+                self.do_lookup_char_self(target_name, cn) as usize
             };
 
             if co == 0 {

@@ -79,9 +79,9 @@ impl State {
 
         // For living merchants, check visibility
         if !is_body {
-            // TODO: Implement do_char_can_see
-            // For now, assume visible
-            log::info!("TODO: Check if cn={} can see co={}", cn, co);
+            if self.do_char_can_see(cn, co) == 0 {
+                return;
+            }
         }
 
         // For corpses, check distance (must be adjacent)
@@ -181,8 +181,14 @@ impl State {
             });
 
             // Transfer item to merchant
-            // TODO: Implement god_give_char - for now just log
-            log::info!("TODO: god_give_char({}, {})", item_idx, co);
+            if !God::give_character_item(co, item_idx) {
+                log::error!(
+                    "do_shop_char: god_give_character_item({}, {}) failed",
+                    item_idx,
+                    co
+                );
+                return;
+            }
 
             let item_name = Repository::with_items(|items| {
                 String::from_utf8_lossy(&items[item_idx].name).to_string()
@@ -241,8 +247,13 @@ impl State {
                             0
                         };
 
-                        // TODO: Implement god_take_from_char and god_give_char
-                        log::info!("TODO: god_take_from_char({}, {})", item_idx, co);
+                        if !God::take_from_char(item_idx, co) {
+                            log::error!(
+                                "do_shop_char: god_take_from_char({}, {}) failed",
+                                item_idx,
+                                co
+                            );
+                        }
 
                         let gave_success = God::give_character_item(cn, item_idx);
 
@@ -375,8 +386,14 @@ impl State {
                         let item_idx = Repository::with_characters(|ch| ch[co].citem as usize);
 
                         if item_idx != 0 {
-                            // TODO: Implement god_take_from_char
-                            log::info!("TODO: god_take_from_char({}, {})", item_idx, co);
+                            if !God::take_from_char(item_idx, co) {
+                                log::error!(
+                                    "do_shop_char: god_take_from_char({}, {}) failed",
+                                    item_idx,
+                                    co
+                                );
+                                return;
+                            }
 
                             let gave_success = God::give_character_item(cn, item_idx);
 
@@ -397,12 +414,13 @@ impl State {
                                     &format!("You took a {}.\n", item_ref),
                                 );
                             } else {
-                                // TODO: Implement god_give_char to return item
-                                log::info!(
-                                    "TODO: god_give_char({}, {}) to return item",
-                                    item_idx,
-                                    co
-                                );
+                                if !God::give_character_item(co, item_idx) {
+                                    log::error!(
+                                        "do_shop_char: god_give_character_item({}, {}) failed",
+                                        item_idx,
+                                        co
+                                    );
+                                }
 
                                 let item_ref = Repository::with_items(|items| {
                                     String::from_utf8_lossy(&items[item_idx].reference).to_string()
@@ -850,7 +868,6 @@ impl State {
                 let item_idx = Repository::with_characters(|ch| ch[co].depot[nr as usize]);
 
                 if item_idx != 0 {
-                    // TODO: Implement god_give_char
                     let gave_success = God::give_character_item(cn, item_idx as usize);
 
                     if gave_success {

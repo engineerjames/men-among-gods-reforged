@@ -1,13 +1,13 @@
 use core::constants::{GF_CLOSEENEMY, GF_LOOTING, GF_MAYHEM, GF_SPEEDY};
 use core::types::FontColor;
 
-use crate::driver;
 use crate::effect::EffectManager;
 use crate::enums::CharacterFlags;
 use crate::god::God;
 use crate::player::cl_list;
 use crate::repository::Repository;
 use crate::state::State;
+use crate::{driver, helpers};
 
 impl State {
     /// Creates a note item with custom text for the character.
@@ -1294,7 +1294,7 @@ impl State {
                 }
 
                 if starts("time") {
-                    // TODO: show_time(cn);
+                    helpers::show_time(cn);
                     return;
                 }
 

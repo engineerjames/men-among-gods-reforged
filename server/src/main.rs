@@ -11,6 +11,7 @@ mod player;
 mod populate;
 mod repository;
 mod server;
+mod skilltab;
 mod state;
 mod talk;
 

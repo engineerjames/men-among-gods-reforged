@@ -5,6 +5,7 @@ use rand::Rng;
 use crate::effect::EffectManager;
 use crate::god::God;
 use crate::repository::Repository;
+use crate::server::Server;
 use crate::{helpers, player};
 
 use super::State;
@@ -575,13 +576,13 @@ impl State {
         if let Some((c2, player_nr)) = usurp_player {
             Repository::with_characters_mut(|characters| {
                 characters[c2].player = player_nr;
-                // TODO: Update player[nr].usnr = c2
-                log::info!("TODO: Transfer player {} from {} to {}", player_nr, co, c2);
+                Server::with_players_mut(|players| {
+                    players[player_nr as usize].usnr = c2;
+                });
                 characters[c2].flags &= !CharacterFlags::CF_CCP.bits();
             });
         } else if let Some((_, player_nr)) = usurp_player {
-            // TODO: Implement player_exit
-            log::info!("TODO: player_exit for player {}", player_nr);
+            player::player_exit(player_nr as usize);
         }
 
         log::info!("new npc body");

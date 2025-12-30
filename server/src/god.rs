@@ -694,7 +694,8 @@ impl God {
             character.goto_y = y as u16; // TODO: This was missing before... should this be here?
         });
 
-        // TODO: Call plr_map_remove here when map system is implemented
+        // Remove character from current map tile before attempting transfer
+        player::plr_map_remove(character_id);
 
         let positions_to_try: [(usize, usize); 5] =
             [(x, y), (x + 3, y), (x, y + 3), (x - 3, y), (x, y - 3)];
@@ -705,7 +706,8 @@ impl God {
             }
         }
 
-        // TODO: Call plr_map_set here when map system is implemented
+        // Place character back on the map (even if transfer failed) so map state stays consistent
+        player::plr_map_set(character_id);
 
         return false;
     }
@@ -1315,14 +1317,15 @@ impl God {
             return false;
         }
 
+        // Remove from previous tile (if any), update coords and insert into map
+        player::plr_map_remove(character_id);
         Repository::with_characters_mut(|characters| {
             characters[character_id].x = x as i16;
             characters[character_id].y = y as i16;
             characters[character_id].tox = x as i16;
             characters[character_id].toy = y as i16;
         });
-
-        // TODO: Call plr_map_set here
+        player::plr_map_set(character_id);
 
         true
     }

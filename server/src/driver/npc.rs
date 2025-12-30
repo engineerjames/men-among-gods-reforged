@@ -479,9 +479,94 @@ pub fn npc_seeattack(cn: usize, cc: usize, co: usize) -> i32 {
             }
         }
 
-        // Additional protect logic continues...
-        // (Truncated for brevity - similar pattern for other protect cases)
-        // TODO: Fill out the rest of thus function...
+        // Protect character by number (CHD_MASTER)
+        if characters[cn].data[63] != 0 {
+            if co == characters[cn].data[63] as usize {
+                if npc_add_enemy(cn, cc, true) {
+                    let cc_name = Repository::with_characters(|chars| chars[cc].name.clone());
+                    let co_name = Repository::with_characters(|chars| chars[co].name.clone());
+                    npc_saytext_n(cn, 1, Some(&String::from_utf8_lossy(&cc_name)));
+                    log::info!(
+                        "NPC {} added {} to enemy list for attacking {} (protect char)",
+                        cn,
+                        String::from_utf8_lossy(&cc_name),
+                        String::from_utf8_lossy(&co_name)
+                    );
+                }
+                if characters[cn].data[65] == 0 {
+                    characters[cn].data[65] = co as i32;
+                }
+            }
+            if cc == characters[cn].data[63] as usize {
+                if npc_add_enemy(cn, co, true) {
+                    let co_name = Repository::with_characters(|chars| chars[co].name.clone());
+                    let cc_name = Repository::with_characters(|chars| chars[cc].name.clone());
+                    npc_saytext_n(cn, 1, Some(&String::from_utf8_lossy(&co_name)));
+                    log::info!(
+                        "NPC {} added {} to enemy list for being attacked by {} (protect char)",
+                        cn,
+                        String::from_utf8_lossy(&co_name),
+                        String::from_utf8_lossy(&cc_name)
+                    );
+                }
+                if characters[cn].data[65] == 0 {
+                    characters[cn].data[65] = cc as i32;
+                }
+            }
+        }
+
+        // Protect by group (CHD_HELPGROUP)
+        if characters[cn].data[59] != 0 {
+            if characters[cn].data[59] == characters[co].data[42] {
+                if npc_add_enemy(cn, cc, true) {
+                    let cc_name = Repository::with_characters(|chars| chars[cc].name.clone());
+                    let co_name = Repository::with_characters(|chars| chars[co].name.clone());
+                    npc_saytext_n(cn, 1, Some(&String::from_utf8_lossy(&cc_name)));
+                    log::info!(
+                        "NPC {} added {} to enemy list for attacking {} (protect group)",
+                        cn,
+                        String::from_utf8_lossy(&cc_name),
+                        String::from_utf8_lossy(&co_name)
+                    );
+                }
+                if characters[cn].data[65] == 0 {
+                    characters[cn].data[65] = co as i32;
+                }
+            }
+            if characters[cn].data[59] == characters[cc].data[42] {
+                if npc_add_enemy(cn, co, true) {
+                    let co_name = Repository::with_characters(|chars| chars[co].name.clone());
+                    let cc_name = Repository::with_characters(|chars| chars[cc].name.clone());
+                    npc_saytext_n(cn, 1, Some(&String::from_utf8_lossy(&co_name)));
+                    log::info!(
+                        "NPC {} added {} to enemy list for being attacked by {} (protect group)",
+                        cn,
+                        String::from_utf8_lossy(&co_name),
+                        String::from_utf8_lossy(&cc_name)
+                    );
+                }
+                if characters[cn].data[65] == 0 {
+                    characters[cn].data[65] = cc as i32;
+                }
+            }
+        }
+
+        // If one of the participants is my companion and its master is me, register the helper index
+        if characters[co].temp == core::constants::CT_COMPANION as u16
+            && characters[co].data[63] == cn as i32
+        {
+            if characters[cn].data[65] == 0 {
+                characters[cn].data[65] = co as i32;
+            }
+        }
+
+        if characters[cc].temp == core::constants::CT_COMPANION as u16
+            && characters[cc].data[63] == cn as i32
+        {
+            if characters[cn].data[65] == 0 {
+                characters[cn].data[65] = cc as i32;
+            }
+        }
 
         0
     })
@@ -2962,8 +3047,13 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
             characters[cn].data[92] = TICKS * 60;
         });
     } else {
-        // TODO: Check if group_active(cn)
-        // For now, just continue
+        // For non-player targets we only refresh the NPC's awake timer if
+        // its action group is currently active (matching the original logic).
+        if Repository::with_characters(|characters| characters[cn].group_active()) {
+            Repository::with_characters_mut(|characters| {
+                characters[cn].data[92] = TICKS * 60;
+            });
+        }
     }
 
     // Check if we can see the character
@@ -3020,8 +3110,7 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
     let attack_cn = Repository::with_characters(|characters| characters[cn].attack_cn);
     if attack_cn == 0 {
         // Only attack if we aren't fighting already
-        // TODO: Get proper char_id from State
-        let co_id = co as u32; // Placeholder
+        let co_id = helpers::char_id(co) as u32;
         let idx = co as i32 | ((co_id as i32) << 16);
 
         let mut found = false;
