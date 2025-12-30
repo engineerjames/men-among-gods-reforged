@@ -51,7 +51,7 @@ pub fn npc_stunrun_high(cn: usize) -> i32 {
                 seen[maxseen].is_friend = true;
                 seen[maxseen].stun = 0;
                 let low_hp =
-                    Repository::with_characters(|ch| ch[co].a_hp < (ch[co].hp[5] * 400) as i32);
+                    Repository::with_characters(|ch| ch[co].a_hp < (ch[co].hp[5] as i32 * 400));
                 seen[maxseen].help = if low_hp { 1 } else { 0 };
                 help = help.max(seen[maxseen].help);
                 maxseen += 1;
