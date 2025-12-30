@@ -1307,7 +1307,7 @@ pub fn plr_pickup(cn: usize) {
         characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
     });
 
-    // TODO: Call do_update_char when implemented
+    State::with(|state| state.do_update_char(cn));
 
     // Check if it's money
     let is_money = Repository::with_items(|items| {
@@ -1598,8 +1598,7 @@ pub fn plr_use(cn: usize) {
         return;
     }
 
-    // TODO: Call use_driver when implemented
-    log::debug!("Would call use_driver({}, {}, 0)", cn, in_id);
+    driver::use_driver(cn, in_id as usize, false);
 }
 
 /// Port of `plr_skill` from `svr_act.cpp`
@@ -1736,7 +1735,7 @@ pub fn plr_drop(cn: usize) {
         });
 
         if has_step_action {
-            // TODO: Call step_driver when implemented
+            driver::step_driver(cn, in2 as usize);
             Repository::with_characters_mut(|characters| {
                 characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             });
@@ -1764,7 +1763,7 @@ pub fn plr_drop(cn: usize) {
         characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
     });
 
-    // TODO: Call do_update_char when implemented
+    State::with(|state| state.do_update_char(cn));
 
     // Handle money
     let final_in_id = if in_id & 0x80000000 != 0 {
@@ -1823,7 +1822,24 @@ pub fn plr_drop(cn: usize) {
 
         new_in as u32
     } else {
-        // TODO: Call do_maygive when implemented
+        // Check whether the item is allowed to be given/dropped
+        let may_drop = State::with(|state| state.do_maygive(cn, 0, in_id as usize));
+        if !may_drop {
+            // Restore cursor item and indicate failure
+            Repository::with_characters_mut(|characters| {
+                characters[cn].citem = in_id;
+                characters[cn].cerrno = core::constants::ERR_FAILED as u16;
+            });
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    "You are not allowed to do that!\n",
+                );
+            });
+            return;
+        }
+
         let item_name = Repository::with_items(|items| items[in_id as usize].name.clone());
         log::info!(
             "Character {} dropped {}",
@@ -6183,11 +6199,11 @@ fn plr_cmd_pickup(_nr: usize) {
         (x, y, players[_nr].usnr)
     });
 
-    // Building-mode: removal in build mode would be handled elsewhere
+    // Building-mode: removal in build mode should remove the temporary build object
     let is_building = Repository::with_characters(|ch| ch[cn].is_building());
     if is_building {
-        // build_remove not implemented; ignore for now
-        // TODO: Implement ^
+        // Call the build removal helper (port of C++ build_remove)
+        State::with_mut(|state| state.do_build_remove(x, y));
         return;
     }
 
