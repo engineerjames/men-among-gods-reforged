@@ -1,7 +1,7 @@
 use core::types::{Character, Map};
 
 use crate::{
-    driver,
+    chlog, driver,
     effect::EffectManager,
     enums::{CharacterFlags, LogoutReason},
     player,
@@ -3178,7 +3178,8 @@ impl God {
                 characters[co].used = core::constants::USE_EMPTY;
             });
 
-            // TODO: chlog(cn, "IMP: Erased player %d (%-.20s).", co, ch[co].name);
+            chlog!(cn, "IMP: Erased player {} ({}).", co, name_str);
+
             State::with(|state| {
                 state.do_character_log(
                     cn,
@@ -3274,7 +3275,7 @@ impl God {
             );
         });
 
-        // TODO: chlog(cn, "IMP: kicked %s (%d)", ch[co].name, co);
+        chlog!(cn, "IMP: Kicked {} ({}).", name_str, co);
 
         // Set CF_KICKED flag
         Repository::with_characters_mut(|characters| {

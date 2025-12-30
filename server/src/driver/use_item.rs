@@ -5,7 +5,7 @@ use crate::helpers::{self, points2rank};
 use crate::lab9::Labyrinth9;
 use crate::repository::Repository;
 use crate::state::State;
-use crate::{driver, player, populate, skilltab};
+use crate::{chlog, driver, player, populate, skilltab};
 use core::constants::{
     CharacterFlags, ItemFlags, KIN_HARAKIM, KIN_MERCENARY, KIN_SORCERER, KIN_TEMPLAR, KIN_WARRIOR,
     MAXITEM, MAXSKILL, MF_NOEXPIRE, NT_HITME, SERVER_MAPX, SERVER_MAPY, SK_LOCK, SK_RECALL,
@@ -1746,7 +1746,12 @@ pub fn use_scroll2(cn: usize, item_idx: usize) -> i32 {
             &format!("Raised attribute {} by one.\n", AT_NAME[attrib_nr]),
         );
     });
-    // TODO: Implement chlog
+    chlog!(
+        cn,
+        "used a scroll to raise attribute {} (pts={})",
+        AT_NAME[attrib_nr],
+        pts
+    );
 
     Repository::with_characters_mut(|characters| {
         characters[cn].points_tot += pts;
@@ -2601,7 +2606,7 @@ pub fn rat_eye(cn: usize, item_idx: usize) -> i32 {
         }
     };
 
-    // TODO: Implement chlog
+    chlog!(cn, "added item to rat eye in slot {}", slot);
     log::info!("Character {} added item to rat eye", cn);
 
     // Mark the slot as filled

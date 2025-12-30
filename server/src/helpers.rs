@@ -2,6 +2,15 @@ use core::{constants::CharacterFlags, types::FontColor};
 
 use crate::{driver, god::God, populate, repository::Repository, state::State};
 
+#[macro_export]
+macro_rules! chlog {
+    ($cn:expr, $fmt:expr $(, $args:expr)*) => {
+        let prefix = format!("Character {}: ", $cn);
+        let message = format!($fmt $(, $args)*);
+        log::info!("{}{}", prefix, message);
+    };
+}
+
 /// Port of `use_labtransfer(int cn, int nr, int exp)` from `svr_do.cpp`
 ///
 /// Attempts to spawn the appropriate lab enemy for `nr` and transfer the
@@ -63,8 +72,14 @@ pub fn use_labtransfer(cn: usize, nr: i32, exp: i32) -> bool {
         8 => 845, // forest/golem
         9 => 919, // riddle
         _ => {
-            // do_char_log(cn, 0, "Sorry, could not determine which enemy to send you.\n");
-            // chlog(cn, "Sorry, could not determine which enemy to send you");
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    FontColor::Red,
+                    "Sorry, could not determine which enemy to send you.\n",
+                )
+            });
+            chlog!(cn, "Sorry, could not determine which enemy to send you");
             return false;
         }
     };
@@ -72,8 +87,7 @@ pub fn use_labtransfer(cn: usize, nr: i32, exp: i32) -> bool {
     // pop_create_char(template, 0): create the enemy character (assume function exists)
     let co = populate::pop_create_char(template, false);
     if co == 0 {
-        // do_char_log(cn, 0, "Sorry, could not create your enemy.\n");
-        // chlog(cn, "Sorry, could not create your enemy");
+        chlog!(cn, "Sorry, could not create your enemy.");
         State::with(|state| {
             state.do_character_log(cn, FontColor::Red, "Sorry, could not create your enemy.\n");
             log::error!(
@@ -85,7 +99,6 @@ pub fn use_labtransfer(cn: usize, nr: i32, exp: i32) -> bool {
         return false;
     }
 
-    // god_drop_char(co, 174, 172): place the enemy (assume function exists)
     if !God::drop_char(co, 174, 172) {
         State::with(|state| {
             state.do_character_log(cn, FontColor::Red, "Sorry, could not place your enemy.\n");
@@ -135,7 +148,7 @@ pub fn use_labtransfer(cn: usize, nr: i32, exp: i32) -> bool {
         Repository::with_characters_mut(|ch| ch[co].used = core::constants::USE_EMPTY);
         return false;
     }
-    // chlog(cn, "Entered Labkeeper room");
+    chlog!(cn, "Entered Labkeeper room for lab {}", nr);
     true
 }
 

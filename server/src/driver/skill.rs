@@ -3,7 +3,7 @@ use core::{constants::ItemFlags, types::FontColor};
 use rand::Rng;
 
 use crate::{
-    driver,
+    chlog, driver,
     effect::EffectManager,
     enums::{self, CharacterFlags},
     god::God,
@@ -547,7 +547,7 @@ pub fn spell_light(cn: usize, co: usize, power: i32) -> i32 {
         State::char_play_sound(cn, sound as i32 + 1, -150, 0);
         let flags = Repository::with_characters(|ch| ch[cn].flags);
         if (flags & enums::CharacterFlags::Player.bits() as u64) != 0 {
-            // TODO State::with(|state| state.chlog(cn, "Cast Light"));
+            chlog!(cn, "Cast Light");
         }
         let (x, y) = Repository::with_characters(|ch| (ch[cn].x, ch[cn].y));
         EffectManager::fx_add_effect(7, 0, x as i32, y as i32, 0);
@@ -758,7 +758,7 @@ pub fn spell_protect(cn: usize, co: usize, power: i32) -> i32 {
         State::char_play_sound(cn, sound as i32 + 1, -150, 0);
         let flags = Repository::with_characters(|ch| ch[cn].flags);
         if (flags & enums::CharacterFlags::Player.bits() as u64) != 0 {
-            // TODO: chlog(cn, "Cast Protect")
+            chlog!(cn, "Cast Protect");
         }
         let (x, y) = Repository::with_characters(|ch| (ch[cn].x, ch[cn].y));
         EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
@@ -952,7 +952,9 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
         let sound = Repository::with_characters(|ch| ch[cn].sound);
         State::char_play_sound(co, sound as i32 + 1, -150, 0);
         State::char_play_sound(cn, sound as i32 + 1, -150, 0);
-        // TODO: chlog(cn, "Cast Enhance on ...")
+        let target_name = Repository::with_characters(|ch| ch[co].get_name().to_string());
+        chlog!(cn, "Cast Enhance on {}", target_name);
+
         EffectManager::fx_add_effect(
             6,
             0,
@@ -982,7 +984,7 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
         State::char_play_sound(cn, sound as i32 + 1, -150, 0);
         let flags = Repository::with_characters(|ch| ch[cn].flags);
         if (flags & enums::CharacterFlags::Player.bits() as u64) != 0 {
-            // TODO: chlog(cn, "Cast Enhance")
+            chlog!(cn, "Cast Enhance");
         }
         EffectManager::fx_add_effect(
             6,
@@ -1206,7 +1208,11 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
         let sound = Repository::with_characters(|ch| ch[cn].sound);
         State::char_play_sound(co, sound as i32 + 1, -150, 0);
         State::char_play_sound(cn, sound as i32 + 1, -150, 0);
-        // chlog
+        chlog!(
+            cn,
+            "Cast Bless on {}",
+            Repository::with_characters(|ch| ch[co].get_name().to_string())
+        );
         EffectManager::fx_add_effect(
             6,
             0,
@@ -1236,7 +1242,7 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
         State::char_play_sound(cn, sound as i32 + 1, -150, 0);
         let flags = Repository::with_characters(|ch| ch[cn].flags);
         if (flags & enums::CharacterFlags::Player.bits() as u64) != 0 {
-            // TODO: chlog(cn, "Cast Bless")
+            chlog!(cn, "Cast Bless");
         }
         EffectManager::fx_add_effect(
             6,
@@ -1389,7 +1395,7 @@ pub fn skill_wimp(cn: usize) {
                     ch[cn].spell[n] = 0;
                 });
                 State::with(|state| state.do_update_char(cn));
-                // TODO: chlog(cn, "Removed Wimp")
+                chlog!(cn, "Dismissed Guardian Angel");
                 return;
             }
         }
@@ -1456,7 +1462,7 @@ pub fn skill_wimp(cn: usize) {
     });
     let sound = Repository::with_characters(|ch| ch[cn].sound);
     State::char_play_sound(cn, sound as i32 + 1, -150, 0);
-    // TODO: chlog(cn, "Cast Wimp")
+    chlog!(cn, "Cast Guardian Angel");
     EffectManager::fx_add_effect(
         7,
         0,
@@ -1551,7 +1557,11 @@ pub fn spell_mshield(cn: usize, co: usize, power: i32) -> i32 {
         let sound = Repository::with_characters(|ch| ch[cn].sound);
         State::char_play_sound(co, sound as i32 + 1, -150, 0);
         State::char_play_sound(cn, sound as i32 + 1, -150, 0);
-        // TODO: chlog
+        chlog!(
+            cn,
+            "Cast Magic Shield on {}",
+            Repository::with_characters(|ch| ch[co].get_name().to_string())
+        );
         EffectManager::fx_add_effect(
             6,
             0,
@@ -1579,7 +1589,7 @@ pub fn spell_mshield(cn: usize, co: usize, power: i32) -> i32 {
         State::char_play_sound(cn, sound as i32 + 1, -150, 0);
         let flags = Repository::with_characters(|ch| ch[cn].flags);
         if (flags & enums::CharacterFlags::Player.bits() as u64) != 0 {
-            // TODO: chlog(cn, "Cast Magic Shield")
+            chlog!(cn, "Cast Magic Shield");
         }
         EffectManager::fx_add_effect(
             6,
@@ -1669,7 +1679,11 @@ pub fn spell_heal(cn: usize, co: usize, power: i32) -> i32 {
         let sound = Repository::with_characters(|ch| ch[cn].sound);
         State::char_play_sound(co, sound as i32 + 1, -150, 0);
         State::char_play_sound(cn, sound as i32 + 1, -150, 0);
-        // TODO: chlog
+        chlog!(
+            cn,
+            "Cast Heal on {}",
+            Repository::with_characters(|ch| ch[co].get_name().to_string())
+        );
         EffectManager::fx_add_effect(
             6,
             0,
@@ -1691,7 +1705,7 @@ pub fn spell_heal(cn: usize, co: usize, power: i32) -> i32 {
         State::char_play_sound(cn, sound as i32 + 1, -150, 0);
         let flags = Repository::with_characters(|ch| ch[cn].flags);
         if (flags & enums::CharacterFlags::Player.bits() as u64) != 0 {
-            // TODO: chlog(cn, "Cast Heal")
+            chlog!(cn, "Cast Heal");
         }
         EffectManager::fx_add_effect(
             6,
@@ -1912,7 +1926,11 @@ pub fn spell_curse(cn: usize, co: usize, power: i32) -> i32 {
     let sound = Repository::with_characters(|ch| ch[cn].sound);
     State::char_play_sound(co, sound as i32 + 7, -150, 0);
     State::char_play_sound(cn, sound as i32 + 1, -150, 0);
-    // TODO: chlog(cn, "Cast Curse on %s", ch[ co ].name );
+    chlog!(
+        cn,
+        "Cast Curse on {}",
+        Repository::with_characters(|ch| ch[co].get_name().to_string())
+    );
     EffectManager::fx_add_effect(
         5,
         0,
@@ -1970,7 +1988,11 @@ pub fn skill_curse(cn: usize) {
     }
 
     if State::with(|state| state.may_attack_msg(cn, co, true)) == 0 {
-        // TODO: chlog(cn, "Prevented from attacking %s (%d)", ch[ co ].name, co );
+        chlog!(
+            cn,
+            "Prevented from attacking {}",
+            Repository::with_characters(|ch| ch[co].get_name().to_string())
+        );
         return;
     }
 
@@ -2612,7 +2634,15 @@ pub fn skill_identify(cn: usize) {
 
     let sound = Repository::with_characters(|ch| ch[cn].sound);
     State::char_play_sound(cn, sound as i32 + 1, -150, 0);
-    // TODO: chlog(cn, "Cast Identify");
+    chlog!(
+        cn,
+        "Cast Identify on {}",
+        if in_idx != 0 {
+            Repository::with_items(|it| it[in_idx].get_name().to_string())
+        } else {
+            Repository::with_characters(|ch| ch[co].get_name().to_string())
+        }
+    );
 
     if in_idx != 0 {
         item_info(cn, in_idx, 0);
@@ -2686,7 +2716,11 @@ pub fn skill_blast(cn: usize) {
     }
 
     if State::with(|state| state.may_attack_msg(cn, co, true)) == 0 {
-        // TODO: chlog(cn, "Prevented from attacking %s (%d)", ch[co].name, co);
+        chlog!(
+            cn,
+            "Prevented from attacking {}",
+            Repository::with_characters(|ch| ch[co].get_name().to_string())
+        );
         return;
     }
 
@@ -2774,7 +2808,12 @@ pub fn skill_blast(cn: usize) {
         0,
     );
 
-    // TODO: chlog(cn, "Cast Blast on %s", ch[co].name);
+    chlog!(
+        cn,
+        "Cast Blast on {} for {} power",
+        Repository::with_characters(|ch| ch[co].get_name().to_string()),
+        power
+    );
     let tmp = State::with_mut(|state| state.do_hurt(cn, co, dam, 1));
 
     if tmp < 1 {
@@ -2956,7 +2995,11 @@ pub fn skill_repair(cn: usize) {
             driver::item_damage_citem(cn, 1000000);
         }
     }
-    // TODO: chlog(cn, "Cast Repair");
+    chlog!(
+        cn,
+        "Cast Repair on {}",
+        Repository::with_items(|it| it[in_idx].get_name().to_string())
+    );
 }
 
 pub fn skill_recall(cn: usize) {
@@ -3013,7 +3056,7 @@ pub fn skill_recall(cn: usize) {
         return;
     }
 
-    // TODO: chlog(cn, "Cast Recall");
+    chlog!(cn, "Cast Recall");
     add_exhaust(cn, TICKS);
     EffectManager::fx_add_effect(
         7,
@@ -3131,7 +3174,12 @@ pub fn spell_stun(cn: usize, co: usize, power: i32) -> i32 {
         -150,
         0,
     );
-    // TODO: chlog(cn, "Cast Stun on %s", ch[co].name);
+    chlog!(
+        cn,
+        "Cast Stun on {} for {} power",
+        Repository::with_characters(|ch| ch[co].get_name().to_string()),
+        power
+    );
 
     if driver::add_spell(co, in_idx) == 0 {
         State::with(|state| {
@@ -3200,7 +3248,11 @@ pub fn skill_stun(cn: usize) {
     }
 
     if State::with(|state| state.may_attack_msg(cn, co, true)) == 0 {
-        // TODO: chlog(cn, "Prevented from attacking %s (%d)", ch[co].name, co);
+        chlog!(
+            cn,
+            "Prevented from attacking {}",
+            Repository::with_characters(|ch| ch[co].get_name().to_string())
+        );
         return;
     }
 

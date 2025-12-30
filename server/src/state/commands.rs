@@ -159,11 +159,7 @@ impl State {
             characters[cn].temple_y = 512;
         });
 
-        log::info!(
-            "TODO: chlog({}, 'Converted to skua. ({} days elapsed)')",
-            cn,
-            days
-        );
+        chlog!(cn, "Converted to skua. ({} days elapsed)", days);
 
         EffectManager::fx_add_effect(5, 0, x as i32, y as i32, 0);
     }
@@ -538,7 +534,7 @@ impl State {
 
             self.do_update_char(cn);
 
-            log::info!("TODO: chlog({}, 'Converted to purple.')", cn);
+            chlog!(cn, "Converted to purple. ({} days elapsed)", 0);
 
             EffectManager::fx_add_effect(5, 0, x as i32, y as i32, 0);
         } else {
