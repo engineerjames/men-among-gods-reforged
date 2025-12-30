@@ -11,6 +11,11 @@ use std::collections::BinaryHeap;
 use core::constants::*;
 
 use crate::repository::Repository;
+use parking_lot::ReentrantMutex;
+use std::cell::UnsafeCell;
+use std::sync::OnceLock;
+
+static PATHFINDER: OnceLock<ReentrantMutex<UnsafeCell<PathFinder>>> = OnceLock::new();
 
 const MAX_NODES: usize = 4096;
 
@@ -632,6 +637,48 @@ impl PathFinder {
             result
         })
     }
+
+    /// Initialize the global PathFinder singleton with static allocations.
+    ///
+    /// This mirrors `Repository::initialize()` semantics and must be called
+    /// during server startup prior to using `with`/`with_mut`.
+    pub fn initialize() -> Result<(), String> {
+        let pf = PathFinder::new();
+        PATHFINDER
+            .set(ReentrantMutex::new(UnsafeCell::new(pf)))
+            .map_err(|_| "PathFinder already initialized".to_string())?;
+        Ok(())
+    }
+
+    /// Execute `f` with a read-only reference to the global PathFinder.
+    #[allow(dead_code)]
+    pub fn with<F, R>(f: F) -> R
+    where
+        F: FnOnce(&PathFinder) -> R,
+    {
+        let lock = PATHFINDER.get().expect("PathFinder not initialized");
+        let guard = lock.lock();
+        let inner: &UnsafeCell<PathFinder> = &*guard;
+        // SAFETY: We are holding the ReentrantMutex, providing exclusive
+        // access for mutation or shared access for read-only usages from a
+        // single thread. Returning a shared reference is safe here.
+        let pf_ref: &PathFinder = unsafe { &*inner.get() };
+        f(pf_ref)
+    }
+
+    /// Execute `f` with a mutable reference to the global PathFinder.
+    pub fn with_mut<F, R>(f: F) -> R
+    where
+        F: FnOnce(&mut PathFinder) -> R,
+    {
+        let lock = PATHFINDER.get().expect("PathFinder not initialized");
+        let guard = lock.lock();
+        let inner: &UnsafeCell<PathFinder> = &*guard;
+        // SAFETY: We have exclusive access to the PathFinder under the
+        // ReentrantMutex; returning a mutable reference is safe.
+        let pf_mut: &mut PathFinder = unsafe { &mut *inner.get() };
+        f(pf_mut)
+    }
 }
 
 impl Default for PathFinder {
@@ -834,8 +881,11 @@ mod tests {
 
     #[test]
     fn test_pathfinder_creation() {
-        let pf = PathFinder::new();
-        assert_eq!(pf.nodes.capacity(), MAX_NODES);
-        assert_eq!(pf.node_map.len(), (SERVER_MAPX * SERVER_MAPY) as usize);
+        // Initialize singleton (ok if already initialized)
+        let _ = PathFinder::initialize();
+        PathFinder::with(|pf| {
+            assert_eq!(pf.nodes.capacity(), MAX_NODES);
+            assert_eq!(pf.node_map.len(), (SERVER_MAPX * SERVER_MAPY) as usize);
+        });
     }
 }

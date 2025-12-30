@@ -26,6 +26,7 @@ use signal_hook::iterator::Signals;
 
 use core;
 
+use crate::path_finding::PathFinder;
 use crate::repository::Repository;
 use crate::server::Server;
 
@@ -114,6 +115,12 @@ fn main() -> Result<(), String> {
     // Initialize the global repository
     if let Err(e) = Repository::initialize() {
         log::error!("Failed to initialize repository: {}. Exiting.", e);
+        process::exit(1);
+    }
+
+    // Initialize the global pathfinder
+    if let Err(e) = PathFinder::initialize() {
+        log::error!("Failed to initialize pathfinder: {}. Exiting.", e);
         process::exit(1);
     }
 

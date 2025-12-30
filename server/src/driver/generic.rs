@@ -1427,8 +1427,9 @@ pub fn char_moveto(cn: usize, x: i32, y: i32, flag: i32, x2: i32, y2: i32) -> i3
         return -1;
     }
 
-    let mut pathfinder = PathFinder::new();
-    let dir = pathfinder.find_path(cn, x as i16, y as i16, flag as u8, x2 as i16, y2 as i16);
+    let dir = PathFinder::with_mut(|pf| {
+        pf.find_path(cn, x as i16, y as i16, flag as u8, x2 as i16, y2 as i16)
+    });
 
     if dir.is_none() {
         Repository::with_characters_mut(|ch| {
