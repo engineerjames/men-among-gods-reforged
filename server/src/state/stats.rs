@@ -371,7 +371,6 @@ impl State {
         }
 
         // Calculate final skills (with attribute bonuses)
-        // TODO: Need access to static_skilltab to properly calculate skill bonuses
         Repository::with_characters_mut(|characters| {
             for z in 0..50 {
                 let mut final_skill = characters[cn].skill[z][0] as i32

@@ -4931,7 +4931,7 @@ pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
         }
     });
 
-    // TODO: do_update_char(cn);
+    State::with(|state| state.do_update_char(cn));
 
     0
 }
@@ -6884,7 +6884,7 @@ pub fn item_damage_worn(cn: usize, n: usize, damage: i32) {
             }
             _ => {}
         }
-        // TODO: do_update_char(cn);
+        State::with(|state| state.do_update_char(cn));
     }
 }
 
@@ -7925,7 +7925,7 @@ pub fn trap1(cn: usize, item_idx: usize) {
         Repository::with_characters_mut(|characters| {
             characters[cn].worn[slot] = 0;
         });
-        // TODO: do_update_char(cn);
+        State::with(|state| state.do_update_char(cn));
     } else {
         State::with(|state| {
             state.do_character_log(
@@ -7964,10 +7964,10 @@ pub fn trap2(cn: usize, tmp: usize) {
         return;
     }
 
-    // TODO: do_update_char(cc);
     Repository::with_characters_mut(|characters| {
         characters[cc].attack_cn = cn as u16;
     });
+    State::with(|state| state.do_update_char(cc));
 }
 
 pub fn start_trap(cn: usize, item_idx: usize) {
@@ -8333,7 +8333,7 @@ pub fn step_portal2_lab13(cn: usize, _item_idx: usize) -> i32 {
             });
         }
     }
-    // TODO: do_update_char(cn);
+    State::with(|state| state.do_update_char(cn));
 
     1
 }
