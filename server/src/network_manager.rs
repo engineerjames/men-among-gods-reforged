@@ -1,4 +1,5 @@
 use core::constants::{SV_SETMAP3, SV_SETMAP4, SV_SETMAP5, SV_SETMAP6};
+use std::io::Write;
 use std::net::Shutdown;
 use std::sync::{OnceLock, RwLock};
 
@@ -109,10 +110,6 @@ impl NetworkManager {
     /// * `data` - Source byte slice
     /// * `length` - Number of bytes to copy
     pub fn xsend(&self, player_id: usize, data: &[u8], length: u8) {
-        use crate::server::Server;
-        use crate::{enums, player};
-        use log::{error, warn};
-
         // Determine number of bytes to send (don't exceed provided slice)
         let send_len = std::cmp::min(length as usize, data.len());
 
@@ -126,12 +123,13 @@ impl NetworkManager {
 
             // If no socket, nothing to do
             if p.sock.is_none() {
+                log::warn!("xsend: no socket for player {}", player_id);
                 return;
             }
 
             // Check tick buffer space
             if p.tptr + send_len >= p.tbuf.len() {
-                error!(
+                log::error!(
                     "#INTERNAL ERROR# ticksize too large for player {}, terminating connection",
                     player_id
                 );
@@ -143,7 +141,10 @@ impl NetworkManager {
                 }
                 p.ltick = 0;
                 p.rtick = 0;
-                p.zs = None;
+                // Ensure any pending compressed output is flushed (mirror deflateEnd)
+                if let Some(z) = p.zs.as_mut() {
+                    let _ = z.flush();
+                }
                 return;
             }
 
@@ -172,7 +173,7 @@ impl NetworkManager {
                     }
                 }
             } else {
-                warn!(
+                log::warn!(
                     "xsend: computed end {} out of bounds for player {} tbuf len {}",
                     end,
                     player_id,
@@ -203,6 +204,7 @@ impl NetworkManager {
             let p = &mut players[player_id];
 
             if p.sock.is_none() {
+                log::warn!("csend: no socket for player {}", player_id);
                 return;
             }
 
@@ -224,6 +226,9 @@ impl NetworkManager {
                     }
                     p.ltick = 0;
                     p.rtick = 0;
+                    if let Some(z) = p.zs.as_mut() {
+                        let _ = z.flush();
+                    }
                     p.zs = None;
                     return;
                 }

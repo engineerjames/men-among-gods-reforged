@@ -3749,6 +3749,12 @@ fn plr_newlogin(nr: usize) {
             players[nr].pass2 = pass2;
         });
 
+        log::info!(
+            "New player logged in as character index={} (players index={})",
+            cn,
+            nr
+        );
+
         let mut buf: [u8; 16] = [0; 16];
         buf[0] = core::constants::SV_NEWPLAYER;
         buf[1..5].copy_from_slice(&(cn as u32).to_le_bytes());
@@ -3815,9 +3821,8 @@ fn plr_newlogin(nr: usize) {
     }
 
     // announce
-    let name = Repository::with_characters(|characters| characters[cn].get_name().to_string());
     State::with(|state| {
-        state.do_announce(cn, 0, &format!("{} entered the game.\n", name));
+        state.do_announce(cn, 0, &format!("A new player has entered the game.\n"));
     });
 }
 
@@ -5405,6 +5410,14 @@ fn plr_challenge(nr: usize) {
         players[nr].race = race;
     });
 
+    log::info!(
+        "Player {} challenge: response={:08X}, version={}, race={}",
+        nr,
+        response,
+        version,
+        race
+    );
+
     // Verify the challenge response
     if response != xcrypt(challenge) {
         log::warn!("Player {} challenge failed", nr);
@@ -5421,6 +5434,7 @@ fn plr_challenge(nr: usize) {
             Server::with_players_mut(|players| {
                 players[nr].state = core::constants::ST_NEWLOGIN;
                 players[nr].lasttick = ticker;
+                log::info!("Player {} login challenge passed for new characters", nr);
             });
         }
         state if state == core::constants::ST_LOGIN_CHALLENGE => {
@@ -5428,6 +5442,7 @@ fn plr_challenge(nr: usize) {
                 players[nr].state = core::constants::ST_LOGIN;
                 players[nr].lasttick = ticker;
             });
+            log::info!("Player {} login challenge passed", nr);
         }
         state if state == core::constants::ST_CHALLENGE => {
             Server::with_players_mut(|players| {
@@ -5435,6 +5450,7 @@ fn plr_challenge(nr: usize) {
                 players[nr].lasttick = ticker;
                 players[nr].ltick = 0;
             });
+            log::info!("Player {} logged in successfully", nr);
         }
         _ => {
             log::warn!(
@@ -5523,6 +5539,12 @@ fn plr_challenge_login(nr: usize) {
         players[nr].pass1 = pass1;
         players[nr].pass2 = pass2;
     });
+
+    log::info!(
+        "Player logged in as character index={} (players index={})",
+        cn,
+        nr
+    );
 
     send_mod(nr);
 }

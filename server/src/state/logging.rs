@@ -70,6 +70,7 @@ impl State {
                     id,
                     ch.get_name(),
                 );
+                log::error!("Attempting to log message: {}", message);
                 return;
             }
 
@@ -459,7 +460,7 @@ impl State {
                     continue;
                 }
                 // If source is not 0 and source's invis_level <= n's, show named, else anon
-                if src_invis_level <= n_invis_level {
+                if source != 0 && src_invis_level <= n_invis_level {
                     self.do_log(n, core::types::FontColor::Green, &named);
                 } else {
                     self.do_log(n, core::types::FontColor::Green, &anon);
@@ -642,9 +643,9 @@ impl State {
                     || Repository::with_characters(|ch| ch[cn].get_invisibility_level())
                         <= Repository::with_characters(|ch| ch[cc].get_invisibility_level());
                 if show_named {
-                    self.do_log(cc, core::types::FontColor::Blue, &msg_named);
+                    self.do_character_log(cc, core::types::FontColor::Blue, &msg_named);
                 } else {
-                    self.do_log(cc, core::types::FontColor::Blue, &msg_invis);
+                    self.do_character_log(cc, core::types::FontColor::Blue, &msg_invis);
                 }
             } else {
                 // Listener is NPC: store for second pass

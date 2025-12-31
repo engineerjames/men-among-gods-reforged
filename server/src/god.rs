@@ -889,12 +889,11 @@ impl God {
                     false
                 });
                 if !name_exists {
-                    character.name = potential_new_name
-                        .bytes()
-                        .take(40)
-                        .collect::<Vec<u8>>()
-                        .try_into()
-                        .unwrap_or([0; 40]);
+                    let mut name_arr = [0u8; 40];
+                    let name_bytes = potential_new_name.as_bytes();
+                    let copy_len = name_bytes.len().min(40);
+                    name_arr[..copy_len].copy_from_slice(&name_bytes[..copy_len]);
+                    character.name = name_arr;
                     log::info!(
                         "Assigned name '{}' to new character (ID {})",
                         character.get_name(),

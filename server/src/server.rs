@@ -1331,9 +1331,11 @@ impl Server {
         let idx = player_idx;
         Server::with_players_mut(|players| {
             if idx >= players.len() {
+                log::error!("send_player: invalid player index {}", idx);
                 return;
             }
             if players[idx].sock.is_none() {
+                log::error!("send_player: no socket for player index {}", idx);
                 return;
             }
 
@@ -1371,6 +1373,14 @@ impl Server {
                         if players[idx].optr >= players[idx].obuf.len() {
                             players[idx].optr = 0;
                         }
+
+                        log::debug!(
+                            "send_player: sent {} bytes to player {}, iptr={}, optr={}",
+                            ret,
+                            idx,
+                            players[idx].iptr,
+                            players[idx].optr
+                        );
                     }
                     Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
                         // socket not ready for writing
