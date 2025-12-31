@@ -4103,7 +4103,6 @@ pub fn plr_change(nr: usize) {
 
     let (ticker, should_update) = Repository::with_globals(|globals| {
         Repository::with_characters(|ch| {
-            // Check CF_UPDATE flag
             let has_update_flag = (ch[cn].flags & enums::CharacterFlags::Update.bits()) != 0;
             let ticker_match = (cn & 15) == (globals.ticker as usize & 15);
             (globals.ticker as i32, has_update_flag || ticker_match)
@@ -4116,23 +4115,14 @@ pub fn plr_change(nr: usize) {
     }
 
     // Always send combat-related updates
-    chlog!(cn, "plr_change(): sending combat updates");
     plr_change_hp(nr, cn);
-    chlog!(cn, "plr_change(): sent HP update");
     plr_change_end(nr, cn);
-    chlog!(cn, "plr_change(): sent Endurance update");
     plr_change_mana(nr, cn);
-    chlog!(cn, "plr_change(): sent Mana update");
     plr_change_dir(nr, cn);
-    chlog!(cn, "plr_change(): sent Direction update");
     plr_change_points(nr, cn);
-    chlog!(cn, "plr_change(): sent Points update");
     plr_change_gold(nr, cn);
-    chlog!(cn, "plr_change(): sent Gold update");
     plr_change_position(nr, cn);
-    chlog!(cn, "plr_change(): sent Position update");
     plr_change_target(nr, cn);
-    chlog!(cn, "plr_change(): sent Target update");
 
     // Additional updates for name, mode, attributes, skills, items, and spells
     Repository::with_characters(|characters| {

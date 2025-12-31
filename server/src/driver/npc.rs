@@ -1835,8 +1835,8 @@ pub fn npc_driver_low(cn: usize) {
     if data_77 != 0 && data_77 + (TICKS * 30) > ticker as i32 {
         let m = data_76;
         Repository::with_characters_mut(|characters| {
-            characters[cn].goto_x = (m % SERVER_MAPX) as u16 + get_frust_x_off(data_36) as u16;
-            characters[cn].goto_y = (m / SERVER_MAPX) as u16 + get_frust_y_off(data_36) as u16;
+            characters[cn].goto_x = ((m % SERVER_MAPX) + get_frust_x_off(data_36)) as u16;
+            characters[cn].goto_y = ((m / SERVER_MAPX) + get_frust_y_off(data_36)) as u16;
         });
         return;
     }

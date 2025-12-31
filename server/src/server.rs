@@ -1065,6 +1065,11 @@ impl Server {
                 }
 
                 let ilen = players[n].tptr;
+                // If there is no tick data, don't enqueue an empty header
+                // (sending [2,0] repeatedly caused the observed bad traffic).
+                if ilen == 0 {
+                    continue;
+                }
                 let olen = ilen + 2;
 
                 if olen > 16 {
@@ -1357,6 +1362,9 @@ impl Server {
                 // Write the available contiguous slice
                 let end = slice_start + len;
                 let to_send = &players[idx].obuf[slice_start..end.min(players[idx].obuf.len())];
+
+                log::debug!("send_player: attempting to send: {:?}", to_send);
+
                 match sock.write(to_send) {
                     Ok(0) => {
                         log::error!("Connection closed (send, wrote 0)");
