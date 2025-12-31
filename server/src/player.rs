@@ -4116,31 +4116,29 @@ pub fn plr_change(nr: usize) {
     }
 
     // Always send combat-related updates
+    chlog!(cn, "plr_change(): sending combat updates");
     plr_change_hp(nr, cn);
+    chlog!(cn, "plr_change(): sent HP update");
     plr_change_end(nr, cn);
+    chlog!(cn, "plr_change(): sent Endurance update");
     plr_change_mana(nr, cn);
+    chlog!(cn, "plr_change(): sent Mana update");
     plr_change_dir(nr, cn);
+    chlog!(cn, "plr_change(): sent Direction update");
     plr_change_points(nr, cn);
+    chlog!(cn, "plr_change(): sent Points update");
     plr_change_gold(nr, cn);
+    chlog!(cn, "plr_change(): sent Gold update");
     plr_change_position(nr, cn);
+    chlog!(cn, "plr_change(): sent Position update");
     plr_change_target(nr, cn);
+    chlog!(cn, "plr_change(): sent Target update");
 
     // Additional updates for name, mode, attributes, skills, items, and spells
     Repository::with_characters(|characters| {
         let character = &characters[cn];
         Server::with_players_mut(|players| {
             let player = &mut players[nr];
-
-            // Name updates
-            if player.cpl.name != character.name {
-                player.cpl.name = character.name.clone();
-                // Send name updates in three parts (handled in plr_change_stats, but keep for safety)
-                NetworkManager::with(|network| {
-                    network.csend(nr, &[core::constants::SV_SETCHAR_NAME1], 16);
-                    network.csend(nr, &[core::constants::SV_SETCHAR_NAME2], 16);
-                    network.csend(nr, &[core::constants::SV_SETCHAR_NAME3], 16);
-                });
-            }
 
             // Mode updates
             if player.cpl.mode != character.mode as i32 {
@@ -4576,7 +4574,7 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
         Repository::with_characters(|characters| ((characters[cn].a_end + 500) / 1000) as i32);
     if Server::with_players(|players| players[nr].cpl.a_end) != a_end_val {
         let mut buf: [u8; 3] = [0; 3];
-        buf[0] = core::constants::SV_SETCHAR_AHP + 1; // SV_SETCHAR_AEND
+        buf[0] = core::constants::SV_SETCHAR_AEND;
         buf[1] = (a_end_val & 0xff) as u8;
         buf[2] = ((a_end_val >> 8) & 0xff) as u8;
         NetworkManager::with(|network| network.xsend(nr, &buf, 3));
@@ -4587,7 +4585,7 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
         Repository::with_characters(|characters| ((characters[cn].a_mana + 500) / 1000) as i32);
     if Server::with_players(|players| players[nr].cpl.a_mana) != a_mana_val {
         let mut buf: [u8; 3] = [0; 3];
-        buf[0] = core::constants::SV_SETCHAR_AHP + 2; // SV_SETCHAR_AMANA
+        buf[0] = core::constants::SV_SETCHAR_AMANA;
         buf[1] = (a_mana_val & 0xff) as u8;
         buf[2] = ((a_mana_val >> 8) & 0xff) as u8;
         NetworkManager::with(|network| network.xsend(nr, &buf, 3));
@@ -4601,7 +4599,7 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
     if dir_changed {
         let dir = Repository::with_characters(|characters| characters[cn].dir as u8);
         let mut buf: [u8; 16] = [0; 16];
-        buf[0] = core::constants::SV_SETCHAR_MODE + 1; // SV_SETCHAR_DIR assumed next
+        buf[0] = core::constants::SV_SETCHAR_DIR;
         buf[1] = dir;
         NetworkManager::with(|network| network.xsend(nr, &buf, 2));
         Server::with_players_mut(|players| players[nr].cpl.dir = dir as i32);
@@ -4647,8 +4645,8 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
             let mut buf: [u8; 13] = [0; 13];
             buf[0] = core::constants::SV_SETCHAR_GOLD;
             buf[1..5].copy_from_slice(&ch.gold.to_le_bytes());
-            buf[5..7].copy_from_slice(&(ch.armor as i16).to_le_bytes());
-            buf[7..9].copy_from_slice(&(ch.weapon as i16).to_le_bytes());
+            buf[5..7].copy_from_slice(&(ch.armor).to_le_bytes());
+            buf[7..9].copy_from_slice(&(ch.weapon).to_le_bytes());
             NetworkManager::with(|network| network.xsend(nr, &buf, 13));
             Server::with_players_mut(|players| {
                 players[nr].cpl.gold = ch.gold;
