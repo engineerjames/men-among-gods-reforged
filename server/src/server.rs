@@ -1188,26 +1188,21 @@ impl Server {
 
         // Handle existing player connections
         for player_idx in 1..MAXPLAYER {
-            let (has_socket, needs_recv, needs_send) = Self::with_players(|players| {
+            let has_socket = Self::with_players(|players| {
                 if players[player_idx].sock.is_none() {
-                    return (false, false, false);
+                    false
+                } else {
+                    true
                 }
-                let needs_recv = players[player_idx].in_len < 256;
-                let needs_send = players[player_idx].iptr != players[player_idx].optr;
-                (true, needs_recv, needs_send)
             });
 
             if !has_socket {
                 continue;
             }
 
-            if needs_recv {
-                self.rec_player(player_idx);
-            }
+            self.rec_player(player_idx);
 
-            if needs_send {
-                self.send_player(player_idx);
-            }
+            self.send_player(player_idx);
         }
     }
 

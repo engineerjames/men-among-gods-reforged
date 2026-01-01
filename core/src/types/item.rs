@@ -1,6 +1,6 @@
 //! Item structure
 
-use crate::constants::ItemFlags;
+use crate::{constants::ItemFlags, string_operations::c_string_to_str};
 
 /// Item structure
 #[derive(Clone, Copy)]
@@ -125,12 +125,7 @@ impl Default for Item {
 impl Item {
     /// Get name as a string slice
     pub fn get_name(&self) -> &str {
-        let end = self
-            .name
-            .iter()
-            .position(|&c| c == 0)
-            .unwrap_or(self.name.len());
-        std::str::from_utf8(&self.name[..end]).unwrap_or("*unknown*")
+        c_string_to_str(&self.name)
     }
 
     /// Check if item has labyrinth destroy flag

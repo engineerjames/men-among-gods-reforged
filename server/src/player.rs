@@ -1,3 +1,5 @@
+use core::string_operations::c_string_to_str;
+
 use crate::{
     driver, enums, god::God, network_manager::NetworkManager, repository::Repository,
     server::Server, state::State,
@@ -1392,12 +1394,10 @@ pub fn plr_pickup(cn: usize) {
             });
         }
 
-        let item_name = Repository::with_items(|items| items[in_id as usize].name.clone());
-        log::info!(
-            "Character {} took {}",
-            cn,
-            String::from_utf8_lossy(&item_name)
-        );
+        let item_name =
+            Repository::with_items(|items| items[in_id as usize].get_name().to_string());
+
+        log::info!("Character {} took {}", cn, item_name);
     } else {
         Repository::with_characters_mut(|characters| {
             characters[cn].citem = in_id as u32;
@@ -1458,10 +1458,7 @@ pub fn plr_bow(cn: usize) {
                 characters[cn].x as i32,
                 characters[cn].y as i32,
                 core::types::FontColor::Blue,
-                &format!(
-                    "{} bows deeply.\n",
-                    String::from_utf8_lossy(&characters[cn].reference)
-                ),
+                &format!("{} bows deeply.\n", &characters[cn].get_reference()),
             );
         });
     });
@@ -1502,10 +1499,7 @@ pub fn plr_wave(cn: usize) {
                 characters[cn].x as i32,
                 characters[cn].y as i32,
                 core::types::FontColor::Blue,
-                &format!(
-                    "{} waves happily.\n",
-                    String::from_utf8_lossy(&characters[cn].reference)
-                ),
+                &format!("{} waves happily.\n", &characters[cn].get_reference()),
             );
         });
     });
@@ -1847,12 +1841,9 @@ pub fn plr_drop(cn: usize) {
             return;
         }
 
-        let item_name = Repository::with_items(|items| items[in_id as usize].name.clone());
-        log::info!(
-            "Character {} dropped {}",
-            cn,
-            String::from_utf8_lossy(&item_name)
-        );
+        let item_name =
+            Repository::with_items(|items| items[in_id as usize].get_name().to_string());
+        log::info!("Character {} dropped {}", cn, item_name);
         in_id
     };
 
@@ -2757,6 +2748,10 @@ pub fn plr_getmap_complete(nr: usize) {
                 n += 1;
                 map_x += 1;
             }
+
+            // Advance to the next row start in the fixed TILEX-wide smap buffer.
+            // Matches the original C++: `n += XSCUT + XECUT`.
+            n += (XSCUT + XECUT) as usize;
             map_y += 1;
         }
 
@@ -3111,10 +3106,10 @@ pub fn plr_getmap_fast(nr: usize) {
     let see = Repository::with_see_map(|see_map| see_map[cn]);
 
     // Compute region to update
-    let ys = ch_x - (core::constants::TILEY as i32 / 2) + YSCUTF;
-    let ye = ch_x + (core::constants::TILEY as i32 / 2) - YECUTF;
-    let xs = ch_y - (core::constants::TILEX as i32 / 2) + XSCUTF;
-    let xe = ch_y + (core::constants::TILEX as i32 / 2) - XECUTF;
+    let ys = ch_y - (core::constants::TILEY as i32 / 2) + YSCUTF;
+    let ye = ch_y + (core::constants::TILEY as i32 / 2) - YECUTF;
+    let xs = ch_x - (core::constants::TILEX as i32 / 2) + XSCUTF;
+    let xe = ch_x + (core::constants::TILEX as i32 / 2) - XECUTF;
 
     // Fill smap entries for the fast window
     Server::with_players_mut(|players| {
@@ -3242,6 +3237,10 @@ pub fn plr_getmap_fast(nr: usize) {
                 n += 1;
                 map_x += 1;
             }
+
+            // Advance to the next row start in the fixed TILEX-wide smap buffer.
+            // Matches the original C++: `n += XSCUT + XECUT` (fast cut constants here).
+            n += (XSCUTF + XECUTF) as usize;
             map_y += 1;
         }
 
@@ -3811,9 +3810,7 @@ fn plr_newlogin(nr: usize) {
             if (characters[cn].flags & enums::CharacterFlags::Passwd.bits()) == 0 {
                 // extract password string
                 let pass = Server::with_players(|players| {
-                    String::from_utf8_lossy(&players[nr].passwd)
-                        .trim_end_matches(char::from(0))
-                        .to_string()
+                    c_string_to_str(&players[nr].passwd).to_string()
                 });
                 God::change_pass(cn, cn, &pass);
             }
@@ -4061,9 +4058,7 @@ fn plr_login(nr: usize) {
         Repository::with_characters(|characters| {
             if (characters[cn].flags & enums::CharacterFlags::Passwd.bits()) == 0 {
                 let pass = Server::with_players(|players| {
-                    String::from_utf8_lossy(&players[nr].passwd)
-                        .trim_end_matches(char::from(0))
-                        .to_string()
+                    c_string_to_str(&players[nr].passwd).to_string()
                 });
                 God::change_pass(cn, cn, &pass);
             }
@@ -5753,6 +5748,10 @@ fn plr_cmd_setuser(_nr: usize) {
                             let b = name_bytes[n];
                             if !((b'A'..=b'Z').contains(&b) || (b'a'..=b'z').contains(&b)) {
                                 flag = 1;
+                                log::warn!(
+                                    "plr_cmd_setuser: name contains non-letter char {:02X}",
+                                    b
+                                );
                                 break;
                             }
                             name_bytes[n] = name_bytes[n].to_ascii_lowercase();
@@ -5774,6 +5773,7 @@ fn plr_cmd_setuser(_nr: usize) {
                             };
 
                             if name_str == "Self" {
+                                log::warn!("plr_cmd_setuser: name \"{}\" is reserved", name_str);
                                 flag = 2;
                             }
 
@@ -5781,15 +5781,20 @@ fn plr_cmd_setuser(_nr: usize) {
                             if flag == 0 {
                                 for n in 1..core::constants::MAXCHARS {
                                     if n != cn && ch[n].used != core::constants::USE_EMPTY as u8 {
-                                        let other_name_end = ch[n]
-                                            .name
-                                            .iter()
-                                            .position(|&c| c == 0)
-                                            .unwrap_or(ch[n].name.len());
-                                        let other_name =
-                                            String::from_utf8_lossy(&ch[n].name[..other_name_end])
-                                                .to_string();
+                                        let mut other_name =
+                                            ch[n].get_name().to_string().to_ascii_lowercase();
+
+                                        // Uppercase first character safely without indexing into String
+                                        if let Some(first) = other_name.get_mut(0..1) {
+                                            first.make_ascii_uppercase();
+                                        }
+
                                         if other_name == name_str {
+                                            log::warn!(
+                                                "plr_cmd_setuser: name \"{}\" already used by cn={}",
+                                                name_str,
+                                                n
+                                            );
                                             flag = 2;
                                             break;
                                         }
@@ -5840,6 +5845,12 @@ fn plr_cmd_setuser(_nr: usize) {
                         // clear CF_NEWUSER flag
                         ch[cn].flags &=
                             !(core::constants::CharacterFlags::CF_NEWUSER.bits() as u64);
+
+                        log::info!(
+                            "plr_cmd_setuser: committed name change for cn={} to \"{}\"",
+                            cn,
+                            ch[cn].get_name()
+                        );
                     }
 
                     // Description handling: copy text[1] and possibly append text[2]
@@ -6365,6 +6376,7 @@ fn plr_cmd_mode(nr: usize) {
     });
 
     if mode > 2 {
+        log::error!("plr_cmd_mode: invalid mode {}", mode);
         return;
     }
 
@@ -6389,8 +6401,8 @@ fn plr_cmd_mode(nr: usize) {
 /// * `nr` - Player slot index sending the movement target
 fn plr_cmd_move(nr: usize) {
     let (x, y, cn) = Server::with_players(|players| {
-        let x = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]) as i32;
-        let y = u16::from_le_bytes([players[nr].inbuf[3], players[nr].inbuf[4]]) as i32;
+        let x = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]);
+        let y = u16::from_le_bytes([players[nr].inbuf[3], players[nr].inbuf[4]]);
         (x, y, players[nr].usnr)
     });
 
@@ -6398,8 +6410,8 @@ fn plr_cmd_move(nr: usize) {
 
     Repository::with_characters_mut(|ch| {
         ch[cn].attack_cn = 0;
-        ch[cn].goto_x = x as u16;
-        ch[cn].goto_y = y as u16;
+        ch[cn].goto_x = x;
+        ch[cn].goto_y = y;
         ch[cn].misc_action = 0;
         ch[cn].cerrno = 0;
         ch[cn].data[12] = ticker;

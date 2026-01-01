@@ -1,4 +1,7 @@
-use core::types::{Character, Map};
+use core::{
+    string_operations::c_string_to_str,
+    types::{Character, Map},
+};
 
 use crate::{
     chlog, driver,
@@ -2181,9 +2184,7 @@ impl God {
                 }
 
                 let name = characters[i].get_name().to_lowercase();
-                let reference = String::from_utf8_lossy(&characters[i].reference)
-                    .trim_end_matches('\0')
-                    .to_lowercase();
+                let reference = &characters[i].get_reference().to_lowercase();
 
                 let spec1_lower = spec1.to_lowercase();
                 let spec2_lower = spec2.to_lowercase();
@@ -2443,16 +2444,13 @@ impl God {
             return;
         }
 
+        let character_name =
+            Repository::with_characters(|characters| characters[co].get_name().to_string());
         State::with(|state| {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                &format!(
-                    "{} was summoned.",
-                    Repository::with_characters(|characters| {
-                        String::from_utf8_lossy(&characters[co].name).to_string()
-                    })
-                ),
+                &format!("{} was summoned.", character_name),
             );
         });
 
@@ -2628,9 +2626,7 @@ impl God {
             // Add target as enemy
             crate::driver::npc_add_enemy(cc, co, true);
 
-            let target_name = String::from_utf8_lossy(&target_name_bytes)
-                .trim_end_matches('\0')
-                .to_string();
+            let target_name = c_string_to_str(&target_name_bytes);
             State::with(|state| {
                 state.do_character_log(
                     cn,
@@ -2903,9 +2899,7 @@ impl God {
                 return 0;
             }
 
-            let target_name = String::from_utf8_lossy(&target_name_bytes)
-                .trim_end_matches('\0')
-                .to_string();
+            let target_name = c_string_to_str(&target_name_bytes);
             State::with(|state| {
                 state.do_character_log(
                     cn,
@@ -3135,9 +3129,7 @@ impl God {
 
         // Check if player/QM but erase_player is false
         if is_player_or_usurp && erase_player == 0 {
-            let name_str = String::from_utf8_lossy(&character_name)
-                .trim_end_matches('\0')
-                .to_string();
+            let name_str = c_string_to_str(&character_name);
             State::with(|state| {
                 state.do_character_log(
                     cn,
@@ -3150,9 +3142,7 @@ impl God {
 
         // Check if erase_player is true but character is not player/usurp
         if erase_player != 0 && !is_player_or_usurp {
-            let name_str = String::from_utf8_lossy(&character_name)
-                .trim_end_matches('\0')
-                .to_string();
+            let name_str = c_string_to_str(&character_name);
             State::with(|state| {
                 state.do_character_log(
                     cn,
@@ -3165,9 +3155,7 @@ impl God {
 
         if erase_player != 0 {
             // Erasing a player
-            let name_str = String::from_utf8_lossy(&character_name)
-                .trim_end_matches('\0')
-                .to_string();
+            let name_str = c_string_to_str(&character_name);
 
             Repository::with_characters(|ch| {
                 player::plr_logout(co as usize, ch[co].player as usize, LogoutReason::Shutdown);
@@ -3188,9 +3176,7 @@ impl God {
             });
         } else {
             // Erasing an NPC
-            let name_str = String::from_utf8_lossy(&character_name)
-                .trim_end_matches('\0')
-                .to_string();
+            let name_str = c_string_to_str(&character_name);
 
             // Call do_char_killed(0, co)
             State::with(|state| {
@@ -3254,9 +3240,7 @@ impl God {
             return;
         }
 
-        let name_str = String::from_utf8_lossy(&character_name)
-            .trim_end_matches('\0')
-            .to_string();
+        let name_str = c_string_to_str(&character_name);
 
         Repository::with_characters(|ch| {
             player::plr_logout(
@@ -3829,9 +3813,7 @@ impl God {
             return;
         }
 
-        let name_str = String::from_utf8_lossy(&character_name)
-            .trim_end_matches('\0')
-            .to_string();
+        let name_str = c_string_to_str(&character_name);
 
         log::info!("Usurping {} ({} , t={})", name_str, co, co_temp);
 
@@ -3948,9 +3930,7 @@ impl God {
             let character_name =
                 Repository::with_characters(|characters| characters[co].name.clone());
 
-            let name_str = String::from_utf8_lossy(&character_name)
-                .trim_end_matches('\0')
-                .to_string();
+            let name_str = c_string_to_str(&character_name);
 
             log::info!("IMP: {} is now playing {} ({})", cn, name_str, co);
 
@@ -4085,9 +4065,7 @@ impl God {
             let character_name =
                 Repository::with_characters(|characters| characters[co].name.clone());
 
-            let name_str = String::from_utf8_lossy(&character_name)
-                .trim_end_matches('\0')
-                .to_string();
+            let name_str = c_string_to_str(&character_name);
 
             log::info!("IMP: {} is now playing {} ({})", cn, name_str, co);
 
@@ -4116,9 +4094,7 @@ impl God {
                 return;
             }
 
-            let template_name = String::from_utf8_lossy(&template.name)
-                .trim_end_matches('\0')
-                .to_string();
+            let template_name = c_string_to_str(&template.name);
 
             Repository::with_characters_mut(|characters| {
                 let character = &mut characters[cn];
@@ -4261,9 +4237,7 @@ impl God {
 
         // Check if text is empty
         if text.is_empty() {
-            let name_str = String::from_utf8_lossy(&character_name)
-                .trim_end_matches('\0')
-                .to_string();
+            let name_str = c_string_to_str(&character_name);
 
             State::with(|state| {
                 state.do_character_log(
@@ -4275,9 +4249,7 @@ impl God {
             return;
         }
 
-        let name_str = String::from_utf8_lossy(&character_name)
-            .trim_end_matches('\0')
-            .to_string();
+        let name_str = c_string_to_str(&character_name);
 
         log::info!("IMP: {} forced {} ({}) to \"{}\"", cn, name_str, co, text);
 

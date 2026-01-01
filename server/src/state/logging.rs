@@ -32,10 +32,11 @@ impl State {
         Repository::with_characters(|characters| {
             let ch = &characters[character_id];
             if ch.player == 0 && ch.temp != 15 {
-                log::warn!(
-                    "do_character_log: Character '{}' has no associated player.",
-                    ch.get_name(),
-                );
+                // TODO: Re-evaluate if we should be logging this
+                // log::warn!(
+                //     "do_character_log: Character '{}' has no associated player.",
+                //     ch.get_name(),
+                // );
                 return;
             }
 
@@ -421,7 +422,7 @@ impl State {
         };
         for n in 1..core::constants::MAXCHARS as usize {
             // Exclude if not a player and not temp==15
-            if Repository::with_characters(|ch| ch[n].player == 0 && ch[n].temp != 15) {
+            if !Repository::with_characters(|ch| ch[n].player != 0 || ch[n].temp == 15) {
                 continue;
             }
             // C++: if ( ( ch[ source ].flags & ( CF_INVISIBLE | CF_NOWHO ) ) && invis_level( source ) > invis_level( n ) ) continue;
