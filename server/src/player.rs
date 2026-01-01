@@ -2495,8 +2495,7 @@ pub fn plr_act(cn: usize) {
 /// * `n` - Character index
 pub fn speedo(n: usize) -> i32 {
     let speed = Repository::with_characters(|characters| characters[n].speed as usize);
-    let ctick =
-        Repository::with_globals(|globals| (globals.ticker % core::constants::TICKS) as usize);
+    let ctick = Repository::with_globals(|globals| (globals.ticker % core::constants::TICKS) as usize);
     SPEEDTAB[speed][ctick] as i32
 }
 
@@ -2673,26 +2672,6 @@ pub fn plr_getmap_complete(nr: usize) {
                 if infra_flag != 0 {
                     flags |= core::constants::INFRARED;
                 }
-
-                // Determine whether this tile is visible in the player's LOS map.
-                // Matches the original C++: check 3x3 neighborhood in see[cn].vis.
-                let tmp_idx = (map_x - ch_x + 20) + (map_y - ch_y + 20) * 40;
-                let visible = {
-                    let t = tmp_idx as usize;
-                    see.vis[t] != 0
-                        || see.vis[t + 40] != 0
-                        || see.vis[t - 40] != 0
-                        || see.vis[t + 1] != 0
-                        || see.vis[t + 1 + 40] != 0
-                        || see.vis[t + 1 - 40] != 0
-                        || see.vis[t - 1] != 0
-                        || see.vis[t - 1 + 40] != 0
-                        || see.vis[t - 1 - 40] != 0
-                };
-
-                if !visible {
-                    flags |= core::constants::INVIS;
-                }
                 // building copy
                 let mut flags2: u32 = 0;
                 if Repository::with_characters(|characters| characters[cn].is_building()) {
@@ -2706,61 +2685,57 @@ pub fn plr_getmap_complete(nr: usize) {
                 new_cmap.ba_sprite = map_tile.sprite as i16;
 
                 // --- Character ---
-                if visible {
-                    let co = Repository::with_map(|map| map[m].ch as usize);
-                    if co != 0 {
-                        let can_see = State::with_mut(|state| state.do_char_can_see(cn, co));
-                        if can_see != 0 {
-                            // basic character info
-                            let ch = Repository::with_characters(|characters| characters[co]);
-                            if ch.sprite_override != 0 {
-                                new_cmap.ch_sprite = ch.sprite_override as i16;
-                            } else {
-                                new_cmap.ch_sprite = ch.sprite as i16;
-                            }
-                            new_cmap.ch_status = ch.status as u8;
-                            new_cmap.ch_status2 = ch.status2 as u8;
-                            new_cmap.ch_speed = ch.speed as u8;
-                            new_cmap.ch_nr = co as u16;
-                            new_cmap.ch_id = crate::helpers::char_id(co) as u16;
-                            // health percent (best-effort)
-                            new_cmap.ch_proz = if ch.hp[5] > 0 {
-                                ((ch.hp[5] as u32 * 100) / ch.hp[5].max(1) as u32) as u8
-                            } else {
-                                0
-                            };
-                            new_cmap.flags |= core::constants::ISCHAR;
-                            if ch.stunned != 0 {
-                                new_cmap.flags |= core::constants::STUNNED;
-                            }
-                            if (ch.flags & enums::CharacterFlags::Stoned.bits()) != 0 {
-                                new_cmap.flags |= core::constants::TOMB;
-                            }
+                let co = Repository::with_map(|map| map[m].ch as usize);
+                if co != 0 {
+                    let can_see = State::with_mut(|state| state.do_char_can_see(cn, co));
+                    if can_see != 0 {
+                        // basic character info
+                        let ch = Repository::with_characters(|characters| characters[co]);
+                        if ch.sprite_override != 0 {
+                            new_cmap.ch_sprite = ch.sprite_override as i16;
+                        } else {
+                            new_cmap.ch_sprite = ch.sprite as i16;
+                        }
+                        new_cmap.ch_status = ch.status as u8;
+                        new_cmap.ch_status2 = ch.status2 as u8;
+                        new_cmap.ch_speed = ch.speed as u8;
+                        new_cmap.ch_nr = co as u16;
+                        new_cmap.ch_id = crate::helpers::char_id(co) as u16;
+                        // health percent (best-effort)
+                        new_cmap.ch_proz = if ch.hp[5] > 0 {
+                            ((ch.hp[5] as u32 * 100) / ch.hp[5].max(1) as u32) as u8
+                        } else {
+                            0
+                        };
+                        new_cmap.flags |= core::constants::ISCHAR;
+                        if ch.stunned != 0 {
+                            new_cmap.flags |= core::constants::STUNNED;
+                        }
+                        if (ch.flags & enums::CharacterFlags::Stoned.bits()) != 0 {
+                            new_cmap.flags |= core::constants::TOMB;
                         }
                     }
                 }
 
                 // --- Item ---
-                if visible {
-                    if map_tile.fsprite != 0 {
-                        new_cmap.it_sprite = map_tile.fsprite as i16;
-                        new_cmap.it_status = 0;
-                    } else {
-                        let it_id = Repository::with_map(|map| map[m].it as usize);
-                        if it_id != 0 {
-                            let visible_item =
-                                State::with_mut(|state| state.do_char_can_see_item(cn, it_id)) != 0;
-                            if visible_item {
-                                let it = Repository::with_items(|items| items[it_id]);
-                                new_cmap.it_sprite = if it.active != 0 {
-                                    it.sprite[1]
-                                } else {
-                                    it.sprite[0]
-                                };
-                                let active_idx = if it.active != 0 { 1 } else { 0 };
-                                new_cmap.it_status = it.status[active_idx];
-                                new_cmap.flags |= core::constants::ISITEM;
-                            }
+                if map_tile.fsprite != 0 {
+                    new_cmap.it_sprite = map_tile.fsprite as i16;
+                    new_cmap.it_status = 0;
+                } else {
+                    let it_id = Repository::with_map(|map| map[m].it as usize);
+                    if it_id != 0 {
+                        let visible_item =
+                            State::with_mut(|state| state.do_char_can_see_item(cn, it_id)) != 0;
+                        if visible_item {
+                            let it = Repository::with_items(|items| items[it_id]);
+                            new_cmap.it_sprite = if it.active != 0 {
+                                it.sprite[1]
+                            } else {
+                                it.sprite[0]
+                            };
+                            let active_idx = if it.active != 0 { 1 } else { 0 };
+                            new_cmap.it_status = it.status[active_idx];
+                            new_cmap.flags |= core::constants::ISITEM;
                         }
                     }
                 }
@@ -3193,26 +3168,6 @@ pub fn plr_getmap_fast(nr: usize) {
                     flags |= core::constants::INFRARED;
                 }
 
-                // Determine whether this tile is visible in the player's LOS map.
-                // Matches the original C++: check 3x3 neighborhood in see[cn].vis.
-                let tmp_idx = (map_x - ch_x + 20) + (map_y - ch_y + 20) * 40;
-                let visible = {
-                    let t = tmp_idx as usize;
-                    see.vis[t] != 0
-                        || see.vis[t + 40] != 0
-                        || see.vis[t - 40] != 0
-                        || see.vis[t + 1] != 0
-                        || see.vis[t + 1 + 40] != 0
-                        || see.vis[t + 1 - 40] != 0
-                        || see.vis[t - 1] != 0
-                        || see.vis[t - 1 + 40] != 0
-                        || see.vis[t - 1 - 40] != 0
-                };
-
-                if !visible {
-                    flags |= core::constants::INVIS;
-                }
-
                 let mut flags2: u32 = 0;
                 if Repository::with_characters(|characters| characters[cn].is_building()) {
                     flags2 = map_tile.flags as u32;
@@ -3223,59 +3178,55 @@ pub fn plr_getmap_fast(nr: usize) {
                 new_cmap.ba_sprite = map_tile.sprite as i16;
 
                 // character
-                if visible {
-                    let co = Repository::with_map(|map| map[m].ch as usize);
-                    if co != 0 {
-                        let can_see = State::with_mut(|state| state.do_char_can_see(cn, co));
-                        if can_see != 0 {
-                            let ch = Repository::with_characters(|characters| characters[co]);
-                            if ch.sprite_override != 0 {
-                                new_cmap.ch_sprite = ch.sprite_override as i16;
-                            } else {
-                                new_cmap.ch_sprite = ch.sprite as i16;
-                            }
-                            new_cmap.ch_status = ch.status as u8;
-                            new_cmap.ch_status2 = ch.status2 as u8;
-                            new_cmap.ch_speed = ch.speed as u8;
-                            new_cmap.ch_nr = co as u16;
-                            new_cmap.ch_id = crate::helpers::char_id(co) as u16;
-                            new_cmap.ch_proz = if ch.hp[5] > 0 {
-                                ((ch.hp[5] as u32 * 100) / ch.hp[5].max(1) as u32) as u8
-                            } else {
-                                0
-                            };
-                            new_cmap.flags |= core::constants::ISCHAR;
-                            if ch.stunned != 0 {
-                                new_cmap.flags |= core::constants::STUNNED;
-                            }
-                            if (ch.flags & enums::CharacterFlags::Stoned.bits()) != 0 {
-                                new_cmap.flags |= core::constants::TOMB;
-                            }
+                let co = Repository::with_map(|map| map[m].ch as usize);
+                if co != 0 {
+                    let can_see = State::with_mut(|state| state.do_char_can_see(cn, co));
+                    if can_see != 0 {
+                        let ch = Repository::with_characters(|characters| characters[co]);
+                        if ch.sprite_override != 0 {
+                            new_cmap.ch_sprite = ch.sprite_override as i16;
+                        } else {
+                            new_cmap.ch_sprite = ch.sprite as i16;
+                        }
+                        new_cmap.ch_status = ch.status as u8;
+                        new_cmap.ch_status2 = ch.status2 as u8;
+                        new_cmap.ch_speed = ch.speed as u8;
+                        new_cmap.ch_nr = co as u16;
+                        new_cmap.ch_id = crate::helpers::char_id(co) as u16;
+                        new_cmap.ch_proz = if ch.hp[5] > 0 {
+                            ((ch.hp[5] as u32 * 100) / ch.hp[5].max(1) as u32) as u8
+                        } else {
+                            0
+                        };
+                        new_cmap.flags |= core::constants::ISCHAR;
+                        if ch.stunned != 0 {
+                            new_cmap.flags |= core::constants::STUNNED;
+                        }
+                        if (ch.flags & enums::CharacterFlags::Stoned.bits()) != 0 {
+                            new_cmap.flags |= core::constants::TOMB;
                         }
                     }
                 }
 
                 // item
-                if visible {
-                    if map_tile.fsprite != 0 {
-                        new_cmap.it_sprite = map_tile.fsprite as i16;
-                        new_cmap.it_status = 0;
-                    } else {
-                        let it_id = Repository::with_map(|map| map[m].it as usize);
-                        if it_id != 0 {
-                            let visible_item =
-                                State::with_mut(|state| state.do_char_can_see_item(cn, it_id)) != 0;
-                            if visible_item {
-                                let it = Repository::with_items(|items| items[it_id]);
-                                new_cmap.it_sprite = if it.active != 0 {
-                                    it.sprite[1]
-                                } else {
-                                    it.sprite[0]
-                                };
-                                let active_idx = if it.active != 0 { 1 } else { 0 };
-                                new_cmap.it_status = it.status[active_idx];
-                                new_cmap.flags |= core::constants::ISITEM;
-                            }
+                if map_tile.fsprite != 0 {
+                    new_cmap.it_sprite = map_tile.fsprite as i16;
+                    new_cmap.it_status = 0;
+                } else {
+                    let it_id = Repository::with_map(|map| map[m].it as usize);
+                    if it_id != 0 {
+                        let visible_item =
+                            State::with_mut(|state| state.do_char_can_see_item(cn, it_id)) != 0;
+                        if visible_item {
+                            let it = Repository::with_items(|items| items[it_id]);
+                            new_cmap.it_sprite = if it.active != 0 {
+                                it.sprite[1]
+                            } else {
+                                it.sprite[0]
+                            };
+                            let active_idx = if it.active != 0 { 1 } else { 0 };
+                            new_cmap.it_status = it.status[active_idx];
+                            new_cmap.flags |= core::constants::ISITEM;
                         }
                     }
                 }
