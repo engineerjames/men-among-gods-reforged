@@ -52,7 +52,6 @@ enum CharacterTickState {
 pub struct Server {
     sock: Option<TcpListener>,
     last_tick_time: Option<Instant>,
-    tick_counter: u64,
 }
 
 impl Server {
@@ -62,7 +61,6 @@ impl Server {
         Server {
             sock: None,
             last_tick_time: None,
-            tick_counter: 0,
         }
     }
 
@@ -327,8 +325,6 @@ impl Server {
     /// - Updating global statistics and letting subsystems tick (populate, effects,
     ///   item driver)
     fn game_tick(&mut self) {
-        self.tick_counter = self.tick_counter.wrapping_add(1);
-
         // Get current hour for statistics
         let hour = chrono::Local::now().hour() as usize;
 

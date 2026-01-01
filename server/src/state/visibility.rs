@@ -244,6 +244,9 @@ impl State {
             Repository::with_characters(|characters| {
                 match character_id {
                     Some(cn) => {
+                        // C++ behavior: switch the active visi pointer to the per-character see buffer.
+                        self.vis_is_global = false;
+
                         if (fx != see_map[cn].x) || (fy != see_map[cn].y) {
                             self.is_monster =
                                 characters[cn].is_monster() && !characters[cn].is_usurp_or_thrall();
@@ -267,9 +270,24 @@ impl State {
                         }
                     }
                     None => {
+                        // C++ behavior: ensure the active visi pointer is the global buffer (_visi).
+                        // If we were previously using a per-character buffer, reset origin so we recompute.
+                        if !self.vis_is_global {
+                            self.vis_is_global = true;
+                            self.ox = 0;
+                            self.oy = 0;
+                        }
+
+                        // Restore the global buffer into the working buffer so `check_vis()` reads the
+                        // same data the C++ code would read from `_visi`.
+                        self._visi.copy_from_slice(&self.visi);
+
                         if (self.ox != fx) || (self.oy != fy) {
                             self.is_monster = false;
                             self.can_map_see(fx, fy, max_distance);
+
+                            // Persist the global buffer across per-character can_see() calls.
+                            self.visi.copy_from_slice(&self._visi);
                         }
                     }
                 }
@@ -304,12 +322,12 @@ impl State {
             // Top and bottom horizontal lines
             for x in (xc - dist)..=(xc + dist) {
                 let y = yc - dist;
-                if self.close_vis_see(x, y, dist as i8) {
+                if self.close_vis_go(x, y, dist as i8) {
                     self.add_vis(x, y, dist + 1);
                 }
 
                 let y = yc + dist;
-                if self.close_vis_see(x, y, dist as i8) {
+                if self.close_vis_go(x, y, dist as i8) {
                     self.add_vis(x, y, dist + 1);
                 }
             }
@@ -317,12 +335,12 @@ impl State {
             // Left and right vertical lines (excluding corners already done)
             for y in (yc - dist + 1)..=(yc + dist - 1) {
                 let x = xc - dist;
-                if self.close_vis_see(x, y, dist as i8) {
+                if self.close_vis_go(x, y, dist as i8) {
                     self.add_vis(x, y, dist + 1);
                 }
 
                 let x = xc + dist;
-                if self.close_vis_see(x, y, dist as i8) {
+                if self.close_vis_go(x, y, dist as i8) {
                     self.add_vis(x, y, dist + 1);
                 }
             }
@@ -389,14 +407,19 @@ impl State {
     /// * `fx, fy` - Start coordinates
     /// * `target_x, target_y` - Destination coordinates
     pub(crate) fn can_go(&mut self, fx: i32, fy: i32, target_x: i32, target_y: i32) -> bool {
-        if self.visi != self._visi {
-            self.visi = self._visi.clone();
+        // C++ behavior: ensure the active visi pointer is the global buffer (_visi).
+        if !self.vis_is_global {
+            self.vis_is_global = true;
             self.ox = 0;
             self.oy = 0;
         }
 
+        // Restore cached global buffer for `check_vis()`.
+        self._visi.copy_from_slice(&self.visi);
+
         if self.ox != fx || self.oy != fy {
             self.can_map_go(fx, fy, 15);
+            self.visi.copy_from_slice(&self._visi);
         }
 
         let tmp = self.check_vis(target_x, target_y);
@@ -849,6 +872,90 @@ impl State {
         }
 
         true
+    }
+
+    /// Port of `check_map_go(x,y)` from original helper code.
+    ///
+    /// Returns `true` when the map tile at `(x,y)` is traversable for
+    /// pathfinding. Checks map movement-block flags and items with
+    /// `IF_MOVEBLOCK`.
+    pub(crate) fn check_map_go(&self, x: i32, y: i32) -> bool {
+        if x <= 0
+            || x >= core::constants::SERVER_MAPX as i32
+            || y <= 0
+            || y >= core::constants::SERVER_MAPY as i32
+        {
+            return false;
+        }
+
+        let m = (x + y * core::constants::SERVER_MAPX as i32) as usize;
+
+        let blocked =
+            Repository::with_map(|map| (map[m].flags & core::constants::MF_MOVEBLOCK as u64) != 0);
+        if blocked {
+            return false;
+        }
+
+        let blocks_move = Repository::with_map(|map| {
+            let item_idx = map[m].it as usize;
+            if item_idx != 0 {
+                Repository::with_items(|items| {
+                    item_idx < items.len()
+                        && (items[item_idx].flags & core::constants::ItemFlags::IF_MOVEBLOCK.bits())
+                            != 0
+                })
+            } else {
+                false
+            }
+        });
+
+        if blocks_move {
+            return false;
+        }
+
+        true
+    }
+
+    /// Port of `close_vis_go(x,y,value)` from original helper code.
+    ///
+    /// Returns `true` if tile `(x,y)` is traversable and is adjacent to a
+    /// reachable tile with the specified `value`.
+    pub(crate) fn close_vis_go(&self, x: i32, y: i32, value: i8) -> bool {
+        if !self.check_map_go(x, y) {
+            return false;
+        }
+
+        let vx = x - self.ox + 20;
+        let vy = y - self.oy + 20;
+
+        if vx < 0 || vx >= 40 || vy < 0 || vy >= 40 {
+            return false;
+        }
+
+        let offsets = [
+            (1, 0),
+            (-1, 0),
+            (0, 1),
+            (0, -1),
+            (1, 1),
+            (1, -1),
+            (-1, 1),
+            (-1, -1),
+        ];
+
+        for (dx, dy) in offsets.iter() {
+            let nx = vx + dx;
+            let ny = vy + dy;
+
+            if nx >= 0 && nx < 40 && ny >= 0 && ny < 40 {
+                let idx = (nx + ny * 40) as usize;
+                if self._visi[idx] == value {
+                    return true;
+                }
+            }
+        }
+
+        false
     }
 
     /// Port of `reset_go(xc,yc)` from original helper code.

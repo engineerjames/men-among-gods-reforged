@@ -2685,7 +2685,6 @@ pub fn npc_grave_logic(cn: usize) -> bool {
                         Repository::with_items(|items| (items[in_idx].x, items[in_idx].y));
 
                     // Check if we can reach the grave and haven't searched it yet
-                    // Call can_go (doesn't exist yet, skip check for now)
                     let can_reach = State::with_mut(|state| {
                         state.can_go(ch_x as i32, ch_y as i32, it_x as i32, it_y as i32)
                     });

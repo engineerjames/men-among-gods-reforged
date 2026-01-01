@@ -2480,7 +2480,13 @@ pub fn plr_act(cn: usize) {
         }
 
         _ => {
-            driver::act_idle(cn);
+            let status = Repository::with_characters(|characters| characters[cn].status);
+            log::error!(
+                "plr_act: unknown character status {} for char {}",
+                status,
+                cn
+            );
+            Repository::with_characters_mut(|ch| ch[cn].status = 0);
             return;
         }
     }
@@ -5865,13 +5871,13 @@ fn plr_cmd_ctick(nr: usize) {
 /// requesting character.
 ///
 /// # Arguments
-/// * `_nr` - Player slot index issuing the request
-fn plr_cmd_look_item(_nr: usize) {
+/// * `nr` - Player slot index issuing the request
+fn plr_cmd_look_item(nr: usize) {
     // Read x,y from inbuf and call do_look_item
     let (x, y, cn) = Server::with_players(|players| {
-        let x = u16::from_le_bytes([players[_nr].inbuf[1], players[_nr].inbuf[2]]) as i32;
-        let y = u16::from_le_bytes([players[_nr].inbuf[3], players[_nr].inbuf[4]]) as i32;
-        (x, y, players[_nr].usnr)
+        let x = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]) as i32;
+        let y = u16::from_le_bytes([players[nr].inbuf[3], players[nr].inbuf[4]]) as i32;
+        (x, y, players[nr].usnr)
     });
 
     if x < 0
@@ -5879,6 +5885,7 @@ fn plr_cmd_look_item(_nr: usize) {
         || y < 0
         || y >= core::constants::SERVER_MAPY as i32
     {
+        log::error!("plr_cmd_look_item: cn={} invalid coords {},{}", cn, x, y);
         return;
     }
 
@@ -5896,23 +5903,24 @@ fn plr_cmd_look_item(_nr: usize) {
 /// perform a give in the next tick.
 ///
 /// # Arguments
-/// * `_nr` - Player slot index issuing the give
-fn plr_cmd_give(_nr: usize) {
+/// * `nr` - Player slot index issuing the give
+fn plr_cmd_give(nr: usize) {
     // Read target character id (4 bytes) and set give action
     let co = Server::with_players(|players| {
         u32::from_le_bytes([
-            players[_nr].inbuf[1],
-            players[_nr].inbuf[2],
-            players[_nr].inbuf[3],
-            players[_nr].inbuf[4],
+            players[nr].inbuf[1],
+            players[nr].inbuf[2],
+            players[nr].inbuf[3],
+            players[nr].inbuf[4],
         ]) as usize
     });
 
     if co >= core::constants::MAXCHARS as usize {
+        log::error!("plr_cmd_give: invalid target cn {}", co);
         return;
     }
 
-    let cn = Server::with_players(|players| players[_nr].usnr);
+    let cn = Server::with_players(|players| players[nr].usnr);
     let ticker = Repository::with_globals(|g| g.ticker as i32);
 
     Repository::with_characters_mut(|ch| {
@@ -5932,18 +5940,21 @@ fn plr_cmd_give(_nr: usize) {
 /// its next action tick. Ignored if the character is in building mode.
 ///
 /// # Arguments
-/// * `_nr` - Player slot index issuing the turn
-fn plr_cmd_turn(_nr: usize) {
+/// * `nr` - Player slot index issuing the turn
+fn plr_cmd_turn(nr: usize) {
     // Read x,y and set turn action
     let (x, y, cn) = Server::with_players(|players| {
-        let x = u16::from_le_bytes([players[_nr].inbuf[1], players[_nr].inbuf[2]]) as i32;
-        let y = u16::from_le_bytes([players[_nr].inbuf[3], players[_nr].inbuf[4]]) as i32;
-        (x, y, players[_nr].usnr)
+        let x = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]) as i32;
+        let y = u16::from_le_bytes([players[nr].inbuf[3], players[nr].inbuf[4]]) as i32;
+        (x, y, players[nr].usnr)
     });
+
+    log::info!("plr_cmd_turn: cn={} turning to {},{}", cn, x, y);
 
     // If building mode, ignore
     let is_building = Repository::with_characters(|ch| ch[cn].is_building());
     if is_building {
+        log::debug!("plr_cmd_turn: cn={} is building, ignoring turn", cn);
         return;
     }
 
@@ -5952,6 +5963,7 @@ fn plr_cmd_turn(_nr: usize) {
     Repository::with_characters_mut(|ch| {
         ch[cn].attack_cn = 0;
         ch[cn].goto_x = 0;
+        ch[cn].goto_y = 0;
         ch[cn].misc_action = core::constants::DR_TURN as u16;
         ch[cn].misc_target1 = x as u16;
         ch[cn].misc_target2 = y as u16;
