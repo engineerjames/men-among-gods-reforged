@@ -1114,6 +1114,7 @@ impl State {
     ///
     /// Handle when a character says something.
     pub(crate) fn do_say(&mut self, cn: usize, text: &str) {
+        log::debug!("do_say: cn={}, text={}", cn, text);
         // Rate limiting for players (skip for direct '|' logs)
         if Repository::with_characters(|ch| {
             (ch[cn].flags & CharacterFlags::CF_PLAYER.bits()) != 0 && !text.starts_with('|')

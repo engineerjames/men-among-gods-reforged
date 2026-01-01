@@ -1363,8 +1363,6 @@ impl Server {
                 let end = slice_start + len;
                 let to_send = &players[idx].obuf[slice_start..end.min(players[idx].obuf.len())];
 
-                log::debug!("send_player: attempting to send: {:?}", to_send);
-
                 match sock.write(to_send) {
                     Ok(0) => {
                         log::error!("Connection closed (send, wrote 0)");
@@ -1381,14 +1379,6 @@ impl Server {
                         if players[idx].optr >= players[idx].obuf.len() {
                             players[idx].optr = 0;
                         }
-
-                        log::debug!(
-                            "send_player: sent {} bytes to player {}, iptr={}, optr={}",
-                            ret,
-                            idx,
-                            players[idx].iptr,
-                            players[idx].optr
-                        );
                     }
                     Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
                         // socket not ready for writing

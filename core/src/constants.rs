@@ -182,7 +182,9 @@ bitflags! {
         const CF_STAFF = 1 << 11;
         /// no hp regeneration
         const CF_NOHPREG = 1 << 12;
+        /// no endurance regeneration
         const CF_NOENDREG = 1 << 13;
+        /// no mana regeneration
         const CF_NOMANAREG = 1 << 14;
         /// character is completely invisible
         const CF_INVISIBLE = 1 << 15;

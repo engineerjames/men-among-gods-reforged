@@ -2,6 +2,7 @@ use crate::driver;
 use crate::effect::EffectManager;
 use crate::helpers;
 use crate::player;
+use crate::populate;
 use crate::{god::God, repository::Repository, state::State};
 use core::constants::*;
 use rand::Rng;
@@ -386,8 +387,8 @@ pub fn npc_killed(cn: usize, cc: usize, co: usize) -> i32 {
         for n in 80..92 {
             if characters[cn].data[n] == idx {
                 if cn == cc && co < MAXCHARS {
-                    let co_name = characters[co].name.clone();
-                    npc_saytext_n(cn, 0, Some(&String::from_utf8_lossy(&co_name)));
+                    let co_name = characters[co].get_name().to_string();
+                    npc_saytext_n(cn, 0, Some(&co_name));
                     Repository::with_characters_mut(|chars| {
                         chars[cn].data[n] = 0;
                     });
@@ -444,14 +445,14 @@ pub fn npc_seeattack(cn: usize, cc: usize, co: usize) -> i32 {
             };
 
             if ret {
-                let c2_name = Repository::with_characters(|chars| chars[c2].name.clone());
-                let c3_name = Repository::with_characters(|chars| chars[c3].name.clone());
-                npc_saytext_n(cn, 1, Some(&String::from_utf8_lossy(&c2_name)));
+                let c2_name = Repository::with_characters(|chars| chars[c2].get_name().to_string());
+                let c3_name = Repository::with_characters(|chars| chars[c3].get_name().to_string());
+                npc_saytext_n(cn, 1, Some(&c2_name));
                 log::info!(
                     "NPC {} added {} to enemy list for attacking {}",
                     cn,
-                    String::from_utf8_lossy(&c2_name),
-                    String::from_utf8_lossy(&c3_name)
+                    c2_name,
+                    c3_name
                 );
             }
             return 1;
@@ -461,14 +462,16 @@ pub fn npc_seeattack(cn: usize, cc: usize, co: usize) -> i32 {
         if characters[cn].data[31] != 0 {
             if characters[co].temp == characters[cn].data[31] as u16 {
                 if npc_add_enemy(cn, cc, true) {
-                    let cc_name = Repository::with_characters(|chars| chars[cc].name.clone());
-                    let co_name = Repository::with_characters(|chars| chars[co].name.clone());
-                    npc_saytext_n(cn, 1, Some(&String::from_utf8_lossy(&cc_name)));
+                    let cc_name =
+                        Repository::with_characters(|chars| chars[cc].get_name().to_string());
+                    let co_name =
+                        Repository::with_characters(|chars| chars[co].get_name().to_string());
+                    npc_saytext_n(cn, 1, Some(&cc_name));
                     log::info!(
                         "NPC {} added {} to enemy list for attacking {} (protect char)",
                         cn,
-                        String::from_utf8_lossy(&cc_name),
-                        String::from_utf8_lossy(&co_name)
+                        cc_name,
+                        co_name
                     );
                 }
                 Repository::with_characters_mut(|chars| {
@@ -483,14 +486,16 @@ pub fn npc_seeattack(cn: usize, cc: usize, co: usize) -> i32 {
         if characters[cn].data[63] != 0 {
             if co == characters[cn].data[63] as usize {
                 if npc_add_enemy(cn, cc, true) {
-                    let cc_name = Repository::with_characters(|chars| chars[cc].name.clone());
-                    let co_name = Repository::with_characters(|chars| chars[co].name.clone());
-                    npc_saytext_n(cn, 1, Some(&String::from_utf8_lossy(&cc_name)));
+                    let cc_name =
+                        Repository::with_characters(|chars| chars[cc].get_name().to_string());
+                    let co_name =
+                        Repository::with_characters(|chars| chars[co].get_name().to_string());
+                    npc_saytext_n(cn, 1, Some(&cc_name));
                     log::info!(
                         "NPC {} added {} to enemy list for attacking {} (protect char)",
                         cn,
-                        String::from_utf8_lossy(&cc_name),
-                        String::from_utf8_lossy(&co_name)
+                        cc_name,
+                        co_name
                     );
                 }
                 if characters[cn].data[65] == 0 {
@@ -499,14 +504,16 @@ pub fn npc_seeattack(cn: usize, cc: usize, co: usize) -> i32 {
             }
             if cc == characters[cn].data[63] as usize {
                 if npc_add_enemy(cn, co, true) {
-                    let co_name = Repository::with_characters(|chars| chars[co].name.clone());
-                    let cc_name = Repository::with_characters(|chars| chars[cc].name.clone());
-                    npc_saytext_n(cn, 1, Some(&String::from_utf8_lossy(&co_name)));
+                    let co_name =
+                        Repository::with_characters(|chars| chars[co].get_name().to_string());
+                    let cc_name =
+                        Repository::with_characters(|chars| chars[cc].get_name().to_string());
+                    npc_saytext_n(cn, 1, Some(&co_name));
                     log::info!(
                         "NPC {} added {} to enemy list for being attacked by {} (protect char)",
                         cn,
-                        String::from_utf8_lossy(&co_name),
-                        String::from_utf8_lossy(&cc_name)
+                        co_name,
+                        cc_name
                     );
                 }
                 if characters[cn].data[65] == 0 {
@@ -519,14 +526,16 @@ pub fn npc_seeattack(cn: usize, cc: usize, co: usize) -> i32 {
         if characters[cn].data[59] != 0 {
             if characters[cn].data[59] == characters[co].data[42] {
                 if npc_add_enemy(cn, cc, true) {
-                    let cc_name = Repository::with_characters(|chars| chars[cc].name.clone());
-                    let co_name = Repository::with_characters(|chars| chars[co].name.clone());
-                    npc_saytext_n(cn, 1, Some(&String::from_utf8_lossy(&cc_name)));
+                    let cc_name =
+                        Repository::with_characters(|chars| chars[cc].get_name().to_string());
+                    let co_name =
+                        Repository::with_characters(|chars| chars[co].get_name().to_string());
+                    npc_saytext_n(cn, 1, Some(&cc_name));
                     log::info!(
                         "NPC {} added {} to enemy list for attacking {} (protect group)",
                         cn,
-                        String::from_utf8_lossy(&cc_name),
-                        String::from_utf8_lossy(&co_name)
+                        cc_name,
+                        co_name
                     );
                 }
                 if characters[cn].data[65] == 0 {
@@ -535,14 +544,16 @@ pub fn npc_seeattack(cn: usize, cc: usize, co: usize) -> i32 {
             }
             if characters[cn].data[59] == characters[cc].data[42] {
                 if npc_add_enemy(cn, co, true) {
-                    let co_name = Repository::with_characters(|chars| chars[co].name.clone());
-                    let cc_name = Repository::with_characters(|chars| chars[cc].name.clone());
-                    npc_saytext_n(cn, 1, Some(&String::from_utf8_lossy(&co_name)));
+                    let co_name =
+                        Repository::with_characters(|chars| chars[co].get_name().to_string());
+                    let cc_name =
+                        Repository::with_characters(|chars| chars[cc].get_name().to_string());
+                    npc_saytext_n(cn, 1, Some(&co_name));
                     log::info!(
                         "NPC {} added {} to enemy list for being attacked by {} (protect group)",
                         cn,
-                        String::from_utf8_lossy(&co_name),
-                        String::from_utf8_lossy(&cc_name)
+                        co_name,
+                        cc_name
                     );
                 }
                 if characters[cn].data[65] == 0 {
@@ -2012,7 +2023,7 @@ pub fn npc_driver_low(cn: usize) {
             let mut y = 0;
 
             for attempt in 0..5 {
-                // Call RANDOM function (doesn't exist yet, use placeholder)
+                // TODO: Call RANDOM function (doesn't exist yet, use placeholder)
                 x = ch_x as i32 - 5 + (ticker as i32 % 11); // RANDOM(11)
                 y = ch_y as i32 - 5 + ((ticker as i32 / 11) % 11); // RANDOM(11)
 
@@ -2261,8 +2272,7 @@ pub fn npc_driver_low(cn: usize) {
 
             if n > 0 {
                 for m_idx in 0..n {
-                    // Call pop_create_char (doesn't exist yet)
-                    let co = 0; // pop_create_char(503 + m_idx, 0);
+                    let co = populate::pop_create_char(503 + m_idx, false);
                     if co == 0 {
                         State::with(|state| {
                             state.do_sayx(cn, &format!("create char ({})", m_idx));
@@ -2271,7 +2281,7 @@ pub fn npc_driver_low(cn: usize) {
                     }
 
                     // Call god_drop_char_fuzzy (doesn't exist yet)
-                    let drop_result = false; // !god_drop_char_fuzzy(co, 452, 345);
+                    let drop_result = !God::drop_char_fuzzy(co, 452, 345);
                     if drop_result {
                         State::with(|state| {
                             state.do_sayx(cn, &format!("drop char ({})", m_idx));
@@ -2296,7 +2306,7 @@ pub fn npc_driver_low(cn: usize) {
                 });
 
                 Repository::with_characters_mut(|characters| {
-                    characters[cn].a_mana -= n * 100 * 1000;
+                    characters[cn].a_mana -= (n * 100 * 1000) as i32;
                 });
 
                 log::info!("created {} new monsters", n);
@@ -3178,9 +3188,8 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
             }
 
             if should_attack && npc_add_enemy(cn, co, false) {
-                let co_name = Repository::with_characters(|characters| {
-                    String::from_utf8_lossy(&characters[co].name).to_string()
-                });
+                let co_name =
+                    Repository::with_characters(|characters| characters[co].get_name().to_string());
                 npc_saytext_n(cn, 1, Some(&co_name));
                 log::info!(
                     "Added {} to kill list because he's not in my group",

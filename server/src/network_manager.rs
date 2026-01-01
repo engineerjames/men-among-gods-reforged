@@ -1,5 +1,4 @@
 use core::constants::{SV_SETMAP3, SV_SETMAP4, SV_SETMAP5, SV_SETMAP6};
-use std::io::Write;
 use std::net::Shutdown;
 use std::sync::{OnceLock, RwLock};
 
@@ -116,6 +115,7 @@ impl NetworkManager {
         Server::with_players_mut(|players| {
             // Bounds check: valid player slots are 1..players.len()-1
             if player_id < 1 || player_id >= players.len() {
+                log::warn!("xsend: invalid player id {}", player_id);
                 return;
             }
 
@@ -142,8 +142,8 @@ impl NetworkManager {
                 p.ltick = 0;
                 p.rtick = 0;
                 // Ensure any pending compressed output is flushed (mirror deflateEnd)
-                if let Some(z) = p.zs.as_mut() {
-                    let _ = z.flush();
+                if let Some(z) = p.zs.take().as_mut() {
+                    let _ = z.try_finish();
                 }
                 return;
             }
@@ -198,6 +198,7 @@ impl NetworkManager {
 
         Server::with_players_mut(|players| {
             if player_id < 1 || player_id >= players.len() {
+                log::warn!("csend: invalid player id {}", player_id);
                 return;
             }
 
@@ -226,8 +227,9 @@ impl NetworkManager {
                     }
                     p.ltick = 0;
                     p.rtick = 0;
-                    if let Some(z) = p.zs.as_mut() {
-                        let _ = z.flush();
+                    // Ensure any pending compressed output is flushed (mirror deflateEnd)
+                    if let Some(z) = p.zs.take().as_mut() {
+                        let _ = z.try_finish();
                     }
                     p.zs = None;
                     return;
