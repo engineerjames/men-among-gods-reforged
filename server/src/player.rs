@@ -18,6 +18,153 @@ const YECUTF: i32 = 1; // YECUT
 const XSCUTF: i32 = 2; // XSCUT
 const XECUTF: i32 = 5; // XECUT + 3
 
+/// Port of `ch_base_status` from `svr_tick.cpp`
+/// Returns the base animation frame for a character status
+fn ch_base_status(n: u8) -> u8 {
+    if n < 4 {
+        return n;
+    }
+    if n < 16 {
+        return n;
+    }
+    if n < 24 {
+        return 16;
+    }
+    if n < 32 {
+        return 24;
+    }
+    if n < 40 {
+        return 32;
+    }
+    if n < 48 {
+        return 40;
+    }
+    if n < 60 {
+        return 48;
+    }
+    if n < 72 {
+        return 60;
+    }
+    if n < 84 {
+        return 72;
+    }
+    if n < 96 {
+        return 84;
+    }
+    if n < 100 {
+        return 96;
+    }
+    if n < 104 {
+        return 100;
+    }
+    if n < 108 {
+        return 104;
+    }
+    if n < 112 {
+        return 108;
+    }
+    if n < 116 {
+        return 112;
+    }
+    if n < 120 {
+        return 116;
+    }
+    if n < 124 {
+        return 120;
+    }
+    if n < 128 {
+        return 124;
+    }
+    if n < 132 {
+        return 128;
+    }
+    if n < 136 {
+        return 132;
+    }
+    if n < 140 {
+        return 136;
+    }
+    if n < 144 {
+        return 140;
+    }
+    if n < 148 {
+        return 144;
+    }
+    if n < 152 {
+        return 148;
+    }
+    if n < 156 {
+        return 152;
+    }
+    if n < 160 {
+        return 160;
+    }
+    if n < 164 {
+        return 160;
+    }
+    if n < 168 {
+        return 160;
+    }
+    if n < 176 {
+        return 168;
+    }
+    if n < 184 {
+        return 176;
+    }
+    if n < 192 {
+        return 184;
+    }
+    if n < 200 {
+        return 192;
+    }
+    if n < 208 {
+        return 200;
+    }
+    if n < 216 {
+        return 208;
+    }
+    if n < 224 {
+        return 216;
+    }
+    n
+}
+
+/// Port of `it_base_status` from `svr_tick.cpp`
+/// Returns the base animation frame for an item status
+fn it_base_status(n: u8) -> u8 {
+    if n == 0 {
+        return 0;
+    }
+    if n == 1 {
+        return 1;
+    }
+    if n < 6 {
+        return 2;
+    }
+    if n < 8 {
+        return 6;
+    }
+    if n < 16 {
+        return 8;
+    }
+    if n < 21 {
+        return 16;
+    }
+    n
+}
+
+/// Port of `fdiff` from `svr_tick.cpp`
+/// Finds first byte that differs between two memory regions
+/// Returns index of first difference, or None if identical
+fn fdiff(a: &[u8], b: &[u8]) -> Option<usize> {
+    for (i, (byte_a, byte_b)) in a.iter().zip(b.iter()).enumerate() {
+        if byte_a != byte_b {
+            return Some(i);
+        }
+    }
+    None
+}
+
 const SPEEDTAB: [[u8; 20]; 20] = [
     [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
     [1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
@@ -3996,7 +4143,20 @@ pub fn plr_change(nr: usize) {
     plr_change_dir(nr, cn);
     plr_change_points(nr, cn);
     plr_change_gold(nr, cn);
+
+    // Send god load info every 32 ticks
+    plr_change_load(nr, cn, ticker);
+
+    // Send map position and scrolling
     plr_change_position(nr, cn);
+
+    // Send light updates
+    plr_change_light(nr);
+
+    // Send tile content updates
+    plr_change_map(nr);
+
+    // Send target updates
     plr_change_target(nr, cn);
 }
 
@@ -4460,7 +4620,360 @@ fn plr_change_gold(nr: usize, cn: usize) {
     }
 }
 
-/// Send position change to player
+/// Send server load info to gods every 32 ticks
+fn plr_change_load(nr: usize, cn: usize, ticker: i32) {
+    let is_god =
+        Repository::with_characters(|ch| (ch[cn].flags & enums::CharacterFlags::God.bits()) != 0);
+
+    if is_god && (ticker & 31) == 0 {
+        let load = Repository::with_globals(|globals| globals.load as u32);
+        let mut buf: [u8; 5] = [0; 5];
+        buf[0] = core::constants::SV_LOAD;
+        buf[1..5].copy_from_slice(&load.to_le_bytes());
+        NetworkManager::with(|network| network.xsend(nr, &buf, 5));
+    }
+}
+
+/// Light update functions - calculate efficiency of batch updates
+
+/// Updates a single light tile (least efficient)
+fn cl_light_one(n: usize, dosend: usize, update_only: bool) -> usize {
+    if !update_only {
+        // Return efficiency score: 50 * 1 / 3
+        return 50 / 3;
+    }
+
+    Server::with_players_mut(|players| {
+        let smap_light = players[dosend].smap[n].light;
+        players[dosend].cmap[n].light = smap_light;
+
+        let mut buf: [u8; 3] = [0; 3];
+        buf[0] = core::constants::SV_SETMAP4;
+        let encoded = (n as u16) | ((smap_light as u16) << 12);
+        buf[1] = (encoded & 0xff) as u8;
+        buf[2] = ((encoded >> 8) & 0xff) as u8;
+
+        NetworkManager::with(|network| network.xsend(dosend, &buf, 3));
+    });
+    1
+}
+
+/// Updates three light tiles
+fn cl_light_three(n: usize, dosend: usize, update_only: bool) -> usize {
+    if !update_only {
+        // Count differences and return efficiency
+        let l = Server::with_players(|players| {
+            let mut count = 0;
+            let total = core::constants::TILEX * core::constants::TILEY;
+            for m in n..std::cmp::min(n + 3, total) {
+                if players[dosend].cmap[m].light != players[dosend].smap[m].light {
+                    count += 1;
+                }
+            }
+            count
+        });
+        return 50 * l / 4;
+    }
+
+    Server::with_players_mut(|players| {
+        let mut buf: [u8; 4] = [0; 4];
+        buf[0] = core::constants::SV_SETMAP5;
+
+        let smap_light = players[dosend].smap[n].light;
+        players[dosend].cmap[n].light = smap_light;
+        let encoded = (n as u16) | ((smap_light as u16) << 12);
+        buf[1] = (encoded & 0xff) as u8;
+        buf[2] = ((encoded >> 8) & 0xff) as u8;
+
+        let total = core::constants::TILEX * core::constants::TILEY;
+        let mut p = 3;
+        let mut m = n + 2;
+        while m < std::cmp::min(n + 2 + 2, total) {
+            let light_m = players[dosend].smap[m].light;
+            let light_m1 = players[dosend].smap[m - 1].light;
+            buf[p] = light_m | (light_m1 << 4);
+            players[dosend].cmap[m].light = light_m;
+            players[dosend].cmap[m - 1].light = light_m1;
+            m += 2;
+            p += 1;
+        }
+
+        NetworkManager::with(|network| network.xsend(dosend, &buf, 4));
+    });
+    1
+}
+
+/// Updates seven light tiles
+fn cl_light_seven(n: usize, dosend: usize, update_only: bool) -> usize {
+    if !update_only {
+        // Count differences and return efficiency
+        let l = Server::with_players(|players| {
+            let mut count = 0;
+            let total = core::constants::TILEX * core::constants::TILEY;
+            for m in n..std::cmp::min(n + 7, total) {
+                if players[dosend].cmap[m].light != players[dosend].smap[m].light {
+                    count += 1;
+                }
+            }
+            count
+        });
+        return 50 * l / 6;
+    }
+
+    Server::with_players_mut(|players| {
+        let mut buf: [u8; 6] = [0; 6];
+        buf[0] = core::constants::SV_SETMAP6;
+
+        let smap_light = players[dosend].smap[n].light;
+        players[dosend].cmap[n].light = smap_light;
+        let encoded = (n as u16) | ((smap_light as u16) << 12);
+        buf[1] = (encoded & 0xff) as u8;
+        buf[2] = ((encoded >> 8) & 0xff) as u8;
+
+        let total = core::constants::TILEX * core::constants::TILEY;
+        let mut p = 3;
+        let mut m = n + 2;
+        while m < std::cmp::min(n + 6 + 2, total) {
+            let light_m = players[dosend].smap[m].light;
+            let light_m1 = players[dosend].smap[m - 1].light;
+            buf[p] = light_m | (light_m1 << 4);
+            players[dosend].cmap[m].light = light_m;
+            players[dosend].cmap[m - 1].light = light_m1;
+            m += 2;
+            p += 1;
+        }
+
+        NetworkManager::with(|network| network.xsend(dosend, &buf, 6));
+    });
+    1
+}
+
+/// Updates 27 light tiles (most efficient for large batches)
+fn cl_light_26(n: usize, dosend: usize, update_only: bool) -> usize {
+    if !update_only {
+        // Count differences and return efficiency
+        let l = Server::with_players(|players| {
+            let mut count = 0;
+            let total = core::constants::TILEX * core::constants::TILEY;
+            for m in n..std::cmp::min(n + 27, total) {
+                if players[dosend].cmap[m].light != players[dosend].smap[m].light {
+                    count += 1;
+                }
+            }
+            count
+        });
+        return 50 * l / 16;
+    }
+
+    Server::with_players_mut(|players| {
+        let mut buf: [u8; 16] = [0; 16];
+        buf[0] = core::constants::SV_SETMAP3;
+
+        let smap_light = players[dosend].smap[n].light;
+        players[dosend].cmap[n].light = smap_light;
+        let encoded = (n as u16) | ((smap_light as u16) << 12);
+        buf[1] = (encoded & 0xff) as u8;
+        buf[2] = ((encoded >> 8) & 0xff) as u8;
+
+        let total = core::constants::TILEX * core::constants::TILEY;
+        let mut p = 3;
+        let mut m = n + 2;
+        while m < std::cmp::min(n + 26 + 2, total) {
+            let light_m = players[dosend].smap[m].light;
+            let light_m1 = players[dosend].smap[m - 1].light;
+            buf[p] = light_m | (light_m1 << 4);
+            players[dosend].cmap[m].light = light_m;
+            players[dosend].cmap[m - 1].light = light_m1;
+            m += 2;
+            p += 1;
+        }
+
+        NetworkManager::with(|network| network.xsend(dosend, &buf, 16));
+    });
+    1
+}
+
+/// Send light updates for all changed tiles
+fn plr_change_light(nr: usize) {
+    let total = core::constants::TILEX * core::constants::TILEY;
+
+    for n in 0..total {
+        let light_changed =
+            Server::with_players(|players| players[nr].cmap[n].light != players[nr].smap[n].light);
+
+        if light_changed {
+            // Try each light update function and pick the most efficient
+            let mut best_efficiency = 0;
+            let mut best_func = 0;
+
+            let lfuncs: [fn(usize, usize, bool) -> usize; 4] =
+                [cl_light_one, cl_light_three, cl_light_seven, cl_light_26];
+
+            for (idx, func) in lfuncs.iter().enumerate() {
+                let efficiency = func(n, nr, false);
+                if efficiency >= best_efficiency {
+                    best_efficiency = efficiency;
+                    best_func = idx;
+                }
+            }
+
+            // Execute the best function
+            lfuncs[best_func](n, nr, true);
+        }
+    }
+}
+
+/// Send map tile content updates for all changed tiles
+fn plr_change_map(nr: usize) {
+    let total = core::constants::TILEX * core::constants::TILEY;
+    let mut lastn: i32 = -1;
+    let mut n = 0;
+
+    while n < total {
+        // Check if this tile has changed (matching C++ fdiff behavior)
+        let has_diff = Server::with_players(|players| {
+            let cmap_bytes = unsafe {
+                std::slice::from_raw_parts(
+                    &players[nr].cmap[n] as *const _ as *const u8,
+                    std::mem::size_of::<core::types::CMap>(),
+                )
+            };
+            let smap_bytes = unsafe {
+                std::slice::from_raw_parts(
+                    &players[nr].smap[n] as *const _ as *const u8,
+                    std::mem::size_of::<core::types::CMap>(),
+                )
+            };
+            fdiff(cmap_bytes, smap_bytes).is_some()
+        });
+
+        if !has_diff {
+            n += 1;
+            continue;
+        }
+
+        // Build update packet and modify player data
+        let updated = Server::with_players_mut(|players| {
+            let mut buf: [u8; 256] = [0; 256];
+            let mut p: usize;
+
+            // Encode tile index efficiently (matching C++ logic)
+            if lastn >= 0 && (n as i32 - lastn) < 127 && n as i32 > lastn {
+                buf[0] = core::constants::SV_SETMAP | ((n as i32 - lastn) as u8);
+                buf[1] = 0;
+                p = 2;
+            } else {
+                buf[0] = core::constants::SV_SETMAP;
+                buf[1] = 0;
+                let n_bytes = (n as u16).to_le_bytes();
+                buf[2] = n_bytes[0];
+                buf[3] = n_bytes[1];
+                p = 4;
+            }
+
+            let cmap = &players[nr].cmap[n];
+            let smap = &players[nr].smap[n];
+
+            // Check each field and add to update if changed
+            if cmap.ba_sprite != smap.ba_sprite {
+                buf[1] |= 1;
+                let bytes = smap.ba_sprite.to_le_bytes();
+                buf[p] = bytes[0];
+                buf[p + 1] = bytes[1];
+                p += 2;
+            }
+
+            if cmap.flags != smap.flags {
+                buf[1] |= 2;
+                let bytes = smap.flags.to_le_bytes();
+                buf[p..p + 4].copy_from_slice(&bytes);
+                p += 4;
+            }
+
+            if cmap.flags2 != smap.flags2 {
+                buf[1] |= 4;
+                let bytes = smap.flags2.to_le_bytes();
+                buf[p..p + 4].copy_from_slice(&bytes);
+                p += 4;
+            }
+
+            if cmap.it_sprite != smap.it_sprite {
+                buf[1] |= 8;
+                let bytes = smap.it_sprite.to_le_bytes();
+                buf[p] = bytes[0];
+                buf[p + 1] = bytes[1];
+                p += 2;
+            }
+
+            if cmap.it_status != smap.it_status
+                && it_base_status(cmap.it_status) != it_base_status(smap.it_status)
+            {
+                buf[1] |= 16;
+                buf[p] = smap.it_status;
+                p += 1;
+            }
+
+            if cmap.ch_sprite != smap.ch_sprite
+                || (cmap.ch_status != smap.ch_status
+                    && ch_base_status(cmap.ch_status) != ch_base_status(smap.ch_status))
+                || cmap.ch_status2 != smap.ch_status2
+            {
+                buf[1] |= 32;
+                let bytes = smap.ch_sprite.to_le_bytes();
+                buf[p] = bytes[0];
+                buf[p + 1] = bytes[1];
+                p += 2;
+                buf[p] = smap.ch_status;
+                p += 1;
+                buf[p] = smap.ch_status2;
+                p += 1;
+            }
+
+            if cmap.ch_speed != smap.ch_speed
+                || cmap.ch_nr != smap.ch_nr
+                || cmap.ch_id != smap.ch_id
+            {
+                buf[1] |= 64;
+                let nr_bytes = smap.ch_nr.to_le_bytes();
+                buf[p] = nr_bytes[0];
+                buf[p + 1] = nr_bytes[1];
+                p += 2;
+                let id_bytes = smap.ch_id.to_le_bytes();
+                buf[p] = id_bytes[0];
+                buf[p + 1] = id_bytes[1];
+                p += 2;
+                buf[p] = smap.ch_speed;
+                p += 1;
+            }
+
+            if cmap.ch_proz != smap.ch_proz {
+                buf[1] |= 128;
+                buf[p] = smap.ch_proz;
+                p += 1;
+            }
+
+            // Only send if we actually found changes (matching C++ if (buf[1]))
+            let did_update = buf[1] != 0;
+            if did_update {
+                NetworkManager::with(|network| network.xsend(nr, &buf, p as u8));
+            }
+
+            // Copy smap to cmap for this tile (matching C++ mcpy)
+            players[nr].cmap[n] = players[nr].smap[n];
+
+            did_update
+        });
+
+        // Update lastn after the modification (matching C++ behavior)
+        if updated {
+            lastn = n as i32;
+        }
+
+        n += 1;
+    }
+}
+
+/// Send position change to player with map scrolling
 fn plr_change_position(nr: usize, cn: usize) {
     let (x, y, cpl_x, cpl_y) = Repository::with_characters(|ch| {
         Server::with_players(|players| (ch[cn].x, ch[cn].y, players[nr].cpl.x, players[nr].cpl.y))
@@ -4468,9 +4981,113 @@ fn plr_change_position(nr: usize, cn: usize) {
 
     if x as i32 != cpl_x || y as i32 != cpl_y {
         let mut buf: [u8; 16] = [0; 16];
-        buf[0] = core::constants::SV_SETORIGIN;
 
-        // Match C++: send origin as (ch.x - TILEX/2, ch.y - TILEY/2)
+        // Handle scrolling cases to optimize map updates
+        if cpl_x == (x as i32 - 1) && cpl_y == y as i32 {
+            // Scroll right
+            buf[0] = core::constants::SV_SCROLL_RIGHT;
+            NetworkManager::with(|network| network.xsend(nr, &buf, 1));
+
+            // Shift cmap left (moving right means old data shifts left)
+            Server::with_players_mut(|players| {
+                let cmap = &mut players[nr].cmap;
+                let total = core::constants::TILEX * core::constants::TILEY;
+                cmap.copy_within(1..total, 0);
+            });
+        } else if cpl_x == (x as i32 + 1) && cpl_y == y as i32 {
+            // Scroll left
+            buf[0] = core::constants::SV_SCROLL_LEFT;
+            NetworkManager::with(|network| network.xsend(nr, &buf, 1));
+
+            // Shift cmap right (moving left means old data shifts right)
+            Server::with_players_mut(|players| {
+                let cmap = &mut players[nr].cmap;
+                let total = core::constants::TILEX * core::constants::TILEY;
+                cmap.copy_within(0..(total - 1), 1);
+            });
+        } else if cpl_x == x as i32 && cpl_y == (y as i32 - 1) {
+            // Scroll down
+            buf[0] = core::constants::SV_SCROLL_DOWN;
+            NetworkManager::with(|network| network.xsend(nr, &buf, 1));
+
+            // Shift cmap up (moving down means old data shifts up)
+            Server::with_players_mut(|players| {
+                let cmap = &mut players[nr].cmap;
+                let tilex = core::constants::TILEX;
+                let total = core::constants::TILEX * core::constants::TILEY;
+                cmap.copy_within(tilex..total, 0);
+            });
+        } else if cpl_x == x as i32 && cpl_y == (y as i32 + 1) {
+            // Scroll up
+            buf[0] = core::constants::SV_SCROLL_UP;
+            NetworkManager::with(|network| network.xsend(nr, &buf, 1));
+
+            // Shift cmap down (moving up means old data shifts down)
+            Server::with_players_mut(|players| {
+                let cmap = &mut players[nr].cmap;
+                let tilex = core::constants::TILEX;
+                let total = core::constants::TILEX * core::constants::TILEY;
+                cmap.copy_within(0..(total - tilex), tilex);
+            });
+        } else if cpl_x == (x as i32 + 1) && cpl_y == (y as i32 + 1) {
+            // Scroll left-up
+            buf[0] = core::constants::SV_SCROLL_LEFTUP;
+            NetworkManager::with(|network| network.xsend(nr, &buf, 1));
+
+            Server::with_players_mut(|players| {
+                let cmap = &mut players[nr].cmap;
+                let tilex = core::constants::TILEX;
+                let total = core::constants::TILEX * core::constants::TILEY;
+                cmap.copy_within(0..(total - tilex - 1), tilex + 1);
+            });
+        } else if cpl_x == (x as i32 + 1) && cpl_y == (y as i32 - 1) {
+            // Scroll left-down
+            buf[0] = core::constants::SV_SCROLL_LEFTDOWN;
+            NetworkManager::with(|network| network.xsend(nr, &buf, 1));
+
+            // C++: memmove(cmap, cmap + TILEX - 1, sizeof(struct cmap) * (TILEX * TILEY - TILEX + 1))
+            Server::with_players_mut(|players| {
+                let cmap = &mut players[nr].cmap;
+                let tilex = core::constants::TILEX;
+                let total = core::constants::TILEX * core::constants::TILEY;
+                cmap.copy_within((tilex - 1)..total, 0);
+            });
+        } else if cpl_x == (x as i32 - 1) && cpl_y == (y as i32 + 1) {
+            // Scroll right-up
+            buf[0] = core::constants::SV_SCROLL_RIGHTUP;
+            NetworkManager::with(|network| network.xsend(nr, &buf, 1));
+
+            // C++: memmove(cmap + TILEX - 1, cmap, sizeof(struct cmap) * (TILEX * TILEY - TILEX + 1))
+            Server::with_players_mut(|players| {
+                let cmap = &mut players[nr].cmap;
+                let tilex = core::constants::TILEX;
+                let total = core::constants::TILEX * core::constants::TILEY;
+                cmap.copy_within(0..(total - tilex + 1), tilex - 1);
+            });
+        } else if cpl_x == (x as i32 - 1) && cpl_y == (y as i32 - 1) {
+            // Scroll right-down
+            buf[0] = core::constants::SV_SCROLL_RIGHTDOWN;
+            NetworkManager::with(|network| network.xsend(nr, &buf, 1));
+
+            // C++: memmove(cmap, cmap + TILEX + 1, sizeof(struct cmap) * (TILEX * TILEY - TILEX - 1))
+            Server::with_players_mut(|players| {
+                let cmap = &mut players[nr].cmap;
+                let tilex = core::constants::TILEX;
+                let total = core::constants::TILEX * core::constants::TILEY;
+                let src_start = tilex + 1;
+                let count = total - tilex - 1;
+                cmap.copy_within(src_start..(src_start + count), 0);
+            });
+        }
+
+        // Update position in cpl
+        Server::with_players_mut(|players| {
+            players[nr].cpl.x = x as i32;
+            players[nr].cpl.y = y as i32;
+        });
+
+        // Send origin update
+        buf[0] = core::constants::SV_SETORIGIN;
         let ox: i16 = (x as i32 - (core::constants::TILEX as i32 / 2)) as i16;
         let oy: i16 = (y as i32 - (core::constants::TILEY as i32 / 2)) as i16;
         let ox_b = ox.to_le_bytes();
@@ -4479,15 +5096,7 @@ fn plr_change_position(nr: usize, cn: usize) {
         buf[2] = ox_b[1];
         buf[3] = oy_b[0];
         buf[4] = oy_b[1];
-
-        NetworkManager::with(|network| {
-            network.xsend(nr, &buf, 5);
-        });
-
-        Server::with_players_mut(|players| {
-            players[nr].cpl.x = x as i32;
-            players[nr].cpl.y = y as i32;
-        });
+        NetworkManager::with(|network| network.xsend(nr, &buf, 5));
     }
 }
 
