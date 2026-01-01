@@ -28,13 +28,6 @@ use flate2::Compression;
 static PLAYERS: OnceLock<ReentrantMutex<UnsafeCell<Box<[core::types::ServerPlayer; MAXPLAYER]>>>> =
     OnceLock::new();
 
-/// Microseconds per tick (matching original C++ TICK value).
-/// Calculated as 1_000_000 / TICKS.
-const TICK: u64 = 1_000_000 / TICKS; // 40ms per tick
-
-/// Desired ticks per second for the server main loop.
-const TICKS: u64 = 25; // ticks per second
-
 /// Per-character scheduling hints used by `game_tick`.
 ///
 /// Determines which processing path a character should take on a tick:
@@ -289,7 +282,8 @@ impl Server {
 
         // Check if it's time for a game tick (equivalent to: if (ttime > ltime))
         if now > last_time {
-            self.last_tick_time = Some(last_time + Duration::from_micros(TICK));
+            self.last_tick_time =
+                Some(last_time + Duration::from_micros(core::constants::TICK as u64));
 
             // Call main game tick (equivalent to: tick() in C++)
             self.game_tick();
@@ -301,18 +295,17 @@ impl Server {
             let new_last = self.last_tick_time.unwrap();
 
             // Check if server is running too slow (serious slowness detection)
-            if new_now > new_last + Duration::from_micros(TICK * TICKS * 10) {
+            // In the original C++ this threshold was `TICK * TICKS * 10` (10 seconds).
+            if new_now > new_last + Duration::from_secs(10) {
                 log::warn!("Server too slow");
                 self.last_tick_time = Some(new_now);
             }
         }
 
-        // Handle network I/O every 8th tick (equivalent to: if (globs->ticker % 8 == 0))
-        let should_handle_network = Repository::with_globals(|globals| globals.ticker % 8 == 0);
-
-        if should_handle_network {
-            self.handle_network_io();
-        }
+        // Handle network I/O every scheduling tick.
+        // Limiting this to every Nth game tick introduces noticeable input lag
+        // and delayed map/tick packet delivery.
+        self.handle_network_io();
 
         // Sleep for remaining time until next tick
         let current_time = Instant::now();
@@ -500,7 +493,7 @@ impl Server {
                     let should_remove = Repository::with_characters_mut(|ch| {
                         if ch[n].flags & CharacterFlags::Player.bits() == 0 {
                             ch[n].data[98] += 1;
-                            if ch[n].data[98] > (TICKS * 60 * 30) as i32 {
+                            if ch[n].data[98] > (core::constants::TICKS * 60 * 30) as i32 {
                                 return true;
                             }
                         }
@@ -624,7 +617,7 @@ impl Server {
         }
 
         Repository::with_characters_mut(|ch| {
-            ch[wakeup_idx].data[92] = (TICKS * 60) as i32;
+            ch[wakeup_idx].data[92] = (core::constants::TICKS * 60) as i32;
         });
 
         WAKEUP.store(wakeup_idx + 1, std::sync::atomic::Ordering::Relaxed);
