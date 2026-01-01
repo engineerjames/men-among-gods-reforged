@@ -5,6 +5,7 @@ use crate::player;
 use crate::populate;
 use crate::{god::God, repository::Repository, state::State};
 use core::constants::*;
+use core::string_operations::c_string_to_str;
 use rand::Rng;
 
 // Helper functions
@@ -218,28 +219,23 @@ pub fn npc_saytext_n(npc: usize, n: usize, name: Option<&str>) {
             return;
         }
 
+        let text = if let Some(name_str) = name {
+            c_string_to_str(&ch_npc.text[n]).replace("%s", name_str)
+        } else {
+            c_string_to_str(&ch_npc.text[n]).to_string()
+        };
+
         if !ch_npc.text[n].is_empty() {
             let temp = ch_npc.temp;
             let talkative = ch_npc.data[71]; // CHD_TALKATIVE
 
             if temp == CT_COMPANION as u16 {
                 if talkative == -10 {
-                    let text = if let Some(name_str) = name {
-                        String::from_utf8_lossy(&ch_npc.text[n]).replace("%1", name_str)
-                    } else {
-                        String::from_utf8_lossy(&ch_npc.text[n]).to_string()
-                    };
                     State::with(|state| {
                         state.do_sayx(npc, &text);
                     });
                 }
             } else {
-                let text = if let Some(name_str) = name {
-                    String::from_utf8_lossy(&ch_npc.text[n]).replace("%1", name_str)
-                } else {
-                    String::from_utf8_lossy(&ch_npc.text[n]).to_string()
-                };
-
                 State::with(|state| {
                     state.do_sayx(npc, &text);
                 });
