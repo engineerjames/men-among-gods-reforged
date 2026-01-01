@@ -204,6 +204,12 @@ impl Server {
         Labyrinth9::initialize()?;
         populate::reset_changed_items();
 
+        // Build initial light map from placed light sources (items/chars).
+        // Without this, `map[m].light` stays zero and the player's viewport
+        // can render fully black even in lit areas.
+        log::info!("Initializing map lighting...");
+        populate::init_lights();
+
         log::info!("Checking for lab items on players...");
         Repository::with_items_mut(|it| {
             for n in 1..core::constants::MAXITEM {

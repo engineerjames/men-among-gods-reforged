@@ -1,8 +1,15 @@
-use core::string_operations::c_string_to_str;
+use core::{
+    constants::{
+        ItemFlags, INFRARED, INJURED, INJURED1, INJURED2, INVIS, ISCHAR, ISITEM, ISUSABLE,
+        MF_GFX_CMAGIC, MF_GFX_DEATH, MF_GFX_EMAGIC, MF_GFX_GMAGIC, MF_GFX_INJURED, MF_GFX_INJURED1,
+        MF_GFX_INJURED2, MF_GFX_TOMB, MF_UWATER, STONED, STUNNED, UWATER,
+    },
+    string_operations::c_string_to_str,
+};
 
 use crate::{
-    driver, enums, god::God, network_manager::NetworkManager, repository::Repository,
-    server::Server, state::State,
+    driver, enums, god::God, helpers::char_id, network_manager::NetworkManager,
+    repository::Repository, server::Server, state::State,
 };
 
 // Fast cut values (relative to the complete implementation)
@@ -357,7 +364,6 @@ pub fn player_exit(player_id: usize) {
                 .find(|ch| ch.player as usize == player_id);
 
             if char.is_none() {
-                log::error!("player_exit: No character found for player {}", player_id);
                 return;
             }
 
@@ -2564,533 +2570,362 @@ pub fn plr_getmap(nr: usize) {
 }
 
 pub fn plr_getmap_complete(nr: usize) {
-    // Conservative port of the original `plr_getmap_complete`.
-    // This computes the player's small-map (`smap`) for the visible window
-    // around the character and stores it into `players[nr].smap`.
-    // It uses existing State visibility helpers to compute line-of-sight
-    // and daylight, and fills in basic fields (background, item, char,
-    // flags, light) so that the later `plr_change` comparison can send
-    // the appropriate updates to the client.
+    let cn = Server::with_players(|players| players[nr].usnr as usize);
 
-    // Cut values used by the original implementation
+    // We copy it out here so we HAVE to write it back.
+    let mut smap = Server::with_players(|players| players[nr].smap);
+
     const YSCUT: i32 = 3;
     const YECUT: i32 = 1;
     const XSCUT: i32 = 2;
     const XECUT: i32 = 2;
 
-    // Get character number (cn) controlled by this player
-    let cn = Server::with_players(|players| players[nr].usnr as usize);
-    if cn == 0 || cn >= core::constants::MAXCHARS as usize {
-        return;
+    let ys = Repository::with_characters(|characters| {
+        characters[cn].y as i32 - (core::constants::TILEY as i32 / 2) + YSCUT
+    });
+    let ye = Repository::with_characters(|characters| {
+        characters[cn].y as i32 + (core::constants::TILEY as i32 / 2) - YECUT
+    });
+    let xs = Repository::with_characters(|characters| {
+        characters[cn].x as i32 - (core::constants::TILEX as i32 / 2) + XSCUT
+    });
+    let xe = Repository::with_characters(|characters| {
+        characters[cn].x as i32 + (core::constants::TILEX as i32 / 2) - XECUT
+    });
+
+    let current_x = Repository::with_characters(|characters| characters[cn].x as i32);
+    let current_y = Repository::with_characters(|characters| characters[cn].y as i32);
+
+    State::with_mut(|state| {
+        state.can_see(
+            Some(cn),
+            current_x,
+            current_y,
+            current_x + 1,
+            current_y + 1,
+            16,
+        )
+    });
+
+    let player_vx = Server::with_players(|players| players[nr].vx);
+    let player_vy = Server::with_players(|players| players[nr].vy);
+    let player_visi = Server::with_players(|players| players[nr].visi);
+
+    let see_x = Repository::with_see_map(|see_maps| see_maps[cn].x);
+    let see_y = Repository::with_see_map(|see_maps| see_maps[cn].y);
+    let see_vis = Repository::with_see_map(|see_maps| see_maps[cn].vis);
+
+    let mut do_all = false;
+    if player_vx != see_x || player_vy != see_y || player_visi != see_vis || player_visi != see_vis
+    {
+        Server::with_players_mut(|players| {
+            players[nr].vx = see_x;
+            players[nr].vy = see_y;
+            players[nr].visi = see_vis;
+        });
+        do_all = true;
     }
 
-    // Trigger recomputation of the visibility map for this character
-    let (ch_x, ch_y) = Repository::with_characters(|characters| {
-        (characters[cn].x as i32, characters[cn].y as i32)
-    });
-    State::with_mut(|state| {
-        let _ = state.can_see(Some(cn), ch_x, ch_y, ch_x + 1, ch_y + 1, 16);
-    });
+    if Repository::with_characters(|ch| ch[cn].is_building()) {
+        do_all = true;
+    }
 
-    // Snapshot see_map for this character
-    let see = Repository::with_see_map(|see_map| see_map[cn]);
-
-    // Compute region to update
-    let ys = ch_y - (core::constants::TILEY as i32 / 2) + YSCUT;
-    let ye = ch_y + (core::constants::TILEY as i32 / 2) - YECUT;
-    let xs = ch_x - (core::constants::TILEX as i32 / 2) + XSCUT;
-    let xe = ch_x + (core::constants::TILEX as i32 / 2) - XECUT;
-
-    // Determine whether we must force full resend (visibility changed or building)
-    let _visibility_changed = Server::with_players(|players| {
-        let p = &players[nr];
-        if p.vx != see.x || p.vy != see.y {
-            return true;
-        }
-        // compare visual arrays
-        for i in 0..(40 * 40) {
-            if p.visi[i] != see.vis[i] {
-                return true;
+    let mut n = (YSCUT * core::constants::TILEX as i32 + XSCUT) as usize;
+    let mut m = (xs + ys * core::constants::SERVER_MAPX) as usize;
+    let mut y = ys;
+    let mut infra = false;
+    while y < ye {
+        let mut x = xs;
+        while x < xe {
+            // empty body - iteration only
+            let map_m = Repository::with_map(|map| map[m]);
+            if do_all
+                || map_m.it != 0
+                || map_m.ch as usize != 0
+                || Server::with_players(|player| player[nr].xmap[n]) != map_m
+            {
+                Server::with_players_mut(|player| player[nr].xmap[n] = map_m)
+            } else {
+                // Still need to advance indices
+                x += 1;
+                n += 1;
+                m += 1;
+                continue;
             }
-        }
-        false
-    });
-    let _do_all = _visibility_changed
-        || Repository::with_characters(|characters| characters[cn].is_building());
 
-    // Iterate window and fill smap entries
-    Server::with_players_mut(|players| {
-        // start indices into small map
-        let mut n = (YSCUT as usize) * core::constants::TILEX + XSCUT as usize;
-        let mut map_y = ys;
-
-        for _y in ys..ye {
-            let mut map_x = xs;
-            for _x in xs..xe {
-                let m = (map_x as usize)
-                    .wrapping_add((map_y as usize) * core::constants::SERVER_MAPX as usize);
-
-                // default empty
+            if x < 0
+                || y < 0
+                || x >= core::constants::SERVER_MAPX as i32
+                || y >= core::constants::SERVER_MAPY as i32
+            {
+                // TODO: Verify this is actually empty tile behavior
                 let mut new_cmap = core::types::CMap::default();
                 new_cmap.ba_sprite = core::constants::SPR_EMPTY as i16;
-
-                // If outside world bounds -> leave empty
-                if map_x < 0
-                    || map_y < 0
-                    || map_x >= core::constants::SERVER_MAPX as i32
-                    || map_y >= core::constants::SERVER_MAPY as i32
-                {
+                Server::with_players_mut(|players| {
                     players[nr].smap[n] = new_cmap;
-                    n += 1;
-                    map_x += 1;
-                    continue;
-                }
-
-                // Retrieve the authoritative map tile
-                let map_tile = Repository::with_map(|map| map[m]);
-
-                // compute light and visibility
-                let tmp = State::check_dlightm(m);
-                let mut light = std::cmp::max(map_tile.light as i32, tmp);
-                light = State::with_mut(|state| state.do_character_calculate_light(cn, light));
-
-                let infra = Repository::with_characters(|characters| {
-                    (characters[cn].flags & enums::CharacterFlags::Infrared.bits()) != 0
                 });
-                let infra_flag = if light <= 5 && infra { 1 } else { 0 };
-
-                if light == 0 && Repository::with_map(|map| map[m].ch as usize) == cn {
-                    light = 1;
-                }
-
-                if light == 0 {
-                    // nothing visible
-                    players[nr].smap[n] = new_cmap;
-                    n += 1;
-                    map_x += 1;
-                    continue;
-                }
-
-                // Client packets encode light in 4 bits (0..15).
-                new_cmap.light = std::cmp::min(std::cmp::max(light, 0), 15) as u8;
-
-                // --- Flags ---
-                let mut flags: u32 = 0;
-                if (map_tile.flags & core::constants::MF_UWATER as u64) != 0 {
-                    flags |= core::constants::UWATER;
-                }
-                if infra_flag != 0 {
-                    flags |= core::constants::INFRARED;
-                }
-                // building copy
-                let mut flags2: u32 = 0;
-                if Repository::with_characters(|characters| characters[cn].is_building()) {
-                    flags2 = map_tile.flags as u32;
-                }
-
-                new_cmap.flags = flags;
-                new_cmap.flags2 = flags2;
-
-                // background sprite
-                new_cmap.ba_sprite = map_tile.sprite as i16;
-
-                // --- Character ---
-                let co = Repository::with_map(|map| map[m].ch as usize);
-                if co != 0 {
-                    let can_see = State::with_mut(|state| state.do_char_can_see(cn, co));
-                    if can_see != 0 {
-                        // basic character info
-                        let ch = Repository::with_characters(|characters| characters[co]);
-                        if ch.sprite_override != 0 {
-                            new_cmap.ch_sprite = ch.sprite_override as i16;
-                        } else {
-                            new_cmap.ch_sprite = ch.sprite as i16;
-                        }
-                        new_cmap.ch_status = ch.status as u8;
-                        new_cmap.ch_status2 = ch.status2 as u8;
-                        new_cmap.ch_speed = ch.speed as u8;
-                        new_cmap.ch_nr = co as u16;
-                        new_cmap.ch_id = crate::helpers::char_id(co) as u16;
-                        // health percent (best-effort)
-                        new_cmap.ch_proz = if ch.hp[5] > 0 {
-                            ((ch.hp[5] as u32 * 100) / ch.hp[5].max(1) as u32) as u8
-                        } else {
-                            0
-                        };
-                        new_cmap.flags |= core::constants::ISCHAR;
-                        if ch.stunned != 0 {
-                            new_cmap.flags |= core::constants::STUNNED;
-                        }
-                        if (ch.flags & enums::CharacterFlags::Stoned.bits()) != 0 {
-                            new_cmap.flags |= core::constants::TOMB;
-                        }
-                    }
-                }
-
-                // --- Item ---
-                if map_tile.fsprite != 0 {
-                    new_cmap.it_sprite = map_tile.fsprite as i16;
-                    new_cmap.it_status = 0;
-                } else {
-                    let it_id = Repository::with_map(|map| map[m].it as usize);
-                    if it_id != 0 {
-                        let visible_item =
-                            State::with_mut(|state| state.do_char_can_see_item(cn, it_id)) != 0;
-                        if visible_item {
-                            let it = Repository::with_items(|items| items[it_id]);
-                            new_cmap.it_sprite = if it.active != 0 {
-                                it.sprite[1]
-                            } else {
-                                it.sprite[0]
-                            };
-                            let active_idx = if it.active != 0 { 1 } else { 0 };
-                            new_cmap.it_status = it.status[active_idx];
-                            new_cmap.flags |= core::constants::ISITEM;
-                        }
-                    }
-                }
-
-                players[nr].smap[n] = new_cmap;
-
-                // remember copy of map for later diffs
-                players[nr].xmap[n] = Repository::with_map(|map| map[m]);
-
+                x += 1;
                 n += 1;
-                map_x += 1;
+                m += 1;
+                continue;
             }
 
-            // Advance to the next row start in the fixed TILEX-wide smap buffer.
-            // Matches the original C++: `n += XSCUT + XECUT`.
-            n += (XSCUT + XECUT) as usize;
-            map_y += 1;
-        }
+            let tmp = State::check_dlightm(m);
 
-        // update vx, vy and visi copy
-        players[nr].vx = see.x;
-        players[nr].vy = see.y;
-        players[nr].visi.copy_from_slice(&see.vis);
-    });
+            let mut light = std::cmp::max(Repository::with_map(|map| map[m].light as i32), tmp);
+            light = State::with_mut(|state| state.do_character_calculate_light(cn, light));
 
-    // Now compute diffs between the client's `cmap` and the newly computed `smap`
-    // and send minimal update packets using the same packet types and
-    // run-length/light-grouping heuristics as the original C++ server.
-    {
-        use core::constants::{SV_SETMAP, SV_SETMAP3, SV_SETMAP4, SV_SETMAP5, SV_SETMAP6};
-
-        let tile_count = (core::constants::TILEX * core::constants::TILEY) as usize;
-
-        // Snapshot the current client-map (`cmap`) and the computed small-map (`smap`).
-        let mut cmap = Server::with_players(|players| players[nr].cmap);
-        let smap = Server::with_players(|players| players[nr].smap);
-
-        // helper: base-status for items
-        fn it_base_status(n: u8) -> u8 {
-            if n == 0 {
-                return 0;
-            }
-            if n == 1 {
-                return 1;
-            }
-            if n < 6 {
-                return 2;
-            }
-            if n < 8 {
-                return 6;
-            }
-            if n < 16 {
-                return 8;
-            }
-            if n < 21 {
-                return 16;
-            }
-            n
-        }
-
-        // helper: base-status for characters
-        fn ch_base_status(n: u8) -> u8 {
-            if n < 4 {
-                return n;
-            }
-            if n < 16 {
-                return n;
-            }
-            if n < 24 {
-                return 16;
-            }
-            if n < 32 {
-                return 24;
-            }
-            if n < 40 {
-                return 32;
-            }
-            if n < 48 {
-                return 40;
-            }
-            if n < 60 {
-                return 48;
-            }
-            n
-        }
-
-        // equality check for two CMap entries
-        fn cmap_eq(a: &core::types::CMap, b: &core::types::CMap) -> bool {
-            a.ba_sprite == b.ba_sprite
-                && a.light == b.light
-                && a.flags == b.flags
-                && a.flags2 == b.flags2
-                && a.ch_sprite == b.ch_sprite
-                && a.ch_status2 == b.ch_status2
-                && a.ch_status == b.ch_status
-                && a.ch_speed == b.ch_speed
-                && a.ch_nr == b.ch_nr
-                && a.ch_id == b.ch_id
-                && a.ch_proz == b.ch_proz
-                && a.it_sprite == b.it_sprite
-                && a.it_status == b.it_status
-        }
-
-        // Light-grouping helpers: compute score (efficiency) and send packets
-        let cl_sizes = [1usize, 3usize, 7usize, 26usize];
-        let cl_bytes = [3usize, 4usize, 6usize, 16usize];
-
-        // scoring: emulate original (50 * count / bytes)
-        let mut n = 0usize;
-        while n < tile_count {
-            if cmap[n].light != smap[n].light {
-                // choose best grouping
-                let mut best_idx = 0usize;
-                let mut best_score = 0i32;
-                for (li, &size) in cl_sizes.iter().enumerate() {
-                    let end = std::cmp::min(n + size, tile_count);
-                    let mut changed = 0usize;
-                    for m in n..end {
-                        if cmap[m].light != smap[m].light {
-                            changed += 1;
-                        }
-                    }
-                    let score = if cl_bytes[li] > 0 {
-                        (50 * changed) as i32 / cl_bytes[li] as i32
-                    } else {
-                        0
-                    };
-                    if score >= best_score {
-                        best_score = score;
-                        best_idx = li;
-                    }
-                }
-
-                // perform chosen send variant
-                match best_idx {
-                    0 => {
-                        // SV_SETMAP4 - single light (3 bytes)
-                        let mut buf = [0u8; 16];
-                        buf[0] = SV_SETMAP4;
-                        let header = (n as u16) | ((smap[n].light as u16) << 12);
-                        buf[1] = header as u8;
-                        buf[2] = (header >> 8) as u8;
-                        NetworkManager::with(|net| net.xsend(nr, &buf, 3));
-                        cmap[n].light = smap[n].light;
-                    }
-                    1 => {
-                        // SV_SETMAP5 - three lights (4 bytes)
-                        let mut buf = [0u8; 16];
-                        buf[0] = SV_SETMAP5;
-                        let header = (n as u16) | ((smap[n].light as u16) << 12);
-                        buf[1] = header as u8;
-                        buf[2] = (header >> 8) as u8;
-                        let mut p = 3usize;
-                        for m in (n + 2)..std::cmp::min(n + 3, tile_count) {
-                            buf[p] = (smap[m].light & 0xF) | ((smap[m - 1].light & 0xF) << 4);
-                            cmap[m].light = smap[m].light;
-                            cmap[m - 1].light = smap[m - 1].light;
-                            p += 1;
-                        }
-                        NetworkManager::with(|net| net.xsend(nr, &buf, p as u8));
-                    }
-                    2 => {
-                        // SV_SETMAP6 - seven lights (6 bytes)
-                        let mut buf = [0u8; 16];
-                        buf[0] = SV_SETMAP6;
-                        let header = (n as u16) | ((smap[n].light as u16) << 12);
-                        buf[1] = header as u8;
-                        buf[2] = (header >> 8) as u8;
-                        let mut p = 3usize;
-                        for m in (n + 2)..std::cmp::min(n + 7, tile_count) {
-                            buf[p] = (smap[m].light & 0xF) | ((smap[m - 1].light & 0xF) << 4);
-                            cmap[m].light = smap[m].light;
-                            cmap[m - 1].light = smap[m - 1].light;
-                            p += 1;
-                        }
-                        NetworkManager::with(|net| net.xsend(nr, &buf, p as u8));
-                    }
-                    3 => {
-                        // SV_SETMAP3 - up to 26 lights (16 bytes)
-                        let mut buf = [0u8; 16];
-                        buf[0] = SV_SETMAP3;
-                        let header = (n as u16) | ((smap[n].light as u16) << 12);
-                        buf[1] = header as u8;
-                        buf[2] = (header >> 8) as u8;
-                        let mut p = 3usize;
-                        for m in (n + 2)..std::cmp::min(n + 26, tile_count) {
-                            buf[p] = (smap[m].light & 0xF) | ((smap[m - 1].light & 0xF) << 4);
-                            cmap[m].light = smap[m].light;
-                            cmap[m - 1].light = smap[m - 1].light;
-                            p += 1;
-                        }
-                        NetworkManager::with(|net| net.xsend(nr, &buf, 16));
-                    }
-                    _ => {}
-                }
-            }
-            n += 1;
-        }
-
-        // General diffs: find first differing cmap entry and send minimal SV_SETMAP packets
-        let mut lastn: i32 = -1;
-        let mut idx = 0usize;
-        loop {
-            // find next difference
-            let mut found = None;
-            for i in idx..tile_count {
-                if !cmap_eq(&cmap[i], &smap[i]) {
-                    found = Some(i);
-                    break;
-                }
-            }
-            let nidx = match found {
-                Some(v) => v,
-                None => break,
-            };
-
-            let mut buf = [0u8; 256];
-            let mut p: usize;
-
-            if lastn >= 0 && (nidx as i32) > lastn && (nidx as i32 - lastn) < 127 {
-                buf[0] = (SV_SETMAP | ((nidx as i32 - lastn) as u8)) as u8;
-                buf[1] = 0;
-                p = 2;
-            } else if lastn < 0 && nidx < 127 {
-                // when lastn == -1, allow short form as original did
-                buf[0] = (SV_SETMAP | ((nidx as u8) & 0x7F)) as u8;
-                buf[1] = 0;
-                p = 2;
+            if light <= 5
+                && Repository::with_characters(|characters| {
+                    (characters[cn].flags & enums::CharacterFlags::Infrared.bits()) != 0
+                })
+            {
+                infra = true;
             } else {
-                buf[0] = SV_SETMAP;
-                buf[1] = 0;
-                let n_u16 = nidx as u16;
-                buf[2] = n_u16 as u8;
-                buf[3] = (n_u16 >> 8) as u8;
-                p = 4;
+                infra = false;
             }
 
-            // ba_sprite
-            if cmap[nidx].ba_sprite != smap[nidx].ba_sprite {
-                buf[1] |= 1;
-                let v = smap[nidx].ba_sprite as u16;
-                buf[p] = v as u8;
-                buf[p + 1] = (v >> 8) as u8;
-                p += 2;
+            // Everyone sees themselves at least
+            if light == 0 && Repository::with_map(|map| map[m].ch as usize) == cn {
+                light = 1;
             }
 
-            // flags
-            if cmap[nidx].flags != smap[nidx].flags {
-                buf[1] |= 2;
-                let v = smap[nidx].flags as u32;
-                buf[p] = v as u8;
-                buf[p + 1] = (v >> 8) as u8;
-                buf[p + 2] = (v >> 16) as u8;
-                buf[p + 3] = (v >> 24) as u8;
-                p += 4;
+            // no light, nothing visible
+            if light == 0 {
+                // TODO: Verify this is actually empty tile behavior
+                let mut new_cmap = core::types::CMap::default();
+                new_cmap.ba_sprite = core::constants::SPR_EMPTY as i16;
+                Server::with_players_mut(|players| {
+                    players[nr].smap[n] = new_cmap;
+                });
+                x += 1;
+                n += 1;
+                m += 1;
+                continue;
             }
 
-            // flags2
-            if cmap[nidx].flags2 != smap[nidx].flags2 {
-                buf[1] |= 4;
-                let v = smap[nidx].flags2 as u32;
-                buf[p] = v as u8;
-                buf[p + 1] = (v >> 8) as u8;
-                buf[p + 2] = (v >> 16) as u8;
-                buf[p + 3] = (v >> 24) as u8;
-                p += 4;
-            }
+            // Begin of flags
+            smap[n].flags = 0;
 
-            // it_sprite
-            if cmap[nidx].it_sprite != smap[nidx].it_sprite {
-                buf[1] |= 8;
-                let v = smap[nidx].it_sprite as u16;
-                buf[p] = v as u8;
-                buf[p + 1] = (v >> 8) as u8;
-                p += 2;
-            }
+            Repository::with_map(|map| {
+                if map[m].flags
+                    & (MF_GFX_INJURED
+                        | MF_GFX_INJURED1
+                        | MF_GFX_INJURED2
+                        | MF_GFX_DEATH
+                        | MF_GFX_TOMB
+                        | MF_GFX_EMAGIC
+                        | MF_GFX_GMAGIC
+                        | MF_GFX_CMAGIC
+                        | MF_UWATER as u64)
+                    != 0
+                {
+                    if map[m].flags & core::constants::MF_GFX_INJURED as u64 != 0 {
+                        smap[n].flags |= INJURED;
+                    }
 
-            // it_status (only if base status differs)
-            if cmap[nidx].it_status != smap[nidx].it_status
-                && it_base_status(cmap[nidx].it_status) != it_base_status(smap[nidx].it_status)
-            {
-                buf[1] |= 16;
-                buf[p] = smap[nidx].it_status;
-                p += 1;
-            }
+                    if map[m].flags & core::constants::MF_GFX_INJURED1 as u64 != 0 {
+                        smap[n].flags |= INJURED1;
+                    }
 
-            // character sprite / status
-            if cmap[nidx].ch_sprite != smap[nidx].ch_sprite
-                || (cmap[nidx].ch_status != smap[nidx].ch_status
-                    && ch_base_status(cmap[nidx].ch_status) != ch_base_status(smap[nidx].ch_status))
-                || cmap[nidx].ch_status2 != smap[nidx].ch_status2
-            {
-                buf[1] |= 32;
-                let v = smap[nidx].ch_sprite as u16;
-                buf[p] = v as u8;
-                buf[p + 1] = (v >> 8) as u8;
-                p += 2;
-                buf[p] = smap[nidx].ch_status;
-                p += 1;
-                buf[p] = smap[nidx].ch_status2;
-                p += 1;
-            }
+                    if map[m].flags & core::constants::MF_GFX_INJURED2 as u64 != 0 {
+                        smap[n].flags |= INJURED2;
+                    }
 
-            // character id / speed
-            if cmap[nidx].ch_speed != smap[nidx].ch_speed
-                || cmap[nidx].ch_nr != smap[nidx].ch_nr
-                || cmap[nidx].ch_id != smap[nidx].ch_id
-            {
-                buf[1] |= 64;
-                let vnr = smap[nidx].ch_nr as u16;
-                buf[p] = vnr as u8;
-                buf[p + 1] = (vnr >> 8) as u8;
-                p += 2;
-                let vid = smap[nidx].ch_id as u16;
-                buf[p] = vid as u8;
-                buf[p + 1] = (vid >> 8) as u8;
-                p += 2;
-                buf[p] = smap[nidx].ch_speed;
-                p += 1;
-            }
+                    if map[m].flags & core::constants::MF_GFX_DEATH as u64 != 0 {
+                        // TODO: Confirm shift
+                        smap[n].flags |= ((map[m].flags & MF_GFX_DEATH) >> 23) as u32;
+                    }
 
-            // character health percent
-            if cmap[nidx].ch_proz != smap[nidx].ch_proz {
-                buf[1] |= 128;
-                buf[p] = smap[nidx].ch_proz;
-                p += 1;
-            }
+                    if map[m].flags & core::constants::MF_GFX_TOMB as u64 != 0 {
+                        smap[n].flags |= ((map[m].flags & MF_GFX_TOMB) >> 23) as u32;
+                    }
 
-            if buf[1] != 0 {
-                NetworkManager::with(|net| net.xsend(nr, &buf, p as u8));
-                lastn = nidx as i32;
-            }
+                    if map[m].flags & core::constants::MF_GFX_EMAGIC as u64 != 0 {
+                        smap[n].flags |= ((map[m].flags & MF_GFX_EMAGIC) >> 23) as u32;
+                    }
 
-            // remember copied values
-            cmap[nidx] = smap[nidx];
+                    if map[m].flags & core::constants::MF_GFX_GMAGIC as u64 != 0 {
+                        smap[n].flags |= ((map[m].flags & MF_GFX_GMAGIC) >> 23) as u32;
+                    }
 
-            idx = nidx + 1;
-            if idx >= tile_count {
-                break;
-            }
+                    if map[m].flags & core::constants::MF_GFX_CMAGIC as u64 != 0 {
+                        smap[n].flags |= ((map[m].flags & MF_GFX_CMAGIC) >> 23) as u32;
+                    }
+
+                    if map[m].flags & core::constants::MF_UWATER as u64 != 0 {
+                        smap[n].flags |= UWATER;
+                    }
+                }
+
+                if infra {
+                    smap[n].flags |= INFRARED;
+                }
+
+                if Repository::with_characters(|ch| ch[cn].is_building()) {
+                    smap[n].flags2 = map[m].flags as u32;
+                } else {
+                    smap[n].flags2 = 0;
+                }
+
+                // TODO: Can this go negative?
+                let tmp_vis = ((x - current_x + 20) + (y - current_y + 20) * 40) as usize;
+
+                let visible = Repository::with_see_map(|see| {
+                    see[cn].vis[tmp_vis + 0 + 0] != 0
+                        || see[cn].vis[tmp_vis + 0 + 40] != 0
+                        || see[cn].vis[tmp_vis + 0 - 40] != 0
+                        || see[cn].vis[tmp_vis + 1 + 0] != 0
+                        || see[cn].vis[tmp_vis + 1 + 40] != 0
+                        || see[cn].vis[tmp_vis + 1 - 40] != 0
+                        || see[cn].vis[tmp_vis - 1 + 0] != 0
+                        || see[cn].vis[tmp_vis - 1 + 40] != 0
+                        || see[cn].vis[tmp_vis - 1 - 40] != 0
+                });
+
+                if !visible {
+                    smap[n].flags |= INVIS;
+                }
+
+                // Begin of the light bucketing
+                if light > 64 {
+                    smap[n].light = 0;
+                } else if light > 52 {
+                    smap[n].light = 1;
+                } else if light > 40 {
+                    smap[n].light = 2;
+                } else if light > 32 {
+                    smap[n].light = 3;
+                } else if light > 28 {
+                    smap[n].light = 4;
+                } else if light > 24 {
+                    smap[n].light = 5;
+                } else if light > 20 {
+                    smap[n].light = 6;
+                } else if light > 16 {
+                    smap[n].light = 7;
+                } else if light > 14 {
+                    smap[n].light = 8;
+                } else if light > 12 {
+                    smap[n].light = 9;
+                } else if light > 10 {
+                    smap[n].light = 10;
+                } else if light > 8 {
+                    smap[n].light = 11;
+                } else if light > 6 {
+                    smap[n].light = 12;
+                } else if light > 4 {
+                    smap[n].light = 13;
+                } else if light > 2 {
+                    smap[n].light = 14;
+                } else {
+                    smap[n].light = 15;
+                }
+
+                smap[n].ba_sprite = map_m.sprite as i16;
+
+                // Begin of character
+                let co = map_m.ch as usize;
+                let tmp_see = State::with_mut(|state| state.do_char_can_see(cn, co));
+                let char_co = Repository::with_characters(|characters| characters[co]);
+                if visible && map_m.ch != 0 && tmp_see != 0 {
+                    if char_co.sprite_override != 0 {
+                        smap[n].ch_sprite = char_co.sprite_override as i16;
+                    } else {
+                        smap[n].ch_sprite = char_co.sprite as i16;
+                    }
+                    smap[n].ch_status = char_co.status as u8;
+                    smap[n].ch_status2 = char_co.status2 as u8;
+                    smap[n].ch_speed = char_co.speed as u8;
+                    smap[n].ch_nr = co as u16;
+                    smap[n].ch_id = char_id(co) as u16;
+
+                    if tmp_see <= 75 && char_co.hp[5] > 0 {
+                        smap[n].ch_proz = (((char_co.a_hp + 5) / 10) / char_co.hp[5] as i32) as u8;
+                    } else {
+                        smap[n].ch_proz = 0;
+                    }
+
+                    smap[n].flags |= ISCHAR;
+
+                    if char_co.stunned != 0 {
+                        smap[n].flags |= STUNNED;
+                    }
+
+                    if char_co.flags & enums::CharacterFlags::Stoned.bits() != 0 {
+                        smap[n].flags |= STUNNED | STONED;
+                    }
+                } else {
+                    let mut new_cmap = core::types::CMap::default();
+                    new_cmap.ba_sprite = core::constants::SPR_EMPTY as i16;
+                    Server::with_players_mut(|players| {
+                        players[nr].smap[n] = new_cmap;
+                        // TODO: We're likely going to end up overriding these
+                        // values at the end when we copy the smap back...
+                    });
+                }
+
+                // Begin of item
+                let item_on_m = Repository::with_items(|items| {
+                    if map_m.it == 0 {
+                        None
+                    } else {
+                        Some(items[map_m.it as usize])
+                    }
+                });
+                if map_m.fsprite != 0 {
+                    smap[n].it_sprite = map_m.fsprite as i16;
+                    smap[n].it_status = 0;
+                } else if item_on_m.is_some()
+                    && (item_on_m.unwrap().flags
+                        & (ItemFlags::IF_TAKE.bits() | ItemFlags::IF_HIDDEN.bits()))
+                        == 0
+                {
+                    let item = item_on_m.unwrap();
+
+                    if item.active != 0 {
+                        smap[n].it_sprite = item.sprite[1];
+                        smap[n].it_status = item.status[1];
+                    } else {
+                        smap[n].it_sprite = item.sprite[0];
+                        smap[n].it_status = item.status[0];
+                    }
+
+                    if item.flags & ItemFlags::IF_LOOK.bits() != 0
+                        || item.flags & ItemFlags::IF_LOOKSPECIAL.bits() != 0
+                    {
+                        smap[n].flags |= ISITEM;
+                    }
+
+                    if item.flags & ItemFlags::IF_TAKE.bits() == 0
+                        && item.flags & (ItemFlags::IF_USE.bits() | ItemFlags::IF_USESPECIAL.bits())
+                            != 0
+                    {
+                        smap[n].flags |= ISUSABLE;
+                    }
+                } else {
+                    smap[n].it_sprite = 0;
+                    smap[n].it_status = 0;
+                }
+            });
+
+            Server::with_players_mut(|players| players[nr].smap[n] = smap[n]);
+
+            x += 1;
+            n += 1;
+            m += 1;
         }
 
-        // write back the updated cmap into the player's data
-        Server::with_players_mut(|players| players[nr].cmap = cmap);
+        y += 1;
+        m += (core::constants::SERVER_MAPX as i32 - core::constants::TILEX as i32 + XSCUT + XECUT)
+            as usize;
+        n += (XSCUT + XECUT) as usize;
     }
+
+    Server::with_players_mut(|player| {
+        player[nr].vx = Repository::with_see_map(|see_maps| see_maps[cn].x);
+        player[nr].vy = Repository::with_see_map(|see_maps| see_maps[cn].y);
+    });
 }
 
 pub fn plr_getmap_fast(nr: usize) {
@@ -3169,8 +3004,41 @@ pub fn plr_getmap_fast(nr: usize) {
                     continue;
                 }
 
-                // Client packets encode light in 4 bits (0..15).
-                new_cmap.light = std::cmp::min(std::cmp::max(light, 0), 15) as u8;
+                // Convert raw light (0..255-ish) into client 4-bit format.
+                // Keep identical bucketing to `plr_getmap_complete`.
+                new_cmap.light = if light > 64 {
+                    0
+                } else if light > 52 {
+                    1
+                } else if light > 40 {
+                    2
+                } else if light > 32 {
+                    3
+                } else if light > 28 {
+                    4
+                } else if light > 24 {
+                    5
+                } else if light > 20 {
+                    6
+                } else if light > 16 {
+                    7
+                } else if light > 14 {
+                    8
+                } else if light > 12 {
+                    9
+                } else if light > 10 {
+                    10
+                } else if light > 8 {
+                    11
+                } else if light > 6 {
+                    12
+                } else if light > 4 {
+                    13
+                } else if light > 2 {
+                    14
+                } else {
+                    15
+                };
 
                 // flags
                 let mut flags: u32 = 0;
@@ -3380,14 +3248,13 @@ pub fn plr_getmap_fast(nr: usize) {
                         let header = (n as u16) | ((smap[n].light as u16) << 12);
                         buf[1] = header as u8;
                         buf[2] = (header >> 8) as u8;
-                        let mut p = 3usize;
-                        for m in (n + 2)..std::cmp::min(n + 3, tile_count) {
-                            buf[p] = (smap[m].light & 0xF) | ((smap[m - 1].light & 0xF) << 4);
+                        let m = n + 2;
+                        if m < tile_count {
+                            buf[3] = (smap[m].light & 0xF) | ((smap[m - 1].light & 0xF) << 4);
                             cmap[m].light = smap[m].light;
                             cmap[m - 1].light = smap[m - 1].light;
-                            p += 1;
                         }
-                        NetworkManager::with(|net| net.xsend(nr, &buf, p as u8));
+                        NetworkManager::with(|net| net.xsend(nr, &buf, 4));
                     }
                     2 => {
                         let mut buf = [0u8; 16];
@@ -3396,13 +3263,13 @@ pub fn plr_getmap_fast(nr: usize) {
                         buf[1] = header as u8;
                         buf[2] = (header >> 8) as u8;
                         let mut p = 3usize;
-                        for m in (n + 2)..std::cmp::min(n + 7, tile_count) {
+                        for m in (n + 2..std::cmp::min(n + 8, tile_count)).step_by(2) {
                             buf[p] = (smap[m].light & 0xF) | ((smap[m - 1].light & 0xF) << 4);
                             cmap[m].light = smap[m].light;
                             cmap[m - 1].light = smap[m - 1].light;
                             p += 1;
                         }
-                        NetworkManager::with(|net| net.xsend(nr, &buf, p as u8));
+                        NetworkManager::with(|net| net.xsend(nr, &buf, 6));
                     }
                     3 => {
                         let mut buf = [0u8; 16];
@@ -3411,7 +3278,7 @@ pub fn plr_getmap_fast(nr: usize) {
                         buf[1] = header as u8;
                         buf[2] = (header >> 8) as u8;
                         let mut p = 3usize;
-                        for m in (n + 2)..std::cmp::min(n + 26, tile_count) {
+                        for m in (n + 2..std::cmp::min(n + 28, tile_count)).step_by(2) {
                             buf[p] = (smap[m].light & 0xF) | ((smap[m - 1].light & 0xF) << 4);
                             cmap[m].light = smap[m].light;
                             cmap[m - 1].light = smap[m - 1].light;
