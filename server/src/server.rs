@@ -1027,10 +1027,18 @@ impl Server {
     /// into each player's `zs` encoder. Updates buffer pointers and resets
     /// `tptr` after compressing.
     fn compress_ticks(&mut self) {
-        // For each connected player, compress their tick buffer (`tbuf`) if worthwhile
+        // For each connected player, compress their tick buffer (`tbuf`) if worthwhile.
+        // This is intended to match the original C++ `compress_ticks()` logic closely.
         Server::with_players_mut(|players| {
+            let header_from_int = |v: i32| {
+                // C++ does: csend(n, reinterpret_cast<unsigned char*>(&olen), 2)
+                // where `olen` is an `int`. That sends the first two bytes of the native-endian
+                // `int` representation (not explicitly little-endian).
+                let b = v.to_ne_bytes();
+                [b[0], b[1]]
+            };
+
             for n in 1..players.len() {
-                // quick checks
                 if players[n].sock.is_none() {
                     continue;
                 }
@@ -1038,106 +1046,86 @@ impl Server {
                     continue;
                 }
 
-                // ensure sane usnr
-                if players[n].usnr >= core::constants::MAXCHARS as usize {
-                    players[n].usnr = 0;
+                // Work on a single player slot.
+                let p = &mut players[n];
+
+                if p.usnr >= core::constants::MAXCHARS as usize {
+                    p.usnr = 0;
                 }
 
-                let ilen = players[n].tptr;
-                // If there is no tick data, don't enqueue an empty header
-                // (sending [2,0] repeatedly caused the observed bad traffic).
-                if ilen == 0 {
-                    continue;
-                }
-                let olen = ilen + 2;
+                let ilen = p.tptr;
+                let olen_uncompressed_i32: i32 = (ilen + 2) as i32;
 
-                if olen > 16 {
-                    // compress into encoder's inner buffer
-                    if let Some(zs) = players[n].zs.as_mut() {
-                        let before = zs.get_ref().len();
-                        let _ = zs.write_all(&players[n].tbuf[..ilen]);
-                        // flush to ensure we get compressed bytes out (Z_SYNC_FLUSH equivalent)
-                        let _ = zs.flush();
-                        let after = zs.get_ref().len();
-                        let csize = after.saturating_sub(before);
-
-                        // prepare 2-byte header with high bit set to indicate compressed
-                        let header = (((csize + 2) as u16) | 0x8000u16).to_le_bytes();
-
-                        // Extract compressed data before creating the closure
-                        let compressed = zs.get_ref()[before..after].to_vec();
-
-                        // write header then compressed bytes into obuf with wrap
-                        let obuf_len = players[n].obuf.len();
-                        let mut iptr = players[n].iptr;
-
-                        // helper to copy slice into obuf with wrap
-                        let mut write_into = |data: &[u8]| {
-                            for &b in data {
-                                players[n].obuf[iptr] = b;
-                                iptr += 1;
-                                if iptr >= obuf_len {
-                                    iptr = 0;
-                                }
-                            }
-                        };
-
-                        write_into(&header);
-                        write_into(&compressed);
-
-                        players[n].iptr = iptr;
-
-                        // update character stats
-                        let usnr = players[n].usnr;
-                        Repository::with_characters_mut(|ch| {
-                            if usnr < core::constants::MAXCHARS as usize {
-                                ch[usnr].comp_volume =
-                                    ch[usnr].comp_volume.wrapping_add((csize + 2) as u32);
-                                ch[usnr].raw_volume = ch[usnr].raw_volume.wrapping_add(ilen as u32);
-                            }
-                        });
-                    }
+                // Snapshot tick data (so we can freely borrow `zs` / `obuf` later).
+                let tbuf_data: Vec<u8> = if ilen > 0 {
+                    p.tbuf[..ilen].to_vec()
                 } else {
-                    // send raw (no compression)
-                    let header = (olen as u16).to_le_bytes();
-                    let obuf_len = players[n].obuf.len();
-                    let mut iptr = players[n].iptr;
+                    Vec::new()
+                };
 
-                    // Copy tbuf data before defining the closure
-                    let tbuf_data: Vec<u8> = if ilen > 0 {
-                        players[n].tbuf[..ilen].to_vec()
-                    } else {
-                        Vec::new()
-                    };
+                // Build packet contents first, then write into the output ring.
+                let (olen_i32, header, payload): (i32, [u8; 2], Vec<u8>) =
+                    if olen_uncompressed_i32 > 16 {
+                        if let Some(zs) = p.zs.as_mut() {
+                            let before = zs.get_ref().len();
+                            let _ = zs.write_all(&tbuf_data);
+                            let _ = zs.flush();
 
-                    let mut write_into = |data: &[u8]| {
-                        for &b in data {
-                            players[n].obuf[iptr] = b;
-                            iptr += 1;
-                            if iptr >= obuf_len {
-                                iptr = 0;
+                            let after = zs.get_ref().len();
+                            let produced = after.saturating_sub(before);
+                            let csize = produced.min(core::constants::OBUFSIZE);
+
+                            // C++ truncates to OBUFSIZE (fixed `obuf`)
+                            if produced > csize {
+                                zs.get_mut().truncate(before + csize);
                             }
+
+                            let olen_i32 = ((csize + 2) as i32) | 0x8000;
+                            let header = header_from_int(olen_i32);
+                            let payload = zs.get_ref()[before..before + csize].to_vec();
+                            (olen_i32, header, payload)
+                        } else {
+                            // If compression state is missing, fall back to uncompressed.
+                            let header = header_from_int(olen_uncompressed_i32);
+                            (olen_uncompressed_i32, header, tbuf_data)
                         }
+                    } else {
+                        // Uncompressed path: always send the 2-byte header, even if ilen == 0.
+                        let header = header_from_int(olen_uncompressed_i32);
+                        (olen_uncompressed_i32, header, tbuf_data)
                     };
 
-                    write_into(&header);
-                    if ilen > 0 {
-                        write_into(&tbuf_data);
-                    }
-                    players[n].iptr = iptr;
-
-                    // update character stats
-                    let usnr = players[n].usnr;
-                    Repository::with_characters_mut(|ch| {
-                        if usnr < core::constants::MAXCHARS as usize {
-                            ch[usnr].comp_volume = ch[usnr].comp_volume.wrapping_add(olen as u32);
-                            ch[usnr].raw_volume = ch[usnr].raw_volume.wrapping_add(ilen as u32);
+                // Write header and payload into the ring buffer.
+                let mut iptr = p.iptr;
+                let obuf_len = p.obuf.len();
+                let mut write_into = |data: &[u8]| {
+                    for &b in data {
+                        p.obuf[iptr] = b;
+                        iptr += 1;
+                        if iptr >= obuf_len {
+                            iptr = 0;
                         }
-                    });
+                    }
+                };
+
+                write_into(&header);
+                if !payload.is_empty() {
+                    write_into(&payload);
                 }
 
-                // reset tptr
-                players[n].tptr = 0;
+                p.iptr = iptr;
+
+                // Stats update (C++ does this unconditionally, with `olen` including 0x8000
+                // in the compressed case).
+                let usnr = p.usnr;
+                Repository::with_characters_mut(|ch| {
+                    if usnr < core::constants::MAXCHARS as usize {
+                        ch[usnr].comp_volume = ch[usnr].comp_volume.wrapping_add(olen_i32 as u32);
+                        ch[usnr].raw_volume = ch[usnr].raw_volume.wrapping_add(ilen as u32);
+                    }
+                });
+
+                p.tptr = 0;
             }
         });
     }
@@ -1251,11 +1239,13 @@ impl Server {
         let idx = _player_idx;
         Server::with_players_mut(|players| {
             if idx >= players.len() {
+                log::error!("rec_player: invalid player index {}", idx);
                 return;
             }
 
             // Ensure socket exists
             if players[idx].sock.is_none() {
+                log::error!("rec_player: no socket for player index {}", idx);
                 return;
             }
 
