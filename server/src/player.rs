@@ -2671,6 +2671,9 @@ pub fn plr_getmap_complete(nr: usize) {
                     continue;
                 }
 
+                // Client packets encode light in 4 bits (0..15).
+                new_cmap.light = std::cmp::min(std::cmp::max(light, 0), 15) as u8;
+
                 // --- Flags ---
                 let mut flags: u32 = 0;
                 if (map_tile.flags & core::constants::MF_UWATER as u64) != 0 {
@@ -3165,6 +3168,9 @@ pub fn plr_getmap_fast(nr: usize) {
                     map_x += 1;
                     continue;
                 }
+
+                // Client packets encode light in 4 bits (0..15).
+                new_cmap.light = std::cmp::min(std::cmp::max(light, 0), 15) as u8;
 
                 // flags
                 let mut flags: u32 = 0;
