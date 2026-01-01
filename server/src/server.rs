@@ -1038,6 +1038,16 @@ impl Server {
                 [b[0], b[1]]
             };
 
+            let ring_free_space = |iptr: usize, optr: usize, cap: usize| -> usize {
+                // Keep one byte empty to distinguish full vs empty.
+                let used = if iptr >= optr {
+                    iptr - optr
+                } else {
+                    cap - optr + iptr
+                };
+                cap.saturating_sub(used + 1)
+            };
+
             for n in 1..players.len() {
                 if players[n].sock.is_none() {
                     continue;
@@ -1064,38 +1074,80 @@ impl Server {
                 };
 
                 // Build packet contents first, then write into the output ring.
-                let (olen_i32, header, payload): (i32, [u8; 2], Vec<u8>) =
-                    if olen_uncompressed_i32 > 16 {
-                        if let Some(zs) = p.zs.as_mut() {
-                            let before = zs.get_ref().len();
-                            let _ = zs.write_all(&tbuf_data);
-                            let _ = zs.flush();
+                let (olen_i32, header, payload): (i32, [u8; 2], Vec<u8>) = if olen_uncompressed_i32
+                    > 16
+                {
+                    if let Some(zs) = p.zs.as_mut() {
+                        let before = zs.get_ref().len();
+                        let _ = zs.write_all(&tbuf_data);
+                        let _ = zs.flush();
 
-                            let after = zs.get_ref().len();
-                            let produced = after.saturating_sub(before);
-                            let csize = produced.min(core::constants::OBUFSIZE);
+                        let after = zs.get_ref().len();
+                        let produced = after.saturating_sub(before);
+                        let csize = produced.min(core::constants::OBUFSIZE);
 
-                            // C++ truncates to OBUFSIZE (fixed `obuf`)
-                            if produced > csize {
-                                zs.get_mut().truncate(before + csize);
-                            }
-
-                            let olen_i32 = ((csize + 2) as i32) | 0x8000;
-                            let header = header_from_int(olen_i32);
-                            let payload = zs.get_ref()[before..before + csize].to_vec();
-                            (olen_i32, header, payload)
-                        } else {
-                            // If compression state is missing, fall back to uncompressed.
-                            let header = header_from_int(olen_uncompressed_i32);
-                            (olen_uncompressed_i32, header, tbuf_data)
+                        // C++ truncates to OBUFSIZE (fixed `obuf`)
+                        if produced > csize {
+                            log::warn!(
+                                    "compress_ticks: compressed output truncated for player {} (produced {}, capped {}, ilen {}, usnr {})",
+                                    n,
+                                    produced,
+                                    csize,
+                                    ilen,
+                                    p.usnr
+                                );
+                            zs.get_mut().truncate(before + csize);
                         }
+
+                        // The protocol uses the 0x8000 bit as a compression flag.
+                        // If (csize + 2) reaches or exceeds 0x8000, clients which mask
+                        // the flag bit to obtain length will desync.
+                        if csize + 2 >= 0x8000 {
+                            log::error!(
+                                    "compress_ticks: compressed packet length too large for player {} (csize {}, len_with_header {}, ilen {}, usnr {})",
+                                    n,
+                                    csize,
+                                    csize + 2,
+                                    ilen,
+                                    p.usnr
+                                );
+                        }
+
+                        let olen_i32 = ((csize + 2) as i32) | 0x8000;
+                        let header = header_from_int(olen_i32);
+                        let payload = zs.get_ref()[before..before + csize].to_vec();
+                        (olen_i32, header, payload)
                     } else {
-                        // Uncompressed path: always send the 2-byte header, even if ilen == 0.
+                        // If compression state is missing, fall back to uncompressed.
                         let header = header_from_int(olen_uncompressed_i32);
                         (olen_uncompressed_i32, header, tbuf_data)
-                    };
+                    }
+                } else {
+                    // Uncompressed path: always send the 2-byte header, even if ilen == 0.
+                    let header = header_from_int(olen_uncompressed_i32);
+                    (olen_uncompressed_i32, header, tbuf_data)
+                };
 
                 // Write header and payload into the ring buffer.
+                let needed = 2usize + payload.len();
+                let free = ring_free_space(p.iptr, p.optr, p.obuf.len());
+                if needed > free {
+                    log::warn!(
+                        "compress_ticks: obuf overflow risk for player {} (need {}, free {}, iptr {}, optr {}, ilen {}, olen_i32 {}, usnr {})",
+                        n,
+                        needed,
+                        free,
+                        p.iptr,
+                        p.optr,
+                        ilen,
+                        olen_i32,
+                        p.usnr
+                    );
+                    // Don't overwrite unsent bytes; drop this tick packet.
+                    p.tptr = 0;
+                    continue;
+                }
+
                 let mut iptr = p.iptr;
                 let obuf_len = p.obuf.len();
                 let mut write_into = |data: &[u8]| {

@@ -320,11 +320,11 @@ pub fn plr_logout(character_id: usize, player_id: usize, reason: enums::LogoutRe
 
         if player_state == core::constants::ST_NORMAL {
             NetworkManager::with(|network| {
-                network.xsend(player_id as usize, &buffer, 16);
+                network.xsend(player_id as usize, &buffer, 2);
             });
         } else {
             NetworkManager::with(|network| {
-                network.csend(player_id as usize, &buffer, 16);
+                network.csend(player_id as usize, &buffer, 2);
             });
         }
 
@@ -4119,135 +4119,6 @@ pub fn plr_change(nr: usize) {
     plr_change_gold(nr, cn);
     plr_change_position(nr, cn);
     plr_change_target(nr, cn);
-
-    // Additional updates for name, mode, attributes, skills, items, and spells
-    Repository::with_characters(|characters| {
-        let character = &characters[cn];
-        Server::with_players_mut(|players| {
-            let player = &mut players[nr];
-
-            // Mode updates
-            if player.cpl.mode != character.mode as i32 {
-                player.cpl.mode = character.mode as i32;
-                NetworkManager::with(|network| {
-                    let mut buf = [0u8; 2];
-                    buf[0] = core::constants::SV_SETCHAR_MODE;
-                    buf[1] = character.mode as u8;
-                    network.xsend(nr, &buf, 2);
-                });
-            }
-
-            // Attributes
-            for i in 0..5 {
-                if player.cpl.attrib[i] != character.attrib[i] {
-                    player.cpl.attrib[i] = character.attrib[i];
-                    NetworkManager::with(|network| {
-                        let mut buf: [u8; 8] = [0; 8];
-                        buf[0] = core::constants::SV_SETCHAR_ATTRIB;
-                        buf[1] = i as u8;
-                        buf[2..8].copy_from_slice(&character.attrib[i]);
-                        network.xsend(nr, &buf, 8);
-                    });
-                }
-            }
-
-            // Items
-            for i in 0..40 {
-                if player.cpl.item[i] != character.item[i] as i32 {
-                    player.cpl.item[i] = character.item[i] as i32;
-                    let in_idx = character.item[i] as usize;
-                    let mut sprite: i16 = 0;
-                    let mut placement: i16 = 0;
-                    if in_idx != 0 && in_idx < core::constants::MAXITEM as usize {
-                        Repository::with_items(|items| {
-                            let it = &items[in_idx];
-                            sprite = if it.active != 0 {
-                                it.sprite[1]
-                            } else {
-                                it.sprite[0]
-                            };
-                            placement = it.placement as i16;
-                        });
-                    }
-                    NetworkManager::with(|network| {
-                        let mut buf: [u8; 9] = [0; 9];
-                        buf[0] = core::constants::SV_SETCHAR_ITEM;
-                        let idx_bytes = (i as u32).to_le_bytes();
-                        buf[1..5].copy_from_slice(&idx_bytes);
-                        buf[5] = (sprite & 0xff) as u8;
-                        buf[6] = ((sprite >> 8) & 0xff) as u8;
-                        buf[7] = (placement & 0xff) as u8;
-                        buf[8] = ((placement >> 8) & 0xff) as u8;
-                        network.xsend(nr, &buf, 9);
-                    });
-                }
-            }
-
-            // Worn Items
-            for i in 0..20 {
-                if player.cpl.worn[i] != character.worn[i] as i32 {
-                    player.cpl.worn[i] = character.worn[i] as i32;
-                    let in_idx = character.worn[i] as usize;
-                    let mut sprite: i16 = 0;
-                    let mut placement: i16 = 0;
-                    if in_idx != 0 && in_idx < core::constants::MAXITEM as usize {
-                        Repository::with_items(|items| {
-                            let it = &items[in_idx];
-                            sprite = if it.active != 0 {
-                                it.sprite[1]
-                            } else {
-                                it.sprite[0]
-                            };
-                            placement = it.placement as i16;
-                        });
-                    }
-                    NetworkManager::with(|network| {
-                        let mut buf: [u8; 9] = [0; 9];
-                        buf[0] = core::constants::SV_SETCHAR_WORN;
-                        let idx_bytes = (i as u32).to_le_bytes();
-                        buf[1..5].copy_from_slice(&idx_bytes);
-                        buf[5] = (sprite & 0xff) as u8;
-                        buf[6] = ((sprite >> 8) & 0xff) as u8;
-                        buf[7] = (placement & 0xff) as u8;
-                        buf[8] = ((placement >> 8) & 0xff) as u8;
-                        network.xsend(nr, &buf, 9);
-                    });
-                }
-            }
-
-            // Spells
-            for i in 0..20 {
-                if player.cpl.spell[i] != character.spell[i] as i32 {
-                    player.cpl.spell[i] = character.spell[i] as i32;
-                    let in_idx = character.spell[i] as usize;
-                    let mut sprite: i16 = 0;
-                    let mut active_frac: i16 = 0;
-                    if in_idx != 0 && in_idx < core::constants::MAXITEM as usize {
-                        Repository::with_items(|items| {
-                            let it = &items[in_idx];
-                            sprite = it.sprite[1];
-                            active_frac = if it.duration > 0 {
-                                (it.active * 16 / it.duration) as i16
-                            } else {
-                                0
-                            };
-                        });
-                    }
-                    NetworkManager::with(|network| {
-                        let mut buf: [u8; 9] = [0; 9];
-                        buf[0] = core::constants::SV_SETCHAR_SPELL;
-                        let idx_bytes = (i as u32).to_le_bytes();
-                        buf[1..5].copy_from_slice(&idx_bytes);
-                        buf[5] = (sprite & 0xff) as u8;
-                        buf[6] = ((sprite >> 8) & 0xff) as u8;
-                        buf[7] = (active_frac & 0xff) as u8;
-                        buf[8] = ((active_frac >> 8) & 0xff) as u8;
-                        network.xsend(nr, &buf, 9);
-                    });
-                }
-            }
-        });
-    });
 }
 
 /// Send full stats update to player
@@ -4543,104 +4414,6 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
         NetworkManager::with(|network| network.xsend(nr, &buf, 5));
         Server::with_players_mut(|players| players[nr].cpl.citem = in_idx as i32);
     }
-
-    // a_hp, a_end, a_mana (these are scaled)
-    let a_hp_val =
-        Repository::with_characters(|characters| ((characters[cn].a_hp + 500) / 1000) as i32);
-    if Server::with_players(|players| players[nr].cpl.a_hp) != a_hp_val {
-        let mut buf: [u8; 3] = [0; 3];
-        buf[0] = core::constants::SV_SETCHAR_AHP;
-        buf[1] = (a_hp_val & 0xff) as u8;
-        buf[2] = ((a_hp_val >> 8) & 0xff) as u8;
-        NetworkManager::with(|network| network.xsend(nr, &buf, 3));
-        Server::with_players_mut(|players| players[nr].cpl.a_hp = a_hp_val);
-    }
-
-    let a_end_val =
-        Repository::with_characters(|characters| ((characters[cn].a_end + 500) / 1000) as i32);
-    if Server::with_players(|players| players[nr].cpl.a_end) != a_end_val {
-        let mut buf: [u8; 3] = [0; 3];
-        buf[0] = core::constants::SV_SETCHAR_AEND;
-        buf[1] = (a_end_val & 0xff) as u8;
-        buf[2] = ((a_end_val >> 8) & 0xff) as u8;
-        NetworkManager::with(|network| network.xsend(nr, &buf, 3));
-        Server::with_players_mut(|players| players[nr].cpl.a_end = a_end_val);
-    }
-
-    let a_mana_val =
-        Repository::with_characters(|characters| ((characters[cn].a_mana + 500) / 1000) as i32);
-    if Server::with_players(|players| players[nr].cpl.a_mana) != a_mana_val {
-        let mut buf: [u8; 3] = [0; 3];
-        buf[0] = core::constants::SV_SETCHAR_AMANA;
-        buf[1] = (a_mana_val & 0xff) as u8;
-        buf[2] = ((a_mana_val >> 8) & 0xff) as u8;
-        NetworkManager::with(|network| network.xsend(nr, &buf, 3));
-        Server::with_players_mut(|players| players[nr].cpl.a_mana = a_mana_val);
-    }
-
-    // dir
-    let dir_changed = Repository::with_characters(|characters| {
-        characters[cn].dir as i32 != Server::with_players(|players| players[nr].cpl.dir)
-    });
-    if dir_changed {
-        let dir = Repository::with_characters(|characters| characters[cn].dir as u8);
-        let mut buf: [u8; 16] = [0; 16];
-        buf[0] = core::constants::SV_SETCHAR_DIR;
-        buf[1] = dir;
-        NetworkManager::with(|network| network.xsend(nr, &buf, 2));
-        Server::with_players_mut(|players| players[nr].cpl.dir = dir as i32);
-    }
-
-    // points and gold
-    let points_changed = Repository::with_characters(|characters| {
-        let ch = &characters[cn];
-        Server::with_players(|players| {
-            players[nr].cpl.points != ch.points
-                || players[nr].cpl.points_tot != ch.points_tot
-                || players[nr].cpl.kindred != ch.kindred
-        })
-    });
-    if points_changed {
-        Repository::with_characters(|characters| {
-            let ch = &characters[cn];
-            let mut buf: [u8; 10] = [0; 10];
-            buf[0] = core::constants::SV_SETCHAR_PTS;
-            buf[1..5].copy_from_slice(&ch.points.to_le_bytes());
-            buf[5..9].copy_from_slice(&ch.points_tot.to_le_bytes());
-            buf[9] = ch.kindred as u8;
-            NetworkManager::with(|network| network.xsend(nr, &buf, 10));
-            Server::with_players_mut(|players| {
-                players[nr].cpl.points = ch.points;
-                players[nr].cpl.points_tot = ch.points_tot;
-                players[nr].cpl.kindred = ch.kindred;
-            });
-        });
-    }
-
-    let gold_changed = Repository::with_characters(|characters| {
-        let ch = &characters[cn];
-        Server::with_players(|players| {
-            players[nr].cpl.gold != ch.gold
-                || players[nr].cpl.armor != ch.armor as i32
-                || players[nr].cpl.weapon != ch.weapon as i32
-        })
-    });
-    if gold_changed {
-        Repository::with_characters(|characters| {
-            let ch = &characters[cn];
-            let mut buf: [u8; 13] = [0; 13];
-            buf[0] = core::constants::SV_SETCHAR_GOLD;
-            buf[1..5].copy_from_slice(&ch.gold.to_le_bytes());
-            buf[5..7].copy_from_slice(&(ch.armor).to_le_bytes());
-            buf[7..9].copy_from_slice(&(ch.weapon).to_le_bytes());
-            NetworkManager::with(|network| network.xsend(nr, &buf, 13));
-            Server::with_players_mut(|players| {
-                players[nr].cpl.gold = ch.gold;
-                players[nr].cpl.armor = ch.armor as i32;
-                players[nr].cpl.weapon = ch.weapon as i32;
-            });
-        });
-    }
 }
 
 /// Send HP change to player
@@ -4679,7 +4452,7 @@ fn plr_change_end(nr: usize, cn: usize) {
 
     if current_end != player_end {
         let mut buf: [u8; 16] = [0; 16];
-        buf[0] = core::constants::SV_SETCHAR_ENDUR;
+        buf[0] = core::constants::SV_SETCHAR_AEND;
         buf[1] = current_end as u8;
         buf[2] = (current_end >> 8) as u8;
 
@@ -4704,7 +4477,7 @@ fn plr_change_mana(nr: usize, cn: usize) {
 
     if current_mana != player_mana {
         let mut buf: [u8; 16] = [0; 16];
-        buf[0] = core::constants::SV_SETCHAR_MANA;
+        buf[0] = core::constants::SV_SETCHAR_AMANA;
         buf[1] = current_mana as u8;
         buf[2] = (current_mana >> 8) as u8;
 
@@ -4726,8 +4499,8 @@ fn plr_change_dir(nr: usize, cn: usize) {
 
     if current_dir as i32 != player_dir {
         let mut buf: [u8; 16] = [0; 16];
-        buf[0] = core::constants::SV_SETCHAR_MODE;
-        buf[1] = current_dir;
+        buf[0] = core::constants::SV_SETCHAR_DIR;
+        buf[1] = current_dir as u8;
 
         NetworkManager::with(|network| {
             network.xsend(nr, &buf, 2);
@@ -4754,27 +4527,14 @@ fn plr_change_points(nr: usize, cn: usize) {
         });
 
     if points != cpl_points || points_tot != cpl_points_tot || kindred != cpl_kindred {
-        let mut buf: [u8; 10] = [0; 10];
+        // Match C++: SV_SETCHAR_PTS + points(u32) + points_tot(u32) + kindred(u32) => 13 bytes
+        let mut buf: [u8; 13] = [0; 13];
         buf[0] = core::constants::SV_SETCHAR_PTS;
+        buf[1..5].copy_from_slice(&points.to_le_bytes());
+        buf[5..9].copy_from_slice(&points_tot.to_le_bytes());
+        buf[9..13].copy_from_slice(&kindred.to_le_bytes());
 
-        // points (4 bytes)
-        buf[1] = points as u8;
-        buf[2] = (points >> 8) as u8;
-        buf[3] = (points >> 16) as u8;
-        buf[4] = (points >> 24) as u8;
-
-        // points_tot (4 bytes)
-        buf[5] = points_tot as u8;
-        buf[6] = (points_tot >> 8) as u8;
-        buf[7] = (points_tot >> 16) as u8;
-        buf[8] = (points_tot >> 24) as u8;
-
-        // kindred (1 byte)
-        buf[9] = kindred as u8;
-
-        NetworkManager::with(|network| {
-            network.xsend(nr, &buf, 10);
-        });
+        NetworkManager::with(|network| network.xsend(nr, &buf, 13));
 
         Server::with_players_mut(|players| {
             players[nr].cpl.points = points;
@@ -4801,26 +4561,17 @@ fn plr_change_gold(nr: usize, cn: usize) {
         });
 
     if gold != cpl_gold || armor as i32 != cpl_armor || weapon as i32 != cpl_weapon {
-        let mut buf: [u8; 16] = [0; 16];
+        // Match C++: SV_SETCHAR_GOLD + gold(u32) + armor(u32) + weapon(u32) => 13 bytes
+        let armor32: i32 = armor as i32;
+        let weapon32: i32 = weapon as i32;
+
+        let mut buf: [u8; 13] = [0; 13];
         buf[0] = core::constants::SV_SETCHAR_GOLD;
+        buf[1..5].copy_from_slice(&gold.to_le_bytes());
+        buf[5..9].copy_from_slice(&armor32.to_le_bytes());
+        buf[9..13].copy_from_slice(&weapon32.to_le_bytes());
 
-        // gold (4 bytes)
-        buf[1] = gold as u8;
-        buf[2] = (gold >> 8) as u8;
-        buf[3] = (gold >> 16) as u8;
-        buf[4] = (gold >> 24) as u8;
-
-        // armor (2 bytes)
-        buf[5] = armor as u8;
-        buf[6] = (armor >> 8) as u8;
-
-        // weapon (2 bytes)
-        buf[7] = weapon as u8;
-        buf[8] = (weapon >> 8) as u8;
-
-        NetworkManager::with(|network| {
-            network.xsend(nr, &buf, 9);
-        });
+        NetworkManager::with(|network| network.xsend(nr, &buf, 13));
 
         Server::with_players_mut(|players| {
             players[nr].cpl.gold = gold;
@@ -4840,13 +4591,15 @@ fn plr_change_position(nr: usize, cn: usize) {
         let mut buf: [u8; 16] = [0; 16];
         buf[0] = core::constants::SV_SETORIGIN;
 
-        // x (2 bytes)
-        buf[1] = x as u8;
-        buf[2] = (x >> 8) as u8;
-
-        // y (2 bytes)
-        buf[3] = y as u8;
-        buf[4] = (y >> 8) as u8;
+        // Match C++: send origin as (ch.x - TILEX/2, ch.y - TILEY/2)
+        let ox: i16 = (x as i32 - (core::constants::TILEX as i32 / 2)) as i16;
+        let oy: i16 = (y as i32 - (core::constants::TILEY as i32 / 2)) as i16;
+        let ox_b = ox.to_le_bytes();
+        let oy_b = oy.to_le_bytes();
+        buf[1] = ox_b[0];
+        buf[2] = ox_b[1];
+        buf[3] = oy_b[0];
+        buf[4] = oy_b[1];
 
         NetworkManager::with(|network| {
             network.xsend(nr, &buf, 5);
@@ -6445,6 +6198,7 @@ fn plr_cmd_move(nr: usize) {
         y_raw_u32 as u16
     };
 
+    // TODO: Remove this now that we have fixed the tick buffer issues.
     let half_x: u16 = (core::constants::TILEX / 2) as u16;
     let half_y: u16 = (core::constants::TILEY / 2) as u16;
 
@@ -6474,8 +6228,8 @@ fn plr_cmd_move(nr: usize) {
         );
 
         ch[cn].attack_cn = 0;
-        ch[cn].goto_x = x;
-        ch[cn].goto_y = y;
+        ch[cn].goto_x = x_raw;
+        ch[cn].goto_y = y_raw_u16;
         ch[cn].misc_action = 0;
         ch[cn].cerrno = 0;
         ch[cn].data[12] = ticker;
