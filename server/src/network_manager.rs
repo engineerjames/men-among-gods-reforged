@@ -205,7 +205,7 @@ impl NetworkManager {
             let p = &mut players[player_id];
 
             if p.sock.is_none() {
-                log::warn!("csend: no socket for player {}", player_id);
+                // Too noisy on shutdown to log anything here.
                 return;
             }
 
