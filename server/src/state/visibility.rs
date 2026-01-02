@@ -1,6 +1,5 @@
 use core::constants::{CharacterFlags, ItemFlags, KIN_MONSTER};
 use core::types::Character;
-use std::fmt::Debug;
 use std::{backtrace, cmp};
 
 use crate::repository::Repository;
