@@ -4322,33 +4322,95 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
 
     // items (40)
     for i in 0..40usize {
-        let changed = Repository::with_characters(|characters| {
-            let ch_in = characters[cn].item[i] as i32;
-            Server::with_players(|players| players[nr].cpl.item[i] != ch_in)
-        });
-        if changed {
-            let in_idx = Repository::with_characters(|characters| characters[cn].item[i] as usize);
-            let mut sprite: i16 = 0;
-            let mut placement: i16 = 0;
-            if in_idx != 0 && in_idx < core::constants::MAXITEM as usize {
-                Repository::with_items(|items| {
-                    let it = &items[in_idx];
-                    sprite = if it.active != 0 {
-                        it.sprite[1]
-                    } else {
-                        it.sprite[0]
-                    };
-                    placement = it.placement as i16;
-                });
-            }
+        let is_building = Repository::with_characters(|ch| ch[cn].is_building());
+        let in_idx = Repository::with_characters(|characters| characters[cn].item[i] as usize);
+        let cpl_item = Server::with_players(|players| players[nr].cpl.item[i]);
+
+        // Check if changed OR if IF_UPDATE is set (but not for building mode)
+        let needs_update = if in_idx != 0 && !is_building {
+            Repository::with_items(|items| {
+                (cpl_item != in_idx as i32)
+                    || ((items[in_idx].flags & core::constants::ItemFlags::IF_UPDATE.bits()) != 0)
+            })
+        } else {
+            cpl_item != in_idx as i32
+        };
+
+        if needs_update {
             let mut buf: [u8; 9] = [0; 9];
             buf[0] = core::constants::SV_SETCHAR_ITEM;
             let idx_bytes = (i as u32).to_le_bytes();
             buf[1..5].copy_from_slice(&idx_bytes);
-            buf[5] = (sprite & 0xff) as u8;
-            buf[6] = ((sprite >> 8) & 0xff) as u8;
-            buf[7] = (placement & 0xff) as u8;
-            buf[8] = ((placement >> 8) & 0xff) as u8;
+
+            if in_idx != 0 {
+                if is_building {
+                    // Building mode - handle special flags and templates
+                    if (in_idx & 0x40000000) != 0 {
+                        // Map flags
+                        let flag = in_idx & 0x0fffffff;
+                        let sprite = match flag as u32 {
+                            core::constants::MF_MOVEBLOCK => 47,
+                            core::constants::MF_SIGHTBLOCK => 83,
+                            core::constants::MF_INDOORS => 48,
+                            core::constants::MF_UWATER => 50,
+                            core::constants::MF_NOMONST => 51,
+                            core::constants::MF_BANK => 52,
+                            core::constants::MF_TAVERN => 53,
+                            core::constants::MF_NOMAGIC => 54,
+                            core::constants::MF_DEATHTRAP => 74,
+                            core::constants::MF_ARENA => 78,
+                            core::constants::MF_NOEXPIRE => 81,
+                            core::constants::MF_NOLAG => 49,
+                            _ => 0,
+                        };
+                        buf[5] = (sprite & 0xff) as u8;
+                        buf[6] = ((sprite >> 8) & 0xff) as u8;
+                        buf[7] = 0;
+                        buf[8] = 0;
+                    } else if (in_idx & 0x20000000) != 0 {
+                        // Direct sprite reference
+                        let sprite = (in_idx & 0x0fffffff) as i16;
+                        buf[5] = (sprite & 0xff) as u8;
+                        buf[6] = ((sprite >> 8) & 0xff) as u8;
+                        buf[7] = 0;
+                        buf[8] = 0;
+                    } else {
+                        // Template item
+                        let sprite = Repository::with_item_templates(|templates| {
+                            templates[in_idx].sprite[0]
+                        });
+                        buf[5] = (sprite & 0xff) as u8;
+                        buf[6] = ((sprite >> 8) & 0xff) as u8;
+                        buf[7] = 0;
+                        buf[8] = 0;
+                    }
+                } else {
+                    // Normal mode - use item sprite and placement
+                    Repository::with_items(|items| {
+                        let it = &items[in_idx];
+                        let sprite = if it.active != 0 {
+                            it.sprite[1]
+                        } else {
+                            it.sprite[0]
+                        };
+                        let placement = it.placement as i16;
+                        buf[5] = (sprite & 0xff) as u8;
+                        buf[6] = ((sprite >> 8) & 0xff) as u8;
+                        buf[7] = (placement & 0xff) as u8;
+                        buf[8] = ((placement >> 8) & 0xff) as u8;
+                    });
+                    // Clear IF_UPDATE flag
+                    Repository::with_items_mut(|items| {
+                        items[in_idx].flags &= !core::constants::ItemFlags::IF_UPDATE.bits();
+                    });
+                }
+            } else {
+                buf[5] = 0;
+                buf[6] = 0;
+                buf[7] = 0;
+                buf[8] = 0;
+            }
+
             NetworkManager::with(|network| network.xsend(nr, &buf, 9));
             Server::with_players_mut(|players| players[nr].cpl.item[i] = in_idx as i32);
         }
@@ -4356,33 +4418,50 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
 
     // worn (20)
     for i in 0..20usize {
-        let changed = Repository::with_characters(|characters| {
-            let ch_in = characters[cn].worn[i] as i32;
-            Server::with_players(|players| players[nr].cpl.worn[i] != ch_in)
-        });
-        if changed {
-            let in_idx = Repository::with_characters(|characters| characters[cn].worn[i] as usize);
-            let mut sprite: i16 = 0;
-            let mut placement: i16 = 0;
-            if in_idx != 0 && in_idx < core::constants::MAXITEM as usize {
-                Repository::with_items(|items| {
-                    let it = &items[in_idx];
-                    sprite = if it.active != 0 {
-                        it.sprite[1]
-                    } else {
-                        it.sprite[0]
-                    };
-                    placement = it.placement as i16;
-                });
-            }
+        let in_idx = Repository::with_characters(|characters| characters[cn].worn[i] as usize);
+        let cpl_worn = Server::with_players(|players| players[nr].cpl.worn[i]);
+
+        // Check if changed OR if IF_UPDATE is set
+        let needs_update = if in_idx != 0 {
+            Repository::with_items(|items| {
+                (cpl_worn != in_idx as i32)
+                    || ((items[in_idx].flags & core::constants::ItemFlags::IF_UPDATE.bits()) != 0)
+            })
+        } else {
+            cpl_worn != in_idx as i32
+        };
+
+        if needs_update {
             let mut buf: [u8; 9] = [0; 9];
             buf[0] = core::constants::SV_SETCHAR_WORN;
             let idx_bytes = (i as u32).to_le_bytes();
             buf[1..5].copy_from_slice(&idx_bytes);
-            buf[5] = (sprite & 0xff) as u8;
-            buf[6] = ((sprite >> 8) & 0xff) as u8;
-            buf[7] = (placement & 0xff) as u8;
-            buf[8] = ((placement >> 8) & 0xff) as u8;
+
+            if in_idx != 0 {
+                Repository::with_items(|items| {
+                    let it = &items[in_idx];
+                    let sprite = if it.active != 0 {
+                        it.sprite[1]
+                    } else {
+                        it.sprite[0]
+                    };
+                    let placement = it.placement as i16;
+                    buf[5] = (sprite & 0xff) as u8;
+                    buf[6] = ((sprite >> 8) & 0xff) as u8;
+                    buf[7] = (placement & 0xff) as u8;
+                    buf[8] = ((placement >> 8) & 0xff) as u8;
+                });
+                // Clear IF_UPDATE flag
+                Repository::with_items_mut(|items| {
+                    items[in_idx].flags &= !core::constants::ItemFlags::IF_UPDATE.bits();
+                });
+            } else {
+                buf[5] = 0;
+                buf[6] = 0;
+                buf[7] = 0;
+                buf[8] = 0;
+            }
+
             NetworkManager::with(|network| network.xsend(nr, &buf, 9));
             Server::with_players_mut(|players| players[nr].cpl.worn[i] = in_idx as i32);
         }
@@ -4390,66 +4469,145 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
 
     // spells (20)
     for i in 0..20usize {
-        let changed = Repository::with_characters(|characters| {
-            let ch_in = characters[cn].spell[i] as i32;
-            Server::with_players(|players| players[nr].cpl.spell[i] != ch_in)
-        });
-        if changed {
-            let in_idx = Repository::with_characters(|characters| characters[cn].spell[i] as usize);
-            let mut sprite: i16 = 0;
-            let mut active_frac: i16 = 0;
-            if in_idx != 0 && in_idx < core::constants::MAXITEM as usize {
-                Repository::with_items(|items| {
-                    let it = &items[in_idx];
-                    sprite = it.sprite[1];
-                    active_frac = if it.duration > 0 {
-                        (it.active * 16 / it.duration) as i16
-                    } else {
-                        0
-                    };
-                });
-            }
+        let in_idx = Repository::with_characters(|characters| characters[cn].spell[i] as usize);
+        let cpl_spell = Server::with_players(|players| players[nr].cpl.spell[i]);
+        let cpl_active = Server::with_players(|players| players[nr].cpl.active[i]);
+
+        // Calculate current active fraction
+        let (current_active_frac, has_update_flag) = if in_idx != 0 {
+            Repository::with_items(|items| {
+                let it = &items[in_idx];
+                let duration = std::cmp::max(1, it.duration);
+                let frac = ((it.active * 16) / duration) as i16;
+                let has_flag = (it.flags & core::constants::ItemFlags::IF_UPDATE.bits()) != 0;
+                (frac, has_flag)
+            })
+        } else {
+            (0, false)
+        };
+
+        // Check if spell changed OR active fraction changed OR IF_UPDATE is set
+        let needs_update = (cpl_spell != in_idx as i32)
+            || (cpl_active as i16 != current_active_frac)
+            || has_update_flag;
+
+        if needs_update {
             let mut buf: [u8; 9] = [0; 9];
             buf[0] = core::constants::SV_SETCHAR_SPELL;
             let idx_bytes = (i as u32).to_le_bytes();
             buf[1..5].copy_from_slice(&idx_bytes);
-            buf[5] = (sprite & 0xff) as u8;
-            buf[6] = ((sprite >> 8) & 0xff) as u8;
-            buf[7] = (active_frac & 0xff) as u8;
-            buf[8] = ((active_frac >> 8) & 0xff) as u8;
+
+            if in_idx != 0 {
+                Repository::with_items(|items| {
+                    let it = &items[in_idx];
+                    let sprite = it.sprite[1];
+                    let duration = std::cmp::max(1, it.duration);
+                    let active_frac = ((it.active * 16) / duration) as i16;
+
+                    buf[5] = (sprite & 0xff) as u8;
+                    buf[6] = ((sprite >> 8) & 0xff) as u8;
+                    buf[7] = (active_frac & 0xff) as u8;
+                    buf[8] = ((active_frac >> 8) & 0xff) as u8;
+                });
+                // Clear IF_UPDATE flag
+                Repository::with_items_mut(|items| {
+                    items[in_idx].flags &= !core::constants::ItemFlags::IF_UPDATE.bits();
+                });
+                Server::with_players_mut(|players| {
+                    players[nr].cpl.spell[i] = in_idx as i32;
+                    players[nr].cpl.active[i] = current_active_frac as i8;
+                });
+            } else {
+                buf[5] = 0;
+                buf[6] = 0;
+                buf[7] = 0;
+                buf[8] = 0;
+                Server::with_players_mut(|players| {
+                    players[nr].cpl.spell[i] = 0;
+                    players[nr].cpl.active[i] = 0;
+                });
+            }
+
             NetworkManager::with(|network| network.xsend(nr, &buf, 9));
-            Server::with_players_mut(|players| {
-                players[nr].cpl.spell[i] = in_idx as i32;
-                players[nr].cpl.active[i] = active_frac as i8;
-            });
         }
     }
 
-    // citem
-    let citem_changed = Repository::with_characters(|characters| {
-        characters[cn].citem as i32 != Server::with_players(|players| players[nr].cpl.citem)
-    });
-    if citem_changed {
-        let in_idx = Repository::with_characters(|characters| characters[cn].citem as usize);
-        let mut sprite: i16 = 0;
-        let mut placement: i16 = 0;
-        if in_idx != 0 && in_idx < core::constants::MAXITEM as usize {
-            Repository::with_items(|items| {
-                let it = &items[in_idx];
-                sprite = if it.active != 0 {
-                    it.sprite[1]
-                } else {
-                    it.sprite[0]
-                };
-                placement = it.placement as i16;
-            });
-        }
+    // citem (cursor item)
+    let is_building = Repository::with_characters(|ch| ch[cn].is_building());
+    let in_idx = Repository::with_characters(|characters| characters[cn].citem as usize);
+    let cpl_citem = Server::with_players(|players| players[nr].cpl.citem);
+
+    // Check if changed OR if IF_UPDATE is set (but not for building mode or gold amounts)
+    let needs_update = if in_idx != 0 && !is_building && (in_idx & 0x80000000) == 0 {
+        Repository::with_items(|items| {
+            (cpl_citem != in_idx as i32)
+                || ((items[in_idx].flags & core::constants::ItemFlags::IF_UPDATE.bits()) != 0)
+        })
+    } else {
+        cpl_citem != in_idx as i32
+    };
+
+    if needs_update {
         let mut buf: [u8; 5] = [0; 5];
         buf[0] = core::constants::SV_SETCHAR_OBJ;
-        buf[1] = (sprite & 0xff) as u8;
-        buf[2] = ((sprite >> 8) & 0xff) as u8;
-        buf[3] = (placement & 0xff) as u8;
-        buf[4] = ((placement >> 8) & 0xff) as u8;
+
+        if (in_idx & 0x80000000) != 0 {
+            // Gold amount - use special sprites based on amount
+            let amount = in_idx & 0x7fffffff;
+            let sprite = if amount > 999999 {
+                121
+            } else if amount > 99999 {
+                120
+            } else if amount > 9999 {
+                41
+            } else if amount > 999 {
+                40
+            } else if amount > 99 {
+                39
+            } else if amount > 9 {
+                38
+            } else {
+                37
+            };
+            buf[1] = (sprite & 0xff) as u8;
+            buf[2] = ((sprite >> 8) & 0xff) as u8;
+            buf[3] = 0;
+            buf[4] = 0;
+        } else if in_idx != 0 {
+            if is_building {
+                // Building mode - fixed sprite
+                buf[1] = 46;
+                buf[2] = 0;
+                buf[3] = 0;
+                buf[4] = 0;
+            } else {
+                // Normal item
+                Repository::with_items(|items| {
+                    let it = &items[in_idx];
+                    let sprite = if it.active != 0 {
+                        it.sprite[1]
+                    } else {
+                        it.sprite[0]
+                    };
+                    let placement = it.placement as i16;
+                    buf[1] = (sprite & 0xff) as u8;
+                    buf[2] = ((sprite >> 8) & 0xff) as u8;
+                    buf[3] = (placement & 0xff) as u8;
+                    buf[4] = ((placement >> 8) & 0xff) as u8;
+                });
+                // Clear IF_UPDATE flag
+                Repository::with_items_mut(|items| {
+                    items[in_idx].flags &= !core::constants::ItemFlags::IF_UPDATE.bits();
+                });
+            }
+        } else {
+            // Empty cursor
+            buf[1] = 0;
+            buf[2] = 0;
+            buf[3] = 0;
+            buf[4] = 0;
+        }
+
         NetworkManager::with(|network| network.xsend(nr, &buf, 5));
         Server::with_players_mut(|players| players[nr].cpl.citem = in_idx as i32);
     }
@@ -4830,26 +4988,23 @@ fn plr_change_map(nr: usize) {
     let mut n = 0;
 
     while n < total {
-        // Check if this tile has changed (matching C++ fdiff behavior)
-        let has_diff = Server::with_players(|players| {
-            let cmap_bytes = unsafe {
-                std::slice::from_raw_parts(
-                    &players[nr].cmap[n] as *const _ as *const u8,
-                    std::mem::size_of::<core::types::CMap>(),
-                )
-            };
-            let smap_bytes = unsafe {
-                std::slice::from_raw_parts(
-                    &players[nr].smap[n] as *const _ as *const u8,
-                    std::mem::size_of::<core::types::CMap>(),
-                )
-            };
-            fdiff(cmap_bytes, smap_bytes).is_some()
+        // Find next difference (matching C++ fdiff behavior)
+        let next_diff = Server::with_players(|players| {
+            let cmap_slice = &players[nr].cmap[n..];
+            let smap_slice = &players[nr].smap[n..];
+            cmap_slice
+                .iter()
+                .zip(smap_slice.iter())
+                .position(|(c, s)| c != s)
         });
 
-        if !has_diff {
-            n += 1;
-            continue;
+        match next_diff {
+            Some(offset) => {
+                n += offset;
+            }
+            None => {
+                break; // No more differences
+            }
         }
 
         // Build update packet and modify player data

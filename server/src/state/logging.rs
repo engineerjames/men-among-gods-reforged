@@ -56,7 +56,12 @@ impl State {
     /// * `font` - Color/font modifier for the message
     /// * `message` - Message text (may be longer than a single packet)
     fn do_log(&self, cn: usize, font: core::types::FontColor, message: &str) {
-        log::debug!("do_log: cn={}, font={:?}, message='{}'", cn, font, message);
+        log::debug!(
+            "do_log: cn={}, font={:?}, message='{}'",
+            cn,
+            font,
+            message.strip_suffix('\n').unwrap_or("")
+        );
         let mut buffer: [u8; 16] = [0; 16];
 
         let player_number = Repository::with_characters(|ch| ch[cn].player) as usize;
