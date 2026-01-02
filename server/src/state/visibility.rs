@@ -1,4 +1,4 @@
-use core::constants::CharacterFlags;
+use core::constants::{CharacterFlags, KIN_MONSTER};
 use core::types::Character;
 use std::cmp;
 
@@ -223,76 +223,69 @@ impl State {
     /// Checks line-of-sight from `(fx,fy)` to `(tx,ty)` and returns a
     /// visibility metric: `1` indicates perfect/very close visibility, larger
     /// values indicate worse visibility, and `0` means not visible. When
-    /// `character_id` is provided the function may reuse a cached see-map and
+    /// `cn` is provided the function may reuse a cached see-map and
     /// update the per-character visibility cache.
     ///
     /// # Arguments
-    /// * `character_id` - Optional character id whose see cache to use/update
+    /// * `cn` - Optional character id whose see cache to use/update
     /// * `fx, fy` - Origin coordinates
     /// * `tx, ty` - Target coordinates to check
     /// * `max_distance` - Maximum radius to compute
     pub(crate) fn can_see(
         &mut self,
-        character_id: Option<usize>,
+        cn: Option<usize>,
         fx: i32,
         fy: i32,
         tx: i32,
         ty: i32,
         max_distance: i32,
     ) -> i32 {
-        Repository::with_see_map_mut(|see_map| {
-            Repository::with_characters(|characters| {
-                match character_id {
-                    Some(cn) => {
-                        // C++ behavior: switch the active visi pointer to the per-character see buffer.
-                        self.vis_is_global = false;
+        if cn.is_some() {
+            self.visi = Repository::with_see_map(|see_map| see_map[cn.unwrap()].vis);
 
-                        if (fx != see_map[cn].x) || (fy != see_map[cn].y) {
-                            self.is_monster =
-                                characters[cn].is_monster() && !characters[cn].is_usurp_or_thrall();
+            let see_x = Repository::with_see_map(|see_map| see_map[cn.unwrap()].x);
+            let see_y = Repository::with_see_map(|see_map| see_map[cn.unwrap()].y);
 
-                            // Copy the visibility data from see_map to our working buffer
-                            self._visi.copy_from_slice(&see_map[cn].vis);
+            if fx != see_x || fy != see_y {
+                let ch_kindred =
+                    Repository::with_characters(|characters| characters[cn.unwrap()].kindred);
 
-                            self.can_map_see(fx, fy, max_distance);
+                let ch_flags =
+                    Repository::with_characters(|characters| characters[cn.unwrap()].flags);
 
-                            // Copy the updated visibility data back to see_map
-                            see_map[cn].vis.copy_from_slice(&self._visi);
-                            see_map[cn].x = fx;
-                            see_map[cn].y = fy;
-                            self.see_miss += 1;
-                        } else {
-                            // Copy the visibility data from see_map for checking
-                            self._visi.copy_from_slice(&see_map[cn].vis);
-                            self.see_hit += 1;
-                            self.ox = fx;
-                            self.oy = fy;
-                        }
-                    }
-                    None => {
-                        // C++ behavior: ensure the active visi pointer is the global buffer (_visi).
-                        // If we were previously using a per-character buffer, reset origin so we recompute.
-                        if !self.vis_is_global {
-                            self.vis_is_global = true;
-                            self.ox = 0;
-                            self.oy = 0;
-                        }
-
-                        // Restore the global buffer into the working buffer so `check_vis()` reads the
-                        // same data the C++ code would read from `_visi`.
-                        self._visi.copy_from_slice(&self.visi);
-
-                        if (self.ox != fx) || (self.oy != fy) {
-                            self.is_monster = false;
-                            self.can_map_see(fx, fy, max_distance);
-
-                            // Persist the global buffer across per-character can_see() calls.
-                            self.visi.copy_from_slice(&self._visi);
-                        }
-                    }
+                if ch_kindred & KIN_MONSTER as i32 != 0
+                    && (ch_flags
+                        & (CharacterFlags::CF_USURP.bits() | CharacterFlags::CF_THRALL.bits()))
+                        == 0
+                {
+                    self.is_monster = true;
+                } else {
+                    self.is_monster = false;
                 }
-            })
-        });
+
+                self.can_map_see(fx, fy, max_distance);
+                Repository::with_see_map_mut(|see_map| {
+                    see_map[cn.unwrap()].x = fx;
+                    see_map[cn.unwrap()].y = fy;
+                });
+                self.see_miss += 1;
+            } else {
+                self.see_hit += 1;
+                self.ox = fx;
+                self.oy = fy;
+            }
+        } else {
+            if self.visi != self._visi {
+                self.visi = self._visi;
+                self.ox = 0;
+                self.oy = 0;
+            }
+
+            if self.ox != fx || self.oy != fy {
+                self.is_monster = false;
+                self.can_map_see(fx, fy, max_distance);
+            }
+        }
 
         self.check_vis(tx, ty)
     }
@@ -363,12 +356,12 @@ impl State {
         self.ox = fx;
         self.oy = fy;
 
+        let xc = fx;
+        let yc = fy;
+
         self.add_vis(fx, fy, 1);
 
         for dist in 1..(max_distance + 1) {
-            let xc = fx;
-            let yc = fy;
-
             // Top and bottom horizontal lines
             for x in (xc - dist)..=(xc + dist) {
                 let y = yc - dist;
@@ -406,25 +399,18 @@ impl State {
     /// # Arguments
     /// * `fx, fy` - Start coordinates
     /// * `target_x, target_y` - Destination coordinates
-    pub(crate) fn can_go(&mut self, fx: i32, fy: i32, target_x: i32, target_y: i32) -> bool {
-        // C++ behavior: ensure the active visi pointer is the global buffer (_visi).
-        if !self.vis_is_global {
-            self.vis_is_global = true;
+    pub(crate) fn can_go(&mut self, fx: i32, fy: i32, target_x: i32, target_y: i32) -> i32 {
+        if self.visi != self._visi {
+            self.visi = self._visi;
             self.ox = 0;
             self.oy = 0;
         }
 
-        // Restore cached global buffer for `check_vis()`.
-        self._visi.copy_from_slice(&self.visi);
-
         if self.ox != fx || self.oy != fy {
             self.can_map_go(fx, fy, 15);
-            self.visi.copy_from_slice(&self._visi);
         }
 
-        let tmp = self.check_vis(target_x, target_y);
-
-        tmp != 0
+        self.check_vis(target_x, target_y)
     }
 
     /// Port of `check_dlight(x,y)` from original helper code.
@@ -707,36 +693,52 @@ impl State {
     /// indicates not visible; otherwise a positive integer (1 = best).
     ///
     /// # Arguments
-    /// * `tx, ty` - Target coordinates relative to current origin
-    pub(crate) fn check_vis(&self, tx: i32, ty: i32) -> i32 {
+    /// * `x, y` - Target coordinates relative to current origin
+    pub(crate) fn check_vis(&self, x: i32, y: i32) -> i32 {
         let mut best = 99;
 
-        let x = tx - self.ox + 20;
-        let y = ty - self.oy + 20;
+        let x = x - self.ox + 20;
+        let y = y - self.oy + 20;
 
-        // Check all 8 adjacent cells for the best (lowest) visibility value
-        let offsets = [
-            (1, 0),
-            (-1, 0),
-            (0, 1),
-            (0, -1),
-            (1, 1),
-            (1, -1),
-            (-1, 1),
-            (-1, -1),
-        ];
-
-        for (dx, dy) in offsets.iter() {
-            let nx = x + dx;
-            let ny = y + dy;
-
-            if nx >= 0 && nx < 40 && ny >= 0 && ny < 40 {
-                let idx = (nx + ny * 40) as usize;
-                let val = self._visi[idx];
-                if val != 0 && val < best {
-                    best = val;
-                }
-            }
+        if self.visi[((x + 1) + (y + 0) * 40) as usize] != 0
+            && self.visi[((x + 1) + (y + 0) * 40) as usize] < best
+        {
+            best = self.visi[((x + 1) + (y + 0) * 40) as usize];
+        }
+        if self.visi[((x - 1) + (y + 0) * 40) as usize] != 0
+            && self.visi[((x - 1) + (y + 0) * 40) as usize] < best
+        {
+            best = self.visi[((x - 1) + (y + 0) * 40) as usize];
+        }
+        if self.visi[((x + 0) + (y + 1) * 40) as usize] != 0
+            && self.visi[((x + 0) + (y + 1) * 40) as usize] < best
+        {
+            best = self.visi[((x + 0) + (y + 1) * 40) as usize];
+        }
+        if self.visi[((x + 0) + (y - 1) * 40) as usize] != 0
+            && self.visi[((x + 0) + (y - 1) * 40) as usize] < best
+        {
+            best = self.visi[((x + 0) + (y - 1) * 40) as usize];
+        }
+        if self.visi[((x + 1) + (y + 1) * 40) as usize] != 0
+            && self.visi[((x + 1) + (y + 1) * 40) as usize] < best
+        {
+            best = self.visi[((x + 1) + (y + 1) * 40) as usize];
+        }
+        if self.visi[((x + 1) + (y - 1) * 40) as usize] != 0
+            && self.visi[((x + 1) + (y - 1) * 40) as usize] < best
+        {
+            best = self.visi[((x + 1) + (y - 1) * 40) as usize];
+        }
+        if self.visi[((x - 1) + (y + 1) * 40) as usize] != 0
+            && self.visi[((x - 1) + (y + 1) * 40) as usize] < best
+        {
+            best = self.visi[((x - 1) + (y + 1) * 40) as usize];
+        }
+        if self.visi[((x - 1) + (y - 1) * 40) as usize] != 0
+            && self.visi[((x - 1) + (y - 1) * 40) as usize] < best
+        {
+            best = self.visi[((x - 1) + (y - 1) * 40) as usize];
         }
 
         if best == 99 {
@@ -977,8 +979,10 @@ impl State {
                         map[(x + y * core::constants::SERVER_MAPX) as usize].ch as usize
                     });
 
-                    see_map[cn].x = 0;
-                    see_map[cn].y = 0;
+                    if cn != 0 {
+                        see_map[cn].x = 0;
+                        see_map[cn].y = 0;
+                    }
                 }
             }
         });

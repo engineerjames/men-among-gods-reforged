@@ -2727,22 +2727,21 @@ pub fn plr_getmap_complete(nr: usize) {
     const XSCUT: i32 = 2;
     const XECUT: i32 = 2;
 
-    let ys = Repository::with_characters(|characters| {
-        characters[cn].y as i32 - (core::constants::TILEY as i32 / 2) + YSCUT
+    let ys = Repository::with_characters(|ch| {
+        ch[cn].y as i32 - (core::constants::TILEY as i32 / 2) + YSCUT
     });
-    let ye = Repository::with_characters(|characters| {
-        characters[cn].y as i32 + (core::constants::TILEY as i32 / 2) - YECUT
+    let ye = Repository::with_characters(|ch| {
+        ch[cn].y as i32 + (core::constants::TILEY as i32 / 2) - YECUT
     });
-    let xs = Repository::with_characters(|characters| {
-        characters[cn].x as i32 - (core::constants::TILEX as i32 / 2) + XSCUT
+    let xs = Repository::with_characters(|ch| {
+        ch[cn].x as i32 - (core::constants::TILEX as i32 / 2) + XSCUT
     });
-    let xe = Repository::with_characters(|characters| {
-        characters[cn].x as i32 + (core::constants::TILEX as i32 / 2) - XECUT
+    let xe = Repository::with_characters(|ch| {
+        ch[cn].x as i32 + (core::constants::TILEX as i32 / 2) - XECUT
     });
 
-    let current_x = Repository::with_characters(|characters| characters[cn].x as i32);
-    let current_y = Repository::with_characters(|characters| characters[cn].y as i32);
-
+    let current_x = Repository::with_characters(|ch| ch[cn].x as i32);
+    let current_y = Repository::with_characters(|ch| ch[cn].y as i32);
     State::with_mut(|state| {
         state.can_see(
             Some(cn),
@@ -2780,7 +2779,7 @@ pub fn plr_getmap_complete(nr: usize) {
     let mut n = (YSCUT * core::constants::TILEX as i32 + XSCUT) as usize;
     let mut m = (xs + ys * core::constants::SERVER_MAPX) as usize;
     let mut y = ys;
-    let mut infra = false;
+    let mut infra;
     while y < ye {
         let mut x = xs;
         while x < xe {
@@ -2852,7 +2851,16 @@ pub fn plr_getmap_complete(nr: usize) {
             }
 
             // Begin of flags
+            // TODO: Verify this is actually empty tile behavior
             smap[n].flags = 0;
+            // smap[n].ch_sprite = 0;
+            // smap[n].it_sprite = 0;
+            // smap[n].ch_status = 0;
+            // smap[n].it_status = 0;
+            // smap[n].ch_speed = 0;
+            // smap[n].ch_nr = 0;
+            // smap[n].ch_id = 0;
+            // smap[n].ch_proz = 0;
 
             Repository::with_map(|map| {
                 if map[m].flags
@@ -3005,11 +3013,7 @@ pub fn plr_getmap_complete(nr: usize) {
                 } else {
                     let mut new_cmap = core::types::CMap::default();
                     new_cmap.ba_sprite = core::constants::SPR_EMPTY as i16;
-                    Server::with_players_mut(|players| {
-                        players[nr].smap[n] = new_cmap;
-                        // TODO: We're likely going to end up overriding these
-                        // values at the end when we copy the smap back...
-                    });
+                    smap[n] = new_cmap;
                 }
 
                 // Begin of item
