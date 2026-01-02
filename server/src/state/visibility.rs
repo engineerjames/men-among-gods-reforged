@@ -1,4 +1,4 @@
-use core::constants::{CharacterFlags, KIN_MONSTER};
+use core::constants::{CharacterFlags, ItemFlags, KIN_MONSTER};
 use core::types::Character;
 use std::cmp;
 
@@ -757,14 +757,8 @@ impl State {
     /// * `x, y` - World coordinates to write
     /// * `value` - Visibility value to store
     pub(crate) fn add_vis(&mut self, x: i32, y: i32, value: i32) {
-        let vx = x - self.ox + 20;
-        let vy = y - self.oy + 20;
-
-        if vx >= 0 && vx < 40 && vy >= 0 && vy < 40 {
-            let idx = (vx + vy * 40) as usize;
-            if self._visi[idx] == 0 {
-                self._visi[idx] = value as i8;
-            }
+        if (self.visi[((x - self.ox + 20) + (y - self.oy + 20) * 40) as usize]) == 0 {
+            self.visi[((x - self.ox + 20) + (y - self.oy + 20) * 40) as usize] = value as i8;
         }
     }
 
@@ -782,38 +776,35 @@ impl State {
             return false;
         }
 
-        let vx = x - self.ox + 20;
-        let vy = y - self.oy + 20;
+        let x = x - self.ox + 20;
+        let y = y - self.oy + 20;
 
-        if vx < 0 || vx >= 40 || vy < 0 || vy >= 40 {
-            return false;
+        if self.visi[((x + 1) + (y) * 40) as usize] == value {
+            return true;
+        }
+        if self.visi[((x - 1) + (y) * 40) as usize] == value {
+            return true;
+        }
+        if self.visi[((x) + (y + 1) * 40) as usize] == value {
+            return true;
+        }
+        if self.visi[((x) + (y - 1) * 40) as usize] == value {
+            return true;
+        }
+        if self.visi[((x + 1) + (y + 1) * 40) as usize] == value {
+            return true;
+        }
+        if self.visi[((x + 1) + (y - 1) * 40) as usize] == value {
+            return true;
+        }
+        if self.visi[((x - 1) + (y + 1) * 40) as usize] == value {
+            return true;
+        }
+        if self.visi[((x - 1) + (y - 1) * 40) as usize] == value {
+            return true;
         }
 
-        // Check all 8 adjacent cells
-        let offsets = [
-            (1, 0),
-            (-1, 0),
-            (0, 1),
-            (0, -1),
-            (1, 1),
-            (1, -1),
-            (-1, 1),
-            (-1, -1),
-        ];
-
-        for (dx, dy) in offsets.iter() {
-            let nx = vx + dx;
-            let ny = vy + dy;
-
-            if nx >= 0 && nx < 40 && ny >= 0 && ny < 40 {
-                let idx = (nx + ny * 40) as usize;
-                if self._visi[idx] == value {
-                    return true;
-                }
-            }
-        }
-
-        false
+        return false;
     }
 
     /// Port of `check_map_see(x,y)` from original helper code.
@@ -892,30 +883,21 @@ impl State {
 
         let m = (x + y * core::constants::SERVER_MAPX as i32) as usize;
 
-        let blocked =
-            Repository::with_map(|map| (map[m].flags & core::constants::MF_MOVEBLOCK as u64) != 0);
-        if blocked {
+        if Repository::with_map(|map| map[m].flags & core::constants::MF_MOVEBLOCK as u64 != 0) {
             return false;
         }
 
-        let blocks_move = Repository::with_map(|map| {
-            let item_idx = map[m].it as usize;
-            if item_idx != 0 {
-                Repository::with_items(|items| {
-                    item_idx < items.len()
-                        && (items[item_idx].flags & core::constants::ItemFlags::IF_MOVEBLOCK.bits())
-                            != 0
-                })
-            } else {
-                false
-            }
-        });
-
-        if blocks_move {
+        let map_item_idx = Repository::with_map(|map| map[m].it as usize);
+        if map_item_idx != 0
+            && map_item_idx < Repository::with_items(|items| items.len())
+            && Repository::with_items(|items| {
+                items[map_item_idx].flags & ItemFlags::IF_MOVEBLOCK.bits() != 0
+            })
+        {
             return false;
         }
 
-        true
+        return true;
     }
 
     /// Port of `close_vis_go(x,y,value)` from original helper code.
@@ -934,30 +916,31 @@ impl State {
             return false;
         }
 
-        let offsets = [
-            (1, 0),
-            (-1, 0),
-            (0, 1),
-            (0, -1),
-            (1, 1),
-            (1, -1),
-            (-1, 1),
-            (-1, -1),
-        ];
-
-        for (dx, dy) in offsets.iter() {
-            let nx = vx + dx;
-            let ny = vy + dy;
-
-            if nx >= 0 && nx < 40 && ny >= 0 && ny < 40 {
-                let idx = (nx + ny * 40) as usize;
-                if self._visi[idx] == value {
-                    return true;
-                }
-            }
+        if self.visi[((x + 1) + (y) * 40) as usize] == value {
+            return true;
         }
-
-        false
+        if self.visi[((x - 1) + (y) * 40) as usize] == value {
+            return true;
+        }
+        if self.visi[((x) + (y + 1) * 40) as usize] == value {
+            return true;
+        }
+        if self.visi[((x) + (y - 1) * 40) as usize] == value {
+            return true;
+        }
+        if self.visi[((x + 1) + (y + 1) * 40) as usize] == value {
+            return true;
+        }
+        if self.visi[((x + 1) + (y - 1) * 40) as usize] == value {
+            return true;
+        }
+        if self.visi[((x - 1) + (y + 1) * 40) as usize] == value {
+            return true;
+        }
+        if self.visi[((x - 1) + (y - 1) * 40) as usize] == value {
+            return true;
+        }
+        return false;
     }
 
     /// Port of `reset_go(xc,yc)` from original helper code.
