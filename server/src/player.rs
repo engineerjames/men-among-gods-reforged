@@ -4846,7 +4846,9 @@ pub fn plr_cmd(nr: usize) {
         core::constants::CL_PASSWD => {
             plr_passwd(nr);
         }
-        _ => {}
+        _ => {
+            log::error!("Received command {} before login for player {}", cmd, nr);
+        }
     }
 
     // State may have changed in the handlers above.
@@ -4875,50 +4877,62 @@ pub fn plr_cmd(nr: usize) {
             return;
         }
         core::constants::CL_CMD_LOOK => {
+            log::debug!("PLR_CMD_LOOK received for player {}", nr);
             plr_cmd_look(nr, false);
             return;
         }
         core::constants::CL_CMD_AUTOLOOK => {
+            // Don't log auto commands to reduce log spam
             plr_cmd_look(nr, true);
             return;
         }
         core::constants::CL_CMD_SETUSER => {
+            log::debug!("PLR_CMD_SETUSER received for player {}", nr);
             plr_cmd_setuser(nr);
             return;
         }
         core::constants::CL_CMD_STAT => {
+            log::debug!("PLR_CMD_STAT received for player {}", nr);
             plr_cmd_stat(nr);
             return;
         }
         core::constants::CL_CMD_INPUT1 => {
+            log::debug!("PLR_CMD_INPUT1 received for player {}", nr);
             plr_cmd_input(nr, 1);
             return;
         }
         core::constants::CL_CMD_INPUT2 => {
+            log::debug!("PLR_CMD_INPUT2 received for player {}", nr);
             plr_cmd_input(nr, 2);
             return;
         }
         core::constants::CL_CMD_INPUT3 => {
+            log::debug!("PLR_CMD_INPUT3 received for player {}", nr);
             plr_cmd_input(nr, 3);
             return;
         }
         core::constants::CL_CMD_INPUT4 => {
+            log::debug!("PLR_CMD_INPUT4 received for player {}", nr);
             plr_cmd_input(nr, 4);
             return;
         }
         core::constants::CL_CMD_INPUT5 => {
+            log::debug!("PLR_CMD_INPUT5 received for player {}", nr);
             plr_cmd_input(nr, 5);
             return;
         }
         core::constants::CL_CMD_INPUT6 => {
+            log::debug!("PLR_CMD_INPUT6 received for player {}", nr);
             plr_cmd_input(nr, 6);
             return;
         }
         core::constants::CL_CMD_INPUT7 => {
+            log::debug!("PLR_CMD_INPUT7 received for player {}", nr);
             plr_cmd_input(nr, 7);
             return;
         }
         core::constants::CL_CMD_INPUT8 => {
+            log::debug!("PLR_CMD_INPUT8 received for player {}", nr);
             plr_cmd_input(nr, 8);
             return;
         }
@@ -4945,58 +4959,72 @@ pub fn plr_cmd(nr: usize) {
     // Handle commands that show stun message but still execute
     match cmd {
         core::constants::CL_CMD_LOOK_ITEM => {
+            log::debug!("PLR_CMD_LOOK_ITEM received for player {}", nr);
             plr_cmd_look_item(nr);
             return;
         }
         core::constants::CL_CMD_GIVE => {
+            log::debug!("PLR_CMD_GIVE received for player {}", nr);
             plr_cmd_give(nr);
             return;
         }
         core::constants::CL_CMD_TURN => {
+            log::debug!("PLR_CMD_TURN received for player {}", nr);
             plr_cmd_turn(nr);
             return;
         }
         core::constants::CL_CMD_DROP => {
+            log::debug!("PLR_CMD_DROP received for player {}", nr);
             plr_cmd_drop(nr);
             return;
         }
         core::constants::CL_CMD_PICKUP => {
+            log::debug!("PLR_CMD_PICKUP received for player {}", nr);
             plr_cmd_pickup(nr);
             return;
         }
         core::constants::CL_CMD_ATTACK => {
+            log::debug!("PLR_CMD_ATTACK received for player {}", nr);
             plr_cmd_attack(nr);
             return;
         }
         core::constants::CL_CMD_MODE => {
+            log::debug!("PLR_CMD_MODE received for player {}", nr);
             plr_cmd_mode(nr);
             return;
         }
         core::constants::CL_CMD_MOVE => {
+            log::debug!("PLR_CMD_MOVE received for player {}", nr);
             plr_cmd_move(nr);
             return;
         }
         core::constants::CL_CMD_RESET => {
+            log::debug!("PLR_CMD_RESET received for player {}", nr);
             plr_cmd_reset(nr);
             return;
         }
         core::constants::CL_CMD_SKILL => {
+            log::debug!("PLR_CMD_SKILL received for player {}", nr);
             plr_cmd_skill(nr);
             return;
         }
         core::constants::CL_CMD_INV_LOOK => {
+            log::debug!("PLR_CMD_INV_LOOK received for player {}", nr);
             plr_cmd_inv_look(nr);
             return;
         }
         core::constants::CL_CMD_USE => {
+            log::debug!("PLR_CMD_USE received for player {}", nr);
             plr_cmd_use(nr);
             return;
         }
         core::constants::CL_CMD_INV => {
+            log::debug!("PLR_CMD_INV received for player {}", nr);
             plr_cmd_inv(nr);
             return;
         }
         core::constants::CL_CMD_EXIT => {
+            log::debug!("PLR_CMD_EXIT received for player {}", nr);
             plr_cmd_exit(nr);
             return;
         }
