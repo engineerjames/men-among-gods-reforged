@@ -2992,6 +2992,7 @@ impl God {
         );
 
         State::with_mut(|state| {
+            state.do_check_new_level(co);
             state.do_character_log(
                 co,
                 core::types::FontColor::Green,
