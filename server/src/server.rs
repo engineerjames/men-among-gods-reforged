@@ -1,6 +1,6 @@
 use chrono::Timelike;
-use core::constants::MAXPLAYER;
-use core::types::ServerPlayer;
+use core::constants::{MAXPLAYER, TILEX, TILEY};
+use core::types::{CMap, Map, ServerPlayer};
 use parking_lot::ReentrantMutex;
 use std::cell::UnsafeCell;
 use std::io::ErrorKind;
@@ -1256,22 +1256,36 @@ impl Server {
 
             let n = slot.unwrap();
 
-            // Build fresh player state similar to ServerPlayer::new()
-            let mut newp = core::types::ServerPlayer::new();
-            newp.sock = Some(stream);
-            newp.addr = addr_u32;
-
-            // Initialize compression (deflateInit level 9 equivalent)
-            newp.zs = Some(ZlibEncoder::new(Vec::new(), Compression::best()));
-
             // Set initial state values
-            newp.state = core::constants::ST_CONNECT;
-            newp.lasttick = Repository::with_globals(|g| g.ticker as u32);
-            newp.lasttick2 = newp.lasttick;
-            newp.prio = 0;
-            newp.ticker_started = 0;
+            players[n] = core::types::ServerPlayer::new();
+            players[n].sock = Some(stream);
+            players[n].addr = addr_u32;
+            // Initialize compression (deflateInit level 9 equivalent)
+            players[n].zs = Some(ZlibEncoder::new(Vec::new(), Compression::best()));
+            players[n].state = core::constants::ST_CONNECT;
+            players[n].lasttick = Repository::with_globals(|g| g.ticker as u32);
+            players[n].lasttick2 = players[n].lasttick;
+            players[n].prio = 0;
+            players[n].ticker_started = 0;
+            players[n].inbuf[0] = 0;
+            players[n].in_len = 0;
+            players[n].iptr = 0;
+            players[n].optr = 0;
+            players[n].tptr = 0;
+            players[n].challenge = 0;
+            players[n].usnr = 0;
+            players[n].pass1 = 0;
+            players[n].pass2 = 0;
 
-            players[n] = newp;
+            players[n].cmap.fill(CMap::default());
+            players[n].smap.fill(CMap::default());
+            players[n].xmap.fill(Map::default());
+            players[n].passwd.fill(0);
+
+            for m in 0..(TILEX * TILEY) {
+                players[n].cmap[m].ba_sprite = core::constants::SPR_EMPTY as i16;
+                players[n].smap[m].ba_sprite = core::constants::SPR_EMPTY as i16;
+            }
 
             log::info!("New connection assigned to slot {}", n);
         });

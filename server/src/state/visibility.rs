@@ -494,25 +494,24 @@ impl State {
             return 1;
         }
 
-        Repository::with_characters(|characters| {
+        let return_value = Repository::with_characters(|ch| {
             Repository::with_map(|map| {
-                if characters[co].used != core::constants::USE_ACTIVE {
+                if ch[co].used != core::constants::USE_ACTIVE {
                     return 0;
                 }
 
-                if characters[co].flags & CharacterFlags::CF_INVISIBLE.bits() != 0
-                    && (characters[cn].get_invisibility_level()
-                        < characters[co].get_invisibility_level())
+                if ch[co].flags & CharacterFlags::CF_INVISIBLE.bits() != 0
+                    && (ch[cn].get_invisibility_level() < ch[co].get_invisibility_level())
                 {
                     return 0;
                 }
 
-                if characters[co].flags & CharacterFlags::CF_BODY.bits() != 0 {
+                if ch[co].flags & CharacterFlags::CF_BODY.bits() != 0 {
                     return 0;
                 }
 
-                let d1 = (characters[cn].x - characters[co].x).abs() as i32;
-                let d2 = (characters[cn].y - characters[co].y).abs() as i32;
+                let d1 = (ch[cn].x - ch[co].x).abs() as i32;
+                let d2 = (ch[cn].y - ch[co].y).abs() as i32;
 
                 let rd = d1 * d1 + d2 * d2;
                 let mut d = rd;
@@ -522,33 +521,27 @@ impl State {
                 }
 
                 // Modify by perception and stealth
-                match characters[co].mode {
+                match ch[co].mode {
                     0 => {
-                        d = (d
-                            * (characters[co].skill[core::constants::SK_STEALTH][5] as i32 + 20))
-                            / 20;
+                        d = (d * (ch[co].skill[core::constants::SK_STEALTH][5] as i32 + 20)) / 20;
                     }
                     1 => {
-                        d = (d
-                            * (characters[co].skill[core::constants::SK_STEALTH][5] as i32 + 50))
-                            / 50;
+                        d = (d * (ch[co].skill[core::constants::SK_STEALTH][5] as i32 + 50)) / 50;
                     }
                     _ => {
-                        d = (d
-                            * (characters[co].skill[core::constants::SK_STEALTH][5] as i32 + 100))
-                            / 100;
+                        d = (d * (ch[co].skill[core::constants::SK_STEALTH][5] as i32 + 100)) / 100;
                     }
                 }
 
-                d -= characters[cn].skill[core::constants::SK_PERCEPT][5] as i32 * 2;
+                d -= ch[cn].skill[core::constants::SK_PERCEPT][5] as i32 * 2;
 
                 // Modify by light
-                if characters[cn].flags & CharacterFlags::CF_INFRARED.bits() == 0 {
-                    let map_index = characters[co].x as usize
-                        + characters[co].y as usize * core::constants::SERVER_MAPX as usize;
+                if ch[cn].flags & CharacterFlags::CF_INFRARED.bits() == 0 {
+                    let map_index = ch[co].x as usize
+                        + ch[co].y as usize * core::constants::SERVER_MAPX as usize;
                     let mut light = std::cmp::max(
                         map[map_index].light as i32,
-                        State::check_dlight(characters[co].x as usize, characters[co].y as usize),
+                        State::check_dlight(ch[co].x as usize, ch[co].y as usize),
                     );
 
                     light = self.do_character_calculate_light(cn, light);
@@ -574,10 +567,10 @@ impl State {
 
                 if self.can_see(
                     Some(cn),
-                    characters[cn].x as i32,
-                    characters[cn].y as i32,
-                    characters[co].x as i32,
-                    characters[co].y as i32,
+                    ch[cn].x as i32,
+                    ch[cn].y as i32,
+                    ch[co].x as i32,
+                    ch[co].y as i32,
                     15,
                 ) == 0
                 {
@@ -590,7 +583,9 @@ impl State {
 
                 d
             })
-        })
+        });
+
+        return_value
     }
 
     /// Port of `do_char_can_see_item(cn, in_idx)` from original server logic.
@@ -909,12 +904,8 @@ impl State {
             return false;
         }
 
-        let vx = x - self.ox + 20;
-        let vy = y - self.oy + 20;
-
-        if vx < 0 || vx >= 40 || vy < 0 || vy >= 40 {
-            return false;
-        }
+        let x = x - self.ox + 20;
+        let y = y - self.oy + 20;
 
         if self.visi[((x + 1) + (y) * 40) as usize] == value {
             return true;

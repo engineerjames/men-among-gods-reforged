@@ -2712,7 +2712,8 @@ pub fn plr_getmap(nr: usize) {
     if mode == 0 {
         plr_getmap_complete(nr);
     } else {
-        plr_getmap_fast(nr);
+        //plr_getmap_fast(nr); TODO: Re-enable if needed...
+        plr_getmap_complete(nr);
     }
 }
 
@@ -2853,14 +2854,14 @@ pub fn plr_getmap_complete(nr: usize) {
             // Begin of flags
             // TODO: Verify this is actually empty tile behavior
             smap[n].flags = 0;
-            // smap[n].ch_sprite = 0;
-            // smap[n].it_sprite = 0;
-            // smap[n].ch_status = 0;
-            // smap[n].it_status = 0;
-            // smap[n].ch_speed = 0;
-            // smap[n].ch_nr = 0;
-            // smap[n].ch_id = 0;
-            // smap[n].ch_proz = 0;
+            //             smap[n].ch_sprite = 0;
+            //             smap[n].it_sprite = 0;
+            //             smap[n].ch_status = 0;
+            //             smap[n].it_status = 0;
+            //             smap[n].ch_speed = 0;
+            //             smap[n].ch_nr = 0;
+            //             smap[n].ch_id = 0;
+            //             smap[n].ch_proz = 0;
 
             Repository::with_map(|map| {
                 if map[m].flags
