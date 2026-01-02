@@ -198,8 +198,13 @@ impl State {
                 String::from_utf8_lossy(&items[item_idx].reference).to_string()
             });
 
-            // TODO: Implement chlog
-            log::info!("TODO: chlog({}, 'Sold {}')", cn, item_name);
+            chlog!(
+                cn,
+                "Sold {} for {}G {}S",
+                item_name,
+                price / 100,
+                price % 100
+            );
 
             self.do_character_log(
                 cn,
@@ -271,8 +276,13 @@ impl State {
                                     String::from_utf8_lossy(&items[item_idx].reference).to_string()
                                 });
 
-                                // TODO: Implement chlog
-                                log::info!("TODO: chlog({}, 'Bought {}')", cn, item_name);
+                                chlog!(
+                                    cn,
+                                    "Bought {} for {}G {}S",
+                                    item_name,
+                                    price / 100,
+                                    price % 100
+                                );
 
                                 self.do_character_log(
                                     cn,
@@ -353,8 +363,7 @@ impl State {
                                     String::from_utf8_lossy(&items[item_idx].reference).to_string()
                                 });
 
-                                // TODO: Implement chlog
-                                log::info!("TODO: chlog({}, 'Took {}')", cn, item_name);
+                                chlog!(cn, "Took {} from corpse", item_name);
 
                                 self.do_character_log(
                                     cn,
@@ -405,8 +414,7 @@ impl State {
                                     String::from_utf8_lossy(&items[item_idx].reference).to_string()
                                 });
 
-                                // TODO: Implement chlog
-                                log::info!("TODO: chlog({}, 'Took {}')", cn, item_name);
+                                chlog!(cn, "Took {} from corpse", item_name);
 
                                 self.do_character_log(
                                     cn,
@@ -448,10 +456,9 @@ impl State {
                                 ch[co].gold = 0;
                             });
 
-                            // TODO: Implement chlog
-                            log::info!(
-                                "TODO: chlog({}, 'Took {}G {}S')",
+                            chlog!(
                                 cn,
+                                "Took {}G {}S from corpse",
                                 corpse_gold / 100,
                                 corpse_gold % 100
                             );
@@ -704,10 +711,9 @@ impl State {
                     String::from_utf8_lossy(&items[item_idx as usize].name).to_string()
                 });
 
-                // TODO: Implement chlog
-                log::info!(
-                    "TODO: chlog({}, 'Bank sold {} for {}G {}S to pay for depot (slot {})')",
+                chlog!(
                     cn,
+                    "Bank sold {} for {}G {}S to pay for depot (slot {})",
                     item_name,
                     sell_value / 100,
                     sell_value % 100,
@@ -858,8 +864,13 @@ impl State {
                     ),
                 );
 
-                // TODO: Implement chlog
-                log::info!("TODO: chlog({}, 'Deposited {}')", cn, item_name);
+                chlog!(
+                    cn,
+                    "Deposited {} into depot (cost {}G {}S per tick)",
+                    item_name,
+                    storage_cost / 100,
+                    storage_cost % 100
+                );
             }
         } else {
             // Withdrawing or examining items
@@ -889,8 +900,7 @@ impl State {
                             &format!("You took the {} from your depot.\n", item_ref),
                         );
 
-                        // TODO: Implement chlog
-                        log::info!("TODO: chlog({}, 'Took {} from depot')", cn, item_name);
+                        chlog!(cn, "Took {} from depot", item_name);
                     } else {
                         let item_ref = Repository::with_items(|items| {
                             String::from_utf8_lossy(&items[item_idx as usize].reference).to_string()

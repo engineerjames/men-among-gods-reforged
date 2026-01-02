@@ -20,6 +20,7 @@ static STATE: OnceLock<ReentrantMutex<UnsafeCell<State>>> = OnceLock::new();
 pub struct State {
     _visi: [i8; 40 * 40],
     visi: [i8; 40 * 40],
+    vis_is_global: bool,
     see_miss: u64,
     see_hit: u64,
     ox: i32,
@@ -33,6 +34,7 @@ impl State {
         State {
             _visi: [0; 40 * 40],
             visi: [0; 40 * 40],
+            vis_is_global: true,
             see_miss: 0,
             see_hit: 0,
             ox: 0,

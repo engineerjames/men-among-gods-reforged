@@ -1,6 +1,6 @@
 //! Character structure - represents both players and NPCs
 
-use crate::constants::CharacterFlags;
+use crate::{constants::CharacterFlags, string_operations::c_string_to_str};
 
 /// Character structure - represents both players and NPCs
 #[derive(Clone, Copy)]
@@ -279,12 +279,7 @@ impl Default for Character {
 impl Character {
     /// Get name as a string slice
     pub fn get_name(&self) -> &str {
-        let end = self
-            .name
-            .iter()
-            .position(|&c| c == 0)
-            .unwrap_or(self.name.len());
-        std::str::from_utf8(&self.name[..end]).unwrap_or("*unknown*")
+        c_string_to_str(&self.name)
     }
 
     /// Check if character is a player
@@ -605,10 +600,14 @@ impl Character {
     pub fn get_default_description(&self) -> String {
         format!(
             "{} is a {}. {} looks somewhat nondescript.",
-            String::from_utf8_lossy(&self.name),
+            self.get_name(),
             self.get_kindred_as_string(),
             self.get_gender_as_string()
         )
+    }
+
+    pub fn get_reference(&self) -> &str {
+        c_string_to_str(&self.reference)
     }
 
     pub fn is_sane_npc(character_id: usize, character: &Character) -> bool {

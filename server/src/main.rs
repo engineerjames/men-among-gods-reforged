@@ -3,7 +3,9 @@ mod driver;
 mod effect;
 mod enums;
 mod god;
-mod helpers;
+
+#[macro_use]
+pub mod helpers;
 mod lab9;
 mod network_manager;
 mod path_finding;

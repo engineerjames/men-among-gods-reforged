@@ -1,3 +1,5 @@
+use core::string_operations::c_string_to_str;
+
 use crate::{
     enums::CharacterFlags, god::God, player, populate, repository::Repository, state::State,
 };
@@ -235,19 +237,14 @@ impl EffectManager {
                                 };
 
                                 let killer_name = if effects[n].data[3] != 0 {
-                                    String::from_utf8_lossy(
+                                    c_string_to_str(
                                         &characters[effects[n].data[3] as usize].reference,
                                     )
-                                    .trim_end_matches('\0')
-                                    .to_string()
                                 } else {
-                                    "unknown causes".to_string()
+                                    "unknown causes"
                                 };
 
-                                let character_name =
-                                    String::from_utf8_lossy(&characters[co].reference)
-                                        .trim_end_matches('\0')
-                                        .to_string();
+                                let character_name = c_string_to_str(&characters[co].reference);
 
                                 let description_string = format!(
                                     "Here rests {}, killed by {} on the {}{} day of the Year {}.",
@@ -729,17 +726,9 @@ impl EffectManager {
                         );
                     }
 
-                    log::info!(
-                        "Respawn {} ({}): YES",
-                        co,
-                        String::from_utf8_lossy(&characters[co].name)
-                    );
+                    log::info!("Respawn {} ({}): YES", co, &characters[co].get_name());
                 } else {
-                    log::info!(
-                        "Respawn {} ({}): NO",
-                        co,
-                        String::from_utf8_lossy(&characters[co].name)
-                    );
+                    log::info!("Respawn {} ({}): NO", co, &characters[co].get_name());
                 }
             });
         }

@@ -1,7 +1,10 @@
-use core::types::{Character, Map};
+use core::{
+    string_operations::c_string_to_str,
+    types::{Character, Map},
+};
 
 use crate::{
-    driver,
+    chlog, driver,
     effect::EffectManager,
     enums::{CharacterFlags, LogoutReason},
     player,
@@ -750,7 +753,7 @@ impl God {
 
         for (try_x, try_y) in positions_to_try.iter() {
             let early_return = State::with_mut(|state| {
-                if state.can_go(*try_x as i32, *try_y as i32, *try_x as i32, *try_y as i32)
+                if state.can_go(*try_x as i32, *try_y as i32, *try_x as i32, *try_y as i32) != 0
                     && Self::drop_char(character_id, *try_x, *try_y)
                 {
                     return true;
@@ -818,7 +821,8 @@ impl God {
                     center_y as i32,
                     *try_x as i32,
                     *try_y as i32,
-                ) && Self::drop_char(character_id, *try_x, *try_y)
+                ) != 0
+                    && Self::drop_char(character_id, *try_x, *try_y)
                 {
                     return true;
                 }
@@ -889,12 +893,11 @@ impl God {
                     false
                 });
                 if !name_exists {
-                    character.name = potential_new_name
-                        .bytes()
-                        .take(40)
-                        .collect::<Vec<u8>>()
-                        .try_into()
-                        .unwrap_or([0; 40]);
+                    let mut name_arr = [0u8; 40];
+                    let name_bytes = potential_new_name.as_bytes();
+                    let copy_len = name_bytes.len().min(40);
+                    name_arr[..copy_len].copy_from_slice(&name_bytes[..copy_len]);
+                    character.name = name_arr;
                     log::info!(
                         "Assigned name '{}' to new character (ID {})",
                         character.get_name(),
@@ -1519,7 +1522,7 @@ impl God {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                &format!("Character {} teleported to ({}, {})", co, x, y),
+                &format!("Character {} teleported to ({}, {})\n", co, x, y),
             );
         });
     }
@@ -1682,7 +1685,7 @@ impl God {
                     cn,
                     core::types::FontColor::Yellow,
                     &format!(
-                        "{} {}{}{} Pts/need={}/{}.",
+                        "{} {}{}{} Pts/need={}/{}.\n",
                         rank_short,
                         Repository::with_characters(|ch| ch[co].get_name().to_string()),
                         cnum_str,
@@ -1712,7 +1715,7 @@ impl God {
                     cn,
                     core::types::FontColor::Yellow,
                     &format!(
-                        "{} {}{}{}{}.",
+                        "{} {}{}{}{}.\n",
                         rank_short,
                         Repository::with_characters(|ch| ch[co].get_name().to_string()),
                         cnum_str,
@@ -1903,7 +1906,7 @@ impl God {
                     cn,
                     core::types::FontColor::Green,
                     &format!(
-                        "Item Info: ID={}, Sprite=[{},{}], Carried={}, Used={}",
+                        "Item Info: ID={}, Sprite=[{},{}], Carried={}, Used={}\n",
                         item_index,
                         sprite_0_to_print,
                         sprite_1_to_print,
@@ -1937,7 +1940,7 @@ impl God {
                     cn,
                     core::types::FontColor::Green,
                     &format!(
-                        "Template Info: ID={}, Sprite=[{},{}], Used={}",
+                        "Template Info: ID={}, Sprite=[{},{}], Used={}\n",
                         template, sprite_0_to_print, sprite_1_to_print, used_to_print
                     ),
                 );
@@ -1966,7 +1969,7 @@ impl God {
                             cn,
                             core::types::FontColor::Green,
                             &format!(
-                                "  Item {}: Sprite=[{},{}], Carried={}",
+                                "  Item {}: Sprite=[{},{}], Carried={}\n",
                                 i, sprite_0_to_print, sprite_1_to_print, carried_to_print
                             ),
                         );
@@ -1997,7 +2000,7 @@ impl God {
                             cn,
                             core::types::FontColor::Green,
                             &format!(
-                                "  {}: Points={} {}",
+                                "  {}: Points={} {}\n",
                                 characters[i].get_name(),
                                 points_to_print,
                                 if characters[i].flags
@@ -2040,7 +2043,7 @@ impl God {
                                 cn,
                                 core::types::FontColor::Green,
                                 &format!(
-                                    "  {}: Flags={:x}",
+                                    "  {}: Flags={:x}\n",
                                     characters[i].get_name(),
                                     flags_to_print
                                 ),
@@ -2064,7 +2067,7 @@ impl God {
         let mut count = 0;
         Repository::with_characters(|characters| {
             State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Green, "Players online:");
+                state.do_character_log(cn, core::types::FontColor::Green, "Players online:\n");
                 for i in 1..core::constants::MAXCHARS as usize {
                     if characters[i].is_living_character(i) && characters[i].is_player() {
                         count += 1;
@@ -2073,7 +2076,7 @@ impl God {
                             cn,
                             core::types::FontColor::Green,
                             &format!(
-                                "  {} - Points: {}",
+                                "  {} - Points: {}\n",
                                 characters[i].get_name(),
                                 points_to_print
                             ),
@@ -2083,7 +2086,7 @@ impl God {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Green,
-                    &format!("Total: {} players", count),
+                    &format!("Total: {} players\n", count),
                 );
             });
         });
@@ -2111,7 +2114,7 @@ impl God {
                                 cn,
                                 core::types::FontColor::Green,
                                 &format!(
-                                    "  {}: Points={}",
+                                    "  {}: Points={}\n",
                                     characters[i].get_name(),
                                     points_to_print
                                 ),
@@ -2143,7 +2146,7 @@ impl God {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Green,
-                        &format!("Created item {} and gave to character {}", item_id, cn),
+                        &format!("Created item {} and gave to character {}\n", item_id, cn),
                     );
                 });
             } else {
@@ -2151,7 +2154,7 @@ impl God {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Red,
-                        &format!("Failed to give item {} to character {}", item_id, cn),
+                        &format!("Failed to give item {} to character {}\n", item_id, cn),
                     );
                 });
             }
@@ -2160,7 +2163,7 @@ impl God {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Red,
-                    &format!("Failed to create item from template {}", x),
+                    &format!("Failed to create item from template {}\n", x),
                 );
             });
         }
@@ -2182,9 +2185,7 @@ impl God {
                 }
 
                 let name = characters[i].get_name().to_lowercase();
-                let reference = String::from_utf8_lossy(&characters[i].reference)
-                    .trim_end_matches('\0')
-                    .to_lowercase();
+                let reference = &characters[i].get_reference().to_lowercase();
 
                 let spec1_lower = spec1.to_lowercase();
                 let spec2_lower = spec2.to_lowercase();
@@ -2252,7 +2253,7 @@ impl God {
 
         if spec1.is_empty() {
             State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Red, "summon whom?");
+                state.do_character_log(cn, core::types::FontColor::Red, "summon whom?\n");
             });
             return;
         }
@@ -2266,7 +2267,7 @@ impl God {
 
             if co == 0 || !Character::is_sane_character(co) || Self::invis(cn, co) != 0 {
                 State::with(|state| {
-                    state.do_character_log(cn, core::types::FontColor::Red, "No such character.");
+                    state.do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
                 });
                 return;
             }
@@ -2285,7 +2286,7 @@ impl God {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Red,
-                        &format!("Character recently deceased; try {}.", owner),
+                        &format!("Character recently deceased; try {}.\n", owner),
                     );
                 });
                 return;
@@ -2296,7 +2297,7 @@ impl God {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Red,
-                        "You can't summon yourself!",
+                        "You can't summon yourself!\n",
                     );
                 });
                 return;
@@ -2318,7 +2319,7 @@ impl God {
                             state.do_character_log(
                                 cn,
                                 core::types::FontColor::Red,
-                                &format!("No such rank: {}", spec2),
+                                &format!("No such rank: {}\n", spec2),
                             );
                         });
                         return;
@@ -2370,7 +2371,7 @@ impl God {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Red,
-                        &format!("Couldn't find a {} {}.", spec1, spec2),
+                        &format!("Couldn't find a {} {}.\n", spec1, spec2),
                     );
                 });
                 return;
@@ -2426,7 +2427,7 @@ impl God {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Red,
-                    "god_transfer_char() failed.",
+                    "god_transfer_char() failed.\n",
                 );
             });
             // show effects at original and current position
@@ -2444,16 +2445,13 @@ impl God {
             return;
         }
 
+        let character_name =
+            Repository::with_characters(|characters| characters[co].get_name().to_string());
         State::with(|state| {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                &format!(
-                    "{} was summoned.",
-                    Repository::with_characters(|characters| {
-                        String::from_utf8_lossy(&characters[co].name).to_string()
-                    })
-                ),
+                &format!("{} was summoned.\n", character_name),
             );
         });
 
@@ -2485,7 +2483,7 @@ impl God {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Red,
-                    "create mirror-enemy of whom?",
+                    "create mirror-enemy of whom?\n",
                 );
             });
             return;
@@ -2497,7 +2495,7 @@ impl God {
 
         if !Character::is_sane_character(co) {
             State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Red, "No such character.");
+                state.do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
             });
             return;
         }
@@ -2508,7 +2506,7 @@ impl God {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Red,
-                        "Character recently deceased.",
+                        "Character recently deceased.\n",
                     );
                 });
                 return;
@@ -2520,7 +2518,7 @@ impl God {
                         cn,
                         core::types::FontColor::Red,
                         &format!(
-                            "{} is not a player, and you can't mirror monsters!",
+                            "{} is not a player, and you can't mirror monsters!\n",
                             characters[co].get_name()
                         ),
                     );
@@ -2533,7 +2531,7 @@ impl God {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Yellow,
-                        "You want an enemy? Here it is...!",
+                        "You want an enemy? Here it is...!\n",
                     );
                 });
             }
@@ -2547,7 +2545,7 @@ impl God {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Red,
-                        "god_create_char() failed.",
+                        "god_create_char() failed.\n",
                     );
                 });
                 return;
@@ -2629,14 +2627,12 @@ impl God {
             // Add target as enemy
             crate::driver::npc_add_enemy(cc, co, true);
 
-            let target_name = String::from_utf8_lossy(&target_name_bytes)
-                .trim_end_matches('\0')
-                .to_string();
+            let target_name = c_string_to_str(&target_name_bytes);
             State::with(|state| {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Green,
-                    &format!("Mirror of {} active (bonus: {})", target_name, bonus),
+                    &format!("Mirror of {} active (bonus: {})\n", target_name, bonus),
                 );
             });
         });
@@ -2657,7 +2653,7 @@ impl God {
         // Check for arguments
         if spec1.is_empty() {
             State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Red, "enthrall whom?");
+                state.do_character_log(cn, core::types::FontColor::Red, "enthrall whom?\n");
             });
             return 0;
         }
@@ -2668,7 +2664,7 @@ impl God {
 
             if !Character::is_sane_character(co) {
                 State::with(|state| {
-                    state.do_character_log(cn, core::types::FontColor::Red, "No such character.");
+                    state.do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
                 });
                 return 0;
             }
@@ -2680,7 +2676,7 @@ impl God {
                         state.do_character_log(
                             cn,
                             core::types::FontColor::Red,
-                            &format!("Character recently deceased; try {}.", corpse_owner),
+                            &format!("Character recently deceased; try {}.\n", corpse_owner),
                         );
                     });
                     return 0;
@@ -2691,7 +2687,7 @@ impl God {
                         state.do_character_log(
                             cn,
                             core::types::FontColor::Red,
-                            "You can't enthrall yourself!",
+                            "You can't enthrall yourself!\n",
                         );
                     });
                     return 0;
@@ -2724,7 +2720,7 @@ impl God {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Red,
-                        &format!("Couldn't find a {} {}.", spec1, spec2),
+                        &format!("Couldn't find a {} {}.\n", spec1, spec2),
                     );
                 });
                 return 0;
@@ -2740,7 +2736,7 @@ impl God {
                         cn,
                         core::types::FontColor::Red,
                         &format!(
-                            "{} is a player, and you can't enthrall players!",
+                            "{} is a player, and you can't enthrall players!\n",
                             characters[co].get_name()
                         ),
                     );
@@ -2755,7 +2751,7 @@ impl God {
                         cn,
                         core::types::FontColor::Red,
                         &format!(
-                            "{} is a companion/thrall, and you can't enthrall them!",
+                            "{} is a companion/thrall, and you can't enthrall them!\n",
                             characters[co].get_name()
                         ),
                     );
@@ -2813,7 +2809,7 @@ impl God {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Red,
-                        "god_create_char() failed.",
+                        "god_create_char() failed.\n",
                     );
                 });
                 return 0;
@@ -2896,7 +2892,7 @@ impl God {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Red,
-                        "god_drop_char_fuzzy() called from god_thrall() failed.",
+                        "god_drop_char_fuzzy() called from god_thrall() failed.\n",
                     );
                 });
                 Self::destroy_items(ct);
@@ -2904,14 +2900,12 @@ impl God {
                 return 0;
             }
 
-            let target_name = String::from_utf8_lossy(&target_name_bytes)
-                .trim_end_matches('\0')
-                .to_string();
+            let target_name = c_string_to_str(&target_name_bytes);
             State::with(|state| {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Green,
-                    &format!("{} was enthralled.", target_name),
+                    &format!("{} was enthralled.\n", target_name),
                 );
             });
 
@@ -2940,7 +2934,7 @@ impl God {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                &format!("Character {} fully healed at tavern", cn),
+                &format!("Character {} fully healed at tavern\n", cn),
             );
         });
     }
@@ -2963,7 +2957,7 @@ impl God {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Red,
-                    &format!("Invalid raise value: {}", value),
+                    &format!("Invalid raise value: {}\n", value),
                 );
             });
             return;
@@ -2987,7 +2981,11 @@ impl God {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Green,
-                    &format!("Raised character {} stats by {}", target.get_name(), value),
+                    &format!(
+                        "Raised character {} stats by {}\n",
+                        target.get_name(),
+                        value
+                    ),
                 );
             });
         });
@@ -3011,7 +3009,7 @@ impl God {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Red,
-                    &format!("Invalid lower value: {}", value),
+                    &format!("Invalid lower value: {}\n", value),
                 );
             });
             return;
@@ -3035,7 +3033,11 @@ impl God {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Green,
-                    &format!("Lowered character {} stats by {}", target.get_name(), value),
+                    &format!(
+                        "Lowered character {} stats by {}\n",
+                        target.get_name(),
+                        value
+                    ),
                 );
             });
         });
@@ -3072,7 +3074,7 @@ impl God {
                     cn,
                     core::types::FontColor::Green,
                     &format!(
-                        "Gave {} silver to character {}",
+                        "Gave {} silver to character {}\n",
                         total_silver,
                         target.get_name()
                     ),
@@ -3093,7 +3095,7 @@ impl God {
     pub fn erase(cn: usize, co: usize, erase_player: i32) {
         if co == 0 {
             State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Red, "No such character.");
+                state.do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
             });
             return;
         }
@@ -3104,7 +3106,7 @@ impl God {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Red,
-                    &format!("Bad character number: {}", co),
+                    &format!("Bad character number: {}\n", co),
                 );
             });
             return;
@@ -3128,7 +3130,7 @@ impl God {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Red,
-                    &format!("Character {} is unused anyway.", co),
+                    &format!("Character {} is unused anyway.\n", co),
                 );
             });
             return;
@@ -3136,14 +3138,15 @@ impl God {
 
         // Check if player/QM but erase_player is false
         if is_player_or_usurp && erase_player == 0 {
-            let name_str = String::from_utf8_lossy(&character_name)
-                .trim_end_matches('\0')
-                .to_string();
+            let name_str = c_string_to_str(&character_name);
             State::with(|state| {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Red,
-                    &format!("{} is a player or QM; use #PERASE if you insist.", name_str),
+                    &format!(
+                        "{} is a player or QM; use #PERASE if you insist.\n",
+                        name_str
+                    ),
                 );
             });
             return;
@@ -3151,14 +3154,12 @@ impl God {
 
         // Check if erase_player is true but character is not player/usurp
         if erase_player != 0 && !is_player_or_usurp {
-            let name_str = String::from_utf8_lossy(&character_name)
-                .trim_end_matches('\0')
-                .to_string();
+            let name_str = c_string_to_str(&character_name);
             State::with(|state| {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Red,
-                    &format!("{} is not a player; use #ERASE for NPCs.", name_str),
+                    &format!("{} is not a player; use #ERASE for NPCs.\n", name_str),
                 );
             });
             return;
@@ -3166,9 +3167,7 @@ impl God {
 
         if erase_player != 0 {
             // Erasing a player
-            let name_str = String::from_utf8_lossy(&character_name)
-                .trim_end_matches('\0')
-                .to_string();
+            let name_str = c_string_to_str(&character_name);
 
             Repository::with_characters(|ch| {
                 player::plr_logout(co as usize, ch[co].player as usize, LogoutReason::Shutdown);
@@ -3178,19 +3177,18 @@ impl God {
                 characters[co].used = core::constants::USE_EMPTY;
             });
 
-            // TODO: chlog(cn, "IMP: Erased player %d (%-.20s).", co, ch[co].name);
+            chlog!(cn, "IMP: Erased player {} ({}).", co, name_str);
+
             State::with(|state| {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
-                    &format!("Player {} ({}) is no more.", co, name_str),
+                    &format!("Player {} ({}) is no more.\n", co, name_str),
                 );
             });
         } else {
             // Erasing an NPC
-            let name_str = String::from_utf8_lossy(&character_name)
-                .trim_end_matches('\0')
-                .to_string();
+            let name_str = c_string_to_str(&character_name);
 
             // Call do_char_killed(0, co)
             State::with(|state| {
@@ -3201,7 +3199,7 @@ impl God {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
-                    &format!("NPC {} ({}) is no more.", co, name_str),
+                    &format!("NPC {} ({}) is no more.\n", co, name_str),
                 );
             });
         }
@@ -3219,7 +3217,7 @@ impl God {
         // Check co == 0
         if co == 0 {
             State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Red, "No such character.");
+                state.do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
             });
             return;
         }
@@ -3230,7 +3228,7 @@ impl God {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Red,
-                    &format!("Bad character number: {}", co),
+                    &format!("Bad character number: {}\n", co),
                 );
             });
             return;
@@ -3248,15 +3246,13 @@ impl God {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Red,
-                    &format!("Character {} is unused anyway.", co),
+                    &format!("Character {} is unused anyway.\n", co),
                 );
             });
             return;
         }
 
-        let name_str = String::from_utf8_lossy(&character_name)
-            .trim_end_matches('\0')
-            .to_string();
+        let name_str = c_string_to_str(&character_name);
 
         Repository::with_characters(|ch| {
             player::plr_logout(
@@ -3270,11 +3266,11 @@ impl God {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
-                &format!("Kicked {}.", name_str),
+                &format!("Kicked {}.\n", name_str),
             );
         });
 
-        // TODO: chlog(cn, "IMP: kicked %s (%d)", ch[co].name, co);
+        chlog!(cn, "IMP: Kicked {} ({}).", name_str, co);
 
         // Set CF_KICKED flag
         Repository::with_characters_mut(|characters| {
@@ -3301,7 +3297,7 @@ impl God {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Red,
-                    &format!("Invalid skill number: {}", n),
+                    &format!("Invalid skill number: {}\n", n),
                 );
             });
             return;
@@ -3320,7 +3316,7 @@ impl God {
                     cn,
                     core::types::FontColor::Green,
                     &format!(
-                        "Set skill {} to {} for character {}",
+                        "Set skill {} to {} for character {}\n",
                         n,
                         val,
                         target.get_name()
@@ -3390,7 +3386,7 @@ impl God {
                         cn,
                         core::types::FontColor::Green,
                         &format!(
-                            "Removed flag {:x} from character {}",
+                            "Removed flag {:x} from character {}\n",
                             flag,
                             target.get_name()
                         ),
@@ -3402,7 +3398,7 @@ impl God {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Green,
-                        &format!("Added flag {:x} to character {}", flag, target.get_name()),
+                        &format!("Added flag {:x} to character {}\n", flag, target.get_name()),
                     );
                 });
             }
@@ -3428,7 +3424,7 @@ impl God {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Green,
-                        &format!("Removed global flag {}", flag),
+                        &format!("Removed global flag {}\n", flag),
                     );
                 });
             } else {
@@ -3437,7 +3433,7 @@ impl God {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Green,
-                        &format!("Added global flag {}", flag),
+                        &format!("Added global flag {}\n", flag),
                     );
                 });
             }
@@ -3465,7 +3461,7 @@ impl God {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Green,
-                        &format!("Removed PK status from character {}", target.get_name()),
+                        &format!("Removed PK status from character {}\n", target.get_name()),
                     );
                 });
             } else {
@@ -3474,7 +3470,7 @@ impl God {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Green,
-                        &format!("Added PK status to character {}", target.get_name()),
+                        &format!("Added PK status to character {}\n", target.get_name()),
                     );
                 });
             }
@@ -3496,7 +3492,7 @@ impl God {
                 state.do_character_log(
                     co,
                     core::types::FontColor::Red,
-                    &format!("Invalid character template: {}", temp),
+                    &format!("Invalid character template: {}\n", temp),
                 );
                 log::error!("Invalid character template: {}", temp);
             });
@@ -3511,7 +3507,7 @@ impl God {
                     state.do_character_log(
                         co,
                         core::types::FontColor::Red,
-                        &format!("Template {} is not in use", temp),
+                        &format!("Template {} is not in use\n", temp),
                     );
                     log::error!("Template {} is not in use", temp);
                 });
@@ -3544,13 +3540,13 @@ impl God {
                         co,
                         core::types::FontColor::Green,
                         &format!(
-                            "Changed race of character {} to template {}",
+                            "Changed race of character {} to template {}\n",
                             character.get_name(),
                             temp
                         ),
                     );
                     log::info!(
-                        "Changed race of character {} to template {}",
+                        "Changed race of character {} to template {}\n",
                         character.get_name(),
                         temp
                     );
@@ -3573,7 +3569,7 @@ impl God {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Red,
-                        "Cannot save non-player character",
+                        "Cannot save non-player character\n",
                     );
                 });
                 return 0;
@@ -3583,7 +3579,7 @@ impl God {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Green,
-                    &format!("Saving character {}", characters[co].get_name()),
+                    &format!("Saving character {}\n", characters[co].get_name()),
                 );
                 // TODO: Actual save logic would write to disk
             });
@@ -3607,7 +3603,7 @@ impl God {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Green,
-                    &format!("Mailing password for character {}", character.get_name()),
+                    &format!("Mailing password for character {}\n", character.get_name()),
                 );
                 // TODO: Actual mail logic
             });
@@ -3634,7 +3630,7 @@ impl God {
                     cn,
                     core::types::FontColor::Green,
                     &format!(
-                        "Slapped character {} for {} damage",
+                        "Slapped character {} for {} damage\n",
                         target.get_name(),
                         damage
                     ),
@@ -3656,7 +3652,7 @@ impl God {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Red,
-                    &format!("Invalid sprite number: {}", sprite),
+                    &format!("Invalid sprite number: {}\n", sprite),
                 );
             });
             return;
@@ -3672,7 +3668,7 @@ impl God {
                     cn,
                     core::types::FontColor::Green,
                     &format!(
-                        "Changed sprite of character {} to {}",
+                        "Changed sprite of character {} to {}\n",
                         target.get_name(),
                         sprite
                     ),
@@ -3698,7 +3694,7 @@ impl God {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Green,
-                    &format!("Set luck of character {} to {}", target.get_name(), value),
+                    &format!("Set luck of character {} to {}\n", target.get_name(), value),
                 );
             });
         });
@@ -3730,7 +3726,7 @@ impl God {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Green,
-                    &format!("Reset description for character {}", target.get_name()),
+                    &format!("Reset description for character {}\n", target.get_name()),
                 );
             });
         });
@@ -3749,7 +3745,7 @@ impl God {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Red,
-                    &format!("Invalid name length: {}", name.len()),
+                    &format!("Invalid name length: {}\n", name.len()),
                 );
             });
             return;
@@ -3770,7 +3766,7 @@ impl God {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Green,
-                    &format!("Changed name of character from {} to {}", old_name, name),
+                    &format!("Changed name of character from {} to {}\n", old_name, name),
                 );
             });
         });
@@ -3787,7 +3783,7 @@ impl God {
         // Check co == 0
         if co == 0 {
             State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Red, "No such character.");
+                state.do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
             });
             return;
         }
@@ -3798,7 +3794,7 @@ impl God {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Red,
-                    &format!("Bad character number: {}", co),
+                    &format!("Bad character number: {}\n", co),
                 );
             });
             return;
@@ -3823,15 +3819,13 @@ impl God {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Red,
-                    &format!("Character {} is not an NPC.", co),
+                    &format!("Character {} is not an NPC.\n", co),
                 );
             });
             return;
         }
 
-        let name_str = String::from_utf8_lossy(&character_name)
-            .trim_end_matches('\0')
-            .to_string();
+        let name_str = c_string_to_str(&character_name);
 
         log::info!("Usurping {} ({} , t={})", name_str, co, co_temp);
 
@@ -3948,9 +3942,7 @@ impl God {
             let character_name =
                 Repository::with_characters(|characters| characters[co].name.clone());
 
-            let name_str = String::from_utf8_lossy(&character_name)
-                .trim_end_matches('\0')
-                .to_string();
+            let name_str = c_string_to_str(&character_name);
 
             log::info!("IMP: {} is now playing {} ({})", cn, name_str, co);
 
@@ -3992,7 +3984,7 @@ impl God {
 
         if !is_valid || co == core::constants::MAXCHARS {
             State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Yellow, "Grolmy is dead.");
+                state.do_character_log(cn, core::types::FontColor::Yellow, "Grolmy is dead.\n");
             });
             return;
         }
@@ -4013,7 +4005,7 @@ impl God {
                 cn,
                 core::types::FontColor::Green,
                 &format!(
-                    "Current state={}, runs={}, timer={:.2}m, id={}.",
+                    "Current state={}, runs={}, timer={:.2}m, id={}.\n",
                     state_name, data_40, timer_minutes, co
                 ),
             );
@@ -4049,7 +4041,7 @@ impl God {
 
         if !is_valid || co == core::constants::MAXCHARS {
             State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Yellow, "Grolmy is dead.");
+                state.do_character_log(cn, core::types::FontColor::Yellow, "Grolmy is dead.\n");
             });
             return;
         }
@@ -4060,7 +4052,7 @@ impl God {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
-                    "Grolmy is already moving.",
+                    "Grolmy is already moving.\n",
                 );
             });
             return;
@@ -4085,9 +4077,7 @@ impl God {
             let character_name =
                 Repository::with_characters(|characters| characters[co].name.clone());
 
-            let name_str = String::from_utf8_lossy(&character_name)
-                .trim_end_matches('\0')
-                .to_string();
+            let name_str = c_string_to_str(&character_name);
 
             log::info!("IMP: {} is now playing {} ({})", cn, name_str, co);
 
@@ -4116,9 +4106,7 @@ impl God {
                 return;
             }
 
-            let template_name = String::from_utf8_lossy(&template.name)
-                .trim_end_matches('\0')
-                .to_string();
+            let template_name = c_string_to_str(&template.name);
 
             Repository::with_characters_mut(|characters| {
                 let character = &mut characters[cn];
@@ -4210,7 +4198,7 @@ impl God {
         // Check if whom is empty
         if whom.is_empty() {
             State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Red, "#FORCE whom?");
+                state.do_character_log(cn, core::types::FontColor::Red, "#FORCE whom?\n");
             });
             return;
         }
@@ -4220,7 +4208,7 @@ impl God {
 
         if co <= 0 {
             State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Red, "No such character.");
+                state.do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
             });
             return;
         }
@@ -4238,7 +4226,11 @@ impl God {
 
         if !is_used {
             State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Red, "Character is not active.");
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    "Character is not active.\n",
+                );
             });
             return;
         }
@@ -4253,7 +4245,7 @@ impl God {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Red,
-                    "Not allowed to #FORCE players.",
+                    "Not allowed to #FORCE players.\n",
                 );
             });
             return;
@@ -4261,23 +4253,19 @@ impl God {
 
         // Check if text is empty
         if text.is_empty() {
-            let name_str = String::from_utf8_lossy(&character_name)
-                .trim_end_matches('\0')
-                .to_string();
+            let name_str = c_string_to_str(&character_name);
 
             State::with(|state| {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Red,
-                    &format!("#FORCE {} to what?", name_str),
+                    &format!("#FORCE {} to what?\n", name_str),
                 );
             });
             return;
         }
 
-        let name_str = String::from_utf8_lossy(&character_name)
-            .trim_end_matches('\0')
-            .to_string();
+        let name_str = c_string_to_str(&character_name);
 
         log::info!("IMP: {} forced {} ({}) to \"{}\"", cn, name_str, co, text);
 
@@ -4291,7 +4279,7 @@ impl God {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                &format!("{} was forced.", name_str),
+                &format!("{} was forced.\n", name_str),
             );
         });
     }
@@ -4331,7 +4319,7 @@ impl God {
         Repository::with_ban_list_mut(|ban_list| {
             if ban_list.len() >= 250 {
                 State::with(|state| {
-                    state.do_character_log(cn, core::types::FontColor::Red, "Ban list is full");
+                    state.do_character_log(cn, core::types::FontColor::Red, "Ban list is full\n");
                 });
                 return;
             }
@@ -4347,7 +4335,7 @@ impl God {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Green,
-                    &format!("Added ban for address {} by {}", addr, creator_name),
+                    &format!("Added ban for address {} by {}\n", addr, creator_name),
                 );
             });
         });
@@ -4378,7 +4366,7 @@ impl God {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Red,
-                        &format!("Invalid ban number: {}", nr),
+                        &format!("Invalid ban number: {}\n", nr),
                     );
                 });
                 return;
@@ -4390,7 +4378,7 @@ impl God {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Green,
-                    &format!("Removed ban entry {}", nr),
+                    &format!("Removed ban entry {}\n", nr),
                 );
             });
         });
@@ -4407,14 +4395,14 @@ impl God {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Green,
-                    &format!("Ban list ({} entries):", ban_list.len()),
+                    &format!("Ban list ({} entries):\n", ban_list.len()),
                 );
                 for (i, ban) in ban_list.iter().enumerate() {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Green,
                         &format!(
-                            "  {}: Address={}, Creator={}, Victim={}",
+                            "  {}: Address={}, Creator={}, Victim={}\n",
                             i,
                             ban.address(),
                             ban.creator(),
@@ -4442,7 +4430,7 @@ impl God {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Green,
-                        &format!("Removed shutup from character {}", target.get_name()),
+                        &format!("Removed shutup from character {}\n", target.get_name()),
                     );
                 });
             } else {
@@ -4451,7 +4439,7 @@ impl God {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Green,
-                        &format!("Added shutup to character {}", target.get_name()),
+                        &format!("Added shutup to character {}\n", target.get_name()),
                     );
                 });
             }

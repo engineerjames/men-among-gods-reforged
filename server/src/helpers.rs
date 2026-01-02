@@ -2,6 +2,15 @@ use core::{constants::CharacterFlags, types::FontColor};
 
 use crate::{driver, god::God, populate, repository::Repository, state::State};
 
+#[macro_export]
+macro_rules! chlog {
+    ($cn:expr, $fmt:expr $(, $args:expr)*) => {
+        let prefix = format!("Character {}: ", $cn);
+        let message = format!($fmt $(, $args)*);
+        log::info!("{}{}", prefix, message);
+    };
+}
+
 /// Port of `use_labtransfer(int cn, int nr, int exp)` from `svr_do.cpp`
 ///
 /// Attempts to spawn the appropriate lab enemy for `nr` and transfer the
@@ -63,8 +72,14 @@ pub fn use_labtransfer(cn: usize, nr: i32, exp: i32) -> bool {
         8 => 845, // forest/golem
         9 => 919, // riddle
         _ => {
-            // do_char_log(cn, 0, "Sorry, could not determine which enemy to send you.\n");
-            // chlog(cn, "Sorry, could not determine which enemy to send you");
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    FontColor::Red,
+                    "Sorry, could not determine which enemy to send you.\n",
+                )
+            });
+            chlog!(cn, "Sorry, could not determine which enemy to send you");
             return false;
         }
     };
@@ -72,8 +87,7 @@ pub fn use_labtransfer(cn: usize, nr: i32, exp: i32) -> bool {
     // pop_create_char(template, 0): create the enemy character (assume function exists)
     let co = populate::pop_create_char(template, false);
     if co == 0 {
-        // do_char_log(cn, 0, "Sorry, could not create your enemy.\n");
-        // chlog(cn, "Sorry, could not create your enemy");
+        chlog!(cn, "Sorry, could not create your enemy.");
         State::with(|state| {
             state.do_character_log(cn, FontColor::Red, "Sorry, could not create your enemy.\n");
             log::error!(
@@ -85,7 +99,6 @@ pub fn use_labtransfer(cn: usize, nr: i32, exp: i32) -> bool {
         return false;
     }
 
-    // god_drop_char(co, 174, 172): place the enemy (assume function exists)
     if !God::drop_char(co, 174, 172) {
         State::with(|state| {
             state.do_character_log(cn, FontColor::Red, "Sorry, could not place your enemy.\n");
@@ -135,7 +148,7 @@ pub fn use_labtransfer(cn: usize, nr: i32, exp: i32) -> bool {
         Repository::with_characters_mut(|ch| ch[co].used = core::constants::USE_EMPTY);
         return false;
     }
-    // chlog(cn, "Entered Labkeeper room");
+    chlog!(cn, "Entered Labkeeper room for lab {}", nr);
     true
 }
 
@@ -568,6 +581,141 @@ pub fn scale_exps(cn: i32, co: i32, exp: i32) -> i32 {
     let co_experience =
         Repository::with_characters(|characters| characters[co as usize].points_tot as u32);
     scale_exps2(cn, points2rank(co_experience) as i32, exp)
+}
+
+/// Port of `it_base_status` from `svr_tick.cpp`
+/// Returns the base animation frame for an item status
+pub fn it_base_status(n: u8) -> u8 {
+    if n == 0 {
+        return 0;
+    }
+    if n == 1 {
+        return 1;
+    }
+    if n < 6 {
+        return 2;
+    }
+    if n < 8 {
+        return 6;
+    }
+    if n < 16 {
+        return 8;
+    }
+    if n < 21 {
+        return 16;
+    }
+    n
+}
+
+/// Port of `ch_base_status` from `svr_tick.cpp`
+/// Returns the base animation frame for a character status
+pub fn ch_base_status(n: u8) -> u8 {
+    if n < 4 {
+        return n;
+    }
+    if n < 16 {
+        return n;
+    }
+    if n < 24 {
+        return 16;
+    }
+    if n < 32 {
+        return 24;
+    }
+    if n < 40 {
+        return 32;
+    }
+    if n < 48 {
+        return 40;
+    }
+    if n < 60 {
+        return 48;
+    }
+    if n < 72 {
+        return 60;
+    }
+    if n < 84 {
+        return 72;
+    }
+    if n < 96 {
+        return 84;
+    }
+    if n < 100 {
+        return 96;
+    }
+    if n < 104 {
+        return 100;
+    }
+    if n < 108 {
+        return 104;
+    }
+    if n < 112 {
+        return 108;
+    }
+    if n < 116 {
+        return 112;
+    }
+    if n < 120 {
+        return 116;
+    }
+    if n < 124 {
+        return 120;
+    }
+    if n < 128 {
+        return 124;
+    }
+    if n < 132 {
+        return 128;
+    }
+    if n < 136 {
+        return 132;
+    }
+    if n < 140 {
+        return 136;
+    }
+    if n < 144 {
+        return 140;
+    }
+    if n < 148 {
+        return 144;
+    }
+    if n < 152 {
+        return 148;
+    }
+    if n < 156 {
+        return 152;
+    }
+    if n < 160 {
+        return 160;
+    }
+    if n < 164 {
+        return 160;
+    }
+    if n < 168 {
+        return 160;
+    }
+    if n < 176 {
+        return 168;
+    }
+    if n < 184 {
+        return 176;
+    }
+    if n < 192 {
+        return 184;
+    }
+    if n < 200 {
+        return 192;
+    }
+    if n < 208 {
+        return 200;
+    }
+    if n < 216 {
+        return 208;
+    }
+    if n < 224 {
+        return 216;
+    }
+    n
 }
 
 /// Convert a delta coordinate (dx, dy) into a direction constant.

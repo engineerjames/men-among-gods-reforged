@@ -6,27 +6,57 @@ pub fn init_lights() {
     let mut cnt1 = 0;
     let mut cnt2 = 0;
 
-    // First pass: add light from items
+    // First pass: clear all light and dlight values
     for y in 0..core::constants::SERVER_MAPY as usize {
         for x in 0..core::constants::SERVER_MAPX as usize {
             let m = x + y * core::constants::SERVER_MAPX as usize;
+            Repository::with_map_mut(|map| {
+                map[m].light = 0;
+                map[m].dlight = 0;
+            });
+        }
+    }
+
+    // Second pass: compute dlight for indoor tiles, then add lights from items
+    for y in 0..core::constants::SERVER_MAPY as usize {
+        for x in 0..core::constants::SERVER_MAPX as usize {
+            let m = x + y * core::constants::SERVER_MAPX as usize;
+
+            // Compute daylight for indoor tiles first
+            let is_indoors =
+                Repository::with_map(|map| map[m].flags & core::constants::MF_INDOORS as u64 != 0);
+
+            if is_indoors {
+                State::with_mut(|state| {
+                    state.compute_dlight(x as i32, y as i32);
+                });
+                cnt2 += 1;
+            }
+
+            // Then add light from items
             let in_id = Repository::with_map(|map| map[m].it);
 
-            if in_id != 0 {
-                let (active, light_active, light_inactive) = Repository::with_items(|items| {
-                    (
-                        items[in_id as usize].active,
-                        items[in_id as usize].light[1],
-                        items[in_id as usize].light[0],
-                    )
-                });
+            if in_id == 0 {
+                continue;
+            }
 
-                if active != 0 && light_active != 0 {
+            let (active, light_active, light_inactive) = Repository::with_items(|items| {
+                (
+                    items[in_id as usize].active,
+                    items[in_id as usize].light[1],
+                    items[in_id as usize].light[0],
+                )
+            });
+
+            if active != 0 {
+                if light_active != 0 {
                     State::with_mut(|state| {
                         state.do_add_light(x as i32, y as i32, light_active as i32);
                     });
                     cnt1 += 1;
-                } else if light_inactive != 0 {
+                }
+            } else {
+                if light_inactive != 0 {
                     State::with_mut(|state| {
                         state.do_add_light(x as i32, y as i32, light_inactive as i32);
                     });
@@ -36,27 +66,7 @@ pub fn init_lights() {
         }
     }
 
-    // Second pass: add light from characters
-    for y in 0..core::constants::SERVER_MAPY as usize {
-        for x in 0..core::constants::SERVER_MAPX as usize {
-            let m = x + y * core::constants::SERVER_MAPX as usize;
-            let ch_id = Repository::with_map(|map| map[m].ch);
-
-            if ch_id != 0 {
-                let light =
-                    Repository::with_characters(|characters| characters[ch_id as usize].light);
-
-                if light != 0 {
-                    State::with_mut(|state| {
-                        state.do_add_light(x as i32, y as i32, light as i32);
-                    });
-                    cnt2 += 1;
-                }
-            }
-        }
-    }
-
-    log::info!("Initialized lights: {} items, {} characters", cnt1, cnt2);
+    log::info!("Initialized lights: {} items, {} indoor tiles", cnt1, cnt2);
 }
 
 /// Port of `pop_create_item` from `populate.cpp`

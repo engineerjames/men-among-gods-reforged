@@ -425,7 +425,7 @@ impl Labyrinth9 {
             return false;
         }
 
-        Repository::with_characters_mut(|characters| {
+        let return_value = Repository::with_characters_mut(|characters| {
             let riddler = characters[character_id].data[core::constants::CHD_RIDDLER];
 
             // Valid riddler?
@@ -556,7 +556,9 @@ impl Labyrinth9 {
             }
 
             return true;
-        })
+        });
+
+        return return_value;
     }
 
     pub fn lab9_pose_riddle(&mut self, riddler_id: usize, character_id: usize) {
@@ -912,20 +914,22 @@ impl Labyrinth9 {
             state.reset_go(item_x as i32, item_y as i32);
             state.add_lights(item_x as i32, item_y as i32);
 
-            let character_position = Repository::with_characters(|characters| {
-                (characters[cn].x as i32, characters[cn].y as i32)
-            });
-            state.do_area_notify(
-                cn as i32,
-                0,
-                character_position.0 as i32,
-                character_position.1 as i32,
-                core::constants::NT_SEE as i32,
-                cn as i32,
-                0,
-                0,
-                0,
-            );
+            if cn != 0 {
+                let character_position = Repository::with_characters(|characters| {
+                    (characters[cn].x as i32, characters[cn].y as i32)
+                });
+                state.do_area_notify(
+                    cn as i32,
+                    0,
+                    character_position.0 as i32,
+                    character_position.1 as i32,
+                    core::constants::NT_SEE as i32,
+                    cn as i32,
+                    0,
+                    0,
+                    0,
+                );
+            }
         });
 
         true

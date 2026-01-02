@@ -1,6 +1,6 @@
 use chrono::Timelike;
-use core::constants::MAXPLAYER;
-use core::types::ServerPlayer;
+use core::constants::{MAXPLAYER, TILEX, TILEY};
+use core::types::{CMap, Map, ServerPlayer};
 use parking_lot::ReentrantMutex;
 use std::cell::UnsafeCell;
 use std::io::ErrorKind;
@@ -28,13 +28,6 @@ use flate2::Compression;
 static PLAYERS: OnceLock<ReentrantMutex<UnsafeCell<Box<[core::types::ServerPlayer; MAXPLAYER]>>>> =
     OnceLock::new();
 
-/// Microseconds per tick (matching original C++ TICK value).
-/// Calculated as 1_000_000 / TICKS.
-const TICK: u64 = 1_000_000 / TICKS; // 40ms per tick
-
-/// Desired ticks per second for the server main loop.
-const TICKS: u64 = 25; // ticks per second
-
 /// Per-character scheduling hints used by `game_tick`.
 ///
 /// Determines which processing path a character should take on a tick:
@@ -59,8 +52,6 @@ enum CharacterTickState {
 pub struct Server {
     sock: Option<TcpListener>,
     last_tick_time: Option<Instant>,
-    tick_counter: u64,
-    last_rate_instant: Instant,
 }
 
 impl Server {
@@ -70,8 +61,6 @@ impl Server {
         Server {
             sock: None,
             last_tick_time: None,
-            tick_counter: 0,
-            last_rate_instant: Instant::now(),
         }
     }
 
@@ -291,7 +280,8 @@ impl Server {
 
         // Check if it's time for a game tick (equivalent to: if (ttime > ltime))
         if now > last_time {
-            self.last_tick_time = Some(last_time + Duration::from_micros(TICK));
+            self.last_tick_time =
+                Some(last_time + Duration::from_micros(core::constants::TICK as u64));
 
             // Call main game tick (equivalent to: tick() in C++)
             self.game_tick();
@@ -303,18 +293,17 @@ impl Server {
             let new_last = self.last_tick_time.unwrap();
 
             // Check if server is running too slow (serious slowness detection)
-            if new_now > new_last + Duration::from_micros(TICK * TICKS * 10) {
+            // In the original C++ this threshold was `TICK * TICKS * 10` (10 seconds).
+            if new_now > new_last + Duration::from_secs(10) {
                 log::warn!("Server too slow");
                 self.last_tick_time = Some(new_now);
             }
         }
 
-        // Handle network I/O every 8th tick (equivalent to: if (globs->ticker % 8 == 0))
-        let should_handle_network = Repository::with_globals(|globals| globals.ticker % 8 == 0);
-
-        if should_handle_network {
-            self.handle_network_io();
-        }
+        // Handle network I/O every scheduling tick.
+        // Limiting this to every Nth game tick introduces noticeable input lag
+        // and delayed map/tick packet delivery.
+        self.handle_network_io();
 
         // Sleep for remaining time until next tick
         let current_time = Instant::now();
@@ -336,20 +325,6 @@ impl Server {
     /// - Updating global statistics and letting subsystems tick (populate, effects,
     ///   item driver)
     fn game_tick(&mut self) {
-        // Track actual tick rate and log every 5 seconds
-        self.tick_counter = self.tick_counter.wrapping_add(1);
-        let now_rate = Instant::now();
-        let rate_interval = Duration::from_secs(5);
-        if now_rate.duration_since(self.last_rate_instant) >= rate_interval {
-            let elapsed = now_rate
-                .duration_since(self.last_rate_instant)
-                .as_secs_f64();
-            let measured = (self.tick_counter as f64) / elapsed;
-            log::info!("Tick rate: {:.2} tps (expected: {} tps)", measured, TICKS);
-            self.tick_counter = 0;
-            self.last_rate_instant = now_rate;
-        }
-
         // Get current hour for statistics
         let hour = chrono::Local::now().hour() as usize;
 
@@ -514,7 +489,7 @@ impl Server {
                     let should_remove = Repository::with_characters_mut(|ch| {
                         if ch[n].flags & CharacterFlags::Player.bits() == 0 {
                             ch[n].data[98] += 1;
-                            if ch[n].data[98] > (TICKS * 60 * 30) as i32 {
+                            if ch[n].data[98] > (core::constants::TICKS * 60 * 30) as i32 {
                                 return true;
                             }
                         }
@@ -638,7 +613,7 @@ impl Server {
         }
 
         Repository::with_characters_mut(|ch| {
-            ch[wakeup_idx].data[92] = (TICKS * 60) as i32;
+            ch[wakeup_idx].data[92] = (core::constants::TICKS * 60) as i32;
         });
 
         WAKEUP.store(wakeup_idx + 1, std::sync::atomic::Ordering::Relaxed);
@@ -1048,10 +1023,28 @@ impl Server {
     /// into each player's `zs` encoder. Updates buffer pointers and resets
     /// `tptr` after compressing.
     fn compress_ticks(&mut self) {
-        // For each connected player, compress their tick buffer (`tbuf`) if worthwhile
+        // For each connected player, compress their tick buffer (`tbuf`) if worthwhile.
+        // This is intended to match the original C++ `compress_ticks()` logic closely.
         Server::with_players_mut(|players| {
+            let header_from_int = |v: i32| {
+                // C++ does: csend(n, reinterpret_cast<unsigned char*>(&olen), 2)
+                // where `olen` is an `int`. That sends the first two bytes of the native-endian
+                // `int` representation (not explicitly little-endian).
+                let b = v.to_ne_bytes();
+                [b[0], b[1]]
+            };
+
+            let ring_free_space = |iptr: usize, optr: usize, cap: usize| -> usize {
+                // Keep one byte empty to distinguish full vs empty.
+                let used = if iptr >= optr {
+                    iptr - optr
+                } else {
+                    cap - optr + iptr
+                };
+                cap.saturating_sub(used + 1)
+            };
+
             for n in 1..players.len() {
-                // quick checks
                 if players[n].sock.is_none() {
                     continue;
                 }
@@ -1059,101 +1052,128 @@ impl Server {
                     continue;
                 }
 
-                // ensure sane usnr
-                if players[n].usnr >= core::constants::MAXCHARS as usize {
-                    players[n].usnr = 0;
+                // Work on a single player slot.
+                let p = &mut players[n];
+
+                if p.usnr >= core::constants::MAXCHARS as usize {
+                    p.usnr = 0;
                 }
 
-                let ilen = players[n].tptr;
-                let olen = ilen + 2;
+                let ilen = p.tptr;
+                let olen_uncompressed_i32: i32 = (ilen + 2) as i32;
 
-                if olen > 16 {
-                    // compress into encoder's inner buffer
-                    if let Some(zs) = players[n].zs.as_mut() {
+                // Snapshot tick data (so we can freely borrow `zs` / `obuf` later).
+                let tbuf_data: Vec<u8> = if ilen > 0 {
+                    p.tbuf[..ilen].to_vec()
+                } else {
+                    Vec::new()
+                };
+
+                // Build packet contents first, then write into the output ring.
+                let (olen_i32, header, payload): (i32, [u8; 2], Vec<u8>) = if olen_uncompressed_i32
+                    > 16
+                {
+                    if let Some(zs) = p.zs.as_mut() {
                         let before = zs.get_ref().len();
-                        let _ = zs.write_all(&players[n].tbuf[..ilen]);
-                        // flush to ensure we get compressed bytes out (Z_SYNC_FLUSH equivalent)
+                        let _ = zs.write_all(&tbuf_data);
                         let _ = zs.flush();
+
                         let after = zs.get_ref().len();
-                        let csize = after.saturating_sub(before);
+                        let produced = after.saturating_sub(before);
+                        let csize = produced.min(core::constants::OBUFSIZE);
 
-                        // prepare 2-byte header with high bit set to indicate compressed
-                        let header = (((csize + 2) as u16) | 0x8000u16).to_le_bytes();
+                        // C++ truncates to OBUFSIZE (fixed `obuf`)
+                        if produced > csize {
+                            log::warn!(
+                                    "compress_ticks: compressed output truncated for player {} (produced {}, capped {}, ilen {}, usnr {})",
+                                    n,
+                                    produced,
+                                    csize,
+                                    ilen,
+                                    p.usnr
+                                );
+                            zs.get_mut().truncate(before + csize);
+                        }
 
-                        // Extract compressed data before creating the closure
-                        let compressed = zs.get_ref()[before..after].to_vec();
+                        // The protocol uses the 0x8000 bit as a compression flag.
+                        // If (csize + 2) reaches or exceeds 0x8000, clients which mask
+                        // the flag bit to obtain length will desync.
+                        if csize + 2 >= 0x8000 {
+                            log::error!(
+                                    "compress_ticks: compressed packet length too large for player {} (csize {}, len_with_header {}, ilen {}, usnr {})",
+                                    n,
+                                    csize,
+                                    csize + 2,
+                                    ilen,
+                                    p.usnr
+                                );
+                        }
 
-                        // write header then compressed bytes into obuf with wrap
-                        let obuf_len = players[n].obuf.len();
-                        let mut iptr = players[n].iptr;
-
-                        // helper to copy slice into obuf with wrap
-                        let mut write_into = |data: &[u8]| {
-                            for &b in data {
-                                players[n].obuf[iptr] = b;
-                                iptr += 1;
-                                if iptr >= obuf_len {
-                                    iptr = 0;
-                                }
-                            }
-                        };
-
-                        write_into(&header);
-                        write_into(&compressed);
-
-                        players[n].iptr = iptr;
-
-                        // update character stats
-                        let usnr = players[n].usnr;
-                        Repository::with_characters_mut(|ch| {
-                            if usnr < core::constants::MAXCHARS as usize {
-                                ch[usnr].comp_volume =
-                                    ch[usnr].comp_volume.wrapping_add((csize + 2) as u32);
-                                ch[usnr].raw_volume = ch[usnr].raw_volume.wrapping_add(ilen as u32);
-                            }
-                        });
+                        let olen_i32 = ((csize + 2) as i32) | 0x8000;
+                        let header = header_from_int(olen_i32);
+                        let payload = zs.get_ref()[before..before + csize].to_vec();
+                        (olen_i32, header, payload)
+                    } else {
+                        // If compression state is missing, fall back to uncompressed.
+                        let header = header_from_int(olen_uncompressed_i32);
+                        (olen_uncompressed_i32, header, tbuf_data)
                     }
                 } else {
-                    // send raw (no compression)
-                    let header = (olen as u16).to_le_bytes();
-                    let obuf_len = players[n].obuf.len();
-                    let mut iptr = players[n].iptr;
+                    // Uncompressed path: always send the 2-byte header, even if ilen == 0.
+                    let header = header_from_int(olen_uncompressed_i32);
+                    (olen_uncompressed_i32, header, tbuf_data)
+                };
 
-                    // Copy tbuf data before defining the closure
-                    let tbuf_data: Vec<u8> = if ilen > 0 {
-                        players[n].tbuf[..ilen].to_vec()
-                    } else {
-                        Vec::new()
-                    };
-
-                    let mut write_into = |data: &[u8]| {
-                        for &b in data {
-                            players[n].obuf[iptr] = b;
-                            iptr += 1;
-                            if iptr >= obuf_len {
-                                iptr = 0;
-                            }
-                        }
-                    };
-
-                    write_into(&header);
-                    if ilen > 0 {
-                        write_into(&tbuf_data);
-                    }
-                    players[n].iptr = iptr;
-
-                    // update character stats
-                    let usnr = players[n].usnr;
-                    Repository::with_characters_mut(|ch| {
-                        if usnr < core::constants::MAXCHARS as usize {
-                            ch[usnr].comp_volume = ch[usnr].comp_volume.wrapping_add(olen as u32);
-                            ch[usnr].raw_volume = ch[usnr].raw_volume.wrapping_add(ilen as u32);
-                        }
-                    });
+                // Write header and payload into the ring buffer.
+                let needed = 2usize + payload.len();
+                let free = ring_free_space(p.iptr, p.optr, p.obuf.len());
+                if needed > free {
+                    log::warn!(
+                        "compress_ticks: obuf overflow risk for player {} (need {}, free {}, iptr {}, optr {}, ilen {}, olen_i32 {}, usnr {})",
+                        n,
+                        needed,
+                        free,
+                        p.iptr,
+                        p.optr,
+                        ilen,
+                        olen_i32,
+                        p.usnr
+                    );
+                    // Don't overwrite unsent bytes; drop this tick packet.
+                    p.tptr = 0;
+                    continue;
                 }
 
-                // reset tptr
-                players[n].tptr = 0;
+                let mut iptr = p.iptr;
+                let obuf_len = p.obuf.len();
+                let mut write_into = |data: &[u8]| {
+                    for &b in data {
+                        p.obuf[iptr] = b;
+                        iptr += 1;
+                        if iptr >= obuf_len {
+                            iptr = 0;
+                        }
+                    }
+                };
+
+                write_into(&header);
+                if !payload.is_empty() {
+                    write_into(&payload);
+                }
+
+                p.iptr = iptr;
+
+                // Stats update (C++ does this unconditionally, with `olen` including 0x8000
+                // in the compressed case).
+                let usnr = p.usnr;
+                Repository::with_characters_mut(|ch| {
+                    if usnr < core::constants::MAXCHARS as usize {
+                        ch[usnr].comp_volume = ch[usnr].comp_volume.wrapping_add(olen_i32 as u32);
+                        ch[usnr].raw_volume = ch[usnr].raw_volume.wrapping_add(ilen as u32);
+                    }
+                });
+
+                p.tptr = 0;
             }
         });
     }
@@ -1183,26 +1203,21 @@ impl Server {
 
         // Handle existing player connections
         for player_idx in 1..MAXPLAYER {
-            let (has_socket, needs_recv, needs_send) = Self::with_players(|players| {
+            let has_socket = Self::with_players(|players| {
                 if players[player_idx].sock.is_none() {
-                    return (false, false, false);
+                    false
+                } else {
+                    true
                 }
-                let needs_recv = players[player_idx].in_len < 256;
-                let needs_send = players[player_idx].iptr != players[player_idx].optr;
-                (true, needs_recv, needs_send)
             });
 
             if !has_socket {
                 continue;
             }
 
-            if needs_recv {
-                self.rec_player(player_idx);
-            }
+            self.rec_player(player_idx);
 
-            if needs_send {
-                self.send_player(player_idx);
-            }
+            self.send_player(player_idx);
         }
     }
 
@@ -1241,22 +1256,36 @@ impl Server {
 
             let n = slot.unwrap();
 
-            // Build fresh player state similar to ServerPlayer::new()
-            let mut newp = core::types::ServerPlayer::new();
-            newp.sock = Some(stream);
-            newp.addr = addr_u32;
-
-            // Initialize compression (deflateInit level 9 equivalent)
-            newp.zs = Some(ZlibEncoder::new(Vec::new(), Compression::best()));
-
             // Set initial state values
-            newp.state = core::constants::ST_CONNECT;
-            newp.lasttick = Repository::with_globals(|g| g.ticker as u32);
-            newp.lasttick2 = newp.lasttick;
-            newp.prio = 0;
-            newp.ticker_started = 0;
+            players[n] = core::types::ServerPlayer::new();
+            players[n].sock = Some(stream);
+            players[n].addr = addr_u32;
+            // Initialize compression (deflateInit level 9 equivalent)
+            players[n].zs = Some(ZlibEncoder::new(Vec::new(), Compression::best()));
+            players[n].state = core::constants::ST_CONNECT;
+            players[n].lasttick = Repository::with_globals(|g| g.ticker as u32);
+            players[n].lasttick2 = players[n].lasttick;
+            players[n].prio = 0;
+            players[n].ticker_started = 0;
+            players[n].inbuf[0] = 0;
+            players[n].in_len = 0;
+            players[n].iptr = 0;
+            players[n].optr = 0;
+            players[n].tptr = 0;
+            players[n].challenge = 0;
+            players[n].usnr = 0;
+            players[n].pass1 = 0;
+            players[n].pass2 = 0;
 
-            players[n] = newp;
+            players[n].cmap.fill(CMap::default());
+            players[n].smap.fill(CMap::default());
+            players[n].xmap.fill(Map::default());
+            players[n].passwd.fill(0);
+
+            for m in 0..(TILEX * TILEY) {
+                players[n].cmap[m].ba_sprite = core::constants::SPR_EMPTY as i16;
+                players[n].smap[m].ba_sprite = core::constants::SPR_EMPTY as i16;
+            }
 
             log::info!("New connection assigned to slot {}", n);
         });
@@ -1272,11 +1301,13 @@ impl Server {
         let idx = _player_idx;
         Server::with_players_mut(|players| {
             if idx >= players.len() {
+                log::error!("rec_player: invalid player index {}", idx);
                 return;
             }
 
             // Ensure socket exists
             if players[idx].sock.is_none() {
+                log::error!("rec_player: no socket for player index {}", idx);
                 return;
             }
 
@@ -1331,9 +1362,11 @@ impl Server {
         let idx = player_idx;
         Server::with_players_mut(|players| {
             if idx >= players.len() {
+                log::error!("send_player: invalid player index {}", idx);
                 return;
             }
             if players[idx].sock.is_none() {
+                log::error!("send_player: no socket for player index {}", idx);
                 return;
             }
 
@@ -1355,6 +1388,7 @@ impl Server {
                 // Write the available contiguous slice
                 let end = slice_start + len;
                 let to_send = &players[idx].obuf[slice_start..end.min(players[idx].obuf.len())];
+
                 match sock.write(to_send) {
                     Ok(0) => {
                         log::error!("Connection closed (send, wrote 0)");

@@ -52,66 +52,54 @@ impl State {
     /// player index before sending.
     ///
     /// # Arguments
-    /// * `character_id` - Character whose player will receive the message
+    /// * `cn` - Character whose player will receive the message
     /// * `font` - Color/font modifier for the message
     /// * `message` - Message text (may be longer than a single packet)
-    pub(crate) fn do_log(&self, character_id: usize, font: core::types::FontColor, message: &str) {
+    fn do_log(&self, cn: usize, font: core::types::FontColor, message: &str) {
+        log::debug!(
+            "do_log: cn={}, font={:?}, message='{}'",
+            cn,
+            font,
+            message.strip_suffix('\n').unwrap_or("")
+        );
         let mut buffer: [u8; 16] = [0; 16];
 
-        Repository::with_characters(|characters| {
-            let ch = &characters[character_id];
+        let player_number = Repository::with_characters(|ch| ch[cn].player) as usize;
 
-            if !ServerPlayer::is_sane_player(ch.player as usize)
-                || (ch.flags & CharacterFlags::CF_PLAYER.bits()) == 0
-            {
-                let id = ch.player;
-                log::error!(
-                    "do_log: Invalid player ID {} for character '{}'",
-                    id,
-                    ch.get_name(),
-                );
-                return;
+        if !ServerPlayer::is_sane_player(player_number) {
+            return;
+        }
+
+        if Server::with_players(|players| players[player_number].usnr) != cn {
+            Repository::with_characters_mut(|ch| ch[cn].player = 0);
+            return;
+        }
+        let bytes = message.as_bytes();
+        let len = bytes.len();
+        let mut pos = 0usize;
+
+        // Send at least one packet (matches original intent), copy up to 15 bytes per packet.
+        loop {
+            buffer[0] = core::constants::SV_LOG + font as u8;
+
+            let take = std::cmp::min(15, len.saturating_sub(pos));
+            if take > 0 {
+                buffer[1..1 + take].copy_from_slice(&bytes[pos..pos + take]);
+            }
+            // pad remainder with zeros (if any)
+            for b in &mut buffer[1 + take..] {
+                *b = 0;
             }
 
-            let matching_player_id = Server::with_players(|players| {
-                for i in 0..MAXPLAYER as usize {
-                    if players[i].usnr == character_id {
-                        return Some(i);
-                    }
-                }
-
-                None
+            NetworkManager::with(|network| {
+                network.xsend(player_number, &buffer, 16);
             });
 
-            if matching_player_id.is_none() {
-                log::error!(
-                    "do_log: No matching player found for character '{}'",
-                    ch.get_name(),
-                );
-                return;
+            pos += take;
+            if pos >= len {
+                break;
             }
-
-            let mut bytes_sent: usize = 0;
-            let len = message.len() - 1;
-
-            while bytes_sent <= len {
-                buffer[0] = core::constants::SV_LOG + font as u8;
-
-                for i in 0..15 {
-                    if bytes_sent + i > len {
-                        buffer[i + 1] = 0;
-                    } else {
-                        buffer[i + 1] = message.as_bytes()[bytes_sent + i];
-                    }
-                }
-
-                NetworkManager::with(|network| {
-                    network.xsend(matching_player_id.unwrap() as usize, &buffer, 16);
-                });
-
-                bytes_sent += 15;
-            }
-        });
+        }
     }
 
     /// Port of `do_area_log(cn, co, xs, ys, font, message)` from the original
@@ -459,7 +447,7 @@ impl State {
                     continue;
                 }
                 // If source is not 0 and source's invis_level <= n's, show named, else anon
-                if src_invis_level <= n_invis_level {
+                if source != 0 && src_invis_level <= n_invis_level {
                     self.do_log(n, core::types::FontColor::Green, &named);
                 } else {
                     self.do_log(n, core::types::FontColor::Green, &anon);
@@ -642,9 +630,9 @@ impl State {
                     || Repository::with_characters(|ch| ch[cn].get_invisibility_level())
                         <= Repository::with_characters(|ch| ch[cc].get_invisibility_level());
                 if show_named {
-                    self.do_log(cc, core::types::FontColor::Blue, &msg_named);
+                    self.do_character_log(cc, core::types::FontColor::Blue, &msg_named);
                 } else {
-                    self.do_log(cc, core::types::FontColor::Blue, &msg_invis);
+                    self.do_character_log(cc, core::types::FontColor::Blue, &msg_invis);
                 }
             } else {
                 // Listener is NPC: store for second pass

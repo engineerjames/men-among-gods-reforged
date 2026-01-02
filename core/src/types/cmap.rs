@@ -1,5 +1,5 @@
 /// Client-side map tile
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 #[repr(C, packed)]
 pub struct CMap {
     // for background

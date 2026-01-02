@@ -1,12 +1,42 @@
-use core::constants::CharacterFlags;
+use core::constants::{CharacterFlags, ItemFlags, KIN_MONSTER};
 use core::types::Character;
-use std::cmp;
+use std::{backtrace, cmp};
 
 use crate::repository::Repository;
 
 use super::State;
 
 impl State {
+    #[inline]
+    fn vis_buf(&self) -> &[i8; 40 * 40] {
+        if self.vis_is_global {
+            &self._visi
+        } else {
+            &self.visi
+        }
+    }
+
+    #[inline]
+    fn vis_buf_mut(&mut self) -> &mut [i8; 40 * 40] {
+        if self.vis_is_global {
+            &mut self._visi
+        } else {
+            &mut self.visi
+        }
+    }
+
+    #[inline]
+    fn vis_index(&self, x: i32, y: i32) -> Option<usize> {
+        let rx = x - self.ox + 20;
+        let ry = y - self.oy + 20;
+
+        if rx < 0 || rx >= 40 || ry < 0 || ry >= 40 {
+            None
+        } else {
+            Some((rx + ry * 40) as usize)
+        }
+    }
+
     /// Port of `do_add_light(x, y, strength)` from the original `helper.cpp`.
     ///
     /// Adds light originating at `(x_center, y_center)` and spreads it to
@@ -17,7 +47,7 @@ impl State {
     /// # Arguments
     /// * `x_center, y_center` - Source coordinates for the light
     /// * `strength` - Light strength (negative to subtract)
-    pub(crate) fn do_add_light(&mut self, x_center: i32, y_center: i32, mut strength: i32) {
+    pub(crate) fn do_add_light(&mut self, x_center: i32, y_center: i32, strength: i32) {
         // First add light to the center
         let center_map_index =
             (y_center as usize) * core::constants::SERVER_MAPX as usize + (x_center as usize);
@@ -26,6 +56,7 @@ impl State {
             map_tiles[center_map_index].add_light(strength);
         });
 
+        let mut strength = strength;
         let flag = if strength < 0 {
             strength = -strength;
             1
@@ -62,7 +93,7 @@ impl State {
                 let v = self.can_see(None, x_center, y_center, x, y, core::constants::LIGHTDIST);
 
                 if v != 0 {
-                    let d = strength / (v * (x_center - x).abs() + (y_center - y).abs());
+                    let d = strength / (v * ((x_center - x).abs() + (y_center - y).abs()));
                     let map_index =
                         (y as usize) * core::constants::SERVER_MAPX as usize + (x as usize);
 
@@ -223,58 +254,69 @@ impl State {
     /// Checks line-of-sight from `(fx,fy)` to `(tx,ty)` and returns a
     /// visibility metric: `1` indicates perfect/very close visibility, larger
     /// values indicate worse visibility, and `0` means not visible. When
-    /// `character_id` is provided the function may reuse a cached see-map and
+    /// `cn` is provided the function may reuse a cached see-map and
     /// update the per-character visibility cache.
     ///
     /// # Arguments
-    /// * `character_id` - Optional character id whose see cache to use/update
+    /// * `cn` - Optional character id whose see cache to use/update
     /// * `fx, fy` - Origin coordinates
     /// * `tx, ty` - Target coordinates to check
     /// * `max_distance` - Maximum radius to compute
     pub(crate) fn can_see(
         &mut self,
-        character_id: Option<usize>,
+        cn: Option<usize>,
         fx: i32,
         fy: i32,
         tx: i32,
         ty: i32,
         max_distance: i32,
     ) -> i32 {
-        Repository::with_see_map_mut(|see_map| {
-            Repository::with_characters(|characters| {
-                match character_id {
-                    Some(cn) => {
-                        if (fx != see_map[cn].x) || (fy != see_map[cn].y) {
-                            self.is_monster =
-                                characters[cn].is_monster() && !characters[cn].is_usurp_or_thrall();
+        if let Some(cn) = cn {
+            // Use the per-character see-map cache. In the C++ original, `visi`
+            // pointed directly at `see[cn].vis`; in Rust we copy it into `self.visi`
+            // and write it back after rebuilding.
+            self.vis_is_global = false;
+            self.visi = Repository::with_see_map(|see_map| see_map[cn].vis);
 
-                            // Copy the visibility data from see_map to our working buffer
-                            self._visi.copy_from_slice(&see_map[cn].vis);
+            let (see_x, see_y) = Repository::with_see_map(|see_map| (see_map[cn].x, see_map[cn].y));
 
-                            self.can_map_see(fx, fy, max_distance);
+            if fx != see_x || fy != see_y {
+                let (ch_kindred, ch_flags) = Repository::with_characters(|characters| {
+                    (characters[cn].kindred, characters[cn].flags)
+                });
 
-                            // Copy the updated visibility data back to see_map
-                            see_map[cn].vis.copy_from_slice(&self._visi);
-                            see_map[cn].x = fx;
-                            see_map[cn].y = fy;
-                            self.see_miss += 1;
-                        } else {
-                            // Copy the visibility data from see_map for checking
-                            self._visi.copy_from_slice(&see_map[cn].vis);
-                            self.see_hit += 1;
-                            self.ox = fx;
-                            self.oy = fy;
-                        }
-                    }
-                    None => {
-                        if (self.ox != fx) || (self.oy != fy) {
-                            self.is_monster = false;
-                            self.can_map_see(fx, fy, max_distance);
-                        }
-                    }
-                }
-            })
-        });
+                self.is_monster = ch_kindred & KIN_MONSTER as i32 != 0
+                    && (ch_flags
+                        & (CharacterFlags::CF_USURP.bits() | CharacterFlags::CF_THRALL.bits()))
+                        == 0;
+
+                self.can_map_see(fx, fy, max_distance);
+
+                Repository::with_see_map_mut(|see_map| {
+                    see_map[cn].x = fx;
+                    see_map[cn].y = fy;
+                    see_map[cn].vis = self.visi;
+                });
+
+                self.see_miss += 1;
+            } else {
+                self.see_hit += 1;
+                self.ox = fx;
+                self.oy = fy;
+            }
+        } else {
+            // Global visibility buffer (used by lighting and non-character LOS checks)
+            if !self.vis_is_global {
+                self.vis_is_global = true;
+                self.ox = 0;
+                self.oy = 0;
+            }
+
+            if self.ox != fx || self.oy != fy {
+                self.is_monster = false;
+                self.can_map_see(fx, fy, max_distance);
+            }
+        }
 
         self.check_vis(tx, ty)
     }
@@ -289,8 +331,9 @@ impl State {
     /// * `fx, fy` - Origin coordinates
     /// * `max_distance` - Maximum radius to build
     pub(crate) fn can_map_go(&mut self, fx: i32, fy: i32, max_distance: i32) {
-        // Clear the visibility array
-        self._visi.fill(0);
+        // `can_go` always uses the global buffer.
+        self.vis_is_global = true;
+        self.vis_buf_mut().fill(0);
 
         self.ox = fx;
         self.oy = fy;
@@ -304,12 +347,12 @@ impl State {
             // Top and bottom horizontal lines
             for x in (xc - dist)..=(xc + dist) {
                 let y = yc - dist;
-                if self.close_vis_see(x, y, dist as i8) {
+                if self.close_vis_go(x, y, dist as i8) {
                     self.add_vis(x, y, dist + 1);
                 }
 
                 let y = yc + dist;
-                if self.close_vis_see(x, y, dist as i8) {
+                if self.close_vis_go(x, y, dist as i8) {
                     self.add_vis(x, y, dist + 1);
                 }
             }
@@ -317,12 +360,12 @@ impl State {
             // Left and right vertical lines (excluding corners already done)
             for y in (yc - dist + 1)..=(yc + dist - 1) {
                 let x = xc - dist;
-                if self.close_vis_see(x, y, dist as i8) {
+                if self.close_vis_go(x, y, dist as i8) {
                     self.add_vis(x, y, dist + 1);
                 }
 
                 let x = xc + dist;
-                if self.close_vis_see(x, y, dist as i8) {
+                if self.close_vis_go(x, y, dist as i8) {
                     self.add_vis(x, y, dist + 1);
                 }
             }
@@ -338,19 +381,19 @@ impl State {
     /// # Arguments
     /// * `fx, fy` - Origin coordinates
     /// * `max_distance` - Maximum radius to compute
-    pub(crate) fn can_map_see(&mut self, fx: i32, fy: i32, max_distance: i32) {
-        // Clear the visibility array
-        self._visi.fill(0);
+    fn can_map_see(&mut self, fx: i32, fy: i32, max_distance: i32) {
+        // Clear the active visibility buffer (global or per-character).
+        self.vis_buf_mut().fill(0);
 
         self.ox = fx;
         self.oy = fy;
 
+        let xc = fx;
+        let yc = fy;
+
         self.add_vis(fx, fy, 1);
 
         for dist in 1..(max_distance + 1) {
-            let xc = fx;
-            let yc = fy;
-
             // Top and bottom horizontal lines
             for x in (xc - dist)..=(xc + dist) {
                 let y = yc - dist;
@@ -388,9 +431,9 @@ impl State {
     /// # Arguments
     /// * `fx, fy` - Start coordinates
     /// * `target_x, target_y` - Destination coordinates
-    pub(crate) fn can_go(&mut self, fx: i32, fy: i32, target_x: i32, target_y: i32) -> bool {
-        if self.visi != self._visi {
-            self.visi = self._visi.clone();
+    pub(crate) fn can_go(&mut self, fx: i32, fy: i32, target_x: i32, target_y: i32) -> i32 {
+        if !self.vis_is_global {
+            self.vis_is_global = true;
             self.ox = 0;
             self.oy = 0;
         }
@@ -399,9 +442,7 @@ impl State {
             self.can_map_go(fx, fy, 15);
         }
 
-        let tmp = self.check_vis(target_x, target_y);
-
-        tmp != 0
+        self.check_vis(target_x, target_y)
     }
 
     /// Port of `check_dlight(x,y)` from original helper code.
@@ -485,25 +526,36 @@ impl State {
             return 1;
         }
 
-        Repository::with_characters(|characters| {
+        if co == 0 || cn == 0 {
+            log::error!(
+                "do_char_can_see called with invalid character id(s): cn={}, co={}",
+                cn,
+                co
+            );
+
+            // TODO: Do this for all errors?
+            eprintln!("{}", backtrace::Backtrace::capture());
+            return 0;
+        }
+
+        let return_value = Repository::with_characters(|ch| {
             Repository::with_map(|map| {
-                if characters[co].used != core::constants::USE_ACTIVE {
+                if ch[co].used != core::constants::USE_ACTIVE {
                     return 0;
                 }
 
-                if characters[co].flags & CharacterFlags::CF_INVISIBLE.bits() != 0
-                    && (characters[cn].get_invisibility_level()
-                        < characters[co].get_invisibility_level())
+                if ch[co].flags & CharacterFlags::CF_INVISIBLE.bits() != 0
+                    && (ch[cn].get_invisibility_level() < ch[co].get_invisibility_level())
                 {
                     return 0;
                 }
 
-                if characters[co].flags & CharacterFlags::CF_BODY.bits() != 0 {
+                if ch[co].flags & CharacterFlags::CF_BODY.bits() != 0 {
                     return 0;
                 }
 
-                let d1 = (characters[cn].x - characters[co].x).abs() as i32;
-                let d2 = (characters[cn].y - characters[co].y).abs() as i32;
+                let d1 = (ch[cn].x - ch[co].x).abs() as i32;
+                let d2 = (ch[cn].y - ch[co].y).abs() as i32;
 
                 let rd = d1 * d1 + d2 * d2;
                 let mut d = rd;
@@ -513,33 +565,27 @@ impl State {
                 }
 
                 // Modify by perception and stealth
-                match characters[co].mode {
+                match ch[co].mode {
                     0 => {
-                        d = (d
-                            * (characters[co].skill[core::constants::SK_STEALTH][5] as i32 + 20))
-                            / 20;
+                        d = (d * (ch[co].skill[core::constants::SK_STEALTH][5] as i32 + 20)) / 20;
                     }
                     1 => {
-                        d = (d
-                            * (characters[co].skill[core::constants::SK_STEALTH][5] as i32 + 50))
-                            / 50;
+                        d = (d * (ch[co].skill[core::constants::SK_STEALTH][5] as i32 + 50)) / 50;
                     }
                     _ => {
-                        d = (d
-                            * (characters[co].skill[core::constants::SK_STEALTH][5] as i32 + 100))
-                            / 100;
+                        d = (d * (ch[co].skill[core::constants::SK_STEALTH][5] as i32 + 100)) / 100;
                     }
                 }
 
-                d -= characters[cn].skill[core::constants::SK_PERCEPT][5] as i32 * 2;
+                d -= ch[cn].skill[core::constants::SK_PERCEPT][5] as i32 * 2;
 
                 // Modify by light
-                if characters[cn].flags & CharacterFlags::CF_INFRARED.bits() == 0 {
-                    let map_index = characters[co].x as usize
-                        + characters[co].y as usize * core::constants::SERVER_MAPX as usize;
+                if ch[cn].flags & CharacterFlags::CF_INFRARED.bits() == 0 {
+                    let map_index = ch[co].x as usize
+                        + ch[co].y as usize * core::constants::SERVER_MAPX as usize;
                     let mut light = std::cmp::max(
                         map[map_index].light as i32,
-                        State::check_dlight(characters[co].x as usize, characters[co].y as usize),
+                        State::check_dlight(ch[co].x as usize, ch[co].y as usize),
                     );
 
                     light = self.do_character_calculate_light(cn, light);
@@ -565,10 +611,10 @@ impl State {
 
                 if self.can_see(
                     Some(cn),
-                    characters[cn].x as i32,
-                    characters[cn].y as i32,
-                    characters[co].x as i32,
-                    characters[co].y as i32,
+                    ch[cn].x as i32,
+                    ch[cn].y as i32,
+                    ch[co].x as i32,
+                    ch[co].y as i32,
                     15,
                 ) == 0
                 {
@@ -581,7 +627,9 @@ impl State {
 
                 d
             })
-        })
+        });
+
+        return_value
     }
 
     /// Port of `do_char_can_see_item(cn, in_idx)` from original server logic.
@@ -684,36 +732,59 @@ impl State {
     /// indicates not visible; otherwise a positive integer (1 = best).
     ///
     /// # Arguments
-    /// * `tx, ty` - Target coordinates relative to current origin
-    pub(crate) fn check_vis(&self, tx: i32, ty: i32) -> i32 {
+    /// * `x, y` - Target coordinates relative to current origin
+    fn check_vis(&self, x: i32, y: i32) -> i32 {
         let mut best = 99;
 
-        let x = tx - self.ox + 20;
-        let y = ty - self.oy + 20;
+        let x = x - self.ox + 20;
+        let y = y - self.oy + 20;
 
-        // Check all 8 adjacent cells for the best (lowest) visibility value
-        let offsets = [
-            (1, 0),
-            (-1, 0),
-            (0, 1),
-            (0, -1),
-            (1, 1),
-            (1, -1),
-            (-1, 1),
-            (-1, -1),
-        ];
+        // Needs a 1-tile border for +/-1 neighbor checks.
+        if x <= 0 || x >= 39 || y <= 0 || y >= 39 {
+            return 0;
+        }
 
-        for (dx, dy) in offsets.iter() {
-            let nx = x + dx;
-            let ny = y + dy;
+        let visi = self.vis_buf();
 
-            if nx >= 0 && nx < 40 && ny >= 0 && ny < 40 {
-                let idx = (nx + ny * 40) as usize;
-                let val = self._visi[idx];
-                if val != 0 && val < best {
-                    best = val;
-                }
-            }
+        if visi[((x + 1) + (y + 0) * 40) as usize] != 0
+            && visi[((x + 1) + (y + 0) * 40) as usize] < best
+        {
+            best = visi[((x + 1) + (y + 0) * 40) as usize];
+        }
+        if visi[((x - 1) + (y + 0) * 40) as usize] != 0
+            && visi[((x - 1) + (y + 0) * 40) as usize] < best
+        {
+            best = visi[((x - 1) + (y + 0) * 40) as usize];
+        }
+        if visi[((x + 0) + (y + 1) * 40) as usize] != 0
+            && visi[((x + 0) + (y + 1) * 40) as usize] < best
+        {
+            best = visi[((x + 0) + (y + 1) * 40) as usize];
+        }
+        if visi[((x + 0) + (y - 1) * 40) as usize] != 0
+            && visi[((x + 0) + (y - 1) * 40) as usize] < best
+        {
+            best = visi[((x + 0) + (y - 1) * 40) as usize];
+        }
+        if visi[((x + 1) + (y + 1) * 40) as usize] != 0
+            && visi[((x + 1) + (y + 1) * 40) as usize] < best
+        {
+            best = visi[((x + 1) + (y + 1) * 40) as usize];
+        }
+        if visi[((x + 1) + (y - 1) * 40) as usize] != 0
+            && visi[((x + 1) + (y - 1) * 40) as usize] < best
+        {
+            best = visi[((x + 1) + (y - 1) * 40) as usize];
+        }
+        if visi[((x - 1) + (y + 1) * 40) as usize] != 0
+            && visi[((x - 1) + (y + 1) * 40) as usize] < best
+        {
+            best = visi[((x - 1) + (y + 1) * 40) as usize];
+        }
+        if visi[((x - 1) + (y - 1) * 40) as usize] != 0
+            && visi[((x - 1) + (y - 1) * 40) as usize] < best
+        {
+            best = visi[((x - 1) + (y - 1) * 40) as usize];
         }
 
         if best == 99 {
@@ -732,14 +803,13 @@ impl State {
     /// * `x, y` - World coordinates to write
     /// * `value` - Visibility value to store
     pub(crate) fn add_vis(&mut self, x: i32, y: i32, value: i32) {
-        let vx = x - self.ox + 20;
-        let vy = y - self.oy + 20;
+        let Some(index) = self.vis_index(x, y) else {
+            return;
+        };
 
-        if vx >= 0 && vx < 40 && vy >= 0 && vy < 40 {
-            let idx = (vx + vy * 40) as usize;
-            if self._visi[idx] == 0 {
-                self._visi[idx] = value as i8;
-            }
+        let visi = self.vis_buf_mut();
+        if visi[index] == 0 {
+            visi[index] = value as i8;
         }
     }
 
@@ -752,43 +822,46 @@ impl State {
     /// # Arguments
     /// * `x, y` - Tile coordinates
     /// * `value` - Neighbor visibility value to match
-    pub(crate) fn close_vis_see(&self, x: i32, y: i32, value: i8) -> bool {
+    fn close_vis_see(&self, x: i32, y: i32, value: i8) -> bool {
         if !self.check_map_see(x, y) {
             return false;
         }
 
-        let vx = x - self.ox + 20;
-        let vy = y - self.oy + 20;
+        let x = x - self.ox + 20;
+        let y = y - self.oy + 20;
 
-        if vx < 0 || vx >= 40 || vy < 0 || vy >= 40 {
+        if x <= 0 || x >= 39 || y <= 0 || y >= 39 {
             return false;
         }
 
-        // Check all 8 adjacent cells
-        let offsets = [
-            (1, 0),
-            (-1, 0),
-            (0, 1),
-            (0, -1),
-            (1, 1),
-            (1, -1),
-            (-1, 1),
-            (-1, -1),
-        ];
+        let visi = self.vis_buf();
 
-        for (dx, dy) in offsets.iter() {
-            let nx = vx + dx;
-            let ny = vy + dy;
-
-            if nx >= 0 && nx < 40 && ny >= 0 && ny < 40 {
-                let idx = (nx + ny * 40) as usize;
-                if self._visi[idx] == value {
-                    return true;
-                }
-            }
+        if visi[((x + 1) + (y) * 40) as usize] == value {
+            return true;
+        }
+        if visi[((x - 1) + (y) * 40) as usize] == value {
+            return true;
+        }
+        if visi[((x) + (y + 1) * 40) as usize] == value {
+            return true;
+        }
+        if visi[((x) + (y - 1) * 40) as usize] == value {
+            return true;
+        }
+        if visi[((x + 1) + (y + 1) * 40) as usize] == value {
+            return true;
+        }
+        if visi[((x + 1) + (y - 1) * 40) as usize] == value {
+            return true;
+        }
+        if visi[((x - 1) + (y + 1) * 40) as usize] == value {
+            return true;
+        }
+        if visi[((x - 1) + (y - 1) * 40) as usize] == value {
+            return true;
         }
 
-        false
+        return false;
     }
 
     /// Port of `check_map_see(x,y)` from original helper code.
@@ -799,7 +872,7 @@ impl State {
     ///
     /// # Arguments
     /// * `x, y` - Tile coordinates to test
-    pub(crate) fn check_map_see(&self, x: i32, y: i32) -> bool {
+    fn check_map_see(&self, x: i32, y: i32) -> bool {
         // Check boundaries
         if x <= 0
             || x >= core::constants::SERVER_MAPX as i32
@@ -851,6 +924,84 @@ impl State {
         true
     }
 
+    /// Port of `check_map_go(x,y)` from original helper code.
+    ///
+    /// Returns `true` when the map tile at `(x,y)` is traversable for
+    /// pathfinding. Checks map movement-block flags and items with
+    /// `IF_MOVEBLOCK`.
+    fn check_map_go(&self, x: i32, y: i32) -> bool {
+        if x <= 0
+            || x >= core::constants::SERVER_MAPX as i32
+            || y <= 0
+            || y >= core::constants::SERVER_MAPY as i32
+        {
+            return false;
+        }
+
+        let m = (x + y * core::constants::SERVER_MAPX as i32) as usize;
+
+        if Repository::with_map(|map| map[m].flags & core::constants::MF_MOVEBLOCK as u64 != 0) {
+            return false;
+        }
+
+        let map_item_idx = Repository::with_map(|map| map[m].it as usize);
+        if map_item_idx != 0
+            && map_item_idx < Repository::with_items(|items| items.len())
+            && Repository::with_items(|items| {
+                items[map_item_idx].flags & ItemFlags::IF_MOVEBLOCK.bits() != 0
+            })
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    /// Port of `close_vis_go(x,y,value)` from original helper code.
+    ///
+    /// Returns `true` if tile `(x,y)` is traversable and is adjacent to a
+    /// reachable tile with the specified `value`.
+    fn close_vis_go(&self, x: i32, y: i32, value: i8) -> bool {
+        if !self.check_map_go(x, y) {
+            return false;
+        }
+
+        let x = x - self.ox + 20;
+        let y = y - self.oy + 20;
+
+        if x <= 0 || x >= 39 || y <= 0 || y >= 39 {
+            return false;
+        }
+
+        let visi = self.vis_buf();
+
+        if visi[((x + 1) + (y) * 40) as usize] == value {
+            return true;
+        }
+        if visi[((x - 1) + (y) * 40) as usize] == value {
+            return true;
+        }
+        if visi[((x) + (y + 1) * 40) as usize] == value {
+            return true;
+        }
+        if visi[((x) + (y - 1) * 40) as usize] == value {
+            return true;
+        }
+        if visi[((x + 1) + (y + 1) * 40) as usize] == value {
+            return true;
+        }
+        if visi[((x + 1) + (y - 1) * 40) as usize] == value {
+            return true;
+        }
+        if visi[((x - 1) + (y + 1) * 40) as usize] == value {
+            return true;
+        }
+        if visi[((x - 1) + (y - 1) * 40) as usize] == value {
+            return true;
+        }
+        return false;
+    }
+
     /// Port of `reset_go(xc,yc)` from original helper code.
     ///
     /// Clears per-character see-map caches for characters in the area around
@@ -870,8 +1021,10 @@ impl State {
                         map[(x + y * core::constants::SERVER_MAPX) as usize].ch as usize
                     });
 
-                    see_map[cn].x = 0;
-                    see_map[cn].y = 0;
+                    if cn != 0 {
+                        see_map[cn].x = 0;
+                        see_map[cn].y = 0;
+                    }
                 }
             }
         });

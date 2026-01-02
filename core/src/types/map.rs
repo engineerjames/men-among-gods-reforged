@@ -1,5 +1,5 @@
 /// Map tile structure
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 #[repr(C, packed)]
 pub struct Map {
     /// background image
@@ -43,8 +43,8 @@ impl Map {
     }
 
     pub fn add_light(&mut self, amount: i32) {
-        let new_light = self.light.saturating_add(amount as i16);
-        self.light = new_light.clamp(0, i16::MAX); // TODO: What is the actual max light value?
+        let new_light = self.light as i32 + amount;
+        self.light = new_light.clamp(0, i16::MAX as i32) as i16;
     }
 
     pub fn is_sane_coordinates(x: usize, y: usize) -> bool {

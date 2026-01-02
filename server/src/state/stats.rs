@@ -562,7 +562,7 @@ impl State {
 
         if !stunned {
             let status = Repository::with_characters(|ch| ch[cn].status);
-            let base_status = Self::ch_base_status(status as u8);
+            let base_status = helpers::ch_base_status(status as u8);
 
             match base_status {
                 // Standing/idle states - regenerate normally
@@ -1079,106 +1079,6 @@ impl State {
         if used == core::constants::USE_ACTIVE && is_player {
             driver::char_item_expire(cn);
         }
-    }
-
-    /// Helper function to determine base status from full status value
-    /// Port of ch_base_status from svr_tick.cpp
-    pub(crate) fn ch_base_status(n: u8) -> u8 {
-        if n < 4 {
-            return n;
-        }
-        if n < 16 {
-            return n;
-        }
-        if n < 24 {
-            return 16;
-        } // walk up
-        if n < 32 {
-            return 24;
-        } // walk down
-        if n < 40 {
-            return 32;
-        } // walk left
-        if n < 48 {
-            return 40;
-        } // walk right
-        if n < 60 {
-            return 48;
-        } // walk left+up
-        if n < 72 {
-            return 60;
-        } // walk left+down
-        if n < 84 {
-            return 72;
-        } // walk right+up
-        if n < 96 {
-            return 84;
-        } // walk right+down
-        if n < 100 {
-            return 96;
-        }
-        if n < 104 {
-            return 100;
-        } // turn up to left
-        if n < 108 {
-            return 104;
-        } // turn up to right
-        if n < 112 {
-            return 108;
-        }
-        if n < 116 {
-            return 112;
-        }
-        if n < 120 {
-            return 116;
-        } // turn down to left
-        if n < 124 {
-            return 120;
-        }
-        if n < 128 {
-            return 124;
-        } // turn down to right
-        if n < 132 {
-            return 128;
-        }
-        if n < 136 {
-            return 132;
-        } // turn left to up
-        if n < 140 {
-            return 136;
-        }
-        if n < 144 {
-            return 140;
-        } // turn left to down
-        if n < 148 {
-            return 144;
-        }
-        if n < 152 {
-            return 148;
-        } // turn right to up
-        if n < 156 {
-            return 152;
-        }
-        if n < 160 {
-            return 160;
-        } // turn right to down
-        if n < 164 {
-            return 160;
-        }
-        if n < 168 {
-            return 160;
-        } // attack up
-        if n < 176 {
-            return 168;
-        } // attack down
-        if n < 184 {
-            return 176;
-        } // attack left
-        if n < 192 {
-            return 184;
-        } // attack right
-
-        n // default
     }
 
     /// Set the update/save flags for a character (port of `do_update_char`)

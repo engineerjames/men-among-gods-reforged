@@ -11,8 +11,8 @@ use log4rs::{
 
 #[macro_use]
 pub mod byte_operations;
-
 pub mod constants;
+pub mod string_operations;
 pub mod types;
 
 pub fn initialize_logger(

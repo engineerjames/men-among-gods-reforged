@@ -1,13 +1,16 @@
-use crate::{
-    driver, enums, god::God, network_manager::NetworkManager, repository::Repository,
-    server::Server, state::State,
+use core::{
+    constants::{
+        ItemFlags, INFRARED, INJURED, INJURED1, INJURED2, INVIS, ISCHAR, ISITEM, ISUSABLE,
+        MF_GFX_CMAGIC, MF_GFX_DEATH, MF_GFX_EMAGIC, MF_GFX_GMAGIC, MF_GFX_INJURED, MF_GFX_INJURED1,
+        MF_GFX_INJURED2, MF_GFX_TOMB, MF_UWATER, STONED, STUNNED, UWATER,
+    },
+    string_operations::c_string_to_str,
 };
 
-// Fast cut values (relative to the complete implementation)
-const YSCUTF: i32 = 6; // YSCUT + 3
-const YECUTF: i32 = 1; // YECUT
-const XSCUTF: i32 = 2; // XSCUT
-const XECUTF: i32 = 5; // XECUT + 3
+use crate::{
+    driver, enums, god::God, helpers, network_manager::NetworkManager, repository::Repository,
+    server::Server, state::State,
+};
 
 const SPEEDTAB: [[u8; 20]; 20] = [
     [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
@@ -318,11 +321,11 @@ pub fn plr_logout(character_id: usize, player_id: usize, reason: enums::LogoutRe
 
         if player_state == core::constants::ST_NORMAL {
             NetworkManager::with(|network| {
-                network.xsend(player_id as usize, &buffer, 16);
+                network.xsend(player_id as usize, &buffer, 2);
             });
         } else {
             NetworkManager::with(|network| {
-                network.csend(player_id as usize, &buffer, 16);
+                network.csend(player_id as usize, &buffer, 2);
             });
         }
 
@@ -355,7 +358,6 @@ pub fn player_exit(player_id: usize) {
                 .find(|ch| ch.player as usize == player_id);
 
             if char.is_none() {
-                log::error!("player_exit: No character found for player {}", player_id);
                 return;
             }
 
@@ -1392,12 +1394,10 @@ pub fn plr_pickup(cn: usize) {
             });
         }
 
-        let item_name = Repository::with_items(|items| items[in_id as usize].name.clone());
-        log::info!(
-            "Character {} took {}",
-            cn,
-            String::from_utf8_lossy(&item_name)
-        );
+        let item_name =
+            Repository::with_items(|items| items[in_id as usize].get_name().to_string());
+
+        log::info!("Character {} took {}", cn, item_name);
     } else {
         Repository::with_characters_mut(|characters| {
             characters[cn].citem = in_id as u32;
@@ -1458,10 +1458,7 @@ pub fn plr_bow(cn: usize) {
                 characters[cn].x as i32,
                 characters[cn].y as i32,
                 core::types::FontColor::Blue,
-                &format!(
-                    "{} bows deeply.\n",
-                    String::from_utf8_lossy(&characters[cn].reference)
-                ),
+                &format!("{} bows deeply.\n", &characters[cn].get_reference()),
             );
         });
     });
@@ -1502,10 +1499,7 @@ pub fn plr_wave(cn: usize) {
                 characters[cn].x as i32,
                 characters[cn].y as i32,
                 core::types::FontColor::Blue,
-                &format!(
-                    "{} waves happily.\n",
-                    String::from_utf8_lossy(&characters[cn].reference)
-                ),
+                &format!("{} waves happily.\n", &characters[cn].get_reference()),
             );
         });
     });
@@ -1847,12 +1841,9 @@ pub fn plr_drop(cn: usize) {
             return;
         }
 
-        let item_name = Repository::with_items(|items| items[in_id as usize].name.clone());
-        log::info!(
-            "Character {} dropped {}",
-            cn,
-            String::from_utf8_lossy(&item_name)
-        );
+        let item_name =
+            Repository::with_items(|items| items[in_id as usize].get_name().to_string());
+        log::info!("Character {} dropped {}", cn, item_name);
         in_id
     };
 
@@ -2489,7 +2480,13 @@ pub fn plr_act(cn: usize) {
         }
 
         _ => {
-            driver::act_idle(cn);
+            let status = Repository::with_characters(|characters| characters[cn].status);
+            log::error!(
+                "plr_act: unknown character status {} for char {}",
+                status,
+                cn
+            );
+            Repository::with_characters_mut(|ch| ch[cn].status = 0);
             return;
         }
     }
@@ -2504,7 +2501,8 @@ pub fn plr_act(cn: usize) {
 /// * `n` - Character index
 pub fn speedo(n: usize) -> i32 {
     let speed = Repository::with_characters(|characters| characters[n].speed as usize);
-    let ctick = Repository::with_globals(|globals| (globals.ticker % 20) as usize);
+    let ctick =
+        Repository::with_globals(|globals| (globals.ticker % core::constants::TICKS) as usize);
     SPEEDTAB[speed][ctick] as i32
 }
 
@@ -2561,990 +2559,374 @@ pub fn plr_getmap(nr: usize) {
     if mode == 0 {
         plr_getmap_complete(nr);
     } else {
-        plr_getmap_fast(nr);
+        //plr_getmap_fast(nr); TODO: Re-enable if needed...
+        plr_getmap_complete(nr);
     }
 }
 
 pub fn plr_getmap_complete(nr: usize) {
-    // Conservative port of the original `plr_getmap_complete`.
-    // This computes the player's small-map (`smap`) for the visible window
-    // around the character and stores it into `players[nr].smap`.
-    // It uses existing State visibility helpers to compute line-of-sight
-    // and daylight, and fills in basic fields (background, item, char,
-    // flags, light) so that the later `plr_change` comparison can send
-    // the appropriate updates to the client.
+    let cn = Server::with_players(|players| players[nr].usnr as usize);
 
-    // Cut values used by the original implementation
+    // We copy it out here so we HAVE to write it back.
+    let mut smap = Server::with_players(|players| players[nr].smap);
+
     const YSCUT: i32 = 3;
     const YECUT: i32 = 1;
     const XSCUT: i32 = 2;
     const XECUT: i32 = 2;
 
-    // Get character number (cn) controlled by this player
-    let cn = Server::with_players(|players| players[nr].usnr as usize);
-    if cn == 0 || cn >= core::constants::MAXCHARS as usize {
-        return;
+    let ys = Repository::with_characters(|ch| {
+        ch[cn].y as i32 - (core::constants::TILEY as i32 / 2) + YSCUT
+    });
+    let ye = Repository::with_characters(|ch| {
+        ch[cn].y as i32 + (core::constants::TILEY as i32 / 2) - YECUT
+    });
+    let xs = Repository::with_characters(|ch| {
+        ch[cn].x as i32 - (core::constants::TILEX as i32 / 2) + XSCUT
+    });
+    let xe = Repository::with_characters(|ch| {
+        ch[cn].x as i32 + (core::constants::TILEX as i32 / 2) - XECUT
+    });
+
+    let current_x = Repository::with_characters(|ch| ch[cn].x as i32);
+    let current_y = Repository::with_characters(|ch| ch[cn].y as i32);
+    State::with_mut(|state| {
+        state.can_see(
+            Some(cn),
+            current_x,
+            current_y,
+            current_x + 1,
+            current_y + 1,
+            16,
+        )
+    });
+
+    let player_vx = Server::with_players(|players| players[nr].vx);
+    let player_vy = Server::with_players(|players| players[nr].vy);
+    let player_visi = Server::with_players(|players| players[nr].visi);
+
+    let see_x = Repository::with_see_map(|see_maps| see_maps[cn].x);
+    let see_y = Repository::with_see_map(|see_maps| see_maps[cn].y);
+    let see_vis = Repository::with_see_map(|see_maps| see_maps[cn].vis);
+
+    let mut do_all = false;
+    if player_vx != see_x || player_vy != see_y || player_visi != see_vis || player_visi != see_vis
+    {
+        Server::with_players_mut(|players| {
+            players[nr].vx = see_x;
+            players[nr].vy = see_y;
+            players[nr].visi = see_vis;
+        });
+        do_all = true;
     }
 
-    // Trigger recomputation of the visibility map for this character
-    let (ch_x, ch_y) = Repository::with_characters(|characters| {
-        (characters[cn].x as i32, characters[cn].y as i32)
-    });
-    State::with_mut(|state| {
-        let _ = state.can_see(Some(cn), ch_x, ch_y, ch_x + 1, ch_y + 1, 16);
-    });
+    if Repository::with_characters(|ch| ch[cn].is_building()) {
+        do_all = true;
+    }
 
-    // Snapshot see_map for this character
-    let see = Repository::with_see_map(|see_map| see_map[cn]);
-
-    // Compute region to update
-    let ys = ch_y - (core::constants::TILEY as i32 / 2) + YSCUT;
-    let ye = ch_y + (core::constants::TILEY as i32 / 2) - YECUT;
-    let xs = ch_x - (core::constants::TILEX as i32 / 2) + XSCUT;
-    let xe = ch_x + (core::constants::TILEX as i32 / 2) - XECUT;
-
-    // Determine whether we must force full resend (visibility changed or building)
-    let _visibility_changed = Server::with_players(|players| {
-        let p = &players[nr];
-        if p.vx != see.x || p.vy != see.y {
-            return true;
-        }
-        // compare visual arrays
-        for i in 0..(40 * 40) {
-            if p.visi[i] != see.vis[i] {
-                return true;
+    let mut n = (YSCUT * core::constants::TILEX as i32 + XSCUT) as usize;
+    let mut m = (xs + ys * core::constants::SERVER_MAPX) as usize;
+    let mut y = ys;
+    let mut infra;
+    while y < ye {
+        let mut x = xs;
+        while x < xe {
+            // empty body - iteration only
+            let map_m = Repository::with_map(|map| map[m]);
+            if do_all
+                || map_m.it != 0
+                || map_m.ch as usize != 0
+                || Server::with_players(|player| player[nr].xmap[n]) != map_m
+            {
+                Server::with_players_mut(|player| player[nr].xmap[n] = map_m)
+            } else {
+                // Still need to advance indices
+                x += 1;
+                n += 1;
+                m += 1;
+                continue;
             }
-        }
-        false
-    });
-    let _do_all = _visibility_changed
-        || Repository::with_characters(|characters| characters[cn].is_building());
 
-    // Iterate window and fill smap entries
-    Server::with_players_mut(|players| {
-        // start indices into small map
-        let mut n = (YSCUT as usize) * core::constants::TILEX + XSCUT as usize;
-        let mut map_y = ys;
-
-        for _y in ys..ye {
-            let mut map_x = xs;
-            for _x in xs..xe {
-                let m = (map_x as usize)
-                    .wrapping_add((map_y as usize) * core::constants::SERVER_MAPX as usize);
-
-                // default empty
+            if x < 0
+                || y < 0
+                || x >= core::constants::SERVER_MAPX as i32
+                || y >= core::constants::SERVER_MAPY as i32
+            {
+                // TODO: Verify this is actually empty tile behavior
                 let mut new_cmap = core::types::CMap::default();
                 new_cmap.ba_sprite = core::constants::SPR_EMPTY as i16;
-
-                // If outside world bounds -> leave empty
-                if map_x < 0
-                    || map_y < 0
-                    || map_x >= core::constants::SERVER_MAPX as i32
-                    || map_y >= core::constants::SERVER_MAPY as i32
-                {
+                Server::with_players_mut(|players| {
                     players[nr].smap[n] = new_cmap;
-                    n += 1;
-                    map_x += 1;
-                    continue;
-                }
-
-                // Retrieve the authoritative map tile
-                let map_tile = Repository::with_map(|map| map[m]);
-
-                // compute light and visibility
-                let tmp = State::check_dlightm(m);
-                let mut light = std::cmp::max(map_tile.light as i32, tmp);
-                light = State::with_mut(|state| state.do_character_calculate_light(cn, light));
-
-                let infra = Repository::with_characters(|characters| {
-                    (characters[cn].flags & enums::CharacterFlags::Infrared.bits()) != 0
                 });
-                let infra_flag = if light <= 5 && infra { 1 } else { 0 };
-
-                if light == 0 && Repository::with_map(|map| map[m].ch as usize) == cn {
-                    light = 1;
-                }
-
-                if light == 0 {
-                    // nothing visible
-                    players[nr].smap[n] = new_cmap;
-                    n += 1;
-                    map_x += 1;
-                    continue;
-                }
-
-                // --- Flags ---
-                let mut flags: u32 = 0;
-                if (map_tile.flags & core::constants::MF_UWATER as u64) != 0 {
-                    flags |= core::constants::UWATER;
-                }
-                if infra_flag != 0 {
-                    flags |= core::constants::INFRARED;
-                }
-                // building copy
-                let mut flags2: u32 = 0;
-                if Repository::with_characters(|characters| characters[cn].is_building()) {
-                    flags2 = map_tile.flags as u32;
-                }
-
-                new_cmap.flags = flags;
-                new_cmap.flags2 = flags2;
-
-                // background sprite
-                new_cmap.ba_sprite = map_tile.sprite as i16;
-
-                // --- Character ---
-                let co = Repository::with_map(|map| map[m].ch as usize);
-                if co != 0 {
-                    let can_see = State::with_mut(|state| state.do_char_can_see(cn, co));
-                    if can_see != 0 {
-                        // basic character info
-                        let ch = Repository::with_characters(|characters| characters[co]);
-                        if ch.sprite_override != 0 {
-                            new_cmap.ch_sprite = ch.sprite_override as i16;
-                        } else {
-                            new_cmap.ch_sprite = ch.sprite as i16;
-                        }
-                        new_cmap.ch_status = ch.status as u8;
-                        new_cmap.ch_status2 = ch.status2 as u8;
-                        new_cmap.ch_speed = ch.speed as u8;
-                        new_cmap.ch_nr = co as u16;
-                        new_cmap.ch_id = crate::helpers::char_id(co) as u16;
-                        // health percent (best-effort)
-                        new_cmap.ch_proz = if ch.hp[5] > 0 {
-                            ((ch.hp[5] as u32 * 100) / ch.hp[5].max(1) as u32) as u8
-                        } else {
-                            0
-                        };
-                        new_cmap.flags |= core::constants::ISCHAR;
-                        if ch.stunned != 0 {
-                            new_cmap.flags |= core::constants::STUNNED;
-                        }
-                        if (ch.flags & enums::CharacterFlags::Stoned.bits()) != 0 {
-                            new_cmap.flags |= core::constants::TOMB;
-                        }
-                    }
-                }
-
-                // --- Item ---
-                if map_tile.fsprite != 0 {
-                    new_cmap.it_sprite = map_tile.fsprite as i16;
-                    new_cmap.it_status = 0;
-                } else {
-                    let it_id = Repository::with_map(|map| map[m].it as usize);
-                    if it_id != 0 {
-                        let visible_item =
-                            State::with_mut(|state| state.do_char_can_see_item(cn, it_id)) != 0;
-                        if visible_item {
-                            let it = Repository::with_items(|items| items[it_id]);
-                            new_cmap.it_sprite = if it.active != 0 {
-                                it.sprite[1]
-                            } else {
-                                it.sprite[0]
-                            };
-                            let active_idx = if it.active != 0 { 1 } else { 0 };
-                            new_cmap.it_status = it.status[active_idx];
-                            new_cmap.flags |= core::constants::ISITEM;
-                        }
-                    }
-                }
-
-                players[nr].smap[n] = new_cmap;
-
-                // remember copy of map for later diffs
-                players[nr].xmap[n] = Repository::with_map(|map| map[m]);
-
+                x += 1;
                 n += 1;
-                map_x += 1;
+                m += 1;
+                continue;
             }
-            map_y += 1;
-        }
 
-        // update vx, vy and visi copy
-        players[nr].vx = see.x;
-        players[nr].vy = see.y;
-        players[nr].visi.copy_from_slice(&see.vis);
-    });
+            let tmp = State::check_dlightm(m);
 
-    // Now compute diffs between the client's `cmap` and the newly computed `smap`
-    // and send minimal update packets using the same packet types and
-    // run-length/light-grouping heuristics as the original C++ server.
-    {
-        use core::constants::{SV_SETMAP, SV_SETMAP3, SV_SETMAP4, SV_SETMAP5, SV_SETMAP6};
+            let mut light = std::cmp::max(Repository::with_map(|map| map[m].light as i32), tmp);
+            light = State::with_mut(|state| state.do_character_calculate_light(cn, light));
 
-        let tile_count = (core::constants::TILEX * core::constants::TILEY) as usize;
-
-        // Snapshot the current client-map (`cmap`) and the computed small-map (`smap`).
-        let mut cmap = Server::with_players(|players| players[nr].cmap);
-        let smap = Server::with_players(|players| players[nr].smap);
-
-        // helper: base-status for items
-        fn it_base_status(n: u8) -> u8 {
-            if n == 0 {
-                return 0;
-            }
-            if n == 1 {
-                return 1;
-            }
-            if n < 6 {
-                return 2;
-            }
-            if n < 8 {
-                return 6;
-            }
-            if n < 16 {
-                return 8;
-            }
-            if n < 21 {
-                return 16;
-            }
-            n
-        }
-
-        // helper: base-status for characters
-        fn ch_base_status(n: u8) -> u8 {
-            if n < 4 {
-                return n;
-            }
-            if n < 16 {
-                return n;
-            }
-            if n < 24 {
-                return 16;
-            }
-            if n < 32 {
-                return 24;
-            }
-            if n < 40 {
-                return 32;
-            }
-            if n < 48 {
-                return 40;
-            }
-            if n < 60 {
-                return 48;
-            }
-            n
-        }
-
-        // equality check for two CMap entries
-        fn cmap_eq(a: &core::types::CMap, b: &core::types::CMap) -> bool {
-            a.ba_sprite == b.ba_sprite
-                && a.light == b.light
-                && a.flags == b.flags
-                && a.flags2 == b.flags2
-                && a.ch_sprite == b.ch_sprite
-                && a.ch_status2 == b.ch_status2
-                && a.ch_status == b.ch_status
-                && a.ch_speed == b.ch_speed
-                && a.ch_nr == b.ch_nr
-                && a.ch_id == b.ch_id
-                && a.ch_proz == b.ch_proz
-                && a.it_sprite == b.it_sprite
-                && a.it_status == b.it_status
-        }
-
-        // Light-grouping helpers: compute score (efficiency) and send packets
-        let cl_sizes = [1usize, 3usize, 7usize, 26usize];
-        let cl_bytes = [3usize, 4usize, 6usize, 16usize];
-
-        // scoring: emulate original (50 * count / bytes)
-        let mut n = 0usize;
-        while n < tile_count {
-            if cmap[n].light != smap[n].light {
-                // choose best grouping
-                let mut best_idx = 0usize;
-                let mut best_score = 0i32;
-                for (li, &size) in cl_sizes.iter().enumerate() {
-                    let end = std::cmp::min(n + size, tile_count);
-                    let mut changed = 0usize;
-                    for m in n..end {
-                        if cmap[m].light != smap[m].light {
-                            changed += 1;
-                        }
-                    }
-                    let score = if cl_bytes[li] > 0 {
-                        (50 * changed) as i32 / cl_bytes[li] as i32
-                    } else {
-                        0
-                    };
-                    if score >= best_score {
-                        best_score = score;
-                        best_idx = li;
-                    }
-                }
-
-                // perform chosen send variant
-                match best_idx {
-                    0 => {
-                        // SV_SETMAP4 - single light (3 bytes)
-                        let mut buf = [0u8; 16];
-                        buf[0] = SV_SETMAP4;
-                        let header = (n as u16) | ((smap[n].light as u16) << 12);
-                        buf[1] = header as u8;
-                        buf[2] = (header >> 8) as u8;
-                        NetworkManager::with(|net| net.xsend(nr, &buf, 3));
-                        cmap[n].light = smap[n].light;
-                    }
-                    1 => {
-                        // SV_SETMAP5 - three lights (4 bytes)
-                        let mut buf = [0u8; 16];
-                        buf[0] = SV_SETMAP5;
-                        let header = (n as u16) | ((smap[n].light as u16) << 12);
-                        buf[1] = header as u8;
-                        buf[2] = (header >> 8) as u8;
-                        let mut p = 3usize;
-                        for m in (n + 2)..std::cmp::min(n + 3, tile_count) {
-                            buf[p] = (smap[m].light & 0xF) | ((smap[m - 1].light & 0xF) << 4);
-                            cmap[m].light = smap[m].light;
-                            cmap[m - 1].light = smap[m - 1].light;
-                            p += 1;
-                        }
-                        NetworkManager::with(|net| net.xsend(nr, &buf, p as u8));
-                    }
-                    2 => {
-                        // SV_SETMAP6 - seven lights (6 bytes)
-                        let mut buf = [0u8; 16];
-                        buf[0] = SV_SETMAP6;
-                        let header = (n as u16) | ((smap[n].light as u16) << 12);
-                        buf[1] = header as u8;
-                        buf[2] = (header >> 8) as u8;
-                        let mut p = 3usize;
-                        for m in (n + 2)..std::cmp::min(n + 7, tile_count) {
-                            buf[p] = (smap[m].light & 0xF) | ((smap[m - 1].light & 0xF) << 4);
-                            cmap[m].light = smap[m].light;
-                            cmap[m - 1].light = smap[m - 1].light;
-                            p += 1;
-                        }
-                        NetworkManager::with(|net| net.xsend(nr, &buf, p as u8));
-                    }
-                    3 => {
-                        // SV_SETMAP3 - up to 26 lights (16 bytes)
-                        let mut buf = [0u8; 16];
-                        buf[0] = SV_SETMAP3;
-                        let header = (n as u16) | ((smap[n].light as u16) << 12);
-                        buf[1] = header as u8;
-                        buf[2] = (header >> 8) as u8;
-                        let mut p = 3usize;
-                        for m in (n + 2)..std::cmp::min(n + 26, tile_count) {
-                            buf[p] = (smap[m].light & 0xF) | ((smap[m - 1].light & 0xF) << 4);
-                            cmap[m].light = smap[m].light;
-                            cmap[m - 1].light = smap[m - 1].light;
-                            p += 1;
-                        }
-                        NetworkManager::with(|net| net.xsend(nr, &buf, 16));
-                    }
-                    _ => {}
-                }
-            }
-            n += 1;
-        }
-
-        // General diffs: find first differing cmap entry and send minimal SV_SETMAP packets
-        let mut lastn: i32 = -1;
-        let mut idx = 0usize;
-        loop {
-            // find next difference
-            let mut found = None;
-            for i in idx..tile_count {
-                if !cmap_eq(&cmap[i], &smap[i]) {
-                    found = Some(i);
-                    break;
-                }
-            }
-            let nidx = match found {
-                Some(v) => v,
-                None => break,
-            };
-
-            let mut buf = [0u8; 256];
-            let mut p: usize;
-
-            if lastn >= 0 && (nidx as i32) > lastn && (nidx as i32 - lastn) < 127 {
-                buf[0] = (SV_SETMAP | ((nidx as i32 - lastn) as u8)) as u8;
-                buf[1] = 0;
-                p = 2;
-            } else if lastn < 0 && nidx < 127 {
-                // when lastn == -1, allow short form as original did
-                buf[0] = (SV_SETMAP | ((nidx as u8) & 0x7F)) as u8;
-                buf[1] = 0;
-                p = 2;
+            if light <= 5
+                && Repository::with_characters(|characters| {
+                    (characters[cn].flags & enums::CharacterFlags::Infrared.bits()) != 0
+                })
+            {
+                infra = true;
             } else {
-                buf[0] = SV_SETMAP;
-                buf[1] = 0;
-                let n_u16 = nidx as u16;
-                buf[2] = n_u16 as u8;
-                buf[3] = (n_u16 >> 8) as u8;
-                p = 4;
+                infra = false;
             }
 
-            // ba_sprite
-            if cmap[nidx].ba_sprite != smap[nidx].ba_sprite {
-                buf[1] |= 1;
-                let v = smap[nidx].ba_sprite as u16;
-                buf[p] = v as u8;
-                buf[p + 1] = (v >> 8) as u8;
-                p += 2;
+            // Everyone sees themselves at least
+            if light == 0 && Repository::with_map(|map| map[m].ch as usize) == cn {
+                light = 1;
             }
 
-            // flags
-            if cmap[nidx].flags != smap[nidx].flags {
-                buf[1] |= 2;
-                let v = smap[nidx].flags as u32;
-                buf[p] = v as u8;
-                buf[p + 1] = (v >> 8) as u8;
-                buf[p + 2] = (v >> 16) as u8;
-                buf[p + 3] = (v >> 24) as u8;
-                p += 4;
-            }
-
-            // flags2
-            if cmap[nidx].flags2 != smap[nidx].flags2 {
-                buf[1] |= 4;
-                let v = smap[nidx].flags2 as u32;
-                buf[p] = v as u8;
-                buf[p + 1] = (v >> 8) as u8;
-                buf[p + 2] = (v >> 16) as u8;
-                buf[p + 3] = (v >> 24) as u8;
-                p += 4;
-            }
-
-            // it_sprite
-            if cmap[nidx].it_sprite != smap[nidx].it_sprite {
-                buf[1] |= 8;
-                let v = smap[nidx].it_sprite as u16;
-                buf[p] = v as u8;
-                buf[p + 1] = (v >> 8) as u8;
-                p += 2;
-            }
-
-            // it_status (only if base status differs)
-            if cmap[nidx].it_status != smap[nidx].it_status
-                && it_base_status(cmap[nidx].it_status) != it_base_status(smap[nidx].it_status)
-            {
-                buf[1] |= 16;
-                buf[p] = smap[nidx].it_status;
-                p += 1;
-            }
-
-            // character sprite / status
-            if cmap[nidx].ch_sprite != smap[nidx].ch_sprite
-                || (cmap[nidx].ch_status != smap[nidx].ch_status
-                    && ch_base_status(cmap[nidx].ch_status) != ch_base_status(smap[nidx].ch_status))
-                || cmap[nidx].ch_status2 != smap[nidx].ch_status2
-            {
-                buf[1] |= 32;
-                let v = smap[nidx].ch_sprite as u16;
-                buf[p] = v as u8;
-                buf[p + 1] = (v >> 8) as u8;
-                p += 2;
-                buf[p] = smap[nidx].ch_status;
-                p += 1;
-                buf[p] = smap[nidx].ch_status2;
-                p += 1;
-            }
-
-            // character id / speed
-            if cmap[nidx].ch_speed != smap[nidx].ch_speed
-                || cmap[nidx].ch_nr != smap[nidx].ch_nr
-                || cmap[nidx].ch_id != smap[nidx].ch_id
-            {
-                buf[1] |= 64;
-                let vnr = smap[nidx].ch_nr as u16;
-                buf[p] = vnr as u8;
-                buf[p + 1] = (vnr >> 8) as u8;
-                p += 2;
-                let vid = smap[nidx].ch_id as u16;
-                buf[p] = vid as u8;
-                buf[p + 1] = (vid >> 8) as u8;
-                p += 2;
-                buf[p] = smap[nidx].ch_speed;
-                p += 1;
-            }
-
-            // character health percent
-            if cmap[nidx].ch_proz != smap[nidx].ch_proz {
-                buf[1] |= 128;
-                buf[p] = smap[nidx].ch_proz;
-                p += 1;
-            }
-
-            if buf[1] != 0 {
-                NetworkManager::with(|net| net.xsend(nr, &buf, p as u8));
-                lastn = nidx as i32;
-            }
-
-            // remember copied values
-            cmap[nidx] = smap[nidx];
-
-            idx = nidx + 1;
-            if idx >= tile_count {
-                break;
-            }
-        }
-
-        // write back the updated cmap into the player's data
-        Server::with_players_mut(|players| players[nr].cmap = cmap);
-    }
-}
-
-pub fn plr_getmap_fast(nr: usize) {
-    // Fast-path version of `plr_getmap_complete` using reduced update window
-    // (ported from original C++ `plr_getmap_fast`). Uses different cut
-    // constants to update a slightly different region for speed savings.
-
-    // Get character number (cn) controlled by this player
-    let cn = Server::with_players(|players| players[nr].usnr as usize);
-    if cn == 0 || cn >= core::constants::MAXCHARS as usize {
-        return;
-    }
-
-    // Trigger recomputation of the visibility map for this character
-    let (ch_x, ch_y) = Repository::with_characters(|characters| {
-        (characters[cn].x as i32, characters[cn].y as i32)
-    });
-    State::with_mut(|state| {
-        let _ = state.can_see(Some(cn), ch_x, ch_y, ch_x + 1, ch_y + 1, 16);
-    });
-
-    // Snapshot see_map for this character
-    let see = Repository::with_see_map(|see_map| see_map[cn]);
-
-    // Compute region to update
-    let ys = ch_x - (core::constants::TILEY as i32 / 2) + YSCUTF;
-    let ye = ch_x + (core::constants::TILEY as i32 / 2) - YECUTF;
-    let xs = ch_y - (core::constants::TILEX as i32 / 2) + XSCUTF;
-    let xe = ch_y + (core::constants::TILEX as i32 / 2) - XECUTF;
-
-    // Fill smap entries for the fast window
-    Server::with_players_mut(|players| {
-        let mut n = (YSCUTF as usize) * core::constants::TILEX + XSCUTF as usize;
-        let mut map_y = ys;
-
-        for _y in ys..ye {
-            let mut map_x = xs;
-            for _x in xs..xe {
-                let m = (map_x as usize)
-                    .wrapping_add((map_y as usize) * core::constants::SERVER_MAPX as usize);
-
+            // no light, nothing visible
+            if light == 0 {
+                // TODO: Verify this is actually empty tile behavior
                 let mut new_cmap = core::types::CMap::default();
                 new_cmap.ba_sprite = core::constants::SPR_EMPTY as i16;
-
-                if map_x < 0
-                    || map_y < 0
-                    || map_x >= core::constants::SERVER_MAPX as i32
-                    || map_y >= core::constants::SERVER_MAPY as i32
-                {
+                Server::with_players_mut(|players| {
                     players[nr].smap[n] = new_cmap;
-                    n += 1;
-                    map_x += 1;
-                    continue;
-                }
-
-                let map_tile = Repository::with_map(|map| map[m]);
-
-                // compute light and visibility
-                let tmp = State::check_dlightm(m);
-                let mut light = std::cmp::max(map_tile.light as i32, tmp);
-                light = State::with_mut(|state| state.do_character_calculate_light(cn, light));
-
-                let infra = Repository::with_characters(|characters| {
-                    (characters[cn].flags & enums::CharacterFlags::Infrared.bits()) != 0
                 });
-                let infra_flag = if light <= 5 && infra { 1 } else { 0 };
-
-                if light == 0 && Repository::with_map(|map| map[m].ch as usize) == cn {
-                    light = 1;
-                }
-
-                if light == 0 {
-                    players[nr].smap[n] = new_cmap;
-                    n += 1;
-                    map_x += 1;
-                    continue;
-                }
-
-                // flags
-                let mut flags: u32 = 0;
-                if (map_tile.flags & core::constants::MF_UWATER as u64) != 0 {
-                    flags |= core::constants::UWATER;
-                }
-                if infra_flag != 0 {
-                    flags |= core::constants::INFRARED;
-                }
-
-                let mut flags2: u32 = 0;
-                if Repository::with_characters(|characters| characters[cn].is_building()) {
-                    flags2 = map_tile.flags as u32;
-                }
-
-                new_cmap.flags = flags;
-                new_cmap.flags2 = flags2;
-                new_cmap.ba_sprite = map_tile.sprite as i16;
-
-                // character
-                let co = Repository::with_map(|map| map[m].ch as usize);
-                if co != 0 {
-                    let can_see = State::with_mut(|state| state.do_char_can_see(cn, co));
-                    if can_see != 0 {
-                        let ch = Repository::with_characters(|characters| characters[co]);
-                        if ch.sprite_override != 0 {
-                            new_cmap.ch_sprite = ch.sprite_override as i16;
-                        } else {
-                            new_cmap.ch_sprite = ch.sprite as i16;
-                        }
-                        new_cmap.ch_status = ch.status as u8;
-                        new_cmap.ch_status2 = ch.status2 as u8;
-                        new_cmap.ch_speed = ch.speed as u8;
-                        new_cmap.ch_nr = co as u16;
-                        new_cmap.ch_id = crate::helpers::char_id(co) as u16;
-                        new_cmap.ch_proz = if ch.hp[5] > 0 {
-                            ((ch.hp[5] as u32 * 100) / ch.hp[5].max(1) as u32) as u8
-                        } else {
-                            0
-                        };
-                        new_cmap.flags |= core::constants::ISCHAR;
-                        if ch.stunned != 0 {
-                            new_cmap.flags |= core::constants::STUNNED;
-                        }
-                        if (ch.flags & enums::CharacterFlags::Stoned.bits()) != 0 {
-                            new_cmap.flags |= core::constants::TOMB;
-                        }
-                    }
-                }
-
-                // item
-                if map_tile.fsprite != 0 {
-                    new_cmap.it_sprite = map_tile.fsprite as i16;
-                    new_cmap.it_status = 0;
-                } else {
-                    let it_id = Repository::with_map(|map| map[m].it as usize);
-                    if it_id != 0 {
-                        let visible_item =
-                            State::with_mut(|state| state.do_char_can_see_item(cn, it_id)) != 0;
-                        if visible_item {
-                            let it = Repository::with_items(|items| items[it_id]);
-                            new_cmap.it_sprite = if it.active != 0 {
-                                it.sprite[1]
-                            } else {
-                                it.sprite[0]
-                            };
-                            let active_idx = if it.active != 0 { 1 } else { 0 };
-                            new_cmap.it_status = it.status[active_idx];
-                            new_cmap.flags |= core::constants::ISITEM;
-                        }
-                    }
-                }
-
-                players[nr].smap[n] = new_cmap;
-                players[nr].xmap[n] = Repository::with_map(|map| map[m]);
-
+                x += 1;
                 n += 1;
-                map_x += 1;
+                m += 1;
+                continue;
             }
-            map_y += 1;
-        }
 
-        // update vx, vy and visi copy
-        players[nr].vx = see.x;
-        players[nr].vy = see.y;
-        players[nr].visi.copy_from_slice(&see.vis);
-    });
+            // Begin of flags
+            smap[n].flags = 0;
 
-    // Reuse the same diffing & light-grouping logic as the complete implementation
-    // by copying the same code path (for parity). This sends the minimal
-    // SV_SETMAP* packets for the changed fast-window.
-    {
-        use core::constants::{SV_SETMAP, SV_SETMAP3, SV_SETMAP4, SV_SETMAP5, SV_SETMAP6};
-
-        let tile_count = (core::constants::TILEX * core::constants::TILEY) as usize;
-
-        let mut cmap = Server::with_players(|players| players[nr].cmap);
-        let smap = Server::with_players(|players| players[nr].smap);
-
-        fn it_base_status(n: u8) -> u8 {
-            if n == 0 {
-                return 0;
-            }
-            if n == 1 {
-                return 1;
-            }
-            if n < 6 {
-                return 2;
-            }
-            if n < 8 {
-                return 6;
-            }
-            if n < 16 {
-                return 8;
-            }
-            if n < 21 {
-                return 16;
-            }
-            n
-        }
-
-        fn ch_base_status(n: u8) -> u8 {
-            if n < 4 {
-                return n;
-            }
-            if n < 16 {
-                return n;
-            }
-            if n < 24 {
-                return 16;
-            }
-            if n < 32 {
-                return 24;
-            }
-            if n < 40 {
-                return 32;
-            }
-            if n < 48 {
-                return 40;
-            }
-            if n < 60 {
-                return 48;
-            }
-            n
-        }
-
-        fn cmap_eq(a: &core::types::CMap, b: &core::types::CMap) -> bool {
-            a.ba_sprite == b.ba_sprite
-                && a.light == b.light
-                && a.flags == b.flags
-                && a.flags2 == b.flags2
-                && a.ch_sprite == b.ch_sprite
-                && a.ch_status2 == b.ch_status2
-                && a.ch_status == b.ch_status
-                && a.ch_speed == b.ch_speed
-                && a.ch_nr == b.ch_nr
-                && a.ch_id == b.ch_id
-                && a.ch_proz == b.ch_proz
-                && a.it_sprite == b.it_sprite
-                && a.it_status == b.it_status
-        }
-
-        let cl_sizes = [1usize, 3usize, 7usize, 26usize];
-        let cl_bytes = [3usize, 4usize, 6usize, 16usize];
-
-        let mut n = 0usize;
-        while n < tile_count {
-            if cmap[n].light != smap[n].light {
-                let mut best_idx = 0usize;
-                let mut best_score = 0i32;
-                for (li, &size) in cl_sizes.iter().enumerate() {
-                    let end = std::cmp::min(n + size, tile_count);
-                    let mut changed = 0usize;
-                    for m in n..end {
-                        if cmap[m].light != smap[m].light {
-                            changed += 1;
-                        }
+            Repository::with_map(|map| {
+                if map[m].flags
+                    & (MF_GFX_INJURED
+                        | MF_GFX_INJURED1
+                        | MF_GFX_INJURED2
+                        | MF_GFX_DEATH
+                        | MF_GFX_TOMB
+                        | MF_GFX_EMAGIC
+                        | MF_GFX_GMAGIC
+                        | MF_GFX_CMAGIC
+                        | MF_UWATER as u64)
+                    != 0
+                {
+                    if map[m].flags & core::constants::MF_GFX_INJURED as u64 != 0 {
+                        smap[n].flags |= INJURED;
                     }
-                    let score = if cl_bytes[li] > 0 {
-                        (50 * changed) as i32 / cl_bytes[li] as i32
+
+                    if map[m].flags & core::constants::MF_GFX_INJURED1 as u64 != 0 {
+                        smap[n].flags |= INJURED1;
+                    }
+
+                    if map[m].flags & core::constants::MF_GFX_INJURED2 as u64 != 0 {
+                        smap[n].flags |= INJURED2;
+                    }
+
+                    if map[m].flags & core::constants::MF_GFX_DEATH as u64 != 0 {
+                        // TODO: Confirm shift
+                        smap[n].flags |= ((map[m].flags & MF_GFX_DEATH) >> 23) as u32;
+                    }
+
+                    if map[m].flags & core::constants::MF_GFX_TOMB as u64 != 0 {
+                        smap[n].flags |= ((map[m].flags & MF_GFX_TOMB) >> 23) as u32;
+                    }
+
+                    if map[m].flags & core::constants::MF_GFX_EMAGIC as u64 != 0 {
+                        smap[n].flags |= ((map[m].flags & MF_GFX_EMAGIC) >> 23) as u32;
+                    }
+
+                    if map[m].flags & core::constants::MF_GFX_GMAGIC as u64 != 0 {
+                        smap[n].flags |= ((map[m].flags & MF_GFX_GMAGIC) >> 23) as u32;
+                    }
+
+                    if map[m].flags & core::constants::MF_GFX_CMAGIC as u64 != 0 {
+                        smap[n].flags |= ((map[m].flags & MF_GFX_CMAGIC) >> 23) as u32;
+                    }
+
+                    if map[m].flags & core::constants::MF_UWATER as u64 != 0 {
+                        smap[n].flags |= UWATER;
+                    }
+                }
+
+                if infra {
+                    smap[n].flags |= INFRARED;
+                }
+
+                if Repository::with_characters(|ch| ch[cn].is_building()) {
+                    smap[n].flags2 = map[m].flags as u32;
+                } else {
+                    smap[n].flags2 = 0;
+                }
+
+                // TODO: Can this go negative?
+                let tmp_vis = ((x - current_x + 20) + (y - current_y + 20) * 40) as usize;
+
+                let visible = Repository::with_see_map(|see| {
+                    see[cn].vis[tmp_vis + 0 + 0] != 0
+                        || see[cn].vis[tmp_vis + 0 + 40] != 0
+                        || see[cn].vis[tmp_vis + 0 - 40] != 0
+                        || see[cn].vis[tmp_vis + 1 + 0] != 0
+                        || see[cn].vis[tmp_vis + 1 + 40] != 0
+                        || see[cn].vis[tmp_vis + 1 - 40] != 0
+                        || see[cn].vis[tmp_vis - 1 + 0] != 0
+                        || see[cn].vis[tmp_vis - 1 + 40] != 0
+                        || see[cn].vis[tmp_vis - 1 - 40] != 0
+                });
+
+                if !visible {
+                    smap[n].flags |= INVIS;
+                }
+
+                // Begin of the light bucketing
+                if light > 64 {
+                    smap[n].light = 0;
+                } else if light > 52 {
+                    smap[n].light = 1;
+                } else if light > 40 {
+                    smap[n].light = 2;
+                } else if light > 32 {
+                    smap[n].light = 3;
+                } else if light > 28 {
+                    smap[n].light = 4;
+                } else if light > 24 {
+                    smap[n].light = 5;
+                } else if light > 20 {
+                    smap[n].light = 6;
+                } else if light > 16 {
+                    smap[n].light = 7;
+                } else if light > 14 {
+                    smap[n].light = 8;
+                } else if light > 12 {
+                    smap[n].light = 9;
+                } else if light > 10 {
+                    smap[n].light = 10;
+                } else if light > 8 {
+                    smap[n].light = 11;
+                } else if light > 6 {
+                    smap[n].light = 12;
+                } else if light > 4 {
+                    smap[n].light = 13;
+                } else if light > 2 {
+                    smap[n].light = 14;
+                } else {
+                    smap[n].light = 15;
+                }
+
+                smap[n].ba_sprite = map_m.sprite as i16;
+
+                // Begin of character
+                let co = map_m.ch as usize;
+                let tmp_see = if visible && co != 0 {
+                    State::with_mut(|state| state.do_char_can_see(cn, co))
+                } else {
+                    0
+                };
+
+                if tmp_see != 0 {
+                    let char_co = Repository::with_characters(|characters| characters[co]);
+                    if char_co.sprite_override != 0 {
+                        smap[n].ch_sprite = char_co.sprite_override as i16;
                     } else {
-                        0
-                    };
-                    if score >= best_score {
-                        best_score = score;
-                        best_idx = li;
+                        smap[n].ch_sprite = char_co.sprite as i16;
                     }
+                    smap[n].ch_status = char_co.status as u8;
+                    smap[n].ch_status2 = char_co.status2 as u8;
+                    smap[n].ch_speed = char_co.speed as u8;
+                    smap[n].ch_nr = co as u16;
+                    smap[n].ch_id = helpers::char_id(co) as u16;
+
+                    if tmp_see <= 75 && char_co.hp[5] > 0 {
+                        smap[n].ch_proz = (((char_co.a_hp + 5) / 10) / char_co.hp[5] as i32) as u8;
+                    } else {
+                        smap[n].ch_proz = 0;
+                    }
+
+                    smap[n].flags |= ISCHAR;
+
+                    if char_co.stunned != 0 {
+                        smap[n].flags |= STUNNED;
+                    }
+
+                    if char_co.flags & enums::CharacterFlags::Stoned.bits() != 0 {
+                        smap[n].flags |= STUNNED | STONED;
+                    }
+                } else {
+                    // Just clear character flags
+                    smap[n].ch_sprite = 0;
+                    smap[n].ch_status = 0;
+                    smap[n].ch_status2 = 0;
+                    smap[n].ch_speed = 0;
+                    smap[n].ch_nr = 0;
+                    smap[n].ch_id = 0;
+                    smap[n].ch_proz = 0;
                 }
 
-                match best_idx {
-                    0 => {
-                        let mut buf = [0u8; 16];
-                        buf[0] = SV_SETMAP4;
-                        let header = (n as u16) | ((smap[n].light as u16) << 12);
-                        buf[1] = header as u8;
-                        buf[2] = (header >> 8) as u8;
-                        NetworkManager::with(|net| net.xsend(nr, &buf, 3));
-                        cmap[n].light = smap[n].light;
+                // Begin of item
+                let item_on_m = Repository::with_items(|items| {
+                    if map_m.it == 0 {
+                        None
+                    } else {
+                        Some(items[map_m.it as usize])
                     }
-                    1 => {
-                        let mut buf = [0u8; 16];
-                        buf[0] = SV_SETMAP5;
-                        let header = (n as u16) | ((smap[n].light as u16) << 12);
-                        buf[1] = header as u8;
-                        buf[2] = (header >> 8) as u8;
-                        let mut p = 3usize;
-                        for m in (n + 2)..std::cmp::min(n + 3, tile_count) {
-                            buf[p] = (smap[m].light & 0xF) | ((smap[m - 1].light & 0xF) << 4);
-                            cmap[m].light = smap[m].light;
-                            cmap[m - 1].light = smap[m - 1].light;
-                            p += 1;
-                        }
-                        NetworkManager::with(|net| net.xsend(nr, &buf, p as u8));
+                });
+                if map_m.fsprite != 0 {
+                    smap[n].it_sprite = map_m.fsprite as i16;
+                    smap[n].it_status = 0;
+                } else if item_on_m.is_some()
+                    && (item_on_m.unwrap().flags
+                        & (ItemFlags::IF_TAKE.bits() | ItemFlags::IF_HIDDEN.bits()))
+                        == 0
+                {
+                    let item = item_on_m.unwrap();
+
+                    if item.active != 0 {
+                        smap[n].it_sprite = item.sprite[1];
+                        smap[n].it_status = item.status[1];
+                    } else {
+                        smap[n].it_sprite = item.sprite[0];
+                        smap[n].it_status = item.status[0];
                     }
-                    2 => {
-                        let mut buf = [0u8; 16];
-                        buf[0] = SV_SETMAP6;
-                        let header = (n as u16) | ((smap[n].light as u16) << 12);
-                        buf[1] = header as u8;
-                        buf[2] = (header >> 8) as u8;
-                        let mut p = 3usize;
-                        for m in (n + 2)..std::cmp::min(n + 7, tile_count) {
-                            buf[p] = (smap[m].light & 0xF) | ((smap[m - 1].light & 0xF) << 4);
-                            cmap[m].light = smap[m].light;
-                            cmap[m - 1].light = smap[m - 1].light;
-                            p += 1;
-                        }
-                        NetworkManager::with(|net| net.xsend(nr, &buf, p as u8));
+
+                    if item.flags & ItemFlags::IF_LOOK.bits() != 0
+                        || item.flags & ItemFlags::IF_LOOKSPECIAL.bits() != 0
+                    {
+                        smap[n].flags |= ISITEM;
                     }
-                    3 => {
-                        let mut buf = [0u8; 16];
-                        buf[0] = SV_SETMAP3;
-                        let header = (n as u16) | ((smap[n].light as u16) << 12);
-                        buf[1] = header as u8;
-                        buf[2] = (header >> 8) as u8;
-                        let mut p = 3usize;
-                        for m in (n + 2)..std::cmp::min(n + 26, tile_count) {
-                            buf[p] = (smap[m].light & 0xF) | ((smap[m - 1].light & 0xF) << 4);
-                            cmap[m].light = smap[m].light;
-                            cmap[m - 1].light = smap[m - 1].light;
-                            p += 1;
-                        }
-                        NetworkManager::with(|net| net.xsend(nr, &buf, 16));
+
+                    if item.flags & ItemFlags::IF_TAKE.bits() == 0
+                        && item.flags & (ItemFlags::IF_USE.bits() | ItemFlags::IF_USESPECIAL.bits())
+                            != 0
+                    {
+                        smap[n].flags |= ISUSABLE;
                     }
-                    _ => {}
+                } else {
+                    // Just clear item flags
+                    smap[n].it_sprite = 0;
+                    smap[n].it_status = 0;
                 }
-            }
+            });
+
+            Server::with_players_mut(|players| players[nr].smap[n] = smap[n]);
+
+            x += 1;
             n += 1;
+            m += 1;
         }
 
-        let mut lastn: i32 = -1;
-        let mut idx = 0usize;
-        loop {
-            let mut found = None;
-            for i in idx..tile_count {
-                if !cmap_eq(&cmap[i], &smap[i]) {
-                    found = Some(i);
-                    break;
-                }
-            }
-            let nidx = match found {
-                Some(v) => v,
-                None => break,
-            };
-
-            let mut buf = [0u8; 256];
-            let mut p: usize;
-
-            if lastn >= 0 && (nidx as i32) > lastn && (nidx as i32 - lastn) < 127 {
-                buf[0] = (SV_SETMAP | ((nidx as i32 - lastn) as u8)) as u8;
-                buf[1] = 0;
-                p = 2;
-            } else if lastn < 0 && nidx < 127 {
-                buf[0] = (SV_SETMAP | ((nidx as u8) & 0x7F)) as u8;
-                buf[1] = 0;
-                p = 2;
-            } else {
-                buf[0] = SV_SETMAP;
-                buf[1] = 0;
-                let n_u16 = nidx as u16;
-                buf[2] = n_u16 as u8;
-                buf[3] = (n_u16 >> 8) as u8;
-                p = 4;
-            }
-
-            if cmap[nidx].ba_sprite != smap[nidx].ba_sprite {
-                buf[1] |= 1;
-                let v = smap[nidx].ba_sprite as u16;
-                buf[p] = v as u8;
-                buf[p + 1] = (v >> 8) as u8;
-                p += 2;
-            }
-
-            if cmap[nidx].flags != smap[nidx].flags {
-                buf[1] |= 2;
-                let v = smap[nidx].flags as u32;
-                buf[p] = v as u8;
-                buf[p + 1] = (v >> 8) as u8;
-                buf[p + 2] = (v >> 16) as u8;
-                buf[p + 3] = (v >> 24) as u8;
-                p += 4;
-            }
-
-            if cmap[nidx].flags2 != smap[nidx].flags2 {
-                buf[1] |= 4;
-                let v = smap[nidx].flags2 as u32;
-                buf[p] = v as u8;
-                buf[p + 1] = (v >> 8) as u8;
-                buf[p + 2] = (v >> 16) as u8;
-                buf[p + 3] = (v >> 24) as u8;
-                p += 4;
-            }
-
-            if cmap[nidx].it_sprite != smap[nidx].it_sprite {
-                buf[1] |= 8;
-                let v = smap[nidx].it_sprite as u16;
-                buf[p] = v as u8;
-                buf[p + 1] = (v >> 8) as u8;
-                p += 2;
-            }
-
-            if cmap[nidx].it_status != smap[nidx].it_status
-                && it_base_status(cmap[nidx].it_status) != it_base_status(smap[nidx].it_status)
-            {
-                buf[1] |= 16;
-                buf[p] = smap[nidx].it_status;
-                p += 1;
-            }
-
-            if cmap[nidx].ch_sprite != smap[nidx].ch_sprite
-                || (cmap[nidx].ch_status != smap[nidx].ch_status
-                    && ch_base_status(cmap[nidx].ch_status) != ch_base_status(smap[nidx].ch_status))
-                || cmap[nidx].ch_status2 != smap[nidx].ch_status2
-            {
-                buf[1] |= 32;
-                let v = smap[nidx].ch_sprite as u16;
-                buf[p] = v as u8;
-                buf[p + 1] = (v >> 8) as u8;
-                p += 2;
-                buf[p] = smap[nidx].ch_status;
-                p += 1;
-                buf[p] = smap[nidx].ch_status2;
-                p += 1;
-            }
-
-            if cmap[nidx].ch_speed != smap[nidx].ch_speed
-                || cmap[nidx].ch_nr != smap[nidx].ch_nr
-                || cmap[nidx].ch_id != smap[nidx].ch_id
-            {
-                buf[1] |= 64;
-                let vnr = smap[nidx].ch_nr as u16;
-                buf[p] = vnr as u8;
-                buf[p + 1] = (vnr >> 8) as u8;
-                p += 2;
-                let vid = smap[nidx].ch_id as u16;
-                buf[p] = vid as u8;
-                buf[p + 1] = (vid >> 8) as u8;
-                p += 2;
-                buf[p] = smap[nidx].ch_speed;
-                p += 1;
-            }
-
-            if cmap[nidx].ch_proz != smap[nidx].ch_proz {
-                buf[1] |= 128;
-                buf[p] = smap[nidx].ch_proz;
-                p += 1;
-            }
-
-            if buf[1] != 0 {
-                NetworkManager::with(|net| net.xsend(nr, &buf, p as u8));
-                lastn = nidx as i32;
-            }
-
-            cmap[nidx] = smap[nidx];
-            idx = nidx + 1;
-            if idx >= tile_count {
-                break;
-            }
-        }
-
-        Server::with_players_mut(|players| players[nr].cmap = cmap);
+        y += 1;
+        m += (core::constants::SERVER_MAPX as i32 - core::constants::TILEX as i32 + XSCUT + XECUT)
+            as usize;
+        n += (XSCUT + XECUT) as usize;
     }
+
+    Server::with_players_mut(|player| {
+        player[nr].vx = Repository::with_see_map(|see_maps| see_maps[cn].x);
+        player[nr].vy = Repository::with_see_map(|see_maps| see_maps[cn].y);
+    });
 }
 
 /// Port of `plr_state` from `svr_tick.cpp`
@@ -3749,6 +3131,12 @@ fn plr_newlogin(nr: usize) {
             players[nr].pass2 = pass2;
         });
 
+        log::info!(
+            "New player logged in as character index={} (players index={})",
+            cn,
+            nr
+        );
+
         let mut buf: [u8; 16] = [0; 16];
         buf[0] = core::constants::SV_NEWPLAYER;
         buf[1..5].copy_from_slice(&(cn as u32).to_le_bytes());
@@ -3776,7 +3164,7 @@ fn plr_newlogin(nr: usize) {
     // send tick
     let mut tbuf: [u8; 2] = [0; 2];
     tbuf[0] = core::constants::SV_TICK;
-    tbuf[1] = Repository::with_globals(|globals| (globals.ticker % 20) as u8);
+    tbuf[1] = Repository::with_globals(|globals| (globals.ticker % core::constants::TICKS) as u8);
     NetworkManager::with(|network| {
         network.xsend(nr, &tbuf, 2);
     });
@@ -3805,9 +3193,7 @@ fn plr_newlogin(nr: usize) {
             if (characters[cn].flags & enums::CharacterFlags::Passwd.bits()) == 0 {
                 // extract password string
                 let pass = Server::with_players(|players| {
-                    String::from_utf8_lossy(&players[nr].passwd)
-                        .trim_end_matches(char::from(0))
-                        .to_string()
+                    c_string_to_str(&players[nr].passwd).to_string()
                 });
                 God::change_pass(cn, cn, &pass);
             }
@@ -3815,9 +3201,8 @@ fn plr_newlogin(nr: usize) {
     }
 
     // announce
-    let name = Repository::with_characters(|characters| characters[cn].get_name().to_string());
     State::with(|state| {
-        state.do_announce(cn, 0, &format!("{} entered the game.\n", name));
+        state.do_announce(cn, 0, &format!("A new player has entered the game.\n"));
     });
 }
 
@@ -3953,7 +3338,7 @@ fn plr_login(nr: usize) {
     // send tick
     let mut tbuf: [u8; 2] = [0; 2];
     tbuf[0] = core::constants::SV_TICK;
-    tbuf[1] = Repository::with_globals(|globals| (globals.ticker % 20) as u8);
+    tbuf[1] = Repository::with_globals(|globals| (globals.ticker % core::constants::TICKS) as u8);
     NetworkManager::with(|network| {
         network.xsend(nr, &tbuf, 2);
     });
@@ -4056,9 +3441,7 @@ fn plr_login(nr: usize) {
         Repository::with_characters(|characters| {
             if (characters[cn].flags & enums::CharacterFlags::Passwd.bits()) == 0 {
                 let pass = Server::with_players(|players| {
-                    String::from_utf8_lossy(&players[nr].passwd)
-                        .trim_end_matches(char::from(0))
-                        .to_string()
+                    c_string_to_str(&players[nr].passwd).to_string()
                 });
                 God::change_pass(cn, cn, &pass);
             }
@@ -4093,12 +3476,12 @@ pub fn plr_change(nr: usize) {
     let cn = Server::with_players(|players| players[nr].usnr as usize);
 
     if cn == 0 || cn >= core::constants::MAXCHARS {
+        log::error!("plr_change: invalid character number {}", cn);
         return;
     }
 
     let (ticker, should_update) = Repository::with_globals(|globals| {
         Repository::with_characters(|ch| {
-            // Check CF_UPDATE flag
             let has_update_flag = (ch[cn].flags & enums::CharacterFlags::Update.bits()) != 0;
             let ticker_match = (cn & 15) == (globals.ticker as usize & 15);
             (globals.ticker as i32, has_update_flag || ticker_match)
@@ -4117,148 +3500,21 @@ pub fn plr_change(nr: usize) {
     plr_change_dir(nr, cn);
     plr_change_points(nr, cn);
     plr_change_gold(nr, cn);
+
+    // Send god load info every 32 ticks
+    plr_change_load(nr, cn, ticker);
+
+    // Send map position and scrolling
     plr_change_position(nr, cn);
+
+    // Send light updates
+    plr_change_light(nr);
+
+    // Send tile content updates
+    plr_change_map(nr);
+
+    // Send target updates
     plr_change_target(nr, cn);
-
-    // Additional updates for name, mode, attributes, skills, items, and spells
-    Repository::with_characters(|characters| {
-        let character = &characters[cn];
-        Server::with_players_mut(|players| {
-            let player = &mut players[nr];
-
-            // Name updates
-            if player.cpl.name != character.name {
-                player.cpl.name = character.name.clone();
-                // Send name updates in three parts (handled in plr_change_stats, but keep for safety)
-                NetworkManager::with(|network| {
-                    network.csend(nr, &[core::constants::SV_SETCHAR_NAME1], 16);
-                    network.csend(nr, &[core::constants::SV_SETCHAR_NAME2], 16);
-                    network.csend(nr, &[core::constants::SV_SETCHAR_NAME3], 16);
-                });
-            }
-
-            // Mode updates
-            if player.cpl.mode != character.mode as i32 {
-                player.cpl.mode = character.mode as i32;
-                NetworkManager::with(|network| {
-                    let mut buf = [0u8; 2];
-                    buf[0] = core::constants::SV_SETCHAR_MODE;
-                    buf[1] = character.mode as u8;
-                    network.xsend(nr, &buf, 2);
-                });
-            }
-
-            // Attributes
-            for i in 0..5 {
-                if player.cpl.attrib[i] != character.attrib[i] {
-                    player.cpl.attrib[i] = character.attrib[i];
-                    NetworkManager::with(|network| {
-                        let mut buf: [u8; 8] = [0; 8];
-                        buf[0] = core::constants::SV_SETCHAR_ATTRIB;
-                        buf[1] = i as u8;
-                        buf[2..8].copy_from_slice(&character.attrib[i]);
-                        network.xsend(nr, &buf, 8);
-                    });
-                }
-            }
-
-            // Items
-            for i in 0..40 {
-                if player.cpl.item[i] != character.item[i] as i32 {
-                    player.cpl.item[i] = character.item[i] as i32;
-                    let in_idx = character.item[i] as usize;
-                    let mut sprite: i16 = 0;
-                    let mut placement: i16 = 0;
-                    if in_idx != 0 && in_idx < core::constants::MAXITEM as usize {
-                        Repository::with_items(|items| {
-                            let it = &items[in_idx];
-                            sprite = if it.active != 0 {
-                                it.sprite[1]
-                            } else {
-                                it.sprite[0]
-                            };
-                            placement = it.placement as i16;
-                        });
-                    }
-                    NetworkManager::with(|network| {
-                        let mut buf: [u8; 9] = [0; 9];
-                        buf[0] = core::constants::SV_SETCHAR_ITEM;
-                        let idx_bytes = (i as u32).to_le_bytes();
-                        buf[1..5].copy_from_slice(&idx_bytes);
-                        buf[5] = (sprite & 0xff) as u8;
-                        buf[6] = ((sprite >> 8) & 0xff) as u8;
-                        buf[7] = (placement & 0xff) as u8;
-                        buf[8] = ((placement >> 8) & 0xff) as u8;
-                        network.xsend(nr, &buf, 9);
-                    });
-                }
-            }
-
-            // Worn Items
-            for i in 0..20 {
-                if player.cpl.worn[i] != character.worn[i] as i32 {
-                    player.cpl.worn[i] = character.worn[i] as i32;
-                    let in_idx = character.worn[i] as usize;
-                    let mut sprite: i16 = 0;
-                    let mut placement: i16 = 0;
-                    if in_idx != 0 && in_idx < core::constants::MAXITEM as usize {
-                        Repository::with_items(|items| {
-                            let it = &items[in_idx];
-                            sprite = if it.active != 0 {
-                                it.sprite[1]
-                            } else {
-                                it.sprite[0]
-                            };
-                            placement = it.placement as i16;
-                        });
-                    }
-                    NetworkManager::with(|network| {
-                        let mut buf: [u8; 9] = [0; 9];
-                        buf[0] = core::constants::SV_SETCHAR_WORN;
-                        let idx_bytes = (i as u32).to_le_bytes();
-                        buf[1..5].copy_from_slice(&idx_bytes);
-                        buf[5] = (sprite & 0xff) as u8;
-                        buf[6] = ((sprite >> 8) & 0xff) as u8;
-                        buf[7] = (placement & 0xff) as u8;
-                        buf[8] = ((placement >> 8) & 0xff) as u8;
-                        network.xsend(nr, &buf, 9);
-                    });
-                }
-            }
-
-            // Spells
-            for i in 0..20 {
-                if player.cpl.spell[i] != character.spell[i] as i32 {
-                    player.cpl.spell[i] = character.spell[i] as i32;
-                    let in_idx = character.spell[i] as usize;
-                    let mut sprite: i16 = 0;
-                    let mut active_frac: i16 = 0;
-                    if in_idx != 0 && in_idx < core::constants::MAXITEM as usize {
-                        Repository::with_items(|items| {
-                            let it = &items[in_idx];
-                            sprite = it.sprite[1];
-                            active_frac = if it.duration > 0 {
-                                (it.active * 16 / it.duration) as i16
-                            } else {
-                                0
-                            };
-                        });
-                    }
-                    NetworkManager::with(|network| {
-                        let mut buf: [u8; 9] = [0; 9];
-                        buf[0] = core::constants::SV_SETCHAR_SPELL;
-                        let idx_bytes = (i as u32).to_le_bytes();
-                        buf[1..5].copy_from_slice(&idx_bytes);
-                        buf[5] = (sprite & 0xff) as u8;
-                        buf[6] = ((sprite >> 8) & 0xff) as u8;
-                        buf[7] = (active_frac & 0xff) as u8;
-                        buf[8] = ((active_frac >> 8) & 0xff) as u8;
-                        network.xsend(nr, &buf, 9);
-                    });
-                }
-            }
-        });
-    });
 }
 
 /// Send full stats update to player
@@ -4423,33 +3679,95 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
 
     // items (40)
     for i in 0..40usize {
-        let changed = Repository::with_characters(|characters| {
-            let ch_in = characters[cn].item[i] as i32;
-            Server::with_players(|players| players[nr].cpl.item[i] != ch_in)
-        });
-        if changed {
-            let in_idx = Repository::with_characters(|characters| characters[cn].item[i] as usize);
-            let mut sprite: i16 = 0;
-            let mut placement: i16 = 0;
-            if in_idx != 0 && in_idx < core::constants::MAXITEM as usize {
-                Repository::with_items(|items| {
-                    let it = &items[in_idx];
-                    sprite = if it.active != 0 {
-                        it.sprite[1]
-                    } else {
-                        it.sprite[0]
-                    };
-                    placement = it.placement as i16;
-                });
-            }
+        let is_building = Repository::with_characters(|ch| ch[cn].is_building());
+        let in_idx = Repository::with_characters(|characters| characters[cn].item[i] as usize);
+        let cpl_item = Server::with_players(|players| players[nr].cpl.item[i]);
+
+        // Check if changed OR if IF_UPDATE is set (but not for building mode)
+        let needs_update = if in_idx != 0 && !is_building {
+            Repository::with_items(|items| {
+                (cpl_item != in_idx as i32)
+                    || ((items[in_idx].flags & core::constants::ItemFlags::IF_UPDATE.bits()) != 0)
+            })
+        } else {
+            cpl_item != in_idx as i32
+        };
+
+        if needs_update {
             let mut buf: [u8; 9] = [0; 9];
             buf[0] = core::constants::SV_SETCHAR_ITEM;
             let idx_bytes = (i as u32).to_le_bytes();
             buf[1..5].copy_from_slice(&idx_bytes);
-            buf[5] = (sprite & 0xff) as u8;
-            buf[6] = ((sprite >> 8) & 0xff) as u8;
-            buf[7] = (placement & 0xff) as u8;
-            buf[8] = ((placement >> 8) & 0xff) as u8;
+
+            if in_idx != 0 {
+                if is_building {
+                    // Building mode - handle special flags and templates
+                    if (in_idx & 0x40000000) != 0 {
+                        // Map flags
+                        let flag = in_idx & 0x0fffffff;
+                        let sprite = match flag as u32 {
+                            core::constants::MF_MOVEBLOCK => 47,
+                            core::constants::MF_SIGHTBLOCK => 83,
+                            core::constants::MF_INDOORS => 48,
+                            core::constants::MF_UWATER => 50,
+                            core::constants::MF_NOMONST => 51,
+                            core::constants::MF_BANK => 52,
+                            core::constants::MF_TAVERN => 53,
+                            core::constants::MF_NOMAGIC => 54,
+                            core::constants::MF_DEATHTRAP => 74,
+                            core::constants::MF_ARENA => 78,
+                            core::constants::MF_NOEXPIRE => 81,
+                            core::constants::MF_NOLAG => 49,
+                            _ => 0,
+                        };
+                        buf[5] = (sprite & 0xff) as u8;
+                        buf[6] = ((sprite >> 8) & 0xff) as u8;
+                        buf[7] = 0;
+                        buf[8] = 0;
+                    } else if (in_idx & 0x20000000) != 0 {
+                        // Direct sprite reference
+                        let sprite = (in_idx & 0x0fffffff) as i16;
+                        buf[5] = (sprite & 0xff) as u8;
+                        buf[6] = ((sprite >> 8) & 0xff) as u8;
+                        buf[7] = 0;
+                        buf[8] = 0;
+                    } else {
+                        // Template item
+                        let sprite = Repository::with_item_templates(|templates| {
+                            templates[in_idx].sprite[0]
+                        });
+                        buf[5] = (sprite & 0xff) as u8;
+                        buf[6] = ((sprite >> 8) & 0xff) as u8;
+                        buf[7] = 0;
+                        buf[8] = 0;
+                    }
+                } else {
+                    // Normal mode - use item sprite and placement
+                    Repository::with_items(|items| {
+                        let it = &items[in_idx];
+                        let sprite = if it.active != 0 {
+                            it.sprite[1]
+                        } else {
+                            it.sprite[0]
+                        };
+                        let placement = it.placement as i16;
+                        buf[5] = (sprite & 0xff) as u8;
+                        buf[6] = ((sprite >> 8) & 0xff) as u8;
+                        buf[7] = (placement & 0xff) as u8;
+                        buf[8] = ((placement >> 8) & 0xff) as u8;
+                    });
+                    // Clear IF_UPDATE flag
+                    Repository::with_items_mut(|items| {
+                        items[in_idx].flags &= !core::constants::ItemFlags::IF_UPDATE.bits();
+                    });
+                }
+            } else {
+                buf[5] = 0;
+                buf[6] = 0;
+                buf[7] = 0;
+                buf[8] = 0;
+            }
+
             NetworkManager::with(|network| network.xsend(nr, &buf, 9));
             Server::with_players_mut(|players| players[nr].cpl.item[i] = in_idx as i32);
         }
@@ -4457,33 +3775,50 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
 
     // worn (20)
     for i in 0..20usize {
-        let changed = Repository::with_characters(|characters| {
-            let ch_in = characters[cn].worn[i] as i32;
-            Server::with_players(|players| players[nr].cpl.worn[i] != ch_in)
-        });
-        if changed {
-            let in_idx = Repository::with_characters(|characters| characters[cn].worn[i] as usize);
-            let mut sprite: i16 = 0;
-            let mut placement: i16 = 0;
-            if in_idx != 0 && in_idx < core::constants::MAXITEM as usize {
-                Repository::with_items(|items| {
-                    let it = &items[in_idx];
-                    sprite = if it.active != 0 {
-                        it.sprite[1]
-                    } else {
-                        it.sprite[0]
-                    };
-                    placement = it.placement as i16;
-                });
-            }
+        let in_idx = Repository::with_characters(|characters| characters[cn].worn[i] as usize);
+        let cpl_worn = Server::with_players(|players| players[nr].cpl.worn[i]);
+
+        // Check if changed OR if IF_UPDATE is set
+        let needs_update = if in_idx != 0 {
+            Repository::with_items(|items| {
+                (cpl_worn != in_idx as i32)
+                    || ((items[in_idx].flags & core::constants::ItemFlags::IF_UPDATE.bits()) != 0)
+            })
+        } else {
+            cpl_worn != in_idx as i32
+        };
+
+        if needs_update {
             let mut buf: [u8; 9] = [0; 9];
             buf[0] = core::constants::SV_SETCHAR_WORN;
             let idx_bytes = (i as u32).to_le_bytes();
             buf[1..5].copy_from_slice(&idx_bytes);
-            buf[5] = (sprite & 0xff) as u8;
-            buf[6] = ((sprite >> 8) & 0xff) as u8;
-            buf[7] = (placement & 0xff) as u8;
-            buf[8] = ((placement >> 8) & 0xff) as u8;
+
+            if in_idx != 0 {
+                Repository::with_items(|items| {
+                    let it = &items[in_idx];
+                    let sprite = if it.active != 0 {
+                        it.sprite[1]
+                    } else {
+                        it.sprite[0]
+                    };
+                    let placement = it.placement as i16;
+                    buf[5] = (sprite & 0xff) as u8;
+                    buf[6] = ((sprite >> 8) & 0xff) as u8;
+                    buf[7] = (placement & 0xff) as u8;
+                    buf[8] = ((placement >> 8) & 0xff) as u8;
+                });
+                // Clear IF_UPDATE flag
+                Repository::with_items_mut(|items| {
+                    items[in_idx].flags &= !core::constants::ItemFlags::IF_UPDATE.bits();
+                });
+            } else {
+                buf[5] = 0;
+                buf[6] = 0;
+                buf[7] = 0;
+                buf[8] = 0;
+            }
+
             NetworkManager::with(|network| network.xsend(nr, &buf, 9));
             Server::with_players_mut(|players| players[nr].cpl.worn[i] = in_idx as i32);
         }
@@ -4491,166 +3826,147 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
 
     // spells (20)
     for i in 0..20usize {
-        let changed = Repository::with_characters(|characters| {
-            let ch_in = characters[cn].spell[i] as i32;
-            Server::with_players(|players| players[nr].cpl.spell[i] != ch_in)
-        });
-        if changed {
-            let in_idx = Repository::with_characters(|characters| characters[cn].spell[i] as usize);
-            let mut sprite: i16 = 0;
-            let mut active_frac: i16 = 0;
-            if in_idx != 0 && in_idx < core::constants::MAXITEM as usize {
-                Repository::with_items(|items| {
-                    let it = &items[in_idx];
-                    sprite = it.sprite[1];
-                    active_frac = if it.duration > 0 {
-                        (it.active * 16 / it.duration) as i16
-                    } else {
-                        0
-                    };
-                });
-            }
+        let in_idx = Repository::with_characters(|characters| characters[cn].spell[i] as usize);
+        let cpl_spell = Server::with_players(|players| players[nr].cpl.spell[i]);
+        let cpl_active = Server::with_players(|players| players[nr].cpl.active[i]);
+
+        // Calculate current active fraction
+        let (current_active_frac, has_update_flag) = if in_idx != 0 {
+            Repository::with_items(|items| {
+                let it = &items[in_idx];
+                let duration = std::cmp::max(1, it.duration);
+                let frac = ((it.active * 16) / duration) as i16;
+                let has_flag = (it.flags & core::constants::ItemFlags::IF_UPDATE.bits()) != 0;
+                (frac, has_flag)
+            })
+        } else {
+            (0, false)
+        };
+
+        // Check if spell changed OR active fraction changed OR IF_UPDATE is set
+        let needs_update = (cpl_spell != in_idx as i32)
+            || (cpl_active as i16 != current_active_frac)
+            || has_update_flag;
+
+        if needs_update {
             let mut buf: [u8; 9] = [0; 9];
             buf[0] = core::constants::SV_SETCHAR_SPELL;
             let idx_bytes = (i as u32).to_le_bytes();
             buf[1..5].copy_from_slice(&idx_bytes);
-            buf[5] = (sprite & 0xff) as u8;
-            buf[6] = ((sprite >> 8) & 0xff) as u8;
-            buf[7] = (active_frac & 0xff) as u8;
-            buf[8] = ((active_frac >> 8) & 0xff) as u8;
+
+            if in_idx != 0 {
+                Repository::with_items(|items| {
+                    let it = &items[in_idx];
+                    let sprite = it.sprite[1];
+                    let duration = std::cmp::max(1, it.duration);
+                    let active_frac = ((it.active * 16) / duration) as i16;
+
+                    buf[5] = (sprite & 0xff) as u8;
+                    buf[6] = ((sprite >> 8) & 0xff) as u8;
+                    buf[7] = (active_frac & 0xff) as u8;
+                    buf[8] = ((active_frac >> 8) & 0xff) as u8;
+                });
+                // Clear IF_UPDATE flag
+                Repository::with_items_mut(|items| {
+                    items[in_idx].flags &= !core::constants::ItemFlags::IF_UPDATE.bits();
+                });
+                Server::with_players_mut(|players| {
+                    players[nr].cpl.spell[i] = in_idx as i32;
+                    players[nr].cpl.active[i] = current_active_frac as i8;
+                });
+            } else {
+                buf[5] = 0;
+                buf[6] = 0;
+                buf[7] = 0;
+                buf[8] = 0;
+                Server::with_players_mut(|players| {
+                    players[nr].cpl.spell[i] = 0;
+                    players[nr].cpl.active[i] = 0;
+                });
+            }
+
             NetworkManager::with(|network| network.xsend(nr, &buf, 9));
-            Server::with_players_mut(|players| {
-                players[nr].cpl.spell[i] = in_idx as i32;
-                players[nr].cpl.active[i] = active_frac as i8;
-            });
         }
     }
 
-    // citem
-    let citem_changed = Repository::with_characters(|characters| {
-        characters[cn].citem as i32 != Server::with_players(|players| players[nr].cpl.citem)
-    });
-    if citem_changed {
-        let in_idx = Repository::with_characters(|characters| characters[cn].citem as usize);
-        let mut sprite: i16 = 0;
-        let mut placement: i16 = 0;
-        if in_idx != 0 && in_idx < core::constants::MAXITEM as usize {
-            Repository::with_items(|items| {
-                let it = &items[in_idx];
-                sprite = if it.active != 0 {
-                    it.sprite[1]
-                } else {
-                    it.sprite[0]
-                };
-                placement = it.placement as i16;
-            });
-        }
+    // citem (cursor item)
+    let is_building = Repository::with_characters(|ch| ch[cn].is_building());
+    let in_idx = Repository::with_characters(|characters| characters[cn].citem as usize);
+    let cpl_citem = Server::with_players(|players| players[nr].cpl.citem);
+
+    // Check if changed OR if IF_UPDATE is set (but not for building mode or gold amounts)
+    let needs_update = if in_idx != 0 && !is_building && (in_idx & 0x80000000) == 0 {
+        Repository::with_items(|items| {
+            (cpl_citem != in_idx as i32)
+                || ((items[in_idx].flags & core::constants::ItemFlags::IF_UPDATE.bits()) != 0)
+        })
+    } else {
+        cpl_citem != in_idx as i32
+    };
+
+    if needs_update {
         let mut buf: [u8; 5] = [0; 5];
         buf[0] = core::constants::SV_SETCHAR_OBJ;
-        buf[1] = (sprite & 0xff) as u8;
-        buf[2] = ((sprite >> 8) & 0xff) as u8;
-        buf[3] = (placement & 0xff) as u8;
-        buf[4] = ((placement >> 8) & 0xff) as u8;
+
+        if (in_idx & 0x80000000) != 0 {
+            // Gold amount - use special sprites based on amount
+            let amount = in_idx & 0x7fffffff;
+            let sprite = if amount > 999999 {
+                121
+            } else if amount > 99999 {
+                120
+            } else if amount > 9999 {
+                41
+            } else if amount > 999 {
+                40
+            } else if amount > 99 {
+                39
+            } else if amount > 9 {
+                38
+            } else {
+                37
+            };
+            buf[1] = (sprite & 0xff) as u8;
+            buf[2] = ((sprite >> 8) & 0xff) as u8;
+            buf[3] = 0;
+            buf[4] = 0;
+        } else if in_idx != 0 {
+            if is_building {
+                // Building mode - fixed sprite
+                buf[1] = 46;
+                buf[2] = 0;
+                buf[3] = 0;
+                buf[4] = 0;
+            } else {
+                // Normal item
+                Repository::with_items(|items| {
+                    let it = &items[in_idx];
+                    let sprite = if it.active != 0 {
+                        it.sprite[1]
+                    } else {
+                        it.sprite[0]
+                    };
+                    let placement = it.placement as i16;
+                    buf[1] = (sprite & 0xff) as u8;
+                    buf[2] = ((sprite >> 8) & 0xff) as u8;
+                    buf[3] = (placement & 0xff) as u8;
+                    buf[4] = ((placement >> 8) & 0xff) as u8;
+                });
+                // Clear IF_UPDATE flag
+                Repository::with_items_mut(|items| {
+                    items[in_idx].flags &= !core::constants::ItemFlags::IF_UPDATE.bits();
+                });
+            }
+        } else {
+            // Empty cursor
+            buf[1] = 0;
+            buf[2] = 0;
+            buf[3] = 0;
+            buf[4] = 0;
+        }
+
         NetworkManager::with(|network| network.xsend(nr, &buf, 5));
         Server::with_players_mut(|players| players[nr].cpl.citem = in_idx as i32);
-    }
-
-    // a_hp, a_end, a_mana (these are scaled)
-    let a_hp_val =
-        Repository::with_characters(|characters| ((characters[cn].a_hp + 500) / 1000) as i32);
-    if Server::with_players(|players| players[nr].cpl.a_hp) != a_hp_val {
-        let mut buf: [u8; 3] = [0; 3];
-        buf[0] = core::constants::SV_SETCHAR_AHP;
-        buf[1] = (a_hp_val & 0xff) as u8;
-        buf[2] = ((a_hp_val >> 8) & 0xff) as u8;
-        NetworkManager::with(|network| network.xsend(nr, &buf, 3));
-        Server::with_players_mut(|players| players[nr].cpl.a_hp = a_hp_val);
-    }
-
-    let a_end_val =
-        Repository::with_characters(|characters| ((characters[cn].a_end + 500) / 1000) as i32);
-    if Server::with_players(|players| players[nr].cpl.a_end) != a_end_val {
-        let mut buf: [u8; 3] = [0; 3];
-        buf[0] = core::constants::SV_SETCHAR_AHP + 1; // SV_SETCHAR_AEND
-        buf[1] = (a_end_val & 0xff) as u8;
-        buf[2] = ((a_end_val >> 8) & 0xff) as u8;
-        NetworkManager::with(|network| network.xsend(nr, &buf, 3));
-        Server::with_players_mut(|players| players[nr].cpl.a_end = a_end_val);
-    }
-
-    let a_mana_val =
-        Repository::with_characters(|characters| ((characters[cn].a_mana + 500) / 1000) as i32);
-    if Server::with_players(|players| players[nr].cpl.a_mana) != a_mana_val {
-        let mut buf: [u8; 3] = [0; 3];
-        buf[0] = core::constants::SV_SETCHAR_AHP + 2; // SV_SETCHAR_AMANA
-        buf[1] = (a_mana_val & 0xff) as u8;
-        buf[2] = ((a_mana_val >> 8) & 0xff) as u8;
-        NetworkManager::with(|network| network.xsend(nr, &buf, 3));
-        Server::with_players_mut(|players| players[nr].cpl.a_mana = a_mana_val);
-    }
-
-    // dir
-    let dir_changed = Repository::with_characters(|characters| {
-        characters[cn].dir as i32 != Server::with_players(|players| players[nr].cpl.dir)
-    });
-    if dir_changed {
-        let dir = Repository::with_characters(|characters| characters[cn].dir as u8);
-        let mut buf: [u8; 16] = [0; 16];
-        buf[0] = core::constants::SV_SETCHAR_MODE + 1; // SV_SETCHAR_DIR assumed next
-        buf[1] = dir;
-        NetworkManager::with(|network| network.xsend(nr, &buf, 2));
-        Server::with_players_mut(|players| players[nr].cpl.dir = dir as i32);
-    }
-
-    // points and gold
-    let points_changed = Repository::with_characters(|characters| {
-        let ch = &characters[cn];
-        Server::with_players(|players| {
-            players[nr].cpl.points != ch.points
-                || players[nr].cpl.points_tot != ch.points_tot
-                || players[nr].cpl.kindred != ch.kindred
-        })
-    });
-    if points_changed {
-        Repository::with_characters(|characters| {
-            let ch = &characters[cn];
-            let mut buf: [u8; 10] = [0; 10];
-            buf[0] = core::constants::SV_SETCHAR_PTS;
-            buf[1..5].copy_from_slice(&ch.points.to_le_bytes());
-            buf[5..9].copy_from_slice(&ch.points_tot.to_le_bytes());
-            buf[9] = ch.kindred as u8;
-            NetworkManager::with(|network| network.xsend(nr, &buf, 10));
-            Server::with_players_mut(|players| {
-                players[nr].cpl.points = ch.points;
-                players[nr].cpl.points_tot = ch.points_tot;
-                players[nr].cpl.kindred = ch.kindred;
-            });
-        });
-    }
-
-    let gold_changed = Repository::with_characters(|characters| {
-        let ch = &characters[cn];
-        Server::with_players(|players| {
-            players[nr].cpl.gold != ch.gold
-                || players[nr].cpl.armor != ch.armor as i32
-                || players[nr].cpl.weapon != ch.weapon as i32
-        })
-    });
-    if gold_changed {
-        Repository::with_characters(|characters| {
-            let ch = &characters[cn];
-            let mut buf: [u8; 13] = [0; 13];
-            buf[0] = core::constants::SV_SETCHAR_GOLD;
-            buf[1..5].copy_from_slice(&ch.gold.to_le_bytes());
-            buf[5..7].copy_from_slice(&(ch.armor as i16).to_le_bytes());
-            buf[7..9].copy_from_slice(&(ch.weapon as i16).to_le_bytes());
-            NetworkManager::with(|network| network.xsend(nr, &buf, 13));
-            Server::with_players_mut(|players| {
-                players[nr].cpl.gold = ch.gold;
-                players[nr].cpl.armor = ch.armor as i32;
-                players[nr].cpl.weapon = ch.weapon as i32;
-            });
-        });
     }
 }
 
@@ -4690,7 +4006,7 @@ fn plr_change_end(nr: usize, cn: usize) {
 
     if current_end != player_end {
         let mut buf: [u8; 16] = [0; 16];
-        buf[0] = core::constants::SV_SETCHAR_ENDUR;
+        buf[0] = core::constants::SV_SETCHAR_AEND;
         buf[1] = current_end as u8;
         buf[2] = (current_end >> 8) as u8;
 
@@ -4715,7 +4031,7 @@ fn plr_change_mana(nr: usize, cn: usize) {
 
     if current_mana != player_mana {
         let mut buf: [u8; 16] = [0; 16];
-        buf[0] = core::constants::SV_SETCHAR_MANA;
+        buf[0] = core::constants::SV_SETCHAR_AMANA;
         buf[1] = current_mana as u8;
         buf[2] = (current_mana >> 8) as u8;
 
@@ -4737,8 +4053,8 @@ fn plr_change_dir(nr: usize, cn: usize) {
 
     if current_dir as i32 != player_dir {
         let mut buf: [u8; 16] = [0; 16];
-        buf[0] = core::constants::SV_SETCHAR_MODE;
-        buf[1] = current_dir;
+        buf[0] = core::constants::SV_SETCHAR_DIR;
+        buf[1] = current_dir as u8;
 
         NetworkManager::with(|network| {
             network.xsend(nr, &buf, 2);
@@ -4765,27 +4081,14 @@ fn plr_change_points(nr: usize, cn: usize) {
         });
 
     if points != cpl_points || points_tot != cpl_points_tot || kindred != cpl_kindred {
-        let mut buf: [u8; 10] = [0; 10];
+        // Match C++: SV_SETCHAR_PTS + points(u32) + points_tot(u32) + kindred(u32) => 13 bytes
+        let mut buf: [u8; 13] = [0; 13];
         buf[0] = core::constants::SV_SETCHAR_PTS;
+        buf[1..5].copy_from_slice(&points.to_le_bytes());
+        buf[5..9].copy_from_slice(&points_tot.to_le_bytes());
+        buf[9..13].copy_from_slice(&kindred.to_le_bytes());
 
-        // points (4 bytes)
-        buf[1] = points as u8;
-        buf[2] = (points >> 8) as u8;
-        buf[3] = (points >> 16) as u8;
-        buf[4] = (points >> 24) as u8;
-
-        // points_tot (4 bytes)
-        buf[5] = points_tot as u8;
-        buf[6] = (points_tot >> 8) as u8;
-        buf[7] = (points_tot >> 16) as u8;
-        buf[8] = (points_tot >> 24) as u8;
-
-        // kindred (1 byte)
-        buf[9] = kindred as u8;
-
-        NetworkManager::with(|network| {
-            network.xsend(nr, &buf, 10);
-        });
+        NetworkManager::with(|network| network.xsend(nr, &buf, 13));
 
         Server::with_players_mut(|players| {
             players[nr].cpl.points = points;
@@ -4812,26 +4115,17 @@ fn plr_change_gold(nr: usize, cn: usize) {
         });
 
     if gold != cpl_gold || armor as i32 != cpl_armor || weapon as i32 != cpl_weapon {
-        let mut buf: [u8; 16] = [0; 16];
+        // Match C++: SV_SETCHAR_GOLD + gold(u32) + armor(u32) + weapon(u32) => 13 bytes
+        let armor32: i32 = armor as i32;
+        let weapon32: i32 = weapon as i32;
+
+        let mut buf: [u8; 13] = [0; 13];
         buf[0] = core::constants::SV_SETCHAR_GOLD;
+        buf[1..5].copy_from_slice(&gold.to_le_bytes());
+        buf[5..9].copy_from_slice(&armor32.to_le_bytes());
+        buf[9..13].copy_from_slice(&weapon32.to_le_bytes());
 
-        // gold (4 bytes)
-        buf[1] = gold as u8;
-        buf[2] = (gold >> 8) as u8;
-        buf[3] = (gold >> 16) as u8;
-        buf[4] = (gold >> 24) as u8;
-
-        // armor (2 bytes)
-        buf[5] = armor as u8;
-        buf[6] = (armor >> 8) as u8;
-
-        // weapon (2 bytes)
-        buf[7] = weapon as u8;
-        buf[8] = (weapon >> 8) as u8;
-
-        NetworkManager::with(|network| {
-            network.xsend(nr, &buf, 9);
-        });
+        NetworkManager::with(|network| network.xsend(nr, &buf, 13));
 
         Server::with_players_mut(|players| {
             players[nr].cpl.gold = gold;
@@ -4841,7 +4135,359 @@ fn plr_change_gold(nr: usize, cn: usize) {
     }
 }
 
-/// Send position change to player
+/// Send server load info to gods every 32 ticks
+fn plr_change_load(nr: usize, cn: usize, ticker: i32) {
+    let is_god =
+        Repository::with_characters(|ch| (ch[cn].flags & enums::CharacterFlags::God.bits()) != 0);
+
+    if is_god && (ticker & 31) == 0 {
+        let load = Repository::with_globals(|globals| globals.load as u32);
+        let mut buf: [u8; 5] = [0; 5];
+        buf[0] = core::constants::SV_LOAD;
+        buf[1..5].copy_from_slice(&load.to_le_bytes());
+        NetworkManager::with(|network| network.xsend(nr, &buf, 5));
+    }
+}
+
+/// Light update functions - calculate efficiency of batch updates
+
+/// Updates a single light tile (least efficient)
+fn cl_light_one(n: usize, dosend: usize, update_only: bool) -> usize {
+    if !update_only {
+        // Return efficiency score: 50 * 1 / 3
+        return 50 / 3;
+    }
+
+    Server::with_players_mut(|players| {
+        let smap_light = players[dosend].smap[n].light;
+        players[dosend].cmap[n].light = smap_light;
+
+        let mut buf: [u8; 3] = [0; 3];
+        buf[0] = core::constants::SV_SETMAP4;
+        let encoded = (n as u16) | ((smap_light as u16) << 12);
+        buf[1] = (encoded & 0xff) as u8;
+        buf[2] = ((encoded >> 8) & 0xff) as u8;
+
+        NetworkManager::with(|network| network.xsend(dosend, &buf, 3));
+    });
+    1
+}
+
+/// Updates three light tiles
+fn cl_light_three(n: usize, dosend: usize, update_only: bool) -> usize {
+    if !update_only {
+        // Count differences and return efficiency
+        let l = Server::with_players(|players| {
+            let mut count = 0;
+            let total = core::constants::TILEX * core::constants::TILEY;
+            for m in n..std::cmp::min(n + 3, total) {
+                if players[dosend].cmap[m].light != players[dosend].smap[m].light {
+                    count += 1;
+                }
+            }
+            count
+        });
+        return 50 * l / 4;
+    }
+
+    Server::with_players_mut(|players| {
+        let mut buf: [u8; 4] = [0; 4];
+        buf[0] = core::constants::SV_SETMAP5;
+
+        let smap_light = players[dosend].smap[n].light;
+        players[dosend].cmap[n].light = smap_light;
+        let encoded = (n as u16) | ((smap_light as u16) << 12);
+        buf[1] = (encoded & 0xff) as u8;
+        buf[2] = ((encoded >> 8) & 0xff) as u8;
+
+        let total = core::constants::TILEX * core::constants::TILEY;
+        let mut p = 3;
+        let mut m = n + 2;
+        while m < std::cmp::min(n + 2 + 2, total) {
+            let light_m = players[dosend].smap[m].light;
+            let light_m1 = players[dosend].smap[m - 1].light;
+            buf[p] = light_m | (light_m1 << 4);
+            players[dosend].cmap[m].light = light_m;
+            players[dosend].cmap[m - 1].light = light_m1;
+            m += 2;
+            p += 1;
+        }
+
+        NetworkManager::with(|network| network.xsend(dosend, &buf, 4));
+    });
+    1
+}
+
+/// Updates seven light tiles
+fn cl_light_seven(n: usize, dosend: usize, update_only: bool) -> usize {
+    if !update_only {
+        // Count differences and return efficiency
+        let l = Server::with_players(|players| {
+            let mut count = 0;
+            let total = core::constants::TILEX * core::constants::TILEY;
+            for m in n..std::cmp::min(n + 7, total) {
+                if players[dosend].cmap[m].light != players[dosend].smap[m].light {
+                    count += 1;
+                }
+            }
+            count
+        });
+        return 50 * l / 6;
+    }
+
+    Server::with_players_mut(|players| {
+        let mut buf: [u8; 6] = [0; 6];
+        buf[0] = core::constants::SV_SETMAP6;
+
+        let smap_light = players[dosend].smap[n].light;
+        players[dosend].cmap[n].light = smap_light;
+        let encoded = (n as u16) | ((smap_light as u16) << 12);
+        buf[1] = (encoded & 0xff) as u8;
+        buf[2] = ((encoded >> 8) & 0xff) as u8;
+
+        let total = core::constants::TILEX * core::constants::TILEY;
+        let mut p = 3;
+        let mut m = n + 2;
+        while m < std::cmp::min(n + 6 + 2, total) {
+            let light_m = players[dosend].smap[m].light;
+            let light_m1 = players[dosend].smap[m - 1].light;
+            buf[p] = light_m | (light_m1 << 4);
+            players[dosend].cmap[m].light = light_m;
+            players[dosend].cmap[m - 1].light = light_m1;
+            m += 2;
+            p += 1;
+        }
+
+        NetworkManager::with(|network| network.xsend(dosend, &buf, 6));
+    });
+    1
+}
+
+/// Updates 27 light tiles (most efficient for large batches)
+fn cl_light_26(n: usize, dosend: usize, update_only: bool) -> usize {
+    if !update_only {
+        // Count differences and return efficiency
+        let l = Server::with_players(|players| {
+            let mut count = 0;
+            let total = core::constants::TILEX * core::constants::TILEY;
+            for m in n..std::cmp::min(n + 27, total) {
+                if players[dosend].cmap[m].light != players[dosend].smap[m].light {
+                    count += 1;
+                }
+            }
+            count
+        });
+        return 50 * l / 16;
+    }
+
+    Server::with_players_mut(|players| {
+        let mut buf: [u8; 16] = [0; 16];
+        buf[0] = core::constants::SV_SETMAP3;
+
+        let smap_light = players[dosend].smap[n].light;
+        players[dosend].cmap[n].light = smap_light;
+        let encoded = (n as u16) | ((smap_light as u16) << 12);
+        buf[1] = (encoded & 0xff) as u8;
+        buf[2] = ((encoded >> 8) & 0xff) as u8;
+
+        let total = core::constants::TILEX * core::constants::TILEY;
+        let mut p = 3;
+        let mut m = n + 2;
+        while m < std::cmp::min(n + 26 + 2, total) {
+            let light_m = players[dosend].smap[m].light;
+            let light_m1 = players[dosend].smap[m - 1].light;
+            buf[p] = light_m | (light_m1 << 4);
+            players[dosend].cmap[m].light = light_m;
+            players[dosend].cmap[m - 1].light = light_m1;
+            m += 2;
+            p += 1;
+        }
+
+        NetworkManager::with(|network| network.xsend(dosend, &buf, 16));
+    });
+    1
+}
+
+/// Send light updates for all changed tiles
+fn plr_change_light(nr: usize) {
+    let total = core::constants::TILEX * core::constants::TILEY;
+
+    for n in 0..total {
+        let light_changed =
+            Server::with_players(|players| players[nr].cmap[n].light != players[nr].smap[n].light);
+
+        if light_changed {
+            // Try each light update function and pick the most efficient
+            let mut best_efficiency = 0;
+            let mut best_func = 0;
+
+            let lfuncs: [fn(usize, usize, bool) -> usize; 4] =
+                [cl_light_one, cl_light_three, cl_light_seven, cl_light_26];
+
+            for (idx, func) in lfuncs.iter().enumerate() {
+                let efficiency = func(n, nr, false);
+                if efficiency >= best_efficiency {
+                    best_efficiency = efficiency;
+                    best_func = idx;
+                }
+            }
+
+            // Execute the best function
+            lfuncs[best_func](n, nr, true);
+        }
+    }
+}
+
+/// Send map tile content updates for all changed tiles
+fn plr_change_map(nr: usize) {
+    let total = core::constants::TILEX * core::constants::TILEY;
+    let mut lastn: i32 = -1;
+    let mut n = 0;
+
+    while n < total {
+        // Find next difference (matching C++ fdiff behavior)
+        let next_diff = Server::with_players(|players| {
+            let cmap_slice = &players[nr].cmap[n..];
+            let smap_slice = &players[nr].smap[n..];
+            cmap_slice
+                .iter()
+                .zip(smap_slice.iter())
+                .position(|(c, s)| c != s)
+        });
+
+        match next_diff {
+            Some(offset) => {
+                n += offset;
+            }
+            None => {
+                break; // No more differences
+            }
+        }
+
+        // Build update packet and modify player data
+        let updated = Server::with_players_mut(|players| {
+            let mut buf: [u8; 256] = [0; 256];
+            let mut p: usize;
+
+            // Encode tile index efficiently (matching C++ logic)
+            if lastn >= 0 && (n as i32 - lastn) < 127 && n as i32 > lastn {
+                buf[0] = core::constants::SV_SETMAP | ((n as i32 - lastn) as u8);
+                buf[1] = 0;
+                p = 2;
+            } else {
+                buf[0] = core::constants::SV_SETMAP;
+                buf[1] = 0;
+                let n_bytes = (n as u16).to_le_bytes();
+                buf[2] = n_bytes[0];
+                buf[3] = n_bytes[1];
+                p = 4;
+            }
+
+            let cmap = &players[nr].cmap[n];
+            let smap = &players[nr].smap[n];
+
+            // Check each field and add to update if changed
+            if cmap.ba_sprite != smap.ba_sprite {
+                buf[1] |= 1;
+                let bytes = smap.ba_sprite.to_le_bytes();
+                buf[p] = bytes[0];
+                buf[p + 1] = bytes[1];
+                p += 2;
+            }
+
+            if cmap.flags != smap.flags {
+                buf[1] |= 2;
+                let bytes = smap.flags.to_le_bytes();
+                buf[p..p + 4].copy_from_slice(&bytes);
+                p += 4;
+            }
+
+            if cmap.flags2 != smap.flags2 {
+                buf[1] |= 4;
+                let bytes = smap.flags2.to_le_bytes();
+                buf[p..p + 4].copy_from_slice(&bytes);
+                p += 4;
+            }
+
+            if cmap.it_sprite != smap.it_sprite {
+                buf[1] |= 8;
+                let bytes = smap.it_sprite.to_le_bytes();
+                buf[p] = bytes[0];
+                buf[p + 1] = bytes[1];
+                p += 2;
+            }
+
+            if cmap.it_status != smap.it_status
+                && helpers::it_base_status(cmap.it_status)
+                    != helpers::it_base_status(smap.it_status)
+            {
+                buf[1] |= 16;
+                buf[p] = smap.it_status;
+                p += 1;
+            }
+
+            if cmap.ch_sprite != smap.ch_sprite
+                || (cmap.ch_status != smap.ch_status
+                    && helpers::ch_base_status(cmap.ch_status)
+                        != helpers::ch_base_status(smap.ch_status))
+                || cmap.ch_status2 != smap.ch_status2
+            {
+                buf[1] |= 32;
+                let bytes = smap.ch_sprite.to_le_bytes();
+                buf[p] = bytes[0];
+                buf[p + 1] = bytes[1];
+                p += 2;
+                buf[p] = smap.ch_status;
+                p += 1;
+                buf[p] = smap.ch_status2;
+                p += 1;
+            }
+
+            if cmap.ch_speed != smap.ch_speed
+                || cmap.ch_nr != smap.ch_nr
+                || cmap.ch_id != smap.ch_id
+            {
+                buf[1] |= 64;
+                let nr_bytes = smap.ch_nr.to_le_bytes();
+                buf[p] = nr_bytes[0];
+                buf[p + 1] = nr_bytes[1];
+                p += 2;
+                let id_bytes = smap.ch_id.to_le_bytes();
+                buf[p] = id_bytes[0];
+                buf[p + 1] = id_bytes[1];
+                p += 2;
+                buf[p] = smap.ch_speed;
+                p += 1;
+            }
+
+            if cmap.ch_proz != smap.ch_proz {
+                buf[1] |= 128;
+                buf[p] = smap.ch_proz;
+                p += 1;
+            }
+
+            // Only send if we actually found changes (matching C++ if (buf[1]))
+            let did_update = buf[1] != 0;
+            if did_update {
+                NetworkManager::with(|network| network.xsend(nr, &buf, p as u8));
+            }
+
+            // Copy smap to cmap for this tile (matching C++ mcpy)
+            players[nr].cmap[n] = players[nr].smap[n];
+
+            did_update
+        });
+
+        // Update lastn after the modification (matching C++ behavior)
+        if updated {
+            lastn = n as i32;
+        }
+
+        n += 1;
+    }
+}
+
+/// Send position change to player with map scrolling
 fn plr_change_position(nr: usize, cn: usize) {
     let (x, y, cpl_x, cpl_y) = Repository::with_characters(|ch| {
         Server::with_players(|players| (ch[cn].x, ch[cn].y, players[nr].cpl.x, players[nr].cpl.y))
@@ -4849,24 +4495,122 @@ fn plr_change_position(nr: usize, cn: usize) {
 
     if x as i32 != cpl_x || y as i32 != cpl_y {
         let mut buf: [u8; 16] = [0; 16];
-        buf[0] = core::constants::SV_SETORIGIN;
 
-        // x (2 bytes)
-        buf[1] = x as u8;
-        buf[2] = (x >> 8) as u8;
+        // Handle scrolling cases to optimize map updates
+        if cpl_x == (x as i32 - 1) && cpl_y == y as i32 {
+            // Scroll right
+            buf[0] = core::constants::SV_SCROLL_RIGHT;
+            NetworkManager::with(|network| network.xsend(nr, &buf, 1));
 
-        // y (2 bytes)
-        buf[3] = y as u8;
-        buf[4] = (y >> 8) as u8;
+            // Shift cmap left (moving right means old data shifts left)
+            Server::with_players_mut(|players| {
+                let cmap = &mut players[nr].cmap;
+                let total = core::constants::TILEX * core::constants::TILEY;
+                cmap.copy_within(1..total, 0);
+            });
+        } else if cpl_x == (x as i32 + 1) && cpl_y == y as i32 {
+            // Scroll left
+            buf[0] = core::constants::SV_SCROLL_LEFT;
+            NetworkManager::with(|network| network.xsend(nr, &buf, 1));
 
-        NetworkManager::with(|network| {
-            network.xsend(nr, &buf, 5);
-        });
+            // Shift cmap right (moving left means old data shifts right)
+            Server::with_players_mut(|players| {
+                let cmap = &mut players[nr].cmap;
+                let total = core::constants::TILEX * core::constants::TILEY;
+                cmap.copy_within(0..(total - 1), 1);
+            });
+        } else if cpl_x == x as i32 && cpl_y == (y as i32 - 1) {
+            // Scroll down
+            buf[0] = core::constants::SV_SCROLL_DOWN;
+            NetworkManager::with(|network| network.xsend(nr, &buf, 1));
 
+            // Shift cmap up (moving down means old data shifts up)
+            Server::with_players_mut(|players| {
+                let cmap = &mut players[nr].cmap;
+                let tilex = core::constants::TILEX;
+                let total = core::constants::TILEX * core::constants::TILEY;
+                cmap.copy_within(tilex..total, 0);
+            });
+        } else if cpl_x == x as i32 && cpl_y == (y as i32 + 1) {
+            // Scroll up
+            buf[0] = core::constants::SV_SCROLL_UP;
+            NetworkManager::with(|network| network.xsend(nr, &buf, 1));
+
+            // Shift cmap down (moving up means old data shifts down)
+            Server::with_players_mut(|players| {
+                let cmap = &mut players[nr].cmap;
+                let tilex = core::constants::TILEX;
+                let total = core::constants::TILEX * core::constants::TILEY;
+                cmap.copy_within(0..(total - tilex), tilex);
+            });
+        } else if cpl_x == (x as i32 + 1) && cpl_y == (y as i32 + 1) {
+            // Scroll left-up
+            buf[0] = core::constants::SV_SCROLL_LEFTUP;
+            NetworkManager::with(|network| network.xsend(nr, &buf, 1));
+
+            Server::with_players_mut(|players| {
+                let cmap = &mut players[nr].cmap;
+                let tilex = core::constants::TILEX;
+                let total = core::constants::TILEX * core::constants::TILEY;
+                cmap.copy_within(0..(total - tilex - 1), tilex + 1);
+            });
+        } else if cpl_x == (x as i32 + 1) && cpl_y == (y as i32 - 1) {
+            // Scroll left-down
+            buf[0] = core::constants::SV_SCROLL_LEFTDOWN;
+            NetworkManager::with(|network| network.xsend(nr, &buf, 1));
+
+            // C++: memmove(cmap, cmap + TILEX - 1, sizeof(struct cmap) * (TILEX * TILEY - TILEX + 1))
+            Server::with_players_mut(|players| {
+                let cmap = &mut players[nr].cmap;
+                let tilex = core::constants::TILEX;
+                let total = core::constants::TILEX * core::constants::TILEY;
+                cmap.copy_within((tilex - 1)..total, 0);
+            });
+        } else if cpl_x == (x as i32 - 1) && cpl_y == (y as i32 + 1) {
+            // Scroll right-up
+            buf[0] = core::constants::SV_SCROLL_RIGHTUP;
+            NetworkManager::with(|network| network.xsend(nr, &buf, 1));
+
+            // C++: memmove(cmap + TILEX - 1, cmap, sizeof(struct cmap) * (TILEX * TILEY - TILEX + 1))
+            Server::with_players_mut(|players| {
+                let cmap = &mut players[nr].cmap;
+                let tilex = core::constants::TILEX;
+                let total = core::constants::TILEX * core::constants::TILEY;
+                cmap.copy_within(0..(total - tilex + 1), tilex - 1);
+            });
+        } else if cpl_x == (x as i32 - 1) && cpl_y == (y as i32 - 1) {
+            // Scroll right-down
+            buf[0] = core::constants::SV_SCROLL_RIGHTDOWN;
+            NetworkManager::with(|network| network.xsend(nr, &buf, 1));
+
+            // C++: memmove(cmap, cmap + TILEX + 1, sizeof(struct cmap) * (TILEX * TILEY - TILEX - 1))
+            Server::with_players_mut(|players| {
+                let cmap = &mut players[nr].cmap;
+                let tilex = core::constants::TILEX;
+                let total = core::constants::TILEX * core::constants::TILEY;
+                let src_start = tilex + 1;
+                let count = total - tilex - 1;
+                cmap.copy_within(src_start..(src_start + count), 0);
+            });
+        }
+
+        // Update position in cpl
         Server::with_players_mut(|players| {
             players[nr].cpl.x = x as i32;
             players[nr].cpl.y = y as i32;
         });
+
+        // Send origin update
+        buf[0] = core::constants::SV_SETORIGIN;
+        let ox: i16 = (x as i32 - (core::constants::TILEX as i32 / 2)) as i16;
+        let oy: i16 = (y as i32 - (core::constants::TILEY as i32 / 2)) as i16;
+        let ox_b = ox.to_le_bytes();
+        let oy_b = oy.to_le_bytes();
+        buf[1] = ox_b[0];
+        buf[2] = ox_b[1];
+        buf[3] = oy_b[0];
+        buf[4] = oy_b[1];
+        NetworkManager::with(|network| network.xsend(nr, &buf, 5));
     }
 }
 
@@ -5080,21 +4824,20 @@ pub fn plr_idle(nr: usize) {
 /// Port of `plr_cmd` from `svr_tick.cpp`
 /// Dispatches player commands from inbuf
 pub fn plr_cmd(nr: usize) {
-    let (cmd, state) = Server::with_players(|players| (players[nr].inbuf[0], players[nr].state));
+    let cmd = Server::with_players(|players| players[nr].inbuf[0]);
 
-    // Handle pre-login commands
+    // Handle pre-login commands (mirrors the initial switch in the original C++).
+    // These generally transition connection state; only `CL_CMD_UNIQUE` returns
+    // immediately in the original code.
     match cmd {
         core::constants::CL_NEWLOGIN => {
             plr_challenge_newlogin(nr);
-            return;
         }
         core::constants::CL_CHALLENGE => {
             plr_challenge(nr);
-            return;
         }
         core::constants::CL_LOGIN => {
             plr_challenge_login(nr);
-            return;
         }
         core::constants::CL_CMD_UNIQUE => {
             plr_unique(nr);
@@ -5102,10 +4845,12 @@ pub fn plr_cmd(nr: usize) {
         }
         core::constants::CL_PASSWD => {
             plr_passwd(nr);
-            return;
         }
         _ => {}
     }
+
+    // State may have changed in the handlers above.
+    let state = Server::with_players(|players| players[nr].state);
 
     // Only process other commands if in normal state
     if state != core::constants::ST_NORMAL {
@@ -5405,6 +5150,14 @@ fn plr_challenge(nr: usize) {
         players[nr].race = race;
     });
 
+    log::info!(
+        "Player {} challenge: response={:08X}, version={}, race={}",
+        nr,
+        response,
+        version,
+        race
+    );
+
     // Verify the challenge response
     if response != xcrypt(challenge) {
         log::warn!("Player {} challenge failed", nr);
@@ -5421,6 +5174,7 @@ fn plr_challenge(nr: usize) {
             Server::with_players_mut(|players| {
                 players[nr].state = core::constants::ST_NEWLOGIN;
                 players[nr].lasttick = ticker;
+                log::info!("Player {} login challenge passed for new characters", nr);
             });
         }
         state if state == core::constants::ST_LOGIN_CHALLENGE => {
@@ -5428,6 +5182,7 @@ fn plr_challenge(nr: usize) {
                 players[nr].state = core::constants::ST_LOGIN;
                 players[nr].lasttick = ticker;
             });
+            log::info!("Player {} login challenge passed", nr);
         }
         state if state == core::constants::ST_CHALLENGE => {
             Server::with_players_mut(|players| {
@@ -5435,6 +5190,7 @@ fn plr_challenge(nr: usize) {
                 players[nr].lasttick = ticker;
                 players[nr].ltick = 0;
             });
+            log::info!("Player {} logged in successfully", nr);
         }
         _ => {
             log::warn!(
@@ -5523,6 +5279,12 @@ fn plr_challenge_login(nr: usize) {
         players[nr].pass1 = pass1;
         players[nr].pass2 = pass2;
     });
+
+    log::info!(
+        "Player logged in as character index={} (players index={})",
+        cn,
+        nr
+    );
 
     send_mod(nr);
 }
@@ -5729,20 +5491,27 @@ fn plr_cmd_setuser(_nr: usize) {
                         .iter()
                         .position(|&c| c == 0)
                         .unwrap_or(name_bytes.len());
-                    let mut flag: i32 = 0;
-
-                    // Check length constraints
-                    if name_end > 3
+                    // IMPORTANT: Match the C++ gating logic.
+                    // Only validate/commit the name when the user is new AND the name length is sane.
+                    // Otherwise, do not touch `name`/`reference` (prevents committing empty names).
+                    let should_process_name = name_end > 3
                         && name_end < 38
                         && (ch[cn].flags
                             & core::constants::CharacterFlags::CF_NEWUSER.bits() as u64)
-                            != 0
-                    {
+                            != 0;
+
+                    if should_process_name {
+                        let mut flag: i32 = 0;
+
                         // validate letters only and lowercase
                         for n in 0..name_end {
                             let b = name_bytes[n];
                             if !((b'A'..=b'Z').contains(&b) || (b'a'..=b'z').contains(&b)) {
                                 flag = 1;
+                                log::warn!(
+                                    "plr_cmd_setuser: name contains non-letter char {:02X}",
+                                    b
+                                );
                                 break;
                             }
                             name_bytes[n] = name_bytes[n].to_ascii_lowercase();
@@ -5764,6 +5533,7 @@ fn plr_cmd_setuser(_nr: usize) {
                             };
 
                             if name_str == "Self" {
+                                log::warn!("plr_cmd_setuser: name \"{}\" is reserved", name_str);
                                 flag = 2;
                             }
 
@@ -5771,15 +5541,20 @@ fn plr_cmd_setuser(_nr: usize) {
                             if flag == 0 {
                                 for n in 1..core::constants::MAXCHARS {
                                     if n != cn && ch[n].used != core::constants::USE_EMPTY as u8 {
-                                        let other_name_end = ch[n]
-                                            .name
-                                            .iter()
-                                            .position(|&c| c == 0)
-                                            .unwrap_or(ch[n].name.len());
-                                        let other_name =
-                                            String::from_utf8_lossy(&ch[n].name[..other_name_end])
-                                                .to_string();
+                                        let mut other_name =
+                                            ch[n].get_name().to_string().to_ascii_lowercase();
+
+                                        // Uppercase first character safely without indexing into String
+                                        if let Some(first) = other_name.get_mut(0..1) {
+                                            first.make_ascii_uppercase();
+                                        }
+
                                         if other_name == name_str {
+                                            log::warn!(
+                                                "plr_cmd_setuser: name \"{}\" already used by cn={}",
+                                                name_str,
+                                                n
+                                            );
                                             flag = 2;
                                             break;
                                         }
@@ -5787,49 +5562,77 @@ fn plr_cmd_setuser(_nr: usize) {
                                 }
                             }
 
+                            // C++ also rejects names which match mob/template names.
+                            if flag == 0 {
+                                let matches_template =
+                                    Repository::with_character_templates(|temps| {
+                                        for t in 1..core::constants::MAXTCHARS {
+                                            if temps[t].get_name() == name_str {
+                                                return true;
+                                            }
+                                        }
+                                        false
+                                    });
+
+                                if matches_template {
+                                    log::warn!(
+                                        "plr_cmd_setuser: name \"{}\" matches template name",
+                                        name_str
+                                    );
+                                    flag = 2;
+                                }
+                            }
+
                             // TODO: badname check unavailable in Rust port; skip CF_NODESC check here
                         }
-                    }
 
-                    // If flag set -> report and don't commit name change
-                    if flag != 0 {
-                        let name_str = {
-                            let end = ch[cn].text[0]
-                                .iter()
-                                .position(|&c| c == 0)
-                                .unwrap_or(ch[cn].text[0].len());
-                            String::from_utf8_lossy(&ch[cn].text[0][..end]).to_string()
-                        };
-                        let reason = if flag == 1 {
-                            "contains non-letters. Please choose a more normal-looking name."
-                                .to_string()
-                        } else if flag == 2 {
-                            "is already in use. Please try to choose another name.".to_string()
+                        // If flag set -> report and don't commit name change
+                        if flag != 0 {
+                            let name_str = {
+                                let end = ch[cn].text[0]
+                                    .iter()
+                                    .position(|&c| c == 0)
+                                    .unwrap_or(ch[cn].text[0].len());
+                                String::from_utf8_lossy(&ch[cn].text[0][..end]).to_string()
+                            };
+                            let reason = if flag == 1 {
+                                "contains non-letters. Please choose a more normal-looking name."
+                                    .to_string()
+                            } else if flag == 2 {
+                                "is already in use. Please try to choose another name.".to_string()
+                            } else {
+                                "is deemed inappropriate. Please try to choose another name."
+                                    .to_string()
+                            };
+
+                            State::with(|state| {
+                                state.do_character_log(
+                                    cn,
+                                    core::types::FontColor::Green,
+                                    &format!(
+                                        "The name \"{}\" you have chosen for your character {}\n",
+                                        name_str, reason
+                                    ),
+                                );
+                            });
                         } else {
-                            "is deemed inappropriate. Please try to choose another name."
-                                .to_string()
-                        };
+                            // Commit name -> copy into name and reference (40 bytes)
+                            let name_end =
+                                ch[cn].text[0].iter().position(|&c| c == 0).unwrap_or(40);
+                            for i in 0..40 {
+                                ch[cn].name[i] = if i < name_end { ch[cn].text[0][i] } else { 0 };
+                                ch[cn].reference[i] = ch[cn].name[i];
+                            }
+                            // clear CF_NEWUSER flag
+                            ch[cn].flags &=
+                                !(core::constants::CharacterFlags::CF_NEWUSER.bits() as u64);
 
-                        State::with(|state| {
-                            state.do_character_log(
+                            log::info!(
+                                "plr_cmd_setuser: committed name change for cn={} to \"{}\"",
                                 cn,
-                                core::types::FontColor::Green,
-                                &format!(
-                                    "The name \"{}\" you have chosen for your character {}\n",
-                                    name_str, reason
-                                ),
+                                ch[cn].get_name()
                             );
-                        });
-                    } else {
-                        // Commit name -> copy into name and reference (40 bytes)
-                        let name_end = ch[cn].text[0].iter().position(|&c| c == 0).unwrap_or(40);
-                        for i in 0..40 {
-                            ch[cn].name[i] = if i < name_end { ch[cn].text[0][i] } else { 0 };
-                            ch[cn].reference[i] = ch[cn].name[i];
                         }
-                        // clear CF_NEWUSER flag
-                        ch[cn].flags &=
-                            !(core::constants::CharacterFlags::CF_NEWUSER.bits() as u64);
                     }
 
                     // Description handling: copy text[1] and possibly append text[2]
@@ -6089,13 +5892,13 @@ fn plr_cmd_ctick(nr: usize) {
 /// requesting character.
 ///
 /// # Arguments
-/// * `_nr` - Player slot index issuing the request
-fn plr_cmd_look_item(_nr: usize) {
+/// * `nr` - Player slot index issuing the request
+fn plr_cmd_look_item(nr: usize) {
     // Read x,y from inbuf and call do_look_item
     let (x, y, cn) = Server::with_players(|players| {
-        let x = u16::from_le_bytes([players[_nr].inbuf[1], players[_nr].inbuf[2]]) as i32;
-        let y = u16::from_le_bytes([players[_nr].inbuf[3], players[_nr].inbuf[4]]) as i32;
-        (x, y, players[_nr].usnr)
+        let x = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]) as i32;
+        let y = u16::from_le_bytes([players[nr].inbuf[3], players[nr].inbuf[4]]) as i32;
+        (x, y, players[nr].usnr)
     });
 
     if x < 0
@@ -6103,6 +5906,7 @@ fn plr_cmd_look_item(_nr: usize) {
         || y < 0
         || y >= core::constants::SERVER_MAPY as i32
     {
+        log::error!("plr_cmd_look_item: cn={} invalid coords {},{}", cn, x, y);
         return;
     }
 
@@ -6120,23 +5924,24 @@ fn plr_cmd_look_item(_nr: usize) {
 /// perform a give in the next tick.
 ///
 /// # Arguments
-/// * `_nr` - Player slot index issuing the give
-fn plr_cmd_give(_nr: usize) {
+/// * `nr` - Player slot index issuing the give
+fn plr_cmd_give(nr: usize) {
     // Read target character id (4 bytes) and set give action
     let co = Server::with_players(|players| {
         u32::from_le_bytes([
-            players[_nr].inbuf[1],
-            players[_nr].inbuf[2],
-            players[_nr].inbuf[3],
-            players[_nr].inbuf[4],
+            players[nr].inbuf[1],
+            players[nr].inbuf[2],
+            players[nr].inbuf[3],
+            players[nr].inbuf[4],
         ]) as usize
     });
 
     if co >= core::constants::MAXCHARS as usize {
+        log::error!("plr_cmd_give: invalid target cn {}", co);
         return;
     }
 
-    let cn = Server::with_players(|players| players[_nr].usnr);
+    let cn = Server::with_players(|players| players[nr].usnr);
     let ticker = Repository::with_globals(|g| g.ticker as i32);
 
     Repository::with_characters_mut(|ch| {
@@ -6156,18 +5961,21 @@ fn plr_cmd_give(_nr: usize) {
 /// its next action tick. Ignored if the character is in building mode.
 ///
 /// # Arguments
-/// * `_nr` - Player slot index issuing the turn
-fn plr_cmd_turn(_nr: usize) {
+/// * `nr` - Player slot index issuing the turn
+fn plr_cmd_turn(nr: usize) {
     // Read x,y and set turn action
     let (x, y, cn) = Server::with_players(|players| {
-        let x = u16::from_le_bytes([players[_nr].inbuf[1], players[_nr].inbuf[2]]) as i32;
-        let y = u16::from_le_bytes([players[_nr].inbuf[3], players[_nr].inbuf[4]]) as i32;
-        (x, y, players[_nr].usnr)
+        let x = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]) as i32;
+        let y = u16::from_le_bytes([players[nr].inbuf[3], players[nr].inbuf[4]]) as i32;
+        (x, y, players[nr].usnr)
     });
+
+    log::info!("plr_cmd_turn: cn={} turning to {},{}", cn, x, y);
 
     // If building mode, ignore
     let is_building = Repository::with_characters(|ch| ch[cn].is_building());
     if is_building {
+        log::debug!("plr_cmd_turn: cn={} is building, ignoring turn", cn);
         return;
     }
 
@@ -6176,6 +5984,7 @@ fn plr_cmd_turn(_nr: usize) {
     Repository::with_characters_mut(|ch| {
         ch[cn].attack_cn = 0;
         ch[cn].goto_x = 0;
+        ch[cn].goto_y = 0;
         ch[cn].misc_action = core::constants::DR_TURN as u16;
         ch[cn].misc_target1 = x as u16;
         ch[cn].misc_target2 = y as u16;
@@ -6355,6 +6164,7 @@ fn plr_cmd_mode(nr: usize) {
     });
 
     if mode > 2 {
+        log::error!("plr_cmd_mode: invalid mode {}", mode);
         return;
     }
 
@@ -6378,18 +6188,81 @@ fn plr_cmd_mode(nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index sending the movement target
 fn plr_cmd_move(nr: usize) {
-    let (x, y, cn) = Server::with_players(|players| {
-        let x = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]) as i32;
-        let y = u16::from_le_bytes([players[nr].inbuf[3], players[nr].inbuf[4]]) as i32;
-        (x, y, players[nr].usnr)
+    use std::sync::Once;
+
+    static WARNED_U32_Y: Once = Once::new();
+
+    let (x_raw, y_raw_u32, cn, inbuf) = Server::with_players(|players| {
+        let inbuf = players[nr].inbuf[0..16].to_vec();
+
+        let x = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]);
+
+        // Some clients encode y as u16 (C++ original), others as u32.
+        // Layout for the u32 variant is: [cmd][x:u16][y:u32] => y starts at offset 3.
+        let y_u16 = u16::from_le_bytes([players[nr].inbuf[3], players[nr].inbuf[4]]) as u32;
+        let y_u32 = u32::from_le_bytes([
+            players[nr].inbuf[3],
+            players[nr].inbuf[4],
+            players[nr].inbuf[5],
+            players[nr].inbuf[6],
+        ]);
+        let y = if players[nr].inbuf[5] != 0 || players[nr].inbuf[6] != 0 {
+            WARNED_U32_Y.call_once(|| {
+                log::warn!(
+                    "plr_cmd_move: detected client encoding y as u32 (bytes[5..7] non-zero); interpreting CL_CMD_MOVE as [cmd][x:u16][y:u32]"
+                );
+            });
+            y_u32
+        } else {
+            y_u16
+        };
+
+        (x, y, players[nr].usnr, inbuf)
     });
+
+    let y_raw_u16 = if y_raw_u32 > u16::MAX as u32 {
+        log::warn!(
+            "plr_cmd_move: cn={} got y={} (too large), clamping",
+            cn,
+            y_raw_u32
+        );
+        u16::MAX
+    } else {
+        y_raw_u32 as u16
+    };
+
+    // TODO: Remove this now that we have fixed the tick buffer issues.
+    let half_x: u16 = (core::constants::TILEX / 2) as u16;
+    let half_y: u16 = (core::constants::TILEY / 2) as u16;
+
+    // Normalize target: many clients send click coordinates relative to the
+    // visible window; server-side movement uses world coordinates.
+    let x = x_raw.saturating_sub(half_x);
+    let y = y_raw_u16.saturating_sub(half_y);
+
+    log::info!(
+        "plr_cmd_move: cn={} to {},{} (raw {},{})",
+        cn,
+        x,
+        y,
+        x_raw,
+        y_raw_u16
+    );
+    log::debug!("plr_cmd_move: inbuf[0..16]={:02X?}", &inbuf);
 
     let ticker = Repository::with_globals(|g| g.ticker as i32);
 
     Repository::with_characters_mut(|ch| {
+        let current_position = (ch[cn].x, ch[cn].y);
+        log::info!(
+            "plr_cmd_move: current_position = ({},{})",
+            current_position.0,
+            current_position.1,
+        );
+
         ch[cn].attack_cn = 0;
-        ch[cn].goto_x = x as u16;
-        ch[cn].goto_y = y as u16;
+        ch[cn].goto_x = x_raw;
+        ch[cn].goto_y = y_raw_u16;
         ch[cn].misc_action = 0;
         ch[cn].cerrno = 0;
         ch[cn].data[12] = ticker;

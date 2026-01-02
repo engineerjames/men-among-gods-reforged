@@ -1099,7 +1099,12 @@ impl State {
                 &format!("You get {} experience points.\n", p),
             );
             self.do_notify_character(cn as u32, core::constants::NT_GOTEXP as i32, p, 0, 0, 0);
-            log::info!("TODO: chlog({}, 'Gets {} EXP')", cn, p);
+            chlog!(
+                cn,
+                "Gets {} EXP (total {})",
+                p,
+                Repository::with_characters(|ch| ch[cn].points_tot)
+            );
             self.do_update_char(cn);
             self.do_check_new_level(cn);
         }
@@ -1109,6 +1114,7 @@ impl State {
     ///
     /// Handle when a character says something.
     pub(crate) fn do_say(&mut self, cn: usize, text: &str) {
+        log::debug!("do_say: cn={}, text={}", cn, text);
         // Rate limiting for players (skip for direct '|' logs)
         if Repository::with_characters(|ch| {
             (ch[cn].flags & CharacterFlags::CF_PLAYER.bits()) != 0 && !text.starts_with('|')
@@ -1196,7 +1202,11 @@ impl State {
 
         // direct log write from client
         if text.starts_with('|') {
-            log::info!("TODO: chlog({}, '%s')", cn);
+            chlog!(
+                cn,
+                "{}",
+                &text[1..] // skip '|'
+            );
             return;
         }
 
@@ -1290,14 +1300,11 @@ impl State {
 
         if m_val == 4 {
             God::slap(0, cn);
-            log::info!(
-                "TODO: chlog({}, 'Punished for trying to fake another character')",
-                cn
-            );
+            chlog!(cn, "Punished for trying to fake another character");
         }
 
         if is_player_or_usurp {
-            log::info!("TODO: chlog({}, 'Says \"{}\"', ptr != text)", cn, text);
+            chlog!(cn, "Says \"{}\"", ptr);
         }
 
         // Lab 9 support
