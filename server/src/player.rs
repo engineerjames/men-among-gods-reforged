@@ -6140,15 +6140,18 @@ fn plr_cmd_setuser(_nr: usize) {
                         .iter()
                         .position(|&c| c == 0)
                         .unwrap_or(name_bytes.len());
-                    let mut flag: i32 = 0;
-
-                    // Check length constraints
-                    if name_end > 3
+                    // IMPORTANT: Match the C++ gating logic.
+                    // Only validate/commit the name when the user is new AND the name length is sane.
+                    // Otherwise, do not touch `name`/`reference` (prevents committing empty names).
+                    let should_process_name = name_end > 3
                         && name_end < 38
                         && (ch[cn].flags
                             & core::constants::CharacterFlags::CF_NEWUSER.bits() as u64)
-                            != 0
-                    {
+                            != 0;
+
+                    if should_process_name {
+                        let mut flag: i32 = 0;
+
                         // validate letters only and lowercase
                         for n in 0..name_end {
                             let b = name_bytes[n];
@@ -6208,55 +6211,77 @@ fn plr_cmd_setuser(_nr: usize) {
                                 }
                             }
 
+                            // C++ also rejects names which match mob/template names.
+                            if flag == 0 {
+                                let matches_template =
+                                    Repository::with_character_templates(|temps| {
+                                        for t in 1..core::constants::MAXTCHARS {
+                                            if temps[t].get_name() == name_str {
+                                                return true;
+                                            }
+                                        }
+                                        false
+                                    });
+
+                                if matches_template {
+                                    log::warn!(
+                                        "plr_cmd_setuser: name \"{}\" matches template name",
+                                        name_str
+                                    );
+                                    flag = 2;
+                                }
+                            }
+
                             // TODO: badname check unavailable in Rust port; skip CF_NODESC check here
                         }
-                    }
 
-                    // If flag set -> report and don't commit name change
-                    if flag != 0 {
-                        let name_str = {
-                            let end = ch[cn].text[0]
-                                .iter()
-                                .position(|&c| c == 0)
-                                .unwrap_or(ch[cn].text[0].len());
-                            String::from_utf8_lossy(&ch[cn].text[0][..end]).to_string()
-                        };
-                        let reason = if flag == 1 {
-                            "contains non-letters. Please choose a more normal-looking name."
-                                .to_string()
-                        } else if flag == 2 {
-                            "is already in use. Please try to choose another name.".to_string()
+                        // If flag set -> report and don't commit name change
+                        if flag != 0 {
+                            let name_str = {
+                                let end = ch[cn].text[0]
+                                    .iter()
+                                    .position(|&c| c == 0)
+                                    .unwrap_or(ch[cn].text[0].len());
+                                String::from_utf8_lossy(&ch[cn].text[0][..end]).to_string()
+                            };
+                            let reason = if flag == 1 {
+                                "contains non-letters. Please choose a more normal-looking name."
+                                    .to_string()
+                            } else if flag == 2 {
+                                "is already in use. Please try to choose another name.".to_string()
+                            } else {
+                                "is deemed inappropriate. Please try to choose another name."
+                                    .to_string()
+                            };
+
+                            State::with(|state| {
+                                state.do_character_log(
+                                    cn,
+                                    core::types::FontColor::Green,
+                                    &format!(
+                                        "The name \"{}\" you have chosen for your character {}\n",
+                                        name_str, reason
+                                    ),
+                                );
+                            });
                         } else {
-                            "is deemed inappropriate. Please try to choose another name."
-                                .to_string()
-                        };
+                            // Commit name -> copy into name and reference (40 bytes)
+                            let name_end =
+                                ch[cn].text[0].iter().position(|&c| c == 0).unwrap_or(40);
+                            for i in 0..40 {
+                                ch[cn].name[i] = if i < name_end { ch[cn].text[0][i] } else { 0 };
+                                ch[cn].reference[i] = ch[cn].name[i];
+                            }
+                            // clear CF_NEWUSER flag
+                            ch[cn].flags &=
+                                !(core::constants::CharacterFlags::CF_NEWUSER.bits() as u64);
 
-                        State::with(|state| {
-                            state.do_character_log(
+                            log::info!(
+                                "plr_cmd_setuser: committed name change for cn={} to \"{}\"",
                                 cn,
-                                core::types::FontColor::Green,
-                                &format!(
-                                    "The name \"{}\" you have chosen for your character {}\n",
-                                    name_str, reason
-                                ),
+                                ch[cn].get_name()
                             );
-                        });
-                    } else {
-                        // Commit name -> copy into name and reference (40 bytes)
-                        let name_end = ch[cn].text[0].iter().position(|&c| c == 0).unwrap_or(40);
-                        for i in 0..40 {
-                            ch[cn].name[i] = if i < name_end { ch[cn].text[0][i] } else { 0 };
-                            ch[cn].reference[i] = ch[cn].name[i];
                         }
-                        // clear CF_NEWUSER flag
-                        ch[cn].flags &=
-                            !(core::constants::CharacterFlags::CF_NEWUSER.bits() as u64);
-
-                        log::info!(
-                            "plr_cmd_setuser: committed name change for cn={} to \"{}\"",
-                            cn,
-                            ch[cn].get_name()
-                        );
                     }
 
                     // Description handling: copy text[1] and possibly append text[2]
