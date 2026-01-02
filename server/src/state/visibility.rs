@@ -7,6 +7,36 @@ use crate::repository::Repository;
 use super::State;
 
 impl State {
+    #[inline]
+    fn vis_buf(&self) -> &[i8; 40 * 40] {
+        if self.vis_is_global {
+            &self._visi
+        } else {
+            &self.visi
+        }
+    }
+
+    #[inline]
+    fn vis_buf_mut(&mut self) -> &mut [i8; 40 * 40] {
+        if self.vis_is_global {
+            &mut self._visi
+        } else {
+            &mut self.visi
+        }
+    }
+
+    #[inline]
+    fn vis_index(&self, x: i32, y: i32) -> Option<usize> {
+        let rx = x - self.ox + 20;
+        let ry = y - self.oy + 20;
+
+        if rx < 0 || rx >= 40 || ry < 0 || ry >= 40 {
+            None
+        } else {
+            Some((rx + ry * 40) as usize)
+        }
+    }
+
     /// Port of `do_add_light(x, y, strength)` from the original `helper.cpp`.
     ///
     /// Adds light originating at `(x_center, y_center)` and spreads it to
@@ -241,34 +271,33 @@ impl State {
         ty: i32,
         max_distance: i32,
     ) -> i32 {
-        if cn.is_some() {
-            self.visi = Repository::with_see_map(|see_map| see_map[cn.unwrap()].vis);
+        if let Some(cn) = cn {
+            // Use the per-character see-map cache. In the C++ original, `visi`
+            // pointed directly at `see[cn].vis`; in Rust we copy it into `self.visi`
+            // and write it back after rebuilding.
+            self.vis_is_global = false;
+            self.visi = Repository::with_see_map(|see_map| see_map[cn].vis);
 
-            let see_x = Repository::with_see_map(|see_map| see_map[cn.unwrap()].x);
-            let see_y = Repository::with_see_map(|see_map| see_map[cn.unwrap()].y);
+            let (see_x, see_y) = Repository::with_see_map(|see_map| (see_map[cn].x, see_map[cn].y));
 
             if fx != see_x || fy != see_y {
-                let ch_kindred =
-                    Repository::with_characters(|characters| characters[cn.unwrap()].kindred);
+                let (ch_kindred, ch_flags) = Repository::with_characters(|characters| {
+                    (characters[cn].kindred, characters[cn].flags)
+                });
 
-                let ch_flags =
-                    Repository::with_characters(|characters| characters[cn.unwrap()].flags);
-
-                if ch_kindred & KIN_MONSTER as i32 != 0
+                self.is_monster = ch_kindred & KIN_MONSTER as i32 != 0
                     && (ch_flags
                         & (CharacterFlags::CF_USURP.bits() | CharacterFlags::CF_THRALL.bits()))
-                        == 0
-                {
-                    self.is_monster = true;
-                } else {
-                    self.is_monster = false;
-                }
+                        == 0;
 
                 self.can_map_see(fx, fy, max_distance);
+
                 Repository::with_see_map_mut(|see_map| {
-                    see_map[cn.unwrap()].x = fx;
-                    see_map[cn.unwrap()].y = fy;
+                    see_map[cn].x = fx;
+                    see_map[cn].y = fy;
+                    see_map[cn].vis = self.visi;
                 });
+
                 self.see_miss += 1;
             } else {
                 self.see_hit += 1;
@@ -276,8 +305,9 @@ impl State {
                 self.oy = fy;
             }
         } else {
-            if self.visi != self._visi {
-                self.visi = self._visi;
+            // Global visibility buffer (used by lighting and non-character LOS checks)
+            if !self.vis_is_global {
+                self.vis_is_global = true;
                 self.ox = 0;
                 self.oy = 0;
             }
@@ -301,8 +331,9 @@ impl State {
     /// * `fx, fy` - Origin coordinates
     /// * `max_distance` - Maximum radius to build
     pub(crate) fn can_map_go(&mut self, fx: i32, fy: i32, max_distance: i32) {
-        // Clear the visibility array
-        self._visi.fill(0);
+        // `can_go` always uses the global buffer.
+        self.vis_is_global = true;
+        self.vis_buf_mut().fill(0);
 
         self.ox = fx;
         self.oy = fy;
@@ -351,8 +382,8 @@ impl State {
     /// * `fx, fy` - Origin coordinates
     /// * `max_distance` - Maximum radius to compute
     fn can_map_see(&mut self, fx: i32, fy: i32, max_distance: i32) {
-        // Clear the visibility array
-        self._visi.fill(0);
+        // Clear the active visibility buffer (global or per-character).
+        self.vis_buf_mut().fill(0);
 
         self.ox = fx;
         self.oy = fy;
@@ -401,8 +432,8 @@ impl State {
     /// * `fx, fy` - Start coordinates
     /// * `target_x, target_y` - Destination coordinates
     pub(crate) fn can_go(&mut self, fx: i32, fy: i32, target_x: i32, target_y: i32) -> i32 {
-        if self.visi != self._visi {
-            self.visi = self._visi;
+        if !self.vis_is_global {
+            self.vis_is_global = true;
             self.ox = 0;
             self.oy = 0;
         }
@@ -708,45 +739,52 @@ impl State {
         let x = x - self.ox + 20;
         let y = y - self.oy + 20;
 
-        if self.visi[((x + 1) + (y + 0) * 40) as usize] != 0
-            && self.visi[((x + 1) + (y + 0) * 40) as usize] < best
-        {
-            best = self.visi[((x + 1) + (y + 0) * 40) as usize];
+        // Needs a 1-tile border for +/-1 neighbor checks.
+        if x <= 0 || x >= 39 || y <= 0 || y >= 39 {
+            return 0;
         }
-        if self.visi[((x - 1) + (y + 0) * 40) as usize] != 0
-            && self.visi[((x - 1) + (y + 0) * 40) as usize] < best
+
+        let visi = self.vis_buf();
+
+        if visi[((x + 1) + (y + 0) * 40) as usize] != 0
+            && visi[((x + 1) + (y + 0) * 40) as usize] < best
         {
-            best = self.visi[((x - 1) + (y + 0) * 40) as usize];
+            best = visi[((x + 1) + (y + 0) * 40) as usize];
         }
-        if self.visi[((x + 0) + (y + 1) * 40) as usize] != 0
-            && self.visi[((x + 0) + (y + 1) * 40) as usize] < best
+        if visi[((x - 1) + (y + 0) * 40) as usize] != 0
+            && visi[((x - 1) + (y + 0) * 40) as usize] < best
         {
-            best = self.visi[((x + 0) + (y + 1) * 40) as usize];
+            best = visi[((x - 1) + (y + 0) * 40) as usize];
         }
-        if self.visi[((x + 0) + (y - 1) * 40) as usize] != 0
-            && self.visi[((x + 0) + (y - 1) * 40) as usize] < best
+        if visi[((x + 0) + (y + 1) * 40) as usize] != 0
+            && visi[((x + 0) + (y + 1) * 40) as usize] < best
         {
-            best = self.visi[((x + 0) + (y - 1) * 40) as usize];
+            best = visi[((x + 0) + (y + 1) * 40) as usize];
         }
-        if self.visi[((x + 1) + (y + 1) * 40) as usize] != 0
-            && self.visi[((x + 1) + (y + 1) * 40) as usize] < best
+        if visi[((x + 0) + (y - 1) * 40) as usize] != 0
+            && visi[((x + 0) + (y - 1) * 40) as usize] < best
         {
-            best = self.visi[((x + 1) + (y + 1) * 40) as usize];
+            best = visi[((x + 0) + (y - 1) * 40) as usize];
         }
-        if self.visi[((x + 1) + (y - 1) * 40) as usize] != 0
-            && self.visi[((x + 1) + (y - 1) * 40) as usize] < best
+        if visi[((x + 1) + (y + 1) * 40) as usize] != 0
+            && visi[((x + 1) + (y + 1) * 40) as usize] < best
         {
-            best = self.visi[((x + 1) + (y - 1) * 40) as usize];
+            best = visi[((x + 1) + (y + 1) * 40) as usize];
         }
-        if self.visi[((x - 1) + (y + 1) * 40) as usize] != 0
-            && self.visi[((x - 1) + (y + 1) * 40) as usize] < best
+        if visi[((x + 1) + (y - 1) * 40) as usize] != 0
+            && visi[((x + 1) + (y - 1) * 40) as usize] < best
         {
-            best = self.visi[((x - 1) + (y + 1) * 40) as usize];
+            best = visi[((x + 1) + (y - 1) * 40) as usize];
         }
-        if self.visi[((x - 1) + (y - 1) * 40) as usize] != 0
-            && self.visi[((x - 1) + (y - 1) * 40) as usize] < best
+        if visi[((x - 1) + (y + 1) * 40) as usize] != 0
+            && visi[((x - 1) + (y + 1) * 40) as usize] < best
         {
-            best = self.visi[((x - 1) + (y - 1) * 40) as usize];
+            best = visi[((x - 1) + (y + 1) * 40) as usize];
+        }
+        if visi[((x - 1) + (y - 1) * 40) as usize] != 0
+            && visi[((x - 1) + (y - 1) * 40) as usize] < best
+        {
+            best = visi[((x - 1) + (y - 1) * 40) as usize];
         }
 
         if best == 99 {
@@ -765,8 +803,13 @@ impl State {
     /// * `x, y` - World coordinates to write
     /// * `value` - Visibility value to store
     pub(crate) fn add_vis(&mut self, x: i32, y: i32, value: i32) {
-        if (self.visi[((x - self.ox + 20) + (y - self.oy + 20) * 40) as usize]) == 0 {
-            self.visi[((x - self.ox + 20) + (y - self.oy + 20) * 40) as usize] = value as i8;
+        let Some(index) = self.vis_index(x, y) else {
+            return;
+        };
+
+        let visi = self.vis_buf_mut();
+        if visi[index] == 0 {
+            visi[index] = value as i8;
         }
     }
 
@@ -787,28 +830,34 @@ impl State {
         let x = x - self.ox + 20;
         let y = y - self.oy + 20;
 
-        if self.visi[((x + 1) + (y) * 40) as usize] == value {
+        if x <= 0 || x >= 39 || y <= 0 || y >= 39 {
+            return false;
+        }
+
+        let visi = self.vis_buf();
+
+        if visi[((x + 1) + (y) * 40) as usize] == value {
             return true;
         }
-        if self.visi[((x - 1) + (y) * 40) as usize] == value {
+        if visi[((x - 1) + (y) * 40) as usize] == value {
             return true;
         }
-        if self.visi[((x) + (y + 1) * 40) as usize] == value {
+        if visi[((x) + (y + 1) * 40) as usize] == value {
             return true;
         }
-        if self.visi[((x) + (y - 1) * 40) as usize] == value {
+        if visi[((x) + (y - 1) * 40) as usize] == value {
             return true;
         }
-        if self.visi[((x + 1) + (y + 1) * 40) as usize] == value {
+        if visi[((x + 1) + (y + 1) * 40) as usize] == value {
             return true;
         }
-        if self.visi[((x + 1) + (y - 1) * 40) as usize] == value {
+        if visi[((x + 1) + (y - 1) * 40) as usize] == value {
             return true;
         }
-        if self.visi[((x - 1) + (y + 1) * 40) as usize] == value {
+        if visi[((x - 1) + (y + 1) * 40) as usize] == value {
             return true;
         }
-        if self.visi[((x - 1) + (y - 1) * 40) as usize] == value {
+        if visi[((x - 1) + (y - 1) * 40) as usize] == value {
             return true;
         }
 
@@ -920,28 +969,34 @@ impl State {
         let x = x - self.ox + 20;
         let y = y - self.oy + 20;
 
-        if self.visi[((x + 1) + (y) * 40) as usize] == value {
+        if x <= 0 || x >= 39 || y <= 0 || y >= 39 {
+            return false;
+        }
+
+        let visi = self.vis_buf();
+
+        if visi[((x + 1) + (y) * 40) as usize] == value {
             return true;
         }
-        if self.visi[((x - 1) + (y) * 40) as usize] == value {
+        if visi[((x - 1) + (y) * 40) as usize] == value {
             return true;
         }
-        if self.visi[((x) + (y + 1) * 40) as usize] == value {
+        if visi[((x) + (y + 1) * 40) as usize] == value {
             return true;
         }
-        if self.visi[((x) + (y - 1) * 40) as usize] == value {
+        if visi[((x) + (y - 1) * 40) as usize] == value {
             return true;
         }
-        if self.visi[((x + 1) + (y + 1) * 40) as usize] == value {
+        if visi[((x + 1) + (y + 1) * 40) as usize] == value {
             return true;
         }
-        if self.visi[((x + 1) + (y - 1) * 40) as usize] == value {
+        if visi[((x + 1) + (y - 1) * 40) as usize] == value {
             return true;
         }
-        if self.visi[((x - 1) + (y + 1) * 40) as usize] == value {
+        if visi[((x - 1) + (y + 1) * 40) as usize] == value {
             return true;
         }
-        if self.visi[((x - 1) + (y - 1) * 40) as usize] == value {
+        if visi[((x - 1) + (y - 1) * 40) as usize] == value {
             return true;
         }
         return false;
