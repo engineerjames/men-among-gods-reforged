@@ -2973,9 +2973,14 @@ pub fn plr_getmap_complete(nr: usize) {
 
                 // Begin of character
                 let co = map_m.ch as usize;
-                let tmp_see = State::with_mut(|state| state.do_char_can_see(cn, co));
-                let char_co = Repository::with_characters(|characters| characters[co]);
-                if visible && co != 0 && map_m.ch != 0 && tmp_see != 0 {
+                let tmp_see = if visible && co != 0 {
+                    State::with_mut(|state| state.do_char_can_see(cn, co))
+                } else {
+                    0
+                };
+
+                if tmp_see != 0 {
+                    let char_co = Repository::with_characters(|characters| characters[co]);
                     if char_co.sprite_override != 0 {
                         smap[n].ch_sprite = char_co.sprite_override as i16;
                     } else {
