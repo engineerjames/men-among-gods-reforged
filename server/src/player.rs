@@ -2852,16 +2852,7 @@ pub fn plr_getmap_complete(nr: usize) {
             }
 
             // Begin of flags
-            // TODO: Verify this is actually empty tile behavior
             smap[n].flags = 0;
-            //             smap[n].ch_sprite = 0;
-            //             smap[n].it_sprite = 0;
-            //             smap[n].ch_status = 0;
-            //             smap[n].it_status = 0;
-            //             smap[n].ch_speed = 0;
-            //             smap[n].ch_nr = 0;
-            //             smap[n].ch_id = 0;
-            //             smap[n].ch_proz = 0;
 
             Repository::with_map(|map| {
                 if map[m].flags
@@ -2984,7 +2975,7 @@ pub fn plr_getmap_complete(nr: usize) {
                 let co = map_m.ch as usize;
                 let tmp_see = State::with_mut(|state| state.do_char_can_see(cn, co));
                 let char_co = Repository::with_characters(|characters| characters[co]);
-                if visible && map_m.ch != 0 && tmp_see != 0 {
+                if visible && co != 0 && map_m.ch != 0 && tmp_see != 0 {
                     if char_co.sprite_override != 0 {
                         smap[n].ch_sprite = char_co.sprite_override as i16;
                     } else {
@@ -3012,9 +3003,14 @@ pub fn plr_getmap_complete(nr: usize) {
                         smap[n].flags |= STUNNED | STONED;
                     }
                 } else {
-                    let mut new_cmap = core::types::CMap::default();
-                    new_cmap.ba_sprite = core::constants::SPR_EMPTY as i16;
-                    smap[n] = new_cmap;
+                    // Just clear character flags
+                    smap[n].ch_sprite = 0;
+                    smap[n].ch_status = 0;
+                    smap[n].ch_status2 = 0;
+                    smap[n].ch_speed = 0;
+                    smap[n].ch_nr = 0;
+                    smap[n].ch_id = 0;
+                    smap[n].ch_proz = 0;
                 }
 
                 // Begin of item
@@ -3056,6 +3052,7 @@ pub fn plr_getmap_complete(nr: usize) {
                         smap[n].flags |= ISUSABLE;
                     }
                 } else {
+                    // Just clear item flags
                     smap[n].it_sprite = 0;
                     smap[n].it_status = 0;
                 }

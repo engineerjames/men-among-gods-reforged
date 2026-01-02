@@ -43,7 +43,7 @@ impl Map {
     }
 
     pub fn add_light(&mut self, amount: i32) {
-        let new_light = self.light.saturating_add(amount as i16);
+        let new_light = self.light + amount as i16;
         self.light = new_light.clamp(0, i16::MAX); // TODO: What is the actual max light value?
     }
 

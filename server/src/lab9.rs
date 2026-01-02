@@ -425,7 +425,7 @@ impl Labyrinth9 {
             return false;
         }
 
-        Repository::with_characters_mut(|characters| {
+        let return_value = Repository::with_characters_mut(|characters| {
             let riddler = characters[character_id].data[core::constants::CHD_RIDDLER];
 
             // Valid riddler?
@@ -556,7 +556,9 @@ impl Labyrinth9 {
             }
 
             return true;
-        })
+        });
+
+        return return_value;
     }
 
     pub fn lab9_pose_riddle(&mut self, riddler_id: usize, character_id: usize) {
