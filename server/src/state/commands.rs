@@ -638,6 +638,8 @@ impl State {
 
         let first = cmd.chars().next().unwrap_or('\0');
 
+        log::debug!("Command received from {}: cmd={} ptr={}", cn, cmd, ptr);
+
         match first {
             'a' => {
                 if starts("afk") && f_p {

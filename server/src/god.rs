@@ -2913,133 +2913,148 @@ impl God {
         })
     }
 
-    /// Place a character in tavern mode (special safe area/status).
+    /// Logs out the player when they walk into a tavern.
     ///
     /// # Arguments
     /// * `cn` - Target character
     pub fn tavern(cn: usize) {
         if !Character::is_sane_character(cn) {
+            log::error!("god_tavern() called with invalid character number: {}", cn);
             return;
         }
 
-        Repository::with_characters_mut(|characters| {
-            let character = &mut characters[cn];
-            character.hp[5] = character.hp[0];
-            character.end[5] = character.end[0];
-            character.mana[5] = character.mana[0];
-            character.set_do_update_flags();
+        if Repository::with_characters(|ch| ch[cn].is_usurp_or_thrall()) {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    "NPCs cannot use the tavern.\n",
+                );
+            });
+            return;
+        }
+
+        if Repository::with_characters(|ch| ch[cn].is_building()) {
+            log::info!("god_tavern() called for building character: {}", cn);
+            God::build_stop(cn);
+        }
+
+        let player_id = Repository::with_characters_mut(|ch| {
+            ch[cn].tavern_x = ch[cn].x as u16;
+            ch[cn].tavern_y = ch[cn].y as u16;
+
+            ch[cn].player as usize
         });
 
-        State::with(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                &format!("Character {} fully healed at tavern\n", cn),
-            );
-        });
+        chlog!(cn, "Entered tavern and will be logged out.");
+        player::plr_logout(cn, player_id, LogoutReason::Tavern);
     }
 
-    /// Raise an attribute/stat for a target character by `value` steps.
-    ///
-    /// Admin command used to adjust character stats.
+    /// Admin command used to adjust a character's experience.
     ///
     /// # Arguments
     /// * `cn` - Requesting character
     /// * `co` - Target character
     /// * `value` - Increase amount
     pub fn raise_char(cn: usize, co: usize, value: i32) {
-        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
-            return;
-        }
-
-        if value < 1 || value > 5 {
+        if !Character::is_sane_character(co) {
             State::with(|state| {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Red,
-                    &format!("Invalid raise value: {}\n", value),
+                    &format!("Invalid character number: {}\n", co),
                 );
             });
             return;
         }
 
-        Repository::with_characters_mut(|characters| {
-            let target = &mut characters[co];
-
-            // Raise stats based on value
-            for _ in 0..value {
-                target.attrib[0][0] = (target.attrib[0][0] + 1).min(127);
-                target.attrib[0][1] = (target.attrib[0][1] + 1).min(127);
-                target.attrib[0][2] = (target.attrib[0][2] + 1).min(127);
-                target.attrib[0][3] = (target.attrib[0][3] + 1).min(127);
-                target.attrib[0][4] = (target.attrib[0][4] + 1).min(127);
-            }
-
-            target.set_do_update_flags();
-
+        if value < 0 {
             State::with(|state| {
                 state.do_character_log(
                     cn,
-                    core::types::FontColor::Green,
-                    &format!(
-                        "Raised character {} stats by {}\n",
-                        target.get_name(),
-                        value
-                    ),
+                    core::types::FontColor::Red,
+                    &format!("Invalid raise value - must be positive: {}\n", value),
                 );
             });
+            return;
+        }
+
+        Repository::with_characters_mut(|ch| {
+            ch[co].points += value;
+            ch[co].points_tot += value;
+        });
+
+        chlog!(
+            cn,
+            "Raised character {} experience by {}\n",
+            Repository::with_characters(|characters| characters[co].get_name().to_string()),
+            value
+        );
+
+        State::with_mut(|state| {
+            state.do_character_log(
+                co,
+                core::types::FontColor::Green,
+                format!(
+                    "You have been rewarded by the gods. You receive {} experience points.\n",
+                    value
+                )
+                .as_str(),
+            )
         });
     }
 
-    /// Lower an attribute/stat for a target character by `value` steps.
-    ///
-    /// Admin command used to adjust character stats downward.
+    /// Admin command used to adjust character experience downward.
     ///
     /// # Arguments
     /// * `cn` - Requesting character
     /// * `co` - Target character
     /// * `value` - Decrease amount
     pub fn lower_char(cn: usize, co: usize, value: i32) {
-        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
-            return;
-        }
-
-        if value < 1 || value > 5 {
+        if !Character::is_sane_character(co) {
             State::with(|state| {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Red,
-                    &format!("Invalid lower value: {}\n", value),
+                    &format!("Invalid character number: {}\n", co),
                 );
             });
             return;
         }
 
-        Repository::with_characters_mut(|characters| {
-            let target = &mut characters[co];
-
-            // Lower stats based on value
-            for _ in 0..value {
-                target.attrib[0][0] = (target.attrib[0][0] - 1).max(1);
-                target.attrib[0][1] = (target.attrib[0][1] - 1).max(1);
-                target.attrib[0][2] = (target.attrib[0][2] - 1).max(1);
-                target.attrib[0][3] = (target.attrib[0][3] - 1).max(1);
-                target.attrib[0][4] = (target.attrib[0][4] - 1).max(1);
-            }
-
-            target.set_do_update_flags();
-
+        if value < 1 {
             State::with(|state| {
                 state.do_character_log(
                     cn,
-                    core::types::FontColor::Green,
-                    &format!(
-                        "Lowered character {} stats by {}\n",
-                        target.get_name(),
-                        value
-                    ),
+                    core::types::FontColor::Red,
+                    &format!("Invalid lower value - must be positive: {}\n", value),
                 );
             });
+            return;
+        }
+
+        Repository::with_characters_mut(|ch| {
+            ch[co].points -= value;
+            ch[co].points_tot -= value;
+        });
+
+        chlog!(
+            cn,
+            "Lowered character {} experience by {}\n",
+            Repository::with_characters(|characters| characters[co].get_name().to_string()),
+            value
+        );
+
+        State::with_mut(|state| {
+            state.do_character_log(
+                co,
+                core::types::FontColor::Red,
+                format!(
+                    "You have been punished by the gods. You lose {} experience points.\n",
+                    value
+                )
+                .as_str(),
+            )
         });
     }
 
