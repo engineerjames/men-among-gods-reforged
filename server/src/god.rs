@@ -753,7 +753,7 @@ impl God {
 
         for (try_x, try_y) in positions_to_try.iter() {
             let early_return = State::with_mut(|state| {
-                if state.can_go(*try_x as i32, *try_y as i32, *try_x as i32, *try_y as i32)
+                if state.can_go(*try_x as i32, *try_y as i32, *try_x as i32, *try_y as i32) != 0
                     && Self::drop_char(character_id, *try_x, *try_y)
                 {
                     return true;
@@ -821,7 +821,8 @@ impl God {
                     center_y as i32,
                     *try_x as i32,
                     *try_y as i32,
-                ) && Self::drop_char(character_id, *try_x, *try_y)
+                ) != 0
+                    && Self::drop_char(character_id, *try_x, *try_y)
                 {
                     return true;
                 }

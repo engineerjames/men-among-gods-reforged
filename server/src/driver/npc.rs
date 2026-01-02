@@ -2083,7 +2083,7 @@ pub fn npc_driver_low(cn: usize) {
 
                 if State::with_mut(|state| {
                     state.can_go(ch_x as i32, ch_y as i32, x as i32, y as i32)
-                }) == false
+                }) == 0
                 {
                     panic = attempt + 1;
                     continue;
@@ -2686,7 +2686,7 @@ pub fn npc_grave_logic(cn: usize) -> bool {
 
                     // Check if we can reach the grave and haven't searched it yet
                     let can_reach = State::with_mut(|state| {
-                        state.can_go(ch_x as i32, ch_y as i32, it_x as i32, it_y as i32)
+                        state.can_go(ch_x as i32, ch_y as i32, it_x as i32, it_y as i32) != 0
                     });
 
                     let can_see =

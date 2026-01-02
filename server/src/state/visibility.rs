@@ -62,7 +62,7 @@ impl State {
                 let v = self.can_see(None, x_center, y_center, x, y, core::constants::LIGHTDIST);
 
                 if v != 0 {
-                    let d = strength / (v * (x_center - x).abs() + (y_center - y).abs());
+                    let d = strength / (v * ((x_center - x).abs() + (y_center - y).abs()));
                     let map_index =
                         (y as usize) * core::constants::SERVER_MAPX as usize + (x as usize);
 
