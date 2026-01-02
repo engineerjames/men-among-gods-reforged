@@ -4127,6 +4127,7 @@ pub fn plr_change(nr: usize) {
     let cn = Server::with_players(|players| players[nr].usnr as usize);
 
     if cn == 0 || cn >= core::constants::MAXCHARS {
+        log::error!("plr_change: invalid character number {}", cn);
         return;
     }
 
