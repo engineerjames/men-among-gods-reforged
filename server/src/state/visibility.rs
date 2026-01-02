@@ -1,6 +1,6 @@
 use core::constants::{CharacterFlags, ItemFlags, KIN_MONSTER};
 use core::types::Character;
-use std::cmp;
+use std::{backtrace, cmp};
 
 use crate::repository::Repository;
 
@@ -17,7 +17,7 @@ impl State {
     /// # Arguments
     /// * `x_center, y_center` - Source coordinates for the light
     /// * `strength` - Light strength (negative to subtract)
-    pub(crate) fn do_add_light(&mut self, x_center: i32, y_center: i32, mut strength: i32) {
+    pub(crate) fn do_add_light(&mut self, x_center: i32, y_center: i32, strength: i32) {
         // First add light to the center
         let center_map_index =
             (y_center as usize) * core::constants::SERVER_MAPX as usize + (x_center as usize);
@@ -26,6 +26,7 @@ impl State {
             map_tiles[center_map_index].add_light(strength);
         });
 
+        let mut strength = strength;
         let flag = if strength < 0 {
             strength = -strength;
             1
@@ -349,7 +350,7 @@ impl State {
     /// # Arguments
     /// * `fx, fy` - Origin coordinates
     /// * `max_distance` - Maximum radius to compute
-    pub(crate) fn can_map_see(&mut self, fx: i32, fy: i32, max_distance: i32) {
+    fn can_map_see(&mut self, fx: i32, fy: i32, max_distance: i32) {
         // Clear the visibility array
         self._visi.fill(0);
 
@@ -492,6 +493,18 @@ impl State {
     pub(crate) fn do_char_can_see(&mut self, cn: usize, co: usize) -> i32 {
         if cn == co {
             return 1;
+        }
+
+        if co == 0 || cn == 0 {
+            log::error!(
+                "do_char_can_see called with invalid character id(s): cn={}, co={}",
+                cn,
+                co
+            );
+
+            // TODO: Do this for all errors?
+            eprintln!("{:?}", backtrace::Backtrace::capture());
+            return 0;
         }
 
         let return_value = Repository::with_characters(|ch| {
@@ -689,7 +702,7 @@ impl State {
     ///
     /// # Arguments
     /// * `x, y` - Target coordinates relative to current origin
-    pub(crate) fn check_vis(&self, x: i32, y: i32) -> i32 {
+    fn check_vis(&self, x: i32, y: i32) -> i32 {
         let mut best = 99;
 
         let x = x - self.ox + 20;
@@ -766,7 +779,7 @@ impl State {
     /// # Arguments
     /// * `x, y` - Tile coordinates
     /// * `value` - Neighbor visibility value to match
-    pub(crate) fn close_vis_see(&self, x: i32, y: i32, value: i8) -> bool {
+    fn close_vis_see(&self, x: i32, y: i32, value: i8) -> bool {
         if !self.check_map_see(x, y) {
             return false;
         }
@@ -810,7 +823,7 @@ impl State {
     ///
     /// # Arguments
     /// * `x, y` - Tile coordinates to test
-    pub(crate) fn check_map_see(&self, x: i32, y: i32) -> bool {
+    fn check_map_see(&self, x: i32, y: i32) -> bool {
         // Check boundaries
         if x <= 0
             || x >= core::constants::SERVER_MAPX as i32
@@ -867,7 +880,7 @@ impl State {
     /// Returns `true` when the map tile at `(x,y)` is traversable for
     /// pathfinding. Checks map movement-block flags and items with
     /// `IF_MOVEBLOCK`.
-    pub(crate) fn check_map_go(&self, x: i32, y: i32) -> bool {
+    fn check_map_go(&self, x: i32, y: i32) -> bool {
         if x <= 0
             || x >= core::constants::SERVER_MAPX as i32
             || y <= 0
@@ -899,7 +912,7 @@ impl State {
     ///
     /// Returns `true` if tile `(x,y)` is traversable and is adjacent to a
     /// reachable tile with the specified `value`.
-    pub(crate) fn close_vis_go(&self, x: i32, y: i32, value: i8) -> bool {
+    fn close_vis_go(&self, x: i32, y: i32, value: i8) -> bool {
         if !self.check_map_go(x, y) {
             return false;
         }
