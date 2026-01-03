@@ -4,10 +4,10 @@ use core::{
 };
 
 use crate::{
-    chlog, driver,
+    area, chlog, driver,
     effect::EffectManager,
     enums::{CharacterFlags, LogoutReason},
-    player,
+    helpers, player, populate,
     repository::Repository,
     server::Server,
     state::State,
@@ -1616,7 +1616,7 @@ impl God {
             let posx = t.x as i32;
             let posy = t.y as i32;
             let p = t.points_tot as i32;
-            let need = crate::helpers::points_tolevel(t.points_tot as u32) as i32;
+            let need = helpers::points_tolevel(t.points_tot as u32) as i32;
             let player_flag =
                 (t.flags & (core::constants::CharacterFlags::CF_PLAYER.bits() as u64)) != 0;
             (
@@ -1678,8 +1678,8 @@ impl God {
 
         // Print header line depending on player or NPC
         if player_flag {
-            let rank = crate::helpers::points2rank(pts as u32) as usize;
-            let rank_short = crate::helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
+            let rank = helpers::points2rank(pts as u32) as usize;
+            let rank_short = helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
             State::with(|state| {
                 state.do_character_log(
                     cn,
@@ -1708,8 +1708,8 @@ impl God {
                     String::new()
                 }
             });
-            let rank = crate::helpers::points2rank(pts as u32) as usize;
-            let rank_short = crate::helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
+            let rank = helpers::points2rank(pts as u32) as usize;
+            let rank_short = helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
             State::with(|state| {
                 state.do_character_log(
                     cn,
@@ -1778,7 +1778,7 @@ impl God {
                             core::types::FontColor::Yellow,
                             &format!(
                                 "Last PvP attack: {}, against {}.\n",
-                                crate::helpers::ago_string(dt),
+                                helpers::ago_string(dt),
                                 victim_name
                             ),
                         )
@@ -1789,7 +1789,7 @@ impl God {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Yellow,
-                        &format!("Last PvP attack: {}.\n", crate::helpers::ago_string(dt)),
+                        &format!("Last PvP attack: {}.\n", helpers::ago_string(dt)),
                     )
                 });
             }
@@ -1992,29 +1992,152 @@ impl God {
 
         Repository::with_characters(|characters| {
             State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Green, "Online characters:");
-                for i in 1..core::constants::MAXCHARS as usize {
-                    if characters[i].is_living_character(i) && characters[i].is_player() {
-                        let points_to_print = characters[i].points;
-                        state.do_character_log(
-                            cn,
-                            core::types::FontColor::Green,
-                            &format!(
-                                "  {}: Points={} {}\n",
-                                characters[i].get_name(),
-                                points_to_print,
-                                if characters[i].flags
-                                    & core::constants::CharacterFlags::CF_GOD.bits()
-                                    != 0
-                                {
-                                    "[GOD]"
-                                } else {
-                                    ""
-                                }
-                            ),
-                        );
+                let cn_flags = characters[cn].flags;
+                let cn_is_god = (cn_flags & CharacterFlags::God.bits()) != 0;
+                let cn_is_imp_or_god =
+                    (cn_flags & (CharacterFlags::God.bits() | CharacterFlags::Imp.bits())) != 0;
+                let cn_is_god_imp_or_usurp = (cn_flags
+                    & (CharacterFlags::God.bits()
+                        | CharacterFlags::Imp.bits()
+                        | CharacterFlags::Usurp.bits()))
+                    != 0;
+
+                let cn_invis_level = helpers::invis_level(cn);
+
+                let mut players = 0;
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "-----------------------------------------------\n",
+                );
+
+                for n in 1..core::constants::MAXCHARS as usize {
+                    let c = &characters[n];
+                    if c.used != core::constants::USE_ACTIVE {
+                        continue;
                     }
+
+                    let n_flags = c.flags;
+                    let n_is_player = (n_flags & CharacterFlags::Player.bits()) != 0;
+                    let n_is_usurp = (n_flags & CharacterFlags::Usurp.bits()) != 0;
+                    let n_is_invisible = (n_flags & CharacterFlags::Invisible.bits()) != 0;
+                    let n_is_nowho = (n_flags & CharacterFlags::NoWho.bits()) != 0;
+                    let n_is_staff = (n_flags & CharacterFlags::Staff.bits()) != 0;
+                    let n_is_god = (n_flags & CharacterFlags::God.bits()) != 0;
+
+                    let font = if !n_is_player {
+                        if !n_is_usurp {
+                            continue;
+                        }
+                        if !cn_is_imp_or_god {
+                            continue;
+                        }
+                        core::types::FontColor::Blue
+                    } else if n_is_invisible {
+                        let n_invis_level = helpers::invis_level(n);
+                        if cn_invis_level < n_invis_level {
+                            continue;
+                        }
+                        core::types::FontColor::Red
+                    } else if n_is_nowho {
+                        if !cn_is_imp_or_god {
+                            continue;
+                        }
+                        core::types::FontColor::Blue
+                    } else if n_is_staff || n_is_god {
+                        core::types::FontColor::Green
+                    } else {
+                        core::types::FontColor::Yellow
+                    };
+
+                    players += 1;
+
+                    let mut showarea = true;
+                    if n_is_god && !cn_is_god {
+                        showarea = false;
+                    }
+                    let n_is_purple = (c.kindred as u32 & core::constants::KIN_PURPLE) != 0;
+                    if n_is_purple && !cn_is_god_imp_or_usurp {
+                        showarea = false;
+                    }
+
+                    let name = c.get_name();
+                    let points_str = helpers::format_number(c.points_tot);
+                    let area_str = if showarea {
+                        area::get_area(n, false)
+                    } else {
+                        "--------".to_string()
+                    };
+
+                    let is_poh = (n_flags & CharacterFlags::Poh.bits()) != 0;
+                    let is_poh_leader = (n_flags & CharacterFlags::PohLeader.bits()) != 0;
+
+                    state.do_character_log(
+                        cn,
+                        font,
+                        &format!(
+                            "{:4}: {:<10.10}{}{}{} {:<8.8} {:<18.18}\n",
+                            n,
+                            name,
+                            if n_is_purple { '*' } else { ' ' },
+                            if is_poh { '+' } else { ' ' },
+                            if is_poh_leader { '+' } else { ' ' },
+                            points_str,
+                            area_str,
+                        ),
+                    );
                 }
+
+                // List player's GC and thralls, if any
+                for n in 1..core::constants::MAXCHARS as usize {
+                    let c = &characters[n];
+                    let n_flags = c.flags;
+                    let n_is_player = (n_flags & CharacterFlags::Player.bits()) != 0;
+                    if n_is_player {
+                        continue;
+                    }
+                    if c.data[63] != cn as i32 {
+                        continue;
+                    }
+
+                    let rank = helpers::points2rank(c.points_tot as u32) as usize;
+                    let rank_short = helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
+
+                    let name = c.get_name();
+                    let area_str = area::get_area(n, false);
+                    let n_is_purple = (c.kindred as u32 & core::constants::KIN_PURPLE) != 0;
+                    let is_poh = (n_flags & CharacterFlags::Poh.bits()) != 0;
+                    let is_poh_leader = (n_flags & CharacterFlags::PohLeader.bits()) != 0;
+
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Blue,
+                        &format!(
+                            "{:.5} {:<10.10}{}{}{} {:<23.23}\n",
+                            rank_short,
+                            name,
+                            if n_is_purple { '*' } else { ' ' },
+                            if is_poh { '+' } else { ' ' },
+                            if is_poh_leader { '+' } else { ' ' },
+                            area_str,
+                        ),
+                    );
+                }
+
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "-----------------------------------------------\n",
+                );
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!(
+                        "{:3} player{} online.\n",
+                        players,
+                        if players > 1 { "s" } else { "" }
+                    ),
+                );
             });
         });
     }
@@ -2030,27 +2153,87 @@ impl God {
 
         Repository::with_characters(|characters| {
             State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Green, "Immortal characters:");
-                for i in 1..core::constants::MAXCHARS as usize {
-                    if characters[i].is_living_character(i) {
-                        if characters[i].flags & core::constants::CharacterFlags::CF_IMMORTAL.bits()
-                            != 0
-                            || characters[i].flags & core::constants::CharacterFlags::CF_GOD.bits()
-                                != 0
-                        {
-                            let flags_to_print = characters[i].flags;
-                            state.do_character_log(
-                                cn,
-                                core::types::FontColor::Green,
-                                &format!(
-                                    "  {}: Flags={:x}\n",
-                                    characters[i].get_name(),
-                                    flags_to_print
-                                ),
-                            );
-                        }
+                let cn_flags = characters[cn].flags;
+                let cn_is_god = (cn_flags & CharacterFlags::God.bits()) != 0;
+                let cn_is_god_imp_or_usurp = (cn_flags
+                    & (CharacterFlags::God.bits()
+                        | CharacterFlags::Imp.bits()
+                        | CharacterFlags::Usurp.bits()))
+                    != 0;
+
+                let mut imps = 0;
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "-----------------------------------------------\n",
+                );
+
+                for n in 1..core::constants::MAXCHARS as usize {
+                    let c = &characters[n];
+                    if c.used == core::constants::USE_EMPTY {
+                        continue;
                     }
+
+                    let n_flags = c.flags;
+                    let n_is_player = (n_flags & CharacterFlags::Player.bits()) != 0;
+                    if !n_is_player {
+                        continue;
+                    }
+
+                    let n_is_imp = (n_flags & CharacterFlags::Imp.bits()) != 0;
+                    if !n_is_imp {
+                        continue;
+                    }
+
+                    imps += 1;
+
+                    let mut showarea = true;
+                    let n_is_god = (n_flags & CharacterFlags::God.bits()) != 0;
+                    if n_is_god && !cn_is_god {
+                        showarea = false;
+                    }
+                    let n_is_purple = (c.kindred as u32 & core::constants::KIN_PURPLE) != 0;
+                    if n_is_purple && !cn_is_god_imp_or_usurp {
+                        showarea = false;
+                    }
+
+                    let name = c.get_name();
+                    let points_str = helpers::format_number(c.points_tot);
+                    let area_str = if showarea {
+                        area::get_area(n, false)
+                    } else {
+                        "--------".to_string()
+                    };
+
+                    let is_poh = (n_flags & CharacterFlags::Poh.bits()) != 0;
+                    let is_poh_leader = (n_flags & CharacterFlags::PohLeader.bits()) != 0;
+
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Yellow,
+                        &format!(
+                            "{:4}: {:<10.10}{}{}{} {:<8.8} {:.18}\n",
+                            n,
+                            name,
+                            if n_is_purple { '*' } else { ' ' },
+                            if is_poh { '+' } else { ' ' },
+                            if is_poh_leader { '+' } else { ' ' },
+                            points_str,
+                            area_str
+                        ),
+                    );
                 }
+
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "-----------------------------------------------\n",
+                );
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!("{:3} imp{}.\n", imps, if imps > 1 { "s" } else { "" }),
+                );
             });
         });
     }
@@ -2064,29 +2247,114 @@ impl God {
             return;
         }
 
-        let mut count = 0;
         Repository::with_characters(|characters| {
             State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Green, "Players online:\n");
-                for i in 1..core::constants::MAXCHARS as usize {
-                    if characters[i].is_living_character(i) && characters[i].is_player() {
-                        count += 1;
-                        let points_to_print = characters[i].points;
-                        state.do_character_log(
-                            cn,
-                            core::types::FontColor::Green,
-                            &format!(
-                                "  {} - Points: {}\n",
-                                characters[i].get_name(),
-                                points_to_print
-                            ),
-                        );
-                    }
-                }
+                let cn_flags = characters[cn].flags;
+                let cn_is_god = (cn_flags & CharacterFlags::God.bits()) != 0;
+                let cn_is_god_imp_or_usurp = (cn_flags
+                    & (CharacterFlags::God.bits()
+                        | CharacterFlags::Imp.bits()
+                        | CharacterFlags::Usurp.bits()))
+                    != 0;
+
+                let mut players = 0;
                 state.do_character_log(
                     cn,
-                    core::types::FontColor::Green,
-                    &format!("Total: {} players\n", count),
+                    core::types::FontColor::Yellow,
+                    "-----------------------------------------------\n",
+                );
+
+                // list players
+                for n in 1..core::constants::MAXCHARS as usize {
+                    let c = &characters[n];
+                    let n_flags = c.flags;
+
+                    let n_is_player = (n_flags & CharacterFlags::Player.bits()) != 0;
+                    if !n_is_player {
+                        continue;
+                    }
+                    let n_is_invisible = (n_flags & CharacterFlags::Invisible.bits()) != 0;
+                    let n_is_nowho = (n_flags & CharacterFlags::NoWho.bits()) != 0;
+                    if c.used != core::constants::USE_ACTIVE || n_is_invisible || n_is_nowho {
+                        continue;
+                    }
+
+                    players += 1;
+
+                    // color staff and gods green
+                    let n_is_staff = (n_flags & CharacterFlags::Staff.bits()) != 0;
+                    let n_is_god = (n_flags & CharacterFlags::God.bits()) != 0;
+                    let font = if n_is_staff || n_is_god {
+                        core::types::FontColor::Green
+                    } else {
+                        core::types::FontColor::Yellow
+                    };
+
+                    let mut showarea = true;
+                    if n_is_god && !cn_is_god {
+                        showarea = false;
+                    }
+                    let n_is_purple = (c.kindred as u32 & core::constants::KIN_PURPLE) != 0;
+                    if n_is_purple && !cn_is_god_imp_or_usurp {
+                        showarea = false;
+                    }
+
+                    let rank = helpers::points2rank(c.points_tot as u32) as usize;
+                    let rank_short = helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
+                    let name = c.get_name();
+                    let area_str = if showarea {
+                        area::get_area(n, false)
+                    } else {
+                        "--------".to_string()
+                    };
+
+                    let is_poh = (n_flags & CharacterFlags::Poh.bits()) != 0;
+                    let is_poh_leader = (n_flags & CharacterFlags::PohLeader.bits()) != 0;
+
+                    state.do_character_log(
+                        cn,
+                        font,
+                        &format!(
+                            "{:.5} {:<10.10}{}{}{} {:<23.23}\n",
+                            rank_short,
+                            name,
+                            if n_is_purple { '*' } else { ' ' },
+                            if is_poh { '+' } else { ' ' },
+                            if is_poh_leader { '+' } else { ' ' },
+                            area_str,
+                        ),
+                    );
+                }
+
+                // show companion (GC) if any
+                let gc = characters[cn].data[core::constants::CHD_COMPANION] as usize;
+                if Character::is_sane_character(gc) && characters[gc].is_living_character(gc) {
+                    let gc_name = characters[gc].get_name();
+                    let points_str = helpers::format_number(characters[gc].points_tot);
+                    let area_str = area::get_area(gc, false);
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Blue,
+                        &format!(
+                            "{:4}: {:<10.10}@ {:<8.8} {:<20.20}\n",
+                            gc, gc_name, points_str, area_str
+                        ),
+                    );
+                }
+
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    "-----------------------------------------------\n",
+                );
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!(
+                        "{:3} player{} online.\n",
+                        players,
+                        if players > 1 { "s" } else { "" }
+                    ),
                 );
             });
         });
@@ -2625,7 +2893,7 @@ impl God {
             Self::drop_char_fuzzy(cc, caster_x as usize, caster_y as usize);
 
             // Add target as enemy
-            crate::driver::npc_add_enemy(cc, co, true);
+            driver::npc_add_enemy(cc, co, true);
 
             let target_name = c_string_to_str(&target_name_bytes);
             State::with(|state| {
@@ -3952,7 +4220,7 @@ impl God {
         }
 
         // Create character from template 386 with items
-        let co = crate::populate::pop_create_char(386, true);
+        let co = populate::pop_create_char(386, true);
 
         if co != 0 {
             let character_name =
@@ -4087,7 +4355,7 @@ impl God {
         }
 
         // Create character from template 495 with items
-        let co = crate::populate::pop_create_char(495, true);
+        let co = populate::pop_create_char(495, true);
 
         if co != 0 {
             let character_name =
