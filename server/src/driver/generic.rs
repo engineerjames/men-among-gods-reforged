@@ -412,21 +412,22 @@ pub fn act_attack(cn: usize) {
         (ch[cn].flags & CharacterFlags::Simple.bits() as u64) != 0
     });
 
-    #[allow(unused_assignments)]
-    let mut v: i8 = 0;
+    let mut v: i32;
     if !is_simple {
+        let mut vv: i32;
         loop {
-            let vv = rand::thread_rng().gen_range(0..=3) as i8;
+            vv = rand::thread_rng().gen_range(0..3);
             let last = Repository::with_characters(|ch| ch[cn].lastattack);
-            if vv != last {
-                v = vv;
+            if vv != last as i32 {
                 break;
             }
         }
+        Repository::with_characters_mut(|ch| ch[cn].lastattack = vv as i8);
+
+        v = vv;
         if v != 0 {
             v += 4;
         }
-        Repository::with_characters_mut(|ch| ch[cn].lastattack = v);
     } else {
         v = 0;
     }
@@ -493,6 +494,7 @@ pub fn act_turn(cn: usize, dir: i32) {
         d if d == core::constants::DX_RIGHTUP => act_turn_rightup(cn),
         d if d == core::constants::DX_RIGHTDOWN => act_turn_rightdown(cn),
         _ => {
+            log::error!("act_turn: invalid direction {} for character {}", dir, cn);
             Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16)
         }
     }
@@ -1871,7 +1873,9 @@ pub fn driver_msg(cn: usize, msg_type: i32, dat1: i32, dat2: i32, dat3: i32, dat
                 Repository::with_characters_mut(|ch| ch[cn].attack_cn = dat1 as u16);
             }
         }
-        _ => {}
+        _ => {
+            // Other message types aren't handled and this is expected so no reason to log anything extra here.
+        }
     }
 }
 
@@ -2150,6 +2154,7 @@ pub fn driver(cn: usize) {
             );
         }
         x if x == core::constants::DR_BOW => {
+            log::debug!("drv_bow called for cn {}", cn);
             drv_bow(cn);
         }
         x if x == core::constants::DR_WAVE => {

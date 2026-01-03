@@ -1885,19 +1885,74 @@ pub fn plr_drop(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index whose misc action to process
 pub fn plr_misc(cn: usize) {
-    let status2 = Repository::with_characters(|characters| characters[cn].status2);
+    let (status2, is_player) = Repository::with_characters(|characters| {
+        (characters[cn].status2, characters[cn].is_player())
+    });
 
     match status2 {
-        0 => plr_attack(cn, 0),
-        1 => plr_pickup(cn),
-        2 => plr_drop(cn),
-        3 => plr_give(cn),
-        4 => plr_use(cn),
-        5 => plr_attack(cn, 1),
-        6 => plr_attack(cn, 0),
-        7 => plr_bow(cn),
-        8 => plr_wave(cn),
-        9 => plr_skill(cn),
+        0 => {
+            if is_player {
+                log::debug!(
+                    "plr_misc: attack action (surround=0), status2=0 for char {}",
+                    cn
+                );
+            }
+            plr_attack(cn, 0);
+        }
+        1 => {
+            if is_player {
+                log::debug!("plr_misc: pickup action for char {}", cn);
+            }
+            plr_pickup(cn);
+        }
+        2 => {
+            if is_player {
+                log::debug!("plr_misc: drop action for char {}", cn);
+            }
+            plr_drop(cn);
+        }
+        3 => {
+            if is_player {
+                log::debug!("plr_misc: give action for char {}", cn);
+            }
+            plr_give(cn);
+        }
+        4 => {
+            if is_player {
+                log::debug!("plr_misc: use action for char {}", cn);
+            }
+            plr_use(cn);
+        }
+        5 => {
+            if is_player {
+                log::debug!("plr_misc: attack action (surround=1) for char {}", cn);
+            }
+            plr_attack(cn, 1);
+        }
+        6 => {
+            if is_player {
+                log::debug!("plr_misc: attack action (surround=0) for char {}", cn);
+            }
+            plr_attack(cn, 0);
+        }
+        7 => {
+            if is_player {
+                log::debug!("plr_misc: bow action for char {}", cn);
+            }
+            plr_bow(cn);
+        }
+        8 => {
+            if is_player {
+                log::debug!("plr_misc: wave action for char {}", cn);
+            }
+            plr_wave(cn);
+        }
+        9 => {
+            if is_player {
+                log::debug!("plr_misc: skill action for char {}", cn);
+            }
+            plr_skill(cn);
+        }
         _ => {
             log::error!("plr_misc: unknown status2 {} for char {}", status2, cn);
             Repository::with_characters_mut(|characters| {
@@ -4692,6 +4747,8 @@ fn plr_change_target(nr: usize, cn: usize) {
             players[nr].cpl.misc_target1 = misc_target1 as i32;
             players[nr].cpl.misc_target2 = misc_target2 as i32;
         });
+
+        log::debug!("plr_change_target: misc_action={}", misc_action);
     }
 }
 
@@ -4847,7 +4904,7 @@ pub fn plr_cmd(nr: usize) {
             plr_passwd(nr);
         }
         _ => {
-            log::error!("Received command {} before login for player {}", cmd, nr);
+            // No need to log other commands here; they are logged in their handlers.
         }
     }
 
@@ -4897,42 +4954,34 @@ pub fn plr_cmd(nr: usize) {
             return;
         }
         core::constants::CL_CMD_INPUT1 => {
-            log::debug!("PLR_CMD_INPUT1 received for player {}", nr);
             plr_cmd_input(nr, 1);
             return;
         }
         core::constants::CL_CMD_INPUT2 => {
-            log::debug!("PLR_CMD_INPUT2 received for player {}", nr);
             plr_cmd_input(nr, 2);
             return;
         }
         core::constants::CL_CMD_INPUT3 => {
-            log::debug!("PLR_CMD_INPUT3 received for player {}", nr);
             plr_cmd_input(nr, 3);
             return;
         }
         core::constants::CL_CMD_INPUT4 => {
-            log::debug!("PLR_CMD_INPUT4 received for player {}", nr);
             plr_cmd_input(nr, 4);
             return;
         }
         core::constants::CL_CMD_INPUT5 => {
-            log::debug!("PLR_CMD_INPUT5 received for player {}", nr);
             plr_cmd_input(nr, 5);
             return;
         }
         core::constants::CL_CMD_INPUT6 => {
-            log::debug!("PLR_CMD_INPUT6 received for player {}", nr);
             plr_cmd_input(nr, 6);
             return;
         }
         core::constants::CL_CMD_INPUT7 => {
-            log::debug!("PLR_CMD_INPUT7 received for player {}", nr);
             plr_cmd_input(nr, 7);
             return;
         }
         core::constants::CL_CMD_INPUT8 => {
-            log::debug!("PLR_CMD_INPUT8 received for player {}", nr);
             plr_cmd_input(nr, 8);
             return;
         }
