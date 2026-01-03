@@ -4956,75 +4956,77 @@ pub fn plr_cmd(nr: usize) {
         });
     }
 
+    let character_name = Repository::with_characters(|ch| ch[cn].get_name().to_string());
+
     // Handle commands that show stun message but still execute
     match cmd {
         core::constants::CL_CMD_LOOK_ITEM => {
-            log::debug!("PLR_CMD_LOOK_ITEM received for player {}", nr);
+            log::debug!("PLR_CMD_LOOK_ITEM received for player {}", character_name);
             plr_cmd_look_item(nr);
             return;
         }
         core::constants::CL_CMD_GIVE => {
-            log::debug!("PLR_CMD_GIVE received for player {}", nr);
+            log::debug!("PLR_CMD_GIVE received for player {}", character_name);
             plr_cmd_give(nr);
             return;
         }
         core::constants::CL_CMD_TURN => {
-            log::debug!("PLR_CMD_TURN received for player {}", nr);
+            log::debug!("PLR_CMD_TURN received for player {}", character_name);
             plr_cmd_turn(nr);
             return;
         }
         core::constants::CL_CMD_DROP => {
-            log::debug!("PLR_CMD_DROP received for player {}", nr);
+            log::debug!("PLR_CMD_DROP received for player {}", character_name);
             plr_cmd_drop(nr);
             return;
         }
         core::constants::CL_CMD_PICKUP => {
-            log::debug!("PLR_CMD_PICKUP received for player {}", nr);
+            log::debug!("PLR_CMD_PICKUP received for player {}", character_name);
             plr_cmd_pickup(nr);
             return;
         }
         core::constants::CL_CMD_ATTACK => {
-            log::debug!("PLR_CMD_ATTACK received for player {}", nr);
+            log::debug!("PLR_CMD_ATTACK received for player {}", character_name);
             plr_cmd_attack(nr);
             return;
         }
         core::constants::CL_CMD_MODE => {
-            log::debug!("PLR_CMD_MODE received for player {}", nr);
+            log::debug!("PLR_CMD_MODE received for player {}", character_name);
             plr_cmd_mode(nr);
             return;
         }
         core::constants::CL_CMD_MOVE => {
-            log::debug!("PLR_CMD_MOVE received for player {}", nr);
+            log::debug!("PLR_CMD_MOVE received for player {}", character_name);
             plr_cmd_move(nr);
             return;
         }
         core::constants::CL_CMD_RESET => {
-            log::debug!("PLR_CMD_RESET received for player {}", nr);
+            log::debug!("PLR_CMD_RESET received for player {}", character_name);
             plr_cmd_reset(nr);
             return;
         }
         core::constants::CL_CMD_SKILL => {
-            log::debug!("PLR_CMD_SKILL received for player {}", nr);
+            log::debug!("PLR_CMD_SKILL received for player {}", character_name);
             plr_cmd_skill(nr);
             return;
         }
         core::constants::CL_CMD_INV_LOOK => {
-            log::debug!("PLR_CMD_INV_LOOK received for player {}", nr);
+            log::debug!("PLR_CMD_INV_LOOK received for player {}", character_name);
             plr_cmd_inv_look(nr);
             return;
         }
         core::constants::CL_CMD_USE => {
-            log::debug!("PLR_CMD_USE received for player {}", nr);
+            log::debug!("PLR_CMD_USE received for player {}", character_name);
             plr_cmd_use(nr);
             return;
         }
         core::constants::CL_CMD_INV => {
-            log::debug!("PLR_CMD_INV received for player {}", nr);
+            log::debug!("PLR_CMD_INV received for player {}", character_name);
             plr_cmd_inv(nr);
             return;
         }
         core::constants::CL_CMD_EXIT => {
-            log::debug!("PLR_CMD_EXIT received for player {}", nr);
+            log::debug!("PLR_CMD_EXIT received for player {}", character_name);
             plr_cmd_exit(nr);
             return;
         }
@@ -5041,7 +5043,7 @@ pub fn plr_cmd(nr: usize) {
             plr_cmd_shop(nr);
         }
         _ => {
-            log::warn!("Unknown CL command: {} for player {}", cmd, nr);
+            log::warn!("Unknown CL command: {} for player {}", cmd, character_name);
         }
     }
 }
@@ -6216,14 +6218,11 @@ fn plr_cmd_mode(nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index sending the movement target
 fn plr_cmd_move(nr: usize) {
-    let (x, y, inbuf, cn) = Server::with_players(|players| {
+    let (x, y, cn) = Server::with_players(|players| {
         let x = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]);
         let y = u16::from_le_bytes([players[nr].inbuf[3], players[nr].inbuf[4]]);
-        (x, y, players[nr].inbuf.clone(), players[nr].usnr)
+        (x, y, players[nr].usnr)
     });
-
-    log::info!("plr_cmd_move: cn={} to {},{}", cn, x, y);
-    log::debug!("plr_cmd_move: inbuf[0..16]={:02X?}", &inbuf);
 
     let ticker = Repository::with_globals(|g| g.ticker as i32);
 
