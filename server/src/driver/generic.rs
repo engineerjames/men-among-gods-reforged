@@ -1428,8 +1428,21 @@ pub fn char_moveto(cn: usize, x: i32, y: i32, flag: i32, x2: i32, y2: i32) -> i3
     }
 
     let dir = PathFinder::with_mut(|pf| {
+        log::debug!(
+            "char_moveto: cn={}, from=({},{}), to=({},{}), flag={}, avoid=({},{})",
+            cn,
+            cx,
+            cy,
+            x,
+            y,
+            flag,
+            x2,
+            y2
+        );
         pf.find_path(cn, x as i16, y as i16, flag as u8, x2 as i16, y2 as i16)
     });
+
+    log::debug!("char_moveto: cn={}, dir={:?}", cn, dir.map(|d| d as i32));
 
     if dir.is_none() {
         Repository::with_characters_mut(|ch| {

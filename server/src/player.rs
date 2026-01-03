@@ -2,7 +2,7 @@ use core::{
     constants::{
         ItemFlags, INFRARED, INJURED, INJURED1, INJURED2, INVIS, ISCHAR, ISITEM, ISUSABLE,
         MF_GFX_CMAGIC, MF_GFX_DEATH, MF_GFX_EMAGIC, MF_GFX_GMAGIC, MF_GFX_INJURED, MF_GFX_INJURED1,
-        MF_GFX_INJURED2, MF_GFX_TOMB, MF_UWATER, STONED, STUNNED, UWATER,
+        MF_GFX_INJURED2, MF_GFX_TOMB, MF_UWATER, STONED, STUNNED, UWATER, XPOS,
     },
     string_operations::c_string_to_str,
 };
@@ -6216,66 +6216,13 @@ fn plr_cmd_mode(nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index sending the movement target
 fn plr_cmd_move(nr: usize) {
-    use std::sync::Once;
-
-    static WARNED_U32_Y: Once = Once::new();
-
-    let (x_raw, y_raw_u32, cn, inbuf) = Server::with_players(|players| {
-        let inbuf = players[nr].inbuf[0..16].to_vec();
-
+    let (x, y, inbuf, cn) = Server::with_players(|players| {
         let x = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]);
-
-        // Some clients encode y as u16 (C++ original), others as u32.
-        // Layout for the u32 variant is: [cmd][x:u16][y:u32] => y starts at offset 3.
-        let y_u16 = u16::from_le_bytes([players[nr].inbuf[3], players[nr].inbuf[4]]) as u32;
-        let y_u32 = u32::from_le_bytes([
-            players[nr].inbuf[3],
-            players[nr].inbuf[4],
-            players[nr].inbuf[5],
-            players[nr].inbuf[6],
-        ]);
-        let y = if players[nr].inbuf[5] != 0 || players[nr].inbuf[6] != 0 {
-            WARNED_U32_Y.call_once(|| {
-                log::warn!(
-                    "plr_cmd_move: detected client encoding y as u32 (bytes[5..7] non-zero); interpreting CL_CMD_MOVE as [cmd][x:u16][y:u32]"
-                );
-            });
-            y_u32
-        } else {
-            y_u16
-        };
-
-        (x, y, players[nr].usnr, inbuf)
+        let y = u16::from_le_bytes([players[nr].inbuf[3], players[nr].inbuf[4]]);
+        (x, y, players[nr].inbuf.clone(), players[nr].usnr)
     });
 
-    let y_raw_u16 = if y_raw_u32 > u16::MAX as u32 {
-        log::warn!(
-            "plr_cmd_move: cn={} got y={} (too large), clamping",
-            cn,
-            y_raw_u32
-        );
-        u16::MAX
-    } else {
-        y_raw_u32 as u16
-    };
-
-    // TODO: Remove this now that we have fixed the tick buffer issues.
-    let half_x: u16 = (core::constants::TILEX / 2) as u16;
-    let half_y: u16 = (core::constants::TILEY / 2) as u16;
-
-    // Normalize target: many clients send click coordinates relative to the
-    // visible window; server-side movement uses world coordinates.
-    let x = x_raw.saturating_sub(half_x);
-    let y = y_raw_u16.saturating_sub(half_y);
-
-    log::info!(
-        "plr_cmd_move: cn={} to {},{} (raw {},{})",
-        cn,
-        x,
-        y,
-        x_raw,
-        y_raw_u16
-    );
+    log::info!("plr_cmd_move: cn={} to {},{}", cn, x, y);
     log::debug!("plr_cmd_move: inbuf[0..16]={:02X?}", &inbuf);
 
     let ticker = Repository::with_globals(|g| g.ticker as i32);
@@ -6289,8 +6236,8 @@ fn plr_cmd_move(nr: usize) {
         );
 
         ch[cn].attack_cn = 0;
-        ch[cn].goto_x = x_raw;
-        ch[cn].goto_y = y_raw_u16;
+        ch[cn].goto_x = x;
+        ch[cn].goto_y = y;
         ch[cn].misc_action = 0;
         ch[cn].cerrno = 0;
         ch[cn].data[12] = ticker;
