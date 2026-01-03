@@ -7866,18 +7866,6 @@ pub fn item_tick_gc() {
         }
 
         // Item is garbage - remove it
-        Repository::with_items(|items| {
-            let (x, y, carried) = (items[n].x, items[n].y, items[n].carried);
-            log::error!(
-                "Garbage: Item {} ({}, {}, {}, {})",
-                n,
-                items[n].get_name(),
-                carried,
-                x,
-                y
-            );
-        });
-
         Repository::with_items_mut(|items| {
             items[n].used = USE_EMPTY;
         });

@@ -11,6 +11,16 @@ macro_rules! chlog {
     };
 }
 
+pub fn format_number(value: i32) -> String {
+    if value < 99 * 1000 {
+        format!("{}", value)
+    } else if value < 99 * 1000 * 1000 {
+        format!("{}K", value / 1000)
+    } else {
+        format!("{}M", value / 1_000_000)
+    }
+}
+
 /// Port of `use_labtransfer(int cn, int nr, int exp)` from `svr_do.cpp`
 ///
 /// Attempts to spawn the appropriate lab enemy for `nr` and transfer the
