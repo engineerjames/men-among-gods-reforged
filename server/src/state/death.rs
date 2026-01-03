@@ -63,7 +63,8 @@ impl State {
         if killer_id != 0 {
             let cn_flags = Repository::with_characters(|characters| {
                 let cn = &characters[killer_id];
-                let idx = (cn.x + cn.y * core::constants::SERVER_MAPX as i16) as usize;
+                let idx = (cn.x as usize + cn.y as usize * core::constants::SERVER_MAPX as usize)
+                    as usize;
                 Repository::with_map(|map| map[idx].flags)
             });
             map_flags &= cn_flags;
