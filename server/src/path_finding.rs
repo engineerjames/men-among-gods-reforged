@@ -77,6 +77,8 @@ pub struct PathFinder {
     visited: Vec<bool>,
     /// Bad target tracking
     bad_targets: Vec<BadTarget>,
+    /// Set when exceeding maxstep allocations.
+    failed: bool,
 }
 
 impl PathFinder {
@@ -89,6 +91,7 @@ impl PathFinder {
             open_set: BinaryHeap::with_capacity(MAX_NODES),
             visited: vec![false; MAX_NODES],
             bad_targets: vec![BadTarget { tick: 0 }; map_size],
+            failed: false,
         }
     }
 
@@ -106,6 +109,7 @@ impl PathFinder {
         for v in &mut self.visited {
             *v = false;
         }
+        self.failed = false;
     }
 
     /// Check if a target location is marked as bad
@@ -212,7 +216,8 @@ impl PathFinder {
         max_step: usize,
     ) -> bool {
         // Bounds check
-        if x < 1 || x >= (SERVER_MAPX - 1) as i16 || y < 1 || y >= (SERVER_MAPY - 1) as i16 {
+        // Match C++ bounds: x,y in [1, SERVER_MAPX-1] / [1, SERVER_MAPY-1]
+        if x < 1 || x >= SERVER_MAPX as i16 || y < 1 || y >= SERVER_MAPY as i16 {
             return false;
         }
 
@@ -229,25 +234,25 @@ impl PathFinder {
                 return false;
             }
 
-            // Update existing node if not visited
-            if !self.visited[existing_idx] {
-                let updated_node = Node {
-                    x,
-                    y,
-                    dir,
-                    tcost,
-                    cost: ccost,
-                    cdir,
-                    index: existing_idx,
-                };
-                self.nodes[existing_idx] = updated_node;
-                self.open_set.push(updated_node);
-            }
+            // Match C++ behavior: allow "reopening" nodes even if previously visited.
+            let updated_node = Node {
+                x,
+                y,
+                dir,
+                tcost,
+                cost: ccost,
+                cdir,
+                index: existing_idx,
+            };
+            self.nodes[existing_idx] = updated_node;
+            self.visited[existing_idx] = false;
+            self.open_set.push(updated_node);
             return true;
         }
 
         // Create new node
         if self.nodes.len() >= max_step {
+            self.failed = true;
             return false;
         }
 
@@ -295,15 +300,13 @@ impl PathFinder {
         let can_down = self.is_passable(down_m, mapblock);
         let can_up = self.is_passable(up_m, mapblock);
 
-        let dir_to_use = if node.dir == 0 { node.cdir } else { node.dir };
-
         // Right
         if can_right {
             let cost = node.cost + 2 + turn_count(node.cdir, DX_RIGHT);
             self.add_node(
                 node.x + 1,
                 node.y,
-                dir_to_use,
+                if node.dir == 0 { DX_RIGHT } else { node.dir },
                 cost,
                 DX_RIGHT,
                 mode,
@@ -321,7 +324,7 @@ impl PathFinder {
             self.add_node(
                 node.x - 1,
                 node.y,
-                dir_to_use,
+                if node.dir == 0 { DX_LEFT } else { node.dir },
                 cost,
                 DX_LEFT,
                 mode,
@@ -339,7 +342,7 @@ impl PathFinder {
             self.add_node(
                 node.x,
                 node.y + 1,
-                dir_to_use,
+                if node.dir == 0 { DX_DOWN } else { node.dir },
                 cost,
                 DX_DOWN,
                 mode,
@@ -357,7 +360,7 @@ impl PathFinder {
             self.add_node(
                 node.x,
                 node.y - 1,
-                dir_to_use,
+                if node.dir == 0 { DX_UP } else { node.dir },
                 cost,
                 DX_UP,
                 mode,
@@ -379,7 +382,11 @@ impl PathFinder {
                 self.add_node(
                     node.x + 1,
                     node.y + 1,
-                    dir_to_use,
+                    if node.dir == 0 {
+                        DX_RIGHTDOWN
+                    } else {
+                        node.dir
+                    },
                     cost,
                     DX_RIGHTDOWN,
                     mode,
@@ -400,7 +407,7 @@ impl PathFinder {
                 self.add_node(
                     node.x + 1,
                     node.y - 1,
-                    dir_to_use,
+                    if node.dir == 0 { DX_RIGHTUP } else { node.dir },
                     cost,
                     DX_RIGHTUP,
                     mode,
@@ -421,7 +428,7 @@ impl PathFinder {
                 self.add_node(
                     node.x - 1,
                     node.y + 1,
-                    dir_to_use,
+                    if node.dir == 0 { DX_LEFTDOWN } else { node.dir },
                     cost,
                     DX_LEFTDOWN,
                     mode,
@@ -442,7 +449,7 @@ impl PathFinder {
                 self.add_node(
                     node.x - 1,
                     node.y - 1,
-                    dir_to_use,
+                    if node.dir == 0 { DX_LEFTUP } else { node.dir },
                     cost,
                     DX_LEFTUP,
                     mode,
@@ -488,6 +495,9 @@ impl PathFinder {
         self.open_set.push(start_node);
 
         while let Some(current) = self.open_set.pop() {
+            if self.failed {
+                break;
+            }
             // Skip if already visited
             if self.visited[current.index] {
                 continue;
@@ -519,6 +529,10 @@ impl PathFinder {
 
             // Add successors
             self.add_successors(&current, mapblock, mode, tx1, ty1, tx2, ty2, max_step);
+
+            if self.failed {
+                break;
+            }
         }
 
         None
@@ -547,16 +561,16 @@ impl PathFinder {
         // TODO: Confirm this is the right tick value
         Repository::with_characters(|ch| {
             let current_tick = Repository::with_globals(|globs| globs.ticker);
-            if ch[cn].x < 1 || ch[cn].x >= (SERVER_MAPX - 1) as i16 {
+            if ch[cn].x < 1 || ch[cn].x >= SERVER_MAPX as i16 {
                 return None;
             }
-            if ch[cn].y < 1 || ch[cn].y >= (SERVER_MAPY - 1) as i16 {
+            if ch[cn].y < 1 || ch[cn].y >= SERVER_MAPY as i16 {
                 return None;
             }
-            if x1 < 1 || x1 >= (SERVER_MAPX - 1) as i16 {
+            if x1 < 1 || x1 >= SERVER_MAPX as i16 {
                 return None;
             }
-            if y1 < 1 || y1 >= (SERVER_MAPY - 1) as i16 {
+            if y1 < 1 || y1 >= SERVER_MAPY as i16 {
                 return None;
             }
             if x2 < 0 || x2 >= SERVER_MAPX as i16 {
