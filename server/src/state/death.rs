@@ -56,7 +56,7 @@ impl State {
         });
 
         let mut map_flags = Repository::with_map(|map| {
-            let idx = (co_x + co_y * core::constants::SERVER_MAPX as i16) as usize;
+            let idx = co_x as usize + co_y as usize * core::constants::SERVER_MAPX as usize;
             map[idx].flags
         });
 

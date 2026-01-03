@@ -1871,7 +1871,9 @@ pub fn driver_msg(cn: usize, msg_type: i32, dat1: i32, dat2: i32, dat3: i32, dat
                 Repository::with_characters_mut(|ch| ch[cn].attack_cn = dat1 as u16);
             }
         }
-        _ => {}
+        _ => {
+            // Other message types aren't handled and this is expected so no reason to log anything extra here.
+        }
     }
 }
 
@@ -2150,6 +2152,7 @@ pub fn driver(cn: usize) {
             );
         }
         x if x == core::constants::DR_BOW => {
+            log::debug!("drv_bow called for cn {}", cn);
             drv_bow(cn);
         }
         x if x == core::constants::DR_WAVE => {
