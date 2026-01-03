@@ -1440,10 +1440,9 @@ pub fn char_moveto(cn: usize, x: i32, y: i32, flag: i32, x2: i32, y2: i32) -> i3
         return -1;
     }
 
-    // TODO: Do we still need this case?
-    // if dir == 0 {
-    //     return 0;
-    // }
+    if dir == Some(0) {
+        return 0;
+    }
 
     match dir {
         d if d == Some(core::constants::DX_RIGHTDOWN) => {

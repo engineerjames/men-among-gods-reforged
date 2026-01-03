@@ -4956,75 +4956,77 @@ pub fn plr_cmd(nr: usize) {
         });
     }
 
+    let character_name = Repository::with_characters(|ch| ch[cn].get_name().to_string());
+
     // Handle commands that show stun message but still execute
     match cmd {
         core::constants::CL_CMD_LOOK_ITEM => {
-            log::debug!("PLR_CMD_LOOK_ITEM received for player {}", nr);
+            log::debug!("PLR_CMD_LOOK_ITEM received for player {}", character_name);
             plr_cmd_look_item(nr);
             return;
         }
         core::constants::CL_CMD_GIVE => {
-            log::debug!("PLR_CMD_GIVE received for player {}", nr);
+            log::debug!("PLR_CMD_GIVE received for player {}", character_name);
             plr_cmd_give(nr);
             return;
         }
         core::constants::CL_CMD_TURN => {
-            log::debug!("PLR_CMD_TURN received for player {}", nr);
+            log::debug!("PLR_CMD_TURN received for player {}", character_name);
             plr_cmd_turn(nr);
             return;
         }
         core::constants::CL_CMD_DROP => {
-            log::debug!("PLR_CMD_DROP received for player {}", nr);
+            log::debug!("PLR_CMD_DROP received for player {}", character_name);
             plr_cmd_drop(nr);
             return;
         }
         core::constants::CL_CMD_PICKUP => {
-            log::debug!("PLR_CMD_PICKUP received for player {}", nr);
+            log::debug!("PLR_CMD_PICKUP received for player {}", character_name);
             plr_cmd_pickup(nr);
             return;
         }
         core::constants::CL_CMD_ATTACK => {
-            log::debug!("PLR_CMD_ATTACK received for player {}", nr);
+            log::debug!("PLR_CMD_ATTACK received for player {}", character_name);
             plr_cmd_attack(nr);
             return;
         }
         core::constants::CL_CMD_MODE => {
-            log::debug!("PLR_CMD_MODE received for player {}", nr);
+            log::debug!("PLR_CMD_MODE received for player {}", character_name);
             plr_cmd_mode(nr);
             return;
         }
         core::constants::CL_CMD_MOVE => {
-            log::debug!("PLR_CMD_MOVE received for player {}", nr);
+            log::debug!("PLR_CMD_MOVE received for player {}", character_name);
             plr_cmd_move(nr);
             return;
         }
         core::constants::CL_CMD_RESET => {
-            log::debug!("PLR_CMD_RESET received for player {}", nr);
+            log::debug!("PLR_CMD_RESET received for player {}", character_name);
             plr_cmd_reset(nr);
             return;
         }
         core::constants::CL_CMD_SKILL => {
-            log::debug!("PLR_CMD_SKILL received for player {}", nr);
+            log::debug!("PLR_CMD_SKILL received for player {}", character_name);
             plr_cmd_skill(nr);
             return;
         }
         core::constants::CL_CMD_INV_LOOK => {
-            log::debug!("PLR_CMD_INV_LOOK received for player {}", nr);
+            log::debug!("PLR_CMD_INV_LOOK received for player {}", character_name);
             plr_cmd_inv_look(nr);
             return;
         }
         core::constants::CL_CMD_USE => {
-            log::debug!("PLR_CMD_USE received for player {}", nr);
+            log::debug!("PLR_CMD_USE received for player {}", character_name);
             plr_cmd_use(nr);
             return;
         }
         core::constants::CL_CMD_INV => {
-            log::debug!("PLR_CMD_INV received for player {}", nr);
+            log::debug!("PLR_CMD_INV received for player {}", character_name);
             plr_cmd_inv(nr);
             return;
         }
         core::constants::CL_CMD_EXIT => {
-            log::debug!("PLR_CMD_EXIT received for player {}", nr);
+            log::debug!("PLR_CMD_EXIT received for player {}", character_name);
             plr_cmd_exit(nr);
             return;
         }
@@ -5041,7 +5043,7 @@ pub fn plr_cmd(nr: usize) {
             plr_cmd_shop(nr);
         }
         _ => {
-            log::warn!("Unknown CL command: {} for player {}", cmd, nr);
+            log::warn!("Unknown CL command: {} for player {}", cmd, character_name);
         }
     }
 }
@@ -6216,67 +6218,11 @@ fn plr_cmd_mode(nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index sending the movement target
 fn plr_cmd_move(nr: usize) {
-    use std::sync::Once;
-
-    static WARNED_U32_Y: Once = Once::new();
-
-    let (x_raw, y_raw_u32, cn, inbuf) = Server::with_players(|players| {
-        let inbuf = players[nr].inbuf[0..16].to_vec();
-
+    let (x, y, cn) = Server::with_players(|players| {
         let x = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]);
-
-        // Some clients encode y as u16 (C++ original), others as u32.
-        // Layout for the u32 variant is: [cmd][x:u16][y:u32] => y starts at offset 3.
-        let y_u16 = u16::from_le_bytes([players[nr].inbuf[3], players[nr].inbuf[4]]) as u32;
-        let y_u32 = u32::from_le_bytes([
-            players[nr].inbuf[3],
-            players[nr].inbuf[4],
-            players[nr].inbuf[5],
-            players[nr].inbuf[6],
-        ]);
-        let y = if players[nr].inbuf[5] != 0 || players[nr].inbuf[6] != 0 {
-            WARNED_U32_Y.call_once(|| {
-                log::warn!(
-                    "plr_cmd_move: detected client encoding y as u32 (bytes[5..7] non-zero); interpreting CL_CMD_MOVE as [cmd][x:u16][y:u32]"
-                );
-            });
-            y_u32
-        } else {
-            y_u16
-        };
-
-        (x, y, players[nr].usnr, inbuf)
+        let y = u16::from_le_bytes([players[nr].inbuf[3], players[nr].inbuf[4]]);
+        (x, y, players[nr].usnr)
     });
-
-    let y_raw_u16 = if y_raw_u32 > u16::MAX as u32 {
-        log::warn!(
-            "plr_cmd_move: cn={} got y={} (too large), clamping",
-            cn,
-            y_raw_u32
-        );
-        u16::MAX
-    } else {
-        y_raw_u32 as u16
-    };
-
-    // TODO: Remove this now that we have fixed the tick buffer issues.
-    let half_x: u16 = (core::constants::TILEX / 2) as u16;
-    let half_y: u16 = (core::constants::TILEY / 2) as u16;
-
-    // Normalize target: many clients send click coordinates relative to the
-    // visible window; server-side movement uses world coordinates.
-    let x = x_raw.saturating_sub(half_x);
-    let y = y_raw_u16.saturating_sub(half_y);
-
-    log::info!(
-        "plr_cmd_move: cn={} to {},{} (raw {},{})",
-        cn,
-        x,
-        y,
-        x_raw,
-        y_raw_u16
-    );
-    log::debug!("plr_cmd_move: inbuf[0..16]={:02X?}", &inbuf);
 
     let ticker = Repository::with_globals(|g| g.ticker as i32);
 
@@ -6289,8 +6235,8 @@ fn plr_cmd_move(nr: usize) {
         );
 
         ch[cn].attack_cn = 0;
-        ch[cn].goto_x = x_raw;
-        ch[cn].goto_y = y_raw_u16;
+        ch[cn].goto_x = x;
+        ch[cn].goto_y = y;
         ch[cn].misc_action = 0;
         ch[cn].cerrno = 0;
         ch[cn].data[12] = ticker;
