@@ -494,6 +494,7 @@ pub fn act_turn(cn: usize, dir: i32) {
         d if d == core::constants::DX_RIGHTUP => act_turn_rightup(cn),
         d if d == core::constants::DX_RIGHTDOWN => act_turn_rightdown(cn),
         _ => {
+            log::error!("act_turn: invalid direction {} for character {}", dir, cn);
             Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16)
         }
     }
