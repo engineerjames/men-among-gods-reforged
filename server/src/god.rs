@@ -4,10 +4,10 @@ use core::{
 };
 
 use crate::{
-    chlog, driver,
+    area, chlog, driver,
     effect::EffectManager,
     enums::{CharacterFlags, LogoutReason},
-    helpers, player,
+    helpers, player, populate,
     repository::Repository,
     server::Server,
     state::State,
@@ -1616,7 +1616,7 @@ impl God {
             let posx = t.x as i32;
             let posy = t.y as i32;
             let p = t.points_tot as i32;
-            let need = crate::helpers::points_tolevel(t.points_tot as u32) as i32;
+            let need = helpers::points_tolevel(t.points_tot as u32) as i32;
             let player_flag =
                 (t.flags & (core::constants::CharacterFlags::CF_PLAYER.bits() as u64)) != 0;
             (
@@ -1678,8 +1678,8 @@ impl God {
 
         // Print header line depending on player or NPC
         if player_flag {
-            let rank = crate::helpers::points2rank(pts as u32) as usize;
-            let rank_short = crate::helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
+            let rank = helpers::points2rank(pts as u32) as usize;
+            let rank_short = helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
             State::with(|state| {
                 state.do_character_log(
                     cn,
@@ -1708,8 +1708,8 @@ impl God {
                     String::new()
                 }
             });
-            let rank = crate::helpers::points2rank(pts as u32) as usize;
-            let rank_short = crate::helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
+            let rank = helpers::points2rank(pts as u32) as usize;
+            let rank_short = helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
             State::with(|state| {
                 state.do_character_log(
                     cn,
@@ -1778,7 +1778,7 @@ impl God {
                             core::types::FontColor::Yellow,
                             &format!(
                                 "Last PvP attack: {}, against {}.\n",
-                                crate::helpers::ago_string(dt),
+                                helpers::ago_string(dt),
                                 victim_name
                             ),
                         )
@@ -1789,7 +1789,7 @@ impl God {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Yellow,
-                        &format!("Last PvP attack: {}.\n", crate::helpers::ago_string(dt)),
+                        &format!("Last PvP attack: {}.\n", helpers::ago_string(dt)),
                     )
                 });
             }
@@ -1990,31 +1990,19 @@ impl God {
             return;
         }
 
-        let int2str = |val: i32| -> String {
-            if val < 99 * 1000 {
-                format!("{}", val)
-            } else if val < 99 * 1000 * 1000 {
-                format!("{}K", val / 1000)
-            } else {
-                format!("{}M", val / 1_000_000)
-            }
-        };
-
         Repository::with_characters(|characters| {
             State::with(|state| {
                 let cn_flags = characters[cn].flags;
-                let cn_is_god = (cn_flags & core::constants::CharacterFlags::CF_GOD.bits()) != 0;
-                let cn_is_imp_or_god = (cn_flags
-                    & (core::constants::CharacterFlags::CF_GOD.bits()
-                        | core::constants::CharacterFlags::CF_IMP.bits()))
-                    != 0;
+                let cn_is_god = (cn_flags & CharacterFlags::God.bits()) != 0;
+                let cn_is_imp_or_god =
+                    (cn_flags & (CharacterFlags::God.bits() | CharacterFlags::Imp.bits())) != 0;
                 let cn_is_god_imp_or_usurp = (cn_flags
-                    & (core::constants::CharacterFlags::CF_GOD.bits()
-                        | core::constants::CharacterFlags::CF_IMP.bits()
-                        | core::constants::CharacterFlags::CF_USURP.bits()))
+                    & (CharacterFlags::God.bits()
+                        | CharacterFlags::Imp.bits()
+                        | CharacterFlags::Usurp.bits()))
                     != 0;
 
-                let cn_invis_level = crate::helpers::invis_level(cn);
+                let cn_invis_level = helpers::invis_level(cn);
 
                 let mut players = 0;
                 state.do_character_log(
@@ -2030,17 +2018,12 @@ impl God {
                     }
 
                     let n_flags = c.flags;
-                    let n_is_player =
-                        (n_flags & core::constants::CharacterFlags::CF_PLAYER.bits()) != 0;
-                    let n_is_usurp =
-                        (n_flags & core::constants::CharacterFlags::CF_USURP.bits()) != 0;
-                    let n_is_invisible =
-                        (n_flags & core::constants::CharacterFlags::CF_INVISIBLE.bits()) != 0;
-                    let n_is_nowho =
-                        (n_flags & core::constants::CharacterFlags::CF_NOWHO.bits()) != 0;
-                    let n_is_staff =
-                        (n_flags & core::constants::CharacterFlags::CF_STAFF.bits()) != 0;
-                    let n_is_god = (n_flags & core::constants::CharacterFlags::CF_GOD.bits()) != 0;
+                    let n_is_player = (n_flags & CharacterFlags::Player.bits()) != 0;
+                    let n_is_usurp = (n_flags & CharacterFlags::Usurp.bits()) != 0;
+                    let n_is_invisible = (n_flags & CharacterFlags::Invisible.bits()) != 0;
+                    let n_is_nowho = (n_flags & CharacterFlags::NoWho.bits()) != 0;
+                    let n_is_staff = (n_flags & CharacterFlags::Staff.bits()) != 0;
+                    let n_is_god = (n_flags & CharacterFlags::God.bits()) != 0;
 
                     let font = if !n_is_player {
                         if !n_is_usurp {
@@ -2051,7 +2034,7 @@ impl God {
                         }
                         core::types::FontColor::Blue
                     } else if n_is_invisible {
-                        let n_invis_level = crate::helpers::invis_level(n);
+                        let n_invis_level = helpers::invis_level(n);
                         if cn_invis_level < n_invis_level {
                             continue;
                         }
@@ -2079,16 +2062,15 @@ impl God {
                     }
 
                     let name = c.get_name();
-                    let points_str = int2str(c.points_tot);
+                    let points_str = helpers::format_number(c.points_tot);
                     let area_str = if showarea {
-                        crate::area::get_area(n, false)
+                        area::get_area(n, false)
                     } else {
                         "--------".to_string()
                     };
 
-                    let is_poh = (n_flags & core::constants::CharacterFlags::CF_POH.bits()) != 0;
-                    let is_poh_leader =
-                        (n_flags & core::constants::CharacterFlags::CF_POH_LEADER.bits()) != 0;
+                    let is_poh = (n_flags & CharacterFlags::Poh.bits()) != 0;
+                    let is_poh_leader = (n_flags & CharacterFlags::PohLeader.bits()) != 0;
 
                     state.do_character_log(
                         cn,
@@ -2110,8 +2092,7 @@ impl God {
                 for n in 1..core::constants::MAXCHARS as usize {
                     let c = &characters[n];
                     let n_flags = c.flags;
-                    let n_is_player =
-                        (n_flags & core::constants::CharacterFlags::CF_PLAYER.bits()) != 0;
+                    let n_is_player = (n_flags & CharacterFlags::Player.bits()) != 0;
                     if n_is_player {
                         continue;
                     }
@@ -2119,15 +2100,14 @@ impl God {
                         continue;
                     }
 
-                    let rank = crate::helpers::points2rank(c.points_tot as u32) as usize;
-                    let rank_short = crate::helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
+                    let rank = helpers::points2rank(c.points_tot as u32) as usize;
+                    let rank_short = helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
 
                     let name = c.get_name();
-                    let area_str = crate::area::get_area(n, false);
+                    let area_str = area::get_area(n, false);
                     let n_is_purple = (c.kindred as u32 & core::constants::KIN_PURPLE) != 0;
-                    let is_poh = (n_flags & core::constants::CharacterFlags::CF_POH.bits()) != 0;
-                    let is_poh_leader =
-                        (n_flags & core::constants::CharacterFlags::CF_POH_LEADER.bits()) != 0;
+                    let is_poh = (n_flags & CharacterFlags::Poh.bits()) != 0;
+                    let is_poh_leader = (n_flags & CharacterFlags::PohLeader.bits()) != 0;
 
                     state.do_character_log(
                         cn,
@@ -2220,7 +2200,7 @@ impl God {
                     let name = c.get_name();
                     let points_str = helpers::format_number(c.points_tot);
                     let area_str = if showarea {
-                        crate::area::get_area(n, false)
+                        area::get_area(n, false)
                     } else {
                         "--------".to_string()
                     };
@@ -2323,14 +2303,13 @@ impl God {
                     let rank_short = helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
                     let name = c.get_name();
                     let area_str = if showarea {
-                        crate::area::get_area(n, false)
+                        area::get_area(n, false)
                     } else {
                         "--------".to_string()
                     };
 
-                    let is_poh = (n_flags & core::constants::CharacterFlags::CF_POH.bits()) != 0;
-                    let is_poh_leader =
-                        (n_flags & core::constants::CharacterFlags::CF_POH_LEADER.bits()) != 0;
+                    let is_poh = (n_flags & CharacterFlags::Poh.bits()) != 0;
+                    let is_poh_leader = (n_flags & CharacterFlags::PohLeader.bits()) != 0;
 
                     state.do_character_log(
                         cn,
@@ -2352,7 +2331,7 @@ impl God {
                 if Character::is_sane_character(gc) && characters[gc].is_living_character(gc) {
                     let gc_name = characters[gc].get_name();
                     let points_str = helpers::format_number(characters[gc].points_tot);
-                    let area_str = crate::area::get_area(gc, false);
+                    let area_str = area::get_area(gc, false);
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Blue,
@@ -2914,7 +2893,7 @@ impl God {
             Self::drop_char_fuzzy(cc, caster_x as usize, caster_y as usize);
 
             // Add target as enemy
-            crate::driver::npc_add_enemy(cc, co, true);
+            driver::npc_add_enemy(cc, co, true);
 
             let target_name = c_string_to_str(&target_name_bytes);
             State::with(|state| {
@@ -4241,7 +4220,7 @@ impl God {
         }
 
         // Create character from template 386 with items
-        let co = crate::populate::pop_create_char(386, true);
+        let co = populate::pop_create_char(386, true);
 
         if co != 0 {
             let character_name =
@@ -4376,7 +4355,7 @@ impl God {
         }
 
         // Create character from template 495 with items
-        let co = crate::populate::pop_create_char(495, true);
+        let co = populate::pop_create_char(495, true);
 
         if co != 0 {
             let character_name =
