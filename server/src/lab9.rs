@@ -418,37 +418,34 @@ impl Labyrinth9 {
             Repository::with_characters(|characters| characters[character_id].is_player());
 
         if !is_player {
-            log::warn!(
-                "Non-player character {} attempted to answer a riddle.",
-                character_id
-            );
             return false;
         }
 
         let return_value = Repository::with_characters_mut(|characters| {
             let riddler = characters[character_id].data[core::constants::CHD_RIDDLER];
 
+            if riddler <= 0 {
+                characters[character_id].data[core::constants::CHD_RIDDLER] = 0;
+                return false;
+            }
+
+            let riddler_usize = riddler as usize;
+            if riddler_usize >= characters.len() {
+                characters[character_id].data[core::constants::CHD_RIDDLER] = 0;
+                return false;
+            }
+
             // Valid riddler?
-            if !Character::is_sane_npc(riddler as usize, &characters[riddler as usize]) {
-                log::warn!(
-                    "Character {} attempted to answer a riddle from invalid riddler {}.",
-                    character_id,
-                    riddler
-                );
+            if !Character::is_sane_npc(riddler_usize, &characters[riddler_usize]) {
                 characters[character_id].data[core::constants::CHD_RIDDLER] = 0;
                 return false;
             }
 
             // Certified riddler?
-            let area_of_knowledge = characters[riddler as usize].data[72]; // Area of knowledge
+            let area_of_knowledge = characters[riddler_usize].data[72]; // Area of knowledge
             if area_of_knowledge < core::constants::RIDDLE_MIN_AREA
                 || area_of_knowledge > core::constants::RIDDLE_MAX_AREA
             {
-                log::warn!(
-                    "Character {} attempted to answer a riddle from uncertified riddler {}.",
-                    character_id,
-                    riddler
-                );
                 characters[character_id].data[core::constants::CHD_RIDDLER] = 0;
                 return false;
             }
@@ -458,26 +455,17 @@ impl Labyrinth9 {
             let guesser_match = self.guesser[guesser_index as usize] == character_id as i32;
 
             if !guesser_match {
-                log::warn!(
-                    "Character {} attempted to answer a riddle from riddler {} who does not remember them.",
-                    character_id,
-                    riddler
-                );
                 characters[character_id].data[core::constants::CHD_RIDDLER] = 0;
                 return false;
             }
 
             // Does the player see the riddler?
             let can_see_riddler =
-                State::with_mut(|state| state.do_char_can_see(character_id, riddler as usize));
+                State::with_mut(|state| state.do_char_can_see(character_id, riddler_usize));
 
             if can_see_riddler == 0 {
-                log::warn!(
-                    "Character {} attempted to answer a riddle from riddler {} who they cannot see.",
-                    character_id,
-                    riddler
-                );
-                characters[character_id].data[core::constants::CHD_RIDDLER] = 0;
+                // If the guesser cannot see the riddler, ignore the speech
+                // without resetting the riddle state.
                 return false;
             }
 
@@ -487,10 +475,35 @@ impl Labyrinth9 {
             };
 
             let mut found = false;
-            for word in text.split(' ') {
-                if riddle.answer_1.eq_ignore_ascii_case(word.trim()) {
-                    found = true;
-                    break;
+
+            // Split into alphanumeric words (like do_say()), then compare each word
+            // case-insensitively against up to 3 accepted answers.
+            let matches_answer = |word: &str| {
+                riddle.answer_1.eq_ignore_ascii_case(word)
+                    || (!riddle.answer_2.is_empty() && riddle.answer_2.eq_ignore_ascii_case(word))
+                    || (!riddle.answer_3.is_empty() && riddle.answer_3.eq_ignore_ascii_case(word))
+            };
+
+            let mut word_start: Option<usize> = None;
+            for (idx, ch) in text.char_indices() {
+                if ch.is_ascii_alphanumeric() {
+                    if word_start.is_none() {
+                        word_start = Some(idx);
+                    }
+                } else if let Some(start) = word_start.take() {
+                    let word = &text[start..idx];
+                    if matches_answer(word) {
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            if !found {
+                if let Some(start) = word_start {
+                    let word = &text[start..];
+                    if matches_answer(word) {
+                        found = true;
+                    }
                 }
             }
 
@@ -555,7 +568,8 @@ impl Labyrinth9 {
                 }
             }
 
-            return true;
+            // wrong/no matching answer returns 0.
+            false
         });
 
         return return_value;
