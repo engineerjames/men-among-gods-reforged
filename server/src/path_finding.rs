@@ -215,13 +215,12 @@ impl PathFinder {
         ty2: i16,
         max_step: usize,
     ) -> bool {
-        // Bounds check
-        // Match C++ bounds: x,y in [1, SERVER_MAPX-1] / [1, SERVER_MAPY-1]
         if x < 1 || x >= SERVER_MAPX as i16 || y < 1 || y >= SERVER_MAPY as i16 {
+            log::warn!("add_node: out of bounds x={}, y={}", x, y);
             return false;
         }
 
-        let m = (x as i32 + y as i32 * SERVER_MAPX) as usize;
+        let m = x as usize + y as usize * SERVER_MAPX as usize;
         let gcost = self.calculate_cost(x, y, cdir, mode, tx1, ty1, tx2, ty2);
         let tcost = ccost + gcost;
 
