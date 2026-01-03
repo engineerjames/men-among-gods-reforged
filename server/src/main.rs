@@ -23,42 +23,11 @@ use std::process;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use signal_hook::consts::{SIGHUP, SIGINT, SIGQUIT, SIGTERM};
-use signal_hook::iterator::Signals;
-
 use core;
 
 use crate::path_finding::PathFinder;
 use crate::repository::Repository;
 use crate::server::Server;
-
-fn setup_signal_handling(
-    quit_flag: Arc<AtomicBool>,
-) -> (std::thread::JoinHandle<()>, signal_hook::iterator::Handle) {
-    // Set up signal handling in a separate thread
-    let mut signals = Signals::new(&[SIGINT, SIGTERM, SIGQUIT, SIGHUP]).unwrap();
-    let handle = signals.handle();
-
-    let signal_thread = std::thread::spawn(move || {
-        for sig in signals.forever() {
-            match sig {
-                SIGINT | SIGTERM | SIGQUIT => {
-                    if !quit_flag.load(Ordering::SeqCst) {
-                        log::info!("Got signal to terminate. Shutdown initiated...");
-                    } else {
-                        log::info!("Alright, alright, I'm already terminating!");
-                    }
-                    quit_flag.store(true, Ordering::SeqCst);
-                }
-                _ => {
-                    log::warn!("Received unsupported signal: {}", sig);
-                }
-            }
-        }
-    });
-
-    (signal_thread, handle)
-}
 
 fn handle_command_line_args(args: &[String]) {
     if args.len() == 2 {
@@ -110,7 +79,20 @@ fn main() -> Result<(), String> {
 
     let quit_flag = Arc::new(AtomicBool::new(false));
     let quit_flag_clone = quit_flag.clone();
-    let (signal_thread, handle) = setup_signal_handling(quit_flag_clone);
+
+    let handler_result = ctrlc::set_handler(move || {
+        if !quit_flag_clone.load(Ordering::SeqCst) {
+            log::info!("Ctrl-C received. Shutdown initiated...");
+        } else {
+            log::info!("Alright, alright, I'm already terminating!");
+        }
+        quit_flag_clone.store(true, Ordering::SeqCst);
+    });
+
+    if let Err(e) = handler_result {
+        log::error!("Error setting Ctrl-C handler: {}. Exiting.", e);
+        process::exit(1);
+    }
 
     handle_command_line_args(&args);
 
@@ -156,11 +138,6 @@ fn main() -> Result<(), String> {
     // TODO: Equivalent of saving data back to disk here...
 
     log::info!("Server shutdown complete.");
-
-    handle.close();
-    signal_thread.join().unwrap_or_else(|e| {
-        log::error!("Failed to join signal handling thread: {:?}", e);
-    });
 
     Ok(())
 }
