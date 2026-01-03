@@ -11,6 +11,9 @@ macro_rules! chlog {
     };
 }
 
+/// Format a number into a compact string with K/M suffixes.
+/// Example: 1234567 -> "1M"
+/// Example: 12345 -> "12K"
 pub fn format_number(value: i32) -> String {
     if value < 99 * 1000 {
         format!("{}", value)
@@ -838,4 +841,44 @@ pub fn mana_needed(v: i32, diff: i32) -> i32 {
 /// * `diff` - Difficulty increment
 pub fn skill_needed(v: i32, diff: i32) -> i32 {
     std::cmp::max(v, v * v * v * diff / 40)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_number;
+
+    #[test]
+    fn format_number_under_99k_is_plain() {
+        assert_eq!(format_number(0), "0");
+        assert_eq!(format_number(1), "1");
+        assert_eq!(format_number(12_345), "12345");
+        assert_eq!(format_number(98_999), "98999");
+    }
+
+    #[test]
+    fn format_number_k_threshold_and_truncation() {
+        assert_eq!(format_number(99_000), "99K");
+        assert_eq!(format_number(99_001), "99K");
+        assert_eq!(format_number(99_999), "99K");
+        assert_eq!(format_number(100_000), "100K");
+        assert_eq!(format_number(1_234_567), "1234K");
+        assert_eq!(format_number(98_999_999), "98999K");
+    }
+
+    #[test]
+    fn format_number_m_threshold_and_truncation() {
+        assert_eq!(format_number(99_000_000), "99M");
+        assert_eq!(format_number(99_000_001), "99M");
+        assert_eq!(format_number(100_000_000), "100M");
+        assert_eq!(format_number(i32::MAX), "2147M");
+    }
+
+    #[test]
+    fn format_number_negative_values_are_plain() {
+        assert_eq!(format_number(-1), "-1");
+        assert_eq!(format_number(-12_345), "-12345");
+        assert_eq!(format_number(-99_000), "-99000");
+        assert_eq!(format_number(-1_234_567), "-1234567");
+        assert_eq!(format_number(i32::MIN), "-2147483648");
+    }
 }
