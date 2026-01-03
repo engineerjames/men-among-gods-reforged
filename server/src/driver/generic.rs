@@ -412,21 +412,22 @@ pub fn act_attack(cn: usize) {
         (ch[cn].flags & CharacterFlags::Simple.bits() as u64) != 0
     });
 
-    #[allow(unused_assignments)]
-    let mut v: i8 = 0;
+    let mut v: i32;
     if !is_simple {
+        let mut vv: i32;
         loop {
-            let vv = rand::thread_rng().gen_range(0..=3) as i8;
+            vv = rand::thread_rng().gen_range(0..3);
             let last = Repository::with_characters(|ch| ch[cn].lastattack);
-            if vv != last {
-                v = vv;
+            if vv != last as i32 {
                 break;
             }
         }
+        Repository::with_characters_mut(|ch| ch[cn].lastattack = vv as i8);
+
+        v = vv;
         if v != 0 {
             v += 4;
         }
-        Repository::with_characters_mut(|ch| ch[cn].lastattack = v);
     } else {
         v = 0;
     }

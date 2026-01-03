@@ -113,14 +113,14 @@ impl State {
                         characters[character_id].flags & CharacterFlags::CF_PLAYER.bits() != 0;
                     (
                         is_killer_player,
-                        map_flags & core::constants::MF_ARENA as u64 == 0,
+                        map_flags & core::constants::MF_ARENA as u64 != 0,
                         co_alignment,
                         co_temp,
                         co_is_player,
                     )
                 });
 
-            if is_killer_player && is_arena {
+            if is_killer_player && !is_arena {
                 // Adjust alignment
                 Repository::with_characters_mut(|characters| {
                     characters[killer_id].alignment -= co_alignment / 50;
@@ -158,13 +158,14 @@ impl State {
                             core::types::FontColor::Red,
                             "To join the purple one and be a killer, type #purple now.\n",
                         );
+
                         Repository::with_characters(|ch| {
                             EffectManager::fx_add_effect(
                                 6,
-                                co_x as i32,
-                                co_y as i32,
                                 0,
-                                ch[killer_id].player,
+                                ch[killer_id].x as i32,
+                                ch[killer_id].y as i32,
+                                0,
                             );
                         });
                     }
@@ -313,11 +314,14 @@ impl State {
             }
         }
 
+        State::remove_enemy(character_id);
+
         // Handle player death
         let is_player = Repository::with_characters(|ch| {
             ch[character_id].flags & CharacterFlags::CF_PLAYER.bits() != 0
         });
 
+        let corpse_id: usize;
         if is_player {
             // Update player death statistics
             Repository::with_globals_mut(|globals| {
@@ -352,7 +356,7 @@ impl State {
                     (co_x + co_y * core::constants::SERVER_MAPX as i16) as i32;
             });
 
-            self.handle_player_death(character_id, killer_id, map_flags);
+            corpse_id = self.handle_player_death(character_id, killer_id, map_flags);
         } else {
             // Handle NPC death
             let is_labkeeper = Repository::with_characters(|ch| {
@@ -360,23 +364,22 @@ impl State {
             });
 
             if is_labkeeper {
+                Repository::with_globals_mut(|globals| {
+                    globals.npcs_died += 1;
+                });
+
                 self.handle_labkeeper_death(character_id, killer_id);
+                return;
             } else {
                 self.handle_npc_death(character_id, killer_id);
             }
+
+            corpse_id = character_id;
         }
 
-        // Remove from enemy lists
-        State::remove_enemy(character_id);
-
         // Schedule respawn and show death animation
-        let fn_idx = EffectManager::fx_add_effect(
-            3,
-            co_x as i32,
-            co_y as i32,
-            character_id as i32,
-            Repository::with_characters(|ch| ch[character_id].player),
-        );
+
+        let fn_idx = EffectManager::fx_add_effect(3, 0, co_x as i32, co_y as i32, corpse_id as i32);
         // Set data[3] = killer_id for the effect, if possible
         Repository::with_effects_mut(|effects| {
             if fn_idx.unwrap() < effects.len() {
@@ -399,7 +402,7 @@ impl State {
     /// * `co` - Character id of the dead player
     /// * `cn` - Killer id
     /// * `map_flags` - Map flags at the death location (used for arena/wimp checks)
-    pub(crate) fn handle_player_death(&self, co: usize, cn: usize, map_flags: u64) {
+    pub(crate) fn handle_player_death(&self, co: usize, cn: usize, map_flags: u64) -> usize {
         // Remember template if we're to respawn this character
         // TODO: Re-evaluate if we need to do anything here.
 
@@ -448,7 +451,7 @@ impl State {
                 "Could not clone character {} for grave, all char slots full!",
                 co
             );
-            return;
+            return co;
         };
 
         // Clone character to create grave
@@ -538,6 +541,9 @@ impl State {
         });
 
         player::plr_map_set(cc);
+
+        // After player death, `co` is reassigned to `cc` for corpse effects.
+        cc
     }
 
     /// Port of `handle_npc_death(co, cn)` from the original server sources.
@@ -561,29 +567,29 @@ impl State {
         player::plr_reset_status(co);
 
         // Check for USURP flag (player controlling NPC)
-        let usurp_player = Repository::with_characters(|characters| {
+        let usurp_info = Repository::with_characters(|characters| {
             if characters[co].flags & CharacterFlags::CF_USURP.bits() != 0 {
-                let c2 = characters[co].data[97] as usize;
-                if Character::is_sane_character(c2) {
-                    Some((c2, characters[co].player))
-                } else {
-                    None
-                }
+                Some((
+                    characters[co].player as usize,
+                    characters[co].data[97] as usize,
+                ))
             } else {
                 None
             }
         });
 
-        if let Some((c2, player_nr)) = usurp_player {
-            Repository::with_characters_mut(|characters| {
-                characters[c2].player = player_nr;
-                Server::with_players_mut(|players| {
-                    players[player_nr as usize].usnr = c2;
+        if let Some((player_nr, c2)) = usurp_info {
+            if Character::is_sane_character(c2) {
+                Repository::with_characters_mut(|characters| {
+                    characters[c2].player = player_nr as i32;
+                    Server::with_players_mut(|players| {
+                        players[player_nr].usnr = c2;
+                    });
+                    characters[c2].flags &= !CharacterFlags::CF_CCP.bits();
                 });
-                characters[c2].flags &= !CharacterFlags::CF_CCP.bits();
-            });
-        } else if let Some((_, player_nr)) = usurp_player {
-            player::player_exit(player_nr as usize);
+            } else {
+                player::player_exit(player_nr);
+            }
         }
 
         log::info!("new npc body");
@@ -679,8 +685,8 @@ impl State {
         if is_cn_player {
             State::with(|state| {
                 state.do_ransack_corpse(
-                    co,
                     cn,
+                    co,
                     "You notice %s tumble into the grave of your victim.\n",
                 );
             });
@@ -703,7 +709,7 @@ impl State {
     /// * `co` - Labkeeper character id who died
     /// * `cn` - Killer id
     pub(crate) fn handle_labkeeper_death(&self, co: usize, cn: usize) {
-        player::plr_map_remove(cn);
+        player::plr_map_remove(co);
 
         // Destroy all items
         // TODO: Seems like we're getting rid of the items twice?
