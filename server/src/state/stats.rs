@@ -768,17 +768,14 @@ impl State {
                 });
 
                 if killed {
-                    let spell_name =
-                        Repository::with_items(|items| items[spell_item as usize].name);
-                    log::info!(
-                        "Character {} killed by spell: {}",
-                        cn,
-                        String::from_utf8_lossy(&spell_name)
-                    );
+                    let spell_name = Repository::with_items(|items| {
+                        items[spell_item as usize].get_name().to_string()
+                    });
+                    log::info!("Character {} killed by spell: {}", cn, spell_name);
                     self.do_character_log(
                         cn,
                         FontColor::Red,
-                        &format!("The {} killed you!\n", String::from_utf8_lossy(&spell_name)),
+                        &format!("The {} killed you!\n", spell_name),
                     );
                     self.do_area_log(
                         cn,
@@ -786,40 +783,34 @@ impl State {
                         0,
                         0,
                         FontColor::Red,
-                        &format!(
-                            "The {} killed {}.\n",
-                            String::from_utf8_lossy(&spell_name),
-                            cn
-                        ),
+                        &format!("The {} killed {}.\n", spell_name, cn),
                     );
                     self.do_character_killed(0, cn);
                     return;
                 }
 
                 if end_depleted {
-                    let spell_name =
-                        Repository::with_items(|items| items[spell_item as usize].name);
+                    let spell_name = Repository::with_items(|items| {
+                        items[spell_item as usize].get_name().to_string()
+                    });
                     Repository::with_items_mut(|items| {
                         items[spell_item as usize].active = 0;
                     });
                     log::info!(
                         "{} ran out due to lack of endurance for cn={}",
-                        String::from_utf8_lossy(&spell_name),
+                        spell_name,
                         cn
                     );
                 }
 
                 if mana_depleted {
-                    let spell_name =
-                        Repository::with_items(|items| items[spell_item as usize].name);
+                    let spell_name = Repository::with_items(|items| {
+                        items[spell_item as usize].get_name().to_string()
+                    });
                     Repository::with_items_mut(|items| {
                         items[spell_item as usize].active = 0;
                     });
-                    log::info!(
-                        "{} ran out due to lack of mana for cn={}",
-                        String::from_utf8_lossy(&spell_name),
-                        cn
-                    );
+                    log::info!("{} ran out due to lack of mana for cn={}", spell_name, cn);
                 }
             } else {
                 // Temporary spell - decrement timer
@@ -833,8 +824,9 @@ impl State {
 
                 // Warn when spell is about to run out
                 if active == core::constants::TICKS as u32 * 30 {
-                    let spell_name =
-                        Repository::with_items(|items| items[spell_item as usize].name);
+                    let spell_name = Repository::with_items(|items| {
+                        items[spell_item as usize].get_name().to_string()
+                    });
                     let (is_player_or_usurp, temp, companion_owner) =
                         Repository::with_characters(|ch| {
                             (
@@ -851,10 +843,7 @@ impl State {
                         self.do_character_log(
                             cn,
                             FontColor::Red,
-                            &format!(
-                                "{} is about to run out.\n",
-                                String::from_utf8_lossy(&spell_name)
-                            ),
+                            &format!("{} is about to run out.\n", spell_name),
                         );
                     } else if temp == core::constants::CT_COMPANION as u16 && companion_owner != 0 {
                         let co = companion_owner as usize;
@@ -873,14 +862,15 @@ impl State {
                                     || item_temp == core::constants::SK_PROTECT as u16
                                     || item_temp == core::constants::SK_ENHANCE as u16
                                 {
-                                    let co_name = Repository::with_characters(|ch| ch[co].name);
+                                    let co_name = Repository::with_characters(|ch| {
+                                        ch[co].get_name().to_string()
+                                    });
 
                                     self.do_sayx(
                                         cn,
                                         format!(
                                             "My spell {} is running out, {}.",
-                                            String::from_utf8_lossy(&spell_name),
-                                            String::from_utf8_lossy(&co_name),
+                                            spell_name, co_name,
                                         )
                                         .as_str(),
                                     );
@@ -919,8 +909,9 @@ impl State {
 
                 // Handle spell expiration
                 if active == 0 {
-                    let spell_name =
-                        Repository::with_items(|items| items[spell_item as usize].name);
+                    let spell_name = Repository::with_items(|items| {
+                        items[spell_item as usize].get_name().to_string()
+                    });
 
                     // Recall spell - teleport character
                     if item_temp == core::constants::SK_RECALL as u16 {
@@ -979,7 +970,7 @@ impl State {
                         self.do_character_log(
                             cn,
                             FontColor::Red,
-                            &format!("{} ran out.\n", String::from_utf8_lossy(&spell_name)),
+                            &format!("{} ran out.\n", spell_name),
                         );
                     }
 
@@ -1420,11 +1411,9 @@ impl State {
 
                 // Have the herald yell it out
                 if herald_cn != 0 {
-                    let char_name = String::from_utf8_lossy(&characters[cn].name)
-                        .trim_matches('\0')
-                        .to_string();
-                    let rank_name = if rank < crate::helpers::RANK_NAMES.len() {
-                        crate::helpers::RANK_NAMES[rank]
+                    let char_name = characters[cn].get_name().to_string();
+                    let rank_name = if rank < helpers::RANK_NAMES.len() {
+                        helpers::RANK_NAMES[rank]
                     } else {
                         "Unknown Rank"
                     };

@@ -162,10 +162,7 @@ pub fn npc_list_enemies(npc: usize, cn: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                &format!(
-                    "Enemies of {}:",
-                    String::from_utf8_lossy(&characters[npc].name)
-                ),
+                &format!("Enemies of {}:", c_string_to_str(&characters[npc].name)),
             );
 
             for n in 80..92 {
@@ -174,7 +171,7 @@ pub fn npc_list_enemies(npc: usize, cn: usize) -> i32 {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Green,
-                        &format!("  {}", String::from_utf8_lossy(&characters[cv].name)),
+                        &format!("  {}", c_string_to_str(&characters[cv].name)),
                     );
                     none = false;
                 }
@@ -255,7 +252,7 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
             && co < MAXCHARS
             && (characters[co].flags & CharacterFlags::CF_PLAYER.bits()) != 0
             && characters[cn].alignment == 10000
-            && (String::from_utf8_lossy(&characters[cn].name) != "Peacekeeper"
+            && (characters[cn].get_name() != "Peacekeeper"
                 || characters[cn].a_hp < (characters[cn].hp[5] * 500) as i32)
             && characters[cn].data[70] < ticker
         {
@@ -312,7 +309,7 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
                 characters[cn].data[54] = 0;
                 characters[cn].data[55] = ticker;
                 if co < MAXCHARS {
-                    let co_name = String::from_utf8_lossy(&characters[co].name).to_string();
+                    let co_name = characters[co].get_name();
                     npc_saytext_n(cn, 4, Some(&co_name));
                 }
                 State::with(|state| {
@@ -337,11 +334,17 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
 
         // Fight back
         if co < MAXCHARS {
-            let co_name = characters[co].name;
+            let co_name = characters[co].get_name();
+            let cn_name = characters[cn].get_name();
             if npc_add_enemy(cn, co, true) {
-                let co_name = String::from_utf8_lossy(&co_name).to_string();
                 npc_saytext_n(cn, 1, Some(&co_name));
-                log::info!("NPC {} added {} to enemy list for attacking", cn, co);
+                log::info!(
+                    "NPC {} ({}) added {} ({}) to enemy list for attacking",
+                    cn,
+                    cn_name,
+                    co,
+                    co_name
+                );
             }
         }
 
@@ -654,7 +657,7 @@ pub fn npc_give(_cn: usize, _co: usize, _in: usize, _money: i32) -> i32 {
             } else {
                 // Thank you message
                 let ref_name = Repository::with_items(|items| {
-                    String::from_utf8_lossy(&items[in_item].reference).to_string()
+                    c_string_to_str(&items[in_item].reference).to_string()
                 });
                 State::with(|state| {
                     state.do_sayx(
@@ -740,7 +743,7 @@ pub fn npc_give(_cn: usize, _co: usize, _in: usize, _money: i32) -> i32 {
                         cn,
                         &format!(
                             "Here is your {} in exchange.",
-                            Repository::with_item_templates(|t| String::from_utf8_lossy(
+                            Repository::with_item_templates(|t| c_string_to_str(
                                 &t[give_temp as usize].reference
                             )
                             .to_string())
@@ -828,7 +831,7 @@ pub fn npc_died(cn: usize, co: usize) -> i32 {
             let roll = rand::thread_rng().gen_range(0..100) as i32;
             if roll < chance {
                 let co_name = if co < MAXCHARS {
-                    String::from_utf8_lossy(&characters[co].name).to_string()
+                    characters[co].get_name().to_string()
                 } else {
                     String::new()
                 };
@@ -856,7 +859,7 @@ pub fn npc_shout(cn: usize, co: usize, code: i32, x: i32, y: i32) -> i32 {
             characters[cn].data[55] = Repository::with_globals(|globals| globals.ticker);
 
             let co_name = if co < MAXCHARS {
-                String::from_utf8_lossy(&characters[co].name).to_string()
+                characters[co].get_name().to_string()
             } else {
                 String::new()
             };
@@ -1205,9 +1208,7 @@ pub fn npc_quaff_potion(cn: usize, itemp: i32, stemp: i32) -> bool {
                     if it[item_index as usize].temp == itemp as u16 {
                         return (
                             true,
-                            String::from_utf8_lossy(&it[item_index as usize].name)
-                                .into_owned()
-                                .into(),
+                            it[item_index as usize].get_name().to_string(),
                             item_index as usize,
                         );
                     }
@@ -1227,11 +1228,7 @@ pub fn npc_quaff_potion(cn: usize, itemp: i32, stemp: i32) -> bool {
                 ch[cn].x as i32,
                 ch[cn].y as i32,
                 core::types::FontColor::Yellow,
-                &format!(
-                    "The {} uses a {}.\n",
-                    String::from_utf8_lossy(&ch[cn].name),
-                    name
-                ),
+                &format!("The {} uses a {}.\n", ch[cn].get_name(), name),
             )
         });
 
@@ -2395,10 +2392,7 @@ pub fn npc_want_item(cn: usize, in_idx: usize) -> bool {
 
     if citem != 0 {
         Repository::with_items(|items| {
-            log::info!(
-                "have {} in citem",
-                String::from_utf8_lossy(&items[in_idx].name)
-            );
+            log::info!("have {} in citem", items[in_idx].get_name());
         });
 
         let do_store_item = State::with(|state| state.do_store_item(cn));
@@ -2433,10 +2427,7 @@ pub fn npc_equip_item(cn: usize, in_idx: usize) -> bool {
 
     if citem != 0 {
         Repository::with_items(|items| {
-            log::info!(
-                "have {} in citem",
-                String::from_utf8_lossy(&items[in_idx].name)
-            );
+            log::info!("have {} in citem", items[in_idx].get_name());
         });
 
         let do_store_item = State::with(|state| state.do_store_item(cn));
@@ -2457,10 +2448,7 @@ pub fn npc_equip_item(cn: usize, in_idx: usize) -> bool {
             if npc_check_placement(in_idx, n) {
                 if npc_can_wear_item(cn, in_idx) {
                     Repository::with_items(|items| {
-                        log::info!(
-                            "now wearing {}",
-                            String::from_utf8_lossy(&items[in_idx].name)
-                        );
+                        log::info!("now wearing {}", items[in_idx].get_name());
                     });
 
                     // Remove old item if any
@@ -2525,8 +2513,8 @@ pub fn npc_loot_grave(cn: usize, in_idx: usize) -> bool {
                 let (item_name, co_name) = Repository::with_items(|items| {
                     Repository::with_characters(|characters| {
                         (
-                            String::from_utf8_lossy(&items[in_item].name).to_string(),
-                            String::from_utf8_lossy(&characters[co].name).to_string(),
+                            items[in_item].get_name().to_string(),
+                            characters[co].get_name().to_string(),
                         )
                     })
                 });
@@ -2550,8 +2538,8 @@ pub fn npc_loot_grave(cn: usize, in_idx: usize) -> bool {
                 let (item_name, co_name) = Repository::with_items(|items| {
                     Repository::with_characters(|characters| {
                         (
-                            String::from_utf8_lossy(&items[in_item].name).to_string(),
-                            String::from_utf8_lossy(&characters[co].name).to_string(),
+                            items[in_item].get_name().to_string(),
+                            characters[co].get_name().to_string(),
                         )
                     })
                 });
@@ -2566,8 +2554,8 @@ pub fn npc_loot_grave(cn: usize, in_idx: usize) -> bool {
                 let (item_name, co_name) = Repository::with_items(|items| {
                     Repository::with_characters(|characters| {
                         (
-                            String::from_utf8_lossy(&items[in_item].name).to_string(),
-                            String::from_utf8_lossy(&characters[co].name).to_string(),
+                            items[in_item].get_name().to_string(),
+                            characters[co].get_name().to_string(),
                         )
                     })
                 });
@@ -2583,9 +2571,8 @@ pub fn npc_loot_grave(cn: usize, in_idx: usize) -> bool {
     // Try to loot gold
     let co_gold = Repository::with_characters(|characters| characters[co].gold);
     if co_gold != 0 {
-        let co_name = Repository::with_characters(|characters| {
-            String::from_utf8_lossy(&characters[co].name).to_string()
-        });
+        let co_name =
+            Repository::with_characters(|characters| characters[co].get_name().to_string());
         log::info!(
             "got {:.2}G from {}'s grave",
             co_gold as f32 / 100.0,
@@ -2975,9 +2962,8 @@ pub fn npc_cityguard_see(cn: usize, co: usize, flag: i32) -> i32 {
                 characters[cn].data[55] = ticker;
             });
 
-            let co_name = Repository::with_characters(|characters| {
-                String::from_utf8_lossy(&characters[co].name).to_string()
-            });
+            let co_name =
+                Repository::with_characters(|characters| characters[co].get_name().to_string());
 
             // Say text and shout
             npc_saytext_n(cn, 4, Some(&co_name));
@@ -3202,9 +3188,8 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
 
         if dist <= data_93 {
             if npc_add_enemy(cn, co, false) {
-                let co_name = Repository::with_characters(|characters| {
-                    String::from_utf8_lossy(&characters[co].name).to_string()
-                });
+                let co_name =
+                    Repository::with_characters(|characters| characters[co].get_name().to_string());
                 npc_saytext_n(cn, 1, Some(&co_name));
                 log::info!(
                     "Added {} to kill list because he didn't say the password",
@@ -3248,10 +3233,9 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
 
         if !already_talked {
             let text_2 = Repository::with_characters(|characters| characters[cn].text[2]);
-            let text_2_str = String::from_utf8_lossy(&text_2).to_string();
-            let co_name = Repository::with_characters(|characters| {
-                String::from_utf8_lossy(&characters[co].name).to_string()
-            });
+            let text_2_str = c_string_to_str(&text_2).to_string();
+            let co_name =
+                Repository::with_characters(|characters| characters[co].get_name().to_string());
 
             let (co_kindred, co_skill_19) = Repository::with_characters(|characters| {
                 (characters[co].kindred as u32, characters[co].skill[19][0])

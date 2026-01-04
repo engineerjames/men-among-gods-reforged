@@ -755,9 +755,8 @@ pub fn reset_char(n: usize) {
         return;
     }
 
-    let name = Repository::with_character_templates(|templates| {
-        String::from_utf8_lossy(&templates[n].name).to_string()
-    });
+    let name =
+        Repository::with_character_templates(|templates| templates[n].get_name().to_string());
     log::info!("Resetting char {} ({})", n, name);
 
     // Recalculate character template points
@@ -926,9 +925,7 @@ pub fn reset_item(n: usize) {
         return; // Never reset blank template (1)
     }
 
-    let name = Repository::with_item_templates(|templates| {
-        String::from_utf8_lossy(&templates[n].name).to_string()
-    });
+    let name = Repository::with_item_templates(|templates| templates[n].get_name().to_string());
     log::info!("Resetting item {} ({})", n, name);
 
     for in_id in 1..core::constants::MAXITEM {

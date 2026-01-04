@@ -1,3 +1,5 @@
+use crate::string_operations::c_string_to_str;
+
 pub struct Ban {
     creator: [u8; 80],
     victim: [u8; 80],
@@ -21,10 +23,8 @@ impl Ban {
         self.address = address;
     }
 
-    pub fn creator(&self) -> String {
-        String::from_utf8_lossy(&self.creator)
-            .trim_end_matches('\0')
-            .to_string()
+    pub fn creator(&self) -> &str {
+        c_string_to_str(&self.creator)
     }
 
     pub fn set_creator(&mut self, name: &str) {
@@ -34,10 +34,8 @@ impl Ban {
         self.creator[len] = 0;
     }
 
-    pub fn victim(&self) -> String {
-        String::from_utf8_lossy(&self.victim)
-            .trim_end_matches('\0')
-            .to_string()
+    pub fn victim(&self) -> &str {
+        c_string_to_str(&self.victim)
     }
 
     pub fn set_victim(&mut self, name: &str) {

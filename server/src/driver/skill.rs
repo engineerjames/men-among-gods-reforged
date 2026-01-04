@@ -1,5 +1,6 @@
 use core::{
     constants::{ItemFlags, SERVER_MAPX},
+    string_operations::c_string_to_str,
     types::FontColor,
 };
 
@@ -418,15 +419,12 @@ pub fn spell_from_item(cn: usize, in2: usize) {
         it[in_.unwrap()].power = Repository::with_items(|it2| it2[in2].power);
     });
     if add_spell(cn, in_.unwrap()) == 0 {
-        let name = Repository::with_items(|it| it[in_.unwrap()].name);
+        let name = Repository::with_items(|it| it[in_.unwrap()].get_name().to_string());
         State::with(|state| {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                &format!(
-                    "Magical interference neutralised the {}'s effect.\n",
-                    String::from_utf8_lossy(&name)
-                ),
+                &format!("Magical interference neutralised the {}'s effect.\n", name,),
             );
         });
         return;
@@ -462,15 +460,12 @@ pub fn spell_light(cn: usize, co: usize, power: i32) -> i32 {
     });
     if cn != co {
         if add_spell(co, in_.unwrap()) == 0 {
-            let name = Repository::with_items(|it| it[in_.unwrap()].name);
+            let name = Repository::with_items(|it| it[in_.unwrap()].get_name().to_string());
             State::with(|state| {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Green,
-                    &format!(
-                        "Magical interference neutralised the {}'s effect.\n",
-                        String::from_utf8_lossy(&name)
-                    ),
+                    &format!("Magical interference neutralised the {}'s effect.\n", name),
                 );
             });
             return 0;
@@ -482,10 +477,7 @@ pub fn spell_light(cn: usize, co: usize, power: i32) -> i32 {
                 state.do_character_log(
                     co,
                     core::types::FontColor::Green,
-                    &format!(
-                        "{} cast light on you.\n",
-                        String::from_utf8_lossy(&reference)
-                    ),
+                    &format!("{} cast light on you.\n", c_string_to_str(&reference)),
                 )
             });
         } else {
@@ -506,7 +498,7 @@ pub fn spell_light(cn: usize, co: usize, power: i32) -> i32 {
                 x as i32,
                 y as i32,
                 core::types::FontColor::Green,
-                &format!("{} starts to emit light.\n", String::from_utf8_lossy(&name)),
+                &format!("{} starts to emit light.\n", c_string_to_str(&name)),
             )
         });
         let sound = Repository::with_characters(|ch| ch[cn].sound);
@@ -516,15 +508,12 @@ pub fn spell_light(cn: usize, co: usize, power: i32) -> i32 {
         EffectManager::fx_add_effect(7, 0, x as i32, y as i32, 0);
     } else {
         if add_spell(cn, in_.unwrap()) == 0 {
-            let name = Repository::with_items(|it| it[in_.unwrap()].name);
+            let name = Repository::with_items(|it| it[in_.unwrap()].get_name().to_string());
             State::with(|state| {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Green,
-                    &format!(
-                        "Magical interference neutralised the {}'s effect.\n",
-                        String::from_utf8_lossy(&name)
-                    ),
+                    &format!("Magical interference neutralised the {}'s effect.\n", name),
                 );
             });
             return 0;
@@ -608,7 +597,7 @@ pub fn skill_light(cn: usize) {
                         FontColor::Green,
                         &format!(
                             "{} tried to cast light on you but failed.\n",
-                            String::from_utf8_lossy(&reference)
+                            c_string_to_str(&reference)
                         ),
                     )
                 });
@@ -673,15 +662,12 @@ pub fn spell_protect(cn: usize, co: usize, power: i32) -> i32 {
 
     if cn != co {
         if add_spell(co, in_) == 0 {
-            let name = Repository::with_items(|it| it[in_].name);
+            let name = Repository::with_items(|it| it[in_].get_name().to_string());
             State::with(|state| {
                 state.do_character_log(
                     cn,
                     FontColor::Green,
-                    &format!(
-                        "Magical interference neutralised the {}'s effect.\n",
-                        String::from_utf8_lossy(&name)
-                    ),
+                    &format!("Magical interference neutralised the {}'s effect.\n", name),
                 )
             });
             return 0;
@@ -696,7 +682,7 @@ pub fn spell_protect(cn: usize, co: usize, power: i32) -> i32 {
                     FontColor::Green,
                     &format!(
                         "{} tried to cast protection on you but failed.\n",
-                        String::from_utf8_lossy(&reference)
+                        c_string_to_str(&reference)
                     ),
                 )
             });
@@ -706,7 +692,7 @@ pub fn spell_protect(cn: usize, co: usize, power: i32) -> i32 {
             });
         }
 
-        let name = Repository::with_characters(|ch| ch[co].name);
+        let name = Repository::with_characters(|ch| ch[co].get_name().to_string());
         let (x, y) = Repository::with_characters(|ch| (ch[co].x, ch[co].y));
         State::with(|state| {
             state.do_area_log(
@@ -715,7 +701,7 @@ pub fn spell_protect(cn: usize, co: usize, power: i32) -> i32 {
                 x as i32,
                 y as i32,
                 FontColor::Green,
-                &format!("{} is now protected.\n", String::from_utf8_lossy(&name)),
+                &format!("{} is now protected.\n", name),
             )
         });
         let sound = Repository::with_characters(|ch| ch[cn].sound);
@@ -730,15 +716,12 @@ pub fn spell_protect(cn: usize, co: usize, power: i32) -> i32 {
         );
     } else {
         if add_spell(cn, in_) == 0 {
-            let name = Repository::with_items(|it| it[in_].name);
+            let name = Repository::with_items(|it| it[in_].get_name().to_string());
             State::with(|state| {
                 state.do_character_log(
                     cn,
                     FontColor::Green,
-                    &format!(
-                        "Magical interference neutralised the {}'s effect.\n",
-                        String::from_utf8_lossy(&name)
-                    ),
+                    &format!("Magical interference neutralised the {}'s effect.\n", name),
                 )
             });
             return 0;
@@ -796,16 +779,15 @@ pub fn skill_protect(cn: usize) {
     }
 
     if driver::player_or_ghost(cn, co) == 0 {
-        let name_from = Repository::with_characters(|ch| ch[co].name);
-        let name_to = Repository::with_characters(|ch| ch[cn].name);
+        let name_from = Repository::with_characters(|ch| ch[co].get_name().to_string());
+        let name_to = Repository::with_characters(|ch| ch[cn].get_name().to_string());
         State::with(|state| {
             state.do_character_log(
                 cn,
                 FontColor::Red,
                 &format!(
                     "Changed target of spell from {} to {}.\n",
-                    String::from_utf8_lossy(&name_from),
-                    String::from_utf8_lossy(&name_to)
+                    name_from, name_to
                 ),
             )
         });
@@ -827,7 +809,7 @@ pub fn skill_protect(cn: usize) {
                         FontColor::Green,
                         &format!(
                             "{} tried to cast protect on you but failed.\n",
-                            String::from_utf8_lossy(&reference)
+                            c_string_to_str(&reference)
                         ),
                     )
                 });
@@ -862,7 +844,7 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
         if cn != co {
             let reference = Repository::with_characters(|ch| ch[co].reference);
             State::with(|state| {
-                state.do_character_log(cn, FontColor::Green, &format!("Seeing that {} is not powerful enough for your spell, you reduced its strength.\n", String::from_utf8_lossy(&reference)))
+                state.do_character_log(cn, FontColor::Green, &format!("Seeing that {} is not powerful enough for your spell, you reduced its strength.\n", c_string_to_str(&reference)))
             });
         } else {
             State::with(|state| {
@@ -895,15 +877,12 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
 
     if cn != co {
         if add_spell(co, in_) == 0 {
-            let name = Repository::with_items(|it| it[in_].name);
+            let name = Repository::with_items(|it| it[in_].get_name().to_string());
             State::with(|state| {
                 state.do_character_log(
                     cn,
                     FontColor::Green,
-                    &format!(
-                        "Magical interference neutralised the {}'s effect.\n",
-                        String::from_utf8_lossy(&name)
-                    ),
+                    &format!("Magical interference neutralised the {}'s effect.\n", name),
                 )
             });
             return 0;
@@ -917,7 +896,7 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
                     FontColor::Green,
                     &format!(
                         "{} cast enhance weapon on you.\n",
-                        String::from_utf8_lossy(&reference)
+                        c_string_to_str(&reference)
                     ),
                 )
             });
@@ -932,7 +911,7 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
                 FontColor::Green,
                 &format!(
                     "{}'s weapon is now stronger.\n",
-                    String::from_utf8_lossy(&Repository::with_characters(|ch| ch[co].name))
+                    Repository::with_characters(|ch| ch[co].get_name().to_string())
                 ),
             )
         });
@@ -951,15 +930,12 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
         );
     } else {
         if add_spell(cn, in_) == 0 {
-            let name = Repository::with_items(|it| it[in_].name);
+            let name = Repository::with_items(|it| it[in_].get_name().to_string());
             State::with(|state| {
                 state.do_character_log(
                     cn,
                     FontColor::Green,
-                    &format!(
-                        "Magical interference neutralised the {}'s effect.\n",
-                        String::from_utf8_lossy(&name)
-                    ),
+                    &format!("Magical interference neutralised the {}'s effect.\n", name),
                 )
             });
             return 0;
@@ -1019,16 +995,15 @@ pub fn skill_enhance(cn: usize) {
     }
 
     if driver::player_or_ghost(cn, co) == 0 {
-        let name_from = Repository::with_characters(|ch| ch[co].name);
-        let name_to = Repository::with_characters(|ch| ch[cn].name);
+        let name_from = Repository::with_characters(|ch| ch[co].get_name().to_string());
+        let name_to = Repository::with_characters(|ch| ch[cn].get_name().to_string());
         State::with(|state| {
             state.do_character_log(
                 cn,
                 FontColor::Red,
                 &format!(
                     "Changed target of spell from {} to {}.\n",
-                    String::from_utf8_lossy(&name_from),
-                    String::from_utf8_lossy(&name_to)
+                    name_from, name_to
                 ),
             )
         });
@@ -1050,7 +1025,7 @@ pub fn skill_enhance(cn: usize) {
                             FontColor::Green,
                             &format!(
                                 "{} tried to cast enhance weapon on you but failed.\n",
-                                String::from_utf8_lossy(&reference)
+                                c_string_to_str(&reference)
                             ),
                         )
                     });
@@ -1079,7 +1054,7 @@ pub fn skill_enhance(cn: usize) {
                         FontColor::Green,
                         &format!(
                             "{} tried to cast enhance weapon on you but failed.\n",
-                            String::from_utf8_lossy(&reference)
+                            c_string_to_str(&reference)
                         ),
                     )
                 });
@@ -1112,7 +1087,7 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
         if cn != co {
             let reference = Repository::with_characters(|ch| ch[co].reference);
             State::with(|state| {
-                state.do_character_log(cn, FontColor::Green, &format!("Seeing that {} is not powerful enough for your spell, you reduced its strength.\n", String::from_utf8_lossy(&reference)))
+                state.do_character_log(cn, FontColor::Green, &format!("Seeing that {} is not powerful enough for your spell, you reduced its strength.\n", c_string_to_str(&reference)))
             });
         } else {
             State::with(|state| {
@@ -1147,15 +1122,12 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
 
     if cn != co {
         if add_spell(co, in_) == 0 {
-            let name = Repository::with_items(|it| it[in_].name);
+            let name = Repository::with_items(|it| it[in_].get_name().to_string());
             State::with(|state| {
                 state.do_character_log(
                     cn,
                     FontColor::Green,
-                    &format!(
-                        "Magical interference neutralised the {}'s effect.\n",
-                        String::from_utf8_lossy(&name)
-                    ),
+                    &format!("Magical interference neutralised the {}'s effect.\n", name),
                 )
             });
             return 0;
@@ -1167,10 +1139,7 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
                 state.do_character_log(
                     co,
                     FontColor::Green,
-                    &format!(
-                        "{} cast bless on you.\n",
-                        String::from_utf8_lossy(&reference)
-                    ),
+                    &format!("{} cast bless on you.\n", c_string_to_str(&reference)),
                 )
             });
         } else {
@@ -1184,7 +1153,7 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
                 FontColor::Green,
                 &format!(
                     "{} was blessed.\n",
-                    String::from_utf8_lossy(&Repository::with_characters(|ch| ch[co].name))
+                    Repository::with_characters(|ch| ch[co].get_name().to_string())
                 ),
             )
         });
@@ -1205,15 +1174,12 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
         );
     } else {
         if add_spell(cn, in_) == 0 {
-            let name = Repository::with_items(|it| it[in_].name);
+            let name = Repository::with_items(|it| it[in_].get_name().to_string());
             State::with(|state| {
                 state.do_character_log(
                     cn,
                     FontColor::Green,
-                    &format!(
-                        "Magical interference neutralised the {}'s effect.\n",
-                        String::from_utf8_lossy(&name)
-                    ),
+                    &format!("Magical interference neutralised the {}'s effect.\n", name),
                 )
             });
             return 0;
@@ -1273,16 +1239,15 @@ pub fn skill_bless(cn: usize) {
     }
 
     if driver::player_or_ghost(cn, co) == 0 {
-        let name_from = Repository::with_characters(|ch| ch[co].name);
-        let name_to = Repository::with_characters(|ch| ch[cn].name);
+        let name_from = Repository::with_characters(|ch| ch[co].get_name().to_string());
+        let name_to = Repository::with_characters(|ch| ch[cn].get_name().to_string());
         State::with(|state| {
             state.do_character_log(
                 cn,
                 FontColor::Red,
                 &format!(
                     "Changed target of spell from {} to {}.\n",
-                    String::from_utf8_lossy(&name_from),
-                    String::from_utf8_lossy(&name_to)
+                    name_from, name_to
                 ),
             )
         });
@@ -1303,7 +1268,7 @@ pub fn skill_bless(cn: usize) {
                             FontColor::Green,
                             &format!(
                                 "{} tried to cast bless on you but failed.\n",
-                                String::from_utf8_lossy(&reference)
+                                c_string_to_str(&reference)
                             ),
                         )
                     });
@@ -1335,7 +1300,7 @@ pub fn skill_bless(cn: usize) {
                         FontColor::Green,
                         &format!(
                             "{} tried to cast bless on you but failed.\n",
-                            String::from_utf8_lossy(&reference)
+                            c_string_to_str(&reference)
                         ),
                     )
                 });
@@ -1428,7 +1393,7 @@ pub fn skill_wimp(cn: usize) {
                 core::types::FontColor::Green,
                 &format!(
                     "Magical interference neutralised the {}'s effect.\n",
-                    String::from_utf8_lossy(&Repository::with_items(|it| it[in_idx].name))
+                    Repository::with_items(|it| it[in_idx].get_name().to_string())
                 ),
             )
         });
@@ -1494,15 +1459,12 @@ pub fn spell_mshield(cn: usize, co: usize, power: i32) -> i32 {
 
     if cn != co {
         if add_spell(co, in_) == 0 {
-            let name = Repository::with_items(|it| it[in_].name);
+            let name = Repository::with_items(|it| it[in_].get_name().to_string());
             State::with(|state| {
                 state.do_character_log(
                     cn,
                     FontColor::Green,
-                    &format!(
-                        "Magical interference neutralised the {}'s effect.\n",
-                        String::from_utf8_lossy(&name)
-                    ),
+                    &format!("Magical interference neutralised the {}'s effect.\n", name),
                 )
             });
             return 0;
@@ -1516,7 +1478,7 @@ pub fn spell_mshield(cn: usize, co: usize, power: i32) -> i32 {
                     FontColor::Green,
                     &format!(
                         "{} cast magic shield on you.\n",
-                        String::from_utf8_lossy(&reference)
+                        c_string_to_str(&reference)
                     ),
                 )
             });
@@ -1531,7 +1493,7 @@ pub fn spell_mshield(cn: usize, co: usize, power: i32) -> i32 {
                 FontColor::Green,
                 &format!(
                     "{}'s Magic Shield activated.\n",
-                    String::from_utf8_lossy(&Repository::with_characters(|ch| ch[co].name))
+                    Repository::with_characters(|ch| ch[co].get_name().to_string())
                 ),
             )
         });
@@ -1552,15 +1514,12 @@ pub fn spell_mshield(cn: usize, co: usize, power: i32) -> i32 {
         );
     } else {
         if add_spell(cn, in_) == 0 {
-            let name = Repository::with_items(|it| it[in_].name);
+            let name = Repository::with_items(|it| it[in_].get_name().to_string());
             State::with(|state| {
                 state.do_character_log(
                     cn,
                     FontColor::Green,
-                    &format!(
-                        "Magical interference neutralised the {}'s effect.\n",
-                        String::from_utf8_lossy(&name)
-                    ),
+                    &format!("Magical interference neutralised the {}'s effect.\n", name),
                 )
             });
             return 0;
@@ -1633,10 +1592,7 @@ pub fn spell_heal(cn: usize, co: usize, power: i32) -> i32 {
                 state.do_character_log(
                     co,
                     FontColor::Green,
-                    &format!(
-                        "{} cast heal on you.\n",
-                        String::from_utf8_lossy(&reference)
-                    ),
+                    &format!("{} cast heal on you.\n", c_string_to_str(&reference)),
                 )
             });
         } else {
@@ -1650,7 +1606,7 @@ pub fn spell_heal(cn: usize, co: usize, power: i32) -> i32 {
                 FontColor::Green,
                 &format!(
                     "{} was healed.\n",
-                    String::from_utf8_lossy(&Repository::with_characters(|ch| ch[co].name))
+                    Repository::with_characters(|ch| ch[co].get_name().to_string())
                 ),
             )
         });
@@ -1731,16 +1687,15 @@ pub fn skill_heal(cn: usize) {
     }
 
     if driver::player_or_ghost(cn, co) == 0 {
-        let name_from = Repository::with_characters(|ch| ch[co].name);
-        let name_to = Repository::with_characters(|ch| ch[cn].name);
+        let name_from = Repository::with_characters(|ch| ch[co].get_name().to_string());
+        let name_to = Repository::with_characters(|ch| ch[cn].get_name().to_string());
         State::with(|state| {
             state.do_character_log(
                 cn,
                 FontColor::Red,
                 &format!(
                     "Changed target of spell from {} to {}.\n",
-                    String::from_utf8_lossy(&name_from),
-                    String::from_utf8_lossy(&name_to)
+                    name_from, name_to
                 ),
             )
         });
@@ -1760,7 +1715,7 @@ pub fn skill_heal(cn: usize) {
                             FontColor::Green,
                             &format!(
                                 "{} tried to cast heal on you but failed.\n",
-                                String::from_utf8_lossy(&reference)
+                                c_string_to_str(&reference)
                             ),
                         )
                     });
@@ -1792,7 +1747,7 @@ pub fn skill_heal(cn: usize) {
                         FontColor::Green,
                         &format!(
                             "{} tried to cast heal on you but failed.\n",
-                            String::from_utf8_lossy(&reference)
+                            c_string_to_str(&reference)
                         ),
                     )
                 });
@@ -1859,7 +1814,7 @@ pub fn spell_curse(cn: usize, co: usize, power: i32) -> i32 {
                 FontColor::Green,
                 &format!(
                     "Magical interference neutralised the {}'s effect.\n",
-                    String::from_utf8_lossy(&Repository::with_items(|it| it[in_idx].name))
+                    Repository::with_items(|it| it[in_idx].get_name().to_string())
                 ),
             )
         });
@@ -1873,10 +1828,7 @@ pub fn spell_curse(cn: usize, co: usize, power: i32) -> i32 {
             state.do_character_log(
                 co,
                 FontColor::Green,
-                &format!(
-                    "{} cast curse on you.\n",
-                    String::from_utf8_lossy(&reference)
-                ),
+                &format!("{} cast curse on you.\n", c_string_to_str(&reference)),
             )
         });
     } else {
@@ -1885,13 +1837,9 @@ pub fn spell_curse(cn: usize, co: usize, power: i32) -> i32 {
         });
     }
 
-    let name = Repository::with_characters(|ch| ch[co].name);
+    let name = Repository::with_characters(|ch| ch[co].get_name().to_string());
     State::with(|state| {
-        state.do_character_log(
-            cn,
-            FontColor::Green,
-            &format!("{} was cursed.\n", String::from_utf8_lossy(&name)),
-        )
+        state.do_character_log(cn, FontColor::Green, &format!("{} was cursed.\n", name))
     });
 
     State::with(|state| state.do_notify_character(co as u32, NT_GOTHIT as i32, cn as i32, 0, 0, 0));
@@ -1988,7 +1936,7 @@ pub fn skill_curse(cn: usize) {
                     core::types::FontColor::Green,
                     &format!(
                         "{} tried to cast curse on you but failed.\n",
-                        String::from_utf8_lossy(&reference)
+                        c_string_to_str(&reference)
                     ),
                 )
             });
@@ -2205,25 +2153,25 @@ pub fn skill_warcry(cn: usize) {
             if co != 0 {
                 if warcry(cn, co, power) != 0 {
                     State::with(|s| s.remember_pvp(cn, co));
-                    let name = Repository::with_characters(|ch| ch[cn].name);
+                    let name = Repository::with_characters(|ch| ch[cn].get_name().to_string());
                     State::with(|state| {
                         state.do_character_log(
                             co,
                             core::types::FontColor::Green,
                             &format!(
                                 "You hear {}'s warcry. You feel frightened and immobilized.\n",
-                                String::from_utf8_lossy(&name)
+                                name
                             ),
                         )
                     });
                     hit += 1;
                 } else {
-                    let name = Repository::with_characters(|ch| ch[cn].name);
+                    let name = Repository::with_characters(|ch| ch[cn].get_name().to_string());
                     State::with(|state| {
                         state.do_character_log(
                             co,
                             core::types::FontColor::Green,
-                            &format!("You hear {}'s warcry.\n", String::from_utf8_lossy(&name)),
+                            &format!("You hear {}'s warcry.\n", name),
                         )
                     });
                     miss += 1;
@@ -2257,7 +2205,7 @@ pub fn item_info(cn: usize, in_: usize, _look: i32) {
         state.do_character_log(
             cn,
             FontColor::Green,
-            &format!("{}:\n", String::from_utf8_lossy(&name)),
+            &format!("{}:\n", c_string_to_str(&name)),
         )
     });
 
@@ -2416,7 +2364,7 @@ pub fn char_info(cn: usize, co: usize) {
         state.do_character_log(
             cn,
             FontColor::Green,
-            &format!("{}:\n", String::from_utf8_lossy(&name_bytes)),
+            &format!("{}:\n", c_string_to_str(&name_bytes)),
         )
     });
     State::with(|state| state.do_character_log(cn, FontColor::Green, " \n"));
@@ -2426,7 +2374,7 @@ pub fn char_info(cn: usize, co: usize) {
     for n in 0..20 {
         let in_idx = Repository::with_characters(|ch| ch[co].spell[n] as usize);
         if in_idx != 0 {
-            let item_name = Repository::with_items(|it| it[in_idx].name);
+            let item_name = Repository::with_items(|it| it[in_idx].get_name().to_string());
             let active = Repository::with_items(|it| it[in_idx].active);
             let minutes = active / (18 * 60);
             let seconds = (active / 18) % 60;
@@ -2437,10 +2385,7 @@ pub fn char_info(cn: usize, co: usize) {
                     FontColor::Green,
                     &format!(
                         "{} for {}m {}s power of {}\n",
-                        String::from_utf8_lossy(&item_name),
-                        minutes,
-                        seconds,
-                        power
+                        item_name, minutes, seconds, power
                     ),
                 )
             });
@@ -2723,10 +2668,7 @@ pub fn skill_blast(cn: usize) {
                     FontColor::Green,
                     &format!(
                         "{} tried to cast blast on you but failed.\n",
-                        Repository::with_characters(|ch| String::from_utf8_lossy(
-                            &ch[cn].reference
-                        )
-                        .to_string())
+                        c_string_to_str(&Repository::with_characters(|ch| ch[cn].reference))
                     ),
                 )
             });
@@ -3080,9 +3022,7 @@ pub fn spell_stun(cn: usize, co: usize, power: i32) -> i32 {
                 FontColor::Green,
                 &format!(
                     "{} cast stun on you.\n",
-                    Repository::with_characters(
-                        |ch| String::from_utf8_lossy(&ch[cn].reference).to_string()
-                    )
+                    c_string_to_str(&Repository::with_characters(|ch| ch[cn].reference))
                 ),
             )
         });
@@ -3098,9 +3038,7 @@ pub fn spell_stun(cn: usize, co: usize, power: i32) -> i32 {
             FontColor::Green,
             &format!(
                 "{} was stunned.\n",
-                Repository::with_characters(
-                    |ch| String::from_utf8_lossy(&ch[co].reference).to_string()
-                )
+                c_string_to_str(&Repository::with_characters(|ch| ch[co].reference))
             ),
         )
     });
@@ -3243,10 +3181,7 @@ pub fn skill_stun(cn: usize) {
                     core::types::FontColor::Green,
                     &format!(
                         "{} tried to cast stun on you but failed.\n",
-                        Repository::with_characters(|ch| String::from_utf8_lossy(
-                            &ch[cn].reference
-                        )
-                        .to_string())
+                        c_string_to_str(&Repository::with_characters(|ch| ch[cn].reference))
                     ),
                 )
             });

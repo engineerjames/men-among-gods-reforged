@@ -85,8 +85,7 @@ impl State {
             (ch[co].flags & CharacterFlags::CF_PLAYER.bits()) != 0
         });
         if is_player {
-            let name =
-                Repository::with_characters(|ch| String::from_utf8_lossy(&ch[co].name).to_string());
+            let name = Repository::with_characters(|ch| ch[co].get_name().to_string());
             self.do_character_log(
                 cn,
                 FontColor::Red,
@@ -122,12 +121,8 @@ impl State {
 
         if driver::npc_is_enemy(co, cv) {
             if !driver::npc_remove_enemy(co, cv) {
-                let vname = Repository::with_characters(|ch| {
-                    String::from_utf8_lossy(&ch[cv].name).to_string()
-                });
-                let cname = Repository::with_characters(|ch| {
-                    String::from_utf8_lossy(&ch[co].name).to_string()
-                });
+                let vname = Repository::with_characters(|ch| ch[cv].get_name().to_string());
+                let cname = Repository::with_characters(|ch| ch[co].get_name().to_string());
                 self.do_character_log(
                     cn,
                     FontColor::Red,
@@ -139,12 +134,8 @@ impl State {
                     cname
                 );
             } else {
-                let vname = Repository::with_characters(|ch| {
-                    String::from_utf8_lossy(&ch[cv].name).to_string()
-                });
-                let cname = Repository::with_characters(|ch| {
-                    String::from_utf8_lossy(&ch[co].name).to_string()
-                });
+                let vname = Repository::with_characters(|ch| ch[cv].get_name().to_string());
+                let cname = Repository::with_characters(|ch| ch[co].get_name().to_string());
                 self.do_character_log(
                     cn,
                     FontColor::Yellow,
@@ -160,10 +151,8 @@ impl State {
             ch[co].data[core::constants::CHD_GROUP] == ch[cv].data[core::constants::CHD_GROUP]
         });
         if same_group {
-            let cname =
-                Repository::with_characters(|ch| String::from_utf8_lossy(&ch[co].name).to_string());
-            let vname =
-                Repository::with_characters(|ch| String::from_utf8_lossy(&ch[cv].name).to_string());
+            let cname = Repository::with_characters(|ch| ch[co].get_name().to_string());
+            let vname = Repository::with_characters(|ch| ch[cv].get_name().to_string());
             self.do_character_log(
                 cn,
                 FontColor::Red,
@@ -173,8 +162,7 @@ impl State {
         }
 
         if !driver::npc_add_enemy(co, cv, true) {
-            let cname =
-                Repository::with_characters(|ch| String::from_utf8_lossy(&ch[co].name).to_string());
+            let cname = Repository::with_characters(|ch| ch[co].get_name().to_string());
             self.do_character_log(
                 cn,
                 FontColor::Red,
@@ -186,21 +174,18 @@ impl State {
         // If caller has text[1], make NPC say its text[1] with victim name substitution
         let caller_has_text1 = Repository::with_characters(|ch| !ch[cn].text[1].is_empty());
         if caller_has_text1 {
-            let victim_name =
-                Repository::with_characters(|ch| String::from_utf8_lossy(&ch[cv].name).to_string());
+            let victim_name = Repository::with_characters(|ch| ch[cv].get_name().to_string());
             driver::npc_saytext_n(co, 1, Some(&victim_name));
         }
 
         // Log chlogs via info for now
-        let vname =
-            Repository::with_characters(|ch| String::from_utf8_lossy(&ch[cv].name).to_string());
-        let cname =
-            Repository::with_characters(|ch| String::from_utf8_lossy(&ch[co].name).to_string());
+        let vname = Repository::with_characters(|ch| ch[cv].get_name().to_string());
+        let cname = Repository::with_characters(|ch| ch[co].get_name().to_string());
         log::info!("IMP: Made {} an enemy of {}", vname, cname);
         log::info!(
             "Added {} to kill list (#ENEMY by {})",
             vname,
-            Repository::with_characters(|ch| String::from_utf8_lossy(&ch[cn].name).to_string())
+            Repository::with_characters(|ch| ch[cn].get_name().to_string())
         );
 
         self.do_character_log(

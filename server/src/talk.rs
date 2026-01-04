@@ -1,4 +1,5 @@
 use core::constants::{CT_COMPANION, NT_GOTMISS, SERVER_MAPX, SERVER_MAPY};
+use core::string_operations::c_string_to_str;
 
 struct Know {
     word: [&'static str; 20],
@@ -2418,9 +2419,7 @@ pub fn answer_shop(cn: usize, co: usize) {
 /// * `co` - Player character being greeted
 pub fn answer_greeting(cn: usize, co: usize) {
     Repository::with_characters(|characters| {
-        let greeting_text = String::from_utf8_lossy(&characters[cn].text[2])
-            .trim_matches('\0')
-            .to_string();
+        let greeting_text = c_string_to_str(&characters[cn].text[2]);
 
         if !greeting_text.is_empty() && !greeting_text.starts_with('#') {
             // Special case for Purple One cultist (temp 180)
@@ -2918,9 +2917,7 @@ fn replace_synonym(word: &mut String) {
 pub fn npc_hear(cn: usize, co: usize, text: &str) {
     // Check for stop keyword
     let stop_keyword = Repository::with_characters(|characters| {
-        String::from_utf8_lossy(&characters[cn].text[6])
-            .trim_matches('\0')
-            .to_string()
+        c_string_to_str(&characters[cn].text[6]).to_string()
     });
 
     if !stop_keyword.is_empty() && text.eq_ignore_ascii_case(&stop_keyword) {
@@ -2937,9 +2934,8 @@ pub fn npc_hear(cn: usize, co: usize, text: &str) {
             let ticker = Repository::with_globals(|g| g.ticker);
             characters[cn].data[27] = ticker;
 
-            let response = String::from_utf8_lossy(&characters[cn].text[7])
-                .trim_matches('\0')
-                .to_string();
+            let response = c_string_to_str(&characters[cn].text[7]).to_string();
+
             if !response.is_empty() {
                 State::with(|state| {
                     state.do_sayx(cn, &response);

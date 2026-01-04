@@ -4,6 +4,7 @@ use crate::repository::Repository;
 use crate::state::State;
 use crate::{driver, helpers};
 use core::constants::CharacterFlags;
+use core::string_operations::c_string_to_str;
 use core::types::FontColor;
 use rand::Rng;
 
@@ -260,8 +261,8 @@ impl State {
             // Show description or reference
             let (has_desc, description, reference) = Repository::with_characters(|ch| {
                 let has_desc = ch[co].description[0] != 0;
-                let description = String::from_utf8_lossy(&ch[co].description).to_string();
-                let reference = String::from_utf8_lossy(&ch[co].reference).to_string();
+                let description = c_string_to_str(&ch[co].description).to_string();
+                let reference = c_string_to_str(&ch[co].reference).to_string();
                 (has_desc, description, reference)
             });
 
@@ -275,14 +276,13 @@ impl State {
             let (co_is_player, co_data0, co_text0) = Repository::with_characters(|ch| {
                 let is_player = ch[co].is_player();
                 let data0 = ch[co].data[0];
-                let text0 = String::from_utf8_lossy(&ch[co].text[0]).to_string();
+                let text0 = c_string_to_str(&ch[co].text[0]).to_string();
                 (is_player, data0, text0)
             });
 
             if co_is_player && co_data0 != 0 {
-                let co_name = Repository::with_characters(|ch| {
-                    String::from_utf8_lossy(&ch[co].name).to_string()
-                });
+                let co_name =
+                    Repository::with_characters(|ch| c_string_to_str(&ch[co].name).to_string());
 
                 if !co_text0.is_empty() {
                     self.do_character_log(
@@ -304,7 +304,7 @@ impl State {
             let (co_kindred, co_reference) = Repository::with_characters(|ch| {
                 (
                     ch[co].kindred,
-                    String::from_utf8_lossy(&ch[co].reference).to_string(),
+                    c_string_to_str(&ch[co].reference).to_string(),
                 )
             });
 
@@ -326,9 +326,8 @@ impl State {
             });
 
             if godflag == 0 && cn != co && cn_is_player && !cn_is_invisible && !cn_is_shutup {
-                let cn_name = Repository::with_characters(|ch| {
-                    String::from_utf8_lossy(&ch[cn].name).to_string()
-                });
+                let cn_name =
+                    Repository::with_characters(|ch| c_string_to_str(&ch[cn].name).to_string());
 
                 State::with(|state| {
                     state.do_character_log(
@@ -357,12 +356,12 @@ impl State {
                 } else if co_data15 >= core::constants::MAXCHARS as i32 {
                     let killer_idx = (co_data15 & 0xFFFF) as usize;
                     Repository::with_characters(|ch| {
-                        String::from_utf8_lossy(&ch[killer_idx].reference).to_string()
+                        c_string_to_str(&ch[killer_idx].reference).to_string()
                     })
                 } else {
                     let idx = co_data15 as usize;
                     Repository::with_character_templates(|ct| {
-                        String::from_utf8_lossy(&ct[idx].reference).to_string()
+                        c_string_to_str(&ct[idx].reference).to_string()
                     })
                 };
 
@@ -425,9 +424,8 @@ impl State {
             }
 
             // Show custom text[3] (player description/title)
-            let co_text3 = Repository::with_characters(|ch| {
-                String::from_utf8_lossy(&ch[co].text[3]).to_string()
-            });
+            let co_text3 =
+                Repository::with_characters(|ch| c_string_to_str(&ch[co].text[3]).to_string());
 
             if !co_text3.is_empty() && co_is_player {
                 self.do_character_log(cn, FontColor::Yellow, &format!("{}\n", co_text3));
@@ -965,9 +963,7 @@ impl State {
                 // Check if victim is purple
                 if (characters[co_actual].kindred & KIN_PURPLE as i32) == 0 {
                     if msg {
-                        let co_name = String::from_utf8_lossy(&characters[co_actual].name)
-                            .trim_matches('\0')
-                            .to_string();
+                        let co_name = characters[co_actual].get_name();
                         let pronoun = if (characters[co_actual].kindred & KIN_MALE as i32) != 0 {
                             "He"
                         } else {
@@ -1374,9 +1370,8 @@ impl State {
         if co_afk {
             let co_afk_msg = Repository::with_characters(|ch| ch[co].text[0][0] != 0);
             if co_afk_msg {
-                let msg = Repository::with_characters(|ch| {
-                    String::from_utf8_lossy(&ch[co].text[0]).to_string()
-                });
+                let msg =
+                    Repository::with_characters(|ch| c_string_to_str(&ch[co].text[0]).to_string());
                 self.do_character_log(
                     cn,
                     core::types::FontColor::Red,
