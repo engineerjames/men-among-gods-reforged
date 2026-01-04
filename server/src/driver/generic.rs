@@ -41,7 +41,7 @@ pub fn act_drop(cn: usize) {
 
     let cannot_flee = State::with(|s| s.do_char_can_flee(cn) == 0);
     let simple = Repository::with_characters(|ch| {
-        (ch[cn].flags & CharacterFlags::Simple.bits() as u64) != 0
+        (ch[cn].flags & CharacterFlags::Simple.bits()) != 0
     });
 
     if cannot_flee || simple {
@@ -96,7 +96,7 @@ pub fn act_use(cn: usize) {
 
     let cannot_flee = State::with(|s| s.do_char_can_flee(cn) == 0);
     let simple = Repository::with_characters(|ch| {
-        (ch[cn].flags & CharacterFlags::Simple.bits() as u64) != 0
+        (ch[cn].flags & CharacterFlags::Simple.bits()) != 0
     });
 
     if cannot_flee || simple {
@@ -148,7 +148,7 @@ pub fn act_use(cn: usize) {
 /// * `cn` - Character number (index)
 pub fn act_pickup(cn: usize) {
     let simple_initial = Repository::with_characters(|ch| {
-        (ch[cn].flags & CharacterFlags::Simple.bits() as u64) != 0
+        (ch[cn].flags & CharacterFlags::Simple.bits()) != 0
     });
     if simple_initial {
         Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
@@ -159,7 +159,7 @@ pub fn act_pickup(cn: usize) {
 
     let cannot_flee = State::with(|s| s.do_char_can_flee(cn) == 0);
     let simple = Repository::with_characters(|ch| {
-        (ch[cn].flags & CharacterFlags::Simple.bits() as u64) != 0
+        (ch[cn].flags & CharacterFlags::Simple.bits()) != 0
     });
 
     if cannot_flee || simple {
@@ -211,7 +211,7 @@ pub fn act_pickup(cn: usize) {
 /// * `cn` - Character number (index)
 pub fn act_skill(cn: usize) {
     let simple = Repository::with_characters(|ch| {
-        (ch[cn].flags & CharacterFlags::Simple.bits() as u64) != 0
+        (ch[cn].flags & CharacterFlags::Simple.bits()) != 0
     });
     if simple {
         Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
@@ -248,7 +248,7 @@ pub fn act_skill(cn: usize) {
 /// * `cn` - Character number (index)
 pub fn act_wave(cn: usize) {
     let simple = Repository::with_characters(|ch| {
-        (ch[cn].flags & CharacterFlags::Simple.bits() as u64) != 0
+        (ch[cn].flags & CharacterFlags::Simple.bits()) != 0
     });
     if simple {
         Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
@@ -301,7 +301,7 @@ pub fn act_wave(cn: usize) {
 /// * `cn` - Character number (index)
 pub fn act_bow(cn: usize) {
     let simple = Repository::with_characters(|ch| {
-        (ch[cn].flags & CharacterFlags::Simple.bits() as u64) != 0
+        (ch[cn].flags & CharacterFlags::Simple.bits()) != 0
     });
     if simple {
         Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
@@ -354,7 +354,7 @@ pub fn act_bow(cn: usize) {
 /// * `cn` - Character number (index)
 pub fn act_give(cn: usize) {
     let simple = Repository::with_characters(|ch| {
-        (ch[cn].flags & CharacterFlags::Simple.bits() as u64) != 0
+        (ch[cn].flags & CharacterFlags::Simple.bits()) != 0
     });
     if simple {
         Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
@@ -409,7 +409,7 @@ pub fn act_attack(cn: usize) {
     Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
 
     let is_simple = Repository::with_characters(|ch| {
-        (ch[cn].flags & CharacterFlags::Simple.bits() as u64) != 0
+        (ch[cn].flags & CharacterFlags::Simple.bits()) != 0
     });
 
     let mut v: i32;
@@ -693,7 +693,7 @@ pub fn act_move_rightdown(cn: usize) {
         return;
     }
 
-    let base = (x + y * core::constants::SERVER_MAPX) as i32;
+    let base = x + y * core::constants::SERVER_MAPX;
     let m1 = (base + core::constants::SERVER_MAPX) as usize;
     let m2 = (base + 1) as usize;
     let target = (base + core::constants::SERVER_MAPX + 1) as usize;
@@ -742,7 +742,7 @@ pub fn act_move_rightup(cn: usize) {
         return;
     }
 
-    let base = (x + y * core::constants::SERVER_MAPX) as i32;
+    let base = x + y * core::constants::SERVER_MAPX;
     let m1 = (base - core::constants::SERVER_MAPX) as usize;
     let m2 = (base + 1) as usize;
     let target = (base - core::constants::SERVER_MAPX + 1) as usize;
@@ -791,7 +791,7 @@ pub fn act_move_leftdown(cn: usize) {
         return;
     }
 
-    let base = (x + y * core::constants::SERVER_MAPX) as i32;
+    let base = x + y * core::constants::SERVER_MAPX;
     let m1 = (base + core::constants::SERVER_MAPX) as usize;
     let m2 = (base - 1) as usize;
     let target = (base + core::constants::SERVER_MAPX - 1) as usize;
@@ -840,7 +840,7 @@ pub fn act_move_leftup(cn: usize) {
         return;
     }
 
-    let base = (x + y * core::constants::SERVER_MAPX) as i32;
+    let base = x + y * core::constants::SERVER_MAPX;
     let m1 = (base - core::constants::SERVER_MAPX) as usize;
     let m2 = (base - 1) as usize;
     let target = (base - core::constants::SERVER_MAPX - 1) as usize;
@@ -885,7 +885,7 @@ pub fn act_move_right(cn: usize) {
         return;
     }
 
-    let base = (x + y * core::constants::SERVER_MAPX) as i32;
+    let base = x + y * core::constants::SERVER_MAPX;
     let target = (base + 1) as usize;
 
     if !player::plr_set_target(target, cn) {
@@ -920,7 +920,7 @@ pub fn act_move_left(cn: usize) {
         return;
     }
 
-    let base = (x + y * core::constants::SERVER_MAPX) as i32;
+    let base = x + y * core::constants::SERVER_MAPX;
     let target = (base - 1) as usize;
 
     if !player::plr_set_target(target, cn) {
@@ -955,7 +955,7 @@ pub fn act_move_down(cn: usize) {
         return;
     }
 
-    let base = (x + y * core::constants::SERVER_MAPX) as i32;
+    let base = x + y * core::constants::SERVER_MAPX;
     let target = (base + core::constants::SERVER_MAPX) as usize;
 
     if !player::plr_set_target(target, cn) {
@@ -990,7 +990,7 @@ pub fn act_move_up(cn: usize) {
         return;
     }
 
-    let base = (x + y * core::constants::SERVER_MAPX) as i32;
+    let base = x + y * core::constants::SERVER_MAPX;
     let target = (base - core::constants::SERVER_MAPX) as usize;
 
     if !player::plr_set_target(target, cn) {
@@ -1016,7 +1016,7 @@ pub fn char_give_char(cn: usize, co: usize) -> i32 {
 
     let co_used = Repository::with_characters(|ch| ch[co].used);
     let can_see = State::with_mut(|state| state.do_char_can_see(cn, co));
-    if co_used != core::constants::USE_ACTIVE as u8 || can_see == 0 || cn == co {
+    if co_used != core::constants::USE_ACTIVE || can_see == 0 || cn == co {
         return -1;
     }
 
@@ -1100,11 +1100,11 @@ pub fn char_attack_char(cn: usize, co: usize) -> i32 {
     let co_used = Repository::with_characters(|ch| ch[co].used);
     let can_see = State::with_mut(|state| state.do_char_can_see(cn, co));
     let co_flags = Repository::with_characters(|ch| ch[co].flags);
-    if co_used != core::constants::USE_ACTIVE as u8
+    if co_used != core::constants::USE_ACTIVE
         || can_see == 0
         || cn == co
-        || (co_flags & CharacterFlags::Body.bits() as u64) != 0
-        || (co_flags & CharacterFlags::Stoned.bits() as u64) != 0
+        || (co_flags & CharacterFlags::Body.bits()) != 0
+        || (co_flags & CharacterFlags::Stoned.bits()) != 0
     {
         return -1;
     }
@@ -1422,8 +1422,8 @@ pub fn char_moveto(cn: usize, x: i32, y: i32, flag: i32, x2: i32, y2: i32) -> i3
     }
 
     let unreach = Repository::with_characters(|ch| ch[cn].unreach);
-    let unreachx = Repository::with_characters(|ch| ch[cn].unreachx as i32);
-    let unreachy = Repository::with_characters(|ch| ch[cn].unreachy as i32);
+    let unreachx = Repository::with_characters(|ch| ch[cn].unreachx);
+    let unreachy = Repository::with_characters(|ch| ch[cn].unreachy);
     let ticker = Repository::with_globals(|g| g.ticker as i64);
     if unreach as i64 > ticker && unreachx == x && unreachy == y {
         return -1;
@@ -1435,7 +1435,7 @@ pub fn char_moveto(cn: usize, x: i32, y: i32, flag: i32, x2: i32, y2: i32) -> i3
 
     if dir.is_none() {
         Repository::with_characters_mut(|ch| {
-            ch[cn].unreach = Repository::with_globals(|g| g.ticker) + core::constants::TICKS as i32;
+            ch[cn].unreach = Repository::with_globals(|g| g.ticker) + core::constants::TICKS;
             ch[cn].unreachx = x;
             ch[cn].unreachy = y;
         });
@@ -1659,15 +1659,15 @@ pub fn drv_useto(cn: usize, x: usize, y: usize) {
     let mut xx = x as i32;
     let mut yy = y as i32;
     if xx < 0
-        || xx >= core::constants::SERVER_MAPX as i32
+        || xx >= core::constants::SERVER_MAPX
         || yy < 0
-        || yy >= core::constants::SERVER_MAPY as i32
+        || yy >= core::constants::SERVER_MAPY
     {
         xx = 0;
         yy = 0;
     }
 
-    let m = (xx + yy * core::constants::SERVER_MAPX as i32) as usize;
+    let m = (xx + yy * core::constants::SERVER_MAPX) as usize;
     let in_item = Repository::with_map(|map| map[m].it);
 
     if ret != 0
@@ -1842,8 +1842,8 @@ pub fn driver_msg(cn: usize, msg_type: i32, dat1: i32, dat2: i32, dat3: i32, dat
 
     let is_player = Repository::with_characters(|ch| {
         (ch[cn].flags
-            & (core::constants::CharacterFlags::CF_PLAYER.bits()
-                | core::constants::CharacterFlags::CF_USURP.bits()) as u64)
+            & ((core::constants::CharacterFlags::CF_PLAYER.bits()
+                | core::constants::CharacterFlags::CF_USURP.bits())))
             != 0
     });
 
@@ -1854,7 +1854,7 @@ pub fn driver_msg(cn: usize, msg_type: i32, dat1: i32, dat2: i32, dat3: i32, dat
     }
 
     let is_ccp = Repository::with_characters(|ch| {
-        (ch[cn].flags & core::constants::CharacterFlags::CF_CCP.bits() as u64) != 0
+        (ch[cn].flags & core::constants::CharacterFlags::CF_CCP.bits()) != 0
     });
     if is_ccp {
         // TODO: driver_ccp::ccp_msg(cn, msg_type, dat1, dat2, dat3, dat4);
@@ -1866,7 +1866,7 @@ pub fn driver_msg(cn: usize, msg_type: i32, dat1: i32, dat2: i32, dat3: i32, dat
         x if x == core::constants::NT_GOTHIT as u32 || x == core::constants::NT_GOTMISS as u32 => {
             let attack_cn = Repository::with_characters(|ch| ch[cn].attack_cn as i32);
             let fightback = Repository::with_characters(|ch| {
-                ch[cn].data[core::constants::CHD_FIGHTBACK as usize]
+                ch[cn].data[core::constants::CHD_FIGHTBACK]
             });
             let misc_action = Repository::with_characters(|ch| ch[cn].misc_action);
             if attack_cn == 0 && fightback == 0 && misc_action != core::constants::DR_GIVE as u16 {
@@ -1881,15 +1881,15 @@ pub fn driver_msg(cn: usize, msg_type: i32, dat1: i32, dat2: i32, dat3: i32, dat
 
 pub fn follow_driver(cn: usize, co: usize) -> bool {
     // Bounds and validity checks
-    if co == 0 || co >= core::constants::MAXCHARS as usize {
+    if co == 0 || co >= core::constants::MAXCHARS {
         return false;
     }
     let (tox, toy, dir) =
         Repository::with_characters(|ch| (ch[co].tox as i32, ch[co].toy as i32, ch[co].dir as i32));
     if tox < 5
-        || tox > core::constants::SERVER_MAPX as i32 - 6
+        || tox > core::constants::SERVER_MAPX - 6
         || toy < 5
-        || toy > core::constants::SERVER_MAPY as i32 - 6
+        || toy > core::constants::SERVER_MAPY - 6
     {
         return false;
     }
@@ -1903,17 +1903,17 @@ pub fn follow_driver(cn: usize, co: usize) -> bool {
     }
 
     // Calculate m (map index)
-    let mut m = tox + toy * core::constants::SERVER_MAPX as i32;
+    let mut m = tox + toy * core::constants::SERVER_MAPX;
     let dir_val = dir as u8;
     match dir_val {
-        core::constants::DX_UP => m += core::constants::SERVER_MAPX as i32 * 2,
-        core::constants::DX_DOWN => m -= core::constants::SERVER_MAPX as i32 * 2,
+        core::constants::DX_UP => m += core::constants::SERVER_MAPX * 2,
+        core::constants::DX_DOWN => m -= core::constants::SERVER_MAPX * 2,
         core::constants::DX_LEFT => m += 2,
         core::constants::DX_RIGHT => m -= 2,
-        core::constants::DX_LEFTUP => m += 2 + core::constants::SERVER_MAPX as i32 * 2,
-        core::constants::DX_LEFTDOWN => m += 2 - core::constants::SERVER_MAPX as i32 * 2,
-        core::constants::DX_RIGHTUP => m -= 2 - core::constants::SERVER_MAPX as i32 * -2,
-        core::constants::DX_RIGHTDOWN => m -= 2 + core::constants::SERVER_MAPX as i32 * 2,
+        core::constants::DX_LEFTUP => m += 2 + core::constants::SERVER_MAPX * 2,
+        core::constants::DX_LEFTDOWN => m += 2 - core::constants::SERVER_MAPX * 2,
+        core::constants::DX_RIGHTUP => m -= 2 - core::constants::SERVER_MAPX * -2,
+        core::constants::DX_RIGHTDOWN => m -= 2 + core::constants::SERVER_MAPX * 2,
         _ => {}
     }
 
@@ -1924,12 +1924,12 @@ pub fn follow_driver(cn: usize, co: usize) -> bool {
         m,
         m + 1,
         m - 1,
-        m + core::constants::SERVER_MAPX as i32,
-        m - core::constants::SERVER_MAPX as i32,
-        m + 1 + core::constants::SERVER_MAPX as i32,
-        m + 1 - core::constants::SERVER_MAPX as i32,
-        m - 1 + core::constants::SERVER_MAPX as i32,
-        m - 1 - core::constants::SERVER_MAPX as i32,
+        m + core::constants::SERVER_MAPX,
+        m - core::constants::SERVER_MAPX,
+        m + 1 + core::constants::SERVER_MAPX,
+        m + 1 - core::constants::SERVER_MAPX,
+        m - 1 + core::constants::SERVER_MAPX,
+        m - 1 - core::constants::SERVER_MAPX,
     ];
     for idx in check_indices.iter() {
         if *idx < 0 || *idx as usize >= map_len {
@@ -2017,12 +2017,12 @@ pub fn follow_driver(cn: usize, co: usize) -> bool {
         0,
         1,
         -1,
-        core::constants::SERVER_MAPX as i32,
-        -core::constants::SERVER_MAPX as i32,
-        1 + core::constants::SERVER_MAPX as i32,
-        1 - core::constants::SERVER_MAPX as i32,
-        -1 + core::constants::SERVER_MAPX as i32,
-        -1 - core::constants::SERVER_MAPX as i32,
+        core::constants::SERVER_MAPX,
+        (-core::constants::SERVER_MAPX),
+        1 + core::constants::SERVER_MAPX,
+        1 - core::constants::SERVER_MAPX,
+        -1 + core::constants::SERVER_MAPX,
+        -1 - core::constants::SERVER_MAPX,
     ];
     for off in offsets.iter() {
         let try_m = m + off;
@@ -2039,8 +2039,8 @@ pub fn follow_driver(cn: usize, co: usize) -> bool {
         return false;
     }
     Repository::with_characters_mut(|ch| {
-        ch[cn].goto_x = (new_m % core::constants::SERVER_MAPX as i32) as u16;
-        ch[cn].goto_y = (new_m / core::constants::SERVER_MAPX as i32) as u16;
+        ch[cn].goto_x = (new_m % core::constants::SERVER_MAPX) as u16;
+        ch[cn].goto_y = (new_m / core::constants::SERVER_MAPX) as u16;
     });
     true
 }
@@ -2049,8 +2049,8 @@ pub fn driver(cn: usize) {
     // 1. If not player or usurp -> run NPC high-priority driver
     let is_player_or_usurp = Repository::with_characters(|ch| {
         (ch[cn].flags
-            & (core::constants::CharacterFlags::CF_PLAYER.bits()
-                | core::constants::CharacterFlags::CF_USURP.bits()) as u64)
+            & ((core::constants::CharacterFlags::CF_PLAYER.bits()
+                | core::constants::CharacterFlags::CF_USURP.bits())))
             != 0
     });
     if !is_player_or_usurp {
@@ -2059,7 +2059,7 @@ pub fn driver(cn: usize) {
 
     // 2. If CCP, run CCP driver (feature-gated)
     let is_ccp = Repository::with_characters(|ch| {
-        (ch[cn].flags & core::constants::CharacterFlags::CF_CCP.bits() as u64) != 0
+        (ch[cn].flags & core::constants::CharacterFlags::CF_CCP.bits()) != 0
     });
     #[cfg(feature = "REAL_CCP")]
     if is_ccp {
@@ -2087,8 +2087,8 @@ pub fn driver(cn: usize) {
     // 5. If player/usurp and not attacking, run player_driver_med
     let is_player_or_usurp = Repository::with_characters(|ch| {
         (ch[cn].flags
-            & (core::constants::CharacterFlags::CF_PLAYER.bits()
-                | core::constants::CharacterFlags::CF_USURP.bits()) as u64)
+            & ((core::constants::CharacterFlags::CF_PLAYER.bits()
+                | core::constants::CharacterFlags::CF_USURP.bits())))
             != 0
     });
     let attack_cn = Repository::with_characters(|ch| ch[cn].attack_cn);
@@ -2117,9 +2117,8 @@ pub fn driver(cn: usize) {
         x if x == core::constants::DR_IDLE => {
             let is_player = Repository::with_characters(|ch| {
                 (ch[cn].flags
-                    & (core::constants::CharacterFlags::CF_PLAYER.bits()
-                        | core::constants::CharacterFlags::CF_USURP.bits())
-                        as u64)
+                    & ((core::constants::CharacterFlags::CF_PLAYER.bits()
+                        | core::constants::CharacterFlags::CF_USURP.bits())))
                     != 0
             });
             if !is_player {

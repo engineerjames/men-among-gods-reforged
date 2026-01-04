@@ -47,7 +47,7 @@ impl EffectManager {
     pub fn effect_tick() {
         let mut cnt = 0;
 
-        for n in 1..core::constants::MAXEFFECT as usize {
+        for n in 1..core::constants::MAXEFFECT {
             let (used, effect_type) = Repository::with_effects(|effects| {
                 (effects[n].used, effects[n].effect_type as i32)
             });
@@ -214,7 +214,7 @@ impl EffectManager {
                 let co = effects[n].data[2] as usize;
 
                 Repository::with_map_mut(|map| {
-                    map[map_index].flags &= !core::constants::MF_GFX_TOMB as u64;
+                    map[map_index].flags &= !core::constants::MF_GFX_TOMB;
                     map[map_index].flags &= !core::constants::MF_MOVEBLOCK as u64;
                 });
 
@@ -447,11 +447,11 @@ impl EffectManager {
                 if effects[n].data[1] != 0 {
                     let cn = populate::pop_create_char(effects[n].data[1] as usize, false);
                     if cn != 0 {
-                        God::drop_char(cn as usize, x as usize, y as usize);
+                        God::drop_char(cn, x as usize, y as usize);
                         Repository::with_characters_mut(|characters| {
-                            characters[cn as usize].dir = core::constants::DX_RIGHTUP;
+                            characters[cn].dir = core::constants::DX_RIGHTUP;
                         });
-                        player::plr_reset_status(cn as usize);
+                        player::plr_reset_status(cn);
                     }
                 }
 
@@ -576,7 +576,7 @@ impl EffectManager {
         d3: i32,
     ) -> Option<usize> {
         Repository::with_effects_mut(|effects| {
-            for n in 1..core::constants::MAXEFFECT as usize {
+            for n in 1..core::constants::MAXEFFECT {
                 if effects[n].used == core::constants::USE_EMPTY {
                     effects[n].used = core::constants::USE_ACTIVE;
                     effects[n].effect_type = effect_type as u8;
@@ -603,28 +603,28 @@ impl EffectManager {
             0,
             1,
             -1,
-            core::constants::SERVER_MAPX as i32,
-            -(core::constants::SERVER_MAPX as i32),
-            1 + core::constants::SERVER_MAPX as i32,
-            1 - core::constants::SERVER_MAPX as i32,
-            -1 + core::constants::SERVER_MAPX as i32,
-            -1 - core::constants::SERVER_MAPX as i32,
+            core::constants::SERVER_MAPX,
+            -core::constants::SERVER_MAPX,
+            1 + core::constants::SERVER_MAPX,
+            1 - core::constants::SERVER_MAPX,
+            -1 + core::constants::SERVER_MAPX,
+            -1 - core::constants::SERVER_MAPX,
             2,
             -2,
-            2 * core::constants::SERVER_MAPX as i32,
-            -2 * core::constants::SERVER_MAPX as i32,
-            2 + core::constants::SERVER_MAPX as i32,
-            2 - core::constants::SERVER_MAPX as i32,
-            -2 + core::constants::SERVER_MAPX as i32,
-            -2 - core::constants::SERVER_MAPX as i32,
-            1 + 2 * core::constants::SERVER_MAPX as i32,
-            1 - 2 * core::constants::SERVER_MAPX as i32,
-            -1 + 2 * core::constants::SERVER_MAPX as i32,
-            -1 - 2 * core::constants::SERVER_MAPX as i32,
-            2 + 2 * core::constants::SERVER_MAPX as i32,
-            2 - 2 * core::constants::SERVER_MAPX as i32,
-            -2 + 2 * core::constants::SERVER_MAPX as i32,
-            -2 - 2 * core::constants::SERVER_MAPX as i32,
+            2 * core::constants::SERVER_MAPX,
+            -2 * core::constants::SERVER_MAPX,
+            2 + core::constants::SERVER_MAPX,
+            2 - core::constants::SERVER_MAPX,
+            -2 + core::constants::SERVER_MAPX,
+            -2 - core::constants::SERVER_MAPX,
+            1 + 2 * core::constants::SERVER_MAPX,
+            1 - 2 * core::constants::SERVER_MAPX,
+            -1 + 2 * core::constants::SERVER_MAPX,
+            -1 - 2 * core::constants::SERVER_MAPX,
+            2 + 2 * core::constants::SERVER_MAPX,
+            2 - 2 * core::constants::SERVER_MAPX,
+            -2 + 2 * core::constants::SERVER_MAPX,
+            -2 - 2 * core::constants::SERVER_MAPX,
         ];
 
         for offset in offsets.iter() {
@@ -743,28 +743,28 @@ impl EffectManager {
             0,
             -1,
             1,
-            -(core::constants::SERVER_MAPX as i32),
-            core::constants::SERVER_MAPX as i32,
+            -core::constants::SERVER_MAPX,
+            core::constants::SERVER_MAPX,
             -2,
             2,
-            -2 * core::constants::SERVER_MAPX as i32,
-            2 * core::constants::SERVER_MAPX as i32,
-            -1 + core::constants::SERVER_MAPX as i32,
-            1 + core::constants::SERVER_MAPX as i32,
-            -1 - core::constants::SERVER_MAPX as i32,
-            1 - core::constants::SERVER_MAPX as i32,
-            -2 + core::constants::SERVER_MAPX as i32,
-            2 + core::constants::SERVER_MAPX as i32,
-            -2 - core::constants::SERVER_MAPX as i32,
-            2 - core::constants::SERVER_MAPX as i32,
-            -1 + 2 * core::constants::SERVER_MAPX as i32,
-            1 + 2 * core::constants::SERVER_MAPX as i32,
-            -1 - 2 * core::constants::SERVER_MAPX as i32,
-            1 - 2 * core::constants::SERVER_MAPX as i32,
-            -2 + 2 * core::constants::SERVER_MAPX as i32,
-            2 + 2 * core::constants::SERVER_MAPX as i32,
-            -2 - 2 * core::constants::SERVER_MAPX as i32,
-            2 - 2 * core::constants::SERVER_MAPX as i32,
+            -2 * core::constants::SERVER_MAPX,
+            2 * core::constants::SERVER_MAPX,
+            -1 + core::constants::SERVER_MAPX,
+            1 + core::constants::SERVER_MAPX,
+            -1 - core::constants::SERVER_MAPX,
+            1 - core::constants::SERVER_MAPX,
+            -2 + core::constants::SERVER_MAPX,
+            2 + core::constants::SERVER_MAPX,
+            -2 - core::constants::SERVER_MAPX,
+            2 - core::constants::SERVER_MAPX,
+            -1 + 2 * core::constants::SERVER_MAPX,
+            1 + 2 * core::constants::SERVER_MAPX,
+            -1 - 2 * core::constants::SERVER_MAPX,
+            1 - 2 * core::constants::SERVER_MAPX,
+            -2 + 2 * core::constants::SERVER_MAPX,
+            2 + 2 * core::constants::SERVER_MAPX,
+            -2 - 2 * core::constants::SERVER_MAPX,
+            2 - 2 * core::constants::SERVER_MAPX,
         ];
 
         Repository::with_map(|map| {

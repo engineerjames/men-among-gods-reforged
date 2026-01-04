@@ -157,8 +157,8 @@ impl State {
 
         // Refuse if same group
         let same_group = Repository::with_characters(|ch| {
-            ch[co].data[core::constants::CHD_GROUP as usize]
-                == ch[cv].data[core::constants::CHD_GROUP as usize]
+            ch[co].data[core::constants::CHD_GROUP]
+                == ch[cv].data[core::constants::CHD_GROUP]
         });
         if same_group {
             let cname =
@@ -367,7 +367,7 @@ impl State {
                 Repository::with_characters(|characters| characters[cn].weapon as i32);
             let mut dam = base_weapon + rng.gen_range(1..=6);
             if strn > 3 {
-                let extra_max = (strn / 2) as i32;
+                let extra_max = strn / 2;
                 if extra_max > 0 {
                     dam += rng.gen_range(0..extra_max);
                 }
@@ -423,12 +423,12 @@ impl State {
                     for (nx, ny) in neighbors.iter() {
                         if *nx < 0
                             || *ny < 0
-                            || *nx >= core::constants::SERVER_MAPX as i32
-                            || *ny >= core::constants::SERVER_MAPY as i32
+                            || *nx >= core::constants::SERVER_MAPX
+                            || *ny >= core::constants::SERVER_MAPY
                         {
                             continue;
                         }
-                        let idx = (*nx + *ny * core::constants::SERVER_MAPX as i32) as usize;
+                        let idx = (*nx + *ny * core::constants::SERVER_MAPX) as usize;
                         let co2 = Repository::with_map(|map| map[idx].ch as usize);
                         if co2 == 0 || co2 == cn || co2 == co {
                             continue;
@@ -659,7 +659,7 @@ impl State {
 
     pub(crate) fn remove_enemy(co: usize) {
         Repository::with_characters_mut(|characters| {
-            for n in 1..core::constants::MAXCHARS as usize {
+            for n in 1..core::constants::MAXCHARS {
                 for m in 0..4 {
                     if characters[n].enemy[m] as usize == co {
                         characters[n].enemy[m] = 0;
@@ -739,7 +739,7 @@ impl State {
         Repository::with_characters_mut(|characters| {
             Repository::with_map(|map| {
                 let m = (characters[cn].x as i32
-                    + characters[cn].y as i32 * core::constants::SERVER_MAPX as i32)
+                    + characters[cn].y as i32 * core::constants::SERVER_MAPX)
                     as usize;
 
                 // Arena attacks don't count
@@ -748,7 +748,7 @@ impl State {
                 }
 
                 // Sanity checks for cn
-                if cn == 0 || cn >= core::constants::MAXCHARS as usize || characters[cn].used == 0 {
+                if cn == 0 || cn >= core::constants::MAXCHARS || characters[cn].used == 0 {
                     return;
                 }
 
@@ -760,7 +760,7 @@ impl State {
                 }
 
                 // Must be a valid player
-                if cn_actual == 0 || cn_actual >= core::constants::MAXCHARS as usize {
+                if cn_actual == 0 || cn_actual >= core::constants::MAXCHARS {
                     return;
                 }
                 if (characters[cn_actual].flags & CharacterFlags::CF_PLAYER.bits()) == 0 {
@@ -771,7 +771,7 @@ impl State {
                 }
 
                 // Sanity checks for co
-                if co == 0 || co >= core::constants::MAXCHARS as usize || characters[co].used == 0 {
+                if co == 0 || co >= core::constants::MAXCHARS || characters[co].used == 0 {
                     return;
                 }
 
@@ -783,7 +783,7 @@ impl State {
                 }
 
                 // Must be a valid player
-                if co_actual == 0 || co_actual >= core::constants::MAXCHARS as usize {
+                if co_actual == 0 || co_actual >= core::constants::MAXCHARS {
                     return;
                 }
                 if (characters[co_actual].flags & CharacterFlags::CF_PLAYER.bits()) == 0 {

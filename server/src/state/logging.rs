@@ -125,15 +125,15 @@ impl State {
         message: &str,
     ) {
         let x_min = cmp::max(0, xs - 12);
-        let x_max = cmp::min(core::constants::SERVER_MAPX as i32, xs + 13);
+        let x_max = cmp::min(core::constants::SERVER_MAPX, xs + 13);
         let y_min = cmp::max(0, ys - 12);
-        let y_max = cmp::min(core::constants::SERVER_MAPY as i32, ys + 13);
+        let y_max = cmp::min(core::constants::SERVER_MAPY, ys + 13);
 
         let mut recipients: Vec<usize> = Vec::new();
 
         Repository::with_map(|map| {
             for y in y_min..y_max {
-                let row_base = y * core::constants::SERVER_MAPX as i32;
+                let row_base = y * core::constants::SERVER_MAPX;
                 for x in x_min..x_max {
                     let idx = (x + row_base) as usize;
                     let cc = map[idx].ch as usize;
@@ -149,7 +149,7 @@ impl State {
             recipients
                 .into_iter()
                 .filter(|cc| {
-                    *cc < MAXCHARS as usize
+                    *cc < MAXCHARS
                         && characters[*cc].used == core::constants::USE_ACTIVE
                         && characters[*cc].player != 0
                         && (characters[*cc].flags & CharacterFlags::CF_PLAYER.bits()) != 0
@@ -213,7 +213,7 @@ impl State {
     /// * `pan` - Stereo pan modifier
     pub(crate) fn char_play_sound(character_id: usize, sound: i32, vol: i32, pan: i32) {
         let matching_player_id = Server::with_players(|players| {
-            for i in 0..MAXPLAYER as usize {
+            for i in 0..MAXPLAYER {
                 if players[i].usnr == character_id {
                     return Some(i);
                 }
@@ -249,15 +249,15 @@ impl State {
     /// * `nr` - Sound id
     pub(crate) fn do_area_sound(cn: usize, co: usize, xs: i32, ys: i32, nr: i32) {
         let x_min = cmp::max(0, xs - 8);
-        let x_max = cmp::min(core::constants::SERVER_MAPX as i32, xs + 9);
+        let x_max = cmp::min(core::constants::SERVER_MAPX, xs + 9);
         let y_min = cmp::max(0, ys - 8);
-        let y_max = cmp::min(core::constants::SERVER_MAPY as i32, ys + 9);
+        let y_max = cmp::min(core::constants::SERVER_MAPY, ys + 9);
 
         let mut recipients: Vec<(usize, i32, i32)> = Vec::new();
 
         Repository::with_map(|map| {
             for y in y_min..y_max {
-                let row_base = y * core::constants::SERVER_MAPX as i32;
+                let row_base = y * core::constants::SERVER_MAPX;
                 for x in x_min..x_max {
                     let idx = (x + row_base) as usize;
                     let cc = map[idx].ch as usize;
@@ -349,7 +349,7 @@ impl State {
     /// * `font` - Font/color to use
     /// * `text` - Message text
     pub(crate) fn do_imp_log(&self, font: core::types::FontColor, text: &str) {
-        for n in 1..core::constants::MAXCHARS as usize {
+        for n in 1..core::constants::MAXCHARS {
             if Repository::with_characters(|ch| {
                 ch[n].player != 0
                     && (ch[n].flags
@@ -385,7 +385,7 @@ impl State {
         } else {
             anon.clone()
         };
-        for n in 1..core::constants::MAXCHARS as usize {
+        for n in 1..core::constants::MAXCHARS {
             if !Repository::with_characters(|ch| ch[n].player != 0 || ch[n].temp == 15) {
                 continue;
             }
@@ -425,7 +425,7 @@ impl State {
         } else {
             anon.clone()
         };
-        for n in 1..core::constants::MAXCHARS as usize {
+        for n in 1..core::constants::MAXCHARS {
             // Exclude if not a player and not temp==15
             if !Repository::with_characters(|ch| ch[n].player != 0 || ch[n].temp == 15) {
                 continue;
@@ -469,7 +469,7 @@ impl State {
             return;
         }
 
-        for n in 1..core::constants::MAXCHARS as usize {
+        for n in 1..core::constants::MAXCHARS {
             // Exclude if not a player
             if !Repository::with_characters(|ch| ch[n].player != 0) {
                 continue;
@@ -517,7 +517,7 @@ impl State {
         if text.is_empty() {
             return;
         }
-        for n in 1..core::constants::MAXCHARS as usize {
+        for n in 1..core::constants::MAXCHARS {
             if Repository::with_characters(|ch| {
                 ch[n].player != 0
                     && (ch[n].flags
@@ -566,7 +566,7 @@ impl State {
             let mut v: Vec<i32> = Vec::with_capacity(spsize);
             v.push(0); // center
 
-            let mapx = core::constants::SERVER_MAPX as i32;
+            let mapx = core::constants::SERVER_MAPX;
             for dist in 1..=areasize {
                 v.push(-mapx); // N
                 for _ in 0..(2 * dist - 1) {
@@ -591,14 +591,14 @@ impl State {
         });
 
         // Start map index at speaker location
-        let mut m: i32 = (ys as i32) * core::constants::SERVER_MAPX as i32 + xs as i32;
+        let mut m: i32 = (ys as i32) * core::constants::SERVER_MAPX + xs as i32;
 
         let mut npcs: Vec<usize> = Vec::with_capacity(20);
 
         for (j, &offset) in areaspiral.iter().enumerate() {
             m += offset;
             let map_area_size =
-                (core::constants::SERVER_MAPX as i32) * (core::constants::SERVER_MAPY as i32);
+                core::constants::SERVER_MAPX * core::constants::SERVER_MAPY;
             if m < 0 || m >= map_area_size {
                 continue;
             }

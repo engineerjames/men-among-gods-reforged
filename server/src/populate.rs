@@ -668,7 +668,7 @@ pub fn pop_create_char(n: usize, drop: bool) -> usize {
         characters[cn].a_end = 1000000;
         characters[cn].a_hp = 1000000;
 
-        let has_meditation = characters[cn].skill[core::constants::SK_MEDIT as usize][0] != 0;
+        let has_meditation = characters[cn].skill[core::constants::SK_MEDIT][0] != 0;
         if has_meditation {
             characters[cn].a_mana = characters[cn].mana[5] as i32 * 100;
         } else {
@@ -676,13 +676,13 @@ pub fn pop_create_char(n: usize, drop: bool) -> usize {
         }
 
         characters[cn].dir = core::constants::DX_DOWN;
-        characters[cn].data[92] = (core::constants::TICKS * 60) as i32;
+        characters[cn].data[92] = core::constants::TICKS * 60;
     });
 
     // Create bonus items based on mana level
     let a_mana = Repository::with_characters(|characters| characters[cn].a_mana);
     let has_meditation = Repository::with_characters(|characters| {
-        characters[cn].skill[core::constants::SK_MEDIT as usize][0] != 0
+        characters[cn].skill[core::constants::SK_MEDIT][0] != 0
     });
 
     let mut chance = 25;
@@ -740,7 +740,7 @@ pub fn pop_create_char(n: usize, drop: bool) -> usize {
 /// Port of `reset_char` from `populate.cpp`
 /// Resets a character template and all instances
 pub fn reset_char(n: usize) {
-    if n < 1 || n >= core::constants::MAXTCHARS as usize {
+    if n < 1 || n >= core::constants::MAXTCHARS {
         return;
     }
 
@@ -798,7 +798,7 @@ pub fn reset_char(n: usize) {
     });
 
     // Update all instances of this template
-    for cn in 1..core::constants::MAXCHARS as usize {
+    for cn in 1..core::constants::MAXCHARS {
         let temp = Repository::with_characters(|characters| characters[cn].temp);
         if temp as usize == n {
             Repository::with_characters_mut(|characters| {
@@ -823,7 +823,7 @@ pub fn reset_char(n: usize) {
     }
 
     // Update effects referencing this template
-    for m in 0..core::constants::MAXEFFECT as usize {
+    for m in 0..core::constants::MAXEFFECT {
         let data0 = Repository::with_effects(|effects| effects[m].data[0]);
         if data0 == n as u32 {
             Repository::with_effects_mut(|effects| {
@@ -833,7 +833,7 @@ pub fn reset_char(n: usize) {
     }
 
     // Update items carried by template
-    for m in 0..core::constants::MAXITEM as usize {
+    for m in 0..core::constants::MAXITEM {
         let carried = Repository::with_items(|items| items[m].carried);
         if carried as usize == n {
             let temp = Repository::with_items(|items| items[m].temp);
@@ -869,7 +869,7 @@ pub fn skillcost(val: i32, dif: i32, start: i32) -> i32 {
 /// Port of `pop_skill` from `populate.cpp`
 /// Updates skills for all characters
 pub fn pop_skill() {
-    for cn in 1..core::constants::MAXCHARS as usize {
+    for cn in 1..core::constants::MAXCHARS {
         let is_player = Repository::with_characters(|characters| {
             (characters[cn].flags & core::constants::CharacterFlags::CF_PLAYER.bits()) != 0
                 && characters[cn].used == core::constants::USE_ACTIVE
@@ -923,7 +923,7 @@ pub fn pop_skill() {
 /// Port of `reset_item` from `populate.cpp`
 /// Resets an item template and all instances
 pub fn reset_item(n: usize) {
-    if n < 2 || n >= core::constants::MAXTITEM as usize {
+    if n < 2 || n >= core::constants::MAXTITEM {
         return; // Never reset blank template (1)
     }
 
@@ -932,7 +932,7 @@ pub fn reset_item(n: usize) {
     });
     log::info!("Resetting item {} ({})", n, name);
 
-    for in_id in 1..core::constants::MAXITEM as usize {
+    for in_id in 1..core::constants::MAXITEM {
         let temp = Repository::with_items(|items| items[in_id].temp);
         if temp as usize != n {
             continue;
@@ -1008,10 +1008,10 @@ pub fn pop_tick() {
 /// Resets all character and item templates
 #[allow(dead_code)]
 pub fn pop_reset_all() {
-    for n in 1..core::constants::MAXTCHARS as usize {
+    for n in 1..core::constants::MAXTCHARS {
         reset_char(n);
     }
-    for n in 1..core::constants::MAXTITEM as usize {
+    for n in 1..core::constants::MAXTITEM {
         reset_item(n);
     }
     log::info!("Reset all templates");
@@ -1021,7 +1021,7 @@ pub fn pop_reset_all() {
 /// Wipes all dynamic game data
 pub fn pop_wipe() {
     // Clear all characters
-    for n in 1..core::constants::MAXCHARS as usize {
+    for n in 1..core::constants::MAXCHARS {
         let is_player = Repository::with_characters(|characters| {
             (characters[n].flags & core::constants::CharacterFlags::CF_PLAYER.bits()) != 0
         });
@@ -1034,14 +1034,14 @@ pub fn pop_wipe() {
     }
 
     // Clear all items
-    for n in 1..core::constants::MAXITEM as usize {
+    for n in 1..core::constants::MAXITEM {
         Repository::with_items_mut(|items| {
             items[n].used = core::constants::USE_EMPTY;
         });
     }
 
     // Clear all effects
-    for n in 1..core::constants::MAXEFFECT as usize {
+    for n in 1..core::constants::MAXEFFECT {
         Repository::with_effects_mut(|effects| {
             effects[n].used = core::constants::USE_EMPTY;
         });
@@ -1080,7 +1080,7 @@ pub fn pop_remove() {
 
     let mut chc = 0;
 
-    for n in 1..core::constants::MAXCHARS as usize {
+    for n in 1..core::constants::MAXCHARS {
         let (used, is_player) = Repository::with_characters(|characters| {
             (
                 characters[n].used,
@@ -1115,7 +1115,7 @@ pub fn populate() {
     log::info!("Populating world...");
 
     // Iterate through all character templates and spawn respawnable NPCs
-    for n in 1..core::constants::MAXTCHARS as usize {
+    for n in 1..core::constants::MAXTCHARS {
         let (used, has_respawn) = Repository::with_character_templates(|templates| {
             (
                 templates[n].used,
@@ -1155,7 +1155,7 @@ pub fn pop_load_char(nr: usize) {
 pub fn pop_load_all_chars() {
     log::info!("Loading all characters...");
 
-    for nr in 1..core::constants::MAXCHARS as usize {
+    for nr in 1..core::constants::MAXCHARS {
         pop_load_char(nr);
     }
 
@@ -1167,7 +1167,7 @@ pub fn pop_load_all_chars() {
 pub fn pop_save_all_chars() {
     log::info!("Saving all characters...");
 
-    for nr in 1..core::constants::MAXCHARS as usize {
+    for nr in 1..core::constants::MAXCHARS {
         let is_player = Repository::with_characters(|characters| {
             (characters[nr].flags & core::constants::CharacterFlags::CF_PLAYER.bits()) != 0
         });

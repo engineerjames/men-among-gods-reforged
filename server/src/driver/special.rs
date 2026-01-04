@@ -523,7 +523,7 @@ pub fn npc_stunrun_high(cn: usize) -> i32 {
                 // TODO: Check the Some/None case properly here.
                 Repository::with_characters_mut(|ch| ch[cn].citem = in_item.unwrap() as u32);
                 Repository::with_items_mut(|items| {
-                    items[in_item.unwrap() as usize].carried = cn as u16
+                    items[in_item.unwrap()].carried = cn as u16
                 });
             }
             let (cn_x, cn_y) = Repository::with_characters(|ch| (ch[cn].x, ch[cn].y));
@@ -722,7 +722,7 @@ pub fn npc_cityattack_high(cn: usize) -> i32 {
     // Generic spell management
     let (high_mana, has_medit) = Repository::with_characters(|ch| {
         (
-            ch[cn].a_mana > (ch[cn].mana[5] as i32 * 850) as i32,
+            ch[cn].a_mana > (ch[cn].mana[5] as i32 * 850),
             ch[cn].skill[SK_MEDIT][0] != 0,
         )
     });

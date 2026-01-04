@@ -63,7 +63,7 @@ impl State {
         });
 
         let map_index =
-            (char_x as usize + char_y as usize * core::constants::SERVER_MAPX as usize) as usize;
+            char_x as usize + char_y as usize * core::constants::SERVER_MAPX as usize;
         let has_nomagic_flag = Repository::with_map(|map| {
             map[map_index].flags & core::constants::MF_NOMAGIC as u64 != 0
         });
@@ -959,7 +959,7 @@ impl State {
 
                     Repository::with_items_mut(|items| {
                         items[spell_item as usize].armor[1] = new_armor as i8;
-                        items[spell_item as usize].power = new_power as u32;
+                        items[spell_item as usize].power = new_power;
                     });
 
                     if old_armor != new_armor as i8 {
@@ -1694,20 +1694,19 @@ impl State {
             let (co_x, co_y) = Repository::with_characters(|ch| (ch[co].x, ch[co].y));
             Repository::with_map_mut(|map| {
                 let idx =
-                    (co_x as i32 + co_y as i32 * core::constants::SERVER_MAPX as i32) as usize;
+                    (co_x as i32 + co_y as i32 * core::constants::SERVER_MAPX) as usize;
                 if dam < 10000 {
-                    map[idx].flags |= core::constants::MF_GFX_INJURED as u64;
+                    map[idx].flags |= core::constants::MF_GFX_INJURED;
                 } else if dam < 30000 {
                     map[idx].flags |=
-                        (core::constants::MF_GFX_INJURED | core::constants::MF_GFX_INJURED1) as u64;
+                        core::constants::MF_GFX_INJURED | core::constants::MF_GFX_INJURED1;
                 } else if dam < 50000 {
                     map[idx].flags |=
-                        (core::constants::MF_GFX_INJURED | core::constants::MF_GFX_INJURED2) as u64;
+                        core::constants::MF_GFX_INJURED | core::constants::MF_GFX_INJURED2;
                 } else {
-                    map[idx].flags |= (core::constants::MF_GFX_INJURED
+                    map[idx].flags |= core::constants::MF_GFX_INJURED
                         | core::constants::MF_GFX_INJURED1
-                        | core::constants::MF_GFX_INJURED2)
-                        as u64;
+                        | core::constants::MF_GFX_INJURED2;
                 }
             });
             crate::effect::EffectManager::fx_add_effect(
@@ -1729,7 +1728,7 @@ impl State {
             let mf_arena = Repository::with_map(|map| {
                 let idx = (Repository::with_characters(|ch| ch[co].x as i32)
                     + Repository::with_characters(|ch| ch[co].y as i32)
-                        * core::constants::SERVER_MAPX as i32) as usize;
+                        * core::constants::SERVER_MAPX) as usize;
                 map[idx].flags & core::constants::MF_ARENA as u64
             });
 
@@ -1789,7 +1788,7 @@ impl State {
                     0,
                     0,
                 );
-                return (dam / 1000) as i32;
+                return dam / 1000;
             }
         }
 
@@ -1875,7 +1874,7 @@ impl State {
                 && Repository::with_map(|map| {
                     let idx = (Repository::with_characters(|ch| ch[co].x as i32)
                         + Repository::with_characters(|ch| ch[co].y as i32)
-                            * core::constants::SERVER_MAPX as i32)
+                            * core::constants::SERVER_MAPX)
                         as usize;
                     map[idx].flags & core::constants::MF_ARENA as u64 == 0
                 })
@@ -1884,7 +1883,7 @@ impl State {
                 let tmp = self.do_char_score(co);
                 let rank =
                     helpers::points2rank(
-                        Repository::with_characters(|ch| ch[co].points_tot as u32) as u32
+                        Repository::with_characters(|ch| ch[co].points_tot as u32)
                     ) as i32;
                 // Some bonuses for spells are handled in do_give_exp/do_char_killed
                 self.do_character_killed(co, cn);

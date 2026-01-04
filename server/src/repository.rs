@@ -46,16 +46,16 @@ impl Repository {
                 core::types::Map::default();
                 core::constants::SERVER_MAPX as usize * core::constants::SERVER_MAPY as usize
             ],
-            items: vec![core::types::Item::default(); core::constants::MAXITEM as usize],
-            item_templates: vec![core::types::Item::default(); core::constants::MAXTITEM as usize],
-            characters: vec![core::types::Character::default(); core::constants::MAXCHARS as usize],
+            items: vec![core::types::Item::default(); core::constants::MAXITEM],
+            item_templates: vec![core::types::Item::default(); core::constants::MAXTITEM],
+            characters: vec![core::types::Character::default(); core::constants::MAXCHARS],
             character_templates: vec![
                 core::types::Character::default();
-                core::constants::MAXTCHARS as usize
+                core::constants::MAXTCHARS
             ],
-            effects: vec![core::types::Effect::default(); core::constants::MAXEFFECT as usize],
+            effects: vec![core::types::Effect::default(); core::constants::MAXEFFECT],
             globals: core::types::Global::default(),
-            see_map: vec![core::types::SeeMap::default(); core::constants::MAXCHARS as usize],
+            see_map: vec![core::types::SeeMap::default(); core::constants::MAXCHARS],
             bad_names: Vec::new(),
             bad_words: Vec::new(),
             message_of_the_day: String::new(),
@@ -158,7 +158,7 @@ impl Repository {
         let items_data = fs::read(&items_path).map_err(|e| e.to_string())?;
 
         let expected_items_size =
-            core::constants::MAXITEM as usize * std::mem::size_of::<core::types::Item>();
+            core::constants::MAXITEM * std::mem::size_of::<core::types::Item>();
 
         let actual_items_size = items_data.len();
         if actual_items_size != expected_items_size {
@@ -197,7 +197,7 @@ impl Repository {
         let item_templates_data = fs::read(&item_templates_path).map_err(|e| e.to_string())?;
 
         let expected_item_templates_size =
-            core::constants::MAXTITEM as usize * std::mem::size_of::<core::types::Item>();
+            core::constants::MAXTITEM * std::mem::size_of::<core::types::Item>();
 
         let actual_item_templates_size = item_templates_data.len();
 
@@ -237,7 +237,7 @@ impl Repository {
         let characters_data = fs::read(&characters_path).map_err(|e| e.to_string())?;
 
         let expected_characters_size =
-            core::constants::MAXCHARS as usize * std::mem::size_of::<core::types::Character>();
+            core::constants::MAXCHARS * std::mem::size_of::<core::types::Character>();
         let actual_characters_size = characters_data.len();
 
         if actual_characters_size != expected_characters_size {
@@ -274,7 +274,7 @@ impl Repository {
         let character_templates_data =
             fs::read(&character_templates_path).map_err(|e| e.to_string())?;
         let expected_character_templates_size =
-            core::constants::MAXTCHARS as usize * std::mem::size_of::<core::types::Character>();
+            core::constants::MAXTCHARS * std::mem::size_of::<core::types::Character>();
         let actual_character_templates_size = character_templates_data.len();
         if actual_character_templates_size != expected_character_templates_size {
             return Err(format!(
@@ -309,7 +309,7 @@ impl Repository {
         let effects_data = fs::read(&effects_path).map_err(|e| e.to_string())?;
 
         let expected_effects_size =
-            core::constants::MAXEFFECT as usize * std::mem::size_of::<core::types::Effect>();
+            core::constants::MAXEFFECT * std::mem::size_of::<core::types::Effect>();
         let actual_effects_size = effects_data.len();
 
         if actual_effects_size != expected_effects_size {

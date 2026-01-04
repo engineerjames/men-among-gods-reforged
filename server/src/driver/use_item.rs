@@ -365,8 +365,8 @@ pub fn use_create_item(cn: usize, item_idx: usize) -> i32 {
                 state.do_area_notify(
                     cn as i32,
                     0,
-                    x as i32,
-                    y as i32,
+                    x,
+                    y,
                     core::constants::NT_HITME as i32,
                     cn as i32,
                     0,
@@ -439,7 +439,7 @@ pub fn use_create_item2(cn: usize, item_idx: usize) -> i32 {
     let (active, required_temp, template_id) = Repository::with_items(|items| {
         (
             items[item_idx].active,
-            items[item_idx].data[1] as u32,
+            items[item_idx].data[1],
             items[item_idx].data[0] as usize,
         )
     });
@@ -1050,7 +1050,7 @@ pub fn finish_laby_teleport(cn: usize, nr: usize, exp: usize) -> i32 {
     // Add effects and transfer character
     EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
     God::transfer_char(cn, 512, 512); // TODO: Shouldn't this be their temple coords?
-    EffectManager::fx_add_effect(6, 0, 512 as i32, 512 as i32, 0);
+    EffectManager::fx_add_effect(6, 0, 512_i32, 512_i32, 0);
 
     // Update temple and tavern coordinates
     let (x, y) = Repository::with_characters(|characters| (characters[cn].x, characters[cn].y));
@@ -1227,7 +1227,7 @@ pub fn teleport2(cn: usize, item_idx: usize) -> i32 {
     let ticker = Repository::with_globals(|globs| globs.ticker);
     use core::constants::TICKS;
     if scroll_time != 0 && scroll_time + TICKS as u32 * 60 * 4 < ticker as u32 {
-        let diff = ticker as i32 - scroll_time as i32;
+        let diff = ticker - scroll_time as i32;
         log::info!(
             "Lag Scroll Time Difference: {} ticks ({:.2}s)",
             diff,
@@ -1975,7 +1975,7 @@ pub fn use_crystal_sub(_cn: usize, item_idx: usize) -> i32 {
     let mut baseg = [0i32; 20];
     let mut cnt = 0i32;
     Repository::with_characters(|characters| {
-        for n in 1..core::constants::MAXCHARS as usize {
+        for n in 1..core::constants::MAXCHARS {
             let ch = &characters[n];
             if ch.used == core::constants::USE_ACTIVE
                 && (ch.flags & core::constants::CharacterFlags::CF_BODY.bits()) == 0
@@ -2135,7 +2135,7 @@ pub fn use_crystal_sub(_cn: usize, item_idx: usize) -> i32 {
         ch.gold = base * base + 1;
         ch.a_hp = 999999;
         ch.a_end = 999999;
-        if ch.skill[core::constants::SK_MEDIT as usize][0] > 0 {
+        if ch.skill[core::constants::SK_MEDIT][0] > 0 {
             ch.a_mana = 1000000;
         } else {
             let mut v = 1i32;
@@ -2163,32 +2163,32 @@ pub fn use_crystal_sub(_cn: usize, item_idx: usize) -> i32 {
             {
                 let tmp = populate::pop_create_item(94, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_HEAD as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_HEAD] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(95, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_BODY as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_BODY] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(98, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_ARMS as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_ARMS] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(97, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_LEGS as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_LEGS] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(99, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_FEET as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_FEET] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(96, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_CLOAK as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_CLOAK] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
             } else if ch_mut.attrib[core::constants::AT_AGIL as usize][0] as i32 >= 72
@@ -2196,32 +2196,32 @@ pub fn use_crystal_sub(_cn: usize, item_idx: usize) -> i32 {
             {
                 let tmp = populate::pop_create_item(75, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_HEAD as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_HEAD] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(76, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_BODY as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_BODY] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(79, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_ARMS as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_ARMS] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(78, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_LEGS as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_LEGS] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(80, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_FEET as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_FEET] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(77, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_CLOAK as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_CLOAK] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
             } else if ch_mut.attrib[core::constants::AT_AGIL as usize][0] as i32 >= 40
@@ -2229,32 +2229,32 @@ pub fn use_crystal_sub(_cn: usize, item_idx: usize) -> i32 {
             {
                 let tmp = populate::pop_create_item(69, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_HEAD as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_HEAD] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(71, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_BODY as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_BODY] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(73, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_ARMS as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_ARMS] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(72, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_LEGS as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_LEGS] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(74, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_FEET as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_FEET] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(70, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_CLOAK as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_CLOAK] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
             } else if ch_mut.attrib[core::constants::AT_AGIL as usize][0] as i32 >= 24
@@ -2262,32 +2262,32 @@ pub fn use_crystal_sub(_cn: usize, item_idx: usize) -> i32 {
             {
                 let tmp = populate::pop_create_item(63, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_HEAD as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_HEAD] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(65, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_BODY as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_BODY] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(67, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_ARMS as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_ARMS] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(66, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_LEGS as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_LEGS] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(68, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_FEET as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_FEET] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(64, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_CLOAK as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_CLOAK] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
             } else if ch_mut.attrib[core::constants::AT_AGIL as usize][0] as i32 >= 16
@@ -2295,32 +2295,32 @@ pub fn use_crystal_sub(_cn: usize, item_idx: usize) -> i32 {
             {
                 let tmp = populate::pop_create_item(57, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_HEAD as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_HEAD] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(59, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_BODY as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_BODY] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(61, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_ARMS as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_ARMS] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(60, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_LEGS as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_LEGS] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(62, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_FEET as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_FEET] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(58, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_CLOAK as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_CLOAK] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
             } else if ch_mut.attrib[core::constants::AT_AGIL as usize][0] as i32 >= 12
@@ -2328,32 +2328,32 @@ pub fn use_crystal_sub(_cn: usize, item_idx: usize) -> i32 {
             {
                 let tmp = populate::pop_create_item(51, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_HEAD as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_HEAD] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(53, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_BODY as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_BODY] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(55, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_ARMS as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_ARMS] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(54, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_LEGS as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_LEGS] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(56, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_FEET as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_FEET] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(52, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_CLOAK as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_CLOAK] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
             } else if ch_mut.attrib[core::constants::AT_AGIL as usize][0] as i32 >= 10
@@ -2361,80 +2361,80 @@ pub fn use_crystal_sub(_cn: usize, item_idx: usize) -> i32 {
             {
                 let tmp = populate::pop_create_item(39, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_HEAD as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_HEAD] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(42, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_BODY as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_BODY] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(44, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_ARMS as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_ARMS] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(43, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_LEGS as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_LEGS] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(41, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_FEET as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_FEET] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
                 let tmp = populate::pop_create_item(40, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_CLOAK as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_CLOAK] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
             }
 
             // choose weapon based on skills/attribs (partial port of original logic)
-            if ch_mut.skill[core::constants::SK_TWOHAND as usize][0] as i32 >= 60
+            if ch_mut.skill[core::constants::SK_TWOHAND][0] as i32 >= 60
                 && ch_mut.attrib[core::constants::AT_AGIL as usize][0] as i32 >= 50
                 && ch_mut.attrib[core::constants::AT_STREN as usize][0] as i32 >= 75
             {
                 let tmp = populate::pop_create_item(125, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_RHAND as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_RHAND] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
-            } else if ch_mut.skill[core::constants::SK_TWOHAND as usize][0] as i32 >= 45
+            } else if ch_mut.skill[core::constants::SK_TWOHAND][0] as i32 >= 45
                 && ch_mut.attrib[core::constants::AT_AGIL as usize][0] as i32 >= 40
                 && ch_mut.attrib[core::constants::AT_STREN as usize][0] as i32 >= 60
             {
                 let tmp = populate::pop_create_item(38, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_RHAND as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_RHAND] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
-            } else if ch_mut.skill[core::constants::SK_TWOHAND as usize][0] as i32 >= 30
+            } else if ch_mut.skill[core::constants::SK_TWOHAND][0] as i32 >= 30
                 && ch_mut.attrib[core::constants::AT_AGIL as usize][0] as i32 >= 30
                 && ch_mut.attrib[core::constants::AT_STREN as usize][0] as i32 >= 40
             {
                 let tmp = populate::pop_create_item(37, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_RHAND as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_RHAND] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
-            } else if ch_mut.skill[core::constants::SK_TWOHAND as usize][0] as i32 >= 15
+            } else if ch_mut.skill[core::constants::SK_TWOHAND][0] as i32 >= 15
                 && ch_mut.attrib[core::constants::AT_AGIL as usize][0] as i32 >= 20
                 && ch_mut.attrib[core::constants::AT_STREN as usize][0] as i32 >= 24
             {
                 let tmp = populate::pop_create_item(36, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_RHAND as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_RHAND] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
-            } else if ch_mut.skill[core::constants::SK_TWOHAND as usize][0] as i32 >= 1
+            } else if ch_mut.skill[core::constants::SK_TWOHAND][0] as i32 >= 1
                 && ch_mut.attrib[core::constants::AT_AGIL as usize][0] as i32 >= 10
                 && ch_mut.attrib[core::constants::AT_STREN as usize][0] as i32 >= 12
             {
                 let tmp = populate::pop_create_item(35, cc);
                 if tmp != 0 {
-                    ch_mut.worn[core::constants::WN_RHAND as usize] = tmp as u32;
+                    ch_mut.worn[core::constants::WN_RHAND] = tmp as u32;
                     Repository::with_items_mut(|items| items[tmp].carried = cc as u16);
                 }
             }
@@ -2839,7 +2839,7 @@ pub fn use_lever(_cn: usize, item_idx: usize) -> i32 {
     // Set active to duration and handle lighting changes
     Repository::with_items_mut(|items| {
         let item = &mut items[in2 as usize];
-        item.active = item.duration as u32;
+        item.active = item.duration;
 
         if item.light[0] != item.light[1] {
             State::with_mut(|state| {
@@ -3126,7 +3126,7 @@ pub fn mine_wall(cn: usize, item_idx: usize) -> i32 {
         }
     });
 
-    Repository::with_items(|items| items[in_idx].data[2] as i32) as i32
+    Repository::with_items(|items| items[in_idx].data[2] as i32)
 }
 
 // Un-called in the original code
@@ -4414,7 +4414,7 @@ pub fn use_shrine(cn: usize, _item_idx: usize) -> i32 {
                 (characters[cn].x as i32, characters[cn].y as i32)
             });
 
-            EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
+            EffectManager::fx_add_effect(6, 0, x, y, 0);
         }
 
         // Determine message based on value
@@ -4521,16 +4521,16 @@ pub fn use_kill_undead(cn: usize, item_idx: usize) -> i32 {
 
     // Damage all undead in 8x8 area
     for y in (ch_y - 8)..(ch_y + 8) {
-        if y < 1 || y >= core::constants::SERVER_MAPY as i32 {
+        if y < 1 || y >= core::constants::SERVER_MAPY {
             continue;
         }
         for x in (ch_x - 8)..(ch_x + 8) {
-            if x < 1 || x >= core::constants::SERVER_MAPX as i32 {
+            if x < 1 || x >= core::constants::SERVER_MAPX {
                 continue;
             }
 
             let co = Repository::with_map(|map| {
-                map[(x + y * core::constants::SERVER_MAPX as i32) as usize].ch as usize
+                map[(x + y * core::constants::SERVER_MAPX) as usize].ch as usize
             });
 
             if co != 0 {
@@ -4818,11 +4818,11 @@ pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
                 let broken_sword = God::create_item(683);
                 if broken_sword.unwrap() != 0 {
                     Repository::with_items_mut(|items| {
-                        items[broken_sword.unwrap() as usize].x = x;
-                        items[broken_sword.unwrap() as usize].y = y;
-                        items[broken_sword.unwrap() as usize].carried = carried;
-                        items[broken_sword.unwrap() as usize].temp = 683;
-                        items[broken_sword.unwrap() as usize].flags |= ItemFlags::IF_UPDATE.bits();
+                        items[broken_sword.unwrap()].x = x;
+                        items[broken_sword.unwrap()].y = y;
+                        items[broken_sword.unwrap()].carried = carried;
+                        items[broken_sword.unwrap()].temp = 683;
+                        items[broken_sword.unwrap()].flags |= ItemFlags::IF_UPDATE.bits();
                     });
                     Repository::with_items_mut(|items| {
                         items[n].used = USE_EMPTY;
@@ -5387,7 +5387,7 @@ pub fn use_lab8_key(cn: usize, item_idx: usize) -> i32 {
     // Create and give new key
     let new_key = God::create_item(result_template as usize);
     Repository::with_items_mut(|items| {
-        items[new_key.unwrap() as usize].flags |= core::constants::ItemFlags::IF_UPDATE.bits();
+        items[new_key.unwrap()].flags |= core::constants::ItemFlags::IF_UPDATE.bits();
     });
     God::give_character_item(new_key.unwrap(), cn);
 
@@ -5456,12 +5456,12 @@ pub fn use_lab8_shrine(cn: usize, item_idx: usize) -> i32 {
             characters[cn].citem = gift.unwrap() as u32;
         });
         Repository::with_items_mut(|items| {
-            items[gift.unwrap() as usize].carried = cn as u16;
+            items[gift.unwrap()].carried = cn as u16;
         });
     }
 
     let gift_ref = Repository::with_items(|items| {
-        String::from_utf8_lossy(&items[gift.unwrap() as usize].reference).to_string()
+        String::from_utf8_lossy(&items[gift.unwrap()].reference).to_string()
     });
     State::with(|state| {
         state.do_character_log(
@@ -5538,7 +5538,7 @@ pub fn use_lab8_moneyshrine(cn: usize, item_idx: usize) -> i32 {
 
     let (dest_x, dest_y) =
         Repository::with_items(|items| (items[item_idx].data[1], items[item_idx].data[2]));
-    God::transfer_char(cn as usize, dest_x as usize, dest_y as usize);
+    God::transfer_char(cn, dest_x as usize, dest_y as usize);
 
     // Restore mana if needed
     let (a_mana, max_mana) = Repository::with_characters(|characters| {
@@ -6043,7 +6043,7 @@ pub fn use_driver(cn: usize, item_idx: usize, carried: bool) {
         let (it_x, it_y) =
             Repository::with_items(|items| (items[item_idx].x as i32, items[item_idx].y as i32));
         if it_x > 0 {
-            let m = (it_x + it_y * core::constants::SERVER_MAPX as i32) as usize;
+            let m = (it_x + it_y * core::constants::SERVER_MAPX) as usize;
             let occupied = Repository::with_map(|map| map[m].ch != 0 || map[m].to_ch != 0);
             if occupied {
                 return;
@@ -7515,7 +7515,7 @@ pub fn expire_driver(item_idx: usize) {
 
 pub fn item_tick_expire() {
     static mut Y: usize = 0;
-    const EXP_TIME: i32 = (SERVER_MAPY / 4) as i32;
+    const EXP_TIME: i32 = SERVER_MAPY / 4;
 
     let _y = unsafe {
         let current_y = Y;
@@ -7646,7 +7646,7 @@ pub fn item_tick_expire() {
                         if driver == 7 {
                             let co = Repository::with_items(|items| items[in_idx].data[0] as usize);
                             // Validate character index
-                            if co != 0 && co < core::constants::MAXCHARS as usize {
+                            if co != 0 && co < core::constants::MAXCHARS {
                                 // Remember template and name for logging
                                 let (temp, name, respawn_flag) =
                                     Repository::with_characters(|characters| {
@@ -7754,7 +7754,7 @@ pub fn item_tick_gc() {
 
     let (off, m) = unsafe {
         let current_off = OFF;
-        let current_m = std::cmp::min(current_off + 256, MAXITEM as usize);
+        let current_m = std::cmp::min(current_off + 256, MAXITEM);
         (current_off, current_m)
     };
 
@@ -7791,7 +7791,7 @@ pub fn item_tick_gc() {
 
         let cn = Repository::with_items(|items| items[n].carried as usize);
         if cn != 0 {
-            let is_sane = cn < core::constants::MAXCHARS as usize;
+            let is_sane = cn < core::constants::MAXCHARS;
             if is_sane {
                 let ch_used = Repository::with_characters(|characters| characters[cn].used);
                 if ch_used != 0 {
@@ -7877,7 +7877,7 @@ pub fn item_tick_gc() {
 
     unsafe {
         OFF += 256;
-        if OFF >= MAXITEM as usize {
+        if OFF >= MAXITEM {
             OFF = 0;
             let count = CNT;
             Repository::with_globals_mut(|globals| {
@@ -8263,7 +8263,7 @@ pub fn step_portal2_lab13(cn: usize, _item_idx: usize) -> i32 {
 
     // Check for gatekeeper (character template 51)
     flag = 0;
-    for n in 0..core::constants::MAXCHARS as usize {
+    for n in 0..core::constants::MAXCHARS {
         let (used, flags, temp, a_hp, hp5, a_mana, mana5) =
             Repository::with_characters(|characters| {
                 (
@@ -8494,7 +8494,7 @@ pub fn step_portal_arena(cn: usize, item_idx: usize) -> i32 {
     Repository::with_globals(|globals| {
         Repository::with_characters_mut(|characters| {
             characters[co].data[64] =
-                globals.ticker as i32 + (core::constants::TICKS * 60 * 5) as i32;
+                globals.ticker + (core::constants::TICKS * 60 * 5);
         });
     });
 

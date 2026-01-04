@@ -78,7 +78,7 @@ impl God {
     ///
     /// Returns `Some(index)` when a free slot is found, otherwise `None`.
     fn get_free_item(items: &[core::types::Item]) -> Option<usize> {
-        for i in 1..core::constants::MAXITEM as usize {
+        for i in 1..core::constants::MAXITEM {
             if items[i].used == core::constants::USE_EMPTY {
                 return Some(i);
             }
@@ -440,7 +440,7 @@ impl God {
                 }
 
                 // Fill inventory with other stuff upward from last item
-                for n in build_type as usize..core::constants::MAXTITEM as usize {
+                for n in build_type as usize..core::constants::MAXTITEM {
                     if m >= 40 {
                         break;
                     }
@@ -926,7 +926,7 @@ impl God {
                 .try_into()
                 .unwrap_or([0; 200]); // TODO: Is this really the right way to do this?
 
-            for i in 0..100 as usize {
+            for i in 0..100_usize {
                 character.data[i] = 0;
             }
             character.attack_cn = 0;
@@ -1496,13 +1496,13 @@ impl God {
             } else if cx.starts_with('s') || cx.starts_with('S') {
                 if let Ok(val) = cx[1..].parse::<i32>() {
                     target_y = (target_y as i32 + val)
-                        .min((core::constants::SERVER_MAPY - 2) as i32)
+                        .min((core::constants::SERVER_MAPY - 2))
                         as usize;
                 }
             } else if cx.starts_with('e') || cx.starts_with('E') {
                 if let Ok(val) = cx[1..].parse::<i32>() {
                     target_x = (target_x as i32 + val)
-                        .min((core::constants::SERVER_MAPX - 2) as i32)
+                        .min((core::constants::SERVER_MAPX - 2))
                         as usize;
                 }
             } else if cx.starts_with('w') || cx.starts_with('W') {
@@ -1558,15 +1558,15 @@ impl God {
             let target = &ch[co];
             let caller = &ch[cn];
             let is_sane_npc =
-                (target.flags & core::constants::CharacterFlags::CF_PLAYER.bits() as u64) == 0;
+                (target.flags & core::constants::CharacterFlags::CF_PLAYER.bits()) == 0;
             let caller_is_priv = (caller.flags
-                & (core::constants::CharacterFlags::CF_GOD.bits() as u64))
+                & core::constants::CharacterFlags::CF_GOD.bits())
                 != 0
-                || (caller.flags & (core::constants::CharacterFlags::CF_IMP.bits() as u64)) != 0
-                || (caller.flags & (core::constants::CharacterFlags::CF_USURP.bits() as u64)) != 0;
+                || (caller.flags & core::constants::CharacterFlags::CF_IMP.bits()) != 0
+                || (caller.flags & core::constants::CharacterFlags::CF_USURP.bits()) != 0;
             (is_sane_npc && !caller_is_priv)
-                || (((target.flags & core::constants::CharacterFlags::CF_GOD.bits() as u64) != 0)
-                    && (caller.flags & core::constants::CharacterFlags::CF_GOD.bits() as u64) == 0)
+                || (((target.flags & core::constants::CharacterFlags::CF_GOD.bits()) != 0)
+                    && (caller.flags & core::constants::CharacterFlags::CF_GOD.bits()) == 0)
         });
         if denied {
             State::with(|state| {
@@ -1581,8 +1581,8 @@ impl God {
         // cnum_str: only visible to IMP/USURP
         let cnum_str = Repository::with_characters(|ch| {
             let caller = &ch[cn];
-            if (caller.flags & (core::constants::CharacterFlags::CF_IMP.bits() as u64)) != 0
-                || (caller.flags & (core::constants::CharacterFlags::CF_USURP.bits() as u64)) != 0
+            if (caller.flags & core::constants::CharacterFlags::CF_IMP.bits()) != 0
+                || (caller.flags & core::constants::CharacterFlags::CF_USURP.bits()) != 0
             {
                 format!(" ({})", co)
             } else {
@@ -1618,10 +1618,10 @@ impl God {
             let t = &ch[co];
             let posx = t.x as i32;
             let posy = t.y as i32;
-            let p = t.points_tot as i32;
+            let p = t.points_tot;
             let need = helpers::points_tolevel(t.points_tot as u32) as i32;
             let player_flag =
-                (t.flags & (core::constants::CharacterFlags::CF_PLAYER.bits() as u64)) != 0;
+                (t.flags & core::constants::CharacterFlags::CF_PLAYER.bits()) != 0;
             (
                 posx,
                 posy,
@@ -1636,7 +1636,7 @@ impl God {
                 t.mana[5] as i32,
                 t.mana[0] as i32,
                 t.speed as i32,
-                t.gold as i32,
+                t.gold,
                 t.data[13],
                 t.kindred,
                 t.data,
@@ -1654,17 +1654,17 @@ impl God {
         let hide_pos = Repository::with_characters(|ch| {
             let tflags = ch[co].flags;
             let invis_or_nowho =
-                (tflags & (core::constants::CharacterFlags::CF_INVISIBLE.bits() as u64)) != 0
-                    || (tflags & (core::constants::CharacterFlags::CF_NOWHO.bits() as u64)) != 0;
+                (tflags & core::constants::CharacterFlags::CF_INVISIBLE.bits()) != 0
+                    || (tflags & core::constants::CharacterFlags::CF_NOWHO.bits()) != 0;
             invis_or_nowho
         });
         if hide_pos {
             if Self::invis(cn, co) != 0
                 && Repository::with_characters(|ch| {
                     let caller = &ch[cn];
-                    !((caller.flags & (core::constants::CharacterFlags::CF_IMP.bits() as u64)) != 0
+                    !((caller.flags & core::constants::CharacterFlags::CF_IMP.bits()) != 0
                         || (caller.flags
-                            & (core::constants::CharacterFlags::CF_USURP.bits() as u64))
+                            & core::constants::CharacterFlags::CF_USURP.bits())
                             != 0)
                 })
             {
@@ -1702,8 +1702,8 @@ impl God {
             // NPC
             let temp_str = Repository::with_characters(|ch| {
                 let caller = &ch[cn];
-                if (caller.flags & (core::constants::CharacterFlags::CF_IMP.bits() as u64)) != 0
-                    || (caller.flags & (core::constants::CharacterFlags::CF_USURP.bits() as u64))
+                if (caller.flags & core::constants::CharacterFlags::CF_IMP.bits()) != 0
+                    || (caller.flags & core::constants::CharacterFlags::CF_USURP.bits())
                         != 0
                 {
                     format!(" Temp={}", temp_val)
@@ -1760,17 +1760,17 @@ impl God {
         // Last PvP attack for purple players
         if player_flag
             && (kindred & core::constants::KIN_PURPLE as i32) != 0
-            && data_vals[core::constants::CHD_ATTACKTIME as usize] != 0
+            && data_vals[core::constants::CHD_ATTACKTIME] != 0
         {
             let dt = Repository::with_characters(|ch| {
-                Repository::with_globals(|g| g.ticker) as i32
-                    - ch[co].data[core::constants::CHD_ATTACKTIME as usize]
+                Repository::with_globals(|g| g.ticker)
+                    - ch[co].data[core::constants::CHD_ATTACKTIME]
             });
             if Repository::with_characters(|ch| {
-                (ch[cn].flags & (core::constants::CharacterFlags::CF_IMP.bits() as u64)) != 0
+                (ch[cn].flags & core::constants::CharacterFlags::CF_IMP.bits()) != 0
             }) {
                 let victim = Repository::with_characters(|ch| {
-                    ch[co].data[core::constants::CHD_ATTACKVICT as usize] as usize
+                    ch[co].data[core::constants::CHD_ATTACKVICT] as usize
                 });
                 if Character::is_sane_character(victim) {
                     let victim_name =
@@ -1801,8 +1801,8 @@ impl God {
         // Additional info for IMP/USURP
         let caller_priv = Repository::with_characters(|ch| {
             let c = &ch[cn];
-            (c.flags & (core::constants::CharacterFlags::CF_IMP.bits() as u64)) != 0
-                || (c.flags & (core::constants::CharacterFlags::CF_USURP.bits() as u64)) != 0
+            (c.flags & core::constants::CharacterFlags::CF_IMP.bits()) != 0
+                || (c.flags & core::constants::CharacterFlags::CF_USURP.bits()) != 0
         });
         if caller_priv {
             // Print several data fields similar to C++ output
@@ -1868,7 +1868,7 @@ impl God {
 
             // Self-destruct time for sane NPCs
             if Repository::with_characters(|ch| {
-                (ch[co].flags & (core::constants::CharacterFlags::CF_PLAYER.bits() as u64)) == 0
+                (ch[co].flags & core::constants::CharacterFlags::CF_PLAYER.bits()) == 0
                     && ch[co].data[64] != 0
             }) {
                 let t = Repository::with_characters(|ch| {
@@ -1963,7 +1963,7 @@ impl God {
         Repository::with_items(|items| {
             State::with(|state| {
                 state.do_character_log(cn, core::types::FontColor::Green, "Listing unique items:");
-                for i in 1..core::constants::MAXITEM as usize {
+                for i in 1..core::constants::MAXITEM {
                     if items[i].used != core::constants::USE_EMPTY && items[i].is_unique() {
                         let sprite_0_to_print = items[i].sprite[0];
                         let sprite_1_to_print = items[i].sprite[1];
@@ -2014,7 +2014,7 @@ impl God {
                     "-----------------------------------------------\n",
                 );
 
-                for n in 1..core::constants::MAXCHARS as usize {
+                for n in 1..core::constants::MAXCHARS {
                     let c = &characters[n];
                     if c.used != core::constants::USE_ACTIVE {
                         continue;
@@ -2092,7 +2092,7 @@ impl God {
                 }
 
                 // List player's GC and thralls, if any
-                for n in 1..core::constants::MAXCHARS as usize {
+                for n in 1..core::constants::MAXCHARS {
                     let c = &characters[n];
                     let n_flags = c.flags;
                     let n_is_player = (n_flags & CharacterFlags::Player.bits()) != 0;
@@ -2171,7 +2171,7 @@ impl God {
                     "-----------------------------------------------\n",
                 );
 
-                for n in 1..core::constants::MAXCHARS as usize {
+                for n in 1..core::constants::MAXCHARS {
                     let c = &characters[n];
                     if c.used == core::constants::USE_EMPTY {
                         continue;
@@ -2268,7 +2268,7 @@ impl God {
                 );
 
                 // list players
-                for n in 1..core::constants::MAXCHARS as usize {
+                for n in 1..core::constants::MAXCHARS {
                     let c = &characters[n];
                     let n_flags = c.flags;
 
@@ -2377,7 +2377,7 @@ impl God {
             State::with(|state| {
                 state.do_character_log(cn, core::types::FontColor::Green, "Top players by points:");
                 // This is simplified - original had more complex ranking
-                for i in 1..core::constants::MAXCHARS as usize {
+                for i in 1..core::constants::MAXCHARS {
                     if characters[i].is_living_character(i) && characters[i].is_player() {
                         if characters[i].points > 100000 {
                             let points_to_print = characters[i].points;
@@ -2450,7 +2450,7 @@ impl God {
     /// * `spec1`, `spec2` - Match specifications
     pub fn find_next_char(start_index: usize, spec1: &str, spec2: &str) -> i32 {
         Repository::with_characters(|characters| {
-            for i in start_index..core::constants::MAXCHARS as usize {
+            for i in start_index..core::constants::MAXCHARS {
                 if !characters[i].is_living_character(i) {
                     continue;
                 }
@@ -2682,10 +2682,10 @@ impl God {
 
             let tx = target_x
                 .max(1)
-                .min((core::constants::SERVER_MAPX - 2) as i32) as usize;
+                .min((core::constants::SERVER_MAPX - 2)) as usize;
             let ty = target_y
                 .max(1)
-                .min((core::constants::SERVER_MAPY - 2) as i32) as usize;
+                .min((core::constants::SERVER_MAPY - 2)) as usize;
 
             let xo = characters[co].x as i32;
             let yo = characters[co].y as i32;
@@ -2702,7 +2702,7 @@ impl God {
                 );
             });
             // show effects at original and current position
-            EffectManager::fx_add_effect(12, 0, xo as i32, yo as i32, 0);
+            EffectManager::fx_add_effect(12, 0, xo, yo, 0);
             // use repository to fetch updated position for safety
             Repository::with_characters(|characters| {
                 EffectManager::fx_add_effect(
@@ -3101,7 +3101,7 @@ impl God {
             // Make thrall act like a ghost companion
             thrall.temp = core::constants::CT_COMPANION as u16;
             let ticker = Repository::with_globals(|globals| globals.ticker);
-            thrall.data[64] = (ticker + 7 * 24 * 3600 * core::constants::TICKS) as i32; // die in one week
+            thrall.data[64] = ticker + 7 * 24 * 3600 * core::constants::TICKS; // die in one week
             thrall.data[42] = (65536 + cn) as i32; // set group
             thrall.data[59] = (65536 + cn) as i32; // protect all other members of this group
 
@@ -3457,7 +3457,7 @@ impl God {
             let name_str = c_string_to_str(&character_name);
 
             Repository::with_characters(|ch| {
-                player::plr_logout(co as usize, ch[co].player as usize, LogoutReason::Shutdown);
+                player::plr_logout(co, ch[co].player as usize, LogoutReason::Shutdown);
             });
 
             Repository::with_characters_mut(|characters| {
@@ -3543,7 +3543,7 @@ impl God {
 
         Repository::with_characters(|ch| {
             player::plr_logout(
-                co as usize,
+                co,
                 ch[co].player as usize,
                 LogoutReason::IdleTooLong,
             );
