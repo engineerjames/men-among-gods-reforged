@@ -6692,8 +6692,7 @@ fn soul_trans_equipment(cn: usize, soulstone_idx: usize, item_idx: usize) {
             | core::constants::ItemFlags::IF_NOREPAIR.bits()
             | core::constants::ItemFlags::IF_SOULSTONE.bits();
 
-        items[item_idx].min_rank =
-            std::cmp::max(soulstone_rank as i8, items[item_idx].min_rank) as i8;
+        items[item_idx].min_rank = std::cmp::max(soulstone_rank as i8, items[item_idx].min_rank);
 
         if items[item_idx].max_damage == 0 {
             items[item_idx].max_damage = 60000;
