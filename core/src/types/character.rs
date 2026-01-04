@@ -615,7 +615,7 @@ impl Character {
     }
 
     pub fn get_invisibility_level(&self) -> i32 {
-        if self.flags as u64 & CharacterFlags::CF_GREATERINV.bits() != 0 {
+        if self.flags & CharacterFlags::CF_GREATERINV.bits() != 0 {
             return 15;
         }
 
