@@ -4,6 +4,7 @@ use crate::god::God;
 use crate::repository::Repository;
 use crate::state::State;
 use core::constants::{CharacterFlags, ItemFlags};
+use core::string_operations::c_string_to_str;
 use core::types::FontColor;
 use std::cmp::Ordering;
 
@@ -597,7 +598,7 @@ impl State {
             self.do_character_log(
                 cn,
                 FontColor::Green,
-                &format!("{}\n", String::from_utf8_lossy(&description)),
+                &format!("{}\n", c_string_to_str(&description)),
             );
 
             // Show condition if item has aging or damage
@@ -791,14 +792,12 @@ impl State {
                 if citem_idx > 0 && citem_idx < core::constants::MAXITEM {
                     self.do_character_log(cn, FontColor::Green, " \n");
 
-                    let citem_name = Repository::with_items(|items| items[citem_idx].name);
+                    let citem_name =
+                        Repository::with_items(|items| items[citem_idx].get_name().to_string());
                     self.do_character_log(
                         cn,
                         FontColor::Green,
-                        &format!(
-                            "You compare it with a {}:\n",
-                            String::from_utf8_lossy(&citem_name)
-                        ),
+                        &format!("You compare it with a {}:\n", citem_name),
                     );
 
                     // Compare weapon stats
@@ -807,7 +806,7 @@ impl State {
                             (
                                 items[item_idx].weapon[0],
                                 items[citem_idx].weapon[0],
-                                items[item_idx].name,
+                                items[item_idx].get_name().to_string(),
                             )
                         });
 
@@ -815,19 +814,13 @@ impl State {
                         self.do_character_log(
                             cn,
                             FontColor::Green,
-                            &format!(
-                                "A {} is the better weapon.\n",
-                                String::from_utf8_lossy(&name_this)
-                            ),
+                            &format!("A {} is the better weapon.\n", name_this),
                         );
                     } else if weapon_this < weapon_carried {
                         self.do_character_log(
                             cn,
                             FontColor::Green,
-                            &format!(
-                                "A {} is the better weapon.\n",
-                                String::from_utf8_lossy(&citem_name)
-                            ),
+                            &format!("A {} is the better weapon.\n", citem_name),
                         );
                     } else {
                         self.do_character_log(cn, FontColor::Green, "No difference as a weapon.\n");
@@ -842,19 +835,13 @@ impl State {
                         self.do_character_log(
                             cn,
                             FontColor::Green,
-                            &format!(
-                                "A {} is the better armor.\n",
-                                String::from_utf8_lossy(&name_this)
-                            ),
+                            &format!("A {} is the better armor.\n", name_this),
                         );
                     } else if armor_this < armor_carried {
                         self.do_character_log(
                             cn,
                             FontColor::Green,
-                            &format!(
-                                "A {} is the better armor.\n",
-                                String::from_utf8_lossy(&citem_name)
-                            ),
+                            &format!("A {} is the better armor.\n", citem_name),
                         );
                     } else {
                         self.do_character_log(cn, FontColor::Green, "No difference as armor.\n");

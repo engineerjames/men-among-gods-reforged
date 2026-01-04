@@ -1,4 +1,5 @@
 use core::constants::{GF_CLOSEENEMY, GF_LOOTING, GF_MAYHEM, GF_SPEEDY};
+use core::string_operations::c_string_to_str;
 use core::types::FontColor;
 
 use crate::effect::EffectManager;
@@ -315,7 +316,7 @@ impl State {
                 let (n_name, n_desc) = Repository::with_characters(|chars| {
                     (
                         chars[n].get_name().to_string(),
-                        String::from_utf8_lossy(&chars[n].description).to_string(),
+                        c_string_to_str(&chars[n].description).to_string(),
                     )
                 });
                 self.do_character_log(
@@ -334,29 +335,15 @@ impl State {
                 if (temps[n].flags & CharacterFlags::Player.bits()) != 0 {
                     return false;
                 }
-                let name_s = {
-                    let end = temps[n]
-                        .name
-                        .iter()
-                        .position(|&c| c == 0)
-                        .unwrap_or(temps[n].name.len());
-                    std::str::from_utf8(&temps[n].name[..end]).unwrap_or("")
-                };
+                let name_s = c_string_to_str(&temps[n].name);
                 name_s.to_lowercase().contains(&name.to_lowercase())
             });
 
             if matched {
                 foundtemp += 1;
                 let (t_name, t_desc) = Repository::with_character_templates(|temps| {
-                    let end = temps[n]
-                        .name
-                        .iter()
-                        .position(|&c| c == 0)
-                        .unwrap_or(temps[n].name.len());
-                    let name_s = std::str::from_utf8(&temps[n].name[..end])
-                        .unwrap_or("")
-                        .to_string();
-                    let desc_s = String::from_utf8_lossy(&temps[n].description).to_string();
+                    let name_s = temps[n].get_name().to_string();
+                    let desc_s = c_string_to_str(&temps[n].description).to_string();
                     (name_s, desc_s)
                 });
                 self.do_character_log(

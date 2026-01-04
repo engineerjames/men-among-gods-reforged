@@ -1,4 +1,5 @@
 use core::constants::CharacterFlags;
+use core::string_operations::c_string_to_str;
 use core::types::FontColor;
 
 use crate::god::God;
@@ -52,12 +53,8 @@ impl State {
                             items[tmp].data[0] = cn as u32;
 
                             // Engrave character name into description
-                            let current_desc = String::from_utf8_lossy(&items[tmp].description)
-                                .trim_matches('\0')
-                                .to_string();
-                            let char_name = String::from_utf8_lossy(&characters[cn].name)
-                                .trim_matches('\0')
-                                .to_string();
+                            let current_desc = c_string_to_str(&items[tmp].description);
+                            let char_name = characters[cn].get_name();
                             let new_desc = format!(
                                 "{} Engraved in it are the letters \"{}\".",
                                 current_desc, char_name
@@ -69,9 +66,7 @@ impl State {
                                     .copy_from_slice(&desc_bytes[..desc_bytes.len().min(200)]);
                             }
                         } else {
-                            let item_ref = String::from_utf8_lossy(&items[tmp].reference)
-                                .trim_matches('\0')
-                                .to_string();
+                            let item_ref = c_string_to_str(&items[tmp].reference);
                             self.do_character_log(
                                 cn,
                                 FontColor::Red,
@@ -414,9 +409,7 @@ impl State {
             }
 
             if (characters[co].flags & CharacterFlags::CF_PLAYER.bits()) == 0 {
-                let co_name = String::from_utf8_lossy(&characters[co].name)
-                    .trim_matches('\0')
-                    .to_string();
+                let co_name = characters[co].get_name();
                 self.do_character_log(
                     cn,
                     core::types::FontColor::Red,
@@ -446,9 +439,7 @@ impl State {
                     .unwrap()
                     .as_secs() as i32;
 
-                let co_name = String::from_utf8_lossy(&characters[co].name)
-                    .trim_matches('\0')
-                    .to_string();
+                let co_name = characters[co].get_name();
 
                 // Format timestamps
                 use chrono::{TimeZone, Utc};
@@ -494,9 +485,7 @@ impl State {
                     _ => format!("{} days ago", days),
                 };
 
-                let co_name = String::from_utf8_lossy(&characters[co].name)
-                    .trim_matches('\0')
-                    .to_string();
+                let co_name = characters[co].get_name();
                 self.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
@@ -817,9 +806,8 @@ impl State {
         }
         if msg.is_empty() {
             Repository::with_characters_mut(|ch| ch[co].text[3] = [0; 160]);
-            let old = Repository::with_characters(|ch| {
-                String::from_utf8_lossy(&ch[co].text[3]).to_string()
-            });
+            let old =
+                Repository::with_characters(|ch| c_string_to_str(&ch[co].text[3]).to_string());
             self.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
@@ -876,7 +864,7 @@ impl State {
                     self.do_character_log(
                         cn,
                         core::types::FontColor::Blue,
-                        &format!("  \"{}\"\n", String::from_utf8_lossy(&ch[cn].text[0])),
+                        &format!("  \"{}\"\n", c_string_to_str(&ch[cn].text[0])),
                     );
                 } else {
                     self.do_character_log(

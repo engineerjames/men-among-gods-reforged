@@ -1,4 +1,5 @@
 use core::constants::{CharacterFlags, ItemFlags};
+use core::string_operations::c_string_to_str;
 use core::types::FontColor;
 
 use crate::driver;
@@ -145,9 +146,7 @@ impl State {
             }
 
             if !accepts {
-                let merchant_name = Repository::with_characters(|ch| {
-                    String::from_utf8_lossy(&ch[co].name).to_string()
-                });
+                let merchant_name = Repository::with_characters(|ch| ch[co].get_name().to_string());
                 self.do_character_log(
                     cn,
                     FontColor::Green,
@@ -163,9 +162,8 @@ impl State {
             // Check if merchant can afford it
             let merchant_gold = Repository::with_characters(|ch| ch[co].gold);
             if merchant_gold < price {
-                let merchant_ref = Repository::with_characters(|ch| {
-                    String::from_utf8_lossy(&ch[co].reference).to_string()
-                });
+                let merchant_ref =
+                    Repository::with_characters(|ch| ch[co].get_reference().to_string());
                 self.do_character_log(
                     cn,
                     FontColor::Green,
@@ -190,12 +188,10 @@ impl State {
                 return;
             }
 
-            let item_name = Repository::with_items(|items| {
-                String::from_utf8_lossy(&items[item_idx].name).to_string()
-            });
+            let item_name = Repository::with_items(|items| items[item_idx].get_name().to_string());
 
             let item_ref = Repository::with_items(|items| {
-                String::from_utf8_lossy(&items[item_idx].reference).to_string()
+                c_string_to_str(&items[item_idx].reference).to_string()
             });
 
             chlog!(
@@ -270,10 +266,10 @@ impl State {
                                 });
 
                                 let item_name = Repository::with_items(|items| {
-                                    String::from_utf8_lossy(&items[item_idx].name).to_string()
+                                    items[item_idx].get_name().to_string()
                                 });
                                 let item_ref = Repository::with_items(|items| {
-                                    String::from_utf8_lossy(&items[item_idx].reference).to_string()
+                                    c_string_to_str(&items[item_idx].reference).to_string()
                                 });
 
                                 chlog!(
@@ -305,7 +301,7 @@ impl State {
                                 }
                             } else {
                                 let item_name = Repository::with_items(|items| {
-                                    String::from_utf8_lossy(&items[item_idx].name).to_string()
+                                    items[item_idx].get_name().to_string()
                                 });
 
                                 self.do_character_log(
@@ -319,7 +315,7 @@ impl State {
                             God::give_character_item(co, item_idx);
 
                             let item_ref = Repository::with_items(|items| {
-                                String::from_utf8_lossy(&items[item_idx].reference).to_string()
+                                c_string_to_str(&items[item_idx].reference).to_string()
                             });
 
                             if is_merchant {
@@ -357,10 +353,10 @@ impl State {
 
                             if gave_success {
                                 let item_name = Repository::with_items(|items| {
-                                    String::from_utf8_lossy(&items[item_idx].name).to_string()
+                                    items[item_idx].get_name().to_string()
                                 });
                                 let item_ref = Repository::with_items(|items| {
-                                    String::from_utf8_lossy(&items[item_idx].reference).to_string()
+                                    c_string_to_str(&items[item_idx].reference).to_string()
                                 });
 
                                 chlog!(cn, "Took {} from corpse", item_name);
@@ -375,7 +371,7 @@ impl State {
                                 God::give_character_item(co, item_idx);
 
                                 let item_ref = Repository::with_items(|items| {
-                                    String::from_utf8_lossy(&items[item_idx].reference).to_string()
+                                    c_string_to_str(&items[item_idx].reference).to_string()
                                 });
 
                                 self.do_character_log(
@@ -408,10 +404,10 @@ impl State {
 
                             if gave_success {
                                 let item_name = Repository::with_items(|items| {
-                                    String::from_utf8_lossy(&items[item_idx].name).to_string()
+                                    items[item_idx].get_name().to_string()
                                 });
                                 let item_ref = Repository::with_items(|items| {
-                                    String::from_utf8_lossy(&items[item_idx].reference).to_string()
+                                    c_string_to_str(&items[item_idx].reference).to_string()
                                 });
 
                                 chlog!(cn, "Took {} from corpse", item_name);
@@ -431,7 +427,7 @@ impl State {
                                 }
 
                                 let item_ref = Repository::with_items(|items| {
-                                    String::from_utf8_lossy(&items[item_idx].reference).to_string()
+                                    c_string_to_str(&items[item_idx].reference).to_string()
                                 });
 
                                 self.do_character_log(
@@ -487,8 +483,8 @@ impl State {
                     if item_idx != 0 {
                         let (item_name, item_desc) = Repository::with_items(|items| {
                             (
-                                String::from_utf8_lossy(&items[item_idx].name).to_string(),
-                                String::from_utf8_lossy(&items[item_idx].description).to_string(),
+                                items[item_idx].get_name().to_string(),
+                                c_string_to_str(&items[item_idx].description).to_string(),
                             )
                         });
 
@@ -505,9 +501,8 @@ impl State {
                         if item_idx != 0 {
                             let (item_name, item_desc) = Repository::with_items(|items| {
                                 (
-                                    String::from_utf8_lossy(&items[item_idx].name).to_string(),
-                                    String::from_utf8_lossy(&items[item_idx].description)
-                                        .to_string(),
+                                    items[item_idx].get_name().to_string(),
+                                    c_string_to_str(&items[item_idx].description).to_string(),
                                 )
                             });
 
@@ -531,9 +526,8 @@ impl State {
                         if item_idx != 0 {
                             let (item_name, item_desc) = Repository::with_items(|items| {
                                 (
-                                    String::from_utf8_lossy(&items[item_idx].name).to_string(),
-                                    String::from_utf8_lossy(&items[item_idx].description)
-                                        .to_string(),
+                                    items[item_idx].get_name().to_string(),
+                                    c_string_to_str(&items[item_idx].description).to_string(),
                                 )
                             });
 
@@ -707,9 +701,8 @@ impl State {
                     ch[cn].depot_sold += 1;
                 });
 
-                let item_name = Repository::with_items(|items| {
-                    String::from_utf8_lossy(&items[item_idx as usize].name).to_string()
-                });
+                let item_name =
+                    Repository::with_items(|items| items[item_idx as usize].get_name().to_string());
 
                 chlog!(
                     cn,
@@ -840,12 +833,11 @@ impl State {
                 });
 
                 let item_ref = Repository::with_items(|items| {
-                    String::from_utf8_lossy(&items[item_idx].reference).to_string()
+                    c_string_to_str(&items[item_idx].reference).to_string()
                 });
 
-                let item_name = Repository::with_items(|items| {
-                    String::from_utf8_lossy(&items[item_idx].name).to_string()
-                });
+                let item_name =
+                    Repository::with_items(|items| items[item_idx].get_name().to_string());
 
                 // Calculate costs per day (Astonian and Earth)
                 let astonian_cost = storage_cost;
@@ -887,11 +879,11 @@ impl State {
                         });
 
                         let item_ref = Repository::with_items(|items| {
-                            String::from_utf8_lossy(&items[item_idx as usize].reference).to_string()
+                            c_string_to_str(&items[item_idx as usize].reference).to_string()
                         });
 
                         let item_name = Repository::with_items(|items| {
-                            String::from_utf8_lossy(&items[item_idx as usize].name).to_string()
+                            items[item_idx as usize].get_name().to_string()
                         });
 
                         self.do_character_log(
@@ -903,7 +895,7 @@ impl State {
                         chlog!(cn, "Took {} from depot", item_name);
                     } else {
                         let item_ref = Repository::with_items(|items| {
-                            String::from_utf8_lossy(&items[item_idx as usize].reference).to_string()
+                            c_string_to_str(&items[item_idx as usize].reference).to_string()
                         });
 
                         self.do_character_log(
@@ -924,9 +916,8 @@ impl State {
                 if item_idx != 0 {
                     let (item_name, item_desc) = Repository::with_items(|items| {
                         (
-                            String::from_utf8_lossy(&items[item_idx as usize].name).to_string(),
-                            String::from_utf8_lossy(&items[item_idx as usize].description)
-                                .to_string(),
+                            items[item_idx as usize].get_name().to_string(),
+                            c_string_to_str(&items[item_idx as usize].description).to_string(),
                         )
                     });
 

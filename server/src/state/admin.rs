@@ -1,4 +1,4 @@
-use core::types::FontColor;
+use core::{string_operations::c_string_to_str, types::FontColor};
 
 use crate::{
     enums::CharacterFlags, god::God, helpers, network_manager::NetworkManager,
@@ -243,14 +243,14 @@ impl State {
         }
 
         let (co_name, depot_items) = Repository::with_characters(|ch| {
-            let name = String::from_utf8_lossy(&ch[co].name).to_string();
+            let name = ch[co].get_name().to_string();
             let mut items = Vec::new();
 
             for m in 0..62 {
                 let item_idx = ch[co].depot[m];
                 if item_idx != 0 {
                     let item_name = Repository::with_items(|items| {
-                        String::from_utf8_lossy(&items[item_idx as usize].name).to_string()
+                        items[item_idx as usize].get_name().to_string()
                     });
                     items.push((item_idx, item_name));
                 }
@@ -302,15 +302,14 @@ impl State {
         }
 
         let (co_name, inventory_items) = Repository::with_characters(|ch| {
-            let name = String::from_utf8_lossy(&ch[co].name).to_string();
+            let name = ch[co].get_name().to_string();
             let mut items = Vec::new();
 
             for n in 0..40 {
                 let item_idx = ch[co].item[n];
                 if item_idx != 0 {
-                    let item_name = Repository::with_items(|it| {
-                        String::from_utf8_lossy(&it[item_idx as usize].name).to_string()
-                    });
+                    let item_name =
+                        Repository::with_items(|it| it[item_idx as usize].get_name().to_string());
                     items.push((item_idx, item_name));
                 }
             }
@@ -361,15 +360,14 @@ impl State {
         }
 
         let (co_name, equipment_items) = Repository::with_characters(|ch| {
-            let name = String::from_utf8_lossy(&ch[co].name).to_string();
+            let name = ch[co].get_name().to_string();
             let mut items = Vec::new();
 
             for n in 0..20 {
                 let item_idx = ch[co].worn[n];
                 if item_idx != 0 {
-                    let item_name = Repository::with_items(|it| {
-                        String::from_utf8_lossy(&it[item_idx as usize].name).to_string()
-                    });
+                    let item_name =
+                        Repository::with_items(|it| it[item_idx as usize].get_name().to_string());
                     items.push((item_idx, item_name));
                 }
             }
@@ -485,11 +483,8 @@ impl State {
 
                 // Get item reference and character name for logging
                 let (item_reference, co_name) = Repository::with_items(|it| {
-                    let item_ref =
-                        String::from_utf8_lossy(&it[item_id as usize].reference).to_string();
-                    let char_name = Repository::with_characters(|ch| {
-                        String::from_utf8_lossy(&ch[co].name).to_string()
-                    });
+                    let item_ref = c_string_to_str(&it[item_id as usize].reference).to_string();
+                    let char_name = Repository::with_characters(|ch| ch[co].get_name().to_string());
                     (item_ref, char_name)
                 });
 
@@ -502,7 +497,7 @@ impl State {
             } else {
                 // Inventory full
                 let item_reference = Repository::with_items(|it| {
-                    String::from_utf8_lossy(&it[item_id as usize].reference).to_string()
+                    c_string_to_str(&it[item_id as usize].reference).to_string()
                 });
 
                 self.do_character_log(
