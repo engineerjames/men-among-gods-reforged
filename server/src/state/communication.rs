@@ -241,11 +241,7 @@ impl State {
             if is_player {
                 let can_proceed = Repository::with_characters_mut(|ch| {
                     ch[cn].data[71] += core::constants::CNTSAY;
-                    if ch[cn].data[71] > core::constants::MAXSAY {
-                        false
-                    } else {
-                        true
-                    }
+                    ch[cn].data[71] <= core::constants::MAXSAY
                 });
 
                 if !can_proceed {

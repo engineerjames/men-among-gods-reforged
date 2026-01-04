@@ -310,7 +310,7 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
                 characters[cn].data[55] = ticker;
                 if co < MAXCHARS {
                     let co_name = characters[co].get_name();
-                    npc_saytext_n(cn, 4, Some(&co_name));
+                    npc_saytext_n(cn, 4, Some(co_name));
                 }
                 State::with(|state| {
                     state.do_npc_shout(
@@ -337,7 +337,7 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
             let co_name = characters[co].get_name();
             let cn_name = characters[cn].get_name();
             if npc_add_enemy(cn, co, true) {
-                npc_saytext_n(cn, 1, Some(&co_name));
+                npc_saytext_n(cn, 1, Some(co_name));
                 log::info!(
                     "NPC {} ({}) added {} ({}) to enemy list for attacking",
                     cn,

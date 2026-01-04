@@ -213,12 +213,7 @@ impl State {
     /// * `pan` - Stereo pan modifier
     pub(crate) fn char_play_sound(character_id: usize, sound: i32, vol: i32, pan: i32) {
         let matching_player_id = Server::with_players(|players| {
-            for i in 0..MAXPLAYER {
-                if players[i].usnr == character_id {
-                    return Some(i);
-                }
-            }
-            None
+            (0..MAXPLAYER).find(|&i| players[i].usnr == character_id)
         });
 
         let Some(player_id) = matching_player_id else {

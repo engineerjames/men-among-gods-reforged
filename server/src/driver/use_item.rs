@@ -2945,7 +2945,7 @@ pub fn use_pile(cn: usize, item_idx: usize) -> i32 {
     }
 
     // Roll for loot
-    if rand::random::<u32>() % chance != 0 {
+    if !rand::random::<u32>().is_multiple_of(chance) {
         return 1; // Nothing found
     }
 
@@ -3850,11 +3850,7 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
                                 true
                             } else if characters[co].data[0] != item_idx as i32 {
                                 true
-                            } else if (characters[co].flags & CharacterFlags::CF_BODY.bits()) != 0 {
-                                true
-                            } else {
-                                false
-                            }
+                            } else { (characters[co].flags & CharacterFlags::CF_BODY.bits()) != 0 }
                         })
                     };
                     needs_spawn
@@ -4085,11 +4081,7 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
                         true
                     } else if characters[co].data[0] != item_idx as i32 {
                         true
-                    } else if (characters[co].flags & CharacterFlags::CF_BODY.bits()) != 0 {
-                        true
-                    } else {
-                        false
-                    }
+                    } else { (characters[co].flags & CharacterFlags::CF_BODY.bits()) != 0 }
                 })
             };
             needs_spawn

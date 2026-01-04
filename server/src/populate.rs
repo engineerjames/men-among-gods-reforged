@@ -76,7 +76,7 @@ pub fn pop_create_item(temp: usize, cn: usize) -> usize {
     let alignment = Repository::with_characters(|characters| characters[cn].alignment);
 
     // Check for evil alignment special items (1/150 chance, multiple checks)
-    if alignment < 0 && rand::random::<u32>() % 150 == 0 {
+    if alignment < 0 && rand::random::<u32>().is_multiple_of(150) {
         in_id = match temp {
             27 => God::create_item(603),  // Dagger
             28 => God::create_item(604),  // Short Sword
@@ -99,7 +99,7 @@ pub fn pop_create_item(temp: usize, cn: usize) -> usize {
     }
 
     // Second check (armor)
-    if in_id == 0 && alignment < 0 && rand::random::<u32>() % 150 == 0 {
+    if in_id == 0 && alignment < 0 && rand::random::<u32>().is_multiple_of(150) {
         in_id = match temp {
             27 => God::create_item(618),  // Leather Helm
             28 => God::create_item(619),  // Chain Helm
@@ -122,7 +122,7 @@ pub fn pop_create_item(temp: usize, cn: usize) -> usize {
     }
 
     // Third check (boots)
-    if in_id == 0 && alignment < 0 && rand::random::<u32>() % 150 == 0 {
+    if in_id == 0 && alignment < 0 && rand::random::<u32>().is_multiple_of(150) {
         in_id = match temp {
             27 => God::create_item(633),  // Leather Boots
             28 => God::create_item(634),  // Chain Boots
@@ -145,7 +145,7 @@ pub fn pop_create_item(temp: usize, cn: usize) -> usize {
     }
 
     // Fourth check (shields/cloaks)
-    if in_id == 0 && alignment < 0 && rand::random::<u32>() % 150 == 0 {
+    if in_id == 0 && alignment < 0 && rand::random::<u32>().is_multiple_of(150) {
         in_id = match temp {
             27 => God::create_item(648),  // Leather Shield
             28 => God::create_item(649),  // Chain Shield
@@ -293,7 +293,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
     for _ in 0..num_skills {
         let skill_number = rand::random::<i32>() % 40; // 0-39
         let mut skill_value = rand::random::<i32>() % rank;
-        skill_value = skill_value >> 1; // Divide by 2, max is rank/2 (max 12)
+        skill_value >>= 1; // Divide by 2, max is rank/2 (max 12)
         if skill_value == 0 {
             skill_value = 1; // Ensure at least 1
         }
@@ -700,7 +700,7 @@ pub fn pop_create_char(n: usize, drop: bool) -> usize {
     if alignment < 0 {
         // Create bonus items for evil characters
         for _ in 0..4 {
-            if rand::random::<u32>() % chance == 0 {
+            if rand::random::<u32>().is_multiple_of(chance) {
                 let bonus = pop_create_bonus(cn, chance as i32);
                 if bonus != 0 {
                     God::give_character_item(cn, bonus as usize);
@@ -709,7 +709,7 @@ pub fn pop_create_char(n: usize, drop: bool) -> usize {
         }
 
         // Check for special belt
-        if rand::random::<u32>() % 10000 == 0 {
+        if rand::random::<u32>().is_multiple_of(10000) {
             let belt = pop_create_bonus_belt(cn);
             if belt != 0 {
                 God::give_character_item(cn, belt as usize);

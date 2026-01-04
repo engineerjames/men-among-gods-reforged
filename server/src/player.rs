@@ -5546,7 +5546,7 @@ fn plr_cmd_setuser(_nr: usize) {
                         // validate letters only and lowercase
                         for n in 0..name_end {
                             let b = name_bytes[n];
-                            if !((b'A'..=b'Z').contains(&b) || (b'a'..=b'z').contains(&b)) {
+                            if !(b.is_ascii_uppercase() || b.is_ascii_lowercase()) {
                                 flag = 1;
                                 log::warn!(
                                     "plr_cmd_setuser: name contains non-letter char {:02X}",
@@ -5855,7 +5855,7 @@ fn plr_cmd_input(nr: usize, part: u8) {
 
         // Call the server state handler (port of C++ do_say)
         State::with_mut(|state| {
-            state.do_say(cn, &text);
+            state.do_say(cn, text);
         });
     }
 }
