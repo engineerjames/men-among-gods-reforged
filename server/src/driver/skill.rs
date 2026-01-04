@@ -165,12 +165,9 @@ pub fn chance_base(cn: usize, skill: i32, d20: i32, power: i32) -> i32 {
             chance += luck / 500 - 1;
         }
     }
-    if chance < 0 {
-        chance = 0;
-    }
-    if chance > 18 {
-        chance = 18;
-    }
+
+    chance = chance.clamp(0, 18);
+
     let roll = rand::random::<u8>() % 20;
     if roll as i32 > chance || power > skill + (skill / 2) {
         State::with(|state| {
@@ -189,12 +186,9 @@ pub fn chance(cn: usize, d20: i32) -> i32 {
             d20 += luck / 500 - 1;
         }
     }
-    if d20 < 0 {
-        d20 = 0;
-    }
-    if d20 > 18 {
-        d20 = 18;
-    }
+
+    d20 = d20.clamp(0, 18);
+
     let roll = rand::random::<u8>() % 20;
     if roll as i32 > d20 {
         State::with(|state| {

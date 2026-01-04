@@ -545,12 +545,8 @@ impl State {
         });
 
         let mut chance = if per == 0 { 0 } else { ste * 15 / per };
-        if chance < 0 {
-            chance = 0;
-        }
-        if chance > 18 {
-            chance = 18;
-        }
+
+        chance = chance.clamp(0, 18);
 
         let mut rng = rand::thread_rng();
         if rng.gen_range(0..20) <= chance {

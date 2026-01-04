@@ -123,12 +123,9 @@ impl State {
                 // Adjust alignment
                 Repository::with_characters_mut(|characters| {
                     characters[killer_id].alignment -= co_alignment / 50;
-                    if characters[killer_id].alignment > 7500 {
-                        characters[killer_id].alignment = 7500;
-                    }
-                    if characters[killer_id].alignment < -7500 {
-                        characters[killer_id].alignment = -7500;
-                    }
+
+                    characters[killer_id].alignment =
+                        characters[killer_id].alignment.clamp(-7500, 7500);
                 });
 
                 // Check for killing priests (becoming purple)

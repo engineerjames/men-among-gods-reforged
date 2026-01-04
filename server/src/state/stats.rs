@@ -295,45 +295,26 @@ impl State {
                 let mut final_attrib = characters[cn].attrib[z][0] as i32
                     + characters[cn].attrib[z][1] as i32
                     + attrib_bonus[z];
-                if final_attrib < 1 {
-                    final_attrib = 1;
-                }
-                if final_attrib > 250 {
-                    final_attrib = 250;
-                }
+
+                final_attrib = final_attrib.clamp(1, 250);
                 characters[cn].attrib[z][5] = final_attrib as u8;
             }
 
             // Calculate final HP
             let mut final_hp = characters[cn].hp[0] as i32 + characters[cn].hp[1] as i32 + hp_bonus;
-            if final_hp < 10 {
-                final_hp = 10;
-            }
-            if final_hp > 999 {
-                final_hp = 999;
-            }
+            final_hp = final_hp.clamp(10, 999);
             characters[cn].hp[5] = final_hp as u16;
 
             // Calculate final endurance
             let mut final_end =
                 characters[cn].end[0] as i32 + characters[cn].end[1] as i32 + end_bonus;
-            if final_end < 10 {
-                final_end = 10;
-            }
-            if final_end > 999 {
-                final_end = 999;
-            }
+            final_end = final_end.clamp(10, 999);
             characters[cn].end[5] = final_end as u16;
 
             // Calculate final mana
             let mut final_mana =
                 characters[cn].mana[0] as i32 + characters[cn].mana[1] as i32 + mana_bonus;
-            if final_mana < 10 {
-                final_mana = 10;
-            }
-            if final_mana > 999 {
-                final_mana = 999;
-            }
+            final_mana = final_mana.clamp(10, 999);
             characters[cn].mana[5] = final_mana as u16;
         });
 
@@ -383,51 +364,25 @@ impl State {
                     + characters[cn].attrib[attrs[2]][5] as i32)
                     / 5;
                 final_skill += attrib_contribution;
-
-                if final_skill < 1 {
-                    final_skill = 1;
-                }
-                if final_skill > 250 {
-                    final_skill = 250;
-                }
+                final_skill = final_skill.clamp(1, 250);
                 characters[cn].skill[z][5] = final_skill as u8;
             }
 
             // Set final armor
-            if armor < 0 {
-                armor = 0;
-            }
-            if armor > 250 {
-                armor = 250;
-            }
+            armor = armor.clamp(0, 250);
             characters[cn].armor = armor as i16;
 
             // Set final weapon
-            if weapon < 0 {
-                weapon = 0;
-            }
-            if weapon > 250 {
-                weapon = 250;
-            }
+            weapon = weapon.clamp(0, 250);
             characters[cn].weapon = weapon as i16;
 
             // Set final gethit damage
-            if gethit < 0 {
-                gethit = 0;
-            }
-            if gethit > 250 {
-                gethit = 250;
-            }
+            gethit = gethit.clamp(0, 250);
             characters[cn].gethit_dam = gethit as i8;
 
             // Set final light
             light -= sublight;
-            if light < 0 {
-                light = 0;
-            }
-            if light > 250 {
-                light = 250;
-            }
+            light = light.clamp(0, 250);
             characters[cn].light = light as u8;
 
             // Calculate speed based on mode
@@ -449,12 +404,7 @@ impl State {
             }
 
             characters[cn].speed = 20 - speed_calc as i16;
-            if characters[cn].speed < 0 {
-                characters[cn].speed = 0;
-            }
-            if characters[cn].speed > 19 {
-                characters[cn].speed = 19;
-            }
+            characters[cn].speed = characters[cn].speed.clamp(0, 19);
 
             // Cap current stats at their maximums
             if characters[cn].a_hp > characters[cn].hp[5] as i32 * 1000 {

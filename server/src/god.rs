@@ -2672,8 +2672,8 @@ impl God {
                 _ => {}
             }
 
-            let tx = target_x.max(1).min(core::constants::SERVER_MAPX - 2) as usize;
-            let ty = target_y.max(1).min(core::constants::SERVER_MAPY - 2) as usize;
+            let tx = (target_x).clamp(1, core::constants::SERVER_MAPX - 2) as usize;
+            let ty = (target_y).clamp(1, core::constants::SERVER_MAPY - 2) as usize;
 
             let xo = characters[co].x as i32;
             let yo = characters[co].y as i32;

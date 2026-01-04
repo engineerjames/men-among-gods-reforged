@@ -570,12 +570,7 @@ pub fn scale_exps2(cn: i32, co_rank: i32, exp: i32) -> i32 {
     let mut diff = co_rank - points2rank(player_experience) as i32;
 
     diff += 24;
-    if diff < 0 {
-        diff = 0;
-    }
-    if diff > 48 {
-        diff = 48;
-    }
+    diff = diff.clamp(0, 48);
 
     (exp as f32 * SCALE_TAB[diff as usize]) as i32
 }
