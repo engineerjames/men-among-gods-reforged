@@ -42,11 +42,18 @@ const SPEEDTAB: [[u8; 20]; 20] = [
 /// `Usurp`), and applies any exit punishments depending on `reason`.
 ///
 /// # Arguments
-/// * `character_id` - Character index being logged out
-/// * `player_id` - Associated player slot id (0 if none)
+/// * `character_id` - Character index being logged out (0 if none, interpreted as "no character")
+/// * `player_id` - Associated player slot id (0 if none, interpreted as "any player")
 /// * `reason` - Reason for logout (enum)
 pub fn plr_logout(character_id: usize, player_id: usize, reason: enums::LogoutReason) {
-    if reason != enums::LogoutReason::Shutdown {
+    let player_id = if player_id < core::constants::MAXPLAYER {
+        player_id
+    } else {
+        0
+    };
+    let valid_character = character_id > 0 && character_id < core::constants::MAXCHARS;
+
+    if valid_character && reason != enums::LogoutReason::Shutdown {
         Repository::with_characters(|characters| {
             log::debug!(
                 "Logging out character '{}' for reason: {:?}",
@@ -56,12 +63,14 @@ pub fn plr_logout(character_id: usize, player_id: usize, reason: enums::LogoutRe
         });
     }
 
-    let character_has_player = Repository::with_characters(|characters| {
-        characters[character_id].player == player_id as i32
-    });
+    let character_matches_player = valid_character
+        && (player_id == 0
+            || Repository::with_characters(|characters| {
+                characters[character_id].player == player_id as i32
+            }));
 
     // Handle usurp flag and recursive logout
-    if character_has_player {
+    if character_matches_player {
         let should_logout_co = Repository::with_characters_mut(|characters| {
             let character = &mut characters[character_id];
             if character.flags & enums::CharacterFlags::Usurp.bits() != 0 {
@@ -84,7 +93,7 @@ pub fn plr_logout(character_id: usize, player_id: usize, reason: enums::LogoutRe
     }
 
     // Main logout logic for active players
-    if character_has_player {
+    if character_matches_player {
         let (is_player, is_not_ccp) = Repository::with_characters(|characters| {
             let character = &characters[character_id];
             (
@@ -152,7 +161,8 @@ pub fn plr_logout(character_id: usize, player_id: usize, reason: enums::LogoutRe
                             });
                             character.gold -= character.gold / 10;
 
-                            if character.citem != 0 && character.citem & 0x80000000 == 0 {
+                            // In the original protocol, the high bit marks "money in hand".
+                            if character.citem != 0 && (character.citem & 0x80000000) != 0 {
                                 State::with(|state| {
                                     state.do_character_log(
                                         character_id,
@@ -200,10 +210,13 @@ pub fn plr_logout(character_id: usize, player_id: usize, reason: enums::LogoutRe
                     }
                 }
 
-                if map[to_map_index].ch == character_id as u32 {
-                    map[to_map_index].ch = 0;
+                if map[to_map_index].to_ch == character_id as u32 {
+                    map[to_map_index].to_ch = 0;
                 }
             });
+
+            // Remove references to this character from other enemies lists.
+            State::remove_enemy(character_id);
 
             // Handle lag scroll
             if reason == enums::LogoutReason::IdleTooLong
@@ -274,7 +287,8 @@ pub fn plr_logout(character_id: usize, player_id: usize, reason: enums::LogoutRe
                 character.player = 0;
                 character.status = 0;
                 character.status2 = 0;
-                character.dir = 0;
+                // C++ resets dir to 1.
+                character.dir = 1;
                 character.escape_timer = 0;
                 for i in 0..4 {
                     character.enemy[i] = 0;
@@ -312,7 +326,10 @@ pub fn plr_logout(character_id: usize, player_id: usize, reason: enums::LogoutRe
     }
 
     // Send exit message to player
-    if player_id != 0 && reason != enums::LogoutReason::Usurp {
+    if player_id != 0
+        && reason != enums::LogoutReason::Unknown
+        && reason != enums::LogoutReason::Usurp
+    {
         let mut buffer: [u8; 16] = [0; 16];
         buffer[0] = core::constants::SV_EXIT;
         buffer[1] = reason as u8;
@@ -3267,8 +3284,13 @@ fn plr_login(nr: usize) {
     }
 
     // Already active
+    // C behavior:
+    //   if (ch[cn].used != USE_NONACTIVE && !(ch[cn].flags & CF_CCP)) {
+    //       plr_logout(cn, ch[cn].player, LO_IDLE);
+    //   }
+    // and then continue the login (no early return).
     let already_active = Repository::with_characters(|characters| {
-        characters[cn].used != core::constants::USE_EMPTY
+        characters[cn].used != core::constants::USE_NONACTIVE
             && (characters[cn].flags & enums::CharacterFlags::ComputerControlledPlayer.bits()) == 0
     });
     if already_active {
@@ -3276,7 +3298,6 @@ fn plr_login(nr: usize) {
         let active_player =
             Repository::with_characters(|characters| characters[cn].player as usize);
         plr_logout(cn, active_player, enums::LogoutReason::IdleTooLong);
-        return;
     }
 
     // Kicked

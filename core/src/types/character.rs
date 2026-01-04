@@ -1,6 +1,9 @@
 //! Character structure - represents both players and NPCs
 
-use crate::{constants::CharacterFlags, string_operations::c_string_to_str};
+use crate::{
+    constants::{CharacterFlags, USE_EMPTY},
+    string_operations::c_string_to_str,
+};
 
 /// Character structure - represents both players and NPCs
 #[derive(Clone, Copy)]
@@ -719,8 +722,7 @@ impl Character {
     pub fn get_next_inventory_slot(&self) -> Option<usize> {
         let inventory = self.item;
         for (i, &item_id) in inventory.iter().enumerate() {
-            if item_id == 0 {
-                // TODO: Should this 0 be a constant?
+            if item_id == USE_EMPTY as u32 {
                 return Some(i);
             }
         }

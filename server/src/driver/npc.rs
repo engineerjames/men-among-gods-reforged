@@ -2783,7 +2783,7 @@ pub fn update_shop(cn: usize) {
 
         if in_idx.is_some() {
             // Call god_give_char
-            if !God::give_character_item(in_idx.unwrap(), cn) {
+            if !God::give_character_item(cn, in_idx.unwrap()) {
                 Repository::with_items_mut(|items| {
                     items[in_idx.unwrap()].used = USE_EMPTY;
                 });
