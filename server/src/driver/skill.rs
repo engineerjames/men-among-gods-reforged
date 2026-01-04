@@ -1,4 +1,7 @@
-use core::{constants::ItemFlags, types::FontColor};
+use core::{
+    constants::{ItemFlags, SERVER_MAPX},
+    types::FontColor,
+};
 
 use rand::Rng;
 
@@ -2845,51 +2848,66 @@ pub fn skill_blast(cn: usize) {
     let co_orig = co;
     dam = dam / 2 + dam / 4;
 
-    let m = Repository::with_characters(|ch| ch[cn].x)
-        + Repository::with_characters(|ch| ch[cn].y) * core::constants::SERVER_MAPX as i16;
+    let (cx, cy) = Repository::with_characters(|ch| (ch[cn].x as i32, ch[cn].y as i32));
+    let mut neighbors: [(i32, i32); 4] = [(0, 0); 4];
+    let mut neighbor_count = 0usize;
+
+    if cx + 1 < SERVER_MAPX {
+        neighbors[neighbor_count] = (cx + 1, cy);
+        neighbor_count += 1;
+    }
+    if cx - 1 >= 0 {
+        neighbors[neighbor_count] = (cx - 1, cy);
+        neighbor_count += 1;
+    }
+    if cy + 1 < core::constants::SERVER_MAPY {
+        neighbors[neighbor_count] = (cx, cy + 1);
+        neighbor_count += 1;
+    }
+    if cy - 1 >= 0 {
+        neighbors[neighbor_count] = (cx, cy - 1);
+        neighbor_count += 1;
+    }
 
     // Check four adjacent tiles
-    let adj = [
-        1isize,
-        -1isize,
-        core::constants::SERVER_MAPX as isize,
-        -(core::constants::SERVER_MAPX as isize),
-    ];
-    for delta in adj.iter() {
-        let idx = (m as isize + *delta) as usize;
-        let maybe_co =
-            Repository::with_map(|map| map.get(idx).and_then(|m| Some(m.ch))).unwrap_or(0) as usize;
-        if maybe_co != 0
-            && Repository::with_characters(|ch| ch[maybe_co].attack_cn) == cn as u16
-            && maybe_co != co_orig
-        {
-            // replicate effect
-            let tmp2 = State::with_mut(|state| state.do_hurt(cn, maybe_co, dam, 1));
-            if tmp2 < 1 {
-                State::with(|state| {
-                    state.do_character_log(
-                        cn,
-                        FontColor::Green,
-                        "You cannot penetrate your target's armor.\n",
-                    )
-                });
-            } else {
-                State::with(|state| {
-                    state.do_character_log(
-                        cn,
-                        FontColor::Green,
-                        &format!("You blast your target for {} HP.\n", tmp2),
-                    )
-                });
-            }
-            EffectManager::fx_add_effect(
-                5,
-                0,
-                Repository::with_characters(|ch| ch[maybe_co].x) as i32,
-                Repository::with_characters(|ch| ch[maybe_co].y) as i32,
-                0,
-            );
+    for (nx, ny) in neighbors.into_iter().take(neighbor_count) {
+        let idx = (nx as usize) + (ny as usize) * SERVER_MAPX as usize;
+        let maybe_co = Repository::with_map(|map| map[idx].ch) as usize;
+        if maybe_co == 0 || maybe_co >= core::constants::MAXCHARS {
+            continue;
         }
+        if maybe_co == co_orig {
+            continue;
+        }
+        if Repository::with_characters(|ch| ch[maybe_co].attack_cn) != cn as u16 {
+            continue;
+        }
+
+        let tmp2 = State::with_mut(|state| state.do_hurt(cn, maybe_co, dam, 1));
+        if tmp2 < 1 {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    FontColor::Green,
+                    "You cannot penetrate your target's armor.\n",
+                )
+            });
+        } else {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    FontColor::Green,
+                    &format!("You blast your target for {} HP.\n", tmp2),
+                )
+            });
+        }
+        EffectManager::fx_add_effect(
+            5,
+            0,
+            Repository::with_characters(|ch| ch[maybe_co].x) as i32,
+            Repository::with_characters(|ch| ch[maybe_co].y) as i32,
+            0,
+        );
     }
 
     add_exhaust(cn, core::constants::TICKS * 6);

@@ -2143,43 +2143,49 @@ pub fn npc_driver_low(cn: usize) {
             Repository::with_characters_mut(|characters| {
                 characters[cn].misc_action = core::constants::DR_TURN as u16;
 
+                // Turn toward an adjacent tile based on desired direction.
+                // (misc_target1/misc_target2 are coordinates, not the direction value.)
+                let mut target_x = x;
+                let mut target_y = y;
+
                 match data_30 {
-                    x if x == core::constants::DX_UP as i32 => {
-                        characters[cn].misc_target1 = x as u16;
-                        characters[cn].misc_target2 = (y - 1) as u16;
+                    d if d == DX_UP as i32 => target_y -= 1,
+                    d if d == DX_DOWN as i32 => target_y += 1,
+                    d if d == DX_LEFT as i32 => target_x -= 1,
+                    d if d == DX_RIGHT as i32 => target_x += 1,
+                    d if d == DX_LEFTUP as i32 => {
+                        target_x -= 1;
+                        target_y -= 1;
                     }
-                    x if x == core::constants::DX_DOWN as i32 => {
-                        characters[cn].misc_target1 = x as u16;
-                        characters[cn].misc_target2 = (y + 1) as u16;
+                    d if d == DX_LEFTDOWN as i32 => {
+                        target_x -= 1;
+                        target_y += 1;
                     }
-                    x if x == core::constants::DX_LEFT as i32 => {
-                        characters[cn].misc_target1 = (x - 1) as u16;
-                        characters[cn].misc_target2 = y as u16;
+                    d if d == DX_RIGHTUP as i32 => {
+                        target_x += 1;
+                        target_y -= 1;
                     }
-                    x if x == core::constants::DX_RIGHT as i32 => {
-                        characters[cn].misc_target1 = (x + 1) as u16;
-                        characters[cn].misc_target2 = y as u16;
-                    }
-                    x if x == core::constants::DX_LEFTUP as i32 => {
-                        characters[cn].misc_target1 = (x - 1) as u16;
-                        characters[cn].misc_target2 = (y - 1) as u16;
-                    }
-                    x if x == core::constants::DX_LEFTDOWN as i32 => {
-                        characters[cn].misc_target1 = (x - 1) as u16;
-                        characters[cn].misc_target2 = (y + 1) as u16;
-                    }
-                    x if x == core::constants::DX_RIGHTUP as i32 => {
-                        characters[cn].misc_target1 = (x + 1) as u16;
-                        characters[cn].misc_target2 = (y - 1) as u16;
-                    }
-                    x if x == core::constants::DX_RIGHTDOWN as i32 => {
-                        characters[cn].misc_target1 = (x + 1) as u16;
-                        characters[cn].misc_target2 = (y + 1) as u16;
+                    d if d == DX_RIGHTDOWN as i32 => {
+                        target_x += 1;
+                        target_y += 1;
                     }
                     _ => {
-                        characters[cn].misc_action = core::constants::DR_IDLE as u16;
+                        characters[cn].misc_action = DR_IDLE as u16;
+                        return;
                     }
                 }
+
+                if target_x < 0
+                    || target_x >= SERVER_MAPX as i32
+                    || target_y < 0
+                    || target_y >= SERVER_MAPY as i32
+                {
+                    characters[cn].misc_action = core::constants::DR_IDLE as u16;
+                    return;
+                }
+
+                characters[cn].misc_target1 = target_x as u16;
+                characters[cn].misc_target2 = target_y as u16;
             });
             return;
         }

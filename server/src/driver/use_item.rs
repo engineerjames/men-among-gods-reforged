@@ -7,9 +7,9 @@ use crate::repository::Repository;
 use crate::state::State;
 use crate::{chlog, driver, player, populate, skilltab};
 use core::constants::{
-    CharacterFlags, ItemFlags, KIN_HARAKIM, KIN_MERCENARY, KIN_SORCERER, KIN_TEMPLAR, KIN_WARRIOR,
-    MAXITEM, MAXSKILL, MF_NOEXPIRE, NT_HITME, SERVER_MAPX, SERVER_MAPY, SK_LOCK, SK_RECALL,
-    SK_RESIST, TICKS, USE_ACTIVE, USE_EMPTY, WN_RHAND,
+    CharacterFlags, ItemFlags, DX_RIGHT, KIN_HARAKIM, KIN_MERCENARY, KIN_SORCERER, KIN_TEMPLAR,
+    KIN_WARRIOR, MAXITEM, MAXSKILL, MF_NOEXPIRE, NT_HITME, SERVER_MAPX, SERVER_MAPY, SK_LOCK,
+    SK_RECALL, SK_RESIST, TICKS, USE_ACTIVE, USE_EMPTY, WN_RHAND,
 };
 use rand::Rng;
 use std::u32;
@@ -3726,7 +3726,7 @@ pub fn spawn_penta_enemy(item_idx: usize) -> i32 {
         characters[cn].data[29] = (x + y * core::constants::SERVER_MAPX as u16) as i32;
         characters[cn].data[60] = 60 * 60 * 2; // TICKS * 60 * 2
         characters[cn].data[73] = 8;
-        characters[cn].dir = 1;
+        characters[cn].dir = DX_RIGHT;
     });
 
     // Randomly boost character (1 in 25 chance)
@@ -7394,7 +7394,7 @@ pub fn spiderweb(item_idx: usize) {
                 characters[cn].data[29] = (x + y * core::constants::SERVER_MAPX as usize) as i32;
                 characters[cn].data[60] = 12 * 60 * 2; // TICKS * 60 * 2
                 characters[cn].data[73] = 8;
-                characters[cn].dir = 1;
+                characters[cn].dir = DX_RIGHT;
             });
 
             if !God::drop_char_fuzzy(cn, x, y) {
@@ -7460,7 +7460,7 @@ pub fn greenlingball(item_idx: usize) {
                 characters[cn].data[29] = (x + y * core::constants::SERVER_MAPX as usize) as i32;
                 characters[cn].data[60] = 12 * 60 * 2; // TICKS * 60 * 2
                 characters[cn].data[73] = 8;
-                characters[cn].dir = 1;
+                characters[cn].dir = DX_RIGHT;
             });
 
             if !God::drop_char_fuzzy(cn, x, y) {

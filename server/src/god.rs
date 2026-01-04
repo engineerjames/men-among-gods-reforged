@@ -1,4 +1,7 @@
 use core::{
+    constants::{
+        DX_DOWN, DX_LEFT, DX_LEFTDOWN, DX_LEFTUP, DX_RIGHT, DX_RIGHTDOWN, DX_RIGHTUP, DX_UP,
+    },
     string_operations::c_string_to_str,
     types::{Character, Map},
 };
@@ -2654,23 +2657,23 @@ impl God {
 
             // position in front of summoner based on direction
             match summoner.dir {
-                0 => target_x += 1, // DX_RIGHT
-                1 => {
+                DX_RIGHT => target_x += 1,
+                DX_RIGHTUP => {
                     target_x += 1;
                     target_y -= 1;
                 }
-                2 => target_y -= 1,
-                3 => {
+                DX_UP => target_y -= 1,
+                DX_LEFTUP => {
                     target_x -= 1;
                     target_y -= 1;
                 }
-                4 => target_x -= 1,
-                5 => {
+                DX_LEFT => target_x -= 1,
+                DX_LEFTDOWN => {
                     target_x -= 1;
                     target_y += 1;
                 }
-                6 => target_y += 1,
-                7 => {
+                DX_DOWN => target_y += 1,
+                DX_RIGHTDOWN => {
                     target_x += 1;
                     target_y += 1;
                 }
@@ -3041,26 +3044,26 @@ impl God {
             let mut y = summoner.y as i32;
 
             match summoner.dir {
-                0 => x += 1, // DX_RIGHT
-                1 => {
+                DX_RIGHT => x += 1,
+                DX_RIGHTUP => {
                     x += 1;
                     y -= 1;
-                } // DX_RIGHTUP
-                2 => y -= 1, // DX_UP
-                3 => {
+                }
+                DX_UP => y -= 1,
+                DX_LEFTUP => {
                     x -= 1;
                     y -= 1;
-                } // DX_LEFTUP
-                4 => x -= 1, // DX_LEFT
-                5 => {
+                }
+                DX_LEFT => x -= 1,
+                DX_LEFTDOWN => {
                     x -= 1;
                     y += 1;
-                } // DX_LEFTDOWN
-                6 => y += 1, // DX_DOWN
-                7 => {
+                }
+                DX_DOWN => y += 1,
+                DX_RIGHTDOWN => {
                     x += 1;
                     y += 1;
-                } // DX_RIGHTDOWN
+                }
                 _ => {}
             }
 
