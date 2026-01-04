@@ -451,10 +451,7 @@ pub fn spell_light(cn: usize, co: usize, power: i32) -> i32 {
         log::error!("god_create_item failed in spell_light");
         return 0;
     }
-    let power = spell_race_mod(
-        power,
-        Repository::with_characters(|ch| ch[cn].kindred),
-    );
+    let power = spell_race_mod(power, Repository::with_characters(|ch| ch[cn].kindred));
     Repository::with_items_mut(|it| {
         let mut name_bytes = [0u8; 40];
         let name = b"Light";
@@ -484,8 +481,7 @@ pub fn spell_light(cn: usize, co: usize, power: i32) -> i32 {
             });
             return 0;
         }
-        let sense =
-            Repository::with_characters(|ch| ch[co].skill[core::constants::SK_SENSE][5]);
+        let sense = Repository::with_characters(|ch| ch[co].skill[core::constants::SK_SENSE][5]);
         if sense + 10 > power as u8 {
             let reference = Repository::with_characters(|ch| ch[cn].reference);
             State::with(|state| {
@@ -664,10 +660,7 @@ pub fn spell_protect(cn: usize, co: usize, power: i32) -> i32 {
         power = target_spellpower;
     }
 
-    let power = spell_race_mod(
-        power,
-        Repository::with_characters(|ch| ch[cn].kindred),
-    );
+    let power = spell_race_mod(power, Repository::with_characters(|ch| ch[cn].kindred));
 
     Repository::with_items_mut(|it| {
         let mut name_bytes = [0u8; 40];
@@ -889,10 +882,7 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
         power = target_spellpower;
     }
 
-    let power = spell_race_mod(
-        power,
-        Repository::with_characters(|ch| ch[cn].kindred),
-    );
+    let power = spell_race_mod(power, Repository::with_characters(|ch| ch[cn].kindred));
 
     Repository::with_items_mut(|it| {
         let mut name_bytes = [0u8; 40];
@@ -1057,8 +1047,7 @@ pub fn skill_enhance(cn: usize) {
         if chance(cn, 18) != 0 {
             if cn != co {
                 let sense = Repository::with_characters(|ch| ch[co].skill[SK_SENSE][5]);
-                let enh_skill =
-                    Repository::with_characters(|ch| ch[cn].skill[SK_ENHANCE][5]);
+                let enh_skill = Repository::with_characters(|ch| ch[cn].skill[SK_ENHANCE][5]);
                 if sense > (enh_skill + 5) {
                     let reference = Repository::with_characters(|ch| ch[cn].reference);
                     State::with(|state| {
@@ -1143,10 +1132,7 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
         power = tmp;
     }
 
-    let power = spell_race_mod(
-        power,
-        Repository::with_characters(|ch| ch[cn].kindred),
-    );
+    let power = spell_race_mod(power, Repository::with_characters(|ch| ch[cn].kindred));
 
     Repository::with_items_mut(|it| {
         let mut name_bytes = [0u8; 40];
@@ -1314,8 +1300,7 @@ pub fn skill_bless(cn: usize) {
         if chance(cn, 18) != 0 {
             if cn != co {
                 let sense = Repository::with_characters(|ch| ch[co].skill[SK_SENSE][5]);
-                let bless_skill =
-                    Repository::with_characters(|ch| ch[cn].skill[SK_BLESS][5]);
+                let bless_skill = Repository::with_characters(|ch| ch[cn].skill[SK_BLESS][5]);
                 if sense > (bless_skill + 5) {
                     let reference = Repository::with_characters(|ch| ch[cn].reference);
                     State::with(|state| {
@@ -1439,8 +1424,7 @@ pub fn skill_wimp(cn: usize) {
         it[in_idx].duration = 18 * 60 * 60 * 2;
         it[in_idx].active = 18 * 60 * 60 * 2;
         it[in_idx].temp = SK_WIMPY as u16;
-        it[in_idx].power =
-            Repository::with_characters(|ch| ch[cn].skill[SK_WIMPY][5]) as u32;
+        it[in_idx].power = Repository::with_characters(|ch| ch[cn].skill[SK_WIMPY][5]) as u32;
     });
 
     if add_spell(cn, in_idx) == 0 {
@@ -1631,9 +1615,7 @@ pub fn skill_mshield(cn: usize) {
     spell_mshield(
         cn,
         cn,
-        Repository::with_characters(|ch| {
-            ch[cn].skill[core::constants::SK_MSHIELD][5] as i32
-        }),
+        Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_MSHIELD][5] as i32),
     );
     add_exhaust(cn, core::constants::TICKS * 3);
 }
@@ -1650,8 +1632,7 @@ pub fn spell_heal(cn: usize, co: usize, power: i32) -> i32 {
                 ch[co].a_hp = (ch[co].hp[5] as i32) * 1000;
             }
         });
-        let sense =
-            Repository::with_characters(|ch| ch[co].skill[core::constants::SK_SENSE][5]);
+        let sense = Repository::with_characters(|ch| ch[co].skill[core::constants::SK_SENSE][5]);
         if sense as i32 + 10 > power {
             let reference = Repository::with_characters(|ch| ch[cn].reference);
             State::with(|state| {
@@ -1776,8 +1757,7 @@ pub fn skill_heal(cn: usize) {
         if chance(cn, 18) != 0 {
             if cn != co {
                 let sense = Repository::with_characters(|ch| ch[co].skill[SK_SENSE][5]);
-                let heal_skill =
-                    Repository::with_characters(|ch| ch[cn].skill[SK_HEAL][5]);
+                let heal_skill = Repository::with_characters(|ch| ch[cn].skill[SK_HEAL][5]);
                 if sense > (heal_skill + 5) {
                     let reference = Repository::with_characters(|ch| ch[cn].reference);
                     State::with(|state| {
@@ -1859,10 +1839,7 @@ pub fn spell_curse(cn: usize, co: usize, power: i32) -> i32 {
         power,
         Repository::with_characters(|ch| ch[co].skill[SK_IMMUN][5] as i32),
     );
-    power = spell_race_mod(
-        power,
-        Repository::with_characters(|ch| ch[cn].kindred),
-    );
+    power = spell_race_mod(power, Repository::with_characters(|ch| ch[cn].kindred));
 
     Repository::with_items_mut(|it| {
         let mut name_bytes = [0u8; 40];
@@ -2001,20 +1978,14 @@ pub fn skill_curse(cn: usize) {
 
     if chance_base(
         cn,
-        Repository::with_characters(|ch| {
-            ch[cn].skill[core::constants::SK_CURSE][5] as i32
-        }),
+        Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_CURSE][5] as i32),
         10,
-        Repository::with_characters(|ch| {
-            ch[co].skill[core::constants::SK_RESIST][5] as i32
-        }),
+        Repository::with_characters(|ch| ch[co].skill[core::constants::SK_RESIST][5] as i32),
     ) != 0
     {
         if cn != co
             && Repository::with_characters(|ch| ch[co].skill[core::constants::SK_SENSE][5])
-                > (Repository::with_characters(|ch| {
-                    ch[cn].skill[core::constants::SK_CURSE][5]
-                }) + 5)
+                > (Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_CURSE][5]) + 5)
         {
             let reference = Repository::with_characters(|ch| ch[cn].reference);
             State::with(|state| {
@@ -2027,9 +1998,8 @@ pub fn skill_curse(cn: usize) {
                     ),
                 )
             });
-            if Repository::with_characters(|ch| {
-                ch[co].flags & CharacterFlags::SpellIgnore.bits()
-            }) == 0
+            if Repository::with_characters(|ch| ch[co].flags & CharacterFlags::SpellIgnore.bits())
+                == 0
             {
                 State::with(|state| {
                     state.do_notify_character(
@@ -2059,9 +2029,7 @@ pub fn skill_curse(cn: usize) {
     spell_curse(
         cn,
         co,
-        Repository::with_characters(|ch| {
-            ch[cn].skill[core::constants::SK_CURSE][5] as i32
-        }),
+        Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_CURSE][5] as i32),
     );
 
     let co_orig = co;
@@ -2080,8 +2048,7 @@ pub fn skill_curse(cn: usize) {
             && co_orig != maybe_co
         {
             let mut rng = rand::thread_rng();
-            if Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_CURSE][5])
-                as i32
+            if Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_CURSE][5]) as i32
                 + rng.gen_range(0..20)
                 > Repository::with_characters(|ch| {
                     ch[maybe_co].skill[core::constants::SK_RESIST][5]
@@ -2121,9 +2088,7 @@ pub fn warcry(cn: usize, co: usize, power: i32) -> i32 {
         return 0;
     }
 
-    if power
-        < Repository::with_characters(|ch| ch[co].skill[core::constants::SK_RESIST][5])
-            as i32
+    if power < Repository::with_characters(|ch| ch[co].skill[core::constants::SK_RESIST][5]) as i32
     {
         return 0;
     }
@@ -2141,9 +2106,7 @@ pub fn warcry(cn: usize, co: usize, power: i32) -> i32 {
         return 0;
     }
 
-    if Repository::with_characters(|ch| ch[co].flags & CharacterFlags::SpellIgnore.bits())
-        == 0
-    {
+    if Repository::with_characters(|ch| ch[co].flags & CharacterFlags::SpellIgnore.bits()) == 0 {
         State::with(|state| {
             state.do_notify_character(
                 co as u32,
@@ -2225,9 +2188,8 @@ pub fn skill_warcry(cn: usize) {
 
     Repository::with_characters_mut(|ch| ch[cn].a_end -= 150 * 1000);
 
-    let power = Repository::with_characters(|ch| {
-        ch[cn].skill[core::constants::SK_WARCRY][5] as i32
-    });
+    let power =
+        Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_WARCRY][5] as i32);
 
     let xf = std::cmp::max(1, Repository::with_characters(|ch| ch[cn].x as i32) - 10);
     let yf = std::cmp::max(1, Repository::with_characters(|ch| ch[cn].y as i32) - 10);
@@ -2733,14 +2695,11 @@ pub fn skill_blast(cn: usize) {
         return;
     }
 
-    let mut power = Repository::with_characters(|ch| {
-        ch[cn].skill[core::constants::SK_BLAST][5] as i32
-    });
+    let mut power =
+        Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_BLAST][5] as i32);
     power = spell_immunity(
         power,
-        Repository::with_characters(|ch| {
-            ch[co].skill[core::constants::SK_IMMUN][5] as i32
-        }),
+        Repository::with_characters(|ch| ch[co].skill[core::constants::SK_IMMUN][5] as i32),
     );
     power = spell_race_mod(power, Repository::with_characters(|ch| ch[cn].kindred));
 
@@ -2762,9 +2721,7 @@ pub fn skill_blast(cn: usize) {
     if driver::chance(cn, 18) != 0 {
         if cn != co
             && Repository::with_characters(|ch| ch[co].skill[core::constants::SK_SENSE][5])
-                > Repository::with_characters(|ch| {
-                    ch[cn].skill[core::constants::SK_BLAST][5]
-                }) + 5
+                > Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_BLAST][5]) + 5
         {
             State::with(|state| {
                 state.do_character_log(
@@ -3061,8 +3018,7 @@ pub fn skill_recall(cn: usize) {
         it[in_idx].duration = dur as u32;
         it[in_idx].active = it[in_idx].duration;
         it[in_idx].temp = SK_RECALL as u16;
-        it[in_idx].power =
-            Repository::with_characters(|ch| ch[cn].skill[SK_RECALL][5]) as u32;
+        it[in_idx].power = Repository::with_characters(|ch| ch[cn].skill[SK_RECALL][5]) as u32;
         it[in_idx].data[0] = Repository::with_characters(|ch| ch[cn].temple_x) as u32;
         it[in_idx].data[1] = Repository::with_characters(|ch| ch[cn].temple_y) as u32;
     });
@@ -3103,9 +3059,7 @@ pub fn spell_stun(cn: usize, co: usize, power: i32) -> i32 {
 
     let mut power = spell_immunity(
         power,
-        Repository::with_characters(|ch| {
-            ch[co].skill[core::constants::SK_IMMUN][5] as i32
-        }),
+        Repository::with_characters(|ch| ch[co].skill[core::constants::SK_IMMUN][5] as i32),
     );
     power = spell_race_mod(power, Repository::with_characters(|ch| ch[cn].kindred));
 
@@ -3282,16 +3236,12 @@ pub fn skill_stun(cn: usize) {
         cn,
         Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_STUN][5] as i32),
         12,
-        Repository::with_characters(|ch| {
-            ch[co].skill[core::constants::SK_RESIST][5] as i32
-        }),
+        Repository::with_characters(|ch| ch[co].skill[core::constants::SK_RESIST][5] as i32),
     ) != 0
     {
         if cn != co
             && Repository::with_characters(|ch| ch[co].skill[core::constants::SK_SENSE][5])
-                > Repository::with_characters(|ch| {
-                    ch[cn].skill[core::constants::SK_STUN][5]
-                }) + 5
+                > Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_STUN][5]) + 5
         {
             State::with(|state| {
                 state.do_character_log(
@@ -3331,8 +3281,7 @@ pub fn skill_stun(cn: usize) {
         return;
     }
 
-    let power =
-        Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_STUN][5] as i32);
+    let power = Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_STUN][5] as i32);
     spell_stun(cn, co, power);
 
     let co_orig = co;
@@ -3356,9 +3305,8 @@ pub fn skill_stun(cn: usize) {
             let mut rng = rand::thread_rng();
             let s_rand = rng.gen_range(0..20);
             let o_rand = rng.gen_range(0..20);
-            if Repository::with_characters(|ch| {
-                ch[cn].skill[core::constants::SK_STUN][5] as i32
-            }) + s_rand
+            if Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_STUN][5] as i32)
+                + s_rand
                 > Repository::with_characters(|ch| {
                     ch[maybe_co].skill[core::constants::SK_RESIST][5] as i32
                 }) + o_rand

@@ -871,9 +871,8 @@ impl God {
         Repository::with_characters_mut(|characters| {
             let character = &mut characters[char_index];
 
-            *character = Repository::with_character_templates(|char_templates| {
-                char_templates[template_id]
-            });
+            *character =
+                Repository::with_character_templates(|char_templates| char_templates[template_id]);
 
             character.pass1 = rand::random::<u32>() % 0x3fffffff;
             character.pass2 = rand::random::<u32>() % 0x3fffffff;
@@ -1495,15 +1494,13 @@ impl God {
                 }
             } else if cx.starts_with('s') || cx.starts_with('S') {
                 if let Ok(val) = cx[1..].parse::<i32>() {
-                    target_y = (target_y as i32 + val)
-                        .min(core::constants::SERVER_MAPY - 2)
-                        as usize;
+                    target_y =
+                        (target_y as i32 + val).min(core::constants::SERVER_MAPY - 2) as usize;
                 }
             } else if cx.starts_with('e') || cx.starts_with('E') {
                 if let Ok(val) = cx[1..].parse::<i32>() {
-                    target_x = (target_x as i32 + val)
-                        .min(core::constants::SERVER_MAPX - 2)
-                        as usize;
+                    target_x =
+                        (target_x as i32 + val).min(core::constants::SERVER_MAPX - 2) as usize;
                 }
             } else if cx.starts_with('w') || cx.starts_with('W') {
                 if let Ok(val) = cx[1..].parse::<i32>() {
@@ -1559,8 +1556,7 @@ impl God {
             let caller = &ch[cn];
             let is_sane_npc =
                 (target.flags & core::constants::CharacterFlags::CF_PLAYER.bits()) == 0;
-            let caller_is_priv = (caller.flags
-                & core::constants::CharacterFlags::CF_GOD.bits())
+            let caller_is_priv = (caller.flags & core::constants::CharacterFlags::CF_GOD.bits())
                 != 0
                 || (caller.flags & core::constants::CharacterFlags::CF_IMP.bits()) != 0
                 || (caller.flags & core::constants::CharacterFlags::CF_USURP.bits()) != 0;
@@ -1620,8 +1616,7 @@ impl God {
             let posy = t.y as i32;
             let p = t.points_tot;
             let need = helpers::points_tolevel(t.points_tot as u32) as i32;
-            let player_flag =
-                (t.flags & core::constants::CharacterFlags::CF_PLAYER.bits()) != 0;
+            let player_flag = (t.flags & core::constants::CharacterFlags::CF_PLAYER.bits()) != 0;
             (
                 posx,
                 posy,
@@ -1653,9 +1648,9 @@ impl God {
         let mut py = pos_y;
         let hide_pos = Repository::with_characters(|ch| {
             let tflags = ch[co].flags;
-            let invis_or_nowho =
-                (tflags & core::constants::CharacterFlags::CF_INVISIBLE.bits()) != 0
-                    || (tflags & core::constants::CharacterFlags::CF_NOWHO.bits()) != 0;
+            let invis_or_nowho = (tflags & core::constants::CharacterFlags::CF_INVISIBLE.bits())
+                != 0
+                || (tflags & core::constants::CharacterFlags::CF_NOWHO.bits()) != 0;
             invis_or_nowho
         });
         if hide_pos {
@@ -1663,9 +1658,7 @@ impl God {
                 && Repository::with_characters(|ch| {
                     let caller = &ch[cn];
                     !((caller.flags & core::constants::CharacterFlags::CF_IMP.bits()) != 0
-                        || (caller.flags
-                            & core::constants::CharacterFlags::CF_USURP.bits())
-                            != 0)
+                        || (caller.flags & core::constants::CharacterFlags::CF_USURP.bits()) != 0)
                 })
             {
                 px = 0;
@@ -1703,8 +1696,7 @@ impl God {
             let temp_str = Repository::with_characters(|ch| {
                 let caller = &ch[cn];
                 if (caller.flags & core::constants::CharacterFlags::CF_IMP.bits()) != 0
-                    || (caller.flags & core::constants::CharacterFlags::CF_USURP.bits())
-                        != 0
+                    || (caller.flags & core::constants::CharacterFlags::CF_USURP.bits()) != 0
                 {
                     format!(" Temp={}", temp_val)
                 } else {
@@ -2680,12 +2672,8 @@ impl God {
                 _ => {}
             }
 
-            let tx = target_x
-                .max(1)
-                .min(core::constants::SERVER_MAPX - 2) as usize;
-            let ty = target_y
-                .max(1)
-                .min(core::constants::SERVER_MAPY - 2) as usize;
+            let tx = target_x.max(1).min(core::constants::SERVER_MAPX - 2) as usize;
+            let ty = target_y.max(1).min(core::constants::SERVER_MAPY - 2) as usize;
 
             let xo = characters[co].x as i32;
             let yo = characters[co].y as i32;
@@ -3542,11 +3530,7 @@ impl God {
         let name_str = c_string_to_str(&character_name);
 
         Repository::with_characters(|ch| {
-            player::plr_logout(
-                co,
-                ch[co].player as usize,
-                LogoutReason::IdleTooLong,
-            );
+            player::plr_logout(co, ch[co].player as usize, LogoutReason::IdleTooLong);
         });
 
         State::with(|state| {
@@ -4226,8 +4210,7 @@ impl God {
         let co = populate::pop_create_char(386, true);
 
         if co != 0 {
-            let character_name =
-                Repository::with_characters(|characters| characters[co].name);
+            let character_name = Repository::with_characters(|characters| characters[co].name);
 
             let name_str = c_string_to_str(&character_name);
 
@@ -4361,8 +4344,7 @@ impl God {
         let co = populate::pop_create_char(495, true);
 
         if co != 0 {
-            let character_name =
-                Repository::with_characters(|characters| characters[co].name);
+            let character_name = Repository::with_characters(|characters| characters[co].name);
 
             let name_str = c_string_to_str(&character_name);
 

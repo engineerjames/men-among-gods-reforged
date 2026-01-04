@@ -62,8 +62,7 @@ impl State {
             )
         });
 
-        let map_index =
-            char_x as usize + char_y as usize * core::constants::SERVER_MAPX as usize;
+        let map_index = char_x as usize + char_y as usize * core::constants::SERVER_MAPX as usize;
         let has_nomagic_flag = Repository::with_map(|map| {
             map[map_index].flags & core::constants::MF_NOMAGIC as u64 != 0
         });
@@ -924,8 +923,7 @@ impl State {
                                     || item_temp == core::constants::SK_PROTECT as u16
                                     || item_temp == core::constants::SK_ENHANCE as u16
                                 {
-                                    let co_name =
-                                        Repository::with_characters(|ch| ch[co].name);
+                                    let co_name = Repository::with_characters(|ch| ch[co].name);
 
                                     self.do_sayx(
                                         cn,
@@ -1693,8 +1691,7 @@ impl State {
         if type_hurt != 1 {
             let (co_x, co_y) = Repository::with_characters(|ch| (ch[co].x, ch[co].y));
             Repository::with_map_mut(|map| {
-                let idx =
-                    (co_x as i32 + co_y as i32 * core::constants::SERVER_MAPX) as usize;
+                let idx = (co_x as i32 + co_y as i32 * core::constants::SERVER_MAPX) as usize;
                 if dam < 10000 {
                     map[idx].flags |= core::constants::MF_GFX_INJURED;
                 } else if dam < 30000 {
@@ -1874,17 +1871,15 @@ impl State {
                 && Repository::with_map(|map| {
                     let idx = (Repository::with_characters(|ch| ch[co].x as i32)
                         + Repository::with_characters(|ch| ch[co].y as i32)
-                            * core::constants::SERVER_MAPX)
-                        as usize;
+                            * core::constants::SERVER_MAPX) as usize;
                     map[idx].flags & core::constants::MF_ARENA as u64 == 0
                 })
                 && noexp == 0
             {
                 let tmp = self.do_char_score(co);
-                let rank =
-                    helpers::points2rank(
-                        Repository::with_characters(|ch| ch[co].points_tot as u32)
-                    ) as i32;
+                let rank = helpers::points2rank(Repository::with_characters(|ch| {
+                    ch[co].points_tot as u32
+                })) as i32;
                 // Some bonuses for spells are handled in do_give_exp/do_char_killed
                 self.do_character_killed(co, cn);
                 if type_hurt != 2 && cn != 0 && cn != co {

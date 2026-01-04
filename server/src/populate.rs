@@ -802,8 +802,7 @@ pub fn reset_char(n: usize) {
         let temp = Repository::with_characters(|characters| characters[cn].temp);
         if temp as usize == n {
             Repository::with_characters_mut(|characters| {
-                let char_template =
-                    Repository::with_character_templates(|templates| templates[n]);
+                let char_template = Repository::with_character_templates(|templates| templates[n]);
 
                 // Preserve certain fields
                 let pass1 = characters[cn].pass1;

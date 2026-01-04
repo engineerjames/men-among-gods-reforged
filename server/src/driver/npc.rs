@@ -285,11 +285,7 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
                 characters[cc].set_reference("Shadow of Peace");
                 characters[cc].set_description("You see a Shadow of Peace.");
 
-                if !God::drop_char_fuzzy(
-                    cc,
-                    characters[co].x as usize,
-                    characters[co].y as usize,
-                ) {
+                if !God::drop_char_fuzzy(cc, characters[co].x as usize, characters[co].y as usize) {
                     God::destroy_items(cc);
                     characters[cc].used = 0;
                 }
@@ -614,7 +610,7 @@ pub fn npc_give(_cn: usize, _co: usize, _in: usize, _money: i32) -> i32 {
 
         // If giver is a player/usurp, set active timer; otherwise ensure group active
         if (characters[co].flags
-            & ((CharacterFlags::CF_PLAYER.bits() | CharacterFlags::CF_USURP.bits())))
+            & (CharacterFlags::CF_PLAYER.bits() | CharacterFlags::CF_USURP.bits()))
             != 0
         {
             characters[cn].data[92] = TICKS * 60;
@@ -1416,10 +1412,7 @@ pub fn npc_driver_high(cn: usize) -> i32 {
     // generic spell management
     {
         let (a_mana, med_skill) = Repository::with_characters(|characters| {
-            (
-                characters[cn].a_mana,
-                characters[cn].skill[SK_MEDIT][0],
-            )
+            (characters[cn].a_mana, characters[cn].skill[SK_MEDIT][0])
         });
         if a_mana > (Repository::with_characters(|characters| characters[cn].mana[5]) as i32) * 850
             && med_skill != 0
@@ -1527,18 +1520,13 @@ pub fn npc_driver_high(cn: usize) -> i32 {
                 }
             }
 
-            if !npc_can_spell(co, cn, SK_PROTECT)
-                && npc_try_spell(cn, co, SK_PROTECT)
-            {
+            if !npc_can_spell(co, cn, SK_PROTECT) && npc_try_spell(cn, co, SK_PROTECT) {
                 return 1;
             }
-            if !npc_can_spell(co, cn, SK_ENHANCE)
-                && npc_try_spell(cn, co, SK_ENHANCE)
-            {
+            if !npc_can_spell(co, cn, SK_ENHANCE) && npc_try_spell(cn, co, SK_ENHANCE) {
                 return 1;
             }
-            if !npc_can_spell(co, cn, SK_BLESS) && npc_try_spell(cn, co, SK_BLESS)
-            {
+            if !npc_can_spell(co, cn, SK_BLESS) && npc_try_spell(cn, co, SK_BLESS) {
                 return 1;
             }
 
@@ -1584,10 +1572,9 @@ pub fn npc_driver_high(cn: usize) -> i32 {
             {
                 if npc_try_spell(cn, co, SK_STUN) {
                     Repository::with_characters_mut(|characters| {
-                        characters[cn].data[75] = Repository::with_characters(|chars| {
-                            chars[cn].skill[SK_STUN][5]
-                        }) as i32
-                            + 18 * 8
+                        characters[cn].data[75] =
+                            Repository::with_characters(|chars| chars[cn].skill[SK_STUN][5]) as i32
+                                + 18 * 8
                     });
                     return 1;
                 }
@@ -1821,10 +1808,8 @@ pub fn npc_driver_low(cn: usize) {
     if data_55 != 0 && data_55 + (TICKS * 120) > ticker && data_54 != 0 {
         let m = data_54;
         Repository::with_characters_mut(|characters| {
-            characters[cn].goto_x =
-                (m % SERVER_MAPX) as u16 + get_frust_x_off(ticker) as u16;
-            characters[cn].goto_y =
-                (m / SERVER_MAPX) as u16 + get_frust_y_off(ticker) as u16;
+            characters[cn].goto_x = (m % SERVER_MAPX) as u16 + get_frust_x_off(ticker) as u16;
+            characters[cn].goto_y = (m / SERVER_MAPX) as u16 + get_frust_y_off(ticker) as u16;
             characters[cn].data[58] = 2;
         });
         return;
@@ -2081,10 +2066,7 @@ pub fn npc_driver_low(cn: usize) {
                     continue;
                 }
 
-                if State::with_mut(|state| {
-                    state.can_go(ch_x as i32, ch_y as i32, x, y)
-                }) == 0
-                {
+                if State::with_mut(|state| state.can_go(ch_x as i32, ch_y as i32, x, y)) == 0 {
                     panic = attempt + 1;
                     continue;
                 }

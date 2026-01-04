@@ -597,8 +597,7 @@ impl State {
 
         for (j, &offset) in areaspiral.iter().enumerate() {
             m += offset;
-            let map_area_size =
-                core::constants::SERVER_MAPX * core::constants::SERVER_MAPY;
+            let map_area_size = core::constants::SERVER_MAPX * core::constants::SERVER_MAPY;
             if m < 0 || m >= map_area_size {
                 continue;
             }

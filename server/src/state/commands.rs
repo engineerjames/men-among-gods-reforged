@@ -936,11 +936,7 @@ impl State {
                 }
                 if starts("immortal") && f_u {
                     log::debug!("Processing immortal command for {}", cn);
-                    God::set_flag(
-                        cn,
-                        cn,
-                        core::constants::CharacterFlags::CF_IMMORTAL.bits(),
-                    );
+                    God::set_flag(cn, cn, core::constants::CharacterFlags::CF_IMMORTAL.bits());
                     return;
                 }
                 if starts("immortal") && f_g {

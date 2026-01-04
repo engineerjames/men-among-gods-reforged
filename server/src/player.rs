@@ -2973,8 +2973,8 @@ pub fn plr_getmap_complete(nr: usize) {
         }
 
         y += 1;
-        m += (core::constants::SERVER_MAPX - core::constants::TILEX as i32 + XSCUT + XECUT)
-            as usize;
+        m +=
+            (core::constants::SERVER_MAPX - core::constants::TILEX as i32 + XSCUT + XECUT) as usize;
         n += (XSCUT + XECUT) as usize;
     }
 
@@ -5575,9 +5575,7 @@ fn plr_cmd_setuser(_nr: usize) {
                     // Otherwise, do not touch `name`/`reference` (prevents committing empty names).
                     let should_process_name = name_end > 3
                         && name_end < 38
-                        && (ch[cn].flags
-                            & core::constants::CharacterFlags::CF_NEWUSER.bits())
-                            != 0;
+                        && (ch[cn].flags & core::constants::CharacterFlags::CF_NEWUSER.bits()) != 0;
 
                     if should_process_name {
                         let mut flag: i32 = 0;
@@ -5703,8 +5701,7 @@ fn plr_cmd_setuser(_nr: usize) {
                                 ch[cn].reference[i] = ch[cn].name[i];
                             }
                             // clear CF_NEWUSER flag
-                            ch[cn].flags &=
-                                !core::constants::CharacterFlags::CF_NEWUSER.bits();
+                            ch[cn].flags &= !core::constants::CharacterFlags::CF_NEWUSER.bits();
 
                             log::info!(
                                 "plr_cmd_setuser: committed name change for cn={} to \"{}\"",
@@ -5751,8 +5748,7 @@ fn plr_cmd_setuser(_nr: usize) {
                             reason = Some("does not contain your name".to_string());
                         } else if desc.contains('"') {
                             reason = Some("contains a double quote".to_string());
-                        } else if (ch[cn].flags
-                            & core::constants::CharacterFlags::CF_NODESC.bits())
+                        } else if (ch[cn].flags & core::constants::CharacterFlags::CF_NODESC.bits())
                             != 0
                         {
                             reason = Some("was blocked because you have been known to enter inappropriate descriptions".to_string());
@@ -5980,11 +5976,7 @@ fn plr_cmd_look_item(nr: usize) {
         (x, y, players[nr].usnr)
     });
 
-    if x < 0
-        || x >= core::constants::SERVER_MAPX
-        || y < 0
-        || y >= core::constants::SERVER_MAPY
-    {
+    if x < 0 || x >= core::constants::SERVER_MAPX || y < 0 || y >= core::constants::SERVER_MAPY {
         log::error!("plr_cmd_look_item: cn={} invalid coords {},{}", cn, x, y);
         return;
     }

@@ -157,8 +157,7 @@ impl State {
 
         // Refuse if same group
         let same_group = Repository::with_characters(|ch| {
-            ch[co].data[core::constants::CHD_GROUP]
-                == ch[cv].data[core::constants::CHD_GROUP]
+            ch[co].data[core::constants::CHD_GROUP] == ch[cv].data[core::constants::CHD_GROUP]
         });
         if same_group {
             let cname =

@@ -40,9 +40,8 @@ pub fn act_drop(cn: usize) {
     Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_SUCCESS as u16);
 
     let cannot_flee = State::with(|s| s.do_char_can_flee(cn) == 0);
-    let simple = Repository::with_characters(|ch| {
-        (ch[cn].flags & CharacterFlags::Simple.bits()) != 0
-    });
+    let simple =
+        Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Simple.bits()) != 0);
 
     if cannot_flee || simple {
         Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
@@ -95,9 +94,8 @@ pub fn act_use(cn: usize) {
     Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_SUCCESS as u16);
 
     let cannot_flee = State::with(|s| s.do_char_can_flee(cn) == 0);
-    let simple = Repository::with_characters(|ch| {
-        (ch[cn].flags & CharacterFlags::Simple.bits()) != 0
-    });
+    let simple =
+        Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Simple.bits()) != 0);
 
     if cannot_flee || simple {
         Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
@@ -147,9 +145,8 @@ pub fn act_use(cn: usize) {
 ///
 /// * `cn` - Character number (index)
 pub fn act_pickup(cn: usize) {
-    let simple_initial = Repository::with_characters(|ch| {
-        (ch[cn].flags & CharacterFlags::Simple.bits()) != 0
-    });
+    let simple_initial =
+        Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Simple.bits()) != 0);
     if simple_initial {
         Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
         return;
@@ -158,9 +155,8 @@ pub fn act_pickup(cn: usize) {
     Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_SUCCESS as u16);
 
     let cannot_flee = State::with(|s| s.do_char_can_flee(cn) == 0);
-    let simple = Repository::with_characters(|ch| {
-        (ch[cn].flags & CharacterFlags::Simple.bits()) != 0
-    });
+    let simple =
+        Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Simple.bits()) != 0);
 
     if cannot_flee || simple {
         Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
@@ -210,9 +206,8 @@ pub fn act_pickup(cn: usize) {
 ///
 /// * `cn` - Character number (index)
 pub fn act_skill(cn: usize) {
-    let simple = Repository::with_characters(|ch| {
-        (ch[cn].flags & CharacterFlags::Simple.bits()) != 0
-    });
+    let simple =
+        Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Simple.bits()) != 0);
     if simple {
         Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
         return;
@@ -247,9 +242,8 @@ pub fn act_skill(cn: usize) {
 ///
 /// * `cn` - Character number (index)
 pub fn act_wave(cn: usize) {
-    let simple = Repository::with_characters(|ch| {
-        (ch[cn].flags & CharacterFlags::Simple.bits()) != 0
-    });
+    let simple =
+        Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Simple.bits()) != 0);
     if simple {
         Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
         return;
@@ -300,9 +294,8 @@ pub fn act_wave(cn: usize) {
 ///
 /// * `cn` - Character number (index)
 pub fn act_bow(cn: usize) {
-    let simple = Repository::with_characters(|ch| {
-        (ch[cn].flags & CharacterFlags::Simple.bits()) != 0
-    });
+    let simple =
+        Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Simple.bits()) != 0);
     if simple {
         Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
         return;
@@ -353,9 +346,8 @@ pub fn act_bow(cn: usize) {
 ///
 /// * `cn` - Character number (index)
 pub fn act_give(cn: usize) {
-    let simple = Repository::with_characters(|ch| {
-        (ch[cn].flags & CharacterFlags::Simple.bits()) != 0
-    });
+    let simple =
+        Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Simple.bits()) != 0);
     if simple {
         Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
         return;
@@ -408,9 +400,8 @@ pub fn act_give(cn: usize) {
 pub fn act_attack(cn: usize) {
     Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
 
-    let is_simple = Repository::with_characters(|ch| {
-        (ch[cn].flags & CharacterFlags::Simple.bits()) != 0
-    });
+    let is_simple =
+        Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Simple.bits()) != 0);
 
     let mut v: i32;
     if !is_simple {
@@ -1658,10 +1649,7 @@ pub fn drv_useto(cn: usize, x: usize, y: usize) {
     // bounds check as in C++
     let mut xx = x as i32;
     let mut yy = y as i32;
-    if xx < 0
-        || xx >= core::constants::SERVER_MAPX
-        || yy < 0
-        || yy >= core::constants::SERVER_MAPY
+    if xx < 0 || xx >= core::constants::SERVER_MAPX || yy < 0 || yy >= core::constants::SERVER_MAPY
     {
         xx = 0;
         yy = 0;
@@ -1842,8 +1830,8 @@ pub fn driver_msg(cn: usize, msg_type: i32, dat1: i32, dat2: i32, dat3: i32, dat
 
     let is_player = Repository::with_characters(|ch| {
         (ch[cn].flags
-            & ((core::constants::CharacterFlags::CF_PLAYER.bits()
-                | core::constants::CharacterFlags::CF_USURP.bits())))
+            & (core::constants::CharacterFlags::CF_PLAYER.bits()
+                | core::constants::CharacterFlags::CF_USURP.bits()))
             != 0
     });
 
@@ -1865,9 +1853,8 @@ pub fn driver_msg(cn: usize, msg_type: i32, dat1: i32, dat2: i32, dat3: i32, dat
     match msg_type as u32 {
         x if x == core::constants::NT_GOTHIT as u32 || x == core::constants::NT_GOTMISS as u32 => {
             let attack_cn = Repository::with_characters(|ch| ch[cn].attack_cn as i32);
-            let fightback = Repository::with_characters(|ch| {
-                ch[cn].data[core::constants::CHD_FIGHTBACK]
-            });
+            let fightback =
+                Repository::with_characters(|ch| ch[cn].data[core::constants::CHD_FIGHTBACK]);
             let misc_action = Repository::with_characters(|ch| ch[cn].misc_action);
             if attack_cn == 0 && fightback == 0 && misc_action != core::constants::DR_GIVE as u16 {
                 Repository::with_characters_mut(|ch| ch[cn].attack_cn = dat1 as u16);
@@ -2049,8 +2036,8 @@ pub fn driver(cn: usize) {
     // 1. If not player or usurp -> run NPC high-priority driver
     let is_player_or_usurp = Repository::with_characters(|ch| {
         (ch[cn].flags
-            & ((core::constants::CharacterFlags::CF_PLAYER.bits()
-                | core::constants::CharacterFlags::CF_USURP.bits())))
+            & (core::constants::CharacterFlags::CF_PLAYER.bits()
+                | core::constants::CharacterFlags::CF_USURP.bits()))
             != 0
     });
     if !is_player_or_usurp {
@@ -2087,8 +2074,8 @@ pub fn driver(cn: usize) {
     // 5. If player/usurp and not attacking, run player_driver_med
     let is_player_or_usurp = Repository::with_characters(|ch| {
         (ch[cn].flags
-            & ((core::constants::CharacterFlags::CF_PLAYER.bits()
-                | core::constants::CharacterFlags::CF_USURP.bits())))
+            & (core::constants::CharacterFlags::CF_PLAYER.bits()
+                | core::constants::CharacterFlags::CF_USURP.bits()))
             != 0
     });
     let attack_cn = Repository::with_characters(|ch| ch[cn].attack_cn);
@@ -2117,8 +2104,8 @@ pub fn driver(cn: usize) {
         x if x == core::constants::DR_IDLE => {
             let is_player = Repository::with_characters(|ch| {
                 (ch[cn].flags
-                    & ((core::constants::CharacterFlags::CF_PLAYER.bits()
-                        | core::constants::CharacterFlags::CF_USURP.bits())))
+                    & (core::constants::CharacterFlags::CF_PLAYER.bits()
+                        | core::constants::CharacterFlags::CF_USURP.bits()))
                     != 0
             });
             if !is_player {

@@ -42,8 +42,7 @@ pub fn use_labtransfer(cn: usize, nr: i32, exp: i32) -> bool {
     let mut busy_name: Option<String> = None;
     'outer: for y in 159..179 {
         for x in 164..=184 {
-            let co =
-                Repository::with_map(|map| map[x + y * SERVER_MAPX as usize].ch as usize);
+            let co = Repository::with_map(|map| map[x + y * SERVER_MAPX as usize].ch as usize);
             if co != 0 {
                 let flags = Repository::with_characters(|ch| ch[co].flags);
                 if flags & (CharacterFlags::CF_PLAYER.bits() | CharacterFlags::CF_LABKEEPER.bits())

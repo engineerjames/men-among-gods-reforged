@@ -746,24 +746,16 @@ impl State {
 
         let visi = self.vis_buf();
 
-        if visi[((x + 1) + y * 40) as usize] != 0
-            && visi[((x + 1) + y * 40) as usize] < best
-        {
+        if visi[((x + 1) + y * 40) as usize] != 0 && visi[((x + 1) + y * 40) as usize] < best {
             best = visi[((x + 1) + y * 40) as usize];
         }
-        if visi[((x - 1) + y * 40) as usize] != 0
-            && visi[((x - 1) + y * 40) as usize] < best
-        {
+        if visi[((x - 1) + y * 40) as usize] != 0 && visi[((x - 1) + y * 40) as usize] < best {
             best = visi[((x - 1) + y * 40) as usize];
         }
-        if visi[(x + (y + 1) * 40) as usize] != 0
-            && visi[(x + (y + 1) * 40) as usize] < best
-        {
+        if visi[(x + (y + 1) * 40) as usize] != 0 && visi[(x + (y + 1) * 40) as usize] < best {
             best = visi[(x + (y + 1) * 40) as usize];
         }
-        if visi[(x + (y - 1) * 40) as usize] != 0
-            && visi[(x + (y - 1) * 40) as usize] < best
-        {
+        if visi[(x + (y - 1) * 40) as usize] != 0 && visi[(x + (y - 1) * 40) as usize] < best {
             best = visi[(x + (y - 1) * 40) as usize];
         }
         if visi[((x + 1) + (y + 1) * 40) as usize] != 0

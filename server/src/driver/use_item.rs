@@ -8493,8 +8493,7 @@ pub fn step_portal_arena(cn: usize, item_idx: usize) -> i32 {
 
     Repository::with_globals(|globals| {
         Repository::with_characters_mut(|characters| {
-            characters[co].data[64] =
-                globals.ticker + (core::constants::TICKS * 60 * 5);
+            characters[co].data[64] = globals.ticker + (core::constants::TICKS * 60 * 5);
         });
     });
 
