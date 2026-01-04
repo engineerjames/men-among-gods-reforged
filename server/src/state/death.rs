@@ -455,7 +455,7 @@ impl State {
 
         // Clone character to create grave
         Repository::with_characters_mut(|characters| {
-            characters[cc] = characters[co].clone();
+            characters[cc] = characters[co];
         });
 
         // Drop items and money based on wimp chance

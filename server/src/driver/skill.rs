@@ -392,7 +392,7 @@ pub fn spell_from_item(cn: usize, in2: usize) {
         return;
     }
     Repository::with_items_mut(|it| {
-        it[in_.unwrap()].name = Repository::with_items(|it2| it2[in2].name.clone());
+        it[in_.unwrap()].name = Repository::with_items(|it2| it2[in2].name);
         it[in_.unwrap()].flags |= ItemFlags::IF_SPELL.bits();
         it[in_.unwrap()].armor[1] = Repository::with_items(|it2| it2[in2].armor[1]);
         it[in_.unwrap()].weapon[1] = Repository::with_items(|it2| it2[in2].weapon[1]);
@@ -424,7 +424,7 @@ pub fn spell_from_item(cn: usize, in2: usize) {
         it[in_.unwrap()].power = Repository::with_items(|it2| it2[in2].power);
     });
     if add_spell(cn, in_.unwrap()) == 0 {
-        let name = Repository::with_items(|it| it[in_.unwrap()].name.clone());
+        let name = Repository::with_items(|it| it[in_.unwrap()].name);
         State::with(|state| {
             state.do_character_log(
                 cn,
@@ -471,7 +471,7 @@ pub fn spell_light(cn: usize, co: usize, power: i32) -> i32 {
     });
     if cn != co {
         if add_spell(co, in_.unwrap()) == 0 {
-            let name = Repository::with_items(|it| it[in_.unwrap()].name.clone());
+            let name = Repository::with_items(|it| it[in_.unwrap()].name);
             State::with(|state| {
                 state.do_character_log(
                     cn,
@@ -487,7 +487,7 @@ pub fn spell_light(cn: usize, co: usize, power: i32) -> i32 {
         let sense =
             Repository::with_characters(|ch| ch[co].skill[core::constants::SK_SENSE][5]);
         if sense + 10 > power as u8 {
-            let reference = Repository::with_characters(|ch| ch[cn].reference.clone());
+            let reference = Repository::with_characters(|ch| ch[cn].reference);
             State::with(|state| {
                 state.do_character_log(
                     co,
@@ -507,7 +507,7 @@ pub fn spell_light(cn: usize, co: usize, power: i32) -> i32 {
                 )
             });
         }
-        let name = Repository::with_characters(|ch| ch[co].name.clone());
+        let name = Repository::with_characters(|ch| ch[co].name);
         let (x, y) = Repository::with_characters(|ch| (ch[co].x, ch[co].y));
         State::with(|state| {
             state.do_area_log(
@@ -526,7 +526,7 @@ pub fn spell_light(cn: usize, co: usize, power: i32) -> i32 {
         EffectManager::fx_add_effect(7, 0, x as i32, y as i32, 0);
     } else {
         if add_spell(cn, in_.unwrap()) == 0 {
-            let name = Repository::with_items(|it| it[in_.unwrap()].name.clone());
+            let name = Repository::with_items(|it| it[in_.unwrap()].name);
             State::with(|state| {
                 state.do_character_log(
                     cn,
@@ -611,7 +611,7 @@ pub fn skill_light(cn: usize) {
             let sense = Repository::with_characters(|ch| ch[co].skill[SK_SENSE][5]);
             let light_skill = Repository::with_characters(|ch| ch[cn].skill[SK_LIGHT][5]);
             if sense > (light_skill + 5) {
-                let reference = Repository::with_characters(|ch| ch[cn].reference.clone());
+                let reference = Repository::with_characters(|ch| ch[cn].reference);
                 State::with(|state| {
                     state.do_character_log(
                         co,
@@ -686,7 +686,7 @@ pub fn spell_protect(cn: usize, co: usize, power: i32) -> i32 {
 
     if cn != co {
         if add_spell(co, in_) == 0 {
-            let name = Repository::with_items(|it| it[in_].name.clone());
+            let name = Repository::with_items(|it| it[in_].name);
             State::with(|state| {
                 state.do_character_log(
                     cn,
@@ -702,7 +702,7 @@ pub fn spell_protect(cn: usize, co: usize, power: i32) -> i32 {
 
         let sense = Repository::with_characters(|ch| ch[co].skill[SK_SENSE][5]);
         if sense as i32 + 10 > power {
-            let reference = Repository::with_characters(|ch| ch[cn].reference.clone());
+            let reference = Repository::with_characters(|ch| ch[cn].reference);
             State::with(|state| {
                 state.do_character_log(
                     co,
@@ -719,7 +719,7 @@ pub fn spell_protect(cn: usize, co: usize, power: i32) -> i32 {
             });
         }
 
-        let name = Repository::with_characters(|ch| ch[co].name.clone());
+        let name = Repository::with_characters(|ch| ch[co].name);
         let (x, y) = Repository::with_characters(|ch| (ch[co].x, ch[co].y));
         State::with(|state| {
             state.do_area_log(
@@ -743,7 +743,7 @@ pub fn spell_protect(cn: usize, co: usize, power: i32) -> i32 {
         );
     } else {
         if add_spell(cn, in_) == 0 {
-            let name = Repository::with_items(|it| it[in_].name.clone());
+            let name = Repository::with_items(|it| it[in_].name);
             State::with(|state| {
                 state.do_character_log(
                     cn,
@@ -809,8 +809,8 @@ pub fn skill_protect(cn: usize) {
     }
 
     if driver::player_or_ghost(cn, co) == 0 {
-        let name_from = Repository::with_characters(|ch| ch[co].name.clone());
-        let name_to = Repository::with_characters(|ch| ch[cn].name.clone());
+        let name_from = Repository::with_characters(|ch| ch[co].name);
+        let name_to = Repository::with_characters(|ch| ch[cn].name);
         State::with(|state| {
             state.do_character_log(
                 cn,
@@ -833,7 +833,7 @@ pub fn skill_protect(cn: usize) {
             let sense = Repository::with_characters(|ch| ch[co].skill[SK_SENSE][5]);
             let prot_skill = Repository::with_characters(|ch| ch[cn].skill[SK_PROTECT][5]);
             if sense > (prot_skill + 5) {
-                let reference = Repository::with_characters(|ch| ch[cn].reference.clone());
+                let reference = Repository::with_characters(|ch| ch[cn].reference);
                 State::with(|state| {
                     state.do_character_log(
                         co,
@@ -873,7 +873,7 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
     let target_spellpower = spellpower(co);
     if power > target_spellpower {
         if cn != co {
-            let reference = Repository::with_characters(|ch| ch[co].reference.clone());
+            let reference = Repository::with_characters(|ch| ch[co].reference);
             State::with(|state| {
                 state.do_character_log(cn, FontColor::Green, &format!("Seeing that {} is not powerful enough for your spell, you reduced its strength.\n", String::from_utf8_lossy(&reference)))
             });
@@ -911,7 +911,7 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
 
     if cn != co {
         if add_spell(co, in_) == 0 {
-            let name = Repository::with_items(|it| it[in_].name.clone());
+            let name = Repository::with_items(|it| it[in_].name);
             State::with(|state| {
                 state.do_character_log(
                     cn,
@@ -926,7 +926,7 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
         }
         let sense = Repository::with_characters(|ch| ch[co].skill[SK_SENSE][5]);
         if sense as i32 + 10 > power {
-            let reference = Repository::with_characters(|ch| ch[cn].reference.clone());
+            let reference = Repository::with_characters(|ch| ch[cn].reference);
             State::with(|state| {
                 state.do_character_log(
                     co,
@@ -948,7 +948,7 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
                 FontColor::Green,
                 &format!(
                     "{}'s weapon is now stronger.\n",
-                    String::from_utf8_lossy(&Repository::with_characters(|ch| ch[co].name.clone()))
+                    String::from_utf8_lossy(&Repository::with_characters(|ch| ch[co].name))
                 ),
             )
         });
@@ -967,7 +967,7 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
         );
     } else {
         if add_spell(cn, in_) == 0 {
-            let name = Repository::with_items(|it| it[in_].name.clone());
+            let name = Repository::with_items(|it| it[in_].name);
             State::with(|state| {
                 state.do_character_log(
                     cn,
@@ -1035,8 +1035,8 @@ pub fn skill_enhance(cn: usize) {
     }
 
     if driver::player_or_ghost(cn, co) == 0 {
-        let name_from = Repository::with_characters(|ch| ch[co].name.clone());
-        let name_to = Repository::with_characters(|ch| ch[cn].name.clone());
+        let name_from = Repository::with_characters(|ch| ch[co].name);
+        let name_to = Repository::with_characters(|ch| ch[cn].name);
         State::with(|state| {
             state.do_character_log(
                 cn,
@@ -1060,7 +1060,7 @@ pub fn skill_enhance(cn: usize) {
                 let enh_skill =
                     Repository::with_characters(|ch| ch[cn].skill[SK_ENHANCE][5]);
                 if sense > (enh_skill + 5) {
-                    let reference = Repository::with_characters(|ch| ch[cn].reference.clone());
+                    let reference = Repository::with_characters(|ch| ch[cn].reference);
                     State::with(|state| {
                         state.do_character_log(
                             co,
@@ -1089,7 +1089,7 @@ pub fn skill_enhance(cn: usize) {
             let sense = Repository::with_characters(|ch| ch[co].skill[SK_SENSE][5]);
             let enh_skill = Repository::with_characters(|ch| ch[cn].skill[SK_ENHANCE][5]);
             if sense > (enh_skill + 5) {
-                let reference = Repository::with_characters(|ch| ch[cn].reference.clone());
+                let reference = Repository::with_characters(|ch| ch[cn].reference);
                 State::with(|state| {
                     state.do_character_log(
                         co,
@@ -1127,7 +1127,7 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
     let tmp = spellpower(co);
     if power > tmp {
         if cn != co {
-            let reference = Repository::with_characters(|ch| ch[co].reference.clone());
+            let reference = Repository::with_characters(|ch| ch[co].reference);
             State::with(|state| {
                 state.do_character_log(cn, FontColor::Green, &format!("Seeing that {} is not powerful enough for your spell, you reduced its strength.\n", String::from_utf8_lossy(&reference)))
             });
@@ -1167,7 +1167,7 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
 
     if cn != co {
         if add_spell(co, in_) == 0 {
-            let name = Repository::with_items(|it| it[in_].name.clone());
+            let name = Repository::with_items(|it| it[in_].name);
             State::with(|state| {
                 state.do_character_log(
                     cn,
@@ -1182,7 +1182,7 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
         }
         let sense = Repository::with_characters(|ch| ch[co].skill[SK_SENSE][5]);
         if sense as i32 + 10 > power {
-            let reference = Repository::with_characters(|ch| ch[cn].reference.clone());
+            let reference = Repository::with_characters(|ch| ch[cn].reference);
             State::with(|state| {
                 state.do_character_log(
                     co,
@@ -1204,7 +1204,7 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
                 FontColor::Green,
                 &format!(
                     "{} was blessed.\n",
-                    String::from_utf8_lossy(&Repository::with_characters(|ch| ch[co].name.clone()))
+                    String::from_utf8_lossy(&Repository::with_characters(|ch| ch[co].name))
                 ),
             )
         });
@@ -1225,7 +1225,7 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
         );
     } else {
         if add_spell(cn, in_) == 0 {
-            let name = Repository::with_items(|it| it[in_].name.clone());
+            let name = Repository::with_items(|it| it[in_].name);
             State::with(|state| {
                 state.do_character_log(
                     cn,
@@ -1293,8 +1293,8 @@ pub fn skill_bless(cn: usize) {
     }
 
     if driver::player_or_ghost(cn, co) == 0 {
-        let name_from = Repository::with_characters(|ch| ch[co].name.clone());
-        let name_to = Repository::with_characters(|ch| ch[cn].name.clone());
+        let name_from = Repository::with_characters(|ch| ch[co].name);
+        let name_to = Repository::with_characters(|ch| ch[cn].name);
         State::with(|state| {
             state.do_character_log(
                 cn,
@@ -1317,7 +1317,7 @@ pub fn skill_bless(cn: usize) {
                 let bless_skill =
                     Repository::with_characters(|ch| ch[cn].skill[SK_BLESS][5]);
                 if sense > (bless_skill + 5) {
-                    let reference = Repository::with_characters(|ch| ch[cn].reference.clone());
+                    let reference = Repository::with_characters(|ch| ch[cn].reference);
                     State::with(|state| {
                         state.do_character_log(
                             co,
@@ -1349,7 +1349,7 @@ pub fn skill_bless(cn: usize) {
             let sense = Repository::with_characters(|ch| ch[co].skill[SK_SENSE][5]);
             let bless_skill = Repository::with_characters(|ch| ch[cn].skill[SK_BLESS][5]);
             if sense > (bless_skill + 5) {
-                let reference = Repository::with_characters(|ch| ch[cn].reference.clone());
+                let reference = Repository::with_characters(|ch| ch[cn].reference);
                 State::with(|state| {
                     state.do_character_log(
                         co,
@@ -1450,7 +1450,7 @@ pub fn skill_wimp(cn: usize) {
                 core::types::FontColor::Green,
                 &format!(
                     "Magical interference neutralised the {}'s effect.\n",
-                    String::from_utf8_lossy(&Repository::with_items(|it| it[in_idx].name.clone()))
+                    String::from_utf8_lossy(&Repository::with_items(|it| it[in_idx].name))
                 ),
             )
         });
@@ -1516,7 +1516,7 @@ pub fn spell_mshield(cn: usize, co: usize, power: i32) -> i32 {
 
     if cn != co {
         if add_spell(co, in_) == 0 {
-            let name = Repository::with_items(|it| it[in_].name.clone());
+            let name = Repository::with_items(|it| it[in_].name);
             State::with(|state| {
                 state.do_character_log(
                     cn,
@@ -1531,7 +1531,7 @@ pub fn spell_mshield(cn: usize, co: usize, power: i32) -> i32 {
         }
         let sense = Repository::with_characters(|ch| ch[co].skill[SK_SENSE][5]);
         if sense as i32 + 10 > power {
-            let reference = Repository::with_characters(|ch| ch[cn].reference.clone());
+            let reference = Repository::with_characters(|ch| ch[cn].reference);
             State::with(|state| {
                 state.do_character_log(
                     co,
@@ -1553,7 +1553,7 @@ pub fn spell_mshield(cn: usize, co: usize, power: i32) -> i32 {
                 FontColor::Green,
                 &format!(
                     "{}'s Magic Shield activated.\n",
-                    String::from_utf8_lossy(&Repository::with_characters(|ch| ch[co].name.clone()))
+                    String::from_utf8_lossy(&Repository::with_characters(|ch| ch[co].name))
                 ),
             )
         });
@@ -1574,7 +1574,7 @@ pub fn spell_mshield(cn: usize, co: usize, power: i32) -> i32 {
         );
     } else {
         if add_spell(cn, in_) == 0 {
-            let name = Repository::with_items(|it| it[in_].name.clone());
+            let name = Repository::with_items(|it| it[in_].name);
             State::with(|state| {
                 state.do_character_log(
                     cn,
@@ -1653,7 +1653,7 @@ pub fn spell_heal(cn: usize, co: usize, power: i32) -> i32 {
         let sense =
             Repository::with_characters(|ch| ch[co].skill[core::constants::SK_SENSE][5]);
         if sense as i32 + 10 > power {
-            let reference = Repository::with_characters(|ch| ch[cn].reference.clone());
+            let reference = Repository::with_characters(|ch| ch[cn].reference);
             State::with(|state| {
                 state.do_character_log(
                     co,
@@ -1675,7 +1675,7 @@ pub fn spell_heal(cn: usize, co: usize, power: i32) -> i32 {
                 FontColor::Green,
                 &format!(
                     "{} was healed.\n",
-                    String::from_utf8_lossy(&Repository::with_characters(|ch| ch[co].name.clone()))
+                    String::from_utf8_lossy(&Repository::with_characters(|ch| ch[co].name))
                 ),
             )
         });
@@ -1756,8 +1756,8 @@ pub fn skill_heal(cn: usize) {
     }
 
     if driver::player_or_ghost(cn, co) == 0 {
-        let name_from = Repository::with_characters(|ch| ch[co].name.clone());
-        let name_to = Repository::with_characters(|ch| ch[cn].name.clone());
+        let name_from = Repository::with_characters(|ch| ch[co].name);
+        let name_to = Repository::with_characters(|ch| ch[cn].name);
         State::with(|state| {
             state.do_character_log(
                 cn,
@@ -1779,7 +1779,7 @@ pub fn skill_heal(cn: usize) {
                 let heal_skill =
                     Repository::with_characters(|ch| ch[cn].skill[SK_HEAL][5]);
                 if sense > (heal_skill + 5) {
-                    let reference = Repository::with_characters(|ch| ch[cn].reference.clone());
+                    let reference = Repository::with_characters(|ch| ch[cn].reference);
                     State::with(|state| {
                         state.do_character_log(
                             co,
@@ -1811,7 +1811,7 @@ pub fn skill_heal(cn: usize) {
             let sense = Repository::with_characters(|ch| ch[co].skill[SK_SENSE][5]);
             let heal_skill = Repository::with_characters(|ch| ch[cn].skill[SK_HEAL][5]);
             if sense > (heal_skill + 5) {
-                let reference = Repository::with_characters(|ch| ch[cn].reference.clone());
+                let reference = Repository::with_characters(|ch| ch[cn].reference);
                 State::with(|state| {
                     state.do_character_log(
                         co,
@@ -1888,7 +1888,7 @@ pub fn spell_curse(cn: usize, co: usize, power: i32) -> i32 {
                 FontColor::Green,
                 &format!(
                     "Magical interference neutralised the {}'s effect.\n",
-                    String::from_utf8_lossy(&Repository::with_items(|it| it[in_idx].name.clone()))
+                    String::from_utf8_lossy(&Repository::with_items(|it| it[in_idx].name))
                 ),
             )
         });
@@ -1897,7 +1897,7 @@ pub fn spell_curse(cn: usize, co: usize, power: i32) -> i32 {
 
     let sense = Repository::with_characters(|ch| ch[co].skill[SK_SENSE][5]);
     if (sense as i32 + 10) > power {
-        let reference = Repository::with_characters(|ch| ch[cn].reference.clone());
+        let reference = Repository::with_characters(|ch| ch[cn].reference);
         State::with(|state| {
             state.do_character_log(
                 co,
@@ -1914,7 +1914,7 @@ pub fn spell_curse(cn: usize, co: usize, power: i32) -> i32 {
         });
     }
 
-    let name = Repository::with_characters(|ch| ch[co].name.clone());
+    let name = Repository::with_characters(|ch| ch[co].name);
     State::with(|state| {
         state.do_character_log(
             cn,
@@ -2016,7 +2016,7 @@ pub fn skill_curse(cn: usize) {
                     ch[cn].skill[core::constants::SK_CURSE][5]
                 }) + 5)
         {
-            let reference = Repository::with_characters(|ch| ch[cn].reference.clone());
+            let reference = Repository::with_characters(|ch| ch[cn].reference);
             State::with(|state| {
                 state.do_character_log(
                     co,
@@ -2249,7 +2249,7 @@ pub fn skill_warcry(cn: usize) {
             if co != 0 {
                 if warcry(cn, co, power) != 0 {
                     State::with(|s| s.remember_pvp(cn, co));
-                    let name = Repository::with_characters(|ch| ch[cn].name.clone());
+                    let name = Repository::with_characters(|ch| ch[cn].name);
                     State::with(|state| {
                         state.do_character_log(
                             co,
@@ -2262,7 +2262,7 @@ pub fn skill_warcry(cn: usize) {
                     });
                     hit += 1;
                 } else {
-                    let name = Repository::with_characters(|ch| ch[cn].name.clone());
+                    let name = Repository::with_characters(|ch| ch[cn].name);
                     State::with(|state| {
                         state.do_character_log(
                             co,
@@ -2296,7 +2296,7 @@ pub fn item_info(cn: usize, in_: usize, _look: i32) {
     let at_name = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
 
     // Name
-    let name = Repository::with_items(|it| it[in_].name.clone());
+    let name = Repository::with_items(|it| it[in_].name);
     State::with(|state| {
         state.do_character_log(
             cn,
@@ -2455,7 +2455,7 @@ pub fn char_info(cn: usize, co: usize) {
     let at_name = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
 
     // Header
-    let name_bytes = Repository::with_characters(|ch| ch[co].name.clone());
+    let name_bytes = Repository::with_characters(|ch| ch[co].name);
     State::with(|state| {
         state.do_character_log(
             cn,
@@ -2470,7 +2470,7 @@ pub fn char_info(cn: usize, co: usize) {
     for n in 0..20 {
         let in_idx = Repository::with_characters(|ch| ch[co].spell[n] as usize);
         if in_idx != 0 {
-            let item_name = Repository::with_items(|it| it[in_idx].name.clone());
+            let item_name = Repository::with_items(|it| it[in_idx].name);
             let active = Repository::with_items(|it| it[in_idx].active);
             let minutes = active / (18 * 60);
             let seconds = (active / 18) % 60;

@@ -281,7 +281,7 @@ pub fn use_create_item(cn: usize, item_idx: usize) -> i32 {
 
     if !God::give_character_item(cn, in2) {
         Repository::with_items(|items| {
-            let item_ref = items[in2].reference.clone();
+            let item_ref = items[in2].reference;
             State::with(|state| {
                 state.do_character_log(
                     cn,
@@ -300,9 +300,9 @@ pub fn use_create_item(cn: usize, item_idx: usize) -> i32 {
     }
 
     Repository::with_items(|items| {
-        let item_ref = items[in2].reference.clone();
-        let item_name = items[in2].name.clone();
-        let source_name = items[item_idx].name.clone();
+        let item_ref = items[in2].reference;
+        let item_name = items[in2].name;
+        let source_name = items[item_idx].name;
 
         State::with(|state| {
             state.do_character_log(
@@ -327,7 +327,7 @@ pub fn use_create_item(cn: usize, item_idx: usize) -> i32 {
 
         if data1 != 0 && driver == 53 {
             Repository::with_characters(|characters| {
-                let char_name = characters[cn].name.clone();
+                let char_name = characters[cn].name;
                 Repository::with_items_mut(|items| {
                     let item = &mut items[in2];
                     State::with(|state| {
@@ -2153,7 +2153,7 @@ pub fn use_crystal_sub(_cn: usize, item_idx: usize) -> i32 {
     // Equip character based on attributes/skills
     {
         Repository::with_characters(|characters| {
-            let _ch = characters[cc].clone();
+            let _ch = characters[cc];
         });
 
         Repository::with_characters_mut(|characters| {
@@ -3002,7 +3002,7 @@ pub fn use_pile(cn: usize, item_idx: usize) -> i32 {
         if is_takeable {
             // Give to player
             if God::give_character_item(cn, in2) {
-                let reference = Repository::with_items(|items| items[in2].reference.clone());
+                let reference = Repository::with_items(|items| items[in2].reference);
                 State::with(|state| {
                     state.do_character_log(
                         cn,
@@ -3114,7 +3114,7 @@ pub fn mine_wall(cn: usize, item_idx: usize) -> i32 {
 
     // Replace the item with a copy of the item template (it_temp[temp]) and
     // restore position/carried/temp fields (this mirrors the original C++ behavior).
-    let template_copy = Repository::with_item_templates(|templates| templates[temp].clone());
+    let template_copy = Repository::with_item_templates(|templates| templates[temp]);
     Repository::with_items_mut(|items| {
         items[in_idx] = template_copy;
         items[in_idx].x = item_x;
@@ -3359,7 +3359,7 @@ pub fn build_ring(cn: usize, item_idx: usize) -> i32 {
             345 => 354, // small saphire
             346 => 355, // med saphire
             347 => 356, // big saphire
-            487 | 488 | 489 => {
+            487..=489 => {
                 // Huge gems too powerful for silver
                 crate::state::State::with(|state| {
                     state.do_character_log(
@@ -3623,7 +3623,7 @@ pub fn boost_char(cn: usize, divi: usize) -> i32 {
         let len = new_name_bytes.len().min(39);
         characters[cn].name[..len].copy_from_slice(&new_name_bytes[..len]);
         characters[cn].name[len..].fill(0);
-        characters[cn].reference = characters[cn].name.clone();
+        characters[cn].reference = characters[cn].name;
     });
 
     // Create soulstone
@@ -3772,7 +3772,7 @@ pub fn solved_pentagram(cn: usize, item_idx: usize) -> i32 {
 
     log::info!("Character {} solved pentagram quest", cn);
 
-    let cn_name = Repository::with_characters(|characters| characters[cn].name.clone());
+    let cn_name = Repository::with_characters(|characters| characters[cn].name);
     let mut characters_in_pents: usize = 0;
 
     // Notify all players and award pending exp
@@ -4576,7 +4576,7 @@ pub fn teleport3(cn: usize, item_idx: usize) -> i32 {
     // Remove nolab items from citem
     let citem = Repository::with_characters(|characters| characters[cn].citem as usize);
     if citem != 0 && is_nolab_item(citem) {
-        let item_ref = Repository::with_items(|items| items[citem].reference.clone());
+        let item_ref = Repository::with_items(|items| items[citem].reference);
         Repository::with_characters_mut(|characters| {
             characters[cn].citem = 0;
         });
@@ -4596,7 +4596,7 @@ pub fn teleport3(cn: usize, item_idx: usize) -> i32 {
     for n in 0..40 {
         let in2 = Repository::with_characters(|characters| characters[cn].item[n] as usize);
         if in2 != 0 && is_nolab_item(in2) {
-            let item_ref = Repository::with_items(|items| items[in2].reference.clone());
+            let item_ref = Repository::with_items(|items| items[in2].reference);
             Repository::with_characters_mut(|characters| {
                 characters[cn].item[n] = 0;
             });
@@ -4679,7 +4679,7 @@ pub fn teleport3(cn: usize, item_idx: usize) -> i32 {
             let (has_flag, item_ref) = Repository::with_items(|items| {
                 (
                     (items[in2].flags & ItemFlags::IF_LABYDESTROY.bits()) != 0,
-                    items[in2].reference.clone(),
+                    items[in2].reference,
                 )
             });
             if has_flag {
@@ -4707,7 +4707,7 @@ pub fn teleport3(cn: usize, item_idx: usize) -> i32 {
             let (has_flag, item_ref) = Repository::with_items(|items| {
                 (
                     (items[in2].flags & ItemFlags::IF_LABYDESTROY.bits()) != 0,
-                    items[in2].reference.clone(),
+                    items[in2].reference,
                 )
             });
             if has_flag {
@@ -4909,7 +4909,7 @@ pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
     });
 
     // Update sword weapon power based on shrines visited
-    let cn_name = Repository::with_characters(|characters| characters[cn].name.clone());
+    let cn_name = Repository::with_characters(|characters| characters[cn].name);
     Repository::with_items_mut(|items| {
         items[in2].weapon[0] = 15 + visited_bits * 4;
         items[in2].flags |= ItemFlags::IF_UPDATE.bits();
@@ -4961,7 +4961,7 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
         (
             (characters[cn].kindred & 0x00000008) != 0,
             (characters[cn].kindred & 0x00000001) != 0, // KIN_MALE
-            characters[cn].name.clone(),
+            characters[cn].name,
         )
     });
 
@@ -5007,7 +5007,7 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
             (items[citem].flags & ItemFlags::IF_LABYDESTROY.bits()) != 0
         });
         if has_flag {
-            let item_ref = Repository::with_items(|items| items[citem].reference.clone());
+            let item_ref = Repository::with_items(|items| items[citem].reference);
             Repository::with_characters_mut(|characters| {
                 characters[cn].citem = 0;
             });
@@ -5031,7 +5031,7 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
             let (has_flag, item_ref) = Repository::with_items(|items| {
                 (
                     (items[in2].flags & ItemFlags::IF_LABYDESTROY.bits()) != 0,
-                    items[in2].reference.clone(),
+                    items[in2].reference,
                 )
             });
             if has_flag {
@@ -5059,7 +5059,7 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
             let (has_flag, item_ref) = Repository::with_items(|items| {
                 (
                     (items[in2].flags & ItemFlags::IF_LABYDESTROY.bits()) != 0,
-                    items[in2].reference.clone(),
+                    items[in2].reference,
                 )
             });
             if has_flag {
@@ -6509,7 +6509,7 @@ fn soul_repair(cn: usize, soulstone_idx: usize, item_idx: usize) -> usize {
 
     Repository::with_item_templates(|item_templates| {
         Repository::with_items_mut(|items| {
-            items[item_idx] = item_templates[item_temp].clone();
+            items[item_idx] = item_templates[item_temp];
             items[item_idx].carried = cn as u16;
             items[item_idx].flags |= core::constants::ItemFlags::IF_UPDATE.bits();
             items[item_idx].temp = 0;
@@ -7773,7 +7773,7 @@ pub fn item_tick_gc() {
             Repository::with_items_mut(|items| {
                 Repository::with_item_templates(|item_templates| {
                     let (x, y, carried) = (items[n].x, items[n].y, items[n].carried);
-                    items[n] = item_templates[683].clone();
+                    items[n] = item_templates[683];
                     items[n].x = x;
                     items[n].y = y;
                     items[n].carried = carried;

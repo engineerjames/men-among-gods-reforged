@@ -566,7 +566,7 @@ impl State {
 
             match base_status {
                 // Standing/idle states - regenerate normally
-                0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 => {
+                0..=7 => {
                     if !noend {
                         Repository::with_characters_mut(|ch| {
                             ch[cn].a_end += moonmult * 4;
@@ -820,7 +820,7 @@ impl State {
 
                 if killed {
                     let spell_name =
-                        Repository::with_items(|items| items[spell_item as usize].name.clone());
+                        Repository::with_items(|items| items[spell_item as usize].name);
                     log::info!(
                         "Character {} killed by spell: {}",
                         cn,
@@ -849,7 +849,7 @@ impl State {
 
                 if end_depleted {
                     let spell_name =
-                        Repository::with_items(|items| items[spell_item as usize].name.clone());
+                        Repository::with_items(|items| items[spell_item as usize].name);
                     Repository::with_items_mut(|items| {
                         items[spell_item as usize].active = 0;
                     });
@@ -862,7 +862,7 @@ impl State {
 
                 if mana_depleted {
                     let spell_name =
-                        Repository::with_items(|items| items[spell_item as usize].name.clone());
+                        Repository::with_items(|items| items[spell_item as usize].name);
                     Repository::with_items_mut(|items| {
                         items[spell_item as usize].active = 0;
                     });
@@ -885,7 +885,7 @@ impl State {
                 // Warn when spell is about to run out
                 if active == core::constants::TICKS as u32 * 30 {
                     let spell_name =
-                        Repository::with_items(|items| items[spell_item as usize].name.clone());
+                        Repository::with_items(|items| items[spell_item as usize].name);
                     let (is_player_or_usurp, temp, companion_owner) =
                         Repository::with_characters(|ch| {
                             (
@@ -925,7 +925,7 @@ impl State {
                                     || item_temp == core::constants::SK_ENHANCE as u16
                                 {
                                     let co_name =
-                                        Repository::with_characters(|ch| ch[co].name.clone());
+                                        Repository::with_characters(|ch| ch[co].name);
 
                                     self.do_sayx(
                                         cn,
@@ -972,7 +972,7 @@ impl State {
                 // Handle spell expiration
                 if active == 0 {
                     let spell_name =
-                        Repository::with_items(|items| items[spell_item as usize].name.clone());
+                        Repository::with_items(|items| items[spell_item as usize].name);
 
                     // Recall spell - teleport character
                     if item_temp == core::constants::SK_RECALL as u16 {

@@ -341,7 +341,7 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
 
         // Fight back
         if co < MAXCHARS {
-            let co_name = characters[co].name.clone();
+            let co_name = characters[co].name;
             if npc_add_enemy(cn, co, true) {
                 let co_name = String::from_utf8_lossy(&co_name).to_string();
                 npc_saytext_n(cn, 1, Some(&co_name));
@@ -3269,7 +3269,7 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
         }
 
         if !already_talked {
-            let text_2 = Repository::with_characters(|characters| characters[cn].text[2].clone());
+            let text_2 = Repository::with_characters(|characters| characters[cn].text[2]);
             let text_2_str = String::from_utf8_lossy(&text_2).to_string();
             let co_name = Repository::with_characters(|characters| {
                 String::from_utf8_lossy(&characters[co].name).to_string()

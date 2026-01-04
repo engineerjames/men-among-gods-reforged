@@ -803,7 +803,7 @@ pub fn reset_char(n: usize) {
         if temp as usize == n {
             Repository::with_characters_mut(|characters| {
                 let char_template =
-                    Repository::with_character_templates(|templates| templates[n].clone());
+                    Repository::with_character_templates(|templates| templates[n]);
 
                 // Preserve certain fields
                 let pass1 = characters[cn].pass1;
@@ -839,7 +839,7 @@ pub fn reset_char(n: usize) {
             let temp = Repository::with_items(|items| items[m].temp);
             Repository::with_items_mut(|items| {
                 let item_template =
-                    Repository::with_item_templates(|templates| templates[temp as usize].clone());
+                    Repository::with_item_templates(|templates| templates[temp as usize]);
                 items[m] = item_template;
                 items[m].temp = temp;
             });
@@ -945,7 +945,7 @@ pub fn reset_item(n: usize) {
 
         // Reset item from template
         Repository::with_items_mut(|items| {
-            let item_template = Repository::with_item_templates(|templates| templates[n].clone());
+            let item_template = Repository::with_item_templates(|templates| templates[n]);
 
             // Preserve certain fields
             let x = items[in_id].x;

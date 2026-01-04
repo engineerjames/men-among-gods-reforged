@@ -65,7 +65,7 @@ impl God {
                     0
                 });
 
-                items[free_item_id] = item_templates[template_id].clone();
+                items[free_item_id] = item_templates[template_id];
                 items[free_item_id].temp = template_id as u16;
 
                 Some(free_item_id)
@@ -872,7 +872,7 @@ impl God {
             let character = &mut characters[char_index];
 
             *character = Repository::with_character_templates(|char_templates| {
-                char_templates[template_id].clone()
+                char_templates[template_id]
             });
 
             character.pass1 = rand::random::<u32>() % 0x3fffffff;
@@ -915,7 +915,7 @@ impl God {
                 );
             }
 
-            character.reference = character.name.clone();
+            character.reference = character.name;
             character.description = character
                 .get_default_description()
                 .as_bytes()
@@ -2825,13 +2825,13 @@ impl God {
 
         // Copy attributes from target to mirror
         Repository::with_characters_mut(|characters| {
-            let target_name_bytes = characters[co].name.clone();
+            let target_name_bytes = characters[co].name;
             let target_sprite = characters[co].sprite;
-            let target_attrib = characters[co].attrib.clone();
+            let target_attrib = characters[co].attrib;
             let target_hp = characters[co].hp;
             let target_end = characters[co].end;
             let target_mana = characters[co].mana;
-            let target_skill = characters[co].skill.clone();
+            let target_skill = characters[co].skill;
             let target_kindred = characters[co].kindred as u32;
             let caster_weapon = characters[cn].weapon;
             let caster_armor = characters[cn].armor;
@@ -3089,9 +3089,9 @@ impl God {
 
         // Configure the thrall
         Repository::with_characters_mut(|characters| {
-            let target_name_bytes = characters[co].name.clone();
-            let target_reference = characters[co].reference.clone();
-            let target_description = characters[co].description.clone();
+            let target_name_bytes = characters[co].name;
+            let target_reference = characters[co].reference;
+            let target_description = characters[co].description;
 
             let thrall = &mut characters[ct];
             thrall.name = target_name_bytes;
@@ -3408,7 +3408,7 @@ impl God {
                     & (core::constants::CharacterFlags::CF_PLAYER.bits()
                         | core::constants::CharacterFlags::CF_USURP.bits()))
                     != 0;
-                let name = character.name.clone();
+                let name = character.name;
                 (is_used, is_player_or_usurp, name)
             });
 
@@ -3524,7 +3524,7 @@ impl God {
         let (is_used, character_name) = Repository::with_characters(|characters| {
             let character = &characters[co];
             let is_used = character.used != core::constants::USE_EMPTY;
-            let name = character.name.clone();
+            let name = character.name;
             (is_used, name)
         });
 
@@ -4096,7 +4096,7 @@ impl God {
                     & (core::constants::CharacterFlags::CF_PLAYER.bits()
                         | core::constants::CharacterFlags::CF_USURP.bits()))
                     != 0;
-                let name = character.name.clone();
+                let name = character.name;
                 let temp = character.temp;
                 (is_used, is_player_or_usurp, name, temp)
             });
@@ -4227,7 +4227,7 @@ impl God {
 
         if co != 0 {
             let character_name =
-                Repository::with_characters(|characters| characters[co].name.clone());
+                Repository::with_characters(|characters| characters[co].name);
 
             let name_str = c_string_to_str(&character_name);
 
@@ -4362,7 +4362,7 @@ impl God {
 
         if co != 0 {
             let character_name =
-                Repository::with_characters(|characters| characters[co].name.clone());
+                Repository::with_characters(|characters| characters[co].name);
 
             let name_str = c_string_to_str(&character_name);
 
@@ -4507,7 +4507,7 @@ impl God {
             let is_used = characters[co_usize].used == core::constants::USE_ACTIVE;
             let is_player =
                 characters[co_usize].flags & core::constants::CharacterFlags::CF_PLAYER.bits() != 0;
-            let name = characters[co_usize].name.clone();
+            let name = characters[co_usize].name;
             (is_used, is_player, name)
         });
 
