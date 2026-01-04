@@ -7674,7 +7674,7 @@ pub fn item_tick_expire() {
                                     let dur = if temp == 189 || temp == 561 {
                                         ticks * 60 * 20 + rng.gen_range(0..(ticks * 60 * 5))
                                     } else {
-                                        ticks * 60 * 1 + rng.gen_range(0..(ticks * 60 * 1))
+                                        (ticks * 60) + rng.gen_range(0..ticks * 60)
                                     };
 
                                     // Use the template's coordinates for the respawn location

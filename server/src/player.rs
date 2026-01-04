@@ -2821,13 +2821,13 @@ pub fn plr_getmap_complete(nr: usize) {
                 let tmp_vis = ((x - current_x + 20) + (y - current_y + 20) * 40) as usize;
 
                 let visible = Repository::with_see_map(|see| {
-                    see[cn].vis[tmp_vis + 0 + 0] != 0
-                        || see[cn].vis[tmp_vis + 0 + 40] != 0
-                        || see[cn].vis[tmp_vis + 0 - 40] != 0
-                        || see[cn].vis[tmp_vis + 1 + 0] != 0
+                    see[cn].vis[tmp_vis] != 0
+                        || see[cn].vis[tmp_vis + 40] != 0
+                        || see[cn].vis[tmp_vis - 40] != 0
+                        || see[cn].vis[tmp_vis + 1] != 0
                         || see[cn].vis[tmp_vis + 1 + 40] != 0
                         || see[cn].vis[tmp_vis + 1 - 40] != 0
-                        || see[cn].vis[tmp_vis - 1 + 0] != 0
+                        || see[cn].vis[tmp_vis - 1] != 0
                         || see[cn].vis[tmp_vis - 1 + 40] != 0
                         || see[cn].vis[tmp_vis - 1 - 40] != 0
                 });

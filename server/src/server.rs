@@ -673,7 +673,7 @@ impl Server {
                 erase = true;
             }
         } else if pts < 10_000 {
-            if ld + 1 * week < now {
+            if ld + week < now {
                 erase = true;
             }
         } else if pts < 100_000 {

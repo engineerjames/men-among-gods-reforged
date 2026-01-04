@@ -715,7 +715,7 @@ impl EffectManager {
                         Self::fx_add_effect(
                             2,
                             core::constants::TICKS * 60 * 4
-                                + rand::random::<i32>().abs() % (core::constants::TICKS * 60 * 1),
+                                + rand::random::<i32>().abs() % (core::constants::TICKS * 60),
                             Repository::with_character_templates(|char_templates| {
                                 char_templates[temp].x as i32
                             }),
