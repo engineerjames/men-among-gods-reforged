@@ -131,6 +131,15 @@ impl Global {
         bytes.push(self.newmoon as u8);
         bytes.extend_from_slice(&self.unique.to_le_bytes());
         bytes.extend_from_slice(&self.cap.to_le_bytes());
+
+        if bytes.len() != std::mem::size_of::<Global>() {
+            log::error!(
+                "Global::to_bytes: expected size {}, got {}",
+                std::mem::size_of::<Global>(),
+                bytes.len()
+            );
+        }
+
         bytes
     }
 
@@ -214,5 +223,78 @@ impl Global {
         } else {
             self.flags &= !constants::GF_DIRTY;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_global_to_bytes_size() {
+        let global = Global::default();
+        let bytes = global.to_bytes();
+        assert_eq!(
+            bytes.len(),
+            std::mem::size_of::<Global>(),
+            "Serialized Global size should match struct size"
+        );
+    }
+
+    #[test]
+    fn test_global_roundtrip() {
+        let mut original = Global::default();
+        original.mdtime = 12345;
+        original.mdday = 100;
+        original.mdyear = 2026;
+        original.dlight = 50;
+        original.players_created = 1000;
+        original.npcs_created = 5000;
+        original.ticker = 99999;
+        original.total_online_time = 1234567890;
+        original.online_per_hour = [100; 24];
+        original.uptime = 9876543210;
+        original.uptime_per_hour = [200; 24];
+        original.max_online = 150;
+        original.max_online_per_hour = [50; 24];
+        original.fullmoon = 1;
+        original.newmoon = 0;
+        original.unique = 0xDEADBEEFCAFEBABE;
+        original.cap = 250;
+
+        let bytes = original.to_bytes();
+        let deserialized = Global::from_bytes(&bytes).expect("Failed to deserialize Global");
+
+        assert_eq!(original.mdtime, deserialized.mdtime);
+        assert_eq!(original.mdday, deserialized.mdday);
+        assert_eq!(original.mdyear, deserialized.mdyear);
+        assert_eq!(original.players_created, deserialized.players_created);
+        assert_eq!(original.ticker, deserialized.ticker);
+        assert_eq!(original.total_online_time, deserialized.total_online_time);
+        assert_eq!(original.online_per_hour, deserialized.online_per_hour);
+        assert_eq!(original.uptime, deserialized.uptime);
+        assert_eq!(original.unique, deserialized.unique);
+        assert_eq!(original.cap, deserialized.cap);
+    }
+
+    #[test]
+    fn test_global_from_bytes_insufficient_data() {
+        let bytes = vec![0u8; std::mem::size_of::<Global>() - 1];
+        assert!(
+            Global::from_bytes(&bytes).is_none(),
+            "Should fail with insufficient data"
+        );
+    }
+
+    #[test]
+    fn test_global_dirty_flag() {
+        let mut global = Global::default();
+        assert!(!global.is_dirty(), "Should not be dirty by default");
+
+        global.set_dirty(true);
+        assert!(global.is_dirty(), "Should be dirty after setting");
+
+        global.set_dirty(false);
+        assert!(!global.is_dirty(), "Should not be dirty after clearing");
     }
 }

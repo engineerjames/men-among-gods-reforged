@@ -214,6 +214,15 @@ impl Item {
         for i in 0..10 {
             bytes.extend_from_slice(&self.data[i].to_le_bytes());
         }
+
+        if bytes.len() != std::mem::size_of::<Item>() {
+            log::error!(
+                "Item::to_bytes: expected size {}, got {}",
+                std::mem::size_of::<Item>(),
+                bytes.len()
+            );
+        }
+
         bytes
     }
 
@@ -339,5 +348,121 @@ impl Item {
 
     pub fn is_sane_item(item_id: usize) -> bool {
         (item_id > 0) && (item_id < crate::constants::MAXITEM)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_item_to_bytes_size() {
+        let item = Item::default();
+        let bytes = item.to_bytes();
+        assert_eq!(
+            bytes.len(),
+            std::mem::size_of::<Item>(),
+            "Serialized Item size should match struct size"
+        );
+    }
+
+    #[test]
+    fn test_item_roundtrip() {
+        let mut original = Item::default();
+        original.used = 1;
+        original.name = *b"Test Item\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+        original.reference =
+            *b"a test item\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+        original.flags = 0x123456789ABCDEF0;
+        original.value = 1000;
+        original.placement = 5;
+        original.temp = 100;
+        original.damage_state = 2;
+        original.attrib[0] = [1, 2, 3];
+        original.hp = [100, 200, 50];
+        original.skill[0] = [10, 20, 5];
+        original.armor = [5, 10];
+        original.weapon = [15, 20];
+        original.x = 100;
+        original.y = 200;
+        original.sprite = [500, 600];
+        original.driver = 42;
+        original.data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+        let bytes = original.to_bytes();
+        let deserialized = Item::from_bytes(&bytes).expect("Failed to deserialize Item");
+
+        assert_eq!(original.used, deserialized.used);
+        assert_eq!(original.name, deserialized.name);
+
+        let original_flags = original.flags;
+        let de_flags_copy = deserialized.flags;
+        assert_eq!(original_flags, de_flags_copy);
+
+        let original_value = original.value;
+        let de_value_copy = deserialized.value;
+        assert_eq!(original_value, de_value_copy);
+
+        let original_placement = original.placement;
+        let de_placement_copy = deserialized.placement;
+        assert_eq!(original_placement, de_placement_copy);
+
+        let original_temp = original.temp;
+        let de_temp_copy = deserialized.temp;
+        assert_eq!(original_temp, de_temp_copy);
+
+        assert_eq!(original.damage_state, deserialized.damage_state);
+        assert_eq!(original.attrib, deserialized.attrib);
+
+        let original_hp = original.hp;
+        let de_hp_copy = deserialized.hp;
+        assert_eq!(original_hp, de_hp_copy);
+
+        assert_eq!(original.armor, deserialized.armor);
+        assert_eq!(original.weapon, deserialized.weapon);
+
+        let original_x = original.x;
+        let de_x_copy = deserialized.x;
+        assert_eq!(original_x, de_x_copy);
+
+        let original_y = original.y;
+        let de_y_copy = deserialized.y;
+        assert_eq!(original_y, de_y_copy);
+
+        let original_driver = original.driver;
+        let de_driver_copy = deserialized.driver;
+        assert_eq!(original_driver, de_driver_copy);
+    }
+
+    #[test]
+    fn test_item_from_bytes_insufficient_data() {
+        let bytes = vec![0u8; std::mem::size_of::<Item>() - 1];
+        assert!(
+            Item::from_bytes(&bytes).is_none(),
+            "Should fail with insufficient data"
+        );
+    }
+
+    #[test]
+    fn test_item_get_name() {
+        let mut item = Item::default();
+        item.name = *b"Sword of Power\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+        assert_eq!(item.get_name(), "Sword of Power");
+    }
+
+    #[test]
+    fn test_item_flags() {
+        let mut item = Item::default();
+
+        item.flags = ItemFlags::IF_LABYDESTROY.bits();
+        assert!(item.has_laby_destroy());
+        assert!(!item.has_soulstone());
+
+        item.flags = ItemFlags::IF_SOULSTONE.bits();
+        assert!(!item.has_laby_destroy());
+        assert!(item.has_soulstone());
+
+        item.flags = ItemFlags::IF_UNIQUE.bits();
+        assert!(item.is_unique());
     }
 }

@@ -446,6 +446,15 @@ impl Character {
                 bytes.push(char_byte);
             }
         }
+
+        if bytes.len() != std::mem::size_of::<Character>() {
+            log::warn!(
+                "Character::to_bytes: expected size {}, got {}",
+                std::mem::size_of::<Character>(),
+                bytes.len()
+            );
+        }
+
         bytes
     }
 
@@ -851,5 +860,174 @@ impl Character {
         }
 
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_character_to_bytes_size() {
+        let character = Character::default();
+        let bytes = character.to_bytes();
+        assert_eq!(
+            bytes.len(),
+            std::mem::size_of::<Character>(),
+            "Serialized Character size should match struct size"
+        );
+    }
+
+    #[test]
+    fn test_character_roundtrip() {
+        let mut original = Character::default();
+        original.used = 1;
+        original.name =
+            *b"TestHero\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+        original.reference = *b"a brave warrior\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+        original.kindred = 5;
+        original.player = 1;
+        original.sprite = 1000;
+        original.sound = 500;
+        original.flags = 0x123456789ABCDEF0;
+        original.alignment = 100;
+        original.temple_x = 50;
+        original.temple_y = 60;
+        original.hp = [100, 120, 140, 10, 0, 100];
+        original.attrib[0] = [10, 5, 50, 3, 2, 17];
+        original.skill[0] = [20, 10, 100, 5, 3, 33];
+        original.x = 100;
+        original.y = 200;
+        original.gold = 5000;
+        original.item[0] = 123;
+        original.worn[0] = 456;
+        original.depot[0] = 789;
+        original.data[0] = 999;
+
+        let bytes = original.to_bytes();
+        let deserialized = Character::from_bytes(&bytes).expect("Failed to deserialize Character");
+
+        assert_eq!(original.used, deserialized.used);
+        assert_eq!(original.name, deserialized.name);
+        assert_eq!(original.reference, deserialized.reference);
+
+        let original_kindred = original.kindred;
+        let deserialized_kindred = deserialized.kindred;
+        assert_eq!(original_kindred, deserialized_kindred);
+
+        let original_player = original.player;
+        let deserialized_player = deserialized.player;
+        assert_eq!(original_player, deserialized_player);
+
+        let original_sprite = original.sprite;
+        let deserialized_sprite = deserialized.sprite;
+        assert_eq!(original_sprite, deserialized_sprite);
+
+        let original_sound = original.sound;
+        let deserialized_sound = deserialized.sound;
+        assert_eq!(original_sound, deserialized_sound);
+
+        let original_flags = original.flags;
+        let deserialized_flags = deserialized.flags;
+        assert_eq!(original_flags, deserialized_flags);
+
+        let original_alignment = original.alignment;
+        let deserialized_alignment = deserialized.alignment;
+        assert_eq!(original_alignment, deserialized_alignment);
+
+        let original_temple_x = original.temple_x;
+        let deserialized_temple_x = deserialized.temple_x;
+        assert_eq!(original_temple_x, deserialized_temple_x);
+
+        let original_temple_y = original.temple_y;
+        let deserialized_temple_y = deserialized.temple_y;
+        assert_eq!(original_temple_y, deserialized_temple_y);
+
+        let original_hp = original.hp;
+        let deserialized_hp = deserialized.hp;
+        assert_eq!(original_hp, deserialized_hp);
+
+        let original_attrib = original.attrib;
+        let deserialized_attrib = deserialized.attrib;
+        assert_eq!(original_attrib, deserialized_attrib);
+
+        let original_skill = original.skill;
+        let deserialized_skill = deserialized.skill;
+        assert_eq!(original_skill, deserialized_skill);
+
+        let original_x = original.x;
+        let deserialized_x = deserialized.x;
+        assert_eq!(original_x, deserialized_x);
+
+        let original_y = original.y;
+        let deserialized_y = deserialized.y;
+        assert_eq!(original_y, deserialized_y);
+
+        let original_gold = original.gold;
+        let deserialized_gold = deserialized.gold;
+        assert_eq!(original_gold, deserialized_gold);
+
+        let original_item = original.item;
+        let deserialized_item = deserialized.item;
+        assert_eq!(original_item, deserialized_item);
+
+        let original_worn = original.worn;
+        let deserialized_worn = deserialized.worn;
+        assert_eq!(original_worn, deserialized_worn);
+
+        let original_depot = original.depot;
+        let deserialized_depot = deserialized.depot;
+        assert_eq!(original_depot, deserialized_depot);
+
+        let original_data = original.data;
+        let deserialized_data = deserialized.data;
+        assert_eq!(original_data, deserialized_data);
+    }
+
+    #[test]
+    fn test_character_from_bytes_insufficient_data() {
+        let bytes = vec![0u8; std::mem::size_of::<Character>() - 1];
+        assert!(
+            Character::from_bytes(&bytes).is_none(),
+            "Should fail with insufficient data"
+        );
+    }
+
+    #[test]
+    fn test_character_get_name() {
+        let mut character = Character::default();
+        character.name =
+            *b"Hero123\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+        assert_eq!(character.get_name(), "Hero123");
+    }
+
+    #[test]
+    fn test_character_is_player() {
+        let mut character = Character::default();
+        assert!(!character.is_player());
+
+        character.flags = CharacterFlags::CF_PLAYER.bits();
+        assert!(character.is_player());
+    }
+
+    #[test]
+    fn test_character_has_prof() {
+        let mut character = Character::default();
+        assert!(!character.has_prof());
+
+        character.flags = CharacterFlags::CF_PROF.bits();
+        assert!(character.has_prof());
+    }
+
+    #[test]
+    fn test_character_set_name() {
+        let mut character = Character::default();
+        character.set_name("NewHero");
+        assert_eq!(character.get_name(), "NewHero");
+
+        // Test truncation for long names
+        let long_name = "ThisIsAVeryLongNameThatExceedsTheMaximumAllowedLength";
+        character.set_name(long_name);
+        assert!(character.get_name().len() < 40);
     }
 }

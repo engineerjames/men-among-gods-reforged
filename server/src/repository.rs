@@ -74,7 +74,7 @@ impl Repository {
     /// This calls each of the `load_*` helper methods in sequence and returns an
     /// error if any step fails. After a successful `load`, the repository
     /// contains populated `map`, `items`, `characters`, `globals`, etc.
-    pub fn load(&mut self) -> Result<(), String> {
+    fn load(&mut self) -> Result<(), String> {
         self.load_map()?;
         self.load_items()?;
         self.load_item_templates()?;
@@ -93,7 +93,7 @@ impl Repository {
     /// The bad names, words, and message of the day are not saved back as
     /// they are managed separately via text files, and are treated currently
     /// as read-only.
-    pub fn save(&mut self) -> Result<(), String> {
+    fn save(&mut self) -> Result<(), String> {
         self.save_map()?;
         self.save_items()?;
         self.save_item_templates()?;
@@ -102,6 +102,23 @@ impl Repository {
         self.save_effects()?;
         self.save_globals()?;
         Ok(())
+    }
+
+    /// Perform a clean shutdown of the repository by saving all data back to disk.
+    pub fn shutdown() {
+        if REPOSITORY.get().is_none() {
+            log::warn!("Repository.shutdown called but repository not initialized.");
+            return;
+        }
+
+        Self::with_repo_mut(|repo| {
+            repo.globals.set_dirty(false);
+            if let Err(e) = repo.save() {
+                log::error!("Failed to save repository during shutdown: {}", e);
+            } else {
+                log::info!("Repository saved cleanly in shutdown()");
+            }
+        });
     }
 
     /// Resolve the absolute path to a `.dat` file given its file name.
@@ -858,5 +875,7 @@ impl Drop for Repository {
         self.save().unwrap_or_else(|e| {
             log::error!("Failed to save repository cleanly on shutdown: {}", e);
         });
+
+        log::info!("Repository saved cleanly on shutdown.");
     }
 }
