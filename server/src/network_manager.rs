@@ -77,7 +77,7 @@ impl NetworkManager {
             .expect("NetworkManager not initialized")
             .read()
             .unwrap();
-        f(&*manager)
+        f(&manager)
     }
 
     // TODO: We might not need this...
@@ -95,7 +95,7 @@ impl NetworkManager {
             .expect("NetworkManager not initialized")
             .write()
             .unwrap();
-        f(&mut *manager)
+        f(&mut manager)
     }
 
     /// Send bytes to a player's tick buffer without wrapping (bulk copy).

@@ -59,7 +59,7 @@ impl State {
     {
         let lock = STATE.get().expect("State not initialized");
         let guard = lock.lock();
-        let inner: &UnsafeCell<State> = &*guard;
+        let inner: &UnsafeCell<State> = &guard;
         // SAFETY: We are holding the mutex so no other thread can create mutable aliases.
         let state_ref: &State = unsafe { &*inner.get() };
         f(state_ref)
@@ -71,7 +71,7 @@ impl State {
     {
         let lock = STATE.get().expect("State not initialized");
         let guard = lock.lock();
-        let inner: &UnsafeCell<State> = &*guard;
+        let inner: &UnsafeCell<State> = &guard;
         // SAFETY: We are holding the mutex so we can create a unique mutable reference.
         let state_mut: &mut State = unsafe { &mut *inner.get() };
         f(state_mut)

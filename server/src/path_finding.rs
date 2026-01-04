@@ -671,7 +671,7 @@ impl PathFinder {
     {
         let lock = PATHFINDER.get().expect("PathFinder not initialized");
         let guard = lock.lock();
-        let inner: &UnsafeCell<PathFinder> = &*guard;
+        let inner: &UnsafeCell<PathFinder> = &guard;
         // SAFETY: We are holding the ReentrantMutex, providing exclusive
         // access for mutation or shared access for read-only usages from a
         // single thread. Returning a shared reference is safe here.
@@ -686,7 +686,7 @@ impl PathFinder {
     {
         let lock = PATHFINDER.get().expect("PathFinder not initialized");
         let guard = lock.lock();
-        let inner: &UnsafeCell<PathFinder> = &*guard;
+        let inner: &UnsafeCell<PathFinder> = &guard;
         // SAFETY: We have exclusive access to the PathFinder under the
         // ReentrantMutex; returning a mutable reference is safe.
         let pf_mut: &mut PathFinder = unsafe { &mut *inner.get() };

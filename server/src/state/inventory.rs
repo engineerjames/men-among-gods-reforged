@@ -246,7 +246,7 @@ impl State {
     /// * `false` if the item is disallowed (e.g., lag scroll)
     pub(crate) fn do_maygive(&self, _cn: usize, _co: usize, item_idx: usize) -> bool {
         // Check if item index is valid
-        if item_idx < 1 || item_idx >= core::constants::MAXITEM {
+        if !(1..core::constants::MAXITEM).contains(&item_idx) {
             return true; // Invalid items are considered "may give" (will be handled elsewhere)
         }
 
@@ -530,7 +530,7 @@ impl State {
     /// # Returns
     /// * Item value in copper/lowest unit (u32), or 0 when `item_idx` invalid
     pub(crate) fn do_item_value(&self, item_idx: usize) -> u32 {
-        if item_idx < 1 || item_idx >= core::constants::MAXITEM {
+        if !(1..core::constants::MAXITEM).contains(&item_idx) {
             return 0;
         }
 

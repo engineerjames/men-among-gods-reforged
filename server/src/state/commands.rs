@@ -261,7 +261,7 @@ impl State {
     ///
     /// Admin command to respawn a character.
     pub(crate) fn do_respawn(&self, cn: usize, co: usize) {
-        if co < 1 || co >= core::constants::MAXTCHARS {
+        if !(1..core::constants::MAXTCHARS).contains(&co) {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,

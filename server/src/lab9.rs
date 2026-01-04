@@ -394,7 +394,7 @@ impl Labyrinth9 {
             .expect("Labyrinth9 not initialized")
             .read()
             .unwrap();
-        f(&*lab)
+        f(&lab)
     }
 
     pub fn with_mut<F, R>(f: F) -> R
@@ -406,7 +406,7 @@ impl Labyrinth9 {
             .expect("Labyrinth9 not initialized")
             .write()
             .unwrap();
-        f(&mut *lab)
+        f(&mut lab)
     }
 
     pub fn get_guesser(&self, idx: usize) -> i32 {
@@ -443,8 +443,8 @@ impl Labyrinth9 {
 
             // Certified riddler?
             let area_of_knowledge = characters[riddler_usize].data[72]; // Area of knowledge
-            if area_of_knowledge < core::constants::RIDDLE_MIN_AREA
-                || area_of_knowledge > core::constants::RIDDLE_MAX_AREA
+            if !(core::constants::RIDDLE_MIN_AREA..=core::constants::RIDDLE_MAX_AREA)
+                .contains(&area_of_knowledge)
             {
                 characters[character_id].data[core::constants::CHD_RIDDLER] = 0;
                 return false;
@@ -572,7 +572,7 @@ impl Labyrinth9 {
             false
         });
 
-        return return_value;
+        return_value
     }
 
     pub fn lab9_pose_riddle(&mut self, riddler_id: usize, character_id: usize) {
@@ -688,7 +688,7 @@ impl Labyrinth9 {
                     );
                 });
             });
-            return true;
+            true
         } else {
             // Close the door
             Repository::with_items_mut(|items| {
@@ -724,7 +724,7 @@ impl Labyrinth9 {
                     );
                 });
             });
-            return false;
+            false
         }
     }
 

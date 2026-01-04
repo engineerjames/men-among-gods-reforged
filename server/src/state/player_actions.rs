@@ -322,7 +322,8 @@ impl State {
     /// updates lights and item tables accordingly.
     pub(crate) fn do_build_remove(&mut self, x: i32, y: i32) {
         // Bounds check
-        if x < 0 || x >= core::constants::SERVER_MAPX || y < 0 || y >= core::constants::SERVER_MAPY
+        if !(0..core::constants::SERVER_MAPX).contains(&x)
+            || !(0..core::constants::SERVER_MAPY).contains(&y)
         {
             return;
         }

@@ -1,4 +1,4 @@
-use core::constants::{CT_COMPANION, NT_GOTMISS};
+use core::constants::{CT_COMPANION, NT_GOTMISS, SERVER_MAPX, SERVER_MAPY};
 
 struct Know {
     word: [&'static str; 20],
@@ -58,7 +58,7 @@ const RIDDLE_TEXT: &str = "If you bring me the right volume of the Book of Wisdo
 
 const AR_ALL: i32 = 12345;
 
-const KNOW: [Know; 227] = [
+static KNOW: [Know; 227] = [
     Know {
         word: ["!where", "!tavern", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
         value: 0,
@@ -1877,6 +1877,8 @@ const KNOW: [Know; 227] = [
     },
 ];
 
+use rand::Rng;
+
 use crate::effect::EffectManager;
 use crate::god::God;
 use crate::repository::Repository;
@@ -2148,15 +2150,12 @@ pub fn answer_move(cn: usize, co: usize) {
         let cn_y = characters[cn].y;
 
         let mut rng = rand::thread_rng();
-        use rand::Rng;
 
         characters[cn].attack_cn = 0;
-        characters[cn].goto_x = ((cn_x as i32 + 4 - rng.gen_range(0..9))
-            .max(0)
-            .min(core::constants::SERVER_MAPX - 1)) as u16;
-        characters[cn].goto_y = ((cn_y as i32 + 4 - rng.gen_range(0..9))
-            .max(0)
-            .min(core::constants::SERVER_MAPY - 1)) as u16;
+        characters[cn].goto_x =
+            (cn_x as i32 + 4 - rng.gen_range(0..9)).clamp(0, SERVER_MAPX - 1) as u16;
+        characters[cn].goto_y =
+            (cn_y as i32 + 4 - rng.gen_range(0..9)).clamp(0, SERVER_MAPY - 1) as u16;
         characters[cn].misc_action = 0;
 
         let co_name = characters[co].get_name().to_string();
@@ -2541,7 +2540,7 @@ pub fn stronghold_points(cn: usize) -> i32 {
 pub fn stronghold_exp_per_pt(cn: usize) -> i32 {
     Repository::with_characters(|characters| {
         let exp_per_pt = characters[cn].points_tot / 45123;
-        exp_per_pt.max(1).min(125)
+        exp_per_pt.clamp(1, 125)
     })
 }
 

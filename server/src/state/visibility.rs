@@ -30,7 +30,7 @@ impl State {
         let rx = x - self.ox + 20;
         let ry = y - self.oy + 20;
 
-        if rx < 0 || rx >= 40 || ry < 0 || ry >= 40 {
+        if !(0..40).contains(&rx) || !(0..40).contains(&ry) {
             None
         } else {
             Some((rx + ry * 40) as usize)
@@ -853,7 +853,7 @@ impl State {
             return true;
         }
 
-        return false;
+        false
     }
 
     /// Port of `check_map_see(x,y)` from original helper code.
@@ -946,7 +946,7 @@ impl State {
             return false;
         }
 
-        return true;
+        true
     }
 
     /// Port of `close_vis_go(x,y,value)` from original helper code.
@@ -991,7 +991,7 @@ impl State {
         if visi[((x - 1) + (y - 1) * 40) as usize] == value {
             return true;
         }
-        return false;
+        false
     }
 
     /// Port of `reset_go(xc,yc)` from original helper code.

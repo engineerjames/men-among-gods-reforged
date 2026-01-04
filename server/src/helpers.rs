@@ -346,7 +346,7 @@ pub fn show_time(cn: usize) {
 
     fn ordinal_suffix(n: i32) -> &'static str {
         let n_mod_100 = n % 100;
-        if n_mod_100 >= 11 && n_mod_100 <= 13 {
+        if (11..=13).contains(&n_mod_100) {
             return "th";
         }
         match n % 10 {
@@ -570,12 +570,7 @@ pub fn scale_exps2(cn: i32, co_rank: i32, exp: i32) -> i32 {
     let mut diff = co_rank - points2rank(player_experience) as i32;
 
     diff += 24;
-    if diff < 0 {
-        diff = 0;
-    }
-    if diff > 48 {
-        diff = 48;
-    }
+    diff = diff.clamp(0, 48);
 
     (exp as f32 * SCALE_TAB[diff as usize]) as i32
 }
@@ -781,7 +776,7 @@ pub fn invis_level(cn: usize) -> i32 {
             return 2;
         }
 
-        return 1;
+        1
     })
 }
 

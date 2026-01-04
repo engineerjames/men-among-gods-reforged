@@ -759,8 +759,8 @@ pub fn npc_give(_cn: usize, _co: usize, _in: usize, _money: i32) -> i32 {
             // Riddle-giver special
             let ar = characters[cn].data[72];
             if characters[co].is_player()
-                && ar >= core::constants::RIDDLE_MIN_AREA
-                && ar <= core::constants::RIDDLE_MAX_AREA
+                && (core::constants::RIDDLE_MIN_AREA..=core::constants::RIDDLE_MAX_AREA)
+                    .contains(&ar)
             {
                 let idx = (ar - core::constants::RIDDLE_MIN_AREA) as usize;
                 // check Lab9 guesser
@@ -1020,7 +1020,7 @@ pub fn npc_is_stunned(cn: usize) -> bool {
         }
     }
 
-    return false;
+    false
 }
 
 // TODO: Combine with npc_is_stunned?
@@ -1034,7 +1034,7 @@ pub fn npc_is_blessed(cn: usize) -> bool {
         }
     }
 
-    return false;
+    false
 }
 
 pub fn npc_try_spell(cn: usize, co: usize, spell: usize) -> bool {
@@ -1919,7 +1919,7 @@ pub fn npc_driver_low(cn: usize) {
     if data_10 != 0 {
         let mut n = Repository::with_characters(|characters| characters[cn].data[19]);
 
-        if n < 10 || n > 18 {
+        if !(10..=18).contains(&n) {
             n = 10;
             Repository::with_characters_mut(|characters| {
                 characters[cn].data[19] = n;
@@ -2008,7 +2008,7 @@ pub fn npc_driver_low(cn: usize) {
                 x = ch_x as i32 - 5 + (ticker % 11); // RANDOM(11)
                 y = ch_y as i32 - 5 + ((ticker / 11) % 11); // RANDOM(11)
 
-                if x < 1 || x >= SERVER_MAPX || y < 1 || y > SERVER_MAPX {
+                if !(1..SERVER_MAPX).contains(&x) || !(1..=SERVER_MAPX).contains(&y) {
                     panic = attempt + 1;
                     continue;
                 }
@@ -2157,11 +2157,7 @@ pub fn npc_driver_low(cn: usize) {
                     }
                 }
 
-                if target_x < 0
-                    || target_x >= SERVER_MAPX
-                    || target_y < 0
-                    || target_y >= SERVER_MAPY
-                {
+                if !(0..SERVER_MAPX).contains(&target_x) || !(0..SERVER_MAPY).contains(&target_y) {
                     characters[cn].misc_action = core::constants::DR_IDLE as u16;
                     return;
                 }

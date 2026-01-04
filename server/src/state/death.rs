@@ -71,12 +71,12 @@ impl State {
 
         // Play death sound effects
         // Hack for grolms (templates 364-374)
-        if co_temp >= 364 && co_temp <= 374 {
+        if (364..=374).contains(&co_temp) {
             Self::do_area_sound(character_id, 0, co_x as i32, co_y as i32, 17);
             Self::char_play_sound(character_id, 17, -150, 0);
         }
         // Hack for gargoyles (templates 375-381)
-        else if co_temp >= 375 && co_temp <= 381 {
+        else if (375..=381).contains(&co_temp) {
             Self::do_area_sound(character_id, 0, co_x as i32, co_y as i32, 18);
             Self::char_play_sound(character_id, 18, -150, 0);
         }
@@ -123,12 +123,9 @@ impl State {
                 // Adjust alignment
                 Repository::with_characters_mut(|characters| {
                     characters[killer_id].alignment -= co_alignment / 50;
-                    if characters[killer_id].alignment > 7500 {
-                        characters[killer_id].alignment = 7500;
-                    }
-                    if characters[killer_id].alignment < -7500 {
-                        characters[killer_id].alignment = -7500;
-                    }
+
+                    characters[killer_id].alignment =
+                        characters[killer_id].alignment.clamp(-7500, 7500);
                 });
 
                 // Check for killing priests (becoming purple)

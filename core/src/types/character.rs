@@ -631,7 +631,7 @@ impl Character {
             return 2;
         }
 
-        return 1;
+        1
     }
 
     pub fn set_name(&mut self, new_name: &str) {

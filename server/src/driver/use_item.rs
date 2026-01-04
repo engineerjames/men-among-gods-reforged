@@ -4521,11 +4521,11 @@ pub fn use_kill_undead(cn: usize, item_idx: usize) -> i32 {
 
     // Damage all undead in 8x8 area
     for y in (ch_y - 8)..(ch_y + 8) {
-        if y < 1 || y >= core::constants::SERVER_MAPY {
+        if !(1..core::constants::SERVER_MAPY).contains(&y) {
             continue;
         }
         for x in (ch_x - 8)..(ch_x + 8) {
-            if x < 1 || x >= core::constants::SERVER_MAPX {
+            if !(1..core::constants::SERVER_MAPX).contains(&x) {
                 continue;
             }
 
@@ -6421,7 +6421,7 @@ pub fn use_soulstone(cn: usize, item_idx: usize) -> i32 {
             Repository::with_items_mut(|items| {
                 items[item_idx].hp[0] += 10;
             });
-            return 1;
+            1
         }
         46 => {
             // Purple flower -> mana potion
@@ -6429,7 +6429,7 @@ pub fn use_soulstone(cn: usize, item_idx: usize) -> i32 {
             Repository::with_items_mut(|items| {
                 items[item_idx].mana[0] += 10;
             });
-            return 1;
+            1
         }
         91 => {
             // Torch -> repair
@@ -6437,12 +6437,12 @@ pub fn use_soulstone(cn: usize, item_idx: usize) -> i32 {
             Repository::with_items_mut(|items| {
                 items[item_idx].max_age[1] *= 4;
             });
-            return 1;
+            1
         }
         100 => {
             // Flask -> mana potion
             soul_transform(cn, item_idx, in2, 102);
-            return 1;
+            1
         }
         101 => {
             // Healing potion
@@ -6450,7 +6450,7 @@ pub fn use_soulstone(cn: usize, item_idx: usize) -> i32 {
             Repository::with_items_mut(|items| {
                 items[in2].hp[0] += 10;
             });
-            return 1;
+            1
         }
         102 => {
             // Mana potion
@@ -6458,18 +6458,18 @@ pub fn use_soulstone(cn: usize, item_idx: usize) -> i32 {
             Repository::with_items_mut(|items| {
                 items[in2].mana[0] += 10;
             });
-            return 1;
+            1
         }
         // Equipment items that can be enhanced
         27..=44 | 51..=80 | 94..=99 | 116 | 125 | 158 | 501..=503 | 523..=524 | 813 | 981..=986 => {
             soul_trans_equipment(cn, item_idx, in2);
-            return 1;
+            1
         }
         _ => {
             State::with(|state| {
                 state.do_character_log(cn, core::types::FontColor::Blue, "Nothing happened.");
             });
-            return 0;
+            0
         }
     }
 }
