@@ -50,7 +50,7 @@ pub fn act_drop(cn: usize) {
     }
 
     Repository::with_characters_mut(|ch| match ch[cn].dir {
-        0 => {
+        core::constants::DX_UP => {
             if ch[cn].y > 0 {
                 ch[cn].status = 160;
                 ch[cn].status2 = 2;
@@ -58,7 +58,7 @@ pub fn act_drop(cn: usize) {
                 ch[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
-        1 => {
+        core::constants::DX_DOWN => {
             if ch[cn].y < (core::constants::SERVER_MAPY as i16 - 1) {
                 ch[cn].status = 168;
                 ch[cn].status2 = 2;
@@ -66,7 +66,7 @@ pub fn act_drop(cn: usize) {
                 ch[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
-        2 => {
+        core::constants::DX_LEFT => {
             if ch[cn].x > 0 {
                 ch[cn].status = 176;
                 ch[cn].status2 = 2;
@@ -74,7 +74,7 @@ pub fn act_drop(cn: usize) {
                 ch[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
-        3 => {
+        core::constants::DX_RIGHT => {
             if ch[cn].x < (core::constants::SERVER_MAPX as i16 - 1) {
                 ch[cn].status = 184;
                 ch[cn].status2 = 2;
@@ -105,7 +105,7 @@ pub fn act_use(cn: usize) {
     }
 
     Repository::with_characters_mut(|ch| match ch[cn].dir {
-        0 => {
+        core::constants::DX_UP => {
             if ch[cn].y > 0 {
                 ch[cn].status = 160;
                 ch[cn].status2 = 4;
@@ -113,7 +113,7 @@ pub fn act_use(cn: usize) {
                 ch[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
-        1 => {
+        core::constants::DX_DOWN => {
             if ch[cn].y < (core::constants::SERVER_MAPY as i16 - 1) {
                 ch[cn].status = 168;
                 ch[cn].status2 = 4;
@@ -121,7 +121,7 @@ pub fn act_use(cn: usize) {
                 ch[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
-        2 => {
+        core::constants::DX_LEFT => {
             if ch[cn].x > 0 {
                 ch[cn].status = 176;
                 ch[cn].status2 = 4;
@@ -129,7 +129,7 @@ pub fn act_use(cn: usize) {
                 ch[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
-        3 => {
+        core::constants::DX_RIGHT => {
             if ch[cn].x < (core::constants::SERVER_MAPX as i16 - 1) {
                 ch[cn].status = 184;
                 ch[cn].status2 = 4;
@@ -168,7 +168,7 @@ pub fn act_pickup(cn: usize) {
     }
 
     Repository::with_characters_mut(|ch| match ch[cn].dir {
-        0 => {
+        core::constants::DX_UP => {
             if ch[cn].y > 0 {
                 ch[cn].status = 160;
                 ch[cn].status2 = 1;
@@ -176,7 +176,7 @@ pub fn act_pickup(cn: usize) {
                 ch[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
-        1 => {
+        core::constants::DX_DOWN => {
             if ch[cn].y < (core::constants::SERVER_MAPY as i16 - 1) {
                 ch[cn].status = 168;
                 ch[cn].status2 = 1;
@@ -184,7 +184,7 @@ pub fn act_pickup(cn: usize) {
                 ch[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
-        2 => {
+        core::constants::DX_LEFT => {
             if ch[cn].x > 0 {
                 ch[cn].status = 176;
                 ch[cn].status2 = 1;
@@ -192,7 +192,7 @@ pub fn act_pickup(cn: usize) {
                 ch[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
-        3 => {
+        core::constants::DX_RIGHT => {
             if ch[cn].x < (core::constants::SERVER_MAPX as i16 - 1) {
                 ch[cn].status = 184;
                 ch[cn].status2 = 1;
@@ -221,19 +221,19 @@ pub fn act_skill(cn: usize) {
     Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_SUCCESS as u16);
 
     Repository::with_characters_mut(|ch| match ch[cn].dir {
-        0 => {
+        core::constants::DX_UP => {
             ch[cn].status = 160;
             ch[cn].status2 = 9;
         }
-        1 => {
+        core::constants::DX_DOWN => {
             ch[cn].status = 168;
             ch[cn].status2 = 9;
         }
-        2 => {
+        core::constants::DX_LEFT => {
             ch[cn].status = 176;
             ch[cn].status2 = 9;
         }
-        3 => {
+        core::constants::DX_RIGHT => {
             ch[cn].status = 184;
             ch[cn].status2 = 9;
         }
@@ -258,7 +258,7 @@ pub fn act_wave(cn: usize) {
     Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_SUCCESS as u16);
 
     Repository::with_characters_mut(|ch| match ch[cn].dir {
-        0 => {
+        core::constants::DX_UP => {
             if ch[cn].y > 0 {
                 ch[cn].status = 160;
                 ch[cn].status2 = 8;
@@ -266,7 +266,7 @@ pub fn act_wave(cn: usize) {
                 ch[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
-        1 => {
+        core::constants::DX_DOWN => {
             if ch[cn].y < (core::constants::SERVER_MAPY as i16 - 1) {
                 ch[cn].status = 168;
                 ch[cn].status2 = 8;
@@ -274,7 +274,7 @@ pub fn act_wave(cn: usize) {
                 ch[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
-        2 => {
+        core::constants::DX_LEFT => {
             if ch[cn].x > 0 {
                 ch[cn].status = 176;
                 ch[cn].status2 = 8;
@@ -282,7 +282,7 @@ pub fn act_wave(cn: usize) {
                 ch[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
-        3 => {
+        core::constants::DX_RIGHT => {
             if ch[cn].x < (core::constants::SERVER_MAPX as i16 - 1) {
                 ch[cn].status = 184;
                 ch[cn].status2 = 8;
@@ -311,7 +311,7 @@ pub fn act_bow(cn: usize) {
     Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_SUCCESS as u16);
 
     Repository::with_characters_mut(|ch| match ch[cn].dir {
-        0 => {
+        core::constants::DX_UP => {
             if ch[cn].y > 0 {
                 ch[cn].status = 160;
                 ch[cn].status2 = 7;
@@ -319,7 +319,7 @@ pub fn act_bow(cn: usize) {
                 ch[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
-        1 => {
+        core::constants::DX_DOWN => {
             if ch[cn].y < (core::constants::SERVER_MAPY as i16 - 1) {
                 ch[cn].status = 168;
                 ch[cn].status2 = 7;
@@ -327,7 +327,7 @@ pub fn act_bow(cn: usize) {
                 ch[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
-        2 => {
+        core::constants::DX_LEFT => {
             if ch[cn].x > 0 {
                 ch[cn].status = 176;
                 ch[cn].status2 = 7;
@@ -335,7 +335,7 @@ pub fn act_bow(cn: usize) {
                 ch[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
-        3 => {
+        core::constants::DX_RIGHT => {
             if ch[cn].x < (core::constants::SERVER_MAPX as i16 - 1) {
                 ch[cn].status = 184;
                 ch[cn].status2 = 7;
@@ -364,7 +364,7 @@ pub fn act_give(cn: usize) {
     Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_SUCCESS as u16);
 
     Repository::with_characters_mut(|ch| match ch[cn].dir {
-        0 => {
+        core::constants::DX_UP => {
             if ch[cn].y > 0 {
                 ch[cn].status = 160;
                 ch[cn].status2 = 3;
@@ -372,7 +372,7 @@ pub fn act_give(cn: usize) {
                 ch[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
-        1 => {
+        core::constants::DX_DOWN => {
             if ch[cn].y < (core::constants::SERVER_MAPY as i16 - 1) {
                 ch[cn].status = 168;
                 ch[cn].status2 = 3;
@@ -380,7 +380,7 @@ pub fn act_give(cn: usize) {
                 ch[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
-        2 => {
+        core::constants::DX_LEFT => {
             if ch[cn].x > 0 {
                 ch[cn].status = 176;
                 ch[cn].status2 = 3;
@@ -388,7 +388,7 @@ pub fn act_give(cn: usize) {
                 ch[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
-        3 => {
+        core::constants::DX_RIGHT => {
             if ch[cn].x < (core::constants::SERVER_MAPX as i16 - 1) {
                 ch[cn].status = 184;
                 ch[cn].status2 = 3;
