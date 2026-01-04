@@ -13,7 +13,6 @@ use core::constants::{
 };
 use core::string_operations::c_string_to_str;
 use rand::Rng;
-use std::u32;
 
 // Helper function to take an item from a character
 fn take_item_from_char(item_idx: usize, cn: usize) {
@@ -2945,7 +2944,7 @@ pub fn use_pile(cn: usize, item_idx: usize) -> i32 {
     }
 
     // Roll for loot
-    if rand::random::<u32>() % chance != 0 {
+    if !rand::random::<u32>().is_multiple_of(chance) {
         return 1; // Nothing found
     }
 
@@ -3850,10 +3849,8 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
                                 true
                             } else if characters[co].data[0] != item_idx as i32 {
                                 true
-                            } else if (characters[co].flags & CharacterFlags::CF_BODY.bits()) != 0 {
-                                true
                             } else {
-                                false
+                                (characters[co].flags & CharacterFlags::CF_BODY.bits()) != 0
                             }
                         })
                     };
@@ -4085,10 +4082,8 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
                         true
                     } else if characters[co].data[0] != item_idx as i32 {
                         true
-                    } else if (characters[co].flags & CharacterFlags::CF_BODY.bits()) != 0 {
-                        true
                     } else {
-                        false
+                        (characters[co].flags & CharacterFlags::CF_BODY.bits()) != 0
                     }
                 })
             };

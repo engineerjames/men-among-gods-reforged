@@ -1201,13 +1201,7 @@ impl Server {
 
         // Handle existing player connections
         for player_idx in 1..MAXPLAYER {
-            let has_socket = Self::with_players(|players| {
-                if players[player_idx].sock.is_none() {
-                    false
-                } else {
-                    true
-                }
-            });
+            let has_socket = Self::with_players(|players| !players[player_idx].sock.is_none());
 
             if !has_socket {
                 continue;

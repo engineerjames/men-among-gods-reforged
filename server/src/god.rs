@@ -78,12 +78,7 @@ impl God {
     ///
     /// Returns `Some(index)` when a free slot is found, otherwise `None`.
     fn get_free_item(items: &[core::types::Item]) -> Option<usize> {
-        for i in 1..core::constants::MAXITEM {
-            if items[i].used == core::constants::USE_EMPTY {
-                return Some(i);
-            }
-        }
-        None
+        (1..core::constants::MAXITEM).find(|&i| items[i].used == core::constants::USE_EMPTY)
     }
 
     // Implementation of god_give_char from svr_god.cpp
@@ -851,13 +846,8 @@ impl God {
     pub fn create_char(template_id: usize, with_items: bool) -> Option<i32> {
         let unused_index = Repository::with_characters(|characters| {
             // TODO: Refactor this into its own function
-            for i in 1..core::constants::MAXCHARS {
-                if characters[i].used == core::constants::USE_EMPTY {
-                    return Some(i);
-                }
-            }
-
-            None
+            (1..core::constants::MAXCHARS)
+                .find(|&i| characters[i].used == core::constants::USE_EMPTY)
         });
 
         let char_index = match unused_index {

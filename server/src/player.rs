@@ -5491,9 +5491,7 @@ fn plr_cmd_setuser(_nr: usize) {
         let subtype = players[nr].inbuf[1];
         let pos = players[nr].inbuf[2] as usize;
         let mut chunk = [0u8; 13];
-        for i in 0..13 {
-            chunk[i] = players[nr].inbuf[3 + i];
-        }
+        chunk.copy_from_slice(&players[nr].inbuf[3..(13 + 3)]);
         (nr, subtype, pos, chunk)
     });
 
@@ -5509,17 +5507,13 @@ fn plr_cmd_setuser(_nr: usize) {
             // write 13 bytes into text[0] or text[1]
             let text_idx = if subtype == 0 { 0 } else { 1 };
             Repository::with_characters_mut(|ch| {
-                for i in 0..13 {
-                    ch[cn].text[text_idx][pos + i] = chunk[i];
-                }
+                ch[cn].text[text_idx][pos..(13 + pos)].copy_from_slice(&chunk);
             });
         }
         2 => {
             // write into text[2]
             Repository::with_characters_mut(|ch| {
-                for i in 0..13 {
-                    ch[cn].text[2][pos + i] = chunk[i];
-                }
+                ch[cn].text[2][pos..(13 + pos)].copy_from_slice(&chunk);
             });
 
             // If this was the final chunk (pos == 65) perform validation and possibly
@@ -5546,7 +5540,7 @@ fn plr_cmd_setuser(_nr: usize) {
                         // validate letters only and lowercase
                         for n in 0..name_end {
                             let b = name_bytes[n];
-                            if !((b'A'..=b'Z').contains(&b) || (b'a'..=b'z').contains(&b)) {
+                            if !(b.is_ascii_uppercase() || b.is_ascii_lowercase()) {
                                 flag = 1;
                                 log::warn!(
                                     "plr_cmd_setuser: name contains non-letter char {:02X}",
@@ -5855,7 +5849,7 @@ fn plr_cmd_input(nr: usize, part: u8) {
 
         // Call the server state handler (port of C++ do_say)
         State::with_mut(|state| {
-            state.do_say(cn, &text);
+            state.do_say(cn, text);
         });
     }
 }

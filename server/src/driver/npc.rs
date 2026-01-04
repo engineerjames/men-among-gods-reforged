@@ -310,7 +310,7 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
                 characters[cn].data[55] = ticker;
                 if co < MAXCHARS {
                     let co_name = characters[co].get_name();
-                    npc_saytext_n(cn, 4, Some(&co_name));
+                    npc_saytext_n(cn, 4, Some(co_name));
                 }
                 State::with(|state| {
                     state.do_npc_shout(
@@ -337,7 +337,7 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
             let co_name = characters[co].get_name();
             let cn_name = characters[cn].get_name();
             if npc_add_enemy(cn, co, true) {
-                npc_saytext_n(cn, 1, Some(&co_name));
+                npc_saytext_n(cn, 1, Some(co_name));
                 log::info!(
                     "NPC {} ({}) added {} ({}) to enemy list for attacking",
                     cn,
@@ -2695,9 +2695,8 @@ pub fn update_shop(cn: usize) {
 
     // Copy shop inventory template from data[0..9]
     Repository::with_characters(|characters| {
-        for n in 0..10 {
-            sale[n] = characters[cn].data[n];
-        }
+        let data_copy = characters[cn].data;
+        sale.copy_from_slice(&data_copy[0..10]);
     });
 
     // Check if we have free space (at least 10 slots)

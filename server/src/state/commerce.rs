@@ -606,14 +606,7 @@ impl State {
     /// * `false` - Depot is full (all 62 slots occupied)
     pub(crate) fn do_add_depot(&self, cn: usize, item_idx: usize) -> bool {
         // Find first empty depot slot
-        let empty_slot = Repository::with_characters(|ch| {
-            for n in 0..62 {
-                if ch[cn].depot[n] == 0 {
-                    return Some(n);
-                }
-            }
-            None
-        });
+        let empty_slot = Repository::with_characters(|ch| (0..62).find(|&n| ch[cn].depot[n] == 0));
 
         // If no empty slot found, depot is full
         let slot = match empty_slot {

@@ -434,12 +434,7 @@ impl State {
 
         // Find free character slot for body/grave
         let cc = Repository::with_characters(|characters| {
-            for cc in 1..MAXCHARS {
-                if characters[cc].used == core::constants::USE_EMPTY {
-                    return Some(cc);
-                }
-            }
-            None
+            (1..MAXCHARS).find(|&cc| characters[cc].used == core::constants::USE_EMPTY)
         });
 
         let Some(cc) = cc else {
