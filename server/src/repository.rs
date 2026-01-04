@@ -517,6 +517,17 @@ impl Repository {
 
         log::info!("Globals data loaded successfully.");
 
+        log::info!(
+            "Globals data: dirty={}, character_cnt={}, ticker={}, fullmoon={}, newmoon={}, unique={}, cap={}",
+            self.globals.is_dirty(),
+            self.globals.character_cnt,
+            self.globals.ticker,
+            self.globals.fullmoon,
+            self.globals.newmoon,
+            self.globals.unique,
+            self.globals.cap
+        );
+
         Ok(())
     }
 

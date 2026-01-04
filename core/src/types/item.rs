@@ -432,6 +432,10 @@ mod tests {
         let original_driver = original.driver;
         let de_driver_copy = deserialized.driver;
         assert_eq!(original_driver, de_driver_copy);
+
+        let original_data = original.data;
+        let de_data_copy = deserialized.data;
+        assert_eq!(original_data, de_data_copy);
     }
 
     #[test]

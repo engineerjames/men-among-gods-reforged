@@ -441,6 +441,12 @@ impl Character {
             bytes.extend_from_slice(&value.to_le_bytes());
         }
         bytes.extend_from_slice(&self.logout_date.to_le_bytes());
+
+        let data_copy = self.data;
+        for &value in &data_copy {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+
         for text_entry in &self.text {
             for &char_byte in text_entry {
                 bytes.push(char_byte);
@@ -1025,9 +1031,14 @@ mod tests {
         character.set_name("NewHero");
         assert_eq!(character.get_name(), "NewHero");
 
-        // Test truncation for long names
+        // Test that very long names get truncated
         let long_name = "ThisIsAVeryLongNameThatExceedsTheMaximumAllowedLength";
         character.set_name(long_name);
-        assert!(character.get_name().len() < 40);
+        // Name fills the entire 40-byte buffer
+        assert_eq!(character.get_name().len(), 40);
+        // But it should start with the beginning of the long name
+        assert!(character
+            .get_name()
+            .starts_with("ThisIsAVeryLongNameThatExceedsTheMaximu"));
     }
 }
