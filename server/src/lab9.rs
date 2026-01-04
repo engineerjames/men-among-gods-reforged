@@ -443,7 +443,8 @@ impl Labyrinth9 {
 
             // Certified riddler?
             let area_of_knowledge = characters[riddler_usize].data[72]; // Area of knowledge
-            if !(core::constants::RIDDLE_MIN_AREA..=core::constants::RIDDLE_MAX_AREA).contains(&area_of_knowledge)
+            if !(core::constants::RIDDLE_MIN_AREA..=core::constants::RIDDLE_MAX_AREA)
+                .contains(&area_of_knowledge)
             {
                 characters[character_id].data[core::constants::CHD_RIDDLER] = 0;
                 return false;

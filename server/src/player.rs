@@ -5918,7 +5918,9 @@ fn plr_cmd_look_item(nr: usize) {
         (x, y, players[nr].usnr)
     });
 
-    if !(0..core::constants::SERVER_MAPX).contains(&x) || !(0..core::constants::SERVER_MAPY).contains(&y) {
+    if !(0..core::constants::SERVER_MAPX).contains(&x)
+        || !(0..core::constants::SERVER_MAPY).contains(&y)
+    {
         log::error!("plr_cmd_look_item: cn={} invalid coords {},{}", cn, x, y);
         return;
     }

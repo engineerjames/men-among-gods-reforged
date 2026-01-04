@@ -759,7 +759,8 @@ pub fn npc_give(_cn: usize, _co: usize, _in: usize, _money: i32) -> i32 {
             // Riddle-giver special
             let ar = characters[cn].data[72];
             if characters[co].is_player()
-                && (core::constants::RIDDLE_MIN_AREA..=core::constants::RIDDLE_MAX_AREA).contains(&ar)
+                && (core::constants::RIDDLE_MIN_AREA..=core::constants::RIDDLE_MAX_AREA)
+                    .contains(&ar)
             {
                 let idx = (ar - core::constants::RIDDLE_MIN_AREA) as usize;
                 // check Lab9 guesser
@@ -2156,9 +2157,7 @@ pub fn npc_driver_low(cn: usize) {
                     }
                 }
 
-                if !(0..SERVER_MAPX).contains(&target_x)
-                    || !(0..SERVER_MAPY).contains(&target_y)
-                {
+                if !(0..SERVER_MAPX).contains(&target_x) || !(0..SERVER_MAPY).contains(&target_y) {
                     characters[cn].misc_action = core::constants::DR_IDLE as u16;
                     return;
                 }

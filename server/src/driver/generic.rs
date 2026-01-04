@@ -1649,7 +1649,8 @@ pub fn drv_useto(cn: usize, x: usize, y: usize) {
     // bounds check as in C++
     let mut xx = x as i32;
     let mut yy = y as i32;
-    if !(0..core::constants::SERVER_MAPX).contains(&xx) || !(0..core::constants::SERVER_MAPY).contains(&yy)
+    if !(0..core::constants::SERVER_MAPX).contains(&xx)
+        || !(0..core::constants::SERVER_MAPY).contains(&yy)
     {
         xx = 0;
         yy = 0;
