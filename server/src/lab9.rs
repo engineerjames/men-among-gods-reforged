@@ -611,7 +611,7 @@ impl Labyrinth9 {
         let bank_index = bankno - 1;
 
         let x = BANKS[bank_index as usize].x1;
-        let mut y = BANKS[bank_index as usize].y1;
+        let y: i32 = BANKS[bank_index as usize].y1;
         let t = BANKS[bank_index as usize].temp;
 
         let mut correct = true;
@@ -640,8 +640,6 @@ impl Labyrinth9 {
             {
                 correct = false;
             }
-
-            y += 1;
         }
 
         // Door logic
