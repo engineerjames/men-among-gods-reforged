@@ -246,9 +246,7 @@ impl Server {
                     log::warn!(
                         "RESET {} ({}): {} {} -> {} {}",
                         n,
-                        std::str::from_utf8(&ch_temp[n].name)
-                            .unwrap_or("*unknown*")
-                            .trim_end_matches('\0'),
+                        ch_temp[n].get_name(),
                         ch_x,
                         ch_y,
                         x,
@@ -724,7 +722,7 @@ impl Server {
             Repository::with_characters_mut(|ch| {
                 log::warn!(
                     "Killed character {} ({}) for invalid data",
-                    String::from_utf8_lossy(&ch[cn].name),
+                    ch[cn].get_name(),
                     cn
                 );
                 // Best-effort: destroy carried items and mark as unused
@@ -783,7 +781,7 @@ impl Server {
                                 it[in_id].get_name(),
                                 it[in_id].used,
                                 cn,
-                                String::from_utf8_lossy(&ch[cn].name)
+                                ch[cn].get_name(),
                             );
                         });
                         ch[cn].item[slot] = 0;
@@ -809,7 +807,7 @@ impl Server {
                                 it[in_id].get_name(),
                                 it[in_id].used,
                                 cn,
-                                String::from_utf8_lossy(&ch[cn].name)
+                                ch[cn].get_name()
                             );
                         });
                         ch[cn].depot[slot] = 0;
@@ -835,7 +833,7 @@ impl Server {
                                 it[worn_id].get_name(),
                                 it[worn_id].used,
                                 cn,
-                                String::from_utf8_lossy(&ch[cn].name)
+                                ch[cn].get_name()
                             );
                         });
                         ch[cn].worn[slot] = 0;

@@ -11,6 +11,7 @@ use core::constants::{
     KIN_WARRIOR, MAXITEM, MAXSKILL, MF_NOEXPIRE, NT_HITME, SERVER_MAPX, SERVER_MAPY, SK_LOCK,
     SK_RECALL, SK_RESIST, TICKS, USE_ACTIVE, USE_EMPTY, WN_RHAND,
 };
+use core::string_operations::c_string_to_str;
 use rand::Rng;
 use std::u32;
 
@@ -288,7 +289,7 @@ pub fn use_create_item(cn: usize, item_idx: usize) -> i32 {
                     core::types::FontColor::Blue,
                     &format!(
                         "Your backpack is full, so you can't take the {}.",
-                        String::from_utf8_lossy(&item_ref)
+                        c_string_to_str(&item_ref)
                     ),
                 );
             });
@@ -301,23 +302,18 @@ pub fn use_create_item(cn: usize, item_idx: usize) -> i32 {
 
     Repository::with_items(|items| {
         let item_ref = items[in2].reference;
-        let item_name = items[in2].name;
-        let source_name = items[item_idx].name;
+        let item_name = items[in2].get_name();
+        let source_name = items[item_idx].get_name();
 
         State::with(|state| {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                &format!("You got a {}.", String::from_utf8_lossy(&item_ref)),
+                &format!("You got a {}.", c_string_to_str(&item_ref)),
             );
         });
 
-        log::info!(
-            "Character {} got {} from {}",
-            cn,
-            String::from_utf8_lossy(&item_name),
-            String::from_utf8_lossy(&source_name)
-        );
+        log::info!("Character {} got {} from {}", cn, item_name, source_name);
     });
 
     // Handle special driver types
@@ -327,7 +323,7 @@ pub fn use_create_item(cn: usize, item_idx: usize) -> i32 {
 
         if data1 != 0 && driver == 53 {
             Repository::with_characters(|characters| {
-                let char_name = characters[cn].name;
+                let char_name = characters[cn].get_name();
                 Repository::with_items_mut(|items| {
                     let item = &mut items[in2];
                     State::with(|state| {
@@ -336,7 +332,7 @@ pub fn use_create_item(cn: usize, item_idx: usize) -> i32 {
                             core::types::FontColor::Blue,
                             &format!(
                                 "You feel yourself form a magical connection with the {}.",
-                                String::from_utf8_lossy(&item.reference)
+                                c_string_to_str(&item.reference)
                             ),
                         );
                     });
@@ -344,8 +340,8 @@ pub fn use_create_item(cn: usize, item_idx: usize) -> i32 {
 
                     let new_desc = format!(
                         "{} Engraved in it are the letters \"{}\".",
-                        String::from_utf8_lossy(&item.description),
-                        String::from_utf8_lossy(&char_name)
+                        c_string_to_str(&item.description),
+                        char_name,
                     );
                     if new_desc.len() < 200 {
                         let bytes = new_desc.as_bytes();
@@ -472,9 +468,8 @@ pub fn use_create_item2(cn: usize, item_idx: usize) -> i32 {
 
     if !God::give_character_item(cn, in2) {
         Repository::with_items(|items| {
-            let item_ref = String::from_utf8_lossy(&items[in2].reference)
-                .trim_end_matches('\0')
-                .to_string();
+            let item_ref = c_string_to_str(&items[in2].reference);
+
             State::with(|state| {
                 state.do_character_log(
                     cn,
@@ -490,9 +485,7 @@ pub fn use_create_item2(cn: usize, item_idx: usize) -> i32 {
     }
 
     Repository::with_items(|items| {
-        let item_ref = String::from_utf8_lossy(&items[in2].reference)
-            .trim_end_matches('\0')
-            .to_string();
+        let item_ref = c_string_to_str(&items[in2].reference);
         State::with(|state| {
             state.do_character_log(
                 cn,
@@ -600,9 +593,7 @@ pub fn use_create_item3(cn: usize, item_idx: usize) -> i32 {
     }
 
     Repository::with_items(|items| {
-        let item_ref = String::from_utf8_lossy(&items[in2].reference)
-            .trim_end_matches('\0')
-            .to_string();
+        let item_ref = c_string_to_str(&items[in2].reference);
         State::with(|state| {
             state.do_character_log(
                 cn,
@@ -870,9 +861,7 @@ pub fn stone_sword(cn: usize, item_idx: usize) -> i32 {
     God::give_character_item(cn, in2);
 
     Repository::with_items(|items| {
-        let item_ref = String::from_utf8_lossy(&items[in2].reference)
-            .trim_end_matches('\0')
-            .to_string();
+        let item_ref = c_string_to_str(&items[in2].reference);
         State::with(|state| {
             state.do_character_log(
                 cn,
@@ -928,9 +917,7 @@ pub fn finish_laby_teleport(cn: usize, nr: usize, exp: usize) -> i32 {
 
         if has_labydestroy {
             let item_ref = Repository::with_items(|items| {
-                String::from_utf8_lossy(&items[citem as usize].reference)
-                    .trim_end_matches('\0')
-                    .to_string()
+                c_string_to_str(&items[citem as usize].reference).to_string()
             });
 
             Repository::with_characters_mut(|characters| {
@@ -961,9 +948,7 @@ pub fn finish_laby_teleport(cn: usize, nr: usize, exp: usize) -> i32 {
 
             if has_labydestroy {
                 let item_ref = Repository::with_items(|items| {
-                    String::from_utf8_lossy(&items[item_idx as usize].reference)
-                        .trim_end_matches('\0')
-                        .to_string()
+                    c_string_to_str(&items[item_idx as usize].reference).to_string()
                 });
 
                 Repository::with_characters_mut(|characters| {
@@ -995,9 +980,7 @@ pub fn finish_laby_teleport(cn: usize, nr: usize, exp: usize) -> i32 {
 
             if has_labydestroy {
                 let item_ref = Repository::with_items(|items| {
-                    String::from_utf8_lossy(&items[item_idx as usize].reference)
-                        .trim_end_matches('\0')
-                        .to_string()
+                    c_string_to_str(&items[item_idx as usize].reference).to_string()
                 });
 
                 Repository::with_characters_mut(|characters| {
@@ -1024,9 +1007,7 @@ pub fn finish_laby_teleport(cn: usize, nr: usize, exp: usize) -> i32 {
         let spell_idx = Repository::with_characters(|characters| characters[cn].spell[n]);
         if spell_idx != 0 {
             let item_name = Repository::with_items(|items| {
-                String::from_utf8_lossy(&items[spell_idx as usize].name)
-                    .trim_end_matches('\0')
-                    .to_string()
+                c_string_to_str(&items[spell_idx as usize].name).to_string()
             });
 
             Repository::with_characters_mut(|characters| {
@@ -1109,9 +1090,7 @@ pub fn teleport(cn: usize, item_idx: usize) -> i32 {
     });
     if citem != 0 && is_nolab_item(citem as usize) {
         let item_ref = Repository::with_items(|items| {
-            String::from_utf8_lossy(&items[citem as usize].reference)
-                .trim_end_matches('\0')
-                .to_string()
+            c_string_to_str(&items[citem as usize].reference).to_string()
         });
 
         Repository::with_characters_mut(|characters| {
@@ -1136,9 +1115,7 @@ pub fn teleport(cn: usize, item_idx: usize) -> i32 {
         let inv_item = Repository::with_characters(|characters| characters[cn].item[n]);
         if inv_item != 0 && is_nolab_item(inv_item as usize) {
             let item_ref = Repository::with_items(|items| {
-                String::from_utf8_lossy(&items[inv_item as usize].reference)
-                    .trim_end_matches('\0')
-                    .to_string()
+                c_string_to_str(&items[inv_item as usize].reference).to_string()
             });
 
             Repository::with_characters_mut(|characters| {
@@ -1270,11 +1247,8 @@ pub fn teleport2(cn: usize, item_idx: usize) -> i32 {
     // Use add_spell to add the spell to the character
     let added = driver::add_spell(cn, spell_item);
     if added == 0 {
-        let spell_name = Repository::with_items(|items| {
-            String::from_utf8_lossy(&items[spell_item].name)
-                .trim_end_matches('\0')
-                .to_string()
-        });
+        let spell_name =
+            Repository::with_items(|items| c_string_to_str(&items[spell_item].name).to_string());
         State::with(|state| {
             state.do_character_log(
                 cn,
@@ -1299,9 +1273,7 @@ pub fn use_labyrinth(cn: usize, _item_idx: usize) -> i32 {
     let citem = Repository::with_characters(|characters| characters[cn].citem);
     if citem != 0 && is_nolab_item(citem as usize) {
         let item_ref = Repository::with_items(|items| {
-            String::from_utf8_lossy(&items[citem as usize].reference)
-                .trim_end_matches('\0')
-                .to_string()
+            c_string_to_str(&items[citem as usize].reference).to_string()
         });
 
         Repository::with_characters_mut(|characters| {
@@ -1326,9 +1298,7 @@ pub fn use_labyrinth(cn: usize, _item_idx: usize) -> i32 {
         let inv_item = Repository::with_characters(|characters| characters[cn].item[n]);
         if inv_item != 0 && is_nolab_item(inv_item as usize) {
             let item_ref = Repository::with_items(|items| {
-                String::from_utf8_lossy(&items[inv_item as usize].reference)
-                    .trim_end_matches('\0')
-                    .to_string()
+                c_string_to_str(&items[inv_item as usize].reference).to_string()
             });
 
             Repository::with_characters_mut(|characters| {
@@ -1524,9 +1494,7 @@ pub fn use_bag(cn: usize, item_idx: usize) -> i32 {
 
         if may_attack == 0 && allowed_cn != cn {
             let owner_name = Repository::with_characters(|characters| {
-                String::from_utf8_lossy(&characters[owner].name)
-                    .trim_end_matches('\0')
-                    .to_string()
+                c_string_to_str(&characters[owner].name).to_string()
             });
 
             State::with(|state| {
@@ -1550,9 +1518,7 @@ pub fn use_bag(cn: usize, item_idx: usize) -> i32 {
 
             if is_active && owner_x != 0 {
                 let cn_name = Repository::with_characters(|characters| {
-                    String::from_utf8_lossy(&characters[cn].name)
-                        .trim_end_matches('\0')
-                        .to_string()
+                    c_string_to_str(&characters[cn].name).to_string()
                 });
 
                 State::with(|state| {
@@ -1573,9 +1539,7 @@ pub fn use_bag(cn: usize, item_idx: usize) -> i32 {
 
     // Allow the search
     let co_ref = Repository::with_characters(|characters| {
-        String::from_utf8_lossy(&characters[co].reference)
-            .trim_end_matches('\0')
-            .to_string()
+        c_string_to_str(&characters[co].reference).to_string()
     });
 
     State::with_mut(|state| {
@@ -3007,7 +2971,7 @@ pub fn use_pile(cn: usize, item_idx: usize) -> i32 {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Green,
-                        &format!("You've found a {}!\n", String::from_utf8_lossy(&reference)),
+                        &format!("You've found a {}!\n", c_string_to_str(&reference)),
                     );
                 });
             }
@@ -3615,9 +3579,7 @@ pub fn boost_char(cn: usize, divi: usize) -> i32 {
         }
 
         // Update name
-        let old_name = String::from_utf8_lossy(&characters[cn].name)
-            .trim_end_matches('\0')
-            .to_string();
+        let old_name = characters[cn].get_name();
         let new_name = format!("Strong {}", old_name);
         let new_name_bytes = new_name.as_bytes();
         let len = new_name_bytes.len().min(39);
@@ -3772,7 +3734,7 @@ pub fn solved_pentagram(cn: usize, item_idx: usize) -> i32 {
 
     log::info!("Character {} solved pentagram quest", cn);
 
-    let cn_name = Repository::with_characters(|characters| characters[cn].name);
+    let cn_name = Repository::with_characters(|characters| characters[cn].get_name().to_string());
     let mut characters_in_pents: usize = 0;
 
     // Notify all players and award pending exp
@@ -3806,10 +3768,7 @@ pub fn solved_pentagram(cn: usize, item_idx: usize) -> i32 {
                 state.do_character_log(
                     n,
                     core::types::FontColor::Green,
-                    &format!(
-                        "{}solved the pentagram quest!\n",
-                        String::from_utf8_lossy(&cn_name)
-                    ),
+                    &format!("{} solved the pentagram quest!\n", cn_name),
                 );
             });
         }
@@ -4171,9 +4130,7 @@ pub fn use_shrine(cn: usize, _item_idx: usize) -> i32 {
             if in2 >= items.len() {
                 String::new()
             } else {
-                String::from_utf8_lossy(&items[in2].description)
-                    .trim_end_matches('\0')
-                    .to_string()
+                c_string_to_str(&items[in2].description).to_string()
             }
         });
 
@@ -4291,9 +4248,7 @@ pub fn use_shrine(cn: usize, _item_idx: usize) -> i32 {
 
             if bestcount == 1 {
                 let name = Repository::with_characters(|characters| {
-                    String::from_utf8_lossy(&characters[bestcn].name)
-                        .trim_end_matches('\0')
-                        .to_string()
+                    characters[bestcn].get_name().to_string()
                 });
                 State::with(|state| {
                     state.do_character_log(

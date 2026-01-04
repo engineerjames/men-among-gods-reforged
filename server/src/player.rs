@@ -5564,13 +5564,7 @@ fn plr_cmd_setuser(_nr: usize) {
                             }
 
                             // check reserved name "Self"
-                            let name_str = {
-                                let end = name_bytes
-                                    .iter()
-                                    .position(|&c| c == 0)
-                                    .unwrap_or(name_bytes.len());
-                                String::from_utf8_lossy(&name_bytes[..end]).to_string()
-                            };
+                            let name_str = c_string_to_str(name_bytes).to_string();
 
                             if name_str == "Self" {
                                 log::warn!("plr_cmd_setuser: name \"{}\" is reserved", name_str);
@@ -5628,13 +5622,7 @@ fn plr_cmd_setuser(_nr: usize) {
 
                         // If flag set -> report and don't commit name change
                         if flag != 0 {
-                            let name_str = {
-                                let end = ch[cn].text[0]
-                                    .iter()
-                                    .position(|&c| c == 0)
-                                    .unwrap_or(ch[cn].text[0].len());
-                                String::from_utf8_lossy(&ch[cn].text[0][..end]).to_string()
-                            };
+                            let name_str = c_string_to_str(&ch[cn].text[0]).to_string();
                             let reason = if flag == 1 {
                                 "contains non-letters. Please choose a more normal-looking name."
                                     .to_string()
@@ -5675,21 +5663,9 @@ fn plr_cmd_setuser(_nr: usize) {
                     }
 
                     // Description handling: copy text[1] and possibly append text[2]
-                    let mut desc = {
-                        let end1 = ch[cn].text[1]
-                            .iter()
-                            .position(|&c| c == 0)
-                            .unwrap_or(ch[cn].text[1].len());
-                        String::from_utf8_lossy(&ch[cn].text[1][..end1]).to_string()
-                    };
+                    let mut desc = c_string_to_str(&ch[cn].text[1]).to_string();
                     if desc.len() > 77 {
-                        let add = {
-                            let end2 = ch[cn].text[2]
-                                .iter()
-                                .position(|&c| c == 0)
-                                .unwrap_or(ch[cn].text[2].len());
-                            String::from_utf8_lossy(&ch[cn].text[2][..end2]).to_string()
-                        };
+                        let add = c_string_to_str(&ch[cn].text[2]).to_string();
                         desc.push_str(&add);
                     }
 
@@ -5699,14 +5675,7 @@ fn plr_cmd_setuser(_nr: usize) {
                         reason = Some("is too short".to_string());
                     } else {
                         // Does description contain name?
-                        let name_str = {
-                            let end = ch[cn]
-                                .name
-                                .iter()
-                                .position(|&c| c == 0)
-                                .unwrap_or(ch[cn].name.len());
-                            String::from_utf8_lossy(&ch[cn].name[..end]).to_string()
-                        };
+                        let name_str = c_string_to_str(&ch[cn].name).to_string();
                         if !desc.contains(&name_str) {
                             reason = Some("does not contain your name".to_string());
                         } else if desc.contains('"') {
@@ -5751,14 +5720,7 @@ fn plr_cmd_setuser(_nr: usize) {
                         });
 
                         // fallback description
-                        let name_str = {
-                            let end = ch[cn]
-                                .name
-                                .iter()
-                                .position(|&c| c == 0)
-                                .unwrap_or(ch[cn].name.len());
-                            String::from_utf8_lossy(&ch[cn].name[..end]).to_string()
-                        };
+                        let name_str = c_string_to_str(&ch[cn].name).to_string();
                         let pronoun = if (ch[cn].kindred & core::constants::KIN_FEMALE as i32) != 0
                         {
                             "She"
@@ -5889,9 +5851,7 @@ fn plr_cmd_input(nr: usize, part: u8) {
         let (cn, raw) =
             Server::with_players(|players| (players[nr].usnr, players[nr].input.to_vec()));
 
-        // Find the first NUL and decode bytes up to that point as UTF-8 (lossy to be safe)
-        let len = raw.iter().position(|&b| b == 0).unwrap_or(raw.len());
-        let text = String::from_utf8_lossy(&raw[..len]).to_string();
+        let text = c_string_to_str(&raw);
 
         // Call the server state handler (port of C++ do_say)
         State::with_mut(|state| {

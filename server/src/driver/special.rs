@@ -700,8 +700,7 @@ pub fn npc_stunrun_msg(
         NT_SHOUT => 0,
         NT_HITME => 0,
         _ => {
-            let name =
-                Repository::with_characters(|ch| String::from_utf8_lossy(&ch[cn].name).to_string());
+            let name = Repository::with_characters(|ch| ch[cn].get_name().to_string());
             log::warn!("Unknown NPC message for {} ({}): {}", cn, name, msg_type);
             0
         }
@@ -1004,8 +1003,7 @@ pub fn npc_cityattack_msg(
         x if x == NT_SHOUT as i32 => 0,
         x if x == NT_HITME as i32 => 0,
         _ => {
-            let name =
-                Repository::with_characters(|ch| String::from_utf8_lossy(&ch[cn].name).to_string());
+            let name = Repository::with_characters(|ch| ch[cn].get_name().to_string());
             log::warn!("Unknown NPC message for {} ({}): {}", cn, name, msg_type);
             0
         }
@@ -1035,8 +1033,7 @@ pub fn npc_malte_low(cn: usize) -> i32 {
     match state {
         0 => {
             // Thank the player
-            let co_name =
-                Repository::with_characters(|ch| String::from_utf8_lossy(&ch[co].name).to_string());
+            let co_name = Repository::with_characters(|ch| ch[co].get_name().to_string());
             let message = format!("Thank you so much for saving me, {}!", co_name);
             State::with(|state| state.do_sayx(cn, &message));
 
@@ -1185,8 +1182,7 @@ pub fn npc_malte_msg(
         x if x == NT_SHOUT as i32 => 0,
         x if x == NT_HITME as i32 => 0,
         _ => {
-            let name =
-                Repository::with_characters(|ch| String::from_utf8_lossy(&ch[cn].name).to_string());
+            let name = Repository::with_characters(|ch| ch[cn].get_name().to_string());
             log::warn!("Unknown NPC message for {} ({}): {}", cn, name, msg_type);
             0
         }

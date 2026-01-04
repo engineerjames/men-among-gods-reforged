@@ -1,5 +1,6 @@
 use crate::repository::Repository;
 use crate::state::State;
+use core::string_operations::c_string_to_str;
 use core::types::FontColor;
 
 /// Show the description and available slots for a rat-eye (driver 17)
@@ -10,7 +11,7 @@ pub fn look_rat_eye(cn: usize, item_idx: usize) {
         state.do_character_log(
             cn,
             FontColor::Yellow,
-            &format!("{}\n", String::from_utf8_lossy(&description)),
+            &format!("{}\n", c_string_to_str(&description)),
         );
     });
 
@@ -18,9 +19,8 @@ pub fn look_rat_eye(cn: usize, item_idx: usize) {
     for n in 0..9 {
         let temp_id = Repository::with_items(|items| items[item_idx].data[n] as usize);
         if temp_id != 0 {
-            let name = Repository::with_item_templates(|temps| {
-                String::from_utf8_lossy(&temps[temp_id].name).to_string()
-            });
+            let name =
+                Repository::with_item_templates(|temps| temps[temp_id].get_name().to_string());
             State::with(|state| {
                 state.do_character_log(
                     cn,
@@ -39,7 +39,7 @@ pub fn look_spell_scroll(cn: usize, item_idx: usize) {
         state.do_character_log(
             cn,
             FontColor::Yellow,
-            &format!("{}\n", String::from_utf8_lossy(&description)),
+            &format!("{}\n", c_string_to_str(&description)),
         );
     });
 
