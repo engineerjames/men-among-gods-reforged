@@ -1496,13 +1496,13 @@ impl God {
             } else if cx.starts_with('s') || cx.starts_with('S') {
                 if let Ok(val) = cx[1..].parse::<i32>() {
                     target_y = (target_y as i32 + val)
-                        .min((core::constants::SERVER_MAPY - 2))
+                        .min(core::constants::SERVER_MAPY - 2)
                         as usize;
                 }
             } else if cx.starts_with('e') || cx.starts_with('E') {
                 if let Ok(val) = cx[1..].parse::<i32>() {
                     target_x = (target_x as i32 + val)
-                        .min((core::constants::SERVER_MAPX - 2))
+                        .min(core::constants::SERVER_MAPX - 2)
                         as usize;
                 }
             } else if cx.starts_with('w') || cx.starts_with('W') {
@@ -2682,10 +2682,10 @@ impl God {
 
             let tx = target_x
                 .max(1)
-                .min((core::constants::SERVER_MAPX - 2)) as usize;
+                .min(core::constants::SERVER_MAPX - 2) as usize;
             let ty = target_y
                 .max(1)
-                .min((core::constants::SERVER_MAPY - 2)) as usize;
+                .min(core::constants::SERVER_MAPY - 2) as usize;
 
             let xo = characters[co].x as i32;
             let yo = characters[co].y as i32;

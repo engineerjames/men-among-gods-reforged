@@ -2671,9 +2671,9 @@ pub fn npc_grave_logic(cn: usize) -> bool {
 
     // Scan area around NPC (within 8 tiles)
     let min_y = std::cmp::max(ch_y as i32 - 8, 1);
-    let max_y = std::cmp::min(ch_y as i32 + 8, (SERVER_MAPY - 1));
+    let max_y = std::cmp::min(ch_y as i32 + 8, SERVER_MAPY - 1);
     let min_x = std::cmp::max(ch_x as i32 - 8, 1);
-    let max_x = std::cmp::min(ch_x as i32 + 8, (SERVER_MAPX - 1));
+    let max_x = std::cmp::min(ch_x as i32 + 8, SERVER_MAPX - 1);
 
     for y in min_y..max_y {
         for x in min_x..max_x {
@@ -3217,9 +3217,9 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
         && ticker > data_27 + (TICKS * 120)
     {
         let x1 = co_x as i32;
-        let x2 = (data_29 % SERVER_MAPX);
+        let x2 = data_29 % SERVER_MAPX;
         let y1 = co_y as i32;
-        let y2 = (data_29 / SERVER_MAPX);
+        let y2 = data_29 / SERVER_MAPX;
         let dist = (x1 - x2).abs() + (y1 - y2).abs();
 
         if dist <= data_93 {

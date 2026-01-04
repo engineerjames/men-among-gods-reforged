@@ -630,7 +630,7 @@ pub fn skill_light(cn: usize) {
     let light_skill = Repository::with_characters(|ch| ch[cn].skill[SK_LIGHT][5]);
     spell_light(cn, co, light_skill as i32);
 
-    add_exhaust(cn, (TICKS / 4));
+    add_exhaust(cn, TICKS / 4);
 }
 
 pub fn spellpower(cn: usize) -> i32 {
@@ -852,7 +852,7 @@ pub fn skill_protect(cn: usize) {
     let power = Repository::with_characters(|ch| ch[cn].skill[SK_PROTECT][5] as i32);
     spell_protect(cn, co, power);
 
-    add_exhaust(cn, (TICKS / 2));
+    add_exhaust(cn, TICKS / 2);
 }
 
 pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
@@ -1077,7 +1077,7 @@ pub fn skill_enhance(cn: usize) {
         }
         let power = Repository::with_characters(|ch| ch[cn].skill[SK_ENHANCE][5] as i32);
         spell_enhance(cn, co, power);
-        add_exhaust(cn, (TICKS / 2));
+        add_exhaust(cn, TICKS / 2);
         return;
     }
 
@@ -1107,7 +1107,7 @@ pub fn skill_enhance(cn: usize) {
 
     let power = Repository::with_characters(|ch| ch[cn].skill[SK_ENHANCE][5] as i32);
     spell_enhance(cn, co, power);
-    add_exhaust(cn, (TICKS / 2));
+    add_exhaust(cn, TICKS / 2);
 }
 
 pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
@@ -1635,7 +1635,7 @@ pub fn skill_mshield(cn: usize) {
             ch[cn].skill[core::constants::SK_MSHIELD][5] as i32
         }),
     );
-    add_exhaust(cn, (core::constants::TICKS * 3));
+    add_exhaust(cn, core::constants::TICKS * 3);
 }
 
 pub fn spell_heal(cn: usize, co: usize, power: i32) -> i32 {
