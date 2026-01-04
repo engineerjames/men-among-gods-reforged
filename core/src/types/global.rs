@@ -66,6 +66,74 @@ pub struct Global {
 }
 
 impl Global {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(std::mem::size_of::<Global>());
+
+        bytes.extend_from_slice(&self.mdtime.to_le_bytes());
+        bytes.extend_from_slice(&self.mdday.to_le_bytes());
+        bytes.extend_from_slice(&self.mdyear.to_le_bytes());
+        bytes.extend_from_slice(&self.dlight.to_le_bytes());
+
+        bytes.extend_from_slice(&self.players_created.to_le_bytes());
+        bytes.extend_from_slice(&self.npcs_created.to_le_bytes());
+        bytes.extend_from_slice(&self.players_died.to_le_bytes());
+        bytes.extend_from_slice(&self.npcs_died.to_le_bytes());
+
+        bytes.extend_from_slice(&self.character_cnt.to_le_bytes());
+        bytes.extend_from_slice(&self.item_cnt.to_le_bytes());
+        bytes.extend_from_slice(&self.effect_cnt.to_le_bytes());
+
+        bytes.extend_from_slice(&self.expire_cnt.to_le_bytes());
+        bytes.extend_from_slice(&self.expire_run.to_le_bytes());
+
+        bytes.extend_from_slice(&self.gc_cnt.to_le_bytes());
+        bytes.extend_from_slice(&self.gc_run.to_le_bytes());
+
+        bytes.extend_from_slice(&self.lost_cnt.to_le_bytes());
+        bytes.extend_from_slice(&self.lost_run.to_le_bytes());
+
+        bytes.extend_from_slice(&self.reset_char.to_le_bytes());
+        bytes.extend_from_slice(&self.reset_item.to_le_bytes());
+
+        bytes.extend_from_slice(&self.ticker.to_le_bytes());
+
+        bytes.extend_from_slice(&self.total_online_time.to_le_bytes());
+        for &value in &self.online_per_hour {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+
+        bytes.extend_from_slice(&self.flags.to_le_bytes());
+
+        bytes.extend_from_slice(&self.uptime.to_le_bytes());
+        for &value in &self.uptime_per_hour {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+
+        bytes.extend_from_slice(&self.awake.to_le_bytes());
+        bytes.extend_from_slice(&self.body.to_le_bytes());
+
+        bytes.extend_from_slice(&self.players_online.to_le_bytes());
+        bytes.extend_from_slice(&self.queuesize.to_le_bytes());
+
+        bytes.extend_from_slice(&self.recv.to_le_bytes());
+        bytes.extend_from_slice(&self.send.to_le_bytes());
+
+        bytes.extend_from_slice(&self.transfer_reset_time.to_le_bytes());
+        bytes.extend_from_slice(&self.load_avg.to_le_bytes());
+
+        bytes.extend_from_slice(&self.load.to_le_bytes());
+
+        bytes.extend_from_slice(&self.max_online.to_le_bytes());
+        for &value in &self.max_online_per_hour {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        bytes.push(self.fullmoon as u8);
+        bytes.push(self.newmoon as u8);
+        bytes.extend_from_slice(&self.unique.to_le_bytes());
+        bytes.extend_from_slice(&self.cap.to_le_bytes());
+        bytes
+    }
+
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         if bytes.len() < std::mem::size_of::<Global>() {
             return None;

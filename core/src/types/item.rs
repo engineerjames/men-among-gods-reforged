@@ -138,6 +138,85 @@ impl Item {
         (self.flags & ItemFlags::IF_SOULSTONE.bits()) != 0
     }
 
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(std::mem::size_of::<Item>());
+
+        bytes.extend_from_slice(&self.used.to_le_bytes());
+        bytes.extend_from_slice(&self.name);
+        bytes.extend_from_slice(&self.reference);
+        bytes.extend_from_slice(&self.description);
+        bytes.extend_from_slice(&self.flags.to_le_bytes());
+        bytes.extend_from_slice(&self.value.to_le_bytes());
+        bytes.extend_from_slice(&self.placement.to_le_bytes());
+        bytes.extend_from_slice(&self.temp.to_le_bytes());
+        bytes.push(self.damage_state);
+        for i in 0..2 {
+            bytes.extend_from_slice(&self.max_age[i].to_le_bytes());
+        }
+        for i in 0..2 {
+            bytes.extend_from_slice(&self.current_age[i].to_le_bytes());
+        }
+        bytes.extend_from_slice(&self.max_damage.to_le_bytes());
+        bytes.extend_from_slice(&self.current_damage.to_le_bytes());
+        for i in 0..5 {
+            for j in 0..3 {
+                bytes.push(self.attrib[i][j] as u8);
+            }
+        }
+        for i in 0..3 {
+            bytes.extend_from_slice(&self.hp[i].to_le_bytes());
+        }
+        for i in 0..3 {
+            bytes.extend_from_slice(&self.end[i].to_le_bytes());
+        }
+        for i in 0..3 {
+            bytes.extend_from_slice(&self.mana[i].to_le_bytes());
+        }
+        for i in 0..50 {
+            for j in 0..3 {
+                bytes.push(self.skill[i][j] as u8);
+            }
+        }
+        bytes.extend_from_slice(&self.armor[0].to_le_bytes());
+        bytes.extend_from_slice(&self.armor[1].to_le_bytes());
+        bytes.extend_from_slice(&self.weapon[0].to_le_bytes());
+        bytes.extend_from_slice(&self.weapon[1].to_le_bytes());
+        for i in 0..2 {
+            bytes.extend_from_slice(&self.light[i].to_le_bytes());
+        }
+        bytes.extend_from_slice(&self.duration.to_le_bytes());
+        bytes.extend_from_slice(&self.cost.to_le_bytes());
+        bytes.extend_from_slice(&self.power.to_le_bytes());
+        bytes.extend_from_slice(&self.active.to_le_bytes());
+        bytes.extend_from_slice(&self.x.to_le_bytes());
+        bytes.extend_from_slice(&self.y.to_le_bytes());
+        bytes.extend_from_slice(&self.carried.to_le_bytes());
+        bytes.extend_from_slice(&self.sprite_override.to_le_bytes());
+        for i in 0..2 {
+            bytes.extend_from_slice(&self.sprite[i].to_le_bytes());
+        }
+        for i in 0..2 {
+            bytes.push(self.status[i]);
+        }
+        for i in 0..2 {
+            bytes.push(self.gethit_dam[i] as u8);
+        }
+        bytes.push(self.min_rank as u8);
+        for i in 0..3 {
+            bytes.push(self.future[i] as u8);
+        }
+        for i in 0..9 {
+            bytes.extend_from_slice(&self.future3[i].to_le_bytes());
+        }
+        bytes.extend_from_slice(&self.t_bought.to_le_bytes());
+        bytes.extend_from_slice(&self.t_sold.to_le_bytes());
+        bytes.push(self.driver);
+        for i in 0..10 {
+            bytes.extend_from_slice(&self.data[i].to_le_bytes());
+        }
+        bytes
+    }
+
     pub fn from_bytes(data: &[u8]) -> Option<Self> {
         if data.len() < std::mem::size_of::<Item>() {
             return None;

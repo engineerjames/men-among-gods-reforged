@@ -13,6 +13,21 @@ pub struct Effect {
 }
 
 impl Effect {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(std::mem::size_of::<Effect>());
+
+        bytes.push(self.used);
+        bytes.push(self.flags);
+        bytes.push(self.effect_type);
+        bytes.extend_from_slice(&self.duration.to_le_bytes());
+
+        let data_copy = self.data;
+        for &value in &data_copy {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        bytes
+    }
+
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         if bytes.len() < std::mem::size_of::<Effect>() {
             return None;

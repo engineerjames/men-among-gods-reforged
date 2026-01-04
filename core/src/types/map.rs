@@ -22,6 +22,22 @@ pub struct Map {
 }
 
 impl Map {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(std::mem::size_of::<Map>());
+
+        // We want to maintain the little-endian byte ordering since
+        // the original data files are in little-endian format.
+        bytes.extend_from_slice(&self.sprite.to_le_bytes());
+        bytes.extend_from_slice(&self.fsprite.to_le_bytes());
+        bytes.extend_from_slice(&self.ch.to_le_bytes());
+        bytes.extend_from_slice(&self.to_ch.to_le_bytes());
+        bytes.extend_from_slice(&self.it.to_le_bytes());
+        bytes.extend_from_slice(&self.dlight.to_le_bytes());
+        bytes.extend_from_slice(&self.light.to_le_bytes());
+        bytes.extend_from_slice(&self.flags.to_le_bytes());
+        bytes
+    }
+
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         if bytes.len() < std::mem::size_of::<Map>() {
             return None;
