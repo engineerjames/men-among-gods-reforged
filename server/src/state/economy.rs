@@ -414,7 +414,7 @@ impl State {
                 if it.driver != 33 {
                     continue;
                 }
-                if it.active != std::u32::MAX {
+                if it.active != u32::MAX {
                     // active == -1 in C
                     continue;
                 }

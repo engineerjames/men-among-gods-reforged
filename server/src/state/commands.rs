@@ -35,9 +35,11 @@ impl State {
                         items[in_idx].temp = 0;
                         items[in_idx].description = [0; 200];
                         let bytes = text.as_bytes();
-                        for i in 0..std::cmp::min(bytes.len(), items[in_idx].description.len()) {
-                            items[in_idx].description[i] = bytes[i];
-                        }
+                        let length_to_copy =
+                            std::cmp::min(bytes.len(), items[in_idx].description.len());
+                        items[in_idx].description[..length_to_copy]
+                            .copy_from_slice(&bytes[..length_to_copy]);
+
                         items[in_idx].flags |= core::constants::ItemFlags::IF_NOEXPIRE.bits();
                         items[in_idx].carried = cn as u16;
                     });
@@ -191,9 +193,8 @@ impl State {
                 let desc = format!("Level {} soulstone, holding {} exp.", rank, cexp);
                 it.description = [0; 200];
                 let desc_bytes = desc.as_bytes();
-                for i in 0..std::cmp::min(desc_bytes.len(), it.description.len()) {
-                    it.description[i] = desc_bytes[i];
-                }
+                let length_to_copy = std::cmp::min(desc_bytes.len(), it.description.len());
+                it.description[..length_to_copy].copy_from_slice(&desc_bytes[..length_to_copy]);
 
                 it.data[0] = rank;
                 it.data[1] = cexp as u32;

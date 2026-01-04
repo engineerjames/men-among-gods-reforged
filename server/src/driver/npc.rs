@@ -2695,9 +2695,8 @@ pub fn update_shop(cn: usize) {
 
     // Copy shop inventory template from data[0..9]
     Repository::with_characters(|characters| {
-        for n in 0..10 {
-            sale[n] = characters[cn].data[n];
-        }
+        let data_copy = characters[cn].data;
+        sale.copy_from_slice(&data_copy[0..10]);
     });
 
     // Check if we have free space (at least 10 slots)

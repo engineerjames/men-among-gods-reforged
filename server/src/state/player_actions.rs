@@ -813,9 +813,9 @@ impl State {
         }
         let mut buf = [0u8; 160];
         let bytes = msg.as_bytes();
-        for i in 0..std::cmp::min(bytes.len(), 159) {
-            buf[i] = bytes[i];
-        }
+        let len_to_copy = std::cmp::min(bytes.len(), 159);
+        buf[..len_to_copy].copy_from_slice(&bytes[..len_to_copy]);
+
         Repository::with_characters_mut(|ch| ch[co].text[3] = buf);
         self.do_character_log(
             cn,
@@ -850,9 +850,9 @@ impl State {
                         "Away. Use #afk again to show you're back. Message:\n",
                     );
                     let bytes = msg.as_bytes();
-                    for i in 0..std::cmp::min(bytes.len(), 48) {
-                        ch[cn].text[0][i] = bytes[i];
-                    }
+                    let len_to_copy = std::cmp::min(bytes.len(), 48);
+                    ch[cn].text[0][..len_to_copy].copy_from_slice(&bytes[..len_to_copy]);
+
                     self.do_character_log(
                         cn,
                         core::types::FontColor::Blue,

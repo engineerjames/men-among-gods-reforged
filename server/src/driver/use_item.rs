@@ -13,7 +13,6 @@ use core::constants::{
 };
 use core::string_operations::c_string_to_str;
 use rand::Rng;
-use std::u32;
 
 // Helper function to take an item from a character
 fn take_item_from_char(item_idx: usize, cn: usize) {
