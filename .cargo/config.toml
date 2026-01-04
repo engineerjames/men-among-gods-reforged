@@ -1,0 +1,2 @@
+[build]
+rustflags = ["-A", "clippy::all", "-W", "clippy::unnecessary_cast"]
