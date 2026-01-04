@@ -169,7 +169,7 @@ impl State {
     /// Create a soulstone item.
     pub(crate) fn do_make_soulstone(&self, cn: usize, cexp: i32) {
         if let Some(in_idx) = God::create_item(1146) {
-            let rank = crate::helpers::points2rank(cexp as u32) as u32;
+            let rank = crate::helpers::points2rank(cexp as u32);
 
             Repository::with_items_mut(|items| {
                 let it = &mut items[in_idx];
@@ -208,7 +208,7 @@ impl State {
     ///
     /// List all characters with a specific flag.
     pub(crate) fn do_list_all_flags(&self, cn: usize, flag: u64) {
-        for n in 1..core::constants::MAXCHARS as usize {
+        for n in 1..core::constants::MAXCHARS {
             let show = Repository::with_characters(|chars| {
                 let ch = &chars[n];
                 if ch.used == core::constants::USE_EMPTY {
@@ -261,7 +261,7 @@ impl State {
     ///
     /// Admin command to respawn a character.
     pub(crate) fn do_respawn(&self, cn: usize, co: usize) {
-        if co < 1 || co >= core::constants::MAXTCHARS as usize {
+        if co < 1 || co >= core::constants::MAXTCHARS {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -298,7 +298,7 @@ impl State {
         let mut foundalive = 0;
         let mut foundtemp = 0;
 
-        for n in 1..core::constants::MAXCHARS as usize {
+        for n in 1..core::constants::MAXCHARS {
             let matched = Repository::with_characters(|chars| {
                 let ch = &chars[n];
                 if ch.used == core::constants::USE_EMPTY {
@@ -326,7 +326,7 @@ impl State {
             }
         }
 
-        for n in 1..core::constants::MAXTCHARS as usize {
+        for n in 1..core::constants::MAXTCHARS {
             let matched = Repository::with_character_templates(|temps| {
                 if temps[n].used == core::constants::USE_EMPTY {
                     return false;
@@ -681,7 +681,7 @@ impl State {
                     God::set_flag(
                         cn,
                         parse_usize(arg_get(1)),
-                        core::constants::CharacterFlags::CF_BLACK.bits() as u64,
+                        core::constants::CharacterFlags::CF_BLACK.bits(),
                     );
                     return;
                 }
@@ -710,7 +710,7 @@ impl State {
                     God::set_flag(
                         cn,
                         parse_usize(arg_get(1)),
-                        core::constants::CharacterFlags::CF_CCP.bits() as u64,
+                        core::constants::CharacterFlags::CF_CCP.bits(),
                     );
                     return;
                 }
@@ -721,7 +721,7 @@ impl State {
                 }
                 if starts("create") && f_g {
                     log::debug!("Processing create command for {}", cn);
-                    God::create(cn, parse_i32(arg_get(1)) as i32);
+                    God::create(cn, parse_i32(arg_get(1)));
                     return;
                 }
                 if starts("creator") && f_gg {
@@ -729,7 +729,7 @@ impl State {
                     God::set_flag(
                         cn,
                         parse_usize(arg_get(1)),
-                        core::constants::CharacterFlags::CF_CREATOR.bits() as u64,
+                        core::constants::CharacterFlags::CF_CREATOR.bits(),
                     );
                     return;
                 }
@@ -830,7 +830,7 @@ impl State {
                     God::set_flag(
                         cn,
                         parse_usize(arg_get(1)),
-                        core::constants::CharacterFlags::CF_GOLDEN.bits() as u64,
+                        core::constants::CharacterFlags::CF_GOLDEN.bits(),
                     );
                     return;
                 }
@@ -869,7 +869,7 @@ impl State {
                     God::set_flag(
                         cn,
                         parse_usize(arg_get(1)),
-                        core::constants::CharacterFlags::CF_GOD.bits() as u64,
+                        core::constants::CharacterFlags::CF_GOD.bits(),
                     );
                     return;
                 }
@@ -878,7 +878,7 @@ impl State {
                     God::set_flag(
                         cn,
                         parse_usize(arg_get(1)),
-                        core::constants::CharacterFlags::CF_GREATERGOD.bits() as u64,
+                        core::constants::CharacterFlags::CF_GREATERGOD.bits(),
                     );
                     return;
                 }
@@ -888,7 +888,7 @@ impl State {
                     God::set_flag(
                         cn,
                         parse_usize(arg_get(1)),
-                        core::constants::CharacterFlags::CF_GREATERINV.bits() as u64,
+                        core::constants::CharacterFlags::CF_GREATERINV.bits(),
                     );
                     return;
                 }
@@ -936,11 +936,7 @@ impl State {
                 }
                 if starts("immortal") && f_u {
                     log::debug!("Processing immortal command for {}", cn);
-                    God::set_flag(
-                        cn,
-                        cn,
-                        core::constants::CharacterFlags::CF_IMMORTAL.bits() as u64,
-                    );
+                    God::set_flag(cn, cn, core::constants::CharacterFlags::CF_IMMORTAL.bits());
                     return;
                 }
                 if starts("immortal") && f_g {
@@ -948,7 +944,7 @@ impl State {
                     God::set_flag(
                         cn,
                         parse_usize(arg_get(1)),
-                        core::constants::CharacterFlags::CF_IMMORTAL.bits() as u64,
+                        core::constants::CharacterFlags::CF_IMMORTAL.bits(),
                     );
                     return;
                 }
@@ -957,7 +953,7 @@ impl State {
                     God::set_flag(
                         cn,
                         parse_usize(arg_get(1)),
-                        core::constants::CharacterFlags::CF_IMP.bits() as u64,
+                        core::constants::CharacterFlags::CF_IMP.bits(),
                     );
                     return;
                 }
@@ -976,7 +972,7 @@ impl State {
                     God::set_flag(
                         cn,
                         parse_usize(arg_get(1)),
-                        core::constants::CharacterFlags::CF_INFRARED.bits() as u64,
+                        core::constants::CharacterFlags::CF_INFRARED.bits(),
                     );
                     return;
                 }
@@ -985,7 +981,7 @@ impl State {
                     God::set_flag(
                         cn,
                         parse_usize(arg_get(1)),
-                        core::constants::CharacterFlags::CF_INVISIBLE.bits() as u64,
+                        core::constants::CharacterFlags::CF_INVISIBLE.bits(),
                     );
                     return;
                 }
@@ -1134,7 +1130,7 @@ impl State {
                     God::set_flag(
                         cn,
                         parse_usize(arg_get(1)),
-                        core::constants::CharacterFlags::CF_NOLIST.bits() as u64,
+                        core::constants::CharacterFlags::CF_NOLIST.bits(),
                     );
                     return;
                 }
@@ -1148,7 +1144,7 @@ impl State {
                     God::set_flag(
                         cn,
                         parse_usize(arg_get(1)),
-                        core::constants::CharacterFlags::CF_NOWHO.bits() as u64,
+                        core::constants::CharacterFlags::CF_NOWHO.bits(),
                     );
                     return;
                 }
@@ -1264,7 +1260,7 @@ impl State {
                     God::set_flag(
                         cn,
                         parse_usize(arg_get(1)),
-                        core::constants::CharacterFlags::CF_SAFE.bits() as u64,
+                        core::constants::CharacterFlags::CF_SAFE.bits(),
                     );
                     return;
                 }
@@ -1363,7 +1359,7 @@ impl State {
                     God::set_flag(
                         cn,
                         parse_usize(arg_get(1)),
-                        core::constants::CharacterFlags::CF_STAFF.bits() as u64,
+                        core::constants::CharacterFlags::CF_STAFF.bits(),
                     );
                     return;
                 }

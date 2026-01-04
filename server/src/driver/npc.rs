@@ -101,7 +101,7 @@ pub fn npc_add_enemy(cn: usize, co: usize, always: bool) -> bool {
 
         let ticker = Repository::with_globals(|globals| globals.ticker);
         characters[cn].data[76] = characters[co].x as i32 + characters[co].y as i32 * SERVER_MAPX;
-        characters[cn].data[77] = ticker as i32;
+        characters[cn].data[77] = ticker;
 
         let cc = characters[cn].attack_cn;
         let d1 = if cc > 0 && usize::from(cc) < MAXCHARS {
@@ -123,7 +123,7 @@ pub fn npc_add_enemy(cn: usize, co: usize, always: bool) -> bool {
             characters[cn].data[58] = 2;
         }
 
-        let idx = co as i32 | ((helpers::char_id(co) as i32) << 16);
+        let idx = co as i32 | (helpers::char_id(co) << 16);
 
         // Check if already in enemy list
         for n in 80..92 {
@@ -144,7 +144,7 @@ pub fn npc_add_enemy(cn: usize, co: usize, always: bool) -> bool {
 
 pub fn npc_is_enemy(cn: usize, co: usize) -> bool {
     Repository::with_characters(|characters| {
-        let idx = co as i32 | ((helpers::char_id(co) as i32) << 16);
+        let idx = co as i32 | (helpers::char_id(co) << 16);
 
         for n in 80..92 {
             if characters[cn].data[n] == idx {
@@ -246,7 +246,7 @@ pub fn npc_saytext_n(npc: usize, n: usize, name: Option<&str>) {
 
 pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
     Repository::with_characters_mut(|characters| {
-        characters[cn].data[92] = (TICKS * 60) as i32;
+        characters[cn].data[92] = TICKS * 60;
 
         let ticker = Repository::with_globals(|globals| globals.ticker);
 
@@ -257,7 +257,7 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
             && characters[cn].alignment == 10000
             && (String::from_utf8_lossy(&characters[cn].name) != "Peacekeeper"
                 || characters[cn].a_hp < (characters[cn].hp[5] * 500) as i32)
-            && characters[cn].data[70] < ticker as i32
+            && characters[cn].data[70] < ticker
         {
             State::with(|state| {
                 state.do_sayx(cn, "Skua! Protect the innocent! Send me a Peacekeeper!");
@@ -265,7 +265,7 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
             Repository::with_characters(|ch| {
                 EffectManager::fx_add_effect(6, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
             });
-            characters[cn].data[70] = (ticker + (TICKS * 60)) as i32;
+            characters[cn].data[70] = ticker + (TICKS * 60);
 
             let cc = God::create_char(80, true);
             if cc.is_some() && cc.unwrap() > 0 && cc.unwrap() < MAXCHARS as i32 {
@@ -276,21 +276,17 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
                 characters[cc].data[24] = 0;
                 characters[cc].data[36] = 0;
                 characters[cc].data[43] = 0;
-                characters[cc].data[80] = co as i32 | ((helpers::char_id(co) as i32) << 16);
+                characters[cc].data[80] = co as i32 | (helpers::char_id(co) << 16);
                 characters[cc].data[63] = cn as i32;
-                characters[cc].data[64] = (ticker + 120 * TICKS) as i32;
-                characters[cc].data[70] = (ticker + (TICKS * 60)) as i32;
+                characters[cc].data[64] = ticker + 120 * TICKS;
+                characters[cc].data[70] = ticker + (TICKS * 60);
 
                 characters[cc].set_name("Shadow of Peace");
                 characters[cc].set_reference("Shadow of Peace");
                 characters[cc].set_description("You see a Shadow of Peace.");
 
-                if !God::drop_char_fuzzy(
-                    cc as usize,
-                    characters[co].x as usize,
-                    characters[co].y as usize,
-                ) {
-                    God::destroy_items(cc as usize);
+                if !God::drop_char_fuzzy(cc, characters[co].x as usize, characters[co].y as usize) {
+                    God::destroy_items(cc);
                     characters[cc].used = 0;
                 }
             }
@@ -298,13 +294,13 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
 
         // Help request for good aligned characters
         if characters[cn].alignment > 1000
-            && characters[cn].data[70] < ticker as i32
+            && characters[cn].data[70] < ticker
             && characters[cn].a_mana < (characters[cn].mana[5] * 333) as i32
         {
             State::with(|state| {
                 state.do_sayx(cn, "Skua! Help me!");
             });
-            characters[cn].data[70] = (ticker + (TICKS * 60 * 2)) as i32;
+            characters[cn].data[70] = ticker + (TICKS * 60 * 2);
             characters[cn].a_mana = (characters[cn].mana[5] * 1000) as i32;
             EffectManager::fx_add_effect(6, 0, characters[cn].x as i32, characters[cn].y as i32, 0);
         }
@@ -312,9 +308,9 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
         // Shout for help
         if characters[cn].data[52] != 0 && characters[cn].a_hp < (characters[cn].hp[5] * 666) as i32
         {
-            if characters[cn].data[55] + (TICKS * 60) < ticker as i32 {
+            if characters[cn].data[55] + (TICKS * 60) < ticker {
                 characters[cn].data[54] = 0;
-                characters[cn].data[55] = ticker as i32;
+                characters[cn].data[55] = ticker;
                 if co < MAXCHARS {
                     let co_name = String::from_utf8_lossy(&characters[co].name).to_string();
                     npc_saytext_n(cn, 4, Some(&co_name));
@@ -324,7 +320,7 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
                         cn,
                         NT_SHOUT as i32,
                         cn as i32,
-                        characters[cn].data[52] as i32,
+                        characters[cn].data[52],
                         characters[cn].x as i32,
                         characters[cn].y as i32,
                     );
@@ -335,13 +331,13 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
         // Can't see attacker - panic mode
         let character_can_see = State::with_mut(|state| state.do_char_can_see(cn, co));
         if co >= MAXCHARS || character_can_see == 0 {
-            characters[cn].data[78] = (ticker + (TICKS * 30)) as i32;
+            characters[cn].data[78] = ticker + (TICKS * 30);
             return 1;
         }
 
         // Fight back
         if co < MAXCHARS {
-            let co_name = characters[co].name.clone();
+            let co_name = characters[co].name;
             if npc_add_enemy(cn, co, true) {
                 let co_name = String::from_utf8_lossy(&co_name).to_string();
                 npc_saytext_n(cn, 1, Some(&co_name));
@@ -378,7 +374,7 @@ pub fn npc_killed(cn: usize, cc: usize, co: usize) -> i32 {
         characters[cn].data[77] = 0;
         characters[cn].data[78] = 0;
 
-        let idx = co as i32 | ((helpers::char_id(co) as i32) << 16);
+        let idx = co as i32 | (helpers::char_id(co) << 16);
 
         for n in 80..92 {
             if characters[cn].data[n] == idx {
@@ -413,7 +409,7 @@ pub fn npc_seekill(cn: usize, cc: usize, co: usize) -> i32 {
 
 pub fn npc_seeattack(cn: usize, cc: usize, co: usize) -> i32 {
     Repository::with_characters_mut(|characters| {
-        characters[cn].data[92] = (TICKS * 60) as i32;
+        characters[cn].data[92] = TICKS * 60;
 
         let cn_can_see_co = State::with_mut(|state| state.do_char_can_see(cn, co));
 
@@ -614,10 +610,10 @@ pub fn npc_give(_cn: usize, _co: usize, _in: usize, _money: i32) -> i32 {
 
         // If giver is a player/usurp, set active timer; otherwise ensure group active
         if (characters[co].flags
-            & (CharacterFlags::CF_PLAYER.bits() | CharacterFlags::CF_USURP.bits()) as u64)
+            & (CharacterFlags::CF_PLAYER.bits() | CharacterFlags::CF_USURP.bits()))
             != 0
         {
-            characters[cn].data[92] = (TICKS * 60) as i32;
+            characters[cn].data[92] = TICKS * 60;
         } else if !characters[cn].group_active() {
             return 0;
         }
@@ -855,9 +851,9 @@ pub fn npc_died(cn: usize, co: usize) -> i32 {
 pub fn npc_shout(cn: usize, co: usize, code: i32, x: i32, y: i32) -> i32 {
     Repository::with_characters_mut(|characters| {
         if characters[cn].data[53] != 0 && characters[cn].data[53] == code {
-            characters[cn].data[92] = (TICKS * 60) as i32;
+            characters[cn].data[92] = TICKS * 60;
             characters[cn].data[54] = x + y * SERVER_MAPX;
-            characters[cn].data[55] = Repository::with_globals(|globals| globals.ticker) as i32;
+            characters[cn].data[55] = Repository::with_globals(|globals| globals.ticker);
 
             let co_name = if co < MAXCHARS {
                 String::from_utf8_lossy(&characters[co].name).to_string()
@@ -1283,7 +1279,7 @@ pub fn npc_driver_high(cn: usize) -> i32 {
 
     // reset panic mode if expired
     Repository::with_characters_mut(|characters| {
-        if characters[cn].data[78] < ticker as i32 {
+        if characters[cn].data[78] < ticker {
             characters[cn].data[78] = 0;
         }
     });
@@ -1294,10 +1290,10 @@ pub fn npc_driver_high(cn: usize) -> i32 {
         Repository::with_characters_mut(|characters| {
             let d64 = characters[cn].data[64];
             if d64 != 0 {
-                if d64 < (TICKS * 60 * 15) as i32 {
-                    characters[cn].data[64] = d64 + ticker as i32;
+                if d64 < (TICKS * 60 * 15) {
+                    characters[cn].data[64] = d64 + ticker;
                 }
-                if characters[cn].data[64] < ticker as i32 {
+                if characters[cn].data[64] < ticker {
                     // NPC should self-destruct
                     // TODO: Port do_sayx(cn, "Free!")
                     characters[cn].used = USE_EMPTY;
@@ -1354,7 +1350,7 @@ pub fn npc_driver_high(cn: usize) -> i32 {
         let (a_hp, hp5) =
             Repository::with_characters(|characters| (characters[cn].a_hp, characters[cn].hp[5]));
         if a_hp < hp5 as i32 * 600 {
-            if npc_try_spell(cn, cn, SK_HEAL as usize) {
+            if npc_try_spell(cn, cn, SK_HEAL) {
                 return 1;
             }
         }
@@ -1416,27 +1412,24 @@ pub fn npc_driver_high(cn: usize) -> i32 {
     // generic spell management
     {
         let (a_mana, med_skill) = Repository::with_characters(|characters| {
-            (
-                characters[cn].a_mana,
-                characters[cn].skill[SK_MEDIT as usize][0],
-            )
+            (characters[cn].a_mana, characters[cn].skill[SK_MEDIT][0])
         });
         if a_mana > (Repository::with_characters(|characters| characters[cn].mana[5]) as i32) * 850
             && med_skill != 0
         {
-            if a_mana > 75000 && npc_try_spell(cn, cn, SK_BLESS as usize) {
+            if a_mana > 75000 && npc_try_spell(cn, cn, SK_BLESS) {
                 return 1;
             }
-            if npc_try_spell(cn, cn, SK_PROTECT as usize) {
+            if npc_try_spell(cn, cn, SK_PROTECT) {
                 return 1;
             }
-            if npc_try_spell(cn, cn, SK_MSHIELD as usize) {
+            if npc_try_spell(cn, cn, SK_MSHIELD) {
                 return 1;
             }
-            if npc_try_spell(cn, cn, SK_ENHANCE as usize) {
+            if npc_try_spell(cn, cn, SK_ENHANCE) {
                 return 1;
             }
-            if npc_try_spell(cn, cn, SK_BLESS as usize) {
+            if npc_try_spell(cn, cn, SK_BLESS) {
                 return 1;
             }
         }
@@ -1475,13 +1468,13 @@ pub fn npc_driver_high(cn: usize) -> i32 {
         let (data62, _data58) = Repository::with_characters(|characters| {
             (characters[cn].data[62], characters[cn].data[58])
         });
-        if data62 > _data58 as i32 {
+        if data62 > _data58 {
             let (cx, cy) = Repository::with_characters(|characters| {
                 (characters[cn].x as usize, characters[cn].y as usize)
             });
             let light = State::check_dlight(cx, cy);
             if light < 20 {
-                if npc_try_spell(cn, cn, SK_LIGHT as usize) {
+                if npc_try_spell(cn, cn, SK_LIGHT) {
                     return 1;
                 }
             }
@@ -1496,7 +1489,7 @@ pub fn npc_driver_high(cn: usize) -> i32 {
                 (characters[co].a_hp, characters[co].hp[5])
             });
             if a_hp < hp5 as i32 * 600 {
-                if npc_try_spell(cn, co, SK_HEAL as usize) {
+                if npc_try_spell(cn, co, SK_HEAL) {
                     return 1;
                 }
             }
@@ -1510,11 +1503,11 @@ pub fn npc_driver_high(cn: usize) -> i32 {
             let cc = Repository::with_characters(|characters| characters[co].attack_cn as usize);
 
             if Repository::with_characters(|characters| characters[cn].a_mana)
-                > (get_spellcost(cn, SK_BLESS as usize) * 2
-                    + get_spellcost(cn, SK_PROTECT as usize)
-                    + get_spellcost(cn, SK_ENHANCE as usize)) as i32
+                > (get_spellcost(cn, SK_BLESS) * 2
+                    + get_spellcost(cn, SK_PROTECT)
+                    + get_spellcost(cn, SK_ENHANCE))
             {
-                if npc_try_spell(cn, cn, SK_BLESS as usize) {
+                if npc_try_spell(cn, cn, SK_BLESS) {
                     return 1;
                 }
             }
@@ -1522,23 +1515,18 @@ pub fn npc_driver_high(cn: usize) -> i32 {
             if Repository::with_characters(|characters| characters[co].a_hp)
                 < Repository::with_characters(|characters| characters[co].hp[5]) as i32 * 600
             {
-                if npc_try_spell(cn, co, SK_HEAL as usize) {
+                if npc_try_spell(cn, co, SK_HEAL) {
                     return 1;
                 }
             }
 
-            if !npc_can_spell(co, cn, SK_PROTECT as usize)
-                && npc_try_spell(cn, co, SK_PROTECT as usize)
-            {
+            if !npc_can_spell(co, cn, SK_PROTECT) && npc_try_spell(cn, co, SK_PROTECT) {
                 return 1;
             }
-            if !npc_can_spell(co, cn, SK_ENHANCE as usize)
-                && npc_try_spell(cn, co, SK_ENHANCE as usize)
-            {
+            if !npc_can_spell(co, cn, SK_ENHANCE) && npc_try_spell(cn, co, SK_ENHANCE) {
                 return 1;
             }
-            if !npc_can_spell(co, cn, SK_BLESS as usize) && npc_try_spell(cn, co, SK_BLESS as usize)
-            {
+            if !npc_can_spell(co, cn, SK_BLESS) && npc_try_spell(cn, co, SK_BLESS) {
                 return 1;
             }
 
@@ -1547,7 +1535,7 @@ pub fn npc_driver_high(cn: usize) -> i32 {
                     < Repository::with_characters(|characters| characters[co].hp[5]) as i32 * 650
                 && npc_is_enemy(cn, cc)
             {
-                if npc_try_spell(cn, cc, SK_BLAST as usize) {
+                if npc_try_spell(cn, cc, SK_BLAST) {
                     return 1;
                 }
             }
@@ -1573,7 +1561,7 @@ pub fn npc_driver_high(cn: usize) -> i32 {
                     < Repository::with_characters(|characters| characters[cn].hp[5]) as i32 * 600
                     || rand::thread_rng().gen_range(0..10) == 0)
             {
-                if npc_try_spell(cn, co, SK_BLAST as usize) {
+                if npc_try_spell(cn, co, SK_BLAST) {
                     return 1;
                 }
             }
@@ -1582,45 +1570,44 @@ pub fn npc_driver_high(cn: usize) -> i32 {
                 && Repository::with_globals(|g| g.ticker)
                     > Repository::with_characters(|characters| characters[cn].data[75])
             {
-                if npc_try_spell(cn, co, SK_STUN as usize) {
+                if npc_try_spell(cn, co, SK_STUN) {
                     Repository::with_characters_mut(|characters| {
-                        characters[cn].data[75] = Repository::with_characters(|chars| {
-                            chars[cn].skill[SK_STUN as usize][5]
-                        }) as i32
-                            + 18 * 8
+                        characters[cn].data[75] =
+                            Repository::with_characters(|chars| chars[cn].skill[SK_STUN][5]) as i32
+                                + 18 * 8
                     });
                     return 1;
                 }
             }
 
             if Repository::with_characters(|characters| characters[cn].a_mana) > 75000
-                && npc_try_spell(cn, cn, SK_BLESS as usize)
+                && npc_try_spell(cn, cn, SK_BLESS)
             {
                 return 1;
             }
-            if npc_try_spell(cn, cn, SK_PROTECT as usize) {
+            if npc_try_spell(cn, cn, SK_PROTECT) {
                 return 1;
             }
-            if npc_try_spell(cn, cn, SK_MSHIELD as usize) {
+            if npc_try_spell(cn, cn, SK_MSHIELD) {
                 return 1;
             }
-            if npc_try_spell(cn, cn, SK_ENHANCE as usize) {
+            if npc_try_spell(cn, cn, SK_ENHANCE) {
                 return 1;
             }
-            if npc_try_spell(cn, cn, SK_BLESS as usize) {
+            if npc_try_spell(cn, cn, SK_BLESS) {
                 return 1;
             }
-            if co != 0 && npc_try_spell(cn, co, SK_CURSE as usize) {
+            if co != 0 && npc_try_spell(cn, co, SK_CURSE) {
                 return 1;
             }
             if co != 0
                 && Repository::with_globals(|g| g.ticker)
                     > Repository::with_characters(|characters| characters[cn].data[74])
-                        + (TICKS * 10) as i32
-                && npc_try_spell(cn, co, SK_GHOST as usize)
+                        + (TICKS * 10)
+                && npc_try_spell(cn, co, SK_GHOST)
             {
                 Repository::with_characters_mut(|characters| {
-                    characters[cn].data[74] = Repository::with_globals(|g| g.ticker) as i32
+                    characters[cn].data[74] = Repository::with_globals(|g| g.ticker)
                 });
                 return 1;
             }
@@ -1629,7 +1616,7 @@ pub fn npc_driver_high(cn: usize) -> i32 {
                 && Repository::with_characters(|characters| characters[co].armor) + 5
                     > Repository::with_characters(|characters| characters[cn].weapon)
             {
-                if npc_try_spell(cn, co, SK_BLAST as usize) {
+                if npc_try_spell(cn, co, SK_BLAST) {
                     return 1;
                 }
             }
@@ -1694,9 +1681,9 @@ pub fn npc_driver_high(cn: usize) -> i32 {
         (map[idx].flags & MF_INDOORS as u64) != 0
     });
     let min_y = std::cmp::max(ch_pos.1 as i32 - 8, 1) as usize;
-    let max_y = std::cmp::min(ch_pos.1 as i32 + 8, SERVER_MAPY as i32 - 1) as usize;
+    let max_y = std::cmp::min(ch_pos.1 as i32 + 8, SERVER_MAPY - 1) as usize;
     let min_x = std::cmp::max(ch_pos.0 as i32 - 8, 1) as usize;
-    let max_x = std::cmp::min(ch_pos.0 as i32 + 8, SERVER_MAPX as i32 - 1) as usize;
+    let max_x = std::cmp::min(ch_pos.0 as i32 + 8, SERVER_MAPX - 1) as usize;
 
     for y in min_y..=max_y {
         for x in min_x..=max_x {
@@ -1818,13 +1805,11 @@ pub fn npc_driver_low(cn: usize) {
         (characters[cn].data[55], characters[cn].data[54])
     });
 
-    if data_55 != 0 && data_55 + (TICKS * 120) > ticker as i32 && data_54 != 0 {
+    if data_55 != 0 && data_55 + (TICKS * 120) > ticker && data_54 != 0 {
         let m = data_54;
         Repository::with_characters_mut(|characters| {
-            characters[cn].goto_x =
-                (m % SERVER_MAPX) as u16 + get_frust_x_off(ticker as i32) as u16;
-            characters[cn].goto_y =
-                (m / SERVER_MAPX) as u16 + get_frust_y_off(ticker as i32) as u16;
+            characters[cn].goto_x = (m % SERVER_MAPX) as u16 + get_frust_x_off(ticker) as u16;
+            characters[cn].goto_y = (m / SERVER_MAPX) as u16 + get_frust_y_off(ticker) as u16;
             characters[cn].data[58] = 2;
         });
         return;
@@ -1839,7 +1824,7 @@ pub fn npc_driver_low(cn: usize) {
         )
     });
 
-    if data_77 != 0 && data_77 + (TICKS * 30) > ticker as i32 {
+    if data_77 != 0 && data_77 + (TICKS * 30) > ticker {
         let m = data_76;
         Repository::with_characters_mut(|characters| {
             characters[cn].goto_x = ((m % SERVER_MAPX) + get_frust_x_off(data_36)) as u16;
@@ -1905,7 +1890,7 @@ pub fn npc_driver_low(cn: usize) {
     for n in 32..36 {
         let m = Repository::with_characters(|characters| characters[cn].data[n]);
 
-        if m != 0 && m < (SERVER_MAPX * SERVER_MAPY) as i32 {
+        if m != 0 && m < (SERVER_MAPX * SERVER_MAPY) {
             let m = m as usize;
             let (it_idx, is_active) = Repository::with_map(|map| {
                 let it_idx = map[m].it;
@@ -1942,7 +1927,7 @@ pub fn npc_driver_low(cn: usize) {
         }
 
         let data_57 = Repository::with_characters(|characters| characters[cn].data[57]);
-        if data_57 > ticker as i32 {
+        if data_57 > ticker {
             return;
         }
 
@@ -1956,13 +1941,13 @@ pub fn npc_driver_low(cn: usize) {
             )
         });
 
-        let x = (m % SERVER_MAPX) as i32 + get_frust_x_off(data_36);
-        let y = (m / SERVER_MAPX) as i32 + get_frust_y_off(data_36);
+        let x = (m % SERVER_MAPX) + get_frust_x_off(data_36);
+        let y = (m / SERVER_MAPX) + get_frust_y_off(data_36);
 
         if data_36 > 20 || ((ch_x as i32 - x).abs() + (ch_y as i32 - y).abs()) < 4 {
             if data_36 <= 20 && data_79 != 0 {
                 Repository::with_characters_mut(|characters| {
-                    characters[cn].data[57] = ticker as i32 + data_79;
+                    characters[cn].data[57] = ticker + data_79;
                 });
             }
 
@@ -2020,18 +2005,18 @@ pub fn npc_driver_low(cn: usize) {
 
             for attempt in 0..5 {
                 // TODO: Call RANDOM function (doesn't exist yet, use placeholder)
-                x = ch_x as i32 - 5 + (ticker as i32 % 11); // RANDOM(11)
-                y = ch_y as i32 - 5 + ((ticker as i32 / 11) % 11); // RANDOM(11)
+                x = ch_x as i32 - 5 + (ticker % 11); // RANDOM(11)
+                y = ch_y as i32 - 5 + ((ticker / 11) % 11); // RANDOM(11)
 
-                if x < 1 || x >= SERVER_MAPX as i32 || y < 1 || y > SERVER_MAPX as i32 {
+                if x < 1 || x >= SERVER_MAPX || y < 1 || y > SERVER_MAPX {
                     panic = attempt + 1;
                     continue;
                 }
 
                 if data_73 != 0 {
                     // Too far away from origin?
-                    let xo = (data_29 % SERVER_MAPX) as i32;
-                    let yo = (data_29 / SERVER_MAPX) as i32;
+                    let xo = data_29 % SERVER_MAPX;
+                    let yo = data_29 / SERVER_MAPX;
 
                     if (x - xo).abs() + (y - yo).abs() > data_73 {
                         // Try to return to origin
@@ -2081,10 +2066,7 @@ pub fn npc_driver_low(cn: usize) {
                     continue;
                 }
 
-                if State::with_mut(|state| {
-                    state.can_go(ch_x as i32, ch_y as i32, x as i32, y as i32)
-                }) == 0
-                {
+                if State::with_mut(|state| state.can_go(ch_x as i32, ch_y as i32, x, y)) == 0 {
                     panic = attempt + 1;
                     continue;
                 }
@@ -2115,8 +2097,8 @@ pub fn npc_driver_low(cn: usize) {
     if data_29 != 0 {
         let data_36 = Repository::with_characters(|characters| characters[cn].data[36]);
         let m = data_29;
-        let x = (m % SERVER_MAPX) as i32 + get_frust_x_off(data_36);
-        let y = (m / SERVER_MAPX) as i32 + get_frust_y_off(data_36);
+        let x = (m % SERVER_MAPX) + get_frust_x_off(data_36);
+        let y = (m / SERVER_MAPX) + get_frust_y_off(data_36);
 
         Repository::with_characters_mut(|characters| {
             characters[cn].data[58] = 0;
@@ -2176,9 +2158,9 @@ pub fn npc_driver_low(cn: usize) {
                 }
 
                 if target_x < 0
-                    || target_x >= SERVER_MAPX as i32
+                    || target_x >= SERVER_MAPX
                     || target_y < 0
-                    || target_y >= SERVER_MAPY as i32
+                    || target_y >= SERVER_MAPY
                 {
                     characters[cn].misc_action = core::constants::DR_IDLE as u16;
                     return;
@@ -2193,7 +2175,7 @@ pub fn npc_driver_low(cn: usize) {
 
     // Reset talked-to list
     let data_67 = Repository::with_characters(|characters| characters[cn].data[67]);
-    if data_67 + (TICKS * 60 * 5) < ticker as i32 {
+    if data_67 + (TICKS * 60 * 5) < ticker {
         let data_37 = Repository::with_characters(|characters| characters[cn].data[37]);
         if data_37 != 0 {
             Repository::with_characters_mut(|characters| {
@@ -2203,7 +2185,7 @@ pub fn npc_driver_low(cn: usize) {
             });
         }
         Repository::with_characters_mut(|characters| {
-            characters[cn].data[67] = ticker as i32;
+            characters[cn].data[67] = ticker;
         });
     }
 
@@ -2671,13 +2653,13 @@ pub fn npc_grave_logic(cn: usize) -> bool {
 
     // Scan area around NPC (within 8 tiles)
     let min_y = std::cmp::max(ch_y as i32 - 8, 1);
-    let max_y = std::cmp::min(ch_y as i32 + 8, (SERVER_MAPY - 1) as i32);
+    let max_y = std::cmp::min(ch_y as i32 + 8, SERVER_MAPY - 1);
     let min_x = std::cmp::max(ch_x as i32 - 8, 1);
-    let max_x = std::cmp::min(ch_x as i32 + 8, (SERVER_MAPX - 1) as i32);
+    let max_x = std::cmp::min(ch_x as i32 + 8, SERVER_MAPX - 1);
 
     for y in min_y..max_y {
         for x in min_x..max_x {
-            let map_idx = (x + y * SERVER_MAPX as i32) as usize;
+            let map_idx = (x + y * SERVER_MAPX) as usize;
             let in_idx = Repository::with_map(|map| map[map_idx].it);
 
             if in_idx != 0 {
@@ -2805,9 +2787,9 @@ pub fn update_shop(cn: usize) {
 
         if in_idx.is_some() {
             // Call god_give_char
-            if !God::give_character_item(in_idx.unwrap() as usize, cn) {
+            if !God::give_character_item(in_idx.unwrap(), cn) {
                 Repository::with_items_mut(|items| {
-                    items[in_idx.unwrap() as usize].used = USE_EMPTY;
+                    items[in_idx.unwrap()].used = USE_EMPTY;
                 });
             }
         }
@@ -2991,10 +2973,10 @@ pub fn npc_cityguard_see(cn: usize, co: usize, flag: i32) -> i32 {
         });
 
         // Shout every 180 seconds
-        if data_55 + (TICKS * 180) < ticker as i32 {
+        if data_55 + (TICKS * 180) < ticker {
             Repository::with_characters_mut(|characters| {
                 characters[cn].data[54] = 0;
-                characters[cn].data[55] = ticker as i32;
+                characters[cn].data[55] = ticker;
             });
 
             let co_name = Repository::with_characters(|characters| {
@@ -3080,7 +3062,7 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
     if temp == CT_COMPANION as u16 && co == data_63 as usize {
         // Happy to see master, reset timeout
         Repository::with_characters_mut(|characters| {
-            characters[cn].data[98] = ticker as i32 + COMPANION_TIMEOUT;
+            characters[cn].data[98] = ticker + COMPANION_TIMEOUT;
         });
     }
 
@@ -3178,8 +3160,8 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
             });
 
             if data_95 == 2 && data_93 != 0 {
-                let rest_x = (data_29 % SERVER_MAPX as i32) as i16;
-                let rest_y = (data_29 / SERVER_MAPX as i32) as i16;
+                let rest_x = (data_29 % SERVER_MAPX) as i16;
+                let rest_y = (data_29 / SERVER_MAPX) as i16;
                 let dist =
                     std::cmp::max((rest_x - co_x).abs() as i32, (rest_y - co_y).abs() as i32);
 
@@ -3214,12 +3196,12 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
 
     if data_95 == 1
         && (co_flags & CharacterFlags::CF_PLAYER.bits()) != 0
-        && ticker as i32 > data_27 + (TICKS * 120)
+        && ticker > data_27 + (TICKS * 120)
     {
         let x1 = co_x as i32;
-        let x2 = (data_29 % SERVER_MAPX as i32) as i32;
+        let x2 = data_29 % SERVER_MAPX;
         let y1 = co_y as i32;
-        let y2 = (data_29 / SERVER_MAPX as i32) as i32;
+        let y2 = data_29 / SERVER_MAPX;
         let dist = (x1 - x2).abs() + (y1 - y2).abs();
 
         if dist <= data_93 {
@@ -3234,10 +3216,10 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
                 );
                 return 1;
             }
-        } else if dist <= data_93 * 2 && data_94 + (TICKS * 15) < ticker as i32 {
+        } else if dist <= data_93 * 2 && data_94 + (TICKS * 15) < ticker {
             npc_saytext_n(cn, 8, None);
             Repository::with_characters_mut(|characters| {
-                characters[cn].data[94] = ticker as i32;
+                characters[cn].data[94] = ticker;
             });
             return 1;
         }
@@ -3256,7 +3238,7 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
         && (co_flags & CharacterFlags::CF_PLAYER.bits()) != 0
         && data_37 != 0
         && indoor1 == indoor2
-        && data_56 < ticker as i32
+        && data_56 < ticker
     {
         // Check if we've already talked to this character
         let mut already_talked = false;
@@ -3269,7 +3251,7 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
         }
 
         if !already_talked {
-            let text_2 = Repository::with_characters(|characters| characters[cn].text[2].clone());
+            let text_2 = Repository::with_characters(|characters| characters[cn].text[2]);
             let text_2_str = String::from_utf8_lossy(&text_2).to_string();
             let co_name = Repository::with_characters(|characters| {
                 String::from_utf8_lossy(&characters[co].name).to_string()
@@ -3330,7 +3312,7 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
                 characters[cn].data[39] = characters[cn].data[38];
                 characters[cn].data[38] = characters[cn].data[37];
                 characters[cn].data[37] = co as i32;
-                characters[cn].data[56] = ticker as i32 + (TICKS * 30);
+                characters[cn].data[56] = ticker + (TICKS * 30);
             });
 
             // Special proc for unique warning

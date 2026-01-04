@@ -63,8 +63,7 @@ impl State {
         if killer_id != 0 {
             let cn_flags = Repository::with_characters(|characters| {
                 let cn = &characters[killer_id];
-                let idx = (cn.x as usize + cn.y as usize * core::constants::SERVER_MAPX as usize)
-                    as usize;
+                let idx = cn.x as usize + cn.y as usize * core::constants::SERVER_MAPX as usize;
                 Repository::with_map(|map| map[idx].flags)
             });
             map_flags &= cn_flags;
@@ -456,7 +455,7 @@ impl State {
 
         // Clone character to create grave
         Repository::with_characters_mut(|characters| {
-            characters[cc] = characters[co].clone();
+            characters[cc] = characters[co];
         });
 
         // Drop items and money based on wimp chance

@@ -320,9 +320,7 @@ impl State {
             );
             return;
         }
-        Repository::with_characters_mut(|ch| {
-            ch[cn].data[19] = (lag * core::constants::TICKS) as i32
-        });
+        Repository::with_characters_mut(|ch| ch[cn].data[19] = lag * core::constants::TICKS);
         self.do_character_log(
             cn,
             core::types::FontColor::Yellow,

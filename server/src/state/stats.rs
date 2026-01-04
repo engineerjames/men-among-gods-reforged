@@ -62,8 +62,7 @@ impl State {
             )
         });
 
-        let map_index =
-            (char_x as usize + char_y as usize * core::constants::SERVER_MAPX as usize) as usize;
+        let map_index = char_x as usize + char_y as usize * core::constants::SERVER_MAPX as usize;
         let has_nomagic_flag = Repository::with_map(|map| {
             map[map_index].flags & core::constants::MF_NOMAGIC as u64 != 0
         });
@@ -566,7 +565,7 @@ impl State {
 
             match base_status {
                 // Standing/idle states - regenerate normally
-                0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 => {
+                0..=7 => {
                     if !noend {
                         Repository::with_characters_mut(|ch| {
                             ch[cn].a_end += moonmult * 4;
@@ -820,7 +819,7 @@ impl State {
 
                 if killed {
                     let spell_name =
-                        Repository::with_items(|items| items[spell_item as usize].name.clone());
+                        Repository::with_items(|items| items[spell_item as usize].name);
                     log::info!(
                         "Character {} killed by spell: {}",
                         cn,
@@ -849,7 +848,7 @@ impl State {
 
                 if end_depleted {
                     let spell_name =
-                        Repository::with_items(|items| items[spell_item as usize].name.clone());
+                        Repository::with_items(|items| items[spell_item as usize].name);
                     Repository::with_items_mut(|items| {
                         items[spell_item as usize].active = 0;
                     });
@@ -862,7 +861,7 @@ impl State {
 
                 if mana_depleted {
                     let spell_name =
-                        Repository::with_items(|items| items[spell_item as usize].name.clone());
+                        Repository::with_items(|items| items[spell_item as usize].name);
                     Repository::with_items_mut(|items| {
                         items[spell_item as usize].active = 0;
                     });
@@ -885,7 +884,7 @@ impl State {
                 // Warn when spell is about to run out
                 if active == core::constants::TICKS as u32 * 30 {
                     let spell_name =
-                        Repository::with_items(|items| items[spell_item as usize].name.clone());
+                        Repository::with_items(|items| items[spell_item as usize].name);
                     let (is_player_or_usurp, temp, companion_owner) =
                         Repository::with_characters(|ch| {
                             (
@@ -924,8 +923,7 @@ impl State {
                                     || item_temp == core::constants::SK_PROTECT as u16
                                     || item_temp == core::constants::SK_ENHANCE as u16
                                 {
-                                    let co_name =
-                                        Repository::with_characters(|ch| ch[co].name.clone());
+                                    let co_name = Repository::with_characters(|ch| ch[co].name);
 
                                     self.do_sayx(
                                         cn,
@@ -959,7 +957,7 @@ impl State {
 
                     Repository::with_items_mut(|items| {
                         items[spell_item as usize].armor[1] = new_armor as i8;
-                        items[spell_item as usize].power = new_power as u32;
+                        items[spell_item as usize].power = new_power;
                     });
 
                     if old_armor != new_armor as i8 {
@@ -972,7 +970,7 @@ impl State {
                 // Handle spell expiration
                 if active == 0 {
                     let spell_name =
-                        Repository::with_items(|items| items[spell_item as usize].name.clone());
+                        Repository::with_items(|items| items[spell_item as usize].name);
 
                     // Recall spell - teleport character
                     if item_temp == core::constants::SK_RECALL as u16 {
@@ -1693,21 +1691,19 @@ impl State {
         if type_hurt != 1 {
             let (co_x, co_y) = Repository::with_characters(|ch| (ch[co].x, ch[co].y));
             Repository::with_map_mut(|map| {
-                let idx =
-                    (co_x as i32 + co_y as i32 * core::constants::SERVER_MAPX as i32) as usize;
+                let idx = (co_x as i32 + co_y as i32 * core::constants::SERVER_MAPX) as usize;
                 if dam < 10000 {
-                    map[idx].flags |= core::constants::MF_GFX_INJURED as u64;
+                    map[idx].flags |= core::constants::MF_GFX_INJURED;
                 } else if dam < 30000 {
                     map[idx].flags |=
-                        (core::constants::MF_GFX_INJURED | core::constants::MF_GFX_INJURED1) as u64;
+                        core::constants::MF_GFX_INJURED | core::constants::MF_GFX_INJURED1;
                 } else if dam < 50000 {
                     map[idx].flags |=
-                        (core::constants::MF_GFX_INJURED | core::constants::MF_GFX_INJURED2) as u64;
+                        core::constants::MF_GFX_INJURED | core::constants::MF_GFX_INJURED2;
                 } else {
-                    map[idx].flags |= (core::constants::MF_GFX_INJURED
+                    map[idx].flags |= core::constants::MF_GFX_INJURED
                         | core::constants::MF_GFX_INJURED1
-                        | core::constants::MF_GFX_INJURED2)
-                        as u64;
+                        | core::constants::MF_GFX_INJURED2;
                 }
             });
             crate::effect::EffectManager::fx_add_effect(
@@ -1729,7 +1725,7 @@ impl State {
             let mf_arena = Repository::with_map(|map| {
                 let idx = (Repository::with_characters(|ch| ch[co].x as i32)
                     + Repository::with_characters(|ch| ch[co].y as i32)
-                        * core::constants::SERVER_MAPX as i32) as usize;
+                        * core::constants::SERVER_MAPX) as usize;
                 map[idx].flags & core::constants::MF_ARENA as u64
             });
 
@@ -1789,7 +1785,7 @@ impl State {
                     0,
                     0,
                 );
-                return (dam / 1000) as i32;
+                return dam / 1000;
             }
         }
 
@@ -1875,17 +1871,15 @@ impl State {
                 && Repository::with_map(|map| {
                     let idx = (Repository::with_characters(|ch| ch[co].x as i32)
                         + Repository::with_characters(|ch| ch[co].y as i32)
-                            * core::constants::SERVER_MAPX as i32)
-                        as usize;
+                            * core::constants::SERVER_MAPX) as usize;
                     map[idx].flags & core::constants::MF_ARENA as u64 == 0
                 })
                 && noexp == 0
             {
                 let tmp = self.do_char_score(co);
-                let rank =
-                    helpers::points2rank(
-                        Repository::with_characters(|ch| ch[co].points_tot as u32) as u32
-                    ) as i32;
+                let rank = helpers::points2rank(Repository::with_characters(|ch| {
+                    ch[co].points_tot as u32
+                })) as i32;
                 // Some bonuses for spells are handled in do_give_exp/do_char_killed
                 self.do_character_killed(co, cn);
                 if type_hurt != 2 && cn != 0 && cn != co {

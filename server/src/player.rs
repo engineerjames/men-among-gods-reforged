@@ -321,11 +321,11 @@ pub fn plr_logout(character_id: usize, player_id: usize, reason: enums::LogoutRe
 
         if player_state == core::constants::ST_NORMAL {
             NetworkManager::with(|network| {
-                network.xsend(player_id as usize, &buffer, 2);
+                network.xsend(player_id, &buffer, 2);
             });
         } else {
             NetworkManager::with(|network| {
-                network.csend(player_id as usize, &buffer, 2);
+                network.csend(player_id, &buffer, 2);
             });
         }
 
@@ -504,7 +504,7 @@ pub fn plr_map_set(cn: usize) {
 
                         if light != 0 {
                             State::with_mut(|state| {
-                                state.do_add_light(nx as i32, ny as i32, light as i32);
+                                state.do_add_light(nx, ny, light as i32);
                             });
                         }
 
@@ -546,7 +546,7 @@ pub fn plr_map_set(cn: usize) {
 
                     if light != 0 {
                         State::with_mut(|state| {
-                            state.do_add_light(frx as i32, fry as i32, light as i32);
+                            state.do_add_light(frx, fry, light as i32);
                         });
                     }
 
@@ -1381,7 +1381,7 @@ pub fn plr_pickup(cn: usize) {
         let slot_found = Repository::with_characters_mut(|characters| {
             for n in 0..40 {
                 if characters[cn].item[n] == 0 {
-                    characters[cn].item[n] = in_id as u32;
+                    characters[cn].item[n] = in_id;
                     return Some(n);
                 }
             }
@@ -1390,7 +1390,7 @@ pub fn plr_pickup(cn: usize) {
 
         if slot_found.is_none() {
             Repository::with_characters_mut(|characters| {
-                characters[cn].citem = in_id as u32;
+                characters[cn].citem = in_id;
             });
         }
 
@@ -1400,7 +1400,7 @@ pub fn plr_pickup(cn: usize) {
         log::info!("Character {} took {}", cn, item_name);
     } else {
         Repository::with_characters_mut(|characters| {
-            characters[cn].citem = in_id as u32;
+            characters[cn].citem = in_id;
         });
     }
 
@@ -2620,7 +2620,7 @@ pub fn plr_getmap(nr: usize) {
 }
 
 pub fn plr_getmap_complete(nr: usize) {
-    let cn = Server::with_players(|players| players[nr].usnr as usize);
+    let cn = Server::with_players(|players| players[nr].usnr);
 
     // We copy it out here so we HAVE to write it back.
     let mut smap = Server::with_players(|players| players[nr].smap);
@@ -2704,8 +2704,8 @@ pub fn plr_getmap_complete(nr: usize) {
 
             if x < 0
                 || y < 0
-                || x >= core::constants::SERVER_MAPX as i32
-                || y >= core::constants::SERVER_MAPY as i32
+                || x >= core::constants::SERVER_MAPX
+                || y >= core::constants::SERVER_MAPY
             {
                 // TODO: Verify this is actually empty tile behavior
                 let mut new_cmap = core::types::CMap::default();
@@ -2769,36 +2769,36 @@ pub fn plr_getmap_complete(nr: usize) {
                         | MF_UWATER as u64)
                     != 0
                 {
-                    if map[m].flags & core::constants::MF_GFX_INJURED as u64 != 0 {
+                    if map[m].flags & core::constants::MF_GFX_INJURED != 0 {
                         smap[n].flags |= INJURED;
                     }
 
-                    if map[m].flags & core::constants::MF_GFX_INJURED1 as u64 != 0 {
+                    if map[m].flags & core::constants::MF_GFX_INJURED1 != 0 {
                         smap[n].flags |= INJURED1;
                     }
 
-                    if map[m].flags & core::constants::MF_GFX_INJURED2 as u64 != 0 {
+                    if map[m].flags & core::constants::MF_GFX_INJURED2 != 0 {
                         smap[n].flags |= INJURED2;
                     }
 
-                    if map[m].flags & core::constants::MF_GFX_DEATH as u64 != 0 {
+                    if map[m].flags & core::constants::MF_GFX_DEATH != 0 {
                         // TODO: Confirm shift
                         smap[n].flags |= ((map[m].flags & MF_GFX_DEATH) >> 23) as u32;
                     }
 
-                    if map[m].flags & core::constants::MF_GFX_TOMB as u64 != 0 {
+                    if map[m].flags & core::constants::MF_GFX_TOMB != 0 {
                         smap[n].flags |= ((map[m].flags & MF_GFX_TOMB) >> 23) as u32;
                     }
 
-                    if map[m].flags & core::constants::MF_GFX_EMAGIC as u64 != 0 {
+                    if map[m].flags & core::constants::MF_GFX_EMAGIC != 0 {
                         smap[n].flags |= ((map[m].flags & MF_GFX_EMAGIC) >> 23) as u32;
                     }
 
-                    if map[m].flags & core::constants::MF_GFX_GMAGIC as u64 != 0 {
+                    if map[m].flags & core::constants::MF_GFX_GMAGIC != 0 {
                         smap[n].flags |= ((map[m].flags & MF_GFX_GMAGIC) >> 23) as u32;
                     }
 
-                    if map[m].flags & core::constants::MF_GFX_CMAGIC as u64 != 0 {
+                    if map[m].flags & core::constants::MF_GFX_CMAGIC != 0 {
                         smap[n].flags |= ((map[m].flags & MF_GFX_CMAGIC) >> 23) as u32;
                     }
 
@@ -2821,13 +2821,13 @@ pub fn plr_getmap_complete(nr: usize) {
                 let tmp_vis = ((x - current_x + 20) + (y - current_y + 20) * 40) as usize;
 
                 let visible = Repository::with_see_map(|see| {
-                    see[cn].vis[tmp_vis + 0 + 0] != 0
-                        || see[cn].vis[tmp_vis + 0 + 40] != 0
-                        || see[cn].vis[tmp_vis + 0 - 40] != 0
-                        || see[cn].vis[tmp_vis + 1 + 0] != 0
+                    see[cn].vis[tmp_vis] != 0
+                        || see[cn].vis[tmp_vis + 40] != 0
+                        || see[cn].vis[tmp_vis - 40] != 0
+                        || see[cn].vis[tmp_vis + 1] != 0
                         || see[cn].vis[tmp_vis + 1 + 40] != 0
                         || see[cn].vis[tmp_vis + 1 - 40] != 0
-                        || see[cn].vis[tmp_vis - 1 + 0] != 0
+                        || see[cn].vis[tmp_vis - 1] != 0
                         || see[cn].vis[tmp_vis - 1 + 40] != 0
                         || see[cn].vis[tmp_vis - 1 - 40] != 0
                 });
@@ -2884,7 +2884,7 @@ pub fn plr_getmap_complete(nr: usize) {
                 if tmp_see != 0 {
                     let char_co = Repository::with_characters(|characters| characters[co]);
                     if char_co.sprite_override != 0 {
-                        smap[n].ch_sprite = char_co.sprite_override as i16;
+                        smap[n].ch_sprite = char_co.sprite_override;
                     } else {
                         smap[n].ch_sprite = char_co.sprite as i16;
                     }
@@ -2973,8 +2973,8 @@ pub fn plr_getmap_complete(nr: usize) {
         }
 
         y += 1;
-        m += (core::constants::SERVER_MAPX as i32 - core::constants::TILEX as i32 + XSCUT + XECUT)
-            as usize;
+        m +=
+            (core::constants::SERVER_MAPX - core::constants::TILEX as i32 + XSCUT + XECUT) as usize;
         n += (XSCUT + XECUT) as usize;
     }
 
@@ -2990,7 +2990,7 @@ pub fn plr_state(nr: usize) {
     let (ticker, lasttick, state) = Repository::with_globals(|globals| {
         Server::with_players(|players| {
             (
-                globals.ticker as i32,
+                globals.ticker,
                 players[nr].lasttick as i32,
                 players[nr].state,
             )
@@ -3064,7 +3064,7 @@ fn plr_newlogin(nr: usize) {
 
     // version check
     let version = Server::with_players(|players| players[nr].version as u32);
-    if version < core::constants::MINVERSION as u32 {
+    if version < core::constants::MINVERSION {
         log::warn!("Client too old ({}). Logout demanded", version);
         plr_logout(0, nr, enums::LogoutReason::VersionMismatch);
         return;
@@ -3081,7 +3081,7 @@ fn plr_newlogin(nr: usize) {
     // TODO: `cap()` handling (player cap/queue) not implemented yet.
 
     // sanitize race
-    let mut temp = Server::with_players(|players| players[nr].race as i32);
+    let mut temp = Server::with_players(|players| players[nr].race);
     if temp != 2 && temp != 3 && temp != 4 && temp != 76 && temp != 77 && temp != 78 {
         temp = 2;
     }
@@ -3266,14 +3266,14 @@ fn plr_newlogin(nr: usize) {
 fn plr_login(nr: usize) {
     // version check
     let version = Server::with_players(|players| players[nr].version as u32);
-    if version < core::constants::MINVERSION as u32 {
+    if version < core::constants::MINVERSION {
         log::warn!("Client too old ({}). Logout demanded", version);
         plr_logout(0, nr, enums::LogoutReason::VersionMismatch);
         return;
     }
 
     // get character number requested by player
-    let cn = Server::with_players(|players| players[nr].usnr as usize);
+    let cn = Server::with_players(|players| players[nr].usnr);
 
     if cn == 0 || cn >= core::constants::MAXCHARS {
         log::warn!("Login as {} denied (illegal cn)", cn);
@@ -3326,7 +3326,7 @@ fn plr_login(nr: usize) {
 
     // Already active
     let already_active = Repository::with_characters(|characters| {
-        characters[cn].used != core::constants::USE_EMPTY as u8
+        characters[cn].used != core::constants::USE_EMPTY
             && (characters[cn].flags & enums::CharacterFlags::ComputerControlledPlayer.bits()) == 0
     });
     if already_active {
@@ -3528,7 +3528,7 @@ fn plr_login(nr: usize) {
 /// Port of `plr_change` from `svr_tick.cpp`
 /// Sends changed player data to the client
 pub fn plr_change(nr: usize) {
-    let cn = Server::with_players(|players| players[nr].usnr as usize);
+    let cn = Server::with_players(|players| players[nr].usnr);
 
     if cn == 0 || cn >= core::constants::MAXCHARS {
         log::error!("plr_change: invalid character number {}", cn);
@@ -3539,7 +3539,7 @@ pub fn plr_change(nr: usize) {
         Repository::with_characters(|ch| {
             let has_update_flag = (ch[cn].flags & enums::CharacterFlags::Update.bits()) != 0;
             let ticker_match = (cn & 15) == (globals.ticker as usize & 15);
-            (globals.ticker as i32, has_update_flag || ticker_match)
+            (globals.ticker, has_update_flag || ticker_match)
         })
     });
 
@@ -3619,7 +3619,7 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
         Server::with_players(|players| players[nr].cpl.mode != mode)
     });
     if need_mode {
-        let mode = Repository::with_characters(|characters| characters[cn].mode as u8);
+        let mode = Repository::with_characters(|characters| characters[cn].mode);
         let mut buf: [u8; 2] = [0; 2];
         buf[0] = core::constants::SV_SETCHAR_MODE;
         buf[1] = mode;
@@ -4109,7 +4109,7 @@ fn plr_change_dir(nr: usize, cn: usize) {
     if current_dir as i32 != player_dir {
         let mut buf: [u8; 16] = [0; 16];
         buf[0] = core::constants::SV_SETCHAR_DIR;
-        buf[1] = current_dir as u8;
+        buf[1] = current_dir;
 
         NetworkManager::with(|network| {
             network.xsend(nr, &buf, 2);
@@ -5329,7 +5329,7 @@ fn plr_challenge_login(nr: usize) {
         ]) as usize
     });
 
-    if cn < 1 || cn >= core::constants::MAXCHARS as usize {
+    if cn < 1 || cn >= core::constants::MAXCHARS {
         log::warn!("Player {} sent wrong cn {} in challenge login", nr, cn);
         plr_logout(0, nr, enums::LogoutReason::ChallengeFailed);
         return;
@@ -5575,9 +5575,7 @@ fn plr_cmd_setuser(_nr: usize) {
                     // Otherwise, do not touch `name`/`reference` (prevents committing empty names).
                     let should_process_name = name_end > 3
                         && name_end < 38
-                        && (ch[cn].flags
-                            & core::constants::CharacterFlags::CF_NEWUSER.bits() as u64)
-                            != 0;
+                        && (ch[cn].flags & core::constants::CharacterFlags::CF_NEWUSER.bits()) != 0;
 
                     if should_process_name {
                         let mut flag: i32 = 0;
@@ -5619,7 +5617,7 @@ fn plr_cmd_setuser(_nr: usize) {
                             // check for duplicate names
                             if flag == 0 {
                                 for n in 1..core::constants::MAXCHARS {
-                                    if n != cn && ch[n].used != core::constants::USE_EMPTY as u8 {
+                                    if n != cn && ch[n].used != core::constants::USE_EMPTY {
                                         let mut other_name =
                                             ch[n].get_name().to_string().to_ascii_lowercase();
 
@@ -5703,8 +5701,7 @@ fn plr_cmd_setuser(_nr: usize) {
                                 ch[cn].reference[i] = ch[cn].name[i];
                             }
                             // clear CF_NEWUSER flag
-                            ch[cn].flags &=
-                                !(core::constants::CharacterFlags::CF_NEWUSER.bits() as u64);
+                            ch[cn].flags &= !core::constants::CharacterFlags::CF_NEWUSER.bits();
 
                             log::info!(
                                 "plr_cmd_setuser: committed name change for cn={} to \"{}\"",
@@ -5751,8 +5748,7 @@ fn plr_cmd_setuser(_nr: usize) {
                             reason = Some("does not contain your name".to_string());
                         } else if desc.contains('"') {
                             reason = Some("contains a double quote".to_string());
-                        } else if (ch[cn].flags
-                            & core::constants::CharacterFlags::CF_NODESC.bits() as u64)
+                        } else if (ch[cn].flags & core::constants::CharacterFlags::CF_NODESC.bits())
                             != 0
                         {
                             reason = Some("was blocked because you have been known to enter inappropriate descriptions".to_string());
@@ -5980,17 +5976,13 @@ fn plr_cmd_look_item(nr: usize) {
         (x, y, players[nr].usnr)
     });
 
-    if x < 0
-        || x >= core::constants::SERVER_MAPX as i32
-        || y < 0
-        || y >= core::constants::SERVER_MAPY as i32
-    {
+    if x < 0 || x >= core::constants::SERVER_MAPX || y < 0 || y >= core::constants::SERVER_MAPY {
         log::error!("plr_cmd_look_item: cn={} invalid coords {},{}", cn, x, y);
         return;
     }
 
     let in_idx = Repository::with_map(|map| {
-        map[(x + y * core::constants::SERVER_MAPX as i32) as usize].it as usize
+        map[(x + y * core::constants::SERVER_MAPX) as usize].it as usize
     });
 
     State::with_mut(|s| s.do_look_item(cn, in_idx));
@@ -6015,13 +6007,13 @@ fn plr_cmd_give(nr: usize) {
         ]) as usize
     });
 
-    if co >= core::constants::MAXCHARS as usize {
+    if co >= core::constants::MAXCHARS {
         log::error!("plr_cmd_give: invalid target cn {}", co);
         return;
     }
 
     let cn = Server::with_players(|players| players[nr].usnr);
-    let ticker = Repository::with_globals(|g| g.ticker as i32);
+    let ticker = Repository::with_globals(|g| g.ticker);
 
     Repository::with_characters_mut(|ch| {
         ch[cn].attack_cn = 0;
@@ -6058,7 +6050,7 @@ fn plr_cmd_turn(nr: usize) {
         return;
     }
 
-    let ticker = Repository::with_globals(|g| g.ticker as i32);
+    let ticker = Repository::with_globals(|g| g.ticker);
 
     Repository::with_characters_mut(|ch| {
         ch[cn].attack_cn = 0;
@@ -6095,10 +6087,10 @@ fn plr_cmd_drop(_nr: usize) {
         });
 
         if action == core::constants::DR_AREABUILD2 as u16 {
-            let xs = std::cmp::min(x as i32, tx as i32);
-            let ys = std::cmp::min(y as i32, ty as i32);
-            let xe = std::cmp::max(x as i32, tx as i32);
-            let ye = std::cmp::max(y as i32, ty as i32);
+            let xs = std::cmp::min(x, tx as i32);
+            let ys = std::cmp::min(y, ty as i32);
+            let xe = std::cmp::max(x, tx as i32);
+            let ye = std::cmp::max(y, ty as i32);
 
             State::with(|s| {
                 s.do_character_log(
@@ -6137,7 +6129,7 @@ fn plr_cmd_drop(_nr: usize) {
         return;
     }
 
-    let ticker = Repository::with_globals(|g| g.ticker as i32);
+    let ticker = Repository::with_globals(|g| g.ticker);
 
     Repository::with_characters_mut(|ch| {
         ch[cn].attack_cn = 0;
@@ -6173,7 +6165,7 @@ fn plr_cmd_pickup(nr: usize) {
         return;
     }
 
-    let ticker = Repository::with_globals(|g| g.ticker as i32);
+    let ticker = Repository::with_globals(|g| g.ticker);
 
     Repository::with_characters_mut(|ch| {
         ch[cn].attack_cn = 0;
@@ -6205,12 +6197,12 @@ fn plr_cmd_attack(nr: usize) {
         ])
     });
 
-    if co as usize >= core::constants::MAXCHARS as usize {
+    if co as usize >= core::constants::MAXCHARS {
         return;
     }
 
     let cn = Server::with_players(|players| players[nr].usnr);
-    let ticker = Repository::with_globals(|g| g.ticker as i32);
+    let ticker = Repository::with_globals(|g| g.ticker);
 
     Repository::with_characters_mut(|ch| {
         ch[cn].attack_cn = co as u16;
@@ -6273,7 +6265,7 @@ fn plr_cmd_move(nr: usize) {
         (x, y, players[nr].usnr)
     });
 
-    let ticker = Repository::with_globals(|g| g.ticker as i32);
+    let ticker = Repository::with_globals(|g| g.ticker);
 
     Repository::with_characters_mut(|ch| {
         let current_position = (ch[cn].x, ch[cn].y);
@@ -6302,7 +6294,7 @@ fn plr_cmd_move(nr: usize) {
 /// * `nr` - Player slot index requesting the reset
 fn plr_cmd_reset(nr: usize) {
     let cn = Server::with_players(|players| players[nr].usnr);
-    let ticker = Repository::with_globals(|g| g.ticker as i32);
+    let ticker = Repository::with_globals(|g| g.ticker);
 
     Repository::with_characters_mut(|ch| {
         ch[cn].use_nr = 0;
@@ -6345,7 +6337,7 @@ fn plr_cmd_skill(nr: usize) {
     if n >= core::types::Character::default().skill.len() {
         return;
     }
-    if co >= core::constants::MAXCHARS as usize {
+    if co >= core::constants::MAXCHARS {
         return;
     }
 
@@ -6411,7 +6403,7 @@ fn plr_cmd_use(nr: usize) {
         (x, y, players[nr].usnr)
     });
 
-    let ticker = Repository::with_globals(|g| g.ticker as i32);
+    let ticker = Repository::with_globals(|g| g.ticker);
 
     Repository::with_characters_mut(|ch| {
         ch[cn].attack_cn = 0;
@@ -6456,7 +6448,7 @@ fn plr_cmd_inv(nr: usize) {
         (what, n, co, players[nr].usnr)
     });
 
-    if co < 1 || co >= core::constants::MAXCHARS as usize {
+    if co < 1 || co >= core::constants::MAXCHARS {
         co = 0;
     }
 

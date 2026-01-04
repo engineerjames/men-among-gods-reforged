@@ -593,7 +593,7 @@ impl State {
             crate::driver::look_driver(cn, item_idx);
         } else {
             // Show item description
-            let description = Repository::with_items(|items| items[item_idx].description.clone());
+            let description = Repository::with_items(|items| items[item_idx].description);
             self.do_character_log(
                 cn,
                 FontColor::Green,
@@ -791,7 +791,7 @@ impl State {
                 if citem_idx > 0 && citem_idx < core::constants::MAXITEM {
                     self.do_character_log(cn, FontColor::Green, " \n");
 
-                    let citem_name = Repository::with_items(|items| items[citem_idx].name.clone());
+                    let citem_name = Repository::with_items(|items| items[citem_idx].name);
                     self.do_character_log(
                         cn,
                         FontColor::Green,
@@ -807,7 +807,7 @@ impl State {
                             (
                                 items[item_idx].weapon[0],
                                 items[citem_idx].weapon[0],
-                                items[item_idx].name.clone(),
+                                items[item_idx].name,
                             )
                         });
 

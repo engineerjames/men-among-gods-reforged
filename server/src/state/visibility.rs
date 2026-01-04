@@ -67,11 +67,11 @@ impl State {
         let xs = cmp::max(0, x_center - core::constants::LIGHTDIST);
         let ys = cmp::max(0, y_center - core::constants::LIGHTDIST);
         let xe = cmp::min(
-            core::constants::SERVER_MAPX as i32 - 1,
+            core::constants::SERVER_MAPX - 1,
             x_center + 1 + core::constants::LIGHTDIST,
         );
         let ye = cmp::min(
-            core::constants::SERVER_MAPY as i32 - 1,
+            core::constants::SERVER_MAPY - 1,
             y_center + 1 + core::constants::LIGHTDIST,
         );
 
@@ -121,11 +121,11 @@ impl State {
         let xs = cmp::max(0, xc - core::constants::LIGHTDIST);
         let ys = cmp::max(0, yc - core::constants::LIGHTDIST);
         let xe = cmp::min(
-            core::constants::SERVER_MAPX as i32 - 1,
+            core::constants::SERVER_MAPX - 1,
             xc + 1 + core::constants::LIGHTDIST,
         );
         let ye = cmp::min(
-            core::constants::SERVER_MAPY as i32 - 1,
+            core::constants::SERVER_MAPY - 1,
             yc + 1 + core::constants::LIGHTDIST,
         );
 
@@ -140,7 +140,7 @@ impl State {
                     continue;
                 }
 
-                let m = (x + y * core::constants::SERVER_MAPX as i32) as usize;
+                let m = (x + y * core::constants::SERVER_MAPX) as usize;
 
                 let should_continue = Repository::with_map(|map| {
                     map[m].flags & core::constants::MF_INDOORS as u64 != 0
@@ -171,7 +171,7 @@ impl State {
             best = 256;
         }
 
-        let center_index = (xc + yc * core::constants::SERVER_MAPX as i32) as usize;
+        let center_index = (xc + yc * core::constants::SERVER_MAPX) as usize;
 
         Repository::with_map_mut(|map| {
             if center_index < map.len() {
@@ -195,17 +195,17 @@ impl State {
         let xs = cmp::max(1, x0 - core::constants::LIGHTDIST);
         let ys = cmp::max(1, y0 - core::constants::LIGHTDIST);
         let xe = cmp::min(
-            core::constants::SERVER_MAPX as i32 - 2,
+            core::constants::SERVER_MAPX - 2,
             x0 + 1 + core::constants::LIGHTDIST,
         );
         let ye = cmp::min(
-            core::constants::SERVER_MAPY as i32 - 2,
+            core::constants::SERVER_MAPY - 2,
             y0 + 1 + core::constants::LIGHTDIST,
         );
 
         for yy in ys..ye {
             for xx in xs..xe {
-                let m = (xx + yy * core::constants::SERVER_MAPX as i32) as usize;
+                let m = (xx + yy * core::constants::SERVER_MAPX) as usize;
 
                 let item_idx = Repository::with_map(|map| map[m].it as usize);
                 let light_value_from_item = Repository::with_items(|items| {
@@ -746,25 +746,17 @@ impl State {
 
         let visi = self.vis_buf();
 
-        if visi[((x + 1) + (y + 0) * 40) as usize] != 0
-            && visi[((x + 1) + (y + 0) * 40) as usize] < best
-        {
-            best = visi[((x + 1) + (y + 0) * 40) as usize];
+        if visi[((x + 1) + y * 40) as usize] != 0 && visi[((x + 1) + y * 40) as usize] < best {
+            best = visi[((x + 1) + y * 40) as usize];
         }
-        if visi[((x - 1) + (y + 0) * 40) as usize] != 0
-            && visi[((x - 1) + (y + 0) * 40) as usize] < best
-        {
-            best = visi[((x - 1) + (y + 0) * 40) as usize];
+        if visi[((x - 1) + y * 40) as usize] != 0 && visi[((x - 1) + y * 40) as usize] < best {
+            best = visi[((x - 1) + y * 40) as usize];
         }
-        if visi[((x + 0) + (y + 1) * 40) as usize] != 0
-            && visi[((x + 0) + (y + 1) * 40) as usize] < best
-        {
-            best = visi[((x + 0) + (y + 1) * 40) as usize];
+        if visi[(x + (y + 1) * 40) as usize] != 0 && visi[(x + (y + 1) * 40) as usize] < best {
+            best = visi[(x + (y + 1) * 40) as usize];
         }
-        if visi[((x + 0) + (y - 1) * 40) as usize] != 0
-            && visi[((x + 0) + (y - 1) * 40) as usize] < best
-        {
-            best = visi[((x + 0) + (y - 1) * 40) as usize];
+        if visi[(x + (y - 1) * 40) as usize] != 0 && visi[(x + (y - 1) * 40) as usize] < best {
+            best = visi[(x + (y - 1) * 40) as usize];
         }
         if visi[((x + 1) + (y + 1) * 40) as usize] != 0
             && visi[((x + 1) + (y + 1) * 40) as usize] < best
@@ -875,14 +867,14 @@ impl State {
     fn check_map_see(&self, x: i32, y: i32) -> bool {
         // Check boundaries
         if x <= 0
-            || x >= core::constants::SERVER_MAPX as i32
+            || x >= core::constants::SERVER_MAPX
             || y <= 0
-            || y >= core::constants::SERVER_MAPY as i32
+            || y >= core::constants::SERVER_MAPY
         {
             return false;
         }
 
-        let m = (x + y * core::constants::SERVER_MAPX as i32) as usize;
+        let m = (x + y * core::constants::SERVER_MAPX) as usize;
 
         // Check if it's a monster and the map blocks monsters
         if self.is_monster {
@@ -931,14 +923,14 @@ impl State {
     /// `IF_MOVEBLOCK`.
     fn check_map_go(&self, x: i32, y: i32) -> bool {
         if x <= 0
-            || x >= core::constants::SERVER_MAPX as i32
+            || x >= core::constants::SERVER_MAPX
             || y <= 0
-            || y >= core::constants::SERVER_MAPY as i32
+            || y >= core::constants::SERVER_MAPY
         {
             return false;
         }
 
-        let m = (x + y * core::constants::SERVER_MAPX as i32) as usize;
+        let m = (x + y * core::constants::SERVER_MAPX) as usize;
 
         if Repository::with_map(|map| map[m].flags & core::constants::MF_MOVEBLOCK as u64 != 0) {
             return false;
@@ -1045,17 +1037,17 @@ impl State {
         let xs = cmp::max(1, x - core::constants::LIGHTDIST);
         let ys = cmp::max(1, y - core::constants::LIGHTDIST);
         let xe = cmp::min(
-            core::constants::SERVER_MAPX as i32 - 2,
+            core::constants::SERVER_MAPX - 2,
             x + 1 + core::constants::LIGHTDIST,
         );
         let ye = cmp::min(
-            core::constants::SERVER_MAPY as i32 - 2,
+            core::constants::SERVER_MAPY - 2,
             y + 1 + core::constants::LIGHTDIST,
         );
 
         for yy in ys..ye {
             for xx in xs..xe {
-                let m = (xx + yy * core::constants::SERVER_MAPX as i32) as usize;
+                let m = (xx + yy * core::constants::SERVER_MAPX) as usize;
 
                 let item_idx = Repository::with_map(|map| map[m].it as usize);
                 let light_value_from_item = Repository::with_items(|items| {

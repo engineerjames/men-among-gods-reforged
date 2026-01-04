@@ -5,7 +5,7 @@ use core::types::FontColor;
 /// Show the description and available slots for a rat-eye (driver 17)
 pub fn look_rat_eye(cn: usize, item_idx: usize) {
     // Print description
-    let description = Repository::with_items(|items| items[item_idx].description.clone());
+    let description = Repository::with_items(|items| items[item_idx].description);
     State::with(|state| {
         state.do_character_log(
             cn,
@@ -34,7 +34,7 @@ pub fn look_rat_eye(cn: usize, item_idx: usize) {
 
 /// Show the description and remaining charges for a spell scroll (driver 48)
 pub fn look_spell_scroll(cn: usize, item_idx: usize) {
-    let description = Repository::with_items(|items| items[item_idx].description.clone());
+    let description = Repository::with_items(|items| items[item_idx].description);
     State::with(|state| {
         state.do_character_log(
             cn,

@@ -1903,7 +1903,7 @@ pub fn obey(cn: usize, co: usize) -> i32 {
             return 1;
         }
         // Check kindred and obedience flags (data[26] & data[28])
-        if (characters[cn].data[26] & characters[co].kindred as i32) != 0
+        if (characters[cn].data[26] & characters[co].kindred) != 0
             && (characters[cn].data[28] & 1) != 0
         {
             return 2;
@@ -2119,7 +2119,7 @@ pub fn answer_stop(cn: usize, co: usize) {
         characters[cn].data[78] = 0;
 
         let ticker = Repository::with_globals(|globals| globals.ticker);
-        characters[cn].data[27] = ticker as i32;
+        characters[cn].data[27] = ticker;
 
         let co_name = characters[co].get_name().to_string();
         State::with(|state| {
@@ -2936,7 +2936,7 @@ pub fn npc_hear(cn: usize, co: usize, text: &str) {
             characters[cn].data[78] = 0;
 
             let ticker = Repository::with_globals(|g| g.ticker);
-            characters[cn].data[27] = ticker as i32;
+            characters[cn].data[27] = ticker;
 
             let response = String::from_utf8_lossy(&characters[cn].text[7])
                 .trim_matches('\0')

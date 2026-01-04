@@ -162,7 +162,7 @@ impl State {
 
             // Check if merchant can afford it
             let merchant_gold = Repository::with_characters(|ch| ch[co].gold);
-            if merchant_gold < price as i32 {
+            if merchant_gold < price {
                 let merchant_ref = Repository::with_characters(|ch| {
                     String::from_utf8_lossy(&ch[co].reference).to_string()
                 });
@@ -177,7 +177,7 @@ impl State {
             // Complete the sale
             Repository::with_characters_mut(|ch| {
                 ch[cn].citem = 0;
-                ch[cn].gold += price as i32;
+                ch[cn].gold += price;
             });
 
             // Transfer item to merchant
@@ -239,7 +239,7 @@ impl State {
                             let pr = self.barter(cn, value as i32, 1);
 
                             let player_gold = Repository::with_characters(|ch| ch[cn].gold);
-                            if player_gold < pr as i32 {
+                            if player_gold < pr {
                                 self.do_character_log(
                                     cn,
                                     FontColor::Green,
@@ -657,7 +657,7 @@ impl State {
 
             let bank_balance = Repository::with_characters(|ch| ch[cn].data[13]);
 
-            if total_cost > bank_balance as i32 {
+            if total_cost > bank_balance {
                 // Not enough money - find and sell cheapest item
                 let (cheapest_value, cheapest_slot) = Repository::with_characters(|ch| {
                     let mut lowest_value = 99999999;

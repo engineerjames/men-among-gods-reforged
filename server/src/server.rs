@@ -180,7 +180,7 @@ impl Server {
         });
 
         // Log out all active characters (cleanup from previous run)
-        for i in 0..core::constants::MAXCHARS as usize {
+        for i in 0..core::constants::MAXCHARS {
             let should_logout = Repository::with_characters(|characters| {
                 characters[i].used == core::constants::USE_ACTIVE
                     && characters[i].flags & CharacterFlags::Player.bits() != 0
@@ -489,7 +489,7 @@ impl Server {
                     let should_remove = Repository::with_characters_mut(|ch| {
                         if ch[n].flags & CharacterFlags::Player.bits() == 0 {
                             ch[n].data[98] += 1;
-                            if ch[n].data[98] > (core::constants::TICKS * 60 * 30) as i32 {
+                            if ch[n].data[98] > (core::constants::TICKS * 60 * 30) {
                                 return true;
                             }
                         }
@@ -613,7 +613,7 @@ impl Server {
         }
 
         Repository::with_characters_mut(|ch| {
-            ch[wakeup_idx].data[92] = (core::constants::TICKS * 60) as i32;
+            ch[wakeup_idx].data[92] = core::constants::TICKS * 60;
         });
 
         WAKEUP.store(wakeup_idx + 1, std::sync::atomic::Ordering::Relaxed);
@@ -673,7 +673,7 @@ impl Server {
                 erase = true;
             }
         } else if pts < 10_000 {
-            if ld + 1 * week < now {
+            if ld + week < now {
                 erase = true;
             }
         } else if pts < 100_000 {
@@ -959,7 +959,7 @@ impl Server {
         // If a new day began, run pay_rent() and do_misc()
         if day_rolled {
             // pay_rent: call depot payment routine for each player
-            for cn in 1..core::constants::MAXCHARS as usize {
+            for cn in 1..core::constants::MAXCHARS {
                 let is_player = Repository::with_characters(|ch| {
                     ch[cn].used != core::constants::USE_EMPTY
                         && (ch[cn].flags & crate::enums::CharacterFlags::Player.bits()) != 0
@@ -971,7 +971,7 @@ impl Server {
             }
 
             // do_misc: adjust luck and clear temporary flags for players
-            for cn in 1..core::constants::MAXCHARS as usize {
+            for cn in 1..core::constants::MAXCHARS {
                 let is_player = Repository::with_characters(|ch| {
                     ch[cn].used != core::constants::USE_EMPTY
                         && (ch[cn].flags & crate::enums::CharacterFlags::Player.bits()) != 0
@@ -1055,7 +1055,7 @@ impl Server {
                 // Work on a single player slot.
                 let p = &mut players[n];
 
-                if p.usnr >= core::constants::MAXCHARS as usize {
+                if p.usnr >= core::constants::MAXCHARS {
                     p.usnr = 0;
                 }
 
@@ -1167,7 +1167,7 @@ impl Server {
                 // in the compressed case).
                 let usnr = p.usnr;
                 Repository::with_characters_mut(|ch| {
-                    if usnr < core::constants::MAXCHARS as usize {
+                    if usnr < core::constants::MAXCHARS {
                         ch[usnr].comp_volume = ch[usnr].comp_volume.wrapping_add(olen_i32 as u32);
                         ch[usnr].raw_volume = ch[usnr].raw_volume.wrapping_add(ilen as u32);
                     }

@@ -36,7 +36,7 @@ impl State {
                     ys + core::constants::AREA_SIZE + 1,
                 )
             {
-                let m = y * core::constants::SERVER_MAPX as i32;
+                let m = y * core::constants::SERVER_MAPX;
                 for x in std::cmp::max(0, xs - core::constants::AREA_SIZE)
                     ..std::cmp::min(
                         core::constants::SERVER_MAPX,
@@ -369,7 +369,7 @@ impl State {
                 let area = {
                     let map_x = co_data17 % core::constants::SERVER_MAPX;
                     let map_y = co_data17 / core::constants::SERVER_MAPX;
-                    crate::area::get_area_m(map_x as i32, map_y as i32, true)
+                    crate::area::get_area_m(map_x, map_y, true)
                 };
 
                 self.do_character_log(
@@ -571,11 +571,11 @@ impl State {
         buf[1] = (end_display & 0xFF) as u8;
         buf[2] = (end_display >> 8) as u8;
 
-        let ahp_display = ((a_hp + 500) / 1000 + hp_diff as i32) as u16;
+        let ahp_display = ((a_hp + 500) / 1000 + hp_diff) as u16;
         buf[3] = (ahp_display & 0xFF) as u8;
         buf[4] = (ahp_display >> 8) as u8;
 
-        let aend_display = ((a_end + 500) / 1000 + end_diff as i32) as u16;
+        let aend_display = ((a_end + 500) / 1000 + end_diff) as u16;
         buf[5] = (aend_display & 0xFF) as u8;
         buf[6] = (aend_display >> 8) as u8;
 
@@ -591,7 +591,7 @@ impl State {
         buf[11] = (mana_display & 0xFF) as u8;
         buf[12] = (mana_display >> 8) as u8;
 
-        let amana_display = ((a_mana + 500) / 1000 + mana_diff as i32) as u16;
+        let amana_display = ((a_mana + 500) / 1000 + mana_diff) as u16;
         buf[13] = (amana_display & 0xFF) as u8;
         buf[14] = (amana_display >> 8) as u8;
 
@@ -911,10 +911,10 @@ impl State {
             // Check for NOFIGHT
             Repository::with_map(|map| {
                 let m1 = (characters[cn_actual].x as i32
-                    + characters[cn_actual].y as i32 * SERVER_MAPX as i32)
+                    + characters[cn_actual].y as i32 * SERVER_MAPX)
                     as usize;
                 let m2 = (characters[co_actual].x as i32
-                    + characters[co_actual].y as i32 * SERVER_MAPX as i32)
+                    + characters[co_actual].y as i32 * SERVER_MAPX)
                     as usize;
 
                 if ((map[m1].flags | map[m2].flags) & MF_NOFIGHT) != 0 {
@@ -1051,10 +1051,10 @@ impl State {
                 self.do_give_exp(cn, p - s, 0, rank);
             } else {
                 // NPC follower handling
-                let co = Repository::with_characters(|ch| ch[cn].data[63] as i32);
+                let co = Repository::with_characters(|ch| ch[cn].data[63]);
                 if co != 0 {
                     self.do_give_exp(cn, p, 0, rank);
-                    let master = Repository::with_characters(|ch| ch[cn].data[63] as i32);
+                    let master = Repository::with_characters(|ch| ch[cn].data[63]);
                     if master > 0
                         && (master as usize) < core::constants::MAXCHARS
                         && Repository::with_characters(|ch| ch[master as usize].points_tot)
@@ -1076,7 +1076,7 @@ impl State {
         // Non-grouped experience
         let mut p = p;
         if rank >= 0 && rank <= 24 {
-            let master = Repository::with_characters(|ch| ch[cn].data[63] as i32);
+            let master = Repository::with_characters(|ch| ch[cn].data[63]);
             if master > 0
                 && (master as usize) < core::constants::MAXCHARS
                 && Repository::with_characters(|ch| ch[master as usize].points_tot)
@@ -1163,7 +1163,7 @@ impl State {
 
         // Special "Skua!/Purple!" behaviour
         Repository::with_characters_mut(|ch| {
-            let kindred = ch[cn].kindred as i32;
+            let kindred = ch[cn].kindred;
             let is_skua = text == "Skua!" && (kindred & core::constants::KIN_PURPLE as i32) == 0;
             let is_purple =
                 text == "Purple!" && (kindred & core::constants::KIN_PURPLE as i32) != 0;
@@ -1601,7 +1601,7 @@ impl State {
             )
         };
 
-        for n in 1..core::constants::MAXCHARS as usize {
+        for n in 1..core::constants::MAXCHARS {
             let send = Repository::with_characters(|ch| {
                 ((ch[n].flags
                     & (CharacterFlags::CF_PLAYER.bits() | CharacterFlags::CF_USURP.bits()))
@@ -1738,7 +1738,7 @@ impl State {
         let matchname = name.to_lowercase();
         let mut bestmatch = 0;
         let mut quality = 0;
-        for n in 1..core::constants::MAXCHARS as usize {
+        for n in 1..core::constants::MAXCHARS {
             let used = Repository::with_characters(|ch| ch[n].used);
             if used != core::constants::USE_ACTIVE && used != core::constants::USE_NONACTIVE {
                 continue;

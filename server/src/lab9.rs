@@ -611,11 +611,11 @@ impl Labyrinth9 {
         let bank_index = bankno - 1;
 
         let x = BANKS[bank_index as usize].x1;
-        let mut y = BANKS[bank_index as usize].y1;
+        let y: i32 = BANKS[bank_index as usize].y1;
         let t = BANKS[bank_index as usize].temp;
 
         let mut correct = true;
-        let mut m = x + y * core::constants::SERVER_MAPX as i32;
+        let mut m = x + y * core::constants::SERVER_MAPX;
 
         for n in 0..core::constants::SWITCHES {
             let item_number = Repository::with_map(|map| map[m as usize].it);
@@ -640,13 +640,11 @@ impl Labyrinth9 {
             {
                 correct = false;
             }
-
-            y += 1;
         }
 
         // Door logic
         m = self.banks[bank_index as usize].doorx
-            + self.banks[bank_index as usize].doory * core::constants::SERVER_MAPX as i32;
+            + self.banks[bank_index as usize].doory * core::constants::SERVER_MAPX;
 
         let item_number = Repository::with_map(|map| map[m as usize].it);
 
@@ -935,8 +933,8 @@ impl Labyrinth9 {
                 state.do_area_notify(
                     cn as i32,
                     0,
-                    character_position.0 as i32,
-                    character_position.1 as i32,
+                    character_position.0,
+                    character_position.1,
                     core::constants::NT_SEE as i32,
                     cn as i32,
                     0,
