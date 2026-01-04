@@ -740,7 +740,7 @@ pub fn pop_create_char(n: usize, drop: bool) -> usize {
 /// Port of `reset_char` from `populate.cpp`
 /// Resets a character template and all instances
 pub fn reset_char(n: usize) {
-    if n < 1 || n >= core::constants::MAXTCHARS {
+    if !(1..core::constants::MAXTCHARS).contains(&n) {
         return;
     }
 
@@ -922,7 +922,7 @@ pub fn pop_skill() {
 /// Port of `reset_item` from `populate.cpp`
 /// Resets an item template and all instances
 pub fn reset_item(n: usize) {
-    if n < 2 || n >= core::constants::MAXTITEM {
+    if !(2..core::constants::MAXTITEM).contains(&n) {
         return; // Never reset blank template (1)
     }
 

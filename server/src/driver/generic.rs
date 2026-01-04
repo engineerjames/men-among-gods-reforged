@@ -1074,9 +1074,9 @@ pub fn char_give_char(cn: usize, co: usize) -> i32 {
 
     let err = char_moveto(cn, x, y, 2, tox, toy);
     if err == -1 {
-        return -1;
+        -1
     } else {
-        return 0;
+        0
     }
 }
 
@@ -1195,9 +1195,9 @@ pub fn char_attack_char(cn: usize, co: usize) -> i32 {
 
     let err = char_moveto(cn, nx, ny, 2, ntx, nty);
     if err == -1 {
-        return -1;
+        -1
     } else {
-        return 0;
+        0
     }
 }
 
@@ -1446,7 +1446,7 @@ pub fn char_moveto(cn: usize, x: i32, y: i32, flag: i32, x2: i32, y2: i32) -> i3
                 return 0;
             }
             act_move_rightdown(cn);
-            return 0;
+            0
         }
         d if d == Some(core::constants::DX_RIGHTUP) => {
             if Repository::with_characters(|ch| ch[cn].dir as i32)
@@ -1456,7 +1456,7 @@ pub fn char_moveto(cn: usize, x: i32, y: i32, flag: i32, x2: i32, y2: i32) -> i3
                 return 0;
             }
             act_move_rightup(cn);
-            return 0;
+            0
         }
         d if d == Some(core::constants::DX_LEFTDOWN) => {
             if Repository::with_characters(|ch| ch[cn].dir as i32)
@@ -1466,7 +1466,7 @@ pub fn char_moveto(cn: usize, x: i32, y: i32, flag: i32, x2: i32, y2: i32) -> i3
                 return 0;
             }
             act_move_leftdown(cn);
-            return 0;
+            0
         }
         d if d == Some(core::constants::DX_LEFTUP) => {
             if Repository::with_characters(|ch| ch[cn].dir as i32)
@@ -1476,7 +1476,7 @@ pub fn char_moveto(cn: usize, x: i32, y: i32, flag: i32, x2: i32, y2: i32) -> i3
                 return 0;
             }
             act_move_leftup(cn);
-            return 0;
+            0
         }
         d if d == Some(core::constants::DX_RIGHT) => {
             if Repository::with_characters(|ch| ch[cn].dir as i32)
@@ -1498,7 +1498,7 @@ pub fn char_moveto(cn: usize, x: i32, y: i32, flag: i32, x2: i32, y2: i32) -> i3
                 return 0;
             }
             act_move_right(cn);
-            return 0;
+            0
         }
         d if d == Some(core::constants::DX_LEFT) => {
             if Repository::with_characters(|ch| ch[cn].dir as i32)
@@ -1520,7 +1520,7 @@ pub fn char_moveto(cn: usize, x: i32, y: i32, flag: i32, x2: i32, y2: i32) -> i3
                 return 0;
             }
             act_move_left(cn);
-            return 0;
+            0
         }
         d if d == Some(core::constants::DX_DOWN) => {
             if Repository::with_characters(|ch| ch[cn].dir as i32)
@@ -1542,7 +1542,7 @@ pub fn char_moveto(cn: usize, x: i32, y: i32, flag: i32, x2: i32, y2: i32) -> i3
                 return 0;
             }
             act_move_down(cn);
-            return 0;
+            0
         }
         d if d == Some(core::constants::DX_UP) => {
             if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_UP as i32
@@ -1563,9 +1563,9 @@ pub fn char_moveto(cn: usize, x: i32, y: i32, flag: i32, x2: i32, y2: i32) -> i3
                 return 0;
             }
             act_move_up(cn);
-            return 0;
+            0
         }
-        _ => return -1,
+        _ => -1,
     }
 }
 
@@ -1649,7 +1649,7 @@ pub fn drv_useto(cn: usize, x: usize, y: usize) {
     // bounds check as in C++
     let mut xx = x as i32;
     let mut yy = y as i32;
-    if xx < 0 || xx >= core::constants::SERVER_MAPX || yy < 0 || yy >= core::constants::SERVER_MAPY
+    if !(0..core::constants::SERVER_MAPX).contains(&xx) || !(0..core::constants::SERVER_MAPY).contains(&yy)
     {
         xx = 0;
         yy = 0;
@@ -1873,10 +1873,8 @@ pub fn follow_driver(cn: usize, co: usize) -> bool {
     }
     let (tox, toy, dir) =
         Repository::with_characters(|ch| (ch[co].tox as i32, ch[co].toy as i32, ch[co].dir as i32));
-    if tox < 5
-        || tox > core::constants::SERVER_MAPX - 6
-        || toy < 5
-        || toy > core::constants::SERVER_MAPY - 6
+    if !(5..=core::constants::SERVER_MAPX - 6).contains(&tox)
+        || !(5..=core::constants::SERVER_MAPY - 6).contains(&toy)
     {
         return false;
     }

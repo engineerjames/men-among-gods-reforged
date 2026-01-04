@@ -346,7 +346,7 @@ pub fn show_time(cn: usize) {
 
     fn ordinal_suffix(n: i32) -> &'static str {
         let n_mod_100 = n % 100;
-        if n_mod_100 >= 11 && n_mod_100 <= 13 {
+        if (11..=13).contains(&n_mod_100) {
             return "th";
         }
         match n % 10 {
@@ -781,7 +781,7 @@ pub fn invis_level(cn: usize) -> i32 {
             return 2;
         }
 
-        return 1;
+        1
     })
 }
 

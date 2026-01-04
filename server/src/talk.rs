@@ -58,7 +58,7 @@ const RIDDLE_TEXT: &str = "If you bring me the right volume of the Book of Wisdo
 
 const AR_ALL: i32 = 12345;
 
-const KNOW: [Know; 227] = [
+static KNOW: [Know; 227] = [
     Know {
         word: ["!where", "!tavern", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
         value: 0,

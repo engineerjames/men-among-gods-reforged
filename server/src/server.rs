@@ -93,7 +93,7 @@ impl Server {
     {
         let lock = PLAYERS.get().expect("Players not initialized");
         let guard = lock.lock();
-        let inner: &UnsafeCell<Box<[core::types::ServerPlayer; MAXPLAYER]>> = &*guard;
+        let inner: &UnsafeCell<Box<[core::types::ServerPlayer; MAXPLAYER]>> = &guard;
         // SAFETY: We are holding the mutex so creating a shared reference is safe.
         let boxed: &Box<[core::types::ServerPlayer; MAXPLAYER]> = unsafe { &*inner.get() };
         f(&boxed[..])
@@ -110,7 +110,7 @@ impl Server {
     {
         let lock = PLAYERS.get().expect("Players not initialized");
         let guard = lock.lock();
-        let inner: &UnsafeCell<Box<[core::types::ServerPlayer; MAXPLAYER]>> = &*guard;
+        let inner: &UnsafeCell<Box<[core::types::ServerPlayer; MAXPLAYER]>> = &guard;
         // SAFETY: We are holding the mutex so creating a unique mutable reference is safe.
         let boxed_mut: &mut Box<[core::types::ServerPlayer; MAXPLAYER]> =
             unsafe { &mut *inner.get() };

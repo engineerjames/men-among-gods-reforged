@@ -312,7 +312,7 @@ impl State {
             );
             return;
         }
-        if lag > 20 || lag < 3 {
+        if !(3..=20).contains(&lag) {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,

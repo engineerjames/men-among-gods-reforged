@@ -1075,7 +1075,7 @@ impl State {
 
         // Non-grouped experience
         let mut p = p;
-        if rank >= 0 && rank <= 24 {
+        if (0..=24).contains(&rank) {
             let master = Repository::with_characters(|ch| ch[cn].data[63]);
             if master > 0
                 && (master as usize) < core::constants::MAXCHARS

@@ -564,7 +564,7 @@ impl God {
             characters[character_id].flags |= CharacterFlags::BuildMode.bits();
             characters[character_id].set_do_update_flags();
         });
-        return true;
+        true
     }
 
     /// Stop build mode and restore player's inventory from the helper.
@@ -715,7 +715,7 @@ impl God {
         // Place character back on the map (even if transfer failed) so map state stays consistent
         player::plr_map_set(character_id);
 
-        return false;
+        false
     }
 
     /// Place a character near `(x,y)` using a predefined small offset table.
@@ -1314,7 +1314,7 @@ impl God {
                     return false;
                 }
 
-                return true;
+                true
             })
         });
 
@@ -3563,7 +3563,7 @@ impl God {
             return;
         }
 
-        if n < 0 || n >= 50 {
+        if !(0..50).contains(&n) {
             State::with(|state| {
                 state.do_character_log(
                     cn,
@@ -3618,7 +3618,7 @@ impl God {
         }
 
         // If place is not 1 or 2, pick randomly
-        let place = if place < 1 || place > 2 {
+        let place = if !(1..=2).contains(&place) {
             use rand::Rng;
             rand::thread_rng().gen_range(1..=2)
         } else {
@@ -3918,7 +3918,7 @@ impl God {
             return;
         }
 
-        if sprite < 0 || sprite > 10000 {
+        if !(0..=10000).contains(&sprite) {
             State::with(|state| {
                 state.do_character_log(
                     cn,

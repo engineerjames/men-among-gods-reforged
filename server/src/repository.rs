@@ -103,7 +103,7 @@ impl Repository {
             .join(".dat")
             .join(file_name);
 
-        return full_path;
+        full_path
     }
 
     /// Load `map.dat` and populate the `map` vector.
@@ -479,7 +479,7 @@ impl Repository {
     {
         let lock = REPOSITORY.get().expect("Repository not initialized");
         let guard = lock.lock();
-        let inner: &UnsafeCell<Repository> = &*guard;
+        let inner: &UnsafeCell<Repository> = &guard;
         // SAFETY: We only create a shared reference here while holding the mutex; there are no
         // concurrent &mut aliases when the mutex is locked.
         let repo_ref: &Repository = unsafe { &*inner.get() };
@@ -497,7 +497,7 @@ impl Repository {
     {
         let lock = REPOSITORY.get().expect("Repository not initialized");
         let guard = lock.lock();
-        let inner: &UnsafeCell<Repository> = &*guard;
+        let inner: &UnsafeCell<Repository> = &guard;
         // SAFETY: We create a unique mutable reference from the raw pointer held inside UnsafeCell.
         // This is safe because the ReentrantMutex provides mutual exclusion across threads and we
         // only call this function while holding the mutex. Reentrancy ensures nested calls succeed

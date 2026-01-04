@@ -1796,7 +1796,7 @@ impl State {
 
         // Warn about low HP
         let cur_hp = Repository::with_characters(|ch| ch[co].a_hp);
-        if cur_hp < 8000 && cur_hp >= 500 {
+        if (500..8000).contains(&cur_hp) {
             self.do_character_log(
                 co,
                 core::types::FontColor::Red,

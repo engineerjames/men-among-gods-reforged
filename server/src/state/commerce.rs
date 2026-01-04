@@ -61,7 +61,7 @@ impl State {
     ///   - 62+: Examine item descriptions (nr-62 gives item slot)
     pub(crate) fn do_shop_char(&mut self, cn: usize, co: usize, nr: i32) {
         // Validate parameters
-        if co == 0 || co >= core::constants::MAXCHARS || nr < 0 || nr >= 124 {
+        if co == 0 || co >= core::constants::MAXCHARS || !(0..124).contains(&nr) {
             return;
         }
 
@@ -766,7 +766,7 @@ impl State {
     ///   - If character has citem: Deposit that item
     pub(crate) fn do_depot_char(&mut self, cn: usize, co: usize, nr: i32) {
         // Validate parameters
-        if co == 0 || co >= core::constants::MAXCHARS || nr < 0 || nr >= 124 {
+        if co == 0 || co >= core::constants::MAXCHARS || !(0..124).contains(&nr) {
             return;
         }
 

@@ -2098,7 +2098,6 @@ pub fn plr_act(cn: usize) {
         0..=7 => {
             driver::act_idle(cn);
             plr_doact(cn);
-            return;
         }
 
         // walk up: 16..22 increment, 23 execute
@@ -2106,7 +2105,6 @@ pub fn plr_act(cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
-            return;
         }
         23 => {
             if speedo(cn) != 0 {
@@ -2114,7 +2112,6 @@ pub fn plr_act(cn: usize) {
                 plr_move_up(cn);
                 plr_doact(cn);
             }
-            return;
         }
 
         // walk down: 24..30 then 31
@@ -2122,7 +2119,6 @@ pub fn plr_act(cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
-            return;
         }
         31 => {
             if speedo(cn) != 0 {
@@ -2130,7 +2126,6 @@ pub fn plr_act(cn: usize) {
                 plr_move_down(cn);
                 plr_doact(cn);
             }
-            return;
         }
 
         // walk left: 32..38 then 39
@@ -2138,7 +2133,6 @@ pub fn plr_act(cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
-            return;
         }
         39 => {
             if speedo(cn) != 0 {
@@ -2146,7 +2140,6 @@ pub fn plr_act(cn: usize) {
                 plr_move_left(cn);
                 plr_doact(cn);
             }
-            return;
         }
 
         // walk right: 40..46 then 47
@@ -2154,7 +2147,6 @@ pub fn plr_act(cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
-            return;
         }
         47 => {
             if speedo(cn) != 0 {
@@ -2162,7 +2154,6 @@ pub fn plr_act(cn: usize) {
                 plr_move_right(cn);
                 plr_doact(cn);
             }
-            return;
         }
 
         // left+up: 48..58 then 59
@@ -2170,7 +2161,6 @@ pub fn plr_act(cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
-            return;
         }
         59 => {
             if speedo(cn) != 0 {
@@ -2178,7 +2168,6 @@ pub fn plr_act(cn: usize) {
                 plr_move_leftup(cn);
                 plr_doact(cn);
             }
-            return;
         }
 
         // left+down: 60..70 then 71
@@ -2186,7 +2175,6 @@ pub fn plr_act(cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
-            return;
         }
         71 => {
             if speedo(cn) != 0 {
@@ -2194,7 +2182,6 @@ pub fn plr_act(cn: usize) {
                 plr_move_leftdown(cn);
                 plr_doact(cn);
             }
-            return;
         }
 
         // right+up: 72..82 then 83
@@ -2202,7 +2189,6 @@ pub fn plr_act(cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
-            return;
         }
         83 => {
             if speedo(cn) != 0 {
@@ -2210,7 +2196,6 @@ pub fn plr_act(cn: usize) {
                 plr_move_rightup(cn);
                 plr_doact(cn);
             }
-            return;
         }
 
         // right+down: 84..94 then 95
@@ -2218,7 +2203,6 @@ pub fn plr_act(cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
-            return;
         }
         95 => {
             if speedo(cn) != 0 {
@@ -2226,7 +2210,6 @@ pub fn plr_act(cn: usize) {
                 plr_move_rightdown(cn);
                 plr_doact(cn);
             }
-            return;
         }
 
         // turns: grouped ranges mapping to final turn actions
@@ -2234,7 +2217,6 @@ pub fn plr_act(cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
-            return;
         }
         99 => {
             if speedo(cn) != 0 {
@@ -2242,14 +2224,12 @@ pub fn plr_act(cn: usize) {
                 plr_turn_leftup(cn);
                 plr_doact(cn);
             }
-            return;
         }
 
         100..=102 => {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
-            return;
         }
         103 => {
             if speedo(cn) != 0 {
@@ -2257,14 +2237,12 @@ pub fn plr_act(cn: usize) {
                 plr_turn_left(cn);
                 plr_doact(cn);
             }
-            return;
         }
 
         104..=106 => {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
-            return;
         }
         107 => {
             if speedo(cn) != 0 {
@@ -2272,14 +2250,12 @@ pub fn plr_act(cn: usize) {
                 plr_turn_rightup(cn);
                 plr_doact(cn);
             }
-            return;
         }
 
         108..=110 => {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
-            return;
         }
         111 => {
             if speedo(cn) != 0 {
@@ -2287,14 +2263,12 @@ pub fn plr_act(cn: usize) {
                 plr_turn_right(cn);
                 plr_doact(cn);
             }
-            return;
         }
 
         112..=114 => {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
-            return;
         }
         115 => {
             if speedo(cn) != 0 {
@@ -2302,14 +2276,12 @@ pub fn plr_act(cn: usize) {
                 plr_turn_leftdown(cn);
                 plr_doact(cn);
             }
-            return;
         }
 
         116..=118 => {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
-            return;
         }
         119 => {
             if speedo(cn) != 0 {
@@ -2317,14 +2289,12 @@ pub fn plr_act(cn: usize) {
                 plr_turn_left(cn);
                 plr_doact(cn);
             }
-            return;
         }
 
         120..=122 => {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
-            return;
         }
         123 => {
             if speedo(cn) != 0 {
@@ -2332,14 +2302,12 @@ pub fn plr_act(cn: usize) {
                 plr_turn_rightdown(cn);
                 plr_doact(cn);
             }
-            return;
         }
 
         124..=126 => {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
-            return;
         }
         127 => {
             if speedo(cn) != 0 {
@@ -2347,14 +2315,12 @@ pub fn plr_act(cn: usize) {
                 plr_turn_right(cn);
                 plr_doact(cn);
             }
-            return;
         }
 
         128..=130 => {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
-            return;
         }
         131 => {
             if speedo(cn) != 0 {
@@ -2362,14 +2328,12 @@ pub fn plr_act(cn: usize) {
                 plr_turn_leftup(cn);
                 plr_doact(cn);
             }
-            return;
         }
 
         132..=134 => {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
-            return;
         }
         135 => {
             if speedo(cn) != 0 {
@@ -2377,14 +2341,12 @@ pub fn plr_act(cn: usize) {
                 plr_turn_up(cn);
                 plr_doact(cn);
             }
-            return;
         }
 
         136..=138 => {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
-            return;
         }
         139 => {
             if speedo(cn) != 0 {
@@ -2392,14 +2354,12 @@ pub fn plr_act(cn: usize) {
                 plr_turn_leftdown(cn);
                 plr_doact(cn);
             }
-            return;
         }
 
         140..=142 => {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
-            return;
         }
         143 => {
             if speedo(cn) != 0 {
@@ -2407,14 +2367,12 @@ pub fn plr_act(cn: usize) {
                 plr_turn_down(cn);
                 plr_doact(cn);
             }
-            return;
         }
 
         144..=146 => {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
-            return;
         }
         147 => {
             if speedo(cn) != 0 {
@@ -2422,14 +2380,12 @@ pub fn plr_act(cn: usize) {
                 plr_turn_rightup(cn);
                 plr_doact(cn);
             }
-            return;
         }
 
         148..=150 => {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
-            return;
         }
         151 => {
             if speedo(cn) != 0 {
@@ -2437,14 +2393,12 @@ pub fn plr_act(cn: usize) {
                 plr_turn_up(cn);
                 plr_doact(cn);
             }
-            return;
         }
 
         152..=154 => {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
-            return;
         }
         155 => {
             if speedo(cn) != 0 {
@@ -2452,14 +2406,12 @@ pub fn plr_act(cn: usize) {
                 plr_turn_rightdown(cn);
                 plr_doact(cn);
             }
-            return;
         }
 
         156..=158 => {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
-            return;
         }
         159 => {
             if speedo(cn) != 0 {
@@ -2467,7 +2419,6 @@ pub fn plr_act(cn: usize) {
                 plr_turn_down(cn);
                 plr_doact(cn);
             }
-            return;
         }
 
         // misc actions: 160..166 increment, 167 execute misc then doact
@@ -2475,7 +2426,6 @@ pub fn plr_act(cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
-            return;
         }
         167 => {
             if speedo(cn) != 0 {
@@ -2483,7 +2433,6 @@ pub fn plr_act(cn: usize) {
                 plr_misc(cn);
                 plr_doact(cn);
             }
-            return;
         }
 
         // misc down 168..174 then 175
@@ -2491,7 +2440,6 @@ pub fn plr_act(cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
-            return;
         }
         175 => {
             if speedo(cn) != 0 {
@@ -2499,7 +2447,6 @@ pub fn plr_act(cn: usize) {
                 plr_misc(cn);
                 plr_doact(cn);
             }
-            return;
         }
 
         // misc left 176..182 then 183
@@ -2507,7 +2454,6 @@ pub fn plr_act(cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
-            return;
         }
         183 => {
             if speedo(cn) != 0 {
@@ -2515,7 +2461,6 @@ pub fn plr_act(cn: usize) {
                 plr_misc(cn);
                 plr_doact(cn);
             }
-            return;
         }
 
         // misc right 184..190 then 191
@@ -2523,7 +2468,6 @@ pub fn plr_act(cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status += 1);
             }
-            return;
         }
         191 => {
             if speedo(cn) != 0 {
@@ -2531,7 +2475,6 @@ pub fn plr_act(cn: usize) {
                 plr_misc(cn);
                 plr_doact(cn);
             }
-            return;
         }
 
         _ => {
@@ -2542,7 +2485,6 @@ pub fn plr_act(cn: usize) {
                 cn
             );
             Repository::with_characters_mut(|ch| ch[cn].status = 0);
-            return;
         }
     }
 }
@@ -5329,7 +5271,7 @@ fn plr_challenge_login(nr: usize) {
         ]) as usize
     });
 
-    if cn < 1 || cn >= core::constants::MAXCHARS {
+    if !(1..core::constants::MAXCHARS).contains(&cn) {
         log::warn!("Player {} sent wrong cn {} in challenge login", nr, cn);
         plr_logout(0, nr, enums::LogoutReason::ChallengeFailed);
         return;
@@ -5976,7 +5918,7 @@ fn plr_cmd_look_item(nr: usize) {
         (x, y, players[nr].usnr)
     });
 
-    if x < 0 || x >= core::constants::SERVER_MAPX || y < 0 || y >= core::constants::SERVER_MAPY {
+    if !(0..core::constants::SERVER_MAPX).contains(&x) || !(0..core::constants::SERVER_MAPY).contains(&y) {
         log::error!("plr_cmd_look_item: cn={} invalid coords {},{}", cn, x, y);
         return;
     }
@@ -6448,7 +6390,7 @@ fn plr_cmd_inv(nr: usize) {
         (what, n, co, players[nr].usnr)
     });
 
-    if co < 1 || co >= core::constants::MAXCHARS {
+    if !(1..core::constants::MAXCHARS).contains(&co) {
         co = 0;
     }
 
@@ -6486,7 +6428,6 @@ fn plr_cmd_inv(nr: usize) {
                     ch[cn].gold += tmpval as i32;
                 }
                 ch[cn].citem = 0;
-                return;
             } else {
                 if !ch[cn].is_building() {
                     ch[cn].item[n] = ch[cn].citem;
@@ -6494,7 +6435,6 @@ fn plr_cmd_inv(nr: usize) {
                     ch[cn].misc_action = core::constants::DR_SINGLEBUILD as u16;
                 }
                 ch[cn].citem = tmp as u32;
-                return;
             }
         });
     }
