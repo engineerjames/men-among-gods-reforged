@@ -74,7 +74,6 @@ fn main() -> Result<(), String> {
     });
 
     log::info!("Starting Men Among Gods: Reforged Server v0.0.1");
-    log::info!("Copyright (C) 2024 The Reforged Project. All rights reserved.");
     log::info!("Process PID: {}", process::id());
 
     let quit_flag = Arc::new(AtomicBool::new(false));
