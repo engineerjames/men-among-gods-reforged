@@ -1,2 +1,13 @@
 [build]
-rustflags = ["-A", "clippy::all", "-W", "clippy::unnecessary_cast", "-W", "clippy::identity_op"]
+rustflags = [
+    "-A",
+    "clippy::all",
+    "-W",
+    "clippy::unnecessary_cast",
+    "-W",
+    "clippy::identity_op",
+    "-W",
+    "clippy::manual_range_patterns",
+    "-W",
+    "clippy::clone_on_copy",
+]
