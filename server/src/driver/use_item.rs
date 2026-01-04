@@ -4846,7 +4846,7 @@ pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
 
         // Create new Seyan'Du sword (template 682)
         in2 = God::create_item(682).unwrap();
-        God::give_character_item(in2, cn);
+        God::give_character_item(cn, in2);
         Repository::with_items_mut(|items| {
             items[in2].data[0] = cn as u32;
         });
@@ -4994,7 +4994,7 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
 
         // Give Seyan'Du sword (template 682)
         let in2 = God::create_item(682);
-        God::give_character_item(in2.unwrap(), cn);
+        God::give_character_item(cn, in2.unwrap());
         Repository::with_items_mut(|items| {
             items[in2.unwrap()].data[0] = cn as u32;
         });
@@ -5389,7 +5389,7 @@ pub fn use_lab8_key(cn: usize, item_idx: usize) -> i32 {
     Repository::with_items_mut(|items| {
         items[new_key.unwrap()].flags |= core::constants::ItemFlags::IF_UPDATE.bits();
     });
-    God::give_character_item(new_key.unwrap(), cn);
+    God::give_character_item(cn, new_key.unwrap());
 
     1
 }
@@ -5450,7 +5450,7 @@ pub fn use_lab8_shrine(cn: usize, item_idx: usize) -> i32 {
     let gift_template = Repository::with_items(|items| items[item_idx].data[1]);
     let gift = God::create_item(gift_template as usize);
 
-    if !God::give_character_item(gift.unwrap(), cn) {
+    if !God::give_character_item(cn, gift.unwrap()) {
         // If inventory full, put in carried
         Repository::with_characters_mut(|characters| {
             characters[cn].citem = gift.unwrap() as u32;

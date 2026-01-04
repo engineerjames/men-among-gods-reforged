@@ -1425,14 +1425,7 @@ impl Server {
 }
 
 impl Drop for Server {
-    /// Called when the `Server` is dropped (shutdown).
-    ///
-    /// Marks repository data as clean and performs any final logging; further
-    /// graceful shutdown steps may be added here in the future.
     fn drop(&mut self) {
-        log::info!("Server shutting down, marking data as clean.");
-        Repository::with_globals_mut(|globals| {
-            globals.set_dirty(false);
-        });
+        Repository::shutdown();
     }
 }

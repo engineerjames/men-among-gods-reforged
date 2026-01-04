@@ -74,7 +74,7 @@ impl Repository {
     /// This calls each of the `load_*` helper methods in sequence and returns an
     /// error if any step fails. After a successful `load`, the repository
     /// contains populated `map`, `items`, `characters`, `globals`, etc.
-    pub fn load(&mut self) -> Result<(), String> {
+    fn load(&mut self) -> Result<(), String> {
         self.load_map()?;
         self.load_items()?;
         self.load_item_templates()?;
@@ -87,6 +87,38 @@ impl Repository {
         self.load_message_of_the_day()?;
         self.load_ban_list()?;
         Ok(())
+    }
+
+    /// Save all game data from memory back to disk.
+    /// The bad names, words, and message of the day are not saved back as
+    /// they are managed separately via text files, and are treated currently
+    /// as read-only.
+    fn save(&mut self) -> Result<(), String> {
+        self.save_map()?;
+        self.save_items()?;
+        self.save_item_templates()?;
+        self.save_characters()?;
+        self.save_character_templates()?;
+        self.save_effects()?;
+        self.save_globals()?;
+        Ok(())
+    }
+
+    /// Perform a clean shutdown of the repository by saving all data back to disk.
+    pub fn shutdown() {
+        if REPOSITORY.get().is_none() {
+            log::warn!("Repository.shutdown called but repository not initialized.");
+            return;
+        }
+
+        Self::with_repo_mut(|repo| {
+            repo.globals.set_dirty(false);
+            if let Err(e) = repo.save() {
+                log::error!("Failed to save repository during shutdown: {}", e);
+            } else {
+                log::info!("Repository saved cleanly in shutdown()");
+            }
+        });
     }
 
     /// Resolve the absolute path to a `.dat` file given its file name.
@@ -147,6 +179,29 @@ impl Repository {
         Ok(())
     }
 
+    /// Save `map.dat` from the in-memory `map` vector back to disk.
+    fn save_map(&self) -> Result<(), String> {
+        let map_path = self.get_dat_file_path("map.dat");
+        log::info!("Saving map data to {:?}", map_path);
+
+        // We could definitely be more efficient here by writing directly to the file
+        // from the map tiles without allocating a large buffer first.
+        let mut map_data: Vec<u8> = Vec::with_capacity(
+            core::constants::SERVER_MAPX as usize
+                * core::constants::SERVER_MAPY as usize
+                * std::mem::size_of::<core::types::Map>(),
+        );
+
+        for map_tile in &self.map {
+            let tile_bytes = map_tile.to_bytes();
+            map_data.extend_from_slice(&tile_bytes);
+        }
+
+        fs::write(&map_path, &map_data).map_err(|e| e.to_string())?;
+        log::info!("Map data saved successfully.");
+        Ok(())
+    }
+
     /// Load `item.dat` and populate the `items` array.
     ///
     /// Verifies the file size equals `MAXITEM * size_of::<Item>()` and parses
@@ -184,6 +239,25 @@ impl Repository {
             num_items
         );
 
+        Ok(())
+    }
+
+    fn save_items(&self) -> Result<(), String> {
+        let items_path = self.get_dat_file_path("item.dat");
+
+        log::info!("Saving items data to {:?}", items_path);
+
+        let mut items_data: Vec<u8> =
+            Vec::with_capacity(core::constants::MAXITEM * std::mem::size_of::<core::types::Item>());
+
+        for item in &self.items {
+            let item_bytes = item.to_bytes();
+            items_data.extend_from_slice(&item_bytes);
+        }
+
+        fs::write(&items_path, &items_data).map_err(|e| e.to_string())?;
+
+        log::info!("Items data saved successfully.");
         Ok(())
     }
 
@@ -227,6 +301,22 @@ impl Repository {
         Ok(())
     }
 
+    fn save_item_templates(&self) -> Result<(), String> {
+        let item_templates_path = self.get_dat_file_path("titem.dat");
+
+        log::info!("Saving item templates data to {:?}", item_templates_path);
+        let mut item_templates_data: Vec<u8> = Vec::with_capacity(
+            core::constants::MAXTITEM * std::mem::size_of::<core::types::Item>(),
+        );
+        for item_template in &self.item_templates {
+            let item_template_bytes = item_template.to_bytes();
+            item_templates_data.extend_from_slice(&item_template_bytes);
+        }
+        fs::write(&item_templates_path, &item_templates_data).map_err(|e| e.to_string())?;
+        log::info!("Item templates data saved successfully.");
+        Ok(())
+    }
+
     /// Load `char.dat` and populate the `characters` array.
     ///
     /// Validates the file size equals `MAXCHARS * size_of::<Character>()` and
@@ -258,6 +348,26 @@ impl Repository {
             self.characters[i] = character;
         }
 
+        Ok(())
+    }
+
+    fn save_characters(&self) -> Result<(), String> {
+        let characters_path = self.get_dat_file_path("char.dat");
+
+        log::info!("Saving characters data to {:?}", characters_path);
+
+        let mut characters_data: Vec<u8> = Vec::with_capacity(
+            core::constants::MAXCHARS * std::mem::size_of::<core::types::Character>(),
+        );
+
+        for character in &self.characters {
+            let character_bytes = character.to_bytes();
+            characters_data.extend_from_slice(&character_bytes);
+        }
+
+        fs::write(&characters_path, &characters_data).map_err(|e| e.to_string())?;
+
+        log::info!("Characters data saved successfully.");
         Ok(())
     }
 
@@ -296,6 +406,30 @@ impl Repository {
             self.character_templates[i] = character_template;
         }
 
+        Ok(())
+    }
+
+    fn save_character_templates(&self) -> Result<(), String> {
+        let character_templates_path = self.get_dat_file_path("tchar.dat");
+
+        log::info!(
+            "Saving character templates data to {:?}",
+            character_templates_path
+        );
+
+        let mut character_templates_data: Vec<u8> = Vec::with_capacity(
+            core::constants::MAXTCHARS * std::mem::size_of::<core::types::Character>(),
+        );
+
+        for character_template in &self.character_templates {
+            let character_template_bytes = character_template.to_bytes();
+            character_templates_data.extend_from_slice(&character_template_bytes);
+        }
+
+        fs::write(&character_templates_path, &character_templates_data)
+            .map_err(|e| e.to_string())?;
+
+        log::info!("Character templates data saved successfully.");
         Ok(())
     }
 
@@ -338,6 +472,26 @@ impl Repository {
         Ok(())
     }
 
+    fn save_effects(&self) -> Result<(), String> {
+        let effects_path = self.get_dat_file_path("effect.dat");
+
+        log::info!("Saving effects data to {:?}", effects_path);
+
+        let mut effects_data: Vec<u8> = Vec::with_capacity(
+            core::constants::MAXEFFECT * std::mem::size_of::<core::types::Effect>(),
+        );
+
+        for effect in &self.effects {
+            let effect_bytes = effect.to_bytes();
+            effects_data.extend_from_slice(&effect_bytes);
+        }
+
+        fs::write(&effects_path, &effects_data).map_err(|e| e.to_string())?;
+
+        log::info!("Effects data saved successfully.");
+        Ok(())
+    }
+
     /// Load `global.dat` and parse into the `globals` structure.
     ///
     /// The file is expected to contain at least `size_of::<Global>()` bytes.
@@ -363,6 +517,30 @@ impl Repository {
 
         log::info!("Globals data loaded successfully.");
 
+        log::info!(
+            "Globals data: dirty={}, character_cnt={}, ticker={}, fullmoon={}, newmoon={}, unique={}, cap={}",
+            self.globals.is_dirty(),
+            self.globals.character_cnt,
+            self.globals.ticker,
+            self.globals.fullmoon,
+            self.globals.newmoon,
+            self.globals.unique,
+            self.globals.cap
+        );
+
+        Ok(())
+    }
+
+    fn save_globals(&self) -> Result<(), String> {
+        let globals_path = self.get_dat_file_path("global.dat");
+
+        log::info!("Saving globals data to {:?}", globals_path);
+
+        let globals_data = self.globals.to_bytes();
+
+        fs::write(&globals_path, &globals_data).map_err(|e| e.to_string())?;
+
+        log::info!("Globals data saved successfully.");
         Ok(())
     }
 
@@ -695,5 +873,20 @@ impl Repository {
         F: FnOnce(&mut Vec<core::types::Ban>) -> R,
     {
         Self::with_repo_mut(|repo| f(&mut repo.ban_list))
+    }
+}
+
+impl Drop for Repository {
+    /// Called when the `Repository` is dropped (on server shutdown).
+    ///
+    /// Marks repository data as clean and performs any final logging; further
+    /// graceful shutdown steps may be added here in the future.
+    fn drop(&mut self) {
+        self.globals.set_dirty(false);
+        self.save().unwrap_or_else(|e| {
+            log::error!("Failed to save repository cleanly on shutdown: {}", e);
+        });
+
+        log::info!("Repository saved cleanly on shutdown.");
     }
 }

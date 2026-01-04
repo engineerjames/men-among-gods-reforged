@@ -134,8 +134,6 @@ fn main() -> Result<(), String> {
 
     // TODO: Wait some amount of time and forceably close all sockets
 
-    // TODO: Equivalent of saving data back to disk here...
-
     log::info!("Server shutdown complete.");
 
     Ok(())
