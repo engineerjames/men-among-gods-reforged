@@ -846,7 +846,8 @@ impl God {
     pub fn create_char(template_id: usize, with_items: bool) -> Option<i32> {
         let unused_index = Repository::with_characters(|characters| {
             // TODO: Refactor this into its own function
-            (1..core::constants::MAXCHARS).find(|&i| characters[i].used == core::constants::USE_EMPTY)
+            (1..core::constants::MAXCHARS)
+                .find(|&i| characters[i].used == core::constants::USE_EMPTY)
         });
 
         let char_index = match unused_index {

@@ -177,13 +177,17 @@ impl State {
                             } else {
                                 // Check if right hand has two-handed weapon
                                 let rhand_item = characters[cn].worn[WN_RHAND] as usize;
-                                !(rhand_item != 0 && (items[rhand_item].placement & PL_TWOHAND) != 0)
+                                !(rhand_item != 0
+                                    && (items[rhand_item].placement & PL_TWOHAND) != 0)
                             }
                         }
                         WN_RHAND => {
                             if (items[tmp].placement & PL_WEAPON) == 0 {
                                 false
-                            } else { !((items[tmp].placement & PL_TWOHAND) != 0 && characters[cn].worn[WN_LHAND] != 0) }
+                            } else {
+                                !((items[tmp].placement & PL_TWOHAND) != 0
+                                    && characters[cn].worn[WN_LHAND] != 0)
+                            }
                         }
                         WN_CLOAK => (items[tmp].placement & PL_CLOAK) != 0,
                         WN_RRING | WN_LRING => (items[tmp].placement & PL_RING) != 0,

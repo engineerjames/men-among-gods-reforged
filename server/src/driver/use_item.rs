@@ -3850,7 +3850,9 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
                                 true
                             } else if characters[co].data[0] != item_idx as i32 {
                                 true
-                            } else { (characters[co].flags & CharacterFlags::CF_BODY.bits()) != 0 }
+                            } else {
+                                (characters[co].flags & CharacterFlags::CF_BODY.bits()) != 0
+                            }
                         })
                     };
                     needs_spawn
@@ -4081,7 +4083,9 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
                         true
                     } else if characters[co].data[0] != item_idx as i32 {
                         true
-                    } else { (characters[co].flags & CharacterFlags::CF_BODY.bits()) != 0 }
+                    } else {
+                        (characters[co].flags & CharacterFlags::CF_BODY.bits()) != 0
+                    }
                 })
             };
             needs_spawn
