@@ -2520,10 +2520,8 @@ pub fn speedo(n: usize) -> i32 {
     SPEEDTAB[speed][ctick] as i32
 }
 
-// Static mode for plr_getmap speed savings
-static PLR_GETMAP_MODE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-
 /// Clear the saved small map for all players to force a full resend
+#[allow(dead_code)]
 pub fn plr_clear_map() {
     Server::with_players_mut(|players| {
         for n in 1..players.len() {
@@ -2543,39 +2541,7 @@ pub fn plr_clear_map() {
 /// # Arguments
 /// * `nr` - Player slot index requesting the map update
 pub fn plr_getmap(nr: usize) {
-    use std::sync::atomic::Ordering;
-
-    let (load_avg, flags) = Repository::with_globals(|globals| (globals.load_avg, globals.flags));
-
-    let mode = PLR_GETMAP_MODE.load(Ordering::SeqCst) as i32;
-
-    if load_avg > 8000 && mode == 0 && (flags & core::constants::GF_SPEEDY) != 0 {
-        PLR_GETMAP_MODE.store(1, Ordering::SeqCst);
-        plr_clear_map();
-        State::with(|state| {
-            state.do_announce(
-                0,
-                0,
-                "Entered speed savings mode. Display will be imperfect.\n",
-            );
-        });
-    }
-
-    if ((flags & core::constants::GF_SPEEDY) == 0 || load_avg < 6500) && mode != 0 {
-        PLR_GETMAP_MODE.store(0, Ordering::SeqCst);
-        State::with(|state| {
-            state.do_announce(0, 0, "Left speed savings mode.\n");
-        });
-    }
-
-    // dispatch to the appropriate implementation
-    let mode = PLR_GETMAP_MODE.load(Ordering::SeqCst);
-    if mode == 0 {
-        plr_getmap_complete(nr);
-    } else {
-        //plr_getmap_fast(nr); TODO: Re-enable if needed...
-        plr_getmap_complete(nr);
-    }
+    plr_getmap_complete(nr);
 }
 
 pub fn plr_getmap_complete(nr: usize) {
