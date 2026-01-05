@@ -69,6 +69,12 @@ pub struct ServerPlayer {
     pub changed_field: [i32; TILEX * TILEY],
 }
 
+impl Default for ServerPlayer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ServerPlayer {
     pub fn new() -> Self {
         let cmap_size = TILEX * TILEY;

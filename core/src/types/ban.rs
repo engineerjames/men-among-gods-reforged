@@ -6,6 +6,12 @@ pub struct Ban {
     address: u32,
 }
 
+impl Default for Ban {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Ban {
     pub fn new() -> Self {
         Ban {
