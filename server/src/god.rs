@@ -1460,6 +1460,7 @@ impl God {
     }
 
     /// Teleport `co` to coordinates parsed from `cx`/`cy` at the request of `cn`.
+    /// `cx` can contain direction modifiers (n/s/e/w) or absolute values.
     ///
     /// Parses the coordinate strings and delegates to transfer logic.
     ///
@@ -1472,49 +1473,220 @@ impl God {
             return;
         }
 
-        let (x, y) = Repository::with_characters(|characters| {
-            let character = &characters[cn];
-            let mut target_x = character.x as usize;
-            let mut target_y = character.y as usize;
+        // We expect at least one of the values passed in to be non-empty
+        if cx.is_empty() && cy.is_empty() {
+            State::with_mut(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!(
+                        "Invalid coordinates provided for goto command: '{},{}'.\n",
+                        cx, cy
+                    ),
+                )
+            });
+            return;
+        }
 
-            // Parse direction modifiers
-            if cx.starts_with('n') || cx.starts_with('N') {
-                if let Ok(val) = cx[1..].parse::<i32>() {
-                    target_y = (target_y as i32 - val).max(1) as usize;
-                }
-            } else if cx.starts_with('s') || cx.starts_with('S') {
-                if let Ok(val) = cx[1..].parse::<i32>() {
-                    target_y =
-                        (target_y as i32 + val).min(core::constants::SERVER_MAPY - 2) as usize;
-                }
-            } else if cx.starts_with('e') || cx.starts_with('E') {
-                if let Ok(val) = cx[1..].parse::<i32>() {
-                    target_x =
-                        (target_x as i32 + val).min(core::constants::SERVER_MAPX - 2) as usize;
-                }
-            } else if cx.starts_with('w') || cx.starts_with('W') {
-                if let Ok(val) = cx[1..].parse::<i32>() {
-                    target_x = (target_x as i32 - val).max(1) as usize;
-                }
-            } else if let Ok(val) = cx.parse::<usize>() {
-                target_x = val.clamp(1, (core::constants::SERVER_MAPX - 2) as usize);
+        let goto_functions = [
+            Self::goto_cardinal_length as fn(usize, &str, &str) -> Option<(usize, usize)>,
+            Self::goto_target_coordinates as fn(usize, &str, &str) -> Option<(usize, usize)>,
+            Self::goto_character_by_name as fn(usize, &str, &str) -> Option<(usize, usize)>,
+        ];
+
+        let character_name = Repository::with_characters(|ch| ch[cn].get_name().to_string());
+        for goto_fn in goto_functions.iter() {
+            if let Some((x, y)) = goto_fn(cn, cx, cy) {
+                Self::transfer_char(co, x, y);
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Green,
+                        &format!(
+                            "Character {} teleported to ({}, {})\n",
+                            character_name, x, y
+                        ),
+                    );
+                });
+                return;
             }
+        }
 
-            if let Ok(val) = cy.parse::<usize>() {
-                target_y = val.clamp(1, (core::constants::SERVER_MAPY - 2) as usize);
-            }
+        log::error!(
+            "Failed to execute goto command for character {} with input '{},{}'",
+            cn,
+            cx,
+            cy
+        );
 
-            (target_x, target_y)
-        });
-
-        Self::transfer_char(co, x, y);
-        State::with(|state| {
+        State::with_mut(|state| {
             state.do_character_log(
                 cn,
-                core::types::FontColor::Green,
-                &format!("Character {} teleported to ({}, {})\n", co, x, y),
-            );
+                core::types::FontColor::Red,
+                &format!("goto() failed with input '{},{}'\n", cx, cy),
+            )
         });
+    }
+
+    fn goto_target_coordinates(cn: usize, cx: &str, cy: &str) -> Option<(usize, usize)> {
+        let target_x = match cx.parse::<usize>() {
+            Ok(val) => val,
+            Err(_) => {
+                log::error!(
+                    "Failed to parse X coordinate '{}' in goto command for character {}",
+                    cx,
+                    cn
+                );
+                return None;
+            }
+        };
+
+        let target_y = match cy.parse::<usize>() {
+            Ok(val) => val,
+            Err(_) => {
+                log::error!(
+                    "Failed to parse Y coordinate '{}' in goto command for character {}",
+                    cy,
+                    cn
+                );
+                return None;
+            }
+        };
+
+        Some((target_x, target_y))
+    }
+
+    fn goto_cardinal_length(cn: usize, cx: &str, cy: &str) -> Option<(usize, usize)> {
+        if cx.chars().next().unwrap().is_alphabetic() && !cy.chars().next().unwrap().is_numeric() {
+            log::debug!("Not a cardinal direction + length formatted goto command");
+            return None;
+        }
+
+        // Attempting to use format like "n 10" or "s 5", etc;
+        // but we didn't use N/S/E/W as the first character
+        if !["n", "s", "e", "w"].contains(&cx.to_lowercase().as_str()) {
+            State::with_mut(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!(
+                        "Invalid coordinate format provided for goto command: '{},{}'.\n",
+                        cx, cy
+                    ),
+                )
+            });
+            return None;
+        }
+
+        let (current_x, current_y) = Repository::with_characters(|ch| {
+            let character = &ch[cn];
+            (character.x as usize, character.y as usize)
+        });
+
+        // North - decrease y
+        // South - increase y
+        // East  - increase x
+        // West  - decrease x
+        let (target_x, target_y) = match cx.to_lowercase().as_str() {
+            "n" => {
+                if let Ok(val) = cy.parse::<i32>() {
+                    let new_y = (current_y as i32 - val).max(1) as usize;
+                    (current_x, new_y)
+                } else {
+                    log::error!(
+                        "Failed to parse Y coordinate '{}' in goto command for character {}",
+                        cy,
+                        cn
+                    );
+                    return None;
+                }
+            }
+            "s" => {
+                if let Ok(val) = cy.parse::<i32>() {
+                    let new_y =
+                        (current_y as i32 + val).min(core::constants::SERVER_MAPY - 2) as usize;
+                    (current_x, new_y)
+                } else {
+                    log::error!(
+                        "Failed to parse Y coordinate '{}' in goto command for character {}",
+                        cy,
+                        cn
+                    );
+                    return None;
+                }
+            }
+            "e" => {
+                if let Ok(val) = cy.parse::<i32>() {
+                    let new_x =
+                        (current_x as i32 + val).min(core::constants::SERVER_MAPX - 2) as usize;
+                    (new_x, current_y)
+                } else {
+                    log::error!(
+                        "Failed to parse X coordinate '{}' in goto command for character {}",
+                        cy,
+                        cn
+                    );
+                    return None;
+                }
+            }
+            "w" => {
+                if let Ok(val) = cy.parse::<i32>() {
+                    let new_x = (current_x as i32 - val).max(1) as usize;
+                    (new_x, current_y)
+                } else {
+                    log::error!(
+                        "Failed to parse X coordinate '{}' in goto command for character {}",
+                        cy,
+                        cn
+                    );
+                    return None;
+                }
+            }
+            _ => {
+                log::error!(
+                    "Invalid cardinal direction '{}' in goto command for character {} - this should've been filtered out already",
+                    cx,
+                    cn
+                );
+                return None;
+            }
+        };
+
+        Some((target_x, target_y))
+    }
+
+    fn goto_character_by_name(cn: usize, cx: &str, cy: &str) -> Option<(usize, usize)> {
+        if cx.chars().next().unwrap().is_numeric() || !cy.is_empty() {
+            log::debug!("Not a character name formatted goto command");
+            return None;
+        }
+
+        let target_name = cx;
+        let target_location: Option<(usize, usize)> = Repository::with_characters(|ch| {
+            for character in ch.iter() {
+                if character.used != core::constants::USE_EMPTY
+                    && character.get_name().eq_ignore_ascii_case(target_name)
+                {
+                    return Some((character.x as usize, character.y as usize));
+                }
+            }
+            None
+        });
+
+        if target_location.is_none() {
+            log::error!("Character name '{}' not found in goto command", target_name);
+
+            State::with_mut(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("No such character found with name '{}'.\n", target_name),
+                )
+            });
+            return None;
+        }
+
+        Some((target_location.unwrap().0, target_location.unwrap().1))
     }
 
     /// Show comprehensive information about character `co` to `cn`.
@@ -2679,18 +2851,11 @@ impl God {
                     "god_transfer_char() failed.\n",
                 );
             });
+
             // show effects at original and current position
             EffectManager::fx_add_effect(12, 0, xo, yo, 0);
-            // use repository to fetch updated position for safety
-            Repository::with_characters(|characters| {
-                EffectManager::fx_add_effect(
-                    12,
-                    0,
-                    characters[co].x as i32,
-                    characters[co].y as i32,
-                    0,
-                );
-            });
+            EffectManager::fx_add_effect(12, 0, xo, yo, 0);
+
             return;
         }
 
