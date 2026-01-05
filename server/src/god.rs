@@ -1557,7 +1557,9 @@ impl God {
     }
 
     fn goto_cardinal_length(cn: usize, cx: &str, cy: &str) -> Option<(usize, usize)> {
-        if cx.chars().next().unwrap().is_alphabetic() && !cy.chars().next().unwrap().is_numeric() {
+        if cx.chars().next().unwrap_or_default().is_alphabetic()
+            && !cy.chars().next().unwrap_or_default().is_numeric()
+        {
             log::debug!("Not a cardinal direction + length formatted goto command");
             return None;
         }
@@ -1583,18 +1585,18 @@ impl God {
             (character.x as usize, character.y as usize)
         });
 
-        // North - decrease y
-        // South - increase y
-        // East  - increase x
-        // West  - decrease x
+        // North - decrease x
+        // South - increase x
+        // East  - increase y
+        // West  - decrease y
         let (target_x, target_y) = match cx.to_lowercase().as_str() {
             "n" => {
                 if let Ok(val) = cy.parse::<i32>() {
-                    let new_y = (current_y as i32 - val).max(1) as usize;
-                    (current_x, new_y)
+                    let new_x = (current_x as i32 - val).max(1) as usize;
+                    (new_x, current_y)
                 } else {
                     log::error!(
-                        "Failed to parse Y coordinate '{}' in goto command for character {}",
+                        "Failed to parse X coordinate '{}' in goto command for character {}",
                         cy,
                         cn
                     );
@@ -1602,20 +1604,6 @@ impl God {
                 }
             }
             "s" => {
-                if let Ok(val) = cy.parse::<i32>() {
-                    let new_y =
-                        (current_y as i32 + val).min(core::constants::SERVER_MAPY - 2) as usize;
-                    (current_x, new_y)
-                } else {
-                    log::error!(
-                        "Failed to parse Y coordinate '{}' in goto command for character {}",
-                        cy,
-                        cn
-                    );
-                    return None;
-                }
-            }
-            "e" => {
                 if let Ok(val) = cy.parse::<i32>() {
                     let new_x =
                         (current_x as i32 + val).min(core::constants::SERVER_MAPX - 2) as usize;
@@ -1629,13 +1617,27 @@ impl God {
                     return None;
                 }
             }
-            "w" => {
+            "e" => {
                 if let Ok(val) = cy.parse::<i32>() {
-                    let new_x = (current_x as i32 - val).max(1) as usize;
-                    (new_x, current_y)
+                    let new_y =
+                        (current_y as i32 + val).min(core::constants::SERVER_MAPY - 2) as usize;
+                    (current_x, new_y)
                 } else {
                     log::error!(
-                        "Failed to parse X coordinate '{}' in goto command for character {}",
+                        "Failed to parse Y coordinate '{}' in goto command for character {}",
+                        cy,
+                        cn
+                    );
+                    return None;
+                }
+            }
+            "w" => {
+                if let Ok(val) = cy.parse::<i32>() {
+                    let new_y = (current_y as i32 - val).max(1) as usize;
+                    (current_x, new_y)
+                } else {
+                    log::error!(
+                        "Failed to parse Y coordinate '{}' in goto command for character {}",
                         cy,
                         cn
                     );
@@ -1663,14 +1665,16 @@ impl God {
 
         let target_name = cx;
         let target_location: Option<(usize, usize)> = Repository::with_characters(|ch| {
-            for character in ch.iter() {
-                if character.used != core::constants::USE_EMPTY
-                    && character.get_name().eq_ignore_ascii_case(target_name)
-                {
-                    return Some((character.x as usize, character.y as usize));
-                }
+            let target_character = ch.iter().find(|char| {
+                char.used != core::constants::USE_EMPTY
+                    && char.get_name().eq_ignore_ascii_case(target_name)
+            });
+
+            if let Some(target_char) = target_character {
+                Some((target_char.x as usize, target_char.y as usize))
+            } else {
+                None
             }
-            None
         });
 
         if target_location.is_none() {
