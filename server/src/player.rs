@@ -2624,8 +2624,7 @@ pub fn plr_getmap_complete(nr: usize) {
     let see_vis = Repository::with_see_map(|see_maps| see_maps[cn].vis);
 
     let mut do_all = false;
-    if player_vx != see_x || player_vy != see_y || player_visi != see_vis || player_visi != see_vis
-    {
+    if player_vx != see_x || player_vy != see_y || player_visi != see_vis {
         Server::with_players_mut(|players| {
             players[nr].vx = see_x;
             players[nr].vy = see_y;
