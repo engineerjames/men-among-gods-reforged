@@ -2638,15 +2638,48 @@ pub fn plr_getmap_complete(nr: usize) {
         do_all = true;
     }
 
+    let empty_cmap = {
+        let mut tile = core::types::CMap::default();
+        tile.ba_sprite = core::constants::SPR_EMPTY as i16;
+        tile
+    };
+
+    let empty_map = {
+        let mut tile = core::types::Map::default();
+        tile.sprite = core::constants::SPR_EMPTY;
+        tile
+    };
+
     let mut n = (YSCUT * core::constants::TILEX as i32 + XSCUT) as usize;
-    let mut m = (xs + ys * core::constants::SERVER_MAPX) as usize;
     let mut y = ys;
     let mut infra;
     while y < ye {
         let mut x = xs;
         while x < xe {
-            // empty body - iteration only
-            let map_m = Repository::with_map(|map| map[m]);
+            // If we're outside the map, render the default empty tile and never touch map[]
+            if x < 0
+                || y < 0
+                || x >= core::constants::SERVER_MAPX
+                || y >= core::constants::SERVER_MAPY
+            {
+                let needs_update = do_all
+                    || Server::with_players(|players| players[nr].xmap[n]) != empty_map
+                    || Server::with_players(|players| players[nr].smap[n]) != empty_cmap;
+                if needs_update {
+                    Server::with_players_mut(|players| {
+                        players[nr].xmap[n] = empty_map;
+                        players[nr].smap[n] = empty_cmap;
+                    });
+                }
+
+                x += 1;
+                n += 1;
+                continue;
+            }
+
+            let mi = (x + y * core::constants::SERVER_MAPX) as usize;
+
+            let map_m = Repository::with_map(|map| map[mi]);
             if do_all
                 || map_m.it != 0
                 || map_m.ch as usize != 0
@@ -2657,30 +2690,12 @@ pub fn plr_getmap_complete(nr: usize) {
                 // Still need to advance indices
                 x += 1;
                 n += 1;
-                m += 1;
                 continue;
             }
 
-            if x < 0
-                || y < 0
-                || x >= core::constants::SERVER_MAPX
-                || y >= core::constants::SERVER_MAPY
-            {
-                // TODO: Verify this is actually empty tile behavior
-                let mut new_cmap = core::types::CMap::default();
-                new_cmap.ba_sprite = core::constants::SPR_EMPTY as i16;
-                Server::with_players_mut(|players| {
-                    players[nr].smap[n] = new_cmap;
-                });
-                x += 1;
-                n += 1;
-                m += 1;
-                continue;
-            }
+            let tmp = State::check_dlightm(mi);
 
-            let tmp = State::check_dlightm(m);
-
-            let mut light = std::cmp::max(Repository::with_map(|map| map[m].light as i32), tmp);
+            let mut light = std::cmp::max(Repository::with_map(|map| map[mi].light as i32), tmp);
             light = State::with_mut(|state| state.do_character_calculate_light(cn, light));
 
             if light <= 5
@@ -2694,21 +2709,17 @@ pub fn plr_getmap_complete(nr: usize) {
             }
 
             // Everyone sees themselves at least
-            if light == 0 && Repository::with_map(|map| map[m].ch as usize) == cn {
+            if light == 0 && Repository::with_map(|map| map[mi].ch as usize) == cn {
                 light = 1;
             }
 
             // no light, nothing visible
             if light == 0 {
-                // TODO: Verify this is actually empty tile behavior
-                let mut new_cmap = core::types::CMap::default();
-                new_cmap.ba_sprite = core::constants::SPR_EMPTY as i16;
                 Server::with_players_mut(|players| {
-                    players[nr].smap[n] = new_cmap;
+                    players[nr].smap[n] = empty_cmap;
                 });
                 x += 1;
                 n += 1;
-                m += 1;
                 continue;
             }
 
@@ -2716,7 +2727,7 @@ pub fn plr_getmap_complete(nr: usize) {
             smap[n].flags = 0;
 
             Repository::with_map(|map| {
-                if map[m].flags
+                if map[mi].flags
                     & (MF_GFX_INJURED
                         | MF_GFX_INJURED1
                         | MF_GFX_INJURED2
@@ -2728,40 +2739,40 @@ pub fn plr_getmap_complete(nr: usize) {
                         | MF_UWATER as u64)
                     != 0
                 {
-                    if map[m].flags & core::constants::MF_GFX_INJURED != 0 {
+                    if map[mi].flags & core::constants::MF_GFX_INJURED != 0 {
                         smap[n].flags |= INJURED;
                     }
 
-                    if map[m].flags & core::constants::MF_GFX_INJURED1 != 0 {
+                    if map[mi].flags & core::constants::MF_GFX_INJURED1 != 0 {
                         smap[n].flags |= INJURED1;
                     }
 
-                    if map[m].flags & core::constants::MF_GFX_INJURED2 != 0 {
+                    if map[mi].flags & core::constants::MF_GFX_INJURED2 != 0 {
                         smap[n].flags |= INJURED2;
                     }
 
-                    if map[m].flags & core::constants::MF_GFX_DEATH != 0 {
+                    if map[mi].flags & core::constants::MF_GFX_DEATH != 0 {
                         // TODO: Confirm shift
-                        smap[n].flags |= ((map[m].flags & MF_GFX_DEATH) >> 23) as u32;
+                        smap[n].flags |= ((map[mi].flags & MF_GFX_DEATH) >> 23) as u32;
                     }
 
-                    if map[m].flags & core::constants::MF_GFX_TOMB != 0 {
-                        smap[n].flags |= ((map[m].flags & MF_GFX_TOMB) >> 23) as u32;
+                    if map[mi].flags & core::constants::MF_GFX_TOMB != 0 {
+                        smap[n].flags |= ((map[mi].flags & MF_GFX_TOMB) >> 23) as u32;
                     }
 
-                    if map[m].flags & core::constants::MF_GFX_EMAGIC != 0 {
-                        smap[n].flags |= ((map[m].flags & MF_GFX_EMAGIC) >> 23) as u32;
+                    if map[mi].flags & core::constants::MF_GFX_EMAGIC != 0 {
+                        smap[n].flags |= ((map[mi].flags & MF_GFX_EMAGIC) >> 23) as u32;
                     }
 
-                    if map[m].flags & core::constants::MF_GFX_GMAGIC != 0 {
-                        smap[n].flags |= ((map[m].flags & MF_GFX_GMAGIC) >> 23) as u32;
+                    if map[mi].flags & core::constants::MF_GFX_GMAGIC != 0 {
+                        smap[n].flags |= ((map[mi].flags & MF_GFX_GMAGIC) >> 23) as u32;
                     }
 
-                    if map[m].flags & core::constants::MF_GFX_CMAGIC != 0 {
-                        smap[n].flags |= ((map[m].flags & MF_GFX_CMAGIC) >> 23) as u32;
+                    if map[mi].flags & core::constants::MF_GFX_CMAGIC != 0 {
+                        smap[n].flags |= ((map[mi].flags & MF_GFX_CMAGIC) >> 23) as u32;
                     }
 
-                    if map[m].flags & core::constants::MF_UWATER as u64 != 0 {
+                    if map[mi].flags & core::constants::MF_UWATER as u64 != 0 {
                         smap[n].flags |= UWATER;
                     }
                 }
@@ -2771,7 +2782,7 @@ pub fn plr_getmap_complete(nr: usize) {
                 }
 
                 if Repository::with_characters(|ch| ch[cn].is_building()) {
-                    smap[n].flags2 = map[m].flags as u32;
+                    smap[n].flags2 = map[mi].flags as u32;
                 } else {
                     smap[n].flags2 = 0;
                 }
@@ -2928,12 +2939,9 @@ pub fn plr_getmap_complete(nr: usize) {
 
             x += 1;
             n += 1;
-            m += 1;
         }
 
         y += 1;
-        m +=
-            (core::constants::SERVER_MAPX - core::constants::TILEX as i32 + XSCUT + XECUT) as usize;
         n += (XSCUT + XECUT) as usize;
     }
 
