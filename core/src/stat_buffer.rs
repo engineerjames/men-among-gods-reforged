@@ -1,10 +1,10 @@
 use crate::circular_buffer::CircularBuffer;
 
 pub struct Statistics {
-    std: f32,
-    mean: f32,
-    min: f32,
-    max: f32,
+    pub std: f32,
+    pub mean: f32,
+    pub min: f32,
+    pub max: f32,
 }
 
 /// Wrapper around a circular buffer that keeps track of basic statistics:

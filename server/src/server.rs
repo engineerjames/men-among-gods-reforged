@@ -1,5 +1,6 @@
 use chrono::Timelike;
 use core::constants::{MAXPLAYER, TILEX, TILEY};
+use core::stat_buffer::StatisticsBuffer;
 use core::types::{CMap, Map, ServerPlayer};
 use parking_lot::ReentrantMutex;
 use std::cell::UnsafeCell;
@@ -52,6 +53,15 @@ enum CharacterTickState {
 pub struct Server {
     sock: Option<TcpListener>,
     last_tick_time: Option<Instant>,
+
+    /// Tick rate performance statistics buffer.
+    tick_perf_stats: StatisticsBuffer<f32>,
+
+    /// Network I/O performance statistics buffer.
+    net_io_perf_stats: StatisticsBuffer<f32>,
+
+    /// Measurement interval in ticks for performance statistics.
+    measurement_interval: i32,
 }
 
 impl Server {
@@ -61,6 +71,9 @@ impl Server {
         Server {
             sock: None,
             last_tick_time: None,
+            tick_perf_stats: StatisticsBuffer::new(100),
+            net_io_perf_stats: StatisticsBuffer::new(100),
+            measurement_interval: 20,
         }
     }
 
@@ -278,6 +291,8 @@ impl Server {
 
         // Check if it's time for a game tick (equivalent to: if (ttime > ltime))
         if now > last_time {
+            let pre_tick_time = Instant::now();
+
             self.last_tick_time =
                 Some(last_time + Duration::from_micros(core::constants::TICK as u64));
 
@@ -295,6 +310,26 @@ impl Server {
             if new_now > new_last + Duration::from_secs(10) {
                 log::warn!("Server too slow");
                 self.last_tick_time = Some(new_now);
+            }
+
+            let post_tick_time = Instant::now();
+
+            if Repository::with_globals(|globs| {
+                globs
+                    .ticker
+                    .unsigned_abs()
+                    .is_multiple_of(self.measurement_interval as u32)
+            }) {
+                let tick_duration =
+                    post_tick_time.duration_since(pre_tick_time).as_secs_f32() * 1000.0;
+                self.tick_perf_stats.push(tick_duration);
+
+                const DESIRED_TICK_TIME_MS: f32 = core::constants::TICK as f32 / 1000.0; // 1000 microseconds per millisecond
+
+                Repository::with_globals_mut(|globs| {
+                    globs.load = ((tick_duration / DESIRED_TICK_TIME_MS) * 100.0) as i64;
+                    globs.load_avg = self.tick_perf_stats.stats().mean as i32;
+                })
             }
         }
 
