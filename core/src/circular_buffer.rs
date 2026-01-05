@@ -137,4 +137,44 @@ mod tests {
         assert_eq!(buf.get(1), None);
         assert_eq!(buf.get(2), None);
     }
+
+    #[test]
+    fn len_grows_until_capacity() {
+        let mut buf = CircularBuffer::new(3);
+        assert_eq!(buf.len(), 0);
+
+        buf.push(1);
+        assert_eq!(buf.len(), 1);
+
+        buf.push(2);
+        assert_eq!(buf.len(), 2);
+
+        buf.push(3);
+        assert_eq!(buf.len(), 3);
+    }
+
+    #[test]
+    fn len_saturates_at_capacity_on_overwrite() {
+        let mut buf = CircularBuffer::new(3);
+        buf.push(1);
+        buf.push(2);
+        buf.push(3);
+        assert_eq!(buf.len(), 3);
+
+        buf.push(4);
+        assert_eq!(buf.len(), 3);
+        buf.push(5);
+        assert_eq!(buf.len(), 3);
+    }
+
+    #[test]
+    fn len_resets_to_zero_after_clear() {
+        let mut buf = CircularBuffer::new(3);
+        buf.push(1);
+        buf.push(2);
+        assert_eq!(buf.len(), 2);
+
+        buf.clear();
+        assert_eq!(buf.len(), 0);
+    }
 }
