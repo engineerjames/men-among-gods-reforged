@@ -61,7 +61,7 @@ pub struct Server {
     net_io_perf_stats: StatisticsBuffer<f32>,
 
     /// Measurement interval in ticks for performance statistics.
-    measurement_interval: i32,
+    measurement_interval: u32,
 }
 
 impl Server {
@@ -318,7 +318,7 @@ impl Server {
                 globs
                     .ticker
                     .unsigned_abs()
-                    .is_multiple_of(self.measurement_interval as u32)
+                    .is_multiple_of(self.measurement_interval)
             }) {
                 let tick_duration =
                     post_tick_time.duration_since(pre_tick_time).as_secs_f32() * 1000.0;
@@ -352,7 +352,7 @@ impl Server {
             globs
                 .ticker
                 .unsigned_abs()
-                .is_multiple_of(self.measurement_interval as u32)
+                .is_multiple_of(self.measurement_interval)
         }) {
             let io_duration = Instant::now().duration_since(pre_io_time).as_secs_f32() * 1000.0;
             self.net_io_perf_stats.push(io_duration);
@@ -1480,5 +1480,46 @@ impl Server {
 impl Drop for Server {
     fn drop(&mut self) {
         Repository::shutdown();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Test the Server::new() constructor
+    #[test]
+    fn test_server_new() {
+        let server = Server::new();
+
+        // Verify initial state
+        assert!(server.sock.is_none());
+        assert!(server.last_tick_time.is_none());
+        assert_eq!(server.measurement_interval, 20);
+
+        // Verify statistics buffers are initialized with correct capacity
+        // Note: We can't directly access the internal state of StatisticsBuffer,
+        // but we can verify they were created without panicking
+        let _ = &server.tick_perf_stats;
+        let _ = &server.net_io_perf_stats;
+    }
+
+    /// Test Server struct field access and initialization
+    #[test]
+    fn test_server_struct_initialization() {
+        let server = Server::new();
+
+        // Test that we can access all fields (compilation test)
+        let _ = &server.sock;
+        let _ = &server.last_tick_time;
+        let _ = &server.tick_perf_stats;
+        let _ = &server.net_io_perf_stats;
+        let _ = &server.measurement_interval;
+
+        // Test that statistics buffers are properly initialized
+        // (We can't inspect their internal state, but we can verify they exist)
+        let server2 = Server::new();
+        // Each server should have its own statistics buffers
+        let _ = (&server.tick_perf_stats, &server2.tick_perf_stats);
     }
 }

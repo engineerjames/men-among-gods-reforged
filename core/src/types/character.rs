@@ -1043,4 +1043,244 @@ mod tests {
             .get_name()
             .starts_with("ThisIsAVeryLongNameThatExceedsTheMaximu"));
     }
+
+    #[test]
+    fn test_is_close_to_temple() {
+        let mut character = Character::default();
+        character.temple_x = 100;
+        character.temple_y = 100;
+
+        // At temple
+        character.x = 100;
+        character.y = 100;
+        assert!(character.is_close_to_temple());
+
+        // Within distance
+        character.x = 105;
+        character.y = 105;
+        assert!(character.is_close_to_temple());
+
+        // At edge of distance (10 tiles total manhattan distance)
+        character.x = 110;
+        character.y = 100;
+        assert!(character.is_close_to_temple());
+
+        // Just outside distance
+        character.x = 111;
+        character.y = 100;
+        assert!(!character.is_close_to_temple());
+
+        // Far away
+        character.x = 200;
+        character.y = 200;
+        assert!(!character.is_close_to_temple());
+    }
+
+    #[test]
+    fn test_is_sane_character() {
+        assert!(!Character::is_sane_character(0));
+        assert!(Character::is_sane_character(1));
+        assert!(Character::is_sane_character(100));
+        assert!(Character::is_sane_character(crate::constants::MAXCHARS - 1));
+        assert!(!Character::is_sane_character(crate::constants::MAXCHARS));
+        assert!(!Character::is_sane_character(
+            crate::constants::MAXCHARS + 1
+        ));
+    }
+
+    #[test]
+    fn test_is_living_character() {
+        let mut character = Character::default();
+        character.used = USE_EMPTY;
+
+        // Dead character
+        assert!(!character.is_living_character(1));
+
+        // Living character
+        character.used = 1;
+        assert!(character.is_living_character(1));
+
+        // Invalid character ID
+        assert!(!character.is_living_character(0));
+        assert!(!character.is_living_character(crate::constants::MAXCHARS));
+    }
+
+    #[test]
+    fn test_get_next_inventory_slot() {
+        let mut character = Character::default();
+
+        // Empty inventory
+        for i in 0..40 {
+            character.item[i] = USE_EMPTY as u32;
+        }
+        assert_eq!(character.get_next_inventory_slot(), Some(0));
+
+        // First slot taken
+        character.item[0] = 123;
+        assert_eq!(character.get_next_inventory_slot(), Some(1));
+
+        // Multiple slots taken
+        character.item[1] = 456;
+        character.item[2] = 789;
+        assert_eq!(character.get_next_inventory_slot(), Some(3));
+
+        // Full inventory
+        for i in 0..40 {
+            character.item[i] = i as u32 + 1;
+        }
+        assert_eq!(character.get_next_inventory_slot(), None);
+    }
+
+    #[test]
+    fn test_set_do_update_flags() {
+        let mut character = Character::default();
+        character.flags = 0;
+
+        character.set_do_update_flags();
+
+        assert_ne!(character.flags & CharacterFlags::CF_UPDATE.bits(), 0);
+        assert_ne!(character.flags & CharacterFlags::CF_SAVEME.bits(), 0);
+    }
+
+    #[test]
+    fn test_is_monster() {
+        let mut character = Character::default();
+        character.kindred = 0;
+        assert!(!character.is_monster());
+
+        character.kindred = crate::constants::KIN_MONSTER as i32;
+        assert!(character.is_monster());
+    }
+
+    #[test]
+    fn test_is_usurp_or_thrall() {
+        let mut character = Character::default();
+        character.flags = 0;
+        assert!(!character.is_usurp_or_thrall());
+
+        character.flags = CharacterFlags::CF_USURP.bits();
+        assert!(character.is_usurp_or_thrall());
+
+        character.flags = CharacterFlags::CF_THRALL.bits();
+        assert!(character.is_usurp_or_thrall());
+
+        character.flags = CharacterFlags::CF_USURP.bits() | CharacterFlags::CF_THRALL.bits();
+        assert!(character.is_usurp_or_thrall());
+    }
+
+    #[test]
+    fn test_is_building() {
+        let mut character = Character::default();
+        character.flags = 0;
+        assert!(!character.is_building());
+
+        character.flags = CharacterFlags::CF_BUILDMODE.bits();
+        assert!(character.is_building());
+    }
+
+    #[test]
+    fn test_get_kindred_as_string() {
+        let mut character = Character::default();
+
+        character.kindred = crate::constants::KIN_TEMPLAR as i32;
+        assert_eq!(character.get_kindred_as_string(), "Templar");
+
+        character.kindred = crate::constants::KIN_HARAKIM as i32;
+        assert_eq!(character.get_kindred_as_string(), "Harakim");
+
+        character.kindred = crate::constants::KIN_MERCENARY as i32;
+        assert_eq!(character.get_kindred_as_string(), "Monster");
+
+        character.kindred = crate::constants::KIN_SEYAN_DU as i32;
+        assert_eq!(character.get_kindred_as_string(), "Seyan'Du");
+
+        character.kindred = 0;
+        assert_eq!(character.get_kindred_as_string(), "Monster");
+    }
+
+    #[test]
+    fn test_get_gender_as_string() {
+        let mut character = Character::default();
+
+        character.kindred = crate::constants::KIN_FEMALE as i32;
+        assert_eq!(character.get_gender_as_string(), "Female");
+
+        character.kindred = crate::constants::KIN_MALE as i32;
+        assert_eq!(character.get_gender_as_string(), "Male");
+
+        character.kindred = 0;
+        assert_eq!(character.get_gender_as_string(), "It");
+    }
+
+    #[test]
+    fn test_get_default_description() {
+        let mut character = Character::default();
+        character.set_name("TestHero");
+        character.kindred =
+            crate::constants::KIN_TEMPLAR as i32 | crate::constants::KIN_MALE as i32;
+
+        let desc = character.get_default_description();
+        assert!(desc.contains("TestHero"));
+        assert!(desc.contains("Templar"));
+        assert!(desc.contains("Male"));
+    }
+
+    #[test]
+    fn test_get_reference() {
+        let mut character = Character::default();
+        character.reference = *b"a brave warrior\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+        assert_eq!(character.get_reference(), "a brave warrior");
+    }
+
+    #[test]
+    fn test_is_sane_npc() {
+        let mut character = Character::default();
+        character.flags = 0; // Not a player, so it's an NPC
+
+        assert!(Character::is_sane_npc(1, &character));
+        assert!(!Character::is_sane_npc(0, &character));
+        assert!(!Character::is_sane_npc(
+            crate::constants::MAXCHARS,
+            &character
+        ));
+
+        // Player characters should not be sane NPCs
+        character.flags = CharacterFlags::CF_PLAYER.bits();
+        assert!(!Character::is_sane_npc(1, &character));
+    }
+
+    #[test]
+    fn test_get_invisibility_level() {
+        let mut character = Character::default();
+        character.flags = 0;
+        assert_eq!(character.get_invisibility_level(), 1);
+
+        character.flags = CharacterFlags::CF_STAFF.bits();
+        assert_eq!(character.get_invisibility_level(), 2);
+
+        character.flags = CharacterFlags::CF_IMP.bits();
+        assert_eq!(character.get_invisibility_level(), 5);
+
+        character.flags = CharacterFlags::CF_USURP.bits();
+        assert_eq!(character.get_invisibility_level(), 5);
+
+        character.flags = CharacterFlags::CF_GOD.bits();
+        assert_eq!(character.get_invisibility_level(), 10);
+
+        character.flags = CharacterFlags::CF_GREATERINV.bits();
+        assert_eq!(character.get_invisibility_level(), 15);
+    }
+
+    #[test]
+    fn test_set_reference() {
+        let mut character = Character::default();
+        character.set_reference("a skilled mage");
+        assert_eq!(character.get_reference(), "a skilled mage");
+
+        // Test truncation
+        let long_ref =
+            "a very long reference that exceeds the maximum allowed length for the reference field";
+        character.set_reference(long_ref);
+        assert_eq!(character.get_reference().len(), 40);
+    }
 }
