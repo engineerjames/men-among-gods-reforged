@@ -3820,7 +3820,8 @@ impl God {
         }
     }
 
-    /// Set raw flag bits on a target character.
+    /// Set raw flag bits on a target character. These are only dispatched
+    /// via administrative commands in-game.
     ///
     /// Administrative helper to OR the provided `flag` into the target's
     /// flag field.

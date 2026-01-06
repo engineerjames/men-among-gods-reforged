@@ -922,7 +922,7 @@ impl State {
                     God::iinfo(cn, parse_usize(arg_get(1)));
                     return;
                 }
-                if starts("immortal") && f_u {
+                if (starts("immortal") || starts("imm")) && f_u {
                     log::debug!("Processing immortal command for {}", cn);
                     God::set_flag(
                         cn,
@@ -931,7 +931,7 @@ impl State {
                     );
                     return;
                 }
-                if starts("immortal") && f_g {
+                if (starts("immortal") || starts("imm")) && f_g {
                     log::debug!("Processing god-immortal command for {}", cn);
                     God::set_flag(
                         cn,
@@ -959,7 +959,7 @@ impl State {
                     self.do_character_log(cn, FontColor::Green, "Done.\n");
                     return;
                 }
-                if starts("infrared") && f_giu {
+                if (starts("infrared") || starts("infra")) && f_giu {
                     log::debug!("Processing infrared command for {}", cn);
                     God::set_flag(
                         cn,
@@ -968,7 +968,7 @@ impl State {
                     );
                     return;
                 }
-                if starts("invisible") && f_giu {
+                if (starts("invisible") || starts("inv")) && f_giu {
                     log::debug!("Processing invisible command for {}", cn);
                     God::set_flag(
                         cn,
@@ -1012,17 +1012,17 @@ impl State {
                     self.do_look_char(cn, parse_usize(arg_get(1)), 1, 0, 0);
                     return;
                 }
-                if starts("lookdepot") && f_gg {
+                if (starts("lookdepot") || starts("lookd")) && f_gg {
                     log::debug!("Processing lookdepot command for {}", cn);
                     self.do_look_player_depot(cn, parse_usize(arg_get(1)));
                     return;
                 }
-                if starts("lookinv") && f_gg {
+                if (starts("lookinv") || starts("looki")) && f_gg {
                     log::debug!("Processing lookinv command for {}", cn);
                     self.do_look_player_inventory(cn, parse_usize(arg_get(1)));
                     return;
                 }
-                if starts("lookequip") && f_gg {
+                if (starts("lookequip") || starts("looke")) && f_gg {
                     log::debug!("Processing lookequip command for {}", cn);
                     self.do_look_player_equipment(cn, parse_usize(arg_get(1)));
                     return;
