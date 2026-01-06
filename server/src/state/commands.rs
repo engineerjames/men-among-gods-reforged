@@ -668,7 +668,7 @@ impl State {
                     log::debug!("Processing black command for {}", cn);
                     God::set_flag(
                         cn,
-                        parse_usize(arg_get(1)),
+                        arg_get(1),
                         core::constants::CharacterFlags::CF_BLACK.bits(),
                     );
                     return;
@@ -697,7 +697,7 @@ impl State {
                     log::debug!("Processing ccp command for {}", cn);
                     God::set_flag(
                         cn,
-                        parse_usize(arg_get(1)),
+                        arg_get(1),
                         core::constants::CharacterFlags::CF_CCP.bits(),
                     );
                     return;
@@ -716,7 +716,7 @@ impl State {
                     log::debug!("Processing creator command for {}", cn);
                     God::set_flag(
                         cn,
-                        parse_usize(arg_get(1)),
+                        arg_get(1),
                         core::constants::CharacterFlags::CF_CREATOR.bits(),
                     );
                     return;
@@ -817,7 +817,7 @@ impl State {
                     log::debug!("Processing golden command for {}", cn);
                     God::set_flag(
                         cn,
-                        parse_usize(arg_get(1)),
+                        arg_get(1),
                         core::constants::CharacterFlags::CF_GOLDEN.bits(),
                     );
                     return;
@@ -856,7 +856,7 @@ impl State {
                     log::debug!("Processing god command for {}", cn);
                     God::set_flag(
                         cn,
-                        parse_usize(arg_get(1)),
+                        arg_get(1),
                         core::constants::CharacterFlags::CF_GOD.bits(),
                     );
                     return;
@@ -865,7 +865,7 @@ impl State {
                     log::debug!("Processing greatergod command for {}", cn);
                     God::set_flag(
                         cn,
-                        parse_usize(arg_get(1)),
+                        arg_get(1),
                         core::constants::CharacterFlags::CF_GREATERGOD.bits(),
                     );
                     return;
@@ -875,7 +875,7 @@ impl State {
                     log::debug!("Processing greaterinv command for {}", cn);
                     God::set_flag(
                         cn,
-                        parse_usize(arg_get(1)),
+                        arg_get(1),
                         core::constants::CharacterFlags::CF_GREATERINV.bits(),
                     );
                     return;
@@ -922,16 +922,20 @@ impl State {
                     God::iinfo(cn, parse_usize(arg_get(1)));
                     return;
                 }
-                if starts("immortal") && f_u {
+                if (starts("immortal") || starts("imm")) && f_u {
                     log::debug!("Processing immortal command for {}", cn);
-                    God::set_flag(cn, cn, core::constants::CharacterFlags::CF_IMMORTAL.bits());
+                    God::set_flag(
+                        cn,
+                        arg_get(1),
+                        core::constants::CharacterFlags::CF_IMMORTAL.bits(),
+                    );
                     return;
                 }
-                if starts("immortal") && f_g {
+                if (starts("immortal") || starts("imm")) && f_g {
                     log::debug!("Processing god-immortal command for {}", cn);
                     God::set_flag(
                         cn,
-                        parse_usize(arg_get(1)),
+                        arg_get(1),
                         core::constants::CharacterFlags::CF_IMMORTAL.bits(),
                     );
                     return;
@@ -940,7 +944,7 @@ impl State {
                     log::debug!("Processing imp command for {}", cn);
                     God::set_flag(
                         cn,
-                        parse_usize(arg_get(1)),
+                        arg_get(1),
                         core::constants::CharacterFlags::CF_IMP.bits(),
                     );
                     return;
@@ -955,20 +959,20 @@ impl State {
                     self.do_character_log(cn, FontColor::Green, "Done.\n");
                     return;
                 }
-                if starts("infrared") && f_giu {
+                if (starts("infrared") || starts("infra")) && f_giu {
                     log::debug!("Processing infrared command for {}", cn);
                     God::set_flag(
                         cn,
-                        parse_usize(arg_get(1)),
+                        arg_get(1),
                         core::constants::CharacterFlags::CF_INFRARED.bits(),
                     );
                     return;
                 }
-                if starts("invisible") && f_giu {
+                if (starts("invisible") || starts("inv")) && f_giu {
                     log::debug!("Processing invisible command for {}", cn);
                     God::set_flag(
                         cn,
-                        parse_usize(arg_get(1)),
+                        arg_get(1),
                         core::constants::CharacterFlags::CF_INVISIBLE.bits(),
                     );
                     return;
@@ -1008,17 +1012,17 @@ impl State {
                     self.do_look_char(cn, parse_usize(arg_get(1)), 1, 0, 0);
                     return;
                 }
-                if starts("lookdepot") && f_gg {
+                if (starts("lookdepot") || starts("lookd")) && f_gg {
                     log::debug!("Processing lookdepot command for {}", cn);
                     self.do_look_player_depot(cn, parse_usize(arg_get(1)));
                     return;
                 }
-                if starts("lookinv") && f_gg {
+                if (starts("lookinv") || starts("looki")) && f_gg {
                     log::debug!("Processing lookinv command for {}", cn);
                     self.do_look_player_inventory(cn, parse_usize(arg_get(1)));
                     return;
                 }
-                if starts("lookequip") && f_gg {
+                if (starts("lookequip") || starts("looke")) && f_gg {
                     log::debug!("Processing lookequip command for {}", cn);
                     self.do_look_player_equipment(cn, parse_usize(arg_get(1)));
                     return;
@@ -1117,7 +1121,7 @@ impl State {
                     log::debug!("Processing nolist command for {}", cn);
                     God::set_flag(
                         cn,
-                        parse_usize(arg_get(1)),
+                        arg_get(1),
                         core::constants::CharacterFlags::CF_NOLIST.bits(),
                     );
                     return;
@@ -1131,7 +1135,7 @@ impl State {
                     log::debug!("Processing nowho command for {}", cn);
                     God::set_flag(
                         cn,
-                        parse_usize(arg_get(1)),
+                        arg_get(1),
                         core::constants::CharacterFlags::CF_NOWHO.bits(),
                     );
                     return;
@@ -1162,22 +1166,18 @@ impl State {
                 }
                 if starts("poh") && f_pol {
                     log::debug!("Processing poh command for {}", cn);
-                    God::set_flag(cn, parse_usize(arg_get(1)), CharacterFlags::Poh.bits());
+                    God::set_flag(cn, arg_get(1), CharacterFlags::Poh.bits());
                     return;
                 }
                 if starts("pol") && f_pol {
                     log::debug!("Processing pol command for {}", cn);
-                    God::set_flag(
-                        cn,
-                        parse_usize(arg_get(1)),
-                        CharacterFlags::PohLeader.bits(),
-                    );
+                    God::set_flag(cn, arg_get(1), CharacterFlags::PohLeader.bits());
                     return;
                 }
 
                 if starts("prof") && f_g {
                     log::debug!("Processing prof command for {}", cn);
-                    God::set_flag(cn, cn, CharacterFlags::PohLeader.bits());
+                    God::set_flag(cn, arg_get(1), CharacterFlags::PohLeader.bits());
                     return;
                 }
 
@@ -1220,7 +1220,7 @@ impl State {
 
                 if starts("raise") && f_giu {
                     log::debug!("Processing raise command for {}", cn);
-                    God::raise_char(cn, parse_usize(arg_get(1)), parse_i32(arg_get(2)));
+                    God::raise_char(cn, arg_get(1), arg_get(2));
                     return;
                 }
 
@@ -1247,7 +1247,7 @@ impl State {
                     log::debug!("Processing safe command for {}", cn);
                     God::set_flag(
                         cn,
-                        parse_usize(arg_get(1)),
+                        arg_get(1),
                         core::constants::CharacterFlags::CF_SAFE.bits(),
                     );
                     return;
@@ -1346,7 +1346,7 @@ impl State {
                     log::debug!("Processing staff command for {}", cn);
                     God::set_flag(
                         cn,
-                        parse_usize(arg_get(1)),
+                        arg_get(1),
                         core::constants::CharacterFlags::CF_STAFF.bits(),
                     );
                     return;

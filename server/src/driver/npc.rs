@@ -1071,8 +1071,8 @@ pub fn npc_try_spell(cn: usize, co: usize, spell: usize) -> bool {
 
         // Don't stun if the chance of success is bad
         if spell == core::constants::SK_CURSE
-            && 10 * ch[cn].skill[core::constants::SK_CURSE][5]
-                / std::cmp::max(1, ch[co].skill[core::constants::SK_RESIST][5])
+            && 10 * ch[cn].skill[core::constants::SK_CURSE][5] as i32
+                / (std::cmp::max(1, ch[co].skill[core::constants::SK_RESIST][5]) as i32)
                 < 7
         {
             return false;
@@ -1080,8 +1080,8 @@ pub fn npc_try_spell(cn: usize, co: usize, spell: usize) -> bool {
 
         // Don't stun if the chance of success is bad
         if spell == core::constants::SK_STUN
-            && 10 * ch[cn].skill[core::constants::SK_STUN][5]
-                / std::cmp::max(1, ch[co].skill[core::constants::SK_RESIST][5])
+            && 10 * ch[cn].skill[core::constants::SK_STUN][5] as i32
+                / (std::cmp::max(1, ch[co].skill[core::constants::SK_RESIST][5]) as i32)
                 < 5
         {
             return false;

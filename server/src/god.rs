@@ -9,7 +9,7 @@ use core::{
 use crate::{
     area, chlog, driver,
     effect::EffectManager,
-    enums::{CharacterFlags, LogoutReason},
+    enums::{character_flags_name, CharacterFlags, LogoutReason},
     helpers, player, populate,
     repository::Repository,
     server::Server,
@@ -1460,6 +1460,7 @@ impl God {
     }
 
     /// Teleport `co` to coordinates parsed from `cx`/`cy` at the request of `cn`.
+    /// `cx` can contain direction modifiers (n/s/e/w) or absolute values.
     ///
     /// Parses the coordinate strings and delegates to transfer logic.
     ///
@@ -1468,53 +1469,261 @@ impl God {
     /// * `co` - Target character
     /// * `cx`, `cy` - Coordinate strings
     pub fn goto(cn: usize, co: usize, cx: &str, cy: &str) {
+        log::debug!(
+            "goto() called by character {} to move character {} to '{},{}'",
+            cn,
+            co,
+            cx,
+            cy
+        );
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
         }
 
-        let (x, y) = Repository::with_characters(|characters| {
-            let character = &characters[cn];
-            let mut target_x = character.x as usize;
-            let mut target_y = character.y as usize;
+        // We expect at least one of the values passed in to be non-empty
+        if cx.is_empty() && cy.is_empty() {
+            State::with_mut(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!(
+                        "Invalid coordinates provided for goto command: '{},{}'.\n",
+                        cx, cy
+                    ),
+                )
+            });
+            return;
+        }
 
-            // Parse direction modifiers
-            if cx.starts_with('n') || cx.starts_with('N') {
-                if let Ok(val) = cx[1..].parse::<i32>() {
-                    target_y = (target_y as i32 - val).max(1) as usize;
-                }
-            } else if cx.starts_with('s') || cx.starts_with('S') {
-                if let Ok(val) = cx[1..].parse::<i32>() {
-                    target_y =
-                        (target_y as i32 + val).min(core::constants::SERVER_MAPY - 2) as usize;
-                }
-            } else if cx.starts_with('e') || cx.starts_with('E') {
-                if let Ok(val) = cx[1..].parse::<i32>() {
-                    target_x =
-                        (target_x as i32 + val).min(core::constants::SERVER_MAPX - 2) as usize;
-                }
-            } else if cx.starts_with('w') || cx.starts_with('W') {
-                if let Ok(val) = cx[1..].parse::<i32>() {
-                    target_x = (target_x as i32 - val).max(1) as usize;
-                }
-            } else if let Ok(val) = cx.parse::<usize>() {
-                target_x = val.clamp(1, (core::constants::SERVER_MAPX - 2) as usize);
-            }
+        let goto_functions = [
+            Self::goto_cardinal_length as fn(usize, &str, &str) -> Option<(usize, usize)>,
+            Self::goto_target_coordinates as fn(usize, &str, &str) -> Option<(usize, usize)>,
+            Self::goto_character_by_name as fn(usize, &str, &str) -> Option<(usize, usize)>,
+        ];
 
-            if let Ok(val) = cy.parse::<usize>() {
-                target_y = val.clamp(1, (core::constants::SERVER_MAPY - 2) as usize);
-            }
-
-            (target_x, target_y)
+        let (character_name, character_visible) = Repository::with_characters(|ch| {
+            (
+                ch[cn].get_name().to_string(),
+                ch[cn].flags & CharacterFlags::Invisible.bits() == 0
+                    && ch[cn].flags & CharacterFlags::GreaterInv.bits() == 0,
+            )
         });
+        for goto_fn in goto_functions.iter() {
+            if let Some((x, y)) = goto_fn(cn, cx, cy) {
+                let orig_pos = Repository::with_characters(|ch| {
+                    let character = &ch[co];
+                    (character.x as usize, character.y as usize)
+                });
 
-        Self::transfer_char(co, x, y);
-        State::with(|state| {
+                if character_visible {
+                    EffectManager::fx_add_effect(12, 0, orig_pos.0 as i32, orig_pos.1 as i32, 0);
+                }
+                Self::transfer_char(co, x, y);
+                if character_visible {
+                    EffectManager::fx_add_effect(12, 0, x as i32, y as i32, 0);
+                }
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Green,
+                        &format!(
+                            "{} teleported to ({}, {})\n",
+                            if cn == co { "You" } else { &character_name },
+                            x,
+                            y
+                        ),
+                    );
+                });
+                return;
+            }
+        }
+
+        log::error!(
+            "Failed to execute goto command for character {} with input '{},{}'",
+            cn,
+            cx,
+            cy
+        );
+
+        State::with_mut(|state| {
             state.do_character_log(
                 cn,
-                core::types::FontColor::Green,
-                &format!("Character {} teleported to ({}, {})\n", co, x, y),
-            );
+                core::types::FontColor::Red,
+                &format!("goto() failed with input '{},{}'\n", cx, cy),
+            )
         });
+    }
+
+    fn goto_target_coordinates(cn: usize, cx: &str, cy: &str) -> Option<(usize, usize)> {
+        let target_x = match cx.parse::<usize>() {
+            Ok(val) => val,
+            Err(_) => {
+                log::error!(
+                    "Failed to parse X coordinate '{}' in goto command for character {}",
+                    cx,
+                    cn
+                );
+                return None;
+            }
+        };
+
+        let target_y = match cy.parse::<usize>() {
+            Ok(val) => val,
+            Err(_) => {
+                log::error!(
+                    "Failed to parse Y coordinate '{}' in goto command for character {}",
+                    cy,
+                    cn
+                );
+                return None;
+            }
+        };
+
+        Some((target_x, target_y))
+    }
+
+    fn goto_cardinal_length(cn: usize, cx: &str, cy: &str) -> Option<(usize, usize)> {
+        if cx.chars().next().unwrap_or_default().is_alphabetic()
+            && !cy.chars().next().unwrap_or_default().is_numeric()
+        {
+            log::debug!("Not a cardinal direction + length formatted goto command");
+            return None;
+        }
+
+        if cx.chars().next().unwrap_or_default().is_numeric()
+            && cy.chars().next().unwrap_or_default().is_numeric()
+        {
+            log::debug!("Not a cardinal direction + length formatted goto command");
+            return None;
+        }
+
+        // Attempting to use format like "n 10" or "s 5", etc;
+        // but we didn't use N/S/E/W as the first character
+        if !["n", "s", "e", "w"].contains(&cx.to_lowercase().as_str()) {
+            State::with_mut(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!(
+                        "Invalid coordinate format provided for goto command: '{},{}'.\n",
+                        cx, cy
+                    ),
+                )
+            });
+            return None;
+        }
+
+        let (current_x, current_y) = Repository::with_characters(|ch| {
+            let character = &ch[cn];
+            (character.x as usize, character.y as usize)
+        });
+
+        // North - decrease x
+        // South - increase x
+        // East  - increase y
+        // West  - decrease y
+        let (target_x, target_y) = match cx.to_lowercase().as_str() {
+            "n" => {
+                if let Ok(val) = cy.parse::<i32>() {
+                    let new_x = (current_x as i32 - val).max(1) as usize;
+                    (new_x, current_y)
+                } else {
+                    log::error!(
+                        "Failed to parse X coordinate '{}' in goto command for character {}",
+                        cy,
+                        cn
+                    );
+                    return None;
+                }
+            }
+            "s" => {
+                if let Ok(val) = cy.parse::<i32>() {
+                    let new_x =
+                        (current_x as i32 + val).min(core::constants::SERVER_MAPX - 2) as usize;
+                    (new_x, current_y)
+                } else {
+                    log::error!(
+                        "Failed to parse X coordinate '{}' in goto command for character {}",
+                        cy,
+                        cn
+                    );
+                    return None;
+                }
+            }
+            "e" => {
+                if let Ok(val) = cy.parse::<i32>() {
+                    let new_y =
+                        (current_y as i32 + val).min(core::constants::SERVER_MAPY - 2) as usize;
+                    (current_x, new_y)
+                } else {
+                    log::error!(
+                        "Failed to parse Y coordinate '{}' in goto command for character {}",
+                        cy,
+                        cn
+                    );
+                    return None;
+                }
+            }
+            "w" => {
+                if let Ok(val) = cy.parse::<i32>() {
+                    let new_y = (current_y as i32 - val).max(1) as usize;
+                    (current_x, new_y)
+                } else {
+                    log::error!(
+                        "Failed to parse Y coordinate '{}' in goto command for character {}",
+                        cy,
+                        cn
+                    );
+                    return None;
+                }
+            }
+            _ => {
+                log::error!(
+                    "Invalid cardinal direction '{}' in goto command for character {} - this should've been filtered out already",
+                    cx,
+                    cn
+                );
+                return None;
+            }
+        };
+
+        Some((target_x, target_y))
+    }
+
+    fn goto_character_by_name(cn: usize, cx: &str, cy: &str) -> Option<(usize, usize)> {
+        if cx.chars().next().unwrap().is_numeric() || !cy.is_empty() {
+            log::debug!("Not a character name formatted goto command");
+            return None;
+        }
+
+        let target_name = cx;
+        let target_location: Option<(usize, usize)> = Repository::with_characters(|ch| {
+            let target_character = ch.iter().find(|char| {
+                char.used != core::constants::USE_EMPTY
+                    && char.get_name().eq_ignore_ascii_case(target_name)
+            });
+
+            if let Some(target_char) = target_character {
+                Some((target_char.x as usize, target_char.y as usize))
+            } else {
+                None
+            }
+        });
+
+        if target_location.is_none() {
+            log::error!("Character name '{}' not found in goto command", target_name);
+
+            State::with_mut(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("No such character found with name '{}'.\n", target_name),
+                )
+            });
+            return None;
+        }
+
+        Some((target_location.unwrap().0, target_location.unwrap().1))
     }
 
     /// Show comprehensive information about character `co` to `cn`.
@@ -2679,18 +2888,11 @@ impl God {
                     "god_transfer_char() failed.\n",
                 );
             });
+
             // show effects at original and current position
             EffectManager::fx_add_effect(12, 0, xo, yo, 0);
-            // use repository to fetch updated position for safety
-            Repository::with_characters(|characters| {
-                EffectManager::fx_add_effect(
-                    12,
-                    0,
-                    characters[co].x as i32,
-                    characters[co].y as i32,
-                    0,
-                );
-            });
+            EffectManager::fx_add_effect(12, 0, xo, yo, 0);
+
             return;
         }
 
@@ -3199,13 +3401,64 @@ impl God {
         player::plr_logout(cn, player_id, LogoutReason::Tavern);
     }
 
-    /// Admin command used to adjust a character's experience.
+    /// Admin command used to adjust a character's experience. Only
+    /// dispatched from administrative commands in-game.
     ///
     /// # Arguments
     /// * `cn` - Requesting character
-    /// * `co` - Target character
-    /// * `value` - Increase amount
-    pub fn raise_char(cn: usize, co: usize, value: i32) {
+    /// * `arg1` - Target character or can be the amount if arg2 is empty (apply to self)
+    /// * `arg2` - Increase amount
+    pub fn raise_char(cn: usize, arg1: &str, arg2: &str) {
+        log::debug!(
+            "god_raise_char() called with arg1='{}', arg2='{}'",
+            arg1,
+            arg2
+        );
+
+        if !Character::is_sane_character(cn) {
+            log::error!(
+                "god_raise_char() called with invalid character number: {}",
+                cn
+            );
+            return;
+        }
+
+        if arg2.is_empty() {
+            log::debug!(
+                "god_raise_char(): single-argument mode, applying to self: {}",
+                cn
+            );
+            Self::raise_char(cn, cn.to_string().as_str(), arg1);
+            return;
+        }
+
+        let (co, name) = if let Some((co, name)) = Self::find_character_by_name_or_id(arg1) {
+            (co, name)
+        } else {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("No such character: {}\n", arg1),
+                );
+            });
+            return;
+        };
+
+        let value = match arg2.parse::<i32>() {
+            Ok(v) => v,
+            Err(_) => {
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Red,
+                        &format!("Invalid raise value: {}\n", arg2),
+                    );
+                });
+                return;
+            }
+        };
+
         if !Character::is_sane_character(co) {
             State::with(|state| {
                 state.do_character_log(
@@ -3233,12 +3486,7 @@ impl God {
             ch[co].points_tot += value;
         });
 
-        chlog!(
-            cn,
-            "Raised character {} experience by {}\n",
-            Repository::with_characters(|characters| characters[co].get_name().to_string()),
-            value
-        );
+        chlog!(cn, "Raised character {} experience by {}\n", name, value);
 
         State::with_mut(|state| {
             state.do_check_new_level(co);
@@ -3627,45 +3875,109 @@ impl God {
         }
     }
 
-    /// Set raw flag bits on a target character.
+    /// Set raw flag bits on a target character. These are only dispatched
+    /// via administrative commands in-game.
     ///
     /// Administrative helper to OR the provided `flag` into the target's
     /// flag field.
-    pub fn set_flag(cn: usize, co: usize, flag: u64) {
-        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
+    pub fn set_flag(cn: usize, arg1: &str, flag: u64) {
+        log::debug!(
+            "god_set_flag() called with arg1='{}', flag={:x}",
+            arg1,
+            flag
+        );
+        if !Character::is_sane_character(cn) {
             return;
         }
 
-        Repository::with_characters_mut(|characters| {
-            let target = &mut characters[co];
+        // Ensure we have an owned string in case we need to use the numeric id as a name
+        let query = if arg1.is_empty() {
+            // Default to own character if argument wasn't provided
+            cn.to_string()
+        } else {
+            arg1.to_string()
+        };
 
-            // Toggle the flag
-            if target.flags & flag != 0 {
-                target.flags &= !flag;
-                State::with(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Green,
-                        &format!(
-                            "Removed flag {:x} from character {}\n",
-                            flag,
-                            target.get_name()
-                        ),
-                    );
-                });
+        if let Some((co, name)) = Self::find_character_by_name_or_id(&query) {
+            Repository::with_characters_mut(|ch| {
+                let target = &mut ch[co];
+
+                // Toggle the flag
+                if target.flags & flag != 0 {
+                    target.flags &= !flag;
+                    State::with(|state| {
+                        state.do_character_log(
+                            cn,
+                            core::types::FontColor::Green,
+                            &format!(
+                                "Removed flag {} ({:x}) from character {}\n",
+                                character_flags_name(CharacterFlags::from_bits_truncate(flag)),
+                                flag,
+                                name
+                            ),
+                        );
+                    });
+                } else {
+                    target.flags |= flag;
+                    State::with(|state| {
+                        state.do_character_log(
+                            cn,
+                            core::types::FontColor::Green,
+                            &format!(
+                                "Added flag {} ({:x}) to character '{}'\n",
+                                character_flags_name(CharacterFlags::from_bits_truncate(flag)),
+                                flag,
+                                name
+                            ),
+                        );
+                    });
+                }
+
+                target.set_do_update_flags();
+
+                if flag == core::constants::CharacterFlags::CF_INVISIBLE.bits() {
+                    EffectManager::fx_add_effect(12, 0, ch[co].x as i32, ch[co].y as i32, 0);
+                }
+            });
+        } else {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("No such character (id or name): '{}'\n", arg1),
+                );
+            });
+        }
+    }
+
+    /// Find a character by name (case-insensitive).
+    ///
+    /// Returns the character index and name string if found, or None if not.
+    fn find_character_by_name_or_id(arg: &str) -> Option<(usize, String)> {
+        if arg.chars().all(|c| c.is_numeric()) {
+            // Search by character number
+            let co = arg.parse::<usize>().unwrap_or(0);
+            if Character::is_sane_character(co) {
+                Repository::with_characters(|ch| {
+                    let name_str = c_string_to_str(&ch[co].name);
+                    Some((co, name_str.to_string()))
+                })
             } else {
-                target.flags |= flag;
-                State::with(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Green,
-                        &format!("Added flag {:x} to character {}\n", flag, target.get_name()),
-                    );
-                });
+                None
             }
-
-            target.set_do_update_flags();
-        });
+        } else {
+            // Search by name
+            let arg_lower = arg.to_lowercase();
+            Repository::with_characters(|ch| {
+                for (i, character) in ch.iter().enumerate() {
+                    let name_str = c_string_to_str(&character.name);
+                    if name_str.to_lowercase() == arg_lower {
+                        return Some((i, name_str.to_string()));
+                    }
+                }
+                None
+            })
+        }
     }
 
     /// Set a global server flag (admin operation).
