@@ -1469,6 +1469,13 @@ impl God {
     /// * `co` - Target character
     /// * `cx`, `cy` - Coordinate strings
     pub fn goto(cn: usize, co: usize, cx: &str, cy: &str) {
+        log::debug!(
+            "goto() called by character {} to move character {} to '{},{}'",
+            cn,
+            co,
+            cx,
+            cy
+        );
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
         }
@@ -1520,8 +1527,10 @@ impl God {
                         cn,
                         core::types::FontColor::Green,
                         &format!(
-                            "Character {} teleported to ({}, {})\n",
-                            character_name, x, y
+                            "{} teleported to ({}, {})\n",
+                            if cn == co { "You" } else { &character_name },
+                            x,
+                            y
                         ),
                     );
                 });
@@ -3392,13 +3401,64 @@ impl God {
         player::plr_logout(cn, player_id, LogoutReason::Tavern);
     }
 
-    /// Admin command used to adjust a character's experience.
+    /// Admin command used to adjust a character's experience. Only
+    /// dispatched from administrative commands in-game.
     ///
     /// # Arguments
     /// * `cn` - Requesting character
-    /// * `co` - Target character
-    /// * `value` - Increase amount
-    pub fn raise_char(cn: usize, co: usize, value: i32) {
+    /// * `arg1` - Target character or can be the amount if arg2 is empty (apply to self)
+    /// * `arg2` - Increase amount
+    pub fn raise_char(cn: usize, arg1: &str, arg2: &str) {
+        log::debug!(
+            "god_raise_char() called with arg1='{}', arg2='{}'",
+            arg1,
+            arg2
+        );
+
+        if !Character::is_sane_character(cn) {
+            log::error!(
+                "god_raise_char() called with invalid character number: {}",
+                cn
+            );
+            return;
+        }
+
+        if arg2.is_empty() {
+            log::debug!(
+                "god_raise_char(): single-argument mode, applying to self: {}",
+                cn
+            );
+            Self::raise_char(cn, cn.to_string().as_str(), arg1);
+            return;
+        }
+
+        let (co, name) = if let Some((co, name)) = Self::find_character_by_name_or_id(arg1) {
+            (co, name)
+        } else {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("No such character: {}\n", arg1),
+                );
+            });
+            return;
+        };
+
+        let value = match arg2.parse::<i32>() {
+            Ok(v) => v,
+            Err(_) => {
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Red,
+                        &format!("Invalid raise value: {}\n", arg2),
+                    );
+                });
+                return;
+            }
+        };
+
         if !Character::is_sane_character(co) {
             State::with(|state| {
                 state.do_character_log(
@@ -3426,12 +3486,7 @@ impl God {
             ch[co].points_tot += value;
         });
 
-        chlog!(
-            cn,
-            "Raised character {} experience by {}\n",
-            Repository::with_characters(|characters| characters[co].get_name().to_string()),
-            value
-        );
+        chlog!(cn, "Raised character {} experience by {}\n", name, value);
 
         State::with_mut(|state| {
             state.do_check_new_level(co);

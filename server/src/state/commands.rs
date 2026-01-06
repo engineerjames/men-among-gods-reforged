@@ -1220,7 +1220,7 @@ impl State {
 
                 if starts("raise") && f_giu {
                     log::debug!("Processing raise command for {}", cn);
-                    God::raise_char(cn, parse_usize(arg_get(1)), parse_i32(arg_get(2)));
+                    God::raise_char(cn, arg_get(1), arg_get(2));
                     return;
                 }
 
