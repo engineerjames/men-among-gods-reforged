@@ -469,4 +469,14 @@ mod tests {
         item.flags = ItemFlags::IF_UNIQUE.bits();
         assert!(item.is_unique());
     }
+
+    #[test]
+    fn test_item_is_sane() {
+        assert!(!Item::is_sane_item(0));
+        assert!(Item::is_sane_item(1));
+        assert!(Item::is_sane_item(100));
+        assert!(Item::is_sane_item(crate::constants::MAXITEM - 1));
+        assert!(!Item::is_sane_item(crate::constants::MAXITEM));
+        assert!(!Item::is_sane_item(crate::constants::MAXITEM + 1));
+    }
 }

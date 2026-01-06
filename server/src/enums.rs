@@ -193,3 +193,226 @@ pub(crate) fn character_flags_name(flag: CharacterFlags) -> &'static str {
         _ => "UnknownFlag",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_character_flags_basic_operations() {
+        // Test individual flag creation
+        let immortal = CharacterFlags::Immortal;
+        let god = CharacterFlags::God;
+
+        // Test bit values are powers of 2
+        assert_eq!(CharacterFlags::Immortal.bits(), 1u64 << 0);
+        assert_eq!(CharacterFlags::God.bits(), 1u64 << 1);
+        assert_eq!(CharacterFlags::Creator.bits(), 1u64 << 2);
+        assert_eq!(CharacterFlags::Player.bits(), 1u64 << 5);
+
+        // Test flag combinations
+        let combined = immortal | god;
+        assert!(combined.contains(CharacterFlags::Immortal));
+        assert!(combined.contains(CharacterFlags::God));
+        assert!(!combined.contains(CharacterFlags::Creator));
+    }
+
+    #[test]
+    fn test_character_flags_operations() {
+        let mut flags = CharacterFlags::empty();
+
+        // Test insertion
+        flags.insert(CharacterFlags::Player);
+        assert!(flags.contains(CharacterFlags::Player));
+
+        // Test multiple insertions
+        flags.insert(CharacterFlags::God);
+        flags.insert(CharacterFlags::Staff);
+        assert!(flags.contains(CharacterFlags::Player));
+        assert!(flags.contains(CharacterFlags::God));
+        assert!(flags.contains(CharacterFlags::Staff));
+
+        // Test removal
+        flags.remove(CharacterFlags::Player);
+        assert!(!flags.contains(CharacterFlags::Player));
+        assert!(flags.contains(CharacterFlags::God));
+
+        // Test toggle
+        flags.toggle(CharacterFlags::Invisible);
+        assert!(flags.contains(CharacterFlags::Invisible));
+        flags.toggle(CharacterFlags::Invisible);
+        assert!(!flags.contains(CharacterFlags::Invisible));
+    }
+
+    #[test]
+    fn test_character_flags_set_operations() {
+        let set1 = CharacterFlags::Player | CharacterFlags::God;
+        let set2 = CharacterFlags::God | CharacterFlags::Staff;
+
+        // Test intersection
+        let intersection = set1 & set2;
+        assert!(intersection.contains(CharacterFlags::God));
+        assert!(!intersection.contains(CharacterFlags::Player));
+        assert!(!intersection.contains(CharacterFlags::Staff));
+
+        // Test union
+        let union = set1 | set2;
+        assert!(union.contains(CharacterFlags::Player));
+        assert!(union.contains(CharacterFlags::God));
+        assert!(union.contains(CharacterFlags::Staff));
+
+        // Test difference
+        let diff = set1 - set2;
+        assert!(diff.contains(CharacterFlags::Player));
+        assert!(!diff.contains(CharacterFlags::God));
+        assert!(!diff.contains(CharacterFlags::Staff));
+    }
+
+    #[test]
+    fn test_character_flags_name_function() {
+        // Test all individual flags
+        assert_eq!(character_flags_name(CharacterFlags::Immortal), "Immortal");
+        assert_eq!(character_flags_name(CharacterFlags::God), "God");
+        assert_eq!(character_flags_name(CharacterFlags::Creator), "Creator");
+        assert_eq!(character_flags_name(CharacterFlags::BuildMode), "BuildMode");
+        assert_eq!(character_flags_name(CharacterFlags::Respawn), "Respawn");
+        assert_eq!(character_flags_name(CharacterFlags::Player), "Player");
+        assert_eq!(character_flags_name(CharacterFlags::NewUser), "NewUser");
+        assert_eq!(character_flags_name(CharacterFlags::NoTell), "NoTell");
+        assert_eq!(character_flags_name(CharacterFlags::NoShout), "NoShout");
+        assert_eq!(character_flags_name(CharacterFlags::Merchant), "Merchant");
+        assert_eq!(character_flags_name(CharacterFlags::Staff), "Staff");
+        assert_eq!(character_flags_name(CharacterFlags::Invisible), "Invisible");
+        assert_eq!(character_flags_name(CharacterFlags::Body), "Body");
+        assert_eq!(character_flags_name(CharacterFlags::Undead), "Undead");
+        assert_eq!(character_flags_name(CharacterFlags::Stoned), "Stoned");
+        assert_eq!(
+            character_flags_name(CharacterFlags::GreaterGod),
+            "GreaterGod"
+        );
+        assert_eq!(
+            character_flags_name(CharacterFlags::GreaterInv),
+            "GreaterInv"
+        );
+
+        // Test combined flags (should return "UnknownFlag")
+        let combined = CharacterFlags::Player | CharacterFlags::God;
+        assert_eq!(character_flags_name(combined), "UnknownFlag");
+
+        // Test empty flags
+        assert_eq!(character_flags_name(CharacterFlags::empty()), "UnknownFlag");
+    }
+
+    #[test]
+    fn test_character_flags_debug_and_display() {
+        // Test Debug formatting
+        let flags = CharacterFlags::Player | CharacterFlags::God;
+        let debug_str = format!("{:?}", flags);
+        assert!(debug_str.contains("Player"));
+        assert!(debug_str.contains("God"));
+
+        // Test empty flags (bitflags uses different format)
+        let empty = CharacterFlags::empty();
+        let empty_str = format!("{:?}", empty);
+        assert!(empty_str.contains("0x0") || empty_str == "(empty)");
+
+        // Test single flag
+        let single = CharacterFlags::Immortal;
+        let single_str = format!("{:?}", single);
+        assert!(single_str.contains("Immortal") || single_str.contains("0x1"));
+    }
+
+    #[test]
+    fn test_character_flags_bit_positions() {
+        // Test that all flags have unique bit positions
+        let all_flags = [
+            CharacterFlags::Immortal,
+            CharacterFlags::God,
+            CharacterFlags::Creator,
+            CharacterFlags::BuildMode,
+            CharacterFlags::Respawn,
+            CharacterFlags::Player,
+            CharacterFlags::NewUser,
+            CharacterFlags::NoTell,
+            CharacterFlags::NoShout,
+            CharacterFlags::Merchant,
+            CharacterFlags::Staff,
+            CharacterFlags::NoHpReg,
+            CharacterFlags::NoEndReg,
+            CharacterFlags::NoManaReg,
+            CharacterFlags::Invisible,
+            CharacterFlags::Infrared,
+            CharacterFlags::Body,
+            CharacterFlags::NoSleep,
+            CharacterFlags::Undead,
+            CharacterFlags::NoMagic,
+            CharacterFlags::Stoned,
+            CharacterFlags::Usurp,
+            CharacterFlags::Imp,
+            CharacterFlags::ShutUp,
+            CharacterFlags::NoDesc,
+            CharacterFlags::Prof,
+            CharacterFlags::Simple,
+            CharacterFlags::Kicked,
+            CharacterFlags::NoList,
+            CharacterFlags::NoWho,
+            CharacterFlags::SpellIgnore,
+            CharacterFlags::ComputerControlledPlayer,
+            CharacterFlags::Safe,
+            CharacterFlags::NoStaff,
+            CharacterFlags::Poh,
+            CharacterFlags::PohLeader,
+            CharacterFlags::Thrall,
+            CharacterFlags::LabKeeper,
+            CharacterFlags::IsLooting,
+            CharacterFlags::Golden,
+            CharacterFlags::Black,
+            CharacterFlags::Passwd,
+            CharacterFlags::Update,
+            CharacterFlags::SaveMe,
+            CharacterFlags::GreaterGod,
+            CharacterFlags::GreaterInv,
+        ];
+
+        // Verify each flag is a power of 2 (has exactly one bit set)
+        for flag in all_flags.iter() {
+            let bits = flag.bits();
+            assert_ne!(bits, 0, "Flag should not be empty");
+            assert_eq!(
+                bits & (bits - 1),
+                0,
+                "Flag should be a power of 2: {:?}",
+                flag
+            );
+        }
+
+        // Verify all flags are unique
+        for i in 0..all_flags.len() {
+            for j in (i + 1)..all_flags.len() {
+                assert_ne!(
+                    all_flags[i].bits(),
+                    all_flags[j].bits(),
+                    "Flags should have unique bit positions: {:?} vs {:?}",
+                    all_flags[i],
+                    all_flags[j]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_character_flags_from_bits() {
+        // Test creating flags from raw bits
+        let bits = CharacterFlags::Player.bits() | CharacterFlags::God.bits();
+        let flags = CharacterFlags::from_bits_truncate(bits);
+        assert!(flags.contains(CharacterFlags::Player));
+        assert!(flags.contains(CharacterFlags::God));
+
+        // Test invalid bits are truncated
+        let invalid_bits = u64::MAX;
+        let truncated = CharacterFlags::from_bits_truncate(invalid_bits);
+        // Should contain all valid flags
+        assert!(truncated.contains(CharacterFlags::Player));
+        assert!(truncated.contains(CharacterFlags::God));
+    }
+}
