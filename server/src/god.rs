@@ -1494,10 +1494,27 @@ impl God {
             Self::goto_character_by_name as fn(usize, &str, &str) -> Option<(usize, usize)>,
         ];
 
-        let character_name = Repository::with_characters(|ch| ch[cn].get_name().to_string());
+        let (character_name, character_visible) = Repository::with_characters(|ch| {
+            (
+                ch[cn].get_name().to_string(),
+                ch[cn].flags & CharacterFlags::Invisible.bits() == 0
+                    && ch[cn].flags & CharacterFlags::GreaterInv.bits() == 0,
+            )
+        });
         for goto_fn in goto_functions.iter() {
             if let Some((x, y)) = goto_fn(cn, cx, cy) {
+                let orig_pos = Repository::with_characters(|ch| {
+                    let character = &ch[co];
+                    (character.x as usize, character.y as usize)
+                });
+
+                if character_visible {
+                    EffectManager::fx_add_effect(12, 0, orig_pos.0 as i32, orig_pos.1 as i32, 0);
+                }
                 Self::transfer_char(co, x, y);
+                if character_visible {
+                    EffectManager::fx_add_effect(12, 0, x as i32, y as i32, 0);
+                }
                 State::with(|state| {
                     state.do_character_log(
                         cn,
@@ -1559,6 +1576,13 @@ impl God {
     fn goto_cardinal_length(cn: usize, cx: &str, cy: &str) -> Option<(usize, usize)> {
         if cx.chars().next().unwrap_or_default().is_alphabetic()
             && !cy.chars().next().unwrap_or_default().is_numeric()
+        {
+            log::debug!("Not a cardinal direction + length formatted goto command");
+            return None;
+        }
+
+        if cx.chars().next().unwrap_or_default().is_numeric()
+            && cy.chars().next().unwrap_or_default().is_numeric()
         {
             log::debug!("Not a cardinal direction + length formatted goto command");
             return None;
@@ -3800,41 +3824,97 @@ impl God {
     ///
     /// Administrative helper to OR the provided `flag` into the target's
     /// flag field.
-    pub fn set_flag(cn: usize, co: usize, flag: u64) {
-        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
+    pub fn set_flag(cn: usize, arg1: &str, flag: u64) {
+        log::debug!(
+            "god_set_flag() called with arg1='{}', flag={:x}",
+            arg1,
+            flag
+        );
+        if !Character::is_sane_character(cn) {
             return;
         }
 
-        Repository::with_characters_mut(|characters| {
-            let target = &mut characters[co];
+        if arg1.is_empty() {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    "No target character specified.\n",
+                );
+            });
+            return;
+        }
 
-            // Toggle the flag
-            if target.flags & flag != 0 {
-                target.flags &= !flag;
-                State::with(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Green,
-                        &format!(
-                            "Removed flag {:x} from character {}\n",
-                            flag,
-                            target.get_name()
-                        ),
-                    );
-                });
+        if let Some((co, name)) = Self::find_character_by_name_or_id(arg1) {
+            Repository::with_characters_mut(|ch| {
+                let target = &mut ch[co];
+
+                // Toggle the flag
+                if target.flags & flag != 0 {
+                    target.flags &= !flag;
+                    State::with(|state| {
+                        state.do_character_log(
+                            cn,
+                            core::types::FontColor::Green,
+                            &format!("Removed flag {:x} from character {}\n", flag, name),
+                        );
+                    });
+                } else {
+                    target.flags |= flag;
+                    State::with(|state| {
+                        state.do_character_log(
+                            cn,
+                            core::types::FontColor::Green,
+                            &format!("Added flag {:x} to character '{}'\n", flag, name),
+                        );
+                    });
+                }
+
+                target.set_do_update_flags();
+
+                if flag == core::constants::CharacterFlags::CF_INVISIBLE.bits() {
+                    EffectManager::fx_add_effect(12, 0, ch[co].x as i32, ch[co].y as i32, 0);
+                }
+            });
+        } else {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("No such character (id or name): '{}'\n", arg1),
+                );
+            });
+        }
+    }
+
+    /// Find a character by name (case-insensitive).
+    ///
+    /// Returns the character index and name string if found, or None if not.
+    fn find_character_by_name_or_id(arg: &str) -> Option<(usize, String)> {
+        if arg.chars().all(|c| c.is_numeric()) {
+            // Search by character number
+            let co = arg.parse::<usize>().unwrap_or(0);
+            if Character::is_sane_character(co) {
+                Repository::with_characters(|ch| {
+                    let name_str = c_string_to_str(&ch[co].name);
+                    Some((co, name_str.to_string()))
+                })
             } else {
-                target.flags |= flag;
-                State::with(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Green,
-                        &format!("Added flag {:x} to character {}\n", flag, target.get_name()),
-                    );
-                });
+                None
             }
-
-            target.set_do_update_flags();
-        });
+        } else {
+            // Search by name
+            let arg_lower = arg.to_lowercase();
+            Repository::with_characters(|ch| {
+                for (i, character) in ch.iter().enumerate() {
+                    let name_str = c_string_to_str(&character.name);
+                    if name_str.to_lowercase() == arg_lower {
+                        return Some((i, name_str.to_string()));
+                    }
+                }
+                None
+            })
+        }
     }
 
     /// Set a global server flag (admin operation).
