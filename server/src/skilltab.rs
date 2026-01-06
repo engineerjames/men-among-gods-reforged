@@ -348,3 +348,232 @@ pub fn get_skill_name(skill: usize) -> &'static str {
         ""
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_skilltab_new() {
+        let skill = SkillTab::new(1, 'C', "Test Skill", "Test Description", 0, 1, 2);
+
+        assert_eq!(skill.nr, 1);
+        assert_eq!(skill.cat, 'C');
+        assert_eq!(skill.name, "Test Skill");
+        assert_eq!(skill.desc, "Test Description");
+        assert_eq!(skill.attrib, [0, 1, 2]);
+    }
+
+    #[test]
+    fn test_get_skill_attribs_valid_indices() {
+        // Test first skill (Hand to Hand)
+        assert_eq!(get_skill_attribs(0), [0, 3, 4]);
+
+        // Test Karate
+        assert_eq!(get_skill_attribs(1), [0, 3, 4]);
+
+        // Test Dagger
+        assert_eq!(get_skill_attribs(2), [0, 3, 2]);
+
+        // Test Sword
+        assert_eq!(get_skill_attribs(3), [0, 3, 4]);
+
+        // Test Lock-Picking
+        assert_eq!(get_skill_attribs(7), [2, 1, 3]);
+
+        // Test Magic Shield
+        assert_eq!(get_skill_attribs(11), [0, 2, 1]);
+
+        // Test last valid skill
+        assert_eq!(get_skill_attribs(MAX_SKILLS - 1), [0, 0, 0]); // Empty skill
+    }
+
+    #[test]
+    fn test_get_skill_attribs_invalid_indices() {
+        // Test out of bounds indices
+        assert_eq!(get_skill_attribs(MAX_SKILLS), [0, 0, 0]);
+        assert_eq!(get_skill_attribs(MAX_SKILLS + 1), [0, 0, 0]);
+        assert_eq!(get_skill_attribs(1000), [0, 0, 0]);
+        assert_eq!(get_skill_attribs(usize::MAX), [0, 0, 0]);
+    }
+
+    #[test]
+    fn test_get_skill_name_valid_indices() {
+        // Test first few skills
+        assert_eq!(get_skill_name(0), "Hand to Hand");
+        assert_eq!(get_skill_name(1), "Karate");
+        assert_eq!(get_skill_name(2), "Dagger");
+        assert_eq!(get_skill_name(3), "Sword");
+        assert_eq!(get_skill_name(4), "Axe");
+        assert_eq!(get_skill_name(5), "Staff");
+        assert_eq!(get_skill_name(6), "Two-Handed");
+
+        // Test some magic skills
+        assert_eq!(get_skill_name(11), "Magic Shield");
+        assert_eq!(get_skill_name(14), "Light");
+        assert_eq!(get_skill_name(15), "Recall");
+        assert_eq!(get_skill_name(26), "Heal");
+
+        // Test general skills
+        assert_eq!(get_skill_name(7), "Lock-Picking");
+        assert_eq!(get_skill_name(8), "Stealth");
+        assert_eq!(get_skill_name(9), "Perception");
+        assert_eq!(get_skill_name(12), "Bartering");
+
+        // Test empty skills (reserved slots)
+        assert_eq!(get_skill_name(36), "");
+        assert_eq!(get_skill_name(49), "");
+    }
+
+    #[test]
+    fn test_get_skill_name_invalid_indices() {
+        // Test out of bounds indices
+        assert_eq!(get_skill_name(MAX_SKILLS), "");
+        assert_eq!(get_skill_name(MAX_SKILLS + 1), "");
+        assert_eq!(get_skill_name(1000), "");
+        assert_eq!(get_skill_name(usize::MAX), "");
+    }
+
+    #[test]
+    fn test_skilltab_structure() {
+        // Test that SKILLTAB has the expected number of skills
+        assert_eq!(SKILLTAB.len(), MAX_SKILLS);
+
+        // Test that skill numbers match their indices
+        for (i, skill) in SKILLTAB.iter().enumerate() {
+            assert_eq!(skill.nr, i);
+        }
+
+        // Test that all skills have valid categories
+        let valid_categories = ['C', 'G', 'M', 'R', 'B', 'Z'];
+        for skill in SKILLTAB.iter() {
+            assert!(
+                valid_categories.contains(&skill.cat),
+                "Invalid category '{}' for skill '{}'",
+                skill.cat,
+                skill.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_skill_categories() {
+        // Test Combat skills (category 'C')
+        assert_eq!(SKILLTAB[0].cat, 'C'); // Hand to Hand
+        assert_eq!(SKILLTAB[1].cat, 'C'); // Karate
+        assert_eq!(SKILLTAB[2].cat, 'C'); // Dagger
+        assert_eq!(SKILLTAB[3].cat, 'C'); // Sword
+        assert_eq!(SKILLTAB[4].cat, 'C'); // Axe
+        assert_eq!(SKILLTAB[5].cat, 'C'); // Staff
+        assert_eq!(SKILLTAB[6].cat, 'C'); // Two-Handed
+
+        // Test General skills (category 'G')
+        assert_eq!(SKILLTAB[7].cat, 'G'); // Lock-Picking
+        assert_eq!(SKILLTAB[8].cat, 'G'); // Stealth
+        assert_eq!(SKILLTAB[9].cat, 'G'); // Perception
+        assert_eq!(SKILLTAB[12].cat, 'G'); // Bartering
+        assert_eq!(SKILLTAB[13].cat, 'G'); // Repair
+
+        // Test Magic skills (category 'R')
+        assert_eq!(SKILLTAB[11].cat, 'R'); // Magic Shield
+        assert_eq!(SKILLTAB[14].cat, 'R'); // Light
+        assert_eq!(SKILLTAB[15].cat, 'R'); // Recall
+        assert_eq!(SKILLTAB[16].cat, 'R'); // Guardian Angel
+
+        // Test Body skills (category 'B')
+        assert_eq!(SKILLTAB[28].cat, 'B'); // Regenerate
+        assert_eq!(SKILLTAB[29].cat, 'B'); // Rest
+        assert_eq!(SKILLTAB[30].cat, 'B'); // Meditate
+
+        // Test Misc skills (category 'M')
+        assert_eq!(SKILLTAB[10].cat, 'M'); // Swimming
+
+        // Test empty skills (category 'Z')
+        assert_eq!(SKILLTAB[36].cat, 'Z');
+        assert_eq!(SKILLTAB[49].cat, 'Z');
+    }
+
+    #[test]
+    fn test_skill_descriptions() {
+        // Test that all active skills have non-empty descriptions
+        for i in 0..36 {
+            // First 36 are active skills
+            assert!(
+                !SKILLTAB[i].desc.is_empty(),
+                "Skill {} '{}' should have a description",
+                i,
+                SKILLTAB[i].name
+            );
+        }
+
+        // Test some specific descriptions
+        assert!(SKILLTAB[0].desc.contains("Fighting without weapons"));
+        assert!(SKILLTAB[7].desc.contains("Opening doors without keys"));
+        assert!(SKILLTAB[11].desc.contains("Create a magic shield"));
+        assert!(SKILLTAB[26].desc.contains("Heal injuries"));
+    }
+
+    #[test]
+    fn test_skill_attribute_ranges() {
+        // Test that all attribute indices are within reasonable bounds
+        // Assuming attributes are indexed 0-4 (common in RPGs)
+        for skill in SKILLTAB.iter() {
+            for &attr in skill.attrib.iter() {
+                assert!(
+                    attr <= 4,
+                    "Attribute index {} is out of expected range for skill '{}'",
+                    attr,
+                    skill.name
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_specific_skill_attributes() {
+        // Test some known skill attribute combinations
+
+        // Combat skills typically use Strength (0), Agility (3), Stamina (4)
+        let hand_to_hand = get_skill_attribs(0);
+        assert_eq!(hand_to_hand, [0, 3, 4]);
+
+        let sword = get_skill_attribs(3);
+        assert_eq!(sword, [0, 3, 4]);
+
+        // Magic skills typically use Strength (0), Intuition (2), Willpower (1)
+        let magic_shield = get_skill_attribs(11);
+        assert_eq!(magic_shield, [0, 2, 1]);
+
+        let light = get_skill_attribs(14);
+        assert_eq!(light, [0, 2, 1]);
+
+        // General skills often use Intuition (2), Willpower (1), Agility (3)
+        let lock_picking = get_skill_attribs(7);
+        assert_eq!(lock_picking, [2, 1, 3]);
+
+        let stealth = get_skill_attribs(8);
+        assert_eq!(stealth, [2, 1, 3]);
+    }
+
+    #[test]
+    fn test_max_skills_constant() {
+        // Verify MAX_SKILLS matches the actual array size
+        assert_eq!(MAX_SKILLS, 50);
+        assert_eq!(SKILLTAB.len(), MAX_SKILLS);
+    }
+
+    #[test]
+    fn test_skill_names_uniqueness() {
+        // Test that non-empty skill names are unique
+        let mut names = std::collections::HashSet::new();
+        for skill in SKILLTAB.iter() {
+            if !skill.name.is_empty() {
+                assert!(
+                    names.insert(skill.name),
+                    "Duplicate skill name found: '{}'",
+                    skill.name
+                );
+            }
+        }
+    }
+}
