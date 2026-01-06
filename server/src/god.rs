@@ -9,7 +9,7 @@ use core::{
 use crate::{
     area, chlog, driver,
     effect::EffectManager,
-    enums::{CharacterFlags, LogoutReason},
+    enums::{character_flags_name, CharacterFlags, LogoutReason},
     helpers, player, populate,
     repository::Repository,
     server::Server,
@@ -3834,18 +3834,15 @@ impl God {
             return;
         }
 
-        if arg1.is_empty() {
-            State::with(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Red,
-                    "No target character specified.\n",
-                );
-            });
-            return;
-        }
+        // Ensure we have an owned string in case we need to use the numeric id as a name
+        let query = if arg1.is_empty() {
+            // Default to own character if argument wasn't provided
+            cn.to_string()
+        } else {
+            arg1.to_string()
+        };
 
-        if let Some((co, name)) = Self::find_character_by_name_or_id(arg1) {
+        if let Some((co, name)) = Self::find_character_by_name_or_id(&query) {
             Repository::with_characters_mut(|ch| {
                 let target = &mut ch[co];
 
@@ -3856,7 +3853,12 @@ impl God {
                         state.do_character_log(
                             cn,
                             core::types::FontColor::Green,
-                            &format!("Removed flag {:x} from character {}\n", flag, name),
+                            &format!(
+                                "Removed flag {} ({:x}) from character {}\n",
+                                character_flags_name(CharacterFlags::from_bits_truncate(flag)),
+                                flag,
+                                name
+                            ),
                         );
                     });
                 } else {
@@ -3865,7 +3867,12 @@ impl God {
                         state.do_character_log(
                             cn,
                             core::types::FontColor::Green,
-                            &format!("Added flag {:x} to character '{}'\n", flag, name),
+                            &format!(
+                                "Added flag {} ({:x}) to character '{}'\n",
+                                character_flags_name(CharacterFlags::from_bits_truncate(flag)),
+                                flag,
+                                name
+                            ),
                         );
                     });
                 }
