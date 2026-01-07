@@ -1,4 +1,5 @@
-use crate::enums::CharacterFlags;
+use core::constants::CharacterFlags;
+
 use crate::path_finding::PathFinder;
 use crate::player;
 use crate::state::State;
@@ -1830,10 +1831,7 @@ pub fn driver_msg(cn: usize, msg_type: i32, dat1: i32, dat2: i32, dat3: i32, dat
     }
 
     let is_player = Repository::with_characters(|ch| {
-        (ch[cn].flags
-            & (core::constants::CharacterFlags::CF_PLAYER.bits()
-                | core::constants::CharacterFlags::CF_USURP.bits()))
-            != 0
+        (ch[cn].flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits())) != 0
     });
 
     if !is_player {
@@ -1843,7 +1841,7 @@ pub fn driver_msg(cn: usize, msg_type: i32, dat1: i32, dat2: i32, dat3: i32, dat
     }
 
     let is_ccp = Repository::with_characters(|ch| {
-        (ch[cn].flags & core::constants::CharacterFlags::CF_CCP.bits()) != 0
+        (ch[cn].flags & CharacterFlags::ComputerControlledPlayer.bits()) != 0
     });
     if is_ccp {
         // TODO: driver_ccp::ccp_msg(cn, msg_type, dat1, dat2, dat3, dat4);
@@ -2034,10 +2032,7 @@ pub fn follow_driver(cn: usize, co: usize) -> bool {
 pub fn driver(cn: usize) {
     // 1. If not player or usurp -> run NPC high-priority driver
     let is_player_or_usurp = Repository::with_characters(|ch| {
-        (ch[cn].flags
-            & (core::constants::CharacterFlags::CF_PLAYER.bits()
-                | core::constants::CharacterFlags::CF_USURP.bits()))
-            != 0
+        (ch[cn].flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits())) != 0
     });
     if !is_player_or_usurp {
         driver::npc_driver_high(cn);
@@ -2045,7 +2040,7 @@ pub fn driver(cn: usize) {
 
     // 2. If CCP, run CCP driver (feature-gated)
     let is_ccp = Repository::with_characters(|ch| {
-        (ch[cn].flags & core::constants::CharacterFlags::CF_CCP.bits()) != 0
+        (ch[cn].flags & CharacterFlags::ComputerControlledPlayer.bits()) != 0
     });
     #[cfg(feature = "REAL_CCP")]
     if is_ccp {
@@ -2072,10 +2067,7 @@ pub fn driver(cn: usize) {
 
     // 5. If player/usurp and not attacking, run player_driver_med
     let is_player_or_usurp = Repository::with_characters(|ch| {
-        (ch[cn].flags
-            & (core::constants::CharacterFlags::CF_PLAYER.bits()
-                | core::constants::CharacterFlags::CF_USURP.bits()))
-            != 0
+        (ch[cn].flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits())) != 0
     });
     let attack_cn = Repository::with_characters(|ch| ch[cn].attack_cn);
     if is_player_or_usurp && attack_cn == 0 {
@@ -2102,10 +2094,7 @@ pub fn driver(cn: usize) {
     match misc_action as u32 {
         x if x == core::constants::DR_IDLE => {
             let is_player = Repository::with_characters(|ch| {
-                (ch[cn].flags
-                    & (core::constants::CharacterFlags::CF_PLAYER.bits()
-                        | core::constants::CharacterFlags::CF_USURP.bits()))
-                    != 0
+                (ch[cn].flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits())) != 0
             });
             if !is_player {
                 driver::npc_driver_low(cn);

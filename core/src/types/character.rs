@@ -287,12 +287,12 @@ impl Character {
 
     /// Check if character is a player
     pub fn is_player(&self) -> bool {
-        (self.flags & CharacterFlags::CF_PLAYER.bits()) != 0
+        (self.flags & CharacterFlags::Player.bits()) != 0
     }
 
     /// Check if character has profile flag set
     pub fn has_prof(&self) -> bool {
-        (self.flags & CharacterFlags::CF_PROF.bits()) != 0
+        (self.flags & CharacterFlags::Profile.bits()) != 0
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -730,7 +730,7 @@ impl Character {
     }
 
     pub fn set_do_update_flags(&mut self) {
-        self.flags |= CharacterFlags::CF_UPDATE.bits() | CharacterFlags::CF_SAVEME.bits();
+        self.flags |= CharacterFlags::Update.bits() | CharacterFlags::SaveMe.bits();
     }
 
     pub fn is_monster(&self) -> bool {
@@ -738,11 +738,11 @@ impl Character {
     }
 
     pub fn is_usurp_or_thrall(&self) -> bool {
-        (self.flags & (CharacterFlags::CF_USURP.bits() | CharacterFlags::CF_THRALL.bits())) != 0
+        (self.flags & (CharacterFlags::Usurp.bits() | CharacterFlags::Thrall.bits())) != 0
     }
 
     pub fn is_building(&self) -> bool {
-        (self.flags & CharacterFlags::CF_BUILDMODE.bits()) != 0
+        (self.flags & CharacterFlags::BuildMode.bits()) != 0
     }
 
     pub fn get_kindred_as_string(&self) -> String {
@@ -789,19 +789,19 @@ impl Character {
     }
 
     pub fn get_invisibility_level(&self) -> i32 {
-        if self.flags & CharacterFlags::CF_GREATERINV.bits() != 0 {
+        if self.flags & CharacterFlags::GreaterInv.bits() != 0 {
             return 15;
         }
 
-        if self.flags & CharacterFlags::CF_GOD.bits() != 0 {
+        if self.flags & CharacterFlags::God.bits() != 0 {
             return 10;
         }
 
-        if self.flags & (CharacterFlags::CF_IMP | CharacterFlags::CF_USURP).bits() != 0 {
+        if self.flags & (CharacterFlags::Imp | CharacterFlags::Usurp).bits() != 0 {
             return 5;
         }
 
-        if self.flags & CharacterFlags::CF_STAFF.bits() != 0 {
+        if self.flags & CharacterFlags::Staff.bits() != 0 {
             return 2;
         }
 
@@ -855,8 +855,7 @@ impl Character {
 
     pub fn group_active(&self) -> bool {
         if (self.flags
-            & (CharacterFlags::CF_PLAYER | CharacterFlags::CF_USURP | CharacterFlags::CF_NOSLEEP)
-                .bits())
+            & (CharacterFlags::Player | CharacterFlags::Usurp | CharacterFlags::NoSleep).bits())
             != 0
             && self.used == crate::constants::USE_ACTIVE
         {
@@ -1014,7 +1013,7 @@ mod tests {
         let mut character = Character::default();
         assert!(!character.is_player());
 
-        character.flags = CharacterFlags::CF_PLAYER.bits();
+        character.flags = CharacterFlags::Player.bits();
         assert!(character.is_player());
     }
 
@@ -1023,7 +1022,7 @@ mod tests {
         let mut character = Character::default();
         assert!(!character.has_prof());
 
-        character.flags = CharacterFlags::CF_PROF.bits();
+        character.flags = CharacterFlags::Profile.bits();
         assert!(character.has_prof());
     }
 
@@ -1138,8 +1137,8 @@ mod tests {
 
         character.set_do_update_flags();
 
-        assert_ne!(character.flags & CharacterFlags::CF_UPDATE.bits(), 0);
-        assert_ne!(character.flags & CharacterFlags::CF_SAVEME.bits(), 0);
+        assert_ne!(character.flags & CharacterFlags::Update.bits(), 0);
+        assert_ne!(character.flags & CharacterFlags::SaveMe.bits(), 0);
     }
 
     #[test]
@@ -1158,13 +1157,13 @@ mod tests {
         character.flags = 0;
         assert!(!character.is_usurp_or_thrall());
 
-        character.flags = CharacterFlags::CF_USURP.bits();
+        character.flags = CharacterFlags::Usurp.bits();
         assert!(character.is_usurp_or_thrall());
 
-        character.flags = CharacterFlags::CF_THRALL.bits();
+        character.flags = CharacterFlags::Thrall.bits();
         assert!(character.is_usurp_or_thrall());
 
-        character.flags = CharacterFlags::CF_USURP.bits() | CharacterFlags::CF_THRALL.bits();
+        character.flags = CharacterFlags::Usurp.bits() | CharacterFlags::Thrall.bits();
         assert!(character.is_usurp_or_thrall());
     }
 
@@ -1174,7 +1173,7 @@ mod tests {
         character.flags = 0;
         assert!(!character.is_building());
 
-        character.flags = CharacterFlags::CF_BUILDMODE.bits();
+        character.flags = CharacterFlags::BuildMode.bits();
         assert!(character.is_building());
     }
 
@@ -1245,7 +1244,7 @@ mod tests {
         ));
 
         // Player characters should not be sane NPCs
-        character.flags = CharacterFlags::CF_PLAYER.bits();
+        character.flags = CharacterFlags::Player.bits();
         assert!(!Character::is_sane_npc(1, &character));
     }
 
@@ -1255,19 +1254,19 @@ mod tests {
         character.flags = 0;
         assert_eq!(character.get_invisibility_level(), 1);
 
-        character.flags = CharacterFlags::CF_STAFF.bits();
+        character.flags = CharacterFlags::Staff.bits();
         assert_eq!(character.get_invisibility_level(), 2);
 
-        character.flags = CharacterFlags::CF_IMP.bits();
+        character.flags = CharacterFlags::Imp.bits();
         assert_eq!(character.get_invisibility_level(), 5);
 
-        character.flags = CharacterFlags::CF_USURP.bits();
+        character.flags = CharacterFlags::Usurp.bits();
         assert_eq!(character.get_invisibility_level(), 5);
 
-        character.flags = CharacterFlags::CF_GOD.bits();
+        character.flags = CharacterFlags::God.bits();
         assert_eq!(character.get_invisibility_level(), 10);
 
-        character.flags = CharacterFlags::CF_GREATERINV.bits();
+        character.flags = CharacterFlags::GreaterInv.bits();
         assert_eq!(character.get_invisibility_level(), 15);
     }
 

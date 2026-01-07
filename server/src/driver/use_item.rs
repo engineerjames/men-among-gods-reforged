@@ -1941,7 +1941,7 @@ pub fn use_crystal_sub(_cn: usize, item_idx: usize) -> i32 {
         for n in 1..core::constants::MAXCHARS {
             let ch = &characters[n];
             if ch.used == core::constants::USE_ACTIVE
-                && (ch.flags & core::constants::CharacterFlags::CF_BODY.bits()) == 0
+                && (ch.flags & CharacterFlags::Body.bits()) == 0
                 && ch.data[42] == group as i32
             {
                 let mut base = ch.data[0];
@@ -2997,7 +2997,7 @@ pub fn use_grave(_cn: usize, item_idx: usize) -> i32 {
             }
             let ch = &characters[cc];
             ch.data[0] as usize == item_idx
-                && (ch.flags & core::constants::CharacterFlags::CF_BODY.bits()) == 0
+                && (ch.flags & CharacterFlags::Body.bits()) == 0
                 && ch.used != USE_EMPTY
         });
 
@@ -3677,7 +3677,7 @@ pub fn spawn_penta_enemy(item_idx: usize) -> i32 {
 
     // Configure character
     Repository::with_characters_mut(|characters| {
-        characters[cn].flags &= !CharacterFlags::CF_RESPAWN.bits();
+        characters[cn].flags &= !CharacterFlags::Respawn.bits();
     });
 
     let (x, y) = Repository::with_items(|items| (items[item_idx].x, items[item_idx].y));
@@ -3757,7 +3757,7 @@ pub fn solved_pentagram(cn: usize, item_idx: usize) -> i32 {
         if used == core::constants::USE_EMPTY {
             continue;
         }
-        if (flags & (CharacterFlags::CF_PLAYER.bits() | CharacterFlags::CF_USURP.bits())) == 0 {
+        if (flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits())) == 0 {
             continue;
         }
 
@@ -3850,7 +3850,7 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
                             } else if characters[co].data[0] != item_idx as i32 {
                                 true
                             } else {
-                                (characters[co].flags & CharacterFlags::CF_BODY.bits()) != 0
+                                (characters[co].flags & CharacterFlags::Body.bits()) != 0
                             }
                         })
                     };
@@ -4083,7 +4083,7 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
                     } else if characters[co].data[0] != item_idx as i32 {
                         true
                     } else {
-                        (characters[co].flags & CharacterFlags::CF_BODY.bits()) != 0
+                        (characters[co].flags & CharacterFlags::Body.bits()) != 0
                     }
                 })
             };
@@ -4180,9 +4180,7 @@ pub fn use_shrine(cn: usize, _item_idx: usize) -> i32 {
                         if characters[m].used == core::constants::USE_EMPTY {
                             continue;
                         }
-                        if (characters[m].flags & core::constants::CharacterFlags::CF_PLAYER.bits())
-                            == 0
-                        {
+                        if (characters[m].flags & CharacterFlags::Player.bits()) == 0 {
                             continue;
                         }
                         if characters[m].data[70] == 0 {
@@ -4273,9 +4271,7 @@ pub fn use_shrine(cn: usize, _item_idx: usize) -> i32 {
                         if characters[m].used == core::constants::USE_EMPTY {
                             continue;
                         }
-                        if (characters[m].flags & core::constants::CharacterFlags::CF_PLAYER.bits())
-                            == 0
-                        {
+                        if (characters[m].flags & CharacterFlags::Player.bits()) == 0 {
                             continue;
                         }
                         if characters[m].data[70] == 0 {
@@ -4483,7 +4479,7 @@ pub fn use_kill_undead(cn: usize, item_idx: usize) -> i32 {
 
             if co != 0 {
                 let is_undead = Repository::with_characters(|characters| {
-                    (characters[co].flags & CharacterFlags::CF_UNDEAD.bits()) != 0
+                    (characters[co].flags & CharacterFlags::Undead.bits()) != 0
                 });
 
                 if is_undead {
@@ -4678,7 +4674,7 @@ pub fn teleport3(cn: usize, item_idx: usize) -> i32 {
     let (kindred, is_staff) = Repository::with_characters(|characters| {
         (
             characters[cn].kindred,
-            (characters[cn].flags & CharacterFlags::CF_STAFF.bits()) != 0,
+            (characters[cn].flags & CharacterFlags::Staff.bits()) != 0,
         )
     });
 
@@ -5952,7 +5948,7 @@ pub fn use_driver(cn: usize, item_idx: usize, carried: bool) {
     // Check if character is in build mode
     if cn != 0 {
         let in_build_mode = Repository::with_characters(|characters| {
-            (characters[cn].flags & core::constants::CharacterFlags::CF_BUILDMODE.bits()) != 0
+            (characters[cn].flags & CharacterFlags::BuildMode.bits()) != 0
         });
         if in_build_mode {
             return;
@@ -7027,7 +7023,7 @@ pub fn age_message(cn: usize, item_idx: usize, where_is: &str) {
 
 pub fn char_item_expire(cn: usize) {
     if Repository::with_characters(|characters| {
-        (characters[cn].flags & core::constants::CharacterFlags::CF_BUILDMODE.bits()) != 0
+        (characters[cn].flags & CharacterFlags::BuildMode.bits()) != 0
     }) {
         return;
     }
@@ -7250,8 +7246,7 @@ pub fn pentagram(item_idx: usize) {
                 let cn = stored_cn as usize;
                 let dead_or_mismatch = characters[cn].data[0] != item_idx as i32
                     || characters[cn].used == USE_EMPTY
-                    || (characters[cn].flags & core::constants::CharacterFlags::CF_BODY.bits())
-                        != 0;
+                    || (characters[cn].flags & CharacterFlags::Body.bits()) != 0;
                 dead_or_mismatch
             })
         };
@@ -7292,8 +7287,7 @@ pub fn spiderweb(item_idx: usize) {
                 let cn = stored_cn as usize;
                 let dead_or_mismatch = characters[cn].data[0] != item_idx as i32
                     || characters[cn].used == USE_EMPTY
-                    || (characters[cn].flags & core::constants::CharacterFlags::CF_BODY.bits())
-                        != 0;
+                    || (characters[cn].flags & CharacterFlags::Body.bits()) != 0;
                 dead_or_mismatch
             })
         };
@@ -7312,7 +7306,7 @@ pub fn spiderweb(item_idx: usize) {
 
             Repository::with_characters_mut(|characters| {
                 // Ensure respawn flag is cleared for this spawned instance
-                characters[cn].flags &= !core::constants::CharacterFlags::CF_RESPAWN.bits();
+                characters[cn].flags &= !CharacterFlags::Respawn.bits();
                 characters[cn].data[0] = item_idx as i32;
                 characters[cn].data[29] = (x + y * core::constants::SERVER_MAPX as usize) as i32;
                 characters[cn].data[60] = TICKS * 60 * 2;
@@ -7358,8 +7352,7 @@ pub fn greenlingball(item_idx: usize) {
                 let cn = stored_cn as usize;
                 let dead_or_mismatch = characters[cn].data[0] != item_idx as i32
                     || characters[cn].used == USE_EMPTY
-                    || (characters[cn].flags & core::constants::CharacterFlags::CF_BODY.bits())
-                        != 0;
+                    || (characters[cn].flags & CharacterFlags::Body.bits()) != 0;
                 dead_or_mismatch
             })
         };
@@ -7378,7 +7371,7 @@ pub fn greenlingball(item_idx: usize) {
 
             Repository::with_characters_mut(|characters| {
                 // Ensure respawn flag is cleared for this spawned instance
-                characters[cn].flags &= !core::constants::CharacterFlags::CF_RESPAWN.bits();
+                characters[cn].flags &= !CharacterFlags::Respawn.bits();
                 characters[cn].data[0] = item_idx as i32;
                 characters[cn].data[29] = (x + y * core::constants::SERVER_MAPX as usize) as i32;
                 characters[cn].data[60] = TICKS * 60 * 2;
@@ -7579,9 +7572,7 @@ pub fn item_tick_expire() {
                                         (
                                             characters[co].temp as usize,
                                             characters[co].get_name().to_string(),
-                                            (characters[co].flags
-                                                & core::constants::CharacterFlags::CF_RESPAWN
-                                                    .bits())
+                                            (characters[co].flags & CharacterFlags::Respawn.bits())
                                                 != 0,
                                         )
                                     });
@@ -7766,7 +7757,7 @@ pub fn item_tick_gc() {
                     // Check depot for players
                     if !found {
                         let is_player = Repository::with_characters(|characters| {
-                            (characters[cn].flags & CharacterFlags::CF_PLAYER.bits()) != 0
+                            (characters[cn].flags & CharacterFlags::Player.bits()) != 0
                         });
                         if is_player {
                             for z in 0..62 {
@@ -7993,7 +7984,7 @@ pub fn start_trap(cn: usize, item_idx: usize) {
 
 pub fn step_trap(cn: usize, item_idx: usize) -> i32 {
     let is_player = Repository::with_characters(|characters| {
-        (characters[cn].flags & CharacterFlags::CF_PLAYER.bits()) != 0
+        (characters[cn].flags & CharacterFlags::Player.bits()) != 0
     });
 
     if is_player {
@@ -8107,7 +8098,7 @@ pub fn step_portal1_lab13(cn: usize, _item_idx: usize) -> i32 {
 
 pub fn step_portal2_lab13(cn: usize, _item_idx: usize) -> i32 {
     let is_player = Repository::with_characters(|characters| {
-        (characters[cn].flags & CharacterFlags::CF_PLAYER.bits()) != 0
+        (characters[cn].flags & CharacterFlags::Player.bits()) != 0
     });
     if !is_player {
         return -1;
@@ -8121,7 +8112,7 @@ pub fn step_portal2_lab13(cn: usize, _item_idx: usize) -> i32 {
             let co = Repository::with_map(|map| map[m].ch);
             if co != 0 && co != cn as u32 {
                 let is_other_player = Repository::with_characters(|characters| {
-                    (characters[co as usize].flags & CharacterFlags::CF_PLAYER.bits()) != 0
+                    (characters[co as usize].flags & CharacterFlags::Player.bits()) != 0
                 });
                 if is_other_player {
                     flag = 1;
@@ -8151,7 +8142,7 @@ pub fn step_portal2_lab13(cn: usize, _item_idx: usize) -> i32 {
                 let co = Repository::with_map(|map| map[m].ch);
                 if co != 0 && co != cn as u32 {
                     let is_other_player = Repository::with_characters(|characters| {
-                        (characters[co as usize].flags & CharacterFlags::CF_PLAYER.bits()) != 0
+                        (characters[co as usize].flags & CharacterFlags::Player.bits()) != 0
                     });
                     if is_other_player {
                         flag = 1;
@@ -8212,7 +8203,7 @@ pub fn step_portal2_lab13(cn: usize, _item_idx: usize) -> i32 {
                 )
             });
 
-        if used != core::constants::USE_ACTIVE || (flags & CharacterFlags::CF_BODY.bits()) != 0 {
+        if used != core::constants::USE_ACTIVE || (flags & CharacterFlags::Body.bits()) != 0 {
             continue;
         }
         if temp != 51 {
