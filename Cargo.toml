@@ -5,3 +5,21 @@ members = [
     "client",
     "server",
 ]
+
+# Build with: `cargo build --profile profiling`
+# Goal: mostly-release-like performance while keeping symbols/line info for profilers.
+[profile.profiling]
+inherits = "release"
+
+# Keep enough debug info for flamegraphs / samples to resolve to lines.
+# Use `debug = true` if you want full DWARF (bigger/slower builds).
+debug = 2
+
+# Ensure symbols aren't stripped (some tooling relies on them).
+strip = "none"
+
+# Prefer more stable perf characteristics for profiling.
+codegen-units = 1
+
+# LTO can make profiles harder to interpret; keep it off by default here.
+lto = "off"
