@@ -972,17 +972,13 @@ pub fn reset_changed_items() {
 /// Port of `pop_tick` from `populate.cpp`
 /// Handles population ticking and resets
 pub fn pop_tick() {
-    const RESETTICKER: i32 = core::constants::TICKS * 60;
+    const RESETTICKER: u32 = core::constants::TICKS as u32 * 60;
 
-    static mut LAST_RESET: i32 = 0;
+    let ticker = Repository::with_globals(|globals| globals.ticker) as u32;
 
-    let ticker = Repository::with_globals(|globals| globals.ticker);
-
-    unsafe {
-        if ticker - LAST_RESET >= RESETTICKER {
-            LAST_RESET = ticker;
-            log::info!("Population tick: checking for resets");
-        }
+    if ticker - Repository::get_last_population_reset_tick() >= RESETTICKER {
+        Repository::set_last_population_reset_tick(ticker);
+        log::info!("Population tick: checking for resets");
     }
 
     // Check for character reset
