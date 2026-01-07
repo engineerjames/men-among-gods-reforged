@@ -7686,7 +7686,7 @@ pub fn item_tick_expire() {
 pub fn item_tick_gc() {
     let (off, m) = {
         let current_off = Repository::get_item_tick_gc_off() as usize;
-        let current_m = std::cmp::min(current_off + 256, MAXITEM) as usize;
+        let current_m = std::cmp::min(current_off + 256, MAXITEM);
         (current_off, current_m)
     };
 
