@@ -3685,7 +3685,7 @@ pub fn spawn_penta_enemy(item_idx: usize) -> i32 {
     Repository::with_characters_mut(|characters| {
         characters[cn].data[0] = item_idx as i32;
         characters[cn].data[29] = (x + y * core::constants::SERVER_MAPX as u16) as i32;
-        characters[cn].data[60] = 60 * 60 * 2; // TICKS * 60 * 2
+        characters[cn].data[60] = TICKS * 60 * 2;
         characters[cn].data[73] = 8;
         characters[cn].dir = DX_RIGHT;
     });
@@ -6706,7 +6706,6 @@ pub fn item_age(item_idx: usize) -> i32 {
     }
 
     // Expire no-age items after 30 minutes (lag scrolls after 2 minutes)
-    const TICKS: i32 = 12; // Assuming 12 ticks per second
     if max_age_act == 0 {
         let is_lag_scroll = Repository::with_items(|items| items[item_idx].temp == 500);
         let expire_time = if is_lag_scroll {
@@ -7027,9 +7026,6 @@ pub fn age_message(cn: usize, item_idx: usize, where_is: &str) {
 }
 
 pub fn char_item_expire(cn: usize) {
-    // Static clock for ice cloak aging (ages more slowly when not worn)
-    static mut CLOCK4: i32 = 0;
-
     if Repository::with_characters(|characters| {
         (characters[cn].flags & core::constants::CharacterFlags::CF_BUILDMODE.bits()) != 0
     }) {
@@ -7038,9 +7034,8 @@ pub fn char_item_expire(cn: usize) {
 
     let mut must_update = false;
 
-    unsafe {
-        CLOCK4 += 1;
-    }
+    let current_ice_cloak_clock = Repository::get_ice_cloak_clock();
+    Repository::set_ice_cloak_clock(current_ice_cloak_clock + 1);
 
     // Age items in backpack (40 slots)
     for n in 0..40 {
@@ -7067,7 +7062,7 @@ pub fn char_item_expire(cn: usize) {
         }
 
         // Ice cloak ages more slowly when not worn or held
-        if driver == 60 && unsafe { CLOCK4 % 4 != 0 } {
+        if driver == 60 && Repository::get_ice_cloak_clock().is_multiple_of(4) {
             continue;
         }
 
@@ -7320,7 +7315,7 @@ pub fn spiderweb(item_idx: usize) {
                 characters[cn].flags &= !core::constants::CharacterFlags::CF_RESPAWN.bits();
                 characters[cn].data[0] = item_idx as i32;
                 characters[cn].data[29] = (x + y * core::constants::SERVER_MAPX as usize) as i32;
-                characters[cn].data[60] = 12 * 60 * 2; // TICKS * 60 * 2
+                characters[cn].data[60] = TICKS * 60 * 2;
                 characters[cn].data[73] = 8;
                 characters[cn].dir = DX_RIGHT;
             });
@@ -7386,7 +7381,7 @@ pub fn greenlingball(item_idx: usize) {
                 characters[cn].flags &= !core::constants::CharacterFlags::CF_RESPAWN.bits();
                 characters[cn].data[0] = item_idx as i32;
                 characters[cn].data[29] = (x + y * core::constants::SERVER_MAPX as usize) as i32;
-                characters[cn].data[60] = 12 * 60 * 2; // TICKS * 60 * 2
+                characters[cn].data[60] = TICKS * 60 * 2;
                 characters[cn].data[73] = 8;
                 characters[cn].dir = DX_RIGHT;
             });
@@ -7442,40 +7437,38 @@ pub fn expire_driver(item_idx: usize) {
 }
 
 pub fn item_tick_expire() {
-    static mut Y: usize = 0;
     const EXP_TIME: i32 = SERVER_MAPY / 4;
 
-    let _y = unsafe {
-        let current_y = Y;
-        Y += 1;
-        if Y >= SERVER_MAPY as usize {
-            Repository::with_globals_mut(|globals| {
-                globals.expire_run += 1;
-                globals.lost_run += 1;
-            });
-            Y = 0;
-        }
-        current_y
-    };
+    // Conform to the original C++ semantics:
+    // - process the current row `y`
+    // - then increment and wrap `y` afterwards
+    let mut y = Repository::get_item_tick_expire_counter();
+    if y >= SERVER_MAPY as u32 {
+        y = 0;
+    }
 
+    let y_usize = y as usize;
     for x in 0..SERVER_MAPX as usize {
-        let m = x + _y * SERVER_MAPX as usize;
+        let m = x + y_usize * SERVER_MAPX as usize;
 
         // Process items on this tile
         let in_idx = Repository::with_map(|map| map[m].it);
         if in_idx != 0 {
             let in_idx = in_idx as usize;
 
-            // Handle IF_REACTIVATE
-            let (flags, active, duration, light_diff) = Repository::with_items(|items| {
-                let item = &items[in_idx];
-                (
-                    item.flags,
-                    item.active,
-                    item.duration,
-                    item.light[1] as i32 - item.light[0] as i32,
-                )
-            });
+            // Snapshot core fields, but keep `active` as a local variable we update
+            // to mirror the C++ behavior (reactivation affects same-tick expiration).
+            let (mut flags, driver, mut active, duration, light_diff) =
+                Repository::with_items(|items| {
+                    let item = &items[in_idx];
+                    (
+                        item.flags,
+                        item.driver,
+                        item.active,
+                        item.duration,
+                        item.light[1] as i32 - item.light[0] as i32,
+                    )
+                });
 
             let (ch_present, to_ch_present) =
                 Repository::with_map(|map| (map[m].ch != 0, map[m].to_ch != 0));
@@ -7485,9 +7478,10 @@ pub fn item_tick_expire() {
                     Repository::with_items_mut(|items| {
                         items[in_idx].active = duration;
                     });
+                    active = duration;
                     if light_diff != 0 {
                         State::with_mut(|state| {
-                            state.do_add_light(x as i32, _y as i32, light_diff);
+                            state.do_add_light(x as i32, y as i32, light_diff);
                         });
                     }
                 }
@@ -7501,9 +7495,10 @@ pub fn item_tick_expire() {
                         Repository::with_items_mut(|items| {
                             items[in_idx].active = 0;
                         });
+                        active = 0;
                         if light_diff != 0 {
                             State::with_mut(|state| {
-                                state.do_add_light(x as i32, _y as i32, -light_diff);
+                                state.do_add_light(x as i32, y as i32, -light_diff);
                             });
                         }
                     }
@@ -7511,11 +7506,11 @@ pub fn item_tick_expire() {
                     Repository::with_items_mut(|items| {
                         items[in_idx].active -= EXP_TIME as u32;
                     });
+                    active -= EXP_TIME as u32;
                 }
             }
 
             // Legacy drivers
-            let driver = Repository::with_items(|items| items[in_idx].driver);
             if driver == 33 {
                 pentagram(in_idx);
             }
@@ -7530,6 +7525,9 @@ pub fn item_tick_expire() {
             if (flags & ItemFlags::IF_EXPIREPROC.bits()) != 0 {
                 expire_driver(in_idx);
             }
+
+            // Refresh flags in case any of the above mutated them.
+            flags = Repository::with_items(|items| items[in_idx].flags);
 
             // Check if item should expire
             let map_flags = Repository::with_map(|map| map[m].flags);
@@ -7556,7 +7554,7 @@ pub fn item_tick_expire() {
                         let light = Repository::with_items(|items| items[in_idx].light[act]);
                         if light != 0 {
                             State::with_mut(|state| {
-                                state.do_add_light(x as i32, _y as i32, -(light as i32));
+                                state.do_add_light(x as i32, y as i32, -(light as i32));
                             });
                         }
 
@@ -7596,12 +7594,11 @@ pub fn item_tick_expire() {
 
                                 if temp != 0 && respawn_flag {
                                     // Schedule a respawn effect (type 2 = RSPAWN)
-                                    let ticks = core::constants::TICKS;
                                     let mut rng = rand::thread_rng();
                                     let dur = if temp == 189 || temp == 561 {
-                                        ticks * 60 * 20 + rng.gen_range(0..(ticks * 60 * 5))
+                                        TICKS * 60 * 20 + rng.gen_range(0..(TICKS * 60 * 5))
                                     } else {
-                                        (ticks * 60) + rng.gen_range(0..ticks * 60)
+                                        (TICKS * 60) + rng.gen_range(0..TICKS * 60)
                                     };
 
                                     // Use the template's coordinates for the respawn location
@@ -7628,8 +7625,8 @@ pub fn item_tick_expire() {
             let (ch_x, ch_y, ch_used) = Repository::with_characters(|characters| {
                 (characters[cn].x, characters[cn].y, characters[cn].used)
             });
-            if ch_x != x as i16 || ch_y != _y as i16 || ch_used != USE_ACTIVE {
-                log::error!("map[{},{}].ch reset from {} to 0", x, _y, cn);
+            if ch_x != x as i16 || ch_y != y as i16 || ch_used != USE_ACTIVE {
+                log::error!("map[{},{}].ch reset from {} to 0", x, y, cn);
                 Repository::with_map_mut(|map| {
                     map[m].ch = 0;
                 });
@@ -7645,8 +7642,8 @@ pub fn item_tick_expire() {
             let (tox, toy, ch_used) = Repository::with_characters(|characters| {
                 (characters[cn].tox, characters[cn].toy, characters[cn].used)
             });
-            if tox != x as i16 || toy != _y as i16 || ch_used != USE_ACTIVE {
-                log::error!("map[{},{}].to_ch reset from {} to 0", x, _y, cn);
+            if tox != x as i16 || toy != y as i16 || ch_used != USE_ACTIVE {
+                log::error!("map[{},{}].to_ch reset from {} to 0", x, y, cn);
                 Repository::with_map_mut(|map| {
                     map[m].to_ch = 0;
                 });
@@ -7662,8 +7659,8 @@ pub fn item_tick_expire() {
             let (it_x, it_y, it_used) = Repository::with_items(|items| {
                 (items[in_idx].x, items[in_idx].y, items[in_idx].used)
             });
-            if it_x != x as u16 || it_y != _y as u16 || it_used != USE_ACTIVE {
-                log::error!("map[{},{}].it reset from {} to 0", x, _y, in_idx);
+            if it_x != x as u16 || it_y != y as u16 || it_used != USE_ACTIVE {
+                log::error!("map[{},{}].it reset from {} to 0", x, y, in_idx);
                 Repository::with_map_mut(|map| {
                     map[m].it = 0;
                 });
@@ -7673,15 +7670,23 @@ pub fn item_tick_expire() {
             }
         }
     }
+
+    // Advance to next row after processing the current row.
+    y += 1;
+    if y >= SERVER_MAPY as u32 {
+        Repository::with_globals_mut(|globals| {
+            globals.expire_run += 1;
+            globals.lost_run += 1;
+        });
+        y = 0;
+    }
+    Repository::set_item_tick_expire_counter(y);
 }
 
 pub fn item_tick_gc() {
-    static mut OFF: usize = 0;
-    static mut CNT: i32 = 0;
-
-    let (off, m) = unsafe {
-        let current_off = OFF;
-        let current_m = std::cmp::min(current_off + 256, MAXITEM);
+    let (off, m) = {
+        let current_off = Repository::get_item_tick_gc_off() as usize;
+        let current_m = std::cmp::min(current_off + 256, MAXITEM) as usize;
         (current_off, current_m)
     };
 
@@ -7691,7 +7696,8 @@ pub fn item_tick_gc() {
             continue;
         }
 
-        unsafe { CNT += 1 };
+        let current_count = Repository::get_item_tick_gc_count();
+        Repository::set_item_tick_gc_count(current_count + 1);
 
         // Hack: make reset seyan swords unusable
         let (driver, data0) = Repository::with_items(|items| (items[n].driver, items[n].data[0]));
@@ -7802,17 +7808,19 @@ pub fn item_tick_gc() {
         });
     }
 
-    unsafe {
-        OFF += 256;
-        if OFF >= MAXITEM {
-            OFF = 0;
-            let count = CNT;
-            Repository::with_globals_mut(|globals| {
-                globals.item_cnt = count;
-                globals.gc_run += 1;
-            });
-            CNT = 0;
-        }
+    // Update OFF and possibly reset
+    let mut current_off = Repository::get_item_tick_gc_off();
+    current_off += 256;
+    Repository::set_item_tick_gc_off(current_off);
+
+    if current_off >= MAXITEM as u32 {
+        Repository::set_item_tick_gc_off(0);
+        let count = Repository::get_item_tick_gc_count();
+        Repository::with_globals_mut(|globals| {
+            globals.item_cnt = count as i32;
+            globals.gc_run += 1;
+        });
+        Repository::set_item_tick_gc_count(0);
     }
 }
 

@@ -1131,13 +1131,13 @@ mod tests {
         assert!(area.contains(30, 40)); // Top-right corner
         assert!(area.contains(20, 30)); // Center
         assert!(area.contains(15, 25)); // Inside
-        
+
         // Test points outside the area
-        assert!(!area.contains(9, 20));   // Left of area
-        assert!(!area.contains(31, 30));  // Right of area
-        assert!(!area.contains(20, 19));  // Below area
-        assert!(!area.contains(20, 41));  // Above area
-        assert!(!area.contains(5, 5));    // Far outside
+        assert!(!area.contains(9, 20)); // Left of area
+        assert!(!area.contains(31, 30)); // Right of area
+        assert!(!area.contains(20, 19)); // Below area
+        assert!(!area.contains(20, 41)); // Above area
+        assert!(!area.contains(5, 5)); // Far outside
     }
 
     #[test]
@@ -1183,7 +1183,7 @@ mod tests {
         // Test coordinates that don't match any predefined areas
         let result = get_area_m(-1000, -1000, false);
         assert_eq!(result, "");
-        
+
         let result_verbose = get_area_m(-1000, -1000, true);
         assert_eq!(result_verbose, "");
     }
@@ -1193,7 +1193,7 @@ mod tests {
         // Test coordinates in Aston (first area in AREAS)
         let result = get_area_m(500, 450, false);
         assert!(result.contains("Aston"));
-        
+
         let result_verbose = get_area_m(500, 450, true);
         assert!(result_verbose.starts_with("in "));
         assert!(result_verbose.contains("Aston"));
@@ -1202,7 +1202,7 @@ mod tests {
     #[test]
     fn test_get_area_m_verbose_formatting() {
         // Test different flag types for verbose output
-        
+
         // Find an area with flag 1 (should get "the")
         for area in AREAS.iter() {
             if area.flag == 1 {
@@ -1215,7 +1215,7 @@ mod tests {
                 }
             }
         }
-        
+
         // Find an area with flag 2 (should get "on")
         for area in AREAS.iter() {
             if area.flag == 2 {
@@ -1228,7 +1228,7 @@ mod tests {
                 }
             }
         }
-        
+
         // Find an area with flag 3 (should get "at")
         for area in AREAS.iter() {
             if area.flag == 3 {
@@ -1247,7 +1247,7 @@ mod tests {
     fn test_get_area_m_multiple_areas() {
         // Find coordinates that might be in multiple overlapping areas
         // This tests the comma separation logic
-        
+
         // Test non-verbose mode with potential overlaps
         let result = get_area_m(500, 450, false);
         if result.contains(",") {
@@ -1255,7 +1255,7 @@ mod tests {
             let parts: Vec<&str> = result.split(", ").collect();
             assert!(parts.len() > 1);
         }
-        
+
         // Test verbose mode with potential overlaps
         let result_verbose = get_area_m(500, 450, true);
         if result_verbose.contains(", in ") {
@@ -1268,14 +1268,23 @@ mod tests {
     fn test_areas_data_integrity() {
         // Test that all areas have valid coordinates
         for (i, area) in AREAS.iter().enumerate() {
-            assert!(area.x1 <= area.x2, 
-                "Area {} '{}' has invalid x coordinates: {} > {}", 
-                i, area.name, area.x1, area.x2);
-            assert!(area.y1 <= area.y2, 
-                "Area {} '{}' has invalid y coordinates: {} > {}", 
-                i, area.name, area.y1, area.y2);
-            assert!(!area.name.is_empty(), 
-                "Area {} has empty name", i);
+            assert!(
+                area.x1 <= area.x2,
+                "Area {} '{}' has invalid x coordinates: {} > {}",
+                i,
+                area.name,
+                area.x1,
+                area.x2
+            );
+            assert!(
+                area.y1 <= area.y2,
+                "Area {} '{}' has invalid y coordinates: {} > {}",
+                i,
+                area.name,
+                area.y1,
+                area.y2
+            );
+            assert!(!area.name.is_empty(), "Area {} has empty name", i);
         }
     }
 
@@ -1284,27 +1293,31 @@ mod tests {
         // Test that all area flags are within expected range
         let valid_flags = [0, 1, 2, 3];
         for area in AREAS.iter() {
-            assert!(valid_flags.contains(&area.flag), 
-                "Area '{}' has invalid flag value: {}", area.name, area.flag);
+            assert!(
+                valid_flags.contains(&area.flag),
+                "Area '{}' has invalid flag value: {}",
+                area.name,
+                area.flag
+            );
         }
     }
 
     #[test]
     fn test_specific_known_areas() {
         // Test some specific well-known areas from the AREAS array
-        
+
         // Aston (first area)
         let aston = &AREAS[0];
         assert_eq!(aston.name, "Aston");
         assert_eq!(aston.flag, 0);
         assert!(aston.contains(500, 450)); // Should be inside Aston
-        
+
         // Find Lizard Temple
         let lizard_temple = AREAS.iter().find(|a| a.name == "Lizard Temple");
         assert!(lizard_temple.is_some());
         let lizard_temple = lizard_temple.unwrap();
         assert_eq!(lizard_temple.flag, 1);
-        
+
         // Find Temple Street
         let temple_street = AREAS.iter().find(|a| a.name == "Temple Street");
         assert!(temple_street.is_some());
@@ -1317,10 +1330,30 @@ mod tests {
         // Test that area coordinates are within reasonable game world bounds
         for area in AREAS.iter() {
             // Assuming the game world has reasonable coordinate limits
-            assert!(area.x1 >= 0, "Area '{}' has negative x1: {}", area.name, area.x1);
-            assert!(area.y1 >= 0, "Area '{}' has negative y1: {}", area.name, area.y1);
-            assert!(area.x2 < 2000, "Area '{}' has very large x2: {}", area.name, area.x2);
-            assert!(area.y2 < 2000, "Area '{}' has very large y2: {}", area.name, area.y2);
+            assert!(
+                area.x1 >= 0,
+                "Area '{}' has negative x1: {}",
+                area.name,
+                area.x1
+            );
+            assert!(
+                area.y1 >= 0,
+                "Area '{}' has negative y1: {}",
+                area.name,
+                area.y1
+            );
+            assert!(
+                area.x2 < 2000,
+                "Area '{}' has very large x2: {}",
+                area.name,
+                area.x2
+            );
+            assert!(
+                area.y2 < 2000,
+                "Area '{}' has very large y2: {}",
+                area.name,
+                area.y2
+            );
         }
     }
 }

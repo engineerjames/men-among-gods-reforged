@@ -30,6 +30,11 @@ pub struct Repository {
     message_of_the_day: String,
     ban_list: Vec<core::types::Ban>,
     executable_path: String,
+    last_population_reset_tick: u32,
+    ice_cloak_clock: u32,
+    item_tick_gc_off: u32,
+    item_tick_gc_count: u32,
+    item_tick_expire_counter: u32,
 }
 
 impl Repository {
@@ -67,6 +72,11 @@ impl Repository {
                     String::new()
                 }
             },
+            last_population_reset_tick: 0,
+            ice_cloak_clock: 0,
+            item_tick_gc_off: 0,
+            item_tick_gc_count: 0,
+            item_tick_expire_counter: 0,
         }
     }
     /// Load all game data from disk into memory.
@@ -873,6 +883,70 @@ impl Repository {
         F: FnOnce(&mut Vec<core::types::Ban>) -> R,
     {
         Self::with_repo_mut(|repo| f(&mut repo.ban_list))
+    }
+
+    /// Get the last population reset tick.
+    ///
+    /// Used to track when the last population reset occurred.
+    pub fn get_last_population_reset_tick() -> u32 {
+        Self::with_repo(|repo| repo.last_population_reset_tick)
+    }
+
+    /// Set the last population reset tick.
+    ///
+    /// Used to track when the last population reset occurred.
+    pub fn set_last_population_reset_tick(tick: u32) {
+        Self::with_repo_mut(|repo| {
+            repo.last_population_reset_tick = tick;
+        });
+    }
+
+    /// Get the current ice cloak clock value.
+    ///
+    /// Used for timing ice cloak effects (aging more slowly in inventory vs. worn).
+    pub fn get_ice_cloak_clock() -> u32 {
+        Self::with_repo(|repo| repo.ice_cloak_clock)
+    }
+
+    /// Set the ice cloak clock value.
+    ///
+    /// Used for timing ice cloak effects (aging more slowly in inventory vs. worn).
+    pub fn set_ice_cloak_clock(clock: u32) {
+        Self::with_repo_mut(|repo| {
+            repo.ice_cloak_clock = clock;
+        });
+    }
+
+    // Getters and setters for various counters that are used (statically) during
+    // the execution of the C implementation of item garbage collection and expiration.
+    pub fn get_item_tick_gc_off() -> u32 {
+        Self::with_repo(|repo| repo.item_tick_gc_off)
+    }
+
+    pub fn set_item_tick_gc_off(tick: u32) {
+        Self::with_repo_mut(|repo| {
+            repo.item_tick_gc_off = tick;
+        });
+    }
+
+    pub fn get_item_tick_gc_count() -> u32 {
+        Self::with_repo(|repo| repo.item_tick_gc_count)
+    }
+
+    pub fn set_item_tick_gc_count(count: u32) {
+        Self::with_repo_mut(|repo| {
+            repo.item_tick_gc_count = count;
+        });
+    }
+
+    pub fn get_item_tick_expire_counter() -> u32 {
+        Self::with_repo(|repo| repo.item_tick_expire_counter)
+    }
+
+    pub fn set_item_tick_expire_counter(counter: u32) {
+        Self::with_repo_mut(|repo| {
+            repo.item_tick_expire_counter = counter;
+        });
     }
 }
 

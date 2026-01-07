@@ -839,6 +839,8 @@ pub fn skill_needed(v: i32, diff: i32) -> i32 {
 
 #[cfg(test)]
 mod tests {
+    use core::constants::TICKS;
+
     use super::*;
 
     #[test]
@@ -886,7 +888,7 @@ mod tests {
         assert_eq!(get_class_name(26), "Spellcaster");
         assert_eq!(get_class_name(27), "Knight");
         assert_eq!(get_class_name(76), "Major Grolm");
-        
+
         // Test boundary cases
         assert_eq!(get_class_name(-1), "err... nothing");
         assert_eq!(get_class_name(-100), "err... nothing");
@@ -899,44 +901,43 @@ mod tests {
         // Test immediate time
         assert_eq!(ago_string(0), "just now");
         assert_eq!(ago_string(-5), "just now");
-        
+
         // Test minutes (TICKS is the actual constant from core)
-        let ticks = core::constants::TICKS;
-        let minutes_30 = 30 * 60 * ticks;
-        let minutes_59 = 59 * 60 * ticks;
+        let minutes_30 = 30 * 60 * TICKS;
+        let minutes_59 = 59 * 60 * TICKS;
         assert_eq!(ago_string(minutes_30), "30 minutes ago");
         assert_eq!(ago_string(minutes_59), "59 minutes ago");
-        
+
         // Test hours
-        let hours_1 = 60 * 60 * ticks;
-        let hours_2 = 2 * 60 * 60 * ticks;
-        let hours_36 = 36 * 60 * 60 * ticks;
+        let hours_1 = 60 * 60 * TICKS;
+        let hours_2 = 2 * 60 * 60 * TICKS;
+        let hours_36 = 36 * 60 * 60 * TICKS;
         assert_eq!(ago_string(hours_1), "1 hours ago");
         assert_eq!(ago_string(hours_2), "2 hours ago");
         assert_eq!(ago_string(hours_36), "36 hours ago");
-        
+
         // Test days
-        let days_1 = 37 * 60 * 60 * ticks; // 37 hours = 1 day
-        let days_2 = 48 * 60 * 60 * ticks; // 48 hours = 2 days
-        let days_45 = 45 * 24 * 60 * 60 * ticks;
+        let days_1 = 37 * 60 * 60 * TICKS; // 37 hours = 1 day
+        let days_2 = 48 * 60 * 60 * TICKS; // 48 hours = 2 days
+        let days_45 = 45 * 24 * 60 * 60 * TICKS;
         assert_eq!(ago_string(days_1), "1 days ago");
         assert_eq!(ago_string(days_2), "2 days ago");
         assert_eq!(ago_string(days_45), "45 days ago");
-        
+
         // Test months
-        let months_1 = 46 * 24 * 60 * 60 * ticks; // 46 days = 1 month
-        let months_2 = 60 * 24 * 60 * 60 * ticks; // 60 days = 2 months
-        let months_24 = 24 * 30 * 24 * 60 * 60 * ticks;
+        let months_1 = 46 * 24 * 60 * 60 * TICKS; // 46 days = 1 month
+        let months_2 = 60 * 24 * 60 * 60 * TICKS; // 60 days = 2 months
+        let months_24 = 24 * 30 * 24 * 60 * 60 * TICKS;
         assert_eq!(ago_string(months_1), "1 months ago");
         assert_eq!(ago_string(months_2), "2 months ago");
         assert_eq!(ago_string(months_24), "24 months ago");
-        
+
         // Test years (use smaller multipliers to avoid overflow)
-        let years_2 = (25 * 30 * 24 * 60 * 60 * ticks as i64) as i32; // 25 months = 2 years
+        let years_2 = (25 * 30 * 24 * 60 * 60 * TICKS as i64) as i32; // 25 months = 2 years
         assert_eq!(ago_string(years_2), "2 years ago");
-        
+
         // Test a smaller year value to avoid overflow
-        let years_3 = (36 * 30 * 24 * 60 * 60 * ticks as i64) as i32; // 36 months = 3 years
+        let years_3 = (36 * 30 * 24 * 60 * 60 * TICKS as i64) as i32; // 36 months = 3 years
         assert_eq!(ago_string(years_3), "3 years ago");
     }
 
@@ -952,7 +953,7 @@ mod tests {
         assert_eq!(points2rank(4900), 3);
         assert_eq!(points2rank(17699), 3);
         assert_eq!(points2rank(17700), 4);
-        
+
         // Test higher ranks
         assert_eq!(points2rank(48950), 5);
         assert_eq!(points2rank(113750), 6);
@@ -960,7 +961,7 @@ mod tests {
         assert_eq!(points2rank(438600), 8);
         assert_eq!(points2rank(766650), 9);
         assert_eq!(points2rank(1266650), 10);
-        
+
         // Test maximum rank
         assert_eq!(points2rank(80977099), 22);
         assert_eq!(points2rank(80977100), 23);
@@ -972,44 +973,58 @@ mod tests {
         // Test maximum rank (should return 0)
         assert_eq!(points_tolevel(80977100), 0);
         assert_eq!(points_tolevel(u32::MAX), 0);
-        
+
         // Test basic functionality
         // The function appears to return 0 for some edge cases, so let's test what it actually does
-        
+
         // Test known working cases
         assert_eq!(points_tolevel(49), 2); // Need 2 more to get from 49 to 51 (rank 1)
         assert_eq!(points_tolevel(25), 25); // Need 25 more to get from 25 to 50 (rank 1)
-        
+
         // Test that the function works correctly for known rank boundaries
         assert_eq!(points2rank(0), 0);
         assert_eq!(points2rank(49), 0);
         assert_eq!(points2rank(50), 1);
-        
+
         // Test mid-range values where we expect the function to work
         let test_points = 100u32; // This is in rank 1
         let needed = points_tolevel(test_points);
         if needed > 0 {
             let current_rank = points2rank(test_points);
             let new_rank = points2rank(test_points + needed);
-            assert_eq!(new_rank, current_rank + 1, 
-                "points_tolevel({}) = {} should advance from rank {} to rank {}", 
-                test_points, needed, current_rank, current_rank + 1);
+            assert_eq!(
+                new_rank,
+                current_rank + 1,
+                "points_tolevel({}) = {} should advance from rank {} to rank {}",
+                test_points,
+                needed,
+                current_rank,
+                current_rank + 1
+            );
         }
-        
+
         // Test that points_tolevel is consistent for various middle-range values
         for test_points in [100u32, 1000, 5000, 20000] {
             let current_rank = points2rank(test_points);
             let needed = points_tolevel(test_points);
-            
-            if current_rank < 23 && needed > 0 { // Not at max rank and function returned something
+
+            if current_rank < 23 && needed > 0 {
+                // Not at max rank and function returned something
                 let new_points = test_points + needed;
                 let new_rank = points2rank(new_points);
-                assert_eq!(new_rank, current_rank + 1, 
-                    "points_tolevel({}) = {} should advance from rank {} to rank {}, got {}", 
-                    test_points, needed, current_rank, current_rank + 1, new_rank);
+                assert_eq!(
+                    new_rank,
+                    current_rank + 1,
+                    "points_tolevel({}) = {} should advance from rank {} to rank {}, got {}",
+                    test_points,
+                    needed,
+                    current_rank,
+                    current_rank + 1,
+                    new_rank
+                );
             }
         }
-        
+
         // Test edge case: points_tolevel(0) might return 0 due to implementation details
         // This could be a quirk of the binary search algorithm
         let _needed_from_0 = points_tolevel(0);
@@ -1023,16 +1038,16 @@ mod tests {
         assert_eq!(drv_dcoor2dir(-1, 0), core::constants::DX_LEFT as i32);
         assert_eq!(drv_dcoor2dir(0, 1), core::constants::DX_DOWN as i32);
         assert_eq!(drv_dcoor2dir(0, -1), core::constants::DX_UP as i32);
-        
+
         // Test diagonal directions
         assert_eq!(drv_dcoor2dir(1, 1), core::constants::DX_RIGHTDOWN as i32);
         assert_eq!(drv_dcoor2dir(1, -1), core::constants::DX_RIGHTUP as i32);
         assert_eq!(drv_dcoor2dir(-1, 1), core::constants::DX_LEFTDOWN as i32);
         assert_eq!(drv_dcoor2dir(-1, -1), core::constants::DX_LEFTUP as i32);
-        
+
         // Test no movement
         assert_eq!(drv_dcoor2dir(0, 0), -1);
-        
+
         // Test larger values (should still work due to signum)
         assert_eq!(drv_dcoor2dir(100, 0), core::constants::DX_RIGHT as i32);
         assert_eq!(drv_dcoor2dir(-50, 25), core::constants::DX_LEFTDOWN as i32);
@@ -1081,11 +1096,11 @@ mod tests {
         assert_eq!(attrib_needed(3, 1), 1); // 27 / 20 = 1
         assert_eq!(attrib_needed(5, 1), 6); // 125 / 20 = 6
         assert_eq!(attrib_needed(10, 1), 50); // 1000 / 20 = 50
-        
+
         // Test with different difficulty multipliers
         assert_eq!(attrib_needed(5, 2), 12); // 125 * 2 / 20 = 12
         assert_eq!(attrib_needed(5, 5), 31); // 125 * 5 / 20 = 31
-        
+
         // Test edge cases
         assert_eq!(attrib_needed(0, 1), 0);
         assert_eq!(attrib_needed(1, 0), 0);
@@ -1097,7 +1112,7 @@ mod tests {
         assert_eq!(hp_needed(10, 1), 10);
         assert_eq!(hp_needed(50, 2), 100);
         assert_eq!(hp_needed(100, 3), 300);
-        
+
         // Test edge cases
         assert_eq!(hp_needed(0, 5), 0);
         assert_eq!(hp_needed(10, 0), 0);
@@ -1109,10 +1124,10 @@ mod tests {
         assert_eq!(end_needed(10, 2), 10); // 10 * 2 / 2 = 10
         assert_eq!(end_needed(20, 3), 30); // 20 * 3 / 2 = 30
         assert_eq!(end_needed(15, 4), 30); // 15 * 4 / 2 = 30
-        
+
         // Test odd numbers (integer division)
         assert_eq!(end_needed(11, 1), 5); // 11 * 1 / 2 = 5
-        
+
         // Test edge cases
         assert_eq!(end_needed(0, 5), 0);
         assert_eq!(end_needed(10, 0), 0);
@@ -1124,7 +1139,7 @@ mod tests {
         assert_eq!(mana_needed(10, 1), 10);
         assert_eq!(mana_needed(25, 2), 50);
         assert_eq!(mana_needed(100, 3), 300);
-        
+
         // Test edge cases
         assert_eq!(mana_needed(0, 5), 0);
         assert_eq!(mana_needed(10, 0), 0);
@@ -1138,11 +1153,11 @@ mod tests {
         assert_eq!(skill_needed(5, 1), 5); // max(5, 125/40) = max(5, 3) = 5
         assert_eq!(skill_needed(10, 1), 25); // max(10, 1000/40) = max(10, 25) = 25
         assert_eq!(skill_needed(20, 1), 200); // max(20, 8000/40) = max(20, 200) = 200
-        
+
         // Test with different difficulty multipliers
         assert_eq!(skill_needed(5, 2), 6); // max(5, 250/40) = max(5, 6) = 6
         assert_eq!(skill_needed(5, 10), 31); // max(5, 1250/40) = max(5, 31) = 31
-        
+
         // Test edge cases
         assert_eq!(skill_needed(0, 1), 0);
         assert_eq!(skill_needed(1, 0), 1); // max(1, 0) = 1
@@ -1156,14 +1171,14 @@ mod tests {
         assert_eq!(end_needed(0, 1), 0);
         assert_eq!(mana_needed(0, 1), 0);
         assert_eq!(skill_needed(0, 1), 0);
-        
+
         // Test that all cost functions handle zero difficulty consistently
         assert_eq!(attrib_needed(10, 0), 0);
         assert_eq!(hp_needed(10, 0), 0);
         assert_eq!(end_needed(10, 0), 0);
         assert_eq!(mana_needed(10, 0), 0);
         assert_eq!(skill_needed(10, 0), 10); // Exception: skill_needed returns max(v, calculation)
-        
+
         // Test that costs increase with value and difficulty
         for v in [1, 5, 10, 20] {
             for diff in [1, 2, 5] {
@@ -1173,7 +1188,7 @@ mod tests {
                     assert!(end_needed(v + 1, diff) >= end_needed(v, diff));
                     assert!(mana_needed(v + 1, diff) >= mana_needed(v, diff));
                     assert!(skill_needed(v + 1, diff) >= skill_needed(v, diff));
-                    
+
                     assert!(attrib_needed(v, diff + 1) >= attrib_needed(v, diff));
                     assert!(hp_needed(v, diff + 1) >= hp_needed(v, diff));
                     assert!(end_needed(v, diff + 1) >= end_needed(v, diff));
