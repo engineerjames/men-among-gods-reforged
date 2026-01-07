@@ -66,12 +66,12 @@ pub fn initialize_logger(
     log_level: LevelFilter,
     file_path: Option<&str>,
 ) -> Result<(), SetLoggerError> {
-    let logging_pattern: &'static str = "{d} {l} {f}:{L} - {m}\n";
+    const LOGGING_PATTERN: &'static str = "{d} {l} {f}:{L} - {m}\n";
 
     // Build a stderr logger - always for now.
     let stderr = ConsoleAppender::builder()
         .target(Target::Stderr)
-        .encoder(Box::new(BacktracePatternEncoder::new(logging_pattern)))
+        .encoder(Box::new(BacktracePatternEncoder::new(LOGGING_PATTERN)))
         .build();
 
     let mut config_builder = Config::builder();
@@ -79,7 +79,7 @@ pub fn initialize_logger(
     if file_path.is_some() {
         let logfile = FileAppender::builder()
             // Pattern: https://docs.rs/log4rs/*/log4rs/encode/pattern/index.html
-            .encoder(Box::new(BacktracePatternEncoder::new(logging_pattern)))
+            .encoder(Box::new(BacktracePatternEncoder::new(LOGGING_PATTERN)))
             .build(file_path.unwrap())
             .unwrap();
 
