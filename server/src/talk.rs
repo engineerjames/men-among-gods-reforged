@@ -2227,7 +2227,7 @@ pub fn answer_attack(cn: usize, co: usize, text: &str) {
             if characters[n].used != core::constants::USE_ACTIVE {
                 continue;
             }
-            if characters[n].flags & core::constants::CharacterFlags::CF_BODY.bits() != 0 {
+            if characters[n].flags & core::constants::CharacterFlags::Body.bits() != 0 {
                 continue;
             }
 
@@ -2389,7 +2389,7 @@ pub fn answer_health(cn: usize, co: usize) {
 pub fn answer_shop(cn: usize, co: usize) {
     Repository::with_characters(|characters| {
         let is_merchant =
-            characters[cn].flags & core::constants::CharacterFlags::CF_MERCHANT.bits() != 0;
+            characters[cn].flags & core::constants::CharacterFlags::Merchant.bits() != 0;
         let co_name = characters[co].get_name().to_string();
 
         State::with(|state| {

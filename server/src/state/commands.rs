@@ -1,9 +1,8 @@
-use core::constants::{GF_CLOSEENEMY, GF_LOOTING, GF_MAYHEM, GF_SPEEDY};
+use core::constants::{CharacterFlags, GF_CLOSEENEMY, GF_LOOTING, GF_MAYHEM, GF_SPEEDY};
 use core::string_operations::c_string_to_str;
 use core::types::FontColor;
 
 use crate::effect::EffectManager;
-use crate::enums::CharacterFlags;
 use crate::god::God;
 use crate::player::cl_list;
 use crate::repository::Repository;
@@ -597,18 +596,15 @@ impl State {
             Repository::with_characters(|characters| {
                 let flags = characters[cn].flags;
                 (
-                    (flags & core::constants::CharacterFlags::CF_GREATERGOD.bits()) != 0,
-                    (flags & core::constants::CharacterFlags::CF_CREATOR.bits()) != 0,
-                    (flags & core::constants::CharacterFlags::CF_GOD.bits()) != 0,
-                    (flags & core::constants::CharacterFlags::CF_IMP.bits()) != 0,
-                    (flags & core::constants::CharacterFlags::CF_STAFF.bits()) != 0,
-                    (flags & core::constants::CharacterFlags::CF_PLAYER.bits()) != 0,
-                    (flags & core::constants::CharacterFlags::CF_USURP.bits()) != 0,
-                    (flags & core::constants::CharacterFlags::CF_SHUTUP.bits()) != 0,
-                    (flags
-                        & (core::constants::CharacterFlags::CF_POH_LEADER.bits()
-                            | core::constants::CharacterFlags::CF_GOD.bits()))
-                        != 0,
+                    (flags & CharacterFlags::GreaterGod.bits()) != 0,
+                    (flags & CharacterFlags::Creator.bits()) != 0,
+                    (flags & CharacterFlags::God.bits()) != 0,
+                    (flags & CharacterFlags::Imp.bits()) != 0,
+                    (flags & CharacterFlags::Staff.bits()) != 0,
+                    (flags & CharacterFlags::Player.bits()) != 0,
+                    (flags & CharacterFlags::Usurp.bits()) != 0,
+                    (flags & CharacterFlags::ShutUp.bits()) != 0,
+                    (flags & (CharacterFlags::PohLeader.bits() | CharacterFlags::God.bits())) != 0,
                 )
             });
 
@@ -666,11 +662,7 @@ impl State {
                 }
                 if starts("black") && f_g {
                     log::debug!("Processing black command for {}", cn);
-                    God::set_flag(
-                        cn,
-                        arg_get(1),
-                        core::constants::CharacterFlags::CF_BLACK.bits(),
-                    );
+                    God::set_flag(cn, arg_get(1), CharacterFlags::Black.bits());
                     return;
                 }
                 if starts("build") && f_c {
@@ -698,7 +690,7 @@ impl State {
                     God::set_flag(
                         cn,
                         arg_get(1),
-                        core::constants::CharacterFlags::CF_CCP.bits(),
+                        CharacterFlags::ComputerControlledPlayer.bits(),
                     );
                     return;
                 }
@@ -714,11 +706,7 @@ impl State {
                 }
                 if starts("creator") && f_gg {
                     log::debug!("Processing creator command for {}", cn);
-                    God::set_flag(
-                        cn,
-                        arg_get(1),
-                        core::constants::CharacterFlags::CF_CREATOR.bits(),
-                    );
+                    God::set_flag(cn, arg_get(1), CharacterFlags::Creator.bits());
                     return;
                 }
             }
@@ -815,11 +803,7 @@ impl State {
                 }
                 if starts("golden") && f_g {
                     log::debug!("Processing golden command for {}", cn);
-                    God::set_flag(
-                        cn,
-                        arg_get(1),
-                        core::constants::CharacterFlags::CF_GOLDEN.bits(),
-                    );
+                    God::set_flag(cn, arg_get(1), CharacterFlags::Golden.bits());
                     return;
                 }
                 if starts("group") && !f_m {
@@ -854,30 +838,18 @@ impl State {
                 }
                 if starts("god") && f_g {
                     log::debug!("Processing god command for {}", cn);
-                    God::set_flag(
-                        cn,
-                        arg_get(1),
-                        core::constants::CharacterFlags::CF_GOD.bits(),
-                    );
+                    God::set_flag(cn, arg_get(1), CharacterFlags::God.bits());
                     return;
                 }
                 if starts("greatergod") && f_gg {
                     log::debug!("Processing greatergod command for {}", cn);
-                    God::set_flag(
-                        cn,
-                        arg_get(1),
-                        core::constants::CharacterFlags::CF_GREATERGOD.bits(),
-                    );
+                    God::set_flag(cn, arg_get(1), CharacterFlags::GreaterGod.bits());
                     return;
                 }
 
                 if starts("greaterinv") && f_gg {
                     log::debug!("Processing greaterinv command for {}", cn);
-                    God::set_flag(
-                        cn,
-                        arg_get(1),
-                        core::constants::CharacterFlags::CF_GREATERINV.bits(),
-                    );
+                    God::set_flag(cn, arg_get(1), CharacterFlags::GreaterInv.bits());
                     return;
                 }
 
@@ -924,29 +896,17 @@ impl State {
                 }
                 if (starts("immortal") || starts("imm")) && f_u {
                     log::debug!("Processing immortal command for {}", cn);
-                    God::set_flag(
-                        cn,
-                        arg_get(1),
-                        core::constants::CharacterFlags::CF_IMMORTAL.bits(),
-                    );
+                    God::set_flag(cn, arg_get(1), CharacterFlags::Immortal.bits());
                     return;
                 }
                 if (starts("immortal") || starts("imm")) && f_g {
                     log::debug!("Processing god-immortal command for {}", cn);
-                    God::set_flag(
-                        cn,
-                        arg_get(1),
-                        core::constants::CharacterFlags::CF_IMMORTAL.bits(),
-                    );
+                    God::set_flag(cn, arg_get(1), CharacterFlags::Immortal.bits());
                     return;
                 }
                 if starts("imp") && f_g {
                     log::debug!("Processing imp command for {}", cn);
-                    God::set_flag(
-                        cn,
-                        arg_get(1),
-                        core::constants::CharacterFlags::CF_IMP.bits(),
-                    );
+                    God::set_flag(cn, arg_get(1), CharacterFlags::Imp.bits());
                     return;
                 }
                 if starts("info") && f_gius {
@@ -961,20 +921,12 @@ impl State {
                 }
                 if (starts("infrared") || starts("infra")) && f_giu {
                     log::debug!("Processing infrared command for {}", cn);
-                    God::set_flag(
-                        cn,
-                        arg_get(1),
-                        core::constants::CharacterFlags::CF_INFRARED.bits(),
-                    );
+                    God::set_flag(cn, arg_get(1), CharacterFlags::Infrared.bits());
                     return;
                 }
                 if (starts("invisible") || starts("inv")) && f_giu {
                     log::debug!("Processing invisible command for {}", cn);
-                    God::set_flag(
-                        cn,
-                        arg_get(1),
-                        core::constants::CharacterFlags::CF_INVISIBLE.bits(),
-                    );
+                    God::set_flag(cn, arg_get(1), CharacterFlags::Invisible.bits());
                     return;
                 }
                 if starts("ipshow") && f_giu {
@@ -1054,12 +1006,12 @@ impl State {
                 }
                 if starts("listgolden") && f_giu {
                     log::debug!("Processing listgolden command for {}", cn);
-                    self.do_list_all_flags(cn, core::constants::CharacterFlags::CF_GOLDEN.bits());
+                    self.do_list_all_flags(cn, CharacterFlags::Golden.bits());
                     return;
                 }
                 if starts("listblack") && f_giu {
                     log::debug!("Processing listblack command for {}", cn);
-                    self.do_list_all_flags(cn, core::constants::CharacterFlags::CF_BLACK.bits());
+                    self.do_list_all_flags(cn, CharacterFlags::Black.bits());
                     return;
                 }
             }
@@ -1119,11 +1071,7 @@ impl State {
                 }
                 if starts("nolist") && f_gi {
                     log::debug!("Processing nolist command for {}", cn);
-                    God::set_flag(
-                        cn,
-                        arg_get(1),
-                        core::constants::CharacterFlags::CF_NOLIST.bits(),
-                    );
+                    God::set_flag(cn, arg_get(1), CharacterFlags::NoList.bits());
                     return;
                 }
                 if starts("noluck") && f_giu {
@@ -1133,11 +1081,7 @@ impl State {
                 }
                 if starts("nowho") && f_gi {
                     log::debug!("Processing nowho command for {}", cn);
-                    God::set_flag(
-                        cn,
-                        arg_get(1),
-                        core::constants::CharacterFlags::CF_NOWHO.bits(),
-                    );
+                    God::set_flag(cn, arg_get(1), CharacterFlags::NoWho.bits());
                     return;
                 }
                 if starts("npclist") && f_giu {
@@ -1245,11 +1189,7 @@ impl State {
 
                 if starts("safe") && f_g {
                     log::debug!("Processing safe command for {}", cn);
-                    God::set_flag(
-                        cn,
-                        arg_get(1),
-                        core::constants::CharacterFlags::CF_SAFE.bits(),
-                    );
+                    God::set_flag(cn, arg_get(1), CharacterFlags::Safe.bits());
                     return;
                 }
 
@@ -1344,11 +1284,7 @@ impl State {
 
                 if starts("staff") && f_g {
                     log::debug!("Processing staff command for {}", cn);
-                    God::set_flag(
-                        cn,
-                        arg_get(1),
-                        core::constants::CharacterFlags::CF_STAFF.bits(),
-                    );
+                    God::set_flag(cn, arg_get(1), CharacterFlags::Staff.bits());
                     return;
                 }
 

@@ -45,9 +45,7 @@ pub fn use_labtransfer(cn: usize, nr: i32, exp: i32) -> bool {
             let co = Repository::with_map(|map| map[x + y * SERVER_MAPX as usize].ch as usize);
             if co != 0 {
                 let flags = Repository::with_characters(|ch| ch[co].flags);
-                if flags & (CharacterFlags::CF_PLAYER.bits() | CharacterFlags::CF_LABKEEPER.bits())
-                    != 0
-                {
+                if flags & (CharacterFlags::Player.bits() | CharacterFlags::LabKeeper.bits()) != 0 {
                     let name = Repository::with_characters(|ch| ch[co].get_name().to_string());
                     busy_name = Some(name);
                     break 'outer;
@@ -136,8 +134,8 @@ pub fn use_labtransfer(cn: usize, nr: i32, exp: i32) -> bool {
         ch[co].data[0] = cn as i32; // person to make solve
         ch[co].data[1] = nr; // labnr
         ch[co].data[2] = exp; // exp plr is supposed to get
-        ch[co].flags |= CharacterFlags::CF_LABKEEPER.bits() | CharacterFlags::CF_NOSLEEP.bits();
-        ch[co].flags &= !CharacterFlags::CF_RESPAWN.bits();
+        ch[co].flags |= CharacterFlags::LabKeeper.bits() | CharacterFlags::NoSleep.bits();
+        ch[co].flags &= !CharacterFlags::Respawn.bits();
     });
 
     // npc_add_enemy(co, cn, 1): make him attack the solver (assume function exists)
@@ -763,16 +761,16 @@ pub fn drv_dcoor2dir(dx: i32, dy: i32) -> i32 {
 /// * `cn` - Character index
 pub fn invis_level(cn: usize) -> i32 {
     Repository::with_characters(|characters| {
-        if characters[cn].flags & CharacterFlags::CF_GREATERINV.bits() != 0 {
+        if characters[cn].flags & CharacterFlags::GreaterInv.bits() != 0 {
             return 15;
         }
-        if characters[cn].flags & CharacterFlags::CF_GOD.bits() != 0 {
+        if characters[cn].flags & CharacterFlags::God.bits() != 0 {
             return 10;
         }
-        if characters[cn].flags & (CharacterFlags::CF_IMP | CharacterFlags::CF_USURP).bits() != 0 {
+        if characters[cn].flags & (CharacterFlags::Imp.bits() | CharacterFlags::Usurp.bits()) != 0 {
             return 5;
         }
-        if characters[cn].flags & CharacterFlags::CF_STAFF.bits() != 0 {
+        if characters[cn].flags & CharacterFlags::Staff.bits() != 0 {
             return 2;
         }
 

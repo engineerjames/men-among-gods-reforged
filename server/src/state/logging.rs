@@ -152,7 +152,7 @@ impl State {
                     *cc < MAXCHARS
                         && characters[*cc].used == core::constants::USE_ACTIVE
                         && characters[*cc].player != 0
-                        && (characters[*cc].flags & CharacterFlags::CF_PLAYER.bits()) != 0
+                        && (characters[*cc].flags & CharacterFlags::Player.bits()) != 0
                 })
                 .collect()
         });
@@ -181,7 +181,7 @@ impl State {
             (
                 ch.x as i32,
                 ch.y as i32,
-                (ch.flags & CharacterFlags::CF_PLAYER.bits()) != 0,
+                (ch.flags & CharacterFlags::Player.bits()) != 0,
                 ch.get_name().to_string(),
             )
         });
@@ -347,8 +347,7 @@ impl State {
         for n in 1..core::constants::MAXCHARS {
             if Repository::with_characters(|ch| {
                 ch[n].player != 0
-                    && (ch[n].flags
-                        & (CharacterFlags::CF_IMP.bits() | CharacterFlags::CF_USURP.bits()))
+                    && (ch[n].flags & (CharacterFlags::Imp.bits() | CharacterFlags::Usurp.bits()))
                         != 0
             }) {
                 self.do_log(n, font, text);
@@ -386,7 +385,7 @@ impl State {
             }
             if source != 0
                 && (Repository::with_characters(|ch2| ch2[source].flags)
-                    & (CharacterFlags::CF_INVISIBLE.bits() | CharacterFlags::CF_NOWHO.bits()))
+                    & (CharacterFlags::Invisible.bits() | CharacterFlags::NoWho.bits()))
                     != 0
             {
                 // visibility rules omitted
@@ -434,8 +433,8 @@ impl State {
                 });
                 let n_invis_level = crate::helpers::invis_level(n);
                 if (src_flags
-                    & (core::constants::CharacterFlags::CF_INVISIBLE.bits()
-                        | core::constants::CharacterFlags::CF_NOWHO.bits()))
+                    & (core::constants::CharacterFlags::Invisible.bits()
+                        | core::constants::CharacterFlags::NoWho.bits()))
                     != 0
                     && src_invis_level > n_invis_level
                 {
@@ -472,9 +471,9 @@ impl State {
             // Only to staff, IMP, or USURP
             if !Repository::with_characters(|ch| {
                 (ch[n].flags
-                    & (CharacterFlags::CF_STAFF.bits()
-                        | CharacterFlags::CF_IMP.bits()
-                        | CharacterFlags::CF_USURP.bits()))
+                    & (CharacterFlags::Staff.bits()
+                        | CharacterFlags::Imp.bits()
+                        | CharacterFlags::Usurp.bits()))
                     != 0
             }) {
                 continue;
@@ -488,8 +487,8 @@ impl State {
                 });
                 let n_invis_level = crate::helpers::invis_level(n);
                 if (src_flags
-                    & (core::constants::CharacterFlags::CF_INVISIBLE.bits()
-                        | core::constants::CharacterFlags::CF_NOWHO.bits()))
+                    & (core::constants::CharacterFlags::Invisible.bits()
+                        | core::constants::CharacterFlags::NoWho.bits()))
                     != 0
                     && src_invis_level > n_invis_level
                 {
@@ -516,11 +515,11 @@ impl State {
             if Repository::with_characters(|ch| {
                 ch[n].player != 0
                     && (ch[n].flags
-                        & (CharacterFlags::CF_STAFF.bits()
-                            | CharacterFlags::CF_IMP.bits()
-                            | CharacterFlags::CF_USURP.bits()))
+                        & (CharacterFlags::Staff.bits()
+                            | CharacterFlags::Imp.bits()
+                            | CharacterFlags::Usurp.bits()))
                         != 0
-                    && (ch[n].flags & CharacterFlags::CF_NOSTAFF.bits()) == 0
+                    && (ch[n].flags & CharacterFlags::NoStaff.bits()) == 0
             }) {
                 self.do_log(n, font, text);
             }
@@ -549,7 +548,7 @@ impl State {
 
         // Check invisibility of speaker
         let invis = Repository::with_characters(|ch| {
-            (ch[cn].flags & CharacterFlags::CF_INVISIBLE.bits()) != 0
+            (ch[cn].flags & CharacterFlags::Invisible.bits()) != 0
         });
 
         // Static spiral generation (port of initspiral / areaspiral[] from original C++)
@@ -613,9 +612,7 @@ impl State {
 
             // If listener is a player (or usurp), handle visibility immediately
             let is_player_or_usurp = Repository::with_characters(|ch| {
-                (ch[cc].flags
-                    & (CharacterFlags::CF_PLAYER.bits() | CharacterFlags::CF_USURP.bits()))
-                    != 0
+                (ch[cc].flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits())) != 0
             });
 
             if is_player_or_usurp {

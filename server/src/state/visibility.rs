@@ -286,8 +286,7 @@ impl State {
                 });
 
                 self.is_monster = ch_kindred & KIN_MONSTER as i32 != 0
-                    && (ch_flags
-                        & (CharacterFlags::CF_USURP.bits() | CharacterFlags::CF_THRALL.bits()))
+                    && (ch_flags & (CharacterFlags::Usurp.bits() | CharacterFlags::Thrall.bits()))
                         == 0;
 
                 self.can_map_see(fx, fy, max_distance);
@@ -503,7 +502,7 @@ impl State {
                 adjusted_light = 255;
             }
 
-            if character.flags & CharacterFlags::CF_INFRARED.bits() != 0 && adjusted_light < 5 {
+            if character.flags & CharacterFlags::Infrared.bits() != 0 && adjusted_light < 5 {
                 adjusted_light = 5;
             }
 
@@ -544,13 +543,13 @@ impl State {
                     return 0;
                 }
 
-                if ch[co].flags & CharacterFlags::CF_INVISIBLE.bits() != 0
+                if ch[co].flags & CharacterFlags::Invisible.bits() != 0
                     && (ch[cn].get_invisibility_level() < ch[co].get_invisibility_level())
                 {
                     return 0;
                 }
 
-                if ch[co].flags & CharacterFlags::CF_BODY.bits() != 0 {
+                if ch[co].flags & CharacterFlags::Body.bits() != 0 {
                     return 0;
                 }
 
@@ -580,7 +579,7 @@ impl State {
                 d -= ch[cn].skill[core::constants::SK_PERCEPT][5] as i32 * 2;
 
                 // Modify by light
-                if ch[cn].flags & CharacterFlags::CF_INFRARED.bits() == 0 {
+                if ch[cn].flags & CharacterFlags::Infrared.bits() == 0 {
                     let map_index = ch[co].x as usize
                         + ch[co].y as usize * core::constants::SERVER_MAPX as usize;
                     let mut light = std::cmp::max(
@@ -667,7 +666,7 @@ impl State {
                     d += 50 - characters[cn].skill[core::constants::SK_PERCEPT][5] as i32 * 2;
 
                     // Modify by light (unless character has infrared)
-                    if characters[cn].flags & CharacterFlags::CF_INFRARED.bits() == 0 {
+                    if characters[cn].flags & CharacterFlags::Infrared.bits() == 0 {
                         let map_index = items[in_idx].x as usize
                             + items[in_idx].y as usize * core::constants::SERVER_MAPX as usize;
                         let mut light = std::cmp::max(

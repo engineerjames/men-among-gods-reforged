@@ -1,3 +1,5 @@
+use core::constants::CharacterFlags;
+
 use crate::{driver, god::God, repository::Repository, state::State};
 
 /// Port of `init_lights` from `populate.cpp`
@@ -747,7 +749,7 @@ pub fn reset_char(n: usize) {
     let (used, has_respawn) = Repository::with_character_templates(|templates| {
         (
             templates[n].used,
-            (templates[n].flags & core::constants::CharacterFlags::CF_RESPAWN.bits()) != 0,
+            (templates[n].flags & CharacterFlags::Respawn.bits()) != 0,
         )
     });
 
@@ -869,7 +871,7 @@ pub fn skillcost(val: i32, dif: i32, start: i32) -> i32 {
 pub fn pop_skill() {
     for cn in 1..core::constants::MAXCHARS {
         let is_player = Repository::with_characters(|characters| {
-            (characters[cn].flags & core::constants::CharacterFlags::CF_PLAYER.bits()) != 0
+            (characters[cn].flags & CharacterFlags::Player.bits()) != 0
                 && characters[cn].used == core::constants::USE_ACTIVE
         });
         if !is_player {
@@ -1015,7 +1017,7 @@ pub fn pop_wipe() {
     // Clear all characters
     for n in 1..core::constants::MAXCHARS {
         let is_player = Repository::with_characters(|characters| {
-            (characters[n].flags & core::constants::CharacterFlags::CF_PLAYER.bits()) != 0
+            (characters[n].flags & CharacterFlags::Player.bits()) != 0
         });
 
         if !is_player {
@@ -1076,7 +1078,7 @@ pub fn pop_remove() {
         let (used, is_player) = Repository::with_characters(|characters| {
             (
                 characters[n].used,
-                (characters[n].flags & core::constants::CharacterFlags::CF_PLAYER.bits()) != 0,
+                (characters[n].flags & CharacterFlags::Player.bits()) != 0,
             )
         });
 
@@ -1111,7 +1113,7 @@ pub fn populate() {
         let (used, has_respawn) = Repository::with_character_templates(|templates| {
             (
                 templates[n].used,
-                (templates[n].flags & core::constants::CharacterFlags::CF_RESPAWN.bits()) != 0,
+                (templates[n].flags & CharacterFlags::Respawn.bits()) != 0,
             )
         });
 
@@ -1161,7 +1163,7 @@ pub fn pop_save_all_chars() {
 
     for nr in 1..core::constants::MAXCHARS {
         let is_player = Repository::with_characters(|characters| {
-            (characters[nr].flags & core::constants::CharacterFlags::CF_PLAYER.bits()) != 0
+            (characters[nr].flags & CharacterFlags::Player.bits()) != 0
         });
 
         if is_player {

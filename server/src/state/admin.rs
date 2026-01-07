@@ -1,8 +1,7 @@
-use core::{string_operations::c_string_to_str, types::FontColor};
+use core::{constants::CharacterFlags, string_operations::c_string_to_str, types::FontColor};
 
 use crate::{
-    enums::CharacterFlags, god::God, helpers, network_manager::NetworkManager,
-    repository::Repository, state::State,
+    god::God, helpers, network_manager::NetworkManager, repository::Repository, state::State,
 };
 
 impl State {

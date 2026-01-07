@@ -105,11 +105,11 @@ impl State {
             let (is_killer_player, is_arena, co_alignment, co_temp, co_is_player) =
                 Repository::with_characters(|characters| {
                     let is_killer_player =
-                        characters[killer_id].flags & CharacterFlags::CF_PLAYER.bits() != 0;
+                        characters[killer_id].flags & CharacterFlags::Player.bits() != 0;
                     let co_alignment = characters[character_id].alignment;
                     let co_temp = characters[character_id].temp;
                     let co_is_player =
-                        characters[character_id].flags & CharacterFlags::CF_PLAYER.bits() != 0;
+                        characters[character_id].flags & CharacterFlags::Player.bits() != 0;
                     (
                         is_killer_player,
                         map_flags & core::constants::MF_ARENA as u64 != 0,
@@ -253,7 +253,7 @@ impl State {
 
             // A follower (gargoyle, ghost companion) killed someone
             let follower_owner = Repository::with_characters(|characters| {
-                if characters[killer_id].flags & CharacterFlags::CF_PLAYER.bits() == 0 {
+                if characters[killer_id].flags & CharacterFlags::Player.bits() == 0 {
                     let cc = characters[killer_id].data[63] as usize;
                     if cc != 0 && Character::is_sane_character(cc) {
                         Some(cc)
@@ -267,7 +267,7 @@ impl State {
 
             if let Some(cc) = follower_owner {
                 let is_owner_player = Repository::with_characters(|ch| {
-                    ch[cc].flags & CharacterFlags::CF_PLAYER.bits() != 0
+                    ch[cc].flags & CharacterFlags::Player.bits() != 0
                 });
 
                 if is_owner_player && !co_is_player && co_alignment == 10000 {
@@ -314,7 +314,7 @@ impl State {
 
         // Handle player death
         let is_player = Repository::with_characters(|ch| {
-            ch[character_id].flags & CharacterFlags::CF_PLAYER.bits() != 0
+            ch[character_id].flags & CharacterFlags::Player.bits() != 0
         });
 
         let corpse_id: usize;
@@ -335,7 +335,7 @@ impl State {
                 characters[character_id].data[14] += 1;
                 if killer_id != 0 {
                     let is_killer_player =
-                        characters[killer_id].flags & CharacterFlags::CF_PLAYER.bits() != 0;
+                        characters[killer_id].flags & CharacterFlags::Player.bits() != 0;
                     if is_killer_player {
                         characters[character_id].data[15] = killer_id as i32 | 0x10000;
                     } else {
@@ -356,7 +356,7 @@ impl State {
         } else {
             // Handle NPC death
             let is_labkeeper = Repository::with_characters(|ch| {
-                ch[character_id].flags & CharacterFlags::CF_LABKEEPER.bits() != 0
+                ch[character_id].flags & CharacterFlags::LabKeeper.bits() != 0
             });
 
             if is_labkeeper {
@@ -485,7 +485,7 @@ impl State {
 
         // Apply permanent stat loss if not a god and no guardian angel
         let is_god =
-            Repository::with_characters(|ch| ch[co].flags & CharacterFlags::CF_GOD.bits() != 0);
+            Repository::with_characters(|ch| ch[co].flags & CharacterFlags::God.bits() != 0);
 
         if !is_god && wimp == 0 {
             self.apply_death_penalties(co);
@@ -507,7 +507,7 @@ impl State {
             player::plr_reset_status(cc);
 
             characters[cc].player = 0;
-            characters[cc].flags = CharacterFlags::CF_BODY.bits();
+            characters[cc].flags = CharacterFlags::Body.bits();
             characters[cc].a_hp = 0;
             characters[cc].data[core::constants::CHD_CORPSEOWNER] = co as i32;
             characters[cc].data[99] = 1;
@@ -559,7 +559,7 @@ impl State {
 
         // Check for USURP flag (player controlling NPC)
         let usurp_info = Repository::with_characters(|characters| {
-            if characters[co].flags & CharacterFlags::CF_USURP.bits() != 0 {
+            if characters[co].flags & CharacterFlags::Usurp.bits() != 0 {
                 Some((
                     characters[co].player as usize,
                     characters[co].data[97] as usize,
@@ -576,7 +576,7 @@ impl State {
                     Server::with_players_mut(|players| {
                         players[player_nr].usnr = c2;
                     });
-                    characters[c2].flags &= !CharacterFlags::CF_CCP.bits();
+                    characters[c2].flags &= !CharacterFlags::ComputerControlledPlayer.bits();
                 });
             } else {
                 player::player_exit(player_nr);
@@ -587,15 +587,14 @@ impl State {
 
         // Convert to body
         let should_respawn = Repository::with_characters(|characters| {
-            characters[co].flags & CharacterFlags::CF_RESPAWN.bits() != 0
+            characters[co].flags & CharacterFlags::Respawn.bits() != 0
         });
 
         Repository::with_characters_mut(|characters| {
             if should_respawn {
-                characters[co].flags =
-                    CharacterFlags::CF_BODY.bits() | CharacterFlags::CF_RESPAWN.bits();
+                characters[co].flags = CharacterFlags::Body.bits() | CharacterFlags::Respawn.bits();
             } else {
-                characters[co].flags = CharacterFlags::CF_BODY.bits();
+                characters[co].flags = CharacterFlags::Body.bits();
             }
 
             characters[co].a_hp = 0;
@@ -667,7 +666,7 @@ impl State {
         let is_cn_player = if cn != 0 {
             Repository::with_characters(|ch| {
                 Character::is_sane_character(cn)
-                    && ch[cn].flags & CharacterFlags::CF_PLAYER.bits() != 0
+                    && ch[cn].flags & CharacterFlags::Player.bits() != 0
             })
         } else {
             false

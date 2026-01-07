@@ -378,8 +378,7 @@ impl State {
             // Numeric lookup only for deities
             let co = if target_name.chars().next().unwrap_or('a').is_ascii_digit() {
                 if (characters[cn].flags
-                    & (CharacterFlags::CF_IMP | CharacterFlags::CF_GOD | CharacterFlags::CF_USURP)
-                        .bits())
+                    & (CharacterFlags::Imp | CharacterFlags::God | CharacterFlags::Usurp).bits())
                     == 0
                 {
                     0
@@ -400,7 +399,7 @@ impl State {
                 return;
             }
 
-            if (characters[co].flags & CharacterFlags::CF_PLAYER.bits()) == 0 {
+            if (characters[co].flags & CharacterFlags::Player.bits()) == 0 {
                 let co_name = characters[co].get_name();
                 self.do_character_log(
                     cn,
@@ -410,8 +409,8 @@ impl State {
                 return;
             }
 
-            if (characters[cn].flags & CharacterFlags::CF_GOD.bits()) == 0
-                && (characters[co].flags & CharacterFlags::CF_GOD.bits()) != 0
+            if (characters[cn].flags & CharacterFlags::God.bits()) == 0
+                && (characters[co].flags & CharacterFlags::God.bits()) != 0
             {
                 self.do_character_log(
                     cn,
@@ -421,9 +420,7 @@ impl State {
                 return;
             }
 
-            if (characters[cn].flags & (CharacterFlags::CF_IMP | CharacterFlags::CF_GOD).bits())
-                != 0
-            {
+            if (characters[cn].flags & (CharacterFlags::Imp | CharacterFlags::God).bits()) != 0 {
                 // God view: detailed timestamp
                 let last = std::cmp::max(characters[co].login_date, characters[co].logout_date);
                 let now = std::time::SystemTime::now()
@@ -450,7 +447,7 @@ impl State {
                 );
 
                 if characters[co].used == core::constants::USE_ACTIVE
-                    && (characters[co].flags & CharacterFlags::CF_INVISIBLE.bits()) == 0
+                    && (characters[co].flags & CharacterFlags::Invisible.bits()) == 0
                 {
                     self.do_character_log(
                         cn,
@@ -542,8 +539,7 @@ impl State {
         }
 
         let invis_src = Repository::with_characters(|ch| {
-            ch[co].flags & (CharacterFlags::CF_INVISIBLE.bits() | CharacterFlags::CF_NOWHO.bits())
-                != 0
+            ch[co].flags & (CharacterFlags::Invisible.bits() | CharacterFlags::NoWho.bits()) != 0
         });
         if invis_src {
             // approximate invis_level checks skipped
@@ -626,8 +622,7 @@ impl State {
             }
         }
 
-        if Repository::with_characters(|ch| (ch[co].flags & CharacterFlags::CF_PLAYER.bits()) == 0)
-        {
+        if Repository::with_characters(|ch| (ch[co].flags & CharacterFlags::Player.bits()) == 0) {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -696,8 +691,7 @@ impl State {
             );
             return;
         }
-        if Repository::with_characters(|ch| (ch[co].flags & CharacterFlags::CF_PLAYER.bits()) == 0)
-        {
+        if Repository::with_characters(|ch| (ch[co].flags & CharacterFlags::Player.bits()) == 0) {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,

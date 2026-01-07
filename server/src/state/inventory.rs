@@ -321,7 +321,7 @@ impl State {
                 (
                     characters[cn].get_name().to_string(),
                     characters[co].get_name().to_string(),
-                    characters[cn].flags & CharacterFlags::CF_PLAYER.bits() != 0,
+                    characters[cn].flags & CharacterFlags::Player.bits() != 0,
                 )
             });
 
@@ -407,8 +407,8 @@ impl State {
                 Repository::with_items(|items| {
                     (
                         items[item_idx].driver == 31,
-                        characters[co].flags & CharacterFlags::CF_UNDEAD.bits() != 0,
-                        characters[cn].flags & CharacterFlags::CF_NOMAGIC.bits() != 0,
+                        characters[co].flags & CharacterFlags::Undead.bits() != 0,
+                        characters[cn].flags & CharacterFlags::NoMagic.bits() != 0,
                     )
                 })
             });
@@ -447,7 +447,7 @@ impl State {
         let (co_is_player, has_shop_destroy) = Repository::with_characters(|characters| {
             Repository::with_items(|items| {
                 (
-                    characters[co].flags & CharacterFlags::CF_PLAYER.bits() != 0,
+                    characters[co].flags & CharacterFlags::Player.bits() != 0,
                     items[item_idx].flags & core::constants::ItemFlags::IF_SHOPDESTROY.bits() != 0,
                 )
             })
@@ -634,7 +634,7 @@ impl State {
 
             // Show detailed info for build mode
             let is_building = Repository::with_characters(|ch| {
-                ch[cn].flags & CharacterFlags::CF_BUILDMODE.bits() != 0
+                ch[cn].flags & CharacterFlags::BuildMode.bits() != 0
             });
 
             if is_building {
@@ -717,7 +717,7 @@ impl State {
 
             // Show god-mode info
             let is_god =
-                Repository::with_characters(|ch| ch[cn].flags & CharacterFlags::CF_GOD.bits() != 0);
+                Repository::with_characters(|ch| ch[cn].flags & CharacterFlags::God.bits() != 0);
 
             if is_god {
                 let (
