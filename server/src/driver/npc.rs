@@ -2368,7 +2368,10 @@ pub fn npc_item_value(in_idx: usize) -> i32 {
         let mut score = 0;
 
         for n in 0..50 {
-            score += it.attrib[n][0] * 5;
+            // TODO: Do a deeper dive into what this is doing -- originally
+            // the C code has it.attrib here which is clearly wrong since attrib
+            // only has 5 entries.
+            score += it.skill[n][0] * 5;
         }
 
         score += (it.value / 10) as i8;
