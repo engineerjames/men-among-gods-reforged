@@ -81,9 +81,8 @@ impl State {
         }
 
         // Only works on NPCs
-        let is_player = Repository::with_characters(|ch| {
-            (ch[co].flags & CharacterFlags::CF_PLAYER.bits()) != 0
-        });
+        let is_player =
+            Repository::with_characters(|ch| (ch[co].flags & CharacterFlags::Player.bits()) != 0);
         if is_player {
             let name = Repository::with_characters(|ch| ch[co].get_name().to_string());
             self.do_character_log(
@@ -208,7 +207,7 @@ impl State {
         }
 
         let co_stoned = Repository::with_characters(|characters| {
-            (characters[co].flags & core::constants::CharacterFlags::CF_STONED.bits()) != 0
+            (characters[co].flags & core::constants::CharacterFlags::Stoned.bits()) != 0
         });
         if co_stoned {
             Repository::with_characters_mut(|characters| {
@@ -259,8 +258,8 @@ impl State {
         if mayhem {
             let (cn_is_player, co_is_player) = Repository::with_characters(|characters| {
                 (
-                    (characters[cn].flags & CharacterFlags::CF_PLAYER.bits()) != 0,
-                    (characters[co].flags & CharacterFlags::CF_PLAYER.bits()) != 0,
+                    (characters[cn].flags & CharacterFlags::Player.bits()) != 0,
+                    (characters[co].flags & CharacterFlags::Player.bits()) != 0,
                 )
             });
             if !cn_is_player {
@@ -677,7 +676,7 @@ impl State {
             }
 
             // Can't attack if you're a merchant
-            if (cn_flags & CharacterFlags::CF_MERCHANT.bits()) != 0 {
+            if (cn_flags & CharacterFlags::Merchant.bits()) != 0 {
                 if msg {
                     self.do_character_log(cn, FontColor::Red, "Merchants cannot attack.\n");
                 }
@@ -685,7 +684,7 @@ impl State {
             }
 
             // Can't attack if target is a merchant
-            if (co_flags & CharacterFlags::CF_MERCHANT.bits()) != 0 {
+            if (co_flags & CharacterFlags::Merchant.bits()) != 0 {
                 if msg {
                     self.do_character_log(cn, FontColor::Red, "You cannot attack merchants.\n");
                 }
@@ -693,7 +692,7 @@ impl State {
             }
 
             // Can't attack corpses
-            if (co_flags & CharacterFlags::CF_BODY.bits()) != 0 {
+            if (co_flags & CharacterFlags::Body.bits()) != 0 {
                 if msg {
                     self.do_character_log(cn, FontColor::Red, "Your target is already dead.\n");
                 }
@@ -735,7 +734,7 @@ impl State {
                 let mut cn_actual = cn;
 
                 // Substitute master for companion
-                if (characters[cn].flags & CharacterFlags::CF_BODY.bits()) != 0 {
+                if (characters[cn].flags & CharacterFlags::Body.bits()) != 0 {
                     cn_actual = characters[cn].data[core::constants::CHD_MASTER] as usize;
                 }
 
@@ -743,7 +742,7 @@ impl State {
                 if cn_actual == 0 || cn_actual >= core::constants::MAXCHARS {
                     return;
                 }
-                if (characters[cn_actual].flags & CharacterFlags::CF_PLAYER.bits()) == 0 {
+                if (characters[cn_actual].flags & CharacterFlags::Player.bits()) == 0 {
                     return;
                 }
                 if (characters[cn_actual].kindred & core::constants::KIN_PURPLE as i32) == 0 {
@@ -758,7 +757,7 @@ impl State {
                 let mut co_actual = co;
 
                 // Substitute master for companion
-                if (characters[co].flags & CharacterFlags::CF_BODY.bits()) != 0 {
+                if (characters[co].flags & CharacterFlags::Body.bits()) != 0 {
                     co_actual = characters[co].data[core::constants::CHD_MASTER] as usize;
                 }
 
@@ -766,7 +765,7 @@ impl State {
                 if co_actual == 0 || co_actual >= core::constants::MAXCHARS {
                     return;
                 }
-                if (characters[co_actual].flags & CharacterFlags::CF_PLAYER.bits()) == 0 {
+                if (characters[co_actual].flags & CharacterFlags::Player.bits()) == 0 {
                     return;
                 }
 
@@ -794,15 +793,15 @@ impl State {
         Repository::with_characters_mut(|characters| {
             let ch = &mut characters[cn];
 
-            if (ch.flags & CharacterFlags::CF_SPELLIGNORE.bits()) != 0 {
-                ch.flags &= !CharacterFlags::CF_SPELLIGNORE.bits();
+            if (ch.flags & CharacterFlags::SpellIgnore.bits()) != 0 {
+                ch.flags &= !CharacterFlags::SpellIgnore.bits();
                 self.do_character_log(
                     cn,
                     FontColor::Green,
                     "You will now fight back if someone attacks you with a spell.\n",
                 );
             } else {
-                ch.flags |= CharacterFlags::CF_SPELLIGNORE.bits();
+                ch.flags |= CharacterFlags::SpellIgnore.bits();
                 self.do_character_log(
                     cn,
                     FontColor::Green,

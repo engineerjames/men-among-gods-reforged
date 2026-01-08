@@ -1,19 +1,17 @@
 use core::{
-    constants::{ItemFlags, SERVER_MAPX},
+    constants::{
+        CharacterFlags, ItemFlags, SERVER_MAPX, SK_AXE, SK_BLAST, SK_BLESS, SK_CONCEN, SK_CURSE,
+        SK_DAGGER, SK_DISPEL, SK_ENHANCE, SK_GHOST, SK_HEAL, SK_IDENT, SK_IMMUN, SK_LIGHT, SK_LOCK,
+        SK_MEDIT, SK_MSHIELD, SK_PROTECT, SK_RECALL, SK_REGEN, SK_REPAIR, SK_REST, SK_STAFF,
+        SK_STUN, SK_SURROUND, SK_SWORD, SK_TWOHAND, SK_WARCRY, SK_WIMPY,
+    },
     string_operations::c_string_to_str,
     types::FontColor,
 };
 
 use rand::Rng;
 
-use crate::{
-    chlog, driver,
-    effect::EffectManager,
-    enums::{self, CharacterFlags},
-    god::God,
-    repository::Repository,
-    state::State,
-};
+use crate::{chlog, driver, effect::EffectManager, god::God, repository::Repository, state::State};
 
 // Static skill table (taken from server/original_source/SkillTab.cpp)
 const SKILL_NAMES: [&str; 50] = [
@@ -113,11 +111,11 @@ pub fn friend_is_enemy(cn: usize, cc: usize) -> i32 {
 pub fn player_or_ghost(cn: usize, co: usize) -> i32 {
     // Rust port of C++ player_or_ghost
     let cn_flags = Repository::with_characters(|ch| ch[cn].flags);
-    if (cn_flags & core::constants::CharacterFlags::CF_PLAYER.bits()) == 0 {
+    if (cn_flags & CharacterFlags::Player.bits()) == 0 {
         return 0;
     }
     let co_flags = Repository::with_characters(|ch| ch[co].flags);
-    if (co_flags & core::constants::CharacterFlags::CF_PLAYER.bits()) != 0 {
+    if (co_flags & CharacterFlags::Player.bits()) != 0 {
         return 1;
     }
     let co_data_63 = Repository::with_characters(|ch| ch[co].data[63] as usize);
@@ -161,7 +159,7 @@ pub fn chance_base(cn: usize, skill: i32, d20: i32, power: i32) -> i32 {
     // Ported from C++ chance_base(int cn, int skill, int d20, int power)
     let mut chance = d20 * skill / std::cmp::max(1, power);
     let (flags, luck) = Repository::with_characters(|ch| (ch[cn].flags, ch[cn].luck));
-    if (flags & core::constants::CharacterFlags::CF_PLAYER.bits()) != 0 {
+    if (flags & CharacterFlags::Player.bits()) != 0 {
         if luck < 0 {
             chance += luck / 500 - 1;
         }
@@ -182,7 +180,7 @@ pub fn chance(cn: usize, d20: i32) -> i32 {
     // Ported from C++ chance(int cn, int d20)
     let mut d20 = d20;
     let (flags, luck) = Repository::with_characters(|ch| (ch[cn].flags, ch[cn].luck));
-    if (flags & core::constants::CharacterFlags::CF_PLAYER.bits()) != 0 {
+    if (flags & CharacterFlags::Player.bits()) != 0 {
         if luck < 0 {
             d20 += luck / 500 - 1;
         }
@@ -253,8 +251,7 @@ pub fn add_spell(cn: usize, in_: usize) -> i32 {
     let m = Repository::with_characters(|ch| {
         ch[cn].x as usize + ch[cn].y as usize * core::constants::SERVER_MAPX as usize
     });
-    let nomagic =
-        Repository::with_map(|map| map[m].flags & enums::CharacterFlags::NoMagic.bits() != 0);
+    let nomagic = Repository::with_map(|map| map[m].flags & CharacterFlags::NoMagic.bits() != 0);
     if nomagic {
         return 0;
     }
@@ -371,7 +368,7 @@ pub fn add_exhaust(cn: usize, exhaust_length: i32) {
 pub fn spell_from_item(cn: usize, in2: usize) {
     // Ported from C++ spell_from_item(int cn, int in2)
     let flags = Repository::with_characters(|ch| ch[cn].flags);
-    if (flags & enums::CharacterFlags::NoMagic.bits()) != 0 {
+    if (flags & CharacterFlags::NoMagic.bits()) != 0 {
         State::with(|state| {
             state.do_character_log(
                 cn,
@@ -528,7 +525,7 @@ pub fn spell_light(cn: usize, co: usize, power: i32) -> i32 {
         let sound = Repository::with_characters(|ch| ch[cn].sound);
         State::char_play_sound(cn, sound as i32 + 1, -150, 0);
         let flags = Repository::with_characters(|ch| ch[cn].flags);
-        if (flags & enums::CharacterFlags::Player.bits()) != 0 {
+        if (flags & CharacterFlags::Player.bits()) != 0 {
             chlog!(cn, "Cast Light");
         }
         let (x, y) = Repository::with_characters(|ch| (ch[cn].x, ch[cn].y));
@@ -546,9 +543,8 @@ pub fn skill_light(cn: usize) {
     use core::types::FontColor;
 
     // rate limit for player
-    let is_player = Repository::with_characters(|ch| {
-        (ch[cn].flags & enums::CharacterFlags::Player.bits()) != 0
-    });
+    let is_player =
+        Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Player.bits()) != 0);
     if is_player {
         Repository::with_characters_mut(|ch| {
             ch[cn].data[71] += CNTSAY;
@@ -730,7 +726,7 @@ pub fn spell_protect(cn: usize, co: usize, power: i32) -> i32 {
         let sound = Repository::with_characters(|ch| ch[cn].sound);
         State::char_play_sound(cn, sound as i32 + 1, -150, 0);
         let flags = Repository::with_characters(|ch| ch[cn].flags);
-        if (flags & enums::CharacterFlags::Player.bits()) != 0 {
+        if (flags & CharacterFlags::Player.bits()) != 0 {
             chlog!(cn, "Cast Protect");
         }
         let (x, y) = Repository::with_characters(|ch| (ch[cn].x, ch[cn].y));
@@ -946,7 +942,7 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
         let sound = Repository::with_characters(|ch| ch[cn].sound);
         State::char_play_sound(cn, sound as i32 + 1, -150, 0);
         let flags = Repository::with_characters(|ch| ch[cn].flags);
-        if (flags & enums::CharacterFlags::Player.bits()) != 0 {
+        if (flags & CharacterFlags::Player.bits()) != 0 {
             chlog!(cn, "Cast Enhance");
         }
         EffectManager::fx_add_effect(
@@ -1190,7 +1186,7 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
         let sound = Repository::with_characters(|ch| ch[cn].sound);
         State::char_play_sound(cn, sound as i32 + 1, -150, 0);
         let flags = Repository::with_characters(|ch| ch[cn].flags);
-        if (flags & enums::CharacterFlags::Player.bits()) != 0 {
+        if (flags & CharacterFlags::Player.bits()) != 0 {
             chlog!(cn, "Cast Bless");
         }
         EffectManager::fx_add_effect(
@@ -1528,7 +1524,7 @@ pub fn spell_mshield(cn: usize, co: usize, power: i32) -> i32 {
         let sound = Repository::with_characters(|ch| ch[cn].sound);
         State::char_play_sound(cn, sound as i32 + 1, -150, 0);
         let flags = Repository::with_characters(|ch| ch[cn].flags);
-        if (flags & enums::CharacterFlags::Player.bits()) != 0 {
+        if (flags & CharacterFlags::Player.bits()) != 0 {
             chlog!(cn, "Cast Magic Shield");
         }
         EffectManager::fx_add_effect(
@@ -1638,7 +1634,7 @@ pub fn spell_heal(cn: usize, co: usize, power: i32) -> i32 {
         let sound = Repository::with_characters(|ch| ch[cn].sound);
         State::char_play_sound(cn, sound as i32 + 1, -150, 0);
         let flags = Repository::with_characters(|ch| ch[cn].flags);
-        if (flags & enums::CharacterFlags::Player.bits()) != 0 {
+        if (flags & CharacterFlags::Player.bits()) != 0 {
             chlog!(cn, "Cast Heal");
         }
         EffectManager::fx_add_effect(
@@ -1772,7 +1768,7 @@ pub fn spell_curse(cn: usize, co: usize, power: i32) -> i32 {
     use core::types::FontColor;
 
     let flags = Repository::with_characters(|ch| ch[co].flags);
-    if (flags & core::constants::CharacterFlags::CF_IMMORTAL.bits()) != 0 {
+    if (flags & CharacterFlags::Immortal.bits()) != 0 {
         return 0;
     }
 
@@ -1958,10 +1954,7 @@ pub fn skill_curse(cn: usize) {
         return;
     }
 
-    if (Repository::with_characters(|ch| ch[co].flags)
-        & core::constants::CharacterFlags::CF_IMMORTAL.bits())
-        != 0
-    {
+    if (Repository::with_characters(|ch| ch[co].flags) & CharacterFlags::Immortal.bits()) != 0 {
         State::with(|state| {
             state.do_character_log(cn, core::types::FontColor::Red, "You lost your focus.\n")
         });
@@ -2041,10 +2034,7 @@ pub fn warcry(cn: usize, co: usize, power: i32) -> i32 {
         }
     }
 
-    if (Repository::with_characters(|ch| ch[co].flags)
-        & core::constants::CharacterFlags::CF_IMMORTAL.bits())
-        != 0
-    {
+    if (Repository::with_characters(|ch| ch[co].flags) & CharacterFlags::Immortal.bits()) != 0 {
         return 0;
     }
 
@@ -3565,12 +3555,6 @@ pub fn skill_lookup(name: &str) -> i32 {
 }
 
 pub fn skill_driver(cn: usize, nr: i32) {
-    use crate::enums::CharacterFlags;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-    use core::types::FontColor;
-
     // Check whether the character can use this skill/spell
     if Repository::with_characters(|ch| ch[cn].skill[nr as usize][0] == 0) {
         State::with(|state| {

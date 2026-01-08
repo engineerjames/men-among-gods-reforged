@@ -1,8 +1,8 @@
 use core::{
     constants::{
-        ItemFlags, INFRARED, INJURED, INJURED1, INJURED2, INVIS, ISCHAR, ISITEM, ISUSABLE,
-        MF_GFX_CMAGIC, MF_GFX_DEATH, MF_GFX_EMAGIC, MF_GFX_GMAGIC, MF_GFX_INJURED, MF_GFX_INJURED1,
-        MF_GFX_INJURED2, MF_GFX_TOMB, MF_UWATER, STONED, STUNNED, UWATER,
+        CharacterFlags, ItemFlags, INFRARED, INJURED, INJURED1, INJURED2, INVIS, ISCHAR, ISITEM,
+        ISUSABLE, MF_GFX_CMAGIC, MF_GFX_DEATH, MF_GFX_EMAGIC, MF_GFX_GMAGIC, MF_GFX_INJURED,
+        MF_GFX_INJURED1, MF_GFX_INJURED2, MF_GFX_TOMB, MF_UWATER, STONED, STUNNED, UWATER,
     },
     string_operations::c_string_to_str,
 };
@@ -73,13 +73,13 @@ pub fn plr_logout(character_id: usize, player_id: usize, reason: enums::LogoutRe
     if character_matches_player {
         let should_logout_co = Repository::with_characters_mut(|characters| {
             let character = &mut characters[character_id];
-            if character.flags & enums::CharacterFlags::Usurp.bits() != 0 {
-                character.flags &= !(enums::CharacterFlags::ComputerControlledPlayer
-                    | enums::CharacterFlags::Usurp
-                    | enums::CharacterFlags::Staff
-                    | enums::CharacterFlags::Immortal
-                    | enums::CharacterFlags::God
-                    | enums::CharacterFlags::Creator)
+            if character.flags & CharacterFlags::Usurp.bits() != 0 {
+                character.flags &= !(CharacterFlags::ComputerControlledPlayer
+                    | CharacterFlags::Usurp
+                    | CharacterFlags::Staff
+                    | CharacterFlags::Immortal
+                    | CharacterFlags::God
+                    | CharacterFlags::Creator)
                     .bits();
                 Some(character.data[97] as usize)
             } else {
@@ -97,8 +97,8 @@ pub fn plr_logout(character_id: usize, player_id: usize, reason: enums::LogoutRe
         let (is_player, is_not_ccp) = Repository::with_characters(|characters| {
             let character = &characters[character_id];
             (
-                character.flags & enums::CharacterFlags::Player.bits() != 0,
-                character.flags & enums::CharacterFlags::ComputerControlledPlayer.bits() == 0,
+                character.flags & CharacterFlags::Player.bits() != 0,
+                character.flags & CharacterFlags::ComputerControlledPlayer.bits() == 0,
             )
         });
 
@@ -316,7 +316,7 @@ pub fn plr_logout(character_id: usize, player_id: usize, reason: enums::LogoutRe
                     .unwrap()
                     .as_secs() as u32;
 
-                character.flags |= enums::CharacterFlags::SaveMe.bits();
+                character.flags |= CharacterFlags::SaveMe.bits();
 
                 if character.is_building() {
                     God::build(character_id, 0);
@@ -407,7 +407,7 @@ pub fn plr_map_remove(cn: usize) {
             + (characters[cn].toy as usize) * core::constants::SERVER_MAPX as usize;
         let light = characters[cn].light;
         let (x, y) = (characters[cn].x, characters[cn].y);
-        let is_body = (characters[cn].flags & enums::CharacterFlags::Body.bits()) != 0;
+        let is_body = (characters[cn].flags & CharacterFlags::Body.bits()) != 0;
 
         Repository::with_map_mut(|map| {
             map[m].ch = 0;
@@ -460,8 +460,8 @@ pub fn plr_map_set(cn: usize) {
     });
 
     let m = (x as usize) + (y as usize) * core::constants::SERVER_MAPX as usize;
-    let is_body = (flags & enums::CharacterFlags::Body.bits()) != 0;
-    let is_player = (flags & enums::CharacterFlags::Player.bits()) != 0;
+    let is_body = (flags & CharacterFlags::Body.bits()) != 0;
+    let is_player = (flags & CharacterFlags::Player.bits()) != 0;
 
     if !is_body {
         // Check for step action
@@ -611,8 +611,8 @@ pub fn plr_map_set(cn: usize) {
 
         if is_nomagic && !wears_466 && !wears_481 {
             Repository::with_characters_mut(|characters| {
-                if (characters[cn].flags & enums::CharacterFlags::NoMagic.bits()) == 0 {
-                    characters[cn].flags |= enums::CharacterFlags::NoMagic.bits();
+                if (characters[cn].flags & CharacterFlags::NoMagic.bits()) == 0 {
+                    characters[cn].flags |= CharacterFlags::NoMagic.bits();
                 }
             });
 
@@ -628,8 +628,8 @@ pub fn plr_map_set(cn: usize) {
         } else {
             let mut was_nomagic = false;
             Repository::with_characters_mut(|characters| {
-                if (characters[cn].flags & enums::CharacterFlags::NoMagic.bits()) != 0 {
-                    characters[cn].flags &= !enums::CharacterFlags::NoMagic.bits();
+                if (characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
+                    characters[cn].flags &= !CharacterFlags::NoMagic.bits();
                     characters[cn].set_do_update_flags();
                     was_nomagic = true;
                 }
@@ -1391,7 +1391,7 @@ pub fn plr_pickup(cn: usize) {
     });
 
     let is_player = Repository::with_characters(|characters| {
-        (characters[cn].flags & enums::CharacterFlags::Player.bits()) != 0
+        (characters[cn].flags & CharacterFlags::Player.bits()) != 0
     });
 
     if is_player {
@@ -2105,7 +2105,7 @@ pub fn plr_act(cn: usize) {
         return;
     }
 
-    if flags & enums::CharacterFlags::Stoned.bits() != 0 {
+    if flags & CharacterFlags::Stoned.bits() != 0 {
         driver::act_idle(cn);
         return;
     }
@@ -2666,7 +2666,7 @@ pub fn plr_getmap_complete(nr: usize) {
 
             if light <= 5
                 && Repository::with_characters(|characters| {
-                    (characters[cn].flags & enums::CharacterFlags::Infrared.bits()) != 0
+                    (characters[cn].flags & CharacterFlags::Infrared.bits()) != 0
                 })
             {
                 infra = true;
@@ -2842,7 +2842,7 @@ pub fn plr_getmap_complete(nr: usize) {
                         smap[n].flags |= STUNNED;
                     }
 
-                    if char_co.flags & enums::CharacterFlags::Stoned.bits() != 0 {
+                    if char_co.flags & CharacterFlags::Stoned.bits() != 0 {
                         smap[n].flags |= STUNNED | STONED;
                     }
                 } else {
@@ -3083,7 +3083,7 @@ fn plr_newlogin(nr: usize) {
         let ch = &mut characters[cn];
         ch.creation_date = now;
         ch.login_date = now;
-        ch.flags |= enums::CharacterFlags::NewUser.bits() | enums::CharacterFlags::Player.bits();
+        ch.flags |= CharacterFlags::NewUser.bits() | CharacterFlags::Player.bits();
         ch.addr = Server::with_players(|players| players[nr].addr);
 
         // char_add_net behaviour: shift data[80..89] and insert lower 24 bits of addr
@@ -3178,7 +3178,7 @@ fn plr_newlogin(nr: usize) {
     let needs_pass = Server::with_players(|players| players[nr].passwd[0] != 0);
     if needs_pass {
         Repository::with_characters(|characters| {
-            if (characters[cn].flags & enums::CharacterFlags::Passwd.bits()) == 0 {
+            if (characters[cn].flags & CharacterFlags::Passwd.bits()) == 0 {
                 // extract password string
                 let pass = Server::with_players(|players| {
                     c_string_to_str(&players[nr].passwd).to_string()
@@ -3233,7 +3233,7 @@ fn plr_login(nr: usize) {
     // If character has explicit password flag, compare stored passwd
     let has_passwd_mismatch = Repository::with_characters(|characters| {
         let ch = &characters[cn];
-        if (ch.flags & enums::CharacterFlags::Passwd.bits()) != 0 {
+        if (ch.flags & CharacterFlags::Passwd.bits()) != 0 {
             let stored = ch.passwd;
             let client = Server::with_players(|players| players[nr].passwd);
             stored != client
@@ -3265,7 +3265,7 @@ fn plr_login(nr: usize) {
     // and then continue the login (no early return).
     let already_active = Repository::with_characters(|characters| {
         characters[cn].used != core::constants::USE_NONACTIVE
-            && (characters[cn].flags & enums::CharacterFlags::ComputerControlledPlayer.bits()) == 0
+            && (characters[cn].flags & CharacterFlags::ComputerControlledPlayer.bits()) == 0
     });
     if already_active {
         log::warn!("Login as {} who is already active", cn);
@@ -3276,7 +3276,7 @@ fn plr_login(nr: usize) {
 
     // Kicked
     let is_kicked = Repository::with_characters(|characters| {
-        (characters[cn].flags & enums::CharacterFlags::Kicked.bits()) != 0
+        (characters[cn].flags & CharacterFlags::Kicked.bits()) != 0
     });
     if is_kicked {
         log::warn!("Login as {} denied (kicked)", cn);
@@ -3287,9 +3287,7 @@ fn plr_login(nr: usize) {
     // Ban check (skip golden/god)
     let banned = Server::with_players(|players| players[nr].addr);
     let exempt = Repository::with_characters(|characters| {
-        (characters[cn].flags
-            & (enums::CharacterFlags::Golden.bits() | enums::CharacterFlags::God.bits()))
-            != 0
+        (characters[cn].flags & (CharacterFlags::Golden.bits() | CharacterFlags::God.bits())) != 0
     });
     if !exempt && God::is_banned(banned as i32) {
         log::info!("{} is banned, sent away", cn);
@@ -3303,10 +3301,10 @@ fn plr_login(nr: usize) {
     Repository::with_characters_mut(|characters| {
         characters[cn].player = nr as i32;
         // If not CCP and is god, mark invisible
-        if (characters[cn].flags & enums::CharacterFlags::ComputerControlledPlayer.bits()) == 0
-            && (characters[cn].flags & enums::CharacterFlags::God.bits()) != 0
+        if (characters[cn].flags & CharacterFlags::ComputerControlledPlayer.bits()) == 0
+            && (characters[cn].flags & CharacterFlags::God.bits()) != 0
         {
-            characters[cn].flags |= enums::CharacterFlags::Invisible.bits();
+            characters[cn].flags |= CharacterFlags::Invisible.bits();
         }
     });
 
@@ -3431,7 +3429,7 @@ fn plr_login(nr: usize) {
     let needs_pass = Server::with_players(|players| players[nr].passwd[0] != 0);
     if needs_pass {
         Repository::with_characters(|characters| {
-            if (characters[cn].flags & enums::CharacterFlags::Passwd.bits()) == 0 {
+            if (characters[cn].flags & CharacterFlags::Passwd.bits()) == 0 {
                 let pass = Server::with_players(|players| {
                     c_string_to_str(&players[nr].passwd).to_string()
                 });
@@ -3442,8 +3440,8 @@ fn plr_login(nr: usize) {
 
     // If god, remind invisibility
     Repository::with_characters(|characters| {
-        if (characters[cn].flags & enums::CharacterFlags::ComputerControlledPlayer.bits()) == 0
-            && (characters[cn].flags & enums::CharacterFlags::God.bits()) != 0
+        if (characters[cn].flags & CharacterFlags::ComputerControlledPlayer.bits()) == 0
+            && (characters[cn].flags & CharacterFlags::God.bits()) != 0
         {
             State::with(|state| {
                 state.do_character_log(
@@ -3474,7 +3472,7 @@ pub fn plr_change(nr: usize) {
 
     let (ticker, should_update) = Repository::with_globals(|globals| {
         Repository::with_characters(|ch| {
-            let has_update_flag = (ch[cn].flags & enums::CharacterFlags::Update.bits()) != 0;
+            let has_update_flag = (ch[cn].flags & CharacterFlags::Update.bits()) != 0;
             let ticker_match = (cn & 15) == (globals.ticker as usize & 15);
             (globals.ticker, has_update_flag || ticker_match)
         })
@@ -4129,8 +4127,7 @@ fn plr_change_gold(nr: usize, cn: usize) {
 
 /// Send server load info to gods every 32 ticks
 fn plr_change_load(nr: usize, cn: usize, ticker: i32) {
-    let is_god =
-        Repository::with_characters(|ch| (ch[cn].flags & enums::CharacterFlags::God.bits()) != 0);
+    let is_god = Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::God.bits()) != 0);
 
     if is_god && (ticker & 31) == 0 {
         let load = Repository::with_globals(|globals| globals.load as u32);
@@ -4710,8 +4707,8 @@ pub fn plr_tick(nr: usize) {
     // Check lag-based stoning conditions
     let (data_19, flags) = Repository::with_characters(|ch| (ch[cn].data[19], ch[cn].flags));
 
-    let is_player = (flags & enums::CharacterFlags::Player.bits()) != 0;
-    let is_stoned = (flags & enums::CharacterFlags::Stoned.bits()) != 0;
+    let is_player = (flags & CharacterFlags::Player.bits()) != 0;
+    let is_stoned = (flags & CharacterFlags::Stoned.bits()) != 0;
 
     if data_19 == 0 || !is_player {
         return;
@@ -4727,7 +4724,7 @@ pub fn plr_tick(nr: usize) {
                 ch[cn].get_name(),
                 (ltick.wrapping_sub(rtick)) as f64 / 18.0
             );
-            ch[cn].flags |= enums::CharacterFlags::Stoned.bits();
+            ch[cn].flags |= CharacterFlags::Stoned.bits();
         });
         stone_gc(cn, true);
     }
@@ -4740,7 +4737,7 @@ pub fn plr_tick(nr: usize) {
     {
         Repository::with_characters_mut(|ch| {
             log::info!("Character '{}' unstoned, lag is gone", ch[cn].get_name());
-            ch[cn].flags &= !enums::CharacterFlags::Stoned.bits();
+            ch[cn].flags &= !CharacterFlags::Stoned.bits();
         });
         stone_gc(cn, false);
     }
@@ -4750,7 +4747,7 @@ pub fn plr_tick(nr: usize) {
 /// Handles stoning/unstoning of linked characters (e.g., usurped characters)
 fn stone_gc(cn: usize, mode: bool) {
     let (is_player, co) = Repository::with_characters(|ch| {
-        let is_player = (ch[cn].flags & enums::CharacterFlags::Player.bits()) != 0;
+        let is_player = (ch[cn].flags & CharacterFlags::Player.bits()) != 0;
         let co = ch[cn].data[64] as usize;
         (is_player, co)
     });
@@ -4776,9 +4773,9 @@ fn stone_gc(cn: usize, mode: bool) {
 
     Repository::with_characters_mut(|ch| {
         if mode {
-            ch[co].flags |= enums::CharacterFlags::Stoned.bits();
+            ch[co].flags |= CharacterFlags::Stoned.bits();
         } else {
-            ch[co].flags &= !enums::CharacterFlags::Stoned.bits();
+            ch[co].flags &= !CharacterFlags::Stoned.bits();
         }
     });
 }
@@ -5508,7 +5505,7 @@ fn plr_cmd_setuser(_nr: usize) {
                     // Otherwise, do not touch `name`/`reference` (prevents committing empty names).
                     let should_process_name = name_end > 3
                         && name_end < 38
-                        && (ch[cn].flags & core::constants::CharacterFlags::CF_NEWUSER.bits()) != 0;
+                        && (ch[cn].flags & core::constants::CharacterFlags::NewUser.bits()) != 0;
 
                     if should_process_name {
                         let mut flag: i32 = 0;
@@ -5622,7 +5619,7 @@ fn plr_cmd_setuser(_nr: usize) {
                                 ch[cn].reference[i] = ch[cn].name[i];
                             }
                             // clear CF_NEWUSER flag
-                            ch[cn].flags &= !core::constants::CharacterFlags::CF_NEWUSER.bits();
+                            ch[cn].flags &= !core::constants::CharacterFlags::NewUser.bits();
 
                             log::info!(
                                 "plr_cmd_setuser: committed name change for cn={} to \"{}\"",
@@ -5650,7 +5647,7 @@ fn plr_cmd_setuser(_nr: usize) {
                             reason = Some("does not contain your name".to_string());
                         } else if desc.contains('"') {
                             reason = Some("contains a double quote".to_string());
-                        } else if (ch[cn].flags & core::constants::CharacterFlags::CF_NODESC.bits())
+                        } else if (ch[cn].flags & core::constants::CharacterFlags::NoDesc.bits())
                             != 0
                         {
                             reason = Some("was blocked because you have been known to enter inappropriate descriptions".to_string());

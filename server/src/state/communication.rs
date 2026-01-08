@@ -97,10 +97,10 @@ impl State {
                 for co in 1..core::constants::MAXCHARS {
                     if co != cn
                         && characters[co].used == core::constants::USE_ACTIVE
-                        && characters[co].flags & CharacterFlags::CF_BODY.bits() == 0
+                        && characters[co].flags & CharacterFlags::Body.bits() == 0
                     {
                         if characters[co].flags
-                            & (CharacterFlags::CF_PLAYER | CharacterFlags::CF_USURP).bits()
+                            & (CharacterFlags::Player | CharacterFlags::Usurp).bits()
                             != 0
                         {
                             continue;
@@ -146,10 +146,10 @@ impl State {
                 for co in 1..core::constants::MAXCHARS {
                     if co != cn
                         && characters[co].used == core::constants::USE_ACTIVE
-                        && characters[co].flags & CharacterFlags::CF_BODY.bits() == 0
+                        && characters[co].flags & CharacterFlags::Body.bits() == 0
                     {
                         if characters[co].flags
-                            & (CharacterFlags::CF_PLAYER | CharacterFlags::CF_USURP).bits()
+                            & (CharacterFlags::Player | CharacterFlags::Usurp).bits()
                             != 0
                         {
                             continue;
@@ -196,7 +196,7 @@ impl State {
         // Check if target is a corpse and distance
         let (is_body, co_x, co_y) = Repository::with_characters(|ch| {
             (
-                ch[co].flags & CharacterFlags::CF_BODY.bits() != 0,
+                ch[co].flags & CharacterFlags::Body.bits() != 0,
                 ch[co].x,
                 ch[co].y,
             )
@@ -227,16 +227,15 @@ impl State {
         // Handle text descriptions and logging (only if not autoflag)
         let (is_merchant, co_temp) = Repository::with_characters(|ch| {
             (
-                ch[co].flags & CharacterFlags::CF_MERCHANT.bits() != 0,
+                ch[co].flags & CharacterFlags::Merchant.bits() != 0,
                 ch[co].temp,
             )
         });
 
         if autoflag == 0 && !is_merchant && !is_body {
             // Rate limiting for players
-            let is_player = Repository::with_characters(|ch| {
-                ch[cn].flags & CharacterFlags::CF_PLAYER.bits() != 0
-            });
+            let is_player =
+                Repository::with_characters(|ch| ch[cn].flags & CharacterFlags::Player.bits() != 0);
 
             if is_player {
                 let can_proceed = Repository::with_characters_mut(|ch| {
@@ -315,9 +314,9 @@ impl State {
             // Reciprocal "looks at you" message
             let (cn_is_player, cn_is_invisible, cn_is_shutup) = Repository::with_characters(|ch| {
                 (
-                    ch[cn].flags & CharacterFlags::CF_PLAYER.bits() != 0,
-                    ch[cn].flags & CharacterFlags::CF_INVISIBLE.bits() != 0,
-                    ch[cn].flags & CharacterFlags::CF_SHUTUP.bits() != 0,
+                    ch[cn].flags & CharacterFlags::Player.bits() != 0,
+                    ch[cn].flags & CharacterFlags::Invisible.bits() != 0,
+                    ch[cn].flags & CharacterFlags::ShutUp.bits() != 0,
                 )
             });
 
@@ -342,7 +341,7 @@ impl State {
                         ch[co].data[15],
                         ch[co].data[16],
                         ch[co].data[17],
-                        ch[co].flags & CharacterFlags::CF_GOD.bits() != 0,
+                        ch[co].flags & CharacterFlags::God.bits() != 0,
                     )
                 });
 
@@ -398,8 +397,8 @@ impl State {
             // Show Purple of Honor status
             let (co_is_poh, co_is_poh_leader) = Repository::with_characters(|ch| {
                 (
-                    ch[co].flags & CharacterFlags::CF_POH.bits() != 0,
-                    ch[co].flags & CharacterFlags::CF_POH_LEADER.bits() != 0,
+                    ch[co].flags & CharacterFlags::Poh.bits() != 0,
+                    ch[co].flags & CharacterFlags::PohLeader.bits() != 0,
                 )
             });
 
@@ -810,13 +809,12 @@ impl State {
         // God/IMP/USURP debug information
         let cn_is_god_imp_usurp = Repository::with_characters(|ch| {
             ch[cn].flags
-                & (CharacterFlags::CF_GOD | CharacterFlags::CF_IMP | CharacterFlags::CF_USURP)
-                    .bits()
+                & (CharacterFlags::God | CharacterFlags::Imp | CharacterFlags::Usurp).bits()
                 != 0
         });
 
         let co_is_god =
-            Repository::with_characters(|ch| ch[co].flags & CharacterFlags::CF_GOD.bits() != 0);
+            Repository::with_characters(|ch| ch[co].flags & CharacterFlags::God.bits() != 0);
 
         if cn_is_god_imp_usurp && autoflag == 0 && !is_merchant && !is_body && !co_is_god {
             let (co_x, co_y) = Repository::with_characters(|ch| (ch[co].x, ch[co].y));
@@ -831,8 +829,8 @@ impl State {
 
             let (co_is_golden, co_is_black) = Repository::with_characters(|ch| {
                 (
-                    ch[co].flags & CharacterFlags::CF_GOLDEN.bits() != 0,
-                    ch[co].flags & CharacterFlags::CF_BLACK.bits() != 0,
+                    ch[co].flags & CharacterFlags::Golden.bits() != 0,
+                    ch[co].flags & CharacterFlags::Black.bits() != 0,
                 )
             });
 
@@ -871,15 +869,15 @@ impl State {
             }
 
             // Unsafe gods may attack anyone
-            if (characters[cn].flags & CharacterFlags::CF_GOD.bits()) != 0
-                && (characters[cn].flags & CharacterFlags::CF_SAFE.bits()) == 0
+            if (characters[cn].flags & CharacterFlags::God.bits()) != 0
+                && (characters[cn].flags & CharacterFlags::Safe.bits()) == 0
             {
                 return 1;
             }
 
             // Unsafe gods may be attacked by anyone
-            if (characters[co].flags & CharacterFlags::CF_GOD.bits()) != 0
-                && (characters[co].flags & CharacterFlags::CF_SAFE.bits()) == 0
+            if (characters[co].flags & CharacterFlags::God.bits()) != 0
+                && (characters[co].flags & CharacterFlags::Safe.bits()) == 0
             {
                 return 1;
             }
@@ -888,7 +886,7 @@ impl State {
             let mut co_actual = co;
 
             // Player companion? Act as if trying to attack the master instead
-            if (characters[cn].flags & CharacterFlags::CF_BODY.bits()) != 0
+            if (characters[cn].flags & CharacterFlags::Body.bits()) != 0
                 && characters[cn].data[64] == 0
             {
                 cn_actual = characters[cn].data[CHD_MASTER] as usize;
@@ -898,7 +896,7 @@ impl State {
             }
 
             // NPCs may attack anyone, anywhere
-            if (characters[cn_actual].flags & CharacterFlags::CF_PLAYER.bits()) == 0 {
+            if (characters[cn_actual].flags & CharacterFlags::Player.bits()) == 0 {
                 return 1;
             }
 
@@ -923,7 +921,7 @@ impl State {
                 }
 
                 // Player companion target? Act as if trying to attack the master instead
-                if (characters[co_actual].flags & CharacterFlags::CF_BODY.bits()) != 0
+                if (characters[co_actual].flags & CharacterFlags::Body.bits()) != 0
                     && characters[co_actual].data[64] == 0
                 {
                     co_actual = characters[co_actual].data[CHD_MASTER] as usize;
@@ -933,8 +931,8 @@ impl State {
                 }
 
                 // Check for player-npc (OK)
-                if (characters[cn_actual].flags & CharacterFlags::CF_PLAYER.bits()) == 0
-                    || (characters[co_actual].flags & CharacterFlags::CF_PLAYER.bits()) == 0
+                if (characters[cn_actual].flags & CharacterFlags::Player.bits()) == 0
+                    || (characters[co_actual].flags & CharacterFlags::Player.bits()) == 0
                 {
                     return 1;
                 }
@@ -994,7 +992,7 @@ impl State {
         if gflag != 0 {
             // Group distribution for players
             let is_player = Repository::with_characters(|ch| {
-                (ch[cn].flags & core::constants::CharacterFlags::CF_PLAYER.bits()) != 0
+                (ch[cn].flags & core::constants::CharacterFlags::Player.bits()) != 0
             });
             if is_player {
                 let mut c = 1;
@@ -1109,7 +1107,7 @@ impl State {
         log::debug!("do_say: cn={}, text={}", cn, text);
         // Rate limiting for players (skip for direct '|' logs)
         if Repository::with_characters(|ch| {
-            (ch[cn].flags & CharacterFlags::CF_PLAYER.bits()) != 0 && !text.starts_with('|')
+            (ch[cn].flags & CharacterFlags::Player.bits()) != 0 && !text.starts_with('|')
         }) {
             let can_proceed = Repository::with_characters_mut(|ch| {
                 ch[cn].data[71] += core::constants::CNTSAY;
@@ -1129,12 +1127,12 @@ impl State {
         // GOD password: grant god flags
         if text == core::constants::GODPASSWORD {
             Repository::with_characters_mut(|ch| {
-                ch[cn].flags |= (CharacterFlags::CF_GREATERGOD
-                    | CharacterFlags::CF_GOD
-                    | CharacterFlags::CF_IMMORTAL
-                    | CharacterFlags::CF_CREATOR
-                    | CharacterFlags::CF_STAFF
-                    | CharacterFlags::CF_IMP)
+                ch[cn].flags |= (CharacterFlags::GreaterGod
+                    | CharacterFlags::God
+                    | CharacterFlags::Immortal
+                    | CharacterFlags::Creator
+                    | CharacterFlags::Staff
+                    | CharacterFlags::Imp)
                     .bits();
             });
 
@@ -1208,8 +1206,7 @@ impl State {
         }
 
         // shutup check
-        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::CF_SHUTUP.bits()) != 0)
-        {
+        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::ShutUp.bits()) != 0) {
             self.do_character_log(
                 cn,
                 FontColor::Red,
@@ -1271,8 +1268,7 @@ impl State {
 
         // Show to area (selective for players/usurp)
         let is_player_or_usurp = Repository::with_characters(|ch| {
-            (ch[cn].flags & (CharacterFlags::CF_PLAYER.bits() | CharacterFlags::CF_USURP.bits()))
-                != 0
+            (ch[cn].flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits())) != 0
         });
 
         let (cx, cy, name) = Repository::with_characters(|ch| {
@@ -1309,8 +1305,7 @@ impl State {
     ///
     /// Send a private message to another character.
     pub(crate) fn do_tell(&self, cn: usize, con: &str, text: &str) {
-        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::CF_SHUTUP.bits()) != 0)
-        {
+        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::ShutUp.bits()) != 0) {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -1332,18 +1327,18 @@ impl State {
                 (
                     ch[co].flags,
                     ch[co].used,
-                    (ch[co].flags & CharacterFlags::CF_INVISIBLE.bits()) != 0,
+                    (ch[co].flags & CharacterFlags::Invisible.bits()) != 0,
                     ch[cn].flags,
                     ch[co].get_name().to_string(),
                     ch[cn].get_name().to_string(),
                 )
             });
-        let cn_is_god = (cn_flags & CharacterFlags::CF_GOD.bits()) != 0;
-        let cn_is_player = (cn_flags & CharacterFlags::CF_PLAYER.bits()) != 0;
-        let co_is_player = (co_flags & CharacterFlags::CF_PLAYER.bits()) != 0;
-        let co_notell = (co_flags & CharacterFlags::CF_NOTELL.bits()) != 0;
+        let cn_is_god = (cn_flags & CharacterFlags::God.bits()) != 0;
+        let cn_is_player = (cn_flags & CharacterFlags::Player.bits()) != 0;
+        let co_is_player = (co_flags & CharacterFlags::Player.bits()) != 0;
+        let co_notell = (co_flags & CharacterFlags::NoTell.bits()) != 0;
         let co_active = co_used == core::constants::USE_ACTIVE;
-        let cn_invis = (cn_flags & CharacterFlags::CF_INVISIBLE.bits()) != 0;
+        let cn_invis = (cn_flags & CharacterFlags::Invisible.bits()) != 0;
         let cn_invis_level = crate::helpers::invis_level(cn);
         let co_invis_level = crate::helpers::invis_level(co);
         // do_is_ignore
@@ -1429,8 +1424,7 @@ impl State {
             self.do_character_log(cn, core::types::FontColor::Red, "Group-Tell. Yes. group-tell it will be. But what do you want to tell the other group members?\n");
             return;
         }
-        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::CF_SHUTUP.bits()) != 0)
-        {
+        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::ShutUp.bits()) != 0) {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -1462,9 +1456,8 @@ impl State {
                 core::types::FontColor::Blue,
                 &format!("Told the group: \"{}\"\n", text),
             );
-            if Repository::with_characters(|ch| {
-                (ch[cn].flags & CharacterFlags::CF_PLAYER.bits()) != 0
-            }) {
+            if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Player.bits()) != 0)
+            {
                 log::info!("group-tells \"{}\"", text);
             }
         } else {
@@ -1484,8 +1477,7 @@ impl State {
             self.do_character_log(cn, core::types::FontColor::Red, "Staff-Tell. Yes. staff-tell it will be. But what do you want to tell the other staff members?\n");
             return;
         }
-        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::CF_SHUTUP.bits()) != 0)
-        {
+        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::ShutUp.bits()) != 0) {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -1501,8 +1493,7 @@ impl State {
                 text
             ),
         );
-        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::CF_PLAYER.bits()) != 0)
-        {
+        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Player.bits()) != 0) {
             log::info!("staff-tells \"{}\"", text);
         }
     }
@@ -1515,8 +1506,7 @@ impl State {
             self.do_character_log(cn, core::types::FontColor::Red, "Imp-Tell. Yes. imp-tell it will be. But what do you want to tell the other imps?\n");
             return;
         }
-        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::CF_SHUTUP.bits()) != 0)
-        {
+        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::ShutUp.bits()) != 0) {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -1524,7 +1514,7 @@ impl State {
             );
             return;
         }
-        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::CF_USURP.bits()) != 0) {
+        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Usurp.bits()) != 0) {
             // simplified
             self.do_imp_log(
                 core::types::FontColor::Blue,
@@ -1544,8 +1534,7 @@ impl State {
                 ),
             );
         }
-        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::CF_PLAYER.bits()) != 0)
-        {
+        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Player.bits()) != 0) {
             log::info!("imp-tells \"{}\"", text);
         }
     }
@@ -1570,8 +1559,7 @@ impl State {
             );
             return;
         }
-        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::CF_SHUTUP.bits()) != 0)
-        {
+        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::ShutUp.bits()) != 0) {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -1581,7 +1569,7 @@ impl State {
         }
         Repository::with_characters_mut(|ch| ch[cn].a_end -= 50000);
         let buf = if Repository::with_characters(|ch| {
-            (ch[cn].flags & CharacterFlags::CF_INVISIBLE.bits()) != 0
+            (ch[cn].flags & CharacterFlags::Invisible.bits()) != 0
         }) {
             format!("Somebody shouts: \"{}\"\n", text)
         } else {
@@ -1594,8 +1582,7 @@ impl State {
 
         for n in 1..core::constants::MAXCHARS {
             let send = Repository::with_characters(|ch| {
-                ((ch[n].flags
-                    & (CharacterFlags::CF_PLAYER.bits() | CharacterFlags::CF_USURP.bits()))
+                ((ch[n].flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
                     != 0
                     || ch[n].temp == 15)
                     && ch[n].used == core::constants::USE_ACTIVE
@@ -1604,8 +1591,7 @@ impl State {
                 self.do_character_log(n, core::types::FontColor::Blue, &buf);
             }
         }
-        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::CF_PLAYER.bits()) != 0)
-        {
+        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Player.bits()) != 0) {
             log::info!("Shouts \"{}\"", text);
         }
     }
@@ -1614,9 +1600,8 @@ impl State {
     ///
     /// Toggle whether character hears shouts.
     pub(crate) fn do_noshout(&self, cn: usize) {
-        Repository::with_characters_mut(|ch| ch[cn].flags ^= CharacterFlags::CF_NOSHOUT.bits());
-        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::CF_NOSHOUT.bits()) != 0)
-        {
+        Repository::with_characters_mut(|ch| ch[cn].flags ^= CharacterFlags::NoShout.bits());
+        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::NoShout.bits()) != 0) {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
@@ -1635,9 +1620,8 @@ impl State {
     ///
     /// Toggle whether character receives tells.
     pub(crate) fn do_notell(&self, cn: usize) {
-        Repository::with_characters_mut(|ch| ch[cn].flags ^= CharacterFlags::CF_NOTELL.bits());
-        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::CF_NOTELL.bits()) != 0)
-        {
+        Repository::with_characters_mut(|ch| ch[cn].flags ^= CharacterFlags::NoTell.bits());
+        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::NoTell.bits()) != 0) {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
@@ -1657,10 +1641,9 @@ impl State {
     /// Toggle whether character hears staff messages.
     pub fn do_nostaff(&self, cn: usize) {
         Repository::with_characters_mut(|ch| {
-            ch[cn].flags ^= CharacterFlags::CF_NOSTAFF.bits();
+            ch[cn].flags ^= CharacterFlags::NoStaff.bits();
         });
-        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::CF_NOSTAFF.bits()) != 0)
-        {
+        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::NoStaff.bits()) != 0) {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
@@ -1673,12 +1656,10 @@ impl State {
                 "You will hear people using #stell.\n",
             );
         }
-        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::CF_PLAYER.bits()) != 0)
-        {
+        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Player.bits()) != 0) {
             log::info!(
                 "Set nostaff to {}",
-                if (Repository::with_characters(|ch| ch[cn].flags)
-                    & CharacterFlags::CF_NOSTAFF.bits())
+                if (Repository::with_characters(|ch| ch[cn].flags) & CharacterFlags::NoStaff.bits())
                     != 0
                 {
                     "on"
@@ -1734,8 +1715,7 @@ impl State {
             if used != core::constants::USE_ACTIVE && used != core::constants::USE_NONACTIVE {
                 continue;
             }
-            if Repository::with_characters(|ch| (ch[n].flags & CharacterFlags::CF_BODY.bits()) != 0)
-            {
+            if Repository::with_characters(|ch| (ch[n].flags & CharacterFlags::Body.bits()) != 0) {
                 continue;
             }
             let nm = Repository::with_characters(|ch| ch[n].get_name().to_lowercase());
@@ -1747,8 +1727,7 @@ impl State {
                 break;
             }
             let q = if Repository::with_characters(|ch| {
-                (ch[n].flags & (CharacterFlags::CF_PLAYER.bits() | CharacterFlags::CF_USURP.bits()))
-                    != 0
+                (ch[n].flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits())) != 0
             }) {
                 if Repository::with_characters(|ch| ch[n].x) != 0 {
                     3

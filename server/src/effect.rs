@@ -1,8 +1,6 @@
-use core::string_operations::c_string_to_str;
+use core::{constants::CharacterFlags, string_operations::c_string_to_str};
 
-use crate::{
-    enums::CharacterFlags, god::God, player, populate, repository::Repository, state::State,
-};
+use crate::{god::God, player, populate, repository::Repository, state::State};
 
 pub struct EffectManager {}
 

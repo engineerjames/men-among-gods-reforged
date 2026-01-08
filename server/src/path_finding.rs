@@ -586,8 +586,7 @@ impl PathFinder {
 
             // Determine movement blocking flags
             let mapblock = if (ch[cn].kindred as u32 & KIN_MONSTER) != 0
-                && (ch[cn].flags
-                    & (CharacterFlags::CF_USURP.bits() | CharacterFlags::CF_THRALL.bits()))
+                && (ch[cn].flags & (CharacterFlags::Usurp.bits() | CharacterFlags::Thrall.bits()))
                     == 0
             {
                 MF_NOMONST as u64 | MF_MOVEBLOCK as u64
@@ -596,7 +595,7 @@ impl PathFinder {
             };
 
             let mapblock = if (ch[cn].flags
-                & (CharacterFlags::CF_PLAYER.bits() | CharacterFlags::CF_USURP.bits()))
+                & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
                 == 0
             {
                 mapblock | MF_DEATHTRAP as u64
@@ -615,8 +614,7 @@ impl PathFinder {
             // Calculate max steps
             let distance = max((ch[cn].x - x1).abs(), (ch[cn].y - y1).abs()) as usize;
             let mut max_step = if ch[cn].attack_cn != 0
-                || ((ch[cn].flags
-                    & (CharacterFlags::CF_PLAYER.bits() | CharacterFlags::CF_USURP.bits()))
+                || ((ch[cn].flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
                     == 0
                     && ch[cn].data[78] != 0)
             {

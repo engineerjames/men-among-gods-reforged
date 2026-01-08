@@ -46,9 +46,9 @@ impl State {
     pub(crate) fn really_update_char(&mut self, cn: usize) {
         // Clear regeneration prevention flags and sprite override
         Repository::with_characters_mut(|characters| {
-            characters[cn].flags &= !(CharacterFlags::CF_NOHPREG.bits()
-                | CharacterFlags::CF_NOENDREG.bits()
-                | CharacterFlags::CF_NOMANAREG.bits());
+            characters[cn].flags &= !(CharacterFlags::NoHpReg.bits()
+                | CharacterFlags::NoEndReg.bits()
+                | CharacterFlags::NoManaReg.bits());
             characters[cn].sprite_override = 0;
         });
 
@@ -69,24 +69,24 @@ impl State {
 
         if has_nomagic_flag && !wears_466 && !wears_481 {
             let already_has_nomagic = Repository::with_characters(|ch| {
-                ch[cn].flags & CharacterFlags::CF_NOMAGIC.bits() != 0
+                ch[cn].flags & CharacterFlags::NoMagic.bits() != 0
             });
 
             if !already_has_nomagic {
                 Repository::with_characters_mut(|characters| {
-                    characters[cn].flags |= CharacterFlags::CF_NOMAGIC.bits();
+                    characters[cn].flags |= CharacterFlags::NoMagic.bits();
                 });
                 self.remove_spells(cn);
                 self.do_character_log(cn, FontColor::Green, "You feel your magic fail.\n");
             }
         } else {
             let has_nomagic = Repository::with_characters(|ch| {
-                ch[cn].flags & CharacterFlags::CF_NOMAGIC.bits() != 0
+                ch[cn].flags & CharacterFlags::NoMagic.bits() != 0
             });
 
             if has_nomagic {
                 Repository::with_characters_mut(|characters| {
-                    characters[cn].flags &= !CharacterFlags::CF_NOMAGIC.bits();
+                    characters[cn].flags &= !CharacterFlags::NoMagic.bits();
                     characters[cn].set_do_update_flags();
                 });
                 self.do_character_log(cn, FontColor::Green, "You feel your magic return.\n");
@@ -127,7 +127,7 @@ impl State {
         });
 
         let char_has_nomagic =
-            Repository::with_characters(|ch| ch[cn].flags & CharacterFlags::CF_NOMAGIC.bits() != 0);
+            Repository::with_characters(|ch| ch[cn].flags & CharacterFlags::NoMagic.bits() != 0);
 
         // Calculate bonuses from worn items
         for n in 0..20 {
@@ -252,17 +252,17 @@ impl State {
 
                     if spell.hp[0] < 0 {
                         Repository::with_characters_mut(|characters| {
-                            characters[cn].flags |= CharacterFlags::CF_NOHPREG.bits();
+                            characters[cn].flags |= CharacterFlags::NoHpReg.bits();
                         });
                     }
                     if spell.end[0] < 0 {
                         Repository::with_characters_mut(|characters| {
-                            characters[cn].flags |= CharacterFlags::CF_NOENDREG.bits();
+                            characters[cn].flags |= CharacterFlags::NoEndReg.bits();
                         });
                     }
                     if spell.mana[0] < 0 {
                         Repository::with_characters_mut(|characters| {
-                            characters[cn].flags |= CharacterFlags::CF_NOMANAREG.bits();
+                            characters[cn].flags |= CharacterFlags::NoManaReg.bits();
                         });
                     }
 
@@ -320,26 +320,26 @@ impl State {
 
         // Handle infrared vision
         let is_player =
-            Repository::with_characters(|ch| ch[cn].flags & CharacterFlags::CF_PLAYER.bits() != 0);
+            Repository::with_characters(|ch| ch[cn].flags & CharacterFlags::Player.bits() != 0);
 
         if is_player {
             let has_infrared = Repository::with_characters(|ch| {
-                ch[cn].flags & CharacterFlags::CF_INFRARED.bits() != 0
+                ch[cn].flags & CharacterFlags::Infrared.bits() != 0
             });
 
             if infra == 15 && !has_infrared {
                 Repository::with_characters_mut(|characters| {
-                    characters[cn].flags |= CharacterFlags::CF_INFRARED.bits();
+                    characters[cn].flags |= CharacterFlags::Infrared.bits();
                 });
                 self.do_character_log(cn, FontColor::Green, "You can see in the dark!\n");
             } else if infra != 15 && has_infrared {
                 let is_god = Repository::with_characters(|ch| {
-                    ch[cn].flags & CharacterFlags::CF_GOD.bits() != 0
+                    ch[cn].flags & CharacterFlags::God.bits() != 0
                 });
 
                 if !is_god {
                     Repository::with_characters_mut(|characters| {
-                        characters[cn].flags &= !CharacterFlags::CF_INFRARED.bits();
+                        characters[cn].flags &= !CharacterFlags::Infrared.bits();
                     });
                     self.do_character_log(
                         cn,
@@ -456,7 +456,7 @@ impl State {
     pub(crate) fn do_regenerate(&self, cn: usize) {
         // Check if character is stoned - no regeneration if stoned
         let is_stoned =
-            Repository::with_characters(|ch| ch[cn].flags & CharacterFlags::CF_STONED.bits() != 0);
+            Repository::with_characters(|ch| ch[cn].flags & CharacterFlags::Stoned.bits() != 0);
 
         if is_stoned {
             return;
@@ -466,9 +466,8 @@ impl State {
         let mut moonmult = 20;
 
         let (is_player, globs_flags, newmoon, fullmoon) = Repository::with_globals(|globs| {
-            let char_is_player = Repository::with_characters(|ch| {
-                ch[cn].flags & CharacterFlags::CF_PLAYER.bits() != 0
-            });
+            let char_is_player =
+                Repository::with_characters(|ch| ch[cn].flags & CharacterFlags::Player.bits() != 0);
             (
                 char_is_player,
                 globs.flags,
@@ -486,9 +485,9 @@ impl State {
 
         // Check for regeneration prevention flags
         let (nohp, noend, nomana) = Repository::with_characters(|ch| {
-            let nohp = ch[cn].flags & CharacterFlags::CF_NOHPREG.bits() != 0;
-            let noend = ch[cn].flags & CharacterFlags::CF_NOENDREG.bits() != 0;
-            let nomana = ch[cn].flags & CharacterFlags::CF_NOMANAREG.bits() != 0;
+            let nohp = ch[cn].flags & CharacterFlags::NoHpReg.bits() != 0;
+            let noend = ch[cn].flags & CharacterFlags::NoEndReg.bits() != 0;
+            let nomana = ch[cn].flags & CharacterFlags::NoManaReg.bits() != 0;
             (nohp, noend, nomana)
         });
 
@@ -623,7 +622,7 @@ impl State {
 
         // Undead characters get bonus HP regeneration
         let is_undead =
-            Repository::with_characters(|ch| ch[cn].flags & CharacterFlags::CF_UNDEAD.bits() != 0);
+            Repository::with_characters(|ch| ch[cn].flags & CharacterFlags::Undead.bits() != 0);
 
         if is_undead {
             hp_regen = true;
@@ -831,8 +830,8 @@ impl State {
                         Repository::with_characters(|ch| {
                             (
                                 ch[cn].flags
-                                    & (CharacterFlags::CF_PLAYER.bits()
-                                        | CharacterFlags::CF_USURP.bits())
+                                    & (CharacterFlags::Player.bits()
+                                        | CharacterFlags::Usurp.bits())
                                     != 0,
                                 ch[cn].temp,
                                 ch[cn].data[63],
@@ -850,7 +849,7 @@ impl State {
                         if co > 0 && co < MAXCHARS {
                             let is_sane_player = Repository::with_characters(|ch| {
                                 ch[co].used == core::constants::USE_ACTIVE
-                                    && ch[co].flags & CharacterFlags::CF_PLAYER.bits() != 0
+                                    && ch[co].flags & CharacterFlags::Player.bits() != 0
                             });
 
                             if is_sane_player {
@@ -931,7 +930,7 @@ impl State {
                                         ch[cn].y,
                                         dest.0,
                                         dest.1,
-                                        ch[cn].flags & CharacterFlags::CF_INVISIBLE.bits() != 0,
+                                        ch[cn].flags & CharacterFlags::Invisible.bits() != 0,
                                     )
                                 });
 
@@ -990,8 +989,8 @@ impl State {
         if uwater_active {
             let (is_player, is_immortal) = Repository::with_characters(|ch| {
                 (
-                    ch[cn].flags & CharacterFlags::CF_PLAYER.bits() != 0,
-                    ch[cn].flags & CharacterFlags::CF_IMMORTAL.bits() != 0,
+                    ch[cn].flags & CharacterFlags::Player.bits() != 0,
+                    ch[cn].flags & CharacterFlags::Immortal.bits() != 0,
                 )
             });
 
@@ -1011,7 +1010,7 @@ impl State {
         let (used, is_player) = Repository::with_characters(|ch| {
             (
                 ch[cn].used,
-                ch[cn].flags & CharacterFlags::CF_PLAYER.bits() != 0,
+                ch[cn].flags & CharacterFlags::Player.bits() != 0,
             )
         });
 
@@ -1328,7 +1327,7 @@ impl State {
     pub(crate) fn do_check_new_level(&self, cn: usize) {
         Repository::with_characters_mut(|characters| {
             // Only for players
-            if (characters[cn].flags & CharacterFlags::CF_PLAYER.bits()) == 0 {
+            if (characters[cn].flags & CharacterFlags::Player.bits()) == 0 {
                 return;
             }
 
@@ -1400,7 +1399,7 @@ impl State {
                     if characters[n].used != core::constants::USE_ACTIVE {
                         continue;
                     }
-                    if (characters[n].flags & CharacterFlags::CF_BODY.bits()) != 0 {
+                    if (characters[n].flags & CharacterFlags::Body.bits()) != 0 {
                         continue;
                     }
                     if characters[n].temp == temp as u16 {
@@ -1455,15 +1454,14 @@ impl State {
     pub(crate) fn do_hurt(&mut self, cn: usize, co: usize, dam: i32, type_hurt: i32) -> i32 {
         // Quick sanity/body check
         let is_body =
-            Repository::with_characters(|ch| (ch[co].flags & CharacterFlags::CF_BODY.bits()) != 0);
+            Repository::with_characters(|ch| (ch[co].flags & CharacterFlags::Body.bits()) != 0);
         if is_body {
             return 0;
         }
 
         // If a real player got hit, damage armour pieces
-        let co_is_player = Repository::with_characters(|ch| {
-            (ch[co].flags & CharacterFlags::CF_PLAYER.bits()) != 0
-        });
+        let co_is_player =
+            Repository::with_characters(|ch| (ch[co].flags & CharacterFlags::Player.bits()) != 0);
         if co_is_player {
             driver::item_damage_armor(co, dam);
         }
@@ -1472,16 +1470,16 @@ impl State {
         let mut noexp = 0;
         Repository::with_characters(|ch| {
             if cn != 0
-                && (ch[cn].flags & CharacterFlags::CF_PLAYER.bits()) == 0
+                && (ch[cn].flags & CharacterFlags::Player.bits()) == 0
                 && ch[cn].data[63] == co as i32
             {
                 noexp = 1;
             }
-            if (ch[co].flags & CharacterFlags::CF_PLAYER.bits()) != 0 {
+            if (ch[co].flags & CharacterFlags::Player.bits()) != 0 {
                 noexp = 1;
             }
             if ch[co].temp == core::constants::CT_COMPANION as u16
-                && (ch[co].flags & CharacterFlags::CF_THRALL.bits()) == 0
+                && (ch[co].flags & CharacterFlags::Thrall.bits()) == 0
             {
                 noexp = 1;
             }
@@ -1568,9 +1566,8 @@ impl State {
         }
 
         // Immortal characters take no damage
-        let is_immortal = Repository::with_characters(|ch| {
-            (ch[co].flags & CharacterFlags::CF_IMMORTAL.bits()) != 0
-        });
+        let is_immortal =
+            Repository::with_characters(|ch| (ch[co].flags & CharacterFlags::Immortal.bits()) != 0);
         if is_immortal {
             dam = 0;
         }
@@ -1766,7 +1763,7 @@ impl State {
             );
 
             if Repository::with_characters(|ch| {
-                (ch[cn].flags & CharacterFlags::CF_INVISIBLE.bits()) != 0
+                (ch[cn].flags & CharacterFlags::Invisible.bits()) != 0
             }) {
                 self.do_character_log(
                     co,

@@ -212,7 +212,7 @@ pub fn npc_saytext_n(npc: usize, n: usize, name: Option<&str>) {
     Repository::with_characters(|characters| {
         let ch_npc = &characters[npc];
 
-        if (ch_npc.flags & CharacterFlags::CF_SHUTUP.bits()) != 0 {
+        if (ch_npc.flags & CharacterFlags::ShutUp.bits()) != 0 {
             return;
         }
 
@@ -250,7 +250,7 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
         // Special handling for high alignment NPCs being attacked by players
         if co > 0
             && co < MAXCHARS
-            && (characters[co].flags & CharacterFlags::CF_PLAYER.bits()) != 0
+            && (characters[co].flags & CharacterFlags::Player.bits()) != 0
             && characters[cn].alignment == 10000
             && (characters[cn].get_name() != "Peacekeeper"
                 || characters[cn].a_hp < (characters[cn].hp[5] * 500) as i32)
@@ -612,8 +612,7 @@ pub fn npc_give(_cn: usize, _co: usize, _in: usize, _money: i32) -> i32 {
         let money = _money;
 
         // If giver is a player/usurp, set active timer; otherwise ensure group active
-        if (characters[co].flags
-            & (CharacterFlags::CF_PLAYER.bits() | CharacterFlags::CF_USURP.bits()))
+        if (characters[co].flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
             != 0
         {
             characters[cn].data[92] = TICKS * 60;
@@ -1042,7 +1041,7 @@ pub fn npc_is_blessed(cn: usize) -> bool {
 
 pub fn npc_try_spell(cn: usize, co: usize, spell: usize) -> bool {
     Repository::with_characters_mut(|ch| {
-        if ch[cn].flags & CharacterFlags::CF_NOMAGIC.bits() != 0 {
+        if ch[cn].flags & CharacterFlags::NoMagic.bits() != 0 {
             return false;
         }
 
@@ -1050,7 +1049,7 @@ pub fn npc_try_spell(cn: usize, co: usize, spell: usize) -> bool {
             return false;
         }
 
-        if ch[co].flags & CharacterFlags::CF_BODY.bits() != 0 {
+        if ch[co].flags & CharacterFlags::Body.bits() != 0 {
             return false;
         }
 
@@ -1058,7 +1057,7 @@ pub fn npc_try_spell(cn: usize, co: usize, spell: usize) -> bool {
             return false;
         }
 
-        if ch[co].flags & CharacterFlags::CF_STONED.bits() != 0 {
+        if ch[co].flags & CharacterFlags::Stoned.bits() != 0 {
             return false;
         }
 
@@ -1789,7 +1788,7 @@ pub fn npc_driver_low(cn: usize) {
     if alignment < 0
         && (flags & GF_LOOTING) != 0
         && ((cn & 15) == (ticker as usize & 15)
-            || (character_flags & CharacterFlags::CF_ISLOOTING.bits()) != 0)
+            || (character_flags & CharacterFlags::IsLooting.bits()) != 0)
         && temp != CT_COMPANION as u16
     {
         if npc_grave_logic(cn) {
@@ -2209,7 +2208,7 @@ pub fn npc_driver_low(cn: usize) {
             if used != USE_ACTIVE {
                 continue;
             }
-            if (flags & (CharacterFlags::CF_BODY.bits() | CharacterFlags::CF_RESPAWN.bits())) != 0 {
+            if (flags & (CharacterFlags::Body.bits() | CharacterFlags::Respawn.bits())) != 0 {
                 continue;
             }
             if data_42 == 27 {
@@ -2668,12 +2667,12 @@ pub fn npc_grave_logic(cn: usize) -> bool {
                             // Grave is empty, mark as searched
                             npc_add_searched_grave(cn, in_idx);
                             Repository::with_characters_mut(|characters| {
-                                characters[cn].flags &= !CharacterFlags::CF_ISLOOTING.bits();
+                                characters[cn].flags &= !CharacterFlags::IsLooting.bits();
                             });
                         } else {
                             // Still looting
                             Repository::with_characters_mut(|characters| {
-                                characters[cn].flags |= CharacterFlags::CF_ISLOOTING.bits();
+                                characters[cn].flags |= CharacterFlags::IsLooting.bits();
                             });
                         }
                         return true;
@@ -2985,10 +2984,10 @@ pub fn npc_cityguard_see(cn: usize, co: usize, flag: i32) -> i32 {
                     }
                     (
                         (characters[n].flags
-                            & (CharacterFlags::CF_PLAYER.bits() | CharacterFlags::CF_USURP.bits()))
+                            & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
                             != 0,
                         characters[n].used,
-                        (characters[n].flags & CharacterFlags::CF_NOSHOUT.bits()) != 0,
+                        (characters[n].flags & CharacterFlags::NoShout.bits()) != 0,
                     )
                 });
 
@@ -3016,7 +3015,7 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
 
     // Update no-sleep bonus if target is player
     let co_flags = Repository::with_characters(|characters| characters[co].flags);
-    if (co_flags & (CharacterFlags::CF_PLAYER.bits() | CharacterFlags::CF_USURP.bits())) != 0 {
+    if (co_flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits())) != 0 {
         Repository::with_characters_mut(|characters| {
             characters[cn].data[92] = TICKS * 60;
         });
@@ -3120,7 +3119,7 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
                 break;
             }
             if data_n == 65536
-                && ((co_flags & CharacterFlags::CF_PLAYER.bits()) != 0
+                && ((co_flags & CharacterFlags::Player.bits()) != 0
                     || co_temp == CT_COMPANION as u16)
             {
                 found = true;
@@ -3176,7 +3175,7 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
     });
 
     if data_95 == 1
-        && (co_flags & CharacterFlags::CF_PLAYER.bits()) != 0
+        && (co_flags & CharacterFlags::Player.bits()) != 0
         && ticker > data_27 + (TICKS * 120)
     {
         let x1 = co_x as i32;
@@ -3215,7 +3214,7 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
     });
 
     if attack_cn == 0
-        && (co_flags & CharacterFlags::CF_PLAYER.bits()) != 0
+        && (co_flags & CharacterFlags::Player.bits()) != 0
         && data_37 != 0
         && indoor1 == indoor2
         && data_56 < ticker

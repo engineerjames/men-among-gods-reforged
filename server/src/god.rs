@@ -1,19 +1,15 @@
 use core::{
     constants::{
-        DX_DOWN, DX_LEFT, DX_LEFTDOWN, DX_LEFTUP, DX_RIGHT, DX_RIGHTDOWN, DX_RIGHTUP, DX_UP,
+        character_flags_name, CharacterFlags, DX_DOWN, DX_LEFT, DX_LEFTDOWN, DX_LEFTUP, DX_RIGHT,
+        DX_RIGHTDOWN, DX_RIGHTUP, DX_UP,
     },
     string_operations::c_string_to_str,
     types::{Character, Map},
 };
 
 use crate::{
-    area, chlog, driver,
-    effect::EffectManager,
-    enums::{character_flags_name, CharacterFlags, LogoutReason},
-    helpers, player, populate,
-    repository::Repository,
-    server::Server,
-    state::State,
+    area, chlog, driver, effect::EffectManager, enums::LogoutReason, helpers, player, populate,
+    repository::Repository, server::Server, state::State,
 };
 use rand::Rng;
 
@@ -584,7 +580,7 @@ impl God {
             character.citem = 0;
 
             // Reset build mode
-            character.flags &= !core::constants::CharacterFlags::CF_BUILDMODE.bits();
+            character.flags &= !CharacterFlags::BuildMode.bits();
             character.misc_action = 0; // DR_IDLE
 
             State::with(|state| {
@@ -1753,15 +1749,13 @@ impl God {
         let denied = Repository::with_characters(|ch| {
             let target = &ch[co];
             let caller = &ch[cn];
-            let is_sane_npc =
-                (target.flags & core::constants::CharacterFlags::CF_PLAYER.bits()) == 0;
-            let caller_is_priv = (caller.flags & core::constants::CharacterFlags::CF_GOD.bits())
-                != 0
-                || (caller.flags & core::constants::CharacterFlags::CF_IMP.bits()) != 0
-                || (caller.flags & core::constants::CharacterFlags::CF_USURP.bits()) != 0;
+            let is_sane_npc = (target.flags & CharacterFlags::Player.bits()) == 0;
+            let caller_is_priv = (caller.flags & CharacterFlags::God.bits()) != 0
+                || (caller.flags & CharacterFlags::Imp.bits()) != 0
+                || (caller.flags & CharacterFlags::Usurp.bits()) != 0;
             (is_sane_npc && !caller_is_priv)
-                || (((target.flags & core::constants::CharacterFlags::CF_GOD.bits()) != 0)
-                    && (caller.flags & core::constants::CharacterFlags::CF_GOD.bits()) == 0)
+                || (((target.flags & CharacterFlags::God.bits()) != 0)
+                    && (caller.flags & CharacterFlags::God.bits()) == 0)
         });
         if denied {
             State::with(|state| {
@@ -1776,8 +1770,8 @@ impl God {
         // cnum_str: only visible to IMP/USURP
         let cnum_str = Repository::with_characters(|ch| {
             let caller = &ch[cn];
-            if (caller.flags & core::constants::CharacterFlags::CF_IMP.bits()) != 0
-                || (caller.flags & core::constants::CharacterFlags::CF_USURP.bits()) != 0
+            if (caller.flags & CharacterFlags::Imp.bits()) != 0
+                || (caller.flags & CharacterFlags::Usurp.bits()) != 0
             {
                 format!(" ({})", co)
             } else {
@@ -1815,7 +1809,7 @@ impl God {
             let posy = t.y as i32;
             let p = t.points_tot;
             let need = helpers::points_tolevel(t.points_tot as u32) as i32;
-            let player_flag = (t.flags & core::constants::CharacterFlags::CF_PLAYER.bits()) != 0;
+            let player_flag = (t.flags & CharacterFlags::Player.bits()) != 0;
             (
                 posx,
                 posy,
@@ -1847,17 +1841,16 @@ impl God {
         let mut py = pos_y;
         let hide_pos = Repository::with_characters(|ch| {
             let tflags = ch[co].flags;
-            let invis_or_nowho = (tflags & core::constants::CharacterFlags::CF_INVISIBLE.bits())
-                != 0
-                || (tflags & core::constants::CharacterFlags::CF_NOWHO.bits()) != 0;
+            let invis_or_nowho = (tflags & CharacterFlags::Invisible.bits()) != 0
+                || (tflags & CharacterFlags::NoWho.bits()) != 0;
             invis_or_nowho
         });
         if hide_pos {
             if Self::invis(cn, co) != 0
                 && Repository::with_characters(|ch| {
                     let caller = &ch[cn];
-                    !((caller.flags & core::constants::CharacterFlags::CF_IMP.bits()) != 0
-                        || (caller.flags & core::constants::CharacterFlags::CF_USURP.bits()) != 0)
+                    !((caller.flags & CharacterFlags::Imp.bits()) != 0
+                        || (caller.flags & CharacterFlags::Usurp.bits()) != 0)
                 })
             {
                 px = 0;
@@ -1894,8 +1887,8 @@ impl God {
             // NPC
             let temp_str = Repository::with_characters(|ch| {
                 let caller = &ch[cn];
-                if (caller.flags & core::constants::CharacterFlags::CF_IMP.bits()) != 0
-                    || (caller.flags & core::constants::CharacterFlags::CF_USURP.bits()) != 0
+                if (caller.flags & CharacterFlags::Imp.bits()) != 0
+                    || (caller.flags & CharacterFlags::Usurp.bits()) != 0
                 {
                     format!(" Temp={}", temp_val)
                 } else {
@@ -1957,9 +1950,7 @@ impl God {
                 Repository::with_globals(|g| g.ticker)
                     - ch[co].data[core::constants::CHD_ATTACKTIME]
             });
-            if Repository::with_characters(|ch| {
-                (ch[cn].flags & core::constants::CharacterFlags::CF_IMP.bits()) != 0
-            }) {
+            if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Imp.bits()) != 0) {
                 let victim = Repository::with_characters(|ch| {
                     ch[co].data[core::constants::CHD_ATTACKVICT] as usize
                 });
@@ -1992,8 +1983,8 @@ impl God {
         // Additional info for IMP/USURP
         let caller_priv = Repository::with_characters(|ch| {
             let c = &ch[cn];
-            (c.flags & core::constants::CharacterFlags::CF_IMP.bits()) != 0
-                || (c.flags & core::constants::CharacterFlags::CF_USURP.bits()) != 0
+            (c.flags & CharacterFlags::Imp.bits()) != 0
+                || (c.flags & CharacterFlags::Usurp.bits()) != 0
         });
         if caller_priv {
             // Print several data fields similar to C++ output
@@ -2059,8 +2050,7 @@ impl God {
 
             // Self-destruct time for sane NPCs
             if Repository::with_characters(|ch| {
-                (ch[co].flags & core::constants::CharacterFlags::CF_PLAYER.bits()) == 0
-                    && ch[co].data[64] != 0
+                (ch[co].flags & CharacterFlags::Player.bits()) == 0 && ch[co].data[64] != 0
             }) {
                 let t = Repository::with_characters(|ch| {
                     ch[co].data[64] - Repository::with_globals(|g| g.ticker)
@@ -2690,9 +2680,9 @@ impl God {
             let target_char = &characters[target];
 
             // Check if target is invisible
-            if target_char.flags & core::constants::CharacterFlags::CF_INVISIBLE.bits() != 0 {
+            if target_char.flags & CharacterFlags::Invisible.bits() != 0 {
                 // Check if looker can see invisible
-                if looker_char.flags & core::constants::CharacterFlags::CF_INFRARED.bits() == 0 {
+                if looker_char.flags & CharacterFlags::Infrared.bits() == 0 {
                     return 1;
                 }
             }
@@ -2736,7 +2726,7 @@ impl God {
 
             // check for recently-dead/corpse
             let corpse_owner = Repository::with_characters(|characters| {
-                if (characters[co].flags & core::constants::CharacterFlags::CF_BODY.bits()) != 0 {
+                if (characters[co].flags & CharacterFlags::Body.bits()) != 0 {
                     Some(characters[co].data[core::constants::CHD_CORPSEOWNER])
                 } else {
                     None
@@ -2805,7 +2795,7 @@ impl God {
 
                 // ignore bodies
                 let is_body = Repository::with_characters(|characters| {
-                    (characters[co].flags & core::constants::CharacterFlags::CF_BODY.bits()) != 0
+                    (characters[co].flags & CharacterFlags::Body.bits()) != 0
                 });
                 if is_body {
                     continue;
@@ -2952,7 +2942,7 @@ impl God {
         }
 
         Repository::with_characters(|characters| {
-            if characters[co].flags & core::constants::CharacterFlags::CF_BODY.bits() != 0 {
+            if characters[co].flags & CharacterFlags::Body.bits() != 0 {
                 State::with(|state| {
                     state.do_character_log(
                         cn,
@@ -3121,7 +3111,7 @@ impl God {
             }
 
             Repository::with_characters(|characters| {
-                if characters[co].flags & core::constants::CharacterFlags::CF_BODY.bits() != 0 {
+                if characters[co].flags & CharacterFlags::Body.bits() != 0 {
                     let corpse_owner = characters[co].data[core::constants::CHD_COMPANION];
                     State::with(|state| {
                         state.do_character_log(
@@ -3158,7 +3148,7 @@ impl God {
                     continue; // ignore self
                 }
                 let should_continue = Repository::with_characters(|characters| {
-                    characters[co].flags & core::constants::CharacterFlags::CF_BODY.bits() != 0
+                    characters[co].flags & CharacterFlags::Body.bits() != 0
                 });
                 if should_continue {
                     continue; // ignore bodies
@@ -3292,8 +3282,7 @@ impl God {
             thrall.data[80] = 0; // no enemies
             thrall.data[63] = cn as i32; // obey and protect enthraller
 
-            thrall.flags |= core::constants::CharacterFlags::CF_SHUTUP.bits()
-                | core::constants::CharacterFlags::CF_THRALL.bits();
+            thrall.flags |= CharacterFlags::ShutUp.bits() | CharacterFlags::Thrall.bits();
 
             // Remove labyrinth items from worn slots
             for n in 0..20 {
@@ -3631,8 +3620,7 @@ impl God {
                 let character = &characters[co];
                 let is_used = character.used != core::constants::USE_EMPTY;
                 let is_player_or_usurp = (character.flags
-                    & (core::constants::CharacterFlags::CF_PLAYER.bits()
-                        | core::constants::CharacterFlags::CF_USURP.bits()))
+                    & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
                     != 0;
                 let name = character.name;
                 (is_used, is_player_or_usurp, name)
@@ -3783,7 +3771,7 @@ impl God {
 
         // Set CF_KICKED flag
         Repository::with_characters_mut(|characters| {
-            characters[co].flags |= core::constants::CharacterFlags::CF_KICKED.bits();
+            characters[co].flags |= CharacterFlags::Kicked.bits();
         });
     }
 
@@ -3935,7 +3923,7 @@ impl God {
 
                 target.set_do_update_flags();
 
-                if flag == core::constants::CharacterFlags::CF_INVISIBLE.bits() {
+                if flag == CharacterFlags::Invisible.bits() {
                     EffectManager::fx_add_effect(12, 0, ch[co].x as i32, ch[co].y as i32, 0);
                 }
             });
@@ -4379,8 +4367,7 @@ impl God {
                 let character = &characters[co];
                 let is_used = character.used != core::constants::USE_EMPTY;
                 let is_player_or_usurp = (character.flags
-                    & (core::constants::CharacterFlags::CF_PLAYER.bits()
-                        | core::constants::CharacterFlags::CF_USURP.bits()))
+                    & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
                     != 0;
                 let name = character.name;
                 let temp = character.temp;
@@ -4407,7 +4394,7 @@ impl God {
 
         Repository::with_characters_mut(|characters| {
             // Set CF_USURP flag on target
-            characters[co].flags |= core::constants::CharacterFlags::CF_USURP.bits();
+            characters[co].flags |= CharacterFlags::Usurp.bits();
 
             // Set player number on target
             characters[co].player = nr;
@@ -4419,7 +4406,7 @@ impl God {
             });
 
             // Handle nested usurp: if cn is already usurping someone
-            if characters[cn].flags & core::constants::CharacterFlags::CF_USURP.bits() != 0 {
+            if characters[cn].flags & CharacterFlags::Usurp.bits() != 0 {
                 // Transfer the original character reference
                 characters[co].data[97] = characters[cn].data[97];
                 characters[cn].data[97] = 0;
@@ -4427,11 +4414,11 @@ impl God {
                 // Save original character (cn) in co's data[97]
                 characters[co].data[97] = cn as i32;
                 // Set CCP flag on original character
-                characters[cn].flags |= core::constants::CharacterFlags::CF_CCP.bits();
+                characters[cn].flags |= CharacterFlags::ComputerControlledPlayer.bits();
             }
 
             // If cn is a player, save position and transfer
-            if characters[cn].flags & core::constants::CharacterFlags::CF_PLAYER.bits() != 0 {
+            if characters[cn].flags & CharacterFlags::Player.bits() != 0 {
                 // Save tavern position
                 characters[cn].tavern_x = characters[cn].x as u16;
                 characters[cn].tavern_y = characters[cn].y as u16;
@@ -4465,18 +4452,17 @@ impl God {
 
         Repository::with_characters_mut(|characters| {
             // Clear usurp-related flags from cn
-            characters[cn].flags &= !(core::constants::CharacterFlags::CF_USURP.bits()
-                | core::constants::CharacterFlags::CF_STAFF.bits()
-                | core::constants::CharacterFlags::CF_IMMORTAL.bits()
-                | core::constants::CharacterFlags::CF_GOD.bits()
-                | core::constants::CharacterFlags::CF_CREATOR.bits());
-
+            characters[cn].flags &= !(CharacterFlags::Usurp.bits()
+                | CharacterFlags::Staff.bits()
+                | CharacterFlags::Immortal.bits()
+                | CharacterFlags::God.bits()
+                | CharacterFlags::Creator.bits());
             // Get original character from data[97]
             let co = characters[cn].data[97] as usize;
 
             // Clear CCP flag from original character
             if Character::is_sane_character(co) {
-                characters[co].flags &= !core::constants::CharacterFlags::CF_CCP.bits();
+                characters[co].flags &= !CharacterFlags::ComputerControlledPlayer.bits();
 
                 // Get player number
                 let nr = characters[cn].player;
@@ -4545,7 +4531,7 @@ impl God {
             }
             let character = &characters[co];
             let is_valid = character.used == core::constants::USE_ACTIVE
-                && (character.flags & core::constants::CharacterFlags::CF_BODY.bits()) == 0;
+                && (character.flags & CharacterFlags::Body.bits()) == 0;
             (
                 is_valid,
                 character.data[22],
@@ -4607,7 +4593,7 @@ impl God {
             }
             let character = &characters[co];
             let is_valid = character.used == core::constants::USE_ACTIVE
-                && (character.flags & core::constants::CharacterFlags::CF_BODY.bits()) == 0;
+                && (character.flags & CharacterFlags::Body.bits()) == 0;
             (is_valid, character.data[22])
         });
 
@@ -4789,8 +4775,7 @@ impl God {
         // Check if character is used
         let (is_used, is_player, character_name) = Repository::with_characters(|characters| {
             let is_used = characters[co_usize].used == core::constants::USE_ACTIVE;
-            let is_player =
-                characters[co_usize].flags & core::constants::CharacterFlags::CF_PLAYER.bits() != 0;
+            let is_player = characters[co_usize].flags & CharacterFlags::Player.bits() != 0;
             let name = characters[co_usize].name;
             (is_used, is_player, name)
         });
@@ -4808,7 +4793,7 @@ impl God {
 
         // Check if trying to force a player when not a god
         let is_cn_god = Repository::with_characters(|characters| {
-            characters[cn].flags & core::constants::CharacterFlags::CF_GOD.bits() != 0
+            characters[cn].flags & CharacterFlags::God.bits() != 0
         });
 
         if is_player && !is_cn_god {
@@ -4995,8 +4980,8 @@ impl God {
             let target = &mut characters[co];
 
             // Toggle shutup flag
-            if target.flags & core::constants::CharacterFlags::CF_SHUTUP.bits() != 0 {
-                target.flags &= !core::constants::CharacterFlags::CF_SHUTUP.bits();
+            if target.flags & CharacterFlags::ShutUp.bits() != 0 {
+                target.flags &= !CharacterFlags::ShutUp.bits();
                 State::with(|state| {
                     state.do_character_log(
                         cn,
@@ -5005,7 +4990,7 @@ impl God {
                     );
                 });
             } else {
-                target.flags |= core::constants::CharacterFlags::CF_SHUTUP.bits();
+                target.flags |= CharacterFlags::ShutUp.bits();
                 State::with(|state| {
                     state.do_character_log(
                         cn,

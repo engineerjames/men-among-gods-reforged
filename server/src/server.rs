@@ -1,5 +1,5 @@
 use chrono::Timelike;
-use core::constants::{MAXPLAYER, TILEX, TILEY};
+use core::constants::{CharacterFlags, MAXPLAYER, TILEX, TILEY};
 use core::stat_buffer::StatisticsBuffer;
 use core::types::{CMap, Map, ServerPlayer};
 use parking_lot::ReentrantMutex;
@@ -11,7 +11,6 @@ use std::sync::OnceLock;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::effect::EffectManager;
-use crate::enums::CharacterFlags;
 use crate::god::God;
 use crate::lab9::Labyrinth9;
 use crate::network_manager::NetworkManager;
@@ -925,8 +924,8 @@ impl Server {
 
         // If stoned and not a player, verify the stoned target is valid
         let is_stoned_nonplayer = Repository::with_characters(|ch| {
-            (ch[cn].flags & crate::enums::CharacterFlags::Stoned.bits()) != 0
-                && (ch[cn].flags & crate::enums::CharacterFlags::Player.bits()) == 0
+            (ch[cn].flags & CharacterFlags::Stoned.bits()) != 0
+                && (ch[cn].flags & CharacterFlags::Player.bits()) == 0
         });
         if is_stoned_nonplayer {
             let co = Repository::with_characters(|ch| ch[cn].data[63] as usize);
@@ -935,7 +934,7 @@ impl Server {
             });
             if !ok {
                 Repository::with_characters_mut(|ch| {
-                    ch[cn].flags &= !crate::enums::CharacterFlags::Stoned.bits();
+                    ch[cn].flags &= !CharacterFlags::Stoned.bits();
                     log::info!("oops, stoned removed");
                 });
             }
@@ -1021,7 +1020,7 @@ impl Server {
             for cn in 1..core::constants::MAXCHARS {
                 let is_player = Repository::with_characters(|ch| {
                     ch[cn].used != core::constants::USE_EMPTY
-                        && (ch[cn].flags & crate::enums::CharacterFlags::Player.bits()) != 0
+                        && (ch[cn].flags & CharacterFlags::Player.bits()) != 0
                 });
                 if !is_player {
                     continue;
@@ -1033,7 +1032,7 @@ impl Server {
             for cn in 1..core::constants::MAXCHARS {
                 let is_player = Repository::with_characters(|ch| {
                     ch[cn].used != core::constants::USE_EMPTY
-                        && (ch[cn].flags & crate::enums::CharacterFlags::Player.bits()) != 0
+                        && (ch[cn].flags & CharacterFlags::Player.bits()) != 0
                 });
                 if !is_player {
                     continue;
@@ -1066,9 +1065,9 @@ impl Server {
                             ch[cn].luck += 1;
                         }
                         // clear temporary punishment flags
-                        let mask = crate::enums::CharacterFlags::ShutUp.bits()
-                            | crate::enums::CharacterFlags::NoDesc.bits()
-                            | crate::enums::CharacterFlags::Kicked.bits();
+                        let mask = CharacterFlags::ShutUp.bits()
+                            | CharacterFlags::NoDesc.bits()
+                            | CharacterFlags::Kicked.bits();
                         ch[cn].flags &= !mask;
                     });
                 }

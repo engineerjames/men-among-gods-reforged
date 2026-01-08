@@ -69,8 +69,8 @@ impl State {
         // Check if target is a merchant or corpse (body)
         let (is_merchant, is_body) = Repository::with_characters(|ch| {
             (
-                ch[co].flags & CharacterFlags::CF_MERCHANT.bits() != 0,
-                ch[co].flags & CharacterFlags::CF_BODY.bits() != 0,
+                ch[co].flags & CharacterFlags::Merchant.bits() != 0,
+                ch[co].flags & CharacterFlags::Body.bits() != 0,
             )
         });
 
@@ -766,7 +766,7 @@ impl State {
             (
                 ch[cn].x,
                 ch[cn].y,
-                ch[cn].flags & CharacterFlags::CF_GOD.bits() != 0,
+                ch[cn].flags & CharacterFlags::God.bits() != 0,
             )
         });
 
