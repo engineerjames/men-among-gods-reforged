@@ -12,6 +12,7 @@ use core::constants::{
     SERVER_MAPY, SK_LOCK, SK_RECALL, SK_RESIST, TICKS, USE_ACTIVE, USE_EMPTY, WN_RHAND,
 };
 use core::string_operations::c_string_to_str;
+use core::types::FontColor;
 use rand::Rng;
 
 // Helper function to take an item from a character
@@ -6978,46 +6979,49 @@ pub fn age_message(cn: usize, item_idx: usize, where_is: &str) {
     let (msg, font) = if driver == 60 {
         // Ice egg or cloak
         match damage_state {
-            1 => ("The {} {} is beginning to melt.\n", 1),
-            2 => ("The {} {} is melting fairly rapidly.\n", 1),
+            1 => ("The {ref} {where} is beginning to melt.\n", FontColor::Red),
+            2 => ("The {ref} {where} is melting fairly rapidly.\n", FontColor::Red),
             3 => (
-                "The {} {} is melting down as you look and dripping water everywhere.\n",
-                1,
+                "The {ref} {where} is melting down as you look and dripping water everywhere.\n",
+                FontColor::Red,
             ),
             4 => (
-                "The {} {} has melted down to a small icy lump and large puddles of water.\n",
-                0,
+                "The {ref} {where} has melted down to a small icy lump and large puddles of water.\n",
+                FontColor::Yellow,
             ),
             5 => (
-                "The {} {} has completely melted away, leaving you all wet.\n",
-                0,
+                "The {ref} {where} has completely melted away, leaving you all wet.\n",
+                FontColor::Yellow,
             ),
-            _ => ("The {} {} is changing.\n", 1),
+            _ => ("The {ref} {where} is changing.\n", FontColor::Red),
         }
     } else {
         // Anything else
         match damage_state {
-            1 => ("The {} {} is showing signs of age.\n", 1),
-            2 => ("The {} {} is getting fairly old.\n", 1),
-            3 => ("The {} {} is getting old.\n", 1),
-            4 => ("The {} {} is getting very old and battered.\n", 0),
-            5 => (
-                "The {} {} was so old and battered that it finally vanished.\n",
-                0,
+            1 => (
+                "The {ref} {where} is showing signs of age.\n",
+                FontColor::Red,
             ),
-            _ => ("The {} {} is aging.\n", 1),
+            2 => ("The {ref} {where} is getting fairly old.\n", FontColor::Red),
+            3 => ("The {ref} {where} is getting old.\n", FontColor::Red),
+            4 => (
+                "The {ref} {where} is getting very old and battered.\n",
+                FontColor::Yellow,
+            ),
+            5 => (
+                "The {ref} {where} was so old and battered that it finally vanished.\n",
+                FontColor::Yellow,
+            ),
+            _ => ("The {ref} {where} is aging.\n", FontColor::Red),
         }
     };
 
-    let formatted_msg = msg.replace("{}", &reference).replace("{}", where_is);
-    let color = if font == 1 {
-        core::types::FontColor::Red
-    } else {
-        core::types::FontColor::Yellow
-    };
+    let formatted_msg = msg
+        .replace("{ref}", &reference)
+        .replace("{where}", where_is);
 
     State::with(|state| {
-        state.do_character_log(cn, color, &formatted_msg);
+        state.do_character_log(cn, font, &formatted_msg);
     });
 }
 
