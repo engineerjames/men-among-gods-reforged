@@ -3,6 +3,7 @@ use crate::effect::EffectManager;
 use crate::helpers;
 use crate::player;
 use crate::populate;
+use crate::skilltab;
 use crate::{god::God, repository::Repository, state::State};
 use core::constants::*;
 use core::string_operations::c_string_to_str;
@@ -674,9 +675,9 @@ pub fn npc_give(_cn: usize, _co: usize, _in: usize, _money: i32) -> i32 {
             let nr = characters[cn].data[50];
             if nr != 0 {
                 let nr_usize = nr as usize;
+                let skill_name = skilltab::get_skill_name(nr_usize);
                 State::with(|state| {
-                    // Skill name isn't available here; use placeholder
-                    state.do_sayx(cn, &format!("Now I'll teach you skill #{}.", nr));
+                    state.do_sayx(cn, &format!("Now I'll teach you {}.", skill_name));
                 });
 
                 if characters[co].skill[nr_usize][0] != 0 {
@@ -684,8 +685,8 @@ pub fn npc_give(_cn: usize, _co: usize, _in: usize, _money: i32) -> i32 {
                         state.do_sayx(
                             cn,
                             &format!(
-                                "But you already know skill #{}, {}!",
-                                nr,
+                                "But you already know {}, {}!",
+                                skill_name,
                                 characters[co].get_name()
                             ),
                         );
@@ -713,7 +714,7 @@ pub fn npc_give(_cn: usize, _co: usize, _in: usize, _money: i32) -> i32 {
                         state.do_character_log(
                             co,
                             core::types::FontColor::Green,
-                            &format!("You learned skill #{}!\n", nr),
+                            &format!("You learned {}!\n", skill_name),
                         );
                         characters[co].set_do_update_flags();
                     });

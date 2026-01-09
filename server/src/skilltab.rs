@@ -340,7 +340,6 @@ pub fn get_skill_attribs(skill: usize) -> [usize; 3] {
 }
 
 /// Safely get the skill name (empty string on invalid index)
-#[allow(dead_code)]
 pub fn get_skill_name(skill: usize) -> &'static str {
     if skill < MAX_SKILLS {
         SKILLTAB[skill].name
