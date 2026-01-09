@@ -605,13 +605,8 @@ pub fn npc_seemiss(cn: usize, cc: usize, co: usize) -> i32 {
     0
 }
 
-pub fn npc_give(_cn: usize, _co: usize, _in: usize, _money: i32) -> i32 {
+pub fn npc_give(cn: usize, co: usize, in_item: usize, money: i32) -> i32 {
     Repository::with_characters_mut(|characters| {
-        let cn = _cn;
-        let co = _co;
-        let in_item = _in;
-        let money = _money;
-
         // If giver is a player/usurp, set active timer; otherwise ensure group active
         if (characters[co].flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
             != 0
