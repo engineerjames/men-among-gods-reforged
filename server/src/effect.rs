@@ -213,7 +213,10 @@ impl EffectManager {
 
                 Repository::with_map_mut(|map| {
                     map[map_index].flags &= !core::constants::MF_GFX_TOMB;
-                    map[map_index].flags &= !core::constants::MF_MOVEBLOCK as u64;
+                    // NOTE: `!X as u64` parses as `(!X) as u64` in Rust (negation before cast),
+                    // which would truncate the mask to 32 bits and accidentally clear unrelated
+                    // high flag bits. We want to widen to u64 first, then negate.
+                    map[map_index].flags &= !(core::constants::MF_MOVEBLOCK as u64);
                 });
 
                 let in_id = God::create_item(170);
@@ -390,7 +393,8 @@ impl EffectManager {
 
                 if effects[n].duration == 9 {
                     Repository::with_map_mut(|map| {
-                        map[map_index].flags &= !core::constants::MF_MOVEBLOCK as u64;
+                        // See note above about cast/negation precedence.
+                        map[map_index].flags &= !(core::constants::MF_MOVEBLOCK as u64);
                     });
 
                     let cn = populate::pop_create_char(effects[n].data[2] as usize, true);
