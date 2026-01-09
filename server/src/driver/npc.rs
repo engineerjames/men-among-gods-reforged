@@ -2372,16 +2372,16 @@ pub fn npc_item_value(in_idx: usize) -> i32 {
             // TODO: Do a deeper dive into what this is doing -- originally
             // the C code has it.attrib here which is clearly wrong since attrib
             // only has 5 entries.
-            score += it.skill[n][0] * 5;
+            score += it.skill[n][0] as i32 * 5;
         }
 
-        score += (it.value / 10) as i8;
-        score += it.weapon[0] * 50;
-        score += it.armor[0] * 50;
-        score -= it.damage_state as i8;
+        score += (it.value / 10) as i32;
+        score += it.weapon[0] as i32 * 50;
+        score += it.armor[0] as i32 * 50;
+        score -= it.damage_state as i32;
 
         score
-    }) as i32
+    })
 }
 
 pub fn npc_want_item(cn: usize, in_idx: usize) -> bool {
