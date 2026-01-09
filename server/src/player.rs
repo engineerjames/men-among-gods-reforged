@@ -12,7 +12,7 @@ use crate::{
     server::Server, state::State,
 };
 
-const SPEEDTAB: [[u8; 20]; 20] = [
+const SPEEDTAB: [[u8; core::constants::TICKS as usize]; core::constants::TICKS as usize] = [
     [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
     [1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
     [1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1],
