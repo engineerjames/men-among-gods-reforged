@@ -1,4 +1,13 @@
-use core::constants::{CharacterFlags, ItemFlags};
+use core::constants::{
+    AT_AGIL, AT_BRAVE, AT_INT, AT_STREN, AT_WILL, DX_DOWN, MAXCHARS, MAXEFFECT, MAXITEM, MAXTCHARS,
+    MAXTITEM, MF_INDOORS, MF_MOVEBLOCK, MF_SIGHTBLOCK, SERVER_MAPX, SERVER_MAPY, SK_BARTER,
+    SK_BLAST, SK_BLESS, SK_CONCEN, SK_CURSE, SK_DAGGER, SK_DISPEL, SK_ENHANCE, SK_GHOST, SK_HAND,
+    SK_HEAL, SK_IDENT, SK_IMMUN, SK_LIGHT, SK_LOCK, SK_MEDIT, SK_MSHIELD, SK_PERCEPT, SK_PROTECT,
+    SK_RECALL, SK_REGEN, SK_REPAIR, SK_RESIST, SK_REST, SK_SENSE, SK_STEALTH, SK_STUN, SK_SURROUND,
+    SK_SWORD, SK_TWOHAND, SK_WARCRY, TICKS, USE_ACTIVE, USE_EMPTY,
+};
+
+use {core::constants::CharacterFlags, core::constants::ItemFlags};
 
 use crate::{
     driver::{self, use_item},
@@ -16,9 +25,9 @@ pub fn init_lights() {
     let mut cnt2 = 0;
 
     // First pass: clear all light and dlight values
-    for y in 0..core::constants::SERVER_MAPY as usize {
-        for x in 0..core::constants::SERVER_MAPX as usize {
-            let m = x + y * core::constants::SERVER_MAPX as usize;
+    for y in 0..SERVER_MAPY as usize {
+        for x in 0..SERVER_MAPX as usize {
+            let m = x + y * SERVER_MAPX as usize;
             Repository::with_map_mut(|map| {
                 map[m].light = 0;
                 map[m].dlight = 0;
@@ -27,13 +36,12 @@ pub fn init_lights() {
     }
 
     // Second pass: compute dlight for indoor tiles, then add lights from items
-    for y in 0..core::constants::SERVER_MAPY as usize {
-        for x in 0..core::constants::SERVER_MAPX as usize {
-            let m = x + y * core::constants::SERVER_MAPX as usize;
+    for y in 0..SERVER_MAPY as usize {
+        for x in 0..SERVER_MAPX as usize {
+            let m = x + y * SERVER_MAPX as usize;
 
             // Compute daylight for indoor tiles first
-            let is_indoors =
-                Repository::with_map(|map| map[m].flags & core::constants::MF_INDOORS as u64 != 0);
+            let is_indoors = Repository::with_map(|map| map[m].flags & MF_INDOORS as u64 != 0);
 
             if is_indoors {
                 State::with_mut(|state| {
@@ -323,53 +331,53 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                 // Attributes
                 0 => {
                     // Bravery (AT_BRAVE)
-                    item.attrib[core::constants::AT_BRAVE as usize][0] += skill_value as i8;
-                    if item.attrib[core::constants::AT_BRAVE as usize][0] > 12 {
-                        item.attrib[core::constants::AT_BRAVE as usize][0] = 12;
+                    item.attrib[AT_BRAVE as usize][0] += skill_value as i8;
+                    if item.attrib[AT_BRAVE as usize][0] > 12 {
+                        item.attrib[AT_BRAVE as usize][0] = 12;
                     }
-                    item.attrib[core::constants::AT_BRAVE as usize][2] =
-                        (10 + (item.attrib[core::constants::AT_BRAVE as usize][0] as i32
-                            * (rand::random::<i32>() % 7))) as i8;
+                    item.attrib[AT_BRAVE as usize][2] = (10
+                        + (item.attrib[AT_BRAVE as usize][0] as i32 * (rand::random::<i32>() % 7)))
+                        as i8;
                 }
                 1 => {
                     // Willpower (AT_WILL)
-                    item.attrib[core::constants::AT_WILL as usize][0] += skill_value as i8;
-                    if item.attrib[core::constants::AT_WILL as usize][0] > 12 {
-                        item.attrib[core::constants::AT_WILL as usize][0] = 12;
+                    item.attrib[AT_WILL as usize][0] += skill_value as i8;
+                    if item.attrib[AT_WILL as usize][0] > 12 {
+                        item.attrib[AT_WILL as usize][0] = 12;
                     }
-                    item.attrib[core::constants::AT_WILL as usize][2] =
-                        (10 + (item.attrib[core::constants::AT_WILL as usize][0] as i32
-                            * (rand::random::<i32>() % 7))) as i8;
+                    item.attrib[AT_WILL as usize][2] = (10
+                        + (item.attrib[AT_WILL as usize][0] as i32 * (rand::random::<i32>() % 7)))
+                        as i8;
                 }
                 2 => {
                     // Intuition (AT_INT)
-                    item.attrib[core::constants::AT_INT as usize][0] += skill_value as i8;
-                    if item.attrib[core::constants::AT_INT as usize][0] > 12 {
-                        item.attrib[core::constants::AT_INT as usize][0] = 12;
+                    item.attrib[AT_INT as usize][0] += skill_value as i8;
+                    if item.attrib[AT_INT as usize][0] > 12 {
+                        item.attrib[AT_INT as usize][0] = 12;
                     }
-                    item.attrib[core::constants::AT_INT as usize][2] =
-                        (10 + (item.attrib[core::constants::AT_INT as usize][0] as i32
-                            * (rand::random::<i32>() % 7))) as i8;
+                    item.attrib[AT_INT as usize][2] = (10
+                        + (item.attrib[AT_INT as usize][0] as i32 * (rand::random::<i32>() % 7)))
+                        as i8;
                 }
                 3 => {
                     // Agility (AT_AGIL)
-                    item.attrib[core::constants::AT_AGIL as usize][0] += skill_value as i8;
-                    if item.attrib[core::constants::AT_AGIL as usize][0] > 12 {
-                        item.attrib[core::constants::AT_AGIL as usize][0] = 12;
+                    item.attrib[AT_AGIL as usize][0] += skill_value as i8;
+                    if item.attrib[AT_AGIL as usize][0] > 12 {
+                        item.attrib[AT_AGIL as usize][0] = 12;
                     }
-                    item.attrib[core::constants::AT_AGIL as usize][2] =
-                        (10 + (item.attrib[core::constants::AT_AGIL as usize][0] as i32
-                            * (rand::random::<i32>() % 7))) as i8;
+                    item.attrib[AT_AGIL as usize][2] = (10
+                        + (item.attrib[AT_AGIL as usize][0] as i32 * (rand::random::<i32>() % 7)))
+                        as i8;
                 }
                 4 => {
                     // Strength (AT_STREN)
-                    item.attrib[core::constants::AT_STREN as usize][0] += skill_value as i8;
-                    if item.attrib[core::constants::AT_STREN as usize][0] > 12 {
-                        item.attrib[core::constants::AT_STREN as usize][0] = 12;
+                    item.attrib[AT_STREN as usize][0] += skill_value as i8;
+                    if item.attrib[AT_STREN as usize][0] > 12 {
+                        item.attrib[AT_STREN as usize][0] = 12;
                     }
-                    item.attrib[core::constants::AT_STREN as usize][2] =
-                        (10 + (item.attrib[core::constants::AT_STREN as usize][0] as i32
-                            * (rand::random::<i32>() % 7))) as i8;
+                    item.attrib[AT_STREN as usize][2] = (10
+                        + (item.attrib[AT_STREN as usize][0] as i32 * (rand::random::<i32>() % 7)))
+                        as i8;
                 }
                 // HP
                 5 => {
@@ -405,264 +413,249 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                 }
                 // Warcry
                 9 => {
-                    item.skill[core::constants::SK_WARCRY][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_WARCRY][0] > 12 {
-                        item.skill[core::constants::SK_WARCRY][0] = 12;
+                    item.skill[SK_WARCRY][0] += skill_value as i8;
+                    if item.skill[SK_WARCRY][0] > 12 {
+                        item.skill[SK_WARCRY][0] = 12;
                     }
                 }
                 // Hand to Hand
                 10 => {
-                    item.skill[core::constants::SK_HAND][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_HAND][0] > 12 {
-                        item.skill[core::constants::SK_HAND][0] = 12;
+                    item.skill[SK_HAND][0] += skill_value as i8;
+                    if item.skill[SK_HAND][0] > 12 {
+                        item.skill[SK_HAND][0] = 12;
                     }
-                    item.skill[core::constants::SK_HAND][2] =
-                        (item.skill[core::constants::SK_HAND][0] as i32
-                            * (rand::random::<i32>() % 7)) as i8;
+                    item.skill[SK_HAND][2] =
+                        (item.skill[SK_HAND][0] as i32 * (rand::random::<i32>() % 7)) as i8;
                 }
                 // Sword
                 11 => {
-                    item.skill[core::constants::SK_SWORD][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_SWORD][0] > 12 {
-                        item.skill[core::constants::SK_SWORD][0] = 12;
+                    item.skill[SK_SWORD][0] += skill_value as i8;
+                    if item.skill[SK_SWORD][0] > 12 {
+                        item.skill[SK_SWORD][0] = 12;
                     }
                 }
                 // Dagger
                 12 => {
-                    item.skill[core::constants::SK_DAGGER][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_DAGGER][0] > 12 {
-                        item.skill[core::constants::SK_DAGGER][0] = 12;
+                    item.skill[SK_DAGGER][0] += skill_value as i8;
+                    if item.skill[SK_DAGGER][0] > 12 {
+                        item.skill[SK_DAGGER][0] = 12;
                     }
                 }
                 // Two-Handed
                 13 => {
-                    item.skill[core::constants::SK_TWOHAND][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_TWOHAND][0] > 12 {
-                        item.skill[core::constants::SK_TWOHAND][0] = 12;
+                    item.skill[SK_TWOHAND][0] += skill_value as i8;
+                    if item.skill[SK_TWOHAND][0] > 12 {
+                        item.skill[SK_TWOHAND][0] = 12;
                     }
                 }
                 // Lockpick
                 14 => {
-                    item.skill[core::constants::SK_LOCK][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_LOCK][0] > 12 {
-                        item.skill[core::constants::SK_LOCK][0] = 12;
+                    item.skill[SK_LOCK][0] += skill_value as i8;
+                    if item.skill[SK_LOCK][0] > 12 {
+                        item.skill[SK_LOCK][0] = 12;
                     }
-                    item.skill[core::constants::SK_LOCK][2] =
-                        (item.skill[core::constants::SK_LOCK][0] as i32
-                            * (rand::random::<i32>() % 7)) as i8;
+                    item.skill[SK_LOCK][2] =
+                        (item.skill[SK_LOCK][0] as i32 * (rand::random::<i32>() % 7)) as i8;
                 }
                 // Stealth
                 15 => {
-                    item.skill[core::constants::SK_STEALTH][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_STEALTH][0] > 12 {
-                        item.skill[core::constants::SK_STEALTH][0] = 12;
+                    item.skill[SK_STEALTH][0] += skill_value as i8;
+                    if item.skill[SK_STEALTH][0] > 12 {
+                        item.skill[SK_STEALTH][0] = 12;
                     }
                 }
                 // Perception
                 16 => {
-                    item.skill[core::constants::SK_PERCEPT][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_PERCEPT][0] > 12 {
-                        item.skill[core::constants::SK_PERCEPT][0] = 12;
+                    item.skill[SK_PERCEPT][0] += skill_value as i8;
+                    if item.skill[SK_PERCEPT][0] > 12 {
+                        item.skill[SK_PERCEPT][0] = 12;
                     }
-                    item.skill[core::constants::SK_PERCEPT][2] =
-                        (item.skill[core::constants::SK_PERCEPT][0] as i32
-                            * (rand::random::<i32>() % 7)) as i8;
+                    item.skill[SK_PERCEPT][2] =
+                        (item.skill[SK_PERCEPT][0] as i32 * (rand::random::<i32>() % 7)) as i8;
                 }
                 // Magic Shield
                 17 => {
-                    item.skill[core::constants::SK_MSHIELD][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_MSHIELD][0] > 12 {
-                        item.skill[core::constants::SK_MSHIELD][0] = 12;
+                    item.skill[SK_MSHIELD][0] += skill_value as i8;
+                    if item.skill[SK_MSHIELD][0] > 12 {
+                        item.skill[SK_MSHIELD][0] = 12;
                     }
                 }
                 // Barter
                 18 => {
-                    item.skill[core::constants::SK_BARTER][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_BARTER][0] > 12 {
-                        item.skill[core::constants::SK_BARTER][0] = 12;
+                    item.skill[SK_BARTER][0] += skill_value as i8;
+                    if item.skill[SK_BARTER][0] > 12 {
+                        item.skill[SK_BARTER][0] = 12;
                     }
-                    item.skill[core::constants::SK_BARTER][2] =
-                        (item.skill[core::constants::SK_BARTER][0] as i32
-                            * (rand::random::<i32>() % 7)) as i8;
+                    item.skill[SK_BARTER][2] =
+                        (item.skill[SK_BARTER][0] as i32 * (rand::random::<i32>() % 7)) as i8;
                 }
                 // Repair
                 19 => {
-                    item.skill[core::constants::SK_REPAIR][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_REPAIR][0] > 12 {
-                        item.skill[core::constants::SK_REPAIR][0] = 12;
+                    item.skill[SK_REPAIR][0] += skill_value as i8;
+                    if item.skill[SK_REPAIR][0] > 12 {
+                        item.skill[SK_REPAIR][0] = 12;
                     }
-                    item.skill[core::constants::SK_REPAIR][2] =
-                        (item.skill[core::constants::SK_REPAIR][0] as i32
-                            * (rand::random::<i32>() % 7)) as i8;
+                    item.skill[SK_REPAIR][2] =
+                        (item.skill[SK_REPAIR][0] as i32 * (rand::random::<i32>() % 7)) as i8;
                 }
                 // Light
                 20 => {
-                    item.skill[core::constants::SK_LIGHT][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_LIGHT][0] > 12 {
-                        item.skill[core::constants::SK_LIGHT][0] = 12;
+                    item.skill[SK_LIGHT][0] += skill_value as i8;
+                    if item.skill[SK_LIGHT][0] > 12 {
+                        item.skill[SK_LIGHT][0] = 12;
                     }
-                    item.skill[core::constants::SK_LIGHT][2] =
-                        (item.skill[core::constants::SK_LIGHT][0] as i32
-                            * (rand::random::<i32>() % 7)) as i8;
+                    item.skill[SK_LIGHT][2] =
+                        (item.skill[SK_LIGHT][0] as i32 * (rand::random::<i32>() % 7)) as i8;
                 }
                 // Recall
                 21 => {
-                    item.skill[core::constants::SK_RECALL][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_RECALL][0] > 12 {
-                        item.skill[core::constants::SK_RECALL][0] = 12;
+                    item.skill[SK_RECALL][0] += skill_value as i8;
+                    if item.skill[SK_RECALL][0] > 12 {
+                        item.skill[SK_RECALL][0] = 12;
                     }
-                    item.skill[core::constants::SK_RECALL][2] =
-                        (item.skill[core::constants::SK_RECALL][0] as i32
-                            * (rand::random::<i32>() % 7)) as i8;
+                    item.skill[SK_RECALL][2] =
+                        (item.skill[SK_RECALL][0] as i32 * (rand::random::<i32>() % 7)) as i8;
                 }
                 // Protect
                 22 => {
-                    item.skill[core::constants::SK_PROTECT][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_PROTECT][0] > 12 {
-                        item.skill[core::constants::SK_PROTECT][0] = 12;
+                    item.skill[SK_PROTECT][0] += skill_value as i8;
+                    if item.skill[SK_PROTECT][0] > 12 {
+                        item.skill[SK_PROTECT][0] = 12;
                     }
-                    item.skill[core::constants::SK_PROTECT][2] =
-                        (item.skill[core::constants::SK_PROTECT][0] as i32
-                            * (rand::random::<i32>() % 7)) as i8;
+                    item.skill[SK_PROTECT][2] =
+                        (item.skill[SK_PROTECT][0] as i32 * (rand::random::<i32>() % 7)) as i8;
                 }
                 // Enhance
                 23 => {
-                    item.skill[core::constants::SK_ENHANCE][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_ENHANCE][0] > 12 {
-                        item.skill[core::constants::SK_ENHANCE][0] = 12;
+                    item.skill[SK_ENHANCE][0] += skill_value as i8;
+                    if item.skill[SK_ENHANCE][0] > 12 {
+                        item.skill[SK_ENHANCE][0] = 12;
                     }
-                    item.skill[core::constants::SK_ENHANCE][2] =
-                        (item.skill[core::constants::SK_ENHANCE][0] as i32
-                            * (rand::random::<i32>() % 7)) as i8;
+                    item.skill[SK_ENHANCE][2] =
+                        (item.skill[SK_ENHANCE][0] as i32 * (rand::random::<i32>() % 7)) as i8;
                 }
                 // Stun
                 24 => {
-                    item.skill[core::constants::SK_STUN][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_STUN][0] > 12 {
-                        item.skill[core::constants::SK_STUN][0] = 12;
+                    item.skill[SK_STUN][0] += skill_value as i8;
+                    if item.skill[SK_STUN][0] > 12 {
+                        item.skill[SK_STUN][0] = 12;
                     }
                 }
                 // Curse
                 25 => {
-                    item.skill[core::constants::SK_CURSE][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_CURSE][0] > 12 {
-                        item.skill[core::constants::SK_CURSE][0] = 12;
+                    item.skill[SK_CURSE][0] += skill_value as i8;
+                    if item.skill[SK_CURSE][0] > 12 {
+                        item.skill[SK_CURSE][0] = 12;
                     }
                 }
                 // Bless
                 26 => {
-                    item.skill[core::constants::SK_BLESS][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_BLESS][0] > 12 {
-                        item.skill[core::constants::SK_BLESS][0] = 12;
+                    item.skill[SK_BLESS][0] += skill_value as i8;
+                    if item.skill[SK_BLESS][0] > 12 {
+                        item.skill[SK_BLESS][0] = 12;
                     }
-                    item.skill[core::constants::SK_BLESS][2] =
-                        (item.skill[core::constants::SK_BLESS][0] as i32
-                            * (rand::random::<i32>() % 7)) as i8;
+                    item.skill[SK_BLESS][2] =
+                        (item.skill[SK_BLESS][0] as i32 * (rand::random::<i32>() % 7)) as i8;
                 }
                 // Identify
                 27 => {
-                    item.skill[core::constants::SK_IDENT][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_IDENT][0] > 12 {
-                        item.skill[core::constants::SK_IDENT][0] = 12;
+                    item.skill[SK_IDENT][0] += skill_value as i8;
+                    if item.skill[SK_IDENT][0] > 12 {
+                        item.skill[SK_IDENT][0] = 12;
                     }
-                    item.skill[core::constants::SK_IDENT][2] =
-                        (item.skill[core::constants::SK_IDENT][0] as i32
-                            * (rand::random::<i32>() % 7)) as i8;
+                    item.skill[SK_IDENT][2] =
+                        (item.skill[SK_IDENT][0] as i32 * (rand::random::<i32>() % 7)) as i8;
                 }
                 // Resist
                 28 => {
-                    item.skill[core::constants::SK_RESIST][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_RESIST][0] > 12 {
-                        item.skill[core::constants::SK_RESIST][0] = 12;
+                    item.skill[SK_RESIST][0] += skill_value as i8;
+                    if item.skill[SK_RESIST][0] > 12 {
+                        item.skill[SK_RESIST][0] = 12;
                     }
-                    item.skill[core::constants::SK_RESIST][2] =
-                        (item.skill[core::constants::SK_RESIST][0] as i32
-                            * (rand::random::<i32>() % 7)) as i8;
+                    item.skill[SK_RESIST][2] =
+                        (item.skill[SK_RESIST][0] as i32 * (rand::random::<i32>() % 7)) as i8;
                 }
                 // Blast
                 29 => {
-                    item.skill[core::constants::SK_BLAST][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_BLAST][0] > 12 {
-                        item.skill[core::constants::SK_BLAST][0] = 12;
+                    item.skill[SK_BLAST][0] += skill_value as i8;
+                    if item.skill[SK_BLAST][0] > 12 {
+                        item.skill[SK_BLAST][0] = 12;
                     }
                 }
                 // Dispel
                 30 => {
-                    item.skill[core::constants::SK_DISPEL][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_DISPEL][0] > 12 {
-                        item.skill[core::constants::SK_DISPEL][0] = 12;
+                    item.skill[SK_DISPEL][0] += skill_value as i8;
+                    if item.skill[SK_DISPEL][0] > 12 {
+                        item.skill[SK_DISPEL][0] = 12;
                     }
                 }
                 // Heal
                 31 => {
-                    item.skill[core::constants::SK_HEAL][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_HEAL][0] > 12 {
-                        item.skill[core::constants::SK_HEAL][0] = 12;
+                    item.skill[SK_HEAL][0] += skill_value as i8;
+                    if item.skill[SK_HEAL][0] > 12 {
+                        item.skill[SK_HEAL][0] = 12;
                     }
-                    item.skill[core::constants::SK_HEAL][2] =
-                        (item.skill[core::constants::SK_HEAL][0] as i32
-                            * (rand::random::<i32>() % 7)) as i8;
+                    item.skill[SK_HEAL][2] =
+                        (item.skill[SK_HEAL][0] as i32 * (rand::random::<i32>() % 7)) as i8;
                 }
                 // Ghost
                 32 => {
-                    item.skill[core::constants::SK_GHOST][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_GHOST][0] > 12 {
-                        item.skill[core::constants::SK_GHOST][0] = 12;
+                    item.skill[SK_GHOST][0] += skill_value as i8;
+                    if item.skill[SK_GHOST][0] > 12 {
+                        item.skill[SK_GHOST][0] = 12;
                     }
                 }
                 // Regeneration
                 33 => {
-                    item.skill[core::constants::SK_REGEN][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_REGEN][0] > 12 {
-                        item.skill[core::constants::SK_REGEN][0] = 12;
+                    item.skill[SK_REGEN][0] += skill_value as i8;
+                    if item.skill[SK_REGEN][0] > 12 {
+                        item.skill[SK_REGEN][0] = 12;
                     }
                 }
                 // Rest
                 34 => {
-                    item.skill[core::constants::SK_REST][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_REST][0] > 12 {
-                        item.skill[core::constants::SK_REST][0] = 12;
+                    item.skill[SK_REST][0] += skill_value as i8;
+                    if item.skill[SK_REST][0] > 12 {
+                        item.skill[SK_REST][0] = 12;
                     }
-                    item.skill[core::constants::SK_REST][2] =
-                        (item.skill[core::constants::SK_REST][0] as i32
-                            * (rand::random::<i32>() % 7)) as i8;
+                    item.skill[SK_REST][2] =
+                        (item.skill[SK_REST][0] as i32 * (rand::random::<i32>() % 7)) as i8;
                 }
                 // Meditation
                 35 => {
-                    item.skill[core::constants::SK_MEDIT][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_MEDIT][0] > 12 {
-                        item.skill[core::constants::SK_MEDIT][0] = 12;
+                    item.skill[SK_MEDIT][0] += skill_value as i8;
+                    if item.skill[SK_MEDIT][0] > 12 {
+                        item.skill[SK_MEDIT][0] = 12;
                     }
                 }
                 // Sense
                 36 => {
-                    item.skill[core::constants::SK_SENSE][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_SENSE][0] > 12 {
-                        item.skill[core::constants::SK_SENSE][0] = 12;
+                    item.skill[SK_SENSE][0] += skill_value as i8;
+                    if item.skill[SK_SENSE][0] > 12 {
+                        item.skill[SK_SENSE][0] = 12;
                     }
-                    item.skill[core::constants::SK_SENSE][2] =
-                        (item.skill[core::constants::SK_SENSE][0] as i32
-                            * (rand::random::<i32>() % 7)) as i8;
+                    item.skill[SK_SENSE][2] =
+                        (item.skill[SK_SENSE][0] as i32 * (rand::random::<i32>() % 7)) as i8;
                 }
                 // Immunity
                 37 => {
-                    item.skill[core::constants::SK_IMMUN][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_IMMUN][0] > 12 {
-                        item.skill[core::constants::SK_IMMUN][0] = 12;
+                    item.skill[SK_IMMUN][0] += skill_value as i8;
+                    if item.skill[SK_IMMUN][0] > 12 {
+                        item.skill[SK_IMMUN][0] = 12;
                     }
                 }
                 // Surround Hit
                 38 => {
-                    item.skill[core::constants::SK_SURROUND][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_SURROUND][0] > 12 {
-                        item.skill[core::constants::SK_SURROUND][0] = 12;
+                    item.skill[SK_SURROUND][0] += skill_value as i8;
+                    if item.skill[SK_SURROUND][0] > 12 {
+                        item.skill[SK_SURROUND][0] = 12;
                     }
                 }
                 // Concentration
                 39 => {
-                    item.skill[core::constants::SK_CONCEN][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_CONCEN][0] > 12 {
-                        item.skill[core::constants::SK_CONCEN][0] = 12;
+                    item.skill[SK_CONCEN][0] += skill_value as i8;
+                    if item.skill[SK_CONCEN][0] > 12 {
+                        item.skill[SK_CONCEN][0] = 12;
                     }
                 }
                 _ => {}
@@ -693,7 +686,7 @@ pub fn pop_create_char(n: usize, drop: bool) -> usize {
 
         // Note: This is DIFFERENT from player initialization!
         // NPCs with meditation get full mana, others get random amount
-        let has_meditation = characters[cn].skill[core::constants::SK_MEDIT][0] != 0;
+        let has_meditation = characters[cn].skill[SK_MEDIT][0] != 0;
         if has_meditation {
             characters[cn].a_mana = 1000000;
         } else {
@@ -706,15 +699,14 @@ pub fn pop_create_char(n: usize, drop: bool) -> usize {
             characters[cn].a_mana = r1 * r2 * r3 * r4 * 100;
         }
 
-        characters[cn].dir = core::constants::DX_DOWN;
-        characters[cn].data[92] = core::constants::TICKS * 60;
+        characters[cn].dir = DX_DOWN;
+        characters[cn].data[92] = TICKS * 60;
     });
 
     // Create bonus items based on mana level
     let a_mana = Repository::with_characters(|characters| characters[cn].a_mana);
-    let has_meditation = Repository::with_characters(|characters| {
-        characters[cn].skill[core::constants::SK_MEDIT][0] != 0
-    });
+    let has_meditation =
+        Repository::with_characters(|characters| characters[cn].skill[SK_MEDIT][0] != 0);
 
     // Bonus item chance calculation
     // Starts at 25, reduces by 6 for each mana threshold (more mana = lower chance = rarer)
@@ -773,7 +765,7 @@ pub fn pop_create_char(n: usize, drop: bool) -> usize {
 /// Port of `reset_char` from `populate.cpp`
 /// Resets a character template and all instances
 pub fn reset_char(n: usize) {
-    if !(1..core::constants::MAXTCHARS).contains(&n) {
+    if !(1..MAXTCHARS).contains(&n) {
         log::error!("reset_char: invalid template {}", n);
         return;
     }
@@ -785,7 +777,7 @@ pub fn reset_char(n: usize) {
         )
     });
 
-    if used == core::constants::USE_EMPTY || !has_respawn {
+    if used == USE_EMPTY || !has_respawn {
         log::error!(
             "reset_char: template {} is not in use or does not have respawn flag",
             n
@@ -835,7 +827,7 @@ pub fn reset_char(n: usize) {
     });
 
     // Destroy all instances of this template (they will be respawned)
-    for cn in 1..core::constants::MAXCHARS {
+    for cn in 1..MAXCHARS {
         let (temp, used, char_name, x, y) = Repository::with_characters(|characters| {
             (
                 characters[cn].temp,
@@ -846,7 +838,7 @@ pub fn reset_char(n: usize) {
             )
         });
 
-        if temp as usize == n && used == core::constants::USE_ACTIVE {
+        if temp as usize == n && used == USE_ACTIVE {
             log::info!(" --> {} ({}) ({},{})", char_name, cn, x, y);
 
             // Destroy items and remove from map
@@ -855,7 +847,7 @@ pub fn reset_char(n: usize) {
 
             // Mark character as unused
             Repository::with_characters_mut(|characters| {
-                characters[cn].used = core::constants::USE_EMPTY;
+                characters[cn].used = USE_EMPTY;
             });
 
             cnt += 1;
@@ -863,25 +855,25 @@ pub fn reset_char(n: usize) {
     }
 
     // Clean up effects referencing this template (type 2 = respawn timer)
-    for m in 0..core::constants::MAXEFFECT {
+    for m in 0..MAXEFFECT {
         let (effect_used, effect_type, data2) = Repository::with_effects(|effects| {
             (effects[m].used, effects[m].effect_type, effects[m].data[2])
         });
 
-        if effect_used == core::constants::USE_ACTIVE && effect_type == 2 && data2 == n as u32 {
+        if effect_used == USE_ACTIVE && effect_type == 2 && data2 == n as u32 {
             log::info!(" --> effect {}", m);
             Repository::with_effects_mut(|effects| {
-                effects[m].used = core::constants::USE_EMPTY;
+                effects[m].used = USE_EMPTY;
             });
         }
     }
 
     // Clean up items carried by this template
-    for m in 0..core::constants::MAXITEM {
+    for m in 0..MAXITEM {
         let (item_used, carried) =
             Repository::with_items(|items| (items[m].used, items[m].carried));
 
-        if item_used == core::constants::USE_ACTIVE && carried as usize == n {
+        if item_used == USE_ACTIVE && carried as usize == n {
             let temp = Repository::with_items(|items| items[m].temp);
             Repository::with_items_mut(|items| {
                 let item_template =
@@ -898,13 +890,13 @@ pub fn reset_char(n: usize) {
 
     // Schedule respawn if template is still active
     let template_used = Repository::with_character_templates(|templates| templates[n].used);
-    if template_used == core::constants::USE_ACTIVE {
+    if template_used == USE_ACTIVE {
         let (template_x, template_y) =
             Repository::with_character_templates(|templates| (templates[n].x, templates[n].y));
 
         EffectManager::fx_add_effect(
-            2,                           // Effect type 2 = respawn timer
-            core::constants::TICKS * 10, // 10 seconds delay
+            2,          // Effect type 2 = respawn timer
+            TICKS * 10, // 10 seconds delay
             template_x as i32,
             template_y as i32,
             n as i32,
@@ -926,10 +918,10 @@ pub fn skillcost(val: i32, dif: i32, start: i32) -> i32 {
 /// Port of `pop_skill` from `populate.cpp`
 /// Updates skills for all characters
 pub fn pop_skill() {
-    for cn in 1..core::constants::MAXCHARS {
+    for cn in 1..MAXCHARS {
         let is_player = Repository::with_characters(|characters| {
             (characters[cn].flags & CharacterFlags::Player.bits()) != 0
-                && characters[cn].used == core::constants::USE_ACTIVE
+                && characters[cn].used == USE_ACTIVE
         });
         if !is_player {
             continue;
@@ -980,14 +972,14 @@ pub fn pop_skill() {
 /// Port of `reset_item` from `populate.cpp`
 /// Resets an item template and all instances
 pub fn reset_item(n: usize) {
-    if !(2..core::constants::MAXTITEM).contains(&n) {
+    if !(2..MAXTITEM).contains(&n) {
         return; // Never reset blank template (1)
     }
 
     let name = Repository::with_item_templates(|templates| templates[n].get_name().to_string());
     log::info!("Resetting item {} ({})", n, name);
 
-    for in_id in 1..core::constants::MAXITEM {
+    for in_id in 1..MAXITEM {
         let (used, item_temp, is_spell) = Repository::with_items(|items| {
             (
                 items[in_id].used,
@@ -996,7 +988,7 @@ pub fn reset_item(n: usize) {
             )
         });
 
-        if used != core::constants::USE_ACTIVE {
+        if used != USE_ACTIVE {
             continue;
         }
 
@@ -1052,22 +1044,22 @@ pub fn reset_item(n: usize) {
             });
         } else {
             // Remove item and place floor sprite (for non-interactive map items)
-            let map_index = x as usize + y as usize * core::constants::SERVER_MAPX as usize;
+            let map_index = x as usize + y as usize * SERVER_MAPX as usize;
 
             Repository::with_map_mut(|map| {
                 map[map_index].it = 0;
                 map[map_index].fsprite = template_sprite as u16;
 
                 if (template_flags & ItemFlags::IF_MOVEBLOCK.bits()) != 0 {
-                    map[map_index].flags |= core::constants::MF_MOVEBLOCK as u64;
+                    map[map_index].flags |= MF_MOVEBLOCK as u64;
                 }
                 if (template_flags & ItemFlags::IF_SIGHTBLOCK.bits()) != 0 {
-                    map[map_index].flags |= core::constants::MF_SIGHTBLOCK as u64;
+                    map[map_index].flags |= MF_SIGHTBLOCK as u64;
                 }
             });
 
             Repository::with_items_mut(|items| {
-                items[in_id].used = core::constants::USE_EMPTY;
+                items[in_id].used = USE_EMPTY;
             });
         }
     }
@@ -1086,7 +1078,7 @@ pub fn reset_changed_items() {
 /// Port of `pop_tick` from `populate.cpp`
 /// Handles population ticking and resets
 pub fn pop_tick() {
-    const RESETTICKER: u32 = core::constants::TICKS as u32 * 60;
+    const RESETTICKER: u32 = TICKS as u32 * 60;
 
     let ticker = Repository::with_globals(|globals| globals.ticker) as u32;
 
@@ -1114,10 +1106,10 @@ pub fn pop_tick() {
 /// Resets all character and item templates
 #[allow(dead_code)]
 pub fn pop_reset_all() {
-    for n in 1..core::constants::MAXTCHARS {
+    for n in 1..MAXTCHARS {
         reset_char(n);
     }
-    for n in 1..core::constants::MAXTITEM {
+    for n in 1..MAXTITEM {
         reset_item(n);
     }
     log::info!("Reset all templates");
@@ -1127,29 +1119,29 @@ pub fn pop_reset_all() {
 /// Wipes all dynamic game data
 pub fn pop_wipe() {
     // Clear all characters
-    for n in 1..core::constants::MAXCHARS {
+    for n in 1..MAXCHARS {
         let is_player = Repository::with_characters(|characters| {
             (characters[n].flags & CharacterFlags::Player.bits()) != 0
         });
 
         if !is_player {
             Repository::with_characters_mut(|characters| {
-                characters[n].used = core::constants::USE_EMPTY;
+                characters[n].used = USE_EMPTY;
             });
         }
     }
 
     // Clear all items
-    for n in 1..core::constants::MAXITEM {
+    for n in 1..MAXITEM {
         Repository::with_items_mut(|items| {
-            items[n].used = core::constants::USE_EMPTY;
+            items[n].used = USE_EMPTY;
         });
     }
 
     // Clear all effects
-    for n in 1..core::constants::MAXEFFECT {
+    for n in 1..MAXEFFECT {
         Repository::with_effects_mut(|effects| {
-            effects[n].used = core::constants::USE_EMPTY;
+            effects[n].used = USE_EMPTY;
         });
     }
 
@@ -1186,7 +1178,7 @@ pub fn pop_remove() {
 
     let mut chc = 0;
 
-    for n in 1..core::constants::MAXCHARS {
+    for n in 1..MAXCHARS {
         let (used, is_player) = Repository::with_characters(|characters| {
             (
                 characters[n].used,
@@ -1194,7 +1186,7 @@ pub fn pop_remove() {
             )
         });
 
-        if used != core::constants::USE_EMPTY && is_player {
+        if used != USE_EMPTY && is_player {
             // TODO: Write character to file
             chc += 1;
         }
@@ -1221,7 +1213,7 @@ pub fn populate() {
     log::info!("Populating world...");
 
     // Iterate through all character templates and spawn respawnable NPCs
-    for n in 1..core::constants::MAXTCHARS {
+    for n in 1..MAXTCHARS {
         let (used, has_respawn) = Repository::with_character_templates(|templates| {
             (
                 templates[n].used,
@@ -1229,7 +1221,7 @@ pub fn populate() {
             )
         });
 
-        if used != core::constants::USE_EMPTY && has_respawn {
+        if used != USE_EMPTY && has_respawn {
             let cn = pop_create_char(n, true);
             if cn != 0 {
                 log::debug!("Spawned NPC {} from template {}", cn, n);
@@ -1261,7 +1253,7 @@ pub fn pop_load_char(nr: usize) {
 pub fn pop_load_all_chars() {
     log::info!("Loading all characters...");
 
-    for nr in 1..core::constants::MAXCHARS {
+    for nr in 1..MAXCHARS {
         pop_load_char(nr);
     }
 
@@ -1273,7 +1265,7 @@ pub fn pop_load_all_chars() {
 pub fn pop_save_all_chars() {
     log::info!("Saving all characters...");
 
-    for nr in 1..core::constants::MAXCHARS {
+    for nr in 1..MAXCHARS {
         let is_player = Repository::with_characters(|characters| {
             (characters[nr].flags & CharacterFlags::Player.bits()) != 0
         });
