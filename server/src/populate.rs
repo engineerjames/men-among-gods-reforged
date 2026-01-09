@@ -1,6 +1,8 @@
 use core::constants::CharacterFlags;
 
-use crate::{driver, god::God, repository::Repository, state::State};
+use crate::{
+    driver, effect::EffectManager, god::God, player, repository::Repository, state::State,
+};
 
 /// Port of `init_lights` from `populate.cpp`
 /// Initialize lighting on the map
@@ -661,6 +663,10 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
 pub fn pop_create_char(n: usize, drop: bool) -> usize {
     let cn = God::create_char(n, true);
     if cn.is_none() {
+        log::error!(
+            "pop_create_char: failed to create character from template {}",
+            n
+        );
         return 0;
     }
     let cn = cn.unwrap() as usize;
@@ -743,6 +749,7 @@ pub fn pop_create_char(n: usize, drop: bool) -> usize {
 /// Resets a character template and all instances
 pub fn reset_char(n: usize) {
     if !(1..core::constants::MAXTCHARS).contains(&n) {
+        log::error!("reset_char: invalid template {}", n);
         return;
     }
 
@@ -754,6 +761,10 @@ pub fn reset_char(n: usize) {
     });
 
     if used == core::constants::USE_EMPTY || !has_respawn {
+        log::error!(
+            "reset_char: template {} is not in use or does not have respawn flag",
+            n
+        );
         return;
     }
 
@@ -798,44 +809,54 @@ pub fn reset_char(n: usize) {
         templates[n].points_tot = pts;
     });
 
-    // Update all instances of this template
+    // Destroy all instances of this template (they will be respawned)
     for cn in 1..core::constants::MAXCHARS {
-        let temp = Repository::with_characters(|characters| characters[cn].temp);
-        if temp as usize == n {
+        let (temp, used, char_name, x, y) = Repository::with_characters(|characters| {
+            (
+                characters[cn].temp,
+                characters[cn].used,
+                characters[cn].get_name().to_string(),
+                characters[cn].x,
+                characters[cn].y,
+            )
+        });
+
+        if temp as usize == n && used == core::constants::USE_ACTIVE {
+            log::info!(" --> {} ({}) ({},{})", char_name, cn, x, y);
+
+            // Destroy items and remove from map
+            God::destroy_items(cn);
+            player::plr_map_remove(cn);
+
+            // Mark character as unused
             Repository::with_characters_mut(|characters| {
-                let char_template = Repository::with_character_templates(|templates| templates[n]);
-
-                // Preserve certain fields
-                let pass1 = characters[cn].pass1;
-                let pass2 = characters[cn].pass2;
-                let x = characters[cn].x;
-                let y = characters[cn].y;
-
-                characters[cn] = char_template;
-                characters[cn].pass1 = pass1;
-                characters[cn].pass2 = pass2;
-                characters[cn].x = x;
-                characters[cn].y = y;
-                characters[cn].temp = n as u16;
+                characters[cn].used = core::constants::USE_EMPTY;
             });
+
             cnt += 1;
         }
     }
 
-    // Update effects referencing this template
+    // Clean up effects referencing this template (type 2 = respawn timer)
     for m in 0..core::constants::MAXEFFECT {
-        let data0 = Repository::with_effects(|effects| effects[m].data[0]);
-        if data0 == n as u32 {
+        let (effect_used, effect_type, data2) = Repository::with_effects(|effects| {
+            (effects[m].used, effects[m].effect_type, effects[m].data[2])
+        });
+
+        if effect_used == core::constants::USE_ACTIVE && effect_type == 2 && data2 == n as u32 {
+            log::info!(" --> effect {}", m);
             Repository::with_effects_mut(|effects| {
-                effects[m].data[1] = 1; // Mark for respawn
+                effects[m].used = core::constants::USE_EMPTY;
             });
         }
     }
 
-    // Update items carried by template
+    // Clean up items carried by this template
     for m in 0..core::constants::MAXITEM {
-        let carried = Repository::with_items(|items| items[m].carried);
-        if carried as usize == n {
+        let (item_used, carried) =
+            Repository::with_items(|items| (items[m].used, items[m].carried));
+
+        if item_used == core::constants::USE_ACTIVE && carried as usize == n {
             let temp = Repository::with_items(|items| items[m].temp);
             Repository::with_items_mut(|items| {
                 let item_template =
@@ -847,12 +868,23 @@ pub fn reset_char(n: usize) {
     }
 
     if cnt != 1 {
-        log::warn!("Reset char {}: found {} instances", n, cnt);
+        log::warn!("AUTO-RESPAWN: Found {} instances of {} ({})", cnt, name, n);
     }
 
+    // Schedule respawn if template is still active
     let template_used = Repository::with_character_templates(|templates| templates[n].used);
     if template_used == core::constants::USE_ACTIVE {
-        log::info!("Marked template {} for respawn", n);
+        let (template_x, template_y) =
+            Repository::with_character_templates(|templates| (templates[n].x, templates[n].y));
+
+        EffectManager::fx_add_effect(
+            2,                           // Effect type 2 = respawn timer
+            core::constants::TICKS * 10, // 10 seconds delay
+            template_x as i32,
+            template_y as i32,
+            n as i32,
+        );
+        log::info!("Scheduled respawn for template {}", n);
     }
 }
 
