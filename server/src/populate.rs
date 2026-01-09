@@ -1,7 +1,12 @@
-use core::constants::CharacterFlags;
+use core::constants::{CharacterFlags, ItemFlags};
 
 use crate::{
-    driver, effect::EffectManager, god::God, player, repository::Repository, state::State,
+    driver::{self, use_item},
+    effect::EffectManager,
+    god::God,
+    player,
+    repository::Repository,
+    state::State,
 };
 
 /// Port of `init_lights` from `populate.cpp`
@@ -79,93 +84,93 @@ pub fn pop_create_item(temp: usize, cn: usize) -> usize {
     let mut in_id = 0;
     let alignment = Repository::with_characters(|characters| characters[cn].alignment);
 
-    // Check for evil alignment special items (1/150 chance, multiple checks)
-    if alignment < 0 && rand::random::<u32>().is_multiple_of(150) {
+    // First check: Gorn uniques (1/150 chance)
+    if in_id == 0 && alignment < 0 && rand::random::<u32>().is_multiple_of(150) {
         in_id = match temp {
-            27 => God::create_item(603),  // Dagger
-            28 => God::create_item(604),  // Short Sword
-            29 => God::create_item(605),  // Long Sword
-            30 => God::create_item(606),  // Two-Handed Sword
-            523 => God::create_item(607), // Claymore
-            31 => God::create_item(608),  // Axe
-            32 => God::create_item(609),  // Battle Axe
-            33 => God::create_item(610),  // Two-Handed Axe
-            34 => God::create_item(611),  // Staff
-            524 => God::create_item(612), // Halberd
-            35 => God::create_item(613),  // Dagger
-            36 => God::create_item(614),  // Bone Club
-            37 => God::create_item(615),  // Mace
-            38 => God::create_item(616),  // Flail
-            125 => God::create_item(617), // Warhammer
+            27 => God::create_item(542),  // bronze dagger
+            28 => God::create_item(543),  // steel dagger
+            29 => God::create_item(544),  // gold dagger
+            30 => God::create_item(545),  // crystal dagger
+            523 => God::create_item(546), // titan dagger
+            31 => God::create_item(547),  // bronze sword
+            32 => God::create_item(548),  // steel sword
+            33 => God::create_item(549),  // gold sword
+            34 => God::create_item(550),  // crystal sword
+            524 => God::create_item(551), // titan sword
+            35 => God::create_item(552),  // bronze two
+            36 => God::create_item(553),  // steel two
+            37 => God::create_item(554),  // gold two
+            38 => God::create_item(555),  // crystal two
+            125 => God::create_item(556), // titan two
             _ => None,
         }
         .unwrap_or(0);
     }
 
-    // Second check (armor)
+    // Second check: Kwai uniques (1/150 chance)
     if in_id == 0 && alignment < 0 && rand::random::<u32>().is_multiple_of(150) {
         in_id = match temp {
-            27 => God::create_item(618),  // Leather Helm
-            28 => God::create_item(619),  // Chain Helm
-            29 => God::create_item(620),  // Plate Helm
-            30 => God::create_item(621),  // Great Helm
-            523 => God::create_item(622), // War Helm
-            31 => God::create_item(623),  // Leather Armor
-            32 => God::create_item(624),  // Chain Armor
-            33 => God::create_item(625),  // Plate Armor
-            34 => God::create_item(626),  // Robe
-            524 => God::create_item(627), // War Armor
-            35 => God::create_item(628),  // Leather Gloves
-            36 => God::create_item(629),  // Chain Gloves
-            37 => God::create_item(630),  // Plate Gloves
-            38 => God::create_item(631),  // Great Gloves
-            125 => God::create_item(632), // War Gloves
+            27 => God::create_item(527),  // bronze dagger
+            28 => God::create_item(528),  // steel dagger
+            29 => God::create_item(529),  // gold dagger
+            30 => God::create_item(530),  // crystal dagger
+            523 => God::create_item(531), // titan dagger
+            31 => God::create_item(532),  // bronze sword
+            32 => God::create_item(533),  // steel sword
+            33 => God::create_item(534),  // gold sword
+            34 => God::create_item(535),  // crystal sword
+            524 => God::create_item(536), // titan sword
+            35 => God::create_item(537),  // bronze two
+            36 => God::create_item(538),  // steel two
+            37 => God::create_item(539),  // gold two
+            38 => God::create_item(540),  // crystal two
+            125 => God::create_item(541), // titan two
             _ => None,
         }
         .unwrap_or(0);
     }
 
-    // Third check (boots)
+    // Third check: Purple One uniques (1/150 chance)
     if in_id == 0 && alignment < 0 && rand::random::<u32>().is_multiple_of(150) {
         in_id = match temp {
-            27 => God::create_item(633),  // Leather Boots
-            28 => God::create_item(634),  // Chain Boots
-            29 => God::create_item(635),  // Plate Boots
-            30 => God::create_item(636),  // Great Boots
-            523 => God::create_item(637), // War Boots
-            31 => God::create_item(638),  // Leather Belt
-            32 => God::create_item(639),  // Chain Belt
-            33 => God::create_item(640),  // Plate Belt
-            34 => God::create_item(641),  // Sash
-            524 => God::create_item(642), // War Belt
-            35 => God::create_item(643),  // Leather Pants
-            36 => God::create_item(644),  // Chain Pants
-            37 => God::create_item(645),  // Plate Pants
-            38 => God::create_item(646),  // Great Pants
-            125 => God::create_item(647), // War Pants
+            27 => God::create_item(572),  // bronze dagger
+            28 => God::create_item(573),  // steel dagger
+            29 => God::create_item(574),  // gold dagger
+            30 => God::create_item(575),  // crystal dagger
+            523 => God::create_item(576), // titan dagger
+            31 => God::create_item(577),  // bronze sword
+            32 => God::create_item(578),  // steel sword
+            33 => God::create_item(579),  // gold sword
+            34 => God::create_item(580),  // crystal sword
+            524 => God::create_item(581), // titan sword
+            35 => God::create_item(582),  // bronze two
+            36 => God::create_item(583),  // steel two
+            37 => God::create_item(584),  // gold two
+            38 => God::create_item(585),  // crystal two
+            125 => God::create_item(586), // titan two
             _ => None,
         }
         .unwrap_or(0);
     }
 
-    // Fourth check (shields/cloaks)
+    // Fourth check: Skua uniques (1/150 chance)
     if in_id == 0 && alignment < 0 && rand::random::<u32>().is_multiple_of(150) {
         in_id = match temp {
-            27 => God::create_item(648),  // Leather Shield
-            28 => God::create_item(649),  // Chain Shield
-            29 => God::create_item(650),  // Plate Shield
-            30 => God::create_item(651),  // Great Shield
-            523 => God::create_item(652), // War Shield
-            31 => God::create_item(653),  // Leather Cloak
-            32 => God::create_item(654),  // Chain Cloak
-            33 => God::create_item(655),  // Plate Cloak
-            34 => God::create_item(656),  // Robe Cloak
-            524 => God::create_item(657), // War Cloak
-            35 => God::create_item(658),  // Amulet
-            36 => God::create_item(659),  // Ring
-            37 => God::create_item(660),  // Bracelet
-            38 => God::create_item(661),  // Earring
-            125 => God::create_item(662), // Necklace
+            27 => God::create_item(280),  // bronze dagger
+            28 => God::create_item(281),  // steel dagger
+            29 => God::create_item(282),  // gold dagger
+            30 => God::create_item(283),  // crystal dagger
+            523 => God::create_item(525), // titan dagger
+            31 => God::create_item(284),  // bronze sword
+            32 => God::create_item(285),  // steel sword
+            33 => God::create_item(286),  // gold sword
+            34 => God::create_item(287),  // crystal sword
+            524 => God::create_item(526), // titan sword
+            35 => God::create_item(288),  // bronze two
+            36 => God::create_item(289),  // steel two
+            37 => God::create_item(290),  // gold two
+            38 => God::create_item(291),  // crystal two
+            125 => God::create_item(292), // titan two
             _ => None,
         }
         .unwrap_or(0);
@@ -173,20 +178,30 @@ pub fn pop_create_item(temp: usize, cn: usize) -> usize {
 
     // Default: create item from template
     if in_id == 0 {
-        let citem = Repository::with_characters(|characters| characters[cn].citem);
-        if citem != 0 {
-            in_id = God::create_item(Repository::with_items(|items| {
-                items[citem as usize].temp as usize
-            }))
-            .unwrap_or(0);
+        in_id = God::create_item(temp).unwrap_or(0);
+
+        // Apply item damage for regular items
+        if in_id != 0 {
+            let max_damage = Repository::with_items(|items| items[in_id].max_damage);
+            if max_damage > 0 {
+                // 50% chance to age the item first
+                if rand::random::<u32>().is_multiple_of(2) {
+                    Repository::with_items_mut(|items| {
+                        items[in_id].current_damage = max_damage + 1;
+                    });
+                    use_item::item_age(in_id);
+                }
+                // Set random damage
+                Repository::with_items_mut(|items| {
+                    items[in_id].current_damage = rand::random::<u32>() % max_damage;
+                });
+            }
         }
     } else {
-        log::info!(
-            "Created special item {} for character {} (template {})",
-            in_id,
-            cn,
-            temp
-        );
+        let char_name =
+            Repository::with_characters(|characters| characters[cn].get_name().to_string());
+        let item_name = Repository::with_items(|items| items[in_id].get_name().to_string());
+        log::info!("{} got unique item {}.", char_name, item_name);
     }
 
     in_id
@@ -676,11 +691,19 @@ pub fn pop_create_char(n: usize, drop: bool) -> usize {
         characters[cn].a_end = 1000000;
         characters[cn].a_hp = 1000000;
 
+        // Note: This is DIFFERENT from player initialization!
+        // NPCs with meditation get full mana, others get random amount
         let has_meditation = characters[cn].skill[core::constants::SK_MEDIT][0] != 0;
         if has_meditation {
-            characters[cn].a_mana = characters[cn].mana[5] as i32 * 100;
-        } else {
             characters[cn].a_mana = 1000000;
+        } else {
+            // Four cascading RANDOM(8) calls multiplied together, times 100
+            // This creates a highly variable mana amount (0 to 409,600)
+            let r1 = (rand::random::<u32>() % 8) as i32;
+            let r2 = (rand::random::<u32>() % 8) as i32;
+            let r3 = (rand::random::<u32>() % 8) as i32;
+            let r4 = (rand::random::<u32>() % 8) as i32;
+            characters[cn].a_mana = r1 * r2 * r3 * r4 * 100;
         }
 
         characters[cn].dir = core::constants::DX_DOWN;
@@ -693,15 +716,17 @@ pub fn pop_create_char(n: usize, drop: bool) -> usize {
         characters[cn].skill[core::constants::SK_MEDIT][0] != 0
     });
 
+    // Bonus item chance calculation
+    // Starts at 25, reduces by 6 for each mana threshold (more mana = lower chance = rarer)
     let mut chance = 25;
     if !has_meditation && a_mana > 15 * 100 {
-        chance = 50;
+        chance -= 6;
     }
     if !has_meditation && a_mana > 30 * 100 {
-        chance = 100;
+        chance -= 6;
     }
     if !has_meditation && a_mana > 65 * 100 {
-        chance = 200;
+        chance -= 6;
     }
 
     let alignment = Repository::with_characters(|characters| characters[cn].alignment);
@@ -963,33 +988,88 @@ pub fn reset_item(n: usize) {
     log::info!("Resetting item {} ({})", n, name);
 
     for in_id in 1..core::constants::MAXITEM {
-        let temp = Repository::with_items(|items| items[in_id].temp);
-        if temp as usize != n {
-            continue;
-        }
-
-        let used = Repository::with_items(|items| items[in_id].used);
-        if used == core::constants::USE_EMPTY {
-            continue;
-        }
-
-        // Reset item from template
-        Repository::with_items_mut(|items| {
-            let item_template = Repository::with_item_templates(|templates| templates[n]);
-
-            // Preserve certain fields
-            let x = items[in_id].x;
-            let y = items[in_id].y;
-            let carried = items[in_id].carried;
-
-            items[in_id] = item_template;
-            items[in_id].x = x;
-            items[in_id].y = y;
-            items[in_id].carried = carried;
-            items[in_id].temp = n as u16;
+        let (used, item_temp, is_spell) = Repository::with_items(|items| {
+            (
+                items[in_id].used,
+                items[in_id].temp,
+                (items[in_id].flags & ItemFlags::IF_SPELL.bits()) != 0,
+            )
         });
 
-        log::debug!("Reset item instance {}", in_id);
+        if used != core::constants::USE_ACTIVE {
+            continue;
+        }
+
+        // Skip spell items
+        if is_spell {
+            continue;
+        }
+
+        if item_temp as usize != n {
+            continue;
+        }
+
+        let (item_name, carried, x, y) = Repository::with_items(|items| {
+            (
+                items[in_id].get_name().to_string(),
+                items[in_id].carried,
+                items[in_id].x,
+                items[in_id].y,
+            )
+        });
+
+        log::info!(" --> {} ({}) ({}, {},{})", item_name, in_id, carried, x, y);
+
+        // Check if item should be reset or removed
+        let (template_flags, template_sprite) = Repository::with_item_templates(|templates| {
+            (templates[n].flags, templates[n].sprite[0])
+        });
+
+        let should_reset = (template_flags
+            & (ItemFlags::IF_TAKE.bits()
+                | ItemFlags::IF_LOOK.bits()
+                | ItemFlags::IF_LOOKSPECIAL.bits()
+                | ItemFlags::IF_USE.bits()
+                | ItemFlags::IF_USESPECIAL.bits()))
+            != 0
+            || carried != 0;
+
+        if should_reset {
+            // Reset item from template (for takeable/interactive items or carried items)
+            Repository::with_items_mut(|items| {
+                let item_template = Repository::with_item_templates(|templates| templates[n]);
+
+                // Preserve certain fields
+                let x = items[in_id].x;
+                let y = items[in_id].y;
+                let carried = items[in_id].carried;
+
+                items[in_id] = item_template;
+                items[in_id].x = x;
+                items[in_id].y = y;
+                items[in_id].carried = carried;
+                items[in_id].temp = n as u16;
+            });
+        } else {
+            // Remove item and place floor sprite (for non-interactive map items)
+            let map_index = x as usize + y as usize * core::constants::SERVER_MAPX as usize;
+
+            Repository::with_map_mut(|map| {
+                map[map_index].it = 0;
+                map[map_index].fsprite = template_sprite as u16;
+
+                if (template_flags & ItemFlags::IF_MOVEBLOCK.bits()) != 0 {
+                    map[map_index].flags |= core::constants::MF_MOVEBLOCK as u64;
+                }
+                if (template_flags & ItemFlags::IF_SIGHTBLOCK.bits()) != 0 {
+                    map[map_index].flags |= core::constants::MF_SIGHTBLOCK as u64;
+                }
+            });
+
+            Repository::with_items_mut(|items| {
+                items[in_id].used = core::constants::USE_EMPTY;
+            });
+        }
     }
 }
 
