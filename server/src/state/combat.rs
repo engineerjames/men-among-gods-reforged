@@ -394,10 +394,19 @@ impl State {
 
             // Surrounding strikes (cardinal neighbors around attacker)
             if surround != 0 {
-                let surround_skill = Repository::with_characters(|characters| {
-                    characters[cn].skill[core::constants::SK_SURROUND][5] as i32
+                // Match original C++ behavior: surround hits only happen if the
+                // character actually *has learned* Surround Hit.
+                //
+                // Note: In this codebase `skill[z][5]` is a derived value and is
+                // clamped to at least 1 for *all* skills (see `really_update_char`),
+                // so using `[5] > 0` would incorrectly enable surround for everyone.
+                let (surround_base, surround_eff) = Repository::with_characters(|characters| {
+                    (
+                        characters[cn].skill[core::constants::SK_SURROUND][0] as i32,
+                        characters[cn].skill[core::constants::SK_SURROUND][5] as i32,
+                    )
                 });
-                if surround_skill > 0 {
+                if surround_base != 0 {
                     let (ax, ay) = Repository::with_characters(|characters| {
                         (characters[cn].x as i32, characters[cn].y as i32)
                     });
@@ -422,7 +431,7 @@ impl State {
                         {
                             continue;
                         }
-                        if surround_skill + rng.gen_range(0..20) > self.get_fight_skill(co2) {
+                        if surround_eff + rng.gen_range(0..20) > self.get_fight_skill(co2) {
                             let sdam = odam - odam / 4;
                             self.do_hurt(cn, co2, sdam, 0);
                         }
