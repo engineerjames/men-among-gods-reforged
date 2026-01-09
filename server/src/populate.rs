@@ -668,19 +668,30 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
 
 /// Port of `pop_create_char` from `populate.cpp`
 /// Creates a character from a template
-pub fn pop_create_char(n: usize, drop: bool) -> usize {
-    let cn = God::create_char(n, true);
-    if cn.is_none() {
-        log::error!(
-            "pop_create_char: failed to create character from template {}",
-            n
-        );
-        return 0;
-    }
-    let cn = cn.unwrap() as usize;
+pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
+    let unused_index = Repository::with_characters(|characters| {
+        // TODO: Refactor this into its own function
+        (1..core::constants::MAXCHARS).find(|&i| characters[i].used == core::constants::USE_EMPTY)
+    });
+
+    let cn = match unused_index {
+        Some(index) => index,
+        None => {
+            log::error!("No free character slots available to create new character.");
+            return None;
+        }
+    };
 
     // Set initial state
     Repository::with_characters_mut(|characters| {
+        let character = &mut characters[cn];
+
+        *character =
+            Repository::with_character_templates(|char_templates| char_templates[template_id]);
+
+        character.pass1 = rand::random::<u32>() % 0x3fffffff;
+        character.pass2 = rand::random::<u32>() % 0x3fffffff;
+        character.temp = template_id as u16;
         characters[cn].a_end = 1000000;
         characters[cn].a_hp = 1000000;
 

@@ -68,7 +68,7 @@ fn main() -> Result<(), String> {
     // The original implementation had a call here for nice(5) to lower process priority.
     // This is platform dependent and omitted for simplicity.
 
-    core::initialize_logger(log::LevelFilter::Debug, Some("server.log")).unwrap_or_else(|e| {
+    core::initialize_logger(log::LevelFilter::Info, Some("server.log")).unwrap_or_else(|e| {
         eprintln!("Failed to initialize logger: {}. Exiting.", e);
         process::exit(1);
     });

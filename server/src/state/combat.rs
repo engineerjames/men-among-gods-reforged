@@ -194,7 +194,7 @@ impl State {
         );
     }
 
-    pub(crate) fn do_attack(&mut self, cn: usize, co: usize, surround: i32) {
+    pub(crate) fn do_attack(&mut self, cn: usize, co: usize, is_surround: bool) {
         // Basic attack handling: permission checks, enemy bookkeeping,
         // hit/miss roll, damage calculation, item damage and surround hits.
 
@@ -393,7 +393,7 @@ impl State {
             }
 
             // Surrounding strikes (cardinal neighbors around attacker)
-            if surround != 0 {
+            if is_surround {
                 // Match original C++ behavior: surround hits only happen if the
                 // character actually *has learned* Surround Hit.
                 //
