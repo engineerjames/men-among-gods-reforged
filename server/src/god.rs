@@ -4495,9 +4495,7 @@ impl God {
         }
 
         // Create character from template 386 with items
-        let co = populate::pop_create_char(386, true);
-
-        if co != 0 {
+        if let Some(co) = populate::pop_create_char(386, true) {
             let character_name = Repository::with_characters(|characters| characters[co].name);
 
             let name_str = c_string_to_str(&character_name);
@@ -4629,9 +4627,7 @@ impl God {
         }
 
         // Create character from template 495 with items
-        let co = populate::pop_create_char(495, true);
-
-        if co != 0 {
+        if let Some(co) = populate::pop_create_char(495, true) {
             let character_name = Repository::with_characters(|characters| characters[co].name);
 
             let name_str = c_string_to_str(&character_name);

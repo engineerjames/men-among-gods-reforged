@@ -397,9 +397,8 @@ impl EffectManager {
                         map[map_index].flags &= !(core::constants::MF_MOVEBLOCK as u64);
                     });
 
-                    let cn = populate::pop_create_char(effects[n].data[2] as usize, true);
-
-                    if cn != 0 {
+                    if let Some(_cn) = populate::pop_create_char(effects[n].data[2] as usize, true)
+                    {
                         let respawn_flag = Repository::with_character_templates(|char_templates| {
                             (char_templates[effects[n].data[2] as usize].flags
                                 & CharacterFlags::Respawn.bits())
@@ -447,8 +446,8 @@ impl EffectManager {
                 });
 
                 if effects[n].data[1] != 0 {
-                    let cn = populate::pop_create_char(effects[n].data[1] as usize, false);
-                    if cn != 0 {
+                    if let Some(cn) = populate::pop_create_char(effects[n].data[1] as usize, false)
+                    {
                         God::drop_char(cn, x as usize, y as usize);
                         Repository::with_characters_mut(|characters| {
                             characters[cn].dir = core::constants::DX_RIGHTUP;

@@ -2249,17 +2249,17 @@ pub fn npc_driver_low(cn: usize) {
 
             if n > 0 {
                 for m_idx in 0..n {
-                    let co = populate::pop_create_char(503 + m_idx, false);
-                    if co == 0 {
-                        State::with(|state| {
-                            state.do_sayx(cn, &format!("create char ({})", m_idx));
-                        });
-                        break;
-                    }
+                    let co = match populate::pop_create_char(503 + m_idx, false) {
+                        Some(co) => co,
+                        None => {
+                            State::with(|state| {
+                                state.do_sayx(cn, &format!("create char ({})", m_idx));
+                            });
+                            break;
+                        }
+                    };
 
-                    // Call god_drop_char_fuzzy (doesn't exist yet)
-                    let drop_result = !God::drop_char_fuzzy(co, 452, 345);
-                    if drop_result {
+                    if !God::drop_char_fuzzy(co, 452, 345) {
                         State::with(|state| {
                             state.do_sayx(cn, &format!("drop char ({})", m_idx));
                         });

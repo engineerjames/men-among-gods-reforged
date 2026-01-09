@@ -95,19 +95,21 @@ pub fn use_labtransfer(cn: usize, nr: i32, exp: i32) -> bool {
     };
 
     // pop_create_char(template, 0): create the enemy character (assume function exists)
-    let co = populate::pop_create_char(template, false);
-    if co == 0 {
-        chlog!(cn, "Sorry, could not create your enemy.");
-        State::with(|state| {
-            state.do_character_log(cn, FontColor::Red, "Sorry, could not create your enemy.\n");
-            log::error!(
-                "use_labtransfer: pop_create_char({}) failed for player {}",
-                template,
-                Repository::with_characters(|ch| ch[cn].get_name().to_string())
-            );
-        });
-        return false;
-    }
+    let co = match populate::pop_create_char(template, false) {
+        Some(co) => co,
+        None => {
+            chlog!(cn, "Sorry, could not create your enemy.");
+            State::with(|state| {
+                state.do_character_log(cn, FontColor::Red, "Sorry, could not create your enemy.\n");
+                log::error!(
+                    "use_labtransfer: pop_create_char({}) failed for player {}",
+                    template,
+                    Repository::with_characters(|ch| ch[cn].get_name().to_string())
+                );
+            });
+            return false;
+        }
+    };
 
     if !God::drop_char(co, 174, 172) {
         State::with(|state| {

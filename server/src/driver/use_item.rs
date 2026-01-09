@@ -2494,10 +2494,10 @@ pub fn use_mine_respawn(_cn: usize, item_idx: usize) -> i32 {
     }
 
     // create the NPC from template
-    let cc = populate::pop_create_char(template, false);
-    if cc == 0 {
-        return 0;
-    }
+    let cc = match populate::pop_create_char(template, false) {
+        Some(cc) => cc,
+        None => return 0,
+    };
 
     // drop the character near the mine item
     let (item_x, item_y) = Repository::with_items(|items| (items[item_idx].x, items[item_idx].y));
@@ -3007,7 +3007,10 @@ pub fn use_grave(_cn: usize, item_idx: usize) -> i32 {
         }
     }
 
-    let cc = populate::pop_create_char(328, false);
+    let cc = match populate::pop_create_char(328, false) {
+        Some(cc) => cc,
+        None => return 1,
+    };
 
     let (item_x, item_y) = Repository::with_items(|it| (it[item_idx].x, it[item_idx].y));
 
@@ -3656,7 +3659,7 @@ pub fn spawn_penta_enemy(item_idx: usize) -> i32 {
     }
 
     // Create appropriate character template
-    let cn = if tmp >= 22 {
+    let spawned = if tmp >= 22 {
         tmp -= 22;
         if tmp > 3 {
             tmp = 3;
@@ -3672,9 +3675,10 @@ pub fn spawn_penta_enemy(item_idx: usize) -> i32 {
         pop_create_char((364 + tmp) as usize, false)
     };
 
-    if cn == 0 {
-        return 0;
-    }
+    let cn = match spawned {
+        Some(cn) => cn,
+        None => return 0,
+    };
 
     // Configure character
     Repository::with_characters_mut(|characters| {
@@ -5186,10 +5190,10 @@ pub fn use_create_npc(cn: usize, item_idx: usize) -> i32 {
 
     // Create NPC from template
     let template = Repository::with_items(|items| items[item_idx].data[0]);
-    let co = pop_create_char(template as usize, false);
-    if co == 0 {
-        return 0;
-    }
+    let co = match pop_create_char(template as usize, false) {
+        Some(co) => co,
+        None => return 0,
+    };
 
     // Drop NPC near item location
     let (x, y) =
@@ -7299,10 +7303,10 @@ pub fn spiderweb(item_idx: usize) {
         if should_spawn {
             // Create spider (template 390-392)
             let spider_template = 390 + rng.gen_range(0..3);
-            let cn = populate::pop_create_char(spider_template, false);
-            if cn == 0 {
-                continue;
-            }
+            let cn = match populate::pop_create_char(spider_template, false) {
+                Some(cn) => cn,
+                None => continue,
+            };
 
             let (x, y) = Repository::with_items(|items| {
                 (items[item_idx].x as usize, items[item_idx].y as usize)
@@ -7364,10 +7368,10 @@ pub fn greenlingball(item_idx: usize) {
         if should_spawn {
             // Create greenling (template 553 + data[0])
             let greenling_type = Repository::with_items(|items| items[item_idx].data[0]);
-            let cn = populate::pop_create_char(553 + greenling_type as usize, false);
-            if cn == 0 {
-                continue;
-            }
+            let cn = match populate::pop_create_char(553 + greenling_type as usize, false) {
+                Some(cn) => cn,
+                None => continue,
+            };
 
             let (x, y) = Repository::with_items(|items| {
                 (items[item_idx].x as usize, items[item_idx].y as usize)
@@ -7898,10 +7902,10 @@ pub fn trap2(cn: usize, tmp: usize) {
     use crate::repository::Repository;
     use core::constants::USE_EMPTY;
 
-    let cc = pop_create_char(tmp, false);
-    if cc == 0 {
-        return;
-    }
+    let cc = match pop_create_char(tmp, false) {
+        Some(cc) => cc,
+        None => return,
+    };
 
     let (ch_x, ch_y) = Repository::with_characters(|characters| {
         (characters[cn].x as usize, characters[cn].y as usize)
@@ -8394,17 +8398,19 @@ pub fn step_portal_arena(cn: usize, item_idx: usize) -> i32 {
     }
 
     // Create enemy
-    let co = populate::pop_create_char(nr, false);
-    if co == 0 {
-        State::with(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                "Please tell the gods that the arena isn't working.",
-            );
-        });
-        return -1;
-    }
+    let co = match populate::pop_create_char(nr, false) {
+        Some(co) => co,
+        None => {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    "Please tell the gods that the arena isn't working.",
+                );
+            });
+            return -1;
+        }
+    };
 
     let data0 = Repository::with_items(|items| items[item_idx].data[0]);
     let drop_x = (data0 as usize) % SERVER_MAPX as usize;

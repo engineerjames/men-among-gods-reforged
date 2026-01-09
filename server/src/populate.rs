@@ -669,40 +669,123 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
 /// Port of `pop_create_char` from `populate.cpp`
 /// Creates a character from a template
 pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
-    let unused_index = Repository::with_characters(|characters| {
-        // TODO: Refactor this into its own function
-        (1..core::constants::MAXCHARS).find(|&i| characters[i].used == core::constants::USE_EMPTY)
-    });
-
-    let cn = match unused_index {
+    // Find a free character slot.
+    let cn = match Repository::with_characters(|characters| {
+        (1..MAXCHARS).find(|&i| characters[i].used == USE_EMPTY)
+    }) {
         Some(index) => index,
         None => {
-            log::error!("No free character slots available to create new character.");
+            log::error!("MAXCHARS reached!");
             return None;
         }
     };
 
-    // Set initial state
+    // Copy template and set initial fields (matches C++: ch[cn] = ch_temp[n]).
     Repository::with_characters_mut(|characters| {
-        let character = &mut characters[cn];
-
-        *character =
+        characters[cn] =
             Repository::with_character_templates(|char_templates| char_templates[template_id]);
+        characters[cn].pass1 = rand::random::<u32>() % 0x3fffffff;
+        characters[cn].pass2 = rand::random::<u32>() % 0x3fffffff;
+        characters[cn].temp = template_id as u16;
+    });
 
-        character.pass1 = rand::random::<u32>() % 0x3fffffff;
-        character.pass2 = rand::random::<u32>() % 0x3fffffff;
-        character.temp = template_id as u16;
+    let mut flag = false;
+    let mut hasitems = false;
+
+    // Create inventory items from template.
+    for m in 0..40usize {
+        let tmp_template = Repository::with_characters(|characters| characters[cn].item[m]);
+        if tmp_template == 0 {
+            continue;
+        }
+
+        let tmp_instance = God::create_item(tmp_template as usize).unwrap_or(0);
+        if tmp_instance == 0 {
+            flag = true;
+            Repository::with_characters_mut(|characters| {
+                characters[cn].item[m] = 0;
+            });
+        } else {
+            Repository::with_items_mut(|items| {
+                items[tmp_instance].carried = cn as u16;
+            });
+            Repository::with_characters_mut(|characters| {
+                characters[cn].item[m] = tmp_instance as u32;
+            });
+            hasitems = true;
+        }
+    }
+
+    // Create worn items from template (uses pop_create_item to preserve unique logic).
+    for m in 0..20usize {
+        let tmp_template = Repository::with_characters(|characters| characters[cn].worn[m]);
+        if tmp_template == 0 {
+            continue;
+        }
+
+        let tmp_instance = pop_create_item(tmp_template as usize, cn);
+        if tmp_instance == 0 {
+            flag = true;
+            Repository::with_characters_mut(|characters| {
+                characters[cn].worn[m] = 0;
+            });
+        } else {
+            Repository::with_items_mut(|items| {
+                items[tmp_instance].carried = cn as u16;
+            });
+            Repository::with_characters_mut(|characters| {
+                characters[cn].worn[m] = tmp_instance as u32;
+            });
+            hasitems = true;
+        }
+    }
+
+    // Clear spells from template.
+    Repository::with_characters_mut(|characters| {
+        for m in 0..20usize {
+            if characters[cn].spell[m] != 0 {
+                characters[cn].spell[m] = 0;
+            }
+        }
+    });
+
+    // Create carried item (citem) from template.
+    let tmp_template = Repository::with_characters(|characters| characters[cn].citem);
+    if tmp_template != 0 {
+        let tmp_instance = God::create_item(tmp_template as usize).unwrap_or(0);
+        if tmp_instance == 0 {
+            flag = true;
+            Repository::with_characters_mut(|characters| {
+                characters[cn].citem = 0;
+            });
+        } else {
+            Repository::with_items_mut(|items| {
+                items[tmp_instance].carried = cn as u16;
+            });
+            Repository::with_characters_mut(|characters| {
+                characters[cn].citem = tmp_instance as u32;
+            });
+            hasitems = true;
+        }
+    }
+
+    // Roll back if any item creation failed.
+    if flag {
+        God::destroy_items(cn);
+        Repository::with_characters_mut(|characters| {
+            characters[cn].used = USE_EMPTY;
+        });
+        return None;
+    }
+
+    // Finalize stats (mana logic matches C++).
+    Repository::with_characters_mut(|characters| {
         characters[cn].a_end = 1000000;
         characters[cn].a_hp = 1000000;
 
-        // Note: This is DIFFERENT from player initialization!
-        // NPCs with meditation get full mana, others get random amount
-        let has_meditation = characters[cn].skill[SK_MEDIT][0] != 0;
-        if has_meditation {
+        if characters[cn].skill[SK_MEDIT][0] != 0 {
             characters[cn].a_mana = 1000000;
         } else {
-            // Four cascading RANDOM(8) calls multiplied together, times 100
-            // This creates a highly variable mana amount (0 to 409,600)
             let r1 = (rand::random::<u32>() % 8) as i32;
             let r2 = (rand::random::<u32>() % 8) as i32;
             let r3 = (rand::random::<u32>() % 8) as i32;
@@ -714,14 +797,13 @@ pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
         characters[cn].data[92] = TICKS * 60;
     });
 
-    // Create bonus items based on mana level
-    let a_mana = Repository::with_characters(|characters| characters[cn].a_mana);
+    // Bonus item / belt logic (matches C++: only if evil and hasitems; only first free slot).
     let has_meditation =
         Repository::with_characters(|characters| characters[cn].skill[SK_MEDIT][0] != 0);
+    let a_mana = Repository::with_characters(|characters| characters[cn].a_mana);
+    let alignment = Repository::with_characters(|characters| characters[cn].alignment);
 
-    // Bonus item chance calculation
-    // Starts at 25, reduces by 6 for each mana threshold (more mana = lower chance = rarer)
-    let mut chance = 25;
+    let mut chance: i32 = 25;
     if !has_meditation && a_mana > 15 * 100 {
         chance -= 6;
     }
@@ -732,45 +814,66 @@ pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
         chance -= 6;
     }
 
-    let alignment = Repository::with_characters(|characters| characters[cn].alignment);
-    if alignment < 0 {
-        // Create bonus items for evil characters
-        for _ in 0..4 {
-            if rand::random::<u32>().is_multiple_of(chance) {
-                let bonus = pop_create_bonus(cn, chance as i32);
-                if bonus != 0 {
-                    God::give_character_item(cn, bonus as usize);
+    if alignment < 0 && hasitems {
+        // Bonus item: at most one, attempt on first empty slot.
+        if let Some(slot) = Repository::with_characters(|characters| {
+            let items = characters[cn].item;
+            items.iter().position(|&it| it == 0)
+        }) {
+            if rand::random::<u32>().is_multiple_of(chance as u32) {
+                let tmp = pop_create_bonus(cn, chance);
+                if tmp != 0 {
+                    let tmp = tmp as usize;
+                    Repository::with_items_mut(|items| {
+                        items[tmp].carried = cn as u16;
+                    });
+                    Repository::with_characters_mut(|characters| {
+                        characters[cn].item[slot] = tmp as u32;
+                    });
                 }
             }
         }
 
-        // Check for special belt
-        if rand::random::<u32>().is_multiple_of(10000) {
-            let belt = pop_create_bonus_belt(cn);
-            if belt != 0 {
-                God::give_character_item(cn, belt as usize);
+        // Rainbow belt: at most one, attempt on (new) first empty slot.
+        if let Some(slot) = Repository::with_characters(|characters| {
+            let items = characters[cn].item;
+            items.iter().position(|&it| it == 0)
+        }) {
+            if rand::random::<u32>().is_multiple_of(10000) {
+                let tmp = pop_create_bonus_belt(cn);
+                if tmp != 0 {
+                    let tmp = tmp as usize;
+                    Repository::with_items_mut(|items| {
+                        items[tmp].carried = cn as u16;
+                    });
+                    Repository::with_characters_mut(|characters| {
+                        characters[cn].item[slot] = tmp as u32;
+                    });
+                }
             }
         }
     }
 
-    // Drop character on map if requested
+    // Drop character on map if requested (matches C++: exact coords, cleanup on failure).
     if drop {
-        let (x, y) = Repository::with_character_templates(|templates| {
-            (templates[n].x as usize, templates[n].y as usize)
-        });
+        let (x, y) = Repository::with_characters(|characters| (characters[cn].x, characters[cn].y));
 
-        if !God::drop_char_fuzzy(cn, x, y) {
-            log::error!("Failed to drop character {} at ({}, {})", cn, x, y);
+        if x < 0 || y < 0 || !God::drop_char(cn, x as usize, y as usize) {
+            log::error!("Could not drop char template {}", template_id);
+            God::destroy_items(cn);
+            Repository::with_characters_mut(|characters| {
+                characters[cn].used = USE_EMPTY;
+            });
+            return None;
         }
     }
 
     State::with(|state| state.do_update_char(cn));
-
     Repository::with_globals_mut(|globals| {
         globals.npcs_created += 1;
     });
 
-    cn
+    Some(cn)
 }
 
 /// Port of `reset_char` from `populate.cpp`
@@ -1233,8 +1336,7 @@ pub fn populate() {
         });
 
         if used != USE_EMPTY && has_respawn {
-            let cn = pop_create_char(n, true);
-            if cn != 0 {
+            if let Some(cn) = pop_create_char(n, true) {
                 log::debug!("Spawned NPC {} from template {}", cn, n);
             }
         }
