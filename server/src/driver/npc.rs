@@ -1107,6 +1107,8 @@ pub fn npc_try_spell(cn: usize, co: usize, spell: usize) -> bool {
 
         let mana = ch[cn].a_mana / 1000;
 
+        // C++ logic: scan target's active spells; if we find the same spell with
+        // sufficient power and still > 50% duration remaining, we do NOT cast it again.
         let mut found = false;
         for n in 0..20 {
             let item_index = ch[co].spell[n];
@@ -1134,14 +1136,17 @@ pub fn npc_try_spell(cn: usize, co: usize, spell: usize) -> bool {
             }
         }
 
-        if found {
+        // Match C++: only cast if such a spell was NOT found on the target.
+        if !found {
             let tmp = spellflag(spell);
 
             if mana >= get_spellcost(cn, spell) && ch[co].data[96] as u32 & tmp == 0 {
                 ch[cn].skill_nr = spell as u16;
                 ch[cn].skill_target1 = co as u16;
                 ch[co].data[96] |= tmp as i32;
-                EffectManager::fx_add_effect(11, 8, ch[co].x as i32, ch[co].y as i32, tmp as i32);
+                // Match C++ parameter semantics: effect[11].data[0]=target character id,
+                // effect[11].data[1]=spellflag bitmask to clear later.
+                EffectManager::fx_add_effect(11, 8, co as i32, tmp as i32, 0);
                 return true;
             }
         }
