@@ -3637,13 +3637,13 @@ pub fn spawn_penta_enemy(item_idx: usize) -> i32 {
     let data9 = Repository::with_items(|items| items[item_idx].data[9]);
 
     let mut tmp = if data9 == 10 {
-        (rand::random::<i32>() % 2) + 9
+        (rand::random::<u32>() % 2) + 9
     } else if data9 == 11 {
-        (rand::random::<i32>() % 2) + 11
+        (rand::random::<u32>() % 2) + 11
     } else if data9 == 17 {
-        (rand::random::<i32>() % 2) + 17
+        (rand::random::<u32>() % 2) + 17
     } else if data9 == 18 {
-        (rand::random::<i32>() % 2) + 18
+        (rand::random::<u32>() % 2) + 18
     } else if data9 == 21 {
         22
     } else if data9 == 22 {
@@ -3651,12 +3651,8 @@ pub fn spawn_penta_enemy(item_idx: usize) -> i32 {
     } else if data9 == 23 {
         24
     } else {
-        (rand::random::<i32>() % 3) - 1 + data9 as i32
+        (rand::random::<u32>() % 3) - 1 + data9
     };
-
-    if tmp < 0 {
-        tmp = 0;
-    }
 
     // Create appropriate character template
     let spawned = if tmp >= 22 {
@@ -3696,7 +3692,7 @@ pub fn spawn_penta_enemy(item_idx: usize) -> i32 {
     });
 
     // Randomly boost character (1 in 25 chance)
-    if (rand::random::<i32>() % 25) == 0 {
+    if rand::random::<u32>().is_multiple_of(25) {
         boost_char(cn, 5);
     }
 
@@ -3810,7 +3806,7 @@ pub fn solved_pentagram(cn: usize, item_idx: usize) -> i32 {
                     });
                 }
             }
-            items[n].duration = 10 * 60 + (rand::random::<i32>() % (20 * 60)) as u32;
+            items[n].duration = 10 * 60 + (rand::random::<u32>() % (20 * 60)) as u32;
             items[n].active = items[n].duration;
         }
     });
@@ -4331,7 +4327,7 @@ pub fn use_shrine(cn: usize, _item_idx: usize) -> i32 {
         value as i32
     };
 
-    let val = val + (rand::random::<i32>() % (val + 1));
+    let val = val + (rand::random::<u32>() % (val as u32 + 1)) as i32;
 
     // Calculate rank threshold
     let rank = Repository::with_characters(|characters| {

@@ -305,7 +305,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
         0
     );
 
-    let mut num_skills = rand::random::<i32>() % rank;
+    let mut num_skills = rand::random::<u32>() % rank as u32;
     if num_skills == 0 {
         num_skills = 1; // Ensure at least 1 skill
     }
@@ -318,8 +318,8 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
 
     // Add random skills to belt
     for _ in 0..num_skills {
-        let skill_number = rand::random::<i32>() % 40; // 0-39
-        let mut skill_value = rand::random::<i32>() % rank;
+        let skill_number = rand::random::<u32>() % 40; // 0-39
+        let mut skill_value = rand::random::<u32>() % rank as u32;
         skill_value >>= 1; // Divide by 2, max is rank/2 (max 12)
         if skill_value == 0 {
             skill_value = 1; // Ensure at least 1
@@ -336,7 +336,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                         item.attrib[AT_BRAVE as usize][0] = 12;
                     }
                     item.attrib[AT_BRAVE as usize][2] = (10
-                        + (item.attrib[AT_BRAVE as usize][0] as i32 * (rand::random::<i32>() % 7)))
+                        + (item.attrib[AT_BRAVE as usize][0] as u32 * (rand::random::<u32>() % 7)))
                         as i8;
                 }
                 1 => {
@@ -346,7 +346,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                         item.attrib[AT_WILL as usize][0] = 12;
                     }
                     item.attrib[AT_WILL as usize][2] = (10
-                        + (item.attrib[AT_WILL as usize][0] as i32 * (rand::random::<i32>() % 7)))
+                        + (item.attrib[AT_WILL as usize][0] as u32 * (rand::random::<u32>() % 7)))
                         as i8;
                 }
                 2 => {
@@ -356,7 +356,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                         item.attrib[AT_INT as usize][0] = 12;
                     }
                     item.attrib[AT_INT as usize][2] = (10
-                        + (item.attrib[AT_INT as usize][0] as i32 * (rand::random::<i32>() % 7)))
+                        + (item.attrib[AT_INT as usize][0] as u32 * (rand::random::<u32>() % 7)))
                         as i8;
                 }
                 3 => {
@@ -366,7 +366,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                         item.attrib[AT_AGIL as usize][0] = 12;
                     }
                     item.attrib[AT_AGIL as usize][2] = (10
-                        + (item.attrib[AT_AGIL as usize][0] as i32 * (rand::random::<i32>() % 7)))
+                        + (item.attrib[AT_AGIL as usize][0] as u32 * (rand::random::<u32>() % 7)))
                         as i8;
                 }
                 4 => {
@@ -376,7 +376,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                         item.attrib[AT_STREN as usize][0] = 12;
                     }
                     item.attrib[AT_STREN as usize][2] = (10
-                        + (item.attrib[AT_STREN as usize][0] as i32 * (rand::random::<i32>() % 7)))
+                        + (item.attrib[AT_STREN as usize][0] as u32 * (rand::random::<u32>() % 7)))
                         as i8;
                 }
                 // HP
@@ -385,7 +385,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                     if item.hp[0] > 60 {
                         item.hp[0] = 60;
                     }
-                    item.hp[2] = (50 + (item.hp[0] as i32 * (rand::random::<i32>() % 7))) as i16;
+                    item.hp[2] = (50 + (item.hp[0] as u32 * (rand::random::<u32>() % 7))) as i16;
                 }
                 // Endurance
                 6 => {
@@ -393,7 +393,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                     if item.end[0] > 60 {
                         item.end[0] = 60;
                     }
-                    item.end[2] = (50 + (item.end[0] as i32 * (rand::random::<i32>() % 7))) as i16;
+                    item.end[2] = (50 + (item.end[0] as u32 * (rand::random::<u32>() % 7))) as i16;
                 }
                 // Mana
                 7 => {
@@ -402,7 +402,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                         item.mana[0] = 60;
                     }
                     item.mana[2] =
-                        (50 + (item.mana[0] as i32 * (rand::random::<i32>() % 7))) as i16;
+                        (50 + (item.mana[0] as u32 * (rand::random::<u32>() % 7))) as i16;
                 }
                 // Armor
                 8 => {
@@ -425,7 +425,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                         item.skill[SK_HAND][0] = 12;
                     }
                     item.skill[SK_HAND][2] =
-                        (item.skill[SK_HAND][0] as i32 * (rand::random::<i32>() % 7)) as i8;
+                        (item.skill[SK_HAND][0] as u32 * (rand::random::<u32>() % 7)) as i8;
                 }
                 // Sword
                 11 => {
@@ -455,7 +455,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                         item.skill[SK_LOCK][0] = 12;
                     }
                     item.skill[SK_LOCK][2] =
-                        (item.skill[SK_LOCK][0] as i32 * (rand::random::<i32>() % 7)) as i8;
+                        (item.skill[SK_LOCK][0] as u32 * (rand::random::<u32>() % 7)) as i8;
                 }
                 // Stealth
                 15 => {
@@ -471,7 +471,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                         item.skill[SK_PERCEPT][0] = 12;
                     }
                     item.skill[SK_PERCEPT][2] =
-                        (item.skill[SK_PERCEPT][0] as i32 * (rand::random::<i32>() % 7)) as i8;
+                        (item.skill[SK_PERCEPT][0] as u32 * (rand::random::<u32>() % 7)) as i8;
                 }
                 // Magic Shield
                 17 => {
@@ -487,7 +487,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                         item.skill[SK_BARTER][0] = 12;
                     }
                     item.skill[SK_BARTER][2] =
-                        (item.skill[SK_BARTER][0] as i32 * (rand::random::<i32>() % 7)) as i8;
+                        (item.skill[SK_BARTER][0] as u32 * (rand::random::<u32>() % 7)) as i8;
                 }
                 // Repair
                 19 => {
@@ -496,7 +496,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                         item.skill[SK_REPAIR][0] = 12;
                     }
                     item.skill[SK_REPAIR][2] =
-                        (item.skill[SK_REPAIR][0] as i32 * (rand::random::<i32>() % 7)) as i8;
+                        (item.skill[SK_REPAIR][0] as u32 * (rand::random::<u32>() % 7)) as i8;
                 }
                 // Light
                 20 => {
@@ -505,7 +505,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                         item.skill[SK_LIGHT][0] = 12;
                     }
                     item.skill[SK_LIGHT][2] =
-                        (item.skill[SK_LIGHT][0] as i32 * (rand::random::<i32>() % 7)) as i8;
+                        (item.skill[SK_LIGHT][0] as u32 * (rand::random::<u32>() % 7)) as i8;
                 }
                 // Recall
                 21 => {
@@ -514,7 +514,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                         item.skill[SK_RECALL][0] = 12;
                     }
                     item.skill[SK_RECALL][2] =
-                        (item.skill[SK_RECALL][0] as i32 * (rand::random::<i32>() % 7)) as i8;
+                        (item.skill[SK_RECALL][0] as u32 * (rand::random::<u32>() % 7)) as i8;
                 }
                 // Protect
                 22 => {
@@ -523,7 +523,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                         item.skill[SK_PROTECT][0] = 12;
                     }
                     item.skill[SK_PROTECT][2] =
-                        (item.skill[SK_PROTECT][0] as i32 * (rand::random::<i32>() % 7)) as i8;
+                        (item.skill[SK_PROTECT][0] as u32 * (rand::random::<u32>() % 7)) as i8;
                 }
                 // Enhance
                 23 => {
@@ -532,7 +532,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                         item.skill[SK_ENHANCE][0] = 12;
                     }
                     item.skill[SK_ENHANCE][2] =
-                        (item.skill[SK_ENHANCE][0] as i32 * (rand::random::<i32>() % 7)) as i8;
+                        (item.skill[SK_ENHANCE][0] as u32 * (rand::random::<u32>() % 7)) as i8;
                 }
                 // Stun
                 24 => {
@@ -555,7 +555,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                         item.skill[SK_BLESS][0] = 12;
                     }
                     item.skill[SK_BLESS][2] =
-                        (item.skill[SK_BLESS][0] as i32 * (rand::random::<i32>() % 7)) as i8;
+                        (item.skill[SK_BLESS][0] as u32 * (rand::random::<u32>() % 7)) as i8;
                 }
                 // Identify
                 27 => {
@@ -564,7 +564,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                         item.skill[SK_IDENT][0] = 12;
                     }
                     item.skill[SK_IDENT][2] =
-                        (item.skill[SK_IDENT][0] as i32 * (rand::random::<i32>() % 7)) as i8;
+                        (item.skill[SK_IDENT][0] as u32 * (rand::random::<u32>() % 7)) as i8;
                 }
                 // Resist
                 28 => {
@@ -573,7 +573,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                         item.skill[SK_RESIST][0] = 12;
                     }
                     item.skill[SK_RESIST][2] =
-                        (item.skill[SK_RESIST][0] as i32 * (rand::random::<i32>() % 7)) as i8;
+                        (item.skill[SK_RESIST][0] as u32 * (rand::random::<u32>() % 7)) as i8;
                 }
                 // Blast
                 29 => {
@@ -596,7 +596,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                         item.skill[SK_HEAL][0] = 12;
                     }
                     item.skill[SK_HEAL][2] =
-                        (item.skill[SK_HEAL][0] as i32 * (rand::random::<i32>() % 7)) as i8;
+                        (item.skill[SK_HEAL][0] as u32 * (rand::random::<u32>() % 7)) as i8;
                 }
                 // Ghost
                 32 => {
@@ -619,7 +619,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                         item.skill[SK_REST][0] = 12;
                     }
                     item.skill[SK_REST][2] =
-                        (item.skill[SK_REST][0] as i32 * (rand::random::<i32>() % 7)) as i8;
+                        (item.skill[SK_REST][0] as u32 * (rand::random::<u32>() % 7)) as i8;
                 }
                 // Meditation
                 35 => {
@@ -635,7 +635,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                         item.skill[SK_SENSE][0] = 12;
                     }
                     item.skill[SK_SENSE][2] =
-                        (item.skill[SK_SENSE][0] as i32 * (rand::random::<i32>() % 7)) as i8;
+                        (item.skill[SK_SENSE][0] as u32 * (rand::random::<u32>() % 7)) as i8;
                 }
                 // Immunity
                 37 => {

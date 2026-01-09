@@ -177,9 +177,10 @@ impl EffectManager {
                                 Repository::with_character_templates(|char_templates| {
                                     Self::fx_add_effect(
                                         2,
-                                        core::constants::TICKS * 60 * 5
-                                            + rand::random::<i32>().abs()
-                                                % (core::constants::TICKS * 60 * 10),
+                                        (core::constants::TICKS as u32 * 60 * 5
+                                            + rand::random::<u32>()
+                                                % (core::constants::TICKS as u32 * 60 * 10))
+                                            as i32,
                                         char_templates[temp].x as i32,
                                         char_templates[temp].y as i32,
                                         temp as i32,
@@ -702,8 +703,9 @@ impl EffectManager {
                     if temp == 189 || temp == 561 {
                         Self::fx_add_effect(
                             2,
-                            core::constants::TICKS * 60 * 20
-                                + rand::random::<i32>().abs() % (core::constants::TICKS * 60 * 5),
+                            (core::constants::TICKS as u32 * 60 * 20
+                                + rand::random::<u32>() % (core::constants::TICKS as u32 * 60 * 5))
+                                as i32,
                             Repository::with_character_templates(|char_templates| {
                                 char_templates[temp].x as i32
                             }),
@@ -715,8 +717,9 @@ impl EffectManager {
                     } else {
                         Self::fx_add_effect(
                             2,
-                            core::constants::TICKS * 60 * 4
-                                + rand::random::<i32>().abs() % (core::constants::TICKS * 60),
+                            (core::constants::TICKS as u32 * 60 * 4
+                                + rand::random::<u32>() % (core::constants::TICKS as u32 * 60))
+                                as i32,
                             Repository::with_character_templates(|char_templates| {
                                 char_templates[temp].x as i32
                             }),
