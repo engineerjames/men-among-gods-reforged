@@ -1,15 +1,18 @@
 use bevy::{
     asset::{
         io::{
-            AssetReader, AssetReaderError, AssetSourceBuilder, AssetSourceBuilders, PathStream,
-            Reader,
+            AssetReader, AssetReaderError, AssetReaderFuture, AssetSourceBuilder,
+            AssetSourceBuilders, ErasedAssetReader, PathStream, Reader,
         },
-        AssetLoader, AsyncReadExt, LoadContext,
+        AssetLoader, LoadContext,
     },
     prelude::*,
     reflect::TypePath,
-    utils::BoxedFuture,
 };
+
+use bevy::tasks::ConditionalSendFuture;
+
+use std::path::Path;
 
 #[allow(dead_code)]
 #[derive(Asset, TypePath, Debug)]
@@ -25,17 +28,15 @@ impl AssetLoader for DatBlobLoader {
     type Settings = ();
     type Error = std::io::Error;
 
-    fn load<'a>(
-        &'a self,
-        reader: &'a mut Reader,
-        _settings: &'a (),
-        _load_context: &'a mut LoadContext,
-    ) -> BoxedFuture<'a, Result<Self::Asset, Self::Error>> {
-        Box::pin(async move {
-            let mut bytes = Vec::new();
-            reader.read_to_end(&mut bytes).await?;
-            Ok(DatBlob { bytes })
-        })
+    async fn load(
+        &self,
+        reader: &mut dyn Reader,
+        _settings: &(),
+        _load_context: &mut LoadContext<'_>,
+    ) -> Result<Self::Asset, Self::Error> {
+        let mut bytes = Vec::new();
+        reader.read_to_end(&mut bytes).await?;
+        Ok(DatBlob { bytes })
     }
 
     fn extensions(&self) -> &[&str] {
@@ -59,12 +60,14 @@ pub struct MagAssetSourcePlugin;
 impl Plugin for MagAssetSourcePlugin {
     fn build(&self, app: &mut App) {
         let mut builders = app
-            .world
+            .world_mut()
             .get_resource_or_insert_with::<AssetSourceBuilders>(Default::default);
 
         builders.insert(
             "mag",
-            AssetSourceBuilder::default().with_reader(|| Box::new(MagAssetReader::new("assets"))),
+            AssetSourceBuilder::default().with_reader(|| {
+                Box::new(MagAssetReader::new("assets")) as Box<dyn ErasedAssetReader>
+            }),
         );
     }
 }
@@ -85,32 +88,26 @@ impl MagAssetReader {
 
 #[cfg(not(target_arch = "wasm32"))]
 impl AssetReader for MagAssetReader {
-    fn read<'a>(
-        &'a self,
-        path: &'a std::path::Path,
-    ) -> BoxedFuture<'a, Result<Box<Reader<'a>>, AssetReaderError>> {
-        self.fallback.read(path)
+    fn read<'a>(&'a self, path: &'a Path) -> impl AssetReaderFuture<Value: Reader + 'a> {
+        <bevy::asset::io::file::FileAssetReader as AssetReader>::read(&self.fallback, path)
     }
 
-    fn read_meta<'a>(
-        &'a self,
-        path: &'a std::path::Path,
-    ) -> BoxedFuture<'a, Result<Box<Reader<'a>>, AssetReaderError>> {
-        self.fallback.read_meta(path)
+    fn read_meta<'a>(&'a self, path: &'a Path) -> impl AssetReaderFuture<Value: Reader + 'a> {
+        <bevy::asset::io::file::FileAssetReader as AssetReader>::read_meta(&self.fallback, path)
     }
 
     fn read_directory<'a>(
         &'a self,
-        path: &'a std::path::Path,
-    ) -> BoxedFuture<'a, Result<Box<PathStream>, AssetReaderError>> {
-        self.fallback.read_directory(path)
+        path: &'a Path,
+    ) -> impl ConditionalSendFuture<Output = Result<Box<PathStream>, AssetReaderError>> {
+        <bevy::asset::io::file::FileAssetReader as AssetReader>::read_directory(&self.fallback, path)
     }
 
     fn is_directory<'a>(
         &'a self,
-        path: &'a std::path::Path,
-    ) -> BoxedFuture<'a, Result<bool, AssetReaderError>> {
-        self.fallback.is_directory(path)
+        path: &'a Path,
+    ) -> impl ConditionalSendFuture<Output = Result<bool, AssetReaderError>> {
+        <bevy::asset::io::file::FileAssetReader as AssetReader>::is_directory(&self.fallback, path)
     }
 }
 
