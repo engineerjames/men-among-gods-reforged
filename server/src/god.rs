@@ -3495,9 +3495,59 @@ impl God {
     ///
     /// # Arguments
     /// * `cn` - Requesting character
-    /// * `co` - Target character
-    /// * `value` - Decrease amount
-    pub fn lower_char(cn: usize, co: usize, value: i32) {
+    /// * `arg1` - Target character or can be the amount of arg2 isn't provided.
+    /// * `arg2` - Decrease amount
+    pub fn lower_char(cn: usize, arg1: &str, arg2: &str) {
+        log::debug!(
+            "god_lower_char() called with arg1='{}', arg2='{}'",
+            arg1,
+            arg2
+        );
+
+        if !Character::is_sane_character(cn) {
+            log::error!(
+                "god_lower_char() called with invalid character number: {}",
+                cn
+            );
+            return;
+        }
+
+        if arg2.is_empty() {
+            log::debug!(
+                "god_lower_char(): single-argument mode, applying to self: {}",
+                cn
+            );
+            Self::lower_char(cn, cn.to_string().as_str(), arg1);
+            return;
+        }
+
+        let (co, name) = if let Some((co, name)) = Self::find_character_by_name_or_id(arg1) {
+            (co, name)
+        } else {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("No such character: {}\n", arg1),
+                );
+            });
+            return;
+        };
+
+        let value = match arg2.parse::<i32>() {
+            Ok(v) => v,
+            Err(_) => {
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Red,
+                        &format!("Invalid lower value: {}\n", arg2),
+                    );
+                });
+                return;
+            }
+        };
+
         if !Character::is_sane_character(co) {
             State::with(|state| {
                 state.do_character_log(
@@ -3509,7 +3559,7 @@ impl God {
             return;
         }
 
-        if value < 1 {
+        if value < 0 {
             State::with(|state| {
                 state.do_character_log(
                     cn,
@@ -3525,12 +3575,7 @@ impl God {
             ch[co].points_tot -= value;
         });
 
-        chlog!(
-            cn,
-            "Lowered character {} experience by {}\n",
-            Repository::with_characters(|characters| characters[co].get_name().to_string()),
-            value
-        );
+        chlog!(cn, "Lowered character {} experience by {}\n", name, value);
 
         State::with_mut(|state| {
             state.do_character_log(
@@ -3551,35 +3596,56 @@ impl God {
     ///
     /// # Arguments
     /// * `cn` - Requesting character
-    /// * `co` - Recipient character
+    /// * `arg` - Recipient character or empty (if self)
     /// * `value` - Gold amount
     /// * `silver` - Silver amount
-    pub fn gold_char(cn: usize, co: usize, value: i32, silver: i32) {
-        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
+    pub fn gold_char(cn: usize, arg: &str, gold: u32, silver: u32) {
+        log::debug!(
+            "gold_char() called with arg='{}', gold='{}', silver='{}'",
+            arg,
+            gold,
+            silver
+        );
+
+        if !Character::is_sane_character(cn) {
+            log::error!("gold_char() called with invalid character number: {}", cn);
             return;
         }
 
-        let mut total_silver = value * 100; // value is in gold
+        let total_silver = gold * 100 + silver;
 
-        // If silver string is provided, parse additional silver
-        if silver != 0 {
-            total_silver += silver;
+        if arg.is_empty() {
+            log::debug!(
+                "gold_char(): single-argument mode, applying to self: {}",
+                cn
+            );
+            Self::gold_char(cn, cn.to_string().as_str(), gold, silver);
+            return;
         }
+
+        let (co, name) = if let Some((co, name)) = Self::find_character_by_name_or_id(arg) {
+            (co, name)
+        } else {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("No such character: {}\n", arg),
+                );
+            });
+            return;
+        };
 
         Repository::with_characters_mut(|characters| {
             let target = &mut characters[co];
-            target.gold = (target.gold + total_silver).max(0);
+            target.gold = (target.gold + total_silver as i32).max(0);
             target.set_do_update_flags();
 
             State::with(|state| {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Green,
-                    &format!(
-                        "Gave {} silver to character {}\n",
-                        total_silver,
-                        target.get_name()
-                    ),
+                    &format!("Gave {} silver to character {}\n", total_silver, name),
                 );
             });
         });
