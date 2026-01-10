@@ -67,6 +67,11 @@ impl State {
         let player_number = Repository::with_characters(|ch| ch[cn].player) as usize;
 
         if !ServerPlayer::is_sane_player(player_number) {
+            log::error!(
+                "do_log: Character {} has invalid player number: {}",
+                cn,
+                player_number
+            );
             return;
         }
 
@@ -217,6 +222,10 @@ impl State {
         });
 
         let Some(player_id) = matching_player_id else {
+            log::error!(
+                "char_play_sound: Character {} has no associated player.",
+                character_id
+            );
             return;
         };
 
@@ -367,12 +376,13 @@ impl State {
     /// * `text` - Message text
     pub(crate) fn do_caution(&self, source: usize, author: usize, text: &str) {
         if text.is_empty() {
+            log::error!("do_caution called with empty text");
             return;
         }
         let anon = text.to_string();
         let named = if author != 0 {
             format!(
-                "[{}] {}",
+                "[{}] {}\n",
                 Repository::with_characters(|ch| ch[author].get_name().to_string()),
                 anon
             )
@@ -407,12 +417,13 @@ impl State {
     /// * `text` - Announcement text
     pub(crate) fn do_announce(&self, source: usize, author: usize, text: &str) {
         if text.is_empty() {
+            log::error!("do_announce called with empty text");
             return;
         }
         let anon = text.to_string();
         let named = if author != 0 {
             format!(
-                "[{}] {}",
+                "[{}] {}\n",
                 Repository::with_characters(|ch| ch[author].get_name().to_string()),
                 anon
             )
@@ -460,6 +471,7 @@ impl State {
     #[allow(dead_code)]
     pub(crate) fn do_admin_log(&self, source: i32, text: &str) {
         if text.is_empty() {
+            log::error!("do_admin_log called with empty text");
             return;
         }
 
@@ -509,6 +521,7 @@ impl State {
     /// * `text` - Message text
     pub(crate) fn do_staff_log(&self, font: core::types::FontColor, text: &str) {
         if text.is_empty() {
+            log::error!("do_staff_log called with empty text");
             return;
         }
         for n in 1..core::constants::MAXCHARS {
