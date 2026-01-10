@@ -20,6 +20,23 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+
+    - name: Install Linux build dependencies (Bevy)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          pkg-config \
+          libasound2-dev \
+          libudev-dev \
+          libwayland-dev \
+          libxkbcommon-dev \
+          libx11-dev \
+          libxi-dev \
+          libxrandr-dev \
+          libxcursor-dev \
+          libxinerama-dev
+
     - name: Build
       run: cargo build --verbose
     - name: Run tests
