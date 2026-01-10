@@ -1,6 +1,22 @@
-use core::constants::CharacterFlags;
+use core::constants::{
+    AT_AGIL, AT_BRAVE, AT_INT, AT_STREN, AT_WILL, DX_DOWN, MAXCHARS, MAXEFFECT, MAXITEM, MAXTCHARS,
+    MAXTITEM, MF_INDOORS, MF_MOVEBLOCK, MF_SIGHTBLOCK, SERVER_MAPX, SERVER_MAPY, SK_BARTER,
+    SK_BLAST, SK_BLESS, SK_CONCEN, SK_CURSE, SK_DAGGER, SK_DISPEL, SK_ENHANCE, SK_GHOST, SK_HAND,
+    SK_HEAL, SK_IDENT, SK_IMMUN, SK_LIGHT, SK_LOCK, SK_MEDIT, SK_MSHIELD, SK_PERCEPT, SK_PROTECT,
+    SK_RECALL, SK_REGEN, SK_REPAIR, SK_RESIST, SK_REST, SK_SENSE, SK_STEALTH, SK_STUN, SK_SURROUND,
+    SK_SWORD, SK_TWOHAND, SK_WARCRY, TICKS, USE_ACTIVE, USE_EMPTY,
+};
 
-use crate::{driver, god::God, repository::Repository, state::State};
+use {core::constants::CharacterFlags, core::constants::ItemFlags};
+
+use crate::{
+    driver::{self, use_item},
+    effect::EffectManager,
+    god::God,
+    player,
+    repository::Repository,
+    state::State,
+};
 
 /// Port of `init_lights` from `populate.cpp`
 /// Initialize lighting on the map
@@ -9,9 +25,9 @@ pub fn init_lights() {
     let mut cnt2 = 0;
 
     // First pass: clear all light and dlight values
-    for y in 0..core::constants::SERVER_MAPY as usize {
-        for x in 0..core::constants::SERVER_MAPX as usize {
-            let m = x + y * core::constants::SERVER_MAPX as usize;
+    for y in 0..SERVER_MAPY as usize {
+        for x in 0..SERVER_MAPX as usize {
+            let m = x + y * SERVER_MAPX as usize;
             Repository::with_map_mut(|map| {
                 map[m].light = 0;
                 map[m].dlight = 0;
@@ -20,13 +36,12 @@ pub fn init_lights() {
     }
 
     // Second pass: compute dlight for indoor tiles, then add lights from items
-    for y in 0..core::constants::SERVER_MAPY as usize {
-        for x in 0..core::constants::SERVER_MAPX as usize {
-            let m = x + y * core::constants::SERVER_MAPX as usize;
+    for y in 0..SERVER_MAPY as usize {
+        for x in 0..SERVER_MAPX as usize {
+            let m = x + y * SERVER_MAPX as usize;
 
             // Compute daylight for indoor tiles first
-            let is_indoors =
-                Repository::with_map(|map| map[m].flags & core::constants::MF_INDOORS as u64 != 0);
+            let is_indoors = Repository::with_map(|map| map[m].flags & MF_INDOORS as u64 != 0);
 
             if is_indoors {
                 State::with_mut(|state| {
@@ -77,93 +92,93 @@ pub fn pop_create_item(temp: usize, cn: usize) -> usize {
     let mut in_id = 0;
     let alignment = Repository::with_characters(|characters| characters[cn].alignment);
 
-    // Check for evil alignment special items (1/150 chance, multiple checks)
-    if alignment < 0 && rand::random::<u32>().is_multiple_of(150) {
+    // First check: Gorn uniques (1/150 chance)
+    if in_id == 0 && alignment < 0 && rand::random::<u32>().is_multiple_of(150) {
         in_id = match temp {
-            27 => God::create_item(603),  // Dagger
-            28 => God::create_item(604),  // Short Sword
-            29 => God::create_item(605),  // Long Sword
-            30 => God::create_item(606),  // Two-Handed Sword
-            523 => God::create_item(607), // Claymore
-            31 => God::create_item(608),  // Axe
-            32 => God::create_item(609),  // Battle Axe
-            33 => God::create_item(610),  // Two-Handed Axe
-            34 => God::create_item(611),  // Staff
-            524 => God::create_item(612), // Halberd
-            35 => God::create_item(613),  // Dagger
-            36 => God::create_item(614),  // Bone Club
-            37 => God::create_item(615),  // Mace
-            38 => God::create_item(616),  // Flail
-            125 => God::create_item(617), // Warhammer
+            27 => God::create_item(542),  // bronze dagger
+            28 => God::create_item(543),  // steel dagger
+            29 => God::create_item(544),  // gold dagger
+            30 => God::create_item(545),  // crystal dagger
+            523 => God::create_item(546), // titan dagger
+            31 => God::create_item(547),  // bronze sword
+            32 => God::create_item(548),  // steel sword
+            33 => God::create_item(549),  // gold sword
+            34 => God::create_item(550),  // crystal sword
+            524 => God::create_item(551), // titan sword
+            35 => God::create_item(552),  // bronze two
+            36 => God::create_item(553),  // steel two
+            37 => God::create_item(554),  // gold two
+            38 => God::create_item(555),  // crystal two
+            125 => God::create_item(556), // titan two
             _ => None,
         }
         .unwrap_or(0);
     }
 
-    // Second check (armor)
+    // Second check: Kwai uniques (1/150 chance)
     if in_id == 0 && alignment < 0 && rand::random::<u32>().is_multiple_of(150) {
         in_id = match temp {
-            27 => God::create_item(618),  // Leather Helm
-            28 => God::create_item(619),  // Chain Helm
-            29 => God::create_item(620),  // Plate Helm
-            30 => God::create_item(621),  // Great Helm
-            523 => God::create_item(622), // War Helm
-            31 => God::create_item(623),  // Leather Armor
-            32 => God::create_item(624),  // Chain Armor
-            33 => God::create_item(625),  // Plate Armor
-            34 => God::create_item(626),  // Robe
-            524 => God::create_item(627), // War Armor
-            35 => God::create_item(628),  // Leather Gloves
-            36 => God::create_item(629),  // Chain Gloves
-            37 => God::create_item(630),  // Plate Gloves
-            38 => God::create_item(631),  // Great Gloves
-            125 => God::create_item(632), // War Gloves
+            27 => God::create_item(527),  // bronze dagger
+            28 => God::create_item(528),  // steel dagger
+            29 => God::create_item(529),  // gold dagger
+            30 => God::create_item(530),  // crystal dagger
+            523 => God::create_item(531), // titan dagger
+            31 => God::create_item(532),  // bronze sword
+            32 => God::create_item(533),  // steel sword
+            33 => God::create_item(534),  // gold sword
+            34 => God::create_item(535),  // crystal sword
+            524 => God::create_item(536), // titan sword
+            35 => God::create_item(537),  // bronze two
+            36 => God::create_item(538),  // steel two
+            37 => God::create_item(539),  // gold two
+            38 => God::create_item(540),  // crystal two
+            125 => God::create_item(541), // titan two
             _ => None,
         }
         .unwrap_or(0);
     }
 
-    // Third check (boots)
+    // Third check: Purple One uniques (1/150 chance)
     if in_id == 0 && alignment < 0 && rand::random::<u32>().is_multiple_of(150) {
         in_id = match temp {
-            27 => God::create_item(633),  // Leather Boots
-            28 => God::create_item(634),  // Chain Boots
-            29 => God::create_item(635),  // Plate Boots
-            30 => God::create_item(636),  // Great Boots
-            523 => God::create_item(637), // War Boots
-            31 => God::create_item(638),  // Leather Belt
-            32 => God::create_item(639),  // Chain Belt
-            33 => God::create_item(640),  // Plate Belt
-            34 => God::create_item(641),  // Sash
-            524 => God::create_item(642), // War Belt
-            35 => God::create_item(643),  // Leather Pants
-            36 => God::create_item(644),  // Chain Pants
-            37 => God::create_item(645),  // Plate Pants
-            38 => God::create_item(646),  // Great Pants
-            125 => God::create_item(647), // War Pants
+            27 => God::create_item(572),  // bronze dagger
+            28 => God::create_item(573),  // steel dagger
+            29 => God::create_item(574),  // gold dagger
+            30 => God::create_item(575),  // crystal dagger
+            523 => God::create_item(576), // titan dagger
+            31 => God::create_item(577),  // bronze sword
+            32 => God::create_item(578),  // steel sword
+            33 => God::create_item(579),  // gold sword
+            34 => God::create_item(580),  // crystal sword
+            524 => God::create_item(581), // titan sword
+            35 => God::create_item(582),  // bronze two
+            36 => God::create_item(583),  // steel two
+            37 => God::create_item(584),  // gold two
+            38 => God::create_item(585),  // crystal two
+            125 => God::create_item(586), // titan two
             _ => None,
         }
         .unwrap_or(0);
     }
 
-    // Fourth check (shields/cloaks)
+    // Fourth check: Skua uniques (1/150 chance)
     if in_id == 0 && alignment < 0 && rand::random::<u32>().is_multiple_of(150) {
         in_id = match temp {
-            27 => God::create_item(648),  // Leather Shield
-            28 => God::create_item(649),  // Chain Shield
-            29 => God::create_item(650),  // Plate Shield
-            30 => God::create_item(651),  // Great Shield
-            523 => God::create_item(652), // War Shield
-            31 => God::create_item(653),  // Leather Cloak
-            32 => God::create_item(654),  // Chain Cloak
-            33 => God::create_item(655),  // Plate Cloak
-            34 => God::create_item(656),  // Robe Cloak
-            524 => God::create_item(657), // War Cloak
-            35 => God::create_item(658),  // Amulet
-            36 => God::create_item(659),  // Ring
-            37 => God::create_item(660),  // Bracelet
-            38 => God::create_item(661),  // Earring
-            125 => God::create_item(662), // Necklace
+            27 => God::create_item(280),  // bronze dagger
+            28 => God::create_item(281),  // steel dagger
+            29 => God::create_item(282),  // gold dagger
+            30 => God::create_item(283),  // crystal dagger
+            523 => God::create_item(525), // titan dagger
+            31 => God::create_item(284),  // bronze sword
+            32 => God::create_item(285),  // steel sword
+            33 => God::create_item(286),  // gold sword
+            34 => God::create_item(287),  // crystal sword
+            524 => God::create_item(526), // titan sword
+            35 => God::create_item(288),  // bronze two
+            36 => God::create_item(289),  // steel two
+            37 => God::create_item(290),  // gold two
+            38 => God::create_item(291),  // crystal two
+            125 => God::create_item(292), // titan two
             _ => None,
         }
         .unwrap_or(0);
@@ -171,20 +186,30 @@ pub fn pop_create_item(temp: usize, cn: usize) -> usize {
 
     // Default: create item from template
     if in_id == 0 {
-        let citem = Repository::with_characters(|characters| characters[cn].citem);
-        if citem != 0 {
-            in_id = God::create_item(Repository::with_items(|items| {
-                items[citem as usize].temp as usize
-            }))
-            .unwrap_or(0);
+        in_id = God::create_item(temp).unwrap_or(0);
+
+        // Apply item damage for regular items
+        if in_id != 0 {
+            let max_damage = Repository::with_items(|items| items[in_id].max_damage);
+            if max_damage > 0 {
+                // 50% chance to age the item first
+                if rand::random::<u32>().is_multiple_of(2) {
+                    Repository::with_items_mut(|items| {
+                        items[in_id].current_damage = max_damage + 1;
+                    });
+                    use_item::item_age(in_id);
+                }
+                // Set random damage
+                Repository::with_items_mut(|items| {
+                    items[in_id].current_damage = rand::random::<u32>() % max_damage;
+                });
+            }
         }
     } else {
-        log::info!(
-            "Created special item {} for character {} (template {})",
-            in_id,
-            cn,
-            temp
-        );
+        let char_name =
+            Repository::with_characters(|characters| characters[cn].get_name().to_string());
+        let item_name = Repository::with_items(|items| items[in_id].get_name().to_string());
+        log::info!("{} got unique item {}.", char_name, item_name);
     }
 
     in_id
@@ -280,7 +305,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
         0
     );
 
-    let mut num_skills = rand::random::<i32>() % rank;
+    let mut num_skills = rand::random::<u32>() % rank as u32;
     if num_skills == 0 {
         num_skills = 1; // Ensure at least 1 skill
     }
@@ -293,8 +318,8 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
 
     // Add random skills to belt
     for _ in 0..num_skills {
-        let skill_number = rand::random::<i32>() % 40; // 0-39
-        let mut skill_value = rand::random::<i32>() % rank;
+        let skill_number = rand::random::<u32>() % 40; // 0-39
+        let mut skill_value = rand::random::<u32>() % rank as u32;
         skill_value >>= 1; // Divide by 2, max is rank/2 (max 12)
         if skill_value == 0 {
             skill_value = 1; // Ensure at least 1
@@ -306,53 +331,53 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                 // Attributes
                 0 => {
                     // Bravery (AT_BRAVE)
-                    item.attrib[core::constants::AT_BRAVE as usize][0] += skill_value as i8;
-                    if item.attrib[core::constants::AT_BRAVE as usize][0] > 12 {
-                        item.attrib[core::constants::AT_BRAVE as usize][0] = 12;
+                    item.attrib[AT_BRAVE as usize][0] += skill_value as i8;
+                    if item.attrib[AT_BRAVE as usize][0] > 12 {
+                        item.attrib[AT_BRAVE as usize][0] = 12;
                     }
-                    item.attrib[core::constants::AT_BRAVE as usize][2] =
-                        (10 + (item.attrib[core::constants::AT_BRAVE as usize][0] as i32
-                            * (rand::random::<i32>() % 7))) as i8;
+                    item.attrib[AT_BRAVE as usize][2] = (10
+                        + (item.attrib[AT_BRAVE as usize][0] as u32 * (rand::random::<u32>() % 7)))
+                        as i8;
                 }
                 1 => {
                     // Willpower (AT_WILL)
-                    item.attrib[core::constants::AT_WILL as usize][0] += skill_value as i8;
-                    if item.attrib[core::constants::AT_WILL as usize][0] > 12 {
-                        item.attrib[core::constants::AT_WILL as usize][0] = 12;
+                    item.attrib[AT_WILL as usize][0] += skill_value as i8;
+                    if item.attrib[AT_WILL as usize][0] > 12 {
+                        item.attrib[AT_WILL as usize][0] = 12;
                     }
-                    item.attrib[core::constants::AT_WILL as usize][2] =
-                        (10 + (item.attrib[core::constants::AT_WILL as usize][0] as i32
-                            * (rand::random::<i32>() % 7))) as i8;
+                    item.attrib[AT_WILL as usize][2] = (10
+                        + (item.attrib[AT_WILL as usize][0] as u32 * (rand::random::<u32>() % 7)))
+                        as i8;
                 }
                 2 => {
                     // Intuition (AT_INT)
-                    item.attrib[core::constants::AT_INT as usize][0] += skill_value as i8;
-                    if item.attrib[core::constants::AT_INT as usize][0] > 12 {
-                        item.attrib[core::constants::AT_INT as usize][0] = 12;
+                    item.attrib[AT_INT as usize][0] += skill_value as i8;
+                    if item.attrib[AT_INT as usize][0] > 12 {
+                        item.attrib[AT_INT as usize][0] = 12;
                     }
-                    item.attrib[core::constants::AT_INT as usize][2] =
-                        (10 + (item.attrib[core::constants::AT_INT as usize][0] as i32
-                            * (rand::random::<i32>() % 7))) as i8;
+                    item.attrib[AT_INT as usize][2] = (10
+                        + (item.attrib[AT_INT as usize][0] as u32 * (rand::random::<u32>() % 7)))
+                        as i8;
                 }
                 3 => {
                     // Agility (AT_AGIL)
-                    item.attrib[core::constants::AT_AGIL as usize][0] += skill_value as i8;
-                    if item.attrib[core::constants::AT_AGIL as usize][0] > 12 {
-                        item.attrib[core::constants::AT_AGIL as usize][0] = 12;
+                    item.attrib[AT_AGIL as usize][0] += skill_value as i8;
+                    if item.attrib[AT_AGIL as usize][0] > 12 {
+                        item.attrib[AT_AGIL as usize][0] = 12;
                     }
-                    item.attrib[core::constants::AT_AGIL as usize][2] =
-                        (10 + (item.attrib[core::constants::AT_AGIL as usize][0] as i32
-                            * (rand::random::<i32>() % 7))) as i8;
+                    item.attrib[AT_AGIL as usize][2] = (10
+                        + (item.attrib[AT_AGIL as usize][0] as u32 * (rand::random::<u32>() % 7)))
+                        as i8;
                 }
                 4 => {
                     // Strength (AT_STREN)
-                    item.attrib[core::constants::AT_STREN as usize][0] += skill_value as i8;
-                    if item.attrib[core::constants::AT_STREN as usize][0] > 12 {
-                        item.attrib[core::constants::AT_STREN as usize][0] = 12;
+                    item.attrib[AT_STREN as usize][0] += skill_value as i8;
+                    if item.attrib[AT_STREN as usize][0] > 12 {
+                        item.attrib[AT_STREN as usize][0] = 12;
                     }
-                    item.attrib[core::constants::AT_STREN as usize][2] =
-                        (10 + (item.attrib[core::constants::AT_STREN as usize][0] as i32
-                            * (rand::random::<i32>() % 7))) as i8;
+                    item.attrib[AT_STREN as usize][2] = (10
+                        + (item.attrib[AT_STREN as usize][0] as u32 * (rand::random::<u32>() % 7)))
+                        as i8;
                 }
                 // HP
                 5 => {
@@ -360,7 +385,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                     if item.hp[0] > 60 {
                         item.hp[0] = 60;
                     }
-                    item.hp[2] = (50 + (item.hp[0] as i32 * (rand::random::<i32>() % 7))) as i16;
+                    item.hp[2] = (50 + (item.hp[0] as u32 * (rand::random::<u32>() % 7))) as i16;
                 }
                 // Endurance
                 6 => {
@@ -368,7 +393,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                     if item.end[0] > 60 {
                         item.end[0] = 60;
                     }
-                    item.end[2] = (50 + (item.end[0] as i32 * (rand::random::<i32>() % 7))) as i16;
+                    item.end[2] = (50 + (item.end[0] as u32 * (rand::random::<u32>() % 7))) as i16;
                 }
                 // Mana
                 7 => {
@@ -377,7 +402,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                         item.mana[0] = 60;
                     }
                     item.mana[2] =
-                        (50 + (item.mana[0] as i32 * (rand::random::<i32>() % 7))) as i16;
+                        (50 + (item.mana[0] as u32 * (rand::random::<u32>() % 7))) as i16;
                 }
                 // Armor
                 8 => {
@@ -388,264 +413,249 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                 }
                 // Warcry
                 9 => {
-                    item.skill[core::constants::SK_WARCRY][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_WARCRY][0] > 12 {
-                        item.skill[core::constants::SK_WARCRY][0] = 12;
+                    item.skill[SK_WARCRY][0] += skill_value as i8;
+                    if item.skill[SK_WARCRY][0] > 12 {
+                        item.skill[SK_WARCRY][0] = 12;
                     }
                 }
                 // Hand to Hand
                 10 => {
-                    item.skill[core::constants::SK_HAND][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_HAND][0] > 12 {
-                        item.skill[core::constants::SK_HAND][0] = 12;
+                    item.skill[SK_HAND][0] += skill_value as i8;
+                    if item.skill[SK_HAND][0] > 12 {
+                        item.skill[SK_HAND][0] = 12;
                     }
-                    item.skill[core::constants::SK_HAND][2] =
-                        (item.skill[core::constants::SK_HAND][0] as i32
-                            * (rand::random::<i32>() % 7)) as i8;
+                    item.skill[SK_HAND][2] =
+                        (item.skill[SK_HAND][0] as u32 * (rand::random::<u32>() % 7)) as i8;
                 }
                 // Sword
                 11 => {
-                    item.skill[core::constants::SK_SWORD][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_SWORD][0] > 12 {
-                        item.skill[core::constants::SK_SWORD][0] = 12;
+                    item.skill[SK_SWORD][0] += skill_value as i8;
+                    if item.skill[SK_SWORD][0] > 12 {
+                        item.skill[SK_SWORD][0] = 12;
                     }
                 }
                 // Dagger
                 12 => {
-                    item.skill[core::constants::SK_DAGGER][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_DAGGER][0] > 12 {
-                        item.skill[core::constants::SK_DAGGER][0] = 12;
+                    item.skill[SK_DAGGER][0] += skill_value as i8;
+                    if item.skill[SK_DAGGER][0] > 12 {
+                        item.skill[SK_DAGGER][0] = 12;
                     }
                 }
                 // Two-Handed
                 13 => {
-                    item.skill[core::constants::SK_TWOHAND][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_TWOHAND][0] > 12 {
-                        item.skill[core::constants::SK_TWOHAND][0] = 12;
+                    item.skill[SK_TWOHAND][0] += skill_value as i8;
+                    if item.skill[SK_TWOHAND][0] > 12 {
+                        item.skill[SK_TWOHAND][0] = 12;
                     }
                 }
                 // Lockpick
                 14 => {
-                    item.skill[core::constants::SK_LOCK][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_LOCK][0] > 12 {
-                        item.skill[core::constants::SK_LOCK][0] = 12;
+                    item.skill[SK_LOCK][0] += skill_value as i8;
+                    if item.skill[SK_LOCK][0] > 12 {
+                        item.skill[SK_LOCK][0] = 12;
                     }
-                    item.skill[core::constants::SK_LOCK][2] =
-                        (item.skill[core::constants::SK_LOCK][0] as i32
-                            * (rand::random::<i32>() % 7)) as i8;
+                    item.skill[SK_LOCK][2] =
+                        (item.skill[SK_LOCK][0] as u32 * (rand::random::<u32>() % 7)) as i8;
                 }
                 // Stealth
                 15 => {
-                    item.skill[core::constants::SK_STEALTH][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_STEALTH][0] > 12 {
-                        item.skill[core::constants::SK_STEALTH][0] = 12;
+                    item.skill[SK_STEALTH][0] += skill_value as i8;
+                    if item.skill[SK_STEALTH][0] > 12 {
+                        item.skill[SK_STEALTH][0] = 12;
                     }
                 }
                 // Perception
                 16 => {
-                    item.skill[core::constants::SK_PERCEPT][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_PERCEPT][0] > 12 {
-                        item.skill[core::constants::SK_PERCEPT][0] = 12;
+                    item.skill[SK_PERCEPT][0] += skill_value as i8;
+                    if item.skill[SK_PERCEPT][0] > 12 {
+                        item.skill[SK_PERCEPT][0] = 12;
                     }
-                    item.skill[core::constants::SK_PERCEPT][2] =
-                        (item.skill[core::constants::SK_PERCEPT][0] as i32
-                            * (rand::random::<i32>() % 7)) as i8;
+                    item.skill[SK_PERCEPT][2] =
+                        (item.skill[SK_PERCEPT][0] as u32 * (rand::random::<u32>() % 7)) as i8;
                 }
                 // Magic Shield
                 17 => {
-                    item.skill[core::constants::SK_MSHIELD][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_MSHIELD][0] > 12 {
-                        item.skill[core::constants::SK_MSHIELD][0] = 12;
+                    item.skill[SK_MSHIELD][0] += skill_value as i8;
+                    if item.skill[SK_MSHIELD][0] > 12 {
+                        item.skill[SK_MSHIELD][0] = 12;
                     }
                 }
                 // Barter
                 18 => {
-                    item.skill[core::constants::SK_BARTER][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_BARTER][0] > 12 {
-                        item.skill[core::constants::SK_BARTER][0] = 12;
+                    item.skill[SK_BARTER][0] += skill_value as i8;
+                    if item.skill[SK_BARTER][0] > 12 {
+                        item.skill[SK_BARTER][0] = 12;
                     }
-                    item.skill[core::constants::SK_BARTER][2] =
-                        (item.skill[core::constants::SK_BARTER][0] as i32
-                            * (rand::random::<i32>() % 7)) as i8;
+                    item.skill[SK_BARTER][2] =
+                        (item.skill[SK_BARTER][0] as u32 * (rand::random::<u32>() % 7)) as i8;
                 }
                 // Repair
                 19 => {
-                    item.skill[core::constants::SK_REPAIR][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_REPAIR][0] > 12 {
-                        item.skill[core::constants::SK_REPAIR][0] = 12;
+                    item.skill[SK_REPAIR][0] += skill_value as i8;
+                    if item.skill[SK_REPAIR][0] > 12 {
+                        item.skill[SK_REPAIR][0] = 12;
                     }
-                    item.skill[core::constants::SK_REPAIR][2] =
-                        (item.skill[core::constants::SK_REPAIR][0] as i32
-                            * (rand::random::<i32>() % 7)) as i8;
+                    item.skill[SK_REPAIR][2] =
+                        (item.skill[SK_REPAIR][0] as u32 * (rand::random::<u32>() % 7)) as i8;
                 }
                 // Light
                 20 => {
-                    item.skill[core::constants::SK_LIGHT][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_LIGHT][0] > 12 {
-                        item.skill[core::constants::SK_LIGHT][0] = 12;
+                    item.skill[SK_LIGHT][0] += skill_value as i8;
+                    if item.skill[SK_LIGHT][0] > 12 {
+                        item.skill[SK_LIGHT][0] = 12;
                     }
-                    item.skill[core::constants::SK_LIGHT][2] =
-                        (item.skill[core::constants::SK_LIGHT][0] as i32
-                            * (rand::random::<i32>() % 7)) as i8;
+                    item.skill[SK_LIGHT][2] =
+                        (item.skill[SK_LIGHT][0] as u32 * (rand::random::<u32>() % 7)) as i8;
                 }
                 // Recall
                 21 => {
-                    item.skill[core::constants::SK_RECALL][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_RECALL][0] > 12 {
-                        item.skill[core::constants::SK_RECALL][0] = 12;
+                    item.skill[SK_RECALL][0] += skill_value as i8;
+                    if item.skill[SK_RECALL][0] > 12 {
+                        item.skill[SK_RECALL][0] = 12;
                     }
-                    item.skill[core::constants::SK_RECALL][2] =
-                        (item.skill[core::constants::SK_RECALL][0] as i32
-                            * (rand::random::<i32>() % 7)) as i8;
+                    item.skill[SK_RECALL][2] =
+                        (item.skill[SK_RECALL][0] as u32 * (rand::random::<u32>() % 7)) as i8;
                 }
                 // Protect
                 22 => {
-                    item.skill[core::constants::SK_PROTECT][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_PROTECT][0] > 12 {
-                        item.skill[core::constants::SK_PROTECT][0] = 12;
+                    item.skill[SK_PROTECT][0] += skill_value as i8;
+                    if item.skill[SK_PROTECT][0] > 12 {
+                        item.skill[SK_PROTECT][0] = 12;
                     }
-                    item.skill[core::constants::SK_PROTECT][2] =
-                        (item.skill[core::constants::SK_PROTECT][0] as i32
-                            * (rand::random::<i32>() % 7)) as i8;
+                    item.skill[SK_PROTECT][2] =
+                        (item.skill[SK_PROTECT][0] as u32 * (rand::random::<u32>() % 7)) as i8;
                 }
                 // Enhance
                 23 => {
-                    item.skill[core::constants::SK_ENHANCE][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_ENHANCE][0] > 12 {
-                        item.skill[core::constants::SK_ENHANCE][0] = 12;
+                    item.skill[SK_ENHANCE][0] += skill_value as i8;
+                    if item.skill[SK_ENHANCE][0] > 12 {
+                        item.skill[SK_ENHANCE][0] = 12;
                     }
-                    item.skill[core::constants::SK_ENHANCE][2] =
-                        (item.skill[core::constants::SK_ENHANCE][0] as i32
-                            * (rand::random::<i32>() % 7)) as i8;
+                    item.skill[SK_ENHANCE][2] =
+                        (item.skill[SK_ENHANCE][0] as u32 * (rand::random::<u32>() % 7)) as i8;
                 }
                 // Stun
                 24 => {
-                    item.skill[core::constants::SK_STUN][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_STUN][0] > 12 {
-                        item.skill[core::constants::SK_STUN][0] = 12;
+                    item.skill[SK_STUN][0] += skill_value as i8;
+                    if item.skill[SK_STUN][0] > 12 {
+                        item.skill[SK_STUN][0] = 12;
                     }
                 }
                 // Curse
                 25 => {
-                    item.skill[core::constants::SK_CURSE][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_CURSE][0] > 12 {
-                        item.skill[core::constants::SK_CURSE][0] = 12;
+                    item.skill[SK_CURSE][0] += skill_value as i8;
+                    if item.skill[SK_CURSE][0] > 12 {
+                        item.skill[SK_CURSE][0] = 12;
                     }
                 }
                 // Bless
                 26 => {
-                    item.skill[core::constants::SK_BLESS][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_BLESS][0] > 12 {
-                        item.skill[core::constants::SK_BLESS][0] = 12;
+                    item.skill[SK_BLESS][0] += skill_value as i8;
+                    if item.skill[SK_BLESS][0] > 12 {
+                        item.skill[SK_BLESS][0] = 12;
                     }
-                    item.skill[core::constants::SK_BLESS][2] =
-                        (item.skill[core::constants::SK_BLESS][0] as i32
-                            * (rand::random::<i32>() % 7)) as i8;
+                    item.skill[SK_BLESS][2] =
+                        (item.skill[SK_BLESS][0] as u32 * (rand::random::<u32>() % 7)) as i8;
                 }
                 // Identify
                 27 => {
-                    item.skill[core::constants::SK_IDENT][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_IDENT][0] > 12 {
-                        item.skill[core::constants::SK_IDENT][0] = 12;
+                    item.skill[SK_IDENT][0] += skill_value as i8;
+                    if item.skill[SK_IDENT][0] > 12 {
+                        item.skill[SK_IDENT][0] = 12;
                     }
-                    item.skill[core::constants::SK_IDENT][2] =
-                        (item.skill[core::constants::SK_IDENT][0] as i32
-                            * (rand::random::<i32>() % 7)) as i8;
+                    item.skill[SK_IDENT][2] =
+                        (item.skill[SK_IDENT][0] as u32 * (rand::random::<u32>() % 7)) as i8;
                 }
                 // Resist
                 28 => {
-                    item.skill[core::constants::SK_RESIST][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_RESIST][0] > 12 {
-                        item.skill[core::constants::SK_RESIST][0] = 12;
+                    item.skill[SK_RESIST][0] += skill_value as i8;
+                    if item.skill[SK_RESIST][0] > 12 {
+                        item.skill[SK_RESIST][0] = 12;
                     }
-                    item.skill[core::constants::SK_RESIST][2] =
-                        (item.skill[core::constants::SK_RESIST][0] as i32
-                            * (rand::random::<i32>() % 7)) as i8;
+                    item.skill[SK_RESIST][2] =
+                        (item.skill[SK_RESIST][0] as u32 * (rand::random::<u32>() % 7)) as i8;
                 }
                 // Blast
                 29 => {
-                    item.skill[core::constants::SK_BLAST][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_BLAST][0] > 12 {
-                        item.skill[core::constants::SK_BLAST][0] = 12;
+                    item.skill[SK_BLAST][0] += skill_value as i8;
+                    if item.skill[SK_BLAST][0] > 12 {
+                        item.skill[SK_BLAST][0] = 12;
                     }
                 }
                 // Dispel
                 30 => {
-                    item.skill[core::constants::SK_DISPEL][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_DISPEL][0] > 12 {
-                        item.skill[core::constants::SK_DISPEL][0] = 12;
+                    item.skill[SK_DISPEL][0] += skill_value as i8;
+                    if item.skill[SK_DISPEL][0] > 12 {
+                        item.skill[SK_DISPEL][0] = 12;
                     }
                 }
                 // Heal
                 31 => {
-                    item.skill[core::constants::SK_HEAL][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_HEAL][0] > 12 {
-                        item.skill[core::constants::SK_HEAL][0] = 12;
+                    item.skill[SK_HEAL][0] += skill_value as i8;
+                    if item.skill[SK_HEAL][0] > 12 {
+                        item.skill[SK_HEAL][0] = 12;
                     }
-                    item.skill[core::constants::SK_HEAL][2] =
-                        (item.skill[core::constants::SK_HEAL][0] as i32
-                            * (rand::random::<i32>() % 7)) as i8;
+                    item.skill[SK_HEAL][2] =
+                        (item.skill[SK_HEAL][0] as u32 * (rand::random::<u32>() % 7)) as i8;
                 }
                 // Ghost
                 32 => {
-                    item.skill[core::constants::SK_GHOST][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_GHOST][0] > 12 {
-                        item.skill[core::constants::SK_GHOST][0] = 12;
+                    item.skill[SK_GHOST][0] += skill_value as i8;
+                    if item.skill[SK_GHOST][0] > 12 {
+                        item.skill[SK_GHOST][0] = 12;
                     }
                 }
                 // Regeneration
                 33 => {
-                    item.skill[core::constants::SK_REGEN][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_REGEN][0] > 12 {
-                        item.skill[core::constants::SK_REGEN][0] = 12;
+                    item.skill[SK_REGEN][0] += skill_value as i8;
+                    if item.skill[SK_REGEN][0] > 12 {
+                        item.skill[SK_REGEN][0] = 12;
                     }
                 }
                 // Rest
                 34 => {
-                    item.skill[core::constants::SK_REST][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_REST][0] > 12 {
-                        item.skill[core::constants::SK_REST][0] = 12;
+                    item.skill[SK_REST][0] += skill_value as i8;
+                    if item.skill[SK_REST][0] > 12 {
+                        item.skill[SK_REST][0] = 12;
                     }
-                    item.skill[core::constants::SK_REST][2] =
-                        (item.skill[core::constants::SK_REST][0] as i32
-                            * (rand::random::<i32>() % 7)) as i8;
+                    item.skill[SK_REST][2] =
+                        (item.skill[SK_REST][0] as u32 * (rand::random::<u32>() % 7)) as i8;
                 }
                 // Meditation
                 35 => {
-                    item.skill[core::constants::SK_MEDIT][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_MEDIT][0] > 12 {
-                        item.skill[core::constants::SK_MEDIT][0] = 12;
+                    item.skill[SK_MEDIT][0] += skill_value as i8;
+                    if item.skill[SK_MEDIT][0] > 12 {
+                        item.skill[SK_MEDIT][0] = 12;
                     }
                 }
                 // Sense
                 36 => {
-                    item.skill[core::constants::SK_SENSE][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_SENSE][0] > 12 {
-                        item.skill[core::constants::SK_SENSE][0] = 12;
+                    item.skill[SK_SENSE][0] += skill_value as i8;
+                    if item.skill[SK_SENSE][0] > 12 {
+                        item.skill[SK_SENSE][0] = 12;
                     }
-                    item.skill[core::constants::SK_SENSE][2] =
-                        (item.skill[core::constants::SK_SENSE][0] as i32
-                            * (rand::random::<i32>() % 7)) as i8;
+                    item.skill[SK_SENSE][2] =
+                        (item.skill[SK_SENSE][0] as u32 * (rand::random::<u32>() % 7)) as i8;
                 }
                 // Immunity
                 37 => {
-                    item.skill[core::constants::SK_IMMUN][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_IMMUN][0] > 12 {
-                        item.skill[core::constants::SK_IMMUN][0] = 12;
+                    item.skill[SK_IMMUN][0] += skill_value as i8;
+                    if item.skill[SK_IMMUN][0] > 12 {
+                        item.skill[SK_IMMUN][0] = 12;
                     }
                 }
                 // Surround Hit
                 38 => {
-                    item.skill[core::constants::SK_SURROUND][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_SURROUND][0] > 12 {
-                        item.skill[core::constants::SK_SURROUND][0] = 12;
+                    item.skill[SK_SURROUND][0] += skill_value as i8;
+                    if item.skill[SK_SURROUND][0] > 12 {
+                        item.skill[SK_SURROUND][0] = 12;
                     }
                 }
                 // Concentration
                 39 => {
-                    item.skill[core::constants::SK_CONCEN][0] += skill_value as i8;
-                    if item.skill[core::constants::SK_CONCEN][0] > 12 {
-                        item.skill[core::constants::SK_CONCEN][0] = 12;
+                    item.skill[SK_CONCEN][0] += skill_value as i8;
+                    if item.skill[SK_CONCEN][0] > 12 {
+                        item.skill[SK_CONCEN][0] = 12;
                     }
                 }
                 _ => {}
@@ -658,91 +668,219 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
 
 /// Port of `pop_create_char` from `populate.cpp`
 /// Creates a character from a template
-pub fn pop_create_char(n: usize, drop: bool) -> usize {
-    let cn = God::create_char(n, true);
-    if cn.is_none() {
-        return 0;
-    }
-    let cn = cn.unwrap() as usize;
+pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
+    // Find a free character slot.
+    let cn = match Repository::with_characters(|characters| {
+        (1..MAXCHARS).find(|&i| characters[i].used == USE_EMPTY)
+    }) {
+        Some(index) => index,
+        None => {
+            log::error!("MAXCHARS reached!");
+            return None;
+        }
+    };
 
-    // Set initial state
+    // Copy template and set initial fields (matches C++: ch[cn] = ch_temp[n]).
+    Repository::with_characters_mut(|characters| {
+        characters[cn] =
+            Repository::with_character_templates(|char_templates| char_templates[template_id]);
+        characters[cn].pass1 = rand::random::<u32>() % 0x3fffffff;
+        characters[cn].pass2 = rand::random::<u32>() % 0x3fffffff;
+        characters[cn].temp = template_id as u16;
+    });
+
+    let mut flag = false;
+    let mut hasitems = false;
+
+    // Create inventory items from template.
+    for m in 0..40usize {
+        let tmp_template = Repository::with_characters(|characters| characters[cn].item[m]);
+        if tmp_template == 0 {
+            continue;
+        }
+
+        let tmp_instance = God::create_item(tmp_template as usize).unwrap_or(0);
+        if tmp_instance == 0 {
+            flag = true;
+            Repository::with_characters_mut(|characters| {
+                characters[cn].item[m] = 0;
+            });
+        } else {
+            Repository::with_items_mut(|items| {
+                items[tmp_instance].carried = cn as u16;
+            });
+            Repository::with_characters_mut(|characters| {
+                characters[cn].item[m] = tmp_instance as u32;
+            });
+            hasitems = true;
+        }
+    }
+
+    // Create worn items from template (uses pop_create_item to preserve unique logic).
+    for m in 0..20usize {
+        let tmp_template = Repository::with_characters(|characters| characters[cn].worn[m]);
+        if tmp_template == 0 {
+            continue;
+        }
+
+        let tmp_instance = pop_create_item(tmp_template as usize, cn);
+        if tmp_instance == 0 {
+            flag = true;
+            Repository::with_characters_mut(|characters| {
+                characters[cn].worn[m] = 0;
+            });
+        } else {
+            Repository::with_items_mut(|items| {
+                items[tmp_instance].carried = cn as u16;
+            });
+            Repository::with_characters_mut(|characters| {
+                characters[cn].worn[m] = tmp_instance as u32;
+            });
+            hasitems = true;
+        }
+    }
+
+    // Clear spells from template.
+    Repository::with_characters_mut(|characters| {
+        for m in 0..20usize {
+            if characters[cn].spell[m] != 0 {
+                characters[cn].spell[m] = 0;
+            }
+        }
+    });
+
+    // Create carried item (citem) from template.
+    let tmp_template = Repository::with_characters(|characters| characters[cn].citem);
+    if tmp_template != 0 {
+        let tmp_instance = God::create_item(tmp_template as usize).unwrap_or(0);
+        if tmp_instance == 0 {
+            flag = true;
+            Repository::with_characters_mut(|characters| {
+                characters[cn].citem = 0;
+            });
+        } else {
+            Repository::with_items_mut(|items| {
+                items[tmp_instance].carried = cn as u16;
+            });
+            Repository::with_characters_mut(|characters| {
+                characters[cn].citem = tmp_instance as u32;
+            });
+            hasitems = true;
+        }
+    }
+
+    // Roll back if any item creation failed.
+    if flag {
+        God::destroy_items(cn);
+        Repository::with_characters_mut(|characters| {
+            characters[cn].used = USE_EMPTY;
+        });
+        return None;
+    }
+
+    // Finalize stats (mana logic matches C++).
     Repository::with_characters_mut(|characters| {
         characters[cn].a_end = 1000000;
         characters[cn].a_hp = 1000000;
 
-        let has_meditation = characters[cn].skill[core::constants::SK_MEDIT][0] != 0;
-        if has_meditation {
-            characters[cn].a_mana = characters[cn].mana[5] as i32 * 100;
-        } else {
+        if characters[cn].skill[SK_MEDIT][0] != 0 {
             characters[cn].a_mana = 1000000;
+        } else {
+            let r1 = (rand::random::<u32>() % 8) as i32;
+            let r2 = (rand::random::<u32>() % 8) as i32;
+            let r3 = (rand::random::<u32>() % 8) as i32;
+            let r4 = (rand::random::<u32>() % 8) as i32;
+            characters[cn].a_mana = r1 * r2 * r3 * r4 * 100;
         }
 
-        characters[cn].dir = core::constants::DX_DOWN;
-        characters[cn].data[92] = core::constants::TICKS * 60;
+        characters[cn].dir = DX_DOWN;
+        characters[cn].data[92] = TICKS * 60;
     });
 
-    // Create bonus items based on mana level
+    // Bonus item / belt logic (matches C++: only if evil and hasitems; only first free slot).
+    let has_meditation =
+        Repository::with_characters(|characters| characters[cn].skill[SK_MEDIT][0] != 0);
     let a_mana = Repository::with_characters(|characters| characters[cn].a_mana);
-    let has_meditation = Repository::with_characters(|characters| {
-        characters[cn].skill[core::constants::SK_MEDIT][0] != 0
-    });
+    let alignment = Repository::with_characters(|characters| characters[cn].alignment);
 
-    let mut chance = 25;
+    let mut chance: i32 = 25;
     if !has_meditation && a_mana > 15 * 100 {
-        chance = 50;
+        chance -= 6;
     }
     if !has_meditation && a_mana > 30 * 100 {
-        chance = 100;
+        chance -= 6;
     }
     if !has_meditation && a_mana > 65 * 100 {
-        chance = 200;
+        chance -= 6;
     }
 
-    let alignment = Repository::with_characters(|characters| characters[cn].alignment);
-    if alignment < 0 {
-        // Create bonus items for evil characters
-        for _ in 0..4 {
-            if rand::random::<u32>().is_multiple_of(chance) {
-                let bonus = pop_create_bonus(cn, chance as i32);
-                if bonus != 0 {
-                    God::give_character_item(cn, bonus as usize);
+    if alignment < 0 && hasitems {
+        // Bonus item: at most one, attempt on first empty slot.
+        if let Some(slot) = Repository::with_characters(|characters| {
+            let items = characters[cn].item;
+            items.iter().position(|&it| it == 0)
+        }) {
+            if rand::random::<u32>().is_multiple_of(chance as u32) {
+                let tmp = pop_create_bonus(cn, chance);
+                if tmp != 0 {
+                    let tmp = tmp as usize;
+                    Repository::with_items_mut(|items| {
+                        items[tmp].carried = cn as u16;
+                    });
+                    Repository::with_characters_mut(|characters| {
+                        characters[cn].item[slot] = tmp as u32;
+                    });
                 }
             }
         }
 
-        // Check for special belt
-        if rand::random::<u32>().is_multiple_of(10000) {
-            let belt = pop_create_bonus_belt(cn);
-            if belt != 0 {
-                God::give_character_item(cn, belt as usize);
+        // Rainbow belt: at most one, attempt on (new) first empty slot.
+        if let Some(slot) = Repository::with_characters(|characters| {
+            let items = characters[cn].item;
+            items.iter().position(|&it| it == 0)
+        }) {
+            if rand::random::<u32>().is_multiple_of(10000) {
+                let tmp = pop_create_bonus_belt(cn);
+                if tmp != 0 {
+                    let tmp = tmp as usize;
+                    Repository::with_items_mut(|items| {
+                        items[tmp].carried = cn as u16;
+                    });
+                    Repository::with_characters_mut(|characters| {
+                        characters[cn].item[slot] = tmp as u32;
+                    });
+                }
             }
         }
     }
 
-    // Drop character on map if requested
+    // Drop character on map if requested (matches C++: exact coords, cleanup on failure).
     if drop {
-        let (x, y) = Repository::with_character_templates(|templates| {
-            (templates[n].x as usize, templates[n].y as usize)
-        });
+        let (x, y) = Repository::with_characters(|characters| (characters[cn].x, characters[cn].y));
 
-        if !God::drop_char_fuzzy(cn, x, y) {
-            log::error!("Failed to drop character {} at ({}, {})", cn, x, y);
+        if x < 0 || y < 0 || !God::drop_char(cn, x as usize, y as usize) {
+            log::error!("Could not drop char template {}", template_id);
+            God::destroy_items(cn);
+            Repository::with_characters_mut(|characters| {
+                characters[cn].used = USE_EMPTY;
+            });
+            return None;
         }
     }
 
     State::with(|state| state.do_update_char(cn));
-
     Repository::with_globals_mut(|globals| {
         globals.npcs_created += 1;
     });
 
-    cn
+    Some(cn)
 }
 
 /// Port of `reset_char` from `populate.cpp`
 /// Resets a character template and all instances
 pub fn reset_char(n: usize) {
-    if !(1..core::constants::MAXTCHARS).contains(&n) {
+    if !(1..MAXTCHARS).contains(&n) {
+        log::error!("reset_char: invalid template {}", n);
         return;
     }
 
@@ -753,7 +891,11 @@ pub fn reset_char(n: usize) {
         )
     });
 
-    if used == core::constants::USE_EMPTY || !has_respawn {
+    if used == USE_EMPTY || !has_respawn {
+        log::error!(
+            "reset_char: template {} is not in use or does not have respawn flag",
+            n
+        );
         return;
     }
 
@@ -798,44 +940,54 @@ pub fn reset_char(n: usize) {
         templates[n].points_tot = pts;
     });
 
-    // Update all instances of this template
-    for cn in 1..core::constants::MAXCHARS {
-        let temp = Repository::with_characters(|characters| characters[cn].temp);
-        if temp as usize == n {
+    // Destroy all instances of this template (they will be respawned)
+    for cn in 1..MAXCHARS {
+        let (temp, used, char_name, x, y) = Repository::with_characters(|characters| {
+            (
+                characters[cn].temp,
+                characters[cn].used,
+                characters[cn].get_name().to_string(),
+                characters[cn].x,
+                characters[cn].y,
+            )
+        });
+
+        if temp as usize == n && used == USE_ACTIVE {
+            log::info!(" --> {} ({}) ({},{})", char_name, cn, x, y);
+
+            // Destroy items and remove from map
+            God::destroy_items(cn);
+            player::plr_map_remove(cn);
+
+            // Mark character as unused
             Repository::with_characters_mut(|characters| {
-                let char_template = Repository::with_character_templates(|templates| templates[n]);
-
-                // Preserve certain fields
-                let pass1 = characters[cn].pass1;
-                let pass2 = characters[cn].pass2;
-                let x = characters[cn].x;
-                let y = characters[cn].y;
-
-                characters[cn] = char_template;
-                characters[cn].pass1 = pass1;
-                characters[cn].pass2 = pass2;
-                characters[cn].x = x;
-                characters[cn].y = y;
-                characters[cn].temp = n as u16;
+                characters[cn].used = USE_EMPTY;
             });
+
             cnt += 1;
         }
     }
 
-    // Update effects referencing this template
-    for m in 0..core::constants::MAXEFFECT {
-        let data0 = Repository::with_effects(|effects| effects[m].data[0]);
-        if data0 == n as u32 {
+    // Clean up effects referencing this template (type 2 = respawn timer)
+    for m in 0..MAXEFFECT {
+        let (effect_used, effect_type, data2) = Repository::with_effects(|effects| {
+            (effects[m].used, effects[m].effect_type, effects[m].data[2])
+        });
+
+        if effect_used == USE_ACTIVE && effect_type == 2 && data2 == n as u32 {
+            log::info!(" --> effect {}", m);
             Repository::with_effects_mut(|effects| {
-                effects[m].data[1] = 1; // Mark for respawn
+                effects[m].used = USE_EMPTY;
             });
         }
     }
 
-    // Update items carried by template
-    for m in 0..core::constants::MAXITEM {
-        let carried = Repository::with_items(|items| items[m].carried);
-        if carried as usize == n {
+    // Clean up items carried by this template
+    for m in 0..MAXITEM {
+        let (item_used, carried) =
+            Repository::with_items(|items| (items[m].used, items[m].carried));
+
+        if item_used == USE_ACTIVE && carried as usize == n {
             let temp = Repository::with_items(|items| items[m].temp);
             Repository::with_items_mut(|items| {
                 let item_template =
@@ -847,12 +999,23 @@ pub fn reset_char(n: usize) {
     }
 
     if cnt != 1 {
-        log::warn!("Reset char {}: found {} instances", n, cnt);
+        log::warn!("AUTO-RESPAWN: Found {} instances of {} ({})", cnt, name, n);
     }
 
+    // Schedule respawn if template is still active
     let template_used = Repository::with_character_templates(|templates| templates[n].used);
-    if template_used == core::constants::USE_ACTIVE {
-        log::info!("Marked template {} for respawn", n);
+    if template_used == USE_ACTIVE {
+        let (template_x, template_y) =
+            Repository::with_character_templates(|templates| (templates[n].x, templates[n].y));
+
+        EffectManager::fx_add_effect(
+            2,          // Effect type 2 = respawn timer
+            TICKS * 10, // 10 seconds delay
+            template_x as i32,
+            template_y as i32,
+            n as i32,
+        );
+        log::info!("Scheduled respawn for template {}", n);
     }
 }
 
@@ -869,10 +1032,10 @@ pub fn skillcost(val: i32, dif: i32, start: i32) -> i32 {
 /// Port of `pop_skill` from `populate.cpp`
 /// Updates skills for all characters
 pub fn pop_skill() {
-    for cn in 1..core::constants::MAXCHARS {
+    for cn in 1..MAXCHARS {
         let is_player = Repository::with_characters(|characters| {
             (characters[cn].flags & CharacterFlags::Player.bits()) != 0
-                && characters[cn].used == core::constants::USE_ACTIVE
+                && characters[cn].used == USE_ACTIVE
         });
         if !is_player {
             continue;
@@ -923,41 +1086,96 @@ pub fn pop_skill() {
 /// Port of `reset_item` from `populate.cpp`
 /// Resets an item template and all instances
 pub fn reset_item(n: usize) {
-    if !(2..core::constants::MAXTITEM).contains(&n) {
+    if !(2..MAXTITEM).contains(&n) {
         return; // Never reset blank template (1)
     }
 
     let name = Repository::with_item_templates(|templates| templates[n].get_name().to_string());
     log::info!("Resetting item {} ({})", n, name);
 
-    for in_id in 1..core::constants::MAXITEM {
-        let temp = Repository::with_items(|items| items[in_id].temp);
-        if temp as usize != n {
-            continue;
-        }
-
-        let used = Repository::with_items(|items| items[in_id].used);
-        if used == core::constants::USE_EMPTY {
-            continue;
-        }
-
-        // Reset item from template
-        Repository::with_items_mut(|items| {
-            let item_template = Repository::with_item_templates(|templates| templates[n]);
-
-            // Preserve certain fields
-            let x = items[in_id].x;
-            let y = items[in_id].y;
-            let carried = items[in_id].carried;
-
-            items[in_id] = item_template;
-            items[in_id].x = x;
-            items[in_id].y = y;
-            items[in_id].carried = carried;
-            items[in_id].temp = n as u16;
+    for in_id in 1..MAXITEM {
+        let (used, item_temp, is_spell) = Repository::with_items(|items| {
+            (
+                items[in_id].used,
+                items[in_id].temp,
+                (items[in_id].flags & ItemFlags::IF_SPELL.bits()) != 0,
+            )
         });
 
-        log::debug!("Reset item instance {}", in_id);
+        if used != USE_ACTIVE {
+            continue;
+        }
+
+        // Skip spell items
+        if is_spell {
+            continue;
+        }
+
+        if item_temp as usize != n {
+            continue;
+        }
+
+        let (item_name, carried, x, y) = Repository::with_items(|items| {
+            (
+                items[in_id].get_name().to_string(),
+                items[in_id].carried,
+                items[in_id].x,
+                items[in_id].y,
+            )
+        });
+
+        log::info!(" --> {} ({}) ({}, {},{})", item_name, in_id, carried, x, y);
+
+        // Check if item should be reset or removed
+        let (template_flags, template_sprite) = Repository::with_item_templates(|templates| {
+            (templates[n].flags, templates[n].sprite[0])
+        });
+
+        let should_reset = (template_flags
+            & (ItemFlags::IF_TAKE.bits()
+                | ItemFlags::IF_LOOK.bits()
+                | ItemFlags::IF_LOOKSPECIAL.bits()
+                | ItemFlags::IF_USE.bits()
+                | ItemFlags::IF_USESPECIAL.bits()))
+            != 0
+            || carried != 0;
+
+        if should_reset {
+            // Reset item from template (for takeable/interactive items or carried items)
+            Repository::with_items_mut(|items| {
+                let item_template = Repository::with_item_templates(|templates| templates[n]);
+
+                // Preserve certain fields
+                let x = items[in_id].x;
+                let y = items[in_id].y;
+                let carried = items[in_id].carried;
+
+                items[in_id] = item_template;
+                items[in_id].x = x;
+                items[in_id].y = y;
+                items[in_id].carried = carried;
+                items[in_id].temp = n as u16;
+            });
+        } else {
+            // Remove item and place floor sprite (for non-interactive map items)
+            let map_index = x as usize + y as usize * SERVER_MAPX as usize;
+
+            Repository::with_map_mut(|map| {
+                map[map_index].it = 0;
+                map[map_index].fsprite = template_sprite as u16;
+
+                if (template_flags & ItemFlags::IF_MOVEBLOCK.bits()) != 0 {
+                    map[map_index].flags |= MF_MOVEBLOCK as u64;
+                }
+                if (template_flags & ItemFlags::IF_SIGHTBLOCK.bits()) != 0 {
+                    map[map_index].flags |= MF_SIGHTBLOCK as u64;
+                }
+            });
+
+            Repository::with_items_mut(|items| {
+                items[in_id].used = USE_EMPTY;
+            });
+        }
     }
 }
 
@@ -974,7 +1192,7 @@ pub fn reset_changed_items() {
 /// Port of `pop_tick` from `populate.cpp`
 /// Handles population ticking and resets
 pub fn pop_tick() {
-    const RESETTICKER: u32 = core::constants::TICKS as u32 * 60;
+    const RESETTICKER: u32 = TICKS as u32 * 60;
 
     let ticker = Repository::with_globals(|globals| globals.ticker) as u32;
 
@@ -1002,10 +1220,10 @@ pub fn pop_tick() {
 /// Resets all character and item templates
 #[allow(dead_code)]
 pub fn pop_reset_all() {
-    for n in 1..core::constants::MAXTCHARS {
+    for n in 1..MAXTCHARS {
         reset_char(n);
     }
-    for n in 1..core::constants::MAXTITEM {
+    for n in 1..MAXTITEM {
         reset_item(n);
     }
     log::info!("Reset all templates");
@@ -1015,29 +1233,29 @@ pub fn pop_reset_all() {
 /// Wipes all dynamic game data
 pub fn pop_wipe() {
     // Clear all characters
-    for n in 1..core::constants::MAXCHARS {
+    for n in 1..MAXCHARS {
         let is_player = Repository::with_characters(|characters| {
             (characters[n].flags & CharacterFlags::Player.bits()) != 0
         });
 
         if !is_player {
             Repository::with_characters_mut(|characters| {
-                characters[n].used = core::constants::USE_EMPTY;
+                characters[n].used = USE_EMPTY;
             });
         }
     }
 
     // Clear all items
-    for n in 1..core::constants::MAXITEM {
+    for n in 1..MAXITEM {
         Repository::with_items_mut(|items| {
-            items[n].used = core::constants::USE_EMPTY;
+            items[n].used = USE_EMPTY;
         });
     }
 
     // Clear all effects
-    for n in 1..core::constants::MAXEFFECT {
+    for n in 1..MAXEFFECT {
         Repository::with_effects_mut(|effects| {
-            effects[n].used = core::constants::USE_EMPTY;
+            effects[n].used = USE_EMPTY;
         });
     }
 
@@ -1074,7 +1292,7 @@ pub fn pop_remove() {
 
     let mut chc = 0;
 
-    for n in 1..core::constants::MAXCHARS {
+    for n in 1..MAXCHARS {
         let (used, is_player) = Repository::with_characters(|characters| {
             (
                 characters[n].used,
@@ -1082,7 +1300,7 @@ pub fn pop_remove() {
             )
         });
 
-        if used != core::constants::USE_EMPTY && is_player {
+        if used != USE_EMPTY && is_player {
             // TODO: Write character to file
             chc += 1;
         }
@@ -1109,7 +1327,7 @@ pub fn populate() {
     log::info!("Populating world...");
 
     // Iterate through all character templates and spawn respawnable NPCs
-    for n in 1..core::constants::MAXTCHARS {
+    for n in 1..MAXTCHARS {
         let (used, has_respawn) = Repository::with_character_templates(|templates| {
             (
                 templates[n].used,
@@ -1117,9 +1335,8 @@ pub fn populate() {
             )
         });
 
-        if used != core::constants::USE_EMPTY && has_respawn {
-            let cn = pop_create_char(n, true);
-            if cn != 0 {
+        if used != USE_EMPTY && has_respawn {
+            if let Some(cn) = pop_create_char(n, true) {
                 log::debug!("Spawned NPC {} from template {}", cn, n);
             }
         }
@@ -1149,7 +1366,7 @@ pub fn pop_load_char(nr: usize) {
 pub fn pop_load_all_chars() {
     log::info!("Loading all characters...");
 
-    for nr in 1..core::constants::MAXCHARS {
+    for nr in 1..MAXCHARS {
         pop_load_char(nr);
     }
 
@@ -1161,7 +1378,7 @@ pub fn pop_load_all_chars() {
 pub fn pop_save_all_chars() {
     log::info!("Saving all characters...");
 
-    for nr in 1..core::constants::MAXCHARS {
+    for nr in 1..MAXCHARS {
         let is_player = Repository::with_characters(|characters| {
             (characters[nr].flags & CharacterFlags::Player.bits()) != 0
         });

@@ -1,6 +1,6 @@
 use core::constants::{CharacterFlags, ItemFlags, KIN_MONSTER};
 use core::types::Character;
-use std::{backtrace, cmp};
+use std::cmp;
 
 use crate::repository::Repository;
 
@@ -531,9 +531,7 @@ impl State {
                 cn,
                 co
             );
-
-            // TODO: Do this for all errors?
-            eprintln!("{}", backtrace::Backtrace::capture());
+            log::error!("Backtrace:\n{}", std::backtrace::Backtrace::force_capture());
             return 0;
         }
 

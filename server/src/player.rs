@@ -12,7 +12,7 @@ use crate::{
     server::Server, state::State,
 };
 
-const SPEEDTAB: [[u8; 20]; 20] = [
+const SPEEDTAB: [[u8; core::constants::TICKS as usize]; core::constants::TICKS as usize] = [
     [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
     [1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
     [1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1],
@@ -1097,8 +1097,8 @@ pub fn plr_turn_right(cn: usize) {
 ///
 /// # Arguments
 /// * `cn` - Attacking character index
-/// * `surround` - Surround flag passed to `do_attack` (0 or 1)
-pub fn plr_attack(cn: usize, surround: i32) {
+/// * `is_surround` - Surround flag passed to `do_attack` (0 or 1)
+pub fn plr_attack(cn: usize, is_surround: bool) {
     let (mut x, mut y, dir) = Repository::with_characters(|characters| {
         State::with(|state| {
             state.do_area_notify(
@@ -1166,7 +1166,7 @@ pub fn plr_attack(cn: usize, surround: i32) {
 
     if attack_cn == co {
         State::with_mut(|state| {
-            state.do_attack(cn, co, surround);
+            state.do_attack(cn, co, is_surround);
         });
     }
 }
@@ -1910,11 +1910,11 @@ pub fn plr_misc(cn: usize) {
         0 => {
             if is_player {
                 log::debug!(
-                    "plr_misc: attack action (surround=0), status2=0 for char {}",
+                    "plr_misc: attack action (is_surround=false), status2=0 for char {}",
                     cn
                 );
             }
-            plr_attack(cn, 0);
+            plr_attack(cn, false);
         }
         1 => {
             if is_player {
@@ -1942,15 +1942,18 @@ pub fn plr_misc(cn: usize) {
         }
         5 => {
             if is_player {
-                log::debug!("plr_misc: attack action (surround=1) for char {}", cn);
+                log::debug!("plr_misc: attack action (is_surround=true) for char {}", cn);
             }
-            plr_attack(cn, 1);
+            plr_attack(cn, true);
         }
         6 => {
             if is_player {
-                log::debug!("plr_misc: attack action (surround=0) for char {}", cn);
+                log::debug!(
+                    "plr_misc: attack action (is_surround=false) for char {}",
+                    cn
+                );
             }
-            plr_attack(cn, 0);
+            plr_attack(cn, false);
         }
         7 => {
             if is_player {

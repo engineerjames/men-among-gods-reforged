@@ -177,9 +177,10 @@ impl EffectManager {
                                 Repository::with_character_templates(|char_templates| {
                                     Self::fx_add_effect(
                                         2,
-                                        core::constants::TICKS * 60 * 5
-                                            + rand::random::<i32>().abs()
-                                                % (core::constants::TICKS * 60 * 10),
+                                        (core::constants::TICKS as u32 * 60 * 5
+                                            + rand::random::<u32>()
+                                                % (core::constants::TICKS as u32 * 60 * 10))
+                                            as i32,
                                         char_templates[temp].x as i32,
                                         char_templates[temp].y as i32,
                                         temp as i32,
@@ -213,7 +214,10 @@ impl EffectManager {
 
                 Repository::with_map_mut(|map| {
                     map[map_index].flags &= !core::constants::MF_GFX_TOMB;
-                    map[map_index].flags &= !core::constants::MF_MOVEBLOCK as u64;
+                    // NOTE: `!X as u64` parses as `(!X) as u64` in Rust (negation before cast),
+                    // which would truncate the mask to 32 bits and accidentally clear unrelated
+                    // high flag bits. We want to widen to u64 first, then negate.
+                    map[map_index].flags &= !(core::constants::MF_MOVEBLOCK as u64);
                 });
 
                 let in_id = God::create_item(170);
@@ -390,12 +394,12 @@ impl EffectManager {
 
                 if effects[n].duration == 9 {
                     Repository::with_map_mut(|map| {
-                        map[map_index].flags &= !core::constants::MF_MOVEBLOCK as u64;
+                        // See note above about cast/negation precedence.
+                        map[map_index].flags &= !(core::constants::MF_MOVEBLOCK as u64);
                     });
 
-                    let cn = populate::pop_create_char(effects[n].data[2] as usize, true);
-
-                    if cn != 0 {
+                    if let Some(_cn) = populate::pop_create_char(effects[n].data[2] as usize, true)
+                    {
                         let respawn_flag = Repository::with_character_templates(|char_templates| {
                             (char_templates[effects[n].data[2] as usize].flags
                                 & CharacterFlags::Respawn.bits())
@@ -443,8 +447,8 @@ impl EffectManager {
                 });
 
                 if effects[n].data[1] != 0 {
-                    let cn = populate::pop_create_char(effects[n].data[1] as usize, false);
-                    if cn != 0 {
+                    if let Some(cn) = populate::pop_create_char(effects[n].data[1] as usize, false)
+                    {
                         God::drop_char(cn, x as usize, y as usize);
                         Repository::with_characters_mut(|characters| {
                             characters[cn].dir = core::constants::DX_RIGHTUP;
@@ -699,8 +703,9 @@ impl EffectManager {
                     if temp == 189 || temp == 561 {
                         Self::fx_add_effect(
                             2,
-                            core::constants::TICKS * 60 * 20
-                                + rand::random::<i32>().abs() % (core::constants::TICKS * 60 * 5),
+                            (core::constants::TICKS as u32 * 60 * 20
+                                + rand::random::<u32>() % (core::constants::TICKS as u32 * 60 * 5))
+                                as i32,
                             Repository::with_character_templates(|char_templates| {
                                 char_templates[temp].x as i32
                             }),
@@ -712,8 +717,9 @@ impl EffectManager {
                     } else {
                         Self::fx_add_effect(
                             2,
-                            core::constants::TICKS * 60 * 4
-                                + rand::random::<i32>().abs() % (core::constants::TICKS * 60),
+                            (core::constants::TICKS as u32 * 60 * 4
+                                + rand::random::<u32>() % (core::constants::TICKS as u32 * 60))
+                                as i32,
                             Repository::with_character_templates(|char_templates| {
                                 char_templates[temp].x as i32
                             }),

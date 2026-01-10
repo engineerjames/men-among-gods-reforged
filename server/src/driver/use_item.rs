@@ -12,6 +12,7 @@ use core::constants::{
     SERVER_MAPY, SK_LOCK, SK_RECALL, SK_RESIST, TICKS, USE_ACTIVE, USE_EMPTY, WN_RHAND,
 };
 use core::string_operations::c_string_to_str;
+use core::types::FontColor;
 use rand::Rng;
 
 // Helper function to take an item from a character
@@ -2493,10 +2494,10 @@ pub fn use_mine_respawn(_cn: usize, item_idx: usize) -> i32 {
     }
 
     // create the NPC from template
-    let cc = populate::pop_create_char(template, false);
-    if cc == 0 {
-        return 0;
-    }
+    let cc = match populate::pop_create_char(template, false) {
+        Some(cc) => cc,
+        None => return 0,
+    };
 
     // drop the character near the mine item
     let (item_x, item_y) = Repository::with_items(|items| (items[item_idx].x, items[item_idx].y));
@@ -3006,7 +3007,10 @@ pub fn use_grave(_cn: usize, item_idx: usize) -> i32 {
         }
     }
 
-    let cc = populate::pop_create_char(328, false);
+    let cc = match populate::pop_create_char(328, false) {
+        Some(cc) => cc,
+        None => return 1,
+    };
 
     let (item_x, item_y) = Repository::with_items(|it| (it[item_idx].x, it[item_idx].y));
 
@@ -3633,13 +3637,13 @@ pub fn spawn_penta_enemy(item_idx: usize) -> i32 {
     let data9 = Repository::with_items(|items| items[item_idx].data[9]);
 
     let mut tmp = if data9 == 10 {
-        (rand::random::<i32>() % 2) + 9
+        (rand::random::<u32>() % 2) + 9
     } else if data9 == 11 {
-        (rand::random::<i32>() % 2) + 11
+        (rand::random::<u32>() % 2) + 11
     } else if data9 == 17 {
-        (rand::random::<i32>() % 2) + 17
+        (rand::random::<u32>() % 2) + 17
     } else if data9 == 18 {
-        (rand::random::<i32>() % 2) + 18
+        (rand::random::<u32>() % 2) + 18
     } else if data9 == 21 {
         22
     } else if data9 == 22 {
@@ -3647,15 +3651,11 @@ pub fn spawn_penta_enemy(item_idx: usize) -> i32 {
     } else if data9 == 23 {
         24
     } else {
-        (rand::random::<i32>() % 3) - 1 + data9 as i32
+        (rand::random::<u32>() % 3) - 1 + data9
     };
 
-    if tmp < 0 {
-        tmp = 0;
-    }
-
     // Create appropriate character template
-    let cn = if tmp >= 22 {
+    let spawned = if tmp >= 22 {
         tmp -= 22;
         if tmp > 3 {
             tmp = 3;
@@ -3671,9 +3671,10 @@ pub fn spawn_penta_enemy(item_idx: usize) -> i32 {
         pop_create_char((364 + tmp) as usize, false)
     };
 
-    if cn == 0 {
-        return 0;
-    }
+    let cn = match spawned {
+        Some(cn) => cn,
+        None => return 0,
+    };
 
     // Configure character
     Repository::with_characters_mut(|characters| {
@@ -3691,7 +3692,7 @@ pub fn spawn_penta_enemy(item_idx: usize) -> i32 {
     });
 
     // Randomly boost character (1 in 25 chance)
-    if (rand::random::<i32>() % 25) == 0 {
+    if rand::random::<u32>().is_multiple_of(25) {
         boost_char(cn, 5);
     }
 
@@ -3805,7 +3806,7 @@ pub fn solved_pentagram(cn: usize, item_idx: usize) -> i32 {
                     });
                 }
             }
-            items[n].duration = 10 * 60 + (rand::random::<i32>() % (20 * 60)) as u32;
+            items[n].duration = 10 * 60 + (rand::random::<u32>() % (20 * 60)) as u32;
             items[n].active = items[n].duration;
         }
     });
@@ -4326,7 +4327,7 @@ pub fn use_shrine(cn: usize, _item_idx: usize) -> i32 {
         value as i32
     };
 
-    let val = val + (rand::random::<i32>() % (val + 1));
+    let val = val + (rand::random::<u32>() % (val as u32 + 1)) as i32;
 
     // Calculate rank threshold
     let rank = Repository::with_characters(|characters| {
@@ -5185,10 +5186,10 @@ pub fn use_create_npc(cn: usize, item_idx: usize) -> i32 {
 
     // Create NPC from template
     let template = Repository::with_items(|items| items[item_idx].data[0]);
-    let co = pop_create_char(template as usize, false);
-    if co == 0 {
-        return 0;
-    }
+    let co = match pop_create_char(template as usize, false) {
+        Some(co) => co,
+        None => return 0,
+    };
 
     // Drop NPC near item location
     let (x, y) =
@@ -6978,46 +6979,49 @@ pub fn age_message(cn: usize, item_idx: usize, where_is: &str) {
     let (msg, font) = if driver == 60 {
         // Ice egg or cloak
         match damage_state {
-            1 => ("The {} {} is beginning to melt.\n", 1),
-            2 => ("The {} {} is melting fairly rapidly.\n", 1),
+            1 => ("The {ref} {where} is beginning to melt.\n", FontColor::Red),
+            2 => ("The {ref} {where} is melting fairly rapidly.\n", FontColor::Red),
             3 => (
-                "The {} {} is melting down as you look and dripping water everywhere.\n",
-                1,
+                "The {ref} {where} is melting down as you look and dripping water everywhere.\n",
+                FontColor::Red,
             ),
             4 => (
-                "The {} {} has melted down to a small icy lump and large puddles of water.\n",
-                0,
+                "The {ref} {where} has melted down to a small icy lump and large puddles of water.\n",
+                FontColor::Yellow,
             ),
             5 => (
-                "The {} {} has completely melted away, leaving you all wet.\n",
-                0,
+                "The {ref} {where} has completely melted away, leaving you all wet.\n",
+                FontColor::Yellow,
             ),
-            _ => ("The {} {} is changing.\n", 1),
+            _ => ("The {ref} {where} is changing.\n", FontColor::Red),
         }
     } else {
         // Anything else
         match damage_state {
-            1 => ("The {} {} is showing signs of age.\n", 1),
-            2 => ("The {} {} is getting fairly old.\n", 1),
-            3 => ("The {} {} is getting old.\n", 1),
-            4 => ("The {} {} is getting very old and battered.\n", 0),
-            5 => (
-                "The {} {} was so old and battered that it finally vanished.\n",
-                0,
+            1 => (
+                "The {ref} {where} is showing signs of age.\n",
+                FontColor::Red,
             ),
-            _ => ("The {} {} is aging.\n", 1),
+            2 => ("The {ref} {where} is getting fairly old.\n", FontColor::Red),
+            3 => ("The {ref} {where} is getting old.\n", FontColor::Red),
+            4 => (
+                "The {ref} {where} is getting very old and battered.\n",
+                FontColor::Yellow,
+            ),
+            5 => (
+                "The {ref} {where} was so old and battered that it finally vanished.\n",
+                FontColor::Yellow,
+            ),
+            _ => ("The {ref} {where} is aging.\n", FontColor::Red),
         }
     };
 
-    let formatted_msg = msg.replace("{}", &reference).replace("{}", where_is);
-    let color = if font == 1 {
-        core::types::FontColor::Red
-    } else {
-        core::types::FontColor::Yellow
-    };
+    let formatted_msg = msg
+        .replace("{ref}", &reference)
+        .replace("{where}", where_is);
 
     State::with(|state| {
-        state.do_character_log(cn, color, &formatted_msg);
+        state.do_character_log(cn, font, &formatted_msg);
     });
 }
 
@@ -7295,10 +7299,10 @@ pub fn spiderweb(item_idx: usize) {
         if should_spawn {
             // Create spider (template 390-392)
             let spider_template = 390 + rng.gen_range(0..3);
-            let cn = populate::pop_create_char(spider_template, false);
-            if cn == 0 {
-                continue;
-            }
+            let cn = match populate::pop_create_char(spider_template, false) {
+                Some(cn) => cn,
+                None => continue,
+            };
 
             let (x, y) = Repository::with_items(|items| {
                 (items[item_idx].x as usize, items[item_idx].y as usize)
@@ -7360,10 +7364,10 @@ pub fn greenlingball(item_idx: usize) {
         if should_spawn {
             // Create greenling (template 553 + data[0])
             let greenling_type = Repository::with_items(|items| items[item_idx].data[0]);
-            let cn = populate::pop_create_char(553 + greenling_type as usize, false);
-            if cn == 0 {
-                continue;
-            }
+            let cn = match populate::pop_create_char(553 + greenling_type as usize, false) {
+                Some(cn) => cn,
+                None => continue,
+            };
 
             let (x, y) = Repository::with_items(|items| {
                 (items[item_idx].x as usize, items[item_idx].y as usize)
@@ -7894,10 +7898,10 @@ pub fn trap2(cn: usize, tmp: usize) {
     use crate::repository::Repository;
     use core::constants::USE_EMPTY;
 
-    let cc = pop_create_char(tmp, false);
-    if cc == 0 {
-        return;
-    }
+    let cc = match pop_create_char(tmp, false) {
+        Some(cc) => cc,
+        None => return,
+    };
 
     let (ch_x, ch_y) = Repository::with_characters(|characters| {
         (characters[cn].x as usize, characters[cn].y as usize)
@@ -8390,17 +8394,19 @@ pub fn step_portal_arena(cn: usize, item_idx: usize) -> i32 {
     }
 
     // Create enemy
-    let co = populate::pop_create_char(nr, false);
-    if co == 0 {
-        State::with(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                "Please tell the gods that the arena isn't working.",
-            );
-        });
-        return -1;
-    }
+    let co = match populate::pop_create_char(nr, false) {
+        Some(co) => co,
+        None => {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    "Please tell the gods that the arena isn't working.",
+                );
+            });
+            return -1;
+        }
+    };
 
     let data0 = Repository::with_items(|items| items[item_idx].data[0]);
     let drop_x = (data0 as usize) % SERVER_MAPX as usize;

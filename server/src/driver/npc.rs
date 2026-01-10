@@ -3,6 +3,7 @@ use crate::effect::EffectManager;
 use crate::helpers;
 use crate::player;
 use crate::populate;
+use crate::skilltab;
 use crate::{god::God, repository::Repository, state::State};
 use core::constants::*;
 use core::string_operations::c_string_to_str;
@@ -604,13 +605,8 @@ pub fn npc_seemiss(cn: usize, cc: usize, co: usize) -> i32 {
     0
 }
 
-pub fn npc_give(_cn: usize, _co: usize, _in: usize, _money: i32) -> i32 {
+pub fn npc_give(cn: usize, co: usize, in_item: usize, money: i32) -> i32 {
     Repository::with_characters_mut(|characters| {
-        let cn = _cn;
-        let co = _co;
-        let in_item = _in;
-        let money = _money;
-
         // If giver is a player/usurp, set active timer; otherwise ensure group active
         if (characters[co].flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
             != 0
@@ -674,9 +670,9 @@ pub fn npc_give(_cn: usize, _co: usize, _in: usize, _money: i32) -> i32 {
             let nr = characters[cn].data[50];
             if nr != 0 {
                 let nr_usize = nr as usize;
+                let skill_name = skilltab::get_skill_name(nr_usize);
                 State::with(|state| {
-                    // Skill name isn't available here; use placeholder
-                    state.do_sayx(cn, &format!("Now I'll teach you skill #{}.", nr));
+                    state.do_sayx(cn, &format!("Now I'll teach you {}.", skill_name));
                 });
 
                 if characters[co].skill[nr_usize][0] != 0 {
@@ -684,8 +680,8 @@ pub fn npc_give(_cn: usize, _co: usize, _in: usize, _money: i32) -> i32 {
                         state.do_sayx(
                             cn,
                             &format!(
-                                "But you already know skill #{}, {}!",
-                                nr,
+                                "But you already know {}, {}!",
+                                skill_name,
                                 characters[co].get_name()
                             ),
                         );
@@ -713,7 +709,7 @@ pub fn npc_give(_cn: usize, _co: usize, _in: usize, _money: i32) -> i32 {
                         state.do_character_log(
                             co,
                             core::types::FontColor::Green,
-                            &format!("You learned skill #{}!\n", nr),
+                            &format!("You learned {}!\n", skill_name),
                         );
                         characters[co].set_do_update_flags();
                     });
@@ -1106,6 +1102,8 @@ pub fn npc_try_spell(cn: usize, co: usize, spell: usize) -> bool {
 
         let mana = ch[cn].a_mana / 1000;
 
+        // C++ logic: scan target's active spells; if we find the same spell with
+        // sufficient power and still > 50% duration remaining, we do NOT cast it again.
         let mut found = false;
         for n in 0..20 {
             let item_index = ch[co].spell[n];
@@ -1133,14 +1131,17 @@ pub fn npc_try_spell(cn: usize, co: usize, spell: usize) -> bool {
             }
         }
 
-        if found {
+        // Match C++: only cast if such a spell was NOT found on the target.
+        if !found {
             let tmp = spellflag(spell);
 
             if mana >= get_spellcost(cn, spell) && ch[co].data[96] as u32 & tmp == 0 {
                 ch[cn].skill_nr = spell as u16;
                 ch[cn].skill_target1 = co as u16;
                 ch[co].data[96] |= tmp as i32;
-                EffectManager::fx_add_effect(11, 8, ch[co].x as i32, ch[co].y as i32, tmp as i32);
+                // Match C++ parameter semantics: effect[11].data[0]=target character id,
+                // effect[11].data[1]=spellflag bitmask to clear later.
+                EffectManager::fx_add_effect(11, 8, co as i32, tmp as i32, 0);
                 return true;
             }
         }
@@ -2248,17 +2249,17 @@ pub fn npc_driver_low(cn: usize) {
 
             if n > 0 {
                 for m_idx in 0..n {
-                    let co = populate::pop_create_char(503 + m_idx, false);
-                    if co == 0 {
-                        State::with(|state| {
-                            state.do_sayx(cn, &format!("create char ({})", m_idx));
-                        });
-                        break;
-                    }
+                    let co = match populate::pop_create_char(503 + m_idx, false) {
+                        Some(co) => co,
+                        None => {
+                            State::with(|state| {
+                                state.do_sayx(cn, &format!("create char ({})", m_idx));
+                            });
+                            break;
+                        }
+                    };
 
-                    // Call god_drop_char_fuzzy (doesn't exist yet)
-                    let drop_result = !God::drop_char_fuzzy(co, 452, 345);
-                    if drop_result {
+                    if !God::drop_char_fuzzy(co, 452, 345) {
                         State::with(|state| {
                             state.do_sayx(cn, &format!("drop char ({})", m_idx));
                         });
@@ -2371,16 +2372,16 @@ pub fn npc_item_value(in_idx: usize) -> i32 {
             // TODO: Do a deeper dive into what this is doing -- originally
             // the C code has it.attrib here which is clearly wrong since attrib
             // only has 5 entries.
-            score += it.skill[n][0] * 5;
+            score += it.skill[n][0] as i32 * 5;
         }
 
-        score += (it.value / 10) as i8;
-        score += it.weapon[0] * 50;
-        score += it.armor[0] * 50;
-        score -= it.damage_state as i8;
+        score += (it.value / 10) as i32;
+        score += it.weapon[0] as i32 * 50;
+        score += it.armor[0] as i32 * 50;
+        score -= it.damage_state as i32;
 
         score
-    }) as i32
+    })
 }
 
 pub fn npc_want_item(cn: usize, in_idx: usize) -> bool {
