@@ -100,7 +100,10 @@ impl AssetReader for MagAssetReader {
         &'a self,
         path: &'a Path,
     ) -> impl ConditionalSendFuture<Output = Result<Box<PathStream>, AssetReaderError>> {
-        <bevy::asset::io::file::FileAssetReader as AssetReader>::read_directory(&self.fallback, path)
+        <bevy::asset::io::file::FileAssetReader as AssetReader>::read_directory(
+            &self.fallback,
+            path,
+        )
     }
 
     fn is_directory<'a>(
