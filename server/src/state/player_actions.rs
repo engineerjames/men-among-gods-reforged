@@ -866,8 +866,7 @@ impl State {
 
     /// Port of `do_help(cn, topic)` from `svr_do.cpp`.
     ///
-    /// Sends a short help list of available commands to the caller. The
-    /// `topic` parameter is currently ignored in this simplified port.
+    /// Sends a short help list of available commands to the caller.
     ///
     /// # Arguments
     /// * `cn` - Caller character id
@@ -878,31 +877,434 @@ impl State {
             core::types::FontColor::Green,
             "The following commands are available:\n",
         );
+        self.do_character_log(cn, core::types::FontColor::Green, " \n");
         self.do_character_log(
             cn,
             core::types::FontColor::Green,
-            " #afk <message>         away from keyboard.\n",
+            "#afk <message>         away from keyboard.\n",
         );
         self.do_character_log(
             cn,
             core::types::FontColor::Green,
-            " #allow <player>        to access your grave.\n",
+            "#allow <player>        to access your grave.\n",
         );
         self.do_character_log(
             cn,
             core::types::FontColor::Green,
-            " #gold <amount>         get X gold coins.\n",
+            "#bow                   you'll bow.\n",
         );
         self.do_character_log(
             cn,
             core::types::FontColor::Green,
-            " #group <player>        group with player.\n",
+            "#fightback             toggle auto-figtback.\n",
         );
         self.do_character_log(
             cn,
             core::types::FontColor::Green,
-            " #who                   see who's online.\n",
+            "#follow <player>|self  you'll follow player.\n",
         );
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "#gold <amount>         get X gold coins.\n",
+        );
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "#group <player>        group with player.\n",
+        );
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "#gtell <message        tell to your group.\n",
+        );
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "#ignore <player>       ignore that player.\n",
+        );
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "#iignore <player>      ignore normal talk too.\n",
+        );
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "#lag <seconds>         lag control.\n",
+        );
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "#noshout               you won't hear shouts.\n",
+        );
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "#notell                you won't hear tells.\n",
+        );
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "#seen <player>         when last seen here?.\n",
+        );
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "#shout <text>          to all players.\n",
+        );
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "#skua                  leave purple.\n",
+        );
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "#sort <order>          sort inventory.\n",
+        );
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "#spellignore           don't attack if spelled.\n",
+        );
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "#tell <player> <text>  tells player text.\n",
+        );
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "#wave                  you'll wave.\n",
+        );
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "#who                   see who's online.\n",
+        );
+        self.do_character_log(cn, core::types::FontColor::Green, " \n");
+
+        Repository::with_characters(|characters| {
+            if (characters[cn].flags & CharacterFlags::PohLeader.bits()) != 0 {
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    "#poh <player>          add player to POH.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    "#pol <player>          make plr POH leader.\n",
+                );
+            }
+        });
+
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "Most of the commands are toggles. That is, use the same command again to turn off the effect. You can replace the '#' with '/'.\n",
+        );
+        self.do_character_log(cn, core::types::FontColor::Green, " \n");
+
+        Repository::with_characters(|characters| {
+            if (characters[cn].flags
+                & (CharacterFlags::Staff | CharacterFlags::Imp | CharacterFlags::Usurp).bits())
+                != 0
+            {
+                self.do_character_log(cn, core::types::FontColor::Yellow, "Staff Commands:\n");
+                self.do_character_log(cn, core::types::FontColor::Yellow, " \n");
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    "#announce <message>    broadcast IMPORTANT msg.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    "#caution <text>        warn the population.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    "#info <player>         identify player.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    "#look <player>         look at player.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    "#stell <text>          tell all staff members.\n",
+                );
+                self.do_character_log(cn, core::types::FontColor::Yellow, " \n");
+            }
+
+            if (characters[cn].flags & (CharacterFlags::Imp | CharacterFlags::Usurp).bits()) != 0 {
+                self.do_character_log(cn, core::types::FontColor::Blue, "Imp Commands:\n");
+                self.do_character_log(cn, core::types::FontColor::Blue, " \n");
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#addban <player>       add plr to ban list.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#delban <lineno>       del plr from ban list.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#enemy <NPC><char>     make NPC fight char.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#enter                 fake enter the game.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#exit                  return from #USURP.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#force <char><text>    make him act.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#goto <char>           go to char.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#goto <x> <y>          goto x,y.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#goto n|e|s|w <nnn>    goto <nnn> in dir.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#itell <text>          tell all imps.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#kick <player>         kick player out.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#leave                 fake leave the game.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#listban               show ban list.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#look <player>         look at player.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#luck <player> <val>   set players luck.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#mark <player> <text>  mark a player with notes.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#name <name> <N.Name>  change chars(npcs) names.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#nodesc <player>       remove description.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#nolist <player>       exempt from top 10.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#nostaff               you won't hear #stell.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#nowho <player>        not listed in who.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#npclist <search>      display list of NPCs.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#raise <player> <exp>  give player exps.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#respawn <temp-id>     make npcs id respawn.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#shutup <player>       make unable to talk.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#slap <player>         slap in face.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#sprite <player>       change a player's sprite.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#thrall <name> [<rank>] clone slave.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#usurp <ID>            turn self into ID.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#write <text>          make scrolls with text.\n",
+                );
+                self.do_character_log(cn, core::types::FontColor::Blue, " \n");
+            }
+
+            if (characters[cn].flags & CharacterFlags::God.bits()) != 0 {
+                self.do_character_log(cn, core::types::FontColor::Blue, "God Commands:\n");
+                self.do_character_log(cn, core::types::FontColor::Blue, " \n");
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#create <item template> creating items.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#ggold <amount>         give money to a player.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#god <player>           make player a God.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#imp <player> <amount>  make player an Imp.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#mailpass <player>      send passwd to admin.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#password <name>        change a plr's passwd.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#perase <player>        total player erase.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#pol <player>           make player POH leader.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#send <player> <target> teleport player to target.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#staff <player>         make a player staffer.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#summon <name> [<rank> [<which>]]\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#tavern                 log off quickly.\n",
+                );
+                self.do_character_log(cn, core::types::FontColor::Blue, " \n");
+            }
+
+            if (characters[cn].flags & CharacterFlags::GreaterGod.bits()) != 0 {
+                self.do_character_log(cn, core::types::FontColor::Blue, "Greater God Commands:\n");
+                self.do_character_log(cn, core::types::FontColor::Blue, " \n");
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#build <template>       build mode.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#creator <player>       make player a Creator.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#greatergod <player>    make player a G-God.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#lookinv <player>       look for items.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#lookdepot <player>     look for items.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#lookequip <player>     look for items.\n",
+                );
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "#steal <player> <item>  Steal item from player.\n",
+                );
+                self.do_character_log(cn, core::types::FontColor::Blue, " \n");
+            }
+        });
     }
 
     /// Port of `do_fightback(cn)` from `svr_do.cpp`.

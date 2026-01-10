@@ -619,6 +619,7 @@ impl State {
         let args_get = |i: usize| args.get(i).and_then(|o| *o).unwrap_or("");
         let parse_usize = |s: &str| s.parse::<usize>().unwrap_or(0usize);
         let parse_i32 = |s: &str| s.parse::<i32>().unwrap_or(0i32);
+        let parse_u32 = |s: &str| s.parse::<u32>().unwrap_or(0u32);
 
         let first = cmd.chars().next().unwrap_or('\0');
 
@@ -818,12 +819,7 @@ impl State {
                 }
                 if starts("ggold") && f_g {
                     log::debug!("Processing ggold command for {}", cn);
-                    God::gold_char(
-                        cn,
-                        parse_usize(arg_get(1)),
-                        parse_i32(arg_get(2)),
-                        parse_i32(arg_get(3)),
-                    );
+                    God::gold_char(cn, arg_get(1), parse_u32(arg_get(2)), parse_u32(arg_get(3)));
                     return;
                 }
                 if starts("give") && f_giu {
@@ -986,7 +982,7 @@ impl State {
                 }
                 if starts("lower") && f_g {
                     log::debug!("Processing lower command for {}", cn);
-                    God::lower_char(cn, parse_usize(arg_get(1)), parse_i32(arg_get(2)));
+                    God::lower_char(cn, arg_get(1), arg_get(2));
                     return;
                 }
                 if starts("luck") && f_giu {
