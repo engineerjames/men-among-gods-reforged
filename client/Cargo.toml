@@ -5,4 +5,4 @@ edition = "2021"
 
 [dependencies]
 mag_core = { path = "../core", package = "core" }
-bevy = { version="0.17.3", features = ["bmp"] }
+bevy = "0.17.3"
