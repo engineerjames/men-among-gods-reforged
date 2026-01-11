@@ -77,6 +77,8 @@ fn run() -> Result<(), ImageError> {
         std::process::exit(1);
     }
 
+    const EXTENSIONS_TO_CONVERT: [&'static str; 2] = ["png", "bmp"];
+
     // Intentionally non-recursive directory processing
     let files_to_convert: Vec<(std::path::PathBuf, std::path::PathBuf)> = if is_input_directory {
         let input_dir = Path::new(&args[1]);
@@ -86,8 +88,12 @@ fn run() -> Result<(), ImageError> {
             .filter_map(|entry| {
                 entry.ok().and_then(|e| {
                     let path = e.path();
-                    if path.is_file() {
-                        Some((path.clone(), output_dir.join(path.file_name()?)))
+                    let extension = path.extension()?.to_str()?.to_lowercase();
+                    if path.is_file() && EXTENSIONS_TO_CONVERT.contains(&extension.as_str()) {
+                        Some((
+                            path.clone(),
+                            output_dir.join(force_png_path(path.file_name()?)),
+                        ))
                     } else {
                         None
                     }
