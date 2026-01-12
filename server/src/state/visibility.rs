@@ -526,12 +526,11 @@ impl State {
         }
 
         if co == 0 || cn == 0 {
-            log::error!(
+            log::debug!(
                 "do_char_can_see called with invalid character id(s): cn={}, co={}",
                 cn,
                 co
             );
-            log::error!("Backtrace:\n{}", std::backtrace::Backtrace::force_capture());
             return 0;
         }
 
