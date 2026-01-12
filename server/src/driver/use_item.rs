@@ -1,11 +1,12 @@
 use crate::area::is_in_pentagram_quest;
+use crate::core::types::skilltab;
 use crate::effect::EffectManager;
 use crate::god::God;
 use crate::helpers::{self, points2rank};
 use crate::lab9::Labyrinth9;
 use crate::repository::Repository;
 use crate::state::State;
-use crate::{chlog, driver, player, populate, skilltab};
+use crate::{chlog, driver, player, populate};
 use core::constants::{
     CharacterFlags, ItemFlags, DX_RIGHT, KIN_HARAKIM, KIN_MALE, KIN_MERCENARY, KIN_SEYAN_DU,
     KIN_SORCERER, KIN_TEMPLAR, KIN_WARRIOR, MAXITEM, MAXSKILL, MF_NOEXPIRE, NT_HITME, SERVER_MAPX,

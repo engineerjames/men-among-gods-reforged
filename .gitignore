@@ -25,3 +25,5 @@ target
 *.cpp
 *.h
 profile.json.gz
+
+**/logs/**
