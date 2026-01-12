@@ -222,7 +222,7 @@ impl State {
         });
 
         let Some(player_id) = matching_player_id else {
-            log::error!(
+            log::debug!(
                 "char_play_sound: Character {} has no associated player.",
                 character_id
             );

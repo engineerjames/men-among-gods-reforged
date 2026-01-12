@@ -910,7 +910,7 @@ impl Server {
                 if bad {
                     Repository::with_characters_mut(|ch| {
                         Repository::with_items(|it| {
-                            log::warn!(
+                            log::debug!(
                                 "Reset spell item {} from char {}.",
                                 it[spell_id].get_name(),
                                 ch[cn].get_name()
