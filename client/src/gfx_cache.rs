@@ -2,6 +2,9 @@ use std::path::PathBuf;
 
 use bevy::{ecs::resource::Resource, sprite::Sprite};
 
+/// A cache for graphical assets loaded from a zip file. Currently
+/// we do the very slow operation of extracting the zip file contents
+/// every time the game starts. This is a placeholder implementation.
 #[derive(Resource, Default)]
 #[allow(dead_code)]
 pub struct GraphicsCache {
