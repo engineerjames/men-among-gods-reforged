@@ -31,7 +31,6 @@ struct InitState {
 pub struct GraphicsCache {
     assets_zip: PathBuf,
     gfx: Vec<Sprite>,
-    images: Vec<Handle<Image>>,
     initialized: bool,
     init_state: Option<InitState>,
     init_error: Option<String>,
@@ -43,7 +42,6 @@ impl GraphicsCache {
         Self {
             assets_zip: PathBuf::from(assets_zip),
             gfx: Vec::new(),
-            images: Vec::new(),
             initialized: false,
             init_state: None,
             init_error: None,
@@ -53,7 +51,6 @@ impl GraphicsCache {
 
     pub fn reset_loading(&mut self) {
         self.gfx.clear();
-        self.images.clear();
         self.initialized = false;
         self.init_state = None;
         self.init_error = None;
@@ -210,7 +207,6 @@ impl GraphicsCache {
         };
 
         let image_handle: Handle<Image> = images_assets.add(image);
-        self.images.push(image_handle.clone());
         self.gfx.push(Sprite::from_image(image_handle));
         state.index += 1;
 
