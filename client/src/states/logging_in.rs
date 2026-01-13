@@ -1,11 +1,14 @@
 // Placeholders
 
+use std::{path::PathBuf, sync::Arc};
+
 use bevy::ecs::system::Commands;
 use bevy::prelude::*;
 use bevy_egui::{
     egui::{self, Pos2},
     EguiContexts,
 };
+use egui_file_dialog::FileDialog;
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 
@@ -24,7 +27,7 @@ pub enum Class {
     SeyanDu,
 }
 
-#[derive(Resource, Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Resource, Debug)]
 
 pub struct LoginInformation {
     pub username: String,
@@ -32,6 +35,8 @@ pub struct LoginInformation {
     pub description: String,
     pub is_male: bool,
     pub class: Class,
+    pub loaded_character_file: Option<PathBuf>,
+    pub load_character_dialog: FileDialog,
 }
 
 impl Default for LoginInformation {
@@ -42,6 +47,15 @@ impl Default for LoginInformation {
             description: String::new(),
             is_male: true,
             class: Class::Mercenary,
+            loaded_character_file: None,
+            load_character_dialog: FileDialog::new()
+                .title("Load Character File")
+                .add_file_filter(
+                    "MOA Files",
+                    Arc::new(|path| path.extension().unwrap_or_default() == "moa"),
+                )
+                .default_file_filter("MOA Files")
+                .initial_directory(std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))),
         }
     }
 }
@@ -124,10 +138,26 @@ pub fn run_logging_in(mut contexts: EguiContexts, mut login_info: ResMut<LoginIn
                     *login_info = LoginInformation::default();
                 }
 
+                let load_button = ui.add_sized([120., 40.], egui::Button::new("Load"));
+                if load_button.clicked() {
+                    log::info!("Opening file dialog to load character file...");
+                    login_info.load_character_dialog.pick_file();
+                }
+
+                login_info.load_character_dialog.update(ctx);
+
+                if let Some(path) = login_info.load_character_dialog.take_picked() {
+                    login_info.loaded_character_file = Some(path.to_path_buf());
+                    log::info!(
+                        "Selected character file: {:?}",
+                        login_info.loaded_character_file
+                    );
+                }
+
                 let login_button = ui.add_sized([120., 40.], egui::Button::new("Login"));
                 if login_button.clicked() {
                     // TODO: Eventually we will handle the login action here.
-                    println!("Button clicked: {:?}", *login_info);
+                    log::info!("Button clicked: {:?}", *login_info);
                 }
             });
         });
