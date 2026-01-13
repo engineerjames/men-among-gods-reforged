@@ -27,6 +27,7 @@ pub struct GraphicsCache {
     initialized: bool,
     init_state: Option<InitState>,
     init_error: Option<String>,
+    archive: Option<ZipArchive<File>>,
 }
 
 impl GraphicsCache {
@@ -37,6 +38,7 @@ impl GraphicsCache {
             initialized: false,
             init_state: None,
             init_error: None,
+            archive: None,
         }
     }
 
@@ -45,6 +47,7 @@ impl GraphicsCache {
         self.initialized = false;
         self.init_state = None;
         self.init_error = None;
+        self.archive = None;
     }
 
     pub fn is_initialized(&self) -> bool {
@@ -53,10 +56,15 @@ impl GraphicsCache {
 
     pub fn initialize(&mut self) -> CacheInitStatus {
         if self.initialized {
+            log::warn!("GraphicsCache::initialize called but already initialized");
             return CacheInitStatus::Done;
         }
 
         if let Some(err) = self.init_error.clone() {
+            log::error!(
+                "GraphicsCache::initialize encountered previous error: {}",
+                err
+            );
             return CacheInitStatus::Error(err);
         }
 
@@ -66,22 +74,29 @@ impl GraphicsCache {
                 Err(e) => {
                     let err = format!("Failed to open graphics zip {:?}: {e}", self.assets_zip);
                     self.init_error = Some(err.clone());
+
+                    log::error!("GraphicsCache::initialize failed to open zip file: {}", err);
                     return CacheInitStatus::Error(err);
                 }
             };
 
-            let mut archive = match ZipArchive::new(file) {
-                Ok(a) => a,
+            self.archive = match ZipArchive::new(file) {
+                Ok(a) => Some(a),
                 Err(e) => {
                     let err = format!("Failed to read graphics zip {:?}: {e}", self.assets_zip);
                     self.init_error = Some(err.clone());
+
+                    log::error!(
+                        "GraphicsCache::initialize failed to read zip archive: {}",
+                        err
+                    );
                     return CacheInitStatus::Error(err);
                 }
             };
 
             let mut entries = Vec::new();
-            for i in 0..archive.len() {
-                if let Ok(file) = archive.by_index(i) {
+            for i in 0..self.archive.as_ref().unwrap().len() {
+                if let Ok(file) = self.archive.as_mut().unwrap().by_index(i) {
                     let name = file.name().to_string();
                     // Skip directory entries
                     if !name.ends_with('/') {
@@ -90,19 +105,28 @@ impl GraphicsCache {
                 }
             }
 
+            log::info!(
+                "GraphicsCache::initialize found {} entries in zip file",
+                entries.len()
+            );
             self.init_state = Some(InitState { entries, index: 0 });
         }
 
         let state = self.init_state.as_mut().unwrap();
+
         if state.entries.is_empty() {
             self.initialized = true;
             self.init_state = None;
+
+            log::error!("GraphicsCache::initialize completed with no entries");
             return CacheInitStatus::Done;
         }
 
         if state.index >= state.entries.len() {
             self.initialized = true;
             self.init_state = None;
+
+            log::info!("GraphicsCache::initialize completed successfully");
             return CacheInitStatus::Done;
         }
 

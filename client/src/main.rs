@@ -9,6 +9,7 @@ use tracing_appender::{non_blocking::WorkerGuard, rolling};
 use bevy::log::{tracing_subscriber::Layer, BoxedLayer, LogPlugin};
 use bevy::prelude::*;
 use bevy::window::WindowResolution;
+use std::time::{Duration, Instant};
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::gfx_cache::CacheInitStatus;
@@ -185,40 +186,69 @@ fn run_loading(
         return;
     };
 
+    // Doing only 1 "unit of work" per frame makes loading time proportional to
+    // (number of assets) / (fps). `images.zip` currently has ~14k entries, so at 60fps
+    // that's ~230 seconds (!) just to iterate them.
+    //
+    // Instead, process for a small time budget each frame to keep the UI responsive.
+    const LOADING_BUDGET: Duration = Duration::from_millis(6);
+
     if !gfx.is_initialized() {
         **label = "LOADING GFX".to_string();
-        match gfx.initialize() {
-            CacheInitStatus::InProgress { progress } => {
-                fill.width = percent((progress.clamp(0.0, 1.0)) * 100.0);
-            }
-            CacheInitStatus::Done => {
-                fill.width = percent(100);
-            }
-            CacheInitStatus::Error(err) => {
-                **label = "LOADING GFX (ERROR)".to_string();
-                log::error!("GraphicsCache init failed: {err}");
-                // Advance anyway so we don't soft-lock on the loading screen.
-                fill.width = percent(100);
+        let start = Instant::now();
+        let mut last_progress;
+        loop {
+            match gfx.initialize() {
+                CacheInitStatus::InProgress { progress } => {
+                    last_progress = progress;
+                    if start.elapsed() >= LOADING_BUDGET {
+                        break;
+                    }
+                }
+                CacheInitStatus::Done => {
+                    last_progress = 1.0;
+                    break;
+                }
+                CacheInitStatus::Error(err) => {
+                    **label = "LOADING GFX (ERROR)".to_string();
+                    log::error!("GraphicsCache init failed: {err}");
+                    // Advance anyway so we don't soft-lock on the loading screen.
+                    last_progress = 1.0;
+                    break;
+                }
             }
         }
+
+        fill.width = percent((last_progress.clamp(0.0, 1.0)) * 100.0);
         return;
     }
 
     if !sfx.is_initialized() {
         **label = "LOADING SFX".to_string();
-        match sfx.initialize() {
-            CacheInitStatus::InProgress { progress } => {
-                fill.width = percent((progress.clamp(0.0, 1.0)) * 100.0);
-            }
-            CacheInitStatus::Done => {
-                fill.width = percent(100);
-            }
-            CacheInitStatus::Error(err) => {
-                **label = "LOADING SFX (ERROR)".to_string();
-                log::error!("SoundCache init failed: {err}");
-                fill.width = percent(100);
+        let start = Instant::now();
+        let mut last_progress;
+        loop {
+            match sfx.initialize() {
+                CacheInitStatus::InProgress { progress } => {
+                    last_progress = progress;
+                    if start.elapsed() >= LOADING_BUDGET {
+                        break;
+                    }
+                }
+                CacheInitStatus::Done => {
+                    last_progress = 1.0;
+                    break;
+                }
+                CacheInitStatus::Error(err) => {
+                    **label = "LOADING SFX (ERROR)".to_string();
+                    log::error!("SoundCache init failed: {err}");
+                    last_progress = 1.0;
+                    break;
+                }
             }
         }
+
+        fill.width = percent((last_progress.clamp(0.0, 1.0)) * 100.0);
         return;
     }
 
