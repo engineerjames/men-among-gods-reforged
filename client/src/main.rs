@@ -1,6 +1,7 @@
 mod constants;
 mod gfx_cache;
 mod helpers;
+mod network;
 mod sfx_cache;
 mod states;
 mod systems;
@@ -74,6 +75,7 @@ fn main() {
                 }),
         )
         .add_plugins(EguiPlugin::default())
+        .add_plugins(network::NetworkPlugin)
         // Initialize the state to loading
         .insert_state(GameState::Loading)
         .insert_resource(ClearColor(Color::BLACK))

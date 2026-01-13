@@ -11,6 +11,7 @@ use bevy_egui::{
 use egui_file_dialog::FileDialog;
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
+use crate::network::{LoginRequested, LoginStatus};
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 
@@ -75,7 +76,12 @@ pub fn teardown_logging_in() {
     log::debug!("teardown_logging_in - end");
 }
 
-pub fn run_logging_in(mut contexts: EguiContexts, mut login_info: ResMut<LoginInformation>) {
+pub fn run_logging_in(
+    mut contexts: EguiContexts,
+    mut login_info: ResMut<LoginInformation>,
+    status: Res<LoginStatus>,
+    mut login_ev: MessageWriter<LoginRequested>,
+) {
     debug_once!("run_logging_in called");
 
     let Ok(ctx) = contexts.ctx_mut() else {
@@ -91,6 +97,9 @@ pub fn run_logging_in(mut contexts: EguiContexts, mut login_info: ResMut<LoginIn
         .collapsible(false)
         .resizable(false)
         .show(ctx, |ui| {
+            ui.label(format!("Status: {}", status.message));
+            ui.separator();
+
             ui.label("Username");
             ui.text_edit_singleline(&mut login_info.username);
 
@@ -148,6 +157,7 @@ pub fn run_logging_in(mut contexts: EguiContexts, mut login_info: ResMut<LoginIn
 
                 if let Some(path) = login_info.load_character_dialog.take_picked() {
                     login_info.loaded_character_file = Some(path.to_path_buf());
+                    // TODO: Actually load the character data from the file here.
                     log::info!(
                         "Selected character file: {:?}",
                         login_info.loaded_character_file
@@ -156,8 +166,12 @@ pub fn run_logging_in(mut contexts: EguiContexts, mut login_info: ResMut<LoginIn
 
                 let login_button = ui.add_sized([120., 40.], egui::Button::new("Login"));
                 if login_button.clicked() {
-                    // TODO: Eventually we will handle the login action here.
-                    log::info!("Button clicked: {:?}", *login_info);
+                    login_ev.write(LoginRequested {
+                        host: "127.0.0.1".to_string(),
+                        port: 5555,
+                        username: login_info.username.clone(),
+                        password: login_info.password.clone(),
+                    });
                 }
             });
         });
