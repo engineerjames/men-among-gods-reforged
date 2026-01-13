@@ -10,3 +10,7 @@ pub fn setup_gameplay(mut commands: Commands, gfx: Res<GraphicsCache>) {
         log::error!("No sprite found at index 0 in GraphicsCache");
     }
 }
+
+pub fn run_gameplay() {
+    // Gameplay logic would go here
+}

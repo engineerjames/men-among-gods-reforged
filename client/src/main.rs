@@ -94,6 +94,16 @@ fn main() {
         )
         .add_systems(
             Update,
+            states::gameplay::run_gameplay.run_if(in_state(GameState::Gameplay)),
+        )
+        .add_systems(OnEnter(GameState::Menu), states::menu::setup_menu)
+        .add_systems(
+            Update,
+            states::menu::run_menu.run_if(in_state(GameState::Menu)),
+        )
+        .add_systems(OnExit(GameState::Menu), states::menu::teardown_menu)
+        .add_systems(
+            Update,
             print_click_coords.run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(Update, enforce_aspect_and_pixel_coords)
