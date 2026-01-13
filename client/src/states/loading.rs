@@ -21,6 +21,7 @@ pub fn setup_loading_ui(
     mut gfx: ResMut<GraphicsCache>,
     mut sfx: ResMut<SoundCache>,
 ) {
+    log::debug!("setup_loading_ui - start");
     gfx.reset_loading();
     sfx.reset_loading();
 
@@ -64,6 +65,7 @@ pub fn setup_loading_ui(
             ),
         ],
     ));
+    log::debug!("setup_loading_ui - end");
 }
 
 pub fn run_loading(
@@ -87,7 +89,7 @@ pub fn run_loading(
     // that's ~230 seconds (!) just to iterate them.
     //
     // Instead, process for a small time budget each frame to keep the UI responsive.
-    const LOADING_BUDGET: Duration = Duration::from_millis(6);
+    const LOADING_BUDGET: Duration = Duration::from_millis(250);
 
     if !gfx.is_initialized() {
         **label = "Loading Graphics Assets...".to_string();
@@ -148,7 +150,7 @@ pub fn run_loading(
         return;
     }
 
-    next_state.set(GameState::Gameplay);
+    next_state.set(GameState::LoggingIn);
 }
 
 pub fn teardown_loading_ui(

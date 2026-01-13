@@ -9,3 +9,5 @@ bevy = { version = "0.17.3", features = ["wav"] }
 log = "0.4.29"
 tracing-appender = "0.2.4"
 zip = "0.6.6"
+bevy_egui = "0.38.1"
+egui-file-dialog = "0.12.0"

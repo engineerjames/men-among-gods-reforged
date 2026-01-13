@@ -1,10 +1,12 @@
 mod constants;
 mod gfx_cache;
 mod helpers;
+mod network;
 mod sfx_cache;
 mod states;
 mod systems;
 
+use bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
 use std::sync::OnceLock;
 use tracing_appender::{non_blocking::WorkerGuard, rolling};
 
@@ -20,7 +22,6 @@ use crate::systems::display;
 
 static LOG_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
 
-#[allow(dead_code)]
 #[derive(States, Clone, Copy, PartialEq, Eq, Hash, Debug)]
 enum GameState {
     Loading,
@@ -73,6 +74,8 @@ fn main() {
                     ..default()
                 }),
         )
+        .add_plugins(EguiPlugin::default())
+        .add_plugins(network::NetworkPlugin)
         // Initialize the state to loading
         .insert_state(GameState::Loading)
         .insert_resource(ClearColor(Color::BLACK))
@@ -105,7 +108,7 @@ fn main() {
             states::logging_in::setup_logging_in,
         )
         .add_systems(
-            Update,
+            EguiPrimaryContextPass,
             states::logging_in::run_logging_in.run_if(in_state(GameState::LoggingIn)),
         )
         .add_systems(
