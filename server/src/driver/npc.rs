@@ -1,12 +1,13 @@
+use crate::core;
 use crate::driver;
 use crate::effect::EffectManager;
 use crate::helpers;
 use crate::player;
 use crate::populate;
-use crate::skilltab;
 use crate::{god::God, repository::Repository, state::State};
 use core::constants::*;
 use core::string_operations::c_string_to_str;
+use core::types::skilltab;
 use rand::Rng;
 
 // Helper functions

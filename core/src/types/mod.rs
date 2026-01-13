@@ -11,6 +11,7 @@ mod item;
 mod map;
 mod see_map;
 mod server_player;
+pub mod skilltab;
 
 // Re-export all types
 pub use ban::Ban;

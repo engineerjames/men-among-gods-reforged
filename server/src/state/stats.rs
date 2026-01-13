@@ -2,11 +2,12 @@ use core::constants::{CharacterFlags, ItemFlags, MAXCHARS};
 use core::types::FontColor;
 use rand::Rng;
 
+use crate::core::types::skilltab;
 use crate::effect::EffectManager;
 use crate::god::God;
 use crate::repository::Repository;
 use crate::state::State;
-use crate::{driver, helpers, skilltab};
+use crate::{driver, helpers};
 
 impl State {
     /// Helper function to check if character wears a specific item

@@ -14,6 +14,7 @@ use std::{backtrace, env};
 pub mod byte_operations;
 pub mod circular_buffer;
 pub mod constants;
+pub mod encrypt;
 pub mod stat_buffer;
 pub mod string_operations;
 pub mod types;
