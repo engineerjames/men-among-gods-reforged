@@ -3,6 +3,7 @@ use std::time::{Duration, Instant};
 use bevy::prelude::*;
 
 use crate::gfx_cache::{CacheInitStatus, GraphicsCache};
+use crate::helpers::despawn_tree;
 use crate::sfx_cache::SoundCache;
 use crate::GameState;
 
@@ -69,6 +70,7 @@ pub fn run_loading(
     mut gfx: ResMut<GraphicsCache>,
     mut sfx: ResMut<SoundCache>,
     mut images: ResMut<Assets<Image>>,
+    mut audio_sources: ResMut<Assets<AudioSource>>,
     mut label_q: Query<&mut Text, With<LoadingLabel>>,
     mut fill_q: Query<&mut Node, With<LoadingBarFill>>,
     mut next_state: ResMut<NextState<GameState>>,
@@ -122,7 +124,7 @@ pub fn run_loading(
         let start = Instant::now();
         let mut last_progress;
         loop {
-            match sfx.initialize() {
+            match sfx.initialize(audio_sources.as_mut()) {
                 CacheInitStatus::InProgress { progress } => {
                     last_progress = progress;
                     if start.elapsed() >= LOADING_BUDGET {
@@ -151,9 +153,10 @@ pub fn run_loading(
 
 pub fn teardown_loading_ui(
     mut commands: Commands,
-    q: Query<Entity, Or<(With<LoadingUi>, With<LoadingLabel>, With<LoadingBarFill>)>>,
+    roots: Query<Entity, With<LoadingUi>>,
+    children_q: Query<&Children>,
 ) {
-    for e in &q {
-        commands.entity(e).despawn();
+    for root in &roots {
+        despawn_tree(root, &children_q, &mut commands);
     }
 }

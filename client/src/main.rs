@@ -1,5 +1,6 @@
 mod constants;
 mod gfx_cache;
+mod helpers;
 mod sfx_cache;
 mod states;
 mod systems;
@@ -14,8 +15,8 @@ use bevy::window::WindowResolution;
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::gfx_cache::GraphicsCache;
 use crate::sfx_cache::SoundCache;
-use crate::systems::debug::print_click_coords;
-use crate::systems::display::enforce_aspect_and_pixel_coords;
+use crate::systems::debug;
+use crate::systems::display;
 
 static LOG_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
 
@@ -44,6 +45,7 @@ fn custom_layer(_app: &mut App) -> Option<BoxedLayer> {
 
 fn main() {
     App::new()
+        // Setup resources
         // Use stable absolute paths so running from workspace root works.
         .insert_resource(GraphicsCache::new(concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -71,10 +73,18 @@ fn main() {
                     ..default()
                 }),
         )
+        // Initialize the state to loading
         .insert_state(GameState::Loading)
         .insert_resource(ClearColor(Color::BLACK))
+        //
+        // Setup systems for each state
+        //
+        // Initial setup
+        //
         .add_systems(Startup, setup_camera)
-        .add_systems(StateTransition, run_on_any_transition)
+        //
+        // Loading state
+        //
         .add_systems(
             OnEnter(GameState::Loading),
             states::loading::setup_loading_ui,
@@ -87,27 +97,51 @@ fn main() {
             OnExit(GameState::Loading),
             states::loading::teardown_loading_ui,
         )
+        //
+        // LoggingIn state
+        //
+        .add_systems(
+            OnEnter(GameState::LoggingIn),
+            states::logging_in::setup_logging_in,
+        )
+        .add_systems(
+            Update,
+            states::logging_in::run_logging_in.run_if(in_state(GameState::LoggingIn)),
+        )
+        .add_systems(
+            OnExit(GameState::LoggingIn),
+            states::logging_in::teardown_logging_in,
+        )
+        //
+        // Gameplay state
+        //
         .add_systems(
             OnEnter(GameState::Gameplay),
             states::gameplay::setup_gameplay,
         )
         .add_systems(
             Update,
-            print_click_coords.run_if(in_state(GameState::Gameplay)),
+            states::gameplay::run_gameplay.run_if(in_state(GameState::Gameplay)),
         )
-        .add_systems(Update, enforce_aspect_and_pixel_coords)
+        //
+        // Menu state
+        //
+        .add_systems(OnEnter(GameState::Menu), states::menu::setup_menu)
+        .add_systems(
+            Update,
+            states::menu::run_menu.run_if(in_state(GameState::Menu)),
+        )
+        .add_systems(OnExit(GameState::Menu), states::menu::teardown_menu)
+        //
+        // Global (utility) systems
+        //
+        .add_systems(
+            Update,
+            debug::print_click_coords.run_if(in_state(GameState::Gameplay)),
+        )
+        .add_systems(StateTransition, debug::run_on_any_transition)
+        .add_systems(Update, display::enforce_aspect_and_pixel_coords)
         .run();
-}
-
-// System to run on any transition
-fn run_on_any_transition(mut transitions: MessageReader<StateTransitionEvent<GameState>>) {
-    for ev in transitions.read() {
-        log::info!(
-            "State Transition Detected! From {:?} to {:?}",
-            ev.exited,
-            ev.entered
-        );
-    }
 }
 
 fn setup_camera(mut commands: Commands) {

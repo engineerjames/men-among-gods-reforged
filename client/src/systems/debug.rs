@@ -2,7 +2,10 @@ use bevy::prelude::*;
 
 use bevy::window::PrimaryWindow;
 
-use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
+use crate::{
+    constants::{TARGET_HEIGHT, TARGET_WIDTH},
+    GameState,
+};
 
 pub fn print_click_coords(
     mouse: Res<ButtonInput<MouseButton>>,
@@ -78,4 +81,14 @@ pub fn print_click_coords(
         "click: logical=({:.1},{:.1}), physical=({:.1},{:.1}){}",
         cursor_logical.x, cursor_logical.y, cursor_physical.x, cursor_physical.y, extra
     );
+}
+
+pub fn run_on_any_transition(mut transitions: MessageReader<StateTransitionEvent<GameState>>) {
+    for ev in transitions.read() {
+        log::info!(
+            "State Transition Detected! From {:?} to {:?}",
+            ev.exited,
+            ev.entered
+        );
+    }
 }
