@@ -46,6 +46,7 @@ impl SoundCache {
         self.initialized
     }
 
+    #[allow(dead_code)]
     pub fn get_audio(&self, index: usize) -> Option<&Handle<AudioSource>> {
         self.sfx.get(index)
     }

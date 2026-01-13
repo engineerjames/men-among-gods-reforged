@@ -1,9 +1,9 @@
 use std::time::{Duration, Instant};
 
-use bevy::audio::PlaybackMode;
 use bevy::prelude::*;
 
 use crate::gfx_cache::{CacheInitStatus, GraphicsCache};
+use crate::helpers::despawn_tree;
 use crate::sfx_cache::SoundCache;
 use crate::GameState;
 
@@ -153,12 +153,10 @@ pub fn run_loading(
 
 pub fn teardown_loading_ui(
     mut commands: Commands,
-    sfx: Res<SoundCache>,
-    q: Query<Entity, Or<(With<LoadingUi>, With<LoadingLabel>, With<LoadingBarFill>)>>,
+    roots: Query<Entity, With<LoadingUi>>,
+    children_q: Query<&Children>,
 ) {
-    for e in &q {
-        commands.entity(e).despawn();
+    for root in &roots {
+        despawn_tree(root, &children_q, &mut commands);
     }
-
-    commands.spawn(AudioPlayer::new(sfx.get_audio(0).unwrap().clone()));
 }
