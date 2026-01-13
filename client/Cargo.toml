@@ -8,3 +8,4 @@ mag_core = { path = "../core", package = "core" }
 bevy = "0.17.3"
 log = "0.4.29"
 tracing-appender = "0.2.4"
+zip = "0.6.6"
