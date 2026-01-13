@@ -1,6 +1,13 @@
-use std::{fs::File, path::PathBuf};
+use std::{fs::File, io::Read, path::PathBuf};
 
-use bevy::{ecs::resource::Resource, sprite::Sprite};
+use bevy::{
+    asset::Handle,
+    asset::RenderAssetUsages,
+    ecs::resource::Resource,
+    image::{CompressedImageFormats, Image, ImageSampler, ImageType},
+    prelude::Assets,
+    sprite::Sprite,
+};
 use zip::ZipArchive;
 
 #[derive(Debug, Clone)]
@@ -24,6 +31,7 @@ struct InitState {
 pub struct GraphicsCache {
     assets_zip: PathBuf,
     gfx: Vec<Sprite>,
+    images: Vec<Handle<Image>>,
     initialized: bool,
     init_state: Option<InitState>,
     init_error: Option<String>,
@@ -35,6 +43,7 @@ impl GraphicsCache {
         Self {
             assets_zip: PathBuf::from(assets_zip),
             gfx: Vec::new(),
+            images: Vec::new(),
             initialized: false,
             init_state: None,
             init_error: None,
@@ -44,6 +53,7 @@ impl GraphicsCache {
 
     pub fn reset_loading(&mut self) {
         self.gfx.clear();
+        self.images.clear();
         self.initialized = false;
         self.init_state = None;
         self.init_error = None;
@@ -54,9 +64,12 @@ impl GraphicsCache {
         self.initialized
     }
 
-    pub fn initialize(&mut self) -> CacheInitStatus {
+    pub fn get_sprite(&self, index: usize) -> Option<&Sprite> {
+        self.gfx.get(index)
+    }
+
+    pub fn initialize(&mut self, images_assets: &mut Assets<Image>) -> CacheInitStatus {
         if self.initialized {
-            log::warn!("GraphicsCache::initialize called but already initialized");
             return CacheInitStatus::Done;
         }
 
@@ -130,8 +143,75 @@ impl GraphicsCache {
             return CacheInitStatus::Done;
         }
 
-        // Placeholder: in the future this is where we'd decode the image and cache a handle.
-        self.gfx.push(Sprite::default());
+        let entry_name = &state.entries[state.index];
+        log::debug!(
+            "GraphicsCache::initialize loading entry {}/{}: {}",
+            state.index + 1,
+            state.entries.len(),
+            entry_name
+        );
+
+        let mut file = match self.archive.as_mut().unwrap().by_name(entry_name) {
+            Ok(f) => f,
+            Err(e) => {
+                let err = format!(
+                    "Failed to read graphics entry {:?} from zip: {e}",
+                    entry_name
+                );
+                self.init_error = Some(err.clone());
+
+                log::error!(
+                    "GraphicsCache::initialize failed to read entry from zip: {}",
+                    err
+                );
+                return CacheInitStatus::Error(err);
+            }
+        };
+
+        let file_bytes = {
+            let mut buf = Vec::new();
+            if let Err(e) = file.read_to_end(&mut buf) {
+                let err = format!("Failed to read graphics entry {:?} data: {e}", entry_name);
+                self.init_error = Some(err.clone());
+
+                log::error!(
+                    "GraphicsCache::initialize failed to read entry data: {}",
+                    err
+                );
+                return CacheInitStatus::Error(err);
+            }
+            buf
+        };
+
+        let ext = entry_name
+            .rsplit('.')
+            .next()
+            .unwrap_or("png")
+            .to_ascii_lowercase();
+
+        let image = match Image::from_buffer(
+            &file_bytes,
+            ImageType::Extension(ext.as_str()),
+            CompressedImageFormats::default(),
+            true,
+            ImageSampler::nearest(),
+            RenderAssetUsages::default(),
+        ) {
+            Ok(img) => img,
+            Err(e) => {
+                let err = format!(
+                    "Failed to decode image entry {:?} (ext={}) from zip: {e}",
+                    entry_name, ext
+                );
+                self.init_error = Some(err.clone());
+                log::error!("GraphicsCache::initialize decode failed: {}", err);
+                return CacheInitStatus::Error(err);
+            }
+        };
+
+        let image_handle: Handle<Image> = images_assets.add(image);
+        self.images.push(image_handle.clone());
+        self.gfx.push(Sprite::from_image(image_handle));
         state.index += 1;
 
         let progress = state.index as f32 / state.entries.len() as f32;

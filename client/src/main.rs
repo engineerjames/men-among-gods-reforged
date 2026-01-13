@@ -175,6 +175,7 @@ fn setup_loading_ui(
 fn run_loading(
     mut gfx: ResMut<GraphicsCache>,
     mut sfx: ResMut<SoundCache>,
+    mut images: ResMut<Assets<Image>>,
     mut label_q: Query<&mut Text, With<LoadingLabel>>,
     mut fill_q: Query<&mut Node, With<LoadingBarFill>>,
     mut next_state: ResMut<NextState<GameState>>,
@@ -198,7 +199,7 @@ fn run_loading(
         let start = Instant::now();
         let mut last_progress;
         loop {
-            match gfx.initialize() {
+            match gfx.initialize(&mut images) {
                 CacheInitStatus::InProgress { progress } => {
                     last_progress = progress;
                     if start.elapsed() >= LOADING_BUDGET {
@@ -264,7 +265,11 @@ fn teardown_loading_ui(
     }
 }
 
-fn setup_gameplay(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn setup_gameplay(mut commands: Commands, gfx: Res<GraphicsCache>) {
     log::info!("Loading complete; entering gameplay");
-    commands.spawn(Sprite::from_image(asset_server.load("gfx/00001.png")));
+    if let Some(sprite) = gfx.get_sprite(0) {
+        commands.spawn(sprite.clone());
+    } else {
+        log::error!("No sprite found at index 0 in GraphicsCache");
+    }
 }
