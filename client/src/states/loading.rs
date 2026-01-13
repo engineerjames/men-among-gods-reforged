@@ -89,7 +89,7 @@ pub fn run_loading(
     // that's ~230 seconds (!) just to iterate them.
     //
     // Instead, process for a small time budget each frame to keep the UI responsive.
-    const LOADING_BUDGET: Duration = Duration::from_millis(24);
+    const LOADING_BUDGET: Duration = Duration::from_millis(250);
 
     if !gfx.is_initialized() {
         **label = "Loading Graphics Assets...".to_string();

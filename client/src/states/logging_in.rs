@@ -38,6 +38,7 @@ pub struct LoginInformation {
     pub class: Class,
     pub loaded_character_file: Option<PathBuf>,
     pub load_character_dialog: FileDialog,
+    pub save_character_dialog: FileDialog,
 }
 
 impl Default for LoginInformation {
@@ -51,6 +52,14 @@ impl Default for LoginInformation {
             loaded_character_file: None,
             load_character_dialog: FileDialog::new()
                 .title("Load Character File")
+                .add_file_filter(
+                    "MOA Files",
+                    Arc::new(|path| path.extension().unwrap_or_default() == "moa"),
+                )
+                .default_file_filter("MOA Files")
+                .initial_directory(std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))),
+            save_character_dialog: FileDialog::new()
+                .title("Save Character File")
                 .add_file_filter(
                     "MOA Files",
                     Arc::new(|path| path.extension().unwrap_or_default() == "moa"),
@@ -153,7 +162,14 @@ pub fn run_logging_in(
                     login_info.load_character_dialog.pick_file();
                 }
 
+                let save_button = ui.add_sized([120., 40.], egui::Button::new("Save"));
+                if save_button.clicked() {
+                    log::info!("Opening file dialog to save character file...");
+                    login_info.save_character_dialog.save_file();
+                }
+
                 login_info.load_character_dialog.update(ctx);
+                login_info.save_character_dialog.update(ctx);
 
                 if let Some(path) = login_info.load_character_dialog.take_picked() {
                     login_info.loaded_character_file = Some(path.to_path_buf());
@@ -162,6 +178,11 @@ pub fn run_logging_in(
                         "Selected character file: {:?}",
                         login_info.loaded_character_file
                     );
+                }
+
+                if let Some(path) = login_info.save_character_dialog.take_picked() {
+                    // TODO: Actually save the character data to the file here.
+                    log::info!("Saving character to file: {:?}", path);
                 }
 
                 let login_button = ui.add_sized([120., 40.], egui::Button::new("Login"));
