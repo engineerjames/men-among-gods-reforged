@@ -1893,6 +1893,7 @@ dependencies = [
  "bevy_egui",
  "core",
  "egui-file-dialog",
+ "flate2",
  "log",
  "tracing-appender",
  "zip",

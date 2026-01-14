@@ -33,13 +33,16 @@ samply record cargo run --bin server
 This will generate a flamegraph that you can use to analyze the performance of the server.
 
 # Client
-The client will eventually use [Bevy](https://bevyengine.org/) for its rendering and input handling. At the moment, the client is still a work in progress and doesn't really exist in any form.
+The client uses [Bevy](https://bevyengine.org/) for its rendering and input handling. At the moment, the client is still a heavy work in progress and is not playable.
 
 # Server
 The server is a command-line application that listens for incoming connections from clients. It is still in ALPHA stage and is not yet fully functional. You should be able to connect to it using any Merceneries of Astonia (v2) client, but expect bugs.
 
 # Original Work
 The original C code, graphics, and sound effects that were ported are based on the Mercenaries of Astonia (v2) engine by Daniel Brockhaus. Website: http://www.brockhaus.org/merc2.html
+
+# Music
+There was no music in the original Mercenaries of Astonia (v2) game, so I have added some of my own compositions to the project. All music is original and created by James Armes (me). You can find the music files in the `client/assets/music` directory, and it can be disabled in the client settings.
 
 # Development Notes
 Try not to judge the Rust code too harshly; I'm still learning the language! I also attempted (initially) to port the code structure exactly from C to Rust - which even the C code wasn't exactly the best. Refactoring will come in time.
