@@ -1,3 +1,5 @@
+mod command;
+
 use std::{
     io::{Read, Write},
     net::TcpStream,
@@ -87,7 +89,7 @@ impl Plugin for NetworkPlugin {
             .init_resource::<NetworkRuntime>()
             .add_message::<LoginRequested>()
             .add_systems(Update, start_login.run_if(in_state(GameState::LoggingIn)))
-            .add_systems(Update, pump_network_events);
+            .add_systems(Update, process_network_events);
     }
 }
 
@@ -118,6 +120,7 @@ fn start_login(
 
     // Keep the task stored in the resource so it isn't dropped/canceled.
     net.task = Some(IoTaskPool::get().spawn(async move {
+        log::debug!("Network task started");
         let _ = event_tx.send(NetworkEvent::Status(format!(
             "Connecting to {}:{}...",
             req.host, req.port
@@ -172,14 +175,14 @@ fn start_login(
     log::debug!("start_login - end");
 }
 
-fn pump_network_events(mut _net: ResMut<NetworkRuntime>, mut status: ResMut<LoginStatus>) {
+fn process_network_events(mut _net: ResMut<NetworkRuntime>, mut status: ResMut<LoginStatus>) {
     let Some(rx) = _net.event_rx.as_ref() else {
         return;
     };
 
     let Ok(rx) = rx.lock() else {
         status.message = "Error: network receiver mutex poisoned".to_string();
-        log::error!("pump_network_events: network receiver mutex poisoned");
+        log::error!("process_network_events: network receiver mutex poisoned");
         return;
     };
 
@@ -189,6 +192,11 @@ fn pump_network_events(mut _net: ResMut<NetworkRuntime>, mut status: ResMut<Logi
             NetworkEvent::Error(e) => status.message = format!("Error: {e}"),
             NetworkEvent::Bytes(_bytes) => {
                 // TODO: Decode bytes and emit higher-level events.
+                log::debug!("Received {} bytes from server", _bytes.len());
+                log::info!(
+                    "Bytes received as utf-8: {}",
+                    String::from_utf8_lossy(&_bytes)
+                );
             }
         }
     }

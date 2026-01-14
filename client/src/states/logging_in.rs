@@ -112,56 +112,64 @@ pub fn run_logging_in(
         .collapsible(false)
         .resizable(false)
         .show(ctx, |ui| {
-            ui.label("Server IP");
-            ui.text_edit_singleline(&mut login_info.server_ip);
+            ui.add_enabled_ui(!login_info.is_logging_in, |ui| {
+                ui.label("Server IP");
+                ui.text_edit_singleline(&mut login_info.server_ip);
 
-            ui.label("Server Port");
-            ui.text_edit_singleline(&mut login_info.server_port);
+                ui.label("Server Port");
+                ui.text_edit_singleline(&mut login_info.server_port);
 
-            ui.separator();
+                ui.separator();
 
-            ui.label("Username");
-            ui.text_edit_singleline(&mut login_info.username);
+                ui.label("Username");
+                ui.text_edit_singleline(&mut login_info.username);
 
-            ui.label("Password");
-            ui.add(egui::TextEdit::singleline(&mut login_info.password).password(true));
+                ui.label("Password");
+                ui.add(egui::TextEdit::singleline(&mut login_info.password).password(true));
 
-            ui.separator();
+                ui.separator();
 
-            ui.label("Description");
-            ui.text_edit_multiline(&mut login_info.description);
+                ui.label("Description");
+                ui.text_edit_multiline(&mut login_info.description);
 
-            ui.separator();
-            ui.horizontal(|ui| {
-                ui.radio_value(&mut login_info.is_male, true, "Male");
-                ui.radio_value(&mut login_info.is_male, false, "Female");
-            });
-            ui.separator();
-            ui.horizontal(|ui| {
-                ui.vertical(|ui| {
-                    ui.label("Class: ");
-                    ui.radio_value(&mut login_info.class, Class::Mercenary, "Mercenary");
-                    ui.radio_value(&mut login_info.class, Class::Templar, "Templar");
-                    ui.radio_value(&mut login_info.class, Class::Harakim, "Harakim");
+                ui.separator();
+                ui.horizontal(|ui| {
+                    ui.radio_value(&mut login_info.is_male, true, "Male");
+                    ui.radio_value(&mut login_info.is_male, false, "Female");
+                });
+                ui.separator();
+                ui.horizontal(|ui| {
+                    ui.vertical(|ui| {
+                        ui.label("Class: ");
+                        ui.radio_value(&mut login_info.class, Class::Mercenary, "Mercenary");
+                        ui.radio_value(&mut login_info.class, Class::Templar, "Templar");
+                        ui.radio_value(&mut login_info.class, Class::Harakim, "Harakim");
+                    });
+
+                    ui.add_space(30.0);
+
+                    ui.vertical(|ui| {
+                        ui.add_enabled_ui(false, |ui| {
+                            ui.label("Achieved through gameplay:");
+                            ui.radio_value(&mut login_info.class, Class::Sorceror, "Sorceror");
+                            ui.radio_value(&mut login_info.class, Class::Warrior, "Warrior");
+                            ui.radio_value(
+                                &mut login_info.class,
+                                Class::ArchHarakim,
+                                "ArchHarakim",
+                            );
+                            ui.radio_value(
+                                &mut login_info.class,
+                                Class::ArchTemplar,
+                                "ArchTemplar",
+                            );
+                            ui.radio_value(&mut login_info.class, Class::SeyanDu, "SeyanDu");
+                        });
+                    });
                 });
 
                 ui.add_space(30.0);
 
-                ui.vertical(|ui| {
-                    ui.add_enabled_ui(false, |ui| {
-                        ui.label("Achieved through gameplay:");
-                        ui.radio_value(&mut login_info.class, Class::Sorceror, "Sorceror");
-                        ui.radio_value(&mut login_info.class, Class::Warrior, "Warrior");
-                        ui.radio_value(&mut login_info.class, Class::ArchHarakim, "ArchHarakim");
-                        ui.radio_value(&mut login_info.class, Class::ArchTemplar, "ArchTemplar");
-                        ui.radio_value(&mut login_info.class, Class::SeyanDu, "SeyanDu");
-                    });
-                });
-            });
-
-            ui.add_space(30.0);
-
-            ui.add_enabled_ui(!login_info.is_logging_in, |ui| {
                 ui.horizontal(|ui| {
                     let clear_button = ui.add_sized([120., 40.], egui::Button::new("Clear"));
                     if clear_button.clicked() {
@@ -199,6 +207,7 @@ pub fn run_logging_in(
 
                     let login_button = ui.add_sized([120., 40.], egui::Button::new("Login"));
                     if login_button.clicked() {
+                        login_info.is_logging_in = true;
                         log::info!(
                             "Attempting login for user '{}' to {}:{}",
                             login_info.username,
