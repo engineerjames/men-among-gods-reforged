@@ -73,6 +73,10 @@ pub enum ServerCommandType {
 #[derive(Debug)]
 pub enum ServerCommandData {
     Empty,
+    SetMap {
+        /// For SV_SETMAP opcodes, the lower 7 bits encode an offset (0 means absolute index is present).
+        off: u8,
+    },
     Challenge {
         server_challenge: u32,
     },
@@ -126,6 +130,18 @@ pub enum ServerCommandData {
 fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
     if bytes.is_empty() {
         return None;
+    }
+
+    // Any opcode with the SV_SETMAP bit set (0x80) is a SetMap packet.
+    // The original client treats *all* 0x80..0xFF as SetMap, where the lower
+    // 7 bits represent a delta offset from the previous tile index.
+    if (bytes[0] & 128) != 0 {
+        return Some((
+            ServerCommandType::SetMap,
+            ServerCommandData::SetMap {
+                off: bytes[0] & 127,
+            },
+        ));
     }
 
     match bytes[0] {
@@ -259,7 +275,10 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
         71 => Some((ServerCommandType::SetCharDir, ServerCommandData::Empty)),
         72 => Some((ServerCommandType::Unique, ServerCommandData::Empty)),
         73 => Some((ServerCommandType::Ignore, ServerCommandData::Empty)),
-        128 => Some((ServerCommandType::SetMap, ServerCommandData::Empty)),
+        128 => Some((
+            ServerCommandType::SetMap,
+            ServerCommandData::SetMap { off: 0 },
+        )),
         _ => None,
     }
 }
