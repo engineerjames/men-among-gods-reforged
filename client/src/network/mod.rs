@@ -1,22 +1,27 @@
-mod command;
+mod client_commands;
+mod server_commands;
 
 use std::{
     io::{Read, Write},
     net::TcpStream,
     sync::{mpsc, Arc, Mutex},
+    time::Duration,
 };
 
 use bevy::prelude::*;
 use bevy::tasks::{IoTaskPool, Task};
+use mag_core::encrypt::xcrypt;
 
-use crate::GameState;
+use crate::{network::server_commands::ServerCommand, GameState};
 
+#[allow(dead_code)]
 #[derive(Message, Debug, Clone)]
 pub struct LoginRequested {
     pub host: String,
     pub port: u16,
     pub username: String,
     pub password: String,
+    pub race: i32,
 }
 
 #[derive(Resource, Debug, Clone)]
@@ -93,6 +98,17 @@ impl Plugin for NetworkPlugin {
     }
 }
 
+fn get_server_response(stream: &mut TcpStream) -> Option<ServerCommand> {
+    // read exactly 16 bytes (login-phase command size in original client)
+    let mut buf = [0u8; 16];
+    // This will block until 16 bytes are read or an error occurs.
+    // If you keep a read timeout set, read_exact will return Err(kind = TimedOut);
+    // handle retries/higher-level logic where appropriate.
+    stream.read_exact(&mut buf).ok()?;
+
+    ServerCommand::from_bytes(&buf)
+}
+
 fn start_login(
     mut ev: MessageReader<LoginRequested>,
     mut net: ResMut<NetworkRuntime>,
@@ -135,17 +151,128 @@ fn start_login(
             }
         };
 
+        stream
+            .set_read_timeout(Some(Duration::from_millis(5000)))
+            .ok();
+
         let _ = event_tx.send(NetworkEvent::Status("Connected. Logging in...".to_string()));
 
-        // TODO: Replace this with the actual MOA login handshake.
-        // For now, we just demonstrate the wiring.
-        let login_probe = format!("LOGIN {} {}\n", req.username, req.password);
-        if let Err(e) = stream.write_all(login_probe.as_bytes()) {
+        // TODO: For now, always just send the newplayer login command.
+        log::info!("Sending newplayer login command");
+        let login_command = client_commands::ClientCommand::new_newplayer_login();
+        if let Err(e) = stream.write_all(&login_command.to_bytes()) {
             let _ = event_tx.send(NetworkEvent::Error(format!("Send failed: {e}")));
             return;
         }
 
+        log::info!("Waiting for server response to login command");
+        if let Some(login_response) = get_server_response(&mut stream) {
+            log::info!("Received login response command: {:?}", login_response);
+            let _ = event_tx.send(NetworkEvent::Status(
+                "Initial command successful.".to_string(),
+            ));
+
+            match login_response.structured_data {
+                server_commands::ServerCommandData::Challenge { server_challenge } => {
+                    let encrypted_challenge = xcrypt(server_challenge);
+                    let challenge_response = client_commands::ClientCommand::new_challenge(
+                        encrypted_challenge,
+                        0xFFFFFF, // client version 3.0.0
+                        req.race,
+                    );
+                    if let Err(e) = stream.write_all(&challenge_response.to_bytes()) {
+                        let _ = event_tx.send(NetworkEvent::Error(format!("Send failed: {e}")));
+                        return;
+                    }
+                }
+                _ => {
+                    let _ = event_tx.send(NetworkEvent::Error(
+                        "Unexpected server response during login".to_string(),
+                    ));
+                    return;
+                }
+            }
+
+            log::info!("Sending unique command");
+            let unique_command = client_commands::ClientCommand::new_unique(12345, 67890);
+            if let Err(e) = stream.write_all(&unique_command.to_bytes()) {
+                let _ = event_tx.send(NetworkEvent::Error(format!("Send failed: {e}")));
+                return;
+            }
+        } else {
+            let _ = event_tx.send(NetworkEvent::Error("Read failed".to_string()));
+            return;
+        }
+
+        loop {
+            if let Some(is_logged_in) = get_server_response(&mut stream) {
+                match is_logged_in.structured_data {
+                    // For an existing player
+                    server_commands::ServerCommandData::LoginOk { server_version } => {
+                        let _ =
+                            event_tx.send(NetworkEvent::Status("Login successful.".to_string()));
+                        log::info!("Logged in with server version: {}", server_version);
+                        // TODO: Transition to the next state
+                        break;
+                    }
+                    // For a new player
+                    server_commands::ServerCommandData::NewPlayer {
+                        player_id,
+                        pass1,
+                        pass2,
+                        server_version,
+                    } => {
+                        let _ =
+                            event_tx.send(NetworkEvent::Status("Login successful.".to_string()));
+                        log::info!(
+                            "New player created with ID: {}, server version: {}, pass1: {}, pass2: {}",
+                            player_id,
+                            server_version,
+                            pass1,
+                            pass2
+                        );
+                        break;
+                    }
+                    server_commands::ServerCommandData::Mod1 { .. }
+                    | server_commands::ServerCommandData::Mod2 { .. }
+                    | server_commands::ServerCommandData::Mod3 { .. }
+                    | server_commands::ServerCommandData::Mod4 { .. }
+                    | server_commands::ServerCommandData::Mod5 { .. }
+                    | server_commands::ServerCommandData::Mod6 { .. }
+                    | server_commands::ServerCommandData::Mod7 { .. }
+                    | server_commands::ServerCommandData::Mod8 { .. } => {
+                        log::info!("Received mod data during login, ignoring for now");
+                    }
+                    server_commands::ServerCommandData::Exit { reason } => {
+                        let _ = event_tx.send(NetworkEvent::Error(format!(
+                            "Server closed connection during login, reason code: {}",
+                            reason
+                        )));
+                        return;
+                    }
+                    _ => {
+                        let _ = event_tx.send(NetworkEvent::Error(format!(
+                            "Unexpected server response during login {:?}",
+                            is_logged_in
+                        )));
+                        return;
+                    }
+                }
+            } else {
+                let _ = event_tx.send(NetworkEvent::Error("Read failed".to_string()));
+                return;
+            }
+        }
+
         // Network loop: read and forward bytes; accept outgoing commands.
+        log::info!("Entering network loop");
+        if stream.set_nonblocking(false).is_err() {
+            let _ = event_tx.send(NetworkEvent::Error(
+                "Failed to set stream to blocking mode".to_string(),
+            ));
+            return;
+        }
+
         loop {
             while let Ok(cmd) = command_rx.try_recv() {
                 match cmd {
@@ -156,27 +283,30 @@ fn start_login(
                         }
                     }
                     NetworkCommand::Shutdown => {
-                        let _ = event_tx.send(NetworkEvent::Status("Disconnected".to_string()));
+                        if event_tx
+                            .send(NetworkEvent::Status("Disconnected".to_string()))
+                            .is_err()
+                        {
+                            log::warn!("Network task: event receiver dropped, should shut down");
+                        }
                         return;
                     }
                 }
             }
 
-            // NOTE: Placeholder framing. Replace with real packet framing.
-            let mut buf = [0u8; 16];
-            if let Err(e) = stream.read_exact(&mut buf) {
-                let _ = event_tx.send(NetworkEvent::Error(format!("Read failed: {e}")));
-                return;
+            // Drain socket of any incoming data and forward it as events.
+            if let Some(cmd) = get_server_response(&mut stream) {
+                log::debug!("Network task: received command: {:?}", cmd);
+                // TODO: Update to commands with structured data.
+                let _ = event_tx.send(NetworkEvent::Bytes(cmd.payload));
             }
-
-            let _ = event_tx.send(NetworkEvent::Bytes(buf.to_vec()));
         }
     }));
     log::debug!("start_login - end");
 }
 
-fn process_network_events(mut _net: ResMut<NetworkRuntime>, mut status: ResMut<LoginStatus>) {
-    let Some(rx) = _net.event_rx.as_ref() else {
+fn process_network_events(net: ResMut<NetworkRuntime>, mut status: ResMut<LoginStatus>) {
+    let Some(rx) = net.event_rx.as_ref() else {
         return;
     };
 
@@ -190,13 +320,14 @@ fn process_network_events(mut _net: ResMut<NetworkRuntime>, mut status: ResMut<L
         match evt {
             NetworkEvent::Status(s) => status.message = s,
             NetworkEvent::Error(e) => status.message = format!("Error: {e}"),
-            NetworkEvent::Bytes(_bytes) => {
-                // TODO: Decode bytes and emit higher-level events.
-                log::debug!("Received {} bytes from server", _bytes.len());
-                log::info!(
-                    "Bytes received as utf-8: {}",
-                    String::from_utf8_lossy(&_bytes)
-                );
+            NetworkEvent::Bytes(bytes) => {
+                let cmd = ServerCommand::from_bytes(&bytes);
+
+                if let Some(cmd) = cmd {
+                    log::info!("Received server command: {:?}", cmd);
+                } else {
+                    log::warn!("Received invalid server command bytes: {:?}", bytes);
+                }
             }
         }
     }

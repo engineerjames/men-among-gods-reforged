@@ -51,6 +51,12 @@ impl ClientCommand {
         let mut bytes = Vec::with_capacity(1 + self.payload.len());
         bytes.push(self.header as u8);
         bytes.extend_from_slice(&self.payload);
+
+        // if < 16 bytes, pad with zeros
+        while bytes.len() < 16 {
+            bytes.push(0);
+        }
+
         bytes
     }
     #[allow(dead_code)]
@@ -93,7 +99,6 @@ impl ClientCommand {
         }
     }
 
-    #[allow(dead_code)]
     pub fn new_newplayer_login() -> Self {
         ClientCommand {
             header: ClientCommandType::NewLogin,

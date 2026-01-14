@@ -219,6 +219,7 @@ pub fn run_logging_in(
                             port: login_info.server_port.parse().unwrap_or(5555),
                             username: login_info.username.clone(),
                             password: login_info.password.clone(),
+                            race: get_race_integer(login_info.is_male, login_info.class),
                         });
                     }
                 });
@@ -229,4 +230,30 @@ pub fn run_logging_in(
             });
         });
     debug_once!("run_logging_in completed");
+}
+
+fn get_race_integer(is_male: bool, class: Class) -> i32 {
+    if is_male {
+        match class {
+            Class::Templar => 3,
+            Class::Mercenary => 2,
+            Class::Harakim => 4,
+            Class::SeyanDu => 13,
+            Class::ArchTemplar => 544,
+            Class::ArchHarakim => 545,
+            Class::Sorceror => 546,
+            Class::Warrior => 547,
+        }
+    } else {
+        match class {
+            Class::Templar => 77,
+            Class::Mercenary => 76,
+            Class::Harakim => 78,
+            Class::SeyanDu => 79,
+            Class::ArchTemplar => 549,
+            Class::ArchHarakim => 550,
+            Class::Sorceror => 551,
+            Class::Warrior => 552,
+        }
+    }
 }
