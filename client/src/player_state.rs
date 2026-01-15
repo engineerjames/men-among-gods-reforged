@@ -4,7 +4,7 @@ use mag_core::{
     types::skilltab::{SkillTab, SKILLTAB},
 };
 
-use crate::types::{look::Look, player_data::PlayerData};
+use crate::types::{log_message::LogMessage, look::Look, player_data::PlayerData};
 
 #[allow(dead_code)]
 #[derive(Resource)]
@@ -13,7 +13,7 @@ pub struct PlayerState {
     shop_target: Look,
     player_info: PlayerData,
     skills_list: &'static [SkillTab],
-    message_log: CircularBuffer<String>,
+    message_log: CircularBuffer<LogMessage>,
     player_sprite_index: usize,
     should_show_look: bool,
     should_show_shop: bool,
