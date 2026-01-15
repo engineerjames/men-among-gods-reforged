@@ -360,6 +360,30 @@ impl PlayerState {
                     self.shop_target = self.look_target;
                 }
             }
+            ServerCommandData::SetMap {
+                off,
+                absolute_tile_index,
+                flags,
+                ba_sprite,
+                flags1,
+                flags2,
+                it_sprite,
+                it_status,
+                ch_sprite,
+                ch_status,
+                ch_stat_off,
+                ch_nr,
+                ch_id,
+                ch_speed,
+                ch_proz,
+            } => {}
+
+            ServerCommandData::SetMap3 {
+                start_index,
+                base_light,
+                packed,
+            } => {}
+
             ServerCommandData::Exit { reason } => {
                 // TODO: Handle exit reason codes more gracefully.
                 self.push_log_message(format!("Server requested exit (reason={reason})"), 3);
