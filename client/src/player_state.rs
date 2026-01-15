@@ -9,15 +9,20 @@ use mag_core::{
 };
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::types::{log_message::LogMessage, look::Look, player_data::PlayerData};
 use crate::{
+    map::GameMap,
     network::server_commands::{ServerCommand, ServerCommandData},
     types::save_file::SaveFile,
+};
+use crate::{
+    network::server_commands::ServerCommandType,
+    types::{log_message::LogMessage, look::Look, player_data::PlayerData},
 };
 
 #[allow(dead_code)]
 #[derive(Resource)]
 pub struct PlayerState {
+    map: GameMap,
     look_target: Look,
     shop_target: Look,
     player_info: PlayerData,
@@ -39,6 +44,7 @@ pub struct PlayerState {
 impl Default for PlayerState {
     fn default() -> Self {
         Self {
+            map: GameMap::default(),
             look_target: Look::default(),
             shop_target: Look::default(),
             player_info: PlayerData::default(),
@@ -62,6 +68,11 @@ impl Default for PlayerState {
 }
 
 impl PlayerState {
+    #[allow(dead_code)]
+    pub fn map(&self) -> &GameMap {
+        &self.map
+    }
+
     fn now_unix_seconds() -> u64 {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -115,6 +126,35 @@ impl PlayerState {
     }
 
     pub fn update_from_server_command(&mut self, command: &ServerCommand) {
+        // Check for command specific processing, then update state based on structured data.
+        match command.header {
+            ServerCommandType::ScrollDown => {
+                self.map.scroll_down();
+            }
+            ServerCommandType::ScrollUp => {
+                self.map.scroll_up();
+            }
+            ServerCommandType::ScrollLeft => {
+                self.map.scroll_left();
+            }
+            ServerCommandType::ScrollRight => {
+                self.map.scroll_right();
+            }
+            ServerCommandType::ScrollLeftDown => {
+                self.map.scroll_left_down();
+            }
+            ServerCommandType::ScrollLeftUp => {
+                self.map.scroll_left_up();
+            }
+            ServerCommandType::ScrollRightDown => {
+                self.map.scroll_right_down();
+            }
+            ServerCommandType::ScrollRightUp => {
+                self.map.scroll_right_up();
+            }
+            _ => {}
+        }
+
         match &command.structured_data {
             ServerCommandData::NewPlayer {
                 player_id,
@@ -234,10 +274,7 @@ impl PlayerState {
             // Ticks do not modify state directly.
             ServerCommandData::Tick { .. } => {}
             ServerCommandData::SetOrigin { x, y } => {
-                // TODO: We need a map abstraction to handle and draw sprites and handle
-                // animation states, etc.
-                // self.character_info.origin_x = *x;
-                // self.character_info.origin_y = *y;
+                self.map.set_origin(*x, *y);
             }
             ServerCommandData::SetTarget {
                 attack_cn,
@@ -363,7 +400,7 @@ impl PlayerState {
             ServerCommandData::SetMap {
                 off,
                 absolute_tile_index,
-                flags,
+                flags: _flags,
                 ba_sprite,
                 flags1,
                 flags2,
@@ -376,13 +413,32 @@ impl PlayerState {
                 ch_id,
                 ch_speed,
                 ch_proz,
-            } => {}
+            } => {
+                self.map.apply_set_map(
+                    *off,
+                    *absolute_tile_index,
+                    *ba_sprite,
+                    *flags1,
+                    *flags2,
+                    *it_sprite,
+                    *it_status,
+                    *ch_sprite,
+                    *ch_status,
+                    *ch_stat_off,
+                    *ch_nr,
+                    *ch_id,
+                    *ch_speed,
+                    *ch_proz,
+                );
+            }
 
             ServerCommandData::SetMap3 {
                 start_index,
                 base_light,
                 packed,
-            } => {}
+            } => {
+                self.map.apply_set_map3(*start_index, *base_light, packed);
+            }
 
             ServerCommandData::Exit { reason } => {
                 // TODO: Handle exit reason codes more gracefully.
