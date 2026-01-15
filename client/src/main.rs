@@ -2,6 +2,7 @@ mod constants;
 mod gfx_cache;
 mod helpers;
 mod network;
+mod player_state;
 mod sfx_cache;
 mod states;
 mod systems;

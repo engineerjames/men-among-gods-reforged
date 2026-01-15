@@ -1,3 +1,4 @@
+#[derive(Clone, Copy)]
 #[repr(C)]
 pub struct Look {
     autoflag: u8,
@@ -22,3 +23,27 @@ pub struct Look {
 const _: () = {
     assert!(std::mem::size_of::<Look>() == 496);
 };
+
+impl Default for Look {
+    fn default() -> Self {
+        Self {
+            autoflag: 0,
+            worn: [0; 20],
+            sprite: 0,
+            points: 0,
+            name: [0; 40],
+            hp: 0,
+            end: 0,
+            mana: 0,
+            a_hp: 0,
+            a_end: 0,
+            a_mana: 0,
+            nr: 0,
+            id: 0,
+            extended: 0,
+            item: [0; 62],
+            price: [0; 62],
+            pl_price: 0,
+        }
+    }
+}
