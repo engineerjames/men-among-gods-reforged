@@ -65,6 +65,7 @@ impl ClientCommand {
     }
 
     /// Matches `inter.c::cmd`: u16 at +1, u32 at +3.
+    #[allow(dead_code)]
     fn cmd_xy_i16_i32(cmd: ClientCommandType, x: i16, y: i32) -> Self {
         let mut payload = Vec::with_capacity(6);
         payload.extend_from_slice(&x.to_le_bytes());
@@ -73,6 +74,7 @@ impl ClientCommand {
     }
 
     /// Matches `inter.c::cmd1` / `inter.c::cmd1s`: u32 at +1.
+    #[allow(dead_code)]
     fn cmd_u32(cmd: ClientCommandType, x: u32) -> Self {
         let mut payload = Vec::with_capacity(4);
         payload.extend_from_slice(&x.to_le_bytes());
@@ -80,6 +82,7 @@ impl ClientCommand {
     }
 
     /// Matches `inter.c::cmd3`: u32 at +1, +5, +9.
+    #[allow(dead_code)]
     fn cmd_u32_u32_u32(cmd: ClientCommandType, x: u32, y: u32, z: u32) -> Self {
         let mut payload = Vec::with_capacity(12);
         payload.extend_from_slice(&x.to_le_bytes());
@@ -124,6 +127,7 @@ impl ClientCommand {
     }
 
     /// Mirrors `socket.c` password packet: 15 raw bytes copied to payload.
+    #[allow(dead_code)]
     pub fn new_password(password: &[u8]) -> Self {
         let mut payload = vec![0u8; 15];
         let n = password.len().min(15);
@@ -133,6 +137,7 @@ impl ClientCommand {
 
     /// Mirrors `socket.c::so_perf_report` packet layout:
     /// u16 ticksize @ +1, u16 skip @ +3, u16 idle @ +5, f32 pskip @ +7.
+    #[allow(dead_code)]
     pub fn new_perf_report(ticksize: u16, skip: u16, idle: u16, pskip: f32) -> Self {
         let mut payload = vec![0u8; 10];
         payload[0..2].copy_from_slice(&ticksize.to_le_bytes());
@@ -143,6 +148,7 @@ impl ClientCommand {
     }
 
     /// Mirrors `engine.c::send_opt`: 1 byte group, 1 byte offset, 13 bytes data.
+    #[allow(dead_code)]
     pub fn new_setuser(group: u8, offset: u8, data: &[u8]) -> Self {
         let mut payload = vec![0u8; 15];
         payload[0] = group;
@@ -153,6 +159,7 @@ impl ClientCommand {
     }
 
     /// Mirrors `main.c::say`: one of `CmdInput1..CmdInput8`, 15 raw bytes.
+    #[allow(dead_code)]
     pub fn new_input_chunk(kind: ClientCommandType, chunk: &[u8]) -> Self {
         debug_assert!(matches!(
             kind,
@@ -173,6 +180,7 @@ impl ClientCommand {
     }
 
     /// Convenience helper: split up to 120 bytes across the 8 input packets.
+    #[allow(dead_code)]
     pub fn new_say_packets(text: &[u8]) -> Vec<Self> {
         let kinds = [
             ClientCommandType::CmdInput1,
@@ -206,94 +214,110 @@ impl ClientCommand {
     }
 
     /// `CL_CMD_MOVE` (`inter.c::cmd`).
+    #[allow(dead_code)]
     pub fn new_move(x: i16, y: i32) -> Self {
         Self::cmd_xy_i16_i32(ClientCommandType::CmdMove, x, y)
     }
 
     /// `CL_CMD_PICKUP` (`inter.c::cmd`).
+    #[allow(dead_code)]
     pub fn new_pickup(x: i16, y: i32) -> Self {
         Self::cmd_xy_i16_i32(ClientCommandType::CmdPickup, x, y)
     }
 
     /// `CL_CMD_DROP` (`inter.c::cmd`).
+    #[allow(dead_code)]
     pub fn new_drop(x: i16, y: i32) -> Self {
         Self::cmd_xy_i16_i32(ClientCommandType::CmdDrop, x, y)
     }
 
     /// `CL_CMD_TURN` (`inter.c::cmd`).
+    #[allow(dead_code)]
     pub fn new_turn(x: i16, y: i32) -> Self {
         Self::cmd_xy_i16_i32(ClientCommandType::CmdTurn, x, y)
     }
 
     /// `CL_CMD_USE` (`inter.c::cmd`).
+    #[allow(dead_code)]
     pub fn new_use(x: i16, y: i32) -> Self {
         Self::cmd_xy_i16_i32(ClientCommandType::CmdUse, x, y)
     }
 
     /// `CL_CMD_LOOK_ITEM` (`inter.c::cmd`).
+    #[allow(dead_code)]
     pub fn new_look_item(x: i16, y: i32) -> Self {
         Self::cmd_xy_i16_i32(ClientCommandType::CmdLookItem, x, y)
     }
 
     /// `CL_CMD_MODE` (`inter.c::cmd`).
+    #[allow(dead_code)]
     pub fn new_mode(mode: i16) -> Self {
         Self::cmd_xy_i16_i32(ClientCommandType::CmdMode, mode, 0)
     }
 
     /// `CL_CMD_RESET` (`main.c` ESC handler uses `cmd(CL_CMD_RESET,0,0)`).
+    #[allow(dead_code)]
     pub fn new_reset() -> Self {
         Self::cmd_xy_i16_i32(ClientCommandType::CmdReset, 0, 0)
     }
 
     /// `CL_CMD_SHOP` (`inter.c::cmd`).
+    #[allow(dead_code)]
     pub fn new_shop(shop_nr: i16, action: i32) -> Self {
         Self::cmd_xy_i16_i32(ClientCommandType::CmdShop, shop_nr, action)
     }
 
     /// `CL_CMD_STAT` (`inter.c` uses `cmd(CL_CMD_STAT, m, stat_raised[n])`).
+    #[allow(dead_code)]
     pub fn new_stat(which: i16, value: i32) -> Self {
         Self::cmd_xy_i16_i32(ClientCommandType::CmdStat, which, value)
     }
 
     /// `CL_CMD_ATTACK` (`inter.c::cmd1`).
+    #[allow(dead_code)]
     pub fn new_attack(target: u32) -> Self {
         Self::cmd_u32(ClientCommandType::CmdAttack, target)
     }
 
     /// `CL_CMD_GIVE` (`inter.c::cmd1`).
+    #[allow(dead_code)]
     pub fn new_give(target: u32) -> Self {
         Self::cmd_u32(ClientCommandType::CmdGive, target)
     }
 
     /// `CL_CMD_LOOK` (`inter.c::cmd1`).
+    #[allow(dead_code)]
     pub fn new_look(target: u32) -> Self {
         Self::cmd_u32(ClientCommandType::CmdLook, target)
     }
 
     /// `CL_CMD_EXIT` (`engine.c::cmd_exit` uses `cmd1(CL_CMD_EXIT,0)`).
+    #[allow(dead_code)]
     pub fn new_exit() -> Self {
         Self::cmd_u32(ClientCommandType::CmdExit, 0)
     }
 
     /// `CL_CMD_AUTOLOOK` (`engine.c` uses `cmd1s(CL_CMD_AUTOLOOK, lookat)`).
+    #[allow(dead_code)]
     pub fn new_autolook(lookat: u32) -> Self {
         Self::cmd_u32(ClientCommandType::CmdAutoLook, lookat)
     }
 
     /// `CL_CMD_INV` (`inter.c::cmd3`).
+    #[allow(dead_code)]
     pub fn new_inv(a: u32, b: u32, selected_char: u32) -> Self {
         Self::cmd_u32_u32_u32(ClientCommandType::CmdInv, a, b, selected_char)
     }
 
     /// `CL_CMD_INV_LOOK` (`inter.c::cmd3`).
+    #[allow(dead_code)]
     pub fn new_inv_look(a: u32, b: u32, c: u32) -> Self {
         Self::cmd_u32_u32_u32(ClientCommandType::CmdInvLook, a, b, c)
     }
 
     /// `CL_CMD_SKILL` (`inter.c::cmd3`).
+    #[allow(dead_code)]
     pub fn new_skill(skill: u32, selected_char: u32, attrib0: u32) -> Self {
         Self::cmd_u32_u32_u32(ClientCommandType::CmdSkill, skill, selected_char, attrib0)
     }
-
-    // TODO: Add more command constructors as needed.
 }
