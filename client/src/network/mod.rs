@@ -57,6 +57,7 @@ enum NetworkEvent {
     Status(String),
     Bytes(Vec<u8>),
     Error(String),
+    LoggedIn,
 }
 
 #[derive(Resource)]
@@ -425,7 +426,7 @@ fn start_login(
                         let _ =
                             event_tx.send(NetworkEvent::Status("Login successful.".to_string()));
                         log::info!("Logged in with server version: {}", server_version);
-                        // TODO: Transition to the next state
+                        let _ = event_tx.send(NetworkEvent::LoggedIn);
                         break;
                     }
                     // For a new player
@@ -444,6 +445,7 @@ fn start_login(
                             pass1,
                             pass2
                         );
+                        let _ = event_tx.send(NetworkEvent::LoggedIn);
                         break;
                     }
                     server_commands::ServerCommandData::Mod1 { .. }
@@ -625,7 +627,11 @@ fn start_login(
     log::debug!("start_login - end");
 }
 
-fn process_network_events(net: ResMut<NetworkRuntime>, mut status: ResMut<LoginStatus>) {
+fn process_network_events(
+    net: ResMut<NetworkRuntime>,
+    mut status: ResMut<LoginStatus>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
     let Some(rx) = net.event_rx.as_ref() else {
         return;
     };
@@ -656,6 +662,10 @@ fn process_network_events(net: ResMut<NetworkRuntime>, mut status: ResMut<LoginS
                         bytes.len()
                     );
                 }
+            }
+            NetworkEvent::LoggedIn => {
+                log::info!("Login process complete, switching to Gameplay state");
+                next_state.set(GameState::Gameplay);
             }
         }
     }
