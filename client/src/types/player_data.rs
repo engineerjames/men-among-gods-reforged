@@ -3,14 +3,14 @@ use crate::types::skill_buttons::SkillButtons;
 // pdata from original C headers
 #[repr(C)]
 pub struct PlayerData {
-    cname: [u8; 80],
-    reference: [u8; 80],
-    desc: [u8; 160],
-    changed: i8,
-    hide: i32,
-    show_names: i32,
-    show_proz: i32,
-    skill_buttons: [SkillButtons; 12],
+    pub cname: [u8; 80],
+    pub reference: [u8; 80],
+    pub desc: [u8; 160],
+    pub changed: i8,
+    pub hide: i32,
+    pub show_names: i32,
+    pub show_proz: i32,
+    pub skill_buttons: [SkillButtons; 12],
 }
 
 const _: () = {

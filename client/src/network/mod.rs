@@ -1,13 +1,14 @@
-mod client_commands;
-mod login;
-mod server_commands;
-mod tick_stream;
+pub mod client_commands;
+pub mod login;
+pub mod server_commands;
+pub mod tick_stream;
 
 use std::sync::{mpsc, Arc, Mutex};
 
 use bevy::prelude::*;
 use bevy::tasks::Task;
 
+use crate::player_state::PlayerState;
 use crate::GameState;
 use server_commands::ServerCommand;
 
@@ -154,6 +155,7 @@ fn process_network_events(
     mut net: ResMut<NetworkRuntime>,
     mut status: ResMut<LoginStatus>,
     mut next_state: ResMut<NextState<GameState>>,
+    mut player_state: ResMut<PlayerState>,
 ) {
     let Some(rx_arc) = net.event_rx.clone() else {
         return;
@@ -177,6 +179,7 @@ fn process_network_events(
                 }
 
                 if let Some(cmd) = ServerCommand::from_bytes(&bytes) {
+                    player_state.update_from_server_command(&cmd);
                     log::info!("Received server command: {:?}", cmd);
                 } else {
                     log::warn!(

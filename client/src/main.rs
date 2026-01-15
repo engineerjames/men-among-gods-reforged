@@ -58,6 +58,7 @@ fn main() {
             env!("CARGO_MANIFEST_DIR"),
             "/assets/SFX"
         )))
+        .init_resource::<player_state::PlayerState>()
         .add_plugins(
             DefaultPlugins
                 .build()
