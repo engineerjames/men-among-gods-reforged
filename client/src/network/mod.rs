@@ -56,6 +56,8 @@ enum NetworkCommand {
 enum NetworkEvent {
     Status(String),
     Bytes(Vec<u8>),
+    /// One complete framed server tick packet was processed.
+    Tick,
     Error(String),
     LoggedIn,
 }
@@ -66,6 +68,13 @@ pub struct NetworkRuntime {
     event_rx: Option<Arc<Mutex<mpsc::Receiver<NetworkEvent>>>>,
     task: Option<Task<()>>,
     started: bool,
+    logged_in: bool,
+
+    /// Client-side tick counter used for `CL_CMD_CTICK` (aka `CmdCTick`).
+    ///
+    /// In the original C client this is `ticker`, incremented once per processed server tick.
+    client_ticker: u32,
+    last_ctick_sent: u32,
 }
 
 impl Default for NetworkRuntime {
@@ -75,6 +84,9 @@ impl Default for NetworkRuntime {
             event_rx: None,
             task: None,
             started: false,
+            logged_in: false,
+            client_ticker: 0,
+            last_ctick_sent: 0,
         }
     }
 }
@@ -105,7 +117,46 @@ impl Plugin for NetworkPlugin {
             .init_resource::<NetworkRuntime>()
             .add_message::<LoginRequested>()
             .add_systems(Update, start_login.run_if(in_state(GameState::LoggingIn)))
-            .add_systems(Update, process_network_events);
+            .add_systems(Update, process_network_events)
+            .add_systems(
+                Update,
+                send_client_tick
+                    .run_if(in_state(GameState::Gameplay))
+                    .after(process_network_events),
+            );
+    }
+}
+
+fn send_client_tick(mut net: ResMut<NetworkRuntime>) {
+    if !net.logged_in {
+        return;
+    }
+
+    let Some(tx) = &net.command_tx else {
+        return;
+    };
+
+    // Match original C client behavior:
+    // - `ticker` increments once per processed server tick packet.
+    // - send `CL_CMD_CTICK` when `(ticker & 15) == 0` (i.e. every 16 ticks).
+    // With `TICKS=20`, that's 0.8s.
+    let t = net.client_ticker;
+    if t == 0 {
+        return;
+    }
+    if (t & 15) != 0 {
+        return;
+    }
+    if net.last_ctick_sent == t {
+        return;
+    }
+
+    let tick_command = client_commands::ClientCommand::new_tick(t);
+    if tx
+        .send(NetworkCommand::Send(tick_command.to_bytes()))
+        .is_ok()
+    {
+        net.last_ctick_sent = t;
     }
 }
 
@@ -571,7 +622,10 @@ fn start_login(
                 recv_buf.drain(..total_len);
                 did_work = true;
 
+                // A tick packet may legitimately contain no payload (len==2). The original
+                // client still counts this as a tick.
                 if payload.is_empty() {
+                    let _ = event_tx.send(NetworkEvent::Tick);
                     continue;
                 }
 
@@ -579,6 +633,7 @@ fn start_login(
                     match zlib_inflate_chunk(&mut zlib, &payload) {
                         Ok(inflated) => {
                             if inflated.is_empty() {
+                                let _ = event_tx.send(NetworkEvent::Tick);
                                 continue;
                             }
 
@@ -587,6 +642,7 @@ fn start_login(
                                     for cmd in cmds {
                                         let _ = event_tx.send(NetworkEvent::Bytes(cmd));
                                     }
+                                    let _ = event_tx.send(NetworkEvent::Tick);
                                 }
                                 Err(e) => {
                                     let _ = event_tx.send(NetworkEvent::Error(format!(
@@ -607,6 +663,7 @@ fn start_login(
                             for cmd in cmds {
                                 let _ = event_tx.send(NetworkEvent::Bytes(cmd));
                             }
+                            let _ = event_tx.send(NetworkEvent::Tick);
                         }
                         Err(e) => {
                             let _ = event_tx.send(NetworkEvent::Error(format!(
@@ -628,15 +685,15 @@ fn start_login(
 }
 
 fn process_network_events(
-    net: ResMut<NetworkRuntime>,
+    mut net: ResMut<NetworkRuntime>,
     mut status: ResMut<LoginStatus>,
     mut next_state: ResMut<NextState<GameState>>,
 ) {
-    let Some(rx) = net.event_rx.as_ref() else {
+    let Some(rx_arc) = net.event_rx.clone() else {
         return;
     };
 
-    let Ok(rx) = rx.lock() else {
+    let Ok(rx) = rx_arc.lock() else {
         status.message = "Error: network receiver mutex poisoned".to_string();
         log::error!("process_network_events: network receiver mutex poisoned");
         return;
@@ -662,6 +719,9 @@ fn process_network_events(
                         bytes.len()
                     );
                 }
+            }
+            NetworkEvent::Tick => {
+                net.client_ticker = net.client_ticker.wrapping_add(1);
             }
             NetworkEvent::LoggedIn => {
                 log::info!("Login process complete, switching to Gameplay state");

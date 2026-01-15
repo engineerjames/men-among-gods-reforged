@@ -106,5 +106,18 @@ impl ClientCommand {
         }
     }
 
+    /// Mirrors the original client's `CL_CMD_CTICK` (see `orig/engine.c` + `orig/inter.c::cmd1s`).
+    ///
+    /// The server reads a 4-byte little-endian tick counter at payload offset 1.
+    pub fn new_tick(rtick: u32) -> Self {
+        let mut payload = Vec::with_capacity(4);
+        payload.extend_from_slice(&rtick.to_le_bytes());
+
+        ClientCommand {
+            header: ClientCommandType::CmdCTick,
+            payload,
+        }
+    }
+
     // TODO: Add more command constructors as needed.
 }
