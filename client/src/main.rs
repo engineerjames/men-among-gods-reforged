@@ -5,6 +5,7 @@ mod network;
 mod sfx_cache;
 mod states;
 mod systems;
+mod types;
 
 use bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
 use std::sync::OnceLock;
