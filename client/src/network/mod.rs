@@ -493,12 +493,14 @@ fn start_login(
         }
 
         let mut recv_buf: Vec<u8> = Vec::with_capacity(16 * 1024);
-        let mut tmp = [0u8; 4096];
+        let mut tick_buffer = [0u8; 4096];
         let mut zlib = Decompress::new(true);
 
         loop {
             let mut did_work = false;
 
+            // Process any outgoing commands -- this would be where commands like
+            // movement, actions, etc. are sent.  
             while let Ok(cmd) = command_rx.try_recv() {
                 did_work = true;
                 match cmd {
@@ -521,7 +523,7 @@ fn start_login(
             }
 
             // Read any available bytes from the socket into our accumulator.
-            match stream.read(&mut tmp) {
+            match stream.read(&mut tick_buffer) {
                 Ok(0) => {
                     let _ = event_tx.send(NetworkEvent::Error(
                         "Server closed connection".to_string(),
@@ -530,7 +532,7 @@ fn start_login(
                 }
                 Ok(n) => {
                     did_work = true;
-                    recv_buf.extend_from_slice(&tmp[..n]);
+                    recv_buf.extend_from_slice(&tick_buffer[..n]);
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                     // nothing to read right now

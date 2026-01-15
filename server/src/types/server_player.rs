@@ -1,13 +1,18 @@
+use core::{
+    constants::MAXPLAYER,
+    types::{ClientPlayer, Map},
+};
 use std::net::TcpStream;
 
 use flate2::write::ZlibEncoder;
 
 use crate::{
-    constants::{OBUFSIZE, SPR_EMPTY, TBUFSIZE, TILEX, TILEY},
-    types::{CMap, ClientPlayer, Map},
+    core::constants::{OBUFSIZE, SPR_EMPTY, TBUFSIZE, TILEX, TILEY},
+    types::cmap::CMap,
 };
 
 // Server side player data
+#[allow(dead_code)]
 pub struct ServerPlayer {
     pub sock: Option<TcpStream>,
     pub addr: u32,
@@ -120,6 +125,6 @@ impl ServerPlayer {
     }
 
     pub fn is_sane_player(player_index: usize) -> bool {
-        player_index < crate::constants::MAXPLAYER
+        player_index < MAXPLAYER
     }
 }
