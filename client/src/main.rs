@@ -1,4 +1,5 @@
 mod constants;
+mod font_cache;
 mod gfx_cache;
 mod helpers;
 mod map;
@@ -59,6 +60,8 @@ fn main() {
             env!("CARGO_MANIFEST_DIR"),
             "/assets/SFX"
         )))
+        .init_resource::<font_cache::FontCache>()
+        .init_resource::<states::gameplay::MiniMapState>()
         .init_resource::<player_state::PlayerState>()
         .add_plugins(
             DefaultPlugins
@@ -129,6 +132,10 @@ fn main() {
         .add_systems(
             Update,
             states::gameplay::run_gameplay.run_if(in_state(GameState::Gameplay)),
+        )
+        .add_systems(
+            Update,
+            states::gameplay::run_gameplay_text_ui.run_if(in_state(GameState::Gameplay)),
         )
         //
         // Menu state

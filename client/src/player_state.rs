@@ -123,6 +123,69 @@ impl PlayerState {
         self.message_log.push(msg);
     }
 
+    /// Inserts extra `\n` so log text won't run off the end of the screen.
+    ///
+    /// This matches the original client's behavior (wrap width `XS=49`) by preferring
+    /// breaking on spaces, and falling back to a hard cut when needed.
+    pub fn wrap_log_text(text: &str, max_cols: usize) -> String {
+        let max_cols = max_cols.max(2);
+        let wrap_at = max_cols.saturating_sub(1);
+
+        let mut out = String::with_capacity(text.len() + text.len() / wrap_at.max(1));
+
+        for raw in text.split('\n') {
+            let mut line = raw.trim_end_matches('\r');
+            if line.is_empty() {
+                continue;
+            }
+
+            while line.len() > wrap_at {
+                let mut cut = wrap_at;
+                if cut >= line.len() {
+                    break;
+                }
+
+                if let Some(space) = line[..cut].rfind(' ') {
+                    if space > 0 {
+                        cut = space;
+                    }
+                }
+
+                let head = line[..cut].trim_end();
+                if !head.is_empty() {
+                    out.push_str(head);
+                    out.push('\n');
+                }
+
+                line = line[cut..].trim_start();
+            }
+
+            if !line.is_empty() {
+                out.push_str(line);
+                out.push('\n');
+            }
+        }
+
+        out.pop();
+        out
+    }
+
+    pub fn log_message(&self, index: usize) -> Option<&LogMessage> {
+        self.message_log.get(index)
+    }
+
+    pub fn tlog(&mut self, font: u8, text: impl AsRef<str>) {
+        const XS: usize = 49; // matches orig engine.c "XS" (line wrap width)
+
+        let wrapped = Self::wrap_log_text(text.as_ref(), XS);
+        for line in wrapped.split('\n') {
+            let line = line.trim_end_matches('\r');
+            if !line.is_empty() {
+                self.push_log_message(line.to_string(), font);
+            }
+        }
+    }
+
     fn write_name_chunk(&mut self, offset: usize, max_len: usize, chunk: &str) {
         if offset >= self.moa_file_data.name.len() {
             return;
@@ -144,7 +207,7 @@ impl PlayerState {
 
         while let Some(idx) = self.pending_log.find('\n') {
             let line = self.pending_log[..idx].to_string();
-            self.push_log_message(line, font);
+            self.tlog(font, line);
             self.pending_log.drain(..=idx);
         }
     }
@@ -466,7 +529,7 @@ impl PlayerState {
 
             ServerCommandData::Exit { reason } => {
                 // TODO: Handle exit reason codes more gracefully.
-                self.push_log_message(format!("Server requested exit (reason={reason})"), 3);
+                self.tlog(3, format!("Server requested exit (reason={reason})"));
             }
             _ => {
                 // Keep this quiet for now; there are many SV_* packets not yet wired into gameplay.
