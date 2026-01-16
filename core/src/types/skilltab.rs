@@ -3,6 +3,7 @@
 
 pub const MAX_SKILLS: usize = 50;
 
+#[derive(Copy, Clone)]
 #[allow(dead_code)]
 pub struct SkillTab {
     nr: usize,
@@ -28,6 +29,18 @@ impl SkillTab {
             name,
             desc,
             attrib: [a0, a1, a2],
+        }
+    }
+}
+
+impl Default for SkillTab {
+    fn default() -> Self {
+        Self {
+            nr: 0,
+            cat: '\0',
+            name: "",
+            desc: "",
+            attrib: [0; 3],
         }
     }
 }

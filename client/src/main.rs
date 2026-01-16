@@ -1,10 +1,13 @@
 mod constants;
 mod gfx_cache;
 mod helpers;
+mod map;
 mod network;
+mod player_state;
 mod sfx_cache;
 mod states;
 mod systems;
+mod types;
 
 use bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
 use std::sync::OnceLock;
@@ -56,6 +59,7 @@ fn main() {
             env!("CARGO_MANIFEST_DIR"),
             "/assets/SFX"
         )))
+        .init_resource::<player_state::PlayerState>()
         .add_plugins(
             DefaultPlugins
                 .build()

@@ -1,5 +1,4 @@
 use core::constants::{CharacterFlags, MAXCHARS, MAXPLAYER};
-use core::types::ServerPlayer;
 use std::cmp;
 use std::sync::OnceLock;
 
@@ -7,6 +6,7 @@ use crate::network_manager::NetworkManager;
 use crate::repository::Repository;
 use crate::server::Server;
 use crate::talk::npc_hear;
+use crate::types::server_player::ServerPlayer;
 
 use super::State;
 

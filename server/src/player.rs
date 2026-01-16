@@ -10,7 +10,7 @@ use core::{
 
 use crate::{
     driver, enums, god::God, helpers, network_manager::NetworkManager, repository::Repository,
-    server::Server, state::State,
+    server::Server, state::State, types::cmap::CMap,
 };
 
 const SPEEDTAB: [[u8; core::constants::TICKS as usize]; core::constants::TICKS as usize] = [
@@ -2529,7 +2529,7 @@ pub fn speedo(n: usize) -> i32 {
 pub fn plr_clear_map() {
     Server::with_players_mut(|players| {
         for n in 1..players.len() {
-            players[n].smap = std::array::from_fn(|_| core::types::CMap::default());
+            players[n].smap = std::array::from_fn(|_| CMap::default());
             players[n].vx = 0; // force do_all in map generation
         }
     });
@@ -2609,7 +2609,7 @@ pub fn plr_getmap_complete(nr: usize) {
     }
 
     let empty_cmap = {
-        let mut tile = core::types::CMap::default();
+        let mut tile = CMap::default();
         tile.ba_sprite = core::constants::SPR_EMPTY as i16;
         tile
     };

@@ -1,7 +1,7 @@
 use chrono::Timelike;
 use core::constants::{CharacterFlags, MAXPLAYER, TILEX, TILEY};
 use core::stat_buffer::StatisticsBuffer;
-use core::types::{CMap, Map, ServerPlayer};
+use core::types::Map;
 use parking_lot::ReentrantMutex;
 use std::cell::UnsafeCell;
 use std::io::ErrorKind;
@@ -16,6 +16,8 @@ use crate::lab9::Labyrinth9;
 use crate::network_manager::NetworkManager;
 use crate::repository::Repository;
 use crate::state::State;
+use crate::types::cmap::CMap;
+use crate::types::server_player::ServerPlayer;
 use crate::{driver, player, populate};
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
@@ -25,7 +27,7 @@ use flate2::Compression;
 /// Stored in a `OnceLock` and containing `MAXPLAYER` `ServerPlayer` entries.
 /// Accessors `Server::with_players` and `Server::with_players_mut` provide
 /// thread-safe read or mutable access via closures.
-static PLAYERS: OnceLock<ReentrantMutex<UnsafeCell<Box<[core::types::ServerPlayer; MAXPLAYER]>>>> =
+static PLAYERS: OnceLock<ReentrantMutex<UnsafeCell<Box<[ServerPlayer; MAXPLAYER]>>>> =
     OnceLock::new();
 
 /// Per-character scheduling hints used by `game_tick`.
@@ -101,13 +103,13 @@ impl Server {
     /// safely read player fields.
     pub fn with_players<F, R>(f: F) -> R
     where
-        F: FnOnce(&[core::types::ServerPlayer]) -> R,
+        F: FnOnce(&[ServerPlayer]) -> R,
     {
         let lock = PLAYERS.get().expect("Players not initialized");
         let guard = lock.lock();
-        let inner: &UnsafeCell<Box<[core::types::ServerPlayer; MAXPLAYER]>> = &guard;
+        let inner: &UnsafeCell<Box<[ServerPlayer; MAXPLAYER]>> = &guard;
         // SAFETY: We are holding the mutex so creating a shared reference is safe.
-        let boxed: &Box<[core::types::ServerPlayer; MAXPLAYER]> = unsafe { &*inner.get() };
+        let boxed: &Box<[ServerPlayer; MAXPLAYER]> = unsafe { &*inner.get() };
         f(&boxed[..])
     }
 
@@ -118,14 +120,13 @@ impl Server {
     /// connection state.
     pub fn with_players_mut<F, R>(f: F) -> R
     where
-        F: FnOnce(&mut [core::types::ServerPlayer]) -> R,
+        F: FnOnce(&mut [ServerPlayer]) -> R,
     {
         let lock = PLAYERS.get().expect("Players not initialized");
         let guard = lock.lock();
-        let inner: &UnsafeCell<Box<[core::types::ServerPlayer; MAXPLAYER]>> = &guard;
+        let inner: &UnsafeCell<Box<[ServerPlayer; MAXPLAYER]>> = &guard;
         // SAFETY: We are holding the mutex so creating a unique mutable reference is safe.
-        let boxed_mut: &mut Box<[core::types::ServerPlayer; MAXPLAYER]> =
-            unsafe { &mut *inner.get() };
+        let boxed_mut: &mut Box<[ServerPlayer; MAXPLAYER]> = unsafe { &mut *inner.get() };
         f(&mut boxed_mut[..])
     }
 
@@ -1309,7 +1310,7 @@ impl Server {
             let n = slot.unwrap();
 
             // Set initial state values
-            players[n] = core::types::ServerPlayer::new();
+            players[n] = ServerPlayer::new();
             players[n].sock = Some(stream);
             players[n].addr = addr_u32;
             // Initialize compression (deflateInit level 9 equivalent)
