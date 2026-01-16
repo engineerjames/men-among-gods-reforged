@@ -1285,6 +1285,7 @@ fn speedo(ch_speed: u8, ctick: usize) -> bool {
 fn speedstep(ch_speed: u8, ch_status: u8, d: i32, s: i32, update: bool, ctick: usize) -> i32 {
     let speed = (ch_speed as usize).min(19);
     let hard_step = (ch_status as i32) - d;
+
     if !update {
         return 32 * hard_step / s;
     }
@@ -1682,7 +1683,7 @@ fn eng_char(tile: &mut crate::types::map::CMapTile, ctick: usize) -> i32 {
             tile.obj_yoff = 0;
 
             let status = tile.ch_status as i32;
-            let (start, base_add, wrap) = if (96..=99).contains(&tile.ch_status) {
+            let (start, base_add, _wrap) = if (96..=99).contains(&tile.ch_status) {
                 (96, 128, 96)
             } else if (100..=103).contains(&tile.ch_status) {
                 (100, 132, 100)
@@ -1742,7 +1743,7 @@ fn eng_char(tile: &mut crate::types::map::CMapTile, ctick: usize) -> i32 {
                     start + 3
                 };
                 if tile.ch_status as i32 >= max {
-                    tile.ch_status = wrap;
+                    tile.ch_status = _wrap;
                 } else {
                     tile.ch_status = tile.ch_status.saturating_add(1);
                 }
@@ -2338,42 +2339,13 @@ pub(crate) fn run_gameplay(
     // Match original client behavior: advance the engine visuals only when a full server tick
     // packet has been processed (network tick defines animation rate).
     let net_ticker = net.client_ticker();
-    let ctick_last = (player_state.server_ctick() % 20) as u32;
 
-    // Ensure we have computed `back/obj1/obj2` at least once so gameplay doesn't start
-    // with a fully empty screen until the first tick.
-    if clock.ticker == 0 {
-        if net_ticker != 0 {
-            // Align our local ticker with the already-processed network ticks.
-            clock.ticker = net_ticker.wrapping_sub(1);
-        }
-        engine_tick(
-            &mut player_state,
-            clock.ticker.wrapping_add(1),
-            ctick_last as usize,
-        );
-        clock.ticker = clock.ticker.wrapping_add(1);
-    }
-
-    // Catch up to the latest processed network tick.
-    let pending = net_ticker.wrapping_sub(clock.ticker);
-    if pending != 0 {
-        // Cap worst-case work per frame to avoid stalls if we fall far behind.
-        let steps = pending.min(60);
-        // Derive intermediate ctick values assuming ctick increments by 1 modulo 20 each tick.
-        for i in 0..steps {
-            let steps_i = (steps - 1 - i) % 20;
-            let ctick = ((ctick_last + 20 - steps_i) % 20) as usize;
-            let ticker = clock.ticker.wrapping_add(1 + i);
-            engine_tick(&mut player_state, ticker, ctick);
-        }
-        clock.ticker = clock.ticker.wrapping_add(steps);
-
-        // If we're *way* behind, snap without trying to simulate every intermediate tick.
-        // This still preserves correctness for current-frame visuals.
-        if pending > steps {
-            clock.ticker = net_ticker;
-        }
+    // Only call engine_tick when we've received a new server tick packet.
+    // This matches the original client where engine_tick() is called once per tick packet.
+    if net_ticker != clock.ticker {
+        let ctick = (net_ticker % 20) as usize;
+        clock.ticker = net_ticker;
+        engine_tick(&mut player_state, clock.ticker, ctick);
     }
 
     // Ported options transfer behavior (engine.c::send_opt).
