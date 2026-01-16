@@ -26,10 +26,14 @@ use mag_core::constants::{
 // Keeping this makes it easier to compare screenshots while we port rendering.
 const MAP_X_SHIFT: f32 = -176.0;
 
-const Z_BG: f32 = 0.0;
-const Z_SHADOW: f32 = 50.0;
-const Z_OBJ: f32 = 100.0;
-const Z_CHAR: f32 = 200.0;
+// World draw order: match original engine.c by ordering tiles by (y desc, x asc)
+// and layering within each tile (bg -> obj -> shadow -> char).
+const Z_WORLD_BASE: f32 = 0.0;
+const Z_WORLD_STEP: f32 = 0.1;
+const Z_BG: f32 = 0.00;
+const Z_OBJ: f32 = 0.02;
+const Z_SHADOW: f32 = 0.03;
+const Z_CHAR: f32 = 0.04;
 // Must stay within the Camera2d default orthographic near/far (default_2d far is 1000).
 const Z_UI: f32 = 900.0;
 const Z_UI_PORTRAIT: f32 = 910.0;
@@ -2343,11 +2347,7 @@ pub(crate) fn run_gameplay(
     // Only call engine_tick when we've received a new server tick packet.
     // This matches the original client where engine_tick() is called once per tick packet.
     if net_ticker != clock.ticker {
-        let ctick = if player_state.server_ctick_tick() == net_ticker {
-            player_state.server_ctick().min(19) as usize
-        } else {
-            (net_ticker % 20) as usize
-        };
+        let ctick = player_state.local_ctick().min(19) as usize;
         clock.ticker = net_ticker;
         engine_tick(&mut player_state, clock.ticker, ctick);
     }
@@ -2413,7 +2413,7 @@ pub(crate) fn run_gameplay(
         let x = shadow.index % TILEX;
         let y = shadow.index / TILEX;
         let draw_order = ((TILEY - 1 - y) * TILEX + x) as f32;
-        let z = Z_SHADOW + draw_order * 0.01;
+        let z = Z_WORLD_BASE + draw_order * Z_WORLD_STEP + Z_SHADOW;
 
         let xpos = (x as i32) * 32;
         let ypos = (y as i32) * 32;
@@ -2485,11 +2485,13 @@ pub(crate) fn run_gameplay(
         let y = render.index / TILEX;
 
         let draw_order = ((TILEY - 1 - y) * TILEX + x) as f32;
-        let z = match render.layer {
-            TileLayer::Background => Z_BG,
-            TileLayer::Object => Z_OBJ,
-            TileLayer::Character => Z_CHAR,
-        } + draw_order * 0.01;
+        let z = Z_WORLD_BASE
+            + draw_order * Z_WORLD_STEP
+            + match render.layer {
+                TileLayer::Background => Z_BG,
+                TileLayer::Object => Z_OBJ,
+                TileLayer::Character => Z_CHAR,
+            };
 
         // dd.c uses x*32/y*32 as "map space" inputs to the isometric projection.
         let xpos = (x as i32) * 32;

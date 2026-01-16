@@ -44,7 +44,7 @@ pub struct PlayerState {
     // Using this keeps SPEEDTAB-based animations perfectly in-phase with the server.
     server_ctick: u8,
     server_ctick_pending: bool,
-    server_ctick_tick: u32,
+    local_ctick: u8,
 }
 
 impl Default for PlayerState {
@@ -72,7 +72,7 @@ impl Default for PlayerState {
 
             server_ctick: 0,
             server_ctick_pending: false,
-            server_ctick_tick: 0,
+            local_ctick: 0,
         }
     }
 }
@@ -111,14 +111,17 @@ impl PlayerState {
         self.server_ctick
     }
 
-    pub fn server_ctick_tick(&self) -> u32 {
-        self.server_ctick_tick
+    pub fn local_ctick(&self) -> u8 {
+        self.local_ctick
     }
 
     pub fn on_tick_packet(&mut self, client_ticker: u32) {
+        let _ = client_ticker;
         if self.server_ctick_pending {
-            self.server_ctick_tick = client_ticker;
+            self.local_ctick = self.server_ctick.min(19);
             self.server_ctick_pending = false;
+        } else {
+            self.local_ctick = (self.local_ctick + 1) % 20;
         }
     }
 
