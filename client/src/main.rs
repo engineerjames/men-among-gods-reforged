@@ -137,6 +137,10 @@ fn main() {
             Update,
             states::gameplay::run_gameplay_text_ui.run_if(in_state(GameState::Gameplay)),
         )
+        .add_systems(
+            Update,
+            states::gameplay::run_gameplay_update_hud_labels.run_if(in_state(GameState::Gameplay)),
+        )
         //
         // Menu state
         //

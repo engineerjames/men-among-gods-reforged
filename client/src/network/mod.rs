@@ -194,6 +194,7 @@ fn process_network_events(
             }
             NetworkEvent::LoggedIn => {
                 log::info!("Login process complete, switching to Gameplay state");
+                net.logged_in = true;
                 next_state.set(GameState::Gameplay);
             }
         }
