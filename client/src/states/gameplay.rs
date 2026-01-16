@@ -666,8 +666,27 @@ pub(crate) enum TileLayer {
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub(crate) struct LastRender {
     sprite_id: i32,
-    sx: i32,
-    sy: i32,
+    sx: f32,
+    sy: f32,
+}
+
+#[derive(Component, Clone, Copy, Debug)]
+pub(crate) struct GameplayWorldRoot;
+
+#[inline]
+fn lerp_f32(a: f32, b: f32, t: f32) -> f32 {
+    a + (b - a) * t
+}
+
+#[inline]
+fn preview_char_visual(tile: crate::types::map::CMapTile, ctick: usize) -> (i32, i32, i32) {
+    if tile.ch_sprite == 0 {
+        return (0, 0, 0);
+    }
+
+    let mut tmp = tile;
+    let sprite_id = eng_char(&mut tmp, ctick);
+    (sprite_id, tmp.obj_xoff, tmp.obj_yoff)
 }
 
 #[derive(Default)]
@@ -689,10 +708,14 @@ fn screen_to_world(sx: f32, sy: f32, z: f32) -> Vec3 {
     Vec3::new(sx - TARGET_WIDTH * 0.5, TARGET_HEIGHT * 0.5 - sy, z)
 }
 
-fn spawn_tile_entity(commands: &mut Commands, gfx: &GraphicsCache, render: TileRender) {
+fn spawn_tile_entity(
+    commands: &mut Commands,
+    gfx: &GraphicsCache,
+    render: TileRender,
+) -> Option<Entity> {
     // Always spawn with a valid sprite handle; we'll swap it during updates.
     let Some(empty) = gfx.get_sprite(SPR_EMPTY as usize) else {
-        return;
+        return None;
     };
 
     let initial_visibility = match render.layer {
@@ -700,46 +723,58 @@ fn spawn_tile_entity(commands: &mut Commands, gfx: &GraphicsCache, render: TileR
         TileLayer::Object | TileLayer::Character => Visibility::Hidden,
     };
 
-    commands.spawn((
-        GameplayRenderEntity,
-        render,
-        LastRender {
-            sprite_id: i32::MIN,
-            sx: i32::MIN,
-            sy: i32::MIN,
-        },
-        empty.clone(),
-        Anchor::TOP_LEFT,
-        Transform::default(),
-        GlobalTransform::default(),
-        initial_visibility,
-        InheritedVisibility::default(),
-        ViewVisibility::default(),
-    ));
+    let id = commands
+        .spawn((
+            GameplayRenderEntity,
+            render,
+            LastRender {
+                sprite_id: i32::MIN,
+                sx: f32::NAN,
+                sy: f32::NAN,
+            },
+            empty.clone(),
+            Anchor::TOP_LEFT,
+            Transform::default(),
+            GlobalTransform::default(),
+            initial_visibility,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
+        ))
+        .id();
+
+    Some(id)
 }
 
-fn spawn_shadow_entity(commands: &mut Commands, gfx: &GraphicsCache, shadow: TileShadow) {
+fn spawn_shadow_entity(
+    commands: &mut Commands,
+    gfx: &GraphicsCache,
+    shadow: TileShadow,
+) -> Option<Entity> {
     let Some(empty) = gfx.get_sprite(SPR_EMPTY as usize) else {
-        return;
+        return None;
     };
 
-    commands.spawn((
-        GameplayRenderEntity,
-        GameplayShadowEntity,
-        shadow,
-        LastRender {
-            sprite_id: i32::MIN,
-            sx: i32::MIN,
-            sy: i32::MIN,
-        },
-        empty.clone(),
-        Anchor::TOP_LEFT,
-        Transform::default(),
-        GlobalTransform::default(),
-        Visibility::Hidden,
-        InheritedVisibility::default(),
-        ViewVisibility::default(),
-    ));
+    let id = commands
+        .spawn((
+            GameplayRenderEntity,
+            GameplayShadowEntity,
+            shadow,
+            LastRender {
+                sprite_id: i32::MIN,
+                sx: f32::NAN,
+                sy: f32::NAN,
+            },
+            empty.clone(),
+            Anchor::TOP_LEFT,
+            Transform::default(),
+            GlobalTransform::default(),
+            Visibility::Hidden,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
+        ))
+        .id();
+
+    Some(id)
 }
 
 fn spawn_ui_overlay(commands: &mut Commands, gfx: &GraphicsCache) {
@@ -771,8 +806,8 @@ fn spawn_ui_portrait(commands: &mut Commands, gfx: &GraphicsCache) {
         GameplayUiPortrait,
         LastRender {
             sprite_id: i32::MIN,
-            sx: i32::MIN,
-            sy: i32::MIN,
+            sx: f32::NAN,
+            sy: f32::NAN,
         },
         empty.clone(),
         Anchor::TOP_LEFT,
@@ -794,8 +829,8 @@ fn spawn_ui_rank(commands: &mut Commands, gfx: &GraphicsCache) {
         GameplayUiRank,
         LastRender {
             sprite_id: i32::MIN,
-            sx: i32::MIN,
-            sy: i32::MIN,
+            sx: f32::NAN,
+            sy: f32::NAN,
         },
         empty.clone(),
         Anchor::TOP_LEFT,
@@ -827,8 +862,8 @@ fn spawn_ui_equipment(commands: &mut Commands, gfx: &GraphicsCache) {
             GameplayUiEquipmentSlot { worn_index },
             LastRender {
                 sprite_id: i32::MIN,
-                sx: i32::MIN,
-                sy: i32::MIN,
+                sx: f32::NAN,
+                sy: f32::NAN,
             },
             empty.clone(),
             Anchor::TOP_LEFT,
@@ -855,8 +890,8 @@ fn spawn_ui_spells(commands: &mut Commands, gfx: &GraphicsCache) {
             GameplayUiSpellSlot { index: n },
             LastRender {
                 sprite_id: i32::MIN,
-                sx: i32::MIN,
-                sy: i32::MIN,
+                sx: f32::NAN,
+                sy: f32::NAN,
             },
             empty.clone(),
             Anchor::TOP_LEFT,
@@ -884,8 +919,8 @@ fn spawn_ui_shop_window(commands: &mut Commands, gfx: &GraphicsCache) {
         },
         LastRender {
             sprite_id: i32::MIN,
-            sx: i32::MIN,
-            sy: i32::MIN,
+            sx: f32::NAN,
+            sy: f32::NAN,
         },
         empty.clone(),
         Anchor::TOP_LEFT,
@@ -906,8 +941,8 @@ fn spawn_ui_shop_window(commands: &mut Commands, gfx: &GraphicsCache) {
             },
             LastRender {
                 sprite_id: i32::MIN,
-                sx: i32::MIN,
-                sy: i32::MIN,
+                sx: f32::NAN,
+                sy: f32::NAN,
             },
             empty.clone(),
             Anchor::TOP_LEFT,
@@ -1799,50 +1834,73 @@ pub(crate) fn setup_gameplay(
 
     let map = player_state.map();
 
+    // World-space root: we move this for smooth camera motion.
+    let world_root = commands
+        .spawn((
+            GameplayRenderEntity,
+            GameplayWorldRoot,
+            Transform::default(),
+            GlobalTransform::default(),
+            Visibility::Visible,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
+        ))
+        .id();
+
     // Spawn a stable set of entities once; `run_gameplay` updates them.
     for index in 0..map.len() {
         // Shadows (dd.c::dd_shadow), rendered between background and objects/chars.
-        spawn_shadow_entity(
+        if let Some(e) = spawn_shadow_entity(
             &mut commands,
             &gfx,
             TileShadow {
                 index,
                 layer: ShadowLayer::Object,
             },
-        );
-        spawn_shadow_entity(
+        ) {
+            commands.entity(world_root).add_child(e);
+        }
+        if let Some(e) = spawn_shadow_entity(
             &mut commands,
             &gfx,
             TileShadow {
                 index,
                 layer: ShadowLayer::Character,
             },
-        );
+        ) {
+            commands.entity(world_root).add_child(e);
+        }
 
-        spawn_tile_entity(
+        if let Some(e) = spawn_tile_entity(
             &mut commands,
             &gfx,
             TileRender {
                 index,
                 layer: TileLayer::Background,
             },
-        );
-        spawn_tile_entity(
+        ) {
+            commands.entity(world_root).add_child(e);
+        }
+        if let Some(e) = spawn_tile_entity(
             &mut commands,
             &gfx,
             TileRender {
                 index,
                 layer: TileLayer::Object,
             },
-        );
-        spawn_tile_entity(
+        ) {
+            commands.entity(world_root).add_child(e);
+        }
+        if let Some(e) = spawn_tile_entity(
             &mut commands,
             &gfx,
             TileRender {
                 index,
                 layer: TileLayer::Character,
             },
-        );
+        ) {
+            commands.entity(world_root).add_child(e);
+        }
     }
 
     // UI frame / background (sprite 00001.png)
@@ -2244,21 +2302,35 @@ pub(crate) fn run_gameplay(
     mut minimap: ResMut<MiniMapState>,
     mut clock: Local<EngineClock>,
     mut opt_clock: Local<SendOptClock>,
+    mut q_world_root: Query<
+        &mut Transform,
+        (
+            With<GameplayWorldRoot>,
+            Without<TileShadow>,
+            Without<TileRender>,
+        ),
+    >,
     mut q: ParamSet<(
-        Query<(
-            &TileShadow,
-            &mut Sprite,
-            &mut Transform,
-            &mut Visibility,
-            &mut LastRender,
-        )>,
-        Query<(
-            &TileRender,
-            &mut Sprite,
-            &mut Transform,
-            &mut Visibility,
-            &mut LastRender,
-        )>,
+        Query<
+            (
+                &TileShadow,
+                &mut Sprite,
+                &mut Transform,
+                &mut Visibility,
+                &mut LastRender,
+            ),
+            Without<GameplayWorldRoot>,
+        >,
+        Query<
+            (
+                &TileRender,
+                &mut Sprite,
+                &mut Transform,
+                &mut Visibility,
+                &mut LastRender,
+            ),
+            Without<GameplayWorldRoot>,
+        >,
         Query<(&mut Sprite, &mut Visibility, &mut LastRender), With<GameplayUiPortrait>>,
         Query<(&mut Sprite, &mut Visibility, &mut LastRender), With<GameplayUiRank>>,
         Query<(
@@ -2300,6 +2372,8 @@ pub(crate) fn run_gameplay(
         clock.accumulator -= tick_dt;
     }
 
+    let alpha = (clock.accumulator / tick_dt).clamp(0.0, 1.0);
+
     // Ported options transfer behavior (engine.c::send_opt).
     send_opt(&net, &mut player_state, &mut opt_clock);
 
@@ -2310,16 +2384,24 @@ pub(crate) fn run_gameplay(
 
     let shadows_enabled = player_state.player_data().are_shadows_enabled != 0;
 
-    // Match original engine.c: xoff/yoff are based on the center tile's obj offsets.
-    let (xoff, yoff) = map
+    // Smooth camera: interpolate between current tick visuals and the next tick.
+    let (global_xoff, global_yoff) = map
         .tile_at_xy(TILEX / 2, TILEY / 2)
         .map(|center| {
-            (
-                -(center.obj_xoff as f32) + MAP_X_SHIFT,
-                -(center.obj_yoff as f32),
-            )
+            let ctick_next = ((clock.ticker.wrapping_add(1)) % 20) as usize;
+            let (_next_sprite, next_xoff, next_yoff) = preview_char_visual(*center, ctick_next);
+
+            let center_xoff = lerp_f32(center.obj_xoff as f32, next_xoff as f32, alpha);
+            let center_yoff = lerp_f32(center.obj_yoff as f32, next_yoff as f32, alpha);
+
+            (-center_xoff + MAP_X_SHIFT, -center_yoff)
         })
         .unwrap_or((MAP_X_SHIFT, 0.0));
+
+    if let Some(mut root) = q_world_root.iter_mut().next() {
+        // Apply screen-space offsets in world coordinates (+X right, +Y up).
+        root.translation = Vec3::new(global_xoff, -global_yoff, 0.0);
+    }
 
     // UI: player portrait sprite is the center tile's obj2 (engine.c passes plr_sprite)
     let base_portrait_sprite_id = map
@@ -2361,13 +2443,17 @@ pub(crate) fn run_gameplay(
         let xpos = (x as i32) * 32;
         let ypos = (y as i32) * 32;
 
-        let (sprite_id, xoff_total, yoff_total) = match shadow.layer {
-            ShadowLayer::Object => (tile.obj1, xoff.round() as i32, yoff.round() as i32),
-            ShadowLayer::Character => (
-                tile.obj2,
-                xoff.round() as i32 + tile.obj_xoff,
-                yoff.round() as i32 + tile.obj_yoff,
-            ),
+        let (sprite_id, xoff_interp, yoff_interp) = match shadow.layer {
+            ShadowLayer::Object => (tile.obj1, 0.0f32, 0.0f32),
+            ShadowLayer::Character => {
+                let ctick_next = ((clock.ticker.wrapping_add(1)) % 20) as usize;
+                let (_next_sprite, next_xoff, next_yoff) = preview_char_visual(*tile, ctick_next);
+                (
+                    tile.obj2,
+                    lerp_f32(tile.obj_xoff as f32, next_xoff as f32, alpha),
+                    lerp_f32(tile.obj_yoff as f32, next_yoff as f32, alpha),
+                )
+            }
         };
 
         if sprite_id <= 0 || !should_draw_shadow(sprite_id) {
@@ -2378,15 +2464,9 @@ pub(crate) fn run_gameplay(
             continue;
         }
 
-        let Some((sx_i, sy_i)) = copysprite_screen_pos(
-            sprite_id as usize,
-            &gfx,
-            &images,
-            xpos,
-            ypos,
-            xoff_total,
-            yoff_total,
-        ) else {
+        let Some((sx_i, sy_i)) =
+            copysprite_screen_pos(sprite_id as usize, &gfx, &images, xpos, ypos, 0, 0)
+        else {
             *visibility = Visibility::Hidden;
             continue;
         };
@@ -2403,9 +2483,13 @@ pub(crate) fn run_gameplay(
         // Ported positioning from dd.c::dd_shadow:
         // ry += ys*32 - disp; with disp=14.
         const DISP: i32 = 14;
-        let shadow_sy = sy_i + ys * 32 - DISP;
+        let sx_f = sx_i as f32 + xoff_interp;
+        let shadow_sy_f = (sy_i as f32 + yoff_interp) + (ys * 32 - DISP) as f32;
 
-        if sprite_id == last.sprite_id && sx_i == last.sx && shadow_sy == last.sy {
+        if sprite_id == last.sprite_id
+            && (sx_f - last.sx).abs() < 0.01
+            && (shadow_sy_f - last.sy).abs() < 0.01
+        {
             // Ensure our squash stays applied even when sprite id/pos unchanged.
             transform.scale = Vec3::new(1.0, 0.25, 1.0);
             *visibility = Visibility::Visible;
@@ -2413,15 +2497,15 @@ pub(crate) fn run_gameplay(
         }
 
         last.sprite_id = sprite_id;
-        last.sx = sx_i;
-        last.sy = shadow_sy;
+        last.sx = sx_f;
+        last.sy = shadow_sy_f;
 
         let mut shadow_sprite = src.clone();
         shadow_sprite.color = Color::srgba(0.0, 0.0, 0.0, 0.5);
         *sprite = shadow_sprite;
 
         *visibility = Visibility::Visible;
-        transform.translation = screen_to_world(sx_i as f32, shadow_sy as f32, z);
+        transform.translation = screen_to_world(sx_f, shadow_sy_f, z);
         transform.scale = Vec3::new(1.0, 0.25, 1.0);
     }
 
@@ -2444,21 +2528,17 @@ pub(crate) fn run_gameplay(
         let xpos = (x as i32) * 32;
         let ypos = (y as i32) * 32;
 
-        let (sprite_id, xoff_total, yoff_total) = match render.layer {
+        let (sprite_id, xoff_i, yoff_i, needs_interp) = match render.layer {
             TileLayer::Background => {
                 let id = if tile.back != 0 {
                     tile.back
                 } else {
                     SPR_EMPTY as i32
                 };
-                (id, xoff.round() as i32, yoff.round() as i32)
+                (id, 0, 0, false)
             }
-            TileLayer::Object => (tile.obj1, xoff.round() as i32, yoff.round() as i32),
-            TileLayer::Character => (
-                tile.obj2,
-                xoff.round() as i32 + tile.obj_xoff,
-                yoff.round() as i32 + tile.obj_yoff,
-            ),
+            TileLayer::Object => (tile.obj1, 0, 0, false),
+            TileLayer::Character => (tile.obj2, 0, 0, true),
         };
 
         if sprite_id <= 0 {
@@ -2476,20 +2556,34 @@ pub(crate) fn run_gameplay(
             &images,
             xpos,
             ypos,
-            xoff_total,
-            yoff_total,
+            xoff_i,
+            yoff_i,
         ) else {
             *visibility = Visibility::Hidden;
             continue;
         };
 
-        if sprite_id == last.sprite_id && sx_i == last.sx && sy_i == last.sy {
+        let (sx_f, sy_f) = if needs_interp {
+            let ctick_next = ((clock.ticker.wrapping_add(1)) % 20) as usize;
+            let (_next_sprite, next_xoff, next_yoff) = preview_char_visual(*tile, ctick_next);
+            (
+                (sx_i as f32) + lerp_f32(tile.obj_xoff as f32, next_xoff as f32, alpha),
+                (sy_i as f32) + lerp_f32(tile.obj_yoff as f32, next_yoff as f32, alpha),
+            )
+        } else {
+            (sx_i as f32, sy_i as f32)
+        };
+
+        if sprite_id == last.sprite_id
+            && (sx_f - last.sx).abs() < 0.01
+            && (sy_f - last.sy).abs() < 0.01
+        {
             continue;
         }
 
         last.sprite_id = sprite_id;
-        last.sx = sx_i;
-        last.sy = sy_i;
+        last.sx = sx_f;
+        last.sy = sy_f;
 
         let Some(src) = gfx.get_sprite(sprite_id as usize) else {
             *visibility = Visibility::Hidden;
@@ -2498,7 +2592,7 @@ pub(crate) fn run_gameplay(
 
         *sprite = src.clone();
         *visibility = Visibility::Visible;
-        transform.translation = screen_to_world(sx_i as f32, sy_i as f32, z);
+        transform.translation = screen_to_world(sx_f, sy_f, z);
     }
 
     // Update UI portrait

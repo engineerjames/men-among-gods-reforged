@@ -3686,7 +3686,7 @@ pub fn spawn_penta_enemy(item_idx: usize) -> i32 {
 
     Repository::with_characters_mut(|characters| {
         characters[cn].data[0] = item_idx as i32;
-        characters[cn].data[29] = (x + y * core::constants::SERVER_MAPX as u16) as i32;
+        characters[cn].data[29] = x as i32 + y as i32 * core::constants::SERVER_MAPX;
         characters[cn].data[60] = TICKS * 60 * 2;
         characters[cn].data[73] = 8;
         characters[cn].dir = DX_RIGHT;
