@@ -43,6 +43,8 @@ pub struct PlayerState {
     // Server-provided ctick (0..19), sent in ServerCommandData::Tick.
     // Using this keeps SPEEDTAB-based animations perfectly in-phase with the server.
     server_ctick: u8,
+    server_ctick_pending: bool,
+    server_ctick_tick: u32,
 }
 
 impl Default for PlayerState {
@@ -69,6 +71,8 @@ impl Default for PlayerState {
             unique2: 0,
 
             server_ctick: 0,
+            server_ctick_pending: false,
+            server_ctick_tick: 0,
         }
     }
 }
@@ -105,6 +109,17 @@ impl PlayerState {
 
     pub fn server_ctick(&self) -> u8 {
         self.server_ctick
+    }
+
+    pub fn server_ctick_tick(&self) -> u32 {
+        self.server_ctick_tick
+    }
+
+    pub fn on_tick_packet(&mut self, client_ticker: u32) {
+        if self.server_ctick_pending {
+            self.server_ctick_tick = client_ticker;
+            self.server_ctick_pending = false;
+        }
     }
 
     fn now_unix_seconds() -> u64 {
@@ -370,6 +385,7 @@ impl PlayerState {
             }
             ServerCommandData::Tick { ctick } => {
                 self.server_ctick = *ctick;
+                self.server_ctick_pending = true;
             }
             ServerCommandData::SetOrigin { x, y } => {
                 self.map.set_origin(*x, *y);
