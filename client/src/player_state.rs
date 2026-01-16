@@ -77,6 +77,10 @@ impl PlayerState {
         &mut self.map
     }
 
+    pub fn character_info(&self) -> &ClientPlayer {
+        &self.character_info
+    }
+
     fn now_unix_seconds() -> u64 {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)

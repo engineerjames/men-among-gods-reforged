@@ -7,10 +7,7 @@ use crate::gfx_cache::GraphicsCache;
 use crate::map::{TILEX, TILEY};
 use crate::player_state::PlayerState;
 
-use mag_core::constants::{SPR_EMPTY, STUNNED, TICKS};
-
-// The original client uses a 32px grid step for draw positions.
-const GRID_STEP: f32 = 32.0;
+use mag_core::constants::{SPR_EMPTY, STUNNED, TICKS, XPOS, YPOS};
 
 // In the original client, xoff starts with `-176` (to account for UI layout).
 // Keeping this makes it easier to compare screenshots while we port rendering.
@@ -19,9 +16,22 @@ const MAP_X_SHIFT: f32 = -176.0;
 const Z_BG: f32 = 0.0;
 const Z_OBJ: f32 = 100.0;
 const Z_CHAR: f32 = 200.0;
+// Must stay within the Camera2d default orthographic near/far (default_2d far is 1000).
+const Z_UI: f32 = 900.0;
+const Z_UI_PORTRAIT: f32 = 910.0;
+const Z_UI_RANK: f32 = 911.0;
 
 #[derive(Component)]
 pub struct GameplayRenderEntity;
+
+#[derive(Component)]
+struct GameplayUiOverlay;
+
+#[derive(Component)]
+pub(crate) struct GameplayUiPortrait;
+
+#[derive(Component)]
+pub(crate) struct GameplayUiRank;
 
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct TileRender {
@@ -83,6 +93,208 @@ fn spawn_tile_entity(commands: &mut Commands, gfx: &GraphicsCache, render: TileR
         InheritedVisibility::default(),
         ViewVisibility::default(),
     ));
+}
+
+fn spawn_ui_overlay(commands: &mut Commands, gfx: &GraphicsCache) {
+    // Matches `copyspritex(1,0,0,0)` in engine.c
+    let Some(sprite) = gfx.get_sprite(1) else {
+        return;
+    };
+
+    commands.spawn((
+        GameplayRenderEntity,
+        GameplayUiOverlay,
+        sprite.clone(),
+        Anchor::TOP_LEFT,
+        Transform::from_translation(screen_to_world(0.0, 0.0, Z_UI)),
+        GlobalTransform::default(),
+        Visibility::Visible,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
+    ));
+}
+
+fn spawn_ui_portrait(commands: &mut Commands, gfx: &GraphicsCache) {
+    let Some(empty) = gfx.get_sprite(SPR_EMPTY as usize) else {
+        return;
+    };
+
+    commands.spawn((
+        GameplayRenderEntity,
+        GameplayUiPortrait,
+        LastRender {
+            sprite_id: i32::MIN,
+            sx: i32::MIN,
+            sy: i32::MIN,
+        },
+        empty.clone(),
+        Anchor::TOP_LEFT,
+        Transform::from_translation(screen_to_world(402.0, 32.0, Z_UI_PORTRAIT)),
+        GlobalTransform::default(),
+        Visibility::Hidden,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
+    ));
+}
+
+fn spawn_ui_rank(commands: &mut Commands, gfx: &GraphicsCache) {
+    let Some(empty) = gfx.get_sprite(SPR_EMPTY as usize) else {
+        return;
+    };
+
+    commands.spawn((
+        GameplayRenderEntity,
+        GameplayUiRank,
+        LastRender {
+            sprite_id: i32::MIN,
+            sx: i32::MIN,
+            sy: i32::MIN,
+        },
+        empty.clone(),
+        Anchor::TOP_LEFT,
+        Transform::from_translation(screen_to_world(463.0, 38.0, Z_UI_RANK)),
+        GlobalTransform::default(),
+        Visibility::Hidden,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
+    ));
+}
+
+fn points2rank(v: i32) -> i32 {
+    // Ported from client/src/orig/engine.c
+    if v < 50 {
+        return 0;
+    }
+    if v < 850 {
+        return 1;
+    }
+    if v < 4_900 {
+        return 2;
+    }
+    if v < 17_700 {
+        return 3;
+    }
+    if v < 48_950 {
+        return 4;
+    }
+    if v < 113_750 {
+        return 5;
+    }
+    if v < 233_800 {
+        return 6;
+    }
+    if v < 438_600 {
+        return 7;
+    }
+    if v < 766_650 {
+        return 8;
+    }
+    if v < 1_266_650 {
+        return 9;
+    }
+    if v < 1_998_700 {
+        return 10;
+    }
+    if v < 3_035_500 {
+        return 11;
+    }
+    if v < 4_463_550 {
+        return 12;
+    }
+    if v < 6_384_350 {
+        return 13;
+    }
+    if v < 8_915_600 {
+        return 14;
+    }
+    if v < 12_192_400 {
+        return 15;
+    }
+    if v < 16_368_450 {
+        return 16;
+    }
+    if v < 21_617_250 {
+        return 17;
+    }
+    if v < 28_133_300 {
+        return 18;
+    }
+    if v < 36_133_300 {
+        return 19;
+    }
+    if v < 49_014_500 {
+        return 20;
+    }
+    if v < 63_000_600 {
+        return 21;
+    }
+    if v < 80_977_100 {
+        return 22;
+    }
+    23
+}
+
+fn rank_insignia_sprite(points_tot: i32) -> i32 {
+    // engine.c: copyspritex(10+min(20,points2rank(pl.points_tot)),463,54-16,0);
+    let rank = points2rank(points_tot).clamp(0, 20);
+    10 + rank
+}
+
+fn draw_inventory_ui(_gfx: &GraphicsCache, _player_state: &PlayerState) {
+    // TODO: Port eng_display_win() inventory drawing (copyspritex calls around x=220,y=2).
+    // TODO: Handle highlight/effects (effect=16 for selection, etc).
+}
+
+fn draw_equipment_ui(_gfx: &GraphicsCache, _player_state: &PlayerState) {
+    // TODO: Port eng_display_win() equipment drawing (copyspritex calls around x=303,y=2).
+    // TODO: Draw inv_block overlay sprite (id 4) where applicable.
+}
+
+fn draw_active_spells_ui(_gfx: &GraphicsCache, _player_state: &PlayerState) {
+    // TODO: Port eng_display_win() spells drawing (copyspritex calls around x=374,y=4).
+    // TODO: Apply spell shading effect based on `active[n]`.
+}
+
+fn draw_shop_window_ui(_gfx: &GraphicsCache, _player_state: &PlayerState) {
+    // TODO: Port eng_display_win() shop drawing (panel sprite 92 at x=220,y=260 + item grid).
+    // TODO: Gate on should_show_shop/shop_target state.
+}
+
+fn sprite_tiles_xy(sprite: &Sprite, images: &Assets<Image>) -> Option<(i32, i32)> {
+    let image = images.get(&sprite.image)?;
+    let size = image.size();
+    let w = (size.x.max(1) as i32).max(1);
+    let h = (size.y.max(1) as i32).max(1);
+
+    // dd.c treats sprites as being composed of 32x32 "blocks"; xs/ys are those counts.
+    let xs = (w + 31) / 32;
+    let ys = (h + 31) / 32;
+
+    Some((xs.max(1), ys.max(1)))
+}
+
+fn copysprite_screen_pos(
+    sprite_id: usize,
+    gfx: &GraphicsCache,
+    images: &Assets<Image>,
+    xpos: i32,
+    ypos: i32,
+    xoff: i32,
+    yoff: i32,
+) -> Option<(i32, i32)> {
+    let sprite = gfx.get_sprite(sprite_id)?;
+    let (xs, ys) = sprite_tiles_xy(sprite, images)?;
+
+    // Ported from dd.c: copysprite()
+    // NOTE: we ignore the negative-coordinate odd-bit adjustments because xpos/ypos
+    // are always >= 0 in our current usage (0..TILEX*32).
+    let mut rx = (xpos / 2) + (ypos / 2) - (xs * 16) + 32 + XPOS - (((TILEX as i32 - 34) / 2) * 32);
+    let mut ry = (xpos / 4) - (ypos / 4) + YPOS - (ys * 32);
+
+    rx += xoff;
+    ry += yoff;
+
+    Some((rx, ry))
 }
 
 // Ported from engine.c
@@ -325,7 +537,7 @@ fn eng_char(tile: &mut crate::types::map::CMapTile, ctick: usize) -> i32 {
             if tile.idle_ani > 7 {
                 tile.idle_ani = 0;
             }
-            base + 0 + do_idle(tile.idle_ani, tile.ch_sprite)
+            base + do_idle(tile.idle_ani, tile.ch_sprite)
         }
         1 => {
             tile.obj_xoff = 0;
@@ -676,20 +888,31 @@ pub(crate) fn setup_gameplay(
         );
     }
 
+    // UI frame / background (sprite 00001.png)
+    spawn_ui_overlay(&mut commands, &gfx);
+    // Player portrait + rank badge
+    spawn_ui_portrait(&mut commands, &gfx);
+    spawn_ui_rank(&mut commands, &gfx);
+
     log::debug!("setup_gameplay - end");
 }
 
 pub(crate) fn run_gameplay(
     time: Res<Time>,
     gfx: Res<GraphicsCache>,
+    images: Res<Assets<Image>>,
     mut player_state: ResMut<PlayerState>,
     mut clock: Local<EngineClock>,
-    mut q: Query<(
-        &TileRender,
-        &mut Sprite,
-        &mut Transform,
-        &mut Visibility,
-        &mut LastRender,
+    mut q: ParamSet<(
+        Query<(
+            &TileRender,
+            &mut Sprite,
+            &mut Transform,
+            &mut Visibility,
+            &mut LastRender,
+        )>,
+        Query<(&mut Sprite, &mut Visibility, &mut LastRender), With<GameplayUiPortrait>>,
+        Query<(&mut Sprite, &mut Visibility, &mut LastRender), With<GameplayUiRank>>,
     )>,
 ) {
     if !gfx.is_initialized() {
@@ -724,7 +947,14 @@ pub(crate) fn run_gameplay(
         })
         .unwrap_or((MAP_X_SHIFT, 0.0));
 
-    for (render, mut sprite, mut transform, mut visibility, mut last) in &mut q {
+    // UI: player portrait sprite is the center tile's obj2 (engine.c passes plr_sprite)
+    let plr_sprite_id = map
+        .tile_at_xy(TILEX / 2, TILEY / 2)
+        .map(|t| t.obj2)
+        .unwrap_or(0);
+    let rank_sprite_id = rank_insignia_sprite(player_state.character_info().points_tot);
+
+    for (render, mut sprite, mut transform, mut visibility, mut last) in &mut q.p0() {
         let Some(tile) = map.tile_at_index(render.index) else {
             continue;
         };
@@ -733,42 +963,62 @@ pub(crate) fn run_gameplay(
         let y = render.index / TILEX;
 
         let draw_order = ((TILEY - 1 - y) * TILEX + x) as f32;
-        let base_sx = x as f32 * GRID_STEP + xoff;
-        let base_sy = y as f32 * GRID_STEP + yoff;
+        let z = match render.layer {
+            TileLayer::Background => Z_BG,
+            TileLayer::Object => Z_OBJ,
+            TileLayer::Character => Z_CHAR,
+        } + draw_order * 0.01;
 
-        let (sprite_id, sx, sy, z) = match render.layer {
+        // dd.c uses x*32/y*32 as "map space" inputs to the isometric projection.
+        let xpos = (x as i32) * 32;
+        let ypos = (y as i32) * 32;
+
+        let (sprite_id, xoff_total, yoff_total) = match render.layer {
             TileLayer::Background => {
                 let id = if tile.back != 0 {
                     tile.back
                 } else {
                     SPR_EMPTY as i32
                 };
-                (id, base_sx, base_sy, Z_BG + draw_order * 0.01)
+                (id, xoff.round() as i32, yoff.round() as i32)
             }
-            TileLayer::Object => (tile.obj1, base_sx, base_sy, Z_OBJ + draw_order * 0.01),
+            TileLayer::Object => (tile.obj1, xoff.round() as i32, yoff.round() as i32),
             TileLayer::Character => (
                 tile.obj2,
-                base_sx + tile.obj_xoff as f32,
-                base_sy + tile.obj_yoff as f32,
-                Z_CHAR + draw_order * 0.01,
+                xoff.round() as i32 + tile.obj_xoff,
+                yoff.round() as i32 + tile.obj_yoff,
             ),
         };
 
-        let sx_i = sx.round() as i32;
-        let sy_i = sy.round() as i32;
+        if sprite_id <= 0 {
+            if sprite_id != last.sprite_id {
+                last.sprite_id = sprite_id;
+            }
+            *visibility = Visibility::Hidden;
+            continue;
+        }
+
+        // Resolve the final screen pixel position using dd.c's copysprite math.
+        let Some((sx_i, sy_i)) = copysprite_screen_pos(
+            sprite_id as usize,
+            &gfx,
+            &images,
+            xpos,
+            ypos,
+            xoff_total,
+            yoff_total,
+        ) else {
+            *visibility = Visibility::Hidden;
+            continue;
+        };
+
         if sprite_id == last.sprite_id && sx_i == last.sx && sy_i == last.sy {
-            // Nothing changed.
             continue;
         }
 
         last.sprite_id = sprite_id;
         last.sx = sx_i;
         last.sy = sy_i;
-
-        if sprite_id <= 0 {
-            *visibility = Visibility::Hidden;
-            continue;
-        }
 
         let Some(src) = gfx.get_sprite(sprite_id as usize) else {
             *visibility = Visibility::Hidden;
@@ -777,6 +1027,50 @@ pub(crate) fn run_gameplay(
 
         *sprite = src.clone();
         *visibility = Visibility::Visible;
-        transform.translation = screen_to_world(sx, sy, z);
+        transform.translation = screen_to_world(sx_i as f32, sy_i as f32, z);
     }
+
+    // Update UI portrait
+    if let Some((mut sprite, mut visibility, mut last)) = q.p1().iter_mut().next() {
+        if plr_sprite_id > 0 {
+            if last.sprite_id != plr_sprite_id {
+                if let Some(src) = gfx.get_sprite(plr_sprite_id as usize) {
+                    *sprite = src.clone();
+                    last.sprite_id = plr_sprite_id;
+                    *visibility = Visibility::Visible;
+                } else {
+                    *visibility = Visibility::Hidden;
+                }
+            } else {
+                *visibility = Visibility::Visible;
+            }
+        } else {
+            *visibility = Visibility::Hidden;
+        }
+    }
+
+    // Update UI rank badge
+    if let Some((mut sprite, mut visibility, mut last)) = q.p2().iter_mut().next() {
+        if rank_sprite_id > 0 {
+            if last.sprite_id != rank_sprite_id {
+                if let Some(src) = gfx.get_sprite(rank_sprite_id as usize) {
+                    *sprite = src.clone();
+                    last.sprite_id = rank_sprite_id;
+                    *visibility = Visibility::Visible;
+                } else {
+                    *visibility = Visibility::Hidden;
+                }
+            } else {
+                *visibility = Visibility::Visible;
+            }
+        } else {
+            *visibility = Visibility::Hidden;
+        }
+    }
+
+    // UI stubs (no implementation yet)
+    draw_inventory_ui(&gfx, &player_state);
+    draw_equipment_ui(&gfx, &player_state);
+    draw_active_spells_ui(&gfx, &player_state);
+    draw_shop_window_ui(&gfx, &player_state);
 }
