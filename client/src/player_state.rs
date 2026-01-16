@@ -81,6 +81,14 @@ impl PlayerState {
         &self.character_info
     }
 
+    pub fn player_data(&self) -> &PlayerData {
+        &self.player_info
+    }
+
+    pub fn player_data_mut(&mut self) -> &mut PlayerData {
+        &mut self.player_info
+    }
+
     fn now_unix_seconds() -> u64 {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)

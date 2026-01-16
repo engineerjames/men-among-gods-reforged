@@ -5,6 +5,7 @@ use bevy::sprite::Anchor;
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::gfx_cache::GraphicsCache;
 use crate::map::{TILEX, TILEY};
+use crate::network::{client_commands::ClientCommand, NetworkRuntime};
 use crate::player_state::PlayerState;
 
 use mag_core::constants::{SPR_EMPTY, STUNNED, TICKS, XPOS, YPOS};
@@ -57,6 +58,12 @@ pub(crate) struct LastRender {
 pub(crate) struct EngineClock {
     accumulator: f32,
     ticker: u32,
+}
+
+#[derive(Default)]
+pub(crate) struct SendOptClock {
+    optstep: u8,
+    state: u8,
 }
 
 #[inline]
@@ -238,6 +245,76 @@ fn rank_insignia_sprite(points_tot: i32) -> i32 {
     // engine.c: copyspritex(10+min(20,points2rank(pl.points_tot)),463,54-16,0);
     let rank = points2rank(points_tot).clamp(0, 20);
     10 + rank
+}
+
+fn send_opt(net: &NetworkRuntime, player_state: &mut PlayerState, clock: &mut SendOptClock) {
+    // Ported from `client/src/orig/engine.c::send_opt()`.
+    //
+    // Original behavior:
+    // - called every few frames while `pdata.changed` is set
+    // - sends 18 packets (state 0..17), each containing:
+    //   [group:1][offset:1][data:13] as `CL_CMD_SETUSER`
+    // - clears `pdata.changed` when done.
+
+    // Throttle like engine.c's `optstep>4` gate.
+    clock.optstep = clock.optstep.wrapping_add(1);
+    if clock.optstep <= 4 {
+        return;
+    }
+    clock.optstep = 0;
+
+    let pdata_changed = player_state.player_data().changed;
+    if pdata_changed == 0 {
+        clock.state = 0;
+        return;
+    }
+
+    let (group, offset, data): (u8, u8, [u8; 13]) = match clock.state {
+        // cname: 6 chunks of 13 bytes (0..77)
+        0..=5 => {
+            let off = clock.state.saturating_mul(13);
+            let mut buf = [0u8; 13];
+            buf.copy_from_slice(
+                &player_state.player_data().cname[off as usize..(off as usize + 13)],
+            );
+            (0, off, buf)
+        }
+
+        // desc: 6 chunks of 13 bytes (0..77)
+        6..=11 => {
+            let off = (clock.state - 6).saturating_mul(13);
+            let mut buf = [0u8; 13];
+            buf.copy_from_slice(
+                &player_state.player_data().desc[off as usize..(off as usize + 13)],
+            );
+            (1, off, buf)
+        }
+
+        // desc continuation: 6 chunks of 13 bytes starting at 78 (78..155)
+        12..=17 => {
+            let off = (clock.state - 12).saturating_mul(13);
+            let start = 78usize + off as usize;
+            let mut buf = [0u8; 13];
+            buf.copy_from_slice(&player_state.player_data().desc[start..start + 13]);
+            (2, off, buf)
+        }
+
+        // Be robust vs repeated option sends across sessions.
+        _ => {
+            clock.state = 0;
+            return;
+        }
+    };
+
+    let cmd = ClientCommand::new_setuser(group, offset, &data);
+    net.send(cmd.to_bytes());
+
+    if clock.state >= 17 {
+        player_state.player_data_mut().changed = 0;
+        clock.state = 0;
+    } else {
+        clock.state += 1;
+    }
 }
 
 fn draw_inventory_ui(_gfx: &GraphicsCache, _player_state: &PlayerState) {
@@ -899,10 +976,12 @@ pub(crate) fn setup_gameplay(
 
 pub(crate) fn run_gameplay(
     time: Res<Time>,
+    net: Res<NetworkRuntime>,
     gfx: Res<GraphicsCache>,
     images: Res<Assets<Image>>,
     mut player_state: ResMut<PlayerState>,
     mut clock: Local<EngineClock>,
+    mut opt_clock: Local<SendOptClock>,
     mut q: ParamSet<(
         Query<(
             &TileRender,
@@ -933,6 +1012,9 @@ pub(crate) fn run_gameplay(
         engine_tick(&mut player_state, &mut clock);
         clock.accumulator -= tick_dt;
     }
+
+    // Ported options transfer behavior (engine.c::send_opt).
+    send_opt(&net, &mut player_state, &mut opt_clock);
 
     let map = player_state.map();
 
