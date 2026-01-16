@@ -8,7 +8,10 @@ use crate::map::{TILEX, TILEY};
 use crate::network::{client_commands::ClientCommand, NetworkRuntime};
 use crate::player_state::PlayerState;
 
-use mag_core::constants::{SPR_EMPTY, STUNNED, TICKS, XPOS, YPOS};
+use mag_core::constants::{
+    SPEEDTAB, SPR_EMPTY, STUNNED, TICKS, WN_ARMS, WN_BELT, WN_BODY, WN_CLOAK, WN_FEET, WN_HEAD,
+    WN_LEGS, WN_LHAND, WN_LRING, WN_NECK, WN_RHAND, WN_RRING, XPOS, YPOS,
+};
 
 // In the original client, xoff starts with `-176` (to account for UI layout).
 // Keeping this makes it easier to compare screenshots while we port rendering.
@@ -22,6 +25,10 @@ const Z_CHAR: f32 = 200.0;
 const Z_UI: f32 = 900.0;
 const Z_UI_PORTRAIT: f32 = 910.0;
 const Z_UI_RANK: f32 = 911.0;
+const Z_UI_EQUIP: f32 = 920.0;
+const Z_UI_SPELLS: f32 = 921.0;
+const Z_UI_SHOP_PANEL: f32 = 930.0;
+const Z_UI_SHOP_ITEMS: f32 = 931.0;
 
 #[derive(Component)]
 pub struct GameplayRenderEntity;
@@ -34,6 +41,27 @@ pub(crate) struct GameplayUiPortrait;
 
 #[derive(Component)]
 pub(crate) struct GameplayUiRank;
+
+#[derive(Component, Clone, Copy, Debug)]
+pub(crate) struct GameplayUiEquipmentSlot {
+    worn_index: usize,
+}
+
+#[derive(Component, Clone, Copy, Debug)]
+pub(crate) struct GameplayUiSpellSlot {
+    index: usize,
+}
+
+#[derive(Component, Clone, Copy, Debug)]
+pub(crate) struct GameplayUiShop {
+    kind: ShopUiKind,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ShopUiKind {
+    Panel,
+    Slot { index: usize },
+}
 
 #[derive(Component)]
 pub(crate) struct GameplayShadowEntity;
@@ -207,6 +235,119 @@ fn spawn_ui_rank(commands: &mut Commands, gfx: &GraphicsCache) {
     ));
 }
 
+fn spawn_ui_equipment(commands: &mut Commands, gfx: &GraphicsCache) {
+    // Matches `eng_display_win`: copyspritex(pl.worn[wntab[n]],303+(n%2)*35,2+(n/2)*35,...)
+    // We spawn one stable entity per slot and update its sprite each frame.
+    let Some(empty) = gfx.get_sprite(SPR_EMPTY as usize) else {
+        return;
+    };
+
+    let wntab: [usize; 12] = [
+        WN_HEAD, WN_CLOAK, WN_BODY, WN_ARMS, WN_NECK, WN_BELT, WN_RHAND, WN_LHAND, WN_RRING,
+        WN_LRING, WN_LEGS, WN_FEET,
+    ];
+
+    for (n, worn_index) in wntab.into_iter().enumerate() {
+        let sx = 303.0 + (n as f32 % 2.0) * 35.0;
+        let sy = 2.0 + ((n / 2) as f32) * 35.0;
+        commands.spawn((
+            GameplayRenderEntity,
+            GameplayUiEquipmentSlot { worn_index },
+            LastRender {
+                sprite_id: i32::MIN,
+                sx: i32::MIN,
+                sy: i32::MIN,
+            },
+            empty.clone(),
+            Anchor::TOP_LEFT,
+            Transform::from_translation(screen_to_world(sx, sy, Z_UI_EQUIP)),
+            GlobalTransform::default(),
+            Visibility::Hidden,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
+        ));
+    }
+}
+
+fn spawn_ui_spells(commands: &mut Commands, gfx: &GraphicsCache) {
+    // Matches `eng_display_win`: copyspritex(pl.spell[n],374+(n%5)*24,4+(n/5)*24,...)
+    let Some(empty) = gfx.get_sprite(SPR_EMPTY as usize) else {
+        return;
+    };
+
+    for n in 0..20usize {
+        let sx = 374.0 + ((n % 5) as f32) * 24.0;
+        let sy = 4.0 + ((n / 5) as f32) * 24.0;
+        commands.spawn((
+            GameplayRenderEntity,
+            GameplayUiSpellSlot { index: n },
+            LastRender {
+                sprite_id: i32::MIN,
+                sx: i32::MIN,
+                sy: i32::MIN,
+            },
+            empty.clone(),
+            Anchor::TOP_LEFT,
+            Transform::from_translation(screen_to_world(sx, sy, Z_UI_SPELLS)),
+            GlobalTransform::default(),
+            Visibility::Hidden,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
+        ));
+    }
+}
+
+fn spawn_ui_shop_window(commands: &mut Commands, gfx: &GraphicsCache) {
+    // Matches `eng_display_win` shop layout:
+    // - copyspritex(92,220,260,0);
+    // - for n in 0..62: copyspritex(shop.item[n],222+(n%8)*35,262+(n/8)*35, ...)
+    let Some(empty) = gfx.get_sprite(SPR_EMPTY as usize) else {
+        return;
+    };
+
+    commands.spawn((
+        GameplayRenderEntity,
+        GameplayUiShop {
+            kind: ShopUiKind::Panel,
+        },
+        LastRender {
+            sprite_id: i32::MIN,
+            sx: i32::MIN,
+            sy: i32::MIN,
+        },
+        empty.clone(),
+        Anchor::TOP_LEFT,
+        Transform::from_translation(screen_to_world(220.0, 260.0, Z_UI_SHOP_PANEL)),
+        GlobalTransform::default(),
+        Visibility::Hidden,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
+    ));
+
+    for n in 0..62usize {
+        let sx = 222.0 + ((n % 8) as f32) * 35.0;
+        let sy = 262.0 + ((n / 8) as f32) * 35.0;
+        commands.spawn((
+            GameplayRenderEntity,
+            GameplayUiShop {
+                kind: ShopUiKind::Slot { index: n },
+            },
+            LastRender {
+                sprite_id: i32::MIN,
+                sx: i32::MIN,
+                sy: i32::MIN,
+            },
+            empty.clone(),
+            Anchor::TOP_LEFT,
+            Transform::from_translation(screen_to_world(sx, sy, Z_UI_SHOP_ITEMS)),
+            GlobalTransform::default(),
+            Visibility::Hidden,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
+        ));
+    }
+}
+
 fn points2rank(v: i32) -> i32 {
     // Ported from client/src/orig/engine.c
     if v < 50 {
@@ -362,19 +503,140 @@ fn draw_inventory_ui(_gfx: &GraphicsCache, _player_state: &PlayerState) {
     // TODO: Handle highlight/effects (effect=16 for selection, etc).
 }
 
-fn draw_equipment_ui(_gfx: &GraphicsCache, _player_state: &PlayerState) {
-    // TODO: Port eng_display_win() equipment drawing (copyspritex calls around x=303,y=2).
-    // TODO: Draw inv_block overlay sprite (id 4) where applicable.
+fn draw_equipment_ui(
+    gfx: &GraphicsCache,
+    player_state: &PlayerState,
+    q: &mut Query<(
+        &GameplayUiEquipmentSlot,
+        &mut Sprite,
+        &mut Visibility,
+        &mut LastRender,
+    )>,
+) {
+    let pl = player_state.character_info();
+
+    for (slot, mut sprite, mut visibility, mut last) in q.iter_mut() {
+        let sprite_id = pl.worn.get(slot.worn_index).copied().unwrap_or(0);
+        if sprite_id <= 0 {
+            last.sprite_id = sprite_id;
+            *visibility = Visibility::Hidden;
+            continue;
+        }
+
+        if last.sprite_id != sprite_id {
+            if let Some(src) = gfx.get_sprite(sprite_id as usize) {
+                *sprite = src.clone();
+                last.sprite_id = sprite_id;
+                *visibility = Visibility::Visible;
+            } else {
+                *visibility = Visibility::Hidden;
+            }
+        } else {
+            *visibility = Visibility::Visible;
+        }
+    }
 }
 
-fn draw_active_spells_ui(_gfx: &GraphicsCache, _player_state: &PlayerState) {
-    // TODO: Port eng_display_win() spells drawing (copyspritex calls around x=374,y=4).
-    // TODO: Apply spell shading effect based on `active[n]`.
+fn draw_active_spells_ui(
+    gfx: &GraphicsCache,
+    player_state: &PlayerState,
+    q: &mut Query<(
+        &GameplayUiSpellSlot,
+        &mut Sprite,
+        &mut Visibility,
+        &mut LastRender,
+    )>,
+) {
+    let pl = player_state.character_info();
+
+    for (slot, mut sprite, mut visibility, mut last) in q.iter_mut() {
+        let sprite_id = pl.spell.get(slot.index).copied().unwrap_or(0);
+        if sprite_id <= 0 {
+            last.sprite_id = sprite_id;
+            *visibility = Visibility::Hidden;
+            continue;
+        }
+
+        if last.sprite_id != sprite_id {
+            if let Some(src) = gfx.get_sprite(sprite_id as usize) {
+                *sprite = src.clone();
+                last.sprite_id = sprite_id;
+            } else {
+                *visibility = Visibility::Hidden;
+                continue;
+            }
+        }
+
+        // dd.c shading (approx): engine.c uses effect = 15 - min(15, active[n]).
+        // active==0 => effect=15 => dim; active>=15 => effect=0 => bright.
+        let active = pl.active.get(slot.index).copied().unwrap_or(0).max(0) as i32;
+        let effect = 15 - active.min(15);
+        let shade = 1.0 - (effect as f32 / 15.0) * 0.6;
+        sprite.color = Color::srgba(shade, shade, shade, 1.0);
+        *visibility = Visibility::Visible;
+    }
 }
 
-fn draw_shop_window_ui(_gfx: &GraphicsCache, _player_state: &PlayerState) {
-    // TODO: Port eng_display_win() shop drawing (panel sprite 92 at x=220,y=260 + item grid).
-    // TODO: Gate on should_show_shop/shop_target state.
+fn draw_shop_window_ui(
+    gfx: &GraphicsCache,
+    player_state: &PlayerState,
+    q: &mut Query<(
+        &GameplayUiShop,
+        &mut Sprite,
+        &mut Visibility,
+        &mut LastRender,
+    )>,
+) {
+    let show_shop = player_state.should_show_shop();
+
+    if !show_shop {
+        for (_shop_ui, _sprite, mut visibility, mut last) in q.iter_mut() {
+            last.sprite_id = 0;
+            *visibility = Visibility::Hidden;
+        }
+        return;
+    }
+
+    let shop = player_state.shop_target();
+
+    for (shop_ui, mut sprite, mut visibility, mut last) in q.iter_mut() {
+        match shop_ui.kind {
+            ShopUiKind::Panel => {
+                const SHOP_PANEL_SPRITE: i32 = 92;
+                if last.sprite_id != SHOP_PANEL_SPRITE {
+                    if let Some(src) = gfx.get_sprite(SHOP_PANEL_SPRITE as usize) {
+                        *sprite = src.clone();
+                        last.sprite_id = SHOP_PANEL_SPRITE;
+                    } else {
+                        *visibility = Visibility::Hidden;
+                        continue;
+                    }
+                }
+                *visibility = Visibility::Visible;
+            }
+            ShopUiKind::Slot { index } => {
+                let sprite_id = shop.item(index) as i32;
+                if sprite_id <= 0 {
+                    last.sprite_id = sprite_id;
+                    *visibility = Visibility::Hidden;
+                    continue;
+                }
+
+                if last.sprite_id != sprite_id {
+                    if let Some(src) = gfx.get_sprite(sprite_id as usize) {
+                        *sprite = src.clone();
+                        last.sprite_id = sprite_id;
+                    } else {
+                        *visibility = Visibility::Hidden;
+                        continue;
+                    }
+                }
+
+                sprite.color = Color::srgba(1.0, 1.0, 1.0, 1.0);
+                *visibility = Visibility::Visible;
+            }
+        }
+    }
 }
 
 fn sprite_tiles_xy(sprite: &Sprite, images: &Assets<Image>) -> Option<(i32, i32)> {
@@ -419,30 +681,6 @@ fn copysprite_screen_pos(
 
     Some((rx, ry))
 }
-
-// Ported from engine.c
-const SPEEDTAB: [[u8; 20]; 20] = [
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1],
-    [1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1],
-    [1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1],
-    [1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1],
-    [1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1],
-    [1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0],
-    [0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1],
-    [0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1],
-    [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
-    [1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0],
-    [1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0],
-    [0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1],
-    [0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0],
-    [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0],
-    [0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0],
-    [0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
-    [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-];
 
 const STATTAB: [i32; 11] = [0, 1, 1, 6, 6, 2, 3, 4, 5, 7, 4];
 
@@ -1035,6 +1273,13 @@ pub(crate) fn setup_gameplay(
     spawn_ui_portrait(&mut commands, &gfx);
     spawn_ui_rank(&mut commands, &gfx);
 
+    // Equipment slots + active spells
+    spawn_ui_equipment(&mut commands, &gfx);
+    spawn_ui_spells(&mut commands, &gfx);
+
+    // Shop window (panel + item slots)
+    spawn_ui_shop_window(&mut commands, &gfx);
+
     log::debug!("setup_gameplay - end");
 }
 
@@ -1063,6 +1308,24 @@ pub(crate) fn run_gameplay(
         )>,
         Query<(&mut Sprite, &mut Visibility, &mut LastRender), With<GameplayUiPortrait>>,
         Query<(&mut Sprite, &mut Visibility, &mut LastRender), With<GameplayUiRank>>,
+        Query<(
+            &GameplayUiEquipmentSlot,
+            &mut Sprite,
+            &mut Visibility,
+            &mut LastRender,
+        )>,
+        Query<(
+            &GameplayUiSpellSlot,
+            &mut Sprite,
+            &mut Visibility,
+            &mut LastRender,
+        )>,
+        Query<(
+            &GameplayUiShop,
+            &mut Sprite,
+            &mut Visibility,
+            &mut LastRender,
+        )>,
     )>,
 ) {
     if !gfx.is_initialized() {
@@ -1103,11 +1366,24 @@ pub(crate) fn run_gameplay(
         .unwrap_or((MAP_X_SHIFT, 0.0));
 
     // UI: player portrait sprite is the center tile's obj2 (engine.c passes plr_sprite)
-    let plr_sprite_id = map
+    let base_portrait_sprite_id = map
         .tile_at_xy(TILEX / 2, TILEY / 2)
         .map(|t| t.obj2)
         .unwrap_or(0);
-    let rank_sprite_id = rank_insignia_sprite(player_state.character_info().points_tot);
+
+    let base_rank_sprite_id = rank_insignia_sprite(player_state.character_info().points_tot);
+
+    // Match engine.c: when shop is open, the right-side portrait/rank reflect the shop target.
+    let mut ui_portrait_sprite_id = base_portrait_sprite_id;
+    let mut ui_rank_sprite_id = base_rank_sprite_id;
+    if player_state.should_show_shop() {
+        let shop = player_state.shop_target();
+        if shop.sprite() != 0 {
+            ui_portrait_sprite_id = shop.sprite() as i32;
+        }
+        let shop_points = shop.points().min(i32::MAX as u32) as i32;
+        ui_rank_sprite_id = rank_insignia_sprite(shop_points);
+    }
 
     // Update shadows (dd.c::dd_shadow)
     for (shadow, mut sprite, mut transform, mut visibility, mut last) in &mut q.p0() {
@@ -1271,11 +1547,11 @@ pub(crate) fn run_gameplay(
 
     // Update UI portrait
     if let Some((mut sprite, mut visibility, mut last)) = q.p2().iter_mut().next() {
-        if plr_sprite_id > 0 {
-            if last.sprite_id != plr_sprite_id {
-                if let Some(src) = gfx.get_sprite(plr_sprite_id as usize) {
+        if ui_portrait_sprite_id > 0 {
+            if last.sprite_id != ui_portrait_sprite_id {
+                if let Some(src) = gfx.get_sprite(ui_portrait_sprite_id as usize) {
                     *sprite = src.clone();
-                    last.sprite_id = plr_sprite_id;
+                    last.sprite_id = ui_portrait_sprite_id;
                     *visibility = Visibility::Visible;
                 } else {
                     *visibility = Visibility::Hidden;
@@ -1290,11 +1566,11 @@ pub(crate) fn run_gameplay(
 
     // Update UI rank badge
     if let Some((mut sprite, mut visibility, mut last)) = q.p3().iter_mut().next() {
-        if rank_sprite_id > 0 {
-            if last.sprite_id != rank_sprite_id {
-                if let Some(src) = gfx.get_sprite(rank_sprite_id as usize) {
+        if ui_rank_sprite_id > 0 {
+            if last.sprite_id != ui_rank_sprite_id {
+                if let Some(src) = gfx.get_sprite(ui_rank_sprite_id as usize) {
                     *sprite = src.clone();
-                    last.sprite_id = rank_sprite_id;
+                    last.sprite_id = ui_rank_sprite_id;
                     *visibility = Visibility::Visible;
                 } else {
                     *visibility = Visibility::Hidden;
@@ -1309,7 +1585,7 @@ pub(crate) fn run_gameplay(
 
     // UI stubs (no implementation yet)
     draw_inventory_ui(&gfx, &player_state);
-    draw_equipment_ui(&gfx, &player_state);
-    draw_active_spells_ui(&gfx, &player_state);
-    draw_shop_window_ui(&gfx, &player_state);
+    draw_equipment_ui(&gfx, &player_state, &mut q.p4());
+    draw_active_spells_ui(&gfx, &player_state, &mut q.p5());
+    draw_shop_window_ui(&gfx, &player_state, &mut q.p6());
 }

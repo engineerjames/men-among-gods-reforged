@@ -81,6 +81,14 @@ impl PlayerState {
         &self.character_info
     }
 
+    pub fn should_show_shop(&self) -> bool {
+        self.should_show_shop
+    }
+
+    pub fn shop_target(&self) -> &Look {
+        &self.shop_target
+    }
+
     pub fn player_data(&self) -> &PlayerData {
         &self.player_info
     }

@@ -49,6 +49,22 @@ impl Default for Look {
 }
 
 impl Look {
+    pub fn sprite(&self) -> u16 {
+        self.sprite
+    }
+
+    pub fn points(&self) -> u32 {
+        self.points
+    }
+
+    pub fn item(&self, index: usize) -> u16 {
+        self.item.get(index).copied().unwrap_or(0)
+    }
+
+    pub fn price(&self, index: usize) -> u32 {
+        self.price.get(index).copied().unwrap_or(0)
+    }
+
     pub fn is_extended(&self) -> bool {
         self.extended != 0
     }
