@@ -1981,83 +1981,58 @@ pub(crate) fn run_gameplay_text_ui(
 
 pub(crate) fn run_gameplay_update_hud_labels(
     player_state: Res<PlayerState>,
-    mut q_hp: Query<
-        &mut Text2d,
-        (
-            With<GameplayUiHitpointsLabel>,
-            Without<GameplayUiEnduranceLabel>,
-        ),
-    >,
-    mut q_end: Query<&mut Text2d, (With<GameplayUiEnduranceLabel>, Without<GameplayUiManaLabel>)>,
-    mut q_mana: Query<&mut Text2d, (With<GameplayUiManaLabel>, Without<GameplayUiMoneyLabel>)>,
-    mut q_money: Query<&mut Text2d, (With<GameplayUiMoneyLabel>, Without<GameplayUiUpdateLabel>)>,
-    mut q_upd_val: Query<
-        &mut Text2d,
-        (With<GameplayUiUpdateValue>, Without<GameplayUiUpdateLabel>),
-    >,
-    mut q_weapon: Query<
-        &mut Text2d,
-        (
-            With<GameplayUiWeaponValueLabel>,
-            Without<GameplayUiArmorValueLabel>,
-        ),
-    >,
-    mut q_armor: Query<
-        &mut Text2d,
-        (
-            With<GameplayUiArmorValueLabel>,
-            Without<GameplayUiExperienceLabel>,
-        ),
-    >,
-    mut q_exp: Query<
-        &mut Text2d,
-        (
-            With<GameplayUiExperienceLabel>,
-            Without<GameplayUiAttributeLabel>,
-        ),
-    >,
-    mut q_attrib: Query<(&GameplayUiAttributeLabel, &mut Text2d), Without<GameplayUiSkillLabel>>,
+    mut q: ParamSet<(
+        Query<&mut Text2d, With<GameplayUiHitpointsLabel>>,
+        Query<&mut Text2d, With<GameplayUiEnduranceLabel>>,
+        Query<&mut Text2d, With<GameplayUiManaLabel>>,
+        Query<&mut Text2d, With<GameplayUiMoneyLabel>>,
+        Query<&mut Text2d, With<GameplayUiUpdateValue>>,
+        Query<&mut Text2d, With<GameplayUiWeaponValueLabel>>,
+        Query<&mut Text2d, With<GameplayUiArmorValueLabel>>,
+        Query<&mut Text2d, With<GameplayUiExperienceLabel>>,
+    )>,
+    mut q_attrib: Query<(&GameplayUiAttributeLabel, &mut Text2d)>,
     mut q_skill: Query<(&GameplayUiSkillLabel, &mut Text2d)>,
 ) {
     let pl = player_state.character_info();
 
     // Hitpoints
-    if let Some(mut text2d) = q_hp.iter_mut().next() {
+    if let Some(mut text2d) = q.p0().iter_mut().next() {
         **text2d = format!("Hitpoints         {:3} {:3}", pl.a_hp / 1000, pl.hp[5]);
     }
 
     // Endurance
-    if let Some(mut text2d) = q_end.iter_mut().next() {
+    if let Some(mut text2d) = q.p1().iter_mut().next() {
         **text2d = format!("Endurance         {:3} {:3}", pl.a_end / 1000, pl.end[5]);
     }
 
     // Mana
-    if let Some(mut text2d) = q_mana.iter_mut().next() {
+    if let Some(mut text2d) = q.p2().iter_mut().next() {
         **text2d = format!("Mana              {:3} {:3}", pl.a_mana / 1000, pl.mana[5]);
     }
 
     // Money (gold/100 and silver remainder)
-    if let Some(mut text2d) = q_money.iter_mut().next() {
+    if let Some(mut text2d) = q.p3().iter_mut().next() {
         **text2d = format!("Money  {:8}G {:2}S", pl.gold / 100, pl.gold % 100);
     }
 
     // Update points remaining
-    if let Some(mut text2d) = q_upd_val.iter_mut().next() {
+    if let Some(mut text2d) = q.p4().iter_mut().next() {
         **text2d = format!("{:7}", pl.points);
     }
 
     // Weapon value
-    if let Some(mut text2d) = q_weapon.iter_mut().next() {
+    if let Some(mut text2d) = q.p5().iter_mut().next() {
         **text2d = format!("Weapon value   {:10}", pl.weapon);
     }
 
     // Armor value
-    if let Some(mut text2d) = q_armor.iter_mut().next() {
+    if let Some(mut text2d) = q.p6().iter_mut().next() {
         **text2d = format!("Armor value    {:10}", pl.armor);
     }
 
     // Experience (total points)
-    if let Some(mut text2d) = q_exp.iter_mut().next() {
+    if let Some(mut text2d) = q.p7().iter_mut().next() {
         **text2d = format!("Experience     {:10}", pl.points_tot);
     }
 
@@ -2184,16 +2159,18 @@ fn update_ui_skill_adjustment_hints(
 
 pub(crate) fn run_gameplay_update_extra_ui(
     player_state: Res<PlayerState>,
-    q_player_name: Query<&mut Text2d, With<GameplayUiPlayerNameLabel>>,
-    q_experience_uncommitted: Query<&mut Text2d, With<GameplayUiExperienceUncommittedLabel>>,
-    q_money: Query<&mut Text2d, With<GameplayUiMoneyLabel>>,
-    q_skill_hints: Query<(&GameplayUiSkillAdjustmentHint, &mut Text2d)>,
+    mut q: ParamSet<(
+        Query<&mut Text2d, With<GameplayUiPlayerNameLabel>>,
+        Query<&mut Text2d, With<GameplayUiExperienceUncommittedLabel>>,
+        Query<&mut Text2d, With<GameplayUiMoneyLabel>>,
+        Query<(&GameplayUiSkillAdjustmentHint, &mut Text2d)>,
+    )>,
 ) {
     // Update all additional UI elements
-    update_ui_player_name_text(&player_state, q_player_name);
-    update_ui_experience_text(&player_state, q_experience_uncommitted);
-    update_ui_money_text(&player_state, q_money);
-    update_ui_skill_adjustment_hints(&player_state, q_skill_hints);
+    update_ui_player_name_text(&player_state, q.p0());
+    update_ui_experience_text(&player_state, q.p1());
+    update_ui_money_text(&player_state, q.p2());
+    update_ui_skill_adjustment_hints(&player_state, q.p3());
 }
 
 pub(crate) fn run_gameplay(
