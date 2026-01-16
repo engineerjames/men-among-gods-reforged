@@ -26,14 +26,15 @@ use mag_core::constants::{
 // Keeping this makes it easier to compare screenshots while we port rendering.
 const MAP_X_SHIFT: f32 = -176.0;
 
-// World draw order: match original engine.c by ordering tiles by (y desc, x asc)
-// and layering within each tile (bg -> obj -> shadow -> char).
-const Z_WORLD_BASE: f32 = 0.0;
-const Z_WORLD_STEP: f32 = 0.1;
-const Z_BG: f32 = 0.00;
-const Z_OBJ: f32 = 0.02;
-const Z_SHADOW: f32 = 0.03;
-const Z_CHAR: f32 = 0.04;
+// World draw order: match engine.c's two-pass painter order.
+// Pass 1: all backgrounds in (y desc, x asc) order.
+// Pass 2: objects -> character shadow -> characters in the same order.
+// We encode this by giving each pass its own z-range and then adding draw_order.
+const Z_WORLD_STEP: f32 = 0.01;
+const Z_BG_BASE: f32 = 0.0;
+const Z_OBJ_BASE: f32 = 100.0;
+const Z_SHADOW_BASE: f32 = 100.1;
+const Z_CHAR_BASE: f32 = 100.2;
 // Must stay within the Camera2d default orthographic near/far (default_2d far is 1000).
 const Z_UI: f32 = 900.0;
 const Z_UI_PORTRAIT: f32 = 910.0;
@@ -2413,13 +2414,15 @@ pub(crate) fn run_gameplay(
         let x = shadow.index % TILEX;
         let y = shadow.index / TILEX;
         let draw_order = ((TILEY - 1 - y) * TILEX + x) as f32;
-        let z = Z_WORLD_BASE + draw_order * Z_WORLD_STEP + Z_SHADOW;
 
         let xpos = (x as i32) * 32;
         let ypos = (y as i32) * 32;
 
         let (sprite_id, xoff, yoff) = match shadow.layer {
-            ShadowLayer::Object => (tile.obj1, 0, 0),
+            ShadowLayer::Object => {
+                *visibility = Visibility::Hidden;
+                continue;
+            }
             ShadowLayer::Character => (tile.obj2, tile.obj_xoff, tile.obj_yoff),
         };
 
@@ -2459,6 +2462,8 @@ pub(crate) fn run_gameplay(
         {
             // Ensure our squash stays applied even when sprite id/pos unchanged.
             transform.scale = Vec3::new(1.0, 0.25, 1.0);
+            let z = Z_SHADOW_BASE + draw_order * Z_WORLD_STEP;
+            transform.translation = screen_to_world(sx_f, shadow_sy_f, z);
             *visibility = Visibility::Visible;
             continue;
         }
@@ -2472,6 +2477,7 @@ pub(crate) fn run_gameplay(
         *sprite = shadow_sprite;
 
         *visibility = Visibility::Visible;
+        let z = Z_SHADOW_BASE + draw_order * Z_WORLD_STEP;
         transform.translation = screen_to_world(sx_f, shadow_sy_f, z);
         transform.scale = Vec3::new(1.0, 0.25, 1.0);
     }
@@ -2483,15 +2489,7 @@ pub(crate) fn run_gameplay(
 
         let x = render.index % TILEX;
         let y = render.index / TILEX;
-
         let draw_order = ((TILEY - 1 - y) * TILEX + x) as f32;
-        let z = Z_WORLD_BASE
-            + draw_order * Z_WORLD_STEP
-            + match render.layer {
-                TileLayer::Background => Z_BG,
-                TileLayer::Object => Z_OBJ,
-                TileLayer::Character => Z_CHAR,
-            };
 
         // dd.c uses x*32/y*32 as "map space" inputs to the isometric projection.
         let xpos = (x as i32) * 32;
@@ -2534,10 +2532,19 @@ pub(crate) fn run_gameplay(
 
         let (sx_f, sy_f) = (sx_i as f32, sy_i as f32);
 
+        let z = match render.layer {
+            TileLayer::Background => Z_BG_BASE + draw_order * Z_WORLD_STEP,
+            TileLayer::Object => Z_OBJ_BASE + draw_order * Z_WORLD_STEP,
+            TileLayer::Character => Z_CHAR_BASE + draw_order * Z_WORLD_STEP,
+        };
+
         if sprite_id == last.sprite_id
             && (sx_f - last.sx).abs() < 0.01
             && (sy_f - last.sy).abs() < 0.01
         {
+            // Even if the sprite/position didn't change, we must ensure visibility/z stay correct.
+            *visibility = Visibility::Visible;
+            transform.translation = screen_to_world(sx_f, sy_f, z);
             continue;
         }
 
