@@ -18,8 +18,8 @@ use crate::network::{client_commands::ClientCommand, NetworkRuntime};
 use crate::player_state::PlayerState;
 
 use mag_core::constants::{
-    INVIS, SPEEDTAB, SPR_EMPTY, STUNNED, TICKS, WN_ARMS, WN_BELT, WN_BODY, WN_CLOAK, WN_FEET,
-    WN_HEAD, WN_LEGS, WN_LHAND, WN_LRING, WN_NECK, WN_RHAND, WN_RRING, XPOS, YPOS,
+    INVIS, SPEEDTAB, SPR_EMPTY, STUNNED, WN_ARMS, WN_BELT, WN_BODY, WN_CLOAK, WN_FEET, WN_HEAD,
+    WN_LEGS, WN_LHAND, WN_LRING, WN_NECK, WN_RHAND, WN_RRING, XPOS, YPOS,
 };
 
 // In the original client, xoff starts with `-176` (to account for UI layout).
@@ -673,25 +673,8 @@ pub(crate) struct LastRender {
 #[derive(Component, Clone, Copy, Debug)]
 pub(crate) struct GameplayWorldRoot;
 
-#[inline]
-fn lerp_f32(a: f32, b: f32, t: f32) -> f32 {
-    a + (b - a) * t
-}
-
-#[inline]
-fn preview_char_visual(tile: crate::types::map::CMapTile, ctick: usize) -> (i32, i32, i32) {
-    if tile.ch_sprite == 0 {
-        return (0, 0, 0);
-    }
-
-    let mut tmp = tile;
-    let sprite_id = eng_char(&mut tmp, ctick);
-    (sprite_id, tmp.obj_xoff, tmp.obj_yoff)
-}
-
 #[derive(Default)]
 pub(crate) struct EngineClock {
-    accumulator: f32,
     ticker: u32,
 }
 
@@ -1772,11 +1755,7 @@ fn eng_char(tile: &mut crate::types::map::CMapTile, ctick: usize) -> i32 {
     }
 }
 
-fn engine_tick(player_state: &mut PlayerState, clock: &mut EngineClock) {
-    // Step at 20Hz like the original client.
-    clock.ticker = clock.ticker.wrapping_add(1);
-    let ctick = (clock.ticker % 20) as usize;
-
+fn engine_tick(player_state: &mut PlayerState, ticker: u32, ctick: usize) {
     let map = player_state.map_mut();
     let len = map.len();
 
@@ -1799,7 +1778,7 @@ fn engine_tick(player_state: &mut PlayerState, clock: &mut EngineClock) {
         tile.back = tile.ba_sprite as i32;
 
         if tile.it_sprite != 0 {
-            let sprite = eng_item(tile.it_sprite, &mut tile.it_status, ctick, clock.ticker);
+            let sprite = eng_item(tile.it_sprite, &mut tile.it_status, ctick, ticker);
             tile.obj1 = sprite;
         }
 
@@ -2294,7 +2273,6 @@ pub(crate) fn run_gameplay_update_extra_ui(
 }
 
 pub(crate) fn run_gameplay(
-    time: Res<Time>,
     net: Res<NetworkRuntime>,
     gfx: Res<GraphicsCache>,
     mut images: ResMut<Assets<Image>>,
@@ -2357,22 +2335,46 @@ pub(crate) fn run_gameplay(
         return;
     }
 
+    // Match original client behavior: advance the engine visuals only when a full server tick
+    // packet has been processed (network tick defines animation rate).
+    let net_ticker = net.client_ticker();
+    let ctick_last = (player_state.server_ctick() % 20) as u32;
+
     // Ensure we have computed `back/obj1/obj2` at least once so gameplay doesn't start
-    // with a fully empty screen until the first 20Hz tick.
+    // with a fully empty screen until the first tick.
     if clock.ticker == 0 {
-        engine_tick(&mut player_state, &mut clock);
+        if net_ticker != 0 {
+            // Align our local ticker with the already-processed network ticks.
+            clock.ticker = net_ticker.wrapping_sub(1);
+        }
+        engine_tick(
+            &mut player_state,
+            clock.ticker.wrapping_add(1),
+            ctick_last as usize,
+        );
+        clock.ticker = clock.ticker.wrapping_add(1);
     }
 
-    // Fixed-step the original engine_tick at 20Hz.
-    let tick_hz = TICKS as f32;
-    let tick_dt = 1.0 / tick_hz;
-    clock.accumulator += time.delta_secs();
-    while clock.accumulator >= tick_dt {
-        engine_tick(&mut player_state, &mut clock);
-        clock.accumulator -= tick_dt;
-    }
+    // Catch up to the latest processed network tick.
+    let pending = net_ticker.wrapping_sub(clock.ticker);
+    if pending != 0 {
+        // Cap worst-case work per frame to avoid stalls if we fall far behind.
+        let steps = pending.min(60);
+        // Derive intermediate ctick values assuming ctick increments by 1 modulo 20 each tick.
+        for i in 0..steps {
+            let steps_i = (steps - 1 - i) % 20;
+            let ctick = ((ctick_last + 20 - steps_i) % 20) as usize;
+            let ticker = clock.ticker.wrapping_add(1 + i);
+            engine_tick(&mut player_state, ticker, ctick);
+        }
+        clock.ticker = clock.ticker.wrapping_add(steps);
 
-    let alpha = (clock.accumulator / tick_dt).clamp(0.0, 1.0);
+        // If we're *way* behind, snap without trying to simulate every intermediate tick.
+        // This still preserves correctness for current-frame visuals.
+        if pending > steps {
+            clock.ticker = net_ticker;
+        }
+    }
 
     // Ported options transfer behavior (engine.c::send_opt).
     send_opt(&net, &mut player_state, &mut opt_clock);
@@ -2384,17 +2386,14 @@ pub(crate) fn run_gameplay(
 
     let shadows_enabled = player_state.player_data().are_shadows_enabled != 0;
 
-    // Smooth camera: interpolate between current tick visuals and the next tick.
+    // Camera offset matches original engine.c: based on center tile's current obj offsets.
     let (global_xoff, global_yoff) = map
         .tile_at_xy(TILEX / 2, TILEY / 2)
         .map(|center| {
-            let ctick_next = ((clock.ticker.wrapping_add(1)) % 20) as usize;
-            let (_next_sprite, next_xoff, next_yoff) = preview_char_visual(*center, ctick_next);
-
-            let center_xoff = lerp_f32(center.obj_xoff as f32, next_xoff as f32, alpha);
-            let center_yoff = lerp_f32(center.obj_yoff as f32, next_yoff as f32, alpha);
-
-            (-center_xoff + MAP_X_SHIFT, -center_yoff)
+            (
+                -(center.obj_xoff as f32) + MAP_X_SHIFT,
+                -(center.obj_yoff as f32),
+            )
         })
         .unwrap_or((MAP_X_SHIFT, 0.0));
 
@@ -2443,17 +2442,9 @@ pub(crate) fn run_gameplay(
         let xpos = (x as i32) * 32;
         let ypos = (y as i32) * 32;
 
-        let (sprite_id, xoff_interp, yoff_interp) = match shadow.layer {
-            ShadowLayer::Object => (tile.obj1, 0.0f32, 0.0f32),
-            ShadowLayer::Character => {
-                let ctick_next = ((clock.ticker.wrapping_add(1)) % 20) as usize;
-                let (_next_sprite, next_xoff, next_yoff) = preview_char_visual(*tile, ctick_next);
-                (
-                    tile.obj2,
-                    lerp_f32(tile.obj_xoff as f32, next_xoff as f32, alpha),
-                    lerp_f32(tile.obj_yoff as f32, next_yoff as f32, alpha),
-                )
-            }
+        let (sprite_id, xoff, yoff) = match shadow.layer {
+            ShadowLayer::Object => (tile.obj1, 0, 0),
+            ShadowLayer::Character => (tile.obj2, tile.obj_xoff, tile.obj_yoff),
         };
 
         if sprite_id <= 0 || !should_draw_shadow(sprite_id) {
@@ -2465,7 +2456,7 @@ pub(crate) fn run_gameplay(
         }
 
         let Some((sx_i, sy_i)) =
-            copysprite_screen_pos(sprite_id as usize, &gfx, &images, xpos, ypos, 0, 0)
+            copysprite_screen_pos(sprite_id as usize, &gfx, &images, xpos, ypos, xoff, yoff)
         else {
             *visibility = Visibility::Hidden;
             continue;
@@ -2483,8 +2474,8 @@ pub(crate) fn run_gameplay(
         // Ported positioning from dd.c::dd_shadow:
         // ry += ys*32 - disp; with disp=14.
         const DISP: i32 = 14;
-        let sx_f = sx_i as f32 + xoff_interp;
-        let shadow_sy_f = (sy_i as f32 + yoff_interp) + (ys * 32 - DISP) as f32;
+        let sx_f = sx_i as f32;
+        let shadow_sy_f = (sy_i as f32) + (ys * 32 - DISP) as f32;
 
         if sprite_id == last.sprite_id
             && (sx_f - last.sx).abs() < 0.01
@@ -2528,17 +2519,17 @@ pub(crate) fn run_gameplay(
         let xpos = (x as i32) * 32;
         let ypos = (y as i32) * 32;
 
-        let (sprite_id, xoff_i, yoff_i, needs_interp) = match render.layer {
+        let (sprite_id, xoff_i, yoff_i) = match render.layer {
             TileLayer::Background => {
                 let id = if tile.back != 0 {
                     tile.back
                 } else {
                     SPR_EMPTY as i32
                 };
-                (id, 0, 0, false)
+                (id, 0, 0)
             }
-            TileLayer::Object => (tile.obj1, 0, 0, false),
-            TileLayer::Character => (tile.obj2, 0, 0, true),
+            TileLayer::Object => (tile.obj1, 0, 0),
+            TileLayer::Character => (tile.obj2, tile.obj_xoff, tile.obj_yoff),
         };
 
         if sprite_id <= 0 {
@@ -2563,16 +2554,7 @@ pub(crate) fn run_gameplay(
             continue;
         };
 
-        let (sx_f, sy_f) = if needs_interp {
-            let ctick_next = ((clock.ticker.wrapping_add(1)) % 20) as usize;
-            let (_next_sprite, next_xoff, next_yoff) = preview_char_visual(*tile, ctick_next);
-            (
-                (sx_i as f32) + lerp_f32(tile.obj_xoff as f32, next_xoff as f32, alpha),
-                (sy_i as f32) + lerp_f32(tile.obj_yoff as f32, next_yoff as f32, alpha),
-            )
-        } else {
-            (sx_i as f32, sy_i as f32)
-        };
+        let (sx_f, sy_f) = (sx_i as f32, sy_i as f32);
 
         if sprite_id == last.sprite_id
             && (sx_f - last.sx).abs() < 0.01

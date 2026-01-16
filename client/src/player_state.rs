@@ -39,6 +39,10 @@ pub struct PlayerState {
     load_percentage: u32,
     unique1: u32,
     unique2: u32,
+
+    // Server-provided ctick (0..19), sent in ServerCommandData::Tick.
+    // Using this keeps SPEEDTAB-based animations perfectly in-phase with the server.
+    server_ctick: u8,
 }
 
 impl Default for PlayerState {
@@ -63,6 +67,8 @@ impl Default for PlayerState {
             load_percentage: 0,
             unique1: 0,
             unique2: 0,
+
+            server_ctick: 0,
         }
     }
 }
@@ -95,6 +101,10 @@ impl PlayerState {
 
     pub fn player_data_mut(&mut self) -> &mut PlayerData {
         &mut self.player_info
+    }
+
+    pub fn server_ctick(&self) -> u8 {
+        self.server_ctick
     }
 
     fn now_unix_seconds() -> u64 {
@@ -358,8 +368,9 @@ impl PlayerState {
                 self.character_info.citem = *citem as i32;
                 self.character_info.citem_p = *citem_p as i32;
             }
-            // Ticks do not modify state directly.
-            ServerCommandData::Tick { .. } => {}
+            ServerCommandData::Tick { ctick } => {
+                self.server_ctick = *ctick;
+            }
             ServerCommandData::SetOrigin { x, y } => {
                 self.map.set_origin(*x, *y);
             }

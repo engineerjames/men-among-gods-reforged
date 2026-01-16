@@ -12,6 +12,12 @@ use crate::player_state::PlayerState;
 use crate::GameState;
 use server_commands::ServerCommand;
 
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum NetworkSet {
+    Receive,
+    Send,
+}
+
 #[allow(dead_code)]
 #[derive(Message, Debug, Clone)]
 pub struct LoginRequested {
@@ -80,6 +86,10 @@ impl Default for NetworkRuntime {
 }
 
 impl NetworkRuntime {
+    pub fn client_ticker(&self) -> u32 {
+        self.client_ticker
+    }
+
     #[allow(dead_code)]
     pub fn send(&self, bytes: Vec<u8>) {
         let Some(tx) = &self.command_tx else {
@@ -104,16 +114,18 @@ impl Plugin for NetworkPlugin {
         app.init_resource::<LoginStatus>()
             .init_resource::<NetworkRuntime>()
             .add_message::<LoginRequested>()
+            .configure_sets(Update, (NetworkSet::Receive, NetworkSet::Send).chain())
             .add_systems(
                 Update,
                 login::start_login.run_if(in_state(GameState::LoggingIn)),
             )
-            .add_systems(Update, process_network_events)
+            .add_systems(Update, process_network_events.in_set(NetworkSet::Receive))
             .add_systems(
                 Update,
                 send_client_tick
                     .run_if(in_state(GameState::Gameplay))
-                    .after(process_network_events),
+                    .in_set(NetworkSet::Send)
+                    .after(NetworkSet::Receive),
             );
     }
 }
