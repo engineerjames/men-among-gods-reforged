@@ -56,6 +56,11 @@ impl GameMap {
     }
 
     #[inline]
+    pub fn reset_last_setmap_index(&mut self) {
+        self.last_setmap_index = None;
+    }
+
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.tiles.is_empty()
     }
@@ -140,20 +145,36 @@ impl GameMap {
         let next_index = if off == 0 {
             absolute_tile_index
         } else {
-            self.last_setmap_index
-                .and_then(|prev| prev.checked_add(off as u16))
+            let base = self.last_setmap_index.map(|v| v as i32).unwrap_or(-1);
+            let next = base + off as i32;
+            if next < 0 {
+                None
+            } else {
+                Some(next as u16)
+            }
         };
 
         let Some(tile_index) = next_index else {
             return;
         };
 
-        self.last_setmap_index = Some(tile_index);
-
         let idx = tile_index as usize;
+        if idx >= self.tiles.len() {
+            return;
+        }
+
+        self.last_setmap_index = Some(tile_index);
         let Some(tile) = self.tiles.get_mut(idx) else {
             return;
         };
+
+        let old_it_status = tile.it_status;
+        let old_ch_status = tile.ch_status;
+        let old_ch_speed = tile.ch_speed;
+        let old_it_sprite = tile.it_sprite;
+        let old_ch_sprite = tile.ch_sprite;
+        let old_ch_nr = tile.ch_nr;
+        let old_ch_id = tile.ch_id;
 
         if let Some(v) = ba_sprite {
             tile.ba_sprite = v as i16;
@@ -190,6 +211,47 @@ impl GameMap {
         }
         if let Some(v) = ch_proz {
             tile.ch_proz = v;
+        }
+
+        if it_status.is_some()
+            || ch_status.is_some()
+            || ch_speed.is_some()
+            || it_sprite.is_some()
+            || ch_sprite.is_some()
+            || ch_nr.is_some()
+            || ch_id.is_some()
+        {
+            if old_it_status != tile.it_status
+                || old_ch_status != tile.ch_status
+                || old_ch_speed != tile.ch_speed
+                || old_it_sprite != tile.it_sprite
+                || old_ch_sprite != tile.ch_sprite
+                || old_ch_nr != tile.ch_nr
+                || old_ch_id != tile.ch_id
+            {
+                log::info!(
+                    "SetMap idx={} ({},{}): it_status {}->{} it_sprite {}->{} ch_status {}->{} ch_sprite {}->{} ch_speed {}->{} ch_nr {}->{} ch_id {}->{} off={} abs={:?}",
+                    tile_index,
+                    tile.x,
+                    tile.y,
+                    old_it_status,
+                    tile.it_status,
+                    old_it_sprite,
+                    tile.it_sprite,
+                    old_ch_status,
+                    tile.ch_status,
+                    old_ch_sprite,
+                    tile.ch_sprite,
+                    old_ch_speed,
+                    tile.ch_speed,
+                    old_ch_nr,
+                    tile.ch_nr,
+                    old_ch_id,
+                    tile.ch_id,
+                    off,
+                    absolute_tile_index
+                );
+            }
         }
     }
 

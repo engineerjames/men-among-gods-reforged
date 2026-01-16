@@ -2343,7 +2343,7 @@ pub(crate) fn run_gameplay(
     // Only call engine_tick when we've received a new server tick packet.
     // This matches the original client where engine_tick() is called once per tick packet.
     if net_ticker != clock.ticker {
-        let ctick = (net_ticker % 20) as usize;
+        let ctick = player_state.server_ctick().min(19) as usize;
         clock.ticker = net_ticker;
         engine_tick(&mut player_state, clock.ticker, ctick);
     }
