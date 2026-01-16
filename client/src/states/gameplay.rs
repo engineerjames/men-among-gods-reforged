@@ -1982,17 +1982,79 @@ pub(crate) fn run_gameplay_text_ui(
 pub(crate) fn run_gameplay_update_hud_labels(
     player_state: Res<PlayerState>,
     mut q: ParamSet<(
-        Query<&mut Text2d, With<GameplayUiHitpointsLabel>>,
-        Query<&mut Text2d, With<GameplayUiEnduranceLabel>>,
-        Query<&mut Text2d, With<GameplayUiManaLabel>>,
-        Query<&mut Text2d, With<GameplayUiMoneyLabel>>,
-        Query<&mut Text2d, With<GameplayUiUpdateValue>>,
-        Query<&mut Text2d, With<GameplayUiWeaponValueLabel>>,
-        Query<&mut Text2d, With<GameplayUiArmorValueLabel>>,
-        Query<&mut Text2d, With<GameplayUiExperienceLabel>>,
+        Query<
+            &mut Text2d,
+            (
+                With<GameplayUiHitpointsLabel>,
+                Without<GameplayUiAttributeLabel>,
+                Without<GameplayUiSkillLabel>,
+            ),
+        >,
+        Query<
+            &mut Text2d,
+            (
+                With<GameplayUiEnduranceLabel>,
+                Without<GameplayUiAttributeLabel>,
+                Without<GameplayUiSkillLabel>,
+            ),
+        >,
+        Query<
+            &mut Text2d,
+            (
+                With<GameplayUiManaLabel>,
+                Without<GameplayUiAttributeLabel>,
+                Without<GameplayUiSkillLabel>,
+            ),
+        >,
+        Query<
+            &mut Text2d,
+            (
+                With<GameplayUiMoneyLabel>,
+                Without<GameplayUiAttributeLabel>,
+                Without<GameplayUiSkillLabel>,
+            ),
+        >,
+        Query<
+            &mut Text2d,
+            (
+                With<GameplayUiUpdateValue>,
+                Without<GameplayUiAttributeLabel>,
+                Without<GameplayUiSkillLabel>,
+            ),
+        >,
+        Query<
+            &mut Text2d,
+            (
+                With<GameplayUiWeaponValueLabel>,
+                Without<GameplayUiAttributeLabel>,
+                Without<GameplayUiSkillLabel>,
+            ),
+        >,
+        Query<
+            &mut Text2d,
+            (
+                With<GameplayUiArmorValueLabel>,
+                Without<GameplayUiAttributeLabel>,
+                Without<GameplayUiSkillLabel>,
+            ),
+        >,
+        Query<
+            &mut Text2d,
+            (
+                With<GameplayUiExperienceLabel>,
+                Without<GameplayUiAttributeLabel>,
+                Without<GameplayUiSkillLabel>,
+            ),
+        >,
     )>,
-    mut q_attrib: Query<(&GameplayUiAttributeLabel, &mut Text2d)>,
-    mut q_skill: Query<(&GameplayUiSkillLabel, &mut Text2d)>,
+    mut q_attrib: Query<
+        (&GameplayUiAttributeLabel, &mut Text2d),
+        (
+            With<GameplayUiAttributeLabel>,
+            Without<GameplayUiSkillLabel>,
+        ),
+    >,
+    mut q_skill: Query<(&GameplayUiSkillLabel, &mut Text2d), With<GameplayUiSkillLabel>>,
 ) {
     let pl = player_state.character_info();
 
