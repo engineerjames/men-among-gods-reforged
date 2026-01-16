@@ -139,6 +139,16 @@ impl Look {
         self.name[..n].copy_from_slice(&bytes[..n]);
     }
 
+    pub fn name(&self) -> Option<&str> {
+        // Convert null-terminated byte array to string
+        let end = self
+            .name
+            .iter()
+            .position(|&b| b == 0)
+            .unwrap_or(self.name.len());
+        std::str::from_utf8(&self.name[..end]).ok()
+    }
+
     pub fn set_shop_entry(&mut self, index: u8, item: u16, price: u32) {
         let idx = index as usize;
         if idx < self.item.len() {

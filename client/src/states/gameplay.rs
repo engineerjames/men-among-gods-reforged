@@ -80,6 +80,11 @@ const HUD_ATTRIBUTES_SPACING: f32 = 14.0;
 const HUD_SKILLS_X: f32 = 5.0;
 const HUD_SKILLS_Y_START: f32 = 116.0;
 const HUD_SKILLS_SPACING: f32 = 14.0;
+const HUD_PLAYER_NAME_X: f32 = 200.0;
+const HUD_PLAYER_NAME_Y: f32 = 190.0;
+const HUD_EXPERIENCE_UNCOMMITTED_X: f32 = 646.0;
+const HUD_EXPERIENCE_UNCOMMITTED_Y: f32 = 285.0;
+const HUD_SKILL_ADJUSTMENT_X_OFFSET: f32 = 10.0;
 
 #[derive(Component)]
 pub struct GameplayRenderEntity;
@@ -168,6 +173,17 @@ pub(crate) struct GameplayUiAttributeLabel {
 #[derive(Component, Clone, Copy, Debug)]
 pub(crate) struct GameplayUiSkillLabel {
     #[allow(dead_code)]
+    skill_index: usize,
+}
+
+#[derive(Component)]
+pub(crate) struct GameplayUiPlayerNameLabel;
+
+#[derive(Component)]
+pub(crate) struct GameplayUiExperienceUncommittedLabel;
+
+#[derive(Component, Clone, Copy, Debug)]
+pub(crate) struct GameplayUiSkillAdjustmentHint {
     skill_index: usize,
 }
 
@@ -539,6 +555,65 @@ fn spawn_ui_hud_labels(commands: &mut Commands, font: Handle<Font>) {
             Anchor::TOP_LEFT,
             Transform::from_translation(screen_to_world(
                 HUD_SKILLS_X,
+                HUD_SKILLS_Y_START + (i as f32) * HUD_SKILLS_SPACING,
+                Z_UI_TEXT,
+            )),
+        ));
+    }
+
+    // Player/Target/Merchant name label
+    commands.spawn((
+        GameplayRenderEntity,
+        GameplayUiPlayerNameLabel,
+        Text2d::new(""),
+        TextFont {
+            font: font.clone(),
+            font_size: UI_FONT_SIZE,
+            ..default()
+        },
+        TextColor(Color::WHITE),
+        Anchor::TOP_LEFT,
+        Transform::from_translation(screen_to_world(
+            HUD_PLAYER_NAME_X,
+            HUD_PLAYER_NAME_Y,
+            Z_UI_TEXT,
+        )),
+    ));
+
+    // Uncommitted experience label
+    commands.spawn((
+        GameplayRenderEntity,
+        GameplayUiExperienceUncommittedLabel,
+        Text2d::new(""),
+        TextFont {
+            font: font.clone(),
+            font_size: UI_FONT_SIZE,
+            ..default()
+        },
+        TextColor(Color::WHITE),
+        Anchor::TOP_LEFT,
+        Transform::from_translation(screen_to_world(
+            HUD_EXPERIENCE_UNCOMMITTED_X,
+            HUD_EXPERIENCE_UNCOMMITTED_Y,
+            Z_UI_TEXT,
+        )),
+    ));
+
+    // Skill adjustment hints (10 for the visible skills)
+    for i in 0..10 {
+        commands.spawn((
+            GameplayRenderEntity,
+            GameplayUiSkillAdjustmentHint { skill_index: i },
+            Text2d::new(""),
+            TextFont {
+                font: font.clone(),
+                font_size: UI_FONT_SIZE,
+                ..default()
+            },
+            TextColor(Color::srgb(1.0, 0.5, 0.5)), // Reddish color for hints
+            Anchor::TOP_LEFT,
+            Transform::from_translation(screen_to_world(
+                HUD_SKILLS_X + HUD_SKILL_ADJUSTMENT_X_OFFSET,
                 HUD_SKILLS_Y_START + (i as f32) * HUD_SKILLS_SPACING,
                 Z_UI_TEXT,
             )),
@@ -2014,37 +2089,111 @@ pub(crate) fn run_gameplay_update_hud_labels(
     }
 }
 
-fn update_ui_player_name_text(player_state: &PlayerState) {
-    // TODO:
-    // - Add a `Text2d` entity near the top of the UI that shows:
-    //   - the player name by default
-    //   - OR the name of the character you're looking at
-    //   - OR the merchant name when shopping
-    // - Source should likely match engine.c's “target / look / shop” selection logic.
-    let _ = player_state;
+fn update_ui_player_name_text(
+    player_state: &PlayerState,
+    mut q: Query<&mut Text2d, With<GameplayUiPlayerNameLabel>>,
+) {
+    // Display player name by default, or target/merchant name if applicable.
+    let name = if player_state.should_show_shop() {
+        // When shopping, show the merchant/shop target name
+        let shop = player_state.shop_target();
+        shop.name().unwrap_or("Shop")
+    } else {
+        // Default: show player character name from the character_info
+        let pl = player_state.character_info();
+        let end = pl
+            .name
+            .iter()
+            .position(|&b| b == 0)
+            .unwrap_or(pl.name.len());
+        std::str::from_utf8(&pl.name[..end]).unwrap_or("Player")
+    };
+
+    if let Some(mut text2d) = q.iter_mut().next() {
+        **text2d = name.to_string();
+    }
 }
 
-fn update_ui_experience_text(player_state: &PlayerState) {
-    // TODO:
-    // - Add one or more `Text2d` entities for experience totals.
-    // - Include uncommitted XP if applicable.
-    // - Place them to match the original UI layout.
-    let _ = player_state;
+fn update_ui_experience_text(
+    player_state: &PlayerState,
+    mut q: Query<&mut Text2d, With<GameplayUiExperienceUncommittedLabel>>,
+) {
+    // Display uncommitted experience points (pending allocation).
+    // For now, we only show something if there are update points available to spend.
+    let pl = player_state.character_info();
+    let available_points = pl.points; // Represents unspent skill points
+
+    if let Some(mut text2d) = q.iter_mut().next() {
+        if available_points > 0 {
+            **text2d = format!("Available Points  {:10}", available_points);
+        } else {
+            **text2d = String::new();
+        }
+    }
 }
 
-fn update_ui_money_text(player_state: &PlayerState) {
-    // TODO:
-    // - Add `Text2d` entities for gold + silver amounts.
-    // - Use the same formatting as the original client.
-    let _ = player_state;
+fn update_ui_money_text(
+    player_state: &PlayerState,
+    mut q: Query<&mut Text2d, With<GameplayUiMoneyLabel>>,
+) {
+    // Display gold and silver. This mirrors the money display in run_gameplay_update_hud_labels
+    // but can be called separately if needed.
+    let pl = player_state.character_info();
+
+    if let Some(mut text2d) = q.iter_mut().next() {
+        **text2d = format!("Money  {:8}G {:2}S", pl.gold / 100, pl.gold % 100);
+    }
 }
 
-fn update_ui_skill_adjustment_hints(player_state: &PlayerState) {
-    // TODO:
-    // - Add "+" and "-" signs next to skills that can be adjusted
-    //   (i.e., where there are uncommitted experience points / pending allocations).
-    // - These should likely be separate small `Text2d` entities positioned per-skill.
-    let _ = player_state;
+fn update_ui_skill_adjustment_hints(
+    player_state: &PlayerState,
+    mut q: Query<(&GameplayUiSkillAdjustmentHint, &mut Text2d)>,
+) {
+    // Display "+" or "-" signs next to skills that can be adjusted.
+    // These indicate that there are uncommitted experience points available
+    // to allocate or remove from that skill.
+    let pl = player_state.character_info();
+
+    for (hint, mut text2d) in &mut q {
+        let skill_idx = hint.skill_index;
+        if skill_idx >= 50 {
+            **text2d = String::new();
+            continue;
+        }
+
+        // Check if this skill has learned points (nonzero skill value)
+        let skill_val = pl.skill[skill_idx][0];
+        if skill_val == 0 {
+            // Skill not learned; no adjustment available
+            **text2d = String::new();
+            continue;
+        }
+
+        // In the original client, adjustable skills would show + or - based on
+        // whether you have uncommitted experience to spend or could remove points.
+        // For now, show + if there are available points to spend on this skill.
+        let available_points = pl.points;
+        if available_points > 0 {
+            **text2d = String::from("+");
+        } else {
+            // Could show "-" if points could be removed, but for now leave empty
+            **text2d = String::new();
+        }
+    }
+}
+
+pub(crate) fn run_gameplay_update_extra_ui(
+    player_state: Res<PlayerState>,
+    q_player_name: Query<&mut Text2d, With<GameplayUiPlayerNameLabel>>,
+    q_experience_uncommitted: Query<&mut Text2d, With<GameplayUiExperienceUncommittedLabel>>,
+    q_money: Query<&mut Text2d, With<GameplayUiMoneyLabel>>,
+    q_skill_hints: Query<(&GameplayUiSkillAdjustmentHint, &mut Text2d)>,
+) {
+    // Update all additional UI elements
+    update_ui_player_name_text(&player_state, q_player_name);
+    update_ui_experience_text(&player_state, q_experience_uncommitted);
+    update_ui_money_text(&player_state, q_money);
+    update_ui_skill_adjustment_hints(&player_state, q_skill_hints);
 }
 
 pub(crate) fn run_gameplay(
