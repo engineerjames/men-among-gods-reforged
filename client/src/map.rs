@@ -1,11 +1,11 @@
 #![allow(dead_code)]
 
-use mag_core::constants::{SERVER_MAPX, SERVER_MAPY};
-
 use crate::types::map::CMapTile;
 
-pub const TILEX: usize = SERVER_MAPX as usize;
-pub const TILEY: usize = SERVER_MAPY as usize;
+// These are the *client view* tile dimensions (matches original client: 34x34).
+// Do NOT use SERVER_MAPX/Y here; those represent the full world map size.
+pub const TILEX: usize = mag_core::constants::TILEX;
+pub const TILEY: usize = mag_core::constants::TILEY;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct TileDrawData {

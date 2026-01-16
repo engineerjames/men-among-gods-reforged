@@ -73,6 +73,10 @@ impl PlayerState {
         &self.map
     }
 
+    pub fn map_mut(&mut self) -> &mut GameMap {
+        &mut self.map
+    }
+
     fn now_unix_seconds() -> u64 {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)

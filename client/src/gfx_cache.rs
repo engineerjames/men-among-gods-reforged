@@ -19,7 +19,7 @@ pub enum CacheInitStatus {
 
 #[derive(Debug, Default)]
 struct InitState {
-    entries: Vec<String>,
+    entries: Vec<(usize, String)>,
     index: usize,
 }
 
@@ -30,7 +30,7 @@ struct InitState {
 #[allow(dead_code)]
 pub struct GraphicsCache {
     assets_zip: PathBuf,
-    gfx: Vec<Sprite>,
+    gfx: Vec<Option<Sprite>>,
     initialized: bool,
     init_state: Option<InitState>,
     init_error: Option<String>,
@@ -62,7 +62,7 @@ impl GraphicsCache {
     }
 
     pub fn get_sprite(&self, index: usize) -> Option<&Sprite> {
-        self.gfx.get(index)
+        self.gfx.get(index).and_then(|s| s.as_ref())
     }
 
     pub fn initialize(&mut self, images_assets: &mut Assets<Image>) -> CacheInitStatus {
@@ -110,9 +110,21 @@ impl GraphicsCache {
                     let name = file.name().to_string();
                     // Skip directory entries
                     if !name.ends_with('/') {
-                        entries.push(name);
+                        // Our sprite IDs are numeric filenames (e.g. 00031.png). We load them
+                        // into `gfx[id]` so indices match the server/original client.
+                        let stem = name.split('.').next().unwrap_or("");
+                        if let Ok(id) = stem.parse::<usize>() {
+                            entries.push((id, name));
+                        }
                     }
                 }
+            }
+
+            entries.sort_by_key(|(id, _)| *id);
+
+            // Allocate a sparse vector where `gfx[id]` exists.
+            if let Some((max_id, _)) = entries.last() {
+                self.gfx.resize(max_id.saturating_add(1), None);
             }
 
             log::info!(
@@ -140,7 +152,7 @@ impl GraphicsCache {
             return CacheInitStatus::Done;
         }
 
-        let entry_name = &state.entries[state.index];
+        let (sprite_id, entry_name) = &state.entries[state.index];
         log::debug!(
             "GraphicsCache::initialize loading entry {}/{}: {}",
             state.index + 1,
@@ -207,7 +219,10 @@ impl GraphicsCache {
         };
 
         let image_handle: Handle<Image> = images_assets.add(image);
-        self.gfx.push(Sprite::from_image(image_handle));
+        if *sprite_id >= self.gfx.len() {
+            self.gfx.resize(sprite_id.saturating_add(1), None);
+        }
+        self.gfx[*sprite_id] = Some(Sprite::from_image(image_handle));
         state.index += 1;
 
         let progress = state.index as f32 / state.entries.len() as f32;
