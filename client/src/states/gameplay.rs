@@ -15,6 +15,7 @@ use mag_core::constants::{SPR_EMPTY, STUNNED, TICKS, XPOS, YPOS};
 const MAP_X_SHIFT: f32 = -176.0;
 
 const Z_BG: f32 = 0.0;
+const Z_SHADOW: f32 = 50.0;
 const Z_OBJ: f32 = 100.0;
 const Z_CHAR: f32 = 200.0;
 // Must stay within the Camera2d default orthographic near/far (default_2d far is 1000).
@@ -33,6 +34,21 @@ pub(crate) struct GameplayUiPortrait;
 
 #[derive(Component)]
 pub(crate) struct GameplayUiRank;
+
+#[derive(Component)]
+pub(crate) struct GameplayShadowEntity;
+
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct TileShadow {
+    index: usize,
+    layer: ShadowLayer,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ShadowLayer {
+    Object,
+    Character,
+}
 
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct TileRender {
@@ -97,6 +113,30 @@ fn spawn_tile_entity(commands: &mut Commands, gfx: &GraphicsCache, render: TileR
         Transform::default(),
         GlobalTransform::default(),
         initial_visibility,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
+    ));
+}
+
+fn spawn_shadow_entity(commands: &mut Commands, gfx: &GraphicsCache, shadow: TileShadow) {
+    let Some(empty) = gfx.get_sprite(SPR_EMPTY as usize) else {
+        return;
+    };
+
+    commands.spawn((
+        GameplayRenderEntity,
+        GameplayShadowEntity,
+        shadow,
+        LastRender {
+            sprite_id: i32::MIN,
+            sx: i32::MIN,
+            sy: i32::MIN,
+        },
+        empty.clone(),
+        Anchor::TOP_LEFT,
+        Transform::default(),
+        GlobalTransform::default(),
+        Visibility::Hidden,
         InheritedVisibility::default(),
         ViewVisibility::default(),
     ));
@@ -348,6 +388,12 @@ fn sprite_tiles_xy(sprite: &Sprite, images: &Assets<Image>) -> Option<(i32, i32)
     let ys = (h + 31) / 32;
 
     Some((xs.max(1), ys.max(1)))
+}
+
+#[inline]
+fn should_draw_shadow(sprite_id: i32) -> bool {
+    // dd.c::dd_shadow: only certain sprite id ranges get shadows.
+    (2000..16_336).contains(&sprite_id) || sprite_id > 17_360
 }
 
 fn copysprite_screen_pos(
@@ -939,6 +985,24 @@ pub(crate) fn setup_gameplay(
 
     // Spawn a stable set of entities once; `run_gameplay` updates them.
     for index in 0..map.len() {
+        // Shadows (dd.c::dd_shadow), rendered between background and objects/chars.
+        spawn_shadow_entity(
+            &mut commands,
+            &gfx,
+            TileShadow {
+                index,
+                layer: ShadowLayer::Object,
+            },
+        );
+        spawn_shadow_entity(
+            &mut commands,
+            &gfx,
+            TileShadow {
+                index,
+                layer: ShadowLayer::Character,
+            },
+        );
+
         spawn_tile_entity(
             &mut commands,
             &gfx,
@@ -984,6 +1048,13 @@ pub(crate) fn run_gameplay(
     mut opt_clock: Local<SendOptClock>,
     mut q: ParamSet<(
         Query<(
+            &TileShadow,
+            &mut Sprite,
+            &mut Transform,
+            &mut Visibility,
+            &mut LastRender,
+        )>,
+        Query<(
             &TileRender,
             &mut Sprite,
             &mut Transform,
@@ -1018,6 +1089,8 @@ pub(crate) fn run_gameplay(
 
     let map = player_state.map();
 
+    let shadows_enabled = player_state.player_data().are_shadows_enabled != 0;
+
     // Match original engine.c: xoff/yoff are based on the center tile's obj offsets.
     let (xoff, yoff) = map
         .tile_at_xy(TILEX / 2, TILEY / 2)
@@ -1036,7 +1109,91 @@ pub(crate) fn run_gameplay(
         .unwrap_or(0);
     let rank_sprite_id = rank_insignia_sprite(player_state.character_info().points_tot);
 
-    for (render, mut sprite, mut transform, mut visibility, mut last) in &mut q.p0() {
+    // Update shadows (dd.c::dd_shadow)
+    for (shadow, mut sprite, mut transform, mut visibility, mut last) in &mut q.p0() {
+        if !shadows_enabled {
+            *visibility = Visibility::Hidden;
+            continue;
+        }
+
+        let Some(tile) = map.tile_at_index(shadow.index) else {
+            *visibility = Visibility::Hidden;
+            continue;
+        };
+
+        let x = shadow.index % TILEX;
+        let y = shadow.index / TILEX;
+        let draw_order = ((TILEY - 1 - y) * TILEX + x) as f32;
+        let z = Z_SHADOW + draw_order * 0.01;
+
+        let xpos = (x as i32) * 32;
+        let ypos = (y as i32) * 32;
+
+        let (sprite_id, xoff_total, yoff_total) = match shadow.layer {
+            ShadowLayer::Object => (tile.obj1, xoff.round() as i32, yoff.round() as i32),
+            ShadowLayer::Character => (
+                tile.obj2,
+                xoff.round() as i32 + tile.obj_xoff,
+                yoff.round() as i32 + tile.obj_yoff,
+            ),
+        };
+
+        if sprite_id <= 0 || !should_draw_shadow(sprite_id) {
+            if sprite_id != last.sprite_id {
+                last.sprite_id = sprite_id;
+            }
+            *visibility = Visibility::Hidden;
+            continue;
+        }
+
+        let Some((sx_i, sy_i)) = copysprite_screen_pos(
+            sprite_id as usize,
+            &gfx,
+            &images,
+            xpos,
+            ypos,
+            xoff_total,
+            yoff_total,
+        ) else {
+            *visibility = Visibility::Hidden;
+            continue;
+        };
+
+        let Some(src) = gfx.get_sprite(sprite_id as usize) else {
+            *visibility = Visibility::Hidden;
+            continue;
+        };
+        let Some((_xs, ys)) = sprite_tiles_xy(src, &images) else {
+            *visibility = Visibility::Hidden;
+            continue;
+        };
+
+        // Ported positioning from dd.c::dd_shadow:
+        // ry += ys*32 - disp; with disp=14.
+        const DISP: i32 = 14;
+        let shadow_sy = sy_i + ys * 32 - DISP;
+
+        if sprite_id == last.sprite_id && sx_i == last.sx && shadow_sy == last.sy {
+            // Ensure our squash stays applied even when sprite id/pos unchanged.
+            transform.scale = Vec3::new(1.0, 0.25, 1.0);
+            *visibility = Visibility::Visible;
+            continue;
+        }
+
+        last.sprite_id = sprite_id;
+        last.sx = sx_i;
+        last.sy = shadow_sy;
+
+        let mut shadow_sprite = src.clone();
+        shadow_sprite.color = Color::srgba(0.0, 0.0, 0.0, 0.5);
+        *sprite = shadow_sprite;
+
+        *visibility = Visibility::Visible;
+        transform.translation = screen_to_world(sx_i as f32, shadow_sy as f32, z);
+        transform.scale = Vec3::new(1.0, 0.25, 1.0);
+    }
+
+    for (render, mut sprite, mut transform, mut visibility, mut last) in &mut q.p1() {
         let Some(tile) = map.tile_at_index(render.index) else {
             continue;
         };
@@ -1113,7 +1270,7 @@ pub(crate) fn run_gameplay(
     }
 
     // Update UI portrait
-    if let Some((mut sprite, mut visibility, mut last)) = q.p1().iter_mut().next() {
+    if let Some((mut sprite, mut visibility, mut last)) = q.p2().iter_mut().next() {
         if plr_sprite_id > 0 {
             if last.sprite_id != plr_sprite_id {
                 if let Some(src) = gfx.get_sprite(plr_sprite_id as usize) {
@@ -1132,7 +1289,7 @@ pub(crate) fn run_gameplay(
     }
 
     // Update UI rank badge
-    if let Some((mut sprite, mut visibility, mut last)) = q.p2().iter_mut().next() {
+    if let Some((mut sprite, mut visibility, mut last)) = q.p3().iter_mut().next() {
         if rank_sprite_id > 0 {
             if last.sprite_id != rank_sprite_id {
                 if let Some(src) = gfx.get_sprite(rank_sprite_id as usize) {

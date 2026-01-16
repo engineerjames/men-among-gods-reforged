@@ -10,11 +10,12 @@ pub struct PlayerData {
     pub hide: i32,
     pub show_names: i32,
     pub show_proz: i32,
+    pub are_shadows_enabled: i32,
     pub skill_buttons: [SkillButtons; 12],
 }
 
 const _: () = {
-    assert!(std::mem::size_of::<PlayerData>() == 480);
+    assert!(std::mem::size_of::<PlayerData>() == 484);
 };
 
 impl Default for PlayerData {
@@ -27,6 +28,7 @@ impl Default for PlayerData {
             hide: 0,
             show_names: 0,
             show_proz: 0,
+            are_shadows_enabled: 1,
             skill_buttons: [SkillButtons::default(); 12],
         }
     }
