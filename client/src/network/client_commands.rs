@@ -91,7 +91,6 @@ impl ClientCommand {
         Self::new(cmd, payload)
     }
 
-    #[allow(dead_code)]
     pub fn new_challenge(server_challenge: u32, client_version: u32, race: i32) -> Self {
         let mut payload = Vec::with_capacity(12);
 
@@ -102,7 +101,6 @@ impl ClientCommand {
         Self::new(ClientCommandType::Challenge, payload)
     }
 
-    #[allow(dead_code)]
     pub fn new_unique(unique_value_1: i32, unique_value_2: i32) -> Self {
         let mut payload = Vec::with_capacity(8);
         payload.extend_from_slice(&unique_value_1.to_le_bytes());
@@ -159,7 +157,6 @@ impl ClientCommand {
     }
 
     /// Mirrors `main.c::say`: one of `CmdInput1..CmdInput8`, 15 raw bytes.
-    #[allow(dead_code)]
     pub fn new_input_chunk(kind: ClientCommandType, chunk: &[u8]) -> Self {
         debug_assert!(matches!(
             kind,
@@ -180,7 +177,6 @@ impl ClientCommand {
     }
 
     /// Convenience helper: split up to 120 bytes across the 8 input packets.
-    #[allow(dead_code)]
     pub fn new_say_packets(text: &[u8]) -> Vec<Self> {
         let kinds = [
             ClientCommandType::CmdInput1,
@@ -214,7 +210,6 @@ impl ClientCommand {
     }
 
     /// `CL_CMD_MOVE` (`inter.c::cmd`).
-    #[allow(dead_code)]
     pub fn new_move(x: i16, y: i32) -> Self {
         Self::cmd_xy_i16_i32(ClientCommandType::CmdMove, x, y)
     }
@@ -232,7 +227,6 @@ impl ClientCommand {
     }
 
     /// `CL_CMD_TURN` (`inter.c::cmd`).
-    #[allow(dead_code)]
     pub fn new_turn(x: i16, y: i32) -> Self {
         Self::cmd_xy_i16_i32(ClientCommandType::CmdTurn, x, y)
     }

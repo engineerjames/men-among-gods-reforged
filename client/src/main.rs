@@ -173,6 +173,12 @@ fn main() {
                 .run_if(in_state(GameState::Gameplay))
                 .after(network::NetworkSet::Receive),
         )
+        .add_systems(
+            Update,
+            states::gameplay::run_gameplay_bitmap_text_renderer
+                .run_if(in_state(GameState::Gameplay))
+                .after(states::gameplay::run_gameplay_update_extra_ui),
+        )
         //
         // Menu state
         //

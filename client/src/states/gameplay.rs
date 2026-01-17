@@ -6,12 +6,11 @@ use bevy::input::keyboard::KeyboardInput;
 use bevy::input::ButtonState;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::sprite::Anchor;
-use bevy::sprite::Text2d;
 
 use std::collections::HashMap;
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
-use crate::font_cache::FontCache;
+use crate::font_cache::{FontCache, BITMAP_GLYPH_W};
 use crate::gfx_cache::GraphicsCache;
 use crate::map::{TILEX, TILEY};
 use crate::network::{client_commands::ClientCommand, NetworkRuntime};
@@ -58,7 +57,7 @@ const LOG_LINES: usize = 22;
 const INPUT_X: f32 = 500.0;
 const INPUT_Y: f32 = 9.0 + LOG_LINE_H * (LOG_LINES as f32);
 
-const UI_FONT_SIZE: f32 = 12.0;
+const UI_BITMAP_FONT: usize = 0;
 
 // HUD stat label positions (engine.c: eng_display_win layout)
 const HUD_HITPOINTS_X: f32 = 5.0;
@@ -141,6 +140,16 @@ pub(crate) struct GameplayUiInputText;
 
 #[derive(Component)]
 pub(crate) struct GameplayUiMinimap;
+
+#[derive(Component, Clone, Debug)]
+pub(crate) struct BitmapText {
+    pub(crate) text: String,
+    pub(crate) color: Color,
+    pub(crate) font: usize,
+}
+
+#[derive(Component)]
+struct BitmapGlyph;
 
 // HUD stat label components
 #[derive(Component)]
@@ -365,195 +374,209 @@ fn send_chat_input(net: &NetworkRuntime, text: &str) {
 }
 
 fn spawn_ui_log_text(commands: &mut Commands, font: Handle<Font>) {
+    let _ = font;
     for line in 0..LOG_LINES {
         let sx = LOG_X;
         let sy = LOG_Y + (line as f32) * LOG_LINE_H;
         commands.spawn((
             GameplayRenderEntity,
             GameplayUiLogLine { line },
-            Text2d::new(""),
-            TextFont {
-                font: font.clone(),
-                font_size: UI_FONT_SIZE,
-                ..default()
+            BitmapText {
+                text: String::new(),
+                color: Color::WHITE,
+                font: UI_BITMAP_FONT,
             },
-            TextColor(Color::WHITE),
-            Anchor::TOP_LEFT,
             Transform::from_translation(screen_to_world(sx, sy, Z_UI_TEXT)),
+            GlobalTransform::default(),
+            Visibility::Visible,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
         ));
     }
 }
 
 fn spawn_ui_input_text(commands: &mut Commands, font: Handle<Font>) {
+    let _ = font;
     commands.spawn((
         GameplayRenderEntity,
         GameplayUiInputText,
-        Text2d::new(""),
-        TextFont {
-            font,
-            font_size: UI_FONT_SIZE,
-            ..default()
+        BitmapText {
+            text: String::new(),
+            color: Color::WHITE,
+            font: UI_BITMAP_FONT,
         },
-        TextColor(Color::WHITE),
-        Anchor::TOP_LEFT,
         Transform::from_translation(screen_to_world(INPUT_X, INPUT_Y, Z_UI_TEXT)),
+        GlobalTransform::default(),
+        Visibility::Visible,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
     ));
 }
 
 fn spawn_ui_hud_labels(commands: &mut Commands, font: Handle<Font>) {
+    let _ = font;
     // Hitpoints label
     commands.spawn((
         GameplayRenderEntity,
         GameplayUiHitpointsLabel,
-        Text2d::new(""),
-        TextFont {
-            font: font.clone(),
-            font_size: UI_FONT_SIZE,
-            ..default()
+        BitmapText {
+            text: String::new(),
+            color: Color::WHITE,
+            font: UI_BITMAP_FONT,
         },
-        TextColor(Color::WHITE),
-        Anchor::TOP_LEFT,
         Transform::from_translation(screen_to_world(HUD_HITPOINTS_X, HUD_HITPOINTS_Y, Z_UI_TEXT)),
+        GlobalTransform::default(),
+        Visibility::Visible,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
     ));
 
     // Endurance label
     commands.spawn((
         GameplayRenderEntity,
         GameplayUiEnduranceLabel,
-        Text2d::new(""),
-        TextFont {
-            font: font.clone(),
-            font_size: UI_FONT_SIZE,
-            ..default()
+        BitmapText {
+            text: String::new(),
+            color: Color::WHITE,
+            font: UI_BITMAP_FONT,
         },
-        TextColor(Color::WHITE),
-        Anchor::TOP_LEFT,
         Transform::from_translation(screen_to_world(HUD_ENDURANCE_X, HUD_ENDURANCE_Y, Z_UI_TEXT)),
+        GlobalTransform::default(),
+        Visibility::Visible,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
     ));
 
     // Mana label
     commands.spawn((
         GameplayRenderEntity,
         GameplayUiManaLabel,
-        Text2d::new(""),
-        TextFont {
-            font: font.clone(),
-            font_size: UI_FONT_SIZE,
-            ..default()
+        BitmapText {
+            text: String::new(),
+            color: Color::WHITE,
+            font: UI_BITMAP_FONT,
         },
-        TextColor(Color::WHITE),
-        Anchor::TOP_LEFT,
         Transform::from_translation(screen_to_world(HUD_MANA_X, HUD_MANA_Y, Z_UI_TEXT)),
+        GlobalTransform::default(),
+        Visibility::Visible,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
     ));
 
     // Money label
     commands.spawn((
         GameplayRenderEntity,
         GameplayUiMoneyLabel,
-        Text2d::new(""),
-        TextFont {
-            font: font.clone(),
-            font_size: UI_FONT_SIZE,
-            ..default()
+        BitmapText {
+            text: String::new(),
+            color: Color::WHITE,
+            font: UI_BITMAP_FONT,
         },
-        TextColor(Color::WHITE),
-        Anchor::TOP_LEFT,
         Transform::from_translation(screen_to_world(HUD_MONEY_X, HUD_MONEY_Y, Z_UI_TEXT)),
+        GlobalTransform::default(),
+        Visibility::Visible,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
     ));
 
     // Update label
     commands.spawn((
         GameplayRenderEntity,
         GameplayUiUpdateLabel,
-        Text2d::new("Update"),
-        TextFont {
-            font: font.clone(),
-            font_size: UI_FONT_SIZE,
-            ..default()
+        BitmapText {
+            text: String::from("Update"),
+            color: Color::WHITE,
+            font: UI_BITMAP_FONT,
         },
-        TextColor(Color::WHITE),
-        Anchor::TOP_LEFT,
         Transform::from_translation(screen_to_world(
             HUD_UPDATE_LABEL_X,
             HUD_UPDATE_LABEL_Y,
             Z_UI_TEXT,
         )),
+        GlobalTransform::default(),
+        Visibility::Visible,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
     ));
 
     // Update value
     commands.spawn((
         GameplayRenderEntity,
         GameplayUiUpdateValue,
-        Text2d::new(""),
-        TextFont {
-            font: font.clone(),
-            font_size: UI_FONT_SIZE,
-            ..default()
+        BitmapText {
+            text: String::new(),
+            color: Color::WHITE,
+            font: UI_BITMAP_FONT,
         },
-        TextColor(Color::WHITE),
-        Anchor::TOP_LEFT,
         Transform::from_translation(screen_to_world(
             HUD_UPDATE_VALUE_X,
             HUD_UPDATE_VALUE_Y,
             Z_UI_TEXT,
         )),
+        GlobalTransform::default(),
+        Visibility::Visible,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
     ));
 
     // Weapon value label
     commands.spawn((
         GameplayRenderEntity,
         GameplayUiWeaponValueLabel,
-        Text2d::new(""),
-        TextFont {
-            font: font.clone(),
-            font_size: UI_FONT_SIZE,
-            ..default()
+        BitmapText {
+            text: String::new(),
+            color: Color::WHITE,
+            font: UI_BITMAP_FONT,
         },
-        TextColor(Color::WHITE),
-        Anchor::TOP_LEFT,
         Transform::from_translation(screen_to_world(
             HUD_WEAPON_VALUE_X,
             HUD_WEAPON_VALUE_Y,
             Z_UI_TEXT,
         )),
+        GlobalTransform::default(),
+        Visibility::Visible,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
     ));
 
     // Armor value label
     commands.spawn((
         GameplayRenderEntity,
         GameplayUiArmorValueLabel,
-        Text2d::new(""),
-        TextFont {
-            font: font.clone(),
-            font_size: UI_FONT_SIZE,
-            ..default()
+        BitmapText {
+            text: String::new(),
+            color: Color::WHITE,
+            font: UI_BITMAP_FONT,
         },
-        TextColor(Color::WHITE),
-        Anchor::TOP_LEFT,
         Transform::from_translation(screen_to_world(
             HUD_ARMOR_VALUE_X,
             HUD_ARMOR_VALUE_Y,
             Z_UI_TEXT,
         )),
+        GlobalTransform::default(),
+        Visibility::Visible,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
     ));
 
     // Experience label
     commands.spawn((
         GameplayRenderEntity,
         GameplayUiExperienceLabel,
-        Text2d::new(""),
-        TextFont {
-            font: font.clone(),
-            font_size: UI_FONT_SIZE,
-            ..default()
+        BitmapText {
+            text: String::new(),
+            color: Color::WHITE,
+            font: UI_BITMAP_FONT,
         },
-        TextColor(Color::WHITE),
-        Anchor::TOP_LEFT,
         Transform::from_translation(screen_to_world(
             HUD_EXPERIENCE_X,
             HUD_EXPERIENCE_Y,
             Z_UI_TEXT,
         )),
+        GlobalTransform::default(),
+        Visibility::Visible,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
     ));
 
     // Attribute labels (5 attributes: Braveness, Willpower, Intuition, Agility, Strength)
@@ -561,19 +584,20 @@ fn spawn_ui_hud_labels(commands: &mut Commands, font: Handle<Font>) {
         commands.spawn((
             GameplayRenderEntity,
             GameplayUiAttributeLabel { attrib_index: i },
-            Text2d::new(""),
-            TextFont {
-                font: font.clone(),
-                font_size: UI_FONT_SIZE,
-                ..default()
+            BitmapText {
+                text: String::new(),
+                color: Color::WHITE,
+                font: UI_BITMAP_FONT,
             },
-            TextColor(Color::WHITE),
-            Anchor::TOP_LEFT,
             Transform::from_translation(screen_to_world(
                 HUD_ATTRIBUTES_X,
                 HUD_ATTRIBUTES_Y_START + (i as f32) * HUD_ATTRIBUTES_SPACING,
                 Z_UI_TEXT,
             )),
+            GlobalTransform::default(),
+            Visibility::Visible,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
         ));
     }
 
@@ -582,19 +606,20 @@ fn spawn_ui_hud_labels(commands: &mut Commands, font: Handle<Font>) {
         commands.spawn((
             GameplayRenderEntity,
             GameplayUiSkillLabel { skill_index: i },
-            Text2d::new(""),
-            TextFont {
-                font: font.clone(),
-                font_size: UI_FONT_SIZE,
-                ..default()
+            BitmapText {
+                text: String::new(),
+                color: Color::WHITE,
+                font: UI_BITMAP_FONT,
             },
-            TextColor(Color::WHITE),
-            Anchor::TOP_LEFT,
             Transform::from_translation(screen_to_world(
                 HUD_SKILLS_X,
                 HUD_SKILLS_Y_START + (i as f32) * HUD_SKILLS_SPACING,
                 Z_UI_TEXT,
             )),
+            GlobalTransform::default(),
+            Visibility::Visible,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
         ));
     }
 
@@ -602,38 +627,40 @@ fn spawn_ui_hud_labels(commands: &mut Commands, font: Handle<Font>) {
     commands.spawn((
         GameplayRenderEntity,
         GameplayUiPlayerNameLabel,
-        Text2d::new(""),
-        TextFont {
-            font: font.clone(),
-            font_size: UI_FONT_SIZE,
-            ..default()
+        BitmapText {
+            text: String::new(),
+            color: Color::WHITE,
+            font: UI_BITMAP_FONT,
         },
-        TextColor(Color::WHITE),
-        Anchor::TOP_LEFT,
         Transform::from_translation(screen_to_world(
             HUD_PLAYER_NAME_X,
             HUD_PLAYER_NAME_Y,
             Z_UI_TEXT,
         )),
+        GlobalTransform::default(),
+        Visibility::Visible,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
     ));
 
     // Uncommitted experience label
     commands.spawn((
         GameplayRenderEntity,
         GameplayUiExperienceUncommittedLabel,
-        Text2d::new(""),
-        TextFont {
-            font: font.clone(),
-            font_size: UI_FONT_SIZE,
-            ..default()
+        BitmapText {
+            text: String::new(),
+            color: Color::WHITE,
+            font: UI_BITMAP_FONT,
         },
-        TextColor(Color::WHITE),
-        Anchor::TOP_LEFT,
         Transform::from_translation(screen_to_world(
             HUD_EXPERIENCE_UNCOMMITTED_X,
             HUD_EXPERIENCE_UNCOMMITTED_Y,
             Z_UI_TEXT,
         )),
+        GlobalTransform::default(),
+        Visibility::Visible,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
     ));
 
     // Skill adjustment hints (10 for the visible skills)
@@ -641,20 +668,99 @@ fn spawn_ui_hud_labels(commands: &mut Commands, font: Handle<Font>) {
         commands.spawn((
             GameplayRenderEntity,
             GameplayUiSkillAdjustmentHint { skill_index: i },
-            Text2d::new(""),
-            TextFont {
-                font: font.clone(),
-                font_size: UI_FONT_SIZE,
-                ..default()
+            BitmapText {
+                text: String::new(),
+                color: Color::srgb(1.0, 0.5, 0.5),
+                font: UI_BITMAP_FONT,
             },
-            TextColor(Color::srgb(1.0, 0.5, 0.5)), // Reddish color for hints
-            Anchor::TOP_LEFT,
             Transform::from_translation(screen_to_world(
                 HUD_SKILLS_X + HUD_SKILL_ADJUSTMENT_X_OFFSET,
                 HUD_SKILLS_Y_START + (i as f32) * HUD_SKILLS_SPACING,
                 Z_UI_TEXT,
             )),
+            GlobalTransform::default(),
+            Visibility::Visible,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
         ));
+    }
+}
+
+pub(crate) fn run_gameplay_bitmap_text_renderer(
+    mut commands: Commands,
+    font_cache: Res<FontCache>,
+    q_text: Query<
+        (Entity, &BitmapText, Option<&Children>),
+        Or<(Added<BitmapText>, Changed<BitmapText>)>,
+    >,
+) {
+    let Some(layout) = font_cache.bitmap_layout() else {
+        return;
+    };
+
+    for (entity, text, children) in &q_text {
+        let Some(image) = font_cache.bitmap_font_image(text.font) else {
+            continue;
+        };
+
+        let desired = text.text.as_str();
+        let desired_len = desired.chars().count();
+
+        let existing_children: Vec<Entity> =
+            children.map(|c| c.iter().collect()).unwrap_or_default();
+
+        // Trim extra glyphs.
+        if existing_children.len() > desired_len {
+            for child in existing_children.iter().skip(desired_len) {
+                commands.entity(*child).despawn();
+            }
+        }
+
+        // Update existing and spawn missing.
+        for (i, ch) in desired.chars().enumerate() {
+            let glyph_index = crate::font_cache::FontCache::bitmap_glyph_index(ch);
+            let local_x = (i as f32) * BITMAP_GLYPH_W;
+            let local_z = (i as f32) * 0.0001;
+
+            if let Some(child) = existing_children.get(i).copied() {
+                commands.entity(child).insert((
+                    Sprite {
+                        image: image.clone(),
+                        texture_atlas: Some(TextureAtlas {
+                            layout: layout.clone(),
+                            index: glyph_index,
+                        }),
+                        color: text.color,
+                        ..default()
+                    },
+                    Transform::from_translation(Vec3::new(local_x, 0.0, local_z)),
+                    Visibility::Visible,
+                ));
+            } else {
+                let child = commands
+                    .spawn((
+                        GameplayRenderEntity,
+                        BitmapGlyph,
+                        Sprite {
+                            image: image.clone(),
+                            texture_atlas: Some(TextureAtlas {
+                                layout: layout.clone(),
+                                index: glyph_index,
+                            }),
+                            color: text.color,
+                            ..default()
+                        },
+                        Anchor::TOP_LEFT,
+                        Transform::from_translation(Vec3::new(local_x, 0.0, local_z)),
+                        GlobalTransform::default(),
+                        Visibility::Visible,
+                        InheritedVisibility::default(),
+                        ViewVisibility::default(),
+                    ))
+                    .id();
+                commands.entity(entity).add_child(child);
+            }
+        }
     }
 }
 
@@ -1852,6 +1958,7 @@ pub(crate) fn setup_gameplay(
     gfx: Res<GraphicsCache>,
     mut font_cache: ResMut<FontCache>,
     asset_server: Res<AssetServer>,
+    mut atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
     mut minimap: ResMut<MiniMapState>,
     mut image_assets: ResMut<Assets<Image>>,
     player_state: Res<PlayerState>,
@@ -1971,7 +2078,10 @@ pub(crate) fn setup_gameplay(
     // Gameplay text input/log UI state
     commands.insert_resource(GameplayTextInput::default());
 
-    // UI text (log + input + HUD labels). These are normal Bevy UI nodes (transparent background).
+    // Bitmap font (sprite atlas) used for UI text.
+    font_cache.ensure_bitmap_initialized(&gfx, &mut atlas_layouts);
+
+    // Nameplates still use Bevy text for now.
     font_cache.ensure_initialized(&asset_server);
     let font = font_cache.ui_font().unwrap_or_default();
 
@@ -1991,11 +2101,8 @@ pub(crate) fn run_gameplay_text_ui(
     net: Res<NetworkRuntime>,
     mut player_state: ResMut<PlayerState>,
     mut input: ResMut<GameplayTextInput>,
-    mut q_log: Query<
-        (&GameplayUiLogLine, &mut Text2d, &mut TextColor),
-        Without<GameplayUiInputText>,
-    >,
-    mut q_input: Query<&mut Text2d, (With<GameplayUiInputText>, Without<GameplayUiLogLine>)>,
+    mut q_log: Query<(&GameplayUiLogLine, &mut BitmapText), Without<GameplayUiInputText>>,
+    mut q_input: Query<&mut BitmapText, (With<GameplayUiInputText>, Without<GameplayUiLogLine>)>,
 ) {
     // Basic text input. We'll treat gameplay as always having "focus" for now.
     for ev in kb.read() {
@@ -2120,31 +2227,31 @@ pub(crate) fn run_gameplay_text_ui(
     }
 
     // Update log text (22 lines), oldest at top like `engine.c`.
-    for (line, mut text2d, mut color) in &mut q_log {
+    for (line, mut text) in &mut q_log {
         let idx_from_most_recent = LOG_LINES.saturating_sub(1).saturating_sub(line.line);
         if let Some(msg) = player_state.log_message(idx_from_most_recent) {
-            **text2d = msg.message.clone();
-            color.0 = match msg.color {
+            text.text = msg.message.clone();
+            text.color = match msg.color {
                 crate::types::log_message::LogMessageColor::Yellow => Color::srgb(1.0, 1.0, 0.0),
                 crate::types::log_message::LogMessageColor::Green => Color::srgb(0.0, 1.0, 0.0),
                 crate::types::log_message::LogMessageColor::Blue => Color::srgb(0.3, 0.7, 1.0),
                 crate::types::log_message::LogMessageColor::Red => Color::srgb(1.0, 0.0, 0.0),
             };
         } else {
-            **text2d = String::new();
-            color.0 = Color::WHITE;
+            text.text.clear();
+            text.color = Color::WHITE;
         }
     }
 
     // Update input line text. Clamp to the last 48 characters like the original viewport.
-    if let Some(mut text2d) = q_input.iter_mut().next() {
+    if let Some(mut text) = q_input.iter_mut().next() {
         let current = input.current.as_str();
         let view = if current.len() > 48 {
             &current[current.len() - 48..]
         } else {
             current
         };
-        **text2d = format!("{view}|");
+        text.text = format!("{view}|");
     }
 }
 
@@ -2152,7 +2259,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
     player_state: Res<PlayerState>,
     mut q: ParamSet<(
         Query<
-            &mut Text2d,
+            &mut BitmapText,
             (
                 With<GameplayUiHitpointsLabel>,
                 Without<GameplayUiAttributeLabel>,
@@ -2160,7 +2267,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
             ),
         >,
         Query<
-            &mut Text2d,
+            &mut BitmapText,
             (
                 With<GameplayUiEnduranceLabel>,
                 Without<GameplayUiAttributeLabel>,
@@ -2168,7 +2275,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
             ),
         >,
         Query<
-            &mut Text2d,
+            &mut BitmapText,
             (
                 With<GameplayUiManaLabel>,
                 Without<GameplayUiAttributeLabel>,
@@ -2176,7 +2283,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
             ),
         >,
         Query<
-            &mut Text2d,
+            &mut BitmapText,
             (
                 With<GameplayUiMoneyLabel>,
                 Without<GameplayUiAttributeLabel>,
@@ -2184,7 +2291,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
             ),
         >,
         Query<
-            &mut Text2d,
+            &mut BitmapText,
             (
                 With<GameplayUiUpdateValue>,
                 Without<GameplayUiAttributeLabel>,
@@ -2192,7 +2299,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
             ),
         >,
         Query<
-            &mut Text2d,
+            &mut BitmapText,
             (
                 With<GameplayUiWeaponValueLabel>,
                 Without<GameplayUiAttributeLabel>,
@@ -2200,7 +2307,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
             ),
         >,
         Query<
-            &mut Text2d,
+            &mut BitmapText,
             (
                 With<GameplayUiArmorValueLabel>,
                 Without<GameplayUiAttributeLabel>,
@@ -2208,7 +2315,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
             ),
         >,
         Query<
-            &mut Text2d,
+            &mut BitmapText,
             (
                 With<GameplayUiExperienceLabel>,
                 Without<GameplayUiAttributeLabel>,
@@ -2217,78 +2324,78 @@ pub(crate) fn run_gameplay_update_hud_labels(
         >,
     )>,
     mut q_attrib: Query<
-        (&GameplayUiAttributeLabel, &mut Text2d),
+        (&GameplayUiAttributeLabel, &mut BitmapText),
         (
             With<GameplayUiAttributeLabel>,
             Without<GameplayUiSkillLabel>,
         ),
     >,
-    mut q_skill: Query<(&GameplayUiSkillLabel, &mut Text2d), With<GameplayUiSkillLabel>>,
+    mut q_skill: Query<(&GameplayUiSkillLabel, &mut BitmapText), With<GameplayUiSkillLabel>>,
 ) {
     let pl = player_state.character_info();
 
     // Hitpoints
-    if let Some(mut text2d) = q.p0().iter_mut().next() {
-        **text2d = format!("Hitpoints         {:3} {:3}", pl.a_hp / 1000, pl.hp[5]);
+    if let Some(mut text) = q.p0().iter_mut().next() {
+        text.text = format!("Hitpoints         {:3} {:3}", pl.a_hp / 1000, pl.hp[5]);
     }
 
     // Endurance
-    if let Some(mut text2d) = q.p1().iter_mut().next() {
-        **text2d = format!("Endurance         {:3} {:3}", pl.a_end / 1000, pl.end[5]);
+    if let Some(mut text) = q.p1().iter_mut().next() {
+        text.text = format!("Endurance         {:3} {:3}", pl.a_end / 1000, pl.end[5]);
     }
 
     // Mana
-    if let Some(mut text2d) = q.p2().iter_mut().next() {
-        **text2d = format!("Mana              {:3} {:3}", pl.a_mana / 1000, pl.mana[5]);
+    if let Some(mut text) = q.p2().iter_mut().next() {
+        text.text = format!("Mana              {:3} {:3}", pl.a_mana / 1000, pl.mana[5]);
     }
 
     // Money (gold/100 and silver remainder)
-    if let Some(mut text2d) = q.p3().iter_mut().next() {
-        **text2d = format!("Money  {:8}G {:2}S", pl.gold / 100, pl.gold % 100);
+    if let Some(mut text) = q.p3().iter_mut().next() {
+        text.text = format!("Money  {:8}G {:2}S", pl.gold / 100, pl.gold % 100);
     }
 
     // Update points remaining
-    if let Some(mut text2d) = q.p4().iter_mut().next() {
-        **text2d = format!("{:7}", pl.points);
+    if let Some(mut text) = q.p4().iter_mut().next() {
+        text.text = format!("{:7}", pl.points);
     }
 
     // Weapon value
-    if let Some(mut text2d) = q.p5().iter_mut().next() {
-        **text2d = format!("Weapon value   {:10}", pl.weapon);
+    if let Some(mut text) = q.p5().iter_mut().next() {
+        text.text = format!("Weapon value   {:10}", pl.weapon);
     }
 
     // Armor value
-    if let Some(mut text2d) = q.p6().iter_mut().next() {
-        **text2d = format!("Armor value    {:10}", pl.armor);
+    if let Some(mut text) = q.p6().iter_mut().next() {
+        text.text = format!("Armor value    {:10}", pl.armor);
     }
 
     // Experience (total points)
-    if let Some(mut text2d) = q.p7().iter_mut().next() {
-        **text2d = format!("Experience     {:10}", pl.points_tot);
+    if let Some(mut text) = q.p7().iter_mut().next() {
+        text.text = format!("Experience     {:10}", pl.points_tot);
     }
 
     // Attributes (5 of them: Braveness, Willpower, Intuition, Agility, Strength)
-    for (attr_label, mut text2d) in &mut q_attrib {
+    for (attr_label, mut text) in &mut q_attrib {
         if attr_label.attrib_index < 5 {
             let name = ATTRIBUTE_NAMES[attr_label.attrib_index];
             let value = pl.attrib[attr_label.attrib_index][5];
-            **text2d = format!("{:<16}  {:3}", name, value);
+            text.text = format!("{:<16}  {:3}", name, value);
         }
     }
 
     // Skills (10 visible at a time, typically from skill_pos 0..10 in original)
     // For now, show first 10 skills, skipping any that are not learned
     let mut skill_count = 0;
-    for (_skill_label, mut text2d) in &mut q_skill {
+    for (_skill_label, mut text) in &mut q_skill {
         let skill_idx = skill_count;
         if skill_idx < 50 {
             let skill_val = pl.skill[skill_idx][0];
             if skill_val > 0 {
                 let skill_display = pl.skill[skill_idx][5];
                 // Just use a generic skill name for now (skill index)
-                **text2d = format!("Skill {:02}          {:3}", skill_idx, skill_display);
+                text.text = format!("Skill {:02}          {:3}", skill_idx, skill_display);
             } else {
-                **text2d = String::from("unused");
+                text.text = String::from("unused");
             }
         }
         skill_count += 1;
@@ -2297,7 +2404,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
 
 fn update_ui_player_name_text(
     player_state: &PlayerState,
-    mut q: Query<&mut Text2d, With<GameplayUiPlayerNameLabel>>,
+    mut q: Query<&mut BitmapText, With<GameplayUiPlayerNameLabel>>,
 ) {
     // Display player name by default, or target/merchant name if applicable.
     let name = if player_state.should_show_shop() {
@@ -2315,55 +2422,55 @@ fn update_ui_player_name_text(
         std::str::from_utf8(&pl.name[..end]).unwrap_or("Player")
     };
 
-    if let Some(mut text2d) = q.iter_mut().next() {
-        **text2d = name.to_string();
+    if let Some(mut text) = q.iter_mut().next() {
+        text.text = name.to_string();
     }
 }
 
 fn update_ui_experience_text(
     player_state: &PlayerState,
-    mut q: Query<&mut Text2d, With<GameplayUiExperienceUncommittedLabel>>,
+    mut q: Query<&mut BitmapText, With<GameplayUiExperienceUncommittedLabel>>,
 ) {
     // Display uncommitted experience points (pending allocation).
     // For now, we only show something if there are update points available to spend.
     let pl = player_state.character_info();
     let available_points = pl.points; // Represents unspent skill points
 
-    if let Some(mut text2d) = q.iter_mut().next() {
+    if let Some(mut text) = q.iter_mut().next() {
         if available_points > 0 {
-            **text2d = format!("Available Points  {:10}", available_points);
+            text.text = format!("Available Points  {:10}", available_points);
         } else {
-            **text2d = String::new();
+            text.text = String::new();
         }
     }
 }
 
 fn update_ui_money_text(
     player_state: &PlayerState,
-    mut q: Query<&mut Text2d, With<GameplayUiMoneyLabel>>,
+    mut q: Query<&mut BitmapText, With<GameplayUiMoneyLabel>>,
 ) {
     // Display gold and silver. This mirrors the money display in run_gameplay_update_hud_labels
     // but can be called separately if needed.
     let pl = player_state.character_info();
 
-    if let Some(mut text2d) = q.iter_mut().next() {
-        **text2d = format!("Money  {:8}G {:2}S", pl.gold / 100, pl.gold % 100);
+    if let Some(mut text) = q.iter_mut().next() {
+        text.text = format!("Money  {:8}G {:2}S", pl.gold / 100, pl.gold % 100);
     }
 }
 
 fn update_ui_skill_adjustment_hints(
     player_state: &PlayerState,
-    mut q: Query<(&GameplayUiSkillAdjustmentHint, &mut Text2d)>,
+    mut q: Query<(&GameplayUiSkillAdjustmentHint, &mut BitmapText)>,
 ) {
     // Display "+" or "-" signs next to skills that can be adjusted.
     // These indicate that there are uncommitted experience points available
     // to allocate or remove from that skill.
     let pl = player_state.character_info();
 
-    for (hint, mut text2d) in &mut q {
+    for (hint, mut text) in &mut q {
         let skill_idx = hint.skill_index;
         if skill_idx >= 50 {
-            **text2d = String::new();
+            text.text = String::new();
             continue;
         }
 
@@ -2371,7 +2478,7 @@ fn update_ui_skill_adjustment_hints(
         let skill_val = pl.skill[skill_idx][0];
         if skill_val == 0 {
             // Skill not learned; no adjustment available
-            **text2d = String::new();
+            text.text = String::new();
             continue;
         }
 
@@ -2380,10 +2487,10 @@ fn update_ui_skill_adjustment_hints(
         // For now, show + if there are available points to spend on this skill.
         let available_points = pl.points;
         if available_points > 0 {
-            **text2d = String::from("+");
+            text.text = String::from("+");
         } else {
             // Could show "-" if points could be removed, but for now leave empty
-            **text2d = String::new();
+            text.text = String::new();
         }
     }
 }
@@ -2391,10 +2498,10 @@ fn update_ui_skill_adjustment_hints(
 pub(crate) fn run_gameplay_update_extra_ui(
     player_state: Res<PlayerState>,
     mut q: ParamSet<(
-        Query<&mut Text2d, With<GameplayUiPlayerNameLabel>>,
-        Query<&mut Text2d, With<GameplayUiExperienceUncommittedLabel>>,
-        Query<&mut Text2d, With<GameplayUiMoneyLabel>>,
-        Query<(&GameplayUiSkillAdjustmentHint, &mut Text2d)>,
+        Query<&mut BitmapText, With<GameplayUiPlayerNameLabel>>,
+        Query<&mut BitmapText, With<GameplayUiExperienceUncommittedLabel>>,
+        Query<&mut BitmapText, With<GameplayUiMoneyLabel>>,
+        Query<(&GameplayUiSkillAdjustmentHint, &mut BitmapText)>,
     )>,
 ) {
     // Update all additional UI elements
