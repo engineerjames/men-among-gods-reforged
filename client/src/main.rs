@@ -145,53 +145,45 @@ fn main() {
         )
         .add_systems(
             Update,
-            states::gameplay::run_gameplay_statbox_input
-                .run_if(in_state(GameState::Gameplay))
+            states::gameplay::run_gameplay_statbox_input.run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
             Update,
-            map_hover::run_gameplay_map_hover_and_click
-                .run_if(in_state(GameState::Gameplay))
+            map_hover::run_gameplay_map_hover_and_click.run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
             Update,
-            map_hover::run_gameplay_move_target_marker
-                .run_if(in_state(GameState::Gameplay))
+            map_hover::run_gameplay_move_target_marker.run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
             Update,
-            nameplates::run_gameplay_nameplates
-                .run_if(in_state(GameState::Gameplay))
+            nameplates::run_gameplay_nameplates.run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
             Update,
-            states::gameplay::run_gameplay_text_ui
-                .run_if(in_state(GameState::Gameplay))
+            states::gameplay::run_gameplay_text_ui.run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
             Update,
-            states::gameplay::run_gameplay_update_hud_labels
-                .run_if(in_state(GameState::Gameplay))
+            states::gameplay::run_gameplay_update_hud_labels.run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
             Update,
-            states::gameplay::run_gameplay_update_extra_ui
-                .run_if(in_state(GameState::Gameplay))
+            states::gameplay::run_gameplay_update_extra_ui.run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
             Update,
-            states::gameplay::run_gameplay_update_stat_bars
-                .run_if(in_state(GameState::Gameplay))
+            states::gameplay::run_gameplay_update_stat_bars.run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
             Update,
             states::gameplay::run_gameplay_update_top_selected_name
-                .run_if(in_state(GameState::Gameplay))
+                .run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
             Update,
             states::gameplay::run_gameplay_update_portrait_name_and_rank
-                .run_if(in_state(GameState::Gameplay))
+                .run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
             Update,

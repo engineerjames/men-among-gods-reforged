@@ -24,7 +24,9 @@ use mag_core::constants::{
     MF_UWATER, SPEEDTAB, SPR_EMPTY, STUNNED, TOMB, WN_ARMS, WN_BELT, WN_BODY, WN_CLOAK, WN_FEET,
     WN_HEAD, WN_LEGS, WN_LHAND, WN_LRING, WN_NECK, WN_RHAND, WN_RRING, XPOS, YPOS,
 };
-use mag_core::types::skilltab::{get_skill_desc, get_skill_name, get_skill_nr, get_skill_sortkey, MAX_SKILLS};
+use mag_core::types::skilltab::{
+    get_skill_desc, get_skill_name, get_skill_nr, get_skill_sortkey, MAX_SKILLS,
+};
 
 // In the original client, xoff starts with `-176` (to account for UI layout).
 // Keeping this makes it easier to compare screenshots while we port rendering.
