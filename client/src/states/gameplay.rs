@@ -1832,6 +1832,13 @@ pub(crate) fn setup_gameplay(
         ))
         .id();
 
+    // Map hover highlight (ported from orig/inter.c + orig/engine.c highlight behavior).
+    crate::systems::map_hover::spawn_map_hover_highlight(
+        &mut commands,
+        &mut image_assets,
+        world_root,
+    );
+
     // Spawn a stable set of entities once; `run_gameplay` updates them.
     for index in 0..map.len() {
         // Shadows (dd.c::dd_shadow), rendered between background and objects/chars.

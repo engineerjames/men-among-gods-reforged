@@ -23,6 +23,7 @@ use crate::gfx_cache::GraphicsCache;
 use crate::sfx_cache::SoundCache;
 use crate::systems::debug;
 use crate::systems::display;
+use crate::systems::map_hover;
 
 static LOG_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
 
@@ -134,6 +135,12 @@ fn main() {
             states::gameplay::run_gameplay
                 .run_if(in_state(GameState::Gameplay))
                 .after(network::NetworkSet::Receive),
+        )
+        .add_systems(
+            Update,
+            map_hover::run_gameplay_map_hover_and_click
+                .run_if(in_state(GameState::Gameplay))
+                .after(states::gameplay::run_gameplay),
         )
         .add_systems(
             Update,
