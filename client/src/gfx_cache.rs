@@ -31,6 +31,7 @@ struct InitState {
 pub struct GraphicsCache {
     assets_zip: PathBuf,
     gfx: Vec<Option<Sprite>>,
+    sprite_tiles: Vec<Option<(i32, i32)>>,
     initialized: bool,
     init_state: Option<InitState>,
     init_error: Option<String>,
@@ -42,6 +43,7 @@ impl GraphicsCache {
         Self {
             assets_zip: PathBuf::from(assets_zip),
             gfx: Vec::new(),
+            sprite_tiles: Vec::new(),
             initialized: false,
             init_state: None,
             init_error: None,
@@ -51,6 +53,7 @@ impl GraphicsCache {
 
     pub fn reset_loading(&mut self) {
         self.gfx.clear();
+        self.sprite_tiles.clear();
         self.initialized = false;
         self.init_state = None;
         self.init_error = None;
@@ -63,6 +66,13 @@ impl GraphicsCache {
 
     pub fn get_sprite(&self, index: usize) -> Option<&Sprite> {
         self.gfx.get(index).and_then(|s| s.as_ref())
+    }
+
+    pub fn get_sprite_tiles_xy(&self, index: usize) -> Option<(i32, i32)> {
+        self.sprite_tiles
+            .get(index)
+            .and_then(|v| v.as_ref())
+            .copied()
     }
 
     pub fn initialize(&mut self, images_assets: &mut Assets<Image>) -> CacheInitStatus {
@@ -125,6 +135,7 @@ impl GraphicsCache {
             // Allocate a sparse vector where `gfx[id]` exists.
             if let Some((max_id, _)) = entries.last() {
                 self.gfx.resize(max_id.saturating_add(1), None);
+                self.sprite_tiles.resize(max_id.saturating_add(1), None);
             }
 
             log::info!(
@@ -218,11 +229,20 @@ impl GraphicsCache {
             }
         };
 
+        // Cache dd.c tile dimensions (in 32x32 blocks). This avoids per-frame image-size queries.
+        let size = image.size();
+        let w = (size.x.max(1) as i32).max(1);
+        let h = (size.y.max(1) as i32).max(1);
+        let xs = ((w + 31) / 32).max(1);
+        let ys = ((h + 31) / 32).max(1);
+
         let image_handle: Handle<Image> = images_assets.add(image);
         if *sprite_id >= self.gfx.len() {
             self.gfx.resize(sprite_id.saturating_add(1), None);
+            self.sprite_tiles.resize(sprite_id.saturating_add(1), None);
         }
         self.gfx[*sprite_id] = Some(Sprite::from_image(image_handle));
+        self.sprite_tiles[*sprite_id] = Some((xs, ys));
         state.index += 1;
 
         let progress = state.index as f32 / state.entries.len() as f32;

@@ -1900,19 +1900,6 @@ fn draw_shop_window_ui(
     }
 }
 
-fn sprite_tiles_xy(sprite: &Sprite, images: &Assets<Image>) -> Option<(i32, i32)> {
-    let image = images.get(&sprite.image)?;
-    let size = image.size();
-    let w = (size.x.max(1) as i32).max(1);
-    let h = (size.y.max(1) as i32).max(1);
-
-    // dd.c treats sprites as being composed of 32x32 "blocks"; xs/ys are those counts.
-    let xs = (w + 31) / 32;
-    let ys = (h + 31) / 32;
-
-    Some((xs.max(1), ys.max(1)))
-}
-
 #[inline]
 fn should_draw_shadow(sprite_id: i32) -> bool {
     // dd.c::dd_shadow: only certain sprite id ranges get shadows.
@@ -1922,14 +1909,13 @@ fn should_draw_shadow(sprite_id: i32) -> bool {
 fn copysprite_screen_pos(
     sprite_id: usize,
     gfx: &GraphicsCache,
-    images: &Assets<Image>,
+    _images: &Assets<Image>,
     xpos: i32,
     ypos: i32,
     xoff: i32,
     yoff: i32,
 ) -> Option<(i32, i32)> {
-    let sprite = gfx.get_sprite(sprite_id)?;
-    let (xs, ys) = sprite_tiles_xy(sprite, images)?;
+    let (xs, ys) = gfx.get_sprite_tiles_xy(sprite_id)?;
 
     // Ported from dd.c: copysprite()
     // NOTE: we ignore the negative-coordinate odd-bit adjustments because xpos/ypos
@@ -2807,14 +2793,21 @@ pub(crate) fn run_gameplay_text_ui(
     for (line, mut text) in &mut q_log {
         let idx_from_most_recent = LOG_LINES.saturating_sub(1).saturating_sub(line.line);
         if let Some(msg) = player_state.log_message(idx_from_most_recent) {
-            text.text = msg.message.clone();
-            text.font = bitmap_font_for_log_color(msg.color);
-            // Bitmap fonts are pre-colored (700..703). Keep tint neutral.
-            text.color = Color::WHITE;
+            let desired_font = bitmap_font_for_log_color(msg.color);
+            if text.font != desired_font {
+                text.font = desired_font;
+            }
+            if text.text != msg.message {
+                text.text.clear();
+                text.text.push_str(&msg.message);
+            }
         } else {
-            text.text.clear();
-            text.font = UI_BITMAP_FONT;
-            text.color = Color::WHITE;
+            if !text.text.is_empty() {
+                text.text.clear();
+            }
+            if text.font != UI_BITMAP_FONT {
+                text.font = UI_BITMAP_FONT;
+            }
         }
     }
 
@@ -2826,9 +2819,19 @@ pub(crate) fn run_gameplay_text_ui(
         } else {
             current
         };
-        text.text = format!("{view}|");
-        text.font = UI_BITMAP_FONT;
-        text.color = Color::WHITE;
+
+        let matches = text
+            .text
+            .strip_suffix('|')
+            .is_some_and(|prefix| prefix == view);
+        if !matches {
+            text.text.clear();
+            text.text.push_str(view);
+            text.text.push('|');
+        }
+        if text.font != UI_BITMAP_FONT {
+            text.font = UI_BITMAP_FONT;
+        }
     }
 }
 
@@ -3009,6 +3012,7 @@ pub(crate) fn run_gameplay_buttonbox_toggles(
 
 pub(crate) fn run_gameplay_update_hud_labels(
     player_state: Res<PlayerState>,
+    mut last_state_rev: Local<u64>,
     mut q: ParamSet<(
         Query<
             &mut BitmapText,
@@ -3150,6 +3154,12 @@ pub(crate) fn run_gameplay_update_hud_labels(
         ),
     >,
 ) {
+    let rev = player_state.state_revision();
+    if *last_state_rev == rev {
+        return;
+    }
+    *last_state_rev = rev;
+
     const HIGH_VAL: i32 = i32::MAX;
 
     #[inline]
@@ -3180,44 +3190,68 @@ pub(crate) fn run_gameplay_update_hud_labels(
     // Hitpoints (current / max). Server already sends a_* as integer current values.
     if let Some(mut text) = q.p0().iter_mut().next() {
         let cur = pl.a_hp.max(0);
-        text.text = format!("Hitpoints         {:3} {:3}", cur, pl.hp[5]);
+        let desired = format!("Hitpoints         {:3} {:3}", cur, pl.hp[5]);
+        if text.text != desired {
+            text.text = desired;
+        }
     }
 
     // Endurance (current / max)
     if let Some(mut text) = q.p1().iter_mut().next() {
         let cur = pl.a_end.max(0);
-        text.text = format!("Endurance         {:3} {:3}", cur, pl.end[5]);
+        let desired = format!("Endurance         {:3} {:3}", cur, pl.end[5]);
+        if text.text != desired {
+            text.text = desired;
+        }
     }
 
     // Mana (current / max)
     if let Some(mut text) = q.p2().iter_mut().next() {
         let cur = pl.a_mana.max(0);
-        text.text = format!("Mana              {:3} {:3}", cur, pl.mana[5]);
+        let desired = format!("Mana              {:3} {:3}", cur, pl.mana[5]);
+        if text.text != desired {
+            text.text = desired;
+        }
     }
 
     // Money (gold/100 and silver remainder)
     if let Some(mut text) = q.p3().iter_mut().next() {
-        text.text = format!("Money  {:8}G {:2}S", pl.gold / 100, pl.gold % 100);
+        let desired = format!("Money  {:8}G {:2}S", pl.gold / 100, pl.gold % 100);
+        if text.text != desired {
+            text.text = desired;
+        }
     }
 
     // Update points remaining
     if let Some(mut text) = q.p4().iter_mut().next() {
-        text.text = format!("{:7}", pl.points);
+        let desired = format!("{:7}", pl.points);
+        if text.text != desired {
+            text.text = desired;
+        }
     }
 
     // Weapon value
     if let Some(mut text) = q.p5().iter_mut().next() {
-        text.text = format!("Weapon value   {:10}", pl.weapon);
+        let desired = format!("Weapon value   {:10}", pl.weapon);
+        if text.text != desired {
+            text.text = desired;
+        }
     }
 
     // Armor value
     if let Some(mut text) = q.p6().iter_mut().next() {
-        text.text = format!("Armor value    {:10}", pl.armor);
+        let desired = format!("Armor value    {:10}", pl.armor);
+        if text.text != desired {
+            text.text = desired;
+        }
     }
 
     // Experience (total points)
     if let Some(mut text) = q.p7().iter_mut().next() {
-        text.text = format!("Experience     {:10}", pl.points_tot);
+        let desired = format!("Experience     {:10}", pl.points_tot);
+        if text.text != desired {
+            text.text = desired;
+        }
     }
 
     // Attributes (5 of them: Braveness, Willpower, Intuition, Agility, Strength)
@@ -3231,40 +3265,60 @@ pub(crate) fn run_gameplay_update_hud_labels(
             let name = ATTRIBUTE_NAMES[attr_label.attrib_index];
             let v_total = pl.attrib[attr_label.attrib_index][5] as i32
                 + stat_raised_attrib[attr_label.attrib_index];
-            text.text = format!("{:<16}  {:3}", name, v_total);
+            let desired = format!("{:<16}  {:3}", name, v_total);
+            if text.text != desired {
+                text.text = desired;
+            }
         }
     }
 
     for (cfg, mut text) in &mut q_attrib_aux {
         if cfg.attrib_index >= 5 {
-            text.text.clear();
+            if !text.text.is_empty() {
+                text.text.clear();
+            }
             continue;
         }
         let v_bare = pl.attrib[cfg.attrib_index][0] as i32 + stat_raised_attrib[cfg.attrib_index];
         let need = attrib_needed(pl, cfg.attrib_index, v_bare);
         match cfg.col {
             GameplayUiRaiseStatColumn::Plus => {
-                text.text = if need != HIGH_VAL && need <= available_points {
-                    String::from("+")
+                let desired = if need != HIGH_VAL && need <= available_points {
+                    "+"
                 } else {
-                    String::new()
+                    ""
                 };
+                if text.text != desired {
+                    text.text.clear();
+                    text.text.push_str(desired);
+                }
             }
             GameplayUiRaiseStatColumn::Minus => {
-                text.text = if stat_raised_attrib[cfg.attrib_index] > 0 {
-                    String::from("-")
+                let desired = if stat_raised_attrib[cfg.attrib_index] > 0 {
+                    "-"
                 } else {
-                    String::new()
+                    ""
                 };
+                if text.text != desired {
+                    text.text.clear();
+                    text.text.push_str(desired);
+                }
             }
             GameplayUiRaiseStatColumn::Cost => {
-                text.text = if need != HIGH_VAL {
-                    format!("{:7}", need)
-                } else {
-                    String::new()
-                };
+                if need != HIGH_VAL {
+                    let desired = format!("{:7}", need);
+                    if text.text != desired {
+                        text.text = desired;
+                    }
+                } else if !text.text.is_empty() {
+                    text.text.clear();
+                }
             }
-            GameplayUiRaiseStatColumn::Value => text.text.clear(),
+            GameplayUiRaiseStatColumn::Value => {
+                if !text.text.is_empty() {
+                    text.text.clear();
+                }
+            }
         }
     }
 
@@ -3337,9 +3391,13 @@ pub(crate) fn run_gameplay_update_hud_labels(
     for (skill_label, mut text) in &mut q_skill {
         let row = skill_label.skill_index;
         if row < rows.len() {
-            text.text = rows[row].clone();
-        } else {
-            text.text = String::new();
+            let desired = rows[row].as_str();
+            if text.text != desired {
+                text.text.clear();
+                text.text.push_str(desired);
+            }
+        } else if !text.text.is_empty() {
+            text.text.clear();
         }
     }
 
@@ -3347,11 +3405,15 @@ pub(crate) fn run_gameplay_update_hud_labels(
     let stat_raised_skill_rows: [i32; 10] = [0; 10];
     for (cfg, mut text) in &mut q_skill_aux {
         if cfg.row >= 10 {
-            text.text.clear();
+            if !text.text.is_empty() {
+                text.text.clear();
+            }
             continue;
         }
         let Some(skill_id) = row_skill_ids[cfg.row] else {
-            text.text.clear();
+            if !text.text.is_empty() {
+                text.text.clear();
+            }
             continue;
         };
 
@@ -3359,27 +3421,42 @@ pub(crate) fn run_gameplay_update_hud_labels(
         let need = skill_needed(pl, skill_id, v_bare);
         match cfg.col {
             GameplayUiRaiseStatColumn::Plus => {
-                text.text = if need != HIGH_VAL && need <= available_points {
-                    String::from("+")
+                let desired = if need != HIGH_VAL && need <= available_points {
+                    "+"
                 } else {
-                    String::new()
+                    ""
                 };
+                if text.text != desired {
+                    text.text.clear();
+                    text.text.push_str(desired);
+                }
             }
             GameplayUiRaiseStatColumn::Minus => {
-                text.text = if stat_raised_skill_rows[cfg.row] > 0 {
-                    String::from("-")
+                let desired = if stat_raised_skill_rows[cfg.row] > 0 {
+                    "-"
                 } else {
-                    String::new()
+                    ""
                 };
+                if text.text != desired {
+                    text.text.clear();
+                    text.text.push_str(desired);
+                }
             }
             GameplayUiRaiseStatColumn::Cost => {
-                text.text = if need != HIGH_VAL {
-                    format!("{:7}", need)
-                } else {
-                    String::new()
-                };
+                if need != HIGH_VAL {
+                    let desired = format!("{:7}", need);
+                    if text.text != desired {
+                        text.text = desired;
+                    }
+                } else if !text.text.is_empty() {
+                    text.text.clear();
+                }
             }
-            GameplayUiRaiseStatColumn::Value => text.text.clear(),
+            GameplayUiRaiseStatColumn::Value => {
+                if !text.text.is_empty() {
+                    text.text.clear();
+                }
+            }
         }
     }
 
@@ -3413,73 +3490,115 @@ pub(crate) fn run_gameplay_update_hud_labels(
     for (cfg, mut text) in &mut q_raise_stats {
         match (cfg.stat, cfg.col) {
             (GameplayUiRaiseStat::Hitpoints, GameplayUiRaiseStatColumn::Value) => {
-                text.text = format!("Hitpoints         {:3}", (pl.hp[5] as i32) + stat_raised_hp);
+                let desired = format!("Hitpoints         {:3}", (pl.hp[5] as i32) + stat_raised_hp);
+                if text.text != desired {
+                    text.text = desired;
+                }
             }
             (GameplayUiRaiseStat::Endurance, GameplayUiRaiseStatColumn::Value) => {
-                text.text = format!(
+                let desired = format!(
                     "Endurance         {:3}",
                     (pl.end[5] as i32) + stat_raised_end
                 );
+                if text.text != desired {
+                    text.text = desired;
+                }
             }
             (GameplayUiRaiseStat::Mana, GameplayUiRaiseStatColumn::Value) => {
-                text.text = format!(
+                let desired = format!(
                     "Mana              {:3}",
                     (pl.mana[5] as i32) + stat_raised_mana
                 );
+                if text.text != desired {
+                    text.text = desired;
+                }
             }
 
             (GameplayUiRaiseStat::Hitpoints, GameplayUiRaiseStatColumn::Plus) => {
-                text.text = if hp_needed.is_some_and(|n| n <= available_points) {
-                    String::from("+")
+                let desired = if hp_needed.is_some_and(|n| n <= available_points) {
+                    "+"
                 } else {
-                    String::new()
+                    ""
                 };
+                if text.text != desired {
+                    text.text.clear();
+                    text.text.push_str(desired);
+                }
             }
             (GameplayUiRaiseStat::Endurance, GameplayUiRaiseStatColumn::Plus) => {
-                text.text = if end_needed.is_some_and(|n| n <= available_points) {
-                    String::from("+")
+                let desired = if end_needed.is_some_and(|n| n <= available_points) {
+                    "+"
                 } else {
-                    String::new()
+                    ""
                 };
+                if text.text != desired {
+                    text.text.clear();
+                    text.text.push_str(desired);
+                }
             }
             (GameplayUiRaiseStat::Mana, GameplayUiRaiseStatColumn::Plus) => {
-                text.text = if mana_needed.is_some_and(|n| n <= available_points) {
-                    String::from("+")
+                let desired = if mana_needed.is_some_and(|n| n <= available_points) {
+                    "+"
                 } else {
-                    String::new()
+                    ""
                 };
+                if text.text != desired {
+                    text.text.clear();
+                    text.text.push_str(desired);
+                }
             }
 
             (GameplayUiRaiseStat::Hitpoints, GameplayUiRaiseStatColumn::Minus) => {
-                text.text = if stat_raised_hp > 0 {
-                    String::from("-")
-                } else {
-                    String::new()
-                };
+                let desired = if stat_raised_hp > 0 { "-" } else { "" };
+                if text.text != desired {
+                    text.text.clear();
+                    text.text.push_str(desired);
+                }
             }
             (GameplayUiRaiseStat::Endurance, GameplayUiRaiseStatColumn::Minus) => {
-                text.text = if stat_raised_end > 0 {
-                    String::from("-")
-                } else {
-                    String::new()
-                };
+                let desired = if stat_raised_end > 0 { "-" } else { "" };
+                if text.text != desired {
+                    text.text.clear();
+                    text.text.push_str(desired);
+                }
             }
             (GameplayUiRaiseStat::Mana, GameplayUiRaiseStatColumn::Minus) => {
-                text.text = if stat_raised_mana > 0 {
-                    String::from("-")
-                } else {
-                    String::new()
-                };
+                let desired = if stat_raised_mana > 0 { "-" } else { "" };
+                if text.text != desired {
+                    text.text.clear();
+                    text.text.push_str(desired);
+                }
             }
 
             (GameplayUiRaiseStat::Hitpoints, GameplayUiRaiseStatColumn::Cost) => {
-                text.text = hp_needed.map(|n| format!("{:7}", n)).unwrap_or_default();
+                if let Some(n) = hp_needed {
+                    let desired = format!("{:7}", n);
+                    if text.text != desired {
+                        text.text = desired;
+                    }
+                } else if !text.text.is_empty() {
+                    text.text.clear();
+                }
             }
             (GameplayUiRaiseStat::Endurance, GameplayUiRaiseStatColumn::Cost) => {
-                text.text = end_needed.map(|n| format!("{:7}", n)).unwrap_or_default();
+                if let Some(n) = end_needed {
+                    let desired = format!("{:7}", n);
+                    if text.text != desired {
+                        text.text = desired;
+                    }
+                } else if !text.text.is_empty() {
+                    text.text.clear();
+                }
             }
             (GameplayUiRaiseStat::Mana, GameplayUiRaiseStatColumn::Cost) => {
-                text.text = mana_needed.map(|n| format!("{:7}", n)).unwrap_or_default();
+                if let Some(n) = mana_needed {
+                    let desired = format!("{:7}", n);
+                    if text.text != desired {
+                        text.text = desired;
+                    }
+                } else if !text.text.is_empty() {
+                    text.text.clear();
+                }
             }
         }
     }
@@ -3513,7 +3632,10 @@ pub(crate) fn run_gameplay_update_top_selected_name(
     let sx = centered_text_x(HUD_TOP_NAME_AREA_X, HUD_TOP_NAME_AREA_W, name);
 
     for (mut text, mut t) in &mut q {
-        text.text = name.to_string();
+        if text.text != name {
+            text.text.clear();
+            text.text.push_str(name);
+        }
         t.translation = screen_to_world(sx, HUD_TOP_NAME_Y, Z_UI_TEXT);
     }
 }
@@ -3560,11 +3682,17 @@ pub(crate) fn run_gameplay_update_portrait_name_and_rank(
     let rank_x = centered_text_x(HUD_PORTRAIT_TEXT_AREA_X, HUD_PORTRAIT_TEXT_AREA_W, rank);
 
     for (mut text, mut t) in q.p0().iter_mut() {
-        text.text = name.to_string();
+        if text.text != name {
+            text.text.clear();
+            text.text.push_str(name);
+        }
         t.translation = screen_to_world(name_x, HUD_PORTRAIT_NAME_Y, Z_UI_TEXT);
     }
     for (mut text, mut t) in q.p1().iter_mut() {
-        text.text = rank.to_string();
+        if text.text != rank {
+            text.text.clear();
+            text.text.push_str(rank);
+        }
         t.translation = screen_to_world(rank_x, HUD_PORTRAIT_RANK_Y, Z_UI_TEXT);
     }
 }
@@ -3578,7 +3706,10 @@ fn update_ui_money_text(
     let pl = player_state.character_info();
 
     if let Some(mut text) = q.iter_mut().next() {
-        text.text = format!("Money  {:8}G {:2}S", pl.gold / 100, pl.gold % 100);
+        let desired = format!("Money  {:8}G {:2}S", pl.gold / 100, pl.gold % 100);
+        if text.text != desired {
+            text.text = desired;
+        }
     }
 }
 
@@ -3774,7 +3905,7 @@ pub(crate) fn run_gameplay(
             *visibility = Visibility::Hidden;
             continue;
         };
-        let Some((_xs, ys)) = sprite_tiles_xy(src, &images) else {
+        let Some((_xs, ys)) = gfx.get_sprite_tiles_xy(sprite_id as usize) else {
             *visibility = Visibility::Hidden;
             continue;
         };

@@ -51,6 +51,9 @@ pub struct PlayerState {
     server_ctick: u8,
     server_ctick_pending: bool,
     local_ctick: u8,
+
+    // Monotonically increasing revision for "state changed" checks (UI throttling, etc).
+    state_revision: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -89,11 +92,17 @@ impl Default for PlayerState {
             server_ctick: 0,
             server_ctick_pending: false,
             local_ctick: 0,
+
+            state_revision: 0,
         }
     }
 }
 
 impl PlayerState {
+    pub fn state_revision(&self) -> u64 {
+        self.state_revision
+    }
+
     #[allow(dead_code)]
     pub fn map(&self) -> &GameMap {
         &self.map
@@ -630,6 +639,9 @@ impl PlayerState {
                 log::debug!("PlayerState ignoring server command: {:?}", command.header);
             }
         }
+
+        // Any server command may affect what the UI should show.
+        self.state_revision = self.state_revision.wrapping_add(1);
     }
 }
 
