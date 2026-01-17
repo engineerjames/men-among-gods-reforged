@@ -349,7 +349,7 @@ impl State {
                     characters[character_id].data[16] = globals.mdday + globals.mdyear * 300;
                 });
                 characters[character_id].data[17] =
-                    (co_x + co_y * core::constants::SERVER_MAPX as i16) as i32;
+                    co_x as i32 + co_y as i32 * core::constants::SERVER_MAPX;
             });
 
             corpse_id = self.handle_player_death(character_id, killer_id, map_flags);
