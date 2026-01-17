@@ -95,8 +95,40 @@ const HUD_RAISE_MANA_Y: f32 = 102.0;
 const HUD_SKILLS_X: f32 = 5.0;
 const HUD_SKILLS_Y_START: f32 = 116.0;
 const HUD_SKILLS_SPACING: f32 = 14.0;
-const HUD_PLAYER_NAME_X: f32 = 200.0;
-const HUD_PLAYER_NAME_Y: f32 = 190.0;
+// engine.c: dd_xputtext(374+(125-strlen(tmp)*6)/2, 28, 1, tmp)
+const HUD_TOP_NAME_AREA_X: f32 = 374.0;
+const HUD_TOP_NAME_AREA_W: f32 = 125.0;
+const HUD_TOP_NAME_Y: f32 = 28.0;
+
+// engine.c: dd_xputtext(374+(125-strlen(pl.name)*6)/2,152,1,pl.name);
+//           dd_xputtext(374+(125-strlen(rank[points2rank(pl.points_tot)])*6)/2,172,1,rank[...]);
+const HUD_PORTRAIT_TEXT_AREA_X: f32 = 374.0;
+const HUD_PORTRAIT_TEXT_AREA_W: f32 = 125.0;
+const HUD_PORTRAIT_NAME_Y: f32 = 152.0;
+const HUD_PORTRAIT_RANK_Y: f32 = 172.0;
+// engine.c:
+// dd_showbar(373,127,n,6, BLUE/GREEN/RED)
+// dd_showbar(373,134,n,6, BLUE/GREEN/RED)
+// dd_showbar(373,141,n,6, BLUE/GREEN/RED)
+const HUD_BAR_X: f32 = 373.0;
+const HUD_HP_BAR_Y: f32 = 127.0;
+const HUD_END_BAR_Y: f32 = 134.0;
+const HUD_MANA_BAR_Y: f32 = 141.0;
+const HUD_BAR_H: f32 = 6.0;
+
+const BAR_SCALE_NUM: u32 = 62;
+const BAR_W_MAX: u32 = 124;
+
+#[inline]
+fn ui_bar_colors() -> (Color, Color, Color) {
+    // The original dd_showbar does a darkening blend against the framebuffer.
+    // For our sprite-rect bars we want the classic readable look: bright green/red
+    // over a blue background, with depletion revealing the blue.
+    let blue = Color::srgb(0.0, 0.0, 0.90);
+    let green = Color::srgb(0.0, 0.85, 0.0);
+    let red = Color::srgb(0.90, 0.0, 0.0);
+    (blue, green, red)
+}
 const HUD_EXPERIENCE_UNCOMMITTED_X: f32 = 646.0;
 const HUD_EXPERIENCE_UNCOMMITTED_Y: f32 = 285.0;
 const HUD_SKILL_ADJUSTMENT_X_OFFSET: f32 = 10.0;
@@ -264,7 +296,32 @@ pub(crate) struct GameplayUiSkillLabel {
 }
 
 #[derive(Component)]
-pub(crate) struct GameplayUiPlayerNameLabel;
+pub(crate) struct GameplayUiTopSelectedNameLabel;
+
+#[derive(Component)]
+pub(crate) struct GameplayUiPortraitNameLabel;
+
+#[derive(Component)]
+pub(crate) struct GameplayUiPortraitRankLabel;
+
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GameplayUiBarKind {
+    Hitpoints,
+    Endurance,
+    Mana,
+}
+
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GameplayUiBarLayer {
+    Background,
+    Fill,
+}
+
+#[derive(Component, Clone, Copy, Debug)]
+pub(crate) struct GameplayUiBar {
+    kind: GameplayUiBarKind,
+    layer: GameplayUiBarLayer,
+}
 
 #[derive(Component)]
 pub(crate) struct GameplayUiExperienceUncommittedLabel;
@@ -724,18 +781,18 @@ fn spawn_ui_hud_labels(commands: &mut Commands) {
         ));
     }
 
-    // Player/Target/Merchant name label
+    // Top-center selected/player name (engine.c y=28).
     commands.spawn((
         GameplayRenderEntity,
-        GameplayUiPlayerNameLabel,
+        GameplayUiTopSelectedNameLabel,
         BitmapText {
             text: String::new(),
             color: Color::WHITE,
             font: UI_BITMAP_FONT,
         },
         Transform::from_translation(screen_to_world(
-            HUD_PLAYER_NAME_X,
-            HUD_PLAYER_NAME_Y,
+            HUD_TOP_NAME_AREA_X,
+            HUD_TOP_NAME_Y,
             Z_UI_TEXT,
         )),
         GlobalTransform::default(),
@@ -890,6 +947,78 @@ fn spawn_ui_toggle_boxes(commands: &mut Commands, image_assets: &mut Assets<Imag
     spawn_mode_box(commands, 2, MODE_FAST_X, MODE_BOX_Y);
     spawn_mode_box(commands, 1, MODE_NORMAL_X, MODE_BOX_Y);
     spawn_mode_box(commands, 0, MODE_SLOW_X, MODE_BOX_Y);
+}
+
+fn spawn_ui_stat_bars(commands: &mut Commands, image_assets: &mut Assets<Image>) {
+    // A single white pixel stretched + tinted for dd_showbar-like rectangles.
+    let pixel = Image::new(
+        Extent3d {
+            width: 1,
+            height: 1,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        vec![255, 255, 255, 255],
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::default(),
+    );
+    let pixel_handle = image_assets.add(pixel);
+
+    let (blue, green, _red) = ui_bar_colors();
+
+    let z_bg = Z_UI_TEXT - 6.0;
+    let z_fg = Z_UI_TEXT - 5.9;
+
+    let spawn_bar = |commands: &mut Commands,
+                     kind: GameplayUiBarKind,
+                     layer: GameplayUiBarLayer,
+                     x: f32,
+                     y: f32,
+                     z: f32,
+                     color: Color| {
+        commands.spawn((
+            GameplayRenderEntity,
+            GameplayUiBar { kind, layer },
+            Sprite {
+                image: pixel_handle.clone(),
+                color,
+                custom_size: Some(Vec2::new(0.0, HUD_BAR_H)),
+                ..default()
+            },
+            Anchor::TOP_LEFT,
+            Transform::from_translation(screen_to_world(x, y, z)),
+            GlobalTransform::default(),
+            Visibility::Hidden,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
+        ));
+    };
+
+    for (kind, y) in [
+        (GameplayUiBarKind::Hitpoints, HUD_HP_BAR_Y),
+        (GameplayUiBarKind::Endurance, HUD_END_BAR_Y),
+        (GameplayUiBarKind::Mana, HUD_MANA_BAR_Y),
+    ] {
+        spawn_bar(
+            commands,
+            kind,
+            GameplayUiBarLayer::Background,
+            HUD_BAR_X,
+            y,
+            z_bg,
+            blue,
+        );
+        // Fill color is updated dynamically (green for self, red for look).
+        spawn_bar(
+            commands,
+            kind,
+            GameplayUiBarLayer::Fill,
+            HUD_BAR_X,
+            y,
+            z_fg,
+            green,
+        );
+    }
 }
 
 pub(crate) fn run_gameplay_bitmap_text_renderer(
@@ -1172,6 +1301,45 @@ fn spawn_ui_rank(commands: &mut Commands, gfx: &GraphicsCache) {
         InheritedVisibility::default(),
         ViewVisibility::default(),
     ));
+
+    // Portrait name + rank strings (engine.c y=152 and y=172), centered within 125px.
+    commands.spawn((
+        GameplayRenderEntity,
+        GameplayUiPortraitNameLabel,
+        BitmapText {
+            text: String::new(),
+            color: Color::WHITE,
+            font: UI_BITMAP_FONT,
+        },
+        Transform::from_translation(screen_to_world(
+            HUD_PORTRAIT_TEXT_AREA_X,
+            HUD_PORTRAIT_NAME_Y,
+            Z_UI_TEXT,
+        )),
+        GlobalTransform::default(),
+        Visibility::Visible,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
+    ));
+
+    commands.spawn((
+        GameplayRenderEntity,
+        GameplayUiPortraitRankLabel,
+        BitmapText {
+            text: String::new(),
+            color: Color::WHITE,
+            font: UI_BITMAP_FONT,
+        },
+        Transform::from_translation(screen_to_world(
+            HUD_PORTRAIT_TEXT_AREA_X,
+            HUD_PORTRAIT_RANK_Y,
+            Z_UI_TEXT,
+        )),
+        GlobalTransform::default(),
+        Visibility::Visible,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
+    ));
 }
 
 fn spawn_ui_equipment(commands: &mut Commands, gfx: &GraphicsCache) {
@@ -1359,6 +1527,49 @@ fn points2rank(v: i32) -> i32 {
         return 22;
     }
     23
+}
+
+const RANK_NAMES: [&str; 24] = [
+    "Private",
+    "Private First Class",
+    "Lance Corporal",
+    "Corporal",
+    "Sergeant",
+    "Staff Sergeant",
+    "Master Sergeant",
+    "First Sergeant",
+    "Sergeant Major",
+    "Second Lieutenant",
+    "First Lieutenant",
+    "Captain",
+    "Major",
+    "Lieutenant Colonel",
+    "Colonel",
+    "Brigadier General",
+    "Major General",
+    "Lieutenant General",
+    "General",
+    "Field Marshal",
+    "Knight",
+    "Baron",
+    "Earl",
+    "Warlord",
+];
+
+fn rank_name(points: i32) -> &'static str {
+    let idx = points2rank(points).clamp(0, 23) as usize;
+    RANK_NAMES[idx]
+}
+
+fn centered_text_x(area_x: f32, area_w: f32, text: &str) -> f32 {
+    // Match engine.c centering logic: 6px per character.
+    let visible_chars = text
+        .as_bytes()
+        .iter()
+        .filter(|&&b| (32..=126).contains(&b))
+        .count() as f32;
+    let text_w = visible_chars * BITMAP_GLYPH_W;
+    area_x + (area_w - text_w) * 0.5
 }
 
 fn rank_insignia_sprite(points_tot: i32) -> i32 {
@@ -2283,6 +2494,9 @@ pub(crate) fn setup_gameplay(
     // UI toggle indicators (dd_showbox overlays for buttonbox toggles).
     spawn_ui_toggle_boxes(&mut commands, &mut image_assets);
 
+    // HP/Endurance/Mana bars (dd_showbar overlays).
+    spawn_ui_stat_bars(&mut commands, &mut image_assets);
+
     // Gameplay text input/log UI state
     commands.insert_resource(GameplayTextInput::default());
 
@@ -2297,6 +2511,75 @@ pub(crate) fn setup_gameplay(
     spawn_ui_hud_labels(&mut commands);
 
     log::debug!("setup_gameplay - end");
+}
+
+pub(crate) fn run_gameplay_update_stat_bars(
+    player_state: Res<PlayerState>,
+    mut q: Query<(&GameplayUiBar, &mut Sprite, &mut Visibility)>,
+) {
+    let (blue, green, red) = ui_bar_colors();
+
+    #[inline]
+    fn scaled_width(numer: u32, denom: u32) -> f32 {
+        if denom == 0 {
+            return 0.0;
+        }
+        let w = ((numer as u64) * (BAR_SCALE_NUM as u64) / (denom as u64)).min(BAR_W_MAX as u64);
+        w as f32
+    }
+
+    let pl = player_state.character_info();
+    let look_mode = player_state.should_show_look();
+    let look = player_state.look_target();
+
+    let hp_max = pl.hp[5] as u32;
+    let end_max = pl.end[5] as u32;
+    let mana_max = pl.mana[5] as u32;
+
+    let self_hp_cur = pl.a_hp.max(0) as u32;
+    let self_end_cur = pl.a_end.max(0) as u32;
+    let self_mana_cur = pl.a_mana.max(0) as u32;
+
+    let (hp_bg, hp_fg, end_bg, end_fg, mana_bg, mana_fg, fill_color) = if look_mode {
+        (
+            scaled_width(look.hp(), hp_max),
+            scaled_width(look.a_hp(), hp_max),
+            scaled_width(look.end(), end_max),
+            scaled_width(look.a_end(), end_max),
+            scaled_width(look.mana(), mana_max),
+            scaled_width(look.a_mana(), mana_max),
+            red,
+        )
+    } else {
+        (
+            scaled_width(hp_max, hp_max),
+            scaled_width(self_hp_cur, hp_max),
+            scaled_width(end_max, end_max),
+            scaled_width(self_end_cur, end_max),
+            scaled_width(mana_max, mana_max),
+            scaled_width(self_mana_cur, mana_max),
+            green,
+        )
+    };
+
+    for (bar, mut sprite, mut vis) in &mut q {
+        let (w, color) = match (bar.kind, bar.layer) {
+            (GameplayUiBarKind::Hitpoints, GameplayUiBarLayer::Background) => (hp_bg, blue),
+            (GameplayUiBarKind::Hitpoints, GameplayUiBarLayer::Fill) => (hp_fg, fill_color),
+            (GameplayUiBarKind::Endurance, GameplayUiBarLayer::Background) => (end_bg, blue),
+            (GameplayUiBarKind::Endurance, GameplayUiBarLayer::Fill) => (end_fg, fill_color),
+            (GameplayUiBarKind::Mana, GameplayUiBarLayer::Background) => (mana_bg, blue),
+            (GameplayUiBarKind::Mana, GameplayUiBarLayer::Fill) => (mana_fg, fill_color),
+        };
+
+        sprite.color = color;
+        sprite.custom_size = Some(Vec2::new(w.max(0.0), HUD_BAR_H));
+        *vis = if w >= 1.0 {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+    }
 }
 
 pub(crate) fn run_gameplay_text_ui(
@@ -2666,21 +2949,21 @@ pub(crate) fn run_gameplay_update_hud_labels(
 ) {
     let pl = player_state.character_info();
 
-    // Hitpoints (current / max). Server uses 1000x fixed-point for a_*.
+    // Hitpoints (current / max). Server already sends a_* as integer current values.
     if let Some(mut text) = q.p0().iter_mut().next() {
-        let cur = (pl.a_hp + 500) / 1000;
+        let cur = pl.a_hp.max(0);
         text.text = format!("Hitpoints         {:3} {:3}", cur, pl.hp[5]);
     }
 
     // Endurance (current / max)
     if let Some(mut text) = q.p1().iter_mut().next() {
-        let cur = (pl.a_end + 500) / 1000;
+        let cur = pl.a_end.max(0);
         text.text = format!("Endurance         {:3} {:3}", cur, pl.end[5]);
     }
 
     // Mana (current / max)
     if let Some(mut text) = q.p2().iter_mut().next() {
-        let cur = (pl.a_mana + 500) / 1000;
+        let cur = pl.a_mana.max(0);
         text.text = format!("Mana              {:3} {:3}", cur, pl.mana[5]);
     }
 
@@ -2884,28 +3167,87 @@ pub(crate) fn run_gameplay_update_hud_labels(
     }
 }
 
-fn update_ui_player_name_text(
-    player_state: &PlayerState,
-    mut q: Query<&mut BitmapText, With<GameplayUiPlayerNameLabel>>,
+pub(crate) fn run_gameplay_update_top_selected_name(
+    player_state: Res<PlayerState>,
+    mut q: Query<(&mut BitmapText, &mut Transform), With<GameplayUiTopSelectedNameLabel>>,
 ) {
-    // Display player name by default, or target/merchant name if applicable.
-    let name = if player_state.should_show_shop() {
-        // When shopping, show the merchant/shop target name
-        let shop = player_state.shop_target();
-        shop.name().unwrap_or("Shop")
-    } else {
-        // Default: show player character name from the character_info
+    let mut name: &str = "";
+
+    let selected = player_state.selected_char();
+    if selected != 0 {
+        // engine.c uses lookup(selected_char, 0) (0 means "ignore id")
+        if let Some(n) = player_state.lookup_name(selected, 0) {
+            name = n;
+        }
+    }
+
+    if name.is_empty() {
+        // Fallback to local player name
         let pl = player_state.character_info();
         let end = pl
             .name
             .iter()
             .position(|&b| b == 0)
             .unwrap_or(pl.name.len());
-        std::str::from_utf8(&pl.name[..end]).unwrap_or("Player")
+        name = std::str::from_utf8(&pl.name[..end]).unwrap_or("");
+    }
+
+    let sx = centered_text_x(HUD_TOP_NAME_AREA_X, HUD_TOP_NAME_AREA_W, name);
+
+    for (mut text, mut t) in &mut q {
+        text.text = name.to_string();
+        t.translation = screen_to_world(sx, HUD_TOP_NAME_Y, Z_UI_TEXT);
+    }
+}
+
+pub(crate) fn run_gameplay_update_portrait_name_and_rank(
+    player_state: Res<PlayerState>,
+    mut q: ParamSet<(
+        Query<(&mut BitmapText, &mut Transform), With<GameplayUiPortraitNameLabel>>,
+        Query<(&mut BitmapText, &mut Transform), With<GameplayUiPortraitRankLabel>>,
+    )>,
+) {
+    // Matches engine.c behavior:
+    // - If shop is open: use shop target name/rank
+    // - Else if look is active: use look target name/rank
+    // - Else: use player name/rank
+    let (name, points_tot) = if player_state.should_show_shop() {
+        let shop = player_state.shop_target();
+        (
+            shop.name().unwrap_or(""),
+            shop.points().min(i32::MAX as u32) as i32,
+        )
+    } else if player_state.should_show_look() {
+        let look = player_state.look_target();
+        (
+            look.name().unwrap_or(""),
+            look.points().min(i32::MAX as u32) as i32,
+        )
+    } else {
+        let pl = player_state.character_info();
+        let end = pl
+            .name
+            .iter()
+            .position(|&b| b == 0)
+            .unwrap_or(pl.name.len());
+        (
+            std::str::from_utf8(&pl.name[..end]).unwrap_or(""),
+            pl.points_tot,
+        )
     };
 
-    if let Some(mut text) = q.iter_mut().next() {
+    let rank = rank_name(points_tot);
+
+    let name_x = centered_text_x(HUD_PORTRAIT_TEXT_AREA_X, HUD_PORTRAIT_TEXT_AREA_W, name);
+    let rank_x = centered_text_x(HUD_PORTRAIT_TEXT_AREA_X, HUD_PORTRAIT_TEXT_AREA_W, rank);
+
+    for (mut text, mut t) in q.p0().iter_mut() {
         text.text = name.to_string();
+        t.translation = screen_to_world(name_x, HUD_PORTRAIT_NAME_Y, Z_UI_TEXT);
+    }
+    for (mut text, mut t) in q.p1().iter_mut() {
+        text.text = rank.to_string();
+        t.translation = screen_to_world(rank_x, HUD_PORTRAIT_RANK_Y, Z_UI_TEXT);
     }
 }
 
@@ -3018,17 +3360,15 @@ fn update_ui_skill_adjustment_hints(
 pub(crate) fn run_gameplay_update_extra_ui(
     player_state: Res<PlayerState>,
     mut q: ParamSet<(
-        Query<&mut BitmapText, With<GameplayUiPlayerNameLabel>>,
         Query<&mut BitmapText, With<GameplayUiExperienceUncommittedLabel>>,
         Query<&mut BitmapText, With<GameplayUiMoneyLabel>>,
         Query<(&GameplayUiSkillAdjustmentHint, &mut BitmapText)>,
     )>,
 ) {
     // Update all additional UI elements
-    update_ui_player_name_text(&player_state, q.p0());
-    update_ui_experience_text(&player_state, q.p1());
-    update_ui_money_text(&player_state, q.p2());
-    update_ui_skill_adjustment_hints(&player_state, q.p3());
+    update_ui_experience_text(&player_state, q.p0());
+    update_ui_money_text(&player_state, q.p1());
+    update_ui_skill_adjustment_hints(&player_state, q.p2());
 }
 
 pub(crate) fn run_gameplay(
@@ -3140,7 +3480,7 @@ pub(crate) fn run_gameplay(
 
     let base_rank_sprite_id = rank_insignia_sprite(player_state.character_info().points_tot);
 
-    // Match engine.c: when shop is open, the right-side portrait/rank reflect the shop target.
+    // Match engine.c: when shop/look is open, the right-side portrait/rank reflect that target.
     let mut ui_portrait_sprite_id = base_portrait_sprite_id;
     let mut ui_rank_sprite_id = base_rank_sprite_id;
     if player_state.should_show_shop() {
@@ -3150,6 +3490,13 @@ pub(crate) fn run_gameplay(
         }
         let shop_points = shop.points().min(i32::MAX as u32) as i32;
         ui_rank_sprite_id = rank_insignia_sprite(shop_points);
+    } else if player_state.should_show_look() {
+        let look = player_state.look_target();
+        if look.sprite() != 0 {
+            ui_portrait_sprite_id = look.sprite() as i32;
+        }
+        let look_points = look.points().min(i32::MAX as u32) as i32;
+        ui_rank_sprite_id = rank_insignia_sprite(look_points);
     }
 
     // Update shadows (dd.c::dd_shadow)

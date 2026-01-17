@@ -34,6 +34,9 @@ pub struct PlayerState {
     look_timer: f32,
     character_info: ClientPlayer,
 
+    // Mirrors engine.c's `selected_char` (0 = none). Used by UI and certain commands.
+    selected_char: u16,
+
     // Mirrors engine.c's `looks[]` name cache (nr -> {id,name}). Used for show_names/show_proz.
     look_names: Vec<Option<LookNameEntry>>,
     pending_log: String,
@@ -71,6 +74,8 @@ impl Default for PlayerState {
             look_timer: 0.0,
             character_info: ClientPlayer::default(),
 
+            selected_char: 0,
+
             look_names: Vec::new(),
 
             pending_log: String::new(),
@@ -106,6 +111,14 @@ impl PlayerState {
         self.should_show_shop
     }
 
+    pub fn should_show_look(&self) -> bool {
+        self.should_show_look
+    }
+
+    pub fn look_target(&self) -> &Look {
+        &self.look_target
+    }
+
     pub fn shop_target(&self) -> &Look {
         &self.shop_target
     }
@@ -122,8 +135,18 @@ impl PlayerState {
         self.look_names
             .get(nr as usize)
             .and_then(|e| e.as_ref())
-            .filter(|e| e.id == id)
+            .filter(|e| id == 0 || e.id == id)
             .map(|e| e.name.as_str())
+    }
+
+    pub fn selected_char(&self) -> u16 {
+        self.selected_char
+    }
+
+    // TODO: Tie this in
+    #[allow(dead_code)]
+    pub fn set_selected_char(&mut self, selected_char: u16) {
+        self.selected_char = selected_char;
     }
 
     fn set_known_name(&mut self, nr: u16, id: u16, name: &str) {
@@ -247,10 +270,12 @@ impl PlayerState {
         }
         let end = std::cmp::min(offset + max_len, self.moa_file_data.name.len());
         self.moa_file_data.name[offset..end].fill(0);
+        self.character_info.name[offset..end].fill(0);
 
         let bytes = chunk.as_bytes();
         let n = std::cmp::min(bytes.len(), end - offset);
         self.moa_file_data.name[offset..offset + n].copy_from_slice(&bytes[..n]);
+        self.character_info.name[offset..offset + n].copy_from_slice(&bytes[..n]);
     }
 
     fn handle_log_chunk(&mut self, font: u8, chunk: &str) {
@@ -504,6 +529,10 @@ impl PlayerState {
                 self.look_target.set_id(*id);
                 self.look_target.set_mana(*mana);
                 self.look_target.set_a_mana(*a_mana);
+
+                // engine.c shows the selected character's name when selected_char != 0.
+                // We use the most recent look target as the selected character.
+                self.selected_char = *nr;
             }
             ServerCommandData::Look4 {
                 worn1,
