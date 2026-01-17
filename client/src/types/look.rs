@@ -49,6 +49,14 @@ impl Default for Look {
 }
 
 impl Look {
+    pub fn nr(&self) -> u16 {
+        self.nr
+    }
+
+    pub fn id(&self) -> u16 {
+        self.id
+    }
+
     pub fn sprite(&self) -> u16 {
         self.sprite
     }

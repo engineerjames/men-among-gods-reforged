@@ -18,8 +18,8 @@ use crate::network::{client_commands::ClientCommand, NetworkRuntime};
 use crate::player_state::PlayerState;
 
 use mag_core::constants::{
-    INVIS, SPEEDTAB, SPR_EMPTY, STUNNED, WN_ARMS, WN_BELT, WN_BODY, WN_CLOAK, WN_FEET, WN_HEAD,
-    WN_LEGS, WN_LHAND, WN_LRING, WN_NECK, WN_RHAND, WN_RRING, XPOS, YPOS,
+    INVIS, ISITEM, SPEEDTAB, SPR_EMPTY, STUNNED, WN_ARMS, WN_BELT, WN_BODY, WN_CLOAK, WN_FEET,
+    WN_HEAD, WN_LEGS, WN_LHAND, WN_LRING, WN_NECK, WN_RHAND, WN_RRING, XPOS, YPOS,
 };
 
 // In the original client, xoff starts with `-176` (to account for UI layout).
@@ -1277,6 +1277,26 @@ fn copysprite_screen_pos(
     Some((rx, ry))
 }
 
+fn autohide(x: usize, y: usize) -> bool {
+    // Ported from engine.c::autohide.
+    // NOTE: engine.c uses TILEX/2 in both comparisons.
+    !(x >= (TILEX / 2) || (y <= (TILEX / 2)))
+}
+
+fn facing(x: usize, y: usize, dir: i32) -> bool {
+    // Ported from engine.c::facing.
+    let cx = TILEX / 2;
+    let cy = TILEY / 2;
+
+    match dir {
+        1 => x == cx + 1 && y == cy,
+        2 => x == cx - 1 && y == cy,
+        4 => x == cx && y == cy + 1,
+        3 => x == cx && y == cy - 1,
+        _ => false,
+    }
+}
+
 const STATTAB: [i32; 11] = [0, 1, 1, 6, 6, 2, 3, 4, 5, 7, 4];
 
 const ATTRIBUTE_NAMES: [&str; 5] = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
@@ -1922,6 +1942,10 @@ pub(crate) fn setup_gameplay(
     // UI text (log + input + HUD labels). These are normal Bevy UI nodes (transparent background).
     font_cache.ensure_initialized(&asset_server);
     let font = font_cache.ui_font().unwrap_or_default();
+
+    // Character name/proz overlays (engine.c: dd_gputtext + lookup/set_look_proz).
+    crate::systems::nameplates::spawn_gameplay_nameplates(&mut commands, world_root, font.clone());
+
     spawn_ui_log_text(&mut commands, font.clone());
     spawn_ui_input_text(&mut commands, font.clone());
     spawn_ui_hud_labels(&mut commands, font);
@@ -2514,7 +2538,53 @@ pub(crate) fn run_gameplay(
                 };
                 (id, 0, 0)
             }
-            TileLayer::Object => (tile.obj1, 0, 0),
+            TileLayer::Object => {
+                let mut id = tile.obj1;
+
+                // engine.c: if (pdata.hide==0 || (map[m].flags&ISITEM) || autohide(x,y)) draw obj1
+                // else draw obj1+1 (hide walls/high objects).
+                let hide_enabled = player_state.player_data().hide != 0;
+                if hide_enabled
+                    && id > 0
+                    && (tile.flags & ISITEM) == 0
+                    && !autohide(x, y)
+                {
+                    // engine.c mine hack: substitute special sprites for certain mine-wall IDs
+                    // when hide is enabled and tile isn't directly in front of the player.
+                    let is_mine_wall = id > 16335
+                        && id < 16422
+                        && !matches!(
+                            id,
+                            16357 | 16365 | 16373 | 16381 | 16389 | 16397 | 16405 | 16413 | 16421
+                        )
+                        && !facing(x, y, player_state.character_info().dir);
+
+                    if is_mine_wall {
+                        let tmp2 = if id < 16358 {
+                            457
+                        } else if id < 16366 {
+                            456
+                        } else if id < 16374 {
+                            455
+                        } else if id < 16382 {
+                            466
+                        } else if id < 16390 {
+                            459
+                        } else if id < 16398 {
+                            458
+                        } else if id < 16406 {
+                            468
+                        } else {
+                            467
+                        };
+                        id = tmp2;
+                    } else {
+                        id += 1;
+                    }
+                }
+
+                (id, 0, 0)
+            }
             TileLayer::Character => (tile.obj2, tile.obj_xoff, tile.obj_yoff),
         };
 

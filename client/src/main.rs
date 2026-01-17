@@ -24,6 +24,7 @@ use crate::sfx_cache::SoundCache;
 use crate::systems::debug;
 use crate::systems::display;
 use crate::systems::map_hover;
+use crate::systems::nameplates;
 
 static LOG_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
 
@@ -145,6 +146,12 @@ fn main() {
         .add_systems(
             Update,
             map_hover::run_gameplay_move_target_marker
+                .run_if(in_state(GameState::Gameplay))
+                .after(states::gameplay::run_gameplay),
+        )
+        .add_systems(
+            Update,
+            nameplates::run_gameplay_nameplates
                 .run_if(in_state(GameState::Gameplay))
                 .after(states::gameplay::run_gameplay),
         )

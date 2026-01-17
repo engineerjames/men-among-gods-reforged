@@ -10,7 +10,7 @@ use crate::network::{client_commands::ClientCommand, NetworkRuntime};
 use crate::player_state::PlayerState;
 use crate::states::gameplay::GameplayRenderEntity;
 
-use mag_core::constants::{ISCHAR, ISITEM, XPOS, YPOS};
+use mag_core::constants::{XPOS, YPOS};
 
 // Keep these in-sync with the draw ordering in `states/gameplay.rs`.
 const Z_WORLD_STEP: f32 = 0.01;

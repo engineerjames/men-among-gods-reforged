@@ -33,6 +33,9 @@ pub struct PlayerState {
     should_show_shop: bool,
     look_timer: f32,
     character_info: ClientPlayer,
+
+    // Mirrors engine.c's `looks[]` name cache (nr -> {id,name}). Used for show_names/show_proz.
+    look_names: Vec<Option<LookNameEntry>>,
     pending_log: String,
     moa_file_data: SaveFile,
     server_version: u32,
@@ -45,6 +48,12 @@ pub struct PlayerState {
     server_ctick: u8,
     server_ctick_pending: bool,
     local_ctick: u8,
+}
+
+#[derive(Clone, Debug)]
+struct LookNameEntry {
+    id: u16,
+    name: String,
 }
 
 impl Default for PlayerState {
@@ -61,6 +70,8 @@ impl Default for PlayerState {
             should_show_shop: false,
             look_timer: 0.0,
             character_info: ClientPlayer::default(),
+
+            look_names: Vec::new(),
 
             pending_log: String::new(),
 
@@ -105,6 +116,25 @@ impl PlayerState {
 
     pub fn player_data_mut(&mut self) -> &mut PlayerData {
         &mut self.player_info
+    }
+
+    pub fn lookup_name(&self, nr: u16, id: u16) -> Option<&str> {
+        self.look_names
+            .get(nr as usize)
+            .and_then(|e| e.as_ref())
+            .filter(|e| e.id == id)
+            .map(|e| e.name.as_str())
+    }
+
+    fn set_known_name(&mut self, nr: u16, id: u16, name: &str) {
+        let idx = nr as usize;
+        if self.look_names.len() <= idx {
+            self.look_names.resize_with(idx + 1, || None);
+        }
+        self.look_names[idx] = Some(LookNameEntry {
+            id,
+            name: name.to_string(),
+        });
     }
 
     pub fn server_ctick(&self) -> u8 {
@@ -497,6 +527,14 @@ impl PlayerState {
             }
             ServerCommandData::Look5 { name } => {
                 self.look_target.set_name(name);
+
+                // engine.c: add_look(tmplook.nr, tmplook.name, tmplook.id)
+                // Our Look3 packet sets nr/id; Look5 provides the name.
+                let nr = self.look_target.nr();
+                let id = self.look_target.id();
+                if !name.is_empty() {
+                    self.set_known_name(nr, id, name);
+                }
 
                 if !self.look_target.is_extended() && self.look_target.autoflag() == 0 {
                     self.should_show_look = true;
