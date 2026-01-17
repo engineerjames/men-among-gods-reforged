@@ -261,7 +261,6 @@ impl ClientCommand {
     }
 
     /// `CL_CMD_STAT` (`inter.c` uses `cmd(CL_CMD_STAT, m, stat_raised[n])`).
-    #[allow(dead_code)]
     pub fn new_stat(which: i16, value: i32) -> Self {
         Self::cmd_xy_i16_i32(ClientCommandType::CmdStat, which, value)
     }

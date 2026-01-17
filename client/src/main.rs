@@ -147,64 +147,51 @@ fn main() {
             Update,
             states::gameplay::run_gameplay_statbox_input
                 .run_if(in_state(GameState::Gameplay))
-                .after(network::NetworkSet::Receive)
-                .before(states::gameplay::run_gameplay_update_hud_labels),
         )
         .add_systems(
             Update,
             map_hover::run_gameplay_map_hover_and_click
                 .run_if(in_state(GameState::Gameplay))
-                .after(states::gameplay::run_gameplay),
         )
         .add_systems(
             Update,
             map_hover::run_gameplay_move_target_marker
                 .run_if(in_state(GameState::Gameplay))
-                .after(states::gameplay::run_gameplay),
         )
         .add_systems(
             Update,
             nameplates::run_gameplay_nameplates
                 .run_if(in_state(GameState::Gameplay))
-                .after(states::gameplay::run_gameplay),
         )
         .add_systems(
             Update,
             states::gameplay::run_gameplay_text_ui
                 .run_if(in_state(GameState::Gameplay))
-                .after(network::NetworkSet::Receive),
         )
         .add_systems(
             Update,
             states::gameplay::run_gameplay_update_hud_labels
                 .run_if(in_state(GameState::Gameplay))
-                .after(network::NetworkSet::Receive),
         )
         .add_systems(
             Update,
             states::gameplay::run_gameplay_update_extra_ui
                 .run_if(in_state(GameState::Gameplay))
-                .after(network::NetworkSet::Receive),
         )
         .add_systems(
             Update,
             states::gameplay::run_gameplay_update_stat_bars
                 .run_if(in_state(GameState::Gameplay))
-                .after(network::NetworkSet::Receive),
         )
         .add_systems(
             Update,
             states::gameplay::run_gameplay_update_top_selected_name
                 .run_if(in_state(GameState::Gameplay))
-                .after(network::NetworkSet::Receive)
-                .after(states::gameplay::run_gameplay_update_extra_ui),
         )
         .add_systems(
             Update,
             states::gameplay::run_gameplay_update_portrait_name_and_rank
                 .run_if(in_state(GameState::Gameplay))
-                .after(network::NetworkSet::Receive)
-                .after(states::gameplay::run_gameplay_update_top_selected_name),
         )
         .add_systems(
             Update,

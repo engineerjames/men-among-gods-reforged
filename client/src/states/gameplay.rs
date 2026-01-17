@@ -24,7 +24,7 @@ use mag_core::constants::{
     MF_UWATER, SPEEDTAB, SPR_EMPTY, STUNNED, TOMB, WN_ARMS, WN_BELT, WN_BODY, WN_CLOAK, WN_FEET,
     WN_HEAD, WN_LEGS, WN_LHAND, WN_LRING, WN_NECK, WN_RHAND, WN_RRING, XPOS, YPOS,
 };
-use mag_core::types::skilltab::{get_skill_name, get_skill_nr, get_skill_sortkey, MAX_SKILLS};
+use mag_core::types::skilltab::{get_skill_desc, get_skill_name, get_skill_nr, get_skill_sortkey, MAX_SKILLS};
 
 // In the original client, xoff starts with `-176` (to account for UI layout).
 // Keeping this makes it easier to compare screenshots while we port rendering.
@@ -3144,6 +3144,26 @@ pub(crate) fn run_gameplay_statbox_input(
     if mouse.just_released(MouseButton::Right) {
         let x = game.x;
         let y = game.y;
+
+        // Skill list right-click (orig/inter.c::mouse_statbox2): show skill description.
+        if (2.0..=108.0).contains(&x) && (114.0..=251.0).contains(&y) {
+            let row = ((y - 114.0) / 14.0).floor() as usize;
+            if row < 10 {
+                let pl = player_state.character_info();
+                let sorted = build_sorted_skills(pl);
+                let skilltab_index = statbox.skill_pos + row;
+                if let Some(&skill_id) = sorted.get(skilltab_index) {
+                    if pl.skill[skill_id][0] != 0 {
+                        let desc = get_skill_desc(skill_id);
+                        if !desc.is_empty() {
+                            player_state.tlog(1, desc);
+                        }
+                    }
+                }
+            }
+            return;
+        }
+
         if x > 109.0 && y > 254.0 && x < 158.0 && y < 266.0 {
             player_state.tlog(1, "Make the changes permanent");
             return;
@@ -3199,6 +3219,40 @@ pub(crate) fn run_gameplay_statbox_input(
     }
 
     if !mouse.just_released(MouseButton::Left) {
+        return;
+    }
+
+    // Skill list scroll buttons (orig/inter.c::button_command case 14/15 via trans_button).
+    // Up: if (skill_pos>1) skill_pos-=2;  Down: if (skill_pos<40) skill_pos+=2;
+    if game.x > 206.0 && game.x < 218.0 && game.y > 113.0 && game.y < 148.0 {
+        if statbox.skill_pos > 1 {
+            statbox.skill_pos = statbox.skill_pos.saturating_sub(2);
+        }
+        return;
+    }
+    if game.x > 206.0 && game.x < 218.0 && game.y > 218.0 && game.y < 252.0 {
+        if statbox.skill_pos < 40 {
+            statbox.skill_pos = (statbox.skill_pos + 2).min(40);
+        }
+        return;
+    }
+
+    // Skill click (orig/inter.c::mouse_statbox2): clicking a skill row sends CL_CMD_SKILL.
+    // The original client always sends attrib0=skilltab[..].attrib[0], which is initialized to 1
+    // for all skills (and can be modified for spells via commented-out UI).
+    if (2.0..=108.0).contains(&game.x) && (114.0..=251.0).contains(&game.y) {
+        let row = ((game.y - 114.0) / 14.0).floor() as usize;
+        if row < 10 {
+            let pl = player_state.character_info();
+            let sorted = build_sorted_skills(pl);
+            let skilltab_index = statbox.skill_pos + row;
+            if let Some(&skill_id) = sorted.get(skilltab_index) {
+                let skill_nr = get_skill_nr(skill_id) as u32;
+                let selected_char = player_state.selected_char() as u32;
+                let attrib0 = 1u32;
+                net.send(ClientCommand::new_skill(skill_nr, selected_char, attrib0).to_bytes());
+            }
+        }
         return;
     }
 

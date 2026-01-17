@@ -365,6 +365,15 @@ pub fn get_skill_name(skill: usize) -> &'static str {
     }
 }
 
+/// Safely get the skill description (empty string on invalid index)
+pub fn get_skill_desc(skill: usize) -> &'static str {
+    if skill < MAX_SKILLS {
+        SKILLTAB[skill].desc
+    } else {
+        ""
+    }
+}
+
 /// Safely get the skill sort key / category (defaults to 'Z' on invalid index)
 pub fn get_skill_sortkey(skill: usize) -> char {
     if skill < MAX_SKILLS {
