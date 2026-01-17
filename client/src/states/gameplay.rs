@@ -19,7 +19,9 @@ use crate::network::{client_commands::ClientCommand, NetworkRuntime};
 use crate::player_state::PlayerState;
 
 use mag_core::constants::{
-    INVIS, ISITEM, SPEEDTAB, SPR_EMPTY, STUNNED, WN_ARMS, WN_BELT, WN_BODY, WN_CLOAK, WN_FEET,
+    DEATH, INJURED, INJURED1, INJURED2, INVIS, ISITEM, MF_ARENA, MF_BANK, MF_DEATHTRAP, MF_INDOORS,
+    MF_MOVEBLOCK, MF_NOEXPIRE, MF_NOLAG, MF_NOMAGIC, MF_NOMONST, MF_SIGHTBLOCK, MF_TAVERN,
+    MF_UWATER, SPEEDTAB, SPR_EMPTY, STUNNED, TOMB, WN_ARMS, WN_BELT, WN_BODY, WN_CLOAK, WN_FEET,
     WN_HEAD, WN_LEGS, WN_LHAND, WN_LRING, WN_NECK, WN_RHAND, WN_RRING, XPOS, YPOS,
 };
 use mag_core::types::skilltab::{get_skill_name, get_skill_sortkey, MAX_SKILLS};
@@ -37,6 +39,7 @@ const Z_BG_BASE: f32 = 0.0;
 const Z_OBJ_BASE: f32 = 100.0;
 const Z_SHADOW_BASE: f32 = 100.1;
 const Z_CHAR_BASE: f32 = 100.2;
+const Z_FX_BASE: f32 = 100.25;
 // Must stay within the Camera2d default orthographic near/far (default_2d far is 1000).
 const Z_UI: f32 = 900.0;
 const Z_UI_PORTRAIT: f32 = 910.0;
@@ -1185,6 +1188,32 @@ pub(crate) struct TileRender {
     layer: TileLayer,
 }
 
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct TileFlagOverlay {
+    index: usize,
+    kind: TileFlagOverlayKind,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TileFlagOverlayKind {
+    MoveBlock,
+    SightBlock,
+    Indoors,
+    Underwater,
+    NoMonsters,
+    Bank,
+    Tavern,
+    NoMagic,
+    DeathTrap,
+    NoLag,
+    Arena,
+    NoExpire,
+    UnknownHighBit,
+    Injured,
+    Death,
+    Tomb,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TileLayer {
     Background,
@@ -1249,6 +1278,37 @@ fn spawn_tile_entity(
             Transform::default(),
             GlobalTransform::default(),
             initial_visibility,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
+        ))
+        .id();
+
+    Some(id)
+}
+
+fn spawn_tile_overlay_entity(
+    commands: &mut Commands,
+    gfx: &GraphicsCache,
+    overlay: TileFlagOverlay,
+) -> Option<Entity> {
+    let Some(empty) = gfx.get_sprite(SPR_EMPTY as usize) else {
+        return None;
+    };
+
+    let id = commands
+        .spawn((
+            GameplayRenderEntity,
+            overlay,
+            LastRender {
+                sprite_id: i32::MIN,
+                sx: f32::NAN,
+                sy: f32::NAN,
+            },
+            empty.clone(),
+            Anchor::TOP_LEFT,
+            Transform::default(),
+            GlobalTransform::default(),
+            Visibility::Hidden,
             InheritedVisibility::default(),
             ViewVisibility::default(),
         ))
@@ -2522,6 +2582,34 @@ pub(crate) fn setup_gameplay(
         ) {
             commands.entity(world_root).add_child(e);
         }
+
+        // Map flag overlays (ported from engine.c: marker/effect sprites on tiles).
+        let overlay_kinds = [
+            TileFlagOverlayKind::MoveBlock,
+            TileFlagOverlayKind::SightBlock,
+            TileFlagOverlayKind::Indoors,
+            TileFlagOverlayKind::Underwater,
+            TileFlagOverlayKind::NoLag,
+            TileFlagOverlayKind::NoMonsters,
+            TileFlagOverlayKind::Bank,
+            TileFlagOverlayKind::Tavern,
+            TileFlagOverlayKind::NoMagic,
+            TileFlagOverlayKind::DeathTrap,
+            TileFlagOverlayKind::Arena,
+            TileFlagOverlayKind::NoExpire,
+            TileFlagOverlayKind::UnknownHighBit,
+            TileFlagOverlayKind::Injured,
+            TileFlagOverlayKind::Death,
+            TileFlagOverlayKind::Tomb,
+        ];
+
+        for kind in overlay_kinds {
+            if let Some(e) =
+                spawn_tile_overlay_entity(&mut commands, &gfx, TileFlagOverlay { index, kind })
+            {
+                commands.entity(world_root).add_child(e);
+            }
+        }
     }
 
     // UI frame / background (sprite 00001.png)
@@ -3539,6 +3627,16 @@ pub(crate) fn run_gameplay(
             ),
             Without<GameplayWorldRoot>,
         >,
+        Query<
+            (
+                &TileFlagOverlay,
+                &mut Sprite,
+                &mut Transform,
+                &mut Visibility,
+                &mut LastRender,
+            ),
+            Without<GameplayWorldRoot>,
+        >,
         Query<(&mut Sprite, &mut Visibility, &mut LastRender), With<GameplayUiPortrait>>,
         Query<(&mut Sprite, &mut Visibility, &mut LastRender), With<GameplayUiRank>>,
         Query<(
@@ -3835,8 +3933,194 @@ pub(crate) fn run_gameplay(
         transform.translation = screen_to_world(sx_f, sy_f, z);
     }
 
+    // Map flag overlays (ported from engine.c): draw above characters on the same tile.
+    for (ovl, mut sprite, mut transform, mut visibility, mut last) in &mut q.p2() {
+        let Some(tile) = map.tile_at_index(ovl.index) else {
+            *visibility = Visibility::Hidden;
+            continue;
+        };
+
+        let x = ovl.index % TILEX;
+        let y = ovl.index / TILEX;
+        let draw_order = ((TILEY - 1 - y) * TILEX + x) as f32;
+
+        let xpos = (x as i32) * 32;
+        let ypos = (y as i32) * 32;
+
+        let mut sprite_id: i32 = 0;
+        let mut xoff_i: i32 = 0;
+        let mut yoff_i: i32 = 0;
+        let mut z_bias: f32 = 0.0;
+
+        match ovl.kind {
+            TileFlagOverlayKind::MoveBlock => {
+                if (tile.flags2 & MF_MOVEBLOCK) != 0 {
+                    sprite_id = 55;
+                    z_bias = 0.0000;
+                }
+            }
+            TileFlagOverlayKind::SightBlock => {
+                if (tile.flags2 & MF_SIGHTBLOCK) != 0 {
+                    sprite_id = 84;
+                    z_bias = 0.0001;
+                }
+            }
+            TileFlagOverlayKind::Indoors => {
+                if (tile.flags2 & MF_INDOORS) != 0 {
+                    sprite_id = 56;
+                    z_bias = 0.0002;
+                }
+            }
+            TileFlagOverlayKind::Underwater => {
+                if (tile.flags2 & MF_UWATER) != 0 {
+                    sprite_id = 75;
+                    z_bias = 0.0003;
+                }
+            }
+            TileFlagOverlayKind::NoLag => {
+                if (tile.flags2 & MF_NOLAG) != 0 {
+                    sprite_id = 57;
+                    z_bias = 0.0004;
+                }
+            }
+            TileFlagOverlayKind::NoMonsters => {
+                if (tile.flags2 & MF_NOMONST) != 0 {
+                    sprite_id = 59;
+                    z_bias = 0.0005;
+                }
+            }
+            TileFlagOverlayKind::Bank => {
+                if (tile.flags2 & MF_BANK) != 0 {
+                    sprite_id = 60;
+                    z_bias = 0.0006;
+                }
+            }
+            TileFlagOverlayKind::Tavern => {
+                if (tile.flags2 & MF_TAVERN) != 0 {
+                    sprite_id = 61;
+                    z_bias = 0.0007;
+                }
+            }
+            TileFlagOverlayKind::NoMagic => {
+                if (tile.flags2 & MF_NOMAGIC) != 0 {
+                    sprite_id = 62;
+                    z_bias = 0.0008;
+                }
+            }
+            TileFlagOverlayKind::DeathTrap => {
+                if (tile.flags2 & MF_DEATHTRAP) != 0 {
+                    sprite_id = 73;
+                    z_bias = 0.0009;
+                }
+            }
+            TileFlagOverlayKind::Arena => {
+                if (tile.flags2 & MF_ARENA) != 0 {
+                    sprite_id = 76;
+                    z_bias = 0.0010;
+                }
+            }
+            TileFlagOverlayKind::NoExpire => {
+                if (tile.flags2 & MF_NOEXPIRE) != 0 {
+                    sprite_id = 82;
+                    z_bias = 0.0011;
+                }
+            }
+            TileFlagOverlayKind::UnknownHighBit => {
+                if (tile.flags2 & 0x8000_0000) != 0 {
+                    sprite_id = 72;
+                    z_bias = 0.0012;
+                }
+            }
+            TileFlagOverlayKind::Injured => {
+                if (tile.flags & INJURED) != 0 {
+                    let mut variant = 0;
+                    if (tile.flags & INJURED1) != 0 {
+                        variant += 1;
+                    }
+                    if (tile.flags & INJURED2) != 0 {
+                        variant += 2;
+                    }
+                    sprite_id = 1079 + variant;
+                    xoff_i = tile.obj_xoff;
+                    yoff_i = tile.obj_yoff;
+                    z_bias = 0.0020;
+                } else {
+                    sprite_id = 0;
+                }
+            }
+            TileFlagOverlayKind::Death => {
+                if (tile.flags & DEATH) != 0 {
+                    let n = ((tile.flags & DEATH) >> 17) as i32;
+                    if n > 0 {
+                        sprite_id = 280 + (n - 1);
+                        if tile.obj2 != 0 {
+                            xoff_i = tile.obj_xoff;
+                            yoff_i = tile.obj_yoff;
+                        }
+                        z_bias = 0.0021;
+                    }
+                }
+            }
+            TileFlagOverlayKind::Tomb => {
+                if (tile.flags & TOMB) != 0 {
+                    let n = ((tile.flags & TOMB) >> 12) as i32;
+                    if n > 0 {
+                        sprite_id = 240 + (n - 1);
+                        z_bias = 0.0022;
+                    }
+                }
+            }
+        }
+
+        if sprite_id <= 0 {
+            if sprite_id != last.sprite_id {
+                last.sprite_id = sprite_id;
+            }
+            *visibility = Visibility::Hidden;
+            continue;
+        }
+
+        let Some((sx_i, sy_i)) = copysprite_screen_pos(
+            sprite_id as usize,
+            &gfx,
+            &images,
+            xpos,
+            ypos,
+            xoff_i,
+            yoff_i,
+        ) else {
+            *visibility = Visibility::Hidden;
+            continue;
+        };
+
+        let (sx_f, sy_f) = (sx_i as f32, sy_i as f32);
+        let z = Z_FX_BASE + draw_order * Z_WORLD_STEP + z_bias;
+
+        if sprite_id == last.sprite_id
+            && (sx_f - last.sx).abs() < 0.01
+            && (sy_f - last.sy).abs() < 0.01
+        {
+            *visibility = Visibility::Visible;
+            transform.translation = screen_to_world(sx_f, sy_f, z);
+            continue;
+        }
+
+        last.sprite_id = sprite_id;
+        last.sx = sx_f;
+        last.sy = sy_f;
+
+        let Some(src) = gfx.get_sprite(sprite_id as usize) else {
+            *visibility = Visibility::Hidden;
+            continue;
+        };
+
+        *sprite = src.clone();
+        *visibility = Visibility::Visible;
+        transform.translation = screen_to_world(sx_f, sy_f, z);
+    }
+
     // Update UI portrait
-    if let Some((mut sprite, mut visibility, mut last)) = q.p2().iter_mut().next() {
+    if let Some((mut sprite, mut visibility, mut last)) = q.p3().iter_mut().next() {
         if ui_portrait_sprite_id > 0 {
             if last.sprite_id != ui_portrait_sprite_id {
                 if let Some(src) = gfx.get_sprite(ui_portrait_sprite_id as usize) {
@@ -3855,7 +4139,7 @@ pub(crate) fn run_gameplay(
     }
 
     // Update UI rank badge
-    if let Some((mut sprite, mut visibility, mut last)) = q.p3().iter_mut().next() {
+    if let Some((mut sprite, mut visibility, mut last)) = q.p4().iter_mut().next() {
         if ui_rank_sprite_id > 0 {
             if last.sprite_id != ui_rank_sprite_id {
                 if let Some(src) = gfx.get_sprite(ui_rank_sprite_id as usize) {
@@ -3874,9 +4158,9 @@ pub(crate) fn run_gameplay(
     }
 
     draw_inventory_ui(&gfx, &player_state);
-    draw_equipment_ui(&gfx, &player_state, &mut q.p4());
-    draw_active_spells_ui(&gfx, &player_state, &mut q.p5());
-    draw_shop_window_ui(&gfx, &player_state, &mut q.p6());
+    draw_equipment_ui(&gfx, &player_state, &mut q.p5());
+    draw_active_spells_ui(&gfx, &player_state, &mut q.p6());
+    draw_shop_window_ui(&gfx, &player_state, &mut q.p7());
 }
 
 fn update_minimap(
