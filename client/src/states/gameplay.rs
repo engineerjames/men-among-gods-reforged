@@ -52,6 +52,7 @@ const Z_UI_SHOP_PANEL: f32 = 930.0;
 const Z_UI_SHOP_ITEMS: f32 = 931.0;
 const Z_UI_TEXT: f32 = 940.0;
 const Z_UI_MINIMAP: f32 = 905.0;
+const Z_UI_SCROLL: f32 = 939.0;
 
 // Matches dd_show_map() placement in dd.c: top-left at (3,471), size 128x128.
 const MINIMAP_X: f32 = 3.0;
@@ -243,6 +244,18 @@ const MODE_FAST_X: f32 = 608.0; // pl.mode==2
 const MODE_NORMAL_X: f32 = 656.0; // pl.mode==1
 const MODE_SLOW_X: f32 = 704.0; // pl.mode==0
 const MODE_BOX_Y: f32 = 554.0;
+
+// Scroll knob rectangles (engine.c: dd_showbar calls for inv/skill scroll).
+const SCROLL_KNOB_W: f32 = 11.0;
+const SCROLL_KNOB_H: f32 = 11.0;
+const SKILL_SCROLL_X: f32 = 207.0;
+const SKILL_SCROLL_Y_BASE: f32 = 149.0;
+const SKILL_SCROLL_RANGE: i32 = 58;
+const SKILL_SCROLL_MAX: i32 = 40;
+const INV_SCROLL_X: f32 = 290.0;
+const INV_SCROLL_Y_BASE: f32 = 36.0;
+const INV_SCROLL_RANGE: i32 = 94;
+const INV_SCROLL_MAX: i32 = 30;
 
 #[derive(Component)]
 pub struct GameplayRenderEntity;
@@ -436,6 +449,23 @@ pub(crate) struct GameplayStatboxState {
     stat_raised: [i32; 108],
     stat_points_used: i32,
     skill_pos: usize,
+}
+
+#[derive(Resource, Default)]
+pub(crate) struct GameplayInventoryScrollState {
+    /// Inventory scroll position from the original client (0..=30).
+    inv_pos: usize,
+}
+
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GameplayUiScrollKnobKind {
+    Skill,
+    Inventory,
+}
+
+#[derive(Component, Clone, Copy, Debug)]
+pub(crate) struct GameplayUiScrollKnob {
+    kind: GameplayUiScrollKnobKind,
 }
 
 impl Default for GameplayStatboxState {
@@ -1189,6 +1219,57 @@ fn spawn_ui_stat_bars(commands: &mut Commands, image_assets: &mut Assets<Image>)
             green,
         );
     }
+}
+
+fn spawn_ui_scroll_knobs(commands: &mut Commands, image_assets: &mut Assets<Image>) {
+    // A single white pixel stretched + tinted for dd_showbar-like rectangles.
+    let pixel = Image::new(
+        Extent3d {
+            width: 1,
+            height: 1,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        vec![255, 255, 255, 255],
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::default(),
+    );
+    let pixel_handle = image_assets.add(pixel);
+
+    let (_blue, green, _red) = ui_bar_colors();
+
+    let spawn_knob = |commands: &mut Commands, kind: GameplayUiScrollKnobKind, sx: f32, sy: f32| {
+        commands.spawn((
+            GameplayRenderEntity,
+            GameplayUiScrollKnob { kind },
+            Sprite {
+                image: pixel_handle.clone(),
+                color: green,
+                custom_size: Some(Vec2::new(SCROLL_KNOB_W, SCROLL_KNOB_H)),
+                ..default()
+            },
+            Anchor::TOP_LEFT,
+            Transform::from_translation(screen_to_world(sx, sy, Z_UI_SCROLL)),
+            GlobalTransform::default(),
+            Visibility::Visible,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
+        ));
+    };
+
+    // Initial positions match engine.c's dd_showbar formulas at pos=0.
+    spawn_knob(
+        commands,
+        GameplayUiScrollKnobKind::Skill,
+        SKILL_SCROLL_X,
+        SKILL_SCROLL_Y_BASE,
+    );
+    spawn_knob(
+        commands,
+        GameplayUiScrollKnobKind::Inventory,
+        INV_SCROLL_X,
+        INV_SCROLL_Y_BASE,
+    );
 }
 
 pub(crate) fn run_gameplay_bitmap_text_renderer(
@@ -2597,6 +2678,7 @@ pub(crate) fn setup_gameplay(
 
     // Pending stat raises/points spent (orig/inter.c statbox bookkeeping).
     commands.insert_resource(GameplayStatboxState::default());
+    commands.insert_resource(GameplayInventoryScrollState::default());
 
     // Clear any previous gameplay sprites (re-entering gameplay, etc.)
     for e in &existing_render {
@@ -2741,6 +2823,9 @@ pub(crate) fn setup_gameplay(
     // HP/Endurance/Mana bars (dd_showbar overlays).
     spawn_ui_stat_bars(&mut commands, &mut image_assets);
 
+    // Skill/inventory scrollbar knob indicators (engine.c: dd_showbar at x=207 and x=290).
+    spawn_ui_scroll_knobs(&mut commands, &mut image_assets);
+
     // Gameplay text input/log UI state
     commands.insert_resource(GameplayTextInput::default());
     commands.insert_resource(GameplayExitState::default());
@@ -2756,6 +2841,32 @@ pub(crate) fn setup_gameplay(
     spawn_ui_hud_labels(&mut commands);
 
     log::debug!("setup_gameplay - end");
+}
+
+pub(crate) fn run_gameplay_update_scroll_knobs(
+    statbox: Res<GameplayStatboxState>,
+    inv_scroll: Res<GameplayInventoryScrollState>,
+    mut q: Query<(&GameplayUiScrollKnob, &mut Transform)>,
+) {
+    if !statbox.is_changed() && !inv_scroll.is_changed() {
+        return;
+    }
+
+    let skill_pos = statbox.skill_pos as i32;
+    let inv_pos = inv_scroll.inv_pos as i32;
+
+    // Match original integer math: y = base + (pos * range) / max.
+    let skill_y =
+        SKILL_SCROLL_Y_BASE + ((skill_pos * SKILL_SCROLL_RANGE) / SKILL_SCROLL_MAX) as f32;
+    let inv_y = INV_SCROLL_Y_BASE + ((inv_pos * INV_SCROLL_RANGE) / INV_SCROLL_MAX) as f32;
+
+    for (knob, mut t) in &mut q {
+        let (x, y) = match knob.kind {
+            GameplayUiScrollKnobKind::Skill => (SKILL_SCROLL_X, skill_y),
+            GameplayUiScrollKnobKind::Inventory => (INV_SCROLL_X, inv_y),
+        };
+        t.translation = screen_to_world(x, y, Z_UI_SCROLL);
+    }
 }
 
 pub(crate) fn run_gameplay_update_stat_bars(
@@ -3137,6 +3248,7 @@ pub(crate) fn run_gameplay_statbox_input(
     net: Res<NetworkRuntime>,
     mut player_state: ResMut<PlayerState>,
     mut statbox: ResMut<GameplayStatboxState>,
+    mut inv_scroll: ResMut<GameplayInventoryScrollState>,
 ) {
     let Some(game) = cursor_game_pos(&windows, &cameras) else {
         return;
@@ -3146,6 +3258,16 @@ pub(crate) fn run_gameplay_statbox_input(
     if mouse.just_released(MouseButton::Right) {
         let x = game.x;
         let y = game.y;
+
+        // Inventory scroll right-click help (orig/inter.c::button_help case 12/13).
+        if x > 290.0 && y > 1.0 && x < 300.0 && y < 34.0 {
+            player_state.tlog(1, "Scroll inventory contents up.");
+            return;
+        }
+        if x > 290.0 && y > 141.0 && x < 300.0 && y < 174.0 {
+            player_state.tlog(1, "Scroll inventory contents down");
+            return;
+        }
 
         // Skill list right-click (orig/inter.c::mouse_statbox2): show skill description.
         if (2.0..=108.0).contains(&x) && (114.0..=251.0).contains(&y) {
@@ -3221,6 +3343,20 @@ pub(crate) fn run_gameplay_statbox_input(
     }
 
     if !mouse.just_released(MouseButton::Left) {
+        return;
+    }
+
+    // Inventory scroll buttons (orig/inter.c::button_command case 12/13 via trans_button).
+    if game.x > 290.0 && game.y > 1.0 && game.x < 300.0 && game.y < 34.0 {
+        if inv_scroll.inv_pos > 1 {
+            inv_scroll.inv_pos = inv_scroll.inv_pos.saturating_sub(2);
+        }
+        return;
+    }
+    if game.x > 290.0 && game.y > 141.0 && game.x < 300.0 && game.y < 174.0 {
+        if inv_scroll.inv_pos < 30 {
+            inv_scroll.inv_pos = (inv_scroll.inv_pos + 2).min(30);
+        }
         return;
     }
 

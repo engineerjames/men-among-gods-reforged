@@ -177,6 +177,11 @@ fn main() {
         )
         .add_systems(
             Update,
+            states::gameplay::run_gameplay_update_scroll_knobs
+                .run_if(in_state(GameState::Gameplay)),
+        )
+        .add_systems(
+            Update,
             states::gameplay::run_gameplay_update_top_selected_name
                 .run_if(in_state(GameState::Gameplay)),
         )
