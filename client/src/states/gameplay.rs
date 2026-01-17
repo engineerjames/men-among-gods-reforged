@@ -2,6 +2,7 @@ use bevy::prelude::*;
 
 use bevy::asset::RenderAssetUsages;
 use bevy::ecs::message::MessageReader;
+use bevy::ecs::query::Without;
 use bevy::input::keyboard::KeyboardInput;
 use bevy::input::ButtonState;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
@@ -129,14 +130,12 @@ fn ui_bar_colors() -> (Color, Color, Color) {
     let red = Color::srgb(0.90, 0.0, 0.0);
     (blue, green, red)
 }
-const HUD_EXPERIENCE_UNCOMMITTED_X: f32 = 646.0;
-const HUD_EXPERIENCE_UNCOMMITTED_Y: f32 = 285.0;
-const HUD_SKILL_ADJUSTMENT_X_OFFSET: f32 = 10.0;
 
 // UI buttonbox (ported from orig/inter.c::trans_button and engine.c::dd_showbox).
 const BUTTONBOX_X: f32 = 604.0;
 const BUTTONBOX_Y_ROW1: f32 = 552.0; // F1..F4
 const BUTTONBOX_Y_ROW2: f32 = 568.0; // F5..F8
+const BUTTONBOX_Y_ROW3: f32 = 584.0; // F9..F12
 const BUTTONBOX_BUTTON_W: f32 = 41.0;
 const BUTTONBOX_BUTTON_H: f32 = 14.0;
 const BUTTONBOX_STEP_X: f32 = 49.0;
@@ -212,6 +211,12 @@ pub(crate) struct GameplayTextInput {
     current: String,
     history: Vec<String>,
     history_pos: Option<usize>,
+}
+
+#[derive(Resource, Default, Debug)]
+pub(crate) struct GameplayExitState {
+    firstquit: bool,
+    wantquit: bool,
 }
 
 #[derive(Component)]
@@ -323,12 +328,16 @@ pub(crate) struct GameplayUiBar {
     layer: GameplayUiBarLayer,
 }
 
-#[derive(Component)]
-pub(crate) struct GameplayUiExperienceUncommittedLabel;
+#[derive(Component, Clone, Copy, Debug)]
+pub(crate) struct GameplayUiAttributeAuxText {
+    attrib_index: usize,
+    col: GameplayUiRaiseStatColumn,
+}
 
 #[derive(Component, Clone, Copy, Debug)]
-pub(crate) struct GameplayUiSkillAdjustmentHint {
-    skill_index: usize,
+pub(crate) struct GameplayUiSkillAuxText {
+    row: usize,
+    col: GameplayUiRaiseStatColumn,
 }
 
 #[derive(Resource, Default)]
@@ -501,6 +510,39 @@ fn send_chat_input(net: &NetworkRuntime, text: &str) {
     for cmd in ClientCommand::new_say_packets(&buf) {
         net.send(cmd.to_bytes());
     }
+}
+
+fn cmd_exit(
+    exit_state: &mut GameplayExitState,
+    net: &NetworkRuntime,
+    player_state: &mut PlayerState,
+) {
+    // Ported from orig/engine.c::cmd_exit.
+    if !exit_state.firstquit {
+        player_state.tlog(0, " ");
+        player_state.tlog(
+            0,
+            "Leaving the game without entering a tavern will make you lose money and possibly life. Click again if you still want to leave the hard way.",
+        );
+        player_state.tlog(
+            0,
+            "A tavern is located west of the Temple of Skua (the starting point).",
+        );
+        exit_state.firstquit = true;
+        return;
+    }
+
+    if exit_state.wantquit {
+        return;
+    }
+
+    net.send(ClientCommand::new_exit().to_bytes());
+    exit_state.wantquit = true;
+    player_state.tlog(0, " ");
+    player_state.tlog(
+        0,
+        "Exit request acknowledged. Please wait for server to enter exit state.",
+    );
 }
 
 fn spawn_ui_log_text(commands: &mut Commands) {
@@ -726,6 +768,32 @@ fn spawn_ui_hud_labels(commands: &mut Commands) {
             InheritedVisibility::default(),
             ViewVisibility::default(),
         ));
+
+        // Attribute +/- and cost columns (engine.c uses x=136/150/162).
+        let y = HUD_ATTRIBUTES_Y_START + (i as f32) * HUD_ATTRIBUTES_SPACING;
+        for (col, x) in [
+            (GameplayUiRaiseStatColumn::Plus, HUD_RAISE_STATS_PLUS_X),
+            (GameplayUiRaiseStatColumn::Minus, HUD_RAISE_STATS_MINUS_X),
+            (GameplayUiRaiseStatColumn::Cost, HUD_RAISE_STATS_COST_X),
+        ] {
+            commands.spawn((
+                GameplayRenderEntity,
+                GameplayUiAttributeAuxText {
+                    attrib_index: i,
+                    col,
+                },
+                BitmapText {
+                    text: String::new(),
+                    color: Color::WHITE,
+                    font: UI_BITMAP_FONT,
+                },
+                Transform::from_translation(screen_to_world(x, y, Z_UI_TEXT)),
+                GlobalTransform::default(),
+                Visibility::Visible,
+                InheritedVisibility::default(),
+                ViewVisibility::default(),
+            ));
+        }
     }
 
     // Raise-stat rows (Hitpoints / Endurance / Mana) with +/- markers and exp cost.
@@ -779,6 +847,29 @@ fn spawn_ui_hud_labels(commands: &mut Commands) {
             InheritedVisibility::default(),
             ViewVisibility::default(),
         ));
+
+        // Skill +/- and cost columns (engine.c uses x=136/150/162 at y=116+n*14).
+        let y = HUD_SKILLS_Y_START + (i as f32) * HUD_SKILLS_SPACING;
+        for (col, x) in [
+            (GameplayUiRaiseStatColumn::Plus, HUD_RAISE_STATS_PLUS_X),
+            (GameplayUiRaiseStatColumn::Minus, HUD_RAISE_STATS_MINUS_X),
+            (GameplayUiRaiseStatColumn::Cost, HUD_RAISE_STATS_COST_X),
+        ] {
+            commands.spawn((
+                GameplayRenderEntity,
+                GameplayUiSkillAuxText { row: i, col },
+                BitmapText {
+                    text: String::new(),
+                    color: Color::WHITE,
+                    font: UI_BITMAP_FONT,
+                },
+                Transform::from_translation(screen_to_world(x, y, Z_UI_TEXT)),
+                GlobalTransform::default(),
+                Visibility::Visible,
+                InheritedVisibility::default(),
+                ViewVisibility::default(),
+            ));
+        }
     }
 
     // Top-center selected/player name (engine.c y=28).
@@ -801,47 +892,7 @@ fn spawn_ui_hud_labels(commands: &mut Commands) {
         ViewVisibility::default(),
     ));
 
-    // Uncommitted experience label
-    commands.spawn((
-        GameplayRenderEntity,
-        GameplayUiExperienceUncommittedLabel,
-        BitmapText {
-            text: String::new(),
-            color: Color::WHITE,
-            font: UI_BITMAP_FONT,
-        },
-        Transform::from_translation(screen_to_world(
-            HUD_EXPERIENCE_UNCOMMITTED_X,
-            HUD_EXPERIENCE_UNCOMMITTED_Y,
-            Z_UI_TEXT,
-        )),
-        GlobalTransform::default(),
-        Visibility::Visible,
-        InheritedVisibility::default(),
-        ViewVisibility::default(),
-    ));
-
-    // Skill adjustment hints (10 for the visible skills)
-    for i in 0..10 {
-        commands.spawn((
-            GameplayRenderEntity,
-            GameplayUiSkillAdjustmentHint { skill_index: i },
-            BitmapText {
-                text: String::new(),
-                color: Color::WHITE,
-                font: 0,
-            },
-            Transform::from_translation(screen_to_world(
-                HUD_SKILLS_X + HUD_SKILL_ADJUSTMENT_X_OFFSET,
-                HUD_SKILLS_Y_START + (i as f32) * HUD_SKILLS_SPACING,
-                Z_UI_TEXT,
-            )),
-            GlobalTransform::default(),
-            Visibility::Visible,
-            InheritedVisibility::default(),
-            ViewVisibility::default(),
-        ));
-    }
+    // (No "Available Points" label; original client doesn't show it here.)
 }
 
 fn spawn_ui_toggle_boxes(commands: &mut Commands, image_assets: &mut Assets<Image>) {
@@ -2499,6 +2550,7 @@ pub(crate) fn setup_gameplay(
 
     // Gameplay text input/log UI state
     commands.insert_resource(GameplayTextInput::default());
+    commands.insert_resource(GameplayExitState::default());
 
     // Bitmap font (sprite atlas) used for UI text.
     font_cache.ensure_bitmap_initialized(&gfx, &mut atlas_layouts);
@@ -2755,6 +2807,7 @@ pub(crate) fn run_gameplay_buttonbox_toggles(
     cameras: Query<&Camera, With<Camera2d>>,
     net: Res<NetworkRuntime>,
     mut player_state: ResMut<PlayerState>,
+    mut exit_state: ResMut<GameplayExitState>,
     mut q_boxes: Query<(&GameplayUiToggleBox, &mut Visibility), Without<GameplayUiModeBox>>,
     mut q_mode_boxes: Query<(&GameplayUiModeBox, &mut Visibility), Without<GameplayUiToggleBox>>,
 ) {
@@ -2767,6 +2820,11 @@ pub(crate) fn run_gameplay_buttonbox_toggles(
     }
     if keys.just_pressed(KeyCode::F3) {
         net.send(ClientCommand::new_mode(0).to_bytes());
+    }
+
+    // Exit (orig/inter.c button_command case 11: cmd_exit() -> cmd1(CL_CMD_EXIT,0)).
+    if keys.just_pressed(KeyCode::F12) {
+        cmd_exit(&mut exit_state, &net, &mut player_state);
     }
 
     // Keyboard shortcuts (orig/main.c): F4=show_proz, F6=hide, F7=show_names.
@@ -2826,6 +2884,13 @@ pub(crate) fn run_gameplay_buttonbox_toggles(
                 let cur = player_state.player_data().show_names;
                 player_state.player_data_mut().show_names = 1 - cur;
             }
+
+            // F12 / EXIT (nr=11): row3 col3 ("bottom right").
+            let f12_x = BUTTONBOX_X + 3.0 * BUTTONBOX_STEP_X;
+            let f12_y = BUTTONBOX_Y_ROW3;
+            if in_rect(game, f12_x, f12_y, BUTTONBOX_BUTTON_W, BUTTONBOX_BUTTON_H) {
+                cmd_exit(&mut exit_state, &net, &mut player_state);
+            }
         }
     }
 
@@ -2864,6 +2929,8 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 Without<GameplayUiAttributeLabel>,
                 Without<GameplayUiSkillLabel>,
                 Without<GameplayUiRaiseStatText>,
+                Without<GameplayUiAttributeAuxText>,
+                Without<GameplayUiSkillAuxText>,
             ),
         >,
         Query<
@@ -2873,6 +2940,8 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 Without<GameplayUiAttributeLabel>,
                 Without<GameplayUiSkillLabel>,
                 Without<GameplayUiRaiseStatText>,
+                Without<GameplayUiAttributeAuxText>,
+                Without<GameplayUiSkillAuxText>,
             ),
         >,
         Query<
@@ -2882,6 +2951,8 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 Without<GameplayUiAttributeLabel>,
                 Without<GameplayUiSkillLabel>,
                 Without<GameplayUiRaiseStatText>,
+                Without<GameplayUiAttributeAuxText>,
+                Without<GameplayUiSkillAuxText>,
             ),
         >,
         Query<
@@ -2891,6 +2962,8 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 Without<GameplayUiAttributeLabel>,
                 Without<GameplayUiSkillLabel>,
                 Without<GameplayUiRaiseStatText>,
+                Without<GameplayUiAttributeAuxText>,
+                Without<GameplayUiSkillAuxText>,
             ),
         >,
         Query<
@@ -2900,6 +2973,8 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 Without<GameplayUiAttributeLabel>,
                 Without<GameplayUiSkillLabel>,
                 Without<GameplayUiRaiseStatText>,
+                Without<GameplayUiAttributeAuxText>,
+                Without<GameplayUiSkillAuxText>,
             ),
         >,
         Query<
@@ -2909,6 +2984,8 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 Without<GameplayUiAttributeLabel>,
                 Without<GameplayUiSkillLabel>,
                 Without<GameplayUiRaiseStatText>,
+                Without<GameplayUiAttributeAuxText>,
+                Without<GameplayUiSkillAuxText>,
             ),
         >,
         Query<
@@ -2918,6 +2995,8 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 Without<GameplayUiAttributeLabel>,
                 Without<GameplayUiSkillLabel>,
                 Without<GameplayUiRaiseStatText>,
+                Without<GameplayUiAttributeAuxText>,
+                Without<GameplayUiSkillAuxText>,
             ),
         >,
         Query<
@@ -2927,6 +3006,8 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 Without<GameplayUiAttributeLabel>,
                 Without<GameplayUiSkillLabel>,
                 Without<GameplayUiRaiseStatText>,
+                Without<GameplayUiAttributeAuxText>,
+                Without<GameplayUiSkillAuxText>,
             ),
         >,
     )>,
@@ -2936,17 +3017,76 @@ pub(crate) fn run_gameplay_update_hud_labels(
             With<GameplayUiAttributeLabel>,
             Without<GameplayUiSkillLabel>,
             Without<GameplayUiRaiseStatText>,
+            Without<GameplayUiAttributeAuxText>,
+            Without<GameplayUiSkillAuxText>,
+        ),
+    >,
+    mut q_attrib_aux: Query<
+        (&GameplayUiAttributeAuxText, &mut BitmapText),
+        (
+            With<GameplayUiAttributeAuxText>,
+            Without<GameplayUiAttributeLabel>,
+            Without<GameplayUiSkillLabel>,
+            Without<GameplayUiRaiseStatText>,
+            Without<GameplayUiSkillAuxText>,
         ),
     >,
     mut q_skill: Query<
         (&GameplayUiSkillLabel, &mut BitmapText),
-        (With<GameplayUiSkillLabel>, Without<GameplayUiRaiseStatText>),
+        (
+            With<GameplayUiSkillLabel>,
+            Without<GameplayUiRaiseStatText>,
+            Without<GameplayUiAttributeLabel>,
+            Without<GameplayUiAttributeAuxText>,
+            Without<GameplayUiSkillAuxText>,
+        ),
+    >,
+    mut q_skill_aux: Query<
+        (&GameplayUiSkillAuxText, &mut BitmapText),
+        (
+            With<GameplayUiSkillAuxText>,
+            Without<GameplayUiSkillLabel>,
+            Without<GameplayUiAttributeLabel>,
+            Without<GameplayUiRaiseStatText>,
+            Without<GameplayUiAttributeAuxText>,
+        ),
     >,
     mut q_raise_stats: Query<
         (&GameplayUiRaiseStatText, &mut BitmapText),
-        With<GameplayUiRaiseStatText>,
+        (
+            With<GameplayUiRaiseStatText>,
+            Without<GameplayUiAttributeLabel>,
+            Without<GameplayUiSkillLabel>,
+            Without<GameplayUiAttributeAuxText>,
+            Without<GameplayUiSkillAuxText>,
+        ),
     >,
 ) {
+    const HIGH_VAL: i32 = i32::MAX;
+
+    #[inline]
+    fn attrib_needed(pl: &mag_core::types::ClientPlayer, n: usize, v: i32) -> i32 {
+        let max_v = pl.attrib[n][2] as i32;
+        if v >= max_v {
+            return HIGH_VAL;
+        }
+        let diff = pl.attrib[n][3] as i32;
+        let v64 = v as i64;
+        ((v64 * v64 * v64) * (diff as i64) / 20).clamp(0, i32::MAX as i64) as i32
+    }
+
+    #[inline]
+    fn skill_needed(pl: &mag_core::types::ClientPlayer, n: usize, v: i32) -> i32 {
+        let max_v = pl.skill[n][2] as i32;
+        if v >= max_v {
+            return HIGH_VAL;
+        }
+        let diff = pl.skill[n][3] as i32;
+        let v64 = v as i64;
+        let cubic = ((v64 * v64 * v64) * (diff as i64) / 40).clamp(0, i32::MAX as i64) as i32;
+        v.max(cubic)
+    }
+
     let pl = player_state.character_info();
 
     // Hitpoints (current / max). Server already sends a_* as integer current values.
@@ -2993,11 +3133,50 @@ pub(crate) fn run_gameplay_update_hud_labels(
     }
 
     // Attributes (5 of them: Braveness, Willpower, Intuition, Agility, Strength)
+    // Mirrors engine.c: value uses total[5] + stat_raised[n], and cost uses bare[0] + stat_raised[n].
+    let stat_points_used: i32 = 0;
+    let available_points: i32 = (pl.points - stat_points_used).max(0);
+    let stat_raised_attrib: [i32; 5] = [0; 5];
+
     for (attr_label, mut text) in &mut q_attrib {
         if attr_label.attrib_index < 5 {
             let name = ATTRIBUTE_NAMES[attr_label.attrib_index];
-            let value = pl.attrib[attr_label.attrib_index][5];
-            text.text = format!("{:<16}  {:3}", name, value);
+            let v_total = pl.attrib[attr_label.attrib_index][5] as i32
+                + stat_raised_attrib[attr_label.attrib_index];
+            text.text = format!("{:<16}  {:3}", name, v_total);
+        }
+    }
+
+    for (cfg, mut text) in &mut q_attrib_aux {
+        if cfg.attrib_index >= 5 {
+            text.text.clear();
+            continue;
+        }
+        let v_bare = pl.attrib[cfg.attrib_index][0] as i32 + stat_raised_attrib[cfg.attrib_index];
+        let need = attrib_needed(pl, cfg.attrib_index, v_bare);
+        match cfg.col {
+            GameplayUiRaiseStatColumn::Plus => {
+                text.text = if need != HIGH_VAL && need <= available_points {
+                    String::from("+")
+                } else {
+                    String::new()
+                };
+            }
+            GameplayUiRaiseStatColumn::Minus => {
+                text.text = if stat_raised_attrib[cfg.attrib_index] > 0 {
+                    String::from("-")
+                } else {
+                    String::new()
+                };
+            }
+            GameplayUiRaiseStatColumn::Cost => {
+                text.text = if need != HIGH_VAL {
+                    format!("{:7}", need)
+                } else {
+                    String::new()
+                };
+            }
+            GameplayUiRaiseStatColumn::Value => text.text.clear(),
         }
     }
 
@@ -3039,9 +3218,11 @@ pub(crate) fn run_gameplay_update_hud_labels(
     });
 
     let mut rows: Vec<String> = Vec::with_capacity(10);
+    let mut row_skill_ids: [Option<usize>; 10] = [None; 10];
     for row in 0..10 {
         let Some(&skill_id) = sorted_skills.get(row) else {
             rows.push(String::from("unused"));
+            row_skill_ids[row] = None;
             continue;
         };
 
@@ -3049,11 +3230,20 @@ pub(crate) fn run_gameplay_update_hud_labels(
         let is_unused = get_skill_sortkey(skill_id) == 'Z' || name.is_empty();
         if is_unused {
             rows.push(String::from("unused"));
+            row_skill_ids[row] = None;
+            continue;
+        }
+
+        // In engine.c, "unused" also covers unlearned skills (pl.skill[m][0]==0).
+        if pl.skill[skill_id][0] == 0 {
+            rows.push(String::from("unused"));
+            row_skill_ids[row] = None;
             continue;
         }
 
         let skill_display = pl.skill[skill_id][5];
         rows.push(format!("{:<16}  {:3}", name, skill_display));
+        row_skill_ids[row] = Some(skill_id);
     }
 
     for (skill_label, mut text) in &mut q_skill {
@@ -3065,9 +3255,49 @@ pub(crate) fn run_gameplay_update_hud_labels(
         }
     }
 
+    // Skill +/- and cost columns (mirrors engine.c), with no stat_raised/skill_pos yet.
+    let stat_raised_skill_rows: [i32; 10] = [0; 10];
+    for (cfg, mut text) in &mut q_skill_aux {
+        if cfg.row >= 10 {
+            text.text.clear();
+            continue;
+        }
+        let Some(skill_id) = row_skill_ids[cfg.row] else {
+            text.text.clear();
+            continue;
+        };
+
+        let v_bare = pl.skill[skill_id][0] as i32 + stat_raised_skill_rows[cfg.row];
+        let need = skill_needed(pl, skill_id, v_bare);
+        match cfg.col {
+            GameplayUiRaiseStatColumn::Plus => {
+                text.text = if need != HIGH_VAL && need <= available_points {
+                    String::from("+")
+                } else {
+                    String::new()
+                };
+            }
+            GameplayUiRaiseStatColumn::Minus => {
+                text.text = if stat_raised_skill_rows[cfg.row] > 0 {
+                    String::from("-")
+                } else {
+                    String::new()
+                };
+            }
+            GameplayUiRaiseStatColumn::Cost => {
+                text.text = if need != HIGH_VAL {
+                    format!("{:7}", need)
+                } else {
+                    String::new()
+                };
+            }
+            GameplayUiRaiseStatColumn::Value => text.text.clear(),
+        }
+    }
+
     // Raise-stat rows (Hitpoints/Endurance/Mana) with + and cost columns.
     // We don't yet have client-side stat_raised/stat_points_used, so we use 0/0.
-    let available_points = pl.points;
+    let available_points = available_points;
     let stat_raised_hp: i32 = 0;
     let stat_raised_end: i32 = 0;
     let stat_raised_mana: i32 = 0;
@@ -3251,24 +3481,6 @@ pub(crate) fn run_gameplay_update_portrait_name_and_rank(
     }
 }
 
-fn update_ui_experience_text(
-    player_state: &PlayerState,
-    mut q: Query<&mut BitmapText, With<GameplayUiExperienceUncommittedLabel>>,
-) {
-    // Display uncommitted experience points (pending allocation).
-    // For now, we only show something if there are update points available to spend.
-    let pl = player_state.character_info();
-    let available_points = pl.points; // Represents unspent skill points
-
-    if let Some(mut text) = q.iter_mut().next() {
-        if available_points > 0 {
-            text.text = format!("Available Points  {:10}", available_points);
-        } else {
-            text.text = String::new();
-        }
-    }
-}
-
 fn update_ui_money_text(
     player_state: &PlayerState,
     mut q: Query<&mut BitmapText, With<GameplayUiMoneyLabel>>,
@@ -3282,93 +3494,12 @@ fn update_ui_money_text(
     }
 }
 
-fn update_ui_skill_adjustment_hints(
-    player_state: &PlayerState,
-    mut q: Query<(&GameplayUiSkillAdjustmentHint, &mut BitmapText)>,
-) {
-    // Display "+" or "-" signs next to skills that can be adjusted.
-    // These indicate that there are uncommitted experience points available
-    // to allocate or remove from that skill.
-    let pl = player_state.character_info();
-
-    // Keep hints aligned with the sorted/visible skill rows.
-    let mut sorted_skills: Vec<usize> = (0..MAX_SKILLS).collect();
-    sorted_skills.sort_by(|&a, &b| {
-        let a_unused = get_skill_sortkey(a) == 'Z' || get_skill_name(a).is_empty();
-        let b_unused = get_skill_sortkey(b) == 'Z' || get_skill_name(b).is_empty();
-        if a_unused != b_unused {
-            return if a_unused {
-                Ordering::Greater
-            } else {
-                Ordering::Less
-            };
-        }
-
-        let a_learned = pl.skill[a][0] != 0;
-        let b_learned = pl.skill[b][0] != 0;
-        if a_learned != b_learned {
-            return if a_learned {
-                Ordering::Less
-            } else {
-                Ordering::Greater
-            };
-        }
-
-        let a_key = get_skill_sortkey(a);
-        let b_key = get_skill_sortkey(b);
-        if a_key != b_key {
-            return a_key.cmp(&b_key);
-        }
-
-        get_skill_name(a).cmp(get_skill_name(b))
-    });
-
-    for (hint, mut text) in &mut q {
-        let row = hint.skill_index;
-        let Some(&skill_idx) = sorted_skills.get(row) else {
-            text.text = String::new();
-            continue;
-        };
-
-        let is_unused = get_skill_sortkey(skill_idx) == 'Z' || get_skill_name(skill_idx).is_empty();
-        if is_unused {
-            text.text = String::new();
-            continue;
-        }
-
-        // Check if this skill has learned points (nonzero skill value)
-        let skill_val = pl.skill[skill_idx][0];
-        if skill_val == 0 {
-            // Skill not learned; no adjustment available
-            text.text = String::new();
-            continue;
-        }
-
-        // In the original client, adjustable skills would show + or - based on
-        // whether you have uncommitted experience to spend or could remove points.
-        // For now, show + if there are available points to spend on this skill.
-        let available_points = pl.points;
-        if available_points > 0 {
-            text.text = String::from("+");
-        } else {
-            // Could show "-" if points could be removed, but for now leave empty
-            text.text = String::from("-");
-        }
-    }
-}
-
 pub(crate) fn run_gameplay_update_extra_ui(
     player_state: Res<PlayerState>,
-    mut q: ParamSet<(
-        Query<&mut BitmapText, With<GameplayUiExperienceUncommittedLabel>>,
-        Query<&mut BitmapText, With<GameplayUiMoneyLabel>>,
-        Query<(&GameplayUiSkillAdjustmentHint, &mut BitmapText)>,
-    )>,
+    mut q: ParamSet<(Query<&mut BitmapText, With<GameplayUiMoneyLabel>>,)>,
 ) {
-    // Update all additional UI elements
-    update_ui_experience_text(&player_state, q.p0());
-    update_ui_money_text(&player_state, q.p1());
-    update_ui_skill_adjustment_hints(&player_state, q.p2());
+    // Keep as a thin shim; money is also updated in run_gameplay_update_hud_labels.
+    update_ui_money_text(&player_state, q.p0());
 }
 
 pub(crate) fn run_gameplay(
