@@ -361,6 +361,15 @@ pub fn get_skill_name(skill: usize) -> &'static str {
     }
 }
 
+/// Safely get the skill sort key / category (defaults to 'Z' on invalid index)
+pub fn get_skill_sortkey(skill: usize) -> char {
+    if skill < MAX_SKILLS {
+        SKILLTAB[skill].cat
+    } else {
+        'Z'
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

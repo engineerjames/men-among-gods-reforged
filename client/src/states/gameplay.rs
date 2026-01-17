@@ -7,6 +7,7 @@ use bevy::input::ButtonState;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::sprite::Anchor;
 
+use std::cmp::Ordering;
 use std::collections::HashMap;
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
@@ -20,6 +21,7 @@ use mag_core::constants::{
     INVIS, ISITEM, SPEEDTAB, SPR_EMPTY, STUNNED, WN_ARMS, WN_BELT, WN_BODY, WN_CLOAK, WN_FEET,
     WN_HEAD, WN_LEGS, WN_LHAND, WN_LRING, WN_NECK, WN_RHAND, WN_RRING, XPOS, YPOS,
 };
+use mag_core::types::skilltab::{get_skill_name, get_skill_sortkey, MAX_SKILLS};
 
 // In the original client, xoff starts with `-176` (to account for UI layout).
 // Keeping this makes it easier to compare screenshots while we port rendering.
@@ -82,6 +84,14 @@ const HUD_EXPERIENCE_Y: f32 = 271.0;
 const HUD_ATTRIBUTES_X: f32 = 5.0;
 const HUD_ATTRIBUTES_Y_START: f32 = 4.0;
 const HUD_ATTRIBUTES_SPACING: f32 = 14.0;
+// Update-panel (stat raise) rows in engine.c are at y=74,88,102 with +/- markers and cost column.
+const HUD_RAISE_STATS_X: f32 = 5.0;
+const HUD_RAISE_STATS_PLUS_X: f32 = 136.0;
+const HUD_RAISE_STATS_MINUS_X: f32 = 150.0;
+const HUD_RAISE_STATS_COST_X: f32 = 162.0;
+const HUD_RAISE_HP_Y: f32 = 74.0;
+const HUD_RAISE_END_Y: f32 = 88.0;
+const HUD_RAISE_MANA_Y: f32 = 102.0;
 const HUD_SKILLS_X: f32 = 5.0;
 const HUD_SKILLS_Y_START: f32 = 116.0;
 const HUD_SKILLS_SPACING: f32 = 14.0;
@@ -220,6 +230,27 @@ pub(crate) struct GameplayUiArmorValueLabel;
 
 #[derive(Component)]
 pub(crate) struct GameplayUiExperienceLabel;
+
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GameplayUiRaiseStat {
+    Hitpoints,
+    Endurance,
+    Mana,
+}
+
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GameplayUiRaiseStatColumn {
+    Value,
+    Plus,
+    Minus,
+    Cost,
+}
+
+#[derive(Component, Clone, Copy, Debug)]
+pub(crate) struct GameplayUiRaiseStatText {
+    stat: GameplayUiRaiseStat,
+    col: GameplayUiRaiseStatColumn,
+}
 
 #[derive(Component, Clone, Copy, Debug)]
 pub(crate) struct GameplayUiAttributeLabel {
@@ -638,6 +669,37 @@ fn spawn_ui_hud_labels(commands: &mut Commands) {
             InheritedVisibility::default(),
             ViewVisibility::default(),
         ));
+    }
+
+    // Raise-stat rows (Hitpoints / Endurance / Mana) with +/- markers and exp cost.
+    // Matches engine.c lines at y=74,88,102 and columns x=5,136,150,162.
+    let raise_rows = [
+        (GameplayUiRaiseStat::Hitpoints, HUD_RAISE_HP_Y),
+        (GameplayUiRaiseStat::Endurance, HUD_RAISE_END_Y),
+        (GameplayUiRaiseStat::Mana, HUD_RAISE_MANA_Y),
+    ];
+    for (stat, y) in raise_rows {
+        for (col, x) in [
+            (GameplayUiRaiseStatColumn::Value, HUD_RAISE_STATS_X),
+            (GameplayUiRaiseStatColumn::Plus, HUD_RAISE_STATS_PLUS_X),
+            (GameplayUiRaiseStatColumn::Minus, HUD_RAISE_STATS_MINUS_X),
+            (GameplayUiRaiseStatColumn::Cost, HUD_RAISE_STATS_COST_X),
+        ] {
+            commands.spawn((
+                GameplayRenderEntity,
+                GameplayUiRaiseStatText { stat, col },
+                BitmapText {
+                    text: String::new(),
+                    color: Color::WHITE,
+                    font: UI_BITMAP_FONT,
+                },
+                Transform::from_translation(screen_to_world(x, y, Z_UI_TEXT)),
+                GlobalTransform::default(),
+                Visibility::Visible,
+                InheritedVisibility::default(),
+                ViewVisibility::default(),
+            ));
+        }
     }
 
     // Skill labels (10 skills visible at a time)
@@ -2518,6 +2580,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 With<GameplayUiHitpointsLabel>,
                 Without<GameplayUiAttributeLabel>,
                 Without<GameplayUiSkillLabel>,
+                Without<GameplayUiRaiseStatText>,
             ),
         >,
         Query<
@@ -2526,6 +2589,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 With<GameplayUiEnduranceLabel>,
                 Without<GameplayUiAttributeLabel>,
                 Without<GameplayUiSkillLabel>,
+                Without<GameplayUiRaiseStatText>,
             ),
         >,
         Query<
@@ -2534,6 +2598,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 With<GameplayUiManaLabel>,
                 Without<GameplayUiAttributeLabel>,
                 Without<GameplayUiSkillLabel>,
+                Without<GameplayUiRaiseStatText>,
             ),
         >,
         Query<
@@ -2542,6 +2607,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 With<GameplayUiMoneyLabel>,
                 Without<GameplayUiAttributeLabel>,
                 Without<GameplayUiSkillLabel>,
+                Without<GameplayUiRaiseStatText>,
             ),
         >,
         Query<
@@ -2550,6 +2616,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 With<GameplayUiUpdateValue>,
                 Without<GameplayUiAttributeLabel>,
                 Without<GameplayUiSkillLabel>,
+                Without<GameplayUiRaiseStatText>,
             ),
         >,
         Query<
@@ -2558,6 +2625,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 With<GameplayUiWeaponValueLabel>,
                 Without<GameplayUiAttributeLabel>,
                 Without<GameplayUiSkillLabel>,
+                Without<GameplayUiRaiseStatText>,
             ),
         >,
         Query<
@@ -2566,6 +2634,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 With<GameplayUiArmorValueLabel>,
                 Without<GameplayUiAttributeLabel>,
                 Without<GameplayUiSkillLabel>,
+                Without<GameplayUiRaiseStatText>,
             ),
         >,
         Query<
@@ -2574,6 +2643,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 With<GameplayUiExperienceLabel>,
                 Without<GameplayUiAttributeLabel>,
                 Without<GameplayUiSkillLabel>,
+                Without<GameplayUiRaiseStatText>,
             ),
         >,
     )>,
@@ -2582,25 +2652,36 @@ pub(crate) fn run_gameplay_update_hud_labels(
         (
             With<GameplayUiAttributeLabel>,
             Without<GameplayUiSkillLabel>,
+            Without<GameplayUiRaiseStatText>,
         ),
     >,
-    mut q_skill: Query<(&GameplayUiSkillLabel, &mut BitmapText), With<GameplayUiSkillLabel>>,
+    mut q_skill: Query<
+        (&GameplayUiSkillLabel, &mut BitmapText),
+        (With<GameplayUiSkillLabel>, Without<GameplayUiRaiseStatText>),
+    >,
+    mut q_raise_stats: Query<
+        (&GameplayUiRaiseStatText, &mut BitmapText),
+        With<GameplayUiRaiseStatText>,
+    >,
 ) {
     let pl = player_state.character_info();
 
-    // Hitpoints
+    // Hitpoints (current / max). Server uses 1000x fixed-point for a_*.
     if let Some(mut text) = q.p0().iter_mut().next() {
-        text.text = format!("Hitpoints         {:3} {:3}", pl.a_hp / 1000, pl.hp[5]);
+        let cur = (pl.a_hp + 500) / 1000;
+        text.text = format!("Hitpoints         {:3} {:3}", cur, pl.hp[5]);
     }
 
-    // Endurance
+    // Endurance (current / max)
     if let Some(mut text) = q.p1().iter_mut().next() {
-        text.text = format!("Endurance         {:3} {:3}", pl.a_end / 1000, pl.end[5]);
+        let cur = (pl.a_end + 500) / 1000;
+        text.text = format!("Endurance         {:3} {:3}", cur, pl.end[5]);
     }
 
-    // Mana
+    // Mana (current / max)
     if let Some(mut text) = q.p2().iter_mut().next() {
-        text.text = format!("Mana              {:3} {:3}", pl.a_mana / 1000, pl.mana[5]);
+        let cur = (pl.a_mana + 500) / 1000;
+        text.text = format!("Mana              {:3} {:3}", cur, pl.mana[5]);
     }
 
     // Money (gold/100 and silver remainder)
@@ -2638,21 +2719,168 @@ pub(crate) fn run_gameplay_update_hud_labels(
     }
 
     // Skills (10 visible at a time, typically from skill_pos 0..10 in original)
-    // For now, show first 10 skills, skipping any that are not learned
-    let mut skill_count = 0;
-    for (_skill_label, mut text) in &mut q_skill {
-        let skill_idx = skill_count;
-        if skill_idx < 50 {
-            let skill_val = pl.skill[skill_idx][0];
-            if skill_val > 0 {
-                let skill_display = pl.skill[skill_idx][5];
-                // Just use a generic skill name for now (skill index)
-                text.text = format!("Skill {:02}          {:3}", skill_idx, skill_display);
+    // Original engine.c behavior:
+    // - Sort skills with a custom comparator (skill_cmp)
+    // - Push unlearned skills (pl.skill[m][0] == 0) below learned
+    // - Push reserved/unused entries (category 'Z' / empty name) to the bottom
+    // - Then sort by sortkey (category) and name
+    let mut sorted_skills: Vec<usize> = (0..MAX_SKILLS).collect();
+    sorted_skills.sort_by(|&a, &b| {
+        let a_unused = get_skill_sortkey(a) == 'Z' || get_skill_name(a).is_empty();
+        let b_unused = get_skill_sortkey(b) == 'Z' || get_skill_name(b).is_empty();
+        if a_unused != b_unused {
+            return if a_unused {
+                Ordering::Greater
             } else {
-                text.text = String::from("unused");
+                Ordering::Less
+            };
+        }
+
+        let a_learned = pl.skill[a][0] != 0;
+        let b_learned = pl.skill[b][0] != 0;
+        if a_learned != b_learned {
+            return if a_learned {
+                Ordering::Less
+            } else {
+                Ordering::Greater
+            };
+        }
+
+        let a_key = get_skill_sortkey(a);
+        let b_key = get_skill_sortkey(b);
+        if a_key != b_key {
+            return a_key.cmp(&b_key);
+        }
+
+        get_skill_name(a).cmp(get_skill_name(b))
+    });
+
+    let mut rows: Vec<String> = Vec::with_capacity(10);
+    for row in 0..10 {
+        let Some(&skill_id) = sorted_skills.get(row) else {
+            rows.push(String::from("unused"));
+            continue;
+        };
+
+        let name = get_skill_name(skill_id);
+        let is_unused = get_skill_sortkey(skill_id) == 'Z' || name.is_empty();
+        if is_unused {
+            rows.push(String::from("unused"));
+            continue;
+        }
+
+        let skill_display = pl.skill[skill_id][5];
+        rows.push(format!("{:<16}  {:3}", name, skill_display));
+    }
+
+    for (skill_label, mut text) in &mut q_skill {
+        let row = skill_label.skill_index;
+        if row < rows.len() {
+            text.text = rows[row].clone();
+        } else {
+            text.text = String::new();
+        }
+    }
+
+    // Raise-stat rows (Hitpoints/Endurance/Mana) with + and cost columns.
+    // We don't yet have client-side stat_raised/stat_points_used, so we use 0/0.
+    let available_points = pl.points;
+    let stat_raised_hp: i32 = 0;
+    let stat_raised_end: i32 = 0;
+    let stat_raised_mana: i32 = 0;
+
+    let hp_base = pl.hp[0] as i32 + stat_raised_hp;
+    let end_base = pl.end[0] as i32 + stat_raised_end;
+    let mana_base = pl.mana[0] as i32 + stat_raised_mana;
+
+    let hp_needed = if hp_base >= pl.hp[2] as i32 {
+        None
+    } else {
+        Some(hp_base * pl.hp[3] as i32)
+    };
+    let end_needed = if end_base >= pl.end[2] as i32 {
+        None
+    } else {
+        Some(end_base * pl.end[3] as i32 / 2)
+    };
+    let mana_needed = if mana_base >= pl.mana[2] as i32 {
+        None
+    } else {
+        Some(mana_base * pl.mana[3] as i32)
+    };
+
+    for (cfg, mut text) in &mut q_raise_stats {
+        match (cfg.stat, cfg.col) {
+            (GameplayUiRaiseStat::Hitpoints, GameplayUiRaiseStatColumn::Value) => {
+                text.text = format!("Hitpoints         {:3}", (pl.hp[5] as i32) + stat_raised_hp);
+            }
+            (GameplayUiRaiseStat::Endurance, GameplayUiRaiseStatColumn::Value) => {
+                text.text = format!(
+                    "Endurance         {:3}",
+                    (pl.end[5] as i32) + stat_raised_end
+                );
+            }
+            (GameplayUiRaiseStat::Mana, GameplayUiRaiseStatColumn::Value) => {
+                text.text = format!(
+                    "Mana              {:3}",
+                    (pl.mana[5] as i32) + stat_raised_mana
+                );
+            }
+
+            (GameplayUiRaiseStat::Hitpoints, GameplayUiRaiseStatColumn::Plus) => {
+                text.text = if hp_needed.is_some_and(|n| n <= available_points) {
+                    String::from("+")
+                } else {
+                    String::new()
+                };
+            }
+            (GameplayUiRaiseStat::Endurance, GameplayUiRaiseStatColumn::Plus) => {
+                text.text = if end_needed.is_some_and(|n| n <= available_points) {
+                    String::from("+")
+                } else {
+                    String::new()
+                };
+            }
+            (GameplayUiRaiseStat::Mana, GameplayUiRaiseStatColumn::Plus) => {
+                text.text = if mana_needed.is_some_and(|n| n <= available_points) {
+                    String::from("+")
+                } else {
+                    String::new()
+                };
+            }
+
+            (GameplayUiRaiseStat::Hitpoints, GameplayUiRaiseStatColumn::Minus) => {
+                text.text = if stat_raised_hp > 0 {
+                    String::from("-")
+                } else {
+                    String::new()
+                };
+            }
+            (GameplayUiRaiseStat::Endurance, GameplayUiRaiseStatColumn::Minus) => {
+                text.text = if stat_raised_end > 0 {
+                    String::from("-")
+                } else {
+                    String::new()
+                };
+            }
+            (GameplayUiRaiseStat::Mana, GameplayUiRaiseStatColumn::Minus) => {
+                text.text = if stat_raised_mana > 0 {
+                    String::from("-")
+                } else {
+                    String::new()
+                };
+            }
+
+            (GameplayUiRaiseStat::Hitpoints, GameplayUiRaiseStatColumn::Cost) => {
+                text.text = hp_needed.map(|n| format!("{:7}", n)).unwrap_or_default();
+            }
+            (GameplayUiRaiseStat::Endurance, GameplayUiRaiseStatColumn::Cost) => {
+                text.text = end_needed.map(|n| format!("{:7}", n)).unwrap_or_default();
+            }
+            (GameplayUiRaiseStat::Mana, GameplayUiRaiseStatColumn::Cost) => {
+                text.text = mana_needed.map(|n| format!("{:7}", n)).unwrap_or_default();
             }
         }
-        skill_count += 1;
     }
 }
 
@@ -2721,9 +2949,47 @@ fn update_ui_skill_adjustment_hints(
     // to allocate or remove from that skill.
     let pl = player_state.character_info();
 
+    // Keep hints aligned with the sorted/visible skill rows.
+    let mut sorted_skills: Vec<usize> = (0..MAX_SKILLS).collect();
+    sorted_skills.sort_by(|&a, &b| {
+        let a_unused = get_skill_sortkey(a) == 'Z' || get_skill_name(a).is_empty();
+        let b_unused = get_skill_sortkey(b) == 'Z' || get_skill_name(b).is_empty();
+        if a_unused != b_unused {
+            return if a_unused {
+                Ordering::Greater
+            } else {
+                Ordering::Less
+            };
+        }
+
+        let a_learned = pl.skill[a][0] != 0;
+        let b_learned = pl.skill[b][0] != 0;
+        if a_learned != b_learned {
+            return if a_learned {
+                Ordering::Less
+            } else {
+                Ordering::Greater
+            };
+        }
+
+        let a_key = get_skill_sortkey(a);
+        let b_key = get_skill_sortkey(b);
+        if a_key != b_key {
+            return a_key.cmp(&b_key);
+        }
+
+        get_skill_name(a).cmp(get_skill_name(b))
+    });
+
     for (hint, mut text) in &mut q {
-        let skill_idx = hint.skill_index;
-        if skill_idx >= 50 {
+        let row = hint.skill_index;
+        let Some(&skill_idx) = sorted_skills.get(row) else {
+            text.text = String::new();
+            continue;
+        };
+
+        let is_unused = get_skill_sortkey(skill_idx) == 'Z' || get_skill_name(skill_idx).is_empty();
+        if is_unused {
             text.text = String::new();
             continue;
         }
@@ -2744,7 +3010,7 @@ fn update_ui_skill_adjustment_hints(
             text.text = String::from("+");
         } else {
             // Could show "-" if points could be removed, but for now leave empty
-            text.text = String::new();
+            text.text = String::from("-");
         }
     }
 }
