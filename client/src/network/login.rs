@@ -227,6 +227,7 @@ fn run_network_loop(
                     stream
                         .write_all(&bytes)
                         .map_err(|e| format!("Send failed: {e}"))?;
+                    log::info!("Sent {} bytes to server: {:?}", bytes.len(), bytes);
                 }
                 NetworkCommand::Shutdown => {
                     if event_tx

@@ -119,3 +119,34 @@ fn main() {
         std::process::exit(1);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::{DynamicImage, Rgba};
+
+    #[test]
+    fn force_png_path_rewrites_extension() {
+        assert_eq!(force_png_path("foo.bmp").to_string_lossy(), "foo.png");
+        assert_eq!(force_png_path("bar.PNG").to_string_lossy(), "bar.PNG");
+        assert_eq!(force_png_path("baz").to_string_lossy(), "baz.png");
+    }
+
+    #[test]
+    fn pixel_matches_key_detects_magic_pinks() {
+        assert!(pixel_matches_key(0xff, 0x00, 0xff));
+        assert!(pixel_matches_key(0xfa, 0x00, 0xfa));
+        assert!(!pixel_matches_key(0x00, 0x00, 0x00));
+    }
+
+    #[test]
+    fn process_image_sets_alpha_to_zero_for_key_color() {
+        let mut img = RgbaImage::new(2, 1);
+        img.put_pixel(0, 0, Rgba([0xff, 0x00, 0xff, 0xff]));
+        img.put_pixel(1, 0, Rgba([0x00, 0x01, 0x02, 0xff]));
+
+        let out = process_image(DynamicImage::ImageRgba8(img));
+        assert_eq!(out.get_pixel(0, 0)[3], 0);
+        assert_eq!(out.get_pixel(1, 0)[3], 0xff);
+    }
+}

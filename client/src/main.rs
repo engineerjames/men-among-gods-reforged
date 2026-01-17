@@ -1,4 +1,5 @@
 mod constants;
+mod font_cache;
 mod gfx_cache;
 mod helpers;
 mod map;
@@ -22,6 +23,8 @@ use crate::gfx_cache::GraphicsCache;
 use crate::sfx_cache::SoundCache;
 use crate::systems::debug;
 use crate::systems::display;
+use crate::systems::map_hover;
+use crate::systems::nameplates;
 
 static LOG_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
 
@@ -59,6 +62,8 @@ fn main() {
             env!("CARGO_MANIFEST_DIR"),
             "/assets/SFX"
         )))
+        .init_resource::<font_cache::FontCache>()
+        .init_resource::<states::gameplay::MiniMapState>()
         .init_resource::<player_state::PlayerState>()
         .add_plugins(
             DefaultPlugins
@@ -128,7 +133,45 @@ fn main() {
         )
         .add_systems(
             Update,
-            states::gameplay::run_gameplay.run_if(in_state(GameState::Gameplay)),
+            states::gameplay::run_gameplay
+                .run_if(in_state(GameState::Gameplay))
+                .after(network::NetworkSet::Receive),
+        )
+        .add_systems(
+            Update,
+            map_hover::run_gameplay_map_hover_and_click
+                .run_if(in_state(GameState::Gameplay))
+                .after(states::gameplay::run_gameplay),
+        )
+        .add_systems(
+            Update,
+            map_hover::run_gameplay_move_target_marker
+                .run_if(in_state(GameState::Gameplay))
+                .after(states::gameplay::run_gameplay),
+        )
+        .add_systems(
+            Update,
+            nameplates::run_gameplay_nameplates
+                .run_if(in_state(GameState::Gameplay))
+                .after(states::gameplay::run_gameplay),
+        )
+        .add_systems(
+            Update,
+            states::gameplay::run_gameplay_text_ui
+                .run_if(in_state(GameState::Gameplay))
+                .after(network::NetworkSet::Receive),
+        )
+        .add_systems(
+            Update,
+            states::gameplay::run_gameplay_update_hud_labels
+                .run_if(in_state(GameState::Gameplay))
+                .after(network::NetworkSet::Receive),
+        )
+        .add_systems(
+            Update,
+            states::gameplay::run_gameplay_update_extra_ui
+                .run_if(in_state(GameState::Gameplay))
+                .after(network::NetworkSet::Receive),
         )
         //
         // Menu state

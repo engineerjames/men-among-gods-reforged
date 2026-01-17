@@ -211,3 +211,82 @@ pub(super) fn split_tick_payload(payload: &[u8]) -> Result<Vec<Vec<u8>>, String>
 
     Ok(out)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use flate2::write::ZlibEncoder;
+    use flate2::Compression;
+    use std::io::Write;
+
+    #[test]
+    fn inflate_chunk_empty_is_ok() {
+        let mut z = Decompress::new(true);
+        let out = inflate_chunk(&mut z, &[]).unwrap();
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn inflate_chunk_decodes_streaming_chunks() {
+        let original = b"hello streaming zlib";
+
+        let mut enc = ZlibEncoder::new(Vec::<u8>::new(), Compression::default());
+        let mut last_len = 0usize;
+        let mut chunks: Vec<Vec<u8>> = Vec::new();
+
+        enc.write_all(&original[..5]).unwrap();
+        enc.flush().unwrap();
+        {
+            let cur = enc.get_ref();
+            chunks.push(cur[last_len..].to_vec());
+            last_len = cur.len();
+        }
+
+        enc.write_all(&original[5..]).unwrap();
+        enc.flush().unwrap();
+        {
+            let cur = enc.get_ref();
+            chunks.push(cur[last_len..].to_vec());
+            last_len = cur.len();
+        }
+
+        let finished = enc.finish().unwrap();
+        if finished.len() > last_len {
+            chunks.push(finished[last_len..].to_vec());
+        }
+
+        let mut dec = Decompress::new(true);
+        let mut out = Vec::<u8>::new();
+        for c in chunks {
+            let part = inflate_chunk(&mut dec, &c).unwrap();
+            out.extend_from_slice(&part);
+        }
+        assert_eq!(out, original);
+    }
+
+    #[test]
+    fn split_tick_payload_splits_fixed_and_variable_commands() {
+        // SV_TICK: 2 bytes
+        let tick = vec![SV_TICK, 7];
+        // SV_LOAD: 5 bytes
+        let load = vec![SV_LOAD, 1, 2, 3, 4];
+        // SV_IGNORE: length comes from u32 at bytes[1..5]
+        let ignore = vec![SV_IGNORE, 5, 0, 0, 0];
+        // SV_SETMAP with off=0: [op, flags, idx_lo, idx_hi, ...payload]
+        // flags=1 adds 2 bytes.
+        let setmap = vec![SV_SETMAP, 1, 0, 0, 0xAA, 0xBB];
+
+        let mut payload = Vec::<u8>::new();
+        payload.extend_from_slice(&tick);
+        payload.extend_from_slice(&load);
+        payload.extend_from_slice(&ignore);
+        payload.extend_from_slice(&setmap);
+
+        let parts = split_tick_payload(&payload).unwrap();
+        assert_eq!(parts.len(), 4);
+        assert_eq!(parts[0], tick);
+        assert_eq!(parts[1], load);
+        assert_eq!(parts[2], ignore);
+        assert_eq!(parts[3], setmap);
+    }
+}

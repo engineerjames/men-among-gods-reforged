@@ -33,12 +33,27 @@ pub struct PlayerState {
     should_show_shop: bool,
     look_timer: f32,
     character_info: ClientPlayer,
+
+    // Mirrors engine.c's `looks[]` name cache (nr -> {id,name}). Used for show_names/show_proz.
+    look_names: Vec<Option<LookNameEntry>>,
     pending_log: String,
     moa_file_data: SaveFile,
     server_version: u32,
     load_percentage: u32,
     unique1: u32,
     unique2: u32,
+
+    // Server-provided ctick (0..19), sent in ServerCommandData::Tick.
+    // Using this keeps SPEEDTAB-based animations perfectly in-phase with the server.
+    server_ctick: u8,
+    server_ctick_pending: bool,
+    local_ctick: u8,
+}
+
+#[derive(Clone, Debug)]
+struct LookNameEntry {
+    id: u16,
+    name: String,
 }
 
 impl Default for PlayerState {
@@ -56,6 +71,8 @@ impl Default for PlayerState {
             look_timer: 0.0,
             character_info: ClientPlayer::default(),
 
+            look_names: Vec::new(),
+
             pending_log: String::new(),
 
             moa_file_data: SaveFile::default(),
@@ -63,6 +80,10 @@ impl Default for PlayerState {
             load_percentage: 0,
             unique1: 0,
             unique2: 0,
+
+            server_ctick: 0,
+            server_ctick_pending: false,
+            local_ctick: 0,
         }
     }
 }
@@ -79,6 +100,55 @@ impl PlayerState {
 
     pub fn character_info(&self) -> &ClientPlayer {
         &self.character_info
+    }
+
+    pub fn should_show_shop(&self) -> bool {
+        self.should_show_shop
+    }
+
+    pub fn shop_target(&self) -> &Look {
+        &self.shop_target
+    }
+
+    pub fn player_data(&self) -> &PlayerData {
+        &self.player_info
+    }
+
+    pub fn player_data_mut(&mut self) -> &mut PlayerData {
+        &mut self.player_info
+    }
+
+    pub fn lookup_name(&self, nr: u16, id: u16) -> Option<&str> {
+        self.look_names
+            .get(nr as usize)
+            .and_then(|e| e.as_ref())
+            .filter(|e| e.id == id)
+            .map(|e| e.name.as_str())
+    }
+
+    fn set_known_name(&mut self, nr: u16, id: u16, name: &str) {
+        let idx = nr as usize;
+        if self.look_names.len() <= idx {
+            self.look_names.resize_with(idx + 1, || None);
+        }
+        self.look_names[idx] = Some(LookNameEntry {
+            id,
+            name: name.to_string(),
+        });
+    }
+
+    pub fn local_ctick(&self) -> u8 {
+        self.local_ctick
+    }
+
+    pub fn on_tick_packet(&mut self, client_ticker: u32) {
+        let _ = client_ticker;
+        if self.server_ctick_pending {
+            self.local_ctick = self.server_ctick.min(19);
+            self.server_ctick_pending = false;
+        } else {
+            self.local_ctick = (self.local_ctick + 1) % 20;
+        }
     }
 
     fn now_unix_seconds() -> u64 {
@@ -107,6 +177,69 @@ impl PlayerState {
         self.message_log.push(msg);
     }
 
+    /// Inserts extra `\n` so log text won't run off the end of the screen.
+    ///
+    /// This matches the original client's behavior (wrap width `XS=49`) by preferring
+    /// breaking on spaces, and falling back to a hard cut when needed.
+    pub fn wrap_log_text(text: &str, max_cols: usize) -> String {
+        let max_cols = max_cols.max(2);
+        let wrap_at = max_cols.saturating_sub(1);
+
+        let mut out = String::with_capacity(text.len() + text.len() / wrap_at.max(1));
+
+        for raw in text.split('\n') {
+            let mut line = raw.trim_end_matches('\r');
+            if line.is_empty() {
+                continue;
+            }
+
+            while line.len() > wrap_at {
+                let mut cut = wrap_at;
+                if cut >= line.len() {
+                    break;
+                }
+
+                if let Some(space) = line[..cut].rfind(' ') {
+                    if space > 0 {
+                        cut = space;
+                    }
+                }
+
+                let head = line[..cut].trim_end();
+                if !head.is_empty() {
+                    out.push_str(head);
+                    out.push('\n');
+                }
+
+                line = line[cut..].trim_start();
+            }
+
+            if !line.is_empty() {
+                out.push_str(line);
+                out.push('\n');
+            }
+        }
+
+        out.pop();
+        out
+    }
+
+    pub fn log_message(&self, index: usize) -> Option<&LogMessage> {
+        self.message_log.get(index)
+    }
+
+    pub fn tlog(&mut self, font: u8, text: impl AsRef<str>) {
+        const XS: usize = 49; // matches orig engine.c "XS" (line wrap width)
+
+        let wrapped = Self::wrap_log_text(text.as_ref(), XS);
+        for line in wrapped.split('\n') {
+            let line = line.trim_end_matches('\r');
+            if !line.is_empty() {
+                self.push_log_message(line.to_string(), font);
+            }
+        }
+    }
+
     fn write_name_chunk(&mut self, offset: usize, max_len: usize, chunk: &str) {
         if offset >= self.moa_file_data.name.len() {
             return;
@@ -128,7 +261,7 @@ impl PlayerState {
 
         while let Some(idx) = self.pending_log.find('\n') {
             let line = self.pending_log[..idx].to_string();
-            self.push_log_message(line, font);
+            self.tlog(font, line);
             self.pending_log.drain(..=idx);
         }
     }
@@ -279,8 +412,10 @@ impl PlayerState {
                 self.character_info.citem = *citem as i32;
                 self.character_info.citem_p = *citem_p as i32;
             }
-            // Ticks do not modify state directly.
-            ServerCommandData::Tick { .. } => {}
+            ServerCommandData::Tick { ctick } => {
+                self.server_ctick = *ctick;
+                self.server_ctick_pending = true;
+            }
             ServerCommandData::SetOrigin { x, y } => {
                 self.map.set_origin(*x, *y);
             }
@@ -389,6 +524,14 @@ impl PlayerState {
             ServerCommandData::Look5 { name } => {
                 self.look_target.set_name(name);
 
+                // engine.c: add_look(tmplook.nr, tmplook.name, tmplook.id)
+                // Our Look3 packet sets nr/id; Look5 provides the name.
+                let nr = self.look_target.nr();
+                let id = self.look_target.id();
+                if !name.is_empty() {
+                    self.set_known_name(nr, id, name);
+                }
+
                 if !self.look_target.is_extended() && self.look_target.autoflag() == 0 {
                     self.should_show_look = true;
                     self.look_timer = (10 * TICKS) as f32;
@@ -450,12 +593,71 @@ impl PlayerState {
 
             ServerCommandData::Exit { reason } => {
                 // TODO: Handle exit reason codes more gracefully.
-                self.push_log_message(format!("Server requested exit (reason={reason})"), 3);
+                self.tlog(3, format!("Server requested exit (reason={reason})"));
             }
             _ => {
                 // Keep this quiet for now; there are many SV_* packets not yet wired into gameplay.
                 log::debug!("PlayerState ignoring server command: {:?}", command.header);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wrap_log_text_breaks_on_space() {
+        let wrapped = PlayerState::wrap_log_text("hello world", 10);
+        assert_eq!(wrapped, "hello\nworld");
+    }
+
+    #[test]
+    fn wrap_log_text_hard_cuts_long_words() {
+        let wrapped = PlayerState::wrap_log_text("abcdefghijk", 6);
+        assert_eq!(wrapped, "abcde\nfghij\nk");
+    }
+
+    #[test]
+    fn log_color_from_font_matches_expected_mapping() {
+        use crate::types::log_message::LogMessageColor;
+        assert!(matches!(
+            PlayerState::log_color_from_font(0),
+            LogMessageColor::Yellow
+        ));
+        assert!(matches!(
+            PlayerState::log_color_from_font(1),
+            LogMessageColor::Green
+        ));
+        assert!(matches!(
+            PlayerState::log_color_from_font(2),
+            LogMessageColor::Blue
+        ));
+        assert!(matches!(
+            PlayerState::log_color_from_font(3),
+            LogMessageColor::Red
+        ));
+        assert!(matches!(
+            PlayerState::log_color_from_font(99),
+            LogMessageColor::Yellow
+        ));
+    }
+
+    #[test]
+    fn lookup_name_requires_matching_id() {
+        let mut ps = PlayerState::default();
+        ps.set_known_name(5, 42, "Bob");
+        assert_eq!(ps.lookup_name(5, 42), Some("Bob"));
+        assert_eq!(ps.lookup_name(5, 43), None);
+        assert_eq!(ps.lookup_name(6, 42), None);
+    }
+
+    #[test]
+    fn tlog_adds_message_lines() {
+        let mut ps = PlayerState::default();
+        ps.tlog(0, "hello world");
+        let msg = ps.log_message(0).expect("expected first log message");
+        assert_eq!(msg.message, "hello world");
     }
 }

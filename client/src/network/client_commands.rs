@@ -321,3 +321,39 @@ impl ClientCommand {
         Self::cmd_u32_u32_u32(ClientCommandType::CmdSkill, skill, selected_char, attrib0)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn to_bytes_pads_to_16_bytes() {
+        let cmd = ClientCommand::new_newplayer_login();
+        let bytes = cmd.to_bytes();
+        assert_eq!(bytes.len(), 16);
+        assert_eq!(bytes[0], ClientCommandType::NewLogin as u8);
+        assert!(bytes[1..].iter().all(|&b| b == 0));
+    }
+
+    #[test]
+    fn password_truncates_to_15_payload_bytes() {
+        let password: Vec<u8> = (0u8..20u8).collect();
+        let cmd = ClientCommand::new_password(&password);
+        let bytes = cmd.to_bytes();
+        assert_eq!(bytes.len(), 16);
+        assert_eq!(bytes[0], ClientCommandType::Passwd as u8);
+        assert_eq!(&bytes[1..], &password[..15]);
+    }
+
+    #[test]
+    fn say_packets_split_into_8_chunks() {
+        let text: Vec<u8> = (0u8..120u8).collect();
+        let packets = ClientCommand::new_say_packets(&text);
+        assert_eq!(packets.len(), 8);
+        for (i, cmd) in packets.iter().enumerate() {
+            let bytes = cmd.to_bytes();
+            assert_eq!(bytes.len(), 16);
+            assert_eq!(bytes[1..16], text[i * 15..i * 15 + 15]);
+        }
+    }
+}

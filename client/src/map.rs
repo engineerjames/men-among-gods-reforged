@@ -56,6 +56,11 @@ impl GameMap {
     }
 
     #[inline]
+    pub fn reset_last_setmap_index(&mut self) {
+        self.last_setmap_index = None;
+    }
+
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.tiles.is_empty()
     }
@@ -140,17 +145,25 @@ impl GameMap {
         let next_index = if off == 0 {
             absolute_tile_index
         } else {
-            self.last_setmap_index
-                .and_then(|prev| prev.checked_add(off as u16))
+            let base = self.last_setmap_index.map(|v| v as i32).unwrap_or(-1);
+            let next = base + off as i32;
+            if next < 0 {
+                None
+            } else {
+                Some(next as u16)
+            }
         };
 
         let Some(tile_index) = next_index else {
             return;
         };
 
-        self.last_setmap_index = Some(tile_index);
-
         let idx = tile_index as usize;
+        if idx >= self.tiles.len() {
+            return;
+        }
+
+        self.last_setmap_index = Some(tile_index);
         let Some(tile) = self.tiles.get_mut(idx) else {
             return;
         };
@@ -320,5 +333,212 @@ impl GameMap {
             return;
         }
         self.tiles.copy_within(shift..len, 0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tile_index_bounds() {
+        assert_eq!(GameMap::tile_index(0, 0), Some(0));
+        assert_eq!(
+            GameMap::tile_index(TILEX.saturating_sub(1), 0),
+            Some(TILEX - 1)
+        );
+        assert_eq!(
+            GameMap::tile_index(0, TILEY.saturating_sub(1)),
+            Some((TILEY - 1) * TILEX)
+        );
+        assert_eq!(GameMap::tile_index(TILEX, 0), None);
+        assert_eq!(GameMap::tile_index(0, TILEY), None);
+    }
+
+    #[test]
+    fn new_initializes_tile_xy() {
+        let map = GameMap::new();
+        assert_eq!(map.len(), TILEX * TILEY);
+
+        let t00 = map.tile_at_xy(0, 0).unwrap();
+        assert_eq!(t00.x, 0);
+        assert_eq!(t00.y, 0);
+
+        let tx = TILEX - 1;
+        let ty = TILEY - 1;
+        let tlast = map.tile_at_xy(tx, ty).unwrap();
+        assert_eq!(tlast.x, tx as u16);
+        assert_eq!(tlast.y, ty as u16);
+    }
+
+    #[test]
+    fn iter_region_clamps_to_map() {
+        let map = GameMap::new();
+
+        let items: Vec<_> = map.iter_region(0, 0, 2, 2).collect();
+        assert_eq!(items.len(), 4);
+        assert_eq!(items[0].0, 0);
+        assert_eq!(items[0].1, 0);
+        assert_eq!(items[3].0, 1);
+        assert_eq!(items[3].1, 1);
+
+        let items: Vec<_> = map.iter_region(TILEX - 1, TILEY - 1, 10, 10).collect();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].0, TILEX - 1);
+        assert_eq!(items[0].1, TILEY - 1);
+    }
+
+    #[test]
+    fn draw_data_maps_zero_to_none() {
+        let mut map = GameMap::new();
+        let idx = GameMap::tile_index(0, 0).unwrap();
+        let t = map.tile_at_index_mut(idx).unwrap();
+        t.ba_sprite = 0;
+        t.it_sprite = 0;
+        t.ch_sprite = 0;
+        t.light = 7;
+        t.flags = 1;
+        t.flags2 = 2;
+        t.ch_status = 3;
+        t.it_status = 4;
+
+        let d = map.draw_data_at_index(idx).unwrap();
+        assert_eq!(d.base_sprite, None);
+        assert_eq!(d.item_sprite, None);
+        assert_eq!(d.character_sprite, None);
+        assert_eq!(d.light, 7);
+        assert_eq!(d.flags, 1);
+        assert_eq!(d.flags2, 2);
+        assert_eq!(d.character_status, 3);
+        assert_eq!(d.item_status, 4);
+
+        let t = map.tile_at_index_mut(idx).unwrap();
+        t.ba_sprite = 10;
+        t.it_sprite = 11;
+        t.ch_sprite = 12;
+
+        let d = map.draw_data_at_index(idx).unwrap();
+        assert_eq!(d.base_sprite, Some(10));
+        assert_eq!(d.item_sprite, Some(11));
+        assert_eq!(d.character_sprite, Some(12));
+    }
+
+    #[test]
+    fn apply_set_map_tracks_relative_index() {
+        let mut map = GameMap::new();
+
+        map.reset_last_setmap_index();
+        map.apply_set_map(
+            1,
+            None,
+            Some(111),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        assert_eq!(map.tile_at_index(0).unwrap().ba_sprite, 111);
+
+        map.apply_set_map(
+            1,
+            None,
+            Some(222),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        assert_eq!(map.tile_at_index(1).unwrap().ba_sprite, 222);
+
+        map.apply_set_map(
+            0,
+            Some(5),
+            Some(333),
+            Some(7),
+            Some(9),
+            Some(44),
+            Some(1),
+            Some(55),
+            Some(2),
+            Some(3),
+            Some(4),
+            Some(5),
+            Some(6),
+            Some(7),
+        );
+
+        let t = map.tile_at_index(5).unwrap();
+        assert_eq!(t.ba_sprite, 333);
+        assert_eq!(t.flags, 7);
+        assert_eq!(t.flags2, 9);
+        assert_eq!(t.it_sprite, 44);
+        assert_eq!(t.it_status, 1);
+        assert_eq!(t.ch_sprite, 55);
+        assert_eq!(t.ch_status, 2);
+        assert_eq!(t.ch_stat_off, 3);
+        assert_eq!(t.ch_nr, 4);
+        assert_eq!(t.ch_id, 5);
+        assert_eq!(t.ch_speed, 6);
+        assert_eq!(t.ch_proz, 7);
+    }
+
+    #[test]
+    fn apply_set_map3_unpacks_two_nibbles() {
+        let mut map = GameMap::new();
+        map.apply_set_map3(0, 0xA, &[0x21]);
+        assert_eq!(map.tile_at_index(0).unwrap().light, (0xA << 4) | 0x1);
+        assert_eq!(map.tile_at_index(1).unwrap().light, (0xA << 4) | 0x2);
+    }
+
+    #[test]
+    fn scrolling_moves_tiles_in_expected_direction() {
+        let mut map = GameMap::new();
+        for i in 0..3 {
+            map.tile_at_index_mut(i).unwrap().ba_sprite = (i as i16) + 10;
+        }
+        map.scroll_right();
+        assert_eq!(map.tile_at_index(0).unwrap().ba_sprite, 11);
+        assert_eq!(map.tile_at_index(1).unwrap().ba_sprite, 12);
+
+        map.scroll_left();
+        // After right then left, index 1 should contain what index 0 had after right.
+        assert_eq!(map.tile_at_index(1).unwrap().ba_sprite, 11);
+
+        if TILEX >= 1 {
+            map.tile_at_index_mut(0).unwrap().ba_sprite = 101;
+            map.tile_at_index_mut(TILEX).unwrap().ba_sprite = 202;
+            map.scroll_down();
+            assert_eq!(map.tile_at_index(0).unwrap().ba_sprite, 202);
+
+            map.scroll_up();
+            assert_eq!(map.tile_at_index(TILEX).unwrap().ba_sprite, 202);
+        }
+    }
+
+    #[test]
+    fn set_origin_offsets_xy() {
+        let mut map = GameMap::new();
+        map.set_origin(100, 200);
+        let t00 = map.tile_at_xy(0, 0).unwrap();
+        assert_eq!(t00.x, 100);
+        assert_eq!(t00.y, 200);
+
+        let tlast = map.tile_at_xy(TILEX - 1, TILEY - 1).unwrap();
+        assert_eq!(tlast.x, (100 + (TILEX - 1) as i16) as u16);
+        assert_eq!(tlast.y, (200 + (TILEY - 1) as i16) as u16);
     }
 }

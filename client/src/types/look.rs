@@ -49,6 +49,31 @@ impl Default for Look {
 }
 
 impl Look {
+    pub fn nr(&self) -> u16 {
+        self.nr
+    }
+
+    pub fn id(&self) -> u16 {
+        self.id
+    }
+
+    pub fn sprite(&self) -> u16 {
+        self.sprite
+    }
+
+    pub fn points(&self) -> u32 {
+        self.points
+    }
+
+    pub fn item(&self, index: usize) -> u16 {
+        self.item.get(index).copied().unwrap_or(0)
+    }
+
+    #[allow(dead_code)]
+    pub fn price(&self, index: usize) -> u32 {
+        self.price.get(index).copied().unwrap_or(0)
+    }
+
     pub fn is_extended(&self) -> bool {
         self.extended != 0
     }
@@ -122,11 +147,69 @@ impl Look {
         self.name[..n].copy_from_slice(&bytes[..n]);
     }
 
+    pub fn name(&self) -> Option<&str> {
+        // Convert null-terminated byte array to string
+        let end = self
+            .name
+            .iter()
+            .position(|&b| b == 0)
+            .unwrap_or(self.name.len());
+        std::str::from_utf8(&self.name[..end]).ok()
+    }
+
     pub fn set_shop_entry(&mut self, index: u8, item: u16, price: u32) {
         let idx = index as usize;
         if idx < self.item.len() {
             self.item[idx] = item;
             self.price[idx] = price;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn set_name_and_name_roundtrip() {
+        let mut look = Look::default();
+        look.set_name("Bob");
+        assert_eq!(look.name(), Some("Bob"));
+    }
+
+    #[test]
+    fn set_name_truncates_to_fit_null_terminator() {
+        let mut look = Look::default();
+        let long = "a".repeat(100);
+        look.set_name(&long);
+        let s = look.name().unwrap();
+        assert_eq!(s.len(), 39);
+        assert!(s.chars().all(|c| c == 'a'));
+    }
+
+    #[test]
+    fn item_out_of_bounds_returns_zero() {
+        let look = Look::default();
+        assert_eq!(look.item(0), 0);
+        assert_eq!(look.item(9999), 0);
+    }
+
+    #[test]
+    fn set_shop_entry_checks_bounds() {
+        let mut look = Look::default();
+        look.set_shop_entry(0, 123, 456);
+        assert_eq!(look.item(0), 123);
+        assert_eq!(look.price(0), 456);
+
+        look.set_shop_entry(250, 999, 999);
+        assert_eq!(look.item(250), 0);
+    }
+
+    #[test]
+    fn extended_flag_controls_is_extended() {
+        let mut look = Look::default();
+        assert!(!look.is_extended());
+        look.set_extended(1);
+        assert!(look.is_extended());
     }
 }
