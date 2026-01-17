@@ -145,6 +145,13 @@ fn main() {
         )
         .add_systems(
             Update,
+            states::gameplay::run_gameplay_statbox_input
+                .run_if(in_state(GameState::Gameplay))
+                .after(network::NetworkSet::Receive)
+                .before(states::gameplay::run_gameplay_update_hud_labels),
+        )
+        .add_systems(
+            Update,
             map_hover::run_gameplay_map_hover_and_click
                 .run_if(in_state(GameState::Gameplay))
                 .after(states::gameplay::run_gameplay),

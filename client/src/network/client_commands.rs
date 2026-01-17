@@ -244,7 +244,6 @@ impl ClientCommand {
     }
 
     /// `CL_CMD_MODE` (`inter.c::cmd`).
-    #[allow(dead_code)]
     pub fn new_mode(mode: i16) -> Self {
         Self::cmd_xy_i16_i32(ClientCommandType::CmdMode, mode, 0)
     }
@@ -286,13 +285,11 @@ impl ClientCommand {
     }
 
     /// `CL_CMD_EXIT` (`engine.c::cmd_exit` uses `cmd1(CL_CMD_EXIT,0)`).
-    #[allow(dead_code)]
     pub fn new_exit() -> Self {
         Self::cmd_u32(ClientCommandType::CmdExit, 0)
     }
 
     /// `CL_CMD_AUTOLOOK` (`engine.c` uses `cmd1s(CL_CMD_AUTOLOOK, lookat)`).
-    #[allow(dead_code)]
     pub fn new_autolook(lookat: u32) -> Self {
         Self::cmd_u32(ClientCommandType::CmdAutoLook, lookat)
     }

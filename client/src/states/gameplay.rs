@@ -24,7 +24,7 @@ use mag_core::constants::{
     MF_UWATER, SPEEDTAB, SPR_EMPTY, STUNNED, TOMB, WN_ARMS, WN_BELT, WN_BODY, WN_CLOAK, WN_FEET,
     WN_HEAD, WN_LEGS, WN_LHAND, WN_LRING, WN_NECK, WN_RHAND, WN_RRING, XPOS, YPOS,
 };
-use mag_core::types::skilltab::{get_skill_name, get_skill_sortkey, MAX_SKILLS};
+use mag_core::types::skilltab::{get_skill_name, get_skill_nr, get_skill_sortkey, MAX_SKILLS};
 
 // In the original client, xoff starts with `-176` (to account for UI layout).
 // Keeping this makes it easier to compare screenshots while we port rendering.
@@ -122,6 +122,89 @@ const HUD_BAR_H: f32 = 6.0;
 
 const BAR_SCALE_NUM: u32 = 62;
 const BAR_W_MAX: u32 = 124;
+
+const HIGH_VAL: i32 = i32::MAX;
+
+#[inline]
+fn attrib_needed(pl: &mag_core::types::ClientPlayer, n: usize, v: i32) -> i32 {
+    let max_v = pl.attrib[n][2] as i32;
+    if v >= max_v {
+        return HIGH_VAL;
+    }
+    let diff = pl.attrib[n][3] as i32;
+    let v64 = v as i64;
+    ((v64 * v64 * v64) * (diff as i64) / 20).clamp(0, i32::MAX as i64) as i32
+}
+
+#[inline]
+fn skill_needed(pl: &mag_core::types::ClientPlayer, n: usize, v: i32) -> i32 {
+    let max_v = pl.skill[n][2] as i32;
+    if v >= max_v {
+        return HIGH_VAL;
+    }
+    let diff = pl.skill[n][3] as i32;
+    let v64 = v as i64;
+    let cubic = ((v64 * v64 * v64) * (diff as i64) / 40).clamp(0, i32::MAX as i64) as i32;
+    v.max(cubic)
+}
+
+#[inline]
+fn hp_needed(pl: &mag_core::types::ClientPlayer, v: i32) -> i32 {
+    if v >= pl.hp[2] as i32 {
+        return HIGH_VAL;
+    }
+    (v as i64 * pl.hp[3] as i64).clamp(0, i32::MAX as i64) as i32
+}
+
+#[inline]
+fn end_needed(pl: &mag_core::types::ClientPlayer, v: i32) -> i32 {
+    if v >= pl.end[2] as i32 {
+        return HIGH_VAL;
+    }
+    (v as i64 * pl.end[3] as i64 / 2).clamp(0, i32::MAX as i64) as i32
+}
+
+#[inline]
+fn mana_needed(pl: &mag_core::types::ClientPlayer, v: i32) -> i32 {
+    if v >= pl.mana[2] as i32 {
+        return HIGH_VAL;
+    }
+    (v as i64 * pl.mana[3] as i64).clamp(0, i32::MAX as i64) as i32
+}
+
+fn build_sorted_skills(pl: &mag_core::types::ClientPlayer) -> Vec<usize> {
+    let mut sorted_skills: Vec<usize> = (0..MAX_SKILLS).collect();
+    sorted_skills.sort_by(|&a, &b| {
+        let a_unused = get_skill_sortkey(a) == 'Z' || get_skill_name(a).is_empty();
+        let b_unused = get_skill_sortkey(b) == 'Z' || get_skill_name(b).is_empty();
+        if a_unused != b_unused {
+            return if a_unused {
+                Ordering::Greater
+            } else {
+                Ordering::Less
+            };
+        }
+
+        let a_learned = pl.skill[a][0] != 0;
+        let b_learned = pl.skill[b][0] != 0;
+        if a_learned != b_learned {
+            return if a_learned {
+                Ordering::Less
+            } else {
+                Ordering::Greater
+            };
+        }
+
+        let a_key = get_skill_sortkey(a);
+        let b_key = get_skill_sortkey(b);
+        if a_key != b_key {
+            return a_key.cmp(&b_key);
+        }
+
+        get_skill_name(a).cmp(get_skill_name(b))
+    });
+    sorted_skills
+}
 
 #[inline]
 fn ui_bar_colors() -> (Color, Color, Color) {
@@ -341,6 +424,37 @@ pub(crate) struct GameplayUiAttributeAuxText {
 pub(crate) struct GameplayUiSkillAuxText {
     row: usize,
     col: GameplayUiRaiseStatColumn,
+}
+
+#[derive(Resource)]
+pub(crate) struct GameplayStatboxState {
+    /// Pending stat raises, indexed like the original client:
+    /// 0..=4 attributes, 5 hitpoints, 6 endurance, 7 mana,
+    /// and 8.. are skills in the (sorted) skill table order.
+    stat_raised: [i32; 108],
+    stat_points_used: i32,
+    skill_pos: usize,
+}
+
+impl Default for GameplayStatboxState {
+    fn default() -> Self {
+        Self {
+            stat_raised: [0; 108],
+            stat_points_used: 0,
+            skill_pos: 0,
+        }
+    }
+}
+
+impl GameplayStatboxState {
+    fn available_points(&self, pl: &mag_core::types::ClientPlayer) -> i32 {
+        (pl.points - self.stat_points_used).max(0)
+    }
+
+    fn clear(&mut self) {
+        self.stat_raised.fill(0);
+        self.stat_points_used = 0;
+    }
 }
 
 #[derive(Resource, Default)]
@@ -2479,6 +2593,9 @@ pub(crate) fn setup_gameplay(
 ) {
     log::debug!("setup_gameplay - start");
 
+    // Pending stat raises/points spent (orig/inter.c statbox bookkeeping).
+    commands.insert_resource(GameplayStatboxState::default());
+
     // Clear any previous gameplay sprites (re-entering gameplay, etc.)
     for e in &existing_render {
         commands.entity(e).despawn();
@@ -3010,8 +3127,254 @@ pub(crate) fn run_gameplay_buttonbox_toggles(
     }
 }
 
+pub(crate) fn run_gameplay_statbox_input(
+    keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
+    cameras: Query<&Camera, With<Camera2d>>,
+    net: Res<NetworkRuntime>,
+    mut player_state: ResMut<PlayerState>,
+    mut statbox: ResMut<GameplayStatboxState>,
+) {
+    let Some(game) = cursor_game_pos(&windows, &cameras) else {
+        return;
+    };
+
+    // Right-click help texts (orig/inter.c::_mouse_statbox).
+    if mouse.just_released(MouseButton::Right) {
+        let x = game.x;
+        let y = game.y;
+        if x > 109.0 && y > 254.0 && x < 158.0 && y < 266.0 {
+            player_state.tlog(1, "Make the changes permanent");
+            return;
+        }
+
+        if x < 133.0 || x > 157.0 || y < 2.0 || y > 251.0 {
+            return;
+        }
+
+        let n = ((y - 2.0) / 14.0).floor() as usize;
+        if x < 145.0 {
+            if n < 5 {
+                player_state.tlog(1, &format!("Raise {}.", ATTRIBUTE_NAMES[n]));
+            } else if n == 5 {
+                player_state.tlog(1, "Raise Hitpoints.");
+            } else if n == 6 {
+                player_state.tlog(1, "Raise Endurance.");
+            } else if n == 7 {
+                player_state.tlog(1, "Raise Mana.");
+            } else {
+                let pl = player_state.character_info();
+                let sorted = build_sorted_skills(pl);
+                let skilltab_index = statbox.skill_pos + (n.saturating_sub(8));
+                if let Some(&skill_id) = sorted.get(skilltab_index) {
+                    let name = get_skill_name(skill_id);
+                    if !name.is_empty() {
+                        player_state.tlog(1, &format!("Raise {}.", name));
+                    }
+                }
+            }
+        } else {
+            if n < 5 {
+                player_state.tlog(1, &format!("Lower {}.", ATTRIBUTE_NAMES[n]));
+            } else if n == 5 {
+                player_state.tlog(1, "Lower Hitpoints.");
+            } else if n == 6 {
+                player_state.tlog(1, "Lower Endurance.");
+            } else if n == 7 {
+                player_state.tlog(1, "Lower Mana.");
+            } else {
+                let pl = player_state.character_info();
+                let sorted = build_sorted_skills(pl);
+                let skilltab_index = statbox.skill_pos + (n.saturating_sub(8));
+                if let Some(&skill_id) = sorted.get(skilltab_index) {
+                    let name = get_skill_name(skill_id);
+                    if !name.is_empty() {
+                        player_state.tlog(1, &format!("Lower {}.", name));
+                    }
+                }
+            }
+        }
+        return;
+    }
+
+    if !mouse.just_released(MouseButton::Left) {
+        return;
+    }
+
+    // orig/inter.c::mouse_statbox: Shift=10 repeats, Ctrl=90 repeats.
+    let repeat = if keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight) {
+        90
+    } else if keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight) {
+        10
+    } else {
+        1
+    };
+
+    for _ in 0..repeat {
+        let x = game.x;
+        let y = game.y;
+
+        // Commit button.
+        if x > 109.0 && y > 254.0 && x < 158.0 && y < 266.0 {
+            let pl = player_state.character_info();
+            let sorted = build_sorted_skills(pl);
+            for n in 0..108 {
+                let v = statbox.stat_raised[n];
+                if v == 0 {
+                    continue;
+                }
+                let which = if n > 7 {
+                    let skilltab_index = n - 8;
+                    let Some(&skill_id) = sorted.get(skilltab_index) else {
+                        continue;
+                    };
+                    (get_skill_nr(skill_id) + 8) as i16
+                } else {
+                    n as i16
+                };
+                net.send(ClientCommand::new_stat(which, v).to_bytes());
+            }
+            statbox.clear();
+            return;
+        }
+
+        if x < 133.0 || x > 157.0 || y < 2.0 || y > 251.0 {
+            return;
+        }
+
+        let n = ((y - 2.0) / 14.0).floor() as usize;
+        let raising = x < 145.0;
+
+        let pl = player_state.character_info();
+        let available = statbox.available_points(pl);
+
+        if raising {
+            if n < 5 {
+                let idx = n;
+                let need = attrib_needed(pl, n, pl.attrib[n][0] as i32 + statbox.stat_raised[idx]);
+                if need != HIGH_VAL && need <= available {
+                    statbox.stat_points_used += need;
+                    statbox.stat_raised[idx] += 1;
+                }
+            } else if n == 5 {
+                let idx = 5;
+                let need = hp_needed(pl, pl.hp[0] as i32 + statbox.stat_raised[idx]);
+                if need != HIGH_VAL && need <= available {
+                    statbox.stat_points_used += need;
+                    statbox.stat_raised[idx] += 1;
+                }
+            } else if n == 6 {
+                let idx = 6;
+                let need = end_needed(pl, pl.end[0] as i32 + statbox.stat_raised[idx]);
+                if need != HIGH_VAL && need <= available {
+                    statbox.stat_points_used += need;
+                    statbox.stat_raised[idx] += 1;
+                }
+            } else if n == 7 {
+                let idx = 7;
+                let need = mana_needed(pl, pl.mana[0] as i32 + statbox.stat_raised[idx]);
+                if need != HIGH_VAL && need <= available {
+                    statbox.stat_points_used += need;
+                    statbox.stat_raised[idx] += 1;
+                }
+            } else {
+                let skill_row = n.saturating_sub(8);
+                let skilltab_index = statbox.skill_pos + skill_row;
+                let raised_idx = 8 + skilltab_index;
+                if raised_idx >= statbox.stat_raised.len() {
+                    continue;
+                }
+                let sorted = build_sorted_skills(pl);
+                let Some(&skill_id) = sorted.get(skilltab_index) else {
+                    continue;
+                };
+                if pl.skill[skill_id][0] == 0 {
+                    continue;
+                }
+                let need = skill_needed(
+                    pl,
+                    skill_id,
+                    pl.skill[skill_id][0] as i32 + statbox.stat_raised[raised_idx],
+                );
+                if need != HIGH_VAL && need <= available {
+                    statbox.stat_points_used += need;
+                    statbox.stat_raised[raised_idx] += 1;
+                }
+            }
+        } else {
+            if n < 5 {
+                let idx = n;
+                if statbox.stat_raised[idx] > 0 {
+                    statbox.stat_raised[idx] -= 1;
+                    let refund =
+                        attrib_needed(pl, n, pl.attrib[n][0] as i32 + statbox.stat_raised[idx]);
+                    if refund != HIGH_VAL {
+                        statbox.stat_points_used -= refund;
+                    }
+                }
+            } else if n == 5 {
+                let idx = 5;
+                if statbox.stat_raised[idx] > 0 {
+                    statbox.stat_raised[idx] -= 1;
+                    let refund = hp_needed(pl, pl.hp[0] as i32 + statbox.stat_raised[idx]);
+                    if refund != HIGH_VAL {
+                        statbox.stat_points_used -= refund;
+                    }
+                }
+            } else if n == 6 {
+                let idx = 6;
+                if statbox.stat_raised[idx] > 0 {
+                    statbox.stat_raised[idx] -= 1;
+                    let refund = end_needed(pl, pl.end[0] as i32 + statbox.stat_raised[idx]);
+                    if refund != HIGH_VAL {
+                        statbox.stat_points_used -= refund;
+                    }
+                }
+            } else if n == 7 {
+                let idx = 7;
+                if statbox.stat_raised[idx] > 0 {
+                    statbox.stat_raised[idx] -= 1;
+                    let refund = mana_needed(pl, pl.mana[0] as i32 + statbox.stat_raised[idx]);
+                    if refund != HIGH_VAL {
+                        statbox.stat_points_used -= refund;
+                    }
+                }
+            } else {
+                let skill_row = n.saturating_sub(8);
+                let skilltab_index = statbox.skill_pos + skill_row;
+                let raised_idx = 8 + skilltab_index;
+                if raised_idx >= statbox.stat_raised.len() {
+                    continue;
+                }
+                if statbox.stat_raised[raised_idx] <= 0 {
+                    continue;
+                }
+                let sorted = build_sorted_skills(pl);
+                let Some(&skill_id) = sorted.get(skilltab_index) else {
+                    continue;
+                };
+                statbox.stat_raised[raised_idx] -= 1;
+                let refund = skill_needed(
+                    pl,
+                    skill_id,
+                    pl.skill[skill_id][0] as i32 + statbox.stat_raised[raised_idx],
+                );
+                if refund != HIGH_VAL {
+                    statbox.stat_points_used -= refund;
+                }
+            }
+        }
+
+        if statbox.stat_points_used < 0 {
+            statbox.stat_points_used = 0;
+        }
+    }
+}
+
 pub(crate) fn run_gameplay_update_hud_labels(
     player_state: Res<PlayerState>,
+    statbox: Res<GameplayStatboxState>,
     mut last_state_rev: Local<u64>,
     mut q: ParamSet<(
         Query<
@@ -3155,7 +3518,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
     >,
 ) {
     let rev = player_state.state_revision();
-    if *last_state_rev == rev {
+    if *last_state_rev == rev && !statbox.is_changed() {
         return;
     }
     *last_state_rev = rev;
@@ -3224,7 +3587,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
 
     // Update points remaining
     if let Some(mut text) = q.p4().iter_mut().next() {
-        let desired = format!("{:7}", pl.points);
+        let desired = format!("{:7}", (pl.points - statbox.stat_points_used).max(0));
         if text.text != desired {
             text.text = desired;
         }
@@ -3256,9 +3619,15 @@ pub(crate) fn run_gameplay_update_hud_labels(
 
     // Attributes (5 of them: Braveness, Willpower, Intuition, Agility, Strength)
     // Mirrors engine.c: value uses total[5] + stat_raised[n], and cost uses bare[0] + stat_raised[n].
-    let stat_points_used: i32 = 0;
+    let stat_points_used: i32 = statbox.stat_points_used;
     let available_points: i32 = (pl.points - stat_points_used).max(0);
-    let stat_raised_attrib: [i32; 5] = [0; 5];
+    let stat_raised_attrib: [i32; 5] = [
+        statbox.stat_raised[0],
+        statbox.stat_raised[1],
+        statbox.stat_raised[2],
+        statbox.stat_raised[3],
+        statbox.stat_raised[4],
+    ];
 
     for (attr_label, mut text) in &mut q_attrib {
         if attr_label.attrib_index < 5 {
@@ -3328,41 +3697,15 @@ pub(crate) fn run_gameplay_update_hud_labels(
     // - Push unlearned skills (pl.skill[m][0] == 0) below learned
     // - Push reserved/unused entries (category 'Z' / empty name) to the bottom
     // - Then sort by sortkey (category) and name
-    let mut sorted_skills: Vec<usize> = (0..MAX_SKILLS).collect();
-    sorted_skills.sort_by(|&a, &b| {
-        let a_unused = get_skill_sortkey(a) == 'Z' || get_skill_name(a).is_empty();
-        let b_unused = get_skill_sortkey(b) == 'Z' || get_skill_name(b).is_empty();
-        if a_unused != b_unused {
-            return if a_unused {
-                Ordering::Greater
-            } else {
-                Ordering::Less
-            };
-        }
+    let sorted_skills = build_sorted_skills(pl);
 
-        let a_learned = pl.skill[a][0] != 0;
-        let b_learned = pl.skill[b][0] != 0;
-        if a_learned != b_learned {
-            return if a_learned {
-                Ordering::Less
-            } else {
-                Ordering::Greater
-            };
-        }
-
-        let a_key = get_skill_sortkey(a);
-        let b_key = get_skill_sortkey(b);
-        if a_key != b_key {
-            return a_key.cmp(&b_key);
-        }
-
-        get_skill_name(a).cmp(get_skill_name(b))
-    });
-
+    let skill_pos = statbox.skill_pos;
     let mut rows: Vec<String> = Vec::with_capacity(10);
     let mut row_skill_ids: [Option<usize>; 10] = [None; 10];
+    let mut stat_raised_skill_rows: [i32; 10] = [0; 10];
     for row in 0..10 {
-        let Some(&skill_id) = sorted_skills.get(row) else {
+        let skilltab_index = skill_pos + row;
+        let Some(&skill_id) = sorted_skills.get(skilltab_index) else {
             rows.push(String::from("unused"));
             row_skill_ids[row] = None;
             continue;
@@ -3383,7 +3726,14 @@ pub(crate) fn run_gameplay_update_hud_labels(
             continue;
         }
 
-        let skill_display = pl.skill[skill_id][5];
+        let raised = statbox
+            .stat_raised
+            .get(8 + skilltab_index)
+            .copied()
+            .unwrap_or(0);
+        stat_raised_skill_rows[row] = raised;
+
+        let skill_display = pl.skill[skill_id][5] as i32 + raised;
         rows.push(format!("{:<16}  {:3}", name, skill_display));
         row_skill_ids[row] = Some(skill_id);
     }
@@ -3401,8 +3751,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
         }
     }
 
-    // Skill +/- and cost columns (mirrors engine.c), with no stat_raised/skill_pos yet.
-    let stat_raised_skill_rows: [i32; 10] = [0; 10];
+    // Skill +/- and cost columns (mirrors engine.c).
     for (cfg, mut text) in &mut q_skill_aux {
         if cfg.row >= 10 {
             if !text.text.is_empty() {
@@ -3460,31 +3809,39 @@ pub(crate) fn run_gameplay_update_hud_labels(
         }
     }
 
-    // Raise-stat rows (Hitpoints/Endurance/Mana) with + and cost columns.
-    // We don't yet have client-side stat_raised/stat_points_used, so we use 0/0.
+    // Raise-stat rows (Hitpoints/Endurance/Mana) with +, -, and cost columns.
     let available_points = available_points;
-    let stat_raised_hp: i32 = 0;
-    let stat_raised_end: i32 = 0;
-    let stat_raised_mana: i32 = 0;
+    let stat_raised_hp: i32 = statbox.stat_raised[5];
+    let stat_raised_end: i32 = statbox.stat_raised[6];
+    let stat_raised_mana: i32 = statbox.stat_raised[7];
 
     let hp_base = pl.hp[0] as i32 + stat_raised_hp;
     let end_base = pl.end[0] as i32 + stat_raised_end;
     let mana_base = pl.mana[0] as i32 + stat_raised_mana;
 
-    let hp_needed = if hp_base >= pl.hp[2] as i32 {
-        None
-    } else {
-        Some(hp_base * pl.hp[3] as i32)
+    let hp_needed = {
+        let v = hp_needed(pl, hp_base);
+        if v == HIGH_VAL {
+            None
+        } else {
+            Some(v)
+        }
     };
-    let end_needed = if end_base >= pl.end[2] as i32 {
-        None
-    } else {
-        Some(end_base * pl.end[3] as i32 / 2)
+    let end_needed = {
+        let v = end_needed(pl, end_base);
+        if v == HIGH_VAL {
+            None
+        } else {
+            Some(v)
+        }
     };
-    let mana_needed = if mana_base >= pl.mana[2] as i32 {
-        None
-    } else {
-        Some(mana_base * pl.mana[3] as i32)
+    let mana_needed = {
+        let v = mana_needed(pl, mana_base);
+        if v == HIGH_VAL {
+            None
+        } else {
+            Some(v)
+        }
     };
 
     for (cfg, mut text) in &mut q_raise_stats {
