@@ -137,10 +137,6 @@ impl PlayerState {
         });
     }
 
-    pub fn server_ctick(&self) -> u8 {
-        self.server_ctick
-    }
-
     pub fn local_ctick(&self) -> u8 {
         self.local_ctick
     }

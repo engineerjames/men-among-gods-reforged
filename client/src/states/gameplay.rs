@@ -2019,10 +2019,70 @@ pub(crate) fn run_gameplay_text_ui(
     if keys.just_pressed(KeyCode::Enter) {
         let line = input.current.trim().to_string();
         if !line.is_empty() {
-            send_chat_input(&net, &line);
+            let mut consumed = false;
+
+            if let Some(rest) = line.strip_prefix('.') {
+                // Client-side dot commands (ported behavior from the original client).
+                // These are *not* sent to the server as chat.
+                let mut parts = rest.split_whitespace();
+                let cmd = parts.next().unwrap_or("").to_ascii_lowercase();
+                let arg = parts.next().map(|s| s.to_ascii_lowercase());
+
+                let toggle_from_arg = |arg: &Option<String>, current: i32| -> i32 {
+                    match arg.as_deref() {
+                        Some("1") | Some("on") | Some("true") => 1,
+                        Some("0") | Some("off") | Some("false") => 0,
+                        Some("toggle") | None => {
+                            if current != 0 {
+                                0
+                            } else {
+                                1
+                            }
+                        }
+                        _ => current,
+                    }
+                };
+
+                match cmd.as_str() {
+                    "show_names" => {
+                        let cur = player_state.player_data().show_names;
+                        let next = toggle_from_arg(&arg, cur);
+                        player_state.player_data_mut().show_names = next;
+                        player_state.tlog(
+                            1,
+                            format!("show_names {}", if next != 0 { "ON" } else { "OFF" }),
+                        );
+                        consumed = true;
+                    }
+                    "show_proz" => {
+                        let cur = player_state.player_data().show_proz;
+                        let next = toggle_from_arg(&arg, cur);
+                        player_state.player_data_mut().show_proz = next;
+                        player_state.tlog(
+                            1,
+                            format!("show_proz {}", if next != 0 { "ON" } else { "OFF" }),
+                        );
+                        consumed = true;
+                    }
+                    "hide" => {
+                        let cur = player_state.player_data().hide;
+                        let next = toggle_from_arg(&arg, cur);
+                        player_state.player_data_mut().hide = next;
+                        player_state
+                            .tlog(1, format!("hide {}", if next != 0 { "ON" } else { "OFF" }));
+                        consumed = true;
+                    }
+                    _ => {}
+                }
+            }
+
+            if !consumed {
+                send_chat_input(&net, &line);
+                player_state.tlog(1, format!("> {line}"));
+            }
+
             input.history.push(line.clone());
             input.history_pos = None;
-            player_state.tlog(1, format!("> {line}"));
         }
         input.current.clear();
     }
@@ -2544,11 +2604,7 @@ pub(crate) fn run_gameplay(
                 // engine.c: if (pdata.hide==0 || (map[m].flags&ISITEM) || autohide(x,y)) draw obj1
                 // else draw obj1+1 (hide walls/high objects).
                 let hide_enabled = player_state.player_data().hide != 0;
-                if hide_enabled
-                    && id > 0
-                    && (tile.flags & ISITEM) == 0
-                    && !autohide(x, y)
-                {
+                if hide_enabled && id > 0 && (tile.flags & ISITEM) == 0 && !autohide(x, y) {
                     // engine.c mine hack: substitute special sprites for certain mine-wall IDs
                     // when hide is enabled and tile isn't directly in front of the player.
                     let is_mine_wall = id > 16335

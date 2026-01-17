@@ -22,13 +22,18 @@ pub(crate) struct GameplayNameplate {
     pub index: usize,
 }
 
-
 #[inline]
 fn screen_to_world(sx: f32, sy: f32, z: f32) -> Vec3 {
     Vec3::new(sx - TARGET_WIDTH * 0.5, TARGET_HEIGHT * 0.5 - sy, z)
 }
 
-fn dd_gputtext_screen_pos(xpos: i32, ypos: i32, text_len: usize, xoff: i32, yoff: i32) -> (i32, i32) {
+fn dd_gputtext_screen_pos(
+    xpos: i32,
+    ypos: i32,
+    text_len: usize,
+    xoff: i32,
+    yoff: i32,
+) -> (i32, i32) {
     // Ported from `orig/dd.c::dd_gputtext`.
     // We don't need the negative-coordinate odd-bit adjustments in our usage.
     let rx = (xpos / 2) + (ypos / 2) + 32 - (((text_len as i32) * 5) / 2) + XPOS + xoff;
@@ -36,14 +41,25 @@ fn dd_gputtext_screen_pos(xpos: i32, ypos: i32, text_len: usize, xoff: i32, yoff
     (rx, ry)
 }
 
-fn player_name(player_state: &PlayerState) -> &str {
-    let pl = player_state.character_info();
-    let end = pl
-        .name
-        .iter()
-        .position(|&b| b == 0)
-        .unwrap_or(pl.name.len());
-    std::str::from_utf8(&pl.name[..end]).unwrap_or("Player")
+fn bytes_to_trimmed_str(bytes: &[u8]) -> Option<&str> {
+    let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+    let s = std::str::from_utf8(&bytes[..end]).ok()?.trim();
+    if s.is_empty() {
+        None
+    } else {
+        Some(s)
+    }
+}
+
+fn player_display_name(player_state: &PlayerState) -> String {
+    // Prefer the runtime player name, but fall back to persisted pdata.cname.
+    if let Some(s) = bytes_to_trimmed_str(&player_state.character_info().name) {
+        return s.to_string();
+    }
+    if let Some(s) = bytes_to_trimmed_str(&player_state.player_data().cname) {
+        return s.to_string();
+    }
+    "Player".to_string()
 }
 
 pub(crate) fn spawn_gameplay_nameplates(
@@ -80,7 +96,12 @@ pub(crate) fn spawn_gameplay_nameplates(
 pub(crate) fn run_gameplay_nameplates(
     net: Res<NetworkRuntime>,
     player_state: Res<PlayerState>,
-    mut q: Query<(&GameplayNameplate, &mut Text2d, &mut Transform, &mut Visibility)>,
+    mut q: Query<(
+        &GameplayNameplate,
+        &mut Text2d,
+        &mut Transform,
+        &mut Visibility,
+    )>,
     mut last_sent_ticker: Local<u32>,
 ) {
     let pdata = player_state.player_data();
@@ -109,7 +130,7 @@ pub(crate) fn run_gameplay_nameplates(
 
         let name = if show_names {
             if is_center {
-                Some(player_name(&player_state).to_string())
+                Some(player_display_name(&player_state))
             } else {
                 let cached = player_state.lookup_name(tile.ch_nr, tile.ch_id);
                 if cached.is_none() {
@@ -127,11 +148,11 @@ pub(crate) fn run_gameplay_nameplates(
             None
         };
 
-        let text = match (show_names, show_proz, name, proz) {
+        let text = match (show_names, show_proz, name.as_deref(), proz) {
             (true, true, Some(n), Some(p)) if !n.is_empty() => format!("{n} {p}%"),
-            (true, true, Some(n), None) => n,
-            (true, true, None, Some(p)) => format!("{p}%"),
-            (true, false, Some(n), _) => n,
+            (true, true, _, Some(p)) => format!("{p}%"),
+            (true, true, Some(n), None) => n.to_string(),
+            (true, false, Some(n), _) => n.to_string(),
             (false, true, _, Some(p)) => format!("{p}%"),
             _ => String::new(),
         };
@@ -149,7 +170,8 @@ pub(crate) fn run_gameplay_nameplates(
         let xpos = view_x * 32;
         let ypos = view_y * 32;
 
-        let (sx_i, sy_i) = dd_gputtext_screen_pos(xpos, ypos, text.len(), tile.obj_xoff, tile.obj_yoff);
+        let (sx_i, sy_i) =
+            dd_gputtext_screen_pos(xpos, ypos, text.len(), tile.obj_xoff, tile.obj_yoff);
 
         let draw_order = ((TILEY - 1 - (view_y as usize)) * TILEX + (view_x as usize)) as f32;
         let z = Z_CHAR_BASE + draw_order * Z_WORLD_STEP + Z_NAMEPLATE_BIAS;
