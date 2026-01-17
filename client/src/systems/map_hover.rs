@@ -4,6 +4,7 @@ use bevy::sprite::Anchor;
 use bevy::window::PrimaryWindow;
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
+use crate::gfx_cache::GraphicsCache;
 use crate::map::{TILEX, TILEY};
 use crate::network::{client_commands::ClientCommand, NetworkRuntime};
 use crate::player_state::PlayerState;
@@ -15,6 +16,10 @@ use mag_core::constants::{ISCHAR, ISITEM, XPOS, YPOS};
 const Z_WORLD_STEP: f32 = 0.01;
 const Z_BG_BASE: f32 = 0.0;
 const Z_HOVER_BIAS: f32 = 0.005;
+const Z_GOTO_BIAS: f32 = 0.001;
+
+// orig/engine.c draws sprite 31 at pl.goto_x/pl.goto_y.
+const MOVE_TARGET_SPRITE_ID: usize = 31;
 
 // Ground tiles are rendered as an isometric diamond occupying the lower half
 // of a 32x32 tile cell. The visible diamond is 32px wide x 16px tall.
@@ -24,6 +29,9 @@ const GROUND_DIAMOND_Y_OFFSET: f32 = 16.0;
 
 #[derive(Component)]
 pub(crate) struct GameplayMapHoverHighlight;
+
+#[derive(Component)]
+pub(crate) struct GameplayMoveTargetMarker;
 
 #[derive(Resource, Default, Debug, Clone, Copy)]
 pub(crate) struct GameplayHoveredTile {
@@ -157,6 +165,61 @@ fn tile_screen_pos(mx: i32, my: i32) -> (f32, f32) {
     (rx as f32, ry as f32)
 }
 
+fn find_view_tile_for_world(map: &crate::map::GameMap, wx: i32, wy: i32) -> Option<(i32, i32)> {
+    if wx < 0 || wy < 0 {
+        return None;
+    }
+    let wx_u = wx as u16;
+    let wy_u = wy as u16;
+
+    for my in 0..(TILEY as i32) {
+        for mx in 0..(TILEX as i32) {
+            let Some(tile) = map.tile_at_xy(mx as usize, my as usize) else {
+                continue;
+            };
+            if tile.x == wx_u && tile.y == wy_u {
+                return Some((mx, my));
+            }
+        }
+    }
+    None
+}
+
+fn sprite_tiles_xy(sprite: &Sprite, images: &Assets<Image>) -> Option<(i32, i32)> {
+    let image = images.get(&sprite.image)?;
+    let size = image.size();
+
+    // dd.c treats sprites as being composed of 32x32 "blocks".
+    let w = (size.x.max(1) as i32).max(1);
+    let h = (size.y.max(1) as i32).max(1);
+
+    let xs = (w + 31) / 32;
+    let ys = (h + 31) / 32;
+    Some((xs.max(1), ys.max(1)))
+}
+
+/// A minimal copy of `states/gameplay.rs::copysprite_screen_pos`, used here so
+/// this overlay aligns exactly with the rest of the map rendering.
+fn copysprite_screen_pos(
+    sprite_id: usize,
+    gfx: &GraphicsCache,
+    images: &Assets<Image>,
+    xpos: i32,
+    ypos: i32,
+    xoff: i32,
+    yoff: i32,
+) -> Option<(i32, i32)> {
+    let sprite = gfx.get_sprite(sprite_id)?;
+    let (xs, ys) = sprite_tiles_xy(sprite, images)?;
+
+    let mut rx = (xpos / 2) + (ypos / 2) - (xs * 16) + 32 + XPOS - (((TILEX as i32 - 34) / 2) * 32);
+    let mut ry = (xpos / 4) - (ypos / 4) + YPOS - (ys * 32);
+
+    rx += xoff;
+    ry += yoff;
+    Some((rx, ry))
+}
+
 pub(crate) fn spawn_map_hover_highlight(
     commands: &mut Commands,
     images: &mut Assets<Image>,
@@ -226,6 +289,75 @@ pub(crate) fn spawn_map_hover_highlight(
     });
 }
 
+pub(crate) fn spawn_map_move_target_marker(
+    commands: &mut Commands,
+    gfx: &GraphicsCache,
+    world_root: Entity,
+) {
+    let Some(src) = gfx.get_sprite(MOVE_TARGET_SPRITE_ID) else {
+        log::warn!(
+            "Missing sprite {} in GraphicsCache; move target marker disabled",
+            MOVE_TARGET_SPRITE_ID
+        );
+        return;
+    };
+
+    let id = commands
+        .spawn((
+            GameplayRenderEntity,
+            GameplayMoveTargetMarker,
+            src.clone(),
+            Anchor::TOP_LEFT,
+            Transform::default(),
+            GlobalTransform::default(),
+            Visibility::Hidden,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
+        ))
+        .id();
+
+    commands.entity(world_root).add_child(id);
+}
+
+pub(crate) fn run_gameplay_move_target_marker(
+    gfx: Res<GraphicsCache>,
+    images: Res<Assets<Image>>,
+    player_state: Res<PlayerState>,
+    mut q_marker: Query<(&mut Transform, &mut Visibility), With<GameplayMoveTargetMarker>>,
+) {
+    let Some((mut transform, mut visibility)) = q_marker.iter_mut().next() else {
+        return;
+    };
+
+    if !gfx.is_initialized() {
+        *visibility = Visibility::Hidden;
+        return;
+    }
+
+    let pl = player_state.character_info();
+    let wx = pl.goto_x;
+    let wy = pl.goto_y;
+
+    let Some((mx, my)) = find_view_tile_for_world(player_state.map(), wx, wy) else {
+        *visibility = Visibility::Hidden;
+        return;
+    };
+
+    let xpos = mx * 32;
+    let ypos = my * 32;
+    let Some((sx_i, sy_i)) =
+        copysprite_screen_pos(MOVE_TARGET_SPRITE_ID, &gfx, &images, xpos, ypos, 0, 0)
+    else {
+        *visibility = Visibility::Hidden;
+        return;
+    };
+
+    let draw_order = ((TILEY - 1 - my as usize) * TILEX + (mx as usize)) as f32;
+    let z = Z_BG_BASE + draw_order * Z_WORLD_STEP + Z_GOTO_BIAS;
+    transform.translation = screen_to_world(sx_i as f32, sy_i as f32, z);
+    *visibility = Visibility::Visible;
+}
+
 pub(crate) fn run_gameplay_map_hover_and_click(
     windows: Query<&Window, With<PrimaryWindow>>,
     cameras: Query<&Camera, With<Camera2d>>,
@@ -260,11 +392,6 @@ pub(crate) fn run_gameplay_map_hover_and_click(
     let Some(tile) = tile else {
         return;
     };
-
-    let occupied = (tile.flags & (ISITEM | ISCHAR)) != 0 || tile.obj1 != 0 || tile.obj2 != 0;
-    if occupied {
-        return;
-    }
 
     hovered.set(mx, my);
 

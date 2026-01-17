@@ -1839,6 +1839,9 @@ pub(crate) fn setup_gameplay(
         world_root,
     );
 
+    // Persistent move target marker (orig/engine.c draws sprite 31 at pl.goto_x/pl.goto_y).
+    crate::systems::map_hover::spawn_map_move_target_marker(&mut commands, &gfx, world_root);
+
     // Spawn a stable set of entities once; `run_gameplay` updates them.
     for index in 0..map.len() {
         // Shadows (dd.c::dd_shadow), rendered between background and objects/chars.

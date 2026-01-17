@@ -144,6 +144,12 @@ fn main() {
         )
         .add_systems(
             Update,
+            map_hover::run_gameplay_move_target_marker
+                .run_if(in_state(GameState::Gameplay))
+                .after(states::gameplay::run_gameplay),
+        )
+        .add_systems(
+            Update,
             states::gameplay::run_gameplay_text_ui
                 .run_if(in_state(GameState::Gameplay))
                 .after(network::NetworkSet::Receive),
