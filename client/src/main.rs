@@ -139,6 +139,12 @@ fn main() {
         )
         .add_systems(
             Update,
+            states::gameplay::run_gameplay_buttonbox_toggles
+                .run_if(in_state(GameState::Gameplay))
+                .before(states::gameplay::run_gameplay),
+        )
+        .add_systems(
+            Update,
             map_hover::run_gameplay_map_hover_and_click
                 .run_if(in_state(GameState::Gameplay))
                 .after(states::gameplay::run_gameplay),

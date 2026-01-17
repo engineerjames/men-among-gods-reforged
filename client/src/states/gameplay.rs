@@ -91,11 +91,52 @@ const HUD_EXPERIENCE_UNCOMMITTED_X: f32 = 646.0;
 const HUD_EXPERIENCE_UNCOMMITTED_Y: f32 = 285.0;
 const HUD_SKILL_ADJUSTMENT_X_OFFSET: f32 = 10.0;
 
+// UI buttonbox (ported from orig/inter.c::trans_button and engine.c::dd_showbox).
+const BUTTONBOX_X: f32 = 604.0;
+const BUTTONBOX_Y_ROW1: f32 = 552.0; // F1..F4
+const BUTTONBOX_Y_ROW2: f32 = 568.0; // F5..F8
+const BUTTONBOX_BUTTON_W: f32 = 41.0;
+const BUTTONBOX_BUTTON_H: f32 = 14.0;
+const BUTTONBOX_STEP_X: f32 = 49.0;
+
+const TOGGLE_BOX_W: f32 = 45.0;
+const TOGGLE_BOX_H: f32 = 12.0;
+const TOGGLE_SHOW_PROZ_X: f32 = 753.0;
+const TOGGLE_SHOW_PROZ_Y: f32 = 554.0;
+const TOGGLE_SHOW_NAMES_X: f32 = 704.0;
+const TOGGLE_SHOW_NAMES_Y: f32 = 569.0;
+const TOGGLE_HIDE_X: f32 = 656.0;
+const TOGGLE_HIDE_Y: f32 = 569.0;
+
+const MODE_BOX_W: f32 = 45.0;
+const MODE_BOX_H: f32 = 12.0;
+const MODE_FAST_X: f32 = 608.0; // pl.mode==2
+const MODE_NORMAL_X: f32 = 656.0; // pl.mode==1
+const MODE_SLOW_X: f32 = 704.0; // pl.mode==0
+const MODE_BOX_Y: f32 = 554.0;
+
 #[derive(Component)]
 pub struct GameplayRenderEntity;
 
 #[derive(Component)]
 struct GameplayUiOverlay;
+
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GameplayToggleBoxKind {
+    ShowProz,
+    ShowNames,
+    Hide,
+}
+
+#[derive(Component, Clone, Copy, Debug)]
+pub(crate) struct GameplayUiToggleBox {
+    kind: GameplayToggleBoxKind,
+}
+
+#[derive(Component, Clone, Copy, Debug)]
+pub(crate) struct GameplayUiModeBox {
+    mode: i32,
+}
 
 #[derive(Component)]
 pub(crate) struct GameplayUiPortrait;
@@ -682,6 +723,111 @@ fn spawn_ui_hud_labels(commands: &mut Commands) {
             ViewVisibility::default(),
         ));
     }
+}
+
+fn spawn_ui_toggle_boxes(commands: &mut Commands, image_assets: &mut Assets<Image>) {
+    // A single white pixel stretched + tinted to match dd_showbox's outline.
+    let pixel = Image::new(
+        Extent3d {
+            width: 1,
+            height: 1,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        vec![255, 255, 255, 255],
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::default(),
+    );
+    let pixel_handle = image_assets.add(pixel);
+
+    let orange = Color::srgb(1.0, 0.55, 0.0);
+    let z = Z_UI_TEXT - 2.0;
+
+    let spawn_box = |commands: &mut Commands, kind: GameplayToggleBoxKind, sx: f32, sy: f32| {
+        let w = TOGGLE_BOX_W;
+        let h = TOGGLE_BOX_H;
+        let t = 1.0;
+
+        let spawn_seg = |commands: &mut Commands, ox: f32, oy: f32, sw: f32, sh: f32| {
+            commands.spawn((
+                GameplayRenderEntity,
+                GameplayUiToggleBox { kind },
+                Sprite {
+                    image: pixel_handle.clone(),
+                    color: orange,
+                    custom_size: Some(Vec2::new(sw.max(0.0), sh.max(0.0))),
+                    ..default()
+                },
+                Anchor::TOP_LEFT,
+                Transform::from_translation(screen_to_world(sx + ox, sy + oy, z)),
+                GlobalTransform::default(),
+                Visibility::Hidden,
+                InheritedVisibility::default(),
+                ViewVisibility::default(),
+            ));
+        };
+
+        // Top / bottom
+        spawn_seg(commands, 0.0, 0.0, w, t);
+        spawn_seg(commands, 0.0, h - t, w, t);
+        // Left / right
+        spawn_seg(commands, 0.0, 0.0, t, h);
+        spawn_seg(commands, w - t, 0.0, t, h);
+    };
+
+    spawn_box(
+        commands,
+        GameplayToggleBoxKind::ShowProz,
+        TOGGLE_SHOW_PROZ_X,
+        TOGGLE_SHOW_PROZ_Y,
+    );
+    spawn_box(
+        commands,
+        GameplayToggleBoxKind::ShowNames,
+        TOGGLE_SHOW_NAMES_X,
+        TOGGLE_SHOW_NAMES_Y,
+    );
+    spawn_box(
+        commands,
+        GameplayToggleBoxKind::Hide,
+        TOGGLE_HIDE_X,
+        TOGGLE_HIDE_Y,
+    );
+
+    // Mode selection boxes (orig/engine.c: dd_showbox based on pl.mode).
+    let spawn_mode_box = |commands: &mut Commands, mode: i32, sx: f32, sy: f32| {
+        let w = MODE_BOX_W;
+        let h = MODE_BOX_H;
+        let t = 1.0;
+
+        let spawn_seg = |commands: &mut Commands, ox: f32, oy: f32, sw: f32, sh: f32| {
+            commands.spawn((
+                GameplayRenderEntity,
+                GameplayUiModeBox { mode },
+                Sprite {
+                    image: pixel_handle.clone(),
+                    color: orange,
+                    custom_size: Some(Vec2::new(sw.max(0.0), sh.max(0.0))),
+                    ..default()
+                },
+                Anchor::TOP_LEFT,
+                Transform::from_translation(screen_to_world(sx + ox, sy + oy, z)),
+                GlobalTransform::default(),
+                Visibility::Hidden,
+                InheritedVisibility::default(),
+                ViewVisibility::default(),
+            ));
+        };
+
+        spawn_seg(commands, 0.0, 0.0, w, t);
+        spawn_seg(commands, 0.0, h - t, w, t);
+        spawn_seg(commands, 0.0, 0.0, t, h);
+        spawn_seg(commands, w - t, 0.0, t, h);
+    };
+
+    spawn_mode_box(commands, 2, MODE_FAST_X, MODE_BOX_Y);
+    spawn_mode_box(commands, 1, MODE_NORMAL_X, MODE_BOX_Y);
+    spawn_mode_box(commands, 0, MODE_SLOW_X, MODE_BOX_Y);
 }
 
 pub(crate) fn run_gameplay_bitmap_text_renderer(
@@ -2072,6 +2218,9 @@ pub(crate) fn setup_gameplay(
     // Shop window (panel + item slots)
     spawn_ui_shop_window(&mut commands, &gfx);
 
+    // UI toggle indicators (dd_showbox overlays for buttonbox toggles).
+    spawn_ui_toggle_boxes(&mut commands, &mut image_assets);
+
     // Gameplay text input/log UI state
     commands.insert_resource(GameplayTextInput::default());
 
@@ -2160,67 +2309,8 @@ pub(crate) fn run_gameplay_text_ui(
     if keys.just_pressed(KeyCode::Enter) {
         let line = input.current.trim().to_string();
         if !line.is_empty() {
-            let mut consumed = false;
-
-            if let Some(rest) = line.strip_prefix('.') {
-                // Client-side dot commands (ported behavior from the original client).
-                // These are *not* sent to the server as chat.
-                let mut parts = rest.split_whitespace();
-                let cmd = parts.next().unwrap_or("").to_ascii_lowercase();
-                let arg = parts.next().map(|s| s.to_ascii_lowercase());
-
-                let toggle_from_arg = |arg: &Option<String>, current: i32| -> i32 {
-                    match arg.as_deref() {
-                        Some("1") | Some("on") | Some("true") => 1,
-                        Some("0") | Some("off") | Some("false") => 0,
-                        Some("toggle") | None => {
-                            if current != 0 {
-                                0
-                            } else {
-                                1
-                            }
-                        }
-                        _ => current,
-                    }
-                };
-
-                match cmd.as_str() {
-                    "show_names" => {
-                        let cur = player_state.player_data().show_names;
-                        let next = toggle_from_arg(&arg, cur);
-                        player_state.player_data_mut().show_names = next;
-                        player_state.tlog(
-                            1,
-                            format!("show_names {}", if next != 0 { "ON" } else { "OFF" }),
-                        );
-                        consumed = true;
-                    }
-                    "show_proz" => {
-                        let cur = player_state.player_data().show_proz;
-                        let next = toggle_from_arg(&arg, cur);
-                        player_state.player_data_mut().show_proz = next;
-                        player_state.tlog(
-                            1,
-                            format!("show_proz {}", if next != 0 { "ON" } else { "OFF" }),
-                        );
-                        consumed = true;
-                    }
-                    "hide" => {
-                        let cur = player_state.player_data().hide;
-                        let next = toggle_from_arg(&arg, cur);
-                        player_state.player_data_mut().hide = next;
-                        player_state
-                            .tlog(1, format!("hide {}", if next != 0 { "ON" } else { "OFF" }));
-                        consumed = true;
-                    }
-                    _ => {}
-                }
-            }
-
-            if !consumed {
-                send_chat_input(&net, &line);
-                player_state.tlog(1, format!("> {line}"));
-            }
+            send_chat_input(&net, &line);
+            player_state.tlog(1, format!("> {line}"));
 
             input.history.push(line.clone());
             input.history_pos = None;
@@ -2254,6 +2344,168 @@ pub(crate) fn run_gameplay_text_ui(
         text.text = format!("{view}|");
         text.font = UI_BITMAP_FONT;
         text.color = Color::WHITE;
+    }
+}
+
+fn cursor_game_pos(
+    windows: &Query<&Window, With<bevy::window::PrimaryWindow>>,
+    cameras: &Query<&Camera, With<Camera2d>>,
+) -> Option<Vec2> {
+    let window = windows.single().ok()?;
+    let cursor_logical = window.cursor_position()?;
+
+    let scale_factor = window.resolution.scale_factor();
+    let cursor_physical = cursor_logical * scale_factor;
+
+    let camera = cameras.single().ok()?;
+    let (vp_pos, vp_size) = if let Some(viewport) = camera.viewport.as_ref() {
+        (
+            Vec2::new(
+                viewport.physical_position.x as f32,
+                viewport.physical_position.y as f32,
+            ),
+            Vec2::new(
+                viewport.physical_size.x as f32,
+                viewport.physical_size.y as f32,
+            ),
+        )
+    } else {
+        (
+            Vec2::ZERO,
+            Vec2::new(
+                window.resolution.physical_width() as f32,
+                window.resolution.physical_height() as f32,
+            ),
+        )
+    };
+
+    if vp_size.x <= 0.0 || vp_size.y <= 0.0 {
+        return None;
+    }
+
+    let vp_max = vp_pos + vp_size;
+    if cursor_physical.x < vp_pos.x
+        || cursor_physical.x >= vp_max.x
+        || cursor_physical.y < vp_pos.y
+        || cursor_physical.y >= vp_max.y
+    {
+        return None;
+    }
+
+    let in_viewport = cursor_physical - vp_pos;
+    Some(Vec2::new(
+        in_viewport.x / vp_size.x * TARGET_WIDTH,
+        in_viewport.y / vp_size.y * TARGET_HEIGHT,
+    ))
+}
+
+fn in_rect(game: Vec2, x: f32, y: f32, w: f32, h: f32) -> bool {
+    game.x >= x && game.x <= x + w && game.y >= y && game.y <= y + h
+}
+
+pub(crate) fn run_gameplay_buttonbox_toggles(
+    keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
+    cameras: Query<&Camera, With<Camera2d>>,
+    net: Res<NetworkRuntime>,
+    mut player_state: ResMut<PlayerState>,
+    mut q_boxes: Query<(&GameplayUiToggleBox, &mut Visibility), Without<GameplayUiModeBox>>,
+    mut q_mode_boxes: Query<(&GameplayUiModeBox, &mut Visibility), Without<GameplayUiToggleBox>>,
+) {
+    // Keyboard shortcuts for mode buttons (orig client: F1/F2/F3).
+    if keys.just_pressed(KeyCode::F1) {
+        net.send(ClientCommand::new_mode(2).to_bytes());
+    }
+    if keys.just_pressed(KeyCode::F2) {
+        net.send(ClientCommand::new_mode(1).to_bytes());
+    }
+    if keys.just_pressed(KeyCode::F3) {
+        net.send(ClientCommand::new_mode(0).to_bytes());
+    }
+
+    // Keyboard shortcuts (orig/main.c): F4=show_proz, F6=hide, F7=show_names.
+    if keys.just_pressed(KeyCode::F4) {
+        let cur = player_state.player_data().show_proz;
+        player_state.player_data_mut().show_proz = 1 - cur;
+    }
+    if keys.just_pressed(KeyCode::F6) {
+        let cur = player_state.player_data().hide;
+        player_state.player_data_mut().hide = 1 - cur;
+    }
+    if keys.just_pressed(KeyCode::F7) {
+        let cur = player_state.player_data().show_names;
+        player_state.player_data_mut().show_names = 1 - cur;
+    }
+
+    // Mouse buttonbox click areas (orig/inter.c::trans_button + mouse_buttonbox).
+    if mouse.just_released(MouseButton::Left) {
+        if let Some(game) = cursor_game_pos(&windows, &cameras) {
+            // F1/F2/F3 mode buttons (nr=0..2): row1 col0..2
+            let f1_x = BUTTONBOX_X + 0.0 * BUTTONBOX_STEP_X;
+            let f1_y = BUTTONBOX_Y_ROW1;
+            if in_rect(game, f1_x, f1_y, BUTTONBOX_BUTTON_W, BUTTONBOX_BUTTON_H) {
+                net.send(ClientCommand::new_mode(2).to_bytes());
+            }
+            let f2_x = BUTTONBOX_X + 1.0 * BUTTONBOX_STEP_X;
+            let f2_y = BUTTONBOX_Y_ROW1;
+            if in_rect(game, f2_x, f2_y, BUTTONBOX_BUTTON_W, BUTTONBOX_BUTTON_H) {
+                net.send(ClientCommand::new_mode(1).to_bytes());
+            }
+            let f3_x = BUTTONBOX_X + 2.0 * BUTTONBOX_STEP_X;
+            let f3_y = BUTTONBOX_Y_ROW1;
+            if in_rect(game, f3_x, f3_y, BUTTONBOX_BUTTON_W, BUTTONBOX_BUTTON_H) {
+                net.send(ClientCommand::new_mode(0).to_bytes());
+            }
+
+            // F4 (nr=3): row1 col3
+            let f4_x = BUTTONBOX_X + 3.0 * BUTTONBOX_STEP_X;
+            let f4_y = BUTTONBOX_Y_ROW1;
+            if in_rect(game, f4_x, f4_y, BUTTONBOX_BUTTON_W, BUTTONBOX_BUTTON_H) {
+                let cur = player_state.player_data().show_proz;
+                player_state.player_data_mut().show_proz = 1 - cur;
+            }
+
+            // F6 (nr=5): row2 col1
+            let f6_x = BUTTONBOX_X + 1.0 * BUTTONBOX_STEP_X;
+            let f6_y = BUTTONBOX_Y_ROW2;
+            if in_rect(game, f6_x, f6_y, BUTTONBOX_BUTTON_W, BUTTONBOX_BUTTON_H) {
+                let cur = player_state.player_data().hide;
+                player_state.player_data_mut().hide = 1 - cur;
+            }
+
+            // F7 (nr=6): row2 col2
+            let f7_x = BUTTONBOX_X + 2.0 * BUTTONBOX_STEP_X;
+            let f7_y = BUTTONBOX_Y_ROW2;
+            if in_rect(game, f7_x, f7_y, BUTTONBOX_BUTTON_W, BUTTONBOX_BUTTON_H) {
+                let cur = player_state.player_data().show_names;
+                player_state.player_data_mut().show_names = 1 - cur;
+            }
+        }
+    }
+
+    // Update indicator visibility (orig/engine.c dd_showbox calls).
+    let pdata = player_state.player_data();
+    for (boxc, mut vis) in &mut q_boxes {
+        let enabled = match boxc.kind {
+            GameplayToggleBoxKind::ShowProz => pdata.show_proz != 0,
+            GameplayToggleBoxKind::ShowNames => pdata.show_names != 0,
+            GameplayToggleBoxKind::Hide => pdata.hide != 0,
+        };
+        *vis = if enabled {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+    }
+
+    let mode = player_state.character_info().mode;
+    for (boxc, mut vis) in &mut q_mode_boxes {
+        *vis = if mode == boxc.mode {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
     }
 }
 
