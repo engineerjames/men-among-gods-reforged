@@ -46,6 +46,7 @@ const Z_FX_BASE: f32 = 100.25;
 const Z_UI: f32 = 900.0;
 const Z_UI_PORTRAIT: f32 = 910.0;
 const Z_UI_RANK: f32 = 911.0;
+const Z_UI_INV: f32 = 919.0;
 const Z_UI_EQUIP: f32 = 920.0;
 const Z_UI_SPELLS: f32 = 921.0;
 const Z_UI_SHOP_PANEL: f32 = 930.0;
@@ -289,6 +290,11 @@ pub(crate) struct GameplayUiRank;
 #[derive(Component, Clone, Copy, Debug)]
 pub(crate) struct GameplayUiEquipmentSlot {
     worn_index: usize,
+}
+
+#[derive(Component, Clone, Copy, Debug)]
+pub(crate) struct GameplayUiBackpackSlot {
+    index: usize,
 }
 
 #[derive(Component, Clone, Copy, Debug)]
@@ -1650,6 +1656,35 @@ fn spawn_ui_rank(commands: &mut Commands, gfx: &GraphicsCache) {
     ));
 }
 
+fn spawn_ui_backpack(commands: &mut Commands, gfx: &GraphicsCache) {
+    // Matches `eng_display_win`: copyspritex(pl.item[n+inv_pos],220+(n%2)*35,2+(n/2)*35,...)
+    // We spawn one stable entity per visible backpack slot and update its sprite each frame.
+    let Some(empty) = gfx.get_sprite(SPR_EMPTY as usize) else {
+        return;
+    };
+
+    for n in 0..10usize {
+        let sx = 220.0 + ((n % 2) as f32) * 35.0;
+        let sy = 2.0 + ((n / 2) as f32) * 35.0;
+        commands.spawn((
+            GameplayRenderEntity,
+            GameplayUiBackpackSlot { index: n },
+            LastRender {
+                sprite_id: i32::MIN,
+                sx: f32::NAN,
+                sy: f32::NAN,
+            },
+            empty.clone(),
+            Anchor::TOP_LEFT,
+            Transform::from_translation(screen_to_world(sx, sy, Z_UI_INV)),
+            GlobalTransform::default(),
+            Visibility::Hidden,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
+        ));
+    }
+}
+
 fn spawn_ui_equipment(commands: &mut Commands, gfx: &GraphicsCache) {
     // Matches `eng_display_win`: copyspritex(pl.worn[wntab[n]],303+(n%2)*35,2+(n/2)*35,...)
     // We spawn one stable entity per slot and update its sprite each frame.
@@ -1956,9 +1991,42 @@ fn send_opt(net: &NetworkRuntime, player_state: &mut PlayerState, clock: &mut Se
     }
 }
 
-fn draw_inventory_ui(_gfx: &GraphicsCache, _player_state: &PlayerState) {
-    // TODO: Port eng_display_win() inventory drawing (copyspritex calls around x=220,y=2).
-    // TODO: Handle highlight/effects (effect=16 for selection, etc).
+fn draw_inventory_ui(
+    gfx: &GraphicsCache,
+    player_state: &PlayerState,
+    inv_scroll: &GameplayInventoryScrollState,
+    q: &mut Query<(
+        &GameplayUiBackpackSlot,
+        &mut Sprite,
+        &mut Visibility,
+        &mut LastRender,
+    )>,
+) {
+    let pl = player_state.character_info();
+    let inv_pos = inv_scroll.inv_pos.min(30);
+
+    for (slot, mut sprite, mut visibility, mut last) in q.iter_mut() {
+        let idx = inv_pos.saturating_add(slot.index);
+        let sprite_id = pl.item.get(idx).copied().unwrap_or(0);
+
+        if sprite_id <= 0 {
+            last.sprite_id = sprite_id;
+            *visibility = Visibility::Hidden;
+            continue;
+        }
+
+        if last.sprite_id != sprite_id {
+            if let Some(src) = gfx.get_sprite(sprite_id as usize) {
+                *sprite = src.clone();
+                last.sprite_id = sprite_id;
+                *visibility = Visibility::Visible;
+            } else {
+                *visibility = Visibility::Hidden;
+            }
+        } else {
+            *visibility = Visibility::Visible;
+        }
+    }
 }
 
 fn draw_equipment_ui(
@@ -2809,6 +2877,9 @@ pub(crate) fn setup_gameplay(
     // Player portrait + rank badge
     spawn_ui_portrait(&mut commands, &gfx);
     spawn_ui_rank(&mut commands, &gfx);
+
+    // Backpack (inventory) slots
+    spawn_ui_backpack(&mut commands, &gfx);
 
     // Equipment slots + active spells
     spawn_ui_equipment(&mut commands, &gfx);
@@ -4278,6 +4349,7 @@ pub(crate) fn run_gameplay(
     mut minimap: ResMut<MiniMapState>,
     mut clock: Local<EngineClock>,
     mut opt_clock: Local<SendOptClock>,
+    inv_scroll: Res<GameplayInventoryScrollState>,
     mut q_world_root: Query<
         &mut Transform,
         (
@@ -4286,7 +4358,7 @@ pub(crate) fn run_gameplay(
             Without<TileRender>,
         ),
     >,
-    mut q: ParamSet<(
+    mut q_world: ParamSet<(
         Query<
             (
                 &TileShadow,
@@ -4295,7 +4367,15 @@ pub(crate) fn run_gameplay(
                 &mut Visibility,
                 &mut LastRender,
             ),
-            Without<GameplayWorldRoot>,
+            (
+                Without<GameplayWorldRoot>,
+                Without<GameplayUiPortrait>,
+                Without<GameplayUiRank>,
+                Without<GameplayUiEquipmentSlot>,
+                Without<GameplayUiSpellSlot>,
+                Without<GameplayUiShop>,
+                Without<GameplayUiBackpackSlot>,
+            ),
         >,
         Query<
             (
@@ -4305,7 +4385,15 @@ pub(crate) fn run_gameplay(
                 &mut Visibility,
                 &mut LastRender,
             ),
-            Without<GameplayWorldRoot>,
+            (
+                Without<GameplayWorldRoot>,
+                Without<GameplayUiPortrait>,
+                Without<GameplayUiRank>,
+                Without<GameplayUiEquipmentSlot>,
+                Without<GameplayUiSpellSlot>,
+                Without<GameplayUiShop>,
+                Without<GameplayUiBackpackSlot>,
+            ),
         >,
         Query<
             (
@@ -4315,8 +4403,18 @@ pub(crate) fn run_gameplay(
                 &mut Visibility,
                 &mut LastRender,
             ),
-            Without<GameplayWorldRoot>,
+            (
+                Without<GameplayWorldRoot>,
+                Without<GameplayUiPortrait>,
+                Without<GameplayUiRank>,
+                Without<GameplayUiEquipmentSlot>,
+                Without<GameplayUiSpellSlot>,
+                Without<GameplayUiShop>,
+                Without<GameplayUiBackpackSlot>,
+            ),
         >,
+    )>,
+    mut q_ui: ParamSet<(
         Query<(&mut Sprite, &mut Visibility, &mut LastRender), With<GameplayUiPortrait>>,
         Query<(&mut Sprite, &mut Visibility, &mut LastRender), With<GameplayUiRank>>,
         Query<(
@@ -4333,6 +4431,12 @@ pub(crate) fn run_gameplay(
         )>,
         Query<(
             &GameplayUiShop,
+            &mut Sprite,
+            &mut Visibility,
+            &mut LastRender,
+        )>,
+        Query<(
+            &GameplayUiBackpackSlot,
             &mut Sprite,
             &mut Visibility,
             &mut LastRender,
@@ -4409,7 +4513,7 @@ pub(crate) fn run_gameplay(
     }
 
     // Update shadows (dd.c::dd_shadow)
-    for (shadow, mut sprite, mut transform, mut visibility, mut last) in &mut q.p0() {
+    for (shadow, mut sprite, mut transform, mut visibility, mut last) in &mut q_world.p0() {
         if !shadows_enabled {
             *visibility = Visibility::Hidden;
             continue;
@@ -4491,7 +4595,7 @@ pub(crate) fn run_gameplay(
         transform.scale = Vec3::new(1.0, 0.25, 1.0);
     }
 
-    for (render, mut sprite, mut transform, mut visibility, mut last) in &mut q.p1() {
+    for (render, mut sprite, mut transform, mut visibility, mut last) in &mut q_world.p1() {
         let Some(tile) = map.tile_at_index(render.index) else {
             continue;
         };
@@ -4614,7 +4718,7 @@ pub(crate) fn run_gameplay(
     }
 
     // Map flag overlays (ported from engine.c): draw above characters on the same tile.
-    for (ovl, mut sprite, mut transform, mut visibility, mut last) in &mut q.p2() {
+    for (ovl, mut sprite, mut transform, mut visibility, mut last) in &mut q_world.p2() {
         let Some(tile) = map.tile_at_index(ovl.index) else {
             *visibility = Visibility::Hidden;
             continue;
@@ -4800,7 +4904,7 @@ pub(crate) fn run_gameplay(
     }
 
     // Update UI portrait
-    if let Some((mut sprite, mut visibility, mut last)) = q.p3().iter_mut().next() {
+    if let Some((mut sprite, mut visibility, mut last)) = q_ui.p0().iter_mut().next() {
         if ui_portrait_sprite_id > 0 {
             if last.sprite_id != ui_portrait_sprite_id {
                 if let Some(src) = gfx.get_sprite(ui_portrait_sprite_id as usize) {
@@ -4819,7 +4923,7 @@ pub(crate) fn run_gameplay(
     }
 
     // Update UI rank badge
-    if let Some((mut sprite, mut visibility, mut last)) = q.p4().iter_mut().next() {
+    if let Some((mut sprite, mut visibility, mut last)) = q_ui.p1().iter_mut().next() {
         if ui_rank_sprite_id > 0 {
             if last.sprite_id != ui_rank_sprite_id {
                 if let Some(src) = gfx.get_sprite(ui_rank_sprite_id as usize) {
@@ -4837,10 +4941,10 @@ pub(crate) fn run_gameplay(
         }
     }
 
-    draw_inventory_ui(&gfx, &player_state);
-    draw_equipment_ui(&gfx, &player_state, &mut q.p5());
-    draw_active_spells_ui(&gfx, &player_state, &mut q.p6());
-    draw_shop_window_ui(&gfx, &player_state, &mut q.p7());
+    draw_inventory_ui(&gfx, &player_state, &inv_scroll, &mut q_ui.p5());
+    draw_equipment_ui(&gfx, &player_state, &mut q_ui.p2());
+    draw_active_spells_ui(&gfx, &player_state, &mut q_ui.p3());
+    draw_shop_window_ui(&gfx, &player_state, &mut q_ui.p4());
 }
 
 fn update_minimap(
