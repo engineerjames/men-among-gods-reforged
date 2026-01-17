@@ -194,3 +194,26 @@ pub(crate) fn run_gameplay_nameplates(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bytes_to_trimmed_str_handles_null_and_whitespace() {
+        assert_eq!(bytes_to_trimmed_str(b"Bob\0"), Some("Bob"));
+        assert_eq!(bytes_to_trimmed_str(b"  Bob  \0"), Some("Bob"));
+        assert_eq!(bytes_to_trimmed_str(b"\0"), None);
+        assert_eq!(bytes_to_trimmed_str(b"   \0"), None);
+    }
+
+    #[test]
+    fn dd_gputtext_screen_pos_matches_expected_formula() {
+        // xpos=0,ypos=0, text_len=10, xoff=yoff=0
+        let (rx, ry) = dd_gputtext_screen_pos(0, 0, 10, 0, 0);
+        let expected_rx = 32 - (((10i32) * 5) / 2) + mag_core::constants::XPOS;
+        let expected_ry = mag_core::constants::YPOS - NAMEPLATE_Y_SHIFT;
+        assert_eq!(rx, expected_rx);
+        assert_eq!(ry, expected_ry);
+    }
+}

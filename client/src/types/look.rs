@@ -165,3 +165,51 @@ impl Look {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn set_name_and_name_roundtrip() {
+        let mut look = Look::default();
+        look.set_name("Bob");
+        assert_eq!(look.name(), Some("Bob"));
+    }
+
+    #[test]
+    fn set_name_truncates_to_fit_null_terminator() {
+        let mut look = Look::default();
+        let long = "a".repeat(100);
+        look.set_name(&long);
+        let s = look.name().unwrap();
+        assert_eq!(s.len(), 39);
+        assert!(s.chars().all(|c| c == 'a'));
+    }
+
+    #[test]
+    fn item_out_of_bounds_returns_zero() {
+        let look = Look::default();
+        assert_eq!(look.item(0), 0);
+        assert_eq!(look.item(9999), 0);
+    }
+
+    #[test]
+    fn set_shop_entry_checks_bounds() {
+        let mut look = Look::default();
+        look.set_shop_entry(0, 123, 456);
+        assert_eq!(look.item(0), 123);
+        assert_eq!(look.price(0), 456);
+
+        look.set_shop_entry(250, 999, 999);
+        assert_eq!(look.item(250), 0);
+    }
+
+    #[test]
+    fn extended_flag_controls_is_extended() {
+        let mut look = Look::default();
+        assert!(!look.is_extended());
+        look.set_extended(1);
+        assert!(look.is_extended());
+    }
+}

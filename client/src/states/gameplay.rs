@@ -318,6 +318,38 @@ fn avg_color_rgb565_from_image(image: &Image) -> u16 {
     }
 }
 
+#[cfg(test)]
+mod color_tests {
+    use super::{rgb565_to_rgba8, rgba8_to_rgb565};
+
+    #[test]
+    fn rgb565_known_primaries_match_expected() {
+        assert_eq!(rgba8_to_rgb565(255, 0, 0), 0xF800);
+        assert_eq!(rgba8_to_rgb565(0, 255, 0), 0x07E0);
+        assert_eq!(rgba8_to_rgb565(0, 0, 255), 0x001F);
+        assert_eq!(rgba8_to_rgb565(0, 0, 0), 0x0000);
+        assert_eq!(rgba8_to_rgb565(255, 255, 255), 0xFFFF);
+    }
+
+    #[test]
+    fn rgb565_roundtrips_through_rgba8() {
+        let colors = [
+            (12u8, 34u8, 56u8),
+            (200u8, 100u8, 50u8),
+            (1u8, 2u8, 3u8),
+            (254u8, 253u8, 252u8),
+        ];
+
+        for (r, g, b) in colors {
+            let c565 = rgba8_to_rgb565(r, g, b);
+            let [rr, gg, bb, aa] = rgb565_to_rgba8(c565);
+            assert_eq!(aa, 255);
+            let c565_2 = rgba8_to_rgb565(rr, gg, bb);
+            assert_eq!(c565, c565_2);
+        }
+    }
+}
+
 fn send_chat_input(net: &NetworkRuntime, text: &str) {
     // Original client sends 8 packets of 15 bytes each (total 120).
     // We zero-pad and ensure a NUL terminator is present after the provided text.

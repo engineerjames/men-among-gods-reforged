@@ -602,3 +602,62 @@ impl PlayerState {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wrap_log_text_breaks_on_space() {
+        let wrapped = PlayerState::wrap_log_text("hello world", 10);
+        assert_eq!(wrapped, "hello\nworld");
+    }
+
+    #[test]
+    fn wrap_log_text_hard_cuts_long_words() {
+        let wrapped = PlayerState::wrap_log_text("abcdefghijk", 6);
+        assert_eq!(wrapped, "abcde\nfghij\nk");
+    }
+
+    #[test]
+    fn log_color_from_font_matches_expected_mapping() {
+        use crate::types::log_message::LogMessageColor;
+        assert!(matches!(
+            PlayerState::log_color_from_font(0),
+            LogMessageColor::Yellow
+        ));
+        assert!(matches!(
+            PlayerState::log_color_from_font(1),
+            LogMessageColor::Green
+        ));
+        assert!(matches!(
+            PlayerState::log_color_from_font(2),
+            LogMessageColor::Blue
+        ));
+        assert!(matches!(
+            PlayerState::log_color_from_font(3),
+            LogMessageColor::Red
+        ));
+        assert!(matches!(
+            PlayerState::log_color_from_font(99),
+            LogMessageColor::Yellow
+        ));
+    }
+
+    #[test]
+    fn lookup_name_requires_matching_id() {
+        let mut ps = PlayerState::default();
+        ps.set_known_name(5, 42, "Bob");
+        assert_eq!(ps.lookup_name(5, 42), Some("Bob"));
+        assert_eq!(ps.lookup_name(5, 43), None);
+        assert_eq!(ps.lookup_name(6, 42), None);
+    }
+
+    #[test]
+    fn tlog_adds_message_lines() {
+        let mut ps = PlayerState::default();
+        ps.tlog(0, "hello world");
+        let msg = ps.log_message(0).expect("expected first log message");
+        assert_eq!(msg.message, "hello world");
+    }
+}
