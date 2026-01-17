@@ -9,26 +9,14 @@ pub const BITMAP_GLYPH_Y_OFFSET: f32 = 1.0; // dd.c uses +576 (one row) before g
 pub const BITMAP_FONT_FIRST_SPRITE_ID: usize = 700;
 pub const BITMAP_FONT_COUNT: usize = 4;
 
-/// Minimal font cache placeholder.
-///
-/// We don't currently ship any font assets in the repo; Bevy text rendering requires a font
-/// handle, so this cache is intentionally conservative: it only loads a font if it exists
-/// under `assets/fonts/`.
 #[derive(Resource, Default)]
 pub struct FontCache {
-    ui_font: Option<Handle<Font>>,
-    initialized: bool,
-
     bitmap_layout: Option<Handle<TextureAtlasLayout>>,
     bitmap_fonts: Vec<Option<Handle<Image>>>,
     bitmap_initialized: bool,
 }
 
 impl FontCache {
-    pub fn ui_font(&self) -> Option<Handle<Font>> {
-        self.ui_font.clone()
-    }
-
     pub fn bitmap_layout(&self) -> Option<Handle<TextureAtlasLayout>> {
         self.bitmap_layout.clone()
     }
@@ -50,23 +38,6 @@ impl FontCache {
             0
         } else {
             idx
-        }
-    }
-
-    pub fn ensure_initialized(&mut self, asset_server: &AssetServer) {
-        if self.initialized {
-            return;
-        }
-        self.initialized = true;
-
-        // If the user drops a font into `client/assets/fonts/ui.ttf`, we'll pick it up.
-        let disk_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("assets")
-            .join("fonts")
-            .join("ui.ttf");
-
-        if disk_path.exists() {
-            self.ui_font = Some(asset_server.load("fonts/ui.ttf"));
         }
     }
 

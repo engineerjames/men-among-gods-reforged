@@ -57,7 +57,8 @@ const LOG_LINES: usize = 22;
 const INPUT_X: f32 = 500.0;
 const INPUT_Y: f32 = 9.0 + LOG_LINE_H * (LOG_LINES as f32);
 
-const UI_BITMAP_FONT: usize = 0;
+// Bitmap font index (0..3) maps to sprite IDs 700..703. Yellow is 701 => index 1.
+const UI_BITMAP_FONT: usize = 1;
 
 // HUD stat label positions (engine.c: eng_display_win layout)
 const HUD_HITPOINTS_X: f32 = 5.0;
@@ -373,8 +374,7 @@ fn send_chat_input(net: &NetworkRuntime, text: &str) {
     }
 }
 
-fn spawn_ui_log_text(commands: &mut Commands, font: Handle<Font>) {
-    let _ = font;
+fn spawn_ui_log_text(commands: &mut Commands) {
     for line in 0..LOG_LINES {
         let sx = LOG_X;
         let sy = LOG_Y + (line as f32) * LOG_LINE_H;
@@ -395,8 +395,7 @@ fn spawn_ui_log_text(commands: &mut Commands, font: Handle<Font>) {
     }
 }
 
-fn spawn_ui_input_text(commands: &mut Commands, font: Handle<Font>) {
-    let _ = font;
+fn spawn_ui_input_text(commands: &mut Commands) {
     commands.spawn((
         GameplayRenderEntity,
         GameplayUiInputText,
@@ -413,8 +412,7 @@ fn spawn_ui_input_text(commands: &mut Commands, font: Handle<Font>) {
     ));
 }
 
-fn spawn_ui_hud_labels(commands: &mut Commands, font: Handle<Font>) {
-    let _ = font;
+fn spawn_ui_hud_labels(commands: &mut Commands) {
     // Hitpoints label
     commands.spawn((
         GameplayRenderEntity,
@@ -670,8 +668,8 @@ fn spawn_ui_hud_labels(commands: &mut Commands, font: Handle<Font>) {
             GameplayUiSkillAdjustmentHint { skill_index: i },
             BitmapText {
                 text: String::new(),
-                color: Color::srgb(1.0, 0.5, 0.5),
-                font: UI_BITMAP_FONT,
+                color: Color::WHITE,
+                font: 0,
             },
             Transform::from_translation(screen_to_world(
                 HUD_SKILLS_X + HUD_SKILL_ADJUSTMENT_X_OFFSET,
@@ -1957,7 +1955,6 @@ pub(crate) fn setup_gameplay(
     mut commands: Commands,
     gfx: Res<GraphicsCache>,
     mut font_cache: ResMut<FontCache>,
-    asset_server: Res<AssetServer>,
     mut atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
     mut minimap: ResMut<MiniMapState>,
     mut image_assets: ResMut<Assets<Image>>,
@@ -2081,16 +2078,12 @@ pub(crate) fn setup_gameplay(
     // Bitmap font (sprite atlas) used for UI text.
     font_cache.ensure_bitmap_initialized(&gfx, &mut atlas_layouts);
 
-    // Nameplates still use Bevy text for now.
-    font_cache.ensure_initialized(&asset_server);
-    let font = font_cache.ui_font().unwrap_or_default();
-
     // Character name/proz overlays (engine.c: dd_gputtext + lookup/set_look_proz).
-    crate::systems::nameplates::spawn_gameplay_nameplates(&mut commands, world_root, font.clone());
+    crate::systems::nameplates::spawn_gameplay_nameplates(&mut commands, world_root);
 
-    spawn_ui_log_text(&mut commands, font.clone());
-    spawn_ui_input_text(&mut commands, font.clone());
-    spawn_ui_hud_labels(&mut commands, font);
+    spawn_ui_log_text(&mut commands);
+    spawn_ui_input_text(&mut commands);
+    spawn_ui_hud_labels(&mut commands);
 
     log::debug!("setup_gameplay - end");
 }
@@ -2104,6 +2097,15 @@ pub(crate) fn run_gameplay_text_ui(
     mut q_log: Query<(&GameplayUiLogLine, &mut BitmapText), Without<GameplayUiInputText>>,
     mut q_input: Query<&mut BitmapText, (With<GameplayUiInputText>, Without<GameplayUiLogLine>)>,
 ) {
+    fn bitmap_font_for_log_color(color: crate::types::log_message::LogMessageColor) -> usize {
+        match color {
+            crate::types::log_message::LogMessageColor::Red => 0,
+            crate::types::log_message::LogMessageColor::Yellow => 1,
+            crate::types::log_message::LogMessageColor::Green => 2,
+            crate::types::log_message::LogMessageColor::Blue => 3,
+        }
+    }
+
     // Basic text input. We'll treat gameplay as always having "focus" for now.
     for ev in kb.read() {
         if ev.state != ButtonState::Pressed {
@@ -2231,14 +2233,12 @@ pub(crate) fn run_gameplay_text_ui(
         let idx_from_most_recent = LOG_LINES.saturating_sub(1).saturating_sub(line.line);
         if let Some(msg) = player_state.log_message(idx_from_most_recent) {
             text.text = msg.message.clone();
-            text.color = match msg.color {
-                crate::types::log_message::LogMessageColor::Yellow => Color::srgb(1.0, 1.0, 0.0),
-                crate::types::log_message::LogMessageColor::Green => Color::srgb(0.0, 1.0, 0.0),
-                crate::types::log_message::LogMessageColor::Blue => Color::srgb(0.3, 0.7, 1.0),
-                crate::types::log_message::LogMessageColor::Red => Color::srgb(1.0, 0.0, 0.0),
-            };
+            text.font = bitmap_font_for_log_color(msg.color);
+            // Bitmap fonts are pre-colored (700..703). Keep tint neutral.
+            text.color = Color::WHITE;
         } else {
             text.text.clear();
+            text.font = UI_BITMAP_FONT;
             text.color = Color::WHITE;
         }
     }
@@ -2252,6 +2252,8 @@ pub(crate) fn run_gameplay_text_ui(
             current
         };
         text.text = format!("{view}|");
+        text.font = UI_BITMAP_FONT;
+        text.color = Color::WHITE;
     }
 }
 

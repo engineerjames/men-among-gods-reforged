@@ -177,7 +177,8 @@ fn main() {
             Update,
             states::gameplay::run_gameplay_bitmap_text_renderer
                 .run_if(in_state(GameState::Gameplay))
-                .after(states::gameplay::run_gameplay_update_extra_ui),
+                .after(states::gameplay::run_gameplay_update_extra_ui)
+                .after(nameplates::run_gameplay_nameplates),
         )
         //
         // Menu state

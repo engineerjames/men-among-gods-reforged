@@ -161,9 +161,10 @@ impl PlayerState {
     fn log_color_from_font(font: u8) -> crate::types::log_message::LogMessageColor {
         use crate::types::log_message::LogMessageColor;
         match font {
-            1 => LogMessageColor::Green,
-            2 => LogMessageColor::Blue,
-            3 => LogMessageColor::Red,
+            0 => LogMessageColor::Red,
+            1 => LogMessageColor::Yellow,
+            2 => LogMessageColor::Green,
+            3 => LogMessageColor::Blue,
             _ => LogMessageColor::Yellow,
         }
     }
