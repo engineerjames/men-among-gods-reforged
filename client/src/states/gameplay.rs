@@ -3149,7 +3149,7 @@ pub(crate) fn run_gameplay_statbox_input(
             return;
         }
 
-        if x < 133.0 || x > 157.0 || y < 2.0 || y > 251.0 {
+        if !(133.0..=157.0).contains(&x) || !(2.0..=251.0).contains(&y) {
             return;
         }
 
@@ -3239,7 +3239,7 @@ pub(crate) fn run_gameplay_statbox_input(
             return;
         }
 
-        if x < 133.0 || x > 157.0 || y < 2.0 || y > 251.0 {
+        if !(133.0..=157.0).contains(&x) || !(2.0..=251.0).contains(&y) {
             return;
         }
 
