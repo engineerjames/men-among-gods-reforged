@@ -2907,6 +2907,9 @@ pub(crate) fn setup_gameplay(
     // Persistent move target marker (orig/engine.c draws sprite 31 at pl.goto_x/pl.goto_y).
     crate::systems::map_hover::spawn_map_move_target_marker(&mut commands, &gfx, world_root);
 
+    // Attack target marker (orig/engine.c draws sprite 34 at attack target).
+    crate::systems::map_hover::spawn_map_attack_target_marker(&mut commands, &gfx, world_root);
+
     // Misc action marker sprites (orig/engine.c draws 32/33/45 based on misc_action).
     crate::systems::map_hover::spawn_map_misc_action_marker(&mut commands, &gfx, world_root);
 
@@ -5141,7 +5144,8 @@ pub(crate) fn run_gameplay(
                 // engine.c: if (pdata.hide==0 || (map[m].flags&ISITEM) || autohide(x,y)) draw obj1
                 // else draw obj1+1 (hide walls/high objects).
                 let hide_enabled = player_state.player_data().hide != 0;
-                if hide_enabled && id > 0 && (tile.flags & ISITEM) == 0 && !autohide(x, y) {
+                let is_item = (tile.flags & ISITEM) != 0 || tile.it_sprite != 0;
+                if hide_enabled && id > 0 && !is_item && !autohide(x, y) {
                     // engine.c mine hack: substitute special sprites for certain mine-wall IDs
                     // when hide is enabled and tile isn't directly in front of the player.
                     let is_mine_wall = id > 16335

@@ -180,7 +180,15 @@ fn main() {
         )
         .add_systems(
             Update,
-            map_hover::run_gameplay_misc_action_marker.run_if(in_state(GameState::Gameplay)),
+            map_hover::run_gameplay_attack_target_marker
+                .run_if(in_state(GameState::Gameplay))
+                .after(states::gameplay::run_gameplay),
+        )
+        .add_systems(
+            Update,
+            map_hover::run_gameplay_misc_action_marker
+                .run_if(in_state(GameState::Gameplay))
+                .after(states::gameplay::run_gameplay),
         )
         .add_systems(
             Update,

@@ -26,6 +26,8 @@ const Z_GOTO_BIAS: f32 = 0.001;
 
 // orig/engine.c draws sprite 31 at pl.goto_x/pl.goto_y.
 const MOVE_TARGET_SPRITE_ID: usize = 31;
+// orig/engine.c draws sprite 34 at the attack target character.
+const ATTACK_TARGET_SPRITE_ID: usize = 34;
 // orig/engine.c draws these based on pl.misc_action.
 const DROP_MARKER_SPRITE_ID: usize = 32;
 const PICKUP_MARKER_SPRITE_ID: usize = 33;
@@ -36,6 +38,9 @@ pub(crate) struct GameplayMoveTargetMarker;
 
 #[derive(Component)]
 pub(crate) struct GameplayMiscActionMarker;
+
+#[derive(Component)]
+pub(crate) struct GameplayAttackTargetMarker;
 
 #[derive(Resource, Default, Debug, Clone, Copy)]
 pub(crate) struct GameplayHoveredTile {
@@ -215,6 +220,25 @@ fn find_view_tile_for_char_id(map: &crate::map::GameMap, ch_id: i32) -> Option<(
     None
 }
 
+fn find_view_tile_for_char_nr(map: &crate::map::GameMap, ch_nr: i32) -> Option<(i32, i32)> {
+    if ch_nr <= 0 {
+        return None;
+    }
+    let nr_u = ch_nr as u16;
+
+    for my in 0..(TILEY as i32) {
+        for mx in 0..(TILEX as i32) {
+            let Some(tile) = map.tile_at_xy(mx as usize, my as usize) else {
+                continue;
+            };
+            if tile.ch_nr == nr_u {
+                return Some((mx, my));
+            }
+        }
+    }
+    None
+}
+
 #[inline]
 fn has_flag(map: &crate::map::GameMap, mx: i32, my: i32, flag: u32) -> bool {
     if mx < 0 || my < 0 {
@@ -331,6 +355,36 @@ pub(crate) fn spawn_map_move_target_marker(
     commands.entity(world_root).add_child(id);
 }
 
+pub(crate) fn spawn_map_attack_target_marker(
+    commands: &mut Commands,
+    gfx: &GraphicsCache,
+    world_root: Entity,
+) {
+    let Some(src) = gfx.get_sprite(ATTACK_TARGET_SPRITE_ID) else {
+        log::warn!(
+            "Missing sprite {} in GraphicsCache; attack target marker disabled",
+            ATTACK_TARGET_SPRITE_ID
+        );
+        return;
+    };
+
+    let id = commands
+        .spawn((
+            GameplayRenderEntity,
+            GameplayAttackTargetMarker,
+            src.clone(),
+            Anchor::TOP_LEFT,
+            Transform::default(),
+            GlobalTransform::default(),
+            Visibility::Hidden,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
+        ))
+        .id();
+
+    commands.entity(world_root).add_child(id);
+}
+
 pub(crate) fn run_gameplay_move_target_marker(
     gfx: Res<GraphicsCache>,
     player_state: Res<PlayerState>,
@@ -364,6 +418,59 @@ pub(crate) fn run_gameplay_move_target_marker(
 
     let draw_order = ((TILEY - 1 - my as usize) * TILEX + (mx as usize)) as f32;
     let z = Z_BG_BASE + draw_order * Z_WORLD_STEP + Z_GOTO_BIAS;
+    transform.translation = screen_to_world(sx_i as f32, sy_i as f32, z);
+    *visibility = Visibility::Visible;
+}
+
+pub(crate) fn run_gameplay_attack_target_marker(
+    gfx: Res<GraphicsCache>,
+    player_state: Res<PlayerState>,
+    mut q_marker: Query<(&mut Transform, &mut Visibility, &mut Sprite), With<GameplayAttackTargetMarker>>,
+) {
+    let Some((mut transform, mut visibility, mut sprite)) = q_marker.iter_mut().next() else {
+        return;
+    };
+
+    if !gfx.is_initialized() {
+        *visibility = Visibility::Hidden;
+        return;
+    }
+
+    let target = player_state.character_info().attack_cn;
+    if target <= 0 {
+        *visibility = Visibility::Hidden;
+        return;
+    }
+
+    let Some((mx, my)) = find_view_tile_for_char_nr(player_state.map(), target) else {
+        *visibility = Visibility::Hidden;
+        return;
+    };
+
+    let (xoff_i, yoff_i) = player_state
+        .map()
+        .tile_at_xy(mx as usize, my as usize)
+        .map(|t| (t.obj_xoff, t.obj_yoff))
+        .unwrap_or((0, 0));
+
+    let Some(src) = gfx.get_sprite(ATTACK_TARGET_SPRITE_ID) else {
+        *visibility = Visibility::Hidden;
+        return;
+    };
+    *sprite = src.clone();
+    sprite.color = Color::WHITE;
+
+    let xpos = mx * 32;
+    let ypos = my * 32;
+    let Some((sx_i, sy_i)) =
+        copysprite_screen_pos(ATTACK_TARGET_SPRITE_ID, &gfx, xpos, ypos, xoff_i, yoff_i)
+    else {
+        *visibility = Visibility::Hidden;
+        return;
+    };
+
+    let draw_order = ((TILEY - 1 - my as usize) * TILEX + (mx as usize)) as f32;
+    let z = Z_FX_BASE + draw_order * Z_WORLD_STEP + 0.0025;
     transform.translation = screen_to_world(sx_i as f32, sy_i as f32, z);
     *visibility = Visibility::Visible;
 }
