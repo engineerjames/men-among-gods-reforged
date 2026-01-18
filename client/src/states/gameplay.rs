@@ -1444,8 +1444,8 @@ pub(crate) enum ShadowLayer {
 
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct TileRender {
-    index: usize,
-    layer: TileLayer,
+    pub index: usize,
+    pub layer: TileLayer,
 }
 
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
