@@ -1,12 +1,10 @@
 use std::{fs::File, io::Read, path::PathBuf};
 
 use bevy::{
-    asset::Handle,
     asset::RenderAssetUsages,
     ecs::resource::Resource,
     image::{CompressedImageFormats, Image, ImageSampler, ImageType},
     prelude::Assets,
-    render::render_resource::{Extent3d, TextureDimension, TextureFormat},
     sprite::Sprite,
 };
 use zip::ZipArchive;
@@ -32,7 +30,6 @@ struct InitState {
 pub struct GraphicsCache {
     assets_zip: PathBuf,
     gfx: Vec<Option<Sprite>>,
-    highlight_gfx: Vec<Option<Sprite>>,
     sprite_tiles: Vec<Option<(i32, i32)>>,
     initialized: bool,
     init_state: Option<InitState>,
@@ -45,7 +42,6 @@ impl GraphicsCache {
         Self {
             assets_zip: PathBuf::from(assets_zip),
             gfx: Vec::new(),
-            highlight_gfx: Vec::new(),
             sprite_tiles: Vec::new(),
             initialized: false,
             init_state: None,
@@ -56,7 +52,6 @@ impl GraphicsCache {
 
     pub fn reset_loading(&mut self) {
         self.gfx.clear();
-        self.highlight_gfx.clear();
         self.sprite_tiles.clear();
         self.initialized = false;
         self.init_state = None;
@@ -70,14 +65,6 @@ impl GraphicsCache {
 
     pub fn get_sprite(&self, index: usize) -> Option<&Sprite> {
         self.gfx.get(index).and_then(|s| s.as_ref())
-    }
-
-    /// A white silhouette mask of the sprite, using the original sprite's alpha.
-    ///
-    /// This is used to implement the original client's "brighten/whiten" highlight
-    /// behavior without needing a custom render pipeline.
-    pub fn get_highlight_sprite(&self, index: usize) -> Option<&Sprite> {
-        self.highlight_gfx.get(index).and_then(|s| s.as_ref())
     }
 
     pub fn get_sprite_tiles_xy(&self, index: usize) -> Option<(i32, i32)> {
@@ -147,7 +134,6 @@ impl GraphicsCache {
             // Allocate a sparse vector where `gfx[id]` exists.
             if let Some((max_id, _)) = entries.last() {
                 self.gfx.resize(max_id.saturating_add(1), None);
-                self.highlight_gfx.resize(max_id.saturating_add(1), None);
                 self.sprite_tiles.resize(max_id.saturating_add(1), None);
             }
 
@@ -249,50 +235,12 @@ impl GraphicsCache {
         let xs = ((w + 31) / 32).max(1);
         let ys = ((h + 31) / 32).max(1);
 
-        // Create a white mask image where RGB=255 and A is copied from the source.
-        // This lets us overlay a "whiten" highlight that matches the sprite silhouette.
-        let highlight_handle: Option<Handle<Image>> = {
-            // We only support common 8-bit RGBA formats here.
-            match image.texture_descriptor.format {
-                TextureFormat::Rgba8UnormSrgb | TextureFormat::Rgba8Unorm => {
-                    if image.data.len() % 4 != 0 {
-                        None
-                    } else {
-                        let mut mask = vec![0u8; image.data.len()];
-                        for px in (0..image.data.len()).step_by(4) {
-                            let a = image.data[px + 3];
-                            mask[px] = 255;
-                            mask[px + 1] = 255;
-                            mask[px + 2] = 255;
-                            mask[px + 3] = a;
-                        }
-                        let mut mask_img = Image::new(
-                            Extent3d {
-                                width: size.x,
-                                height: size.y,
-                                depth_or_array_layers: 1,
-                            },
-                            TextureDimension::D2,
-                            mask,
-                            TextureFormat::Rgba8UnormSrgb,
-                            RenderAssetUsages::default(),
-                        );
-                        mask_img.sampler = ImageSampler::nearest();
-                        Some(images_assets.add(mask_img))
-                    }
-                }
-                _ => None,
-            }
-        };
-
-        let image_handle: Handle<Image> = images_assets.add(image);
+        let image_handle = images_assets.add(image);
         if *sprite_id >= self.gfx.len() {
             self.gfx.resize(sprite_id.saturating_add(1), None);
-            self.highlight_gfx.resize(sprite_id.saturating_add(1), None);
             self.sprite_tiles.resize(sprite_id.saturating_add(1), None);
         }
         self.gfx[*sprite_id] = Some(Sprite::from_image(image_handle));
-        self.highlight_gfx[*sprite_id] = highlight_handle.map(Sprite::from_image);
         self.sprite_tiles[*sprite_id] = Some((xs, ys));
         state.index += 1;
 

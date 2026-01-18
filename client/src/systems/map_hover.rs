@@ -22,7 +22,6 @@ const Z_OBJ_BASE: f32 = 100.0;
 const Z_CHAR_BASE: f32 = 100.2;
 const Z_FX_BASE: f32 = 100.25;
 
-const Z_HOVER_BIAS: f32 = 0.005;
 const Z_GOTO_BIAS: f32 = 0.001;
 
 // orig/engine.c draws sprite 31 at pl.goto_x/pl.goto_y.
@@ -742,23 +741,4 @@ pub(crate) fn run_gameplay_sprite_highlight(
 
     // Keep z_base referenced to avoid "unused" if compiler gets clever.
     let _ = z_base;
-}
-
-#[derive(Component)]
-pub(crate) struct GameplayMapHoverHighlight;
-
-#[derive(Component, Default)]
-struct LastSpriteId(i32);
-
-fn sprite_tiles_xy(sprite: &Sprite, images: &Assets<Image>) -> Option<(i32, i32)> {
-    let image = images.get(&sprite.image)?;
-    let size = image.size();
-
-    // dd.c treats sprites as being composed of 32x32 "blocks".
-    let w = (size.x.max(1) as i32).max(1);
-    let h = (size.y.max(1) as i32).max(1);
-
-    let xs = (w + 31) / 32;
-    let ys = (h + 31) / 32;
-    Some((xs.max(1), ys.max(1)))
 }
