@@ -1,5 +1,4 @@
 #[derive(Copy, Clone, Debug)]
-#[allow(dead_code)]
 #[repr(u8)]
 pub enum ServerCommandType {
     Empty = 0,
@@ -69,7 +68,6 @@ pub enum ServerCommandType {
     SetMap = 128, // 128-255 are used !!!
 }
 
-#[allow(dead_code)]
 #[derive(Debug)]
 pub enum ServerCommandData {
     Empty,
@@ -255,7 +253,7 @@ pub enum ServerCommandData {
         unique2: u32,
     },
     Ignore {
-        size: u32,
+        _size: u32,
     },
     LoginOk {
         server_version: u32,
@@ -864,7 +862,7 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
         73 => Some((
             ServerCommandType::Ignore,
             ServerCommandData::Ignore {
-                size: read_u32(bytes, 1)?,
+                _size: read_u32(bytes, 1)?,
             },
         )),
         // NOTE: Any opcode with 0x80 set is handled by the early-return SetMap branch above.
@@ -873,27 +871,25 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
 }
 
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct ServerCommand {
     pub header: ServerCommandType,
     pub structured_data: ServerCommandData,
-    pub payload: Vec<u8>,
+    pub _payload: Vec<u8>,
 }
 
 impl ServerCommand {
-    #[allow(dead_code)]
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         if bytes.is_empty() {
             return None;
         }
 
         let header = from_bytes(bytes)?;
-        let payload = bytes[1..].to_vec();
+        let _payload = bytes[1..].to_vec();
 
         Some(ServerCommand {
             header: header.0,
             structured_data: header.1,
-            payload,
+            _payload,
         })
     }
 }

@@ -1,7 +1,6 @@
 use std::{fs::File, io::Read, path::PathBuf};
 
 use bevy::{
-    asset::Handle,
     asset::RenderAssetUsages,
     ecs::resource::Resource,
     image::{CompressedImageFormats, Image, ImageSampler, ImageType},
@@ -27,7 +26,6 @@ struct InitState {
 /// we do the very slow operation of extracting the zip file contents
 /// every time the game starts. This is a placeholder implementation.
 #[derive(Resource, Default)]
-#[allow(dead_code)]
 pub struct GraphicsCache {
     assets_zip: PathBuf,
     gfx: Vec<Option<Sprite>>,
@@ -236,7 +234,7 @@ impl GraphicsCache {
         let xs = ((w + 31) / 32).max(1);
         let ys = ((h + 31) / 32).max(1);
 
-        let image_handle: Handle<Image> = images_assets.add(image);
+        let image_handle = images_assets.add(image);
         if *sprite_id >= self.gfx.len() {
             self.gfx.resize(sprite_id.saturating_add(1), None);
             self.sprite_tiles.resize(sprite_id.saturating_add(1), None);

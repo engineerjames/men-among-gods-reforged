@@ -91,7 +91,6 @@ impl PlayerState {
         self.state_revision
     }
 
-    #[allow(dead_code)]
     pub fn map(&self) -> &GameMap {
         &self.map
     }
@@ -140,8 +139,6 @@ impl PlayerState {
         self.selected_char
     }
 
-    // TODO: Tie this in
-    #[allow(dead_code)]
     pub fn set_selected_char(&mut self, selected_char: u16) {
         self.selected_char = selected_char;
     }
@@ -191,7 +188,6 @@ impl PlayerState {
 
     fn push_log_message(&mut self, text: String, font: u8) {
         let msg = LogMessage {
-            timestamp: Self::now_unix_seconds(),
             message: text,
             color: Self::log_color_from_font(font),
         };

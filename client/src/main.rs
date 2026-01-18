@@ -25,6 +25,7 @@ use crate::systems::debug;
 use crate::systems::display;
 use crate::systems::map_hover;
 use crate::systems::nameplates;
+use crate::systems::sound;
 
 static LOG_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
 
@@ -63,6 +64,7 @@ fn main() {
             "/assets/SFX"
         )))
         .init_resource::<font_cache::FontCache>()
+        .init_resource::<sound::SoundEventQueue>()
         .init_resource::<states::gameplay::MiniMapState>()
         .init_resource::<player_state::PlayerState>()
         .add_plugins(
@@ -139,6 +141,12 @@ fn main() {
         )
         .add_systems(
             Update,
+            sound::play_queued_sounds
+                .run_if(in_state(GameState::Gameplay))
+                .after(network::NetworkSet::Receive),
+        )
+        .add_systems(
+            Update,
             states::gameplay::run_gameplay_buttonbox_toggles
                 .run_if(in_state(GameState::Gameplay))
                 .before(states::gameplay::run_gameplay),
@@ -158,6 +166,7 @@ fn main() {
             states::gameplay::run_gameplay_update_cursor_and_carried_item
                 .run_if(in_state(GameState::Gameplay))
                 .after(states::gameplay::run_gameplay_inventory_input)
+                .after(map_hover::run_gameplay_map_hover_and_click)
                 .before(states::gameplay::run_gameplay),
         )
         .add_systems(
@@ -168,11 +177,32 @@ fn main() {
         )
         .add_systems(
             Update,
-            map_hover::run_gameplay_map_hover_and_click.run_if(in_state(GameState::Gameplay)),
+            map_hover::run_gameplay_map_hover_and_click
+                .run_if(in_state(GameState::Gameplay))
+                .after(states::gameplay::run_gameplay_inventory_input)
+                .before(states::gameplay::run_gameplay_update_cursor_and_carried_item),
         )
         .add_systems(
             Update,
             map_hover::run_gameplay_move_target_marker.run_if(in_state(GameState::Gameplay)),
+        )
+        .add_systems(
+            Update,
+            map_hover::run_gameplay_attack_target_marker
+                .run_if(in_state(GameState::Gameplay))
+                .after(states::gameplay::run_gameplay),
+        )
+        .add_systems(
+            Update,
+            map_hover::run_gameplay_misc_action_marker
+                .run_if(in_state(GameState::Gameplay))
+                .after(states::gameplay::run_gameplay),
+        )
+        .add_systems(
+            Update,
+            map_hover::run_gameplay_sprite_highlight
+                .run_if(in_state(GameState::Gameplay))
+                .after(states::gameplay::run_gameplay),
         )
         .add_systems(
             Update,
@@ -244,6 +274,9 @@ fn setup_camera(mut commands: Commands) {
     commands.spawn((
         Name::new("Camera"),
         Camera2d::default(),
+        SpatialListener::default(),
+        Transform::default(),
+        GlobalTransform::default(),
         Projection::from(OrthographicProjection {
             scaling_mode: bevy::camera::ScalingMode::AutoMin {
                 min_width: TARGET_WIDTH,

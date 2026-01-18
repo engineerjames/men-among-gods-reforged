@@ -20,12 +20,12 @@ use crate::network::{client_commands::ClientCommand, NetworkRuntime};
 use crate::player_state::PlayerState;
 
 use mag_core::constants::{
-    DEATH, INJURED, INJURED1, INJURED2, INVIS, ISITEM, MF_ARENA, MF_BANK, MF_DEATHTRAP, MF_INDOORS,
-    MF_MOVEBLOCK, MF_NOEXPIRE, MF_NOLAG, MF_NOMAGIC, MF_NOMONST, MF_SIGHTBLOCK, MF_TAVERN,
-    MF_UWATER, PL_ARMS, PL_BELT, PL_BODY, PL_CLOAK, PL_FEET, PL_HEAD, PL_LEGS, PL_NECK, PL_RING,
-    PL_SHIELD, PL_TWOHAND, PL_WEAPON, SPEEDTAB, SPR_EMPTY, STUNNED, TOMB, WN_ARMS, WN_BELT,
-    WN_BODY, WN_CLOAK, WN_FEET, WN_HEAD, WN_LEGS, WN_LHAND, WN_LRING, WN_NECK, WN_RHAND, WN_RRING,
-    XPOS, YPOS,
+    DEATH, INFRARED, INJURED, INJURED1, INJURED2, INVIS, ISITEM, MF_ARENA, MF_BANK, MF_DEATHTRAP,
+    MF_INDOORS, MF_MOVEBLOCK, MF_NOEXPIRE, MF_NOLAG, MF_NOMAGIC, MF_NOMONST, MF_SIGHTBLOCK,
+    MF_TAVERN, MF_UWATER, PL_ARMS, PL_BELT, PL_BODY, PL_CLOAK, PL_FEET, PL_HEAD, PL_LEGS, PL_NECK,
+    PL_RING, PL_SHIELD, PL_TWOHAND, PL_WEAPON, SPEEDTAB, SPR_EMPTY, STONED, STUNNED, TOMB, UWATER,
+    WN_ARMS, WN_BELT, WN_BODY, WN_CLOAK, WN_FEET, WN_HEAD, WN_LEGS, WN_LHAND, WN_LRING, WN_NECK,
+    WN_RHAND, WN_RRING, XPOS, YPOS,
 };
 use mag_core::types::skilltab::{
     get_skill_desc, get_skill_name, get_skill_nr, get_skill_sortkey, MAX_SKILLS,
@@ -415,7 +415,6 @@ pub(crate) struct GameplayUiAttributeLabel {
 
 #[derive(Component, Clone, Copy, Debug)]
 pub(crate) struct GameplayUiSkillLabel {
-    #[allow(dead_code)]
     skill_index: usize,
 }
 
@@ -510,7 +509,7 @@ impl Default for GameplayCursorType {
 
 #[derive(Resource, Default, Debug)]
 pub(crate) struct GameplayCursorTypeState {
-    cursor: GameplayCursorType,
+    pub(crate) cursor: GameplayCursorType,
 }
 
 // Equipment slot ordering used by the original client UI.
@@ -1444,8 +1443,8 @@ pub(crate) enum ShadowLayer {
 
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct TileRender {
-    index: usize,
-    layer: TileLayer,
+    pub index: usize,
+    pub layer: TileLayer,
 }
 
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
@@ -2297,6 +2296,98 @@ fn should_draw_shadow(sprite_id: i32) -> bool {
     (2000..16_336).contains(&sprite_id) || sprite_id > 17_360
 }
 
+// dd.c lighting approximation:
+// do_effect() scales RGB by: LEFFECT / (effect^2 + LEFFECT), with LEFFECT = gamma - 4880.
+// At default gamma=5000, LEFFECT=120.
+const DD_LEFFECT: f32 = 120.0;
+
+pub(crate) fn dd_effect_tint(effect: u32) -> Color {
+    // We approximate the dd.c per-pixel effect with a per-sprite tint.
+    // This matches the most important behavior: darkness from `effect` and
+    // the highlight bit (16) which doubles brightness.
+
+    let mut base = effect;
+    let highlight = (base & 16) != 0;
+    let green = (base & 32) != 0;
+    let invis = (base & 64) != 0;
+    let grey = (base & 128) != 0;
+    let infra = (base & 256) != 0;
+    let water = (base & 512) != 0;
+
+    // Strip known flag bits to recover the numeric light level.
+    if highlight {
+        base = base.saturating_sub(16);
+    }
+    if green {
+        base = base.saturating_sub(32);
+    }
+    if invis {
+        base = base.saturating_sub(64);
+    }
+    if grey {
+        base = base.saturating_sub(128);
+    }
+    if infra {
+        base = base.saturating_sub(256);
+    }
+    if water {
+        base = base.saturating_sub(512);
+    }
+
+    let e = (base.min(1023)) as f32;
+    let shade = if e <= 0.0 {
+        1.0
+    } else {
+        DD_LEFFECT / (e * e + DD_LEFFECT)
+    };
+
+    let mut r = shade;
+    let mut g = shade;
+    let mut b = shade;
+
+    // dd.c's "grey" effect is a greyscale conversion. Since we're tinting a full sprite
+    // (not per-pixel), approximate it by reducing saturation.
+    if grey {
+        // Slightly greenish grayscale like RGB565 tends to look.
+        r *= 0.85;
+        g *= 0.95;
+        b *= 0.85;
+    }
+
+    // Approximate a few legacy effect flags used by engine.c (notably infra/water).
+    if infra {
+        g = 0.0;
+        b = 0.0;
+    }
+    if water {
+        r *= 0.7;
+        g *= 0.85;
+        // b stays as-is
+    }
+
+    // engine.c highlight uses `|16`, dd.c then doubles channels.
+    if highlight {
+        r *= 2.0;
+        g *= 2.0;
+        b *= 2.0;
+    }
+
+    // engine.c selection uses `|32` for characters; dd.c bumps green.
+    if green {
+        g = (g + 0.5).min(1.0);
+    }
+
+    if invis {
+        r = 0.0;
+        g = 0.0;
+        b = 0.0;
+    }
+
+    // Bevy will clamp in the shader, but we keep values reasonable.
+    let clamp = |v: f32| v.clamp(0.0, 1.35);
+    Color::srgba(clamp(r), clamp(g), clamp(b), 1.0)
+}
+
 fn copysprite_screen_pos(
     sprite_id: usize,
     gfx: &GraphicsCache,
@@ -2901,15 +2992,17 @@ pub(crate) fn setup_gameplay(
         ))
         .id();
 
-    // Map hover highlight (ported from orig/inter.c + orig/engine.c highlight behavior).
-    crate::systems::map_hover::spawn_map_hover_highlight(
-        &mut commands,
-        &mut image_assets,
-        world_root,
-    );
+    // Map hover highlight: a white silhouette overlay matching the exact target sprite.
+    crate::systems::map_hover::spawn_map_hover_highlight(&mut commands, &gfx, world_root);
 
     // Persistent move target marker (orig/engine.c draws sprite 31 at pl.goto_x/pl.goto_y).
     crate::systems::map_hover::spawn_map_move_target_marker(&mut commands, &gfx, world_root);
+
+    // Attack target marker (orig/engine.c draws sprite 34 at attack target).
+    crate::systems::map_hover::spawn_map_attack_target_marker(&mut commands, &gfx, world_root);
+
+    // Misc action marker sprites (orig/engine.c draws 32/33/45 based on misc_action).
+    crate::systems::map_hover::spawn_map_misc_action_marker(&mut commands, &gfx, world_root);
 
     // Spawn a stable set of entities once; `run_gameplay` updates them.
     for index in 0..map.len() {
@@ -5142,7 +5235,8 @@ pub(crate) fn run_gameplay(
                 // engine.c: if (pdata.hide==0 || (map[m].flags&ISITEM) || autohide(x,y)) draw obj1
                 // else draw obj1+1 (hide walls/high objects).
                 let hide_enabled = player_state.player_data().hide != 0;
-                if hide_enabled && id > 0 && (tile.flags & ISITEM) == 0 && !autohide(x, y) {
+                let is_item = (tile.flags & ISITEM) != 0 || tile.it_sprite != 0;
+                if hide_enabled && id > 0 && !is_item && !autohide(x, y) {
                     // engine.c mine hack: substitute special sprites for certain mine-wall IDs
                     // when hide is enabled and tile isn't directly in front of the player.
                     let is_mine_wall = id > 16335
@@ -5212,6 +5306,59 @@ pub(crate) fn run_gameplay(
             TileLayer::Character => Z_CHAR_BASE + draw_order * Z_WORLD_STEP,
         };
 
+        // Match engine.c's per-layer effect flags.
+        // Background: map[m].light | (invis?64) | (infra?256) | (uwater?512)
+        // Object:      map[m].light | (infra?256) | (uwater?512)
+        // Character:   map[m].light | (selected?32) | (stoned?128) | (infra?256) | (uwater?512)
+        let mut effect: u32 = tile.light as u32;
+        match render.layer {
+            TileLayer::Background => {
+                if (tile.flags & INVIS) != 0 {
+                    effect |= 64;
+                }
+                if (tile.flags & INFRARED) != 0 {
+                    effect |= 256;
+                }
+                if (tile.flags & UWATER) != 0 {
+                    effect |= 512;
+                }
+            }
+            TileLayer::Object => {
+                // engine.c skips object/character pass entirely if INVIS.
+                if (tile.flags & INVIS) != 0 {
+                    *visibility = Visibility::Hidden;
+                    continue;
+                }
+                if (tile.flags & INFRARED) != 0 {
+                    effect |= 256;
+                }
+                if (tile.flags & UWATER) != 0 {
+                    effect |= 512;
+                }
+            }
+            TileLayer::Character => {
+                // engine.c skips object/character pass entirely if INVIS.
+                if (tile.flags & INVIS) != 0 {
+                    *visibility = Visibility::Hidden;
+                    continue;
+                }
+                if tile.ch_nr != 0 && tile.ch_nr == player_state.selected_char() {
+                    effect |= 32;
+                }
+                if (tile.flags & STONED) != 0 {
+                    effect |= 128;
+                }
+                if (tile.flags & INFRARED) != 0 {
+                    effect |= 256;
+                }
+                if (tile.flags & UWATER) != 0 {
+                    effect |= 512;
+                }
+            }
+        }
+
+        let tint = dd_effect_tint(effect);
+
         if sprite_id == last.sprite_id
             && (sx_f - last.sx).abs() < 0.01
             && (sy_f - last.sy).abs() < 0.01
@@ -5219,6 +5366,7 @@ pub(crate) fn run_gameplay(
             // Even if the sprite/position didn't change, we must ensure visibility/z stay correct.
             *visibility = Visibility::Visible;
             transform.translation = screen_to_world(sx_f, sy_f, z);
+            sprite.color = tint;
             continue;
         }
 
@@ -5232,6 +5380,7 @@ pub(crate) fn run_gameplay(
         };
 
         *sprite = src.clone();
+        sprite.color = tint;
         *visibility = Visibility::Visible;
         transform.translation = screen_to_world(sx_f, sy_f, z);
     }
