@@ -654,19 +654,19 @@ mod tests {
         use crate::types::log_message::LogMessageColor;
         assert!(matches!(
             PlayerState::log_color_from_font(0),
-            LogMessageColor::Yellow
+            LogMessageColor::Red
         ));
         assert!(matches!(
             PlayerState::log_color_from_font(1),
-            LogMessageColor::Green
+            LogMessageColor::Yellow
         ));
         assert!(matches!(
             PlayerState::log_color_from_font(2),
-            LogMessageColor::Blue
+            LogMessageColor::Green
         ));
         assert!(matches!(
             PlayerState::log_color_from_font(3),
-            LogMessageColor::Red
+            LogMessageColor::Blue
         ));
         assert!(matches!(
             PlayerState::log_color_from_font(99),
