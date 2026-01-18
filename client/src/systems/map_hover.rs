@@ -425,7 +425,10 @@ pub(crate) fn run_gameplay_move_target_marker(
 pub(crate) fn run_gameplay_attack_target_marker(
     gfx: Res<GraphicsCache>,
     player_state: Res<PlayerState>,
-    mut q_marker: Query<(&mut Transform, &mut Visibility, &mut Sprite), With<GameplayAttackTargetMarker>>,
+    mut q_marker: Query<
+        (&mut Transform, &mut Visibility, &mut Sprite),
+        With<GameplayAttackTargetMarker>,
+    >,
 ) {
     let Some((mut transform, mut visibility, mut sprite)) = q_marker.iter_mut().next() else {
         return;
