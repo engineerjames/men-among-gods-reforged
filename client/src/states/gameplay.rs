@@ -2297,6 +2297,88 @@ fn should_draw_shadow(sprite_id: i32) -> bool {
     (2000..16_336).contains(&sprite_id) || sprite_id > 17_360
 }
 
+// dd.c lighting approximation:
+// do_effect() scales RGB by: LEFFECT / (effect^2 + LEFFECT), with LEFFECT = gamma - 4880.
+// At default gamma=5000, LEFFECT=120.
+const DD_LEFFECT: f32 = 120.0;
+
+pub(crate) fn dd_effect_tint(effect: u32) -> Color {
+    // We approximate the dd.c per-pixel effect with a per-sprite tint.
+    // This matches the most important behavior: darkness from `effect` and
+    // the highlight bit (16) which doubles brightness.
+
+    let mut base = effect;
+    let highlight = (base & 16) != 0;
+    let green = (base & 32) != 0;
+    let invis = (base & 64) != 0;
+    let infra = (base & 256) != 0;
+    let water = (base & 512) != 0;
+
+    // Strip known flag bits to recover the numeric light level.
+    if highlight {
+        base = base.saturating_sub(16);
+    }
+    if green {
+        base = base.saturating_sub(32);
+    }
+    if invis {
+        base = base.saturating_sub(64);
+    }
+    if (effect & 128) != 0 {
+        base = base.saturating_sub(128);
+    }
+    if infra {
+        base = base.saturating_sub(256);
+    }
+    if water {
+        base = base.saturating_sub(512);
+    }
+
+    let e = (base.min(1023)) as f32;
+    let shade = if e <= 0.0 {
+        1.0
+    } else {
+        DD_LEFFECT / (e * e + DD_LEFFECT)
+    };
+
+    let mut r = shade;
+    let mut g = shade;
+    let mut b = shade;
+
+    // Approximate a few legacy effect flags used by engine.c (notably infra/water).
+    if infra {
+        g = 0.0;
+        b = 0.0;
+    }
+    if water {
+        r *= 0.7;
+        g *= 0.85;
+        // b stays as-is
+    }
+
+    // engine.c highlight uses `|16`, dd.c then doubles channels.
+    if highlight {
+        r *= 2.0;
+        g *= 2.0;
+        b *= 2.0;
+    }
+
+    // engine.c selection uses `|32` for characters; dd.c bumps green.
+    if green {
+        g = (g + 0.5).min(1.0);
+    }
+
+    if invis {
+        r = 0.0;
+        g = 0.0;
+        b = 0.0;
+    }
+
+    // Bevy will clamp in the shader, but we keep values reasonable.
+    let clamp = |v: f32| v.clamp(0.0, 1.35);
+    Color::srgba(clamp(r), clamp(g), clamp(b), 1.0)
+}
+
 fn copysprite_screen_pos(
     sprite_id: usize,
     gfx: &GraphicsCache,
@@ -5215,6 +5297,8 @@ pub(crate) fn run_gameplay(
             TileLayer::Character => Z_CHAR_BASE + draw_order * Z_WORLD_STEP,
         };
 
+        let tint = dd_effect_tint(tile.light as u32);
+
         if sprite_id == last.sprite_id
             && (sx_f - last.sx).abs() < 0.01
             && (sy_f - last.sy).abs() < 0.01
@@ -5222,6 +5306,7 @@ pub(crate) fn run_gameplay(
             // Even if the sprite/position didn't change, we must ensure visibility/z stay correct.
             *visibility = Visibility::Visible;
             transform.translation = screen_to_world(sx_f, sy_f, z);
+            sprite.color = tint;
             continue;
         }
 
@@ -5235,6 +5320,7 @@ pub(crate) fn run_gameplay(
         };
 
         *sprite = src.clone();
+        sprite.color = tint;
         *visibility = Visibility::Visible;
         transform.translation = screen_to_world(sx_f, sy_f, z);
     }

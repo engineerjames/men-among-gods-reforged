@@ -8,7 +8,8 @@ use crate::map::{TILEX, TILEY};
 use crate::network::{client_commands::ClientCommand, NetworkRuntime};
 use crate::player_state::PlayerState;
 use crate::states::gameplay::{
-    GameplayCursorType, GameplayCursorTypeState, GameplayRenderEntity, TileLayer, TileRender,
+    dd_effect_tint, GameplayCursorType, GameplayCursorTypeState, GameplayRenderEntity, TileLayer,
+    TileRender,
 };
 
 use mag_core::constants::{
@@ -795,6 +796,7 @@ pub(crate) fn run_gameplay_map_hover_and_click(
 
 pub(crate) fn run_gameplay_sprite_highlight(
     hover_target: Res<GameplayHoverTarget>,
+    player_state: Res<PlayerState>,
     mut state: ResMut<GameplaySpriteHighlightState>,
     mut q_tiles: Query<(&TileRender, &mut Sprite)>,
 ) {
@@ -812,7 +814,12 @@ pub(crate) fn run_gameplay_sprite_highlight(
                 let x = (render.index % TILEX) as i32;
                 let y = (render.index / TILEX) as i32;
                 if x == state.last_tile_x && y == state.last_tile_y && render.layer == layer {
-                    sprite.color = Color::WHITE;
+                    let tint = player_state
+                        .map()
+                        .tile_at_xy(x as usize, y as usize)
+                        .map(|t| dd_effect_tint(t.light as u32))
+                        .unwrap_or(Color::WHITE);
+                    sprite.color = tint;
                     break;
                 }
             }
@@ -837,9 +844,15 @@ pub(crate) fn run_gameplay_sprite_highlight(
         let x = (render.index % TILEX) as i32;
         let y = (render.index / TILEX) as i32;
         if x == hover_target.tile_x && y == hover_target.tile_y && render.layer == layer {
-            // Approximate dd.c highlight bit by brightening the rendered sprite.
-            // (Bevy clamps in shader; values >1.0 read as a bright/white highlight.)
-            sprite.color = Color::srgba(1.35, 1.35, 1.35, 1.0);
+            // Match engine.c highlight behavior: `copysprite(..., map[m].light|16|tmp, ...)`.
+            // We approximate dd.c's effect by applying the highlight bit (16) on top of the
+            // tile's current light level.
+            let tint = player_state
+                .map()
+                .tile_at_xy(x as usize, y as usize)
+                .map(|t| dd_effect_tint((t.light as u32) | 16))
+                .unwrap_or(Color::srgba(1.35, 1.35, 1.35, 1.0));
+            sprite.color = tint;
             break;
         }
     }

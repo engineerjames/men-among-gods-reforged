@@ -207,27 +207,36 @@ impl GameMap {
     }
 
     pub fn apply_set_map3(&mut self, start_index: u16, base_light: u8, packed: &[u8]) {
+        // Matches server-side SV_SETMAP3 encoding in `server/src/player.rs`:
+        // - packed word contains `start_index` (low 12 bits) and `base_light` (high 4 bits)
+        // - subsequent bytes pack two 4-bit light values: low nibble = tile m, high nibble = tile m-1
         let mut idx = start_index as usize;
+
+        if let Some(t) = self.tiles.get_mut(idx) {
+            t.light = base_light & 0x0F;
+        }
+        idx += 1;
 
         for b in packed {
             let lo = b & 0x0F;
             let hi = (b >> 4) & 0x0F;
 
-            if let Some(t) = self.tiles.get_mut(idx) {
-                t.light = (base_light << 4) | lo;
-            }
-            idx += 1;
+            // First apply the high nibble (tile m-1), then the low nibble (tile m).
             if idx >= self.tiles.len() {
                 break;
             }
+            if let Some(t) = self.tiles.get_mut(idx) {
+                t.light = hi;
+            }
+            idx += 1;
 
-            if let Some(t) = self.tiles.get_mut(idx) {
-                t.light = (base_light << 4) | hi;
-            }
-            idx += 1;
             if idx >= self.tiles.len() {
                 break;
             }
+            if let Some(t) = self.tiles.get_mut(idx) {
+                t.light = lo;
+            }
+            idx += 1;
         }
     }
 
@@ -500,8 +509,9 @@ mod tests {
     fn apply_set_map3_unpacks_two_nibbles() {
         let mut map = GameMap::new();
         map.apply_set_map3(0, 0xA, &[0x21]);
-        assert_eq!(map.tile_at_index(0).unwrap().light, (0xA << 4) | 0x1);
-        assert_eq!(map.tile_at_index(1).unwrap().light, (0xA << 4) | 0x2);
+        assert_eq!(map.tile_at_index(0).unwrap().light, 0xA);
+        assert_eq!(map.tile_at_index(1).unwrap().light, 0x2);
+        assert_eq!(map.tile_at_index(2).unwrap().light, 0x1);
     }
 
     #[test]
