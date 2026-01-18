@@ -1,11 +1,10 @@
 use bevy::prelude::*;
-use bevy::sprite::{Anchor, Text2d};
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::map::{TILEX, TILEY};
 use crate::network::{client_commands::ClientCommand, NetworkRuntime};
 use crate::player_state::PlayerState;
-use crate::states::gameplay::GameplayRenderEntity;
+use crate::states::gameplay::{BitmapText, GameplayRenderEntity};
 
 use mag_core::constants::{XPOS, YPOS};
 
@@ -62,25 +61,18 @@ fn player_display_name(player_state: &PlayerState) -> String {
     "Player".to_string()
 }
 
-pub(crate) fn spawn_gameplay_nameplates(
-    commands: &mut Commands,
-    world_root: Entity,
-    font: Handle<Font>,
-) {
+pub(crate) fn spawn_gameplay_nameplates(commands: &mut Commands, world_root: Entity) {
     for index in 0..(TILEX * TILEY) {
         let id = commands
             .spawn((
                 GameplayRenderEntity,
                 GameplayNameplate { index },
-                Text2d::new(""),
-                TextFont {
-                    font: font.clone(),
-                    // Slightly smaller than UI text for readability.
-                    font_size: 10.0,
-                    ..default()
+                BitmapText {
+                    text: String::new(),
+                    color: Color::WHITE,
+                    // Yellow is 701 => index 1.
+                    font: 1,
                 },
-                TextColor(Color::WHITE),
-                Anchor::TOP_LEFT,
                 Transform::default(),
                 GlobalTransform::default(),
                 Visibility::Hidden,
@@ -98,7 +90,7 @@ pub(crate) fn run_gameplay_nameplates(
     player_state: Res<PlayerState>,
     mut q: Query<(
         &GameplayNameplate,
-        &mut Text2d,
+        &mut BitmapText,
         &mut Transform,
         &mut Visibility,
     )>,
@@ -117,7 +109,7 @@ pub(crate) fn run_gameplay_nameplates(
         };
 
         if tile.ch_nr == 0 || (!show_names && !show_proz) {
-            **text2d = String::new();
+            text2d.text.clear();
             *visibility = Visibility::Hidden;
             continue;
         }
@@ -158,7 +150,7 @@ pub(crate) fn run_gameplay_nameplates(
         };
 
         if text.is_empty() {
-            **text2d = String::new();
+            text2d.text.clear();
             *visibility = Visibility::Hidden;
             continue;
         }
@@ -176,7 +168,9 @@ pub(crate) fn run_gameplay_nameplates(
         let draw_order = ((TILEY - 1 - (view_y as usize)) * TILEX + (view_x as usize)) as f32;
         let z = Z_CHAR_BASE + draw_order * Z_WORLD_STEP + Z_NAMEPLATE_BIAS;
 
-        **text2d = text;
+        text2d.text = text;
+        text2d.font = 1;
+        text2d.color = Color::WHITE;
         transform.translation = screen_to_world(sx_i as f32, sy_i as f32, z);
         *visibility = Visibility::Visible;
     }

@@ -139,39 +139,85 @@ fn main() {
         )
         .add_systems(
             Update,
-            map_hover::run_gameplay_map_hover_and_click
+            states::gameplay::run_gameplay_buttonbox_toggles
                 .run_if(in_state(GameState::Gameplay))
-                .after(states::gameplay::run_gameplay),
+                .before(states::gameplay::run_gameplay),
         )
         .add_systems(
             Update,
-            map_hover::run_gameplay_move_target_marker
-                .run_if(in_state(GameState::Gameplay))
-                .after(states::gameplay::run_gameplay),
+            states::gameplay::run_gameplay_statbox_input.run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
             Update,
-            nameplates::run_gameplay_nameplates
+            states::gameplay::run_gameplay_inventory_input
                 .run_if(in_state(GameState::Gameplay))
-                .after(states::gameplay::run_gameplay),
+                .before(states::gameplay::run_gameplay),
         )
         .add_systems(
             Update,
-            states::gameplay::run_gameplay_text_ui
+            states::gameplay::run_gameplay_update_cursor_and_carried_item
                 .run_if(in_state(GameState::Gameplay))
-                .after(network::NetworkSet::Receive),
+                .after(states::gameplay::run_gameplay_inventory_input)
+                .before(states::gameplay::run_gameplay),
         )
         .add_systems(
             Update,
-            states::gameplay::run_gameplay_update_hud_labels
+            states::gameplay::run_gameplay_update_equipment_blocks
                 .run_if(in_state(GameState::Gameplay))
-                .after(network::NetworkSet::Receive),
+                .before(states::gameplay::run_gameplay),
         )
         .add_systems(
             Update,
-            states::gameplay::run_gameplay_update_extra_ui
+            map_hover::run_gameplay_map_hover_and_click.run_if(in_state(GameState::Gameplay)),
+        )
+        .add_systems(
+            Update,
+            map_hover::run_gameplay_move_target_marker.run_if(in_state(GameState::Gameplay)),
+        )
+        .add_systems(
+            Update,
+            nameplates::run_gameplay_nameplates.run_if(in_state(GameState::Gameplay)),
+        )
+        .add_systems(
+            Update,
+            states::gameplay::run_gameplay_text_ui.run_if(in_state(GameState::Gameplay)),
+        )
+        .add_systems(
+            Update,
+            states::gameplay::run_gameplay_update_hud_labels.run_if(in_state(GameState::Gameplay)),
+        )
+        .add_systems(
+            Update,
+            states::gameplay::run_gameplay_update_extra_ui.run_if(in_state(GameState::Gameplay)),
+        )
+        .add_systems(
+            Update,
+            states::gameplay::run_gameplay_update_stat_bars.run_if(in_state(GameState::Gameplay)),
+        )
+        .add_systems(
+            Update,
+            states::gameplay::run_gameplay_update_scroll_knobs
+                .run_if(in_state(GameState::Gameplay)),
+        )
+        .add_systems(
+            Update,
+            states::gameplay::run_gameplay_update_top_selected_name
+                .run_if(in_state(GameState::Gameplay)),
+        )
+        .add_systems(
+            Update,
+            states::gameplay::run_gameplay_update_portrait_name_and_rank
+                .run_if(in_state(GameState::Gameplay)),
+        )
+        .add_systems(
+            Update,
+            states::gameplay::run_gameplay_bitmap_text_renderer
                 .run_if(in_state(GameState::Gameplay))
-                .after(network::NetworkSet::Receive),
+                .after(states::gameplay::run_gameplay_update_extra_ui)
+                .after(states::gameplay::run_gameplay_update_stat_bars)
+                .after(states::gameplay::run_gameplay_update_top_selected_name)
+                .after(states::gameplay::run_gameplay_update_portrait_name_and_rank)
+                .after(nameplates::run_gameplay_nameplates),
         )
         //
         // Menu state

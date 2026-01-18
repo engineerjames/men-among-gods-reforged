@@ -91,7 +91,6 @@ impl ClientCommand {
         Self::new(cmd, payload)
     }
 
-    #[allow(dead_code)]
     pub fn new_challenge(server_challenge: u32, client_version: u32, race: i32) -> Self {
         let mut payload = Vec::with_capacity(12);
 
@@ -102,7 +101,6 @@ impl ClientCommand {
         Self::new(ClientCommandType::Challenge, payload)
     }
 
-    #[allow(dead_code)]
     pub fn new_unique(unique_value_1: i32, unique_value_2: i32) -> Self {
         let mut payload = Vec::with_capacity(8);
         payload.extend_from_slice(&unique_value_1.to_le_bytes());
@@ -159,7 +157,6 @@ impl ClientCommand {
     }
 
     /// Mirrors `main.c::say`: one of `CmdInput1..CmdInput8`, 15 raw bytes.
-    #[allow(dead_code)]
     pub fn new_input_chunk(kind: ClientCommandType, chunk: &[u8]) -> Self {
         debug_assert!(matches!(
             kind,
@@ -180,7 +177,6 @@ impl ClientCommand {
     }
 
     /// Convenience helper: split up to 120 bytes across the 8 input packets.
-    #[allow(dead_code)]
     pub fn new_say_packets(text: &[u8]) -> Vec<Self> {
         let kinds = [
             ClientCommandType::CmdInput1,
@@ -214,7 +210,6 @@ impl ClientCommand {
     }
 
     /// `CL_CMD_MOVE` (`inter.c::cmd`).
-    #[allow(dead_code)]
     pub fn new_move(x: i16, y: i32) -> Self {
         Self::cmd_xy_i16_i32(ClientCommandType::CmdMove, x, y)
     }
@@ -232,7 +227,6 @@ impl ClientCommand {
     }
 
     /// `CL_CMD_TURN` (`inter.c::cmd`).
-    #[allow(dead_code)]
     pub fn new_turn(x: i16, y: i32) -> Self {
         Self::cmd_xy_i16_i32(ClientCommandType::CmdTurn, x, y)
     }
@@ -250,7 +244,6 @@ impl ClientCommand {
     }
 
     /// `CL_CMD_MODE` (`inter.c::cmd`).
-    #[allow(dead_code)]
     pub fn new_mode(mode: i16) -> Self {
         Self::cmd_xy_i16_i32(ClientCommandType::CmdMode, mode, 0)
     }
@@ -268,7 +261,6 @@ impl ClientCommand {
     }
 
     /// `CL_CMD_STAT` (`inter.c` uses `cmd(CL_CMD_STAT, m, stat_raised[n])`).
-    #[allow(dead_code)]
     pub fn new_stat(which: i16, value: i32) -> Self {
         Self::cmd_xy_i16_i32(ClientCommandType::CmdStat, which, value)
     }
@@ -292,31 +284,26 @@ impl ClientCommand {
     }
 
     /// `CL_CMD_EXIT` (`engine.c::cmd_exit` uses `cmd1(CL_CMD_EXIT,0)`).
-    #[allow(dead_code)]
     pub fn new_exit() -> Self {
         Self::cmd_u32(ClientCommandType::CmdExit, 0)
     }
 
     /// `CL_CMD_AUTOLOOK` (`engine.c` uses `cmd1s(CL_CMD_AUTOLOOK, lookat)`).
-    #[allow(dead_code)]
     pub fn new_autolook(lookat: u32) -> Self {
         Self::cmd_u32(ClientCommandType::CmdAutoLook, lookat)
     }
 
     /// `CL_CMD_INV` (`inter.c::cmd3`).
-    #[allow(dead_code)]
     pub fn new_inv(a: u32, b: u32, selected_char: u32) -> Self {
         Self::cmd_u32_u32_u32(ClientCommandType::CmdInv, a, b, selected_char)
     }
 
     /// `CL_CMD_INV_LOOK` (`inter.c::cmd3`).
-    #[allow(dead_code)]
     pub fn new_inv_look(a: u32, b: u32, c: u32) -> Self {
         Self::cmd_u32_u32_u32(ClientCommandType::CmdInvLook, a, b, c)
     }
 
     /// `CL_CMD_SKILL` (`inter.c::cmd3`).
-    #[allow(dead_code)]
     pub fn new_skill(skill: u32, selected_char: u32, attrib0: u32) -> Self {
         Self::cmd_u32_u32_u32(ClientCommandType::CmdSkill, skill, selected_char, attrib0)
     }

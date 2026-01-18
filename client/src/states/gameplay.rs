@@ -2,24 +2,33 @@ use bevy::prelude::*;
 
 use bevy::asset::RenderAssetUsages;
 use bevy::ecs::message::MessageReader;
+use bevy::ecs::query::Without;
 use bevy::input::keyboard::KeyboardInput;
 use bevy::input::ButtonState;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::sprite::Anchor;
-use bevy::sprite::Text2d;
+use bevy::window::{CursorIcon, PrimaryWindow, SystemCursorIcon};
 
+use std::cmp::Ordering;
 use std::collections::HashMap;
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
-use crate::font_cache::FontCache;
+use crate::font_cache::{FontCache, BITMAP_GLYPH_W};
 use crate::gfx_cache::GraphicsCache;
 use crate::map::{TILEX, TILEY};
 use crate::network::{client_commands::ClientCommand, NetworkRuntime};
 use crate::player_state::PlayerState;
 
 use mag_core::constants::{
-    INVIS, ISITEM, SPEEDTAB, SPR_EMPTY, STUNNED, WN_ARMS, WN_BELT, WN_BODY, WN_CLOAK, WN_FEET,
-    WN_HEAD, WN_LEGS, WN_LHAND, WN_LRING, WN_NECK, WN_RHAND, WN_RRING, XPOS, YPOS,
+    DEATH, INJURED, INJURED1, INJURED2, INVIS, ISITEM, MF_ARENA, MF_BANK, MF_DEATHTRAP, MF_INDOORS,
+    MF_MOVEBLOCK, MF_NOEXPIRE, MF_NOLAG, MF_NOMAGIC, MF_NOMONST, MF_SIGHTBLOCK, MF_TAVERN,
+    MF_UWATER, PL_ARMS, PL_BELT, PL_BODY, PL_CLOAK, PL_FEET, PL_HEAD, PL_LEGS, PL_NECK, PL_RING,
+    PL_SHIELD, PL_TWOHAND, PL_WEAPON, SPEEDTAB, SPR_EMPTY, STUNNED, TOMB, WN_ARMS, WN_BELT,
+    WN_BODY, WN_CLOAK, WN_FEET, WN_HEAD, WN_LEGS, WN_LHAND, WN_LRING, WN_NECK, WN_RHAND, WN_RRING,
+    XPOS, YPOS,
+};
+use mag_core::types::skilltab::{
+    get_skill_desc, get_skill_name, get_skill_nr, get_skill_sortkey, MAX_SKILLS,
 };
 
 // In the original client, xoff starts with `-176` (to account for UI layout).
@@ -35,16 +44,20 @@ const Z_BG_BASE: f32 = 0.0;
 const Z_OBJ_BASE: f32 = 100.0;
 const Z_SHADOW_BASE: f32 = 100.1;
 const Z_CHAR_BASE: f32 = 100.2;
+const Z_FX_BASE: f32 = 100.25;
 // Must stay within the Camera2d default orthographic near/far (default_2d far is 1000).
 const Z_UI: f32 = 900.0;
 const Z_UI_PORTRAIT: f32 = 910.0;
 const Z_UI_RANK: f32 = 911.0;
+const Z_UI_INV: f32 = 919.0;
 const Z_UI_EQUIP: f32 = 920.0;
 const Z_UI_SPELLS: f32 = 921.0;
 const Z_UI_SHOP_PANEL: f32 = 930.0;
 const Z_UI_SHOP_ITEMS: f32 = 931.0;
 const Z_UI_TEXT: f32 = 940.0;
 const Z_UI_MINIMAP: f32 = 905.0;
+const Z_UI_SCROLL: f32 = 939.0;
+const Z_UI_CURSOR: f32 = 950.0;
 
 // Matches dd_show_map() placement in dd.c: top-left at (3,471), size 128x128.
 const MINIMAP_X: f32 = 3.0;
@@ -58,7 +71,8 @@ const LOG_LINES: usize = 22;
 const INPUT_X: f32 = 500.0;
 const INPUT_Y: f32 = 9.0 + LOG_LINE_H * (LOG_LINES as f32);
 
-const UI_FONT_SIZE: f32 = 12.0;
+// Bitmap font index (0..3) maps to sprite IDs 700..703. Yellow is 701 => index 1.
+const UI_BITMAP_FONT: usize = 1;
 
 // HUD stat label positions (engine.c: eng_display_win layout)
 const HUD_HITPOINTS_X: f32 = 5.0;
@@ -82,20 +96,194 @@ const HUD_EXPERIENCE_Y: f32 = 271.0;
 const HUD_ATTRIBUTES_X: f32 = 5.0;
 const HUD_ATTRIBUTES_Y_START: f32 = 4.0;
 const HUD_ATTRIBUTES_SPACING: f32 = 14.0;
+// Update-panel (stat raise) rows in engine.c are at y=74,88,102 with +/- markers and cost column.
+const HUD_RAISE_STATS_X: f32 = 5.0;
+const HUD_RAISE_STATS_PLUS_X: f32 = 136.0;
+const HUD_RAISE_STATS_MINUS_X: f32 = 150.0;
+const HUD_RAISE_STATS_COST_X: f32 = 162.0;
+const HUD_RAISE_HP_Y: f32 = 74.0;
+const HUD_RAISE_END_Y: f32 = 88.0;
+const HUD_RAISE_MANA_Y: f32 = 102.0;
 const HUD_SKILLS_X: f32 = 5.0;
 const HUD_SKILLS_Y_START: f32 = 116.0;
 const HUD_SKILLS_SPACING: f32 = 14.0;
-const HUD_PLAYER_NAME_X: f32 = 200.0;
-const HUD_PLAYER_NAME_Y: f32 = 190.0;
-const HUD_EXPERIENCE_UNCOMMITTED_X: f32 = 646.0;
-const HUD_EXPERIENCE_UNCOMMITTED_Y: f32 = 285.0;
-const HUD_SKILL_ADJUSTMENT_X_OFFSET: f32 = 10.0;
+// engine.c: dd_xputtext(374+(125-strlen(tmp)*6)/2, 28, 1, tmp)
+const HUD_TOP_NAME_AREA_X: f32 = 374.0;
+const HUD_TOP_NAME_AREA_W: f32 = 125.0;
+const HUD_TOP_NAME_Y: f32 = 28.0;
+
+// engine.c: dd_xputtext(374+(125-strlen(pl.name)*6)/2,152,1,pl.name);
+//           dd_xputtext(374+(125-strlen(rank[points2rank(pl.points_tot)])*6)/2,172,1,rank[...]);
+const HUD_PORTRAIT_TEXT_AREA_X: f32 = 374.0;
+const HUD_PORTRAIT_TEXT_AREA_W: f32 = 125.0;
+const HUD_PORTRAIT_NAME_Y: f32 = 152.0;
+const HUD_PORTRAIT_RANK_Y: f32 = 172.0;
+// engine.c:
+// dd_showbar(373,127,n,6, BLUE/GREEN/RED)
+// dd_showbar(373,134,n,6, BLUE/GREEN/RED)
+// dd_showbar(373,141,n,6, BLUE/GREEN/RED)
+const HUD_BAR_X: f32 = 373.0;
+const HUD_HP_BAR_Y: f32 = 127.0;
+const HUD_END_BAR_Y: f32 = 134.0;
+const HUD_MANA_BAR_Y: f32 = 141.0;
+const HUD_BAR_H: f32 = 6.0;
+
+const BAR_SCALE_NUM: u32 = 62;
+const BAR_W_MAX: u32 = 124;
+
+const HIGH_VAL: i32 = i32::MAX;
+
+#[inline]
+fn attrib_needed(pl: &mag_core::types::ClientPlayer, n: usize, v: i32) -> i32 {
+    let max_v = pl.attrib[n][2] as i32;
+    if v >= max_v {
+        return HIGH_VAL;
+    }
+    let diff = pl.attrib[n][3] as i32;
+    let v64 = v as i64;
+    ((v64 * v64 * v64) * (diff as i64) / 20).clamp(0, i32::MAX as i64) as i32
+}
+
+#[inline]
+fn skill_needed(pl: &mag_core::types::ClientPlayer, n: usize, v: i32) -> i32 {
+    let max_v = pl.skill[n][2] as i32;
+    if v >= max_v {
+        return HIGH_VAL;
+    }
+    let diff = pl.skill[n][3] as i32;
+    let v64 = v as i64;
+    let cubic = ((v64 * v64 * v64) * (diff as i64) / 40).clamp(0, i32::MAX as i64) as i32;
+    v.max(cubic)
+}
+
+#[inline]
+fn hp_needed(pl: &mag_core::types::ClientPlayer, v: i32) -> i32 {
+    if v >= pl.hp[2] as i32 {
+        return HIGH_VAL;
+    }
+    (v as i64 * pl.hp[3] as i64).clamp(0, i32::MAX as i64) as i32
+}
+
+#[inline]
+fn end_needed(pl: &mag_core::types::ClientPlayer, v: i32) -> i32 {
+    if v >= pl.end[2] as i32 {
+        return HIGH_VAL;
+    }
+    (v as i64 * pl.end[3] as i64 / 2).clamp(0, i32::MAX as i64) as i32
+}
+
+#[inline]
+fn mana_needed(pl: &mag_core::types::ClientPlayer, v: i32) -> i32 {
+    if v >= pl.mana[2] as i32 {
+        return HIGH_VAL;
+    }
+    (v as i64 * pl.mana[3] as i64).clamp(0, i32::MAX as i64) as i32
+}
+
+fn build_sorted_skills(pl: &mag_core::types::ClientPlayer) -> Vec<usize> {
+    let mut sorted_skills: Vec<usize> = (0..MAX_SKILLS).collect();
+    sorted_skills.sort_by(|&a, &b| {
+        let a_unused = get_skill_sortkey(a) == 'Z' || get_skill_name(a).is_empty();
+        let b_unused = get_skill_sortkey(b) == 'Z' || get_skill_name(b).is_empty();
+        if a_unused != b_unused {
+            return if a_unused {
+                Ordering::Greater
+            } else {
+                Ordering::Less
+            };
+        }
+
+        let a_learned = pl.skill[a][0] != 0;
+        let b_learned = pl.skill[b][0] != 0;
+        if a_learned != b_learned {
+            return if a_learned {
+                Ordering::Less
+            } else {
+                Ordering::Greater
+            };
+        }
+
+        let a_key = get_skill_sortkey(a);
+        let b_key = get_skill_sortkey(b);
+        if a_key != b_key {
+            return a_key.cmp(&b_key);
+        }
+
+        get_skill_name(a).cmp(get_skill_name(b))
+    });
+    sorted_skills
+}
+
+#[inline]
+fn ui_bar_colors() -> (Color, Color, Color) {
+    // The original dd_showbar does a darkening blend against the framebuffer.
+    // For our sprite-rect bars we want the classic readable look: bright green/red
+    // over a blue background, with depletion revealing the blue.
+    let blue = Color::srgb(0.0, 0.0, 0.90);
+    let green = Color::srgb(0.0, 0.85, 0.0);
+    let red = Color::srgb(0.90, 0.0, 0.0);
+    (blue, green, red)
+}
+
+// UI buttonbox (ported from orig/inter.c::trans_button and engine.c::dd_showbox).
+const BUTTONBOX_X: f32 = 604.0;
+const BUTTONBOX_Y_ROW1: f32 = 552.0; // F1..F4
+const BUTTONBOX_Y_ROW2: f32 = 568.0; // F5..F8
+const BUTTONBOX_Y_ROW3: f32 = 584.0; // F9..F12
+const BUTTONBOX_BUTTON_W: f32 = 41.0;
+const BUTTONBOX_BUTTON_H: f32 = 14.0;
+const BUTTONBOX_STEP_X: f32 = 49.0;
+
+const TOGGLE_BOX_W: f32 = 45.0;
+const TOGGLE_BOX_H: f32 = 12.0;
+const TOGGLE_SHOW_PROZ_X: f32 = 753.0;
+const TOGGLE_SHOW_PROZ_Y: f32 = 554.0;
+const TOGGLE_SHOW_NAMES_X: f32 = 704.0;
+const TOGGLE_SHOW_NAMES_Y: f32 = 569.0;
+const TOGGLE_HIDE_X: f32 = 656.0;
+const TOGGLE_HIDE_Y: f32 = 569.0;
+
+const MODE_BOX_W: f32 = 45.0;
+const MODE_BOX_H: f32 = 12.0;
+const MODE_FAST_X: f32 = 608.0; // pl.mode==2
+const MODE_NORMAL_X: f32 = 656.0; // pl.mode==1
+const MODE_SLOW_X: f32 = 704.0; // pl.mode==0
+const MODE_BOX_Y: f32 = 554.0;
+
+// Scroll knob rectangles (engine.c: dd_showbar calls for inv/skill scroll).
+const SCROLL_KNOB_W: f32 = 11.0;
+const SCROLL_KNOB_H: f32 = 11.0;
+const SKILL_SCROLL_X: f32 = 207.0;
+const SKILL_SCROLL_Y_BASE: f32 = 149.0;
+const SKILL_SCROLL_RANGE: i32 = 58;
+const SKILL_SCROLL_MAX: i32 = 40;
+const INV_SCROLL_X: f32 = 290.0;
+const INV_SCROLL_Y_BASE: f32 = 36.0;
+const INV_SCROLL_RANGE: i32 = 94;
+const INV_SCROLL_MAX: i32 = 30;
 
 #[derive(Component)]
 pub struct GameplayRenderEntity;
 
 #[derive(Component)]
 struct GameplayUiOverlay;
+
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GameplayToggleBoxKind {
+    ShowProz,
+    ShowNames,
+    Hide,
+}
+
+#[derive(Component, Clone, Copy, Debug)]
+pub(crate) struct GameplayUiToggleBox {
+    kind: GameplayToggleBoxKind,
+}
+
+#[derive(Component, Clone, Copy, Debug)]
+pub(crate) struct GameplayUiModeBox {
+    mode: i32,
+}
 
 #[derive(Component)]
 pub(crate) struct GameplayUiPortrait;
@@ -107,6 +295,19 @@ pub(crate) struct GameplayUiRank;
 pub(crate) struct GameplayUiEquipmentSlot {
     worn_index: usize,
 }
+
+#[derive(Component, Clone, Copy, Debug)]
+pub(crate) struct GameplayUiEquipmentBlock {
+    worn_index: usize,
+}
+
+#[derive(Component, Clone, Copy, Debug)]
+pub(crate) struct GameplayUiBackpackSlot {
+    index: usize,
+}
+
+#[derive(Component)]
+pub(crate) struct GameplayUiCarriedItem;
 
 #[derive(Component, Clone, Copy, Debug)]
 pub(crate) struct GameplayUiSpellSlot {
@@ -131,6 +332,12 @@ pub(crate) struct GameplayTextInput {
     history_pos: Option<usize>,
 }
 
+#[derive(Resource, Default, Debug)]
+pub(crate) struct GameplayExitState {
+    firstquit: bool,
+    wantquit: bool,
+}
+
 #[derive(Component)]
 pub(crate) struct GameplayUiLogLine {
     line: usize,
@@ -141,6 +348,16 @@ pub(crate) struct GameplayUiInputText;
 
 #[derive(Component)]
 pub(crate) struct GameplayUiMinimap;
+
+#[derive(Component, Clone, Debug)]
+pub(crate) struct BitmapText {
+    pub(crate) text: String,
+    pub(crate) color: Color,
+    pub(crate) font: usize,
+}
+
+#[derive(Component)]
+struct BitmapGlyph;
 
 // HUD stat label components
 #[derive(Component)]
@@ -170,6 +387,27 @@ pub(crate) struct GameplayUiArmorValueLabel;
 #[derive(Component)]
 pub(crate) struct GameplayUiExperienceLabel;
 
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GameplayUiRaiseStat {
+    Hitpoints,
+    Endurance,
+    Mana,
+}
+
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GameplayUiRaiseStatColumn {
+    Value,
+    Plus,
+    Minus,
+    Cost,
+}
+
+#[derive(Component, Clone, Copy, Debug)]
+pub(crate) struct GameplayUiRaiseStatText {
+    stat: GameplayUiRaiseStat,
+    col: GameplayUiRaiseStatColumn,
+}
+
 #[derive(Component, Clone, Copy, Debug)]
 pub(crate) struct GameplayUiAttributeLabel {
     attrib_index: usize,
@@ -182,14 +420,136 @@ pub(crate) struct GameplayUiSkillLabel {
 }
 
 #[derive(Component)]
-pub(crate) struct GameplayUiPlayerNameLabel;
+pub(crate) struct GameplayUiTopSelectedNameLabel;
 
 #[derive(Component)]
-pub(crate) struct GameplayUiExperienceUncommittedLabel;
+pub(crate) struct GameplayUiPortraitNameLabel;
+
+#[derive(Component)]
+pub(crate) struct GameplayUiPortraitRankLabel;
+
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GameplayUiBarKind {
+    Hitpoints,
+    Endurance,
+    Mana,
+}
+
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GameplayUiBarLayer {
+    Background,
+    Fill,
+}
 
 #[derive(Component, Clone, Copy, Debug)]
-pub(crate) struct GameplayUiSkillAdjustmentHint {
-    skill_index: usize,
+pub(crate) struct GameplayUiBar {
+    kind: GameplayUiBarKind,
+    layer: GameplayUiBarLayer,
+}
+
+#[derive(Component, Clone, Copy, Debug)]
+pub(crate) struct GameplayUiAttributeAuxText {
+    attrib_index: usize,
+    col: GameplayUiRaiseStatColumn,
+}
+
+#[derive(Component, Clone, Copy, Debug)]
+pub(crate) struct GameplayUiSkillAuxText {
+    row: usize,
+    col: GameplayUiRaiseStatColumn,
+}
+
+#[derive(Resource)]
+pub(crate) struct GameplayStatboxState {
+    /// Pending stat raises, indexed like the original client:
+    /// 0..=4 attributes, 5 hitpoints, 6 endurance, 7 mana,
+    /// and 8.. are skills in the (sorted) skill table order.
+    stat_raised: [i32; 108],
+    stat_points_used: i32,
+    skill_pos: usize,
+}
+
+#[derive(Resource, Default)]
+pub(crate) struct GameplayInventoryScrollState {
+    /// Inventory scroll position from the original client (0..=30).
+    inv_pos: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GameplayMoneyHoverKind {
+    Silver1,
+    Silver10,
+    Gold1,
+    Gold10,
+    Gold100,
+    Gold1000,
+    Gold10000,
+}
+
+#[derive(Resource, Default, Debug)]
+pub(crate) struct GameplayInventoryHoverState {
+    backpack_slot: Option<usize>,
+    equipment_worn_index: Option<usize>,
+    money: Option<GameplayMoneyHoverKind>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GameplayCursorType {
+    None,
+    Take,
+    Drop,
+    Swap,
+    Use,
+}
+
+impl Default for GameplayCursorType {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+#[derive(Resource, Default, Debug)]
+pub(crate) struct GameplayCursorTypeState {
+    cursor: GameplayCursorType,
+}
+
+// Equipment slot ordering used by the original client UI.
+// Matches engine.c's `wntab[]` for drawing worn items.
+const EQUIP_WNTAB: [usize; 12] = [
+    WN_HEAD, WN_CLOAK, WN_BODY, WN_ARMS, WN_NECK, WN_BELT, WN_RHAND, WN_LHAND, WN_RRING, WN_LRING,
+    WN_LEGS, WN_FEET,
+];
+
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GameplayUiScrollKnobKind {
+    Skill,
+    Inventory,
+}
+
+#[derive(Component, Clone, Copy, Debug)]
+pub(crate) struct GameplayUiScrollKnob {
+    kind: GameplayUiScrollKnobKind,
+}
+
+impl Default for GameplayStatboxState {
+    fn default() -> Self {
+        Self {
+            stat_raised: [0; 108],
+            stat_points_used: 0,
+            skill_pos: 0,
+        }
+    }
+}
+
+impl GameplayStatboxState {
+    fn available_points(&self, pl: &mag_core::types::ClientPlayer) -> i32 {
+        (pl.points - self.stat_points_used).max(0)
+    }
+
+    fn clear(&mut self) {
+        self.stat_raised.fill(0);
+        self.stat_points_used = 0;
+    }
 }
 
 #[derive(Resource, Default)]
@@ -364,196 +724,240 @@ fn send_chat_input(net: &NetworkRuntime, text: &str) {
     }
 }
 
-fn spawn_ui_log_text(commands: &mut Commands, font: Handle<Font>) {
+fn cmd_exit(
+    exit_state: &mut GameplayExitState,
+    net: &NetworkRuntime,
+    player_state: &mut PlayerState,
+) {
+    // Ported from orig/engine.c::cmd_exit.
+    if !exit_state.firstquit {
+        player_state.tlog(0, " ");
+        player_state.tlog(
+            0,
+            "Leaving the game without entering a tavern will make you lose money and possibly life. Click again if you still want to leave the hard way.",
+        );
+        player_state.tlog(
+            0,
+            "A tavern is located west of the Temple of Skua (the starting point).",
+        );
+        exit_state.firstquit = true;
+        return;
+    }
+
+    if exit_state.wantquit {
+        return;
+    }
+
+    net.send(ClientCommand::new_exit().to_bytes());
+    exit_state.wantquit = true;
+    player_state.tlog(0, " ");
+    player_state.tlog(
+        0,
+        "Exit request acknowledged. Please wait for server to enter exit state.",
+    );
+}
+
+fn spawn_ui_log_text(commands: &mut Commands) {
     for line in 0..LOG_LINES {
         let sx = LOG_X;
         let sy = LOG_Y + (line as f32) * LOG_LINE_H;
         commands.spawn((
             GameplayRenderEntity,
             GameplayUiLogLine { line },
-            Text2d::new(""),
-            TextFont {
-                font: font.clone(),
-                font_size: UI_FONT_SIZE,
-                ..default()
+            BitmapText {
+                text: String::new(),
+                color: Color::WHITE,
+                font: UI_BITMAP_FONT,
             },
-            TextColor(Color::WHITE),
-            Anchor::TOP_LEFT,
             Transform::from_translation(screen_to_world(sx, sy, Z_UI_TEXT)),
+            GlobalTransform::default(),
+            Visibility::Visible,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
         ));
     }
 }
 
-fn spawn_ui_input_text(commands: &mut Commands, font: Handle<Font>) {
+fn spawn_ui_input_text(commands: &mut Commands) {
     commands.spawn((
         GameplayRenderEntity,
         GameplayUiInputText,
-        Text2d::new(""),
-        TextFont {
-            font,
-            font_size: UI_FONT_SIZE,
-            ..default()
+        BitmapText {
+            text: String::new(),
+            color: Color::WHITE,
+            font: UI_BITMAP_FONT,
         },
-        TextColor(Color::WHITE),
-        Anchor::TOP_LEFT,
         Transform::from_translation(screen_to_world(INPUT_X, INPUT_Y, Z_UI_TEXT)),
+        GlobalTransform::default(),
+        Visibility::Visible,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
     ));
 }
 
-fn spawn_ui_hud_labels(commands: &mut Commands, font: Handle<Font>) {
+fn spawn_ui_hud_labels(commands: &mut Commands) {
     // Hitpoints label
     commands.spawn((
         GameplayRenderEntity,
         GameplayUiHitpointsLabel,
-        Text2d::new(""),
-        TextFont {
-            font: font.clone(),
-            font_size: UI_FONT_SIZE,
-            ..default()
+        BitmapText {
+            text: String::new(),
+            color: Color::WHITE,
+            font: UI_BITMAP_FONT,
         },
-        TextColor(Color::WHITE),
-        Anchor::TOP_LEFT,
         Transform::from_translation(screen_to_world(HUD_HITPOINTS_X, HUD_HITPOINTS_Y, Z_UI_TEXT)),
+        GlobalTransform::default(),
+        Visibility::Visible,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
     ));
 
     // Endurance label
     commands.spawn((
         GameplayRenderEntity,
         GameplayUiEnduranceLabel,
-        Text2d::new(""),
-        TextFont {
-            font: font.clone(),
-            font_size: UI_FONT_SIZE,
-            ..default()
+        BitmapText {
+            text: String::new(),
+            color: Color::WHITE,
+            font: UI_BITMAP_FONT,
         },
-        TextColor(Color::WHITE),
-        Anchor::TOP_LEFT,
         Transform::from_translation(screen_to_world(HUD_ENDURANCE_X, HUD_ENDURANCE_Y, Z_UI_TEXT)),
+        GlobalTransform::default(),
+        Visibility::Visible,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
     ));
 
     // Mana label
     commands.spawn((
         GameplayRenderEntity,
         GameplayUiManaLabel,
-        Text2d::new(""),
-        TextFont {
-            font: font.clone(),
-            font_size: UI_FONT_SIZE,
-            ..default()
+        BitmapText {
+            text: String::new(),
+            color: Color::WHITE,
+            font: UI_BITMAP_FONT,
         },
-        TextColor(Color::WHITE),
-        Anchor::TOP_LEFT,
         Transform::from_translation(screen_to_world(HUD_MANA_X, HUD_MANA_Y, Z_UI_TEXT)),
+        GlobalTransform::default(),
+        Visibility::Visible,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
     ));
 
     // Money label
     commands.spawn((
         GameplayRenderEntity,
         GameplayUiMoneyLabel,
-        Text2d::new(""),
-        TextFont {
-            font: font.clone(),
-            font_size: UI_FONT_SIZE,
-            ..default()
+        BitmapText {
+            text: String::new(),
+            color: Color::WHITE,
+            font: UI_BITMAP_FONT,
         },
-        TextColor(Color::WHITE),
-        Anchor::TOP_LEFT,
         Transform::from_translation(screen_to_world(HUD_MONEY_X, HUD_MONEY_Y, Z_UI_TEXT)),
+        GlobalTransform::default(),
+        Visibility::Visible,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
     ));
 
     // Update label
     commands.spawn((
         GameplayRenderEntity,
         GameplayUiUpdateLabel,
-        Text2d::new("Update"),
-        TextFont {
-            font: font.clone(),
-            font_size: UI_FONT_SIZE,
-            ..default()
+        BitmapText {
+            text: String::from("Update"),
+            color: Color::WHITE,
+            font: UI_BITMAP_FONT,
         },
-        TextColor(Color::WHITE),
-        Anchor::TOP_LEFT,
         Transform::from_translation(screen_to_world(
             HUD_UPDATE_LABEL_X,
             HUD_UPDATE_LABEL_Y,
             Z_UI_TEXT,
         )),
+        GlobalTransform::default(),
+        Visibility::Visible,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
     ));
 
     // Update value
     commands.spawn((
         GameplayRenderEntity,
         GameplayUiUpdateValue,
-        Text2d::new(""),
-        TextFont {
-            font: font.clone(),
-            font_size: UI_FONT_SIZE,
-            ..default()
+        BitmapText {
+            text: String::new(),
+            color: Color::WHITE,
+            font: UI_BITMAP_FONT,
         },
-        TextColor(Color::WHITE),
-        Anchor::TOP_LEFT,
         Transform::from_translation(screen_to_world(
             HUD_UPDATE_VALUE_X,
             HUD_UPDATE_VALUE_Y,
             Z_UI_TEXT,
         )),
+        GlobalTransform::default(),
+        Visibility::Visible,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
     ));
 
     // Weapon value label
     commands.spawn((
         GameplayRenderEntity,
         GameplayUiWeaponValueLabel,
-        Text2d::new(""),
-        TextFont {
-            font: font.clone(),
-            font_size: UI_FONT_SIZE,
-            ..default()
+        BitmapText {
+            text: String::new(),
+            color: Color::WHITE,
+            font: UI_BITMAP_FONT,
         },
-        TextColor(Color::WHITE),
-        Anchor::TOP_LEFT,
         Transform::from_translation(screen_to_world(
             HUD_WEAPON_VALUE_X,
             HUD_WEAPON_VALUE_Y,
             Z_UI_TEXT,
         )),
+        GlobalTransform::default(),
+        Visibility::Visible,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
     ));
 
     // Armor value label
     commands.spawn((
         GameplayRenderEntity,
         GameplayUiArmorValueLabel,
-        Text2d::new(""),
-        TextFont {
-            font: font.clone(),
-            font_size: UI_FONT_SIZE,
-            ..default()
+        BitmapText {
+            text: String::new(),
+            color: Color::WHITE,
+            font: UI_BITMAP_FONT,
         },
-        TextColor(Color::WHITE),
-        Anchor::TOP_LEFT,
         Transform::from_translation(screen_to_world(
             HUD_ARMOR_VALUE_X,
             HUD_ARMOR_VALUE_Y,
             Z_UI_TEXT,
         )),
+        GlobalTransform::default(),
+        Visibility::Visible,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
     ));
 
     // Experience label
     commands.spawn((
         GameplayRenderEntity,
         GameplayUiExperienceLabel,
-        Text2d::new(""),
-        TextFont {
-            font: font.clone(),
-            font_size: UI_FONT_SIZE,
-            ..default()
+        BitmapText {
+            text: String::new(),
+            color: Color::WHITE,
+            font: UI_BITMAP_FONT,
         },
-        TextColor(Color::WHITE),
-        Anchor::TOP_LEFT,
         Transform::from_translation(screen_to_world(
             HUD_EXPERIENCE_X,
             HUD_EXPERIENCE_Y,
             Z_UI_TEXT,
         )),
+        GlobalTransform::default(),
+        Visibility::Visible,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
     ));
 
     // Attribute labels (5 attributes: Braveness, Willpower, Intuition, Agility, Strength)
@@ -561,20 +965,78 @@ fn spawn_ui_hud_labels(commands: &mut Commands, font: Handle<Font>) {
         commands.spawn((
             GameplayRenderEntity,
             GameplayUiAttributeLabel { attrib_index: i },
-            Text2d::new(""),
-            TextFont {
-                font: font.clone(),
-                font_size: UI_FONT_SIZE,
-                ..default()
+            BitmapText {
+                text: String::new(),
+                color: Color::WHITE,
+                font: UI_BITMAP_FONT,
             },
-            TextColor(Color::WHITE),
-            Anchor::TOP_LEFT,
             Transform::from_translation(screen_to_world(
                 HUD_ATTRIBUTES_X,
                 HUD_ATTRIBUTES_Y_START + (i as f32) * HUD_ATTRIBUTES_SPACING,
                 Z_UI_TEXT,
             )),
+            GlobalTransform::default(),
+            Visibility::Visible,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
         ));
+
+        // Attribute +/- and cost columns (engine.c uses x=136/150/162).
+        let y = HUD_ATTRIBUTES_Y_START + (i as f32) * HUD_ATTRIBUTES_SPACING;
+        for (col, x) in [
+            (GameplayUiRaiseStatColumn::Plus, HUD_RAISE_STATS_PLUS_X),
+            (GameplayUiRaiseStatColumn::Minus, HUD_RAISE_STATS_MINUS_X),
+            (GameplayUiRaiseStatColumn::Cost, HUD_RAISE_STATS_COST_X),
+        ] {
+            commands.spawn((
+                GameplayRenderEntity,
+                GameplayUiAttributeAuxText {
+                    attrib_index: i,
+                    col,
+                },
+                BitmapText {
+                    text: String::new(),
+                    color: Color::WHITE,
+                    font: UI_BITMAP_FONT,
+                },
+                Transform::from_translation(screen_to_world(x, y, Z_UI_TEXT)),
+                GlobalTransform::default(),
+                Visibility::Visible,
+                InheritedVisibility::default(),
+                ViewVisibility::default(),
+            ));
+        }
+    }
+
+    // Raise-stat rows (Hitpoints / Endurance / Mana) with +/- markers and exp cost.
+    // Matches engine.c lines at y=74,88,102 and columns x=5,136,150,162.
+    let raise_rows = [
+        (GameplayUiRaiseStat::Hitpoints, HUD_RAISE_HP_Y),
+        (GameplayUiRaiseStat::Endurance, HUD_RAISE_END_Y),
+        (GameplayUiRaiseStat::Mana, HUD_RAISE_MANA_Y),
+    ];
+    for (stat, y) in raise_rows {
+        for (col, x) in [
+            (GameplayUiRaiseStatColumn::Value, HUD_RAISE_STATS_X),
+            (GameplayUiRaiseStatColumn::Plus, HUD_RAISE_STATS_PLUS_X),
+            (GameplayUiRaiseStatColumn::Minus, HUD_RAISE_STATS_MINUS_X),
+            (GameplayUiRaiseStatColumn::Cost, HUD_RAISE_STATS_COST_X),
+        ] {
+            commands.spawn((
+                GameplayRenderEntity,
+                GameplayUiRaiseStatText { stat, col },
+                BitmapText {
+                    text: String::new(),
+                    color: Color::WHITE,
+                    font: UI_BITMAP_FONT,
+                },
+                Transform::from_translation(screen_to_world(x, y, Z_UI_TEXT)),
+                GlobalTransform::default(),
+                Visibility::Visible,
+                InheritedVisibility::default(),
+                ViewVisibility::default(),
+            ));
+        }
     }
 
     // Skill labels (10 skills visible at a time)
@@ -582,79 +1044,372 @@ fn spawn_ui_hud_labels(commands: &mut Commands, font: Handle<Font>) {
         commands.spawn((
             GameplayRenderEntity,
             GameplayUiSkillLabel { skill_index: i },
-            Text2d::new(""),
-            TextFont {
-                font: font.clone(),
-                font_size: UI_FONT_SIZE,
-                ..default()
+            BitmapText {
+                text: String::new(),
+                color: Color::WHITE,
+                font: UI_BITMAP_FONT,
             },
-            TextColor(Color::WHITE),
-            Anchor::TOP_LEFT,
             Transform::from_translation(screen_to_world(
                 HUD_SKILLS_X,
                 HUD_SKILLS_Y_START + (i as f32) * HUD_SKILLS_SPACING,
                 Z_UI_TEXT,
             )),
+            GlobalTransform::default(),
+            Visibility::Visible,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
         ));
+
+        // Skill +/- and cost columns (engine.c uses x=136/150/162 at y=116+n*14).
+        let y = HUD_SKILLS_Y_START + (i as f32) * HUD_SKILLS_SPACING;
+        for (col, x) in [
+            (GameplayUiRaiseStatColumn::Plus, HUD_RAISE_STATS_PLUS_X),
+            (GameplayUiRaiseStatColumn::Minus, HUD_RAISE_STATS_MINUS_X),
+            (GameplayUiRaiseStatColumn::Cost, HUD_RAISE_STATS_COST_X),
+        ] {
+            commands.spawn((
+                GameplayRenderEntity,
+                GameplayUiSkillAuxText { row: i, col },
+                BitmapText {
+                    text: String::new(),
+                    color: Color::WHITE,
+                    font: UI_BITMAP_FONT,
+                },
+                Transform::from_translation(screen_to_world(x, y, Z_UI_TEXT)),
+                GlobalTransform::default(),
+                Visibility::Visible,
+                InheritedVisibility::default(),
+                ViewVisibility::default(),
+            ));
+        }
     }
 
-    // Player/Target/Merchant name label
+    // Top-center selected/player name (engine.c y=28).
     commands.spawn((
         GameplayRenderEntity,
-        GameplayUiPlayerNameLabel,
-        Text2d::new(""),
-        TextFont {
-            font: font.clone(),
-            font_size: UI_FONT_SIZE,
-            ..default()
+        GameplayUiTopSelectedNameLabel,
+        BitmapText {
+            text: String::new(),
+            color: Color::WHITE,
+            font: UI_BITMAP_FONT,
         },
-        TextColor(Color::WHITE),
-        Anchor::TOP_LEFT,
         Transform::from_translation(screen_to_world(
-            HUD_PLAYER_NAME_X,
-            HUD_PLAYER_NAME_Y,
+            HUD_TOP_NAME_AREA_X,
+            HUD_TOP_NAME_Y,
             Z_UI_TEXT,
         )),
+        GlobalTransform::default(),
+        Visibility::Visible,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
     ));
 
-    // Uncommitted experience label
-    commands.spawn((
-        GameplayRenderEntity,
-        GameplayUiExperienceUncommittedLabel,
-        Text2d::new(""),
-        TextFont {
-            font: font.clone(),
-            font_size: UI_FONT_SIZE,
-            ..default()
+    // (No "Available Points" label; original client doesn't show it here.)
+}
+
+fn spawn_ui_toggle_boxes(commands: &mut Commands, image_assets: &mut Assets<Image>) {
+    // A single white pixel stretched + tinted to match dd_showbox's outline.
+    let pixel = Image::new(
+        Extent3d {
+            width: 1,
+            height: 1,
+            depth_or_array_layers: 1,
         },
-        TextColor(Color::WHITE),
-        Anchor::TOP_LEFT,
-        Transform::from_translation(screen_to_world(
-            HUD_EXPERIENCE_UNCOMMITTED_X,
-            HUD_EXPERIENCE_UNCOMMITTED_Y,
-            Z_UI_TEXT,
-        )),
-    ));
+        TextureDimension::D2,
+        vec![255, 255, 255, 255],
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::default(),
+    );
+    let pixel_handle = image_assets.add(pixel);
 
-    // Skill adjustment hints (10 for the visible skills)
-    for i in 0..10 {
+    let orange = Color::srgb(1.0, 0.55, 0.0);
+    let z = Z_UI_TEXT - 2.0;
+
+    let spawn_box = |commands: &mut Commands, kind: GameplayToggleBoxKind, sx: f32, sy: f32| {
+        let w = TOGGLE_BOX_W;
+        let h = TOGGLE_BOX_H;
+        let t = 1.0;
+
+        let spawn_seg = |commands: &mut Commands, ox: f32, oy: f32, sw: f32, sh: f32| {
+            commands.spawn((
+                GameplayRenderEntity,
+                GameplayUiToggleBox { kind },
+                Sprite {
+                    image: pixel_handle.clone(),
+                    color: orange,
+                    custom_size: Some(Vec2::new(sw.max(0.0), sh.max(0.0))),
+                    ..default()
+                },
+                Anchor::TOP_LEFT,
+                Transform::from_translation(screen_to_world(sx + ox, sy + oy, z)),
+                GlobalTransform::default(),
+                Visibility::Hidden,
+                InheritedVisibility::default(),
+                ViewVisibility::default(),
+            ));
+        };
+
+        // Top / bottom
+        spawn_seg(commands, 0.0, 0.0, w, t);
+        spawn_seg(commands, 0.0, h - t, w, t);
+        // Left / right
+        spawn_seg(commands, 0.0, 0.0, t, h);
+        spawn_seg(commands, w - t, 0.0, t, h);
+    };
+
+    spawn_box(
+        commands,
+        GameplayToggleBoxKind::ShowProz,
+        TOGGLE_SHOW_PROZ_X,
+        TOGGLE_SHOW_PROZ_Y,
+    );
+    spawn_box(
+        commands,
+        GameplayToggleBoxKind::ShowNames,
+        TOGGLE_SHOW_NAMES_X,
+        TOGGLE_SHOW_NAMES_Y,
+    );
+    spawn_box(
+        commands,
+        GameplayToggleBoxKind::Hide,
+        TOGGLE_HIDE_X,
+        TOGGLE_HIDE_Y,
+    );
+
+    // Mode selection boxes (orig/engine.c: dd_showbox based on pl.mode).
+    let spawn_mode_box = |commands: &mut Commands, mode: i32, sx: f32, sy: f32| {
+        let w = MODE_BOX_W;
+        let h = MODE_BOX_H;
+        let t = 1.0;
+
+        let spawn_seg = |commands: &mut Commands, ox: f32, oy: f32, sw: f32, sh: f32| {
+            commands.spawn((
+                GameplayRenderEntity,
+                GameplayUiModeBox { mode },
+                Sprite {
+                    image: pixel_handle.clone(),
+                    color: orange,
+                    custom_size: Some(Vec2::new(sw.max(0.0), sh.max(0.0))),
+                    ..default()
+                },
+                Anchor::TOP_LEFT,
+                Transform::from_translation(screen_to_world(sx + ox, sy + oy, z)),
+                GlobalTransform::default(),
+                Visibility::Hidden,
+                InheritedVisibility::default(),
+                ViewVisibility::default(),
+            ));
+        };
+
+        spawn_seg(commands, 0.0, 0.0, w, t);
+        spawn_seg(commands, 0.0, h - t, w, t);
+        spawn_seg(commands, 0.0, 0.0, t, h);
+        spawn_seg(commands, w - t, 0.0, t, h);
+    };
+
+    spawn_mode_box(commands, 2, MODE_FAST_X, MODE_BOX_Y);
+    spawn_mode_box(commands, 1, MODE_NORMAL_X, MODE_BOX_Y);
+    spawn_mode_box(commands, 0, MODE_SLOW_X, MODE_BOX_Y);
+}
+
+fn spawn_ui_stat_bars(commands: &mut Commands, image_assets: &mut Assets<Image>) {
+    // A single white pixel stretched + tinted for dd_showbar-like rectangles.
+    let pixel = Image::new(
+        Extent3d {
+            width: 1,
+            height: 1,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        vec![255, 255, 255, 255],
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::default(),
+    );
+    let pixel_handle = image_assets.add(pixel);
+
+    let (blue, green, _red) = ui_bar_colors();
+
+    let z_bg = Z_UI_TEXT - 6.0;
+    let z_fg = Z_UI_TEXT - 5.9;
+
+    let spawn_bar = |commands: &mut Commands,
+                     kind: GameplayUiBarKind,
+                     layer: GameplayUiBarLayer,
+                     x: f32,
+                     y: f32,
+                     z: f32,
+                     color: Color| {
         commands.spawn((
             GameplayRenderEntity,
-            GameplayUiSkillAdjustmentHint { skill_index: i },
-            Text2d::new(""),
-            TextFont {
-                font: font.clone(),
-                font_size: UI_FONT_SIZE,
+            GameplayUiBar { kind, layer },
+            Sprite {
+                image: pixel_handle.clone(),
+                color,
+                custom_size: Some(Vec2::new(0.0, HUD_BAR_H)),
                 ..default()
             },
-            TextColor(Color::srgb(1.0, 0.5, 0.5)), // Reddish color for hints
             Anchor::TOP_LEFT,
-            Transform::from_translation(screen_to_world(
-                HUD_SKILLS_X + HUD_SKILL_ADJUSTMENT_X_OFFSET,
-                HUD_SKILLS_Y_START + (i as f32) * HUD_SKILLS_SPACING,
-                Z_UI_TEXT,
-            )),
+            Transform::from_translation(screen_to_world(x, y, z)),
+            GlobalTransform::default(),
+            Visibility::Hidden,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
         ));
+    };
+
+    for (kind, y) in [
+        (GameplayUiBarKind::Hitpoints, HUD_HP_BAR_Y),
+        (GameplayUiBarKind::Endurance, HUD_END_BAR_Y),
+        (GameplayUiBarKind::Mana, HUD_MANA_BAR_Y),
+    ] {
+        spawn_bar(
+            commands,
+            kind,
+            GameplayUiBarLayer::Background,
+            HUD_BAR_X,
+            y,
+            z_bg,
+            blue,
+        );
+        // Fill color is updated dynamically (green for self, red for look).
+        spawn_bar(
+            commands,
+            kind,
+            GameplayUiBarLayer::Fill,
+            HUD_BAR_X,
+            y,
+            z_fg,
+            green,
+        );
+    }
+}
+
+fn spawn_ui_scroll_knobs(commands: &mut Commands, image_assets: &mut Assets<Image>) {
+    // A single white pixel stretched + tinted for dd_showbar-like rectangles.
+    let pixel = Image::new(
+        Extent3d {
+            width: 1,
+            height: 1,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        vec![255, 255, 255, 255],
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::default(),
+    );
+    let pixel_handle = image_assets.add(pixel);
+
+    let (_blue, green, _red) = ui_bar_colors();
+
+    let spawn_knob = |commands: &mut Commands, kind: GameplayUiScrollKnobKind, sx: f32, sy: f32| {
+        commands.spawn((
+            GameplayRenderEntity,
+            GameplayUiScrollKnob { kind },
+            Sprite {
+                image: pixel_handle.clone(),
+                color: green,
+                custom_size: Some(Vec2::new(SCROLL_KNOB_W, SCROLL_KNOB_H)),
+                ..default()
+            },
+            Anchor::TOP_LEFT,
+            Transform::from_translation(screen_to_world(sx, sy, Z_UI_SCROLL)),
+            GlobalTransform::default(),
+            Visibility::Visible,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
+        ));
+    };
+
+    // Initial positions match engine.c's dd_showbar formulas at pos=0.
+    spawn_knob(
+        commands,
+        GameplayUiScrollKnobKind::Skill,
+        SKILL_SCROLL_X,
+        SKILL_SCROLL_Y_BASE,
+    );
+    spawn_knob(
+        commands,
+        GameplayUiScrollKnobKind::Inventory,
+        INV_SCROLL_X,
+        INV_SCROLL_Y_BASE,
+    );
+}
+
+pub(crate) fn run_gameplay_bitmap_text_renderer(
+    mut commands: Commands,
+    font_cache: Res<FontCache>,
+    q_text: Query<
+        (Entity, &BitmapText, Option<&Children>),
+        Or<(Added<BitmapText>, Changed<BitmapText>)>,
+    >,
+) {
+    let Some(layout) = font_cache.bitmap_layout() else {
+        return;
+    };
+
+    for (entity, text, children) in &q_text {
+        let Some(image) = font_cache.bitmap_font_image(text.font) else {
+            continue;
+        };
+
+        let desired = text.text.as_str();
+        let desired_len = desired.chars().count();
+
+        let existing_children: Vec<Entity> =
+            children.map(|c| c.iter().collect()).unwrap_or_default();
+
+        // Trim extra glyphs.
+        if existing_children.len() > desired_len {
+            for child in existing_children.iter().skip(desired_len) {
+                commands.entity(*child).despawn();
+            }
+        }
+
+        // Update existing and spawn missing.
+        for (i, ch) in desired.chars().enumerate() {
+            let glyph_index = crate::font_cache::FontCache::bitmap_glyph_index(ch);
+            let local_x = (i as f32) * BITMAP_GLYPH_W;
+            let local_z = (i as f32) * 0.0001;
+
+            if let Some(child) = existing_children.get(i).copied() {
+                commands.entity(child).insert((
+                    Sprite {
+                        image: image.clone(),
+                        texture_atlas: Some(TextureAtlas {
+                            layout: layout.clone(),
+                            index: glyph_index,
+                        }),
+                        color: text.color,
+                        ..default()
+                    },
+                    Transform::from_translation(Vec3::new(local_x, 0.0, local_z)),
+                    Visibility::Visible,
+                ));
+            } else {
+                let child = commands
+                    .spawn((
+                        GameplayRenderEntity,
+                        BitmapGlyph,
+                        Sprite {
+                            image: image.clone(),
+                            texture_atlas: Some(TextureAtlas {
+                                layout: layout.clone(),
+                                index: glyph_index,
+                            }),
+                            color: text.color,
+                            ..default()
+                        },
+                        Anchor::TOP_LEFT,
+                        Transform::from_translation(Vec3::new(local_x, 0.0, local_z)),
+                        GlobalTransform::default(),
+                        Visibility::Visible,
+                        InheritedVisibility::default(),
+                        ViewVisibility::default(),
+                    ))
+                    .id();
+                commands.entity(entity).add_child(child);
+            }
+        }
     }
 }
 
@@ -691,6 +1446,32 @@ pub(crate) enum ShadowLayer {
 pub(crate) struct TileRender {
     index: usize,
     layer: TileLayer,
+}
+
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct TileFlagOverlay {
+    index: usize,
+    kind: TileFlagOverlayKind,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TileFlagOverlayKind {
+    MoveBlock,
+    SightBlock,
+    Indoors,
+    Underwater,
+    NoMonsters,
+    Bank,
+    Tavern,
+    NoMagic,
+    DeathTrap,
+    NoLag,
+    Arena,
+    NoExpire,
+    UnknownHighBit,
+    Injured,
+    Death,
+    Tomb,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -757,6 +1538,37 @@ fn spawn_tile_entity(
             Transform::default(),
             GlobalTransform::default(),
             initial_visibility,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
+        ))
+        .id();
+
+    Some(id)
+}
+
+fn spawn_tile_overlay_entity(
+    commands: &mut Commands,
+    gfx: &GraphicsCache,
+    overlay: TileFlagOverlay,
+) -> Option<Entity> {
+    let Some(empty) = gfx.get_sprite(SPR_EMPTY as usize) else {
+        return None;
+    };
+
+    let id = commands
+        .spawn((
+            GameplayRenderEntity,
+            overlay,
+            LastRender {
+                sprite_id: i32::MIN,
+                sx: f32::NAN,
+                sy: f32::NAN,
+            },
+            empty.clone(),
+            Anchor::TOP_LEFT,
+            Transform::default(),
+            GlobalTransform::default(),
+            Visibility::Hidden,
             InheritedVisibility::default(),
             ViewVisibility::default(),
         ))
@@ -860,6 +1672,74 @@ fn spawn_ui_rank(commands: &mut Commands, gfx: &GraphicsCache) {
         InheritedVisibility::default(),
         ViewVisibility::default(),
     ));
+
+    // Portrait name + rank strings (engine.c y=152 and y=172), centered within 125px.
+    commands.spawn((
+        GameplayRenderEntity,
+        GameplayUiPortraitNameLabel,
+        BitmapText {
+            text: String::new(),
+            color: Color::WHITE,
+            font: UI_BITMAP_FONT,
+        },
+        Transform::from_translation(screen_to_world(
+            HUD_PORTRAIT_TEXT_AREA_X,
+            HUD_PORTRAIT_NAME_Y,
+            Z_UI_TEXT,
+        )),
+        GlobalTransform::default(),
+        Visibility::Visible,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
+    ));
+
+    commands.spawn((
+        GameplayRenderEntity,
+        GameplayUiPortraitRankLabel,
+        BitmapText {
+            text: String::new(),
+            color: Color::WHITE,
+            font: UI_BITMAP_FONT,
+        },
+        Transform::from_translation(screen_to_world(
+            HUD_PORTRAIT_TEXT_AREA_X,
+            HUD_PORTRAIT_RANK_Y,
+            Z_UI_TEXT,
+        )),
+        GlobalTransform::default(),
+        Visibility::Visible,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
+    ));
+}
+
+fn spawn_ui_backpack(commands: &mut Commands, gfx: &GraphicsCache) {
+    // Matches `eng_display_win`: copyspritex(pl.item[n+inv_pos],220+(n%2)*35,2+(n/2)*35,...)
+    // We spawn one stable entity per visible backpack slot and update its sprite each frame.
+    let Some(empty) = gfx.get_sprite(SPR_EMPTY as usize) else {
+        return;
+    };
+
+    for n in 0..10usize {
+        let sx = 220.0 + ((n % 2) as f32) * 35.0;
+        let sy = 2.0 + ((n / 2) as f32) * 35.0;
+        commands.spawn((
+            GameplayRenderEntity,
+            GameplayUiBackpackSlot { index: n },
+            LastRender {
+                sprite_id: i32::MIN,
+                sx: f32::NAN,
+                sy: f32::NAN,
+            },
+            empty.clone(),
+            Anchor::TOP_LEFT,
+            Transform::from_translation(screen_to_world(sx, sy, Z_UI_INV)),
+            GlobalTransform::default(),
+            Visibility::Hidden,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
+        ));
+    }
 }
 
 fn spawn_ui_equipment(commands: &mut Commands, gfx: &GraphicsCache) {
@@ -894,6 +1774,56 @@ fn spawn_ui_equipment(commands: &mut Commands, gfx: &GraphicsCache) {
             ViewVisibility::default(),
         ));
     }
+}
+
+fn spawn_ui_equipment_blocks(commands: &mut Commands, gfx: &GraphicsCache) {
+    // Matches engine.c: if (inv_block[wntab[n]]) copyspritex(4,303+(n%2)*35,2+(n/2)*35,0);
+    // Use sprite 4 (block overlay) when available.
+    let Some(block) = gfx.get_sprite(4) else {
+        return;
+    };
+    for (n, worn_index) in EQUIP_WNTAB.into_iter().enumerate() {
+        let sx = 303.0 + ((n % 2) as f32) * 35.0;
+        let sy = 2.0 + ((n / 2) as f32) * 35.0;
+        commands.spawn((
+            GameplayRenderEntity,
+            GameplayUiEquipmentBlock { worn_index },
+            LastRender {
+                sprite_id: i32::MIN,
+                sx: f32::NAN,
+                sy: f32::NAN,
+            },
+            block.clone(),
+            Anchor::TOP_LEFT,
+            Transform::from_translation(screen_to_world(sx, sy, Z_UI_EQUIP + 0.05)),
+            GlobalTransform::default(),
+            Visibility::Hidden,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
+        ));
+    }
+}
+
+fn spawn_ui_carried_item(commands: &mut Commands, gfx: &GraphicsCache) {
+    let Some(empty) = gfx.get_sprite(SPR_EMPTY as usize) else {
+        return;
+    };
+    commands.spawn((
+        GameplayRenderEntity,
+        GameplayUiCarriedItem,
+        LastRender {
+            sprite_id: i32::MIN,
+            sx: f32::NAN,
+            sy: f32::NAN,
+        },
+        empty.clone(),
+        Anchor::TOP_LEFT,
+        Transform::from_translation(screen_to_world(0.0, 0.0, Z_UI_CURSOR)),
+        GlobalTransform::default(),
+        Visibility::Hidden,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
+    ));
 }
 
 fn spawn_ui_spells(commands: &mut Commands, gfx: &GraphicsCache) {
@@ -1049,6 +1979,49 @@ fn points2rank(v: i32) -> i32 {
     23
 }
 
+const RANK_NAMES: [&str; 24] = [
+    "Private",
+    "Private First Class",
+    "Lance Corporal",
+    "Corporal",
+    "Sergeant",
+    "Staff Sergeant",
+    "Master Sergeant",
+    "First Sergeant",
+    "Sergeant Major",
+    "Second Lieutenant",
+    "First Lieutenant",
+    "Captain",
+    "Major",
+    "Lieutenant Colonel",
+    "Colonel",
+    "Brigadier General",
+    "Major General",
+    "Lieutenant General",
+    "General",
+    "Field Marshal",
+    "Knight",
+    "Baron",
+    "Earl",
+    "Warlord",
+];
+
+fn rank_name(points: i32) -> &'static str {
+    let idx = points2rank(points).clamp(0, 23) as usize;
+    RANK_NAMES[idx]
+}
+
+fn centered_text_x(area_x: f32, area_w: f32, text: &str) -> f32 {
+    // Match engine.c centering logic: 6px per character.
+    let visible_chars = text
+        .as_bytes()
+        .iter()
+        .filter(|&&b| (32..=126).contains(&b))
+        .count() as f32;
+    let text_w = visible_chars * BITMAP_GLYPH_W;
+    area_x + (area_w - text_w) * 0.5
+}
+
 fn rank_insignia_sprite(points_tot: i32) -> i32 {
     // engine.c: copyspritex(10+min(20,points2rank(pl.points_tot)),463,54-16,0);
     let rank = points2rank(points_tot).clamp(0, 20);
@@ -1125,14 +2098,57 @@ fn send_opt(net: &NetworkRuntime, player_state: &mut PlayerState, clock: &mut Se
     }
 }
 
-fn draw_inventory_ui(_gfx: &GraphicsCache, _player_state: &PlayerState) {
-    // TODO: Port eng_display_win() inventory drawing (copyspritex calls around x=220,y=2).
-    // TODO: Handle highlight/effects (effect=16 for selection, etc).
+fn draw_inventory_ui(
+    gfx: &GraphicsCache,
+    player_state: &PlayerState,
+    inv_scroll: &GameplayInventoryScrollState,
+    hover: &GameplayInventoryHoverState,
+    q: &mut Query<(
+        &GameplayUiBackpackSlot,
+        &mut Sprite,
+        &mut Visibility,
+        &mut LastRender,
+    )>,
+) {
+    let pl = player_state.character_info();
+    let inv_pos = inv_scroll.inv_pos.min(30);
+
+    for (slot, mut sprite, mut visibility, mut last) in q.iter_mut() {
+        let idx = inv_pos.saturating_add(slot.index);
+        let sprite_id = pl.item.get(idx).copied().unwrap_or(0);
+
+        // Highlight the currently hovered visible slot.
+        let is_hovered = hover.backpack_slot == Some(slot.index);
+        sprite.color = if is_hovered {
+            Color::srgba(0.6, 1.0, 0.6, 1.0)
+        } else {
+            Color::WHITE
+        };
+
+        if sprite_id <= 0 {
+            last.sprite_id = sprite_id;
+            *visibility = Visibility::Hidden;
+            continue;
+        }
+
+        if last.sprite_id != sprite_id {
+            if let Some(src) = gfx.get_sprite(sprite_id as usize) {
+                *sprite = src.clone();
+                last.sprite_id = sprite_id;
+                *visibility = Visibility::Visible;
+            } else {
+                *visibility = Visibility::Hidden;
+            }
+        } else {
+            *visibility = Visibility::Visible;
+        }
+    }
 }
 
 fn draw_equipment_ui(
     gfx: &GraphicsCache,
     player_state: &PlayerState,
+    hover: &GameplayInventoryHoverState,
     q: &mut Query<(
         &GameplayUiEquipmentSlot,
         &mut Sprite,
@@ -1144,6 +2160,15 @@ fn draw_equipment_ui(
 
     for (slot, mut sprite, mut visibility, mut last) in q.iter_mut() {
         let sprite_id = pl.worn.get(slot.worn_index).copied().unwrap_or(0);
+
+        // Hover highlight tint.
+        let is_hovered = hover.equipment_worn_index == Some(slot.worn_index);
+        sprite.color = if is_hovered {
+            Color::srgba(0.6, 1.0, 0.6, 1.0)
+        } else {
+            Color::WHITE
+        };
+
         if sprite_id <= 0 {
             last.sprite_id = sprite_id;
             *visibility = Visibility::Hidden;
@@ -1266,19 +2291,6 @@ fn draw_shop_window_ui(
     }
 }
 
-fn sprite_tiles_xy(sprite: &Sprite, images: &Assets<Image>) -> Option<(i32, i32)> {
-    let image = images.get(&sprite.image)?;
-    let size = image.size();
-    let w = (size.x.max(1) as i32).max(1);
-    let h = (size.y.max(1) as i32).max(1);
-
-    // dd.c treats sprites as being composed of 32x32 "blocks"; xs/ys are those counts.
-    let xs = (w + 31) / 32;
-    let ys = (h + 31) / 32;
-
-    Some((xs.max(1), ys.max(1)))
-}
-
 #[inline]
 fn should_draw_shadow(sprite_id: i32) -> bool {
     // dd.c::dd_shadow: only certain sprite id ranges get shadows.
@@ -1288,14 +2300,13 @@ fn should_draw_shadow(sprite_id: i32) -> bool {
 fn copysprite_screen_pos(
     sprite_id: usize,
     gfx: &GraphicsCache,
-    images: &Assets<Image>,
+    _images: &Assets<Image>,
     xpos: i32,
     ypos: i32,
     xoff: i32,
     yoff: i32,
 ) -> Option<(i32, i32)> {
-    let sprite = gfx.get_sprite(sprite_id)?;
-    let (xs, ys) = sprite_tiles_xy(sprite, images)?;
+    let (xs, ys) = gfx.get_sprite_tiles_xy(sprite_id)?;
 
     // Ported from dd.c: copysprite()
     // NOTE: we ignore the negative-coordinate odd-bit adjustments because xpos/ypos
@@ -1851,13 +2862,19 @@ pub(crate) fn setup_gameplay(
     mut commands: Commands,
     gfx: Res<GraphicsCache>,
     mut font_cache: ResMut<FontCache>,
-    asset_server: Res<AssetServer>,
+    mut atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
     mut minimap: ResMut<MiniMapState>,
     mut image_assets: ResMut<Assets<Image>>,
     player_state: Res<PlayerState>,
     existing_render: Query<Entity, With<GameplayRenderEntity>>,
 ) {
     log::debug!("setup_gameplay - start");
+
+    // Pending stat raises/points spent (orig/inter.c statbox bookkeeping).
+    commands.insert_resource(GameplayStatboxState::default());
+    commands.insert_resource(GameplayInventoryScrollState::default());
+    commands.insert_resource(GameplayInventoryHoverState::default());
+    commands.insert_resource(GameplayCursorTypeState::default());
 
     // Clear any previous gameplay sprites (re-entering gameplay, etc.)
     for e in &existing_render {
@@ -1948,6 +2965,34 @@ pub(crate) fn setup_gameplay(
         ) {
             commands.entity(world_root).add_child(e);
         }
+
+        // Map flag overlays (ported from engine.c: marker/effect sprites on tiles).
+        let overlay_kinds = [
+            TileFlagOverlayKind::MoveBlock,
+            TileFlagOverlayKind::SightBlock,
+            TileFlagOverlayKind::Indoors,
+            TileFlagOverlayKind::Underwater,
+            TileFlagOverlayKind::NoLag,
+            TileFlagOverlayKind::NoMonsters,
+            TileFlagOverlayKind::Bank,
+            TileFlagOverlayKind::Tavern,
+            TileFlagOverlayKind::NoMagic,
+            TileFlagOverlayKind::DeathTrap,
+            TileFlagOverlayKind::Arena,
+            TileFlagOverlayKind::NoExpire,
+            TileFlagOverlayKind::UnknownHighBit,
+            TileFlagOverlayKind::Injured,
+            TileFlagOverlayKind::Death,
+            TileFlagOverlayKind::Tomb,
+        ];
+
+        for kind in overlay_kinds {
+            if let Some(e) =
+                spawn_tile_overlay_entity(&mut commands, &gfx, TileFlagOverlay { index, kind })
+            {
+                commands.entity(world_root).add_child(e);
+            }
+        }
     }
 
     // UI frame / background (sprite 00001.png)
@@ -1961,28 +3006,270 @@ pub(crate) fn setup_gameplay(
     spawn_ui_portrait(&mut commands, &gfx);
     spawn_ui_rank(&mut commands, &gfx);
 
+    // Backpack (inventory) slots
+    spawn_ui_backpack(&mut commands, &gfx);
+
     // Equipment slots + active spells
     spawn_ui_equipment(&mut commands, &gfx);
+    spawn_ui_equipment_blocks(&mut commands, &gfx);
     spawn_ui_spells(&mut commands, &gfx);
+
+    // Carried item cursor sprite (engine.c draws pl.citem at the mouse position).
+    spawn_ui_carried_item(&mut commands, &gfx);
 
     // Shop window (panel + item slots)
     spawn_ui_shop_window(&mut commands, &gfx);
 
+    // UI toggle indicators (dd_showbox overlays for buttonbox toggles).
+    spawn_ui_toggle_boxes(&mut commands, &mut image_assets);
+
+    // HP/Endurance/Mana bars (dd_showbar overlays).
+    spawn_ui_stat_bars(&mut commands, &mut image_assets);
+
+    // Skill/inventory scrollbar knob indicators (engine.c: dd_showbar at x=207 and x=290).
+    spawn_ui_scroll_knobs(&mut commands, &mut image_assets);
+
     // Gameplay text input/log UI state
     commands.insert_resource(GameplayTextInput::default());
+    commands.insert_resource(GameplayExitState::default());
 
-    // UI text (log + input + HUD labels). These are normal Bevy UI nodes (transparent background).
-    font_cache.ensure_initialized(&asset_server);
-    let font = font_cache.ui_font().unwrap_or_default();
+    // Bitmap font (sprite atlas) used for UI text.
+    font_cache.ensure_bitmap_initialized(&gfx, &mut atlas_layouts);
 
     // Character name/proz overlays (engine.c: dd_gputtext + lookup/set_look_proz).
-    crate::systems::nameplates::spawn_gameplay_nameplates(&mut commands, world_root, font.clone());
+    crate::systems::nameplates::spawn_gameplay_nameplates(&mut commands, world_root);
 
-    spawn_ui_log_text(&mut commands, font.clone());
-    spawn_ui_input_text(&mut commands, font.clone());
-    spawn_ui_hud_labels(&mut commands, font);
+    spawn_ui_log_text(&mut commands);
+    spawn_ui_input_text(&mut commands);
+    spawn_ui_hud_labels(&mut commands);
 
     log::debug!("setup_gameplay - end");
+}
+
+pub(crate) fn run_gameplay_update_equipment_blocks(
+    gfx: Res<GraphicsCache>,
+    player_state: Res<PlayerState>,
+    mut q: Query<(
+        &GameplayUiEquipmentBlock,
+        &mut Sprite,
+        &mut Visibility,
+        &mut LastRender,
+    )>,
+) {
+    let pl = player_state.character_info();
+    let mut inv_block = [false; 20];
+    let citem = pl.citem;
+    let citem_p = pl.citem_p as u16;
+
+    if citem != 0 {
+        inv_block[WN_HEAD] = (citem_p & PL_HEAD) == 0;
+        inv_block[WN_NECK] = (citem_p & PL_NECK) == 0;
+        inv_block[WN_BODY] = (citem_p & PL_BODY) == 0;
+        inv_block[WN_ARMS] = (citem_p & PL_ARMS) == 0;
+        inv_block[WN_BELT] = (citem_p & PL_BELT) == 0;
+        inv_block[WN_LEGS] = (citem_p & PL_LEGS) == 0;
+        inv_block[WN_FEET] = (citem_p & PL_FEET) == 0;
+        inv_block[WN_RHAND] = (citem_p & PL_WEAPON) == 0;
+        inv_block[WN_LHAND] = (citem_p & PL_SHIELD) == 0;
+        inv_block[WN_CLOAK] = (citem_p & PL_CLOAK) == 0;
+
+        let ring_blocked = (citem_p & PL_RING) == 0;
+        inv_block[WN_LRING] = ring_blocked;
+        inv_block[WN_RRING] = ring_blocked;
+    }
+
+    // Two-handed weapon blocks the left hand slot.
+    if (pl.worn_p[WN_RHAND] as u16 & PL_TWOHAND) != 0 {
+        inv_block[WN_LHAND] = true;
+    }
+
+    const BLOCK_SPRITE_ID: i32 = 4;
+    for (slot, mut sprite, mut vis, mut last) in &mut q {
+        let blocked = inv_block.get(slot.worn_index).copied().unwrap_or(false);
+        if !blocked {
+            *vis = Visibility::Hidden;
+            continue;
+        }
+        if last.sprite_id != BLOCK_SPRITE_ID {
+            if let Some(src) = gfx.get_sprite(BLOCK_SPRITE_ID as usize) {
+                *sprite = src.clone();
+                last.sprite_id = BLOCK_SPRITE_ID;
+                *vis = Visibility::Visible;
+            } else {
+                *vis = Visibility::Hidden;
+            }
+        } else {
+            *vis = Visibility::Visible;
+        }
+        sprite.color = Color::WHITE;
+    }
+}
+
+pub(crate) fn run_gameplay_update_cursor_and_carried_item(
+    mut commands: Commands,
+    window_entities: Query<Entity, With<PrimaryWindow>>,
+    windows: Query<&Window, With<PrimaryWindow>>,
+    cameras: Query<&Camera, With<Camera2d>>,
+    gfx: Res<GraphicsCache>,
+    player_state: Res<PlayerState>,
+    cursor_state: Res<GameplayCursorTypeState>,
+    mut q: Query<
+        (
+            &mut Sprite,
+            &mut Transform,
+            &mut Visibility,
+            &mut LastRender,
+        ),
+        With<GameplayUiCarriedItem>,
+    >,
+) {
+    // Map gameplay cursor types onto the OS cursor by inserting a CursorIcon component.
+    let Ok(window_entity) = window_entities.single() else {
+        return;
+    };
+    let system_icon = match cursor_state.cursor {
+        GameplayCursorType::None => SystemCursorIcon::Default,
+        GameplayCursorType::Take => SystemCursorIcon::Grab,
+        GameplayCursorType::Drop => SystemCursorIcon::Grabbing,
+        GameplayCursorType::Swap => SystemCursorIcon::Move,
+        GameplayCursorType::Use => SystemCursorIcon::Pointer,
+    };
+    commands
+        .entity(window_entity)
+        .insert(CursorIcon::from(system_icon));
+
+    let Some((mut sprite, mut t, mut vis, mut last)) = q.iter_mut().next() else {
+        return;
+    };
+
+    let Some(game) = cursor_game_pos(&windows, &cameras) else {
+        *vis = Visibility::Hidden;
+        return;
+    };
+
+    let pl = player_state.character_info();
+    let citem = pl.citem;
+
+    if citem <= 0 {
+        *vis = Visibility::Hidden;
+        last.sprite_id = citem;
+        return;
+    }
+
+    if last.sprite_id != citem {
+        if let Some(src) = gfx.get_sprite(citem as usize) {
+            *sprite = src.clone();
+            last.sprite_id = citem;
+        } else {
+            *vis = Visibility::Hidden;
+            return;
+        }
+    }
+
+    // engine.c draws at (mouse_x-16,mouse_y-16). Alpha-ish effect for drop/swap/use.
+    t.translation = screen_to_world(game.x - 16.0, game.y - 16.0, Z_UI_CURSOR);
+    sprite.color = match cursor_state.cursor {
+        GameplayCursorType::Drop | GameplayCursorType::Swap | GameplayCursorType::Use => {
+            Color::srgba(1.0, 1.0, 1.0, 0.75)
+        }
+        _ => Color::WHITE,
+    };
+    *vis = Visibility::Visible;
+}
+
+pub(crate) fn run_gameplay_update_scroll_knobs(
+    statbox: Res<GameplayStatboxState>,
+    inv_scroll: Res<GameplayInventoryScrollState>,
+    mut q: Query<(&GameplayUiScrollKnob, &mut Transform)>,
+) {
+    if !statbox.is_changed() && !inv_scroll.is_changed() {
+        return;
+    }
+
+    let skill_pos = statbox.skill_pos as i32;
+    let inv_pos = inv_scroll.inv_pos as i32;
+
+    // Match original integer math: y = base + (pos * range) / max.
+    let skill_y =
+        SKILL_SCROLL_Y_BASE + ((skill_pos * SKILL_SCROLL_RANGE) / SKILL_SCROLL_MAX) as f32;
+    let inv_y = INV_SCROLL_Y_BASE + ((inv_pos * INV_SCROLL_RANGE) / INV_SCROLL_MAX) as f32;
+
+    for (knob, mut t) in &mut q {
+        let (x, y) = match knob.kind {
+            GameplayUiScrollKnobKind::Skill => (SKILL_SCROLL_X, skill_y),
+            GameplayUiScrollKnobKind::Inventory => (INV_SCROLL_X, inv_y),
+        };
+        t.translation = screen_to_world(x, y, Z_UI_SCROLL);
+    }
+}
+
+pub(crate) fn run_gameplay_update_stat_bars(
+    player_state: Res<PlayerState>,
+    mut q: Query<(&GameplayUiBar, &mut Sprite, &mut Visibility)>,
+) {
+    let (blue, green, red) = ui_bar_colors();
+
+    #[inline]
+    fn scaled_width(numer: u32, denom: u32) -> f32 {
+        if denom == 0 {
+            return 0.0;
+        }
+        let w = ((numer as u64) * (BAR_SCALE_NUM as u64) / (denom as u64)).min(BAR_W_MAX as u64);
+        w as f32
+    }
+
+    let pl = player_state.character_info();
+    let look_mode = player_state.should_show_look();
+    let look = player_state.look_target();
+
+    let hp_max = pl.hp[5] as u32;
+    let end_max = pl.end[5] as u32;
+    let mana_max = pl.mana[5] as u32;
+
+    let self_hp_cur = pl.a_hp.max(0) as u32;
+    let self_end_cur = pl.a_end.max(0) as u32;
+    let self_mana_cur = pl.a_mana.max(0) as u32;
+
+    let (hp_bg, hp_fg, end_bg, end_fg, mana_bg, mana_fg, fill_color) = if look_mode {
+        (
+            scaled_width(look.hp(), hp_max),
+            scaled_width(look.a_hp(), hp_max),
+            scaled_width(look.end(), end_max),
+            scaled_width(look.a_end(), end_max),
+            scaled_width(look.mana(), mana_max),
+            scaled_width(look.a_mana(), mana_max),
+            red,
+        )
+    } else {
+        (
+            scaled_width(hp_max, hp_max),
+            scaled_width(self_hp_cur, hp_max),
+            scaled_width(end_max, end_max),
+            scaled_width(self_end_cur, end_max),
+            scaled_width(mana_max, mana_max),
+            scaled_width(self_mana_cur, mana_max),
+            green,
+        )
+    };
+
+    for (bar, mut sprite, mut vis) in &mut q {
+        let (w, color) = match (bar.kind, bar.layer) {
+            (GameplayUiBarKind::Hitpoints, GameplayUiBarLayer::Background) => (hp_bg, blue),
+            (GameplayUiBarKind::Hitpoints, GameplayUiBarLayer::Fill) => (hp_fg, fill_color),
+            (GameplayUiBarKind::Endurance, GameplayUiBarLayer::Background) => (end_bg, blue),
+            (GameplayUiBarKind::Endurance, GameplayUiBarLayer::Fill) => (end_fg, fill_color),
+            (GameplayUiBarKind::Mana, GameplayUiBarLayer::Background) => (mana_bg, blue),
+            (GameplayUiBarKind::Mana, GameplayUiBarLayer::Fill) => (mana_fg, fill_color),
+        };
+
+        sprite.color = color;
+        sprite.custom_size = Some(Vec2::new(w.max(0.0), HUD_BAR_H));
+        *vis = if w >= 1.0 {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+    }
 }
 
 pub(crate) fn run_gameplay_text_ui(
@@ -1991,12 +3278,18 @@ pub(crate) fn run_gameplay_text_ui(
     net: Res<NetworkRuntime>,
     mut player_state: ResMut<PlayerState>,
     mut input: ResMut<GameplayTextInput>,
-    mut q_log: Query<
-        (&GameplayUiLogLine, &mut Text2d, &mut TextColor),
-        Without<GameplayUiInputText>,
-    >,
-    mut q_input: Query<&mut Text2d, (With<GameplayUiInputText>, Without<GameplayUiLogLine>)>,
+    mut q_log: Query<(&GameplayUiLogLine, &mut BitmapText), Without<GameplayUiInputText>>,
+    mut q_input: Query<&mut BitmapText, (With<GameplayUiInputText>, Without<GameplayUiLogLine>)>,
 ) {
+    fn bitmap_font_for_log_color(color: crate::types::log_message::LogMessageColor) -> usize {
+        match color {
+            crate::types::log_message::LogMessageColor::Red => 0,
+            crate::types::log_message::LogMessageColor::Yellow => 1,
+            crate::types::log_message::LogMessageColor::Green => 2,
+            crate::types::log_message::LogMessageColor::Blue => 3,
+        }
+    }
+
     // Basic text input. We'll treat gameplay as always having "focus" for now.
     for ev in kb.read() {
         if ev.state != ButtonState::Pressed {
@@ -2051,67 +3344,8 @@ pub(crate) fn run_gameplay_text_ui(
     if keys.just_pressed(KeyCode::Enter) {
         let line = input.current.trim().to_string();
         if !line.is_empty() {
-            let mut consumed = false;
-
-            if let Some(rest) = line.strip_prefix('.') {
-                // Client-side dot commands (ported behavior from the original client).
-                // These are *not* sent to the server as chat.
-                let mut parts = rest.split_whitespace();
-                let cmd = parts.next().unwrap_or("").to_ascii_lowercase();
-                let arg = parts.next().map(|s| s.to_ascii_lowercase());
-
-                let toggle_from_arg = |arg: &Option<String>, current: i32| -> i32 {
-                    match arg.as_deref() {
-                        Some("1") | Some("on") | Some("true") => 1,
-                        Some("0") | Some("off") | Some("false") => 0,
-                        Some("toggle") | None => {
-                            if current != 0 {
-                                0
-                            } else {
-                                1
-                            }
-                        }
-                        _ => current,
-                    }
-                };
-
-                match cmd.as_str() {
-                    "show_names" => {
-                        let cur = player_state.player_data().show_names;
-                        let next = toggle_from_arg(&arg, cur);
-                        player_state.player_data_mut().show_names = next;
-                        player_state.tlog(
-                            1,
-                            format!("show_names {}", if next != 0 { "ON" } else { "OFF" }),
-                        );
-                        consumed = true;
-                    }
-                    "show_proz" => {
-                        let cur = player_state.player_data().show_proz;
-                        let next = toggle_from_arg(&arg, cur);
-                        player_state.player_data_mut().show_proz = next;
-                        player_state.tlog(
-                            1,
-                            format!("show_proz {}", if next != 0 { "ON" } else { "OFF" }),
-                        );
-                        consumed = true;
-                    }
-                    "hide" => {
-                        let cur = player_state.player_data().hide;
-                        let next = toggle_from_arg(&arg, cur);
-                        player_state.player_data_mut().hide = next;
-                        player_state
-                            .tlog(1, format!("hide {}", if next != 0 { "ON" } else { "OFF" }));
-                        consumed = true;
-                    }
-                    _ => {}
-                }
-            }
-
-            if !consumed {
-                send_chat_input(&net, &line);
-                player_state.tlog(1, format!("> {line}"));
-            }
+            send_chat_input(&net, &line);
+            player_state.tlog(1, format!("> {line}"));
 
             input.history.push(line.clone());
             input.history_pos = None;
@@ -2120,288 +3354,1509 @@ pub(crate) fn run_gameplay_text_ui(
     }
 
     // Update log text (22 lines), oldest at top like `engine.c`.
-    for (line, mut text2d, mut color) in &mut q_log {
+    for (line, mut text) in &mut q_log {
         let idx_from_most_recent = LOG_LINES.saturating_sub(1).saturating_sub(line.line);
         if let Some(msg) = player_state.log_message(idx_from_most_recent) {
-            **text2d = msg.message.clone();
-            color.0 = match msg.color {
-                crate::types::log_message::LogMessageColor::Yellow => Color::srgb(1.0, 1.0, 0.0),
-                crate::types::log_message::LogMessageColor::Green => Color::srgb(0.0, 1.0, 0.0),
-                crate::types::log_message::LogMessageColor::Blue => Color::srgb(0.3, 0.7, 1.0),
-                crate::types::log_message::LogMessageColor::Red => Color::srgb(1.0, 0.0, 0.0),
-            };
+            let desired_font = bitmap_font_for_log_color(msg.color);
+            if text.font != desired_font {
+                text.font = desired_font;
+            }
+            if text.text != msg.message {
+                text.text.clear();
+                text.text.push_str(&msg.message);
+            }
         } else {
-            **text2d = String::new();
-            color.0 = Color::WHITE;
+            if !text.text.is_empty() {
+                text.text.clear();
+            }
+            if text.font != UI_BITMAP_FONT {
+                text.font = UI_BITMAP_FONT;
+            }
         }
     }
 
     // Update input line text. Clamp to the last 48 characters like the original viewport.
-    if let Some(mut text2d) = q_input.iter_mut().next() {
+    if let Some(mut text) = q_input.iter_mut().next() {
         let current = input.current.as_str();
         let view = if current.len() > 48 {
             &current[current.len() - 48..]
         } else {
             current
         };
-        **text2d = format!("{view}|");
+
+        let matches = text
+            .text
+            .strip_suffix('|')
+            .is_some_and(|prefix| prefix == view);
+        if !matches {
+            text.text.clear();
+            text.text.push_str(view);
+            text.text.push('|');
+        }
+        if text.font != UI_BITMAP_FONT {
+            text.font = UI_BITMAP_FONT;
+        }
+    }
+}
+
+fn cursor_game_pos(
+    windows: &Query<&Window, With<bevy::window::PrimaryWindow>>,
+    cameras: &Query<&Camera, With<Camera2d>>,
+) -> Option<Vec2> {
+    let window = windows.single().ok()?;
+    let cursor_logical = window.cursor_position()?;
+
+    let scale_factor = window.resolution.scale_factor();
+    let cursor_physical = cursor_logical * scale_factor;
+
+    let camera = cameras.single().ok()?;
+    let (vp_pos, vp_size) = if let Some(viewport) = camera.viewport.as_ref() {
+        (
+            Vec2::new(
+                viewport.physical_position.x as f32,
+                viewport.physical_position.y as f32,
+            ),
+            Vec2::new(
+                viewport.physical_size.x as f32,
+                viewport.physical_size.y as f32,
+            ),
+        )
+    } else {
+        (
+            Vec2::ZERO,
+            Vec2::new(
+                window.resolution.physical_width() as f32,
+                window.resolution.physical_height() as f32,
+            ),
+        )
+    };
+
+    if vp_size.x <= 0.0 || vp_size.y <= 0.0 {
+        return None;
+    }
+
+    let vp_max = vp_pos + vp_size;
+    if cursor_physical.x < vp_pos.x
+        || cursor_physical.x >= vp_max.x
+        || cursor_physical.y < vp_pos.y
+        || cursor_physical.y >= vp_max.y
+    {
+        return None;
+    }
+
+    let in_viewport = cursor_physical - vp_pos;
+    Some(Vec2::new(
+        in_viewport.x / vp_size.x * TARGET_WIDTH,
+        in_viewport.y / vp_size.y * TARGET_HEIGHT,
+    ))
+}
+
+fn in_rect(game: Vec2, x: f32, y: f32, w: f32, h: f32) -> bool {
+    game.x >= x && game.x <= x + w && game.y >= y && game.y <= y + h
+}
+
+pub(crate) fn run_gameplay_buttonbox_toggles(
+    keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
+    cameras: Query<&Camera, With<Camera2d>>,
+    net: Res<NetworkRuntime>,
+    mut player_state: ResMut<PlayerState>,
+    mut exit_state: ResMut<GameplayExitState>,
+    mut q_boxes: Query<(&GameplayUiToggleBox, &mut Visibility), Without<GameplayUiModeBox>>,
+    mut q_mode_boxes: Query<(&GameplayUiModeBox, &mut Visibility), Without<GameplayUiToggleBox>>,
+) {
+    // Keyboard shortcuts for mode buttons (orig client: F1/F2/F3).
+    if keys.just_pressed(KeyCode::F1) {
+        net.send(ClientCommand::new_mode(2).to_bytes());
+    }
+    if keys.just_pressed(KeyCode::F2) {
+        net.send(ClientCommand::new_mode(1).to_bytes());
+    }
+    if keys.just_pressed(KeyCode::F3) {
+        net.send(ClientCommand::new_mode(0).to_bytes());
+    }
+
+    // Exit (orig/inter.c button_command case 11: cmd_exit() -> cmd1(CL_CMD_EXIT,0)).
+    if keys.just_pressed(KeyCode::F12) {
+        cmd_exit(&mut exit_state, &net, &mut player_state);
+    }
+
+    // Keyboard shortcuts (orig/main.c): F4=show_proz, F6=hide, F7=show_names.
+    if keys.just_pressed(KeyCode::F4) {
+        let cur = player_state.player_data().show_proz;
+        player_state.player_data_mut().show_proz = 1 - cur;
+    }
+    if keys.just_pressed(KeyCode::F6) {
+        let cur = player_state.player_data().hide;
+        player_state.player_data_mut().hide = 1 - cur;
+    }
+    if keys.just_pressed(KeyCode::F7) {
+        let cur = player_state.player_data().show_names;
+        player_state.player_data_mut().show_names = 1 - cur;
+    }
+
+    // Mouse buttonbox click areas (orig/inter.c::trans_button + mouse_buttonbox).
+    if mouse.just_released(MouseButton::Left) {
+        if let Some(game) = cursor_game_pos(&windows, &cameras) {
+            // F1/F2/F3 mode buttons (nr=0..2): row1 col0..2
+            let f1_x = BUTTONBOX_X + 0.0 * BUTTONBOX_STEP_X;
+            let f1_y = BUTTONBOX_Y_ROW1;
+            if in_rect(game, f1_x, f1_y, BUTTONBOX_BUTTON_W, BUTTONBOX_BUTTON_H) {
+                net.send(ClientCommand::new_mode(2).to_bytes());
+            }
+            let f2_x = BUTTONBOX_X + 1.0 * BUTTONBOX_STEP_X;
+            let f2_y = BUTTONBOX_Y_ROW1;
+            if in_rect(game, f2_x, f2_y, BUTTONBOX_BUTTON_W, BUTTONBOX_BUTTON_H) {
+                net.send(ClientCommand::new_mode(1).to_bytes());
+            }
+            let f3_x = BUTTONBOX_X + 2.0 * BUTTONBOX_STEP_X;
+            let f3_y = BUTTONBOX_Y_ROW1;
+            if in_rect(game, f3_x, f3_y, BUTTONBOX_BUTTON_W, BUTTONBOX_BUTTON_H) {
+                net.send(ClientCommand::new_mode(0).to_bytes());
+            }
+
+            // F4 (nr=3): row1 col3
+            let f4_x = BUTTONBOX_X + 3.0 * BUTTONBOX_STEP_X;
+            let f4_y = BUTTONBOX_Y_ROW1;
+            if in_rect(game, f4_x, f4_y, BUTTONBOX_BUTTON_W, BUTTONBOX_BUTTON_H) {
+                let cur = player_state.player_data().show_proz;
+                player_state.player_data_mut().show_proz = 1 - cur;
+            }
+
+            // F6 (nr=5): row2 col1
+            let f6_x = BUTTONBOX_X + 1.0 * BUTTONBOX_STEP_X;
+            let f6_y = BUTTONBOX_Y_ROW2;
+            if in_rect(game, f6_x, f6_y, BUTTONBOX_BUTTON_W, BUTTONBOX_BUTTON_H) {
+                let cur = player_state.player_data().hide;
+                player_state.player_data_mut().hide = 1 - cur;
+            }
+
+            // F7 (nr=6): row2 col2
+            let f7_x = BUTTONBOX_X + 2.0 * BUTTONBOX_STEP_X;
+            let f7_y = BUTTONBOX_Y_ROW2;
+            if in_rect(game, f7_x, f7_y, BUTTONBOX_BUTTON_W, BUTTONBOX_BUTTON_H) {
+                let cur = player_state.player_data().show_names;
+                player_state.player_data_mut().show_names = 1 - cur;
+            }
+
+            // F12 / EXIT (nr=11): row3 col3 ("bottom right").
+            let f12_x = BUTTONBOX_X + 3.0 * BUTTONBOX_STEP_X;
+            let f12_y = BUTTONBOX_Y_ROW3;
+            if in_rect(game, f12_x, f12_y, BUTTONBOX_BUTTON_W, BUTTONBOX_BUTTON_H) {
+                cmd_exit(&mut exit_state, &net, &mut player_state);
+            }
+        }
+    }
+
+    // Update indicator visibility (orig/engine.c dd_showbox calls).
+    let pdata = player_state.player_data();
+    for (boxc, mut vis) in &mut q_boxes {
+        let enabled = match boxc.kind {
+            GameplayToggleBoxKind::ShowProz => pdata.show_proz != 0,
+            GameplayToggleBoxKind::ShowNames => pdata.show_names != 0,
+            GameplayToggleBoxKind::Hide => pdata.hide != 0,
+        };
+        *vis = if enabled {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+    }
+
+    let mode = player_state.character_info().mode;
+    for (boxc, mut vis) in &mut q_mode_boxes {
+        *vis = if mode == boxc.mode {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+    }
+}
+
+pub(crate) fn run_gameplay_statbox_input(
+    keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
+    cameras: Query<&Camera, With<Camera2d>>,
+    net: Res<NetworkRuntime>,
+    mut player_state: ResMut<PlayerState>,
+    mut statbox: ResMut<GameplayStatboxState>,
+    mut inv_scroll: ResMut<GameplayInventoryScrollState>,
+) {
+    let Some(game) = cursor_game_pos(&windows, &cameras) else {
+        return;
+    };
+
+    // Right-click help texts (orig/inter.c::_mouse_statbox).
+    if mouse.just_released(MouseButton::Right) {
+        let x = game.x;
+        let y = game.y;
+
+        // Inventory scroll right-click help (orig/inter.c::button_help case 12/13).
+        if x > 290.0 && y > 1.0 && x < 300.0 && y < 34.0 {
+            player_state.tlog(1, "Scroll inventory contents up.");
+            return;
+        }
+        if x > 290.0 && y > 141.0 && x < 300.0 && y < 174.0 {
+            player_state.tlog(1, "Scroll inventory contents down");
+            return;
+        }
+
+        // Skill list right-click (orig/inter.c::mouse_statbox2): show skill description.
+        if (2.0..=108.0).contains(&x) && (114.0..=251.0).contains(&y) {
+            let row = ((y - 114.0) / 14.0).floor() as usize;
+            if row < 10 {
+                let pl = player_state.character_info();
+                let sorted = build_sorted_skills(pl);
+                let skilltab_index = statbox.skill_pos + row;
+                if let Some(&skill_id) = sorted.get(skilltab_index) {
+                    if pl.skill[skill_id][0] != 0 {
+                        let desc = get_skill_desc(skill_id);
+                        if !desc.is_empty() {
+                            player_state.tlog(1, desc);
+                        }
+                    }
+                }
+            }
+            return;
+        }
+
+        if x > 109.0 && y > 254.0 && x < 158.0 && y < 266.0 {
+            player_state.tlog(1, "Make the changes permanent");
+            return;
+        }
+
+        if !(133.0..=157.0).contains(&x) || !(2.0..=251.0).contains(&y) {
+            return;
+        }
+
+        let n = ((y - 2.0) / 14.0).floor() as usize;
+        if x < 145.0 {
+            if n < 5 {
+                player_state.tlog(1, &format!("Raise {}.", ATTRIBUTE_NAMES[n]));
+            } else if n == 5 {
+                player_state.tlog(1, "Raise Hitpoints.");
+            } else if n == 6 {
+                player_state.tlog(1, "Raise Endurance.");
+            } else if n == 7 {
+                player_state.tlog(1, "Raise Mana.");
+            } else {
+                let pl = player_state.character_info();
+                let sorted = build_sorted_skills(pl);
+                let skilltab_index = statbox.skill_pos + (n.saturating_sub(8));
+                if let Some(&skill_id) = sorted.get(skilltab_index) {
+                    let name = get_skill_name(skill_id);
+                    if !name.is_empty() {
+                        player_state.tlog(1, &format!("Raise {}.", name));
+                    }
+                }
+            }
+        } else {
+            if n < 5 {
+                player_state.tlog(1, &format!("Lower {}.", ATTRIBUTE_NAMES[n]));
+            } else if n == 5 {
+                player_state.tlog(1, "Lower Hitpoints.");
+            } else if n == 6 {
+                player_state.tlog(1, "Lower Endurance.");
+            } else if n == 7 {
+                player_state.tlog(1, "Lower Mana.");
+            } else {
+                let pl = player_state.character_info();
+                let sorted = build_sorted_skills(pl);
+                let skilltab_index = statbox.skill_pos + (n.saturating_sub(8));
+                if let Some(&skill_id) = sorted.get(skilltab_index) {
+                    let name = get_skill_name(skill_id);
+                    if !name.is_empty() {
+                        player_state.tlog(1, &format!("Lower {}.", name));
+                    }
+                }
+            }
+        }
+        return;
+    }
+
+    if !mouse.just_released(MouseButton::Left) {
+        return;
+    }
+
+    // Inventory scroll buttons (orig/inter.c::button_command case 12/13 via trans_button).
+    if game.x > 290.0 && game.y > 1.0 && game.x < 300.0 && game.y < 34.0 {
+        if inv_scroll.inv_pos > 1 {
+            inv_scroll.inv_pos = inv_scroll.inv_pos.saturating_sub(2);
+        }
+        return;
+    }
+    if game.x > 290.0 && game.y > 141.0 && game.x < 300.0 && game.y < 174.0 {
+        if inv_scroll.inv_pos < 30 {
+            inv_scroll.inv_pos = (inv_scroll.inv_pos + 2).min(30);
+        }
+        return;
+    }
+
+    // Skill list scroll buttons (orig/inter.c::button_command case 14/15 via trans_button).
+    // Up: if (skill_pos>1) skill_pos-=2;  Down: if (skill_pos<40) skill_pos+=2;
+    if game.x > 206.0 && game.x < 218.0 && game.y > 113.0 && game.y < 148.0 {
+        if statbox.skill_pos > 1 {
+            statbox.skill_pos = statbox.skill_pos.saturating_sub(2);
+        }
+        return;
+    }
+    if game.x > 206.0 && game.x < 218.0 && game.y > 218.0 && game.y < 252.0 {
+        if statbox.skill_pos < 40 {
+            statbox.skill_pos = (statbox.skill_pos + 2).min(40);
+        }
+        return;
+    }
+
+    // Skill click (orig/inter.c::mouse_statbox2): clicking a skill row sends CL_CMD_SKILL.
+    // The original client always sends attrib0=skilltab[..].attrib[0], which is initialized to 1
+    // for all skills (and can be modified for spells via commented-out UI).
+    if (2.0..=108.0).contains(&game.x) && (114.0..=251.0).contains(&game.y) {
+        let row = ((game.y - 114.0) / 14.0).floor() as usize;
+        if row < 10 {
+            let pl = player_state.character_info();
+            let sorted = build_sorted_skills(pl);
+            let skilltab_index = statbox.skill_pos + row;
+            if let Some(&skill_id) = sorted.get(skilltab_index) {
+                let skill_nr = get_skill_nr(skill_id) as u32;
+                let selected_char = player_state.selected_char() as u32;
+                let attrib0 = 1u32;
+                net.send(ClientCommand::new_skill(skill_nr, selected_char, attrib0).to_bytes());
+            }
+        }
+        return;
+    }
+
+    // orig/inter.c::mouse_statbox: Shift=10 repeats, Ctrl=90 repeats.
+    let repeat = if keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight) {
+        90
+    } else if keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight) {
+        10
+    } else {
+        1
+    };
+
+    for _ in 0..repeat {
+        let x = game.x;
+        let y = game.y;
+
+        // Commit button.
+        if x > 109.0 && y > 254.0 && x < 158.0 && y < 266.0 {
+            let pl = player_state.character_info();
+            let sorted = build_sorted_skills(pl);
+            for n in 0..108 {
+                let v = statbox.stat_raised[n];
+                if v == 0 {
+                    continue;
+                }
+                let which = if n > 7 {
+                    let skilltab_index = n - 8;
+                    let Some(&skill_id) = sorted.get(skilltab_index) else {
+                        continue;
+                    };
+                    (get_skill_nr(skill_id) + 8) as i16
+                } else {
+                    n as i16
+                };
+                net.send(ClientCommand::new_stat(which, v).to_bytes());
+            }
+            statbox.clear();
+            return;
+        }
+
+        if !(133.0..=157.0).contains(&x) || !(2.0..=251.0).contains(&y) {
+            return;
+        }
+
+        let n = ((y - 2.0) / 14.0).floor() as usize;
+        let raising = x < 145.0;
+
+        let pl = player_state.character_info();
+        let available = statbox.available_points(pl);
+
+        if raising {
+            if n < 5 {
+                let idx = n;
+                let need = attrib_needed(pl, n, pl.attrib[n][0] as i32 + statbox.stat_raised[idx]);
+                if need != HIGH_VAL && need <= available {
+                    statbox.stat_points_used += need;
+                    statbox.stat_raised[idx] += 1;
+                }
+            } else if n == 5 {
+                let idx = 5;
+                let need = hp_needed(pl, pl.hp[0] as i32 + statbox.stat_raised[idx]);
+                if need != HIGH_VAL && need <= available {
+                    statbox.stat_points_used += need;
+                    statbox.stat_raised[idx] += 1;
+                }
+            } else if n == 6 {
+                let idx = 6;
+                let need = end_needed(pl, pl.end[0] as i32 + statbox.stat_raised[idx]);
+                if need != HIGH_VAL && need <= available {
+                    statbox.stat_points_used += need;
+                    statbox.stat_raised[idx] += 1;
+                }
+            } else if n == 7 {
+                let idx = 7;
+                let need = mana_needed(pl, pl.mana[0] as i32 + statbox.stat_raised[idx]);
+                if need != HIGH_VAL && need <= available {
+                    statbox.stat_points_used += need;
+                    statbox.stat_raised[idx] += 1;
+                }
+            } else {
+                let skill_row = n.saturating_sub(8);
+                let skilltab_index = statbox.skill_pos + skill_row;
+                let raised_idx = 8 + skilltab_index;
+                if raised_idx >= statbox.stat_raised.len() {
+                    continue;
+                }
+                let sorted = build_sorted_skills(pl);
+                let Some(&skill_id) = sorted.get(skilltab_index) else {
+                    continue;
+                };
+                if pl.skill[skill_id][0] == 0 {
+                    continue;
+                }
+                let need = skill_needed(
+                    pl,
+                    skill_id,
+                    pl.skill[skill_id][0] as i32 + statbox.stat_raised[raised_idx],
+                );
+                if need != HIGH_VAL && need <= available {
+                    statbox.stat_points_used += need;
+                    statbox.stat_raised[raised_idx] += 1;
+                }
+            }
+        } else {
+            if n < 5 {
+                let idx = n;
+                if statbox.stat_raised[idx] > 0 {
+                    statbox.stat_raised[idx] -= 1;
+                    let refund =
+                        attrib_needed(pl, n, pl.attrib[n][0] as i32 + statbox.stat_raised[idx]);
+                    if refund != HIGH_VAL {
+                        statbox.stat_points_used -= refund;
+                    }
+                }
+            } else if n == 5 {
+                let idx = 5;
+                if statbox.stat_raised[idx] > 0 {
+                    statbox.stat_raised[idx] -= 1;
+                    let refund = hp_needed(pl, pl.hp[0] as i32 + statbox.stat_raised[idx]);
+                    if refund != HIGH_VAL {
+                        statbox.stat_points_used -= refund;
+                    }
+                }
+            } else if n == 6 {
+                let idx = 6;
+                if statbox.stat_raised[idx] > 0 {
+                    statbox.stat_raised[idx] -= 1;
+                    let refund = end_needed(pl, pl.end[0] as i32 + statbox.stat_raised[idx]);
+                    if refund != HIGH_VAL {
+                        statbox.stat_points_used -= refund;
+                    }
+                }
+            } else if n == 7 {
+                let idx = 7;
+                if statbox.stat_raised[idx] > 0 {
+                    statbox.stat_raised[idx] -= 1;
+                    let refund = mana_needed(pl, pl.mana[0] as i32 + statbox.stat_raised[idx]);
+                    if refund != HIGH_VAL {
+                        statbox.stat_points_used -= refund;
+                    }
+                }
+            } else {
+                let skill_row = n.saturating_sub(8);
+                let skilltab_index = statbox.skill_pos + skill_row;
+                let raised_idx = 8 + skilltab_index;
+                if raised_idx >= statbox.stat_raised.len() {
+                    continue;
+                }
+                if statbox.stat_raised[raised_idx] <= 0 {
+                    continue;
+                }
+                let sorted = build_sorted_skills(pl);
+                let Some(&skill_id) = sorted.get(skilltab_index) else {
+                    continue;
+                };
+                statbox.stat_raised[raised_idx] -= 1;
+                let refund = skill_needed(
+                    pl,
+                    skill_id,
+                    pl.skill[skill_id][0] as i32 + statbox.stat_raised[raised_idx],
+                );
+                if refund != HIGH_VAL {
+                    statbox.stat_points_used -= refund;
+                }
+            }
+        }
+
+        if statbox.stat_points_used < 0 {
+            statbox.stat_points_used = 0;
+        }
+    }
+}
+
+pub(crate) fn run_gameplay_inventory_input(
+    keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
+    cameras: Query<&Camera, With<Camera2d>>,
+    net: Res<NetworkRuntime>,
+    mut player_state: ResMut<PlayerState>,
+    inv_scroll: Res<GameplayInventoryScrollState>,
+    mut hover: ResMut<GameplayInventoryHoverState>,
+    mut cursor_state: ResMut<GameplayCursorTypeState>,
+) {
+    let Some(game) = cursor_game_pos(&windows, &cameras) else {
+        hover.backpack_slot = None;
+        hover.equipment_worn_index = None;
+        hover.money = None;
+        cursor_state.cursor = GameplayCursorType::None;
+        return;
+    };
+
+    // Hover detection order mirrors orig/inter.c::mouse_inventory: money first, then backpack.
+    hover.backpack_slot = None;
+    hover.equipment_worn_index = None;
+    hover.money = None;
+    cursor_state.cursor = GameplayCursorType::None;
+
+    let x = game.x;
+    let y = game.y;
+
+    // Money (orig/inter.c::mouse_inventory): click regions around x=219..301,y=176..259.
+    if (176.0..=203.0).contains(&y) {
+        if (219.0..=246.0).contains(&x) {
+            hover.money = Some(GameplayMoneyHoverKind::Silver1);
+        } else if (247.0..=274.0).contains(&x) {
+            hover.money = Some(GameplayMoneyHoverKind::Silver10);
+        } else if (275.0..=301.0).contains(&x) {
+            hover.money = Some(GameplayMoneyHoverKind::Gold1);
+        }
+    } else if (205.0..=231.0).contains(&y) {
+        if (219.0..=246.0).contains(&x) {
+            hover.money = Some(GameplayMoneyHoverKind::Gold10);
+        } else if (247.0..=274.0).contains(&x) {
+            hover.money = Some(GameplayMoneyHoverKind::Gold100);
+        } else if (275.0..=301.0).contains(&x) {
+            hover.money = Some(GameplayMoneyHoverKind::Gold1000);
+        }
+    } else if (232.0..=259.0).contains(&y) && (219.0..=246.0).contains(&x) {
+        hover.money = Some(GameplayMoneyHoverKind::Gold10000);
+    }
+
+    // Backpack hover (orig/inter.c::mouse_inventory): x 219..288, y 1..175.
+    if hover.money.is_none() && (219.0..=288.0).contains(&x) && (1.0..=175.0).contains(&y) {
+        let tx = ((x - 219.0) / 35.0).floor() as i32;
+        let ty = ((y - 1.0) / 35.0).floor() as i32;
+        if (0..2).contains(&tx) && (0..5).contains(&ty) {
+            let slot = (tx + ty * 2) as usize;
+            if slot < 10 {
+                hover.backpack_slot = Some(slot);
+            }
+        }
+    }
+
+    // Worn equipment hover (orig/inter.c::mouse_inventory): x>302 && x<371 && y>1 && y<175+35.
+    if hover.money.is_none()
+        && hover.backpack_slot.is_none()
+        && (302.0..=371.0).contains(&x)
+        && (1.0..=210.0).contains(&y)
+    {
+        let tx = ((x - 302.0) / 35.0).floor() as i32;
+        let ty = ((y - 1.0) / 35.0).floor() as i32;
+        if (0..2).contains(&tx) && (0..6).contains(&ty) {
+            let n = (tx + ty * 2) as usize;
+            if n < EQUIP_WNTAB.len() {
+                hover.equipment_worn_index = Some(EQUIP_WNTAB[n]);
+            }
+        }
+    }
+
+    let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+    let ctrl = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
+    let keys_mask = (shift as u32) | ((ctrl as u32) << 1);
+
+    // Cursor type (orig/inter.c::mouse_inventory cursor_type logic).
+    let pl = player_state.character_info();
+    let has_citem = pl.citem != 0;
+    if hover.money.is_some() {
+        cursor_state.cursor = GameplayCursorType::Take;
+    } else if let Some(slot) = hover.backpack_slot {
+        let idx = inv_scroll.inv_pos.saturating_add(slot);
+        let has_item = pl.item.get(idx).copied().unwrap_or(0) != 0;
+        cursor_state.cursor = match keys_mask {
+            1 => {
+                if has_item {
+                    if has_citem {
+                        GameplayCursorType::Swap
+                    } else {
+                        GameplayCursorType::Take
+                    }
+                } else if has_citem {
+                    GameplayCursorType::Drop
+                } else {
+                    GameplayCursorType::None
+                }
+            }
+            0 => {
+                if has_item {
+                    GameplayCursorType::Use
+                } else {
+                    GameplayCursorType::None
+                }
+            }
+            _ => GameplayCursorType::None,
+        };
+    } else if let Some(worn_index) = hover.equipment_worn_index {
+        let has_item = pl.worn.get(worn_index).copied().unwrap_or(0) != 0;
+        cursor_state.cursor = match keys_mask {
+            1 => {
+                if has_item {
+                    if has_citem {
+                        GameplayCursorType::Swap
+                    } else {
+                        GameplayCursorType::Take
+                    }
+                } else if has_citem {
+                    GameplayCursorType::Drop
+                } else {
+                    GameplayCursorType::None
+                }
+            }
+            0 => {
+                if has_item {
+                    GameplayCursorType::Use
+                } else {
+                    GameplayCursorType::None
+                }
+            }
+            _ => GameplayCursorType::None,
+        };
+    }
+
+    // Right-click behavior: money tooltips + backpack look.
+    if mouse.just_released(MouseButton::Right) {
+        if let Some(kind) = hover.money {
+            match kind {
+                GameplayMoneyHoverKind::Silver1 => player_state.tlog(1, "1 silver coin."),
+                GameplayMoneyHoverKind::Silver10 => player_state.tlog(1, "10 silver coins."),
+                GameplayMoneyHoverKind::Gold1 => player_state.tlog(1, "1 gold coin."),
+                GameplayMoneyHoverKind::Gold10 => player_state.tlog(1, "10 gold coins."),
+                GameplayMoneyHoverKind::Gold100 => player_state.tlog(1, "100 gold coins."),
+                GameplayMoneyHoverKind::Gold1000 => player_state.tlog(1, "1,000 gold coins."),
+                GameplayMoneyHoverKind::Gold10000 => player_state.tlog(1, "10,000 gold coins."),
+            }
+            return;
+        }
+
+        if let Some(slot) = hover.backpack_slot {
+            let selected_char = player_state.selected_char() as u32;
+            let idx = inv_scroll.inv_pos.saturating_add(slot);
+            net.send(ClientCommand::new_inv_look(idx as u32, 0, selected_char).to_bytes());
+            return;
+        }
+
+        // Worn equipment right-click (orig/inter.c::mouse_inventory): cmd3(CL_CMD_INV,7,slot,selected_char).
+        // Slot numbering here matches the original cmd3 usage (0..11), not the WN_* indices.
+        if hover.equipment_worn_index.is_some() && (keys_mask == 0 || keys_mask == 1) {
+            let tx = ((x - 302.0) / 35.0).floor() as i32;
+            let ty = ((y - 1.0) / 35.0).floor() as i32;
+            let slot_nr: Option<u32> = match (tx, ty) {
+                (0, 0) => Some(0),  // head
+                (1, 0) => Some(9),  // cloak
+                (0, 1) => Some(2),  // body
+                (1, 1) => Some(3),  // arms
+                (0, 2) => Some(1),  // neck
+                (1, 2) => Some(4),  // belt
+                (0, 3) => Some(8),  // right hand
+                (1, 3) => Some(7),  // left hand
+                (0, 4) => Some(10), // right ring
+                (1, 4) => Some(11), // left ring
+                (0, 5) => Some(5),  // legs
+                (1, 5) => Some(6),  // feet
+                _ => None,
+            };
+            if let Some(slot_nr) = slot_nr {
+                let selected_char = player_state.selected_char() as u32;
+                net.send(ClientCommand::new_inv(7, slot_nr, selected_char).to_bytes());
+            }
+            return;
+        }
+
+        return;
+    }
+
+    if !mouse.just_released(MouseButton::Left) {
+        return;
+    }
+
+    // Left-click behavior.
+    if let Some(kind) = hover.money {
+        let selected_char = player_state.selected_char() as u32;
+        let amount = match kind {
+            GameplayMoneyHoverKind::Silver1 => 1u32,
+            GameplayMoneyHoverKind::Silver10 => 10u32,
+            GameplayMoneyHoverKind::Gold1 => 100u32,
+            GameplayMoneyHoverKind::Gold10 => 1_000u32,
+            GameplayMoneyHoverKind::Gold100 => 10_000u32,
+            GameplayMoneyHoverKind::Gold1000 => 100_000u32,
+            GameplayMoneyHoverKind::Gold10000 => 1_000_000u32,
+        };
+        // orig/inter.c uses: cmd3(CL_CMD_INV,2,amount,selected_char)
+        net.send(ClientCommand::new_inv(2, amount, selected_char).to_bytes());
+        return;
+    }
+
+    if let Some(slot) = hover.backpack_slot {
+        // Backpack click behavior depends on Shift (orig/inter.c::mouse_inventory).
+        // - Shift + LB_UP: cmd3(CL_CMD_INV,0,nr+inv_pos,selected_char)
+        // - No mods + LB_UP: cmd3(CL_CMD_INV,6,nr+inv_pos,selected_char)
+        // - Ctrl or other combos: do nothing.
+        if keys_mask == 0 || keys_mask == 1 {
+            let selected_char = player_state.selected_char() as u32;
+            let idx = inv_scroll.inv_pos.saturating_add(slot) as u32;
+            let a = if keys_mask == 1 { 0u32 } else { 6u32 };
+            net.send(ClientCommand::new_inv(a, idx, selected_char).to_bytes());
+        }
+        return;
+    }
+
+    // Worn equipment left-click (orig/inter.c::mouse_inventory):
+    // - Shift + LB_UP: cmd3(CL_CMD_INV,1,slot,selected_char)
+    // - No mods + LB_UP: cmd3(CL_CMD_INV,5,slot,selected_char)
+    if hover.equipment_worn_index.is_some() && (keys_mask == 0 || keys_mask == 1) {
+        let tx = ((x - 302.0) / 35.0).floor() as i32;
+        let ty = ((y - 1.0) / 35.0).floor() as i32;
+        let slot_nr: Option<u32> = match (tx, ty) {
+            (0, 0) => Some(0),  // head
+            (1, 0) => Some(9),  // cloak
+            (0, 1) => Some(2),  // body
+            (1, 1) => Some(3),  // arms
+            (0, 2) => Some(1),  // neck
+            (1, 2) => Some(4),  // belt
+            (0, 3) => Some(8),  // right hand
+            (1, 3) => Some(7),  // left hand
+            (0, 4) => Some(10), // right ring
+            (1, 4) => Some(11), // left ring
+            (0, 5) => Some(5),  // legs
+            (1, 5) => Some(6),  // feet
+            _ => None,
+        };
+        if let Some(slot_nr) = slot_nr {
+            let selected_char = player_state.selected_char() as u32;
+            let a = if keys_mask == 1 { 1u32 } else { 5u32 };
+            net.send(ClientCommand::new_inv(a, slot_nr, selected_char).to_bytes());
+        }
     }
 }
 
 pub(crate) fn run_gameplay_update_hud_labels(
     player_state: Res<PlayerState>,
+    statbox: Res<GameplayStatboxState>,
+    mut last_state_rev: Local<u64>,
     mut q: ParamSet<(
         Query<
-            &mut Text2d,
+            &mut BitmapText,
             (
                 With<GameplayUiHitpointsLabel>,
                 Without<GameplayUiAttributeLabel>,
                 Without<GameplayUiSkillLabel>,
+                Without<GameplayUiRaiseStatText>,
+                Without<GameplayUiAttributeAuxText>,
+                Without<GameplayUiSkillAuxText>,
             ),
         >,
         Query<
-            &mut Text2d,
+            &mut BitmapText,
             (
                 With<GameplayUiEnduranceLabel>,
                 Without<GameplayUiAttributeLabel>,
                 Without<GameplayUiSkillLabel>,
+                Without<GameplayUiRaiseStatText>,
+                Without<GameplayUiAttributeAuxText>,
+                Without<GameplayUiSkillAuxText>,
             ),
         >,
         Query<
-            &mut Text2d,
+            &mut BitmapText,
             (
                 With<GameplayUiManaLabel>,
                 Without<GameplayUiAttributeLabel>,
                 Without<GameplayUiSkillLabel>,
+                Without<GameplayUiRaiseStatText>,
+                Without<GameplayUiAttributeAuxText>,
+                Without<GameplayUiSkillAuxText>,
             ),
         >,
         Query<
-            &mut Text2d,
+            &mut BitmapText,
             (
                 With<GameplayUiMoneyLabel>,
                 Without<GameplayUiAttributeLabel>,
                 Without<GameplayUiSkillLabel>,
+                Without<GameplayUiRaiseStatText>,
+                Without<GameplayUiAttributeAuxText>,
+                Without<GameplayUiSkillAuxText>,
             ),
         >,
         Query<
-            &mut Text2d,
+            &mut BitmapText,
             (
                 With<GameplayUiUpdateValue>,
                 Without<GameplayUiAttributeLabel>,
                 Without<GameplayUiSkillLabel>,
+                Without<GameplayUiRaiseStatText>,
+                Without<GameplayUiAttributeAuxText>,
+                Without<GameplayUiSkillAuxText>,
             ),
         >,
         Query<
-            &mut Text2d,
+            &mut BitmapText,
             (
                 With<GameplayUiWeaponValueLabel>,
                 Without<GameplayUiAttributeLabel>,
                 Without<GameplayUiSkillLabel>,
+                Without<GameplayUiRaiseStatText>,
+                Without<GameplayUiAttributeAuxText>,
+                Without<GameplayUiSkillAuxText>,
             ),
         >,
         Query<
-            &mut Text2d,
+            &mut BitmapText,
             (
                 With<GameplayUiArmorValueLabel>,
                 Without<GameplayUiAttributeLabel>,
                 Without<GameplayUiSkillLabel>,
+                Without<GameplayUiRaiseStatText>,
+                Without<GameplayUiAttributeAuxText>,
+                Without<GameplayUiSkillAuxText>,
             ),
         >,
         Query<
-            &mut Text2d,
+            &mut BitmapText,
             (
                 With<GameplayUiExperienceLabel>,
                 Without<GameplayUiAttributeLabel>,
                 Without<GameplayUiSkillLabel>,
+                Without<GameplayUiRaiseStatText>,
+                Without<GameplayUiAttributeAuxText>,
+                Without<GameplayUiSkillAuxText>,
             ),
         >,
     )>,
     mut q_attrib: Query<
-        (&GameplayUiAttributeLabel, &mut Text2d),
+        (&GameplayUiAttributeLabel, &mut BitmapText),
         (
             With<GameplayUiAttributeLabel>,
             Without<GameplayUiSkillLabel>,
+            Without<GameplayUiRaiseStatText>,
+            Without<GameplayUiAttributeAuxText>,
+            Without<GameplayUiSkillAuxText>,
         ),
     >,
-    mut q_skill: Query<(&GameplayUiSkillLabel, &mut Text2d), With<GameplayUiSkillLabel>>,
+    mut q_attrib_aux: Query<
+        (&GameplayUiAttributeAuxText, &mut BitmapText),
+        (
+            With<GameplayUiAttributeAuxText>,
+            Without<GameplayUiAttributeLabel>,
+            Without<GameplayUiSkillLabel>,
+            Without<GameplayUiRaiseStatText>,
+            Without<GameplayUiSkillAuxText>,
+        ),
+    >,
+    mut q_skill: Query<
+        (&GameplayUiSkillLabel, &mut BitmapText),
+        (
+            With<GameplayUiSkillLabel>,
+            Without<GameplayUiRaiseStatText>,
+            Without<GameplayUiAttributeLabel>,
+            Without<GameplayUiAttributeAuxText>,
+            Without<GameplayUiSkillAuxText>,
+        ),
+    >,
+    mut q_skill_aux: Query<
+        (&GameplayUiSkillAuxText, &mut BitmapText),
+        (
+            With<GameplayUiSkillAuxText>,
+            Without<GameplayUiSkillLabel>,
+            Without<GameplayUiAttributeLabel>,
+            Without<GameplayUiRaiseStatText>,
+            Without<GameplayUiAttributeAuxText>,
+        ),
+    >,
+    mut q_raise_stats: Query<
+        (&GameplayUiRaiseStatText, &mut BitmapText),
+        (
+            With<GameplayUiRaiseStatText>,
+            Without<GameplayUiAttributeLabel>,
+            Without<GameplayUiSkillLabel>,
+            Without<GameplayUiAttributeAuxText>,
+            Without<GameplayUiSkillAuxText>,
+        ),
+    >,
 ) {
+    let rev = player_state.state_revision();
+    if *last_state_rev == rev && !statbox.is_changed() {
+        return;
+    }
+    *last_state_rev = rev;
+
+    const HIGH_VAL: i32 = i32::MAX;
+
+    #[inline]
+    fn attrib_needed(pl: &mag_core::types::ClientPlayer, n: usize, v: i32) -> i32 {
+        let max_v = pl.attrib[n][2] as i32;
+        if v >= max_v {
+            return HIGH_VAL;
+        }
+        let diff = pl.attrib[n][3] as i32;
+        let v64 = v as i64;
+        ((v64 * v64 * v64) * (diff as i64) / 20).clamp(0, i32::MAX as i64) as i32
+    }
+
+    #[inline]
+    fn skill_needed(pl: &mag_core::types::ClientPlayer, n: usize, v: i32) -> i32 {
+        let max_v = pl.skill[n][2] as i32;
+        if v >= max_v {
+            return HIGH_VAL;
+        }
+        let diff = pl.skill[n][3] as i32;
+        let v64 = v as i64;
+        let cubic = ((v64 * v64 * v64) * (diff as i64) / 40).clamp(0, i32::MAX as i64) as i32;
+        v.max(cubic)
+    }
+
     let pl = player_state.character_info();
 
-    // Hitpoints
-    if let Some(mut text2d) = q.p0().iter_mut().next() {
-        **text2d = format!("Hitpoints         {:3} {:3}", pl.a_hp / 1000, pl.hp[5]);
+    // Hitpoints (current / max). Server already sends a_* as integer current values.
+    if let Some(mut text) = q.p0().iter_mut().next() {
+        let cur = pl.a_hp.max(0);
+        let desired = format!("Hitpoints         {:3} {:3}", cur, pl.hp[5]);
+        if text.text != desired {
+            text.text = desired;
+        }
     }
 
-    // Endurance
-    if let Some(mut text2d) = q.p1().iter_mut().next() {
-        **text2d = format!("Endurance         {:3} {:3}", pl.a_end / 1000, pl.end[5]);
+    // Endurance (current / max)
+    if let Some(mut text) = q.p1().iter_mut().next() {
+        let cur = pl.a_end.max(0);
+        let desired = format!("Endurance         {:3} {:3}", cur, pl.end[5]);
+        if text.text != desired {
+            text.text = desired;
+        }
     }
 
-    // Mana
-    if let Some(mut text2d) = q.p2().iter_mut().next() {
-        **text2d = format!("Mana              {:3} {:3}", pl.a_mana / 1000, pl.mana[5]);
+    // Mana (current / max)
+    if let Some(mut text) = q.p2().iter_mut().next() {
+        let cur = pl.a_mana.max(0);
+        let desired = format!("Mana              {:3} {:3}", cur, pl.mana[5]);
+        if text.text != desired {
+            text.text = desired;
+        }
     }
 
     // Money (gold/100 and silver remainder)
-    if let Some(mut text2d) = q.p3().iter_mut().next() {
-        **text2d = format!("Money  {:8}G {:2}S", pl.gold / 100, pl.gold % 100);
+    if let Some(mut text) = q.p3().iter_mut().next() {
+        let desired = format!("Money  {:8}G {:2}S", pl.gold / 100, pl.gold % 100);
+        if text.text != desired {
+            text.text = desired;
+        }
     }
 
     // Update points remaining
-    if let Some(mut text2d) = q.p4().iter_mut().next() {
-        **text2d = format!("{:7}", pl.points);
+    if let Some(mut text) = q.p4().iter_mut().next() {
+        let desired = format!("{:7}", (pl.points - statbox.stat_points_used).max(0));
+        if text.text != desired {
+            text.text = desired;
+        }
     }
 
     // Weapon value
-    if let Some(mut text2d) = q.p5().iter_mut().next() {
-        **text2d = format!("Weapon value   {:10}", pl.weapon);
+    if let Some(mut text) = q.p5().iter_mut().next() {
+        let desired = format!("Weapon value   {:10}", pl.weapon);
+        if text.text != desired {
+            text.text = desired;
+        }
     }
 
     // Armor value
-    if let Some(mut text2d) = q.p6().iter_mut().next() {
-        **text2d = format!("Armor value    {:10}", pl.armor);
+    if let Some(mut text) = q.p6().iter_mut().next() {
+        let desired = format!("Armor value    {:10}", pl.armor);
+        if text.text != desired {
+            text.text = desired;
+        }
     }
 
     // Experience (total points)
-    if let Some(mut text2d) = q.p7().iter_mut().next() {
-        **text2d = format!("Experience     {:10}", pl.points_tot);
+    if let Some(mut text) = q.p7().iter_mut().next() {
+        let desired = format!("Experience     {:10}", pl.points_tot);
+        if text.text != desired {
+            text.text = desired;
+        }
     }
 
     // Attributes (5 of them: Braveness, Willpower, Intuition, Agility, Strength)
-    for (attr_label, mut text2d) in &mut q_attrib {
+    // Mirrors engine.c: value uses total[5] + stat_raised[n], and cost uses bare[0] + stat_raised[n].
+    let stat_points_used: i32 = statbox.stat_points_used;
+    let available_points: i32 = (pl.points - stat_points_used).max(0);
+    let stat_raised_attrib: [i32; 5] = [
+        statbox.stat_raised[0],
+        statbox.stat_raised[1],
+        statbox.stat_raised[2],
+        statbox.stat_raised[3],
+        statbox.stat_raised[4],
+    ];
+
+    for (attr_label, mut text) in &mut q_attrib {
         if attr_label.attrib_index < 5 {
             let name = ATTRIBUTE_NAMES[attr_label.attrib_index];
-            let value = pl.attrib[attr_label.attrib_index][5];
-            **text2d = format!("{:<16}  {:3}", name, value);
+            let v_total = pl.attrib[attr_label.attrib_index][5] as i32
+                + stat_raised_attrib[attr_label.attrib_index];
+            let desired = format!("{:<16}  {:3}", name, v_total);
+            if text.text != desired {
+                text.text = desired;
+            }
+        }
+    }
+
+    for (cfg, mut text) in &mut q_attrib_aux {
+        if cfg.attrib_index >= 5 {
+            if !text.text.is_empty() {
+                text.text.clear();
+            }
+            continue;
+        }
+        let v_bare = pl.attrib[cfg.attrib_index][0] as i32 + stat_raised_attrib[cfg.attrib_index];
+        let need = attrib_needed(pl, cfg.attrib_index, v_bare);
+        match cfg.col {
+            GameplayUiRaiseStatColumn::Plus => {
+                let desired = if need != HIGH_VAL && need <= available_points {
+                    "+"
+                } else {
+                    ""
+                };
+                if text.text != desired {
+                    text.text.clear();
+                    text.text.push_str(desired);
+                }
+            }
+            GameplayUiRaiseStatColumn::Minus => {
+                let desired = if stat_raised_attrib[cfg.attrib_index] > 0 {
+                    "-"
+                } else {
+                    ""
+                };
+                if text.text != desired {
+                    text.text.clear();
+                    text.text.push_str(desired);
+                }
+            }
+            GameplayUiRaiseStatColumn::Cost => {
+                if need != HIGH_VAL {
+                    let desired = format!("{:7}", need);
+                    if text.text != desired {
+                        text.text = desired;
+                    }
+                } else if !text.text.is_empty() {
+                    text.text.clear();
+                }
+            }
+            GameplayUiRaiseStatColumn::Value => {
+                if !text.text.is_empty() {
+                    text.text.clear();
+                }
+            }
         }
     }
 
     // Skills (10 visible at a time, typically from skill_pos 0..10 in original)
-    // For now, show first 10 skills, skipping any that are not learned
-    let mut skill_count = 0;
-    for (_skill_label, mut text2d) in &mut q_skill {
-        let skill_idx = skill_count;
-        if skill_idx < 50 {
-            let skill_val = pl.skill[skill_idx][0];
-            if skill_val > 0 {
-                let skill_display = pl.skill[skill_idx][5];
-                // Just use a generic skill name for now (skill index)
-                **text2d = format!("Skill {:02}          {:3}", skill_idx, skill_display);
-            } else {
-                **text2d = String::from("unused");
+    // Original engine.c behavior:
+    // - Sort skills with a custom comparator (skill_cmp)
+    // - Push unlearned skills (pl.skill[m][0] == 0) below learned
+    // - Push reserved/unused entries (category 'Z' / empty name) to the bottom
+    // - Then sort by sortkey (category) and name
+    let sorted_skills = build_sorted_skills(pl);
+
+    let skill_pos = statbox.skill_pos;
+    let mut rows: Vec<String> = Vec::with_capacity(10);
+    let mut row_skill_ids: [Option<usize>; 10] = [None; 10];
+    let mut stat_raised_skill_rows: [i32; 10] = [0; 10];
+    for row in 0..10 {
+        let skilltab_index = skill_pos + row;
+        let Some(&skill_id) = sorted_skills.get(skilltab_index) else {
+            rows.push(String::from("unused"));
+            row_skill_ids[row] = None;
+            continue;
+        };
+
+        let name = get_skill_name(skill_id);
+        let is_unused = get_skill_sortkey(skill_id) == 'Z' || name.is_empty();
+        if is_unused {
+            rows.push(String::from("unused"));
+            row_skill_ids[row] = None;
+            continue;
+        }
+
+        // In engine.c, "unused" also covers unlearned skills (pl.skill[m][0]==0).
+        if pl.skill[skill_id][0] == 0 {
+            rows.push(String::from("unused"));
+            row_skill_ids[row] = None;
+            continue;
+        }
+
+        let raised = statbox
+            .stat_raised
+            .get(8 + skilltab_index)
+            .copied()
+            .unwrap_or(0);
+        stat_raised_skill_rows[row] = raised;
+
+        let skill_display = pl.skill[skill_id][5] as i32 + raised;
+        rows.push(format!("{:<16}  {:3}", name, skill_display));
+        row_skill_ids[row] = Some(skill_id);
+    }
+
+    for (skill_label, mut text) in &mut q_skill {
+        let row = skill_label.skill_index;
+        if row < rows.len() {
+            let desired = rows[row].as_str();
+            if text.text != desired {
+                text.text.clear();
+                text.text.push_str(desired);
+            }
+        } else if !text.text.is_empty() {
+            text.text.clear();
+        }
+    }
+
+    // Skill +/- and cost columns (mirrors engine.c).
+    for (cfg, mut text) in &mut q_skill_aux {
+        if cfg.row >= 10 {
+            if !text.text.is_empty() {
+                text.text.clear();
+            }
+            continue;
+        }
+        let Some(skill_id) = row_skill_ids[cfg.row] else {
+            if !text.text.is_empty() {
+                text.text.clear();
+            }
+            continue;
+        };
+
+        let v_bare = pl.skill[skill_id][0] as i32 + stat_raised_skill_rows[cfg.row];
+        let need = skill_needed(pl, skill_id, v_bare);
+        match cfg.col {
+            GameplayUiRaiseStatColumn::Plus => {
+                let desired = if need != HIGH_VAL && need <= available_points {
+                    "+"
+                } else {
+                    ""
+                };
+                if text.text != desired {
+                    text.text.clear();
+                    text.text.push_str(desired);
+                }
+            }
+            GameplayUiRaiseStatColumn::Minus => {
+                let desired = if stat_raised_skill_rows[cfg.row] > 0 {
+                    "-"
+                } else {
+                    ""
+                };
+                if text.text != desired {
+                    text.text.clear();
+                    text.text.push_str(desired);
+                }
+            }
+            GameplayUiRaiseStatColumn::Cost => {
+                if need != HIGH_VAL {
+                    let desired = format!("{:7}", need);
+                    if text.text != desired {
+                        text.text = desired;
+                    }
+                } else if !text.text.is_empty() {
+                    text.text.clear();
+                }
+            }
+            GameplayUiRaiseStatColumn::Value => {
+                if !text.text.is_empty() {
+                    text.text.clear();
+                }
             }
         }
-        skill_count += 1;
+    }
+
+    // Raise-stat rows (Hitpoints/Endurance/Mana) with +, -, and cost columns.
+    let available_points = available_points;
+    let stat_raised_hp: i32 = statbox.stat_raised[5];
+    let stat_raised_end: i32 = statbox.stat_raised[6];
+    let stat_raised_mana: i32 = statbox.stat_raised[7];
+
+    let hp_base = pl.hp[0] as i32 + stat_raised_hp;
+    let end_base = pl.end[0] as i32 + stat_raised_end;
+    let mana_base = pl.mana[0] as i32 + stat_raised_mana;
+
+    let hp_needed = {
+        let v = hp_needed(pl, hp_base);
+        if v == HIGH_VAL {
+            None
+        } else {
+            Some(v)
+        }
+    };
+    let end_needed = {
+        let v = end_needed(pl, end_base);
+        if v == HIGH_VAL {
+            None
+        } else {
+            Some(v)
+        }
+    };
+    let mana_needed = {
+        let v = mana_needed(pl, mana_base);
+        if v == HIGH_VAL {
+            None
+        } else {
+            Some(v)
+        }
+    };
+
+    for (cfg, mut text) in &mut q_raise_stats {
+        match (cfg.stat, cfg.col) {
+            (GameplayUiRaiseStat::Hitpoints, GameplayUiRaiseStatColumn::Value) => {
+                let desired = format!("Hitpoints         {:3}", (pl.hp[5] as i32) + stat_raised_hp);
+                if text.text != desired {
+                    text.text = desired;
+                }
+            }
+            (GameplayUiRaiseStat::Endurance, GameplayUiRaiseStatColumn::Value) => {
+                let desired = format!(
+                    "Endurance         {:3}",
+                    (pl.end[5] as i32) + stat_raised_end
+                );
+                if text.text != desired {
+                    text.text = desired;
+                }
+            }
+            (GameplayUiRaiseStat::Mana, GameplayUiRaiseStatColumn::Value) => {
+                let desired = format!(
+                    "Mana              {:3}",
+                    (pl.mana[5] as i32) + stat_raised_mana
+                );
+                if text.text != desired {
+                    text.text = desired;
+                }
+            }
+
+            (GameplayUiRaiseStat::Hitpoints, GameplayUiRaiseStatColumn::Plus) => {
+                let desired = if hp_needed.is_some_and(|n| n <= available_points) {
+                    "+"
+                } else {
+                    ""
+                };
+                if text.text != desired {
+                    text.text.clear();
+                    text.text.push_str(desired);
+                }
+            }
+            (GameplayUiRaiseStat::Endurance, GameplayUiRaiseStatColumn::Plus) => {
+                let desired = if end_needed.is_some_and(|n| n <= available_points) {
+                    "+"
+                } else {
+                    ""
+                };
+                if text.text != desired {
+                    text.text.clear();
+                    text.text.push_str(desired);
+                }
+            }
+            (GameplayUiRaiseStat::Mana, GameplayUiRaiseStatColumn::Plus) => {
+                let desired = if mana_needed.is_some_and(|n| n <= available_points) {
+                    "+"
+                } else {
+                    ""
+                };
+                if text.text != desired {
+                    text.text.clear();
+                    text.text.push_str(desired);
+                }
+            }
+
+            (GameplayUiRaiseStat::Hitpoints, GameplayUiRaiseStatColumn::Minus) => {
+                let desired = if stat_raised_hp > 0 { "-" } else { "" };
+                if text.text != desired {
+                    text.text.clear();
+                    text.text.push_str(desired);
+                }
+            }
+            (GameplayUiRaiseStat::Endurance, GameplayUiRaiseStatColumn::Minus) => {
+                let desired = if stat_raised_end > 0 { "-" } else { "" };
+                if text.text != desired {
+                    text.text.clear();
+                    text.text.push_str(desired);
+                }
+            }
+            (GameplayUiRaiseStat::Mana, GameplayUiRaiseStatColumn::Minus) => {
+                let desired = if stat_raised_mana > 0 { "-" } else { "" };
+                if text.text != desired {
+                    text.text.clear();
+                    text.text.push_str(desired);
+                }
+            }
+
+            (GameplayUiRaiseStat::Hitpoints, GameplayUiRaiseStatColumn::Cost) => {
+                if let Some(n) = hp_needed {
+                    let desired = format!("{:7}", n);
+                    if text.text != desired {
+                        text.text = desired;
+                    }
+                } else if !text.text.is_empty() {
+                    text.text.clear();
+                }
+            }
+            (GameplayUiRaiseStat::Endurance, GameplayUiRaiseStatColumn::Cost) => {
+                if let Some(n) = end_needed {
+                    let desired = format!("{:7}", n);
+                    if text.text != desired {
+                        text.text = desired;
+                    }
+                } else if !text.text.is_empty() {
+                    text.text.clear();
+                }
+            }
+            (GameplayUiRaiseStat::Mana, GameplayUiRaiseStatColumn::Cost) => {
+                if let Some(n) = mana_needed {
+                    let desired = format!("{:7}", n);
+                    if text.text != desired {
+                        text.text = desired;
+                    }
+                } else if !text.text.is_empty() {
+                    text.text.clear();
+                }
+            }
+        }
     }
 }
 
-fn update_ui_player_name_text(
-    player_state: &PlayerState,
-    mut q: Query<&mut Text2d, With<GameplayUiPlayerNameLabel>>,
+pub(crate) fn run_gameplay_update_top_selected_name(
+    player_state: Res<PlayerState>,
+    mut q: Query<(&mut BitmapText, &mut Transform), With<GameplayUiTopSelectedNameLabel>>,
 ) {
-    // Display player name by default, or target/merchant name if applicable.
-    let name = if player_state.should_show_shop() {
-        // When shopping, show the merchant/shop target name
-        let shop = player_state.shop_target();
-        shop.name().unwrap_or("Shop")
-    } else {
-        // Default: show player character name from the character_info
+    let mut name: &str = "";
+
+    let selected = player_state.selected_char();
+    if selected != 0 {
+        // engine.c uses lookup(selected_char, 0) (0 means "ignore id")
+        if let Some(n) = player_state.lookup_name(selected, 0) {
+            name = n;
+        }
+    }
+
+    if name.is_empty() {
+        // Fallback to local player name
         let pl = player_state.character_info();
         let end = pl
             .name
             .iter()
             .position(|&b| b == 0)
             .unwrap_or(pl.name.len());
-        std::str::from_utf8(&pl.name[..end]).unwrap_or("Player")
-    };
+        name = std::str::from_utf8(&pl.name[..end]).unwrap_or("");
+    }
 
-    if let Some(mut text2d) = q.iter_mut().next() {
-        **text2d = name.to_string();
+    let sx = centered_text_x(HUD_TOP_NAME_AREA_X, HUD_TOP_NAME_AREA_W, name);
+
+    for (mut text, mut t) in &mut q {
+        if text.text != name {
+            text.text.clear();
+            text.text.push_str(name);
+        }
+        t.translation = screen_to_world(sx, HUD_TOP_NAME_Y, Z_UI_TEXT);
     }
 }
 
-fn update_ui_experience_text(
-    player_state: &PlayerState,
-    mut q: Query<&mut Text2d, With<GameplayUiExperienceUncommittedLabel>>,
+pub(crate) fn run_gameplay_update_portrait_name_and_rank(
+    player_state: Res<PlayerState>,
+    mut q: ParamSet<(
+        Query<(&mut BitmapText, &mut Transform), With<GameplayUiPortraitNameLabel>>,
+        Query<(&mut BitmapText, &mut Transform), With<GameplayUiPortraitRankLabel>>,
+    )>,
 ) {
-    // Display uncommitted experience points (pending allocation).
-    // For now, we only show something if there are update points available to spend.
-    let pl = player_state.character_info();
-    let available_points = pl.points; // Represents unspent skill points
+    // Matches engine.c behavior:
+    // - If shop is open: use shop target name/rank
+    // - Else if look is active: use look target name/rank
+    // - Else: use player name/rank
+    let (name, points_tot) = if player_state.should_show_shop() {
+        let shop = player_state.shop_target();
+        (
+            shop.name().unwrap_or(""),
+            shop.points().min(i32::MAX as u32) as i32,
+        )
+    } else if player_state.should_show_look() {
+        let look = player_state.look_target();
+        (
+            look.name().unwrap_or(""),
+            look.points().min(i32::MAX as u32) as i32,
+        )
+    } else {
+        let pl = player_state.character_info();
+        let end = pl
+            .name
+            .iter()
+            .position(|&b| b == 0)
+            .unwrap_or(pl.name.len());
+        (
+            std::str::from_utf8(&pl.name[..end]).unwrap_or(""),
+            pl.points_tot,
+        )
+    };
 
-    if let Some(mut text2d) = q.iter_mut().next() {
-        if available_points > 0 {
-            **text2d = format!("Available Points  {:10}", available_points);
-        } else {
-            **text2d = String::new();
+    let rank = rank_name(points_tot);
+
+    let name_x = centered_text_x(HUD_PORTRAIT_TEXT_AREA_X, HUD_PORTRAIT_TEXT_AREA_W, name);
+    let rank_x = centered_text_x(HUD_PORTRAIT_TEXT_AREA_X, HUD_PORTRAIT_TEXT_AREA_W, rank);
+
+    for (mut text, mut t) in q.p0().iter_mut() {
+        if text.text != name {
+            text.text.clear();
+            text.text.push_str(name);
         }
+        t.translation = screen_to_world(name_x, HUD_PORTRAIT_NAME_Y, Z_UI_TEXT);
+    }
+    for (mut text, mut t) in q.p1().iter_mut() {
+        if text.text != rank {
+            text.text.clear();
+            text.text.push_str(rank);
+        }
+        t.translation = screen_to_world(rank_x, HUD_PORTRAIT_RANK_Y, Z_UI_TEXT);
     }
 }
 
 fn update_ui_money_text(
     player_state: &PlayerState,
-    mut q: Query<&mut Text2d, With<GameplayUiMoneyLabel>>,
+    mut q: Query<&mut BitmapText, With<GameplayUiMoneyLabel>>,
 ) {
     // Display gold and silver. This mirrors the money display in run_gameplay_update_hud_labels
     // but can be called separately if needed.
     let pl = player_state.character_info();
 
-    if let Some(mut text2d) = q.iter_mut().next() {
-        **text2d = format!("Money  {:8}G {:2}S", pl.gold / 100, pl.gold % 100);
-    }
-}
-
-fn update_ui_skill_adjustment_hints(
-    player_state: &PlayerState,
-    mut q: Query<(&GameplayUiSkillAdjustmentHint, &mut Text2d)>,
-) {
-    // Display "+" or "-" signs next to skills that can be adjusted.
-    // These indicate that there are uncommitted experience points available
-    // to allocate or remove from that skill.
-    let pl = player_state.character_info();
-
-    for (hint, mut text2d) in &mut q {
-        let skill_idx = hint.skill_index;
-        if skill_idx >= 50 {
-            **text2d = String::new();
-            continue;
-        }
-
-        // Check if this skill has learned points (nonzero skill value)
-        let skill_val = pl.skill[skill_idx][0];
-        if skill_val == 0 {
-            // Skill not learned; no adjustment available
-            **text2d = String::new();
-            continue;
-        }
-
-        // In the original client, adjustable skills would show + or - based on
-        // whether you have uncommitted experience to spend or could remove points.
-        // For now, show + if there are available points to spend on this skill.
-        let available_points = pl.points;
-        if available_points > 0 {
-            **text2d = String::from("+");
-        } else {
-            // Could show "-" if points could be removed, but for now leave empty
-            **text2d = String::new();
+    if let Some(mut text) = q.iter_mut().next() {
+        let desired = format!("Money  {:8}G {:2}S", pl.gold / 100, pl.gold % 100);
+        if text.text != desired {
+            text.text = desired;
         }
     }
 }
 
 pub(crate) fn run_gameplay_update_extra_ui(
     player_state: Res<PlayerState>,
-    mut q: ParamSet<(
-        Query<&mut Text2d, With<GameplayUiPlayerNameLabel>>,
-        Query<&mut Text2d, With<GameplayUiExperienceUncommittedLabel>>,
-        Query<&mut Text2d, With<GameplayUiMoneyLabel>>,
-        Query<(&GameplayUiSkillAdjustmentHint, &mut Text2d)>,
-    )>,
+    mut q: ParamSet<(Query<&mut BitmapText, With<GameplayUiMoneyLabel>>,)>,
 ) {
-    // Update all additional UI elements
-    update_ui_player_name_text(&player_state, q.p0());
-    update_ui_experience_text(&player_state, q.p1());
-    update_ui_money_text(&player_state, q.p2());
-    update_ui_skill_adjustment_hints(&player_state, q.p3());
+    // Keep as a thin shim; money is also updated in run_gameplay_update_hud_labels.
+    update_ui_money_text(&player_state, q.p0());
 }
 
 pub(crate) fn run_gameplay(
@@ -2412,6 +4867,8 @@ pub(crate) fn run_gameplay(
     mut minimap: ResMut<MiniMapState>,
     mut clock: Local<EngineClock>,
     mut opt_clock: Local<SendOptClock>,
+    inv_scroll: Res<GameplayInventoryScrollState>,
+    inv_hover: Res<GameplayInventoryHoverState>,
     mut q_world_root: Query<
         &mut Transform,
         (
@@ -2420,7 +4877,7 @@ pub(crate) fn run_gameplay(
             Without<TileRender>,
         ),
     >,
-    mut q: ParamSet<(
+    mut q_world: ParamSet<(
         Query<
             (
                 &TileShadow,
@@ -2429,7 +4886,15 @@ pub(crate) fn run_gameplay(
                 &mut Visibility,
                 &mut LastRender,
             ),
-            Without<GameplayWorldRoot>,
+            (
+                Without<GameplayWorldRoot>,
+                Without<GameplayUiPortrait>,
+                Without<GameplayUiRank>,
+                Without<GameplayUiEquipmentSlot>,
+                Without<GameplayUiSpellSlot>,
+                Without<GameplayUiShop>,
+                Without<GameplayUiBackpackSlot>,
+            ),
         >,
         Query<
             (
@@ -2439,8 +4904,36 @@ pub(crate) fn run_gameplay(
                 &mut Visibility,
                 &mut LastRender,
             ),
-            Without<GameplayWorldRoot>,
+            (
+                Without<GameplayWorldRoot>,
+                Without<GameplayUiPortrait>,
+                Without<GameplayUiRank>,
+                Without<GameplayUiEquipmentSlot>,
+                Without<GameplayUiSpellSlot>,
+                Without<GameplayUiShop>,
+                Without<GameplayUiBackpackSlot>,
+            ),
         >,
+        Query<
+            (
+                &TileFlagOverlay,
+                &mut Sprite,
+                &mut Transform,
+                &mut Visibility,
+                &mut LastRender,
+            ),
+            (
+                Without<GameplayWorldRoot>,
+                Without<GameplayUiPortrait>,
+                Without<GameplayUiRank>,
+                Without<GameplayUiEquipmentSlot>,
+                Without<GameplayUiSpellSlot>,
+                Without<GameplayUiShop>,
+                Without<GameplayUiBackpackSlot>,
+            ),
+        >,
+    )>,
+    mut q_ui: ParamSet<(
         Query<(&mut Sprite, &mut Visibility, &mut LastRender), With<GameplayUiPortrait>>,
         Query<(&mut Sprite, &mut Visibility, &mut LastRender), With<GameplayUiRank>>,
         Query<(
@@ -2457,6 +4950,12 @@ pub(crate) fn run_gameplay(
         )>,
         Query<(
             &GameplayUiShop,
+            &mut Sprite,
+            &mut Visibility,
+            &mut LastRender,
+        )>,
+        Query<(
+            &GameplayUiBackpackSlot,
             &mut Sprite,
             &mut Visibility,
             &mut LastRender,
@@ -2513,7 +5012,7 @@ pub(crate) fn run_gameplay(
 
     let base_rank_sprite_id = rank_insignia_sprite(player_state.character_info().points_tot);
 
-    // Match engine.c: when shop is open, the right-side portrait/rank reflect the shop target.
+    // Match engine.c: when shop/look is open, the right-side portrait/rank reflect that target.
     let mut ui_portrait_sprite_id = base_portrait_sprite_id;
     let mut ui_rank_sprite_id = base_rank_sprite_id;
     if player_state.should_show_shop() {
@@ -2523,10 +5022,17 @@ pub(crate) fn run_gameplay(
         }
         let shop_points = shop.points().min(i32::MAX as u32) as i32;
         ui_rank_sprite_id = rank_insignia_sprite(shop_points);
+    } else if player_state.should_show_look() {
+        let look = player_state.look_target();
+        if look.sprite() != 0 {
+            ui_portrait_sprite_id = look.sprite() as i32;
+        }
+        let look_points = look.points().min(i32::MAX as u32) as i32;
+        ui_rank_sprite_id = rank_insignia_sprite(look_points);
     }
 
     // Update shadows (dd.c::dd_shadow)
-    for (shadow, mut sprite, mut transform, mut visibility, mut last) in &mut q.p0() {
+    for (shadow, mut sprite, mut transform, mut visibility, mut last) in &mut q_world.p0() {
         if !shadows_enabled {
             *visibility = Visibility::Hidden;
             continue;
@@ -2571,7 +5077,7 @@ pub(crate) fn run_gameplay(
             *visibility = Visibility::Hidden;
             continue;
         };
-        let Some((_xs, ys)) = sprite_tiles_xy(src, &images) else {
+        let Some((_xs, ys)) = gfx.get_sprite_tiles_xy(sprite_id as usize) else {
             *visibility = Visibility::Hidden;
             continue;
         };
@@ -2608,7 +5114,7 @@ pub(crate) fn run_gameplay(
         transform.scale = Vec3::new(1.0, 0.25, 1.0);
     }
 
-    for (render, mut sprite, mut transform, mut visibility, mut last) in &mut q.p1() {
+    for (render, mut sprite, mut transform, mut visibility, mut last) in &mut q_world.p1() {
         let Some(tile) = map.tile_at_index(render.index) else {
             continue;
         };
@@ -2730,8 +5236,194 @@ pub(crate) fn run_gameplay(
         transform.translation = screen_to_world(sx_f, sy_f, z);
     }
 
+    // Map flag overlays (ported from engine.c): draw above characters on the same tile.
+    for (ovl, mut sprite, mut transform, mut visibility, mut last) in &mut q_world.p2() {
+        let Some(tile) = map.tile_at_index(ovl.index) else {
+            *visibility = Visibility::Hidden;
+            continue;
+        };
+
+        let x = ovl.index % TILEX;
+        let y = ovl.index / TILEX;
+        let draw_order = ((TILEY - 1 - y) * TILEX + x) as f32;
+
+        let xpos = (x as i32) * 32;
+        let ypos = (y as i32) * 32;
+
+        let mut sprite_id: i32 = 0;
+        let mut xoff_i: i32 = 0;
+        let mut yoff_i: i32 = 0;
+        let mut z_bias: f32 = 0.0;
+
+        match ovl.kind {
+            TileFlagOverlayKind::MoveBlock => {
+                if (tile.flags2 & MF_MOVEBLOCK) != 0 {
+                    sprite_id = 55;
+                    z_bias = 0.0000;
+                }
+            }
+            TileFlagOverlayKind::SightBlock => {
+                if (tile.flags2 & MF_SIGHTBLOCK) != 0 {
+                    sprite_id = 84;
+                    z_bias = 0.0001;
+                }
+            }
+            TileFlagOverlayKind::Indoors => {
+                if (tile.flags2 & MF_INDOORS) != 0 {
+                    sprite_id = 56;
+                    z_bias = 0.0002;
+                }
+            }
+            TileFlagOverlayKind::Underwater => {
+                if (tile.flags2 & MF_UWATER) != 0 {
+                    sprite_id = 75;
+                    z_bias = 0.0003;
+                }
+            }
+            TileFlagOverlayKind::NoLag => {
+                if (tile.flags2 & MF_NOLAG) != 0 {
+                    sprite_id = 57;
+                    z_bias = 0.0004;
+                }
+            }
+            TileFlagOverlayKind::NoMonsters => {
+                if (tile.flags2 & MF_NOMONST) != 0 {
+                    sprite_id = 59;
+                    z_bias = 0.0005;
+                }
+            }
+            TileFlagOverlayKind::Bank => {
+                if (tile.flags2 & MF_BANK) != 0 {
+                    sprite_id = 60;
+                    z_bias = 0.0006;
+                }
+            }
+            TileFlagOverlayKind::Tavern => {
+                if (tile.flags2 & MF_TAVERN) != 0 {
+                    sprite_id = 61;
+                    z_bias = 0.0007;
+                }
+            }
+            TileFlagOverlayKind::NoMagic => {
+                if (tile.flags2 & MF_NOMAGIC) != 0 {
+                    sprite_id = 62;
+                    z_bias = 0.0008;
+                }
+            }
+            TileFlagOverlayKind::DeathTrap => {
+                if (tile.flags2 & MF_DEATHTRAP) != 0 {
+                    sprite_id = 73;
+                    z_bias = 0.0009;
+                }
+            }
+            TileFlagOverlayKind::Arena => {
+                if (tile.flags2 & MF_ARENA) != 0 {
+                    sprite_id = 76;
+                    z_bias = 0.0010;
+                }
+            }
+            TileFlagOverlayKind::NoExpire => {
+                if (tile.flags2 & MF_NOEXPIRE) != 0 {
+                    sprite_id = 82;
+                    z_bias = 0.0011;
+                }
+            }
+            TileFlagOverlayKind::UnknownHighBit => {
+                if (tile.flags2 & 0x8000_0000) != 0 {
+                    sprite_id = 72;
+                    z_bias = 0.0012;
+                }
+            }
+            TileFlagOverlayKind::Injured => {
+                if (tile.flags & INJURED) != 0 {
+                    let mut variant = 0;
+                    if (tile.flags & INJURED1) != 0 {
+                        variant += 1;
+                    }
+                    if (tile.flags & INJURED2) != 0 {
+                        variant += 2;
+                    }
+                    sprite_id = 1079 + variant;
+                    xoff_i = tile.obj_xoff;
+                    yoff_i = tile.obj_yoff;
+                    z_bias = 0.0020;
+                } else {
+                    sprite_id = 0;
+                }
+            }
+            TileFlagOverlayKind::Death => {
+                if (tile.flags & DEATH) != 0 {
+                    let n = ((tile.flags & DEATH) >> 17) as i32;
+                    if n > 0 {
+                        sprite_id = 280 + (n - 1);
+                        if tile.obj2 != 0 {
+                            xoff_i = tile.obj_xoff;
+                            yoff_i = tile.obj_yoff;
+                        }
+                        z_bias = 0.0021;
+                    }
+                }
+            }
+            TileFlagOverlayKind::Tomb => {
+                if (tile.flags & TOMB) != 0 {
+                    let n = ((tile.flags & TOMB) >> 12) as i32;
+                    if n > 0 {
+                        sprite_id = 240 + (n - 1);
+                        z_bias = 0.0022;
+                    }
+                }
+            }
+        }
+
+        if sprite_id <= 0 {
+            if sprite_id != last.sprite_id {
+                last.sprite_id = sprite_id;
+            }
+            *visibility = Visibility::Hidden;
+            continue;
+        }
+
+        let Some((sx_i, sy_i)) = copysprite_screen_pos(
+            sprite_id as usize,
+            &gfx,
+            &images,
+            xpos,
+            ypos,
+            xoff_i,
+            yoff_i,
+        ) else {
+            *visibility = Visibility::Hidden;
+            continue;
+        };
+
+        let (sx_f, sy_f) = (sx_i as f32, sy_i as f32);
+        let z = Z_FX_BASE + draw_order * Z_WORLD_STEP + z_bias;
+
+        if sprite_id == last.sprite_id
+            && (sx_f - last.sx).abs() < 0.01
+            && (sy_f - last.sy).abs() < 0.01
+        {
+            *visibility = Visibility::Visible;
+            transform.translation = screen_to_world(sx_f, sy_f, z);
+            continue;
+        }
+
+        last.sprite_id = sprite_id;
+        last.sx = sx_f;
+        last.sy = sy_f;
+
+        let Some(src) = gfx.get_sprite(sprite_id as usize) else {
+            *visibility = Visibility::Hidden;
+            continue;
+        };
+
+        *sprite = src.clone();
+        *visibility = Visibility::Visible;
+        transform.translation = screen_to_world(sx_f, sy_f, z);
+    }
+
     // Update UI portrait
-    if let Some((mut sprite, mut visibility, mut last)) = q.p2().iter_mut().next() {
+    if let Some((mut sprite, mut visibility, mut last)) = q_ui.p0().iter_mut().next() {
         if ui_portrait_sprite_id > 0 {
             if last.sprite_id != ui_portrait_sprite_id {
                 if let Some(src) = gfx.get_sprite(ui_portrait_sprite_id as usize) {
@@ -2750,7 +5442,7 @@ pub(crate) fn run_gameplay(
     }
 
     // Update UI rank badge
-    if let Some((mut sprite, mut visibility, mut last)) = q.p3().iter_mut().next() {
+    if let Some((mut sprite, mut visibility, mut last)) = q_ui.p1().iter_mut().next() {
         if ui_rank_sprite_id > 0 {
             if last.sprite_id != ui_rank_sprite_id {
                 if let Some(src) = gfx.get_sprite(ui_rank_sprite_id as usize) {
@@ -2768,10 +5460,10 @@ pub(crate) fn run_gameplay(
         }
     }
 
-    draw_inventory_ui(&gfx, &player_state);
-    draw_equipment_ui(&gfx, &player_state, &mut q.p4());
-    draw_active_spells_ui(&gfx, &player_state, &mut q.p5());
-    draw_shop_window_ui(&gfx, &player_state, &mut q.p6());
+    draw_inventory_ui(&gfx, &player_state, &inv_scroll, &inv_hover, &mut q_ui.p5());
+    draw_equipment_ui(&gfx, &player_state, &inv_hover, &mut q_ui.p2());
+    draw_active_spells_ui(&gfx, &player_state, &mut q_ui.p3());
+    draw_shop_window_ui(&gfx, &player_state, &mut q_ui.p4());
 }
 
 fn update_minimap(

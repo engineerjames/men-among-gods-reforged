@@ -1,12 +1,5 @@
 use bevy::ecs::resource::Resource;
-use mag_core::{
-    circular_buffer::CircularBuffer,
-    constants::TICKS,
-    types::{
-        skilltab::{SkillTab, SKILLTAB},
-        ClientPlayer,
-    },
-};
+use mag_core::{circular_buffer::CircularBuffer, constants::TICKS, types::ClientPlayer};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
@@ -19,20 +12,20 @@ use crate::{
     types::{log_message::LogMessage, look::Look, player_data::PlayerData},
 };
 
-#[allow(dead_code)]
 #[derive(Resource)]
 pub struct PlayerState {
     map: GameMap,
     look_target: Look,
     shop_target: Look,
     player_info: PlayerData,
-    skills_list: &'static [SkillTab],
     message_log: CircularBuffer<LogMessage>,
-    player_sprite_index: usize,
     should_show_look: bool,
     should_show_shop: bool,
     look_timer: f32,
     character_info: ClientPlayer,
+
+    // Mirrors engine.c's `selected_char` (0 = none). Used by UI and certain commands.
+    selected_char: u16,
 
     // Mirrors engine.c's `looks[]` name cache (nr -> {id,name}). Used for show_names/show_proz.
     look_names: Vec<Option<LookNameEntry>>,
@@ -48,6 +41,9 @@ pub struct PlayerState {
     server_ctick: u8,
     server_ctick_pending: bool,
     local_ctick: u8,
+
+    // Monotonically increasing revision for "state changed" checks (UI throttling, etc).
+    state_revision: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -63,13 +59,13 @@ impl Default for PlayerState {
             look_target: Look::default(),
             shop_target: Look::default(),
             player_info: PlayerData::default(),
-            skills_list: &SKILLTAB,
             message_log: CircularBuffer::new(300), // TODO: Customize this?
-            player_sprite_index: 0,
             should_show_look: false,
             should_show_shop: false,
             look_timer: 0.0,
             character_info: ClientPlayer::default(),
+
+            selected_char: 0,
 
             look_names: Vec::new(),
 
@@ -84,11 +80,17 @@ impl Default for PlayerState {
             server_ctick: 0,
             server_ctick_pending: false,
             local_ctick: 0,
+
+            state_revision: 0,
         }
     }
 }
 
 impl PlayerState {
+    pub fn state_revision(&self) -> u64 {
+        self.state_revision
+    }
+
     #[allow(dead_code)]
     pub fn map(&self) -> &GameMap {
         &self.map
@@ -104,6 +106,14 @@ impl PlayerState {
 
     pub fn should_show_shop(&self) -> bool {
         self.should_show_shop
+    }
+
+    pub fn should_show_look(&self) -> bool {
+        self.should_show_look
+    }
+
+    pub fn look_target(&self) -> &Look {
+        &self.look_target
     }
 
     pub fn shop_target(&self) -> &Look {
@@ -122,8 +132,18 @@ impl PlayerState {
         self.look_names
             .get(nr as usize)
             .and_then(|e| e.as_ref())
-            .filter(|e| e.id == id)
+            .filter(|e| id == 0 || e.id == id)
             .map(|e| e.name.as_str())
+    }
+
+    pub fn selected_char(&self) -> u16 {
+        self.selected_char
+    }
+
+    // TODO: Tie this in
+    #[allow(dead_code)]
+    pub fn set_selected_char(&mut self, selected_char: u16) {
+        self.selected_char = selected_char;
     }
 
     fn set_known_name(&mut self, nr: u16, id: u16, name: &str) {
@@ -161,9 +181,10 @@ impl PlayerState {
     fn log_color_from_font(font: u8) -> crate::types::log_message::LogMessageColor {
         use crate::types::log_message::LogMessageColor;
         match font {
-            1 => LogMessageColor::Green,
-            2 => LogMessageColor::Blue,
-            3 => LogMessageColor::Red,
+            0 => LogMessageColor::Red,
+            1 => LogMessageColor::Yellow,
+            2 => LogMessageColor::Green,
+            3 => LogMessageColor::Blue,
             _ => LogMessageColor::Yellow,
         }
     }
@@ -246,10 +267,12 @@ impl PlayerState {
         }
         let end = std::cmp::min(offset + max_len, self.moa_file_data.name.len());
         self.moa_file_data.name[offset..end].fill(0);
+        self.character_info.name[offset..end].fill(0);
 
         let bytes = chunk.as_bytes();
         let n = std::cmp::min(bytes.len(), end - offset);
         self.moa_file_data.name[offset..offset + n].copy_from_slice(&bytes[..n]);
+        self.character_info.name[offset..offset + n].copy_from_slice(&bytes[..n]);
     }
 
     fn handle_log_chunk(&mut self, font: u8, chunk: &str) {
@@ -503,6 +526,10 @@ impl PlayerState {
                 self.look_target.set_id(*id);
                 self.look_target.set_mana(*mana);
                 self.look_target.set_a_mana(*a_mana);
+
+                // engine.c shows the selected character's name when selected_char != 0.
+                // We use the most recent look target as the selected character.
+                self.selected_char = *nr;
             }
             ServerCommandData::Look4 {
                 worn1,
@@ -600,6 +627,9 @@ impl PlayerState {
                 log::debug!("PlayerState ignoring server command: {:?}", command.header);
             }
         }
+
+        // Any server command may affect what the UI should show.
+        self.state_revision = self.state_revision.wrapping_add(1);
     }
 }
 
@@ -624,19 +654,19 @@ mod tests {
         use crate::types::log_message::LogMessageColor;
         assert!(matches!(
             PlayerState::log_color_from_font(0),
-            LogMessageColor::Yellow
+            LogMessageColor::Red
         ));
         assert!(matches!(
             PlayerState::log_color_from_font(1),
-            LogMessageColor::Green
+            LogMessageColor::Yellow
         ));
         assert!(matches!(
             PlayerState::log_color_from_font(2),
-            LogMessageColor::Blue
+            LogMessageColor::Green
         ));
         assert!(matches!(
             PlayerState::log_color_from_font(3),
-            LogMessageColor::Red
+            LogMessageColor::Blue
         ));
         assert!(matches!(
             PlayerState::log_color_from_font(99),

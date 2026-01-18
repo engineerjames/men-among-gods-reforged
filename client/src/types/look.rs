@@ -65,6 +65,30 @@ impl Look {
         self.points
     }
 
+    pub fn hp(&self) -> u32 {
+        self.hp
+    }
+
+    pub fn end(&self) -> u32 {
+        self.end
+    }
+
+    pub fn mana(&self) -> u32 {
+        self.mana
+    }
+
+    pub fn a_hp(&self) -> u32 {
+        self.a_hp
+    }
+
+    pub fn a_end(&self) -> u32 {
+        self.a_end
+    }
+
+    pub fn a_mana(&self) -> u32 {
+        self.a_mana
+    }
+
     pub fn item(&self, index: usize) -> u16 {
         self.item.get(index).copied().unwrap_or(0)
     }

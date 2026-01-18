@@ -343,6 +343,10 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     SkillTab::new(49, 'Z', "", "", 0, 0, 0),
 ];
 
+pub fn get_skill_nr(skill_id: usize) -> usize {
+    SKILLTAB.get(skill_id).map(|s| s.nr).unwrap_or(skill_id)
+}
+
 /// Safely get the attribute indices for a skill. Returns (0,0,0) on invalid index.
 pub fn get_skill_attribs(skill: usize) -> [usize; 3] {
     if skill < MAX_SKILLS {
@@ -358,6 +362,24 @@ pub fn get_skill_name(skill: usize) -> &'static str {
         SKILLTAB[skill].name
     } else {
         ""
+    }
+}
+
+/// Safely get the skill description (empty string on invalid index)
+pub fn get_skill_desc(skill: usize) -> &'static str {
+    if skill < MAX_SKILLS {
+        SKILLTAB[skill].desc
+    } else {
+        ""
+    }
+}
+
+/// Safely get the skill sort key / category (defaults to 'Z' on invalid index)
+pub fn get_skill_sortkey(skill: usize) -> char {
+    if skill < MAX_SKILLS {
+        SKILLTAB[skill].cat
+    } else {
+        'Z'
     }
 }
 
