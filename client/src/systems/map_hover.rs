@@ -13,14 +13,13 @@ use crate::states::gameplay::{
 };
 
 use mag_core::constants::{
-    DR_DROP, DR_GIVE, DR_PICKUP, DR_USE, ISCHAR, ISITEM, ISUSABLE, XPOS, YPOS,
+    DR_DROP, DR_GIVE, DR_PICKUP, DR_USE, INFRARED, INVIS, ISCHAR, ISITEM, ISUSABLE, STONED, UWATER,
+    XPOS, YPOS,
 };
 
 // Keep these in-sync with the draw ordering in `states/gameplay.rs`.
 const Z_WORLD_STEP: f32 = 0.01;
 const Z_BG_BASE: f32 = 0.0;
-const Z_OBJ_BASE: f32 = 100.0;
-const Z_CHAR_BASE: f32 = 100.2;
 const Z_FX_BASE: f32 = 100.25;
 
 const Z_GOTO_BIAS: f32 = 0.001;
@@ -75,13 +74,6 @@ pub(crate) struct GameplayHoverTarget {
     pub tile_x: i32,
     pub tile_y: i32,
     pub kind: GameplayHoverTargetKind,
-}
-
-#[derive(Resource, Default, Debug, Clone, Copy)]
-pub(crate) struct GameplaySpriteHighlightState {
-    pub last_tile_x: i32,
-    pub last_tile_y: i32,
-    pub last_layer: GameplayHoverTargetKind,
 }
 
 #[inline]
@@ -323,7 +315,6 @@ pub(crate) fn spawn_map_hover_highlight(
 ) {
     commands.insert_resource(GameplayHoveredTile::default());
     commands.insert_resource(GameplayHoverTarget::default());
-    commands.insert_resource(GameplaySpriteHighlightState::default());
 }
 
 pub(crate) fn spawn_map_move_target_marker(
@@ -797,71 +788,72 @@ pub(crate) fn run_gameplay_map_hover_and_click(
 pub(crate) fn run_gameplay_sprite_highlight(
     hover_target: Res<GameplayHoverTarget>,
     player_state: Res<PlayerState>,
-    mut state: ResMut<GameplaySpriteHighlightState>,
     mut q_tiles: Query<(&TileRender, &mut Sprite)>,
 ) {
-    // Reset previously highlighted sprite if any.
-    if state.last_layer != GameplayHoverTargetKind::None {
-        let last_layer = match state.last_layer {
-            GameplayHoverTargetKind::Background => Some(TileLayer::Background),
-            GameplayHoverTargetKind::Object => Some(TileLayer::Object),
-            GameplayHoverTargetKind::Character => Some(TileLayer::Character),
-            GameplayHoverTargetKind::None => None,
-        };
+    let layer = match hover_target.kind {
+        GameplayHoverTargetKind::Background => TileLayer::Background,
+        GameplayHoverTargetKind::Object => TileLayer::Object,
+        GameplayHoverTargetKind::Character => TileLayer::Character,
+        GameplayHoverTargetKind::None => return,
+    };
 
-        if let Some(layer) = last_layer {
-            for (render, mut sprite) in &mut q_tiles {
-                let x = (render.index % TILEX) as i32;
-                let y = (render.index / TILEX) as i32;
-                if x == state.last_tile_x && y == state.last_tile_y && render.layer == layer {
-                    let tint = player_state
-                        .map()
-                        .tile_at_xy(x as usize, y as usize)
-                        .map(|t| dd_effect_tint(t.light as u32))
-                        .unwrap_or(Color::WHITE);
-                    sprite.color = tint;
-                    break;
-                }
+    let tx = hover_target.tile_x;
+    let ty = hover_target.tile_y;
+    if tx < 0 || ty < 0 {
+        return;
+    }
+
+    let Some(tile) = player_state.map().tile_at_xy(tx as usize, ty as usize) else {
+        return;
+    };
+
+    // Compute engine.c effect bits for this layer, then apply highlight (|16).
+    let mut effect: u32 = tile.light as u32;
+    match layer {
+        TileLayer::Background => {
+            if (tile.flags & INVIS) != 0 {
+                effect |= 64;
+            }
+            if (tile.flags & INFRARED) != 0 {
+                effect |= 256;
+            }
+            if (tile.flags & UWATER) != 0 {
+                effect |= 512;
+            }
+        }
+        TileLayer::Object => {
+            if (tile.flags & INFRARED) != 0 {
+                effect |= 256;
+            }
+            if (tile.flags & UWATER) != 0 {
+                effect |= 512;
+            }
+        }
+        TileLayer::Character => {
+            if tile.ch_nr != 0 && tile.ch_nr == player_state.selected_char() {
+                effect |= 32;
+            }
+            if (tile.flags & STONED) != 0 {
+                effect |= 128;
+            }
+            if (tile.flags & INFRARED) != 0 {
+                effect |= 256;
+            }
+            if (tile.flags & UWATER) != 0 {
+                effect |= 512;
             }
         }
     }
 
-    // Apply current highlight.
-    let (layer, z_base) = match hover_target.kind {
-        GameplayHoverTargetKind::Background => (TileLayer::Background, Z_BG_BASE),
-        GameplayHoverTargetKind::Object => (TileLayer::Object, Z_OBJ_BASE),
-        GameplayHoverTargetKind::Character => (TileLayer::Character, Z_CHAR_BASE),
-        GameplayHoverTargetKind::None => {
-            state.last_layer = GameplayHoverTargetKind::None;
-            state.last_tile_x = -1;
-            state.last_tile_y = -1;
-            return;
-        }
-    };
+    effect |= 16;
+    let tint = dd_effect_tint(effect);
 
-    // Find matching tile entity and brighten its sprite.
     for (render, mut sprite) in &mut q_tiles {
         let x = (render.index % TILEX) as i32;
         let y = (render.index / TILEX) as i32;
-        if x == hover_target.tile_x && y == hover_target.tile_y && render.layer == layer {
-            // Match engine.c highlight behavior: `copysprite(..., map[m].light|16|tmp, ...)`.
-            // We approximate dd.c's effect by applying the highlight bit (16) on top of the
-            // tile's current light level.
-            let tint = player_state
-                .map()
-                .tile_at_xy(x as usize, y as usize)
-                .map(|t| dd_effect_tint((t.light as u32) | 16))
-                .unwrap_or(Color::srgba(1.35, 1.35, 1.35, 1.0));
+        if x == tx && y == ty && render.layer == layer {
             sprite.color = tint;
             break;
         }
     }
-
-    // Store last.
-    state.last_layer = hover_target.kind;
-    state.last_tile_x = hover_target.tile_x;
-    state.last_tile_y = hover_target.tile_y;
-
-    // Keep z_base referenced to avoid "unused" if compiler gets clever.
-    let _ = z_base;
 }

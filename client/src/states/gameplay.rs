@@ -20,12 +20,12 @@ use crate::network::{client_commands::ClientCommand, NetworkRuntime};
 use crate::player_state::PlayerState;
 
 use mag_core::constants::{
-    DEATH, INJURED, INJURED1, INJURED2, INVIS, ISITEM, MF_ARENA, MF_BANK, MF_DEATHTRAP, MF_INDOORS,
-    MF_MOVEBLOCK, MF_NOEXPIRE, MF_NOLAG, MF_NOMAGIC, MF_NOMONST, MF_SIGHTBLOCK, MF_TAVERN,
-    MF_UWATER, PL_ARMS, PL_BELT, PL_BODY, PL_CLOAK, PL_FEET, PL_HEAD, PL_LEGS, PL_NECK, PL_RING,
-    PL_SHIELD, PL_TWOHAND, PL_WEAPON, SPEEDTAB, SPR_EMPTY, STUNNED, TOMB, WN_ARMS, WN_BELT,
-    WN_BODY, WN_CLOAK, WN_FEET, WN_HEAD, WN_LEGS, WN_LHAND, WN_LRING, WN_NECK, WN_RHAND, WN_RRING,
-    XPOS, YPOS,
+    DEATH, INFRARED, INJURED, INJURED1, INJURED2, INVIS, ISITEM, MF_ARENA, MF_BANK, MF_DEATHTRAP,
+    MF_INDOORS, MF_MOVEBLOCK, MF_NOEXPIRE, MF_NOLAG, MF_NOMAGIC, MF_NOMONST, MF_SIGHTBLOCK,
+    MF_TAVERN, MF_UWATER, PL_ARMS, PL_BELT, PL_BODY, PL_CLOAK, PL_FEET, PL_HEAD, PL_LEGS, PL_NECK,
+    PL_RING, PL_SHIELD, PL_TWOHAND, PL_WEAPON, SPEEDTAB, SPR_EMPTY, STONED, STUNNED, TOMB, UWATER,
+    WN_ARMS, WN_BELT, WN_BODY, WN_CLOAK, WN_FEET, WN_HEAD, WN_LEGS, WN_LHAND, WN_LRING, WN_NECK,
+    WN_RHAND, WN_RRING, XPOS, YPOS,
 };
 use mag_core::types::skilltab::{
     get_skill_desc, get_skill_name, get_skill_nr, get_skill_sortkey, MAX_SKILLS,
@@ -2311,6 +2311,7 @@ pub(crate) fn dd_effect_tint(effect: u32) -> Color {
     let highlight = (base & 16) != 0;
     let green = (base & 32) != 0;
     let invis = (base & 64) != 0;
+    let grey = (base & 128) != 0;
     let infra = (base & 256) != 0;
     let water = (base & 512) != 0;
 
@@ -2324,7 +2325,7 @@ pub(crate) fn dd_effect_tint(effect: u32) -> Color {
     if invis {
         base = base.saturating_sub(64);
     }
-    if (effect & 128) != 0 {
+    if grey {
         base = base.saturating_sub(128);
     }
     if infra {
@@ -2344,6 +2345,15 @@ pub(crate) fn dd_effect_tint(effect: u32) -> Color {
     let mut r = shade;
     let mut g = shade;
     let mut b = shade;
+
+    // dd.c's "grey" effect is a greyscale conversion. Since we're tinting a full sprite
+    // (not per-pixel), approximate it by reducing saturation.
+    if grey {
+        // Slightly greenish grayscale like RGB565 tends to look.
+        r *= 0.85;
+        g *= 0.95;
+        b *= 0.85;
+    }
 
     // Approximate a few legacy effect flags used by engine.c (notably infra/water).
     if infra {
@@ -5297,7 +5307,58 @@ pub(crate) fn run_gameplay(
             TileLayer::Character => Z_CHAR_BASE + draw_order * Z_WORLD_STEP,
         };
 
-        let tint = dd_effect_tint(tile.light as u32);
+        // Match engine.c's per-layer effect flags.
+        // Background: map[m].light | (invis?64) | (infra?256) | (uwater?512)
+        // Object:      map[m].light | (infra?256) | (uwater?512)
+        // Character:   map[m].light | (selected?32) | (stoned?128) | (infra?256) | (uwater?512)
+        let mut effect: u32 = tile.light as u32;
+        match render.layer {
+            TileLayer::Background => {
+                if (tile.flags & INVIS) != 0 {
+                    effect |= 64;
+                }
+                if (tile.flags & INFRARED) != 0 {
+                    effect |= 256;
+                }
+                if (tile.flags & UWATER) != 0 {
+                    effect |= 512;
+                }
+            }
+            TileLayer::Object => {
+                // engine.c skips object/character pass entirely if INVIS.
+                if (tile.flags & INVIS) != 0 {
+                    *visibility = Visibility::Hidden;
+                    continue;
+                }
+                if (tile.flags & INFRARED) != 0 {
+                    effect |= 256;
+                }
+                if (tile.flags & UWATER) != 0 {
+                    effect |= 512;
+                }
+            }
+            TileLayer::Character => {
+                // engine.c skips object/character pass entirely if INVIS.
+                if (tile.flags & INVIS) != 0 {
+                    *visibility = Visibility::Hidden;
+                    continue;
+                }
+                if tile.ch_nr != 0 && tile.ch_nr == player_state.selected_char() {
+                    effect |= 32;
+                }
+                if (tile.flags & STONED) != 0 {
+                    effect |= 128;
+                }
+                if (tile.flags & INFRARED) != 0 {
+                    effect |= 256;
+                }
+                if (tile.flags & UWATER) != 0 {
+                    effect |= 512;
+                }
+            }
+        }
+
+        let tint = dd_effect_tint(effect);
 
         if sprite_id == last.sprite_id
             && (sx_f - last.sx).abs() < 0.01
