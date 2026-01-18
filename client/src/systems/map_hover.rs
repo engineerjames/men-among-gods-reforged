@@ -6,6 +6,7 @@ use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::gfx_cache::GraphicsCache;
 use crate::map::{TILEX, TILEY};
 use crate::network::{client_commands::ClientCommand, NetworkRuntime};
+use crate::systems::sound::SoundEventQueue;
 use crate::player_state::PlayerState;
 use crate::states::gameplay::{
     dd_effect_tint, GameplayCursorType, GameplayCursorTypeState, GameplayRenderEntity, TileLayer,
@@ -597,6 +598,7 @@ pub(crate) fn run_gameplay_map_hover_and_click(
     cameras: Query<&Camera, With<Camera2d>>,
     mouse: Res<ButtonInput<MouseButton>>,
     net: Res<NetworkRuntime>,
+    mut sound_queue: ResMut<SoundEventQueue>,
     mut player_state: ResMut<PlayerState>,
     mut hovered: ResMut<GameplayHoveredTile>,
     mut hover_target: ResMut<GameplayHoverTarget>,
@@ -713,9 +715,11 @@ pub(crate) fn run_gameplay_map_hover_and_click(
     // Build mode: hardwired drop/pickup on the clicked tile.
     if citem == 46 {
         if rb_up {
+            sound_queue.push_click();
             net.send(ClientCommand::new_drop(world_x, world_y).to_bytes());
         }
         if lb_up {
+            sound_queue.push_click();
             net.send(ClientCommand::new_pickup(world_x, world_y).to_bytes());
         }
         return;
@@ -724,8 +728,10 @@ pub(crate) fn run_gameplay_map_hover_and_click(
     match keys_mask {
         0 => {
             if lb_up {
+                sound_queue.push_click();
                 net.send(ClientCommand::new_move(world_x, world_y).to_bytes());
             } else if rb_up {
+                sound_queue.push_click();
                 net.send(ClientCommand::new_turn(world_x, world_y).to_bytes());
             }
         }
@@ -733,6 +739,7 @@ pub(crate) fn run_gameplay_map_hover_and_click(
             if citem != 0 {
                 if !has_item {
                     if lb_up {
+                        sound_queue.push_click();
                         net.send(ClientCommand::new_drop(world_x, world_y).to_bytes());
                     }
                 }
@@ -741,11 +748,14 @@ pub(crate) fn run_gameplay_map_hover_and_click(
             if has_item {
                 if lb_up {
                     if has_usable {
+                        sound_queue.push_click();
                         net.send(ClientCommand::new_use(world_x, world_y).to_bytes());
                     } else {
+                        sound_queue.push_click();
                         net.send(ClientCommand::new_pickup(world_x, world_y).to_bytes());
                     }
                 } else if rb_up {
+                    sound_queue.push_click();
                     net.send(ClientCommand::new_look_item(world_x, world_y).to_bytes());
                 }
             }
@@ -757,11 +767,14 @@ pub(crate) fn run_gameplay_map_hover_and_click(
 
             if lb_up {
                 if citem != 0 {
+                    sound_queue.push_click();
                     net.send(ClientCommand::new_give(char_nr).to_bytes());
                 } else {
+                    sound_queue.push_click();
                     net.send(ClientCommand::new_attack(char_nr).to_bytes());
                 }
             } else if rb_up {
+                sound_queue.push_click();
                 net.send(ClientCommand::new_look(char_nr).to_bytes());
             }
         }
@@ -775,6 +788,7 @@ pub(crate) fn run_gameplay_map_hover_and_click(
                         player_state.set_selected_char(char_nr as u16);
                     }
                 } else if rb_up {
+                    sound_queue.push_click();
                     net.send(ClientCommand::new_look(char_nr).to_bytes());
                 }
             } else if lb_up {

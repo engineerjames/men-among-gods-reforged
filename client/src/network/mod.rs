@@ -9,6 +9,7 @@ use bevy::prelude::*;
 use bevy::tasks::Task;
 
 use crate::player_state::PlayerState;
+use crate::systems::sound::SoundEventQueue;
 use crate::GameState;
 use server_commands::ServerCommand;
 
@@ -168,6 +169,7 @@ fn process_network_events(
     mut status: ResMut<LoginStatus>,
     mut next_state: ResMut<NextState<GameState>>,
     mut player_state: ResMut<PlayerState>,
+    mut sound_queue: ResMut<SoundEventQueue>,
 ) {
     let Some(rx_arc) = net.event_rx.clone() else {
         return;
@@ -191,6 +193,12 @@ fn process_network_events(
                 }
 
                 if let Some(cmd) = ServerCommand::from_bytes(&bytes) {
+                    if let server_commands::ServerCommandData::PlaySound { nr, vol, pan } =
+                        &cmd.structured_data
+                    {
+                        sound_queue.push_server_play_sound(*nr, *vol, *pan);
+                    }
+
                     player_state.update_from_server_command(&cmd);
                     log::info!("Received server command: {:?}", cmd);
                 } else {

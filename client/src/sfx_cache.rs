@@ -18,7 +18,8 @@ struct InitState {
 #[allow(dead_code)]
 pub struct SoundCache {
     assets_directory: PathBuf,
-    sfx: Vec<Handle<AudioSource>>,
+    sfx_by_number: Vec<Option<Handle<AudioSource>>>,
+    click: Option<Handle<AudioSource>>,
     initialized: bool,
     init_state: Option<InitState>,
     init_error: Option<String>,
@@ -28,7 +29,8 @@ impl SoundCache {
     pub fn new(assets_directory: &str) -> Self {
         Self {
             assets_directory: PathBuf::from(assets_directory),
-            sfx: Vec::new(),
+            sfx_by_number: Vec::new(),
+            click: None,
             initialized: false,
             init_state: None,
             init_error: None,
@@ -36,7 +38,8 @@ impl SoundCache {
     }
 
     pub fn reset_loading(&mut self) {
-        self.sfx.clear();
+        self.sfx_by_number.clear();
+        self.click = None;
         self.initialized = false;
         self.init_state = None;
         self.init_error = None;
@@ -47,8 +50,12 @@ impl SoundCache {
     }
 
     #[allow(dead_code)]
-    pub fn get_audio(&self, index: usize) -> Option<&Handle<AudioSource>> {
-        self.sfx.get(index)
+    pub fn get_numbered(&self, nr: u32) -> Option<&Handle<AudioSource>> {
+        self.sfx_by_number.get(nr as usize).and_then(|h| h.as_ref())
+    }
+
+    pub fn click(&self) -> Option<&Handle<AudioSource>> {
+        self.click.as_ref()
     }
 
     /// Incrementally initializes the cache by walking a directory.
@@ -116,6 +123,12 @@ impl SoundCache {
 
         let audio_file = &state.entries[state.index];
 
+        let stem = audio_file
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+
         let audio_bytes = match std::fs::read(audio_file) {
             Ok(bytes) => bytes,
             Err(e) => {
@@ -133,7 +146,19 @@ impl SoundCache {
             bytes: audio_bytes.into(),
         };
         let handle = audio_sources.add(source);
-        self.sfx.push(handle);
+
+        if stem == "click" {
+            self.click = Some(handle);
+        } else if let Ok(nr) = stem.parse::<u32>() {
+            let idx = nr as usize;
+            if self.sfx_by_number.len() <= idx {
+                self.sfx_by_number.resize_with(idx + 1, || None);
+            }
+            self.sfx_by_number[idx] = Some(handle);
+        } else {
+            // Unrecognized naming scheme; ignore for now.
+        }
+
         state.index += 1;
 
         let progress = state.index as f32 / state.entries.len() as f32;
