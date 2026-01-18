@@ -7,6 +7,7 @@ use bevy::input::keyboard::KeyboardInput;
 use bevy::input::ButtonState;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::sprite::Anchor;
+use bevy::window::{CursorIcon, PrimaryWindow, SystemCursorIcon};
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -21,8 +22,10 @@ use crate::player_state::PlayerState;
 use mag_core::constants::{
     DEATH, INJURED, INJURED1, INJURED2, INVIS, ISITEM, MF_ARENA, MF_BANK, MF_DEATHTRAP, MF_INDOORS,
     MF_MOVEBLOCK, MF_NOEXPIRE, MF_NOLAG, MF_NOMAGIC, MF_NOMONST, MF_SIGHTBLOCK, MF_TAVERN,
-    MF_UWATER, SPEEDTAB, SPR_EMPTY, STUNNED, TOMB, WN_ARMS, WN_BELT, WN_BODY, WN_CLOAK, WN_FEET,
-    WN_HEAD, WN_LEGS, WN_LHAND, WN_LRING, WN_NECK, WN_RHAND, WN_RRING, XPOS, YPOS,
+    MF_UWATER, PL_ARMS, PL_BELT, PL_BODY, PL_CLOAK, PL_FEET, PL_HEAD, PL_LEGS, PL_NECK, PL_RING,
+    PL_SHIELD, PL_TWOHAND, PL_WEAPON, SPEEDTAB, SPR_EMPTY, STUNNED, TOMB, WN_ARMS, WN_BELT,
+    WN_BODY, WN_CLOAK, WN_FEET, WN_HEAD, WN_LEGS, WN_LHAND, WN_LRING, WN_NECK, WN_RHAND, WN_RRING,
+    XPOS, YPOS,
 };
 use mag_core::types::skilltab::{
     get_skill_desc, get_skill_name, get_skill_nr, get_skill_sortkey, MAX_SKILLS,
@@ -54,6 +57,7 @@ const Z_UI_SHOP_ITEMS: f32 = 931.0;
 const Z_UI_TEXT: f32 = 940.0;
 const Z_UI_MINIMAP: f32 = 905.0;
 const Z_UI_SCROLL: f32 = 939.0;
+const Z_UI_CURSOR: f32 = 950.0;
 
 // Matches dd_show_map() placement in dd.c: top-left at (3,471), size 128x128.
 const MINIMAP_X: f32 = 3.0;
@@ -293,9 +297,17 @@ pub(crate) struct GameplayUiEquipmentSlot {
 }
 
 #[derive(Component, Clone, Copy, Debug)]
+pub(crate) struct GameplayUiEquipmentBlock {
+    worn_index: usize,
+}
+
+#[derive(Component, Clone, Copy, Debug)]
 pub(crate) struct GameplayUiBackpackSlot {
     index: usize,
 }
+
+#[derive(Component)]
+pub(crate) struct GameplayUiCarriedItem;
 
 #[derive(Component, Clone, Copy, Debug)]
 pub(crate) struct GameplayUiSpellSlot {
@@ -462,6 +474,51 @@ pub(crate) struct GameplayInventoryScrollState {
     /// Inventory scroll position from the original client (0..=30).
     inv_pos: usize,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GameplayMoneyHoverKind {
+    Silver1,
+    Silver10,
+    Gold1,
+    Gold10,
+    Gold100,
+    Gold1000,
+    Gold10000,
+}
+
+#[derive(Resource, Default, Debug)]
+pub(crate) struct GameplayInventoryHoverState {
+    backpack_slot: Option<usize>,
+    equipment_worn_index: Option<usize>,
+    money: Option<GameplayMoneyHoverKind>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GameplayCursorType {
+    None,
+    Take,
+    Drop,
+    Swap,
+    Use,
+}
+
+impl Default for GameplayCursorType {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+#[derive(Resource, Default, Debug)]
+pub(crate) struct GameplayCursorTypeState {
+    cursor: GameplayCursorType,
+}
+
+// Equipment slot ordering used by the original client UI.
+// Matches engine.c's `wntab[]` for drawing worn items.
+const EQUIP_WNTAB: [usize; 12] = [
+    WN_HEAD, WN_CLOAK, WN_BODY, WN_ARMS, WN_NECK, WN_BELT, WN_RHAND, WN_LHAND, WN_RRING, WN_LRING,
+    WN_LEGS, WN_FEET,
+];
 
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum GameplayUiScrollKnobKind {
@@ -1719,6 +1776,56 @@ fn spawn_ui_equipment(commands: &mut Commands, gfx: &GraphicsCache) {
     }
 }
 
+fn spawn_ui_equipment_blocks(commands: &mut Commands, gfx: &GraphicsCache) {
+    // Matches engine.c: if (inv_block[wntab[n]]) copyspritex(4,303+(n%2)*35,2+(n/2)*35,0);
+    // Use sprite 4 (block overlay) when available.
+    let Some(block) = gfx.get_sprite(4) else {
+        return;
+    };
+    for (n, worn_index) in EQUIP_WNTAB.into_iter().enumerate() {
+        let sx = 303.0 + ((n % 2) as f32) * 35.0;
+        let sy = 2.0 + ((n / 2) as f32) * 35.0;
+        commands.spawn((
+            GameplayRenderEntity,
+            GameplayUiEquipmentBlock { worn_index },
+            LastRender {
+                sprite_id: i32::MIN,
+                sx: f32::NAN,
+                sy: f32::NAN,
+            },
+            block.clone(),
+            Anchor::TOP_LEFT,
+            Transform::from_translation(screen_to_world(sx, sy, Z_UI_EQUIP + 0.05)),
+            GlobalTransform::default(),
+            Visibility::Hidden,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
+        ));
+    }
+}
+
+fn spawn_ui_carried_item(commands: &mut Commands, gfx: &GraphicsCache) {
+    let Some(empty) = gfx.get_sprite(SPR_EMPTY as usize) else {
+        return;
+    };
+    commands.spawn((
+        GameplayRenderEntity,
+        GameplayUiCarriedItem,
+        LastRender {
+            sprite_id: i32::MIN,
+            sx: f32::NAN,
+            sy: f32::NAN,
+        },
+        empty.clone(),
+        Anchor::TOP_LEFT,
+        Transform::from_translation(screen_to_world(0.0, 0.0, Z_UI_CURSOR)),
+        GlobalTransform::default(),
+        Visibility::Hidden,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
+    ));
+}
+
 fn spawn_ui_spells(commands: &mut Commands, gfx: &GraphicsCache) {
     // Matches `eng_display_win`: copyspritex(pl.spell[n],374+(n%5)*24,4+(n/5)*24,...)
     let Some(empty) = gfx.get_sprite(SPR_EMPTY as usize) else {
@@ -1995,6 +2102,7 @@ fn draw_inventory_ui(
     gfx: &GraphicsCache,
     player_state: &PlayerState,
     inv_scroll: &GameplayInventoryScrollState,
+    hover: &GameplayInventoryHoverState,
     q: &mut Query<(
         &GameplayUiBackpackSlot,
         &mut Sprite,
@@ -2008,6 +2116,14 @@ fn draw_inventory_ui(
     for (slot, mut sprite, mut visibility, mut last) in q.iter_mut() {
         let idx = inv_pos.saturating_add(slot.index);
         let sprite_id = pl.item.get(idx).copied().unwrap_or(0);
+
+        // Highlight the currently hovered visible slot.
+        let is_hovered = hover.backpack_slot == Some(slot.index);
+        sprite.color = if is_hovered {
+            Color::srgba(0.6, 1.0, 0.6, 1.0)
+        } else {
+            Color::WHITE
+        };
 
         if sprite_id <= 0 {
             last.sprite_id = sprite_id;
@@ -2032,6 +2148,7 @@ fn draw_inventory_ui(
 fn draw_equipment_ui(
     gfx: &GraphicsCache,
     player_state: &PlayerState,
+    hover: &GameplayInventoryHoverState,
     q: &mut Query<(
         &GameplayUiEquipmentSlot,
         &mut Sprite,
@@ -2043,6 +2160,15 @@ fn draw_equipment_ui(
 
     for (slot, mut sprite, mut visibility, mut last) in q.iter_mut() {
         let sprite_id = pl.worn.get(slot.worn_index).copied().unwrap_or(0);
+
+        // Hover highlight tint.
+        let is_hovered = hover.equipment_worn_index == Some(slot.worn_index);
+        sprite.color = if is_hovered {
+            Color::srgba(0.6, 1.0, 0.6, 1.0)
+        } else {
+            Color::WHITE
+        };
+
         if sprite_id <= 0 {
             last.sprite_id = sprite_id;
             *visibility = Visibility::Hidden;
@@ -2747,6 +2873,8 @@ pub(crate) fn setup_gameplay(
     // Pending stat raises/points spent (orig/inter.c statbox bookkeeping).
     commands.insert_resource(GameplayStatboxState::default());
     commands.insert_resource(GameplayInventoryScrollState::default());
+    commands.insert_resource(GameplayInventoryHoverState::default());
+    commands.insert_resource(GameplayCursorTypeState::default());
 
     // Clear any previous gameplay sprites (re-entering gameplay, etc.)
     for e in &existing_render {
@@ -2883,7 +3011,11 @@ pub(crate) fn setup_gameplay(
 
     // Equipment slots + active spells
     spawn_ui_equipment(&mut commands, &gfx);
+    spawn_ui_equipment_blocks(&mut commands, &gfx);
     spawn_ui_spells(&mut commands, &gfx);
+
+    // Carried item cursor sprite (engine.c draws pl.citem at the mouse position).
+    spawn_ui_carried_item(&mut commands, &gfx);
 
     // Shop window (panel + item slots)
     spawn_ui_shop_window(&mut commands, &gfx);
@@ -2912,6 +3044,137 @@ pub(crate) fn setup_gameplay(
     spawn_ui_hud_labels(&mut commands);
 
     log::debug!("setup_gameplay - end");
+}
+
+pub(crate) fn run_gameplay_update_equipment_blocks(
+    gfx: Res<GraphicsCache>,
+    player_state: Res<PlayerState>,
+    mut q: Query<(
+        &GameplayUiEquipmentBlock,
+        &mut Sprite,
+        &mut Visibility,
+        &mut LastRender,
+    )>,
+) {
+    let pl = player_state.character_info();
+    let mut inv_block = [false; 20];
+    let citem = pl.citem;
+    let citem_p = pl.citem_p as u16;
+
+    if citem != 0 {
+        inv_block[WN_HEAD] = (citem_p & PL_HEAD) == 0;
+        inv_block[WN_NECK] = (citem_p & PL_NECK) == 0;
+        inv_block[WN_BODY] = (citem_p & PL_BODY) == 0;
+        inv_block[WN_ARMS] = (citem_p & PL_ARMS) == 0;
+        inv_block[WN_BELT] = (citem_p & PL_BELT) == 0;
+        inv_block[WN_LEGS] = (citem_p & PL_LEGS) == 0;
+        inv_block[WN_FEET] = (citem_p & PL_FEET) == 0;
+        inv_block[WN_RHAND] = (citem_p & PL_WEAPON) == 0;
+        inv_block[WN_LHAND] = (citem_p & PL_SHIELD) == 0;
+        inv_block[WN_CLOAK] = (citem_p & PL_CLOAK) == 0;
+
+        let ring_blocked = (citem_p & PL_RING) == 0;
+        inv_block[WN_LRING] = ring_blocked;
+        inv_block[WN_RRING] = ring_blocked;
+    }
+
+    // Two-handed weapon blocks the left hand slot.
+    if (pl.worn_p[WN_RHAND] as u16 & PL_TWOHAND) != 0 {
+        inv_block[WN_LHAND] = true;
+    }
+
+    const BLOCK_SPRITE_ID: i32 = 4;
+    for (slot, mut sprite, mut vis, mut last) in &mut q {
+        let blocked = inv_block.get(slot.worn_index).copied().unwrap_or(false);
+        if !blocked {
+            *vis = Visibility::Hidden;
+            continue;
+        }
+        if last.sprite_id != BLOCK_SPRITE_ID {
+            if let Some(src) = gfx.get_sprite(BLOCK_SPRITE_ID as usize) {
+                *sprite = src.clone();
+                last.sprite_id = BLOCK_SPRITE_ID;
+                *vis = Visibility::Visible;
+            } else {
+                *vis = Visibility::Hidden;
+            }
+        } else {
+            *vis = Visibility::Visible;
+        }
+        sprite.color = Color::WHITE;
+    }
+}
+
+pub(crate) fn run_gameplay_update_cursor_and_carried_item(
+    mut commands: Commands,
+    window_entities: Query<Entity, With<PrimaryWindow>>,
+    windows: Query<&Window, With<PrimaryWindow>>,
+    cameras: Query<&Camera, With<Camera2d>>,
+    gfx: Res<GraphicsCache>,
+    player_state: Res<PlayerState>,
+    cursor_state: Res<GameplayCursorTypeState>,
+    mut q: Query<
+        (
+            &mut Sprite,
+            &mut Transform,
+            &mut Visibility,
+            &mut LastRender,
+        ),
+        With<GameplayUiCarriedItem>,
+    >,
+) {
+    // Map gameplay cursor types onto the OS cursor by inserting a CursorIcon component.
+    let Ok(window_entity) = window_entities.single() else {
+        return;
+    };
+    let system_icon = match cursor_state.cursor {
+        GameplayCursorType::None => SystemCursorIcon::Default,
+        GameplayCursorType::Take => SystemCursorIcon::Grab,
+        GameplayCursorType::Drop => SystemCursorIcon::Grabbing,
+        GameplayCursorType::Swap => SystemCursorIcon::Move,
+        GameplayCursorType::Use => SystemCursorIcon::Pointer,
+    };
+    commands
+        .entity(window_entity)
+        .insert(CursorIcon::from(system_icon));
+
+    let Some((mut sprite, mut t, mut vis, mut last)) = q.iter_mut().next() else {
+        return;
+    };
+
+    let Some(game) = cursor_game_pos(&windows, &cameras) else {
+        *vis = Visibility::Hidden;
+        return;
+    };
+
+    let pl = player_state.character_info();
+    let citem = pl.citem;
+
+    if citem <= 0 {
+        *vis = Visibility::Hidden;
+        last.sprite_id = citem;
+        return;
+    }
+
+    if last.sprite_id != citem {
+        if let Some(src) = gfx.get_sprite(citem as usize) {
+            *sprite = src.clone();
+            last.sprite_id = citem;
+        } else {
+            *vis = Visibility::Hidden;
+            return;
+        }
+    }
+
+    // engine.c draws at (mouse_x-16,mouse_y-16). Alpha-ish effect for drop/swap/use.
+    t.translation = screen_to_world(game.x - 16.0, game.y - 16.0, Z_UI_CURSOR);
+    sprite.color = match cursor_state.cursor {
+        GameplayCursorType::Drop | GameplayCursorType::Swap | GameplayCursorType::Use => {
+            Color::srgba(1.0, 1.0, 1.0, 0.75)
+        }
+        _ => Color::WHITE,
+    };
+    *vis = Visibility::Visible;
 }
 
 pub(crate) fn run_gameplay_update_scroll_knobs(
@@ -3635,6 +3898,262 @@ pub(crate) fn run_gameplay_statbox_input(
     }
 }
 
+pub(crate) fn run_gameplay_inventory_input(
+    keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
+    cameras: Query<&Camera, With<Camera2d>>,
+    net: Res<NetworkRuntime>,
+    mut player_state: ResMut<PlayerState>,
+    inv_scroll: Res<GameplayInventoryScrollState>,
+    mut hover: ResMut<GameplayInventoryHoverState>,
+    mut cursor_state: ResMut<GameplayCursorTypeState>,
+) {
+    let Some(game) = cursor_game_pos(&windows, &cameras) else {
+        hover.backpack_slot = None;
+        hover.equipment_worn_index = None;
+        hover.money = None;
+        cursor_state.cursor = GameplayCursorType::None;
+        return;
+    };
+
+    // Hover detection order mirrors orig/inter.c::mouse_inventory: money first, then backpack.
+    hover.backpack_slot = None;
+    hover.equipment_worn_index = None;
+    hover.money = None;
+    cursor_state.cursor = GameplayCursorType::None;
+
+    let x = game.x;
+    let y = game.y;
+
+    // Money (orig/inter.c::mouse_inventory): click regions around x=219..301,y=176..259.
+    if (176.0..=203.0).contains(&y) {
+        if (219.0..=246.0).contains(&x) {
+            hover.money = Some(GameplayMoneyHoverKind::Silver1);
+        } else if (247.0..=274.0).contains(&x) {
+            hover.money = Some(GameplayMoneyHoverKind::Silver10);
+        } else if (275.0..=301.0).contains(&x) {
+            hover.money = Some(GameplayMoneyHoverKind::Gold1);
+        }
+    } else if (205.0..=231.0).contains(&y) {
+        if (219.0..=246.0).contains(&x) {
+            hover.money = Some(GameplayMoneyHoverKind::Gold10);
+        } else if (247.0..=274.0).contains(&x) {
+            hover.money = Some(GameplayMoneyHoverKind::Gold100);
+        } else if (275.0..=301.0).contains(&x) {
+            hover.money = Some(GameplayMoneyHoverKind::Gold1000);
+        }
+    } else if (232.0..=259.0).contains(&y) && (219.0..=246.0).contains(&x) {
+        hover.money = Some(GameplayMoneyHoverKind::Gold10000);
+    }
+
+    // Backpack hover (orig/inter.c::mouse_inventory): x 219..288, y 1..175.
+    if hover.money.is_none() && (219.0..=288.0).contains(&x) && (1.0..=175.0).contains(&y) {
+        let tx = ((x - 219.0) / 35.0).floor() as i32;
+        let ty = ((y - 1.0) / 35.0).floor() as i32;
+        if (0..2).contains(&tx) && (0..5).contains(&ty) {
+            let slot = (tx + ty * 2) as usize;
+            if slot < 10 {
+                hover.backpack_slot = Some(slot);
+            }
+        }
+    }
+
+    // Worn equipment hover (orig/inter.c::mouse_inventory): x>302 && x<371 && y>1 && y<175+35.
+    if hover.money.is_none()
+        && hover.backpack_slot.is_none()
+        && (302.0..=371.0).contains(&x)
+        && (1.0..=210.0).contains(&y)
+    {
+        let tx = ((x - 302.0) / 35.0).floor() as i32;
+        let ty = ((y - 1.0) / 35.0).floor() as i32;
+        if (0..2).contains(&tx) && (0..6).contains(&ty) {
+            let n = (tx + ty * 2) as usize;
+            if n < EQUIP_WNTAB.len() {
+                hover.equipment_worn_index = Some(EQUIP_WNTAB[n]);
+            }
+        }
+    }
+
+    let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+    let ctrl = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
+    let keys_mask = (shift as u32) | ((ctrl as u32) << 1);
+
+    // Cursor type (orig/inter.c::mouse_inventory cursor_type logic).
+    let pl = player_state.character_info();
+    let has_citem = pl.citem != 0;
+    if hover.money.is_some() {
+        cursor_state.cursor = GameplayCursorType::Take;
+    } else if let Some(slot) = hover.backpack_slot {
+        let idx = inv_scroll.inv_pos.saturating_add(slot);
+        let has_item = pl.item.get(idx).copied().unwrap_or(0) != 0;
+        cursor_state.cursor = match keys_mask {
+            1 => {
+                if has_item {
+                    if has_citem {
+                        GameplayCursorType::Swap
+                    } else {
+                        GameplayCursorType::Take
+                    }
+                } else if has_citem {
+                    GameplayCursorType::Drop
+                } else {
+                    GameplayCursorType::None
+                }
+            }
+            0 => {
+                if has_item {
+                    GameplayCursorType::Use
+                } else {
+                    GameplayCursorType::None
+                }
+            }
+            _ => GameplayCursorType::None,
+        };
+    } else if let Some(worn_index) = hover.equipment_worn_index {
+        let has_item = pl.worn.get(worn_index).copied().unwrap_or(0) != 0;
+        cursor_state.cursor = match keys_mask {
+            1 => {
+                if has_item {
+                    if has_citem {
+                        GameplayCursorType::Swap
+                    } else {
+                        GameplayCursorType::Take
+                    }
+                } else if has_citem {
+                    GameplayCursorType::Drop
+                } else {
+                    GameplayCursorType::None
+                }
+            }
+            0 => {
+                if has_item {
+                    GameplayCursorType::Use
+                } else {
+                    GameplayCursorType::None
+                }
+            }
+            _ => GameplayCursorType::None,
+        };
+    }
+
+    // Right-click behavior: money tooltips + backpack look.
+    if mouse.just_released(MouseButton::Right) {
+        if let Some(kind) = hover.money {
+            match kind {
+                GameplayMoneyHoverKind::Silver1 => player_state.tlog(1, "1 silver coin."),
+                GameplayMoneyHoverKind::Silver10 => player_state.tlog(1, "10 silver coins."),
+                GameplayMoneyHoverKind::Gold1 => player_state.tlog(1, "1 gold coin."),
+                GameplayMoneyHoverKind::Gold10 => player_state.tlog(1, "10 gold coins."),
+                GameplayMoneyHoverKind::Gold100 => player_state.tlog(1, "100 gold coins."),
+                GameplayMoneyHoverKind::Gold1000 => player_state.tlog(1, "1,000 gold coins."),
+                GameplayMoneyHoverKind::Gold10000 => player_state.tlog(1, "10,000 gold coins."),
+            }
+            return;
+        }
+
+        if let Some(slot) = hover.backpack_slot {
+            let selected_char = player_state.selected_char() as u32;
+            let idx = inv_scroll.inv_pos.saturating_add(slot);
+            net.send(ClientCommand::new_inv_look(idx as u32, 0, selected_char).to_bytes());
+            return;
+        }
+
+        // Worn equipment right-click (orig/inter.c::mouse_inventory): cmd3(CL_CMD_INV,7,slot,selected_char).
+        // Slot numbering here matches the original cmd3 usage (0..11), not the WN_* indices.
+        if hover.equipment_worn_index.is_some() && (keys_mask == 0 || keys_mask == 1) {
+            let tx = ((x - 302.0) / 35.0).floor() as i32;
+            let ty = ((y - 1.0) / 35.0).floor() as i32;
+            let slot_nr: Option<u32> = match (tx, ty) {
+                (0, 0) => Some(0),  // head
+                (1, 0) => Some(9),  // cloak
+                (0, 1) => Some(2),  // body
+                (1, 1) => Some(3),  // arms
+                (0, 2) => Some(1),  // neck
+                (1, 2) => Some(4),  // belt
+                (0, 3) => Some(8),  // right hand
+                (1, 3) => Some(7),  // left hand
+                (0, 4) => Some(10), // right ring
+                (1, 4) => Some(11), // left ring
+                (0, 5) => Some(5),  // legs
+                (1, 5) => Some(6),  // feet
+                _ => None,
+            };
+            if let Some(slot_nr) = slot_nr {
+                let selected_char = player_state.selected_char() as u32;
+                net.send(ClientCommand::new_inv(7, slot_nr, selected_char).to_bytes());
+            }
+            return;
+        }
+
+        return;
+    }
+
+    if !mouse.just_released(MouseButton::Left) {
+        return;
+    }
+
+    // Left-click behavior.
+    if let Some(kind) = hover.money {
+        let selected_char = player_state.selected_char() as u32;
+        let amount = match kind {
+            GameplayMoneyHoverKind::Silver1 => 1u32,
+            GameplayMoneyHoverKind::Silver10 => 10u32,
+            GameplayMoneyHoverKind::Gold1 => 100u32,
+            GameplayMoneyHoverKind::Gold10 => 1_000u32,
+            GameplayMoneyHoverKind::Gold100 => 10_000u32,
+            GameplayMoneyHoverKind::Gold1000 => 100_000u32,
+            GameplayMoneyHoverKind::Gold10000 => 1_000_000u32,
+        };
+        // orig/inter.c uses: cmd3(CL_CMD_INV,2,amount,selected_char)
+        net.send(ClientCommand::new_inv(2, amount, selected_char).to_bytes());
+        return;
+    }
+
+    if let Some(slot) = hover.backpack_slot {
+        // Backpack click behavior depends on Shift (orig/inter.c::mouse_inventory).
+        // - Shift + LB_UP: cmd3(CL_CMD_INV,0,nr+inv_pos,selected_char)
+        // - No mods + LB_UP: cmd3(CL_CMD_INV,6,nr+inv_pos,selected_char)
+        // - Ctrl or other combos: do nothing.
+        if keys_mask == 0 || keys_mask == 1 {
+            let selected_char = player_state.selected_char() as u32;
+            let idx = inv_scroll.inv_pos.saturating_add(slot) as u32;
+            let a = if keys_mask == 1 { 0u32 } else { 6u32 };
+            net.send(ClientCommand::new_inv(a, idx, selected_char).to_bytes());
+        }
+        return;
+    }
+
+    // Worn equipment left-click (orig/inter.c::mouse_inventory):
+    // - Shift + LB_UP: cmd3(CL_CMD_INV,1,slot,selected_char)
+    // - No mods + LB_UP: cmd3(CL_CMD_INV,5,slot,selected_char)
+    if hover.equipment_worn_index.is_some() && (keys_mask == 0 || keys_mask == 1) {
+        let tx = ((x - 302.0) / 35.0).floor() as i32;
+        let ty = ((y - 1.0) / 35.0).floor() as i32;
+        let slot_nr: Option<u32> = match (tx, ty) {
+            (0, 0) => Some(0),  // head
+            (1, 0) => Some(9),  // cloak
+            (0, 1) => Some(2),  // body
+            (1, 1) => Some(3),  // arms
+            (0, 2) => Some(1),  // neck
+            (1, 2) => Some(4),  // belt
+            (0, 3) => Some(8),  // right hand
+            (1, 3) => Some(7),  // left hand
+            (0, 4) => Some(10), // right ring
+            (1, 4) => Some(11), // left ring
+            (0, 5) => Some(5),  // legs
+            (1, 5) => Some(6),  // feet
+            _ => None,
+        };
+        if let Some(slot_nr) = slot_nr {
+            let selected_char = player_state.selected_char() as u32;
+            let a = if keys_mask == 1 { 1u32 } else { 5u32 };
+            net.send(ClientCommand::new_inv(a, slot_nr, selected_char).to_bytes());
+        }
+        return;
+    }
+}
+
 pub(crate) fn run_gameplay_update_hud_labels(
     player_state: Res<PlayerState>,
     statbox: Res<GameplayStatboxState>,
@@ -4350,6 +4869,7 @@ pub(crate) fn run_gameplay(
     mut clock: Local<EngineClock>,
     mut opt_clock: Local<SendOptClock>,
     inv_scroll: Res<GameplayInventoryScrollState>,
+    inv_hover: Res<GameplayInventoryHoverState>,
     mut q_world_root: Query<
         &mut Transform,
         (
@@ -4941,8 +5461,8 @@ pub(crate) fn run_gameplay(
         }
     }
 
-    draw_inventory_ui(&gfx, &player_state, &inv_scroll, &mut q_ui.p5());
-    draw_equipment_ui(&gfx, &player_state, &mut q_ui.p2());
+    draw_inventory_ui(&gfx, &player_state, &inv_scroll, &inv_hover, &mut q_ui.p5());
+    draw_equipment_ui(&gfx, &player_state, &inv_hover, &mut q_ui.p2());
     draw_active_spells_ui(&gfx, &player_state, &mut q_ui.p3());
     draw_shop_window_ui(&gfx, &player_state, &mut q_ui.p4());
 }
