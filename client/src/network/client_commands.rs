@@ -39,7 +39,6 @@ pub enum ClientCommandType {
     CmdCTick = 255,
 }
 
-#[allow(dead_code)]
 pub struct ClientCommand {
     header: ClientCommandType,
     payload: Vec<u8>,

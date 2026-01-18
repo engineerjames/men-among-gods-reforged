@@ -6,12 +6,12 @@ use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::gfx_cache::GraphicsCache;
 use crate::map::{TILEX, TILEY};
 use crate::network::{client_commands::ClientCommand, NetworkRuntime};
-use crate::systems::sound::SoundEventQueue;
 use crate::player_state::PlayerState;
 use crate::states::gameplay::{
     dd_effect_tint, GameplayCursorType, GameplayCursorTypeState, GameplayRenderEntity, TileLayer,
     TileRender,
 };
+use crate::systems::sound::SoundEventQueue;
 
 use mag_core::constants::{
     DR_DROP, DR_GIVE, DR_PICKUP, DR_USE, INFRARED, INVIS, ISCHAR, ISITEM, ISUSABLE, STONED, UWATER,

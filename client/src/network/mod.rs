@@ -42,7 +42,6 @@ impl Default for LoginStatus {
     }
 }
 
-#[allow(dead_code)]
 enum NetworkCommand {
     Send(Vec<u8>),
     Shutdown,
@@ -91,7 +90,6 @@ impl NetworkRuntime {
         self.client_ticker
     }
 
-    #[allow(dead_code)]
     pub fn send(&self, bytes: Vec<u8>) {
         let Some(tx) = &self.command_tx else {
             return;

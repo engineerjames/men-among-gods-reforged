@@ -1,23 +1,9 @@
-#![allow(dead_code)]
-
 use crate::types::map::CMapTile;
 
 // These are the *client view* tile dimensions (matches original client: 34x34).
 // Do NOT use SERVER_MAPX/Y here; those represent the full world map size.
 pub const TILEX: usize = mag_core::constants::TILEX;
 pub const TILEY: usize = mag_core::constants::TILEY;
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct TileDrawData {
-    pub base_sprite: Option<i16>,
-    pub item_sprite: Option<i16>,
-    pub character_sprite: Option<u16>,
-    pub light: u8,
-    pub flags: u32,
-    pub flags2: u32,
-    pub character_status: u8,
-    pub item_status: u8,
-}
 
 #[derive(Debug)]
 pub struct GameMap {
@@ -61,11 +47,6 @@ impl GameMap {
     }
 
     #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.tiles.is_empty()
-    }
-
-    #[inline]
     pub fn tile_index(x: usize, y: usize) -> Option<usize> {
         if x < TILEX && y < TILEY {
             Some(x + y * TILEX)
@@ -86,43 +67,6 @@ impl GameMap {
 
     pub fn tile_at_xy(&self, x: usize, y: usize) -> Option<&CMapTile> {
         Self::tile_index(x, y).and_then(|idx| self.tiles.get(idx))
-    }
-
-    pub fn tile_at_xy_mut(&mut self, x: usize, y: usize) -> Option<&mut CMapTile> {
-        Self::tile_index(x, y).and_then(|idx| self.tiles.get_mut(idx))
-    }
-
-    pub fn iter_region(
-        &self,
-        min_x: usize,
-        min_y: usize,
-        width: usize,
-        height: usize,
-    ) -> impl Iterator<Item = (usize, usize, &CMapTile)> {
-        let max_x = (min_x + width).min(TILEX);
-        let max_y = (min_y + height).min(TILEY);
-
-        (min_y..max_y).flat_map(move |y| {
-            (min_x..max_x).filter_map(move |x| {
-                let idx = x + y * TILEX;
-                self.tiles.get(idx).map(|t| (x, y, t))
-            })
-        })
-    }
-
-    pub fn draw_data_at_index(&self, index: usize) -> Option<TileDrawData> {
-        let tile = self.tiles.get(index)?;
-
-        Some(TileDrawData {
-            base_sprite: (tile.ba_sprite != 0).then_some(tile.ba_sprite),
-            item_sprite: (tile.it_sprite != 0).then_some(tile.it_sprite),
-            character_sprite: (tile.ch_sprite != 0).then_some(tile.ch_sprite),
-            light: tile.light,
-            flags: tile.flags,
-            flags2: tile.flags2,
-            character_status: tile.ch_status,
-            item_status: tile.it_status,
-        })
     }
 
     pub fn apply_set_map(
@@ -378,58 +322,6 @@ mod tests {
         let tlast = map.tile_at_xy(tx, ty).unwrap();
         assert_eq!(tlast.x, tx as u16);
         assert_eq!(tlast.y, ty as u16);
-    }
-
-    #[test]
-    fn iter_region_clamps_to_map() {
-        let map = GameMap::new();
-
-        let items: Vec<_> = map.iter_region(0, 0, 2, 2).collect();
-        assert_eq!(items.len(), 4);
-        assert_eq!(items[0].0, 0);
-        assert_eq!(items[0].1, 0);
-        assert_eq!(items[3].0, 1);
-        assert_eq!(items[3].1, 1);
-
-        let items: Vec<_> = map.iter_region(TILEX - 1, TILEY - 1, 10, 10).collect();
-        assert_eq!(items.len(), 1);
-        assert_eq!(items[0].0, TILEX - 1);
-        assert_eq!(items[0].1, TILEY - 1);
-    }
-
-    #[test]
-    fn draw_data_maps_zero_to_none() {
-        let mut map = GameMap::new();
-        let idx = GameMap::tile_index(0, 0).unwrap();
-        let t = map.tile_at_index_mut(idx).unwrap();
-        t.ba_sprite = 0;
-        t.it_sprite = 0;
-        t.ch_sprite = 0;
-        t.light = 7;
-        t.flags = 1;
-        t.flags2 = 2;
-        t.ch_status = 3;
-        t.it_status = 4;
-
-        let d = map.draw_data_at_index(idx).unwrap();
-        assert_eq!(d.base_sprite, None);
-        assert_eq!(d.item_sprite, None);
-        assert_eq!(d.character_sprite, None);
-        assert_eq!(d.light, 7);
-        assert_eq!(d.flags, 1);
-        assert_eq!(d.flags2, 2);
-        assert_eq!(d.character_status, 3);
-        assert_eq!(d.item_status, 4);
-
-        let t = map.tile_at_index_mut(idx).unwrap();
-        t.ba_sprite = 10;
-        t.it_sprite = 11;
-        t.ch_sprite = 12;
-
-        let d = map.draw_data_at_index(idx).unwrap();
-        assert_eq!(d.base_sprite, Some(10));
-        assert_eq!(d.item_sprite, Some(11));
-        assert_eq!(d.character_sprite, Some(12));
     }
 
     #[test]

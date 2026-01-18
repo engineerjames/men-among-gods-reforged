@@ -415,7 +415,6 @@ pub(crate) struct GameplayUiAttributeLabel {
 
 #[derive(Component, Clone, Copy, Debug)]
 pub(crate) struct GameplayUiSkillLabel {
-    #[allow(dead_code)]
     skill_index: usize,
 }
 

@@ -15,7 +15,6 @@ struct InitState {
 }
 
 #[derive(Resource, Default)]
-#[allow(dead_code)]
 pub struct SoundCache {
     assets_directory: PathBuf,
     sfx_by_number: Vec<Option<Handle<AudioSource>>>,
@@ -49,7 +48,6 @@ impl SoundCache {
         self.initialized
     }
 
-    #[allow(dead_code)]
     pub fn get_numbered(&self, nr: u32) -> Option<&Handle<AudioSource>> {
         self.sfx_by_number.get(nr as usize).and_then(|h| h.as_ref())
     }
