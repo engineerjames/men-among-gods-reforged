@@ -50,7 +50,6 @@ impl ClientCommand {
         Self { header, payload }
     }
 
-    #[allow(dead_code)]
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(1 + self.payload.len());
         bytes.push(self.header as u8);
@@ -65,7 +64,6 @@ impl ClientCommand {
     }
 
     /// Matches `inter.c::cmd`: u16 at +1, u32 at +3.
-    #[allow(dead_code)]
     fn cmd_xy_i16_i32(cmd: ClientCommandType, x: i16, y: i32) -> Self {
         let mut payload = Vec::with_capacity(6);
         payload.extend_from_slice(&x.to_le_bytes());
@@ -74,7 +72,6 @@ impl ClientCommand {
     }
 
     /// Matches `inter.c::cmd1` / `inter.c::cmd1s`: u32 at +1.
-    #[allow(dead_code)]
     fn cmd_u32(cmd: ClientCommandType, x: u32) -> Self {
         let mut payload = Vec::with_capacity(4);
         payload.extend_from_slice(&x.to_le_bytes());
@@ -82,7 +79,6 @@ impl ClientCommand {
     }
 
     /// Matches `inter.c::cmd3`: u32 at +1, +5, +9.
-    #[allow(dead_code)]
     fn cmd_u32_u32_u32(cmd: ClientCommandType, x: u32, y: u32, z: u32) -> Self {
         let mut payload = Vec::with_capacity(12);
         payload.extend_from_slice(&x.to_le_bytes());
@@ -215,13 +211,11 @@ impl ClientCommand {
     }
 
     /// `CL_CMD_PICKUP` (`inter.c::cmd`).
-    #[allow(dead_code)]
     pub fn new_pickup(x: i16, y: i32) -> Self {
         Self::cmd_xy_i16_i32(ClientCommandType::CmdPickup, x, y)
     }
 
     /// `CL_CMD_DROP` (`inter.c::cmd`).
-    #[allow(dead_code)]
     pub fn new_drop(x: i16, y: i32) -> Self {
         Self::cmd_xy_i16_i32(ClientCommandType::CmdDrop, x, y)
     }
@@ -232,13 +226,11 @@ impl ClientCommand {
     }
 
     /// `CL_CMD_USE` (`inter.c::cmd`).
-    #[allow(dead_code)]
     pub fn new_use(x: i16, y: i32) -> Self {
         Self::cmd_xy_i16_i32(ClientCommandType::CmdUse, x, y)
     }
 
     /// `CL_CMD_LOOK_ITEM` (`inter.c::cmd`).
-    #[allow(dead_code)]
     pub fn new_look_item(x: i16, y: i32) -> Self {
         Self::cmd_xy_i16_i32(ClientCommandType::CmdLookItem, x, y)
     }
@@ -266,19 +258,16 @@ impl ClientCommand {
     }
 
     /// `CL_CMD_ATTACK` (`inter.c::cmd1`).
-    #[allow(dead_code)]
     pub fn new_attack(target: u32) -> Self {
         Self::cmd_u32(ClientCommandType::CmdAttack, target)
     }
 
     /// `CL_CMD_GIVE` (`inter.c::cmd1`).
-    #[allow(dead_code)]
     pub fn new_give(target: u32) -> Self {
         Self::cmd_u32(ClientCommandType::CmdGive, target)
     }
 
     /// `CL_CMD_LOOK` (`inter.c::cmd1`).
-    #[allow(dead_code)]
     pub fn new_look(target: u32) -> Self {
         Self::cmd_u32(ClientCommandType::CmdLook, target)
     }

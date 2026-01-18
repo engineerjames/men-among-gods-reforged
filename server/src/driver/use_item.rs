@@ -3652,7 +3652,7 @@ pub fn spawn_penta_enemy(item_idx: usize) -> i32 {
     } else if data9 == 23 {
         24
     } else {
-        (rand::random::<u32>() % 3) - 1 + data9
+        (rand::random::<u32>() % 3) + data9 - 1
     };
 
     // Create appropriate character template

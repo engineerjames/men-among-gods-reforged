@@ -510,7 +510,7 @@ impl Default for GameplayCursorType {
 
 #[derive(Resource, Default, Debug)]
 pub(crate) struct GameplayCursorTypeState {
-    cursor: GameplayCursorType,
+    pub(crate) cursor: GameplayCursorType,
 }
 
 // Equipment slot ordering used by the original client UI.
@@ -2901,15 +2901,14 @@ pub(crate) fn setup_gameplay(
         ))
         .id();
 
-    // Map hover highlight (ported from orig/inter.c + orig/engine.c highlight behavior).
-    crate::systems::map_hover::spawn_map_hover_highlight(
-        &mut commands,
-        &mut image_assets,
-        world_root,
-    );
+    // Map hover highlight: a white silhouette overlay matching the exact target sprite.
+    crate::systems::map_hover::spawn_map_hover_highlight(&mut commands, &gfx, world_root);
 
     // Persistent move target marker (orig/engine.c draws sprite 31 at pl.goto_x/pl.goto_y).
     crate::systems::map_hover::spawn_map_move_target_marker(&mut commands, &gfx, world_root);
+
+    // Misc action marker sprites (orig/engine.c draws 32/33/45 based on misc_action).
+    crate::systems::map_hover::spawn_map_misc_action_marker(&mut commands, &gfx, world_root);
 
     // Spawn a stable set of entities once; `run_gameplay` updates them.
     for index in 0..map.len() {
