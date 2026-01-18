@@ -294,19 +294,16 @@ impl ClientCommand {
     }
 
     /// `CL_CMD_INV` (`inter.c::cmd3`).
-    #[allow(dead_code)]
     pub fn new_inv(a: u32, b: u32, selected_char: u32) -> Self {
         Self::cmd_u32_u32_u32(ClientCommandType::CmdInv, a, b, selected_char)
     }
 
     /// `CL_CMD_INV_LOOK` (`inter.c::cmd3`).
-    #[allow(dead_code)]
     pub fn new_inv_look(a: u32, b: u32, c: u32) -> Self {
         Self::cmd_u32_u32_u32(ClientCommandType::CmdInvLook, a, b, c)
     }
 
     /// `CL_CMD_SKILL` (`inter.c::cmd3`).
-    #[allow(dead_code)]
     pub fn new_skill(skill: u32, selected_char: u32, attrib0: u32) -> Self {
         Self::cmd_u32_u32_u32(ClientCommandType::CmdSkill, skill, selected_char, attrib0)
     }

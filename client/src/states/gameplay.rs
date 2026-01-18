@@ -4150,7 +4150,6 @@ pub(crate) fn run_gameplay_inventory_input(
             let a = if keys_mask == 1 { 1u32 } else { 5u32 };
             net.send(ClientCommand::new_inv(a, slot_nr, selected_char).to_bytes());
         }
-        return;
     }
 }
 
