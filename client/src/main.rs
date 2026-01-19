@@ -83,6 +83,7 @@ fn main() {
         .insert_resource(SoundCache::new(sfx_dir.to_string_lossy().as_ref()))
         .init_resource::<font_cache::FontCache>()
         .init_resource::<sound::SoundEventQueue>()
+        .init_resource::<states::gameplay::GameplayDebugSettings>()
         .init_resource::<states::gameplay::MiniMapState>()
         .init_resource::<player_state::PlayerState>()
         .add_plugins(

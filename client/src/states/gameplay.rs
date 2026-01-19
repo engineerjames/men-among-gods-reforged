@@ -621,6 +621,30 @@ pub(crate) struct MiniMapState {
     image: Option<Handle<Image>>,
 }
 
+#[derive(Resource, Clone, Copy, Debug)]
+pub(crate) struct GameplayDebugSettings {
+    /// Enables tile flag overlay entities (MoveBlock/Indoors/etc).
+    /// These are useful for debugging but expensive if spawned for every tile.
+    pub(crate) tile_flag_overlays: bool,
+}
+
+impl Default for GameplayDebugSettings {
+    fn default() -> Self {
+        // Set `MAG_DEBUG_TILE_OVERLAYS=1` to enable.
+        let enabled = std::env::var("MAG_DEBUG_TILE_OVERLAYS")
+            .ok()
+            .map(|v| {
+                let v = v.trim().to_ascii_lowercase();
+                !(v.is_empty() || v == "0" || v == "false" || v == "no")
+            })
+            .unwrap_or(false);
+
+        Self {
+            tile_flag_overlays: enabled,
+        }
+    }
+}
+
 impl MiniMapState {
     fn ensure_initialized(&mut self, image_assets: &mut Assets<Image>) -> Handle<Image> {
         if self.xmap.len() != 1024 * 1024 {
@@ -3347,6 +3371,7 @@ pub(crate) fn setup_gameplay(
     mut minimap: ResMut<MiniMapState>,
     mut image_assets: ResMut<Assets<Image>>,
     player_state: Res<PlayerState>,
+    debug: Res<GameplayDebugSettings>,
     existing_render: Query<Entity, With<GameplayRenderEntity>>,
 ) {
     log::debug!("setup_gameplay - start");
@@ -3451,31 +3476,34 @@ pub(crate) fn setup_gameplay(
             commands.entity(world_root).add_child(e);
         }
 
-        // Map flag overlays (ported from engine.c: marker/effect sprites on tiles).
-        let overlay_kinds = [
-            TileFlagOverlayKind::MoveBlock,
-            TileFlagOverlayKind::SightBlock,
-            TileFlagOverlayKind::Indoors,
-            TileFlagOverlayKind::Underwater,
-            TileFlagOverlayKind::NoLag,
-            TileFlagOverlayKind::NoMonsters,
-            TileFlagOverlayKind::Bank,
-            TileFlagOverlayKind::Tavern,
-            TileFlagOverlayKind::NoMagic,
-            TileFlagOverlayKind::DeathTrap,
-            TileFlagOverlayKind::Arena,
-            TileFlagOverlayKind::NoExpire,
-            TileFlagOverlayKind::UnknownHighBit,
-            TileFlagOverlayKind::Injured,
-            TileFlagOverlayKind::Death,
-            TileFlagOverlayKind::Tomb,
-        ];
+        if debug.tile_flag_overlays {
+            // Tile flag overlays (ported from engine.c: marker/effect sprites on tiles).
+            // Debug-only: spawning these for every tile is expensive.
+            let overlay_kinds = [
+                TileFlagOverlayKind::MoveBlock,
+                TileFlagOverlayKind::SightBlock,
+                TileFlagOverlayKind::Indoors,
+                TileFlagOverlayKind::Underwater,
+                TileFlagOverlayKind::NoLag,
+                TileFlagOverlayKind::NoMonsters,
+                TileFlagOverlayKind::Bank,
+                TileFlagOverlayKind::Tavern,
+                TileFlagOverlayKind::NoMagic,
+                TileFlagOverlayKind::DeathTrap,
+                TileFlagOverlayKind::Arena,
+                TileFlagOverlayKind::NoExpire,
+                TileFlagOverlayKind::UnknownHighBit,
+                TileFlagOverlayKind::Injured,
+                TileFlagOverlayKind::Death,
+                TileFlagOverlayKind::Tomb,
+            ];
 
-        for kind in overlay_kinds {
-            if let Some(e) =
-                spawn_tile_overlay_entity(&mut commands, &gfx, TileFlagOverlay { index, kind })
-            {
-                commands.entity(world_root).add_child(e);
+            for kind in overlay_kinds {
+                if let Some(e) =
+                    spawn_tile_overlay_entity(&mut commands, &gfx, TileFlagOverlay { index, kind })
+                {
+                    commands.entity(world_root).add_child(e);
+                }
             }
         }
     }
