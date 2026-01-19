@@ -18,3 +18,46 @@ impl Default for SkillButtons {
         }
     }
 }
+
+impl SkillButtons {
+    /// Legacy client used `-1` (signed) as the sentinel for an unassigned hotbar slot.
+    /// Stored as `u32` here; treat `0xFFFF_FFFF` as the equivalent.
+    pub const UNASSIGNED_SKILL_NR: u32 = u32::MAX;
+
+    pub fn skill_nr(&self) -> u32 {
+        self.skill_nr
+    }
+
+    pub fn set_skill_nr(&mut self, skill_nr: u32) {
+        self.skill_nr = skill_nr;
+    }
+
+    pub fn name_str(&self) -> String {
+        let end = self
+            .name
+            .iter()
+            .position(|&b| b == 0)
+            .unwrap_or(self.name.len());
+        String::from_utf8_lossy(&self.name[..end]).to_string()
+    }
+
+    pub fn set_name(&mut self, name: &str) {
+        self.name = [0; 8];
+        for (i, &b) in name.as_bytes().iter().take(7).enumerate() {
+            self.name[i] = b;
+        }
+    }
+
+    pub fn is_unassigned(&self) -> bool {
+        if self.skill_nr == Self::UNASSIGNED_SKILL_NR {
+            return true;
+        }
+        let s = self.name_str();
+        s.is_empty() || s == "-"
+    }
+
+    pub fn set_unassigned(&mut self) {
+        self.skill_nr = Self::UNASSIGNED_SKILL_NR;
+        self.set_name("-");
+    }
+}

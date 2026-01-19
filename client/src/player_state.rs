@@ -90,6 +90,10 @@ impl PlayerState {
         self.state_revision
     }
 
+    pub fn mark_dirty(&mut self) {
+        self.state_revision = self.state_revision.wrapping_add(1);
+    }
+
     pub fn map(&self) -> &GameMap {
         &self.map
     }
@@ -109,7 +113,7 @@ impl PlayerState {
     pub fn close_shop(&mut self) {
         if self.should_show_shop {
             self.should_show_shop = false;
-            self.state_revision = self.state_revision.wrapping_add(1);
+            self.mark_dirty();
         }
     }
 

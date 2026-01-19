@@ -250,6 +250,20 @@ const MODE_NORMAL_X: f32 = 656.0; // pl.mode==1
 const MODE_SLOW_X: f32 = 704.0; // pl.mode==0
 const MODE_BOX_Y: f32 = 554.0;
 
+// Skill hotbar (xbuttons) grid: 12 slots, 4 columns x 3 rows.
+// Ported from orig/engine.c draw loop and orig/inter.c::trans_button hitboxes.
+const XBUTTONS_X: f32 = 604.0;
+const XBUTTONS_Y_ROW1: f32 = 504.0;
+const XBUTTONS_Y_ROW2: f32 = 519.0;
+const XBUTTONS_Y_ROW3: f32 = 534.0;
+const XBUTTONS_BUTTON_W: f32 = 41.0;
+const XBUTTONS_BUTTON_H: f32 = 14.0;
+const XBUTTONS_STEP_X: f32 = 49.0;
+
+const XBUTTONS_LABEL_X: f32 = 610.0;
+const XBUTTONS_LABEL_Y: f32 = 508.0;
+const XBUTTONS_LABEL_STEP_Y: f32 = 15.0;
+
 // Scroll knob rectangles (engine.c: dd_showbar calls for inv/skill scroll).
 const SCROLL_KNOB_W: f32 = 11.0;
 const SCROLL_KNOB_H: f32 = 11.0;
@@ -424,6 +438,11 @@ pub(crate) struct GameplayUiSkillLabel {
     skill_index: usize,
 }
 
+#[derive(Component, Clone, Copy, Debug)]
+pub(crate) struct GameplayUiXButtonLabel {
+    index: usize,
+}
+
 #[derive(Component)]
 pub(crate) struct GameplayUiTopSelectedNameLabel;
 
@@ -496,6 +515,33 @@ pub(crate) struct GameplayInventoryHoverState {
     backpack_slot: Option<usize>,
     equipment_worn_index: Option<usize>,
     money: Option<GameplayMoneyHoverKind>,
+}
+
+#[derive(Resource, Default, Debug)]
+pub(crate) struct GameplayXButtonsState {
+    /// Skilltab index selected via right-click in the skill list.
+    pending_skill_id: Option<usize>,
+}
+
+#[inline]
+fn xbuttons_slot_at(x: f32, y: f32) -> Option<usize> {
+    let y_rows = [XBUTTONS_Y_ROW1, XBUTTONS_Y_ROW2, XBUTTONS_Y_ROW3];
+    for (row, &y0) in y_rows.iter().enumerate() {
+        for col in 0..4 {
+            let x0 = XBUTTONS_X + (col as f32) * XBUTTONS_STEP_X;
+            if (x0..=(x0 + XBUTTONS_BUTTON_W)).contains(&x)
+                && (y0..=(y0 + XBUTTONS_BUTTON_H)).contains(&y)
+            {
+                return Some(row * 4 + col);
+            }
+        }
+    }
+    None
+}
+
+#[inline]
+fn xbuttons_truncate_label(name: &str) -> String {
+    name.chars().take(7).collect()
 }
 
 #[derive(Resource, Default, Debug)]
@@ -1150,6 +1196,28 @@ fn spawn_ui_hud_labels(commands: &mut Commands) {
         InheritedVisibility::default(),
         ViewVisibility::default(),
     ));
+
+    // Skill hotbar (xbuttons) labels (engine.c: dd_xputtext(610+(n%4)*49,508+(n/4)*15,...)).
+    for n in 0..12 {
+        let col = n % 4;
+        let row = n / 4;
+        let x = XBUTTONS_LABEL_X + (col as f32) * XBUTTONS_STEP_X;
+        let y = XBUTTONS_LABEL_Y + (row as f32) * XBUTTONS_LABEL_STEP_Y;
+        commands.spawn((
+            GameplayRenderEntity,
+            GameplayUiXButtonLabel { index: n },
+            BitmapText {
+                text: String::new(),
+                color: Color::WHITE,
+                font: UI_BITMAP_FONT,
+            },
+            Transform::from_translation(screen_to_world(x, y, Z_UI_TEXT)),
+            GlobalTransform::default(),
+            Visibility::Visible,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
+        ));
+    }
 }
 
 pub(crate) fn run_gameplay_update_shop_price_labels(
@@ -3151,6 +3219,7 @@ pub(crate) fn setup_gameplay(
     commands.insert_resource(GameplayInventoryHoverState::default());
     commands.insert_resource(GameplayShopHoverState::default());
     commands.insert_resource(GameplayCursorTypeState::default());
+    commands.insert_resource(GameplayXButtonsState::default());
 
     // Clear any previous gameplay sprites (re-entering gameplay, etc.)
     for e in &existing_render {
@@ -3867,6 +3936,7 @@ pub(crate) fn run_gameplay_statbox_input(
     mut player_state: ResMut<PlayerState>,
     mut statbox: ResMut<GameplayStatboxState>,
     mut inv_scroll: ResMut<GameplayInventoryScrollState>,
+    mut xbuttons: ResMut<GameplayXButtonsState>,
 ) {
     let Some(game) = cursor_game_pos(&windows, &cameras) else {
         return;
@@ -3876,6 +3946,30 @@ pub(crate) fn run_gameplay_statbox_input(
     if mouse.just_released(MouseButton::Right) {
         let x = game.x;
         let y = game.y;
+
+        // Skill hotbar (xbuttons) assign/unassign (orig/inter.c via button_help cases 16..27).
+        if let Some(slot) = xbuttons_slot_at(x, y) {
+            let slot_data = &mut player_state.player_data_mut().skill_buttons[slot];
+
+            if let Some(skill_id) = xbuttons.pending_skill_id {
+                let skill_nr = get_skill_nr(skill_id) as u32;
+                if !slot_data.is_unassigned() && slot_data.skill_nr() == skill_nr {
+                    slot_data.set_unassigned();
+                } else {
+                    let label = xbuttons_truncate_label(get_skill_name(skill_id));
+                    slot_data.set_skill_nr(skill_nr);
+                    slot_data.set_name(&label);
+                }
+                player_state.mark_dirty();
+            } else {
+                // No pending skill selected: allow clearing the slot.
+                if !slot_data.is_unassigned() {
+                    slot_data.set_unassigned();
+                    player_state.mark_dirty();
+                }
+            }
+            return;
+        }
 
         // Inventory scroll right-click help (orig/inter.c::button_help case 12/13).
         if x > 290.0 && y > 1.0 && x < 300.0 && y < 34.0 {
@@ -3896,6 +3990,7 @@ pub(crate) fn run_gameplay_statbox_input(
                 let skilltab_index = statbox.skill_pos + row;
                 if let Some(&skill_id) = sorted.get(skilltab_index) {
                     if pl.skill[skill_id][0] != 0 {
+                        xbuttons.pending_skill_id = Some(skill_id);
                         let desc = get_skill_desc(skill_id);
                         if !desc.is_empty() {
                             player_state.tlog(1, desc);
@@ -3961,6 +4056,19 @@ pub(crate) fn run_gameplay_statbox_input(
     }
 
     if !mouse.just_released(MouseButton::Left) {
+        return;
+    }
+
+    // Skill hotbar (xbuttons) activate (orig/inter.c via button_command cases 16..27).
+    if let Some(slot) = xbuttons_slot_at(game.x, game.y) {
+        let btn = &player_state.player_data().skill_buttons[slot];
+        if btn.is_unassigned() {
+            player_state.tlog(1, "No skill assigned to that button.");
+        } else {
+            let selected_char = player_state.selected_char() as u32;
+            let attrib0 = 1u32;
+            net.send(ClientCommand::new_skill(btn.skill_nr(), selected_char, attrib0).to_bytes());
+        }
         return;
     }
 
@@ -4581,6 +4689,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
             Without<GameplayUiSkillAuxText>,
         ),
     >,
+    mut q_xbuttons: Query<(&GameplayUiXButtonLabel, &mut BitmapText)>,
 ) {
     let rev = player_state.state_revision();
     if *last_state_rev == rev && !statbox.is_changed() {
@@ -4614,6 +4723,18 @@ pub(crate) fn run_gameplay_update_hud_labels(
     }
 
     let pl = player_state.character_info();
+
+    // Skill hotbar (xbuttons) labels.
+    for (slot, mut text) in &mut q_xbuttons {
+        let btn = &player_state.player_data().skill_buttons[slot.index];
+        let mut name = btn.name_str();
+        if name.is_empty() {
+            name = "-".to_string();
+        }
+        if text.text != name {
+            text.text = name;
+        }
+    }
 
     // Hitpoints (current / max). Server already sends a_* as integer current values.
     if let Some(mut text) = q.p0().iter_mut().next() {
