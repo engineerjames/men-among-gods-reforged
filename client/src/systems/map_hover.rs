@@ -43,6 +43,15 @@ pub(crate) struct GameplayMiscActionMarker;
 #[derive(Component)]
 pub(crate) struct GameplayAttackTargetMarker;
 
+#[derive(Default)]
+pub(crate) struct MoveTargetMarkerTickGate {
+    initialized: bool,
+    last_goto_x: i32,
+    last_goto_y: i32,
+    last_origin_x: i32,
+    last_origin_y: i32,
+}
+
 #[derive(Resource, Default, Debug, Clone, Copy)]
 pub(crate) struct GameplayHoveredTile {
     pub tile_x: i32,
@@ -179,20 +188,55 @@ fn find_view_tile_for_world(map: &crate::map::GameMap, wx: i32, wy: i32) -> Opti
     if wx < 0 || wy < 0 {
         return None;
     }
+
+    // Primary path: compute view-tile coordinates from the current top-left origin.
+    // This is O(1) and is the correct mapping when the map's (x,y) grid is consistent.
+    let origin = map.tile_at_xy(0, 0)?;
+    let ox = origin.x as i32;
+    let oy = origin.y as i32;
+
+    let expected_mx = wx - ox;
+    let expected_my = wy - oy;
+
+    if expected_mx >= 0
+        && expected_my >= 0
+        && (expected_mx as usize) < TILEX
+        && (expected_my as usize) < TILEY
+    {
+        if let Some(tile) = map.tile_at_xy(expected_mx as usize, expected_my as usize) {
+            if tile.x as i32 == wx && tile.y as i32 == wy {
+                return Some((expected_mx, expected_my));
+            }
+        }
+    }
+
+    // Fallback: scan for a matching (x,y).
+    // During scroll/memmove transitions the client map can temporarily contain duplicates/stale
+    // world coords; when that happens we pick the match *closest to the expected coords* to keep
+    // the marker stable rather than flickering between equally-valid matches.
     let wx_u = wx as u16;
     let wy_u = wy as u16;
 
+    let mut best: Option<(i32, i32, i32)> = None; // (mx,my,score)
     for my in 0..(TILEY as i32) {
         for mx in 0..(TILEX as i32) {
             let Some(tile) = map.tile_at_xy(mx as usize, my as usize) else {
                 continue;
             };
-            if tile.x == wx_u && tile.y == wy_u {
-                return Some((mx, my));
+            if tile.x != wx_u || tile.y != wy_u {
+                continue;
+            }
+
+            let score = (mx - expected_mx).abs() + (my - expected_my).abs();
+            match best {
+                None => best = Some((mx, my, score)),
+                Some((_, _, best_score)) if score < best_score => best = Some((mx, my, score)),
+                _ => {}
             }
         }
     }
-    None
+
+    best.map(|(mx, my, _)| (mx, my))
 }
 
 fn find_view_tile_for_char_id(map: &crate::map::GameMap, ch_id: i32) -> Option<(i32, i32)> {
@@ -381,6 +425,7 @@ pub(crate) fn spawn_map_attack_target_marker(
 pub(crate) fn run_gameplay_move_target_marker(
     gfx: Res<GraphicsCache>,
     player_state: Res<PlayerState>,
+    mut gate: Local<MoveTargetMarkerTickGate>,
     mut q_marker: Query<(&mut Transform, &mut Visibility), With<GameplayMoveTargetMarker>>,
 ) {
     let Some((mut transform, mut visibility)) = q_marker.iter_mut().next() else {
@@ -395,6 +440,36 @@ pub(crate) fn run_gameplay_move_target_marker(
     let pl = player_state.character_info();
     let wx = pl.goto_x;
     let wy = pl.goto_y;
+
+    // Keep the marker pinned to a WORLD position.
+    // The client map view shifts via scroll/memmove commands, so we must also update whenever
+    // the view origin changes (tile 0,0 x/y), not just when goto_x/goto_y changes.
+    let (origin_x, origin_y) = player_state
+        .map()
+        .tile_at_xy(0, 0)
+        .map(|t| (t.x as i32, t.y as i32))
+        .unwrap_or((0, 0));
+
+    let should_update = !gate.initialized
+        || wx != gate.last_goto_x
+        || wy != gate.last_goto_y
+        || origin_x != gate.last_origin_x
+        || origin_y != gate.last_origin_y;
+    if !should_update {
+        return;
+    }
+    gate.initialized = true;
+    gate.last_goto_x = wx;
+    gate.last_goto_y = wy;
+    gate.last_origin_x = origin_x;
+    gate.last_origin_y = origin_y;
+
+    // The server uses (0,0) as "no move target" in several places.
+    // Don't draw the marker at a random tile when idle.
+    if wx == 0 && wy == 0 {
+        *visibility = Visibility::Hidden;
+        return;
+    }
 
     let Some((mx, my)) = find_view_tile_for_world(player_state.map(), wx, wy) else {
         *visibility = Visibility::Hidden;

@@ -525,10 +525,6 @@ impl PlayerState {
                 self.look_target.set_id(*id);
                 self.look_target.set_mana(*mana);
                 self.look_target.set_a_mana(*a_mana);
-
-                // engine.c shows the selected character's name when selected_char != 0.
-                // We use the most recent look target as the selected character.
-                self.selected_char = *nr;
             }
             ServerCommandData::Look4 {
                 worn1,

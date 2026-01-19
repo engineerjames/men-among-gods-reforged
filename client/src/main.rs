@@ -160,15 +160,11 @@ fn main() {
         )
         .add_systems(
             Update,
-            sound::play_queued_sounds
-                .run_if(in_state(GameState::Gameplay))
-                .after(network::NetworkSet::Receive),
+            sound::play_queued_sounds.run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
             Update,
-            states::gameplay::run_gameplay_buttonbox_toggles
-                .run_if(in_state(GameState::Gameplay))
-                .before(states::gameplay::run_gameplay),
+            states::gameplay::run_gameplay_buttonbox_toggles.run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
             Update,
@@ -176,43 +172,31 @@ fn main() {
         )
         .add_systems(
             Update,
-            states::gameplay::run_gameplay_inventory_input
-                .run_if(in_state(GameState::Gameplay))
-                .before(states::gameplay::run_gameplay),
+            states::gameplay::run_gameplay_inventory_input.run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
             Update,
-            states::gameplay::run_gameplay_shop_input
-                .run_if(in_state(GameState::Gameplay))
-                .after(states::gameplay::run_gameplay_inventory_input)
-                .before(map_hover::run_gameplay_map_hover_and_click)
-                .before(states::gameplay::run_gameplay_update_cursor_and_carried_item)
-                .before(states::gameplay::run_gameplay),
+            states::gameplay::run_gameplay_shop_input.run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
             Update,
             states::gameplay::run_gameplay_update_cursor_and_carried_item
-                .run_if(in_state(GameState::Gameplay))
-                .after(states::gameplay::run_gameplay_inventory_input)
-                .after(map_hover::run_gameplay_map_hover_and_click)
-                .before(states::gameplay::run_gameplay),
+                .run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
             Update,
             states::gameplay::run_gameplay_update_equipment_blocks
-                .run_if(in_state(GameState::Gameplay))
-                .before(states::gameplay::run_gameplay),
+                .run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
             Update,
-            map_hover::run_gameplay_map_hover_and_click
-                .run_if(in_state(GameState::Gameplay))
-                .after(states::gameplay::run_gameplay_inventory_input)
-                .before(states::gameplay::run_gameplay_update_cursor_and_carried_item),
+            map_hover::run_gameplay_map_hover_and_click.run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
             Update,
-            map_hover::run_gameplay_move_target_marker.run_if(in_state(GameState::Gameplay)),
+            map_hover::run_gameplay_move_target_marker
+                .run_if(in_state(GameState::Gameplay))
+                .after(states::gameplay::run_gameplay),
         )
         .add_systems(
             Update,
