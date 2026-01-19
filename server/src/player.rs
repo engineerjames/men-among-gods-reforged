@@ -2850,9 +2850,7 @@ pub fn plr_getmap_complete(nr: usize) {
                     smap[n].it_sprite = map_m.fsprite as i16;
                     smap[n].it_status = 0;
                 } else if item_on_m.is_some()
-                    && (item_on_m.unwrap().flags
-                        & (ItemFlags::IF_TAKE.bits() | ItemFlags::IF_HIDDEN.bits()))
-                        == 0
+                    && (item_on_m.unwrap().flags & ItemFlags::IF_HIDDEN.bits()) == 0
                 {
                     let item = item_on_m.unwrap();
 
