@@ -2469,7 +2469,6 @@ pub(crate) fn run_gameplay_shop_input(
                 } else if mouse.just_released(MouseButton::Right) {
                     net.send(ClientCommand::new_shop(shop_nr, (nr + 62) as i32).to_bytes());
                 }
-                return;
             }
         }
     }
@@ -3745,6 +3744,12 @@ pub(crate) fn run_gameplay_buttonbox_toggles(
     mut q_boxes: Query<(&GameplayUiToggleBox, &mut Visibility), Without<GameplayUiModeBox>>,
     mut q_mode_boxes: Query<(&GameplayUiModeBox, &mut Visibility), Without<GameplayUiToggleBox>>,
 ) {
+    // Reset (orig/main.c ESC): cmd(CL_CMD_RESET,0,0); show_shop=0; noshop=QSIZE*12; xmove=0;
+    if keys.just_pressed(KeyCode::Escape) {
+        net.send(ClientCommand::new_reset().to_bytes());
+        player_state.close_shop();
+    }
+
     // Keyboard shortcuts for mode buttons (orig client: F1/F2/F3).
     if keys.just_pressed(KeyCode::F1) {
         net.send(ClientCommand::new_mode(2).to_bytes());
