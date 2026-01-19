@@ -2769,7 +2769,7 @@ fn do_idle(idle_ani: i32, sprite: u16) -> i32 {
     }
 }
 
-fn eng_item(it_sprite: i16, it_status: &mut u8, ctick: usize, ticker: u32) -> i32 {
+fn eng_item(it_sprite: u16, it_status: &mut u8, ctick: usize, ticker: u32) -> i32 {
     let base = it_sprite as i32;
     match *it_status {
         0 | 1 => base,
