@@ -11,6 +11,7 @@ mod systems;
 mod types;
 
 use bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
+use std::path::PathBuf;
 use std::sync::OnceLock;
 use tracing_appender::{non_blocking::WorkerGuard, rolling};
 
@@ -51,18 +52,35 @@ fn custom_layer(_app: &mut App) -> Option<BoxedLayer> {
     )
 }
 
+fn resolve_assets_base_dir() -> PathBuf {
+    if let Ok(dir) = std::env::var("MAG_ASSETS_DIR") {
+        if !dir.is_empty() {
+            return PathBuf::from(dir);
+        }
+    }
+
+    // Prefer workspace-relative assets when running from source.
+    let dev_assets = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets");
+    if dev_assets.exists() {
+        return dev_assets;
+    }
+
+    // Fall back to assets next to the built executable for packaged releases.
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.join("assets")))
+        .unwrap_or_else(|| dev_assets)
+}
+
 fn main() {
+    let assets_dir = resolve_assets_base_dir();
+    let gfx_zip = assets_dir.join("GFX").join("images.zip");
+    let sfx_dir = assets_dir.join("SFX");
+
     App::new()
         // Setup resources
-        // Use stable absolute paths so running from workspace root works.
-        .insert_resource(GraphicsCache::new(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/assets/GFX/images.zip"
-        )))
-        .insert_resource(SoundCache::new(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/assets/SFX"
-        )))
+        .insert_resource(GraphicsCache::new(gfx_zip.to_string_lossy().as_ref()))
+        .insert_resource(SoundCache::new(sfx_dir.to_string_lossy().as_ref()))
         .init_resource::<font_cache::FontCache>()
         .init_resource::<sound::SoundEventQueue>()
         .init_resource::<states::gameplay::MiniMapState>()
@@ -163,6 +181,15 @@ fn main() {
         )
         .add_systems(
             Update,
+            states::gameplay::run_gameplay_shop_input
+                .run_if(in_state(GameState::Gameplay))
+                .after(states::gameplay::run_gameplay_inventory_input)
+                .before(map_hover::run_gameplay_map_hover_and_click)
+                .before(states::gameplay::run_gameplay_update_cursor_and_carried_item)
+                .before(states::gameplay::run_gameplay),
+        )
+        .add_systems(
+            Update,
             states::gameplay::run_gameplay_update_cursor_and_carried_item
                 .run_if(in_state(GameState::Gameplay))
                 .after(states::gameplay::run_gameplay_inventory_input)
@@ -241,12 +268,19 @@ fn main() {
         )
         .add_systems(
             Update,
+            states::gameplay::run_gameplay_update_shop_price_labels
+                .run_if(in_state(GameState::Gameplay))
+                .after(states::gameplay::run_gameplay_shop_input),
+        )
+        .add_systems(
+            Update,
             states::gameplay::run_gameplay_bitmap_text_renderer
                 .run_if(in_state(GameState::Gameplay))
                 .after(states::gameplay::run_gameplay_update_extra_ui)
                 .after(states::gameplay::run_gameplay_update_stat_bars)
                 .after(states::gameplay::run_gameplay_update_top_selected_name)
                 .after(states::gameplay::run_gameplay_update_portrait_name_and_rank)
+                .after(states::gameplay::run_gameplay_update_shop_price_labels)
                 .after(nameplates::run_gameplay_nameplates),
         )
         //

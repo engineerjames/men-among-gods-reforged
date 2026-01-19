@@ -122,7 +122,7 @@ impl GameMap {
             tile.flags2 = v;
         }
         if let Some(v) = it_sprite {
-            tile.it_sprite = v as i16;
+            tile.it_sprite = v;
         }
         if let Some(v) = it_status {
             tile.it_status = v;

@@ -250,6 +250,20 @@ const MODE_NORMAL_X: f32 = 656.0; // pl.mode==1
 const MODE_SLOW_X: f32 = 704.0; // pl.mode==0
 const MODE_BOX_Y: f32 = 554.0;
 
+// Skill hotbar (xbuttons) grid: 12 slots, 4 columns x 3 rows.
+// Ported from orig/engine.c draw loop and orig/inter.c::trans_button hitboxes.
+const XBUTTONS_X: f32 = 604.0;
+const XBUTTONS_Y_ROW1: f32 = 504.0;
+const XBUTTONS_Y_ROW2: f32 = 519.0;
+const XBUTTONS_Y_ROW3: f32 = 534.0;
+const XBUTTONS_BUTTON_W: f32 = 41.0;
+const XBUTTONS_BUTTON_H: f32 = 14.0;
+const XBUTTONS_STEP_X: f32 = 49.0;
+
+const XBUTTONS_LABEL_X: f32 = 610.0;
+const XBUTTONS_LABEL_Y: f32 = 508.0;
+const XBUTTONS_LABEL_STEP_Y: f32 = 15.0;
+
 // Scroll knob rectangles (engine.c: dd_showbar calls for inv/skill scroll).
 const SCROLL_KNOB_W: f32 = 11.0;
 const SCROLL_KNOB_H: f32 = 11.0;
@@ -373,6 +387,12 @@ pub(crate) struct GameplayUiManaLabel;
 pub(crate) struct GameplayUiMoneyLabel;
 
 #[derive(Component)]
+pub(crate) struct GameplayUiShopSellPriceLabel;
+
+#[derive(Component)]
+pub(crate) struct GameplayUiShopBuyPriceLabel;
+
+#[derive(Component)]
 pub(crate) struct GameplayUiUpdateLabel;
 
 #[derive(Component)]
@@ -416,6 +436,11 @@ pub(crate) struct GameplayUiAttributeLabel {
 #[derive(Component, Clone, Copy, Debug)]
 pub(crate) struct GameplayUiSkillLabel {
     skill_index: usize,
+}
+
+#[derive(Component, Clone, Copy, Debug)]
+pub(crate) struct GameplayUiXButtonLabel {
+    index: usize,
 }
 
 #[derive(Component)]
@@ -490,6 +515,39 @@ pub(crate) struct GameplayInventoryHoverState {
     backpack_slot: Option<usize>,
     equipment_worn_index: Option<usize>,
     money: Option<GameplayMoneyHoverKind>,
+}
+
+#[derive(Resource, Default, Debug)]
+pub(crate) struct GameplayXButtonsState {
+    /// Skilltab index selected via right-click in the skill list.
+    pending_skill_id: Option<usize>,
+}
+
+#[inline]
+fn xbuttons_slot_at(x: f32, y: f32) -> Option<usize> {
+    let y_rows = [XBUTTONS_Y_ROW1, XBUTTONS_Y_ROW2, XBUTTONS_Y_ROW3];
+    for (row, &y0) in y_rows.iter().enumerate() {
+        for col in 0..4 {
+            let x0 = XBUTTONS_X + (col as f32) * XBUTTONS_STEP_X;
+            if (x0..=(x0 + XBUTTONS_BUTTON_W)).contains(&x)
+                && (y0..=(y0 + XBUTTONS_BUTTON_H)).contains(&y)
+            {
+                return Some(row * 4 + col);
+            }
+        }
+    }
+    None
+}
+
+#[inline]
+fn xbuttons_truncate_label(name: &str) -> String {
+    name.chars().take(7).collect()
+}
+
+#[derive(Resource, Default, Debug)]
+pub(crate) struct GameplayShopHoverState {
+    slot: Option<usize>,
+    over_close: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1104,6 +1162,143 @@ fn spawn_ui_hud_labels(commands: &mut Commands) {
     ));
 
     // (No "Available Points" label; original client doesn't show it here.)
+
+    // Shop price labels (engine.c):
+    // - dd_xputtext(225,549,1,"Sell: %dG %dS", ...)
+    // - dd_xputtext(225,559,1,"Buy:  %dG %dS", ...)
+    // These are only visible while the shop UI is open.
+    commands.spawn((
+        GameplayRenderEntity,
+        GameplayUiShopSellPriceLabel,
+        BitmapText {
+            text: String::new(),
+            color: Color::WHITE,
+            font: UI_BITMAP_FONT,
+        },
+        Transform::from_translation(screen_to_world(225.0, 549.0, Z_UI_TEXT)),
+        GlobalTransform::default(),
+        Visibility::Hidden,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
+    ));
+
+    commands.spawn((
+        GameplayRenderEntity,
+        GameplayUiShopBuyPriceLabel,
+        BitmapText {
+            text: String::new(),
+            color: Color::WHITE,
+            font: UI_BITMAP_FONT,
+        },
+        Transform::from_translation(screen_to_world(225.0, 559.0, Z_UI_TEXT)),
+        GlobalTransform::default(),
+        Visibility::Hidden,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
+    ));
+
+    // Skill hotbar (xbuttons) labels (engine.c: dd_xputtext(610+(n%4)*49,508+(n/4)*15,...)).
+    for n in 0..12 {
+        let col = n % 4;
+        let row = n / 4;
+        let x = XBUTTONS_LABEL_X + (col as f32) * XBUTTONS_STEP_X;
+        let y = XBUTTONS_LABEL_Y + (row as f32) * XBUTTONS_LABEL_STEP_Y;
+        commands.spawn((
+            GameplayRenderEntity,
+            GameplayUiXButtonLabel { index: n },
+            BitmapText {
+                text: String::new(),
+                color: Color::WHITE,
+                font: UI_BITMAP_FONT,
+            },
+            Transform::from_translation(screen_to_world(x, y, Z_UI_TEXT)),
+            GlobalTransform::default(),
+            Visibility::Visible,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
+        ));
+    }
+}
+
+pub(crate) fn run_gameplay_update_shop_price_labels(
+    player_state: Res<PlayerState>,
+    shop_hover: Res<GameplayShopHoverState>,
+    mut q_sell: Query<
+        (&mut BitmapText, &mut Visibility),
+        (
+            With<GameplayUiShopSellPriceLabel>,
+            Without<GameplayUiShopBuyPriceLabel>,
+        ),
+    >,
+    mut q_buy: Query<
+        (&mut BitmapText, &mut Visibility),
+        (
+            With<GameplayUiShopBuyPriceLabel>,
+            Without<GameplayUiShopSellPriceLabel>,
+        ),
+    >,
+) {
+    if !player_state.should_show_shop() {
+        for (mut text, mut vis) in &mut q_sell {
+            if !text.text.is_empty() {
+                text.text.clear();
+            }
+            *vis = Visibility::Hidden;
+        }
+        for (mut text, mut vis) in &mut q_buy {
+            if !text.text.is_empty() {
+                text.text.clear();
+            }
+            *vis = Visibility::Hidden;
+        }
+        return;
+    }
+
+    let shop = player_state.shop_target();
+
+    // Sell price: only when hovering an item slot with a non-zero price.
+    let sell_text = shop_hover
+        .slot
+        .and_then(|idx| {
+            let price = shop.price(idx);
+            if price == 0 {
+                return None;
+            }
+            Some(format!("Sell: {}G {}S", price / 100, price % 100))
+        })
+        .unwrap_or_default();
+
+    for (mut text, mut vis) in &mut q_sell {
+        if text.text != sell_text {
+            text.text = sell_text.clone();
+        }
+        *vis = if text.text.is_empty() {
+            Visibility::Hidden
+        } else {
+            Visibility::Visible
+        };
+    }
+
+    // Buy price: when carrying an item and shop has a non-zero pl_price.
+    let pl = player_state.character_info();
+    let buy_price = if pl.citem != 0 { shop.pl_price() } else { 0 };
+    let buy_text = if buy_price != 0 {
+        // Keep the original spacing ("Buy:  ") for alignment with the classic UI.
+        format!("Buy:  {}G {}S", buy_price / 100, buy_price % 100)
+    } else {
+        String::new()
+    };
+
+    for (mut text, mut vis) in &mut q_buy {
+        if text.text != buy_text {
+            text.text = buy_text.clone();
+        }
+        *vis = if text.text.is_empty() {
+            Visibility::Hidden
+        } else {
+            Visibility::Visible
+        };
+    }
 }
 
 fn spawn_ui_toggle_boxes(commands: &mut Commands, image_assets: &mut Assets<Image>) {
@@ -2231,6 +2426,7 @@ fn draw_active_spells_ui(
 fn draw_shop_window_ui(
     gfx: &GraphicsCache,
     player_state: &PlayerState,
+    shop_hover: &GameplayShopHoverState,
     q: &mut Query<(
         &GameplayUiShop,
         &mut Sprite,
@@ -2283,8 +2479,76 @@ fn draw_shop_window_ui(
                     }
                 }
 
-                sprite.color = Color::srgba(1.0, 1.0, 1.0, 1.0);
+                let is_hovered = shop_hover.slot == Some(index);
+                sprite.color = if is_hovered {
+                    // Approximate engine.c's highlight effect=16.
+                    Color::srgba(0.6, 1.0, 0.6, 1.0)
+                } else {
+                    Color::srgba(1.0, 1.0, 1.0, 1.0)
+                };
                 *visibility = Visibility::Visible;
+            }
+        }
+    }
+}
+
+pub(crate) fn run_gameplay_shop_input(
+    mouse: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
+    cameras: Query<&Camera, With<Camera2d>>,
+    net: Res<NetworkRuntime>,
+    mut player_state: ResMut<PlayerState>,
+    mut shop_hover: ResMut<GameplayShopHoverState>,
+    mut cursor_state: ResMut<GameplayCursorTypeState>,
+) {
+    shop_hover.slot = None;
+    shop_hover.over_close = false;
+
+    if !player_state.should_show_shop() {
+        return;
+    }
+
+    let Some(game) = cursor_game_pos(&windows, &cameras) else {
+        return;
+    };
+
+    let x = game.x;
+    let y = game.y;
+
+    // Close button (orig/inter.c::mouse_shop): x 499..516, y 260..274.
+    if (499.0..=516.0).contains(&x) && (260.0..=274.0).contains(&y) {
+        shop_hover.over_close = true;
+        if mouse.just_released(MouseButton::Left) {
+            player_state.close_shop();
+        }
+        return;
+    }
+
+    // Shop grid (orig/inter.c::mouse_shop): x 220..500, y 261..(485+32+35).
+    // That bottom bound evaluates to 552.
+    if (220.0..=500.0).contains(&x) && (261.0..=552.0).contains(&y) {
+        let tx = ((x - 220.0) / 35.0).floor() as i32;
+        let ty = ((y - 261.0) / 35.0).floor() as i32;
+        if (0..8).contains(&tx) && ty >= 0 {
+            let nr = (tx + ty * 8) as usize;
+            if nr < 62 {
+                shop_hover.slot = Some(nr);
+
+                let shop = player_state.shop_target();
+                let pl = player_state.character_info();
+
+                if shop.item(nr) != 0 {
+                    cursor_state.cursor = GameplayCursorType::Take;
+                } else if pl.citem != 0 {
+                    cursor_state.cursor = GameplayCursorType::Drop;
+                }
+
+                let shop_nr = shop.nr() as i16;
+                if mouse.just_released(MouseButton::Left) {
+                    net.send(ClientCommand::new_shop(shop_nr, nr as i32).to_bytes());
+                } else if mouse.just_released(MouseButton::Right) {
+                    net.send(ClientCommand::new_shop(shop_nr, (nr + 62) as i32).to_bytes());
+                }
             }
         }
     }
@@ -2505,7 +2769,7 @@ fn do_idle(idle_ani: i32, sprite: u16) -> i32 {
     }
 }
 
-fn eng_item(it_sprite: i16, it_status: &mut u8, ctick: usize, ticker: u32) -> i32 {
+fn eng_item(it_sprite: u16, it_status: &mut u8, ctick: usize, ticker: u32) -> i32 {
     let base = it_sprite as i32;
     match *it_status {
         0 | 1 => base,
@@ -2965,7 +3229,9 @@ pub(crate) fn setup_gameplay(
     commands.insert_resource(GameplayStatboxState::default());
     commands.insert_resource(GameplayInventoryScrollState::default());
     commands.insert_resource(GameplayInventoryHoverState::default());
+    commands.insert_resource(GameplayShopHoverState::default());
     commands.insert_resource(GameplayCursorTypeState::default());
+    commands.insert_resource(GameplayXButtonsState::default());
 
     // Clear any previous gameplay sprites (re-entering gameplay, etc.)
     for e in &existing_render {
@@ -3559,6 +3825,12 @@ pub(crate) fn run_gameplay_buttonbox_toggles(
     mut q_boxes: Query<(&GameplayUiToggleBox, &mut Visibility), Without<GameplayUiModeBox>>,
     mut q_mode_boxes: Query<(&GameplayUiModeBox, &mut Visibility), Without<GameplayUiToggleBox>>,
 ) {
+    // Reset (orig/main.c ESC): cmd(CL_CMD_RESET,0,0); show_shop=0; noshop=QSIZE*12; xmove=0;
+    if keys.just_pressed(KeyCode::Escape) {
+        net.send(ClientCommand::new_reset().to_bytes());
+        player_state.close_shop();
+    }
+
     // Keyboard shortcuts for mode buttons (orig client: F1/F2/F3).
     if keys.just_pressed(KeyCode::F1) {
         net.send(ClientCommand::new_mode(2).to_bytes());
@@ -3676,6 +3948,7 @@ pub(crate) fn run_gameplay_statbox_input(
     mut player_state: ResMut<PlayerState>,
     mut statbox: ResMut<GameplayStatboxState>,
     mut inv_scroll: ResMut<GameplayInventoryScrollState>,
+    mut xbuttons: ResMut<GameplayXButtonsState>,
 ) {
     let Some(game) = cursor_game_pos(&windows, &cameras) else {
         return;
@@ -3685,6 +3958,30 @@ pub(crate) fn run_gameplay_statbox_input(
     if mouse.just_released(MouseButton::Right) {
         let x = game.x;
         let y = game.y;
+
+        // Skill hotbar (xbuttons) assign/unassign (orig/inter.c via button_help cases 16..27).
+        if let Some(slot) = xbuttons_slot_at(x, y) {
+            let slot_data = &mut player_state.player_data_mut().skill_buttons[slot];
+
+            if let Some(skill_id) = xbuttons.pending_skill_id {
+                let skill_nr = get_skill_nr(skill_id) as u32;
+                if !slot_data.is_unassigned() && slot_data.skill_nr() == skill_nr {
+                    slot_data.set_unassigned();
+                } else {
+                    let label = xbuttons_truncate_label(get_skill_name(skill_id));
+                    slot_data.set_skill_nr(skill_nr);
+                    slot_data.set_name(&label);
+                }
+                player_state.mark_dirty();
+            } else {
+                // No pending skill selected: allow clearing the slot.
+                if !slot_data.is_unassigned() {
+                    slot_data.set_unassigned();
+                    player_state.mark_dirty();
+                }
+            }
+            return;
+        }
 
         // Inventory scroll right-click help (orig/inter.c::button_help case 12/13).
         if x > 290.0 && y > 1.0 && x < 300.0 && y < 34.0 {
@@ -3705,6 +4002,7 @@ pub(crate) fn run_gameplay_statbox_input(
                 let skilltab_index = statbox.skill_pos + row;
                 if let Some(&skill_id) = sorted.get(skilltab_index) {
                     if pl.skill[skill_id][0] != 0 {
+                        xbuttons.pending_skill_id = Some(skill_id);
                         let desc = get_skill_desc(skill_id);
                         if !desc.is_empty() {
                             player_state.tlog(1, desc);
@@ -3770,6 +4068,19 @@ pub(crate) fn run_gameplay_statbox_input(
     }
 
     if !mouse.just_released(MouseButton::Left) {
+        return;
+    }
+
+    // Skill hotbar (xbuttons) activate (orig/inter.c via button_command cases 16..27).
+    if let Some(slot) = xbuttons_slot_at(game.x, game.y) {
+        let btn = &player_state.player_data().skill_buttons[slot];
+        if btn.is_unassigned() {
+            player_state.tlog(1, "No skill assigned to that button.");
+        } else {
+            let selected_char = player_state.selected_char() as u32;
+            let attrib0 = 1u32;
+            net.send(ClientCommand::new_skill(btn.skill_nr(), selected_char, attrib0).to_bytes());
+        }
         return;
     }
 
@@ -4260,6 +4571,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 Without<GameplayUiRaiseStatText>,
                 Without<GameplayUiAttributeAuxText>,
                 Without<GameplayUiSkillAuxText>,
+                Without<GameplayUiXButtonLabel>,
             ),
         >,
         Query<
@@ -4271,6 +4583,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 Without<GameplayUiRaiseStatText>,
                 Without<GameplayUiAttributeAuxText>,
                 Without<GameplayUiSkillAuxText>,
+                Without<GameplayUiXButtonLabel>,
             ),
         >,
         Query<
@@ -4282,6 +4595,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 Without<GameplayUiRaiseStatText>,
                 Without<GameplayUiAttributeAuxText>,
                 Without<GameplayUiSkillAuxText>,
+                Without<GameplayUiXButtonLabel>,
             ),
         >,
         Query<
@@ -4293,6 +4607,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 Without<GameplayUiRaiseStatText>,
                 Without<GameplayUiAttributeAuxText>,
                 Without<GameplayUiSkillAuxText>,
+                Without<GameplayUiXButtonLabel>,
             ),
         >,
         Query<
@@ -4304,6 +4619,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 Without<GameplayUiRaiseStatText>,
                 Without<GameplayUiAttributeAuxText>,
                 Without<GameplayUiSkillAuxText>,
+                Without<GameplayUiXButtonLabel>,
             ),
         >,
         Query<
@@ -4315,6 +4631,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 Without<GameplayUiRaiseStatText>,
                 Without<GameplayUiAttributeAuxText>,
                 Without<GameplayUiSkillAuxText>,
+                Without<GameplayUiXButtonLabel>,
             ),
         >,
         Query<
@@ -4326,6 +4643,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 Without<GameplayUiRaiseStatText>,
                 Without<GameplayUiAttributeAuxText>,
                 Without<GameplayUiSkillAuxText>,
+                Without<GameplayUiXButtonLabel>,
             ),
         >,
         Query<
@@ -4337,6 +4655,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 Without<GameplayUiRaiseStatText>,
                 Without<GameplayUiAttributeAuxText>,
                 Without<GameplayUiSkillAuxText>,
+                Without<GameplayUiXButtonLabel>,
             ),
         >,
     )>,
@@ -4348,6 +4667,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
             Without<GameplayUiRaiseStatText>,
             Without<GameplayUiAttributeAuxText>,
             Without<GameplayUiSkillAuxText>,
+            Without<GameplayUiXButtonLabel>,
         ),
     >,
     mut q_attrib_aux: Query<
@@ -4358,6 +4678,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
             Without<GameplayUiSkillLabel>,
             Without<GameplayUiRaiseStatText>,
             Without<GameplayUiSkillAuxText>,
+            Without<GameplayUiXButtonLabel>,
         ),
     >,
     mut q_skill: Query<
@@ -4368,6 +4689,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
             Without<GameplayUiAttributeLabel>,
             Without<GameplayUiAttributeAuxText>,
             Without<GameplayUiSkillAuxText>,
+            Without<GameplayUiXButtonLabel>,
         ),
     >,
     mut q_skill_aux: Query<
@@ -4378,6 +4700,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
             Without<GameplayUiAttributeLabel>,
             Without<GameplayUiRaiseStatText>,
             Without<GameplayUiAttributeAuxText>,
+            Without<GameplayUiXButtonLabel>,
         ),
     >,
     mut q_raise_stats: Query<
@@ -4388,8 +4711,10 @@ pub(crate) fn run_gameplay_update_hud_labels(
             Without<GameplayUiSkillLabel>,
             Without<GameplayUiAttributeAuxText>,
             Without<GameplayUiSkillAuxText>,
+            Without<GameplayUiXButtonLabel>,
         ),
     >,
+    mut q_xbuttons: Query<(&GameplayUiXButtonLabel, &mut BitmapText)>,
 ) {
     let rev = player_state.state_revision();
     if *last_state_rev == rev && !statbox.is_changed() {
@@ -4423,6 +4748,18 @@ pub(crate) fn run_gameplay_update_hud_labels(
     }
 
     let pl = player_state.character_info();
+
+    // Skill hotbar (xbuttons) labels.
+    for (slot, mut text) in &mut q_xbuttons {
+        let btn = &player_state.player_data().skill_buttons[slot.index];
+        let mut name = btn.name_str();
+        if name.is_empty() {
+            name = "-".to_string();
+        }
+        if text.text != name {
+            text.text = name;
+        }
+    }
 
     // Hitpoints (current / max). Server already sends a_* as integer current values.
     if let Some(mut text) = q.p0().iter_mut().next() {
@@ -4962,6 +5299,7 @@ pub(crate) fn run_gameplay(
     mut opt_clock: Local<SendOptClock>,
     inv_scroll: Res<GameplayInventoryScrollState>,
     inv_hover: Res<GameplayInventoryHoverState>,
+    shop_hover: Res<GameplayShopHoverState>,
     mut q_world_root: Query<
         &mut Transform,
         (
@@ -5235,7 +5573,7 @@ pub(crate) fn run_gameplay(
                 // engine.c: if (pdata.hide==0 || (map[m].flags&ISITEM) || autohide(x,y)) draw obj1
                 // else draw obj1+1 (hide walls/high objects).
                 let hide_enabled = player_state.player_data().hide != 0;
-                let is_item = (tile.flags & ISITEM) != 0 || tile.it_sprite != 0;
+                let is_item = (tile.flags & ISITEM) != 0;
                 if hide_enabled && id > 0 && !is_item && !autohide(x, y) {
                     // engine.c mine hack: substitute special sprites for certain mine-wall IDs
                     // when hide is enabled and tile isn't directly in front of the player.
@@ -5612,7 +5950,7 @@ pub(crate) fn run_gameplay(
     draw_inventory_ui(&gfx, &player_state, &inv_scroll, &inv_hover, &mut q_ui.p5());
     draw_equipment_ui(&gfx, &player_state, &inv_hover, &mut q_ui.p2());
     draw_active_spells_ui(&gfx, &player_state, &mut q_ui.p3());
-    draw_shop_window_ui(&gfx, &player_state, &mut q_ui.p4());
+    draw_shop_window_ui(&gfx, &player_state, &shop_hover, &mut q_ui.p4());
 }
 
 fn update_minimap(

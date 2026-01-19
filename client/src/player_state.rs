@@ -1,6 +1,5 @@
 use bevy::ecs::resource::Resource;
 use mag_core::{circular_buffer::CircularBuffer, constants::TICKS, types::ClientPlayer};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
     map::GameMap,
@@ -91,6 +90,10 @@ impl PlayerState {
         self.state_revision
     }
 
+    pub fn mark_dirty(&mut self) {
+        self.state_revision = self.state_revision.wrapping_add(1);
+    }
+
     pub fn map(&self) -> &GameMap {
         &self.map
     }
@@ -105,6 +108,13 @@ impl PlayerState {
 
     pub fn should_show_shop(&self) -> bool {
         self.should_show_shop
+    }
+
+    pub fn close_shop(&mut self) {
+        if self.should_show_shop {
+            self.should_show_shop = false;
+            self.mark_dirty();
+        }
     }
 
     pub fn should_show_look(&self) -> bool {
@@ -166,13 +176,6 @@ impl PlayerState {
         } else {
             self.local_ctick = (self.local_ctick + 1) % 20;
         }
-    }
-
-    fn now_unix_seconds() -> u64 {
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0)
     }
 
     fn log_color_from_font(font: u8) -> crate::types::log_message::LogMessageColor {

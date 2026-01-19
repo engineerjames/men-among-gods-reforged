@@ -16,7 +16,7 @@ pub struct CMapTile {
     pub ch_nr: u16,
     pub ch_id: u16,
     pub ch_proz: u8,
-    pub it_sprite: i16,
+    pub it_sprite: u16,
     pub it_status: u8,
     pub back: i32,
     pub obj1: i32,

@@ -615,6 +615,17 @@ pub(crate) fn run_gameplay_map_hover_and_click(
     let Some(game_pos) = cursor_game_pos(&windows, &cameras) else {
         return;
     };
+
+    // Shop UI captures mouse events (orig/inter.c checks mouse_shop() before mouse_mapbox()).
+    // If the cursor is over the shop panel/grid while shop is open, ignore map hover/click.
+    if player_state.should_show_shop()
+        && game_pos.x >= 220.0
+        && game_pos.x <= 516.0
+        && game_pos.y >= 260.0
+        && game_pos.y <= 552.0
+    {
+        return;
+    }
     let Some((mx, my)) = hovered_view_tile(game_pos) else {
         return;
     };
