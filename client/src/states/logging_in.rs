@@ -114,7 +114,11 @@ impl Default for LoginUIState {
     }
 }
 
-pub fn setup_logging_in(mut commands: Commands, _asset_server: Res<AssetServer>, mut player_state: ResMut<PlayerState>) {
+pub fn setup_logging_in(
+    mut commands: Commands,
+    _asset_server: Res<AssetServer>,
+    mut player_state: ResMut<PlayerState>,
+) {
     log::debug!("setup_logging_in - start");
 
     // Load persisted mag.dat (if present) and pre-fill UI + runtime pdata/key.
@@ -280,8 +284,10 @@ pub fn run_logging_in(
                                 player_state.set_character_from_file(save_file, player_data);
 
                                 login_info.loaded_character_file = Some(picked);
-                                login_info.username = mag_files::fixed_ascii_to_string(&save_file.name);
-                                login_info.description = mag_files::fixed_ascii_to_string(&player_data.desc);
+                                login_info.username =
+                                    mag_files::fixed_ascii_to_string(&save_file.name);
+                                login_info.description =
+                                    mag_files::fixed_ascii_to_string(&player_data.desc);
                                 let (is_male, class) = class_from_race(save_file.race);
                                 login_info.is_male = is_male;
                                 login_info.class = class;
@@ -295,7 +301,8 @@ pub fn run_logging_in(
                                         player_state.player_data(),
                                     );
                                     if let Err(e) = mag_files::save_mag_dat(&mag_dat) {
-                                        login_info.last_error = Some(format!("Failed to save mag.dat: {e}"));
+                                        login_info.last_error =
+                                            Some(format!("Failed to save mag.dat: {e}"));
                                         login_info.last_notice = None;
                                     } else {
                                         login_info.last_error = None;
@@ -320,7 +327,8 @@ pub fn run_logging_in(
                             login_info.last_notice = None;
                         } else {
                             login_info.last_error = None;
-                            login_info.last_notice = Some(format!("Saved as \"{}\".", picked.display()));
+                            login_info.last_notice =
+                                Some(format!("Saved as \"{}\".", picked.display()));
                             log::info!("Saved character to file: {:?}", picked);
                         }
                     }
@@ -354,7 +362,8 @@ pub fn run_logging_in(
                                 player_state.player_data(),
                             );
                             if let Err(e) = mag_files::save_mag_dat(&mag_dat) {
-                                login_info.last_error = Some(format!("Failed to save mag.dat: {e}"));
+                                login_info.last_error =
+                                    Some(format!("Failed to save mag.dat: {e}"));
                             }
                         }
 
@@ -413,7 +422,8 @@ pub fn run_logging_in(
                                         player_state.player_data(),
                                     );
                                     if let Err(e) = mag_files::save_mag_dat(&mag_dat) {
-                                        login_info.last_error = Some(format!("Failed to save mag.dat: {e}"));
+                                        login_info.last_error =
+                                            Some(format!("Failed to save mag.dat: {e}"));
                                     }
                                 }
                             }
