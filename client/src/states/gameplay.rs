@@ -11,6 +11,9 @@ use bevy::window::{CursorIcon, PrimaryWindow, SystemCursorIcon};
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
+
+use tracing::info;
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::font_cache::{FontCache, BITMAP_GLYPH_W};
@@ -1532,16 +1535,24 @@ fn spawn_ui_scroll_knobs(commands: &mut Commands, image_assets: &mut Assets<Imag
 pub(crate) fn run_gameplay_bitmap_text_renderer(
     mut commands: Commands,
     font_cache: Res<FontCache>,
+    mut perf: Local<BitmapTextPerfAccum>,
     q_text: Query<
         (Entity, &BitmapText, Option<&Children>),
         Or<(Added<BitmapText>, Changed<BitmapText>)>,
     >,
 ) {
+    let perf_enabled = cfg!(debug_assertions);
+    let run_start = perf_enabled.then(Instant::now);
+
     let Some(layout) = font_cache.bitmap_layout() else {
         return;
     };
 
     for (entity, text, children) in &q_text {
+        if perf_enabled {
+            perf.entities = perf.entities.saturating_add(1);
+        }
+
         let Some(image) = font_cache.bitmap_font_image(text.font) else {
             continue;
         };
@@ -1555,6 +1566,9 @@ pub(crate) fn run_gameplay_bitmap_text_renderer(
         if existing_children.len() > desired_len {
             for child in existing_children.iter().skip(desired_len) {
                 commands.entity(*child).despawn();
+                if perf_enabled {
+                    perf.glyph_despawned = perf.glyph_despawned.saturating_add(1);
+                }
             }
         }
 
@@ -1601,8 +1615,18 @@ pub(crate) fn run_gameplay_bitmap_text_renderer(
                     ))
                     .id();
                 commands.entity(entity).add_child(child);
+
+                if perf_enabled {
+                    perf.glyph_spawned = perf.glyph_spawned.saturating_add(1);
+                }
             }
         }
+    }
+
+    if let Some(start) = run_start {
+        perf.runs = perf.runs.saturating_add(1);
+        perf.total += start.elapsed();
+        perf.maybe_report_and_reset();
     }
 }
 
@@ -1683,6 +1707,109 @@ pub(crate) struct LastRender {
 
 #[derive(Component, Clone, Copy, Debug)]
 pub(crate) struct GameplayWorldRoot;
+
+#[derive(Default)]
+pub(crate) struct GameplayPerfAccum {
+    last_report: Option<Instant>,
+    frames: u32,
+
+    total: Duration,
+    engine_tick: Duration,
+    send_opt: Duration,
+    minimap: Duration,
+    world_shadows: Duration,
+    world_tiles: Duration,
+    world_overlays: Duration,
+    ui: Duration,
+}
+
+impl GameplayPerfAccum {
+    fn maybe_report_and_reset(&mut self) {
+        if !cfg!(debug_assertions) {
+            return;
+        }
+
+        let now = Instant::now();
+        let Some(last) = self.last_report else {
+            self.last_report = Some(now);
+            return;
+        };
+
+        if now.duration_since(last) < Duration::from_secs(2) {
+            return;
+        }
+
+        let frames = self.frames.max(1) as f64;
+        let to_ms = |d: Duration| d.as_secs_f64() * 1000.0;
+
+        info!(
+            "perf gameplay: total={:.2}ms/f (engine={:.2} send_opt={:.2} minimap={:.2} shadows={:.2} tiles={:.2} ovl={:.2} ui={:.2}) over {} frames",
+            to_ms(self.total) / frames,
+            to_ms(self.engine_tick) / frames,
+            to_ms(self.send_opt) / frames,
+            to_ms(self.minimap) / frames,
+            to_ms(self.world_shadows) / frames,
+            to_ms(self.world_tiles) / frames,
+            to_ms(self.world_overlays) / frames,
+            to_ms(self.ui) / frames,
+            self.frames,
+        );
+
+        self.last_report = Some(now);
+        self.frames = 0;
+        self.total = Duration::ZERO;
+        self.engine_tick = Duration::ZERO;
+        self.send_opt = Duration::ZERO;
+        self.minimap = Duration::ZERO;
+        self.world_shadows = Duration::ZERO;
+        self.world_tiles = Duration::ZERO;
+        self.world_overlays = Duration::ZERO;
+        self.ui = Duration::ZERO;
+    }
+}
+
+#[derive(Default)]
+pub(crate) struct BitmapTextPerfAccum {
+    last_report: Option<Instant>,
+    runs: u32,
+    total: Duration,
+    entities: u32,
+    glyph_spawned: u32,
+    glyph_despawned: u32,
+}
+
+impl BitmapTextPerfAccum {
+    fn maybe_report_and_reset(&mut self) {
+        if !cfg!(debug_assertions) {
+            return;
+        }
+
+        let now = Instant::now();
+        let Some(last) = self.last_report else {
+            self.last_report = Some(now);
+            return;
+        };
+
+        if now.duration_since(last) < Duration::from_secs(2) {
+            return;
+        }
+
+        let runs = self.runs.max(1) as f64;
+        let ms_per_run = (self.total.as_secs_f64() * 1000.0) / runs;
+
+        info!(
+            "perf bitmap_text: {:.3}ms/run (runs={} entities={} spawned={} despawned={})",
+            ms_per_run, self.runs, self.entities, self.glyph_spawned, self.glyph_despawned,
+        );
+
+        self.last_report = Some(now);
+        self.runs = 0;
+        self.total = Duration::ZERO;
+        self.entities = 0;
+        self.glyph_spawned = 0;
+        self.glyph_despawned = 0;
+    }
+}
 
 #[derive(Default)]
 pub(crate) struct EngineClock {
@@ -5296,6 +5423,7 @@ pub(crate) fn run_gameplay(
     mut minimap: ResMut<MiniMapState>,
     mut clock: Local<EngineClock>,
     mut opt_clock: Local<SendOptClock>,
+    mut perf: Local<GameplayPerfAccum>,
     inv_scroll: Res<GameplayInventoryScrollState>,
     inv_hover: Res<GameplayInventoryHoverState>,
     shop_hover: Res<GameplayShopHoverState>,
@@ -5396,6 +5524,9 @@ pub(crate) fn run_gameplay(
         return;
     }
 
+    let perf_enabled = cfg!(debug_assertions);
+    let frame_start = perf_enabled.then(Instant::now);
+
     // Match original client behavior: advance the engine visuals only when a full server tick
     // packet has been processed (network tick defines animation rate).
     let net_ticker = net.client_ticker();
@@ -5405,14 +5536,25 @@ pub(crate) fn run_gameplay(
     // Only call engine_tick when we've received a new server tick packet.
     // This matches the original client where engine_tick() is called once per tick packet.
     if net_ticker != clock.ticker {
+        let t0 = perf_enabled.then(Instant::now);
         let ctick = player_state.local_ctick().min(19) as usize;
         clock.ticker = net_ticker;
         engine_tick(&mut player_state, clock.ticker, ctick);
         did_tick = true;
+
+        if let Some(t0) = t0 {
+            perf.engine_tick += t0.elapsed();
+        }
     }
 
     // Ported options transfer behavior (engine.c::send_opt).
-    send_opt(&net, &mut player_state, &mut opt_clock);
+    {
+        let t0 = perf_enabled.then(Instant::now);
+        send_opt(&net, &mut player_state, &mut opt_clock);
+        if let Some(t0) = t0 {
+            perf.send_opt += t0.elapsed();
+        }
+    }
 
     let map = player_state.map();
 
@@ -5420,7 +5562,11 @@ pub(crate) fn run_gameplay(
     // This is relatively expensive (16k px upload), so only do it when we advance
     // a server tick (or the minimap image hasn't been created yet).
     if did_tick || minimap.image.is_none() {
+        let t0 = perf_enabled.then(Instant::now);
         update_minimap(&mut minimap, &gfx, &mut images, map);
+        if let Some(t0) = t0 {
+            perf.minimap += t0.elapsed();
+        }
     }
 
     let shadows_enabled = player_state.player_data().are_shadows_enabled != 0;
@@ -5469,14 +5615,19 @@ pub(crate) fn run_gameplay(
     }
 
     // Update shadows (dd.c::dd_shadow)
+    let t_shadows = perf_enabled.then(Instant::now);
     for (shadow, mut sprite, mut transform, mut visibility, mut last) in &mut q_world.p0() {
         if !shadows_enabled {
-            *visibility = Visibility::Hidden;
+            if *visibility != Visibility::Hidden {
+                *visibility = Visibility::Hidden;
+            }
             continue;
         }
 
         let Some(tile) = map.tile_at_index(shadow.index) else {
-            *visibility = Visibility::Hidden;
+            if *visibility != Visibility::Hidden {
+                *visibility = Visibility::Hidden;
+            }
             continue;
         };
 
@@ -5489,7 +5640,9 @@ pub(crate) fn run_gameplay(
 
         let (sprite_id, xoff, yoff) = match shadow.layer {
             ShadowLayer::Object => {
-                *visibility = Visibility::Hidden;
+                if *visibility != Visibility::Hidden {
+                    *visibility = Visibility::Hidden;
+                }
                 continue;
             }
             ShadowLayer::Character => (tile.obj2, tile.obj_xoff, tile.obj_yoff),
@@ -5499,23 +5652,31 @@ pub(crate) fn run_gameplay(
             if sprite_id != last.sprite_id {
                 last.sprite_id = sprite_id;
             }
-            *visibility = Visibility::Hidden;
+            if *visibility != Visibility::Hidden {
+                *visibility = Visibility::Hidden;
+            }
             continue;
         }
 
         let Some((sx_i, sy_i)) =
             copysprite_screen_pos(sprite_id as usize, &gfx, &images, xpos, ypos, xoff, yoff)
         else {
-            *visibility = Visibility::Hidden;
+            if *visibility != Visibility::Hidden {
+                *visibility = Visibility::Hidden;
+            }
             continue;
         };
 
         let Some(src) = gfx.get_sprite(sprite_id as usize) else {
-            *visibility = Visibility::Hidden;
+            if *visibility != Visibility::Hidden {
+                *visibility = Visibility::Hidden;
+            }
             continue;
         };
         let Some((_xs, ys)) = gfx.get_sprite_tiles_xy(sprite_id as usize) else {
-            *visibility = Visibility::Hidden;
+            if *visibility != Visibility::Hidden {
+                *visibility = Visibility::Hidden;
+            }
             continue;
         };
 
@@ -5529,11 +5690,9 @@ pub(crate) fn run_gameplay(
             && (sx_f - last.sx).abs() < 0.01
             && (shadow_sy_f - last.sy).abs() < 0.01
         {
-            // Ensure our squash stays applied even when sprite id/pos unchanged.
-            transform.scale = Vec3::new(1.0, 0.25, 1.0);
-            let z = Z_SHADOW_BASE + draw_order * Z_WORLD_STEP;
-            transform.translation = screen_to_world(sx_f, shadow_sy_f, z);
-            *visibility = Visibility::Visible;
+            if *visibility != Visibility::Visible {
+                *visibility = Visibility::Visible;
+            }
             continue;
         }
 
@@ -5545,12 +5704,18 @@ pub(crate) fn run_gameplay(
         shadow_sprite.color = Color::srgba(0.0, 0.0, 0.0, 0.5);
         *sprite = shadow_sprite;
 
-        *visibility = Visibility::Visible;
+        if *visibility != Visibility::Visible {
+            *visibility = Visibility::Visible;
+        }
         let z = Z_SHADOW_BASE + draw_order * Z_WORLD_STEP;
         transform.translation = screen_to_world(sx_f, shadow_sy_f, z);
         transform.scale = Vec3::new(1.0, 0.25, 1.0);
     }
+    if let Some(t0) = t_shadows {
+        perf.world_shadows += t0.elapsed();
+    }
 
+    let t_tiles = perf_enabled.then(Instant::now);
     for (render, mut sprite, mut transform, mut visibility, mut last) in &mut q_world.p1() {
         let Some(tile) = map.tile_at_index(render.index) else {
             continue;
@@ -5624,7 +5789,9 @@ pub(crate) fn run_gameplay(
             if sprite_id != last.sprite_id {
                 last.sprite_id = sprite_id;
             }
-            *visibility = Visibility::Hidden;
+            if *visibility != Visibility::Hidden {
+                *visibility = Visibility::Hidden;
+            }
             continue;
         }
 
@@ -5638,7 +5805,9 @@ pub(crate) fn run_gameplay(
             xoff_i,
             yoff_i,
         ) else {
-            *visibility = Visibility::Hidden;
+            if *visibility != Visibility::Hidden {
+                *visibility = Visibility::Hidden;
+            }
             continue;
         };
 
@@ -5670,7 +5839,9 @@ pub(crate) fn run_gameplay(
             TileLayer::Object => {
                 // engine.c skips object/character pass entirely if INVIS.
                 if (tile.flags & INVIS) != 0 {
-                    *visibility = Visibility::Hidden;
+                    if *visibility != Visibility::Hidden {
+                        *visibility = Visibility::Hidden;
+                    }
                     continue;
                 }
                 if (tile.flags & INFRARED) != 0 {
@@ -5683,7 +5854,9 @@ pub(crate) fn run_gameplay(
             TileLayer::Character => {
                 // engine.c skips object/character pass entirely if INVIS.
                 if (tile.flags & INVIS) != 0 {
-                    *visibility = Visibility::Hidden;
+                    if *visibility != Visibility::Hidden {
+                        *visibility = Visibility::Hidden;
+                    }
                     continue;
                 }
                 if tile.ch_nr != 0 && tile.ch_nr == player_state.selected_char() {
@@ -5708,9 +5881,12 @@ pub(crate) fn run_gameplay(
             && (sy_f - last.sy).abs() < 0.01
         {
             // Even if the sprite/position didn't change, we must ensure visibility/z stay correct.
-            *visibility = Visibility::Visible;
-            transform.translation = screen_to_world(sx_f, sy_f, z);
-            sprite.color = tint;
+            if *visibility != Visibility::Visible {
+                *visibility = Visibility::Visible;
+            }
+            if sprite.color != tint {
+                sprite.color = tint;
+            }
             continue;
         }
 
@@ -5719,20 +5895,30 @@ pub(crate) fn run_gameplay(
         last.sy = sy_f;
 
         let Some(src) = gfx.get_sprite(sprite_id as usize) else {
-            *visibility = Visibility::Hidden;
+            if *visibility != Visibility::Hidden {
+                *visibility = Visibility::Hidden;
+            }
             continue;
         };
 
         *sprite = src.clone();
         sprite.color = tint;
-        *visibility = Visibility::Visible;
+        if *visibility != Visibility::Visible {
+            *visibility = Visibility::Visible;
+        }
         transform.translation = screen_to_world(sx_f, sy_f, z);
+    }
+    if let Some(t0) = t_tiles {
+        perf.world_tiles += t0.elapsed();
     }
 
     // Map flag overlays (ported from engine.c): draw above characters on the same tile.
+    let t_ovl = perf_enabled.then(Instant::now);
     for (ovl, mut sprite, mut transform, mut visibility, mut last) in &mut q_world.p2() {
         let Some(tile) = map.tile_at_index(ovl.index) else {
-            *visibility = Visibility::Hidden;
+            if *visibility != Visibility::Hidden {
+                *visibility = Visibility::Hidden;
+            }
             continue;
         };
 
@@ -5872,7 +6058,9 @@ pub(crate) fn run_gameplay(
             if sprite_id != last.sprite_id {
                 last.sprite_id = sprite_id;
             }
-            *visibility = Visibility::Hidden;
+            if *visibility != Visibility::Hidden {
+                *visibility = Visibility::Hidden;
+            }
             continue;
         }
 
@@ -5885,7 +6073,9 @@ pub(crate) fn run_gameplay(
             xoff_i,
             yoff_i,
         ) else {
-            *visibility = Visibility::Hidden;
+            if *visibility != Visibility::Hidden {
+                *visibility = Visibility::Hidden;
+            }
             continue;
         };
 
@@ -5896,8 +6086,9 @@ pub(crate) fn run_gameplay(
             && (sx_f - last.sx).abs() < 0.01
             && (sy_f - last.sy).abs() < 0.01
         {
-            *visibility = Visibility::Visible;
-            transform.translation = screen_to_world(sx_f, sy_f, z);
+            if *visibility != Visibility::Visible {
+                *visibility = Visibility::Visible;
+            }
             continue;
         }
 
@@ -5906,15 +6097,23 @@ pub(crate) fn run_gameplay(
         last.sy = sy_f;
 
         let Some(src) = gfx.get_sprite(sprite_id as usize) else {
-            *visibility = Visibility::Hidden;
+            if *visibility != Visibility::Hidden {
+                *visibility = Visibility::Hidden;
+            }
             continue;
         };
 
         *sprite = src.clone();
-        *visibility = Visibility::Visible;
+        if *visibility != Visibility::Visible {
+            *visibility = Visibility::Visible;
+        }
         transform.translation = screen_to_world(sx_f, sy_f, z);
     }
+    if let Some(t0) = t_ovl {
+        perf.world_overlays += t0.elapsed();
+    }
 
+    let t_ui = perf_enabled.then(Instant::now);
     // Update UI portrait
     if let Some((mut sprite, mut visibility, mut last)) = q_ui.p0().iter_mut().next() {
         if ui_portrait_sprite_id > 0 {
@@ -5957,6 +6156,16 @@ pub(crate) fn run_gameplay(
     draw_equipment_ui(&gfx, &player_state, &inv_hover, &mut q_ui.p2());
     draw_active_spells_ui(&gfx, &player_state, &mut q_ui.p3());
     draw_shop_window_ui(&gfx, &player_state, &shop_hover, &mut q_ui.p4());
+
+    if let Some(t0) = t_ui {
+        perf.ui += t0.elapsed();
+    }
+
+    if let Some(start) = frame_start {
+        perf.frames = perf.frames.saturating_add(1);
+        perf.total += start.elapsed();
+        perf.maybe_report_and_reset();
+    }
 }
 
 fn update_minimap(
