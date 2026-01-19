@@ -1,6 +1,7 @@
 use crate::types::skill_buttons::SkillButtons;
 
 // pdata from original C headers
+#[derive(Copy, Clone)]
 #[repr(C)]
 pub struct PlayerData {
     pub cname: [u8; 80],

@@ -1,4 +1,5 @@
 // key from original C headers
+#[derive(Copy, Clone)]
 #[repr(C)]
 pub struct SaveFile {
     pub usnr: u32,
