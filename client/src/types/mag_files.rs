@@ -149,3 +149,126 @@ pub fn save_character_file(
     write_struct(&mut file, save_file)?;
     write_struct(&mut file, player_data)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{
+        fs,
+        sync::Mutex,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    static CWD_LOCK: Mutex<()> = Mutex::new(());
+
+    fn unique_temp_dir(prefix: &str) -> PathBuf {
+        let pid = std::process::id();
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        std::env::temp_dir().join(format!("{prefix}_{pid}_{nanos}"))
+    }
+
+    fn as_bytes<T>(value: &T) -> &[u8] {
+        unsafe {
+            std::slice::from_raw_parts(value as *const T as *const u8, std::mem::size_of::<T>())
+        }
+    }
+
+    fn with_temp_cwd<F, R>(f: F) -> R
+    where
+        F: FnOnce(&Path) -> R,
+    {
+        let _guard = CWD_LOCK.lock().unwrap();
+
+        let old = std::env::current_dir().unwrap();
+        let dir = unique_temp_dir("mag_cwd");
+        fs::create_dir_all(&dir).unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+
+        let out = f(&dir);
+
+        std::env::set_current_dir(&old).unwrap();
+        let _ = fs::remove_dir_all(&dir);
+        out
+    }
+
+    #[test]
+    fn fixed_ascii_to_string_stops_at_nul_and_trims() {
+        let bytes = b" hello\0world";
+        assert_eq!(fixed_ascii_to_string(bytes), "hello");
+    }
+
+    #[test]
+    fn mag_character_file_roundtrip_preserves_bytes() {
+        let dir = unique_temp_dir("mag_char");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("test.mag");
+
+        let mut save_file = SaveFile::default();
+        save_file.usnr = 123;
+        save_file.pass1 = 456;
+        save_file.pass2 = 789;
+        save_file.race = 76;
+        save_file.name[0..4].copy_from_slice(b"Test");
+
+        let mut player_data = PlayerData::default();
+        player_data.changed = 1;
+        player_data.hide = 1;
+        player_data.show_names = 1;
+        player_data.desc[0..11].copy_from_slice(b"Hello world");
+
+        save_character_file(&path, &save_file, &player_data).unwrap();
+        let (loaded_save, loaded_pdata) = load_character_file(&path).unwrap();
+
+        assert_eq!(as_bytes(&loaded_save), as_bytes(&save_file));
+        assert_eq!(as_bytes(&loaded_pdata), as_bytes(&player_data));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn mag_dat_missing_file_returns_default() {
+        with_temp_cwd(|_dir| {
+            let loaded = load_mag_dat().unwrap();
+            assert_eq!(&loaded.magic, b"MAGD");
+            assert_eq!(loaded.version, 1);
+        });
+    }
+
+    #[test]
+    fn mag_dat_invalid_magic_returns_default() {
+        with_temp_cwd(|_dir| {
+            let mut bad = MagDatV1::default();
+            bad.magic = *b"NOPE";
+            save_mag_dat(&bad).unwrap();
+
+            let loaded = load_mag_dat().unwrap();
+            assert_eq!(&loaded.magic, b"MAGD");
+            assert_eq!(loaded.version, 1);
+        });
+    }
+
+    #[test]
+    fn mag_dat_roundtrip_preserves_bytes() {
+        with_temp_cwd(|_dir| {
+            let mut save_file = SaveFile::default();
+            save_file.usnr = 1;
+            save_file.pass1 = 2;
+            save_file.pass2 = 3;
+            save_file.race = 3;
+            save_file.name[0..5].copy_from_slice(b"Alice");
+
+            let mut player_data = PlayerData::default();
+            player_data.show_proz = 1;
+            player_data.desc[0..4].copy_from_slice(b"Desc");
+
+            let mag = build_mag_dat("127.0.0.1", 5555, &save_file, &player_data);
+            save_mag_dat(&mag).unwrap();
+            let loaded = load_mag_dat().unwrap();
+
+            assert_eq!(as_bytes(&loaded), as_bytes(&mag));
+        });
+    }
+}

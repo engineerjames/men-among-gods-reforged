@@ -34,3 +34,14 @@ impl Default for PlayerData {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_has_shadows_enabled() {
+        let pdata = PlayerData::default();
+        assert_eq!(pdata.are_shadows_enabled, 1);
+    }
+}

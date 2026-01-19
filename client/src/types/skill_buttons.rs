@@ -61,3 +61,34 @@ impl SkillButtons {
         self.set_name("-");
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_is_considered_unassigned() {
+        let b = SkillButtons::default();
+        assert!(b.is_unassigned());
+    }
+
+    #[test]
+    fn set_unassigned_sets_sentinel_and_dash_name() {
+        let mut b = SkillButtons::default();
+        b.set_skill_nr(123);
+        b.set_name("Fire");
+        assert!(!b.is_unassigned());
+
+        b.set_unassigned();
+        assert!(b.is_unassigned());
+        assert_eq!(b.skill_nr(), SkillButtons::UNASSIGNED_SKILL_NR);
+        assert_eq!(b.name_str(), "-");
+    }
+
+    #[test]
+    fn set_name_truncates_to_7_bytes_plus_nul() {
+        let mut b = SkillButtons::default();
+        b.set_name("123456789");
+        assert_eq!(b.name_str(), "1234567");
+    }
+}
