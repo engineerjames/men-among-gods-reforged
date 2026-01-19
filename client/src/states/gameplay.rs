@@ -11,9 +11,27 @@ use bevy::window::{CursorIcon, PrimaryWindow, SystemCursorIcon};
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 use tracing::info;
+
+#[inline]
+fn env_flag(name: &str) -> bool {
+    std::env::var(name)
+        .ok()
+        .map(|v| {
+            let v = v.trim().to_ascii_lowercase();
+            !(v.is_empty() || v == "0" || v == "false" || v == "no")
+        })
+        .unwrap_or(false)
+}
+
+#[inline]
+fn profile_rendering_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| env_flag("MAG_PROFILE_RENDERING"))
+}
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::font_cache::{FontCache, BITMAP_GLYPH_W};
@@ -631,13 +649,7 @@ pub(crate) struct GameplayDebugSettings {
 impl Default for GameplayDebugSettings {
     fn default() -> Self {
         // Set `MAG_DEBUG_TILE_OVERLAYS=1` to enable.
-        let enabled = std::env::var("MAG_DEBUG_TILE_OVERLAYS")
-            .ok()
-            .map(|v| {
-                let v = v.trim().to_ascii_lowercase();
-                !(v.is_empty() || v == "0" || v == "false" || v == "no")
-            })
-            .unwrap_or(false);
+        let enabled = env_flag("MAG_DEBUG_TILE_OVERLAYS");
 
         Self {
             tile_flag_overlays: enabled,
@@ -1565,7 +1577,7 @@ pub(crate) fn run_gameplay_bitmap_text_renderer(
         Or<(Added<BitmapText>, Changed<BitmapText>)>,
     >,
 ) {
-    let perf_enabled = cfg!(debug_assertions);
+    let perf_enabled = cfg!(debug_assertions) && profile_rendering_enabled();
     let run_start = perf_enabled.then(Instant::now);
 
     let Some(layout) = font_cache.bitmap_layout() else {
@@ -1749,7 +1761,7 @@ pub(crate) struct GameplayPerfAccum {
 
 impl GameplayPerfAccum {
     fn maybe_report_and_reset(&mut self) {
-        if !cfg!(debug_assertions) {
+        if !cfg!(debug_assertions) || !profile_rendering_enabled() {
             return;
         }
 
@@ -1804,7 +1816,7 @@ pub(crate) struct BitmapTextPerfAccum {
 
 impl BitmapTextPerfAccum {
     fn maybe_report_and_reset(&mut self) {
-        if !cfg!(debug_assertions) {
+        if !cfg!(debug_assertions) || !profile_rendering_enabled() {
             return;
         }
 
@@ -5552,7 +5564,7 @@ pub(crate) fn run_gameplay(
         return;
     }
 
-    let perf_enabled = cfg!(debug_assertions);
+    let perf_enabled = cfg!(debug_assertions) && profile_rendering_enabled();
     let frame_start = perf_enabled.then(Instant::now);
 
     // Match original client behavior: advance the engine visuals only when a full server tick
