@@ -93,7 +93,6 @@ impl Look {
         self.item.get(index).copied().unwrap_or(0)
     }
 
-    #[allow(dead_code)]
     pub fn price(&self, index: usize) -> u32 {
         self.price.get(index).copied().unwrap_or(0)
     }

@@ -1,8 +1,7 @@
 #[derive(Copy, Clone)]
-#[allow(dead_code)]
 #[repr(u8)]
 pub enum ClientCommandType {
-    Empty = 0,
+    _Empty = 0,
     NewLogin = 1,
     Login = 2,
     Challenge = 3,
@@ -141,7 +140,6 @@ impl ClientCommand {
     }
 
     /// Mirrors `engine.c::send_opt`: 1 byte group, 1 byte offset, 13 bytes data.
-    #[allow(dead_code)]
     pub fn new_setuser(group: u8, offset: u8, data: &[u8]) -> Self {
         let mut payload = vec![0u8; 15];
         payload[0] = group;
@@ -240,13 +238,11 @@ impl ClientCommand {
     }
 
     /// `CL_CMD_RESET` (`main.c` ESC handler uses `cmd(CL_CMD_RESET,0,0)`).
-    #[allow(dead_code)]
     pub fn new_reset() -> Self {
         Self::cmd_xy_i16_i32(ClientCommandType::CmdReset, 0, 0)
     }
 
     /// `CL_CMD_SHOP` (`inter.c::cmd`).
-    #[allow(dead_code)]
     pub fn new_shop(shop_nr: i16, action: i32) -> Self {
         Self::cmd_xy_i16_i32(ClientCommandType::CmdShop, shop_nr, action)
     }

@@ -492,6 +492,12 @@ pub(crate) struct GameplayInventoryHoverState {
     money: Option<GameplayMoneyHoverKind>,
 }
 
+#[derive(Resource, Default, Debug)]
+pub(crate) struct GameplayShopHoverState {
+    slot: Option<usize>,
+    over_close: bool,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum GameplayCursorType {
     None,
@@ -2231,6 +2237,7 @@ fn draw_active_spells_ui(
 fn draw_shop_window_ui(
     gfx: &GraphicsCache,
     player_state: &PlayerState,
+    shop_hover: &GameplayShopHoverState,
     q: &mut Query<(
         &GameplayUiShop,
         &mut Sprite,
@@ -2283,8 +2290,77 @@ fn draw_shop_window_ui(
                     }
                 }
 
-                sprite.color = Color::srgba(1.0, 1.0, 1.0, 1.0);
+                let is_hovered = shop_hover.slot == Some(index);
+                sprite.color = if is_hovered {
+                    // Approximate engine.c's highlight effect=16.
+                    Color::srgba(0.6, 1.0, 0.6, 1.0)
+                } else {
+                    Color::srgba(1.0, 1.0, 1.0, 1.0)
+                };
                 *visibility = Visibility::Visible;
+            }
+        }
+    }
+}
+
+pub(crate) fn run_gameplay_shop_input(
+    mouse: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
+    cameras: Query<&Camera, With<Camera2d>>,
+    net: Res<NetworkRuntime>,
+    mut player_state: ResMut<PlayerState>,
+    mut shop_hover: ResMut<GameplayShopHoverState>,
+    mut cursor_state: ResMut<GameplayCursorTypeState>,
+) {
+    shop_hover.slot = None;
+    shop_hover.over_close = false;
+
+    if !player_state.should_show_shop() {
+        return;
+    }
+
+    let Some(game) = cursor_game_pos(&windows, &cameras) else {
+        return;
+    };
+
+    let x = game.x;
+    let y = game.y;
+
+    // Close button (orig/inter.c::mouse_shop): x 499..516, y 260..274.
+    if (499.0..=516.0).contains(&x) && (260.0..=274.0).contains(&y) {
+        shop_hover.over_close = true;
+        if mouse.just_released(MouseButton::Left) {
+            player_state.close_shop();
+        }
+        return;
+    }
+
+    // Shop grid (orig/inter.c::mouse_shop): x 220..500, y 261..(485+32+35).
+    // That bottom bound evaluates to 552.
+    if (220.0..=500.0).contains(&x) && (261.0..=552.0).contains(&y) {
+        let tx = ((x - 220.0) / 35.0).floor() as i32;
+        let ty = ((y - 261.0) / 35.0).floor() as i32;
+        if (0..8).contains(&tx) && ty >= 0 {
+            let nr = (tx + ty * 8) as usize;
+            if nr < 62 {
+                shop_hover.slot = Some(nr);
+
+                let shop = player_state.shop_target();
+                let pl = player_state.character_info();
+
+                if shop.item(nr) != 0 {
+                    cursor_state.cursor = GameplayCursorType::Take;
+                } else if pl.citem != 0 {
+                    cursor_state.cursor = GameplayCursorType::Drop;
+                }
+
+                let shop_nr = shop.nr() as i16;
+                if mouse.just_released(MouseButton::Left) {
+                    net.send(ClientCommand::new_shop(shop_nr, nr as i32).to_bytes());
+                } else if mouse.just_released(MouseButton::Right) {
+                    net.send(ClientCommand::new_shop(shop_nr, (nr + 62) as i32).to_bytes());
+                }
+                return;
             }
         }
     }
@@ -2965,6 +3041,7 @@ pub(crate) fn setup_gameplay(
     commands.insert_resource(GameplayStatboxState::default());
     commands.insert_resource(GameplayInventoryScrollState::default());
     commands.insert_resource(GameplayInventoryHoverState::default());
+    commands.insert_resource(GameplayShopHoverState::default());
     commands.insert_resource(GameplayCursorTypeState::default());
 
     // Clear any previous gameplay sprites (re-entering gameplay, etc.)
@@ -4962,6 +5039,7 @@ pub(crate) fn run_gameplay(
     mut opt_clock: Local<SendOptClock>,
     inv_scroll: Res<GameplayInventoryScrollState>,
     inv_hover: Res<GameplayInventoryHoverState>,
+    shop_hover: Res<GameplayShopHoverState>,
     mut q_world_root: Query<
         &mut Transform,
         (
@@ -5612,7 +5690,7 @@ pub(crate) fn run_gameplay(
     draw_inventory_ui(&gfx, &player_state, &inv_scroll, &inv_hover, &mut q_ui.p5());
     draw_equipment_ui(&gfx, &player_state, &inv_hover, &mut q_ui.p2());
     draw_active_spells_ui(&gfx, &player_state, &mut q_ui.p3());
-    draw_shop_window_ui(&gfx, &player_state, &mut q_ui.p4());
+    draw_shop_window_ui(&gfx, &player_state, &shop_hover, &mut q_ui.p4());
 }
 
 fn update_minimap(

@@ -163,6 +163,15 @@ fn main() {
         )
         .add_systems(
             Update,
+            states::gameplay::run_gameplay_shop_input
+                .run_if(in_state(GameState::Gameplay))
+                .after(states::gameplay::run_gameplay_inventory_input)
+                .before(map_hover::run_gameplay_map_hover_and_click)
+                .before(states::gameplay::run_gameplay_update_cursor_and_carried_item)
+                .before(states::gameplay::run_gameplay),
+        )
+        .add_systems(
+            Update,
             states::gameplay::run_gameplay_update_cursor_and_carried_item
                 .run_if(in_state(GameState::Gameplay))
                 .after(states::gameplay::run_gameplay_inventory_input)
