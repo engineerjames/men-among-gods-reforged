@@ -97,6 +97,10 @@ impl Look {
         self.price.get(index).copied().unwrap_or(0)
     }
 
+    pub fn pl_price(&self) -> u32 {
+        self.pl_price
+    }
+
     pub fn is_extended(&self) -> bool {
         self.extended != 0
     }

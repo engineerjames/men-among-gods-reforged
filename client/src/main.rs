@@ -250,12 +250,19 @@ fn main() {
         )
         .add_systems(
             Update,
+            states::gameplay::run_gameplay_update_shop_price_labels
+                .run_if(in_state(GameState::Gameplay))
+                .after(states::gameplay::run_gameplay_shop_input),
+        )
+        .add_systems(
+            Update,
             states::gameplay::run_gameplay_bitmap_text_renderer
                 .run_if(in_state(GameState::Gameplay))
                 .after(states::gameplay::run_gameplay_update_extra_ui)
                 .after(states::gameplay::run_gameplay_update_stat_bars)
                 .after(states::gameplay::run_gameplay_update_top_selected_name)
                 .after(states::gameplay::run_gameplay_update_portrait_name_and_rank)
+                .after(states::gameplay::run_gameplay_update_shop_price_labels)
                 .after(nameplates::run_gameplay_nameplates),
         )
         //

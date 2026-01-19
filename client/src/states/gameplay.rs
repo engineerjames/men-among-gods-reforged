@@ -373,6 +373,12 @@ pub(crate) struct GameplayUiManaLabel;
 pub(crate) struct GameplayUiMoneyLabel;
 
 #[derive(Component)]
+pub(crate) struct GameplayUiShopSellPriceLabel;
+
+#[derive(Component)]
+pub(crate) struct GameplayUiShopBuyPriceLabel;
+
+#[derive(Component)]
 pub(crate) struct GameplayUiUpdateLabel;
 
 #[derive(Component)]
@@ -1110,6 +1116,109 @@ fn spawn_ui_hud_labels(commands: &mut Commands) {
     ));
 
     // (No "Available Points" label; original client doesn't show it here.)
+
+    // Shop price labels (engine.c):
+    // - dd_xputtext(225,549,1,"Sell: %dG %dS", ...)
+    // - dd_xputtext(225,559,1,"Buy:  %dG %dS", ...)
+    // These are only visible while the shop UI is open.
+    commands.spawn((
+        GameplayRenderEntity,
+        GameplayUiShopSellPriceLabel,
+        BitmapText {
+            text: String::new(),
+            color: Color::WHITE,
+            font: UI_BITMAP_FONT,
+        },
+        Transform::from_translation(screen_to_world(225.0, 549.0, Z_UI_TEXT)),
+        GlobalTransform::default(),
+        Visibility::Hidden,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
+    ));
+
+    commands.spawn((
+        GameplayRenderEntity,
+        GameplayUiShopBuyPriceLabel,
+        BitmapText {
+            text: String::new(),
+            color: Color::WHITE,
+            font: UI_BITMAP_FONT,
+        },
+        Transform::from_translation(screen_to_world(225.0, 559.0, Z_UI_TEXT)),
+        GlobalTransform::default(),
+        Visibility::Hidden,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
+    ));
+}
+
+pub(crate) fn run_gameplay_update_shop_price_labels(
+    player_state: Res<PlayerState>,
+    shop_hover: Res<GameplayShopHoverState>,
+    mut q_sell: Query<(&mut BitmapText, &mut Visibility), With<GameplayUiShopSellPriceLabel>>,
+    mut q_buy: Query<(&mut BitmapText, &mut Visibility), With<GameplayUiShopBuyPriceLabel>>,
+) {
+    if !player_state.should_show_shop() {
+        for (mut text, mut vis) in &mut q_sell {
+            if !text.text.is_empty() {
+                text.text.clear();
+            }
+            *vis = Visibility::Hidden;
+        }
+        for (mut text, mut vis) in &mut q_buy {
+            if !text.text.is_empty() {
+                text.text.clear();
+            }
+            *vis = Visibility::Hidden;
+        }
+        return;
+    }
+
+    let shop = player_state.shop_target();
+
+    // Sell price: only when hovering an item slot with a non-zero price.
+    let sell_text = shop_hover
+        .slot
+        .and_then(|idx| {
+            let price = shop.price(idx);
+            if price == 0 {
+                return None;
+            }
+            Some(format!("Sell: {}G {}S", price / 100, price % 100))
+        })
+        .unwrap_or_default();
+
+    for (mut text, mut vis) in &mut q_sell {
+        if text.text != sell_text {
+            text.text = sell_text.clone();
+        }
+        *vis = if text.text.is_empty() {
+            Visibility::Hidden
+        } else {
+            Visibility::Visible
+        };
+    }
+
+    // Buy price: when carrying an item and shop has a non-zero pl_price.
+    let pl = player_state.character_info();
+    let buy_price = if pl.citem != 0 { shop.pl_price() } else { 0 };
+    let buy_text = if buy_price != 0 {
+        // Keep the original spacing ("Buy:  ") for alignment with the classic UI.
+        format!("Buy:  {}G {}S", buy_price / 100, buy_price % 100)
+    } else {
+        String::new()
+    };
+
+    for (mut text, mut vis) in &mut q_buy {
+        if text.text != buy_text {
+            text.text = buy_text.clone();
+        }
+        *vis = if text.text.is_empty() {
+            Visibility::Hidden
+        } else {
+            Visibility::Visible
+        };
+    }
 }
 
 fn spawn_ui_toggle_boxes(commands: &mut Commands, image_assets: &mut Assets<Image>) {
