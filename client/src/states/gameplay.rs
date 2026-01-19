@@ -1549,8 +1549,7 @@ pub(crate) fn run_gameplay_bitmap_text_renderer(
         let desired = text.text.as_str();
         let desired_len = desired.chars().count();
 
-        let existing_children: Vec<Entity> =
-            children.map(|c| c.iter().collect()).unwrap_or_default();
+        let existing_children: &[Entity] = if let Some(c) = children { c } else { &[] };
 
         // Trim extra glyphs.
         if existing_children.len() > desired_len {
@@ -1565,7 +1564,7 @@ pub(crate) fn run_gameplay_bitmap_text_renderer(
             let local_x = (i as f32) * BITMAP_GLYPH_W;
             let local_z = (i as f32) * 0.0001;
 
-            if let Some(child) = existing_children.get(i).copied() {
+            if let Some(&child) = existing_children.get(i) {
                 commands.entity(child).insert((
                     Sprite {
                         image: image.clone(),
@@ -5401,12 +5400,15 @@ pub(crate) fn run_gameplay(
     // packet has been processed (network tick defines animation rate).
     let net_ticker = net.client_ticker();
 
+    let mut did_tick = false;
+
     // Only call engine_tick when we've received a new server tick packet.
     // This matches the original client where engine_tick() is called once per tick packet.
     if net_ticker != clock.ticker {
         let ctick = player_state.local_ctick().min(19) as usize;
         clock.ticker = net_ticker;
         engine_tick(&mut player_state, clock.ticker, ctick);
+        did_tick = true;
     }
 
     // Ported options transfer behavior (engine.c::send_opt).
@@ -5415,7 +5417,11 @@ pub(crate) fn run_gameplay(
     let map = player_state.map();
 
     // Update the mini-map buffer + render the 128x128 window.
-    update_minimap(&mut minimap, &gfx, &mut images, map);
+    // This is relatively expensive (16k px upload), so only do it when we advance
+    // a server tick (or the minimap image hasn't been created yet).
+    if did_tick || minimap.image.is_none() {
+        update_minimap(&mut minimap, &gfx, &mut images, map);
+    }
 
     let shadows_enabled = player_state.player_data().are_shadows_enabled != 0;
 
