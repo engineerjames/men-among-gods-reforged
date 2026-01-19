@@ -12,6 +12,29 @@ use egui_file_dialog::FileDialog;
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::network::{LoginRequested, LoginStatus};
+use crate::player_state::PlayerState;
+
+fn write_ascii_into_fixed(dst: &mut [u8], s: &str) {
+    // Match the original client's fixed-size C strings:
+    // - NUL-terminated
+    // - padded with zeros
+    // - non-ASCII / control chars replaced with space
+    dst.fill(0);
+    if dst.is_empty() {
+        return;
+    }
+
+    let mut i = 0usize;
+    for &b in s.as_bytes() {
+        if i >= dst.len().saturating_sub(1) {
+            break;
+        }
+
+        // Keep visible ASCII; map others to space.
+        dst[i] = if (32..=126).contains(&b) { b } else { b' ' };
+        i += 1;
+    }
+}
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 
@@ -96,6 +119,7 @@ pub fn run_logging_in(
     mut login_info: ResMut<LoginUIState>,
     status: Res<LoginStatus>,
     mut login_ev: MessageWriter<LoginRequested>,
+    mut player_state: ResMut<PlayerState>,
 ) {
     debug_once!("run_logging_in called");
 
@@ -208,6 +232,16 @@ pub fn run_logging_in(
                     let login_button = ui.add_sized([120., 40.], egui::Button::new("Login"));
                     if login_button.clicked() {
                         login_info.is_logging_in = true;
+
+                        // Ensure user-entered character name/description are pushed to pdata
+                        // so gameplay's `send_opt()` will transmit them to the server.
+                        {
+                            let pdata = player_state.player_data_mut();
+                            write_ascii_into_fixed(&mut pdata.cname, &login_info.username);
+                            write_ascii_into_fixed(&mut pdata.desc, &login_info.description);
+                            pdata.changed = 1;
+                        }
+
                         log::info!(
                             "Attempting login for user '{}' to {}:{}",
                             login_info.username,
