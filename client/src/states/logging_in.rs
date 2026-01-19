@@ -373,12 +373,18 @@ pub fn run_logging_in(
                             login_info.server_ip,
                             login_info.server_port
                         );
+
+                        let save_file = *player_state.save_file();
                         login_ev.write(LoginRequested {
                             host: login_info.server_ip.clone(),
                             port: login_info.server_port.parse().unwrap_or(5555),
                             username: login_info.username.clone(),
                             password: login_info.password.clone(),
                             race: get_race_integer(login_info.is_male, login_info.class),
+
+                            user_id: save_file.usnr,
+                            pass1: save_file.pass1,
+                            pass2: save_file.pass2,
                         });
                     }
                 });

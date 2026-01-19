@@ -103,7 +103,6 @@ impl ClientCommand {
         Self::new(ClientCommandType::CmdUnique, payload)
     }
 
-    #[allow(dead_code)]
     pub fn new_existing_login(user_id: u32, pass1: u32, pass2: u32) -> Self {
         let mut payload = Vec::with_capacity(12);
 
@@ -119,7 +118,6 @@ impl ClientCommand {
     }
 
     /// Mirrors `socket.c` password packet: 15 raw bytes copied to payload.
-    #[allow(dead_code)]
     pub fn new_password(password: &[u8]) -> Self {
         let mut payload = vec![0u8; 15];
         let n = password.len().min(15);

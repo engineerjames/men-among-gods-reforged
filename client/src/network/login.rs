@@ -100,9 +100,25 @@ fn login_handshake(
     req: &LoginRequested,
     event_tx: &mpsc::Sender<NetworkEvent>,
 ) -> Result<(), String> {
-    // TODO: For now, always just send the newplayer login command.
-    log::info!("Sending newplayer login command");
-    let login_command = client_commands::ClientCommand::new_newplayer_login();
+    // Mirror `socket.c`:
+    // 1) if a password was provided, send CL_PASSWD
+    // 2) if we have stored credentials (user_id != 0), send CL_LOGIN; else send CL_NEWLOGIN
+
+    if !req.password.is_empty() {
+        log::info!("Sending password command");
+        let pw = client_commands::ClientCommand::new_password(req.password.as_bytes());
+        stream
+            .write_all(&pw.to_bytes())
+            .map_err(|e| format!("Send failed: {e}"))?;
+    }
+
+    let login_command = if req.user_id != 0 {
+        log::info!("Sending existing login command (CL_LOGIN)");
+        client_commands::ClientCommand::new_existing_login(req.user_id, req.pass1, req.pass2)
+    } else {
+        log::info!("Sending newplayer login command (CL_NEWLOGIN)");
+        client_commands::ClientCommand::new_newplayer_login()
+    };
     stream
         .write_all(&login_command.to_bytes())
         .map_err(|e| format!("Send failed: {e}"))?;

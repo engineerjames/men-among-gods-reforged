@@ -27,6 +27,13 @@ pub struct LoginRequested {
     pub username: String,
     pub password: String,
     pub race: i32,
+
+    /// Mirrors `okey.usnr` from the original client. If non-zero, we should send `CL_LOGIN`.
+    pub user_id: u32,
+    /// Mirrors `okey.pass1` from the original client.
+    pub pass1: u32,
+    /// Mirrors `okey.pass2` from the original client.
+    pub pass2: u32,
 }
 
 #[derive(Resource, Debug, Clone)]
