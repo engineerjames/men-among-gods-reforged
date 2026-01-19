@@ -1223,8 +1223,20 @@ fn spawn_ui_hud_labels(commands: &mut Commands) {
 pub(crate) fn run_gameplay_update_shop_price_labels(
     player_state: Res<PlayerState>,
     shop_hover: Res<GameplayShopHoverState>,
-    mut q_sell: Query<(&mut BitmapText, &mut Visibility), With<GameplayUiShopSellPriceLabel>>,
-    mut q_buy: Query<(&mut BitmapText, &mut Visibility), With<GameplayUiShopBuyPriceLabel>>,
+    mut q_sell: Query<
+        (&mut BitmapText, &mut Visibility),
+        (
+            With<GameplayUiShopSellPriceLabel>,
+            Without<GameplayUiShopBuyPriceLabel>,
+        ),
+    >,
+    mut q_buy: Query<
+        (&mut BitmapText, &mut Visibility),
+        (
+            With<GameplayUiShopBuyPriceLabel>,
+            Without<GameplayUiShopSellPriceLabel>,
+        ),
+    >,
 ) {
     if !player_state.should_show_shop() {
         for (mut text, mut vis) in &mut q_sell {
@@ -4559,6 +4571,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 Without<GameplayUiRaiseStatText>,
                 Without<GameplayUiAttributeAuxText>,
                 Without<GameplayUiSkillAuxText>,
+                Without<GameplayUiXButtonLabel>,
             ),
         >,
         Query<
@@ -4570,6 +4583,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 Without<GameplayUiRaiseStatText>,
                 Without<GameplayUiAttributeAuxText>,
                 Without<GameplayUiSkillAuxText>,
+                Without<GameplayUiXButtonLabel>,
             ),
         >,
         Query<
@@ -4581,6 +4595,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 Without<GameplayUiRaiseStatText>,
                 Without<GameplayUiAttributeAuxText>,
                 Without<GameplayUiSkillAuxText>,
+                Without<GameplayUiXButtonLabel>,
             ),
         >,
         Query<
@@ -4592,6 +4607,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 Without<GameplayUiRaiseStatText>,
                 Without<GameplayUiAttributeAuxText>,
                 Without<GameplayUiSkillAuxText>,
+                Without<GameplayUiXButtonLabel>,
             ),
         >,
         Query<
@@ -4603,6 +4619,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 Without<GameplayUiRaiseStatText>,
                 Without<GameplayUiAttributeAuxText>,
                 Without<GameplayUiSkillAuxText>,
+                Without<GameplayUiXButtonLabel>,
             ),
         >,
         Query<
@@ -4614,6 +4631,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 Without<GameplayUiRaiseStatText>,
                 Without<GameplayUiAttributeAuxText>,
                 Without<GameplayUiSkillAuxText>,
+                Without<GameplayUiXButtonLabel>,
             ),
         >,
         Query<
@@ -4625,6 +4643,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 Without<GameplayUiRaiseStatText>,
                 Without<GameplayUiAttributeAuxText>,
                 Without<GameplayUiSkillAuxText>,
+                Without<GameplayUiXButtonLabel>,
             ),
         >,
         Query<
@@ -4636,6 +4655,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
                 Without<GameplayUiRaiseStatText>,
                 Without<GameplayUiAttributeAuxText>,
                 Without<GameplayUiSkillAuxText>,
+                Without<GameplayUiXButtonLabel>,
             ),
         >,
     )>,
@@ -4647,6 +4667,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
             Without<GameplayUiRaiseStatText>,
             Without<GameplayUiAttributeAuxText>,
             Without<GameplayUiSkillAuxText>,
+            Without<GameplayUiXButtonLabel>,
         ),
     >,
     mut q_attrib_aux: Query<
@@ -4657,6 +4678,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
             Without<GameplayUiSkillLabel>,
             Without<GameplayUiRaiseStatText>,
             Without<GameplayUiSkillAuxText>,
+            Without<GameplayUiXButtonLabel>,
         ),
     >,
     mut q_skill: Query<
@@ -4667,6 +4689,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
             Without<GameplayUiAttributeLabel>,
             Without<GameplayUiAttributeAuxText>,
             Without<GameplayUiSkillAuxText>,
+            Without<GameplayUiXButtonLabel>,
         ),
     >,
     mut q_skill_aux: Query<
@@ -4677,6 +4700,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
             Without<GameplayUiAttributeLabel>,
             Without<GameplayUiRaiseStatText>,
             Without<GameplayUiAttributeAuxText>,
+            Without<GameplayUiXButtonLabel>,
         ),
     >,
     mut q_raise_stats: Query<
@@ -4687,6 +4711,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
             Without<GameplayUiSkillLabel>,
             Without<GameplayUiAttributeAuxText>,
             Without<GameplayUiSkillAuxText>,
+            Without<GameplayUiXButtonLabel>,
         ),
     >,
     mut q_xbuttons: Query<(&GameplayUiXButtonLabel, &mut BitmapText)>,
@@ -5548,7 +5573,7 @@ pub(crate) fn run_gameplay(
                 // engine.c: if (pdata.hide==0 || (map[m].flags&ISITEM) || autohide(x,y)) draw obj1
                 // else draw obj1+1 (hide walls/high objects).
                 let hide_enabled = player_state.player_data().hide != 0;
-                let is_item = (tile.flags & ISITEM) != 0 || tile.it_sprite != 0;
+                let is_item = (tile.flags & ISITEM) != 0;
                 if hide_enabled && id > 0 && !is_item && !autohide(x, y) {
                     // engine.c mine hack: substitute special sprites for certain mine-wall IDs
                     // when hide is enabled and tile isn't directly in front of the player.
