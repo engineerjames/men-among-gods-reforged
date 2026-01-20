@@ -14,6 +14,7 @@ const _: () = {
 };
 
 impl Default for SaveFile {
+    /// Create a default save file record.
     fn default() -> Self {
         Self {
             usnr: 0,

@@ -20,6 +20,7 @@ const _: () = {
 };
 
 impl Default for PlayerData {
+    /// Create a default player data record with sane client settings.
     fn default() -> Self {
         Self {
             cname: [0; 80],

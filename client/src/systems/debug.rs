@@ -7,6 +7,7 @@ use crate::{
     GameState,
 };
 
+/// Log logical/physical click coordinates and derived game-space coords.
 pub fn print_click_coords(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window, With<PrimaryWindow>>,
@@ -83,6 +84,7 @@ pub fn print_click_coords(
     );
 }
 
+/// Log all gameplay state transitions for debugging.
 pub fn run_on_any_transition(mut transitions: MessageReader<StateTransitionEvent<GameState>>) {
     for ev in transitions.read() {
         log::info!(

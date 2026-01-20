@@ -2348,6 +2348,7 @@ fn spawn_ui_shop_window(commands: &mut Commands, gfx: &GraphicsCache) {
 /// Converts total points into a rank index using legacy thresholds.
 ///
 /// Ported from the original C client (`engine.c`).
+/// TODO: This function is duplicated--fix that.
 fn points2rank(v: i32) -> i32 {
     // Ported from client/src/orig/engine.c
     if v < 50 {

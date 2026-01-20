@@ -36,6 +36,7 @@ const _: () = {
 };
 
 impl Default for MagDatV1 {
+    /// Create a default `mag.dat` payload with empty fields.
     fn default() -> Self {
         Self {
             magic: *b"MAGD",
@@ -49,6 +50,7 @@ impl Default for MagDatV1 {
     }
 }
 
+/// Encode ASCII into a fixed-size, NUL-terminated buffer.
 fn ascii_to_fixed<const N: usize>(s: &str) -> [u8; N] {
     let mut out = [0u8; N];
     if N == 0 {
@@ -66,12 +68,14 @@ fn ascii_to_fixed<const N: usize>(s: &str) -> [u8; N] {
     out
 }
 
+/// Decode a fixed-size NUL-terminated ASCII buffer into a trimmed string.
 pub fn fixed_ascii_to_string(bytes: &[u8]) -> String {
     let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
     let slice = &bytes[..end];
     String::from_utf8_lossy(slice).trim().to_string()
 }
 
+/// Read a plain-old-data struct from a reader.
 fn read_struct<T>(mut reader: impl Read) -> io::Result<T> {
     let mut value = MaybeUninit::<T>::uninit();
     let value_bytes = unsafe {
@@ -81,6 +85,7 @@ fn read_struct<T>(mut reader: impl Read) -> io::Result<T> {
     Ok(unsafe { value.assume_init() })
 }
 
+/// Write a plain-old-data struct to a writer.
 fn write_struct<T>(mut writer: impl Write, value: &T) -> io::Result<()> {
     let bytes = unsafe {
         std::slice::from_raw_parts(value as *const T as *const u8, std::mem::size_of::<T>())
@@ -88,6 +93,7 @@ fn write_struct<T>(mut writer: impl Write, value: &T) -> io::Result<()> {
     writer.write_all(bytes)
 }
 
+/// Resolve the on-disk path for `mag.dat` next to the client executable.
 pub fn mag_dat_path() -> PathBuf {
     // Place `mag.dat` next to the client executable, regardless of where it was launched from.
     // This avoids surprising behavior when running from different working directories.
@@ -103,16 +109,19 @@ pub fn mag_dat_path() -> PathBuf {
     }
 }
 
+/// Load `mag.dat` from the default location.
 pub fn load_mag_dat() -> io::Result<MagDatV1> {
     let path = mag_dat_path();
     load_mag_dat_at(&path)
 }
 
+/// Save `mag.dat` to the default location.
 pub fn save_mag_dat(data: &MagDatV1) -> io::Result<()> {
     let path = mag_dat_path();
     save_mag_dat_at(&path, data)
 }
 
+/// Load `mag.dat` from an explicit path.
 pub fn load_mag_dat_at(path: &Path) -> io::Result<MagDatV1> {
     let mut file = match File::open(path) {
         Ok(f) => f,
@@ -136,11 +145,13 @@ pub fn load_mag_dat_at(path: &Path) -> io::Result<MagDatV1> {
     Ok(data)
 }
 
+/// Save `mag.dat` to an explicit path.
 pub fn save_mag_dat_at(path: &Path, data: &MagDatV1) -> io::Result<()> {
     let mut file = File::create(path)?;
     write_struct(&mut file, data)
 }
 
+/// Build a `mag.dat` payload from runtime values.
 pub fn build_mag_dat(
     server_ip: &str,
     server_port: u16,
@@ -157,6 +168,7 @@ pub fn build_mag_dat(
 
 /// Load a character file (our `.mag`) maintaining the original `.moa` binary layout:
 /// `SaveFile` followed by `PlayerData`.
+/// Load a character file (`.mag`) and return its save and player data.
 pub fn load_character_file(path: &Path) -> io::Result<(SaveFile, PlayerData)> {
     let mut file = File::open(path)?;
     let save_file: SaveFile = read_struct(&mut file)?;
@@ -166,6 +178,7 @@ pub fn load_character_file(path: &Path) -> io::Result<(SaveFile, PlayerData)> {
 
 /// Save a character file (our `.mag`) maintaining the original `.moa` binary layout:
 /// `SaveFile` followed by `PlayerData`.
+/// Save a character file (`.mag`) with save and player data.
 pub fn save_character_file(
     path: &Path,
     save_file: &SaveFile,
@@ -184,6 +197,7 @@ mod tests {
         time::{SystemTime, UNIX_EPOCH},
     };
 
+    /// Create a unique temp directory path for tests.
     fn unique_temp_dir(prefix: &str) -> PathBuf {
         let pid = std::process::id();
         let nanos = SystemTime::now()
@@ -193,6 +207,7 @@ mod tests {
         std::env::temp_dir().join(format!("{prefix}_{pid}_{nanos}"))
     }
 
+    /// View any value as its raw byte representation.
     fn as_bytes<T>(value: &T) -> &[u8] {
         unsafe {
             std::slice::from_raw_parts(value as *const T as *const u8, std::mem::size_of::<T>())
@@ -200,12 +215,14 @@ mod tests {
     }
 
     #[test]
+    /// Verify fixed ASCII decoding trims at NUL and whitespace.
     fn fixed_ascii_to_string_stops_at_nul_and_trims() {
         let bytes = b" hello\0world";
         assert_eq!(fixed_ascii_to_string(bytes), "hello");
     }
 
     #[test]
+    /// Ensure character file save/load preserves raw bytes.
     fn mag_character_file_roundtrip_preserves_bytes() {
         let dir = unique_temp_dir("mag_char");
         fs::create_dir_all(&dir).unwrap();
@@ -234,6 +251,7 @@ mod tests {
     }
 
     #[test]
+    /// Confirm missing `mag.dat` returns defaults.
     fn mag_dat_missing_file_returns_default() {
         let dir = unique_temp_dir("mag_dat_missing");
         fs::create_dir_all(&dir).unwrap();
@@ -247,6 +265,7 @@ mod tests {
     }
 
     #[test]
+    /// Confirm invalid `mag.dat` header returns defaults.
     fn mag_dat_invalid_magic_returns_default() {
         let dir = unique_temp_dir("mag_dat_invalid_magic");
         fs::create_dir_all(&dir).unwrap();
@@ -264,6 +283,7 @@ mod tests {
     }
 
     #[test]
+    /// Ensure `mag.dat` roundtrip preserves raw bytes.
     fn mag_dat_roundtrip_preserves_bytes() {
         let dir = unique_temp_dir("mag_dat_roundtrip");
         fs::create_dir_all(&dir).unwrap();

@@ -15,20 +15,24 @@ pub struct SoundEventQueue {
 }
 
 impl SoundEventQueue {
+    /// Enqueue a UI click sound.
     pub fn push_click(&mut self) {
         self.events.push(SoundEvent::Click);
     }
 
+    /// Enqueue a server-driven sound by number and DirectSound params.
     pub fn push_server_play_sound(&mut self, nr: u32, vol: i32, pan: i32) {
         self.events
             .push(SoundEvent::ServerPlaySound { nr, vol, pan });
     }
 
+    /// Drain queued events for playback.
     fn drain(&mut self) -> impl Iterator<Item = SoundEvent> + '_ {
         self.events.drain(..)
     }
 }
 
+/// Convert DirectSound volume units into Bevy `Volume`.
 fn volume_from_directsound(vol: i32) -> Volume {
     // Legacy client uses DirectSound volume values:
     // - range is typically [-10000..0], unit is 1/100 dB.
@@ -42,12 +46,14 @@ fn volume_from_directsound(vol: i32) -> Volume {
     Volume::Decibels(db.clamp(-100.0, 24.0))
 }
 
+/// Convert DirectSound pan into a small 2D spatial x offset.
 fn pan_to_x(pan: i32) -> f32 {
     // Legacy client uses DirectSound pan values (usually [-10000..10000]).
     // Map this into a small spatial x offset for simple stereo panning.
     (pan.clamp(-10000, 10000) as f32) / 2500.0
 }
 
+/// Spawn audio entities for queued sound events.
 pub fn play_queued_sounds(
     mut commands: Commands,
     mut queue: ResMut<SoundEventQueue>,

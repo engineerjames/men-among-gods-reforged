@@ -59,11 +59,13 @@ pub(crate) struct GameplayHoveredTile {
 }
 
 impl GameplayHoveredTile {
+    /// Reset hovered tile coordinates to "none".
     fn clear(&mut self) {
         self.tile_x = -1;
         self.tile_y = -1;
     }
 
+    /// Set the hovered tile coordinates.
     fn set(&mut self, x: i32, y: i32) {
         self.tile_x = x;
         self.tile_y = y;
@@ -87,6 +89,7 @@ pub(crate) struct GameplayHoverTarget {
 }
 
 #[inline]
+/// Convert screen-space pixels into world-space coordinates.
 fn screen_to_world(sx: f32, sy: f32, z: f32) -> Vec3 {
     Vec3::new(sx - TARGET_WIDTH * 0.5, TARGET_HEIGHT * 0.5 - sy, z)
 }
@@ -184,6 +187,7 @@ fn hovered_view_tile(game: Vec2) -> Option<(i32, i32)> {
     Some((mx, my))
 }
 
+/// Map world grid coordinates to view-tile coordinates, with a stable fallback.
 fn find_view_tile_for_world(map: &crate::map::GameMap, wx: i32, wy: i32) -> Option<(i32, i32)> {
     if wx < 0 || wy < 0 {
         return None;
@@ -239,6 +243,7 @@ fn find_view_tile_for_world(map: &crate::map::GameMap, wx: i32, wy: i32) -> Opti
     best.map(|(mx, my, _)| (mx, my))
 }
 
+/// Find the view-tile coordinates for a character by unique id.
 fn find_view_tile_for_char_id(map: &crate::map::GameMap, ch_id: i32) -> Option<(i32, i32)> {
     if ch_id <= 0 {
         return None;
@@ -258,6 +263,7 @@ fn find_view_tile_for_char_id(map: &crate::map::GameMap, ch_id: i32) -> Option<(
     None
 }
 
+/// Find the view-tile coordinates for a character by character number.
 fn find_view_tile_for_char_nr(map: &crate::map::GameMap, ch_nr: i32) -> Option<(i32, i32)> {
     if ch_nr <= 0 {
         return None;
@@ -278,6 +284,7 @@ fn find_view_tile_for_char_nr(map: &crate::map::GameMap, ch_nr: i32) -> Option<(
 }
 
 #[inline]
+/// Check whether a map tile at view coords has a given flag.
 fn has_flag(map: &crate::map::GameMap, mx: i32, my: i32, flag: u32) -> bool {
     if mx < 0 || my < 0 {
         return false;
@@ -362,6 +369,7 @@ pub(crate) fn spawn_map_hover_highlight(
     commands.insert_resource(GameplayHoverTarget::default());
 }
 
+/// Spawn the move target marker sprite as a child of the world root.
 pub(crate) fn spawn_map_move_target_marker(
     commands: &mut Commands,
     gfx: &GraphicsCache,
@@ -392,6 +400,7 @@ pub(crate) fn spawn_map_move_target_marker(
     commands.entity(world_root).add_child(id);
 }
 
+/// Spawn the attack target marker sprite as a child of the world root.
 pub(crate) fn spawn_map_attack_target_marker(
     commands: &mut Commands,
     gfx: &GraphicsCache,
@@ -422,6 +431,7 @@ pub(crate) fn spawn_map_attack_target_marker(
     commands.entity(world_root).add_child(id);
 }
 
+/// Update move target marker visibility and position from player state.
 pub(crate) fn run_gameplay_move_target_marker(
     gfx: Res<GraphicsCache>,
     player_state: Res<PlayerState>,
@@ -490,6 +500,7 @@ pub(crate) fn run_gameplay_move_target_marker(
     *visibility = Visibility::Visible;
 }
 
+/// Update attack target marker visibility and position from player state.
 pub(crate) fn run_gameplay_attack_target_marker(
     gfx: Res<GraphicsCache>,
     player_state: Res<PlayerState>,
@@ -546,6 +557,7 @@ pub(crate) fn run_gameplay_attack_target_marker(
     *visibility = Visibility::Visible;
 }
 
+/// Spawn the misc-action marker used for drop/pickup/use/give.
 pub(crate) fn spawn_map_misc_action_marker(
     commands: &mut Commands,
     gfx: &GraphicsCache,
@@ -578,6 +590,7 @@ pub(crate) fn spawn_map_misc_action_marker(
     commands.entity(world_root).add_child(id);
 }
 
+/// Update misc-action marker sprite, position, and visibility.
 pub(crate) fn run_gameplay_misc_action_marker(
     gfx: Res<GraphicsCache>,
     player_state: Res<PlayerState>,
@@ -667,6 +680,7 @@ pub(crate) fn run_gameplay_misc_action_marker(
     *visibility = Visibility::Visible;
 }
 
+/// Handle hover detection, cursor state, and click-to-command input.
 pub(crate) fn run_gameplay_map_hover_and_click(
     keys: Res<ButtonInput<KeyCode>>,
     windows: Query<&Window, With<PrimaryWindow>>,
@@ -885,6 +899,7 @@ pub(crate) fn run_gameplay_map_hover_and_click(
     }
 }
 
+/// Tint the hovered tile sprite based on target kind and effects.
 pub(crate) fn run_gameplay_sprite_highlight(
     hover_target: Res<GameplayHoverTarget>,
     player_state: Res<PlayerState>,
