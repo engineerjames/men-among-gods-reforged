@@ -98,12 +98,20 @@ pub fn load_mag_dat() -> io::Result<MagDatV1> {
     let mut file = match File::open(&path) {
         Ok(f) => f,
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(MagDatV1::default()),
-        Err(e) => return Err(e),
+        Err(e) => {
+            log::error!("Failed to open mag.dat at {:?}: {e}", path);
+            return Err(e);
+        }
     };
 
     let data: MagDatV1 = read_struct(&mut file)?;
     if &data.magic != b"MAGD" || data.version != 1 {
         // Unknown format; don't fail hard.
+        log::warn!(
+            "mag.dat had unexpected header (magic={:?}, version={}); using defaults",
+            data.magic,
+            data.version
+        );
         return Ok(MagDatV1::default());
     }
     Ok(data)

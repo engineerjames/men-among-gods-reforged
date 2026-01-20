@@ -189,7 +189,10 @@ fn process_network_events(
     while let Ok(evt) = rx.try_recv() {
         match evt {
             NetworkEvent::Status(s) => status.message = s,
-            NetworkEvent::Error(e) => status.message = format!("Error: {e}"),
+            NetworkEvent::Error(e) => {
+                log::error!("Network error: {e}");
+                status.message = format!("Error: {e}");
+            }
             NetworkEvent::Bytes(bytes) => {
                 // After splitting, each event corresponds to exactly one server command.
                 if bytes.is_empty() {
@@ -205,7 +208,7 @@ fn process_network_events(
                     }
 
                     player_state.update_from_server_command(&cmd);
-                    log::info!("Received server command: {:?}", cmd);
+                    log::debug!("Received server command: {:?}", cmd);
                 } else {
                     log::warn!(
                         "Received unknown/invalid server command opcode={} ({} bytes)",

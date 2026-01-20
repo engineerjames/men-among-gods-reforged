@@ -147,6 +147,7 @@ pub fn setup_logging_in(
         }
         Err(e) => {
             // Non-fatal. UI will still work with defaults.
+            log::error!("Failed to load mag.dat: {e}");
             login_info.last_error = Some(format!("Failed to load mag.dat: {e}"));
         }
     }
@@ -301,6 +302,9 @@ pub fn run_logging_in(
                                         player_state.player_data(),
                                     );
                                     if let Err(e) = mag_files::save_mag_dat(&mag_dat) {
+                                        log::error!(
+                                            "Failed to save mag.dat after loading .mag: {e}"
+                                        );
                                         login_info.last_error =
                                             Some(format!("Failed to save mag.dat: {e}"));
                                         login_info.last_notice = None;
@@ -310,6 +314,7 @@ pub fn run_logging_in(
                                 }
                             }
                             Err(e) => {
+                                log::error!("Failed to load .mag file {:?}: {e}", picked);
                                 login_info.last_error = Some(format!("Failed to load .mag: {e}"));
                                 login_info.last_notice = None;
                             }
@@ -323,6 +328,7 @@ pub fn run_logging_in(
                             player_state.save_file(),
                             player_state.player_data(),
                         ) {
+                            log::error!("Failed to save .mag file {:?}: {e}", picked);
                             login_info.last_error = Some(format!("Failed to save .mag: {e}"));
                             login_info.last_notice = None;
                         } else {
@@ -362,6 +368,7 @@ pub fn run_logging_in(
                                 player_state.player_data(),
                             );
                             if let Err(e) = mag_files::save_mag_dat(&mag_dat) {
+                                log::error!("Failed to save mag.dat during login: {e}");
                                 login_info.last_error =
                                     Some(format!("Failed to save mag.dat: {e}"));
                             }
@@ -428,6 +435,7 @@ pub fn run_logging_in(
                                         player_state.player_data(),
                                     );
                                     if let Err(e) = mag_files::save_mag_dat(&mag_dat) {
+                                        log::error!("Failed to save mag.dat after Clear: {e}");
                                         login_info.last_error =
                                             Some(format!("Failed to save mag.dat: {e}"));
                                     }

@@ -62,30 +62,38 @@ fn run_network_task(
     let mut stream = match connect_stream(&req) {
         Ok(s) => s,
         Err(e) => {
+            log::error!("connect_stream failed: {e}");
             let _ = event_tx.send(NetworkEvent::Error(e));
             return;
         }
     };
 
-    stream
-        .set_read_timeout(Some(Duration::from_millis(5000)))
-        .ok();
+    if let Err(e) = stream.set_read_timeout(Some(Duration::from_millis(5000))) {
+        log::warn!("Failed to set read timeout: {e}");
+    }
 
     let _ = event_tx.send(NetworkEvent::Status("Connected. Logging in...".to_string()));
 
     if let Err(e) = login_handshake(&mut stream, &req, &event_tx) {
+        log::error!("login_handshake failed: {e}");
         let _ = event_tx.send(NetworkEvent::Error(e));
         return;
     }
 
-    if let Err(e) = run_network_loop(stream, command_rx, event_tx) {
-        log::warn!("network loop exited with error: {e}");
+    // `Sender` is cheap to clone; keep one copy so we can report failures.
+    let event_tx_loop = event_tx.clone();
+    if let Err(e) = run_network_loop(stream, command_rx, event_tx_loop) {
+        log::error!("network loop exited with error: {e}");
+        let _ = event_tx.send(NetworkEvent::Error(e));
     }
 }
 
 fn connect_stream(req: &LoginRequested) -> Result<TcpStream, String> {
     let addr = format!("{}:{}", req.host, req.port);
-    TcpStream::connect(addr).map_err(|e| format!("Connect failed: {e}"))
+    TcpStream::connect(&addr).map_err(|e| {
+        log::error!("Connect failed to {addr}: {e}");
+        format!("Connect failed: {e}")
+    })
 }
 
 fn get_server_response(stream: &mut TcpStream) -> Option<server_commands::ServerCommand> {
@@ -124,7 +132,10 @@ fn login_handshake(
         .map_err(|e| format!("Send failed: {e}"))?;
 
     log::info!("Waiting for server response to login command");
-    let login_response = get_server_response(stream).ok_or_else(|| "Read failed".to_string())?;
+    let login_response = get_server_response(stream).ok_or_else(|| {
+        log::error!("Failed to read login response command");
+        "Read failed".to_string()
+    })?;
     log::info!("Received login response command: {:?}", login_response);
     let _ = event_tx.send(NetworkEvent::Status(
         "Initial command successful.".to_string(),
@@ -143,6 +154,10 @@ fn login_handshake(
                 .map_err(|e| format!("Send failed: {e}"))?;
         }
         _ => {
+            log::error!(
+                "Unexpected server response during login (expected Challenge): {:?}",
+                login_response
+            );
             return Err("Unexpected server response during login".to_string());
         }
     }
@@ -155,6 +170,7 @@ fn login_handshake(
 
     loop {
         let Some(is_logged_in) = get_server_response(stream) else {
+            log::error!("Failed to read login completion response");
             return Err("Read failed".to_string());
         };
 
@@ -195,12 +211,17 @@ fn login_handshake(
                 log::info!("Received mod data during login, ignoring for now");
             }
             server_commands::ServerCommandData::Exit { reason } => {
+                log::warn!("Server demanded exit during login, reason={reason}");
                 return Err(format!(
                     "Server closed connection during login, reason code: {}",
                     reason
                 ));
             }
             _ => {
+                log::error!(
+                    "Unexpected server response during login completion: {:?}",
+                    is_logged_in
+                );
                 return Err(format!(
                     "Unexpected server response during login {:?}",
                     is_logged_in
@@ -224,9 +245,10 @@ fn run_network_loop(
     //
     // Use non-blocking reads + a small accumulator buffer so we can interleave outgoing writes
     // with incoming packet assembly.
-    stream
-        .set_nonblocking(true)
-        .map_err(|_| "Failed to set stream to nonblocking mode".to_string())?;
+    stream.set_nonblocking(true).map_err(|e| {
+        log::error!("Failed to set stream to nonblocking mode: {e}");
+        "Failed to set stream to nonblocking mode".to_string()
+    })?;
 
     let mut recv_buf: Vec<u8> = Vec::with_capacity(16 * 1024);
     let mut tick_buffer = [0u8; 4096];
@@ -243,7 +265,7 @@ fn run_network_loop(
                     stream
                         .write_all(&bytes)
                         .map_err(|e| format!("Send failed: {e}"))?;
-                    log::info!("Sent {} bytes to server: {:?}", bytes.len(), bytes);
+                    log::debug!("Sent {} bytes to server: {:?}", bytes.len(), bytes);
                 }
                 NetworkCommand::Shutdown => {
                     if event_tx
@@ -260,6 +282,7 @@ fn run_network_loop(
         // Read any available bytes from the socket into our accumulator.
         match stream.read(&mut tick_buffer) {
             Ok(0) => {
+                log::warn!("Server closed connection");
                 return Err("Server closed connection".to_string());
             }
             Ok(n) => {
@@ -270,6 +293,7 @@ fn run_network_loop(
                 // nothing to read right now
             }
             Err(e) => {
+                log::error!("Read failed in network loop: {e}");
                 return Err(format!("Read failed: {e}"));
             }
         }
@@ -285,6 +309,7 @@ fn run_network_loop(
             let total_len = (len_flags & 0x7FFF) as usize;
 
             if total_len < 2 {
+                log::error!("Invalid packet length header: 0x{len_flags:04X}");
                 return Err(format!("Invalid packet length header: 0x{len_flags:04X}"));
             }
 
@@ -305,21 +330,28 @@ fn run_network_loop(
             }
 
             if is_compressed {
-                let inflated = tick_stream::inflate_chunk(&mut zlib, &payload)?;
+                let inflated = tick_stream::inflate_chunk(&mut zlib, &payload).map_err(|e| {
+                    log::error!("Tick inflate failed: {e}");
+                    e
+                })?;
                 if inflated.is_empty() {
                     let _ = event_tx.send(NetworkEvent::Tick);
                     continue;
                 }
 
-                let cmds = tick_stream::split_tick_payload(&inflated)
-                    .map_err(|e| format!("Tick parse failed (compressed): {e}"))?;
+                let cmds = tick_stream::split_tick_payload(&inflated).map_err(|e| {
+                    log::error!("Tick parse failed (compressed): {e}");
+                    format!("Tick parse failed (compressed): {e}")
+                })?;
                 for cmd in cmds {
                     let _ = event_tx.send(NetworkEvent::Bytes(cmd));
                 }
                 let _ = event_tx.send(NetworkEvent::Tick);
             } else {
-                let cmds = tick_stream::split_tick_payload(&payload)
-                    .map_err(|e| format!("Tick parse failed (uncompressed): {e}"))?;
+                let cmds = tick_stream::split_tick_payload(&payload).map_err(|e| {
+                    log::error!("Tick parse failed (uncompressed): {e}");
+                    format!("Tick parse failed (uncompressed): {e}")
+                })?;
                 for cmd in cmds {
                     let _ = event_tx.send(NetworkEvent::Bytes(cmd));
                 }
