@@ -206,6 +206,11 @@ fn login_handshake(
                 pass2,
                 server_version,
             } => {
+                let _ = event_tx.send(NetworkEvent::NewPlayerCredentials {
+                    user_id: player_id,
+                    pass1,
+                    pass2,
+                });
                 let _ = event_tx.send(NetworkEvent::Status("Login successful.".to_string()));
                 log::info!(
                     "New player created with ID: {}, server version: {}, pass1: {}, pass2: {}",

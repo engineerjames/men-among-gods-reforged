@@ -61,6 +61,12 @@ enum NetworkEvent {
     /// One complete framed server tick packet was processed.
     Tick,
     Error(String),
+    /// New player credentials received during the login handshake.
+    NewPlayerCredentials {
+        user_id: u32,
+        pass1: u32,
+        pass2: u32,
+    },
     LoggedIn,
 }
 
@@ -246,6 +252,38 @@ fn process_network_events(
                 log::info!("Login process complete, switching to Gameplay state");
                 net.logged_in = true;
                 next_state.set(GameState::Gameplay);
+            }
+            NetworkEvent::NewPlayerCredentials {
+                user_id,
+                pass1,
+                pass2,
+            } => {
+                log::info!(
+                    "Persisting new player credentials (id={}, pass1={}, pass2={})",
+                    user_id,
+                    pass1,
+                    pass2
+                );
+
+                {
+                    let save = player_state.save_file_mut();
+                    save.usnr = user_id;
+                    save.pass1 = pass1;
+                    save.pass2 = pass2;
+                }
+
+                match crate::types::mag_files::load_mag_dat() {
+                    Ok(mut mag_dat) => {
+                        mag_dat.save_file = *player_state.save_file();
+                        mag_dat.player_data = *player_state.player_data();
+                        if let Err(e) = crate::types::mag_files::save_mag_dat(&mag_dat) {
+                            log::error!("Failed to persist mag.dat with new credentials: {e}");
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("Failed to load mag.dat to persist new credentials: {e}");
+                    }
+                }
             }
         }
     }
