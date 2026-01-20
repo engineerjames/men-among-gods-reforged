@@ -137,6 +137,20 @@ impl PlayerState {
         &mut self.player_info
     }
 
+    pub fn save_file(&self) -> &SaveFile {
+        &self.moa_file_data
+    }
+
+    pub fn save_file_mut(&mut self) -> &mut SaveFile {
+        &mut self.moa_file_data
+    }
+
+    pub fn set_character_from_file(&mut self, save_file: SaveFile, player_data: PlayerData) {
+        self.moa_file_data = save_file;
+        self.player_info = player_data;
+        self.mark_dirty();
+    }
+
     pub fn lookup_name(&self, nr: u16, id: u16) -> Option<&str> {
         self.look_names
             .get(nr as usize)
@@ -525,10 +539,6 @@ impl PlayerState {
                 self.look_target.set_id(*id);
                 self.look_target.set_mana(*mana);
                 self.look_target.set_a_mana(*a_mana);
-
-                // engine.c shows the selected character's name when selected_char != 0.
-                // We use the most recent look target as the selected character.
-                self.selected_char = *nr;
             }
             ServerCommandData::Look4 {
                 worn1,

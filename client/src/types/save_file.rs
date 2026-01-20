@@ -1,4 +1,5 @@
 // key from original C headers
+#[derive(Copy, Clone)]
 #[repr(C)]
 pub struct SaveFile {
     pub usnr: u32,
@@ -13,6 +14,7 @@ const _: () = {
 };
 
 impl Default for SaveFile {
+    /// Create a default save file record.
     fn default() -> Self {
         Self {
             usnr: 0,

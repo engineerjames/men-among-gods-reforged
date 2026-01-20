@@ -56,6 +56,10 @@ pub fn inflate_chunk(z: &mut Decompress, input: &[u8]) -> Result<Vec<u8>, String
     Ok(out)
 }
 
+/// Computes the length (in bytes) of a single SV_SETMAP command.
+///
+/// `off` is the lower 7 bits of the opcode; `lastn` tracks the last absolute tile index as in
+/// the legacy client.
 fn sv_setmap_len(bytes: &[u8], off: u8, lastn: &mut i32) -> Result<usize, String> {
     if bytes.len() < 2 {
         return Err("SV_SETMAP truncated (need at least 2 bytes)".to_string());
@@ -111,12 +115,16 @@ fn sv_setmap_len(bytes: &[u8], off: u8, lastn: &mut i32) -> Result<usize, String
     Ok(p)
 }
 
+/// Computes the length (in bytes) of an SV_SETMAP3/4/5/6 command for a given tile count.
 fn sv_setmap3_len(cnt: usize) -> usize {
     // Mirrors `socket.c::sv_setmap3`: returns p where p starts at 3 and increments once per two
     // tiles covered by `cnt`.
     3 + (cnt / 2)
 }
 
+/// Computes the length (in bytes) of the next server command in `bytes`.
+///
+/// This matches the original client's per-opcode size table and variable-length parsing.
 fn sv_cmd_len(bytes: &[u8], last_setmap_n: &mut i32) -> Result<usize, String> {
     if bytes.is_empty() {
         return Err("sv_cmd_len called with empty buffer".to_string());
@@ -187,6 +195,10 @@ fn sv_cmd_len(bytes: &[u8], last_setmap_n: &mut i32) -> Result<usize, String> {
     Ok(len)
 }
 
+/// Splits a server tick payload into individual raw server command byte slices.
+///
+/// Each returned `Vec<u8>` starts with the opcode byte and includes only the command's bytes
+/// (i.e. the result is suitable for `ServerCommand::from_bytes`).
 pub(super) fn split_tick_payload(payload: &[u8]) -> Result<Vec<Vec<u8>>, String> {
     let mut out = Vec::<Vec<u8>>::new();
     let mut idx = 0usize;

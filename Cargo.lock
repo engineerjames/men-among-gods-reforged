@@ -1895,6 +1895,7 @@ dependencies = [
  "egui-file-dialog",
  "flate2",
  "log",
+ "tracing",
  "tracing-appender",
  "zip",
 ]

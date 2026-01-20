@@ -83,6 +83,7 @@ fn main() {
         .insert_resource(SoundCache::new(sfx_dir.to_string_lossy().as_ref()))
         .init_resource::<font_cache::FontCache>()
         .init_resource::<sound::SoundEventQueue>()
+        .init_resource::<states::gameplay::GameplayDebugSettings>()
         .init_resource::<states::gameplay::MiniMapState>()
         .init_resource::<player_state::PlayerState>()
         .add_plugins(
@@ -159,15 +160,11 @@ fn main() {
         )
         .add_systems(
             Update,
-            sound::play_queued_sounds
-                .run_if(in_state(GameState::Gameplay))
-                .after(network::NetworkSet::Receive),
+            sound::play_queued_sounds.run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
             Update,
-            states::gameplay::run_gameplay_buttonbox_toggles
-                .run_if(in_state(GameState::Gameplay))
-                .before(states::gameplay::run_gameplay),
+            states::gameplay::run_gameplay_buttonbox_toggles.run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
             Update,
@@ -175,43 +172,31 @@ fn main() {
         )
         .add_systems(
             Update,
-            states::gameplay::run_gameplay_inventory_input
-                .run_if(in_state(GameState::Gameplay))
-                .before(states::gameplay::run_gameplay),
+            states::gameplay::run_gameplay_inventory_input.run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
             Update,
-            states::gameplay::run_gameplay_shop_input
-                .run_if(in_state(GameState::Gameplay))
-                .after(states::gameplay::run_gameplay_inventory_input)
-                .before(map_hover::run_gameplay_map_hover_and_click)
-                .before(states::gameplay::run_gameplay_update_cursor_and_carried_item)
-                .before(states::gameplay::run_gameplay),
+            states::gameplay::run_gameplay_shop_input.run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
             Update,
             states::gameplay::run_gameplay_update_cursor_and_carried_item
-                .run_if(in_state(GameState::Gameplay))
-                .after(states::gameplay::run_gameplay_inventory_input)
-                .after(map_hover::run_gameplay_map_hover_and_click)
-                .before(states::gameplay::run_gameplay),
+                .run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
             Update,
             states::gameplay::run_gameplay_update_equipment_blocks
-                .run_if(in_state(GameState::Gameplay))
-                .before(states::gameplay::run_gameplay),
+                .run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
             Update,
-            map_hover::run_gameplay_map_hover_and_click
-                .run_if(in_state(GameState::Gameplay))
-                .after(states::gameplay::run_gameplay_inventory_input)
-                .before(states::gameplay::run_gameplay_update_cursor_and_carried_item),
+            map_hover::run_gameplay_map_hover_and_click.run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
             Update,
-            map_hover::run_gameplay_move_target_marker.run_if(in_state(GameState::Gameplay)),
+            map_hover::run_gameplay_move_target_marker
+                .run_if(in_state(GameState::Gameplay))
+                .after(states::gameplay::run_gameplay),
         )
         .add_systems(
             Update,
@@ -295,10 +280,6 @@ fn main() {
         //
         // Global (utility) systems
         //
-        .add_systems(
-            Update,
-            debug::print_click_coords.run_if(in_state(GameState::Gameplay)),
-        )
         .add_systems(StateTransition, debug::run_on_any_transition)
         .add_systems(Update, display::enforce_aspect_and_pixel_coords)
         .run();

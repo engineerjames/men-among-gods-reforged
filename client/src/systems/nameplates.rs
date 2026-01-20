@@ -22,10 +22,12 @@ pub(crate) struct GameplayNameplate {
 }
 
 #[inline]
+/// Convert screen-space pixels into world-space coordinates.
 fn screen_to_world(sx: f32, sy: f32, z: f32) -> Vec3 {
     Vec3::new(sx - TARGET_WIDTH * 0.5, TARGET_HEIGHT * 0.5 - sy, z)
 }
 
+/// Compute dd_gputtext-style screen-space placement for nameplates.
 fn dd_gputtext_screen_pos(
     xpos: i32,
     ypos: i32,
@@ -40,6 +42,7 @@ fn dd_gputtext_screen_pos(
     (rx, ry)
 }
 
+/// Decode a NUL-terminated byte string, trimming whitespace.
 fn bytes_to_trimmed_str(bytes: &[u8]) -> Option<&str> {
     let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
     let s = std::str::from_utf8(&bytes[..end]).ok()?.trim();
@@ -50,6 +53,7 @@ fn bytes_to_trimmed_str(bytes: &[u8]) -> Option<&str> {
     }
 }
 
+/// Resolve the preferred player display name from runtime or saved data.
 fn player_display_name(player_state: &PlayerState) -> String {
     // Prefer the runtime player name, but fall back to persisted pdata.cname.
     if let Some(s) = bytes_to_trimmed_str(&player_state.character_info().name) {
@@ -61,6 +65,7 @@ fn player_display_name(player_state: &PlayerState) -> String {
     "Player".to_string()
 }
 
+/// Spawn hidden nameplate entities for all map tiles.
 pub(crate) fn spawn_gameplay_nameplates(commands: &mut Commands, world_root: Entity) {
     for index in 0..(TILEX * TILEY) {
         let id = commands
@@ -85,6 +90,7 @@ pub(crate) fn spawn_gameplay_nameplates(commands: &mut Commands, world_root: Ent
     }
 }
 
+/// Update nameplate text, positioning, and visibility each frame.
 pub(crate) fn run_gameplay_nameplates(
     net: Res<NetworkRuntime>,
     player_state: Res<PlayerState>,
@@ -194,6 +200,7 @@ mod tests {
     use super::*;
 
     #[test]
+    /// Validate trimming logic for NUL-terminated name data.
     fn bytes_to_trimmed_str_handles_null_and_whitespace() {
         assert_eq!(bytes_to_trimmed_str(b"Bob\0"), Some("Bob"));
         assert_eq!(bytes_to_trimmed_str(b"  Bob  \0"), Some("Bob"));
@@ -202,6 +209,7 @@ mod tests {
     }
 
     #[test]
+    /// Ensure screen-space nameplate math matches original formula.
     fn dd_gputtext_screen_pos_matches_expected_formula() {
         // xpos=0,ypos=0, text_len=10, xoff=yoff=0
         let (rx, ry) = dd_gputtext_screen_pos(0, 0, 10, 0, 0);

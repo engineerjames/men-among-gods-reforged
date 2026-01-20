@@ -44,10 +44,14 @@ pub struct ClientCommand {
 }
 
 impl ClientCommand {
+    /// Creates a command with a specific header and raw payload bytes.
     fn new(header: ClientCommandType, payload: Vec<u8>) -> Self {
         Self { header, payload }
     }
 
+    /// Serializes the command into the on-wire 16-byte packet format.
+    ///
+    /// The protocol pads any short command with trailing zeros up to 16 bytes.
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(1 + self.payload.len());
         bytes.push(self.header as u8);
@@ -85,6 +89,7 @@ impl ClientCommand {
         Self::new(cmd, payload)
     }
 
+    /// Builds the challenge response packet sent after the server's `SV_CHALLENGE`.
     pub fn new_challenge(server_challenge: u32, client_version: u32, race: i32) -> Self {
         let mut payload = Vec::with_capacity(12);
 
@@ -95,6 +100,7 @@ impl ClientCommand {
         Self::new(ClientCommandType::Challenge, payload)
     }
 
+    /// Builds the unique packet (used by the legacy client during login).
     pub fn new_unique(unique_value_1: i32, unique_value_2: i32) -> Self {
         let mut payload = Vec::with_capacity(8);
         payload.extend_from_slice(&unique_value_1.to_le_bytes());
@@ -103,7 +109,7 @@ impl ClientCommand {
         Self::new(ClientCommandType::CmdUnique, payload)
     }
 
-    #[allow(dead_code)]
+    /// Builds the existing-login packet (`CL_LOGIN`) using stored credentials.
     pub fn new_existing_login(user_id: u32, pass1: u32, pass2: u32) -> Self {
         let mut payload = Vec::with_capacity(12);
 
@@ -114,12 +120,12 @@ impl ClientCommand {
         Self::new(ClientCommandType::Login, payload)
     }
 
+    /// Builds the new-player login packet (`CL_NEWLOGIN`).
     pub fn new_newplayer_login() -> Self {
         Self::new(ClientCommandType::NewLogin, Vec::new())
     }
 
     /// Mirrors `socket.c` password packet: 15 raw bytes copied to payload.
-    #[allow(dead_code)]
     pub fn new_password(password: &[u8]) -> Self {
         let mut payload = vec![0u8; 15];
         let n = password.len().min(15);
@@ -298,6 +304,7 @@ mod tests {
     use super::*;
 
     #[test]
+    /// Ensures client commands are always padded to 16 bytes on the wire.
     fn to_bytes_pads_to_16_bytes() {
         let cmd = ClientCommand::new_newplayer_login();
         let bytes = cmd.to_bytes();
@@ -307,6 +314,7 @@ mod tests {
     }
 
     #[test]
+    /// Ensures password packets truncate to the protocol's 15-byte payload.
     fn password_truncates_to_15_payload_bytes() {
         let password: Vec<u8> = (0u8..20u8).collect();
         let cmd = ClientCommand::new_password(&password);
@@ -317,6 +325,7 @@ mod tests {
     }
 
     #[test]
+    /// Ensures chat text splits into exactly 8 x 15-byte input packets.
     fn say_packets_split_into_8_chunks() {
         let text: Vec<u8> = (0u8..120u8).collect();
         let packets = ClientCommand::new_say_packets(&text);

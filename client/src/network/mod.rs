@@ -27,6 +27,13 @@ pub struct LoginRequested {
     pub username: String,
     pub password: String,
     pub race: i32,
+
+    /// Mirrors `okey.usnr` from the original client. If non-zero, we should send `CL_LOGIN`.
+    pub user_id: u32,
+    /// Mirrors `okey.pass1` from the original client.
+    pub pass1: u32,
+    /// Mirrors `okey.pass2` from the original client.
+    pub pass2: u32,
 }
 
 #[derive(Resource, Debug, Clone)]
@@ -35,6 +42,7 @@ pub struct LoginStatus {
 }
 
 impl Default for LoginStatus {
+    /// Creates a default status message for a disconnected client.
     fn default() -> Self {
         Self {
             message: "Disconnected".to_string(),
@@ -53,6 +61,12 @@ enum NetworkEvent {
     /// One complete framed server tick packet was processed.
     Tick,
     Error(String),
+    /// New player credentials received during the login handshake.
+    NewPlayerCredentials {
+        user_id: u32,
+        pass1: u32,
+        pass2: u32,
+    },
     LoggedIn,
 }
 
@@ -72,6 +86,7 @@ pub struct NetworkRuntime {
 }
 
 impl Default for NetworkRuntime {
+    /// Creates an unstarted network runtime (no task, no channels, not logged in).
     fn default() -> Self {
         Self {
             command_tx: None,
@@ -86,10 +101,14 @@ impl Default for NetworkRuntime {
 }
 
 impl NetworkRuntime {
+    /// Returns the client-side tick counter (used for `CL_CMD_CTICK`).
     pub fn client_ticker(&self) -> u32 {
         self.client_ticker
     }
 
+    /// Queues raw bytes to be written to the server by the network task.
+    ///
+    /// No-op if the network task hasn't started.
     pub fn send(&self, bytes: Vec<u8>) {
         let Some(tx) = &self.command_tx else {
             return;
@@ -98,6 +117,9 @@ impl NetworkRuntime {
     }
 
     #[allow(dead_code)]
+    /// Requests a graceful shutdown of the network task.
+    ///
+    /// No-op if the network task hasn't started.
     pub fn shutdown(&self) {
         let Some(tx) = &self.command_tx else {
             return;
@@ -109,6 +131,7 @@ impl NetworkRuntime {
 pub struct NetworkPlugin;
 
 impl Plugin for NetworkPlugin {
+    /// Registers networking resources, messages, and the login/network processing systems.
     fn build(&self, app: &mut App) {
         app.init_resource::<LoginStatus>()
             .init_resource::<NetworkRuntime>()
@@ -129,6 +152,9 @@ impl Plugin for NetworkPlugin {
     }
 }
 
+/// Sends the periodic client tick (`CL_CMD_CTICK`) while in gameplay.
+///
+/// This mirrors the original client behavior (one tick command every 16 processed server ticks).
 fn send_client_tick(mut net: ResMut<NetworkRuntime>) {
     if !net.logged_in {
         return;
@@ -162,6 +188,10 @@ fn send_client_tick(mut net: ResMut<NetworkRuntime>) {
     }
 }
 
+/// Drains events produced by the network task and applies them to game state.
+///
+/// This updates the on-screen login status, forwards server commands to `PlayerState`, and
+/// advances the game state once login completes.
 fn process_network_events(
     mut net: ResMut<NetworkRuntime>,
     mut status: ResMut<LoginStatus>,
@@ -182,7 +212,10 @@ fn process_network_events(
     while let Ok(evt) = rx.try_recv() {
         match evt {
             NetworkEvent::Status(s) => status.message = s,
-            NetworkEvent::Error(e) => status.message = format!("Error: {e}"),
+            NetworkEvent::Error(e) => {
+                log::error!("Network error: {e}");
+                status.message = format!("Error: {e}");
+            }
             NetworkEvent::Bytes(bytes) => {
                 // After splitting, each event corresponds to exactly one server command.
                 if bytes.is_empty() {
@@ -198,7 +231,7 @@ fn process_network_events(
                     }
 
                     player_state.update_from_server_command(&cmd);
-                    log::info!("Received server command: {:?}", cmd);
+                    log::debug!("Received server command: {:?}", cmd);
                 } else {
                     log::warn!(
                         "Received unknown/invalid server command opcode={} ({} bytes)",
@@ -219,6 +252,38 @@ fn process_network_events(
                 log::info!("Login process complete, switching to Gameplay state");
                 net.logged_in = true;
                 next_state.set(GameState::Gameplay);
+            }
+            NetworkEvent::NewPlayerCredentials {
+                user_id,
+                pass1,
+                pass2,
+            } => {
+                log::info!(
+                    "Persisting new player credentials (id={}, pass1={}, pass2={})",
+                    user_id,
+                    pass1,
+                    pass2
+                );
+
+                {
+                    let save = player_state.save_file_mut();
+                    save.usnr = user_id;
+                    save.pass1 = pass1;
+                    save.pass2 = pass2;
+                }
+
+                match crate::types::mag_files::load_mag_dat() {
+                    Ok(mut mag_dat) => {
+                        mag_dat.save_file = *player_state.save_file();
+                        mag_dat.player_data = *player_state.player_data();
+                        if let Err(e) = crate::types::mag_files::save_mag_dat(&mag_dat) {
+                            log::error!("Failed to persist mag.dat with new credentials: {e}");
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("Failed to load mag.dat to persist new credentials: {e}");
+                    }
+                }
             }
         }
     }

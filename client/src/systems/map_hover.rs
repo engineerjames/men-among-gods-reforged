@@ -43,6 +43,15 @@ pub(crate) struct GameplayMiscActionMarker;
 #[derive(Component)]
 pub(crate) struct GameplayAttackTargetMarker;
 
+#[derive(Default)]
+pub(crate) struct MoveTargetMarkerTickGate {
+    initialized: bool,
+    last_goto_x: i32,
+    last_goto_y: i32,
+    last_origin_x: i32,
+    last_origin_y: i32,
+}
+
 #[derive(Resource, Default, Debug, Clone, Copy)]
 pub(crate) struct GameplayHoveredTile {
     pub tile_x: i32,
@@ -50,11 +59,13 @@ pub(crate) struct GameplayHoveredTile {
 }
 
 impl GameplayHoveredTile {
+    /// Reset hovered tile coordinates to "none".
     fn clear(&mut self) {
         self.tile_x = -1;
         self.tile_y = -1;
     }
 
+    /// Set the hovered tile coordinates.
     fn set(&mut self, x: i32, y: i32) {
         self.tile_x = x;
         self.tile_y = y;
@@ -78,6 +89,7 @@ pub(crate) struct GameplayHoverTarget {
 }
 
 #[inline]
+/// Convert screen-space pixels into world-space coordinates.
 fn screen_to_world(sx: f32, sy: f32, z: f32) -> Vec3 {
     Vec3::new(sx - TARGET_WIDTH * 0.5, TARGET_HEIGHT * 0.5 - sy, z)
 }
@@ -175,26 +187,63 @@ fn hovered_view_tile(game: Vec2) -> Option<(i32, i32)> {
     Some((mx, my))
 }
 
+/// Map world grid coordinates to view-tile coordinates, with a stable fallback.
 fn find_view_tile_for_world(map: &crate::map::GameMap, wx: i32, wy: i32) -> Option<(i32, i32)> {
     if wx < 0 || wy < 0 {
         return None;
     }
+
+    // Primary path: compute view-tile coordinates from the current top-left origin.
+    // This is O(1) and is the correct mapping when the map's (x,y) grid is consistent.
+    let origin = map.tile_at_xy(0, 0)?;
+    let ox = origin.x as i32;
+    let oy = origin.y as i32;
+
+    let expected_mx = wx - ox;
+    let expected_my = wy - oy;
+
+    if expected_mx >= 0
+        && expected_my >= 0
+        && (expected_mx as usize) < TILEX
+        && (expected_my as usize) < TILEY
+    {
+        if let Some(tile) = map.tile_at_xy(expected_mx as usize, expected_my as usize) {
+            if tile.x as i32 == wx && tile.y as i32 == wy {
+                return Some((expected_mx, expected_my));
+            }
+        }
+    }
+
+    // Fallback: scan for a matching (x,y).
+    // During scroll/memmove transitions the client map can temporarily contain duplicates/stale
+    // world coords; when that happens we pick the match *closest to the expected coords* to keep
+    // the marker stable rather than flickering between equally-valid matches.
     let wx_u = wx as u16;
     let wy_u = wy as u16;
 
+    let mut best: Option<(i32, i32, i32)> = None; // (mx,my,score)
     for my in 0..(TILEY as i32) {
         for mx in 0..(TILEX as i32) {
             let Some(tile) = map.tile_at_xy(mx as usize, my as usize) else {
                 continue;
             };
-            if tile.x == wx_u && tile.y == wy_u {
-                return Some((mx, my));
+            if tile.x != wx_u || tile.y != wy_u {
+                continue;
+            }
+
+            let score = (mx - expected_mx).abs() + (my - expected_my).abs();
+            match best {
+                None => best = Some((mx, my, score)),
+                Some((_, _, best_score)) if score < best_score => best = Some((mx, my, score)),
+                _ => {}
             }
         }
     }
-    None
+
+    best.map(|(mx, my, _)| (mx, my))
 }
 
+/// Find the view-tile coordinates for a character by unique id.
 fn find_view_tile_for_char_id(map: &crate::map::GameMap, ch_id: i32) -> Option<(i32, i32)> {
     if ch_id <= 0 {
         return None;
@@ -214,6 +263,7 @@ fn find_view_tile_for_char_id(map: &crate::map::GameMap, ch_id: i32) -> Option<(
     None
 }
 
+/// Find the view-tile coordinates for a character by character number.
 fn find_view_tile_for_char_nr(map: &crate::map::GameMap, ch_nr: i32) -> Option<(i32, i32)> {
     if ch_nr <= 0 {
         return None;
@@ -234,6 +284,7 @@ fn find_view_tile_for_char_nr(map: &crate::map::GameMap, ch_nr: i32) -> Option<(
 }
 
 #[inline]
+/// Check whether a map tile at view coords has a given flag.
 fn has_flag(map: &crate::map::GameMap, mx: i32, my: i32, flag: u32) -> bool {
     if mx < 0 || my < 0 {
         return false;
@@ -318,6 +369,7 @@ pub(crate) fn spawn_map_hover_highlight(
     commands.insert_resource(GameplayHoverTarget::default());
 }
 
+/// Spawn the move target marker sprite as a child of the world root.
 pub(crate) fn spawn_map_move_target_marker(
     commands: &mut Commands,
     gfx: &GraphicsCache,
@@ -348,6 +400,7 @@ pub(crate) fn spawn_map_move_target_marker(
     commands.entity(world_root).add_child(id);
 }
 
+/// Spawn the attack target marker sprite as a child of the world root.
 pub(crate) fn spawn_map_attack_target_marker(
     commands: &mut Commands,
     gfx: &GraphicsCache,
@@ -378,9 +431,11 @@ pub(crate) fn spawn_map_attack_target_marker(
     commands.entity(world_root).add_child(id);
 }
 
+/// Update move target marker visibility and position from player state.
 pub(crate) fn run_gameplay_move_target_marker(
     gfx: Res<GraphicsCache>,
     player_state: Res<PlayerState>,
+    mut gate: Local<MoveTargetMarkerTickGate>,
     mut q_marker: Query<(&mut Transform, &mut Visibility), With<GameplayMoveTargetMarker>>,
 ) {
     let Some((mut transform, mut visibility)) = q_marker.iter_mut().next() else {
@@ -395,6 +450,36 @@ pub(crate) fn run_gameplay_move_target_marker(
     let pl = player_state.character_info();
     let wx = pl.goto_x;
     let wy = pl.goto_y;
+
+    // Keep the marker pinned to a WORLD position.
+    // The client map view shifts via scroll/memmove commands, so we must also update whenever
+    // the view origin changes (tile 0,0 x/y), not just when goto_x/goto_y changes.
+    let (origin_x, origin_y) = player_state
+        .map()
+        .tile_at_xy(0, 0)
+        .map(|t| (t.x as i32, t.y as i32))
+        .unwrap_or((0, 0));
+
+    let should_update = !gate.initialized
+        || wx != gate.last_goto_x
+        || wy != gate.last_goto_y
+        || origin_x != gate.last_origin_x
+        || origin_y != gate.last_origin_y;
+    if !should_update {
+        return;
+    }
+    gate.initialized = true;
+    gate.last_goto_x = wx;
+    gate.last_goto_y = wy;
+    gate.last_origin_x = origin_x;
+    gate.last_origin_y = origin_y;
+
+    // The server uses (0,0) as "no move target" in several places.
+    // Don't draw the marker at a random tile when idle.
+    if wx == 0 && wy == 0 {
+        *visibility = Visibility::Hidden;
+        return;
+    }
 
     let Some((mx, my)) = find_view_tile_for_world(player_state.map(), wx, wy) else {
         *visibility = Visibility::Hidden;
@@ -415,6 +500,7 @@ pub(crate) fn run_gameplay_move_target_marker(
     *visibility = Visibility::Visible;
 }
 
+/// Update attack target marker visibility and position from player state.
 pub(crate) fn run_gameplay_attack_target_marker(
     gfx: Res<GraphicsCache>,
     player_state: Res<PlayerState>,
@@ -471,6 +557,7 @@ pub(crate) fn run_gameplay_attack_target_marker(
     *visibility = Visibility::Visible;
 }
 
+/// Spawn the misc-action marker used for drop/pickup/use/give.
 pub(crate) fn spawn_map_misc_action_marker(
     commands: &mut Commands,
     gfx: &GraphicsCache,
@@ -503,6 +590,7 @@ pub(crate) fn spawn_map_misc_action_marker(
     commands.entity(world_root).add_child(id);
 }
 
+/// Update misc-action marker sprite, position, and visibility.
 pub(crate) fn run_gameplay_misc_action_marker(
     gfx: Res<GraphicsCache>,
     player_state: Res<PlayerState>,
@@ -592,6 +680,7 @@ pub(crate) fn run_gameplay_misc_action_marker(
     *visibility = Visibility::Visible;
 }
 
+/// Handle hover detection, cursor state, and click-to-command input.
 pub(crate) fn run_gameplay_map_hover_and_click(
     keys: Res<ButtonInput<KeyCode>>,
     windows: Query<&Window, With<PrimaryWindow>>,
@@ -810,6 +899,7 @@ pub(crate) fn run_gameplay_map_hover_and_click(
     }
 }
 
+/// Tint the hovered tile sprite based on target kind and effects.
 pub(crate) fn run_gameplay_sprite_highlight(
     hover_target: Res<GameplayHoverTarget>,
     player_state: Res<PlayerState>,
