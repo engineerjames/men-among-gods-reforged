@@ -89,13 +89,32 @@ fn write_struct<T>(mut writer: impl Write, value: &T) -> io::Result<()> {
 }
 
 pub fn mag_dat_path() -> PathBuf {
-    // Keep compatibility with the original C client: relative to current working directory.
-    PathBuf::from(MAG_DAT_FILENAME)
+    // Place `mag.dat` next to the client executable, regardless of where it was launched from.
+    // This avoids surprising behavior when running from different working directories.
+    match std::env::current_exe() {
+        Ok(exe) => exe
+            .parent()
+            .map(|dir| dir.join(MAG_DAT_FILENAME))
+            .unwrap_or_else(|| PathBuf::from(MAG_DAT_FILENAME)),
+        Err(e) => {
+            log::warn!("Failed to resolve current_exe for mag.dat path: {e}");
+            PathBuf::from(MAG_DAT_FILENAME)
+        }
+    }
 }
 
 pub fn load_mag_dat() -> io::Result<MagDatV1> {
     let path = mag_dat_path();
-    let mut file = match File::open(&path) {
+    load_mag_dat_at(&path)
+}
+
+pub fn save_mag_dat(data: &MagDatV1) -> io::Result<()> {
+    let path = mag_dat_path();
+    save_mag_dat_at(&path, data)
+}
+
+pub fn load_mag_dat_at(path: &Path) -> io::Result<MagDatV1> {
+    let mut file = match File::open(path) {
         Ok(f) => f,
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(MagDatV1::default()),
         Err(e) => {
@@ -117,9 +136,8 @@ pub fn load_mag_dat() -> io::Result<MagDatV1> {
     Ok(data)
 }
 
-pub fn save_mag_dat(data: &MagDatV1) -> io::Result<()> {
-    let path = mag_dat_path();
-    let mut file = File::create(&path)?;
+pub fn save_mag_dat_at(path: &Path, data: &MagDatV1) -> io::Result<()> {
+    let mut file = File::create(path)?;
     write_struct(&mut file, data)
 }
 
@@ -163,11 +181,8 @@ mod tests {
     use super::*;
     use std::{
         fs,
-        sync::Mutex,
         time::{SystemTime, UNIX_EPOCH},
     };
-
-    static CWD_LOCK: Mutex<()> = Mutex::new(());
 
     fn unique_temp_dir(prefix: &str) -> PathBuf {
         let pid = std::process::id();
@@ -182,24 +197,6 @@ mod tests {
         unsafe {
             std::slice::from_raw_parts(value as *const T as *const u8, std::mem::size_of::<T>())
         }
-    }
-
-    fn with_temp_cwd<F, R>(f: F) -> R
-    where
-        F: FnOnce(&Path) -> R,
-    {
-        let _guard = CWD_LOCK.lock().unwrap();
-
-        let old = std::env::current_dir().unwrap();
-        let dir = unique_temp_dir("mag_cwd");
-        fs::create_dir_all(&dir).unwrap();
-        std::env::set_current_dir(&dir).unwrap();
-
-        let out = f(&dir);
-
-        std::env::set_current_dir(&old).unwrap();
-        let _ = fs::remove_dir_all(&dir);
-        out
     }
 
     #[test]
@@ -238,45 +235,57 @@ mod tests {
 
     #[test]
     fn mag_dat_missing_file_returns_default() {
-        with_temp_cwd(|_dir| {
-            let loaded = load_mag_dat().unwrap();
-            assert_eq!(&loaded.magic, b"MAGD");
-            assert_eq!(loaded.version, 1);
-        });
+        let dir = unique_temp_dir("mag_dat_missing");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("mag.dat");
+
+        let loaded = load_mag_dat_at(&path).unwrap();
+        assert_eq!(&loaded.magic, b"MAGD");
+        assert_eq!(loaded.version, 1);
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn mag_dat_invalid_magic_returns_default() {
-        with_temp_cwd(|_dir| {
-            let mut bad = MagDatV1::default();
-            bad.magic = *b"NOPE";
-            save_mag_dat(&bad).unwrap();
+        let dir = unique_temp_dir("mag_dat_invalid_magic");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("mag.dat");
 
-            let loaded = load_mag_dat().unwrap();
-            assert_eq!(&loaded.magic, b"MAGD");
-            assert_eq!(loaded.version, 1);
-        });
+        let mut bad = MagDatV1::default();
+        bad.magic = *b"NOPE";
+        save_mag_dat_at(&path, &bad).unwrap();
+
+        let loaded = load_mag_dat_at(&path).unwrap();
+        assert_eq!(&loaded.magic, b"MAGD");
+        assert_eq!(loaded.version, 1);
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn mag_dat_roundtrip_preserves_bytes() {
-        with_temp_cwd(|_dir| {
-            let mut save_file = SaveFile::default();
-            save_file.usnr = 1;
-            save_file.pass1 = 2;
-            save_file.pass2 = 3;
-            save_file.race = 3;
-            save_file.name[0..5].copy_from_slice(b"Alice");
+        let dir = unique_temp_dir("mag_dat_roundtrip");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("mag.dat");
 
-            let mut player_data = PlayerData::default();
-            player_data.show_proz = 1;
-            player_data.desc[0..4].copy_from_slice(b"Desc");
+        let mut save_file = SaveFile::default();
+        save_file.usnr = 1;
+        save_file.pass1 = 2;
+        save_file.pass2 = 3;
+        save_file.race = 3;
+        save_file.name[0..5].copy_from_slice(b"Alice");
 
-            let mag = build_mag_dat("127.0.0.1", 5555, &save_file, &player_data);
-            save_mag_dat(&mag).unwrap();
-            let loaded = load_mag_dat().unwrap();
+        let mut player_data = PlayerData::default();
+        player_data.show_proz = 1;
+        player_data.desc[0..4].copy_from_slice(b"Desc");
 
-            assert_eq!(as_bytes(&loaded), as_bytes(&mag));
-        });
+        let mag = build_mag_dat("127.0.0.1", 5555, &save_file, &player_data);
+        save_mag_dat_at(&path, &mag).unwrap();
+        let loaded = load_mag_dat_at(&path).unwrap();
+
+        assert_eq!(as_bytes(&loaded), as_bytes(&mag));
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }
