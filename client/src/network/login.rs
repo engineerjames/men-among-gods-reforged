@@ -137,9 +137,15 @@ fn login_handshake(
             .map_err(|e| format!("Send failed: {e}"))?;
     }
 
+    let (login_pass1, login_pass2) = if req.password.is_empty() {
+        (req.pass1, req.pass2)
+    } else {
+        pass_hash_from_password(&req.password)
+    };
+
     let login_command = if req.user_id != 0 {
         log::info!("Sending existing login command (CL_LOGIN)");
-        client_commands::ClientCommand::new_existing_login(req.user_id, req.pass1, req.pass2)
+        client_commands::ClientCommand::new_existing_login(req.user_id, login_pass1, login_pass2)
     } else {
         log::info!("Sending newplayer login command (CL_NEWLOGIN)");
         client_commands::ClientCommand::new_newplayer_login()
@@ -251,6 +257,21 @@ fn login_handshake(
             }
         }
     }
+}
+
+/// Match the server's password hashing for `pass1`/`pass2` derived from user input.
+fn pass_hash_from_password(password: &str) -> (u32, u32) {
+    let bytes = password.as_bytes();
+    let pass1 = bytes
+        .iter()
+        .take(4)
+        .fold(0u32, |acc, &b| (acc << 8) | (b as u32));
+    let pass2 = bytes
+        .iter()
+        .skip(4)
+        .take(4)
+        .fold(0u32, |acc, &b| (acc << 8) | (b as u32));
+    (pass1, pass2)
 }
 
 /// Main network loop: interleaves outgoing writes with incoming tick packet parsing.
