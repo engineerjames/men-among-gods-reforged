@@ -280,10 +280,6 @@ fn main() {
         //
         // Global (utility) systems
         //
-        .add_systems(
-            Update,
-            debug::print_click_coords.run_if(in_state(GameState::Gameplay)),
-        )
         .add_systems(StateTransition, debug::run_on_any_transition)
         .add_systems(Update, display::enforce_aspect_and_pixel_coords)
         .run();
