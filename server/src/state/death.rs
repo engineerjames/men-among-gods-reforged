@@ -197,8 +197,9 @@ impl State {
 
                 Repository::with_characters_mut(|characters| {
                     // Update statistics
-                    let r1: u32 = helpers::points2rank(characters[killer_id].points_tot as u32);
-                    let r2: u32 = helpers::points2rank(characters[character_id].points_tot as u32);
+                    let r1: u32 = core::ranks::points2rank(characters[killer_id].points_tot as u32);
+                    let r2: u32 =
+                        core::ranks::points2rank(characters[character_id].points_tot as u32);
 
                     if (r1 as i32 - r2 as i32).abs() < 3 {
                         // Approximately own rank

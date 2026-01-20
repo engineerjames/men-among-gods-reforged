@@ -2,10 +2,10 @@ use core::constants::CharacterFlags;
 use core::string_operations::c_string_to_str;
 use core::types::FontColor;
 
+use crate::driver;
 use crate::god::God;
 use crate::repository::Repository;
 use crate::state::State;
-use crate::{driver, helpers};
 
 impl State {
     /// Port of `do_swap_item(int cn, int n)` from `svr_do.cpp`
@@ -151,7 +151,7 @@ impl State {
 
                     // Check rank requirement
                     if items[tmp].min_rank
-                        > helpers::points2rank(characters[cn].points_tot as u32) as i8
+                        > core::ranks::points2rank(characters[cn].points_tot as u32) as i8
                     {
                         self.do_character_log(
                             cn,

@@ -2,13 +2,9 @@ use bevy::prelude::*;
 
 use bevy::ecs::query::Without;
 use bevy::sprite::Anchor;
-use bevy::window::PrimaryWindow;
 
 use std::cmp::Ordering;
-use std::sync::OnceLock;
-use std::time::{Duration, Instant};
-
-use tracing::info;
+use std::time::Instant;
 
 mod components;
 mod layout;
@@ -31,29 +27,7 @@ pub(crate) use resources::{GameplayCursorType, GameplayCursorTypeState};
 pub(crate) use world_render::{TileLayer, TileRender};
 
 pub(crate) use ui::text::run_gameplay_text_ui;
-
-#[inline]
-/// Reads an environment variable as a boolean feature flag.
-///
-/// Accepts common false-y values like "0", "false", and "no" (case-insensitive).
-fn env_flag(name: &str) -> bool {
-    std::env::var(name)
-        .ok()
-        .map(|v| {
-            let v = v.trim().to_ascii_lowercase();
-            !(v.is_empty() || v == "0" || v == "false" || v == "no")
-        })
-        .unwrap_or(false)
-}
-
-#[inline]
-/// Returns whether gameplay rendering profiling is enabled.
-///
-/// This uses a `OnceLock` to read and cache the `MAG_PROFILE_RENDERING` env var once.
-fn profile_rendering_enabled() -> bool {
-    static ENABLED: OnceLock<bool> = OnceLock::new();
-    *ENABLED.get_or_init(|| env_flag("MAG_PROFILE_RENDERING"))
-}
+pub(crate) use world_render::dd_effect_tint;
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::font_cache::{FontCache, BITMAP_GLYPH_W};
@@ -61,11 +35,14 @@ use crate::gfx_cache::GraphicsCache;
 use crate::map::{TILEX, TILEY};
 use crate::network::{client_commands::ClientCommand, NetworkRuntime};
 use crate::player_state::PlayerState;
+use crate::systems::debug::{
+    profile_rendering_enabled, BitmapTextPerfAccum, GameplayDebugSettings, GameplayPerfAccum,
+};
 
 use mag_core::constants::{
     DEATH, INFRARED, INJURED, INJURED1, INJURED2, INVIS, ISITEM, MF_ARENA, MF_BANK, MF_DEATHTRAP,
     MF_INDOORS, MF_MOVEBLOCK, MF_NOEXPIRE, MF_NOLAG, MF_NOMAGIC, MF_NOMONST, MF_SIGHTBLOCK,
-    MF_TAVERN, MF_UWATER, SPEEDTAB, SPR_EMPTY, STONED, STUNNED, TOMB, UWATER, XPOS, YPOS,
+    MF_TAVERN, MF_UWATER, SPR_EMPTY, STONED, TOMB, UWATER,
 };
 use mag_core::types::skilltab::{get_skill_name, get_skill_sortkey, MAX_SKILLS};
 
@@ -209,25 +186,6 @@ fn xbuttons_truncate_label(name: &str) -> String {
     name.chars().take(7).collect()
 }
 
-#[derive(Resource, Clone, Copy, Debug)]
-pub(crate) struct GameplayDebugSettings {
-    /// Enables tile flag overlay entities (MoveBlock/Indoors/etc).
-    /// These are useful for debugging but expensive if spawned for every tile.
-    pub(crate) tile_flag_overlays: bool,
-}
-
-impl Default for GameplayDebugSettings {
-    /// Reads debug settings from environment variables.
-    fn default() -> Self {
-        // Set `MAG_DEBUG_TILE_OVERLAYS=1` to enable.
-        let enabled = env_flag("MAG_DEBUG_TILE_OVERLAYS");
-
-        Self {
-            tile_flag_overlays: enabled,
-        }
-    }
-}
-
 /// Requests an exit from the game, mirroring the legacy client's double-confirm behavior.
 fn cmd_exit(
     exit_state: &mut GameplayExitState,
@@ -260,50 +218,6 @@ fn cmd_exit(
         0,
         "Exit request acknowledged. Please wait for server to enter exit state.",
     );
-}
-
-/// Spawns HUD labels used in gameplay (HP/End/Mana, stats, skills, etc.).
-fn spawn_ui_hud_labels(commands: &mut Commands) {
-    ui::hud::spawn_ui_hud_labels(commands);
-}
-
-/// Updates shop sell/buy price labels based on the currently hovered shop slot.
-///
-/// When the shop UI is closed, hides the price labels.
-pub(crate) fn run_gameplay_update_shop_price_labels(
-    player_state: Res<PlayerState>,
-    shop_hover: Res<GameplayShopHoverState>,
-    mut q_sell: Query<
-        (&mut BitmapText, &mut Visibility),
-        (
-            With<GameplayUiShopSellPriceLabel>,
-            Without<GameplayUiShopBuyPriceLabel>,
-        ),
-    >,
-    mut q_buy: Query<
-        (&mut BitmapText, &mut Visibility),
-        (
-            With<GameplayUiShopBuyPriceLabel>,
-            Without<GameplayUiShopSellPriceLabel>,
-        ),
-    >,
-) {
-    ui::shop::run_gameplay_update_shop_price_labels(player_state, shop_hover, q_sell, q_buy);
-}
-
-/// Spawns the orange outline boxes used for gameplay toggles and mode selection.
-fn spawn_ui_toggle_boxes(commands: &mut Commands, image_assets: &mut Assets<Image>) {
-    ui::hud::spawn_ui_toggle_boxes(commands, image_assets);
-}
-
-/// Spawns the HUD stat bars (background + fill rectangles).
-fn spawn_ui_stat_bars(commands: &mut Commands, image_assets: &mut Assets<Image>) {
-    ui::hud::spawn_ui_stat_bars(commands, image_assets);
-}
-
-/// Spawns the skill/inventory scroll knobs used by the gameplay UI.
-fn spawn_ui_scroll_knobs(commands: &mut Commands, image_assets: &mut Assets<Image>) {
-    ui::statbox::spawn_ui_scroll_knobs(commands, image_assets);
 }
 
 pub(crate) fn run_gameplay_bitmap_text_renderer(
@@ -405,115 +319,6 @@ pub(crate) fn run_gameplay_bitmap_text_renderer(
 }
 
 #[derive(Default)]
-pub(crate) struct GameplayPerfAccum {
-    last_report: Option<Instant>,
-    frames: u32,
-
-    total: Duration,
-    engine_tick: Duration,
-    send_opt: Duration,
-    minimap: Duration,
-    world_shadows: Duration,
-    world_tiles: Duration,
-    world_overlays: Duration,
-    ui: Duration,
-}
-
-impl GameplayPerfAccum {
-    /// Emits periodic gameplay performance logs and resets the counters.
-    ///
-    /// Only active in debug builds when `MAG_PROFILE_RENDERING` is enabled.
-    fn maybe_report_and_reset(&mut self) {
-        if !cfg!(debug_assertions) || !profile_rendering_enabled() {
-            return;
-        }
-
-        let now = Instant::now();
-        let Some(last) = self.last_report else {
-            self.last_report = Some(now);
-            return;
-        };
-
-        if now.duration_since(last) < Duration::from_secs(2) {
-            return;
-        }
-
-        let frames = self.frames.max(1) as f64;
-        let to_ms = |d: Duration| d.as_secs_f64() * 1000.0;
-
-        info!(
-            "perf gameplay: total={:.2}ms/f (engine={:.2} send_opt={:.2} minimap={:.2} shadows={:.2} tiles={:.2} ovl={:.2} ui={:.2}) over {} frames",
-            to_ms(self.total) / frames,
-            to_ms(self.engine_tick) / frames,
-            to_ms(self.send_opt) / frames,
-            to_ms(self.minimap) / frames,
-            to_ms(self.world_shadows) / frames,
-            to_ms(self.world_tiles) / frames,
-            to_ms(self.world_overlays) / frames,
-            to_ms(self.ui) / frames,
-            self.frames,
-        );
-
-        self.last_report = Some(now);
-        self.frames = 0;
-        self.total = Duration::ZERO;
-        self.engine_tick = Duration::ZERO;
-        self.send_opt = Duration::ZERO;
-        self.minimap = Duration::ZERO;
-        self.world_shadows = Duration::ZERO;
-        self.world_tiles = Duration::ZERO;
-        self.world_overlays = Duration::ZERO;
-        self.ui = Duration::ZERO;
-    }
-}
-
-#[derive(Default)]
-pub(crate) struct BitmapTextPerfAccum {
-    last_report: Option<Instant>,
-    runs: u32,
-    total: Duration,
-    entities: u32,
-    glyph_spawned: u32,
-    glyph_despawned: u32,
-}
-
-impl BitmapTextPerfAccum {
-    /// Emits periodic bitmap-text performance logs and resets the counters.
-    ///
-    /// Only active in debug builds when `MAG_PROFILE_RENDERING` is enabled.
-    fn maybe_report_and_reset(&mut self) {
-        if !cfg!(debug_assertions) || !profile_rendering_enabled() {
-            return;
-        }
-
-        let now = Instant::now();
-        let Some(last) = self.last_report else {
-            self.last_report = Some(now);
-            return;
-        };
-
-        if now.duration_since(last) < Duration::from_secs(2) {
-            return;
-        }
-
-        let runs = self.runs.max(1) as f64;
-        let ms_per_run = (self.total.as_secs_f64() * 1000.0) / runs;
-
-        info!(
-            "perf bitmap_text: {:.3}ms/run (runs={} entities={} spawned={} despawned={})",
-            ms_per_run, self.runs, self.entities, self.glyph_spawned, self.glyph_despawned,
-        );
-
-        self.last_report = Some(now);
-        self.runs = 0;
-        self.total = Duration::ZERO;
-        self.entities = 0;
-        self.glyph_spawned = 0;
-        self.glyph_despawned = 0;
-    }
-}
-
-#[derive(Default)]
 pub(crate) struct EngineClock {
     ticker: u32,
 }
@@ -522,256 +327,6 @@ pub(crate) struct EngineClock {
 pub(crate) struct SendOptClock {
     optstep: u8,
     state: u8,
-}
-
-/// Spawns the main UI overlay sprite (the large fixed UI background).
-fn spawn_ui_overlay(commands: &mut Commands, gfx: &GraphicsCache) {
-    // Matches `copyspritex(1,0,0,0)` in engine.c
-    let Some(sprite) = gfx.get_sprite(1) else {
-        return;
-    };
-
-    commands.spawn((
-        GameplayRenderEntity,
-        GameplayUiOverlay,
-        sprite.clone(),
-        Anchor::TOP_LEFT,
-        Transform::from_translation(screen_to_world(0.0, 0.0, Z_UI)),
-        GlobalTransform::default(),
-        Visibility::Visible,
-        InheritedVisibility::default(),
-        ViewVisibility::default(),
-    ));
-}
-
-/// Spawns the portrait sprite entity (updated dynamically from player/rank state).
-fn spawn_ui_portrait(commands: &mut Commands, gfx: &GraphicsCache) {
-    let Some(empty) = gfx.get_sprite(SPR_EMPTY as usize) else {
-        return;
-    };
-
-    commands.spawn((
-        GameplayRenderEntity,
-        GameplayUiPortrait,
-        LastRender {
-            sprite_id: i32::MIN,
-            sx: f32::NAN,
-            sy: f32::NAN,
-        },
-        empty.clone(),
-        Anchor::TOP_LEFT,
-        Transform::from_translation(screen_to_world(402.0, 32.0, Z_UI_PORTRAIT)),
-        GlobalTransform::default(),
-        Visibility::Hidden,
-        InheritedVisibility::default(),
-        ViewVisibility::default(),
-    ));
-}
-
-/// Spawns the rank insignia sprite and portrait name/rank labels.
-fn spawn_ui_rank(commands: &mut Commands, gfx: &GraphicsCache) {
-    let Some(empty) = gfx.get_sprite(SPR_EMPTY as usize) else {
-        return;
-    };
-
-    commands.spawn((
-        GameplayRenderEntity,
-        GameplayUiRank,
-        LastRender {
-            sprite_id: i32::MIN,
-            sx: f32::NAN,
-            sy: f32::NAN,
-        },
-        empty.clone(),
-        Anchor::TOP_LEFT,
-        Transform::from_translation(screen_to_world(463.0, 38.0, Z_UI_RANK)),
-        GlobalTransform::default(),
-        Visibility::Hidden,
-        InheritedVisibility::default(),
-        ViewVisibility::default(),
-    ));
-
-    // Portrait name + rank strings (engine.c y=152 and y=172), centered within 125px.
-    commands.spawn((
-        GameplayRenderEntity,
-        GameplayUiPortraitNameLabel,
-        BitmapText {
-            text: String::new(),
-            color: Color::WHITE,
-            font: UI_BITMAP_FONT,
-        },
-        Transform::from_translation(screen_to_world(
-            HUD_PORTRAIT_TEXT_AREA_X,
-            HUD_PORTRAIT_NAME_Y,
-            Z_UI_TEXT,
-        )),
-        GlobalTransform::default(),
-        Visibility::Visible,
-        InheritedVisibility::default(),
-        ViewVisibility::default(),
-    ));
-
-    commands.spawn((
-        GameplayRenderEntity,
-        GameplayUiPortraitRankLabel,
-        BitmapText {
-            text: String::new(),
-            color: Color::WHITE,
-            font: UI_BITMAP_FONT,
-        },
-        Transform::from_translation(screen_to_world(
-            HUD_PORTRAIT_TEXT_AREA_X,
-            HUD_PORTRAIT_RANK_Y,
-            Z_UI_TEXT,
-        )),
-        GlobalTransform::default(),
-        Visibility::Visible,
-        InheritedVisibility::default(),
-        ViewVisibility::default(),
-    ));
-}
-
-/// Spawns the visible backpack slot sprite entities.
-fn spawn_ui_backpack(commands: &mut Commands, gfx: &GraphicsCache) {
-    ui::inventory::spawn_ui_backpack(commands, gfx);
-}
-
-/// Spawns the equipment (worn item) slot sprite entities.
-fn spawn_ui_equipment(commands: &mut Commands, gfx: &GraphicsCache) {
-    ui::inventory::spawn_ui_equipment(commands, gfx);
-}
-
-/// Spawns overlay entities indicating equipment slots blocked by a carried item.
-fn spawn_ui_equipment_blocks(commands: &mut Commands, gfx: &GraphicsCache) {
-    ui::inventory::spawn_ui_equipment_blocks(commands, gfx);
-}
-
-/// Spawns the carried-item sprite entity (drawn under the cursor).
-fn spawn_ui_carried_item(commands: &mut Commands, gfx: &GraphicsCache) {
-    ui::cursor::spawn_ui_carried_item(commands, gfx);
-}
-
-/// Spawns the spell icon slot sprite entities.
-fn spawn_ui_spells(commands: &mut Commands, gfx: &GraphicsCache) {
-    ui::inventory::spawn_ui_spells(commands, gfx);
-}
-
-/// Spawns the shop window panel and item slot sprite entities.
-fn spawn_ui_shop_window(commands: &mut Commands, gfx: &GraphicsCache) {
-    ui::shop::spawn_ui_shop_window(commands, gfx);
-}
-
-/// Converts total points into a rank index using legacy thresholds.
-///
-/// Ported from the original C client (`engine.c`).
-/// TODO: This function is duplicated--fix that.
-fn points2rank(v: i32) -> i32 {
-    // Ported from client/src/orig/engine.c
-    if v < 50 {
-        return 0;
-    }
-    if v < 850 {
-        return 1;
-    }
-    if v < 4_900 {
-        return 2;
-    }
-    if v < 17_700 {
-        return 3;
-    }
-    if v < 48_950 {
-        return 4;
-    }
-    if v < 113_750 {
-        return 5;
-    }
-    if v < 233_800 {
-        return 6;
-    }
-    if v < 438_600 {
-        return 7;
-    }
-    if v < 766_650 {
-        return 8;
-    }
-    if v < 1_266_650 {
-        return 9;
-    }
-    if v < 1_998_700 {
-        return 10;
-    }
-    if v < 3_035_500 {
-        return 11;
-    }
-    if v < 4_463_550 {
-        return 12;
-    }
-    if v < 6_384_350 {
-        return 13;
-    }
-    if v < 8_915_600 {
-        return 14;
-    }
-    if v < 12_192_400 {
-        return 15;
-    }
-    if v < 16_368_450 {
-        return 16;
-    }
-    if v < 21_617_250 {
-        return 17;
-    }
-    if v < 28_133_300 {
-        return 18;
-    }
-    if v < 36_133_300 {
-        return 19;
-    }
-    if v < 49_014_500 {
-        return 20;
-    }
-    if v < 63_000_600 {
-        return 21;
-    }
-    if v < 80_977_100 {
-        return 22;
-    }
-    23
-}
-
-const RANK_NAMES: [&str; 24] = [
-    "Private",
-    "Private First Class",
-    "Lance Corporal",
-    "Corporal",
-    "Sergeant",
-    "Staff Sergeant",
-    "Master Sergeant",
-    "First Sergeant",
-    "Sergeant Major",
-    "Second Lieutenant",
-    "First Lieutenant",
-    "Captain",
-    "Major",
-    "Lieutenant Colonel",
-    "Colonel",
-    "Brigadier General",
-    "Major General",
-    "Lieutenant General",
-    "General",
-    "Field Marshal",
-    "Knight",
-    "Baron",
-    "Earl",
-    "Warlord",
-];
-
-/// Returns the human-readable rank name for the given total points.
-fn rank_name(points: i32) -> &'static str {
-    // NOTE: `points2rank` already clamps via the returned range, but we still clamp
-    // here defensively to ensure indexing safety if thresholds change.
-    let idx = points2rank(points).clamp(0, 23) as usize;
-    RANK_NAMES[idx]
 }
 
 /// Returns the left X such that `text` is centered within `[area_x, area_x + area_w]`.
@@ -793,8 +348,8 @@ fn centered_text_x(area_x: f32, area_w: f32, text: &str) -> f32 {
 /// This matches the original logic of `10 + min(20, points2rank(points))`.
 fn rank_insignia_sprite(points_tot: i32) -> i32 {
     // engine.c: copyspritex(10+min(20,points2rank(pl.points_tot)),463,54-16,0);
-    let rank = points2rank(points_tot).clamp(0, 20);
-    10 + rank
+    let rank = mag_core::ranks::points2rank(points_tot as u32).clamp(0, 20);
+    10 + rank as i32
 }
 
 /// Sends the legacy split `CL_CMD_SETUSER` packets that persist option state.
@@ -871,176 +426,6 @@ fn send_opt(net: &NetworkRuntime, player_state: &mut PlayerState, clock: &mut Se
     }
 }
 
-/// Updates backpack UI sprites/visibility based on current inventory scroll/hover state.
-fn draw_inventory_ui(
-    gfx: &GraphicsCache,
-    player_state: &PlayerState,
-    inv_scroll: &GameplayInventoryScrollState,
-    hover: &GameplayInventoryHoverState,
-    q: &mut Query<(
-        &GameplayUiBackpackSlot,
-        &mut Sprite,
-        &mut Visibility,
-        &mut LastRender,
-    )>,
-) {
-    let pl = player_state.character_info();
-    let inv_pos = inv_scroll.inv_pos.min(30);
-
-    for (slot, mut sprite, mut visibility, mut last) in q.iter_mut() {
-        let idx = inv_pos.saturating_add(slot.index);
-        let sprite_id = pl.item.get(idx).copied().unwrap_or(0);
-
-        // Highlight the currently hovered visible slot.
-        let is_hovered = hover.backpack_slot == Some(slot.index);
-        sprite.color = if is_hovered {
-            Color::srgba(0.6, 1.0, 0.6, 1.0)
-        } else {
-            Color::WHITE
-        };
-
-        if sprite_id <= 0 {
-            last.sprite_id = sprite_id;
-            *visibility = Visibility::Hidden;
-            continue;
-        }
-
-        if last.sprite_id != sprite_id {
-            if let Some(src) = gfx.get_sprite(sprite_id as usize) {
-                *sprite = src.clone();
-                last.sprite_id = sprite_id;
-                *visibility = Visibility::Visible;
-            } else {
-                *visibility = Visibility::Hidden;
-            }
-        } else {
-            *visibility = Visibility::Visible;
-        }
-    }
-}
-
-/// Updates worn equipment UI sprites/visibility based on current hover state.
-fn draw_equipment_ui(
-    gfx: &GraphicsCache,
-    player_state: &PlayerState,
-    hover: &GameplayInventoryHoverState,
-    q: &mut Query<(
-        &GameplayUiEquipmentSlot,
-        &mut Sprite,
-        &mut Visibility,
-        &mut LastRender,
-    )>,
-) {
-    let pl = player_state.character_info();
-
-    for (slot, mut sprite, mut visibility, mut last) in q.iter_mut() {
-        let sprite_id = pl.worn.get(slot.worn_index).copied().unwrap_or(0);
-
-        // Hover highlight tint.
-        let is_hovered = hover.equipment_worn_index == Some(slot.worn_index);
-        sprite.color = if is_hovered {
-            Color::srgba(0.6, 1.0, 0.6, 1.0)
-        } else {
-            Color::WHITE
-        };
-
-        if sprite_id <= 0 {
-            last.sprite_id = sprite_id;
-            *visibility = Visibility::Hidden;
-            continue;
-        }
-
-        if last.sprite_id != sprite_id {
-            if let Some(src) = gfx.get_sprite(sprite_id as usize) {
-                *sprite = src.clone();
-                last.sprite_id = sprite_id;
-                *visibility = Visibility::Visible;
-            } else {
-                *visibility = Visibility::Hidden;
-            }
-        } else {
-            *visibility = Visibility::Visible;
-        }
-    }
-}
-
-/// Updates the active-spells UI sprites/visibility and applies dimming by duration.
-fn draw_active_spells_ui(
-    gfx: &GraphicsCache,
-    player_state: &PlayerState,
-    q: &mut Query<(
-        &GameplayUiSpellSlot,
-        &mut Sprite,
-        &mut Visibility,
-        &mut LastRender,
-    )>,
-) {
-    let pl = player_state.character_info();
-
-    for (slot, mut sprite, mut visibility, mut last) in q.iter_mut() {
-        let sprite_id = pl.spell.get(slot.index).copied().unwrap_or(0);
-        if sprite_id <= 0 {
-            last.sprite_id = sprite_id;
-            *visibility = Visibility::Hidden;
-            continue;
-        }
-
-        if last.sprite_id != sprite_id {
-            if let Some(src) = gfx.get_sprite(sprite_id as usize) {
-                *sprite = src.clone();
-                last.sprite_id = sprite_id;
-            } else {
-                *visibility = Visibility::Hidden;
-                continue;
-            }
-        }
-
-        // dd.c shading (approx): engine.c uses effect = 15 - min(15, active[n]).
-        // active==0 => effect=15 => dim; active>=15 => effect=0 => bright.
-        let active = pl.active.get(slot.index).copied().unwrap_or(0).max(0) as i32;
-        let effect = 15 - active.min(15);
-        let shade = 1.0 - (effect as f32 / 15.0) * 0.6;
-        sprite.color = Color::srgba(shade, shade, shade, 1.0);
-        *visibility = Visibility::Visible;
-    }
-}
-
-/// Updates shop window UI panel/items sprites/visibility and hover highlighting.
-fn draw_shop_window_ui(
-    gfx: &GraphicsCache,
-    player_state: &PlayerState,
-    shop_hover: &GameplayShopHoverState,
-    q: &mut Query<(
-        &GameplayUiShop,
-        &mut Sprite,
-        &mut Visibility,
-        &mut LastRender,
-    )>,
-) {
-    ui::shop::draw_shop_window_ui(gfx, player_state, shop_hover, q);
-}
-
-/// Handles mouse interactions with the shop UI (hover, close, buy/sell actions).
-pub(crate) fn run_gameplay_shop_input(
-    mouse: Res<ButtonInput<MouseButton>>,
-    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
-    cameras: Query<&Camera, With<Camera2d>>,
-    net: Res<NetworkRuntime>,
-    mut player_state: ResMut<PlayerState>,
-    mut shop_hover: ResMut<GameplayShopHoverState>,
-    mut cursor_state: ResMut<GameplayCursorTypeState>,
-) {
-    ui::shop::run_gameplay_shop_input(
-        mouse,
-        windows,
-        cameras,
-        net,
-        player_state,
-        shop_hover,
-        cursor_state,
-    );
-}
-
 #[inline]
 /// Returns whether a sprite ID should receive a shadow overlay.
 fn should_draw_shadow(sprite_id: i32) -> bool {
@@ -1048,102 +433,9 @@ fn should_draw_shadow(sprite_id: i32) -> bool {
     (2000..16_336).contains(&sprite_id) || sprite_id > 17_360
 }
 
-// dd.c lighting approximation:
-// do_effect() scales RGB by: LEFFECT / (effect^2 + LEFFECT), with LEFFECT = gamma - 4880.
-// At default gamma=5000, LEFFECT=120.
-const DD_LEFFECT: f32 = 120.0;
-
-/// Approximates legacy dd.c lighting/effect flags as a per-sprite tint color.
-///
-/// This implements darkness, highlight, and other effect bits from the original renderer.
-pub(crate) fn dd_effect_tint(effect: u32) -> Color {
-    // We approximate the dd.c per-pixel effect with a per-sprite tint.
-    // This matches the most important behavior: darkness from `effect` and
-    // the highlight bit (16) which doubles brightness.
-
-    let mut base = effect;
-    let highlight = (base & 16) != 0;
-    let green = (base & 32) != 0;
-    let invis = (base & 64) != 0;
-    let grey = (base & 128) != 0;
-    let infra = (base & 256) != 0;
-    let water = (base & 512) != 0;
-
-    // Strip known flag bits to recover the numeric light level.
-    if highlight {
-        base = base.saturating_sub(16);
-    }
-    if green {
-        base = base.saturating_sub(32);
-    }
-    if invis {
-        base = base.saturating_sub(64);
-    }
-    if grey {
-        base = base.saturating_sub(128);
-    }
-    if infra {
-        base = base.saturating_sub(256);
-    }
-    if water {
-        base = base.saturating_sub(512);
-    }
-
-    let e = (base.min(1023)) as f32;
-    let shade = if e <= 0.0 {
-        1.0
-    } else {
-        DD_LEFFECT / (e * e + DD_LEFFECT)
-    };
-
-    let mut r = shade;
-    let mut g = shade;
-    let mut b = shade;
-
-    // dd.c's "grey" effect is a greyscale conversion. Since we're tinting a full sprite
-    // (not per-pixel), approximate it by reducing saturation.
-    if grey {
-        // Slightly greenish grayscale like RGB565 tends to look.
-        r *= 0.85;
-        g *= 0.95;
-        b *= 0.85;
-    }
-
-    // Approximate a few legacy effect flags used by engine.c (notably infra/water).
-    if infra {
-        g = 0.0;
-        b = 0.0;
-    }
-    if water {
-        r *= 0.7;
-        g *= 0.85;
-        // b stays as-is
-    }
-
-    // engine.c highlight uses `|16`, dd.c then doubles channels.
-    if highlight {
-        r *= 2.0;
-        g *= 2.0;
-        b *= 2.0;
-    }
-
-    // engine.c selection uses `|32` for characters; dd.c bumps green.
-    if green {
-        g = (g + 0.5).min(1.0);
-    }
-
-    if invis {
-        r = 0.0;
-        g = 0.0;
-        b = 0.0;
-    }
-
-    // Bevy will clamp in the shader, but we keep values reasonable.
-    let clamp = |v: f32| v.clamp(0.0, 1.35);
-    Color::srgba(clamp(r), clamp(g), clamp(b), 1.0)
-}
-
+// TODO: Move to common
 const ATTRIBUTE_NAMES: [&str; 5] = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
+
 /// Spawns gameplay-world entities and gameplay UI elements.
 ///
 /// This initializes gameplay resources, clears any previous gameplay render entities, and builds
@@ -1294,38 +586,38 @@ pub(crate) fn setup_gameplay(
     }
 
     // UI frame / background (sprite 00001.png)
-    spawn_ui_overlay(&mut commands, &gfx);
+    ui::portrait::spawn_ui_overlay(&mut commands, &gfx);
 
     // Mini-map (dd_show_map / xmap)
     let minimap_image = minimap.ensure_initialized(&mut image_assets);
     spawn_ui_minimap(&mut commands, minimap_image);
 
     // Player portrait + rank badge
-    spawn_ui_portrait(&mut commands, &gfx);
-    spawn_ui_rank(&mut commands, &gfx);
+    ui::portrait::spawn_ui_portrait(&mut commands, &gfx);
+    ui::portrait::spawn_ui_rank(&mut commands, &gfx);
 
     // Backpack (inventory) slots
-    spawn_ui_backpack(&mut commands, &gfx);
+    ui::inventory::spawn_ui_backpack(&mut commands, &gfx);
 
     // Equipment slots + active spells
-    spawn_ui_equipment(&mut commands, &gfx);
-    spawn_ui_equipment_blocks(&mut commands, &gfx);
-    spawn_ui_spells(&mut commands, &gfx);
+    ui::inventory::spawn_ui_equipment(&mut commands, &gfx);
+    ui::inventory::spawn_ui_equipment_blocks(&mut commands, &gfx);
+    ui::inventory::spawn_ui_spells(&mut commands, &gfx);
 
     // Carried item cursor sprite (engine.c draws pl.citem at the mouse position).
-    spawn_ui_carried_item(&mut commands, &gfx);
+    ui::cursor::spawn_ui_carried_item(&mut commands, &gfx);
 
     // Shop window (panel + item slots)
-    spawn_ui_shop_window(&mut commands, &gfx);
+    ui::shop::spawn_ui_shop_window(&mut commands, &gfx);
 
     // UI toggle indicators (dd_showbox overlays for buttonbox toggles).
-    spawn_ui_toggle_boxes(&mut commands, &mut image_assets);
+    ui::hud::spawn_ui_toggle_boxes(&mut commands, &mut image_assets);
 
     // HP/Endurance/Mana bars (dd_showbar overlays).
-    spawn_ui_stat_bars(&mut commands, &mut image_assets);
+    ui::hud::spawn_ui_stat_bars(&mut commands, &mut image_assets);
 
     // Skill/inventory scrollbar knob indicators (engine.c: dd_showbar at x=207 and x=290).
-    spawn_ui_scroll_knobs(&mut commands, &mut image_assets);
+    ui::statbox::spawn_ui_scroll_knobs(&mut commands, &mut image_assets);
 
     // Gameplay text input/log UI state
     commands.insert_resource(GameplayTextInput::default());
@@ -1339,71 +631,9 @@ pub(crate) fn setup_gameplay(
 
     ui::text::spawn_ui_log_text(&mut commands);
     ui::text::spawn_ui_input_text(&mut commands);
-    spawn_ui_hud_labels(&mut commands);
+    ui::hud::spawn_ui_hud_labels(&mut commands);
 
     log::debug!("setup_gameplay - end");
-}
-
-/// Updates equipment-slot overlay blocks (e.g., blocked slots for carried items/two-handers).
-pub(crate) fn run_gameplay_update_equipment_blocks(
-    gfx: Res<GraphicsCache>,
-    player_state: Res<PlayerState>,
-    mut q: Query<(
-        &GameplayUiEquipmentBlock,
-        &mut Sprite,
-        &mut Visibility,
-        &mut LastRender,
-    )>,
-) {
-    ui::inventory::run_gameplay_update_equipment_blocks(gfx, player_state, q);
-}
-
-/// Updates the OS cursor and draws the carried-item sprite under the mouse.
-pub(crate) fn run_gameplay_update_cursor_and_carried_item(
-    mut commands: Commands,
-    window_entities: Query<Entity, With<PrimaryWindow>>,
-    windows: Query<&Window, With<PrimaryWindow>>,
-    cameras: Query<&Camera, With<Camera2d>>,
-    gfx: Res<GraphicsCache>,
-    player_state: Res<PlayerState>,
-    cursor_state: Res<GameplayCursorTypeState>,
-    mut q: Query<
-        (
-            &mut Sprite,
-            &mut Transform,
-            &mut Visibility,
-            &mut LastRender,
-        ),
-        With<GameplayUiCarriedItem>,
-    >,
-) {
-    ui::cursor::run_gameplay_update_cursor_and_carried_item(
-        commands,
-        window_entities,
-        windows,
-        cameras,
-        gfx,
-        player_state,
-        cursor_state,
-        q,
-    );
-}
-
-/// Updates scrollbar knob positions for the skill list and inventory list.
-pub(crate) fn run_gameplay_update_scroll_knobs(
-    statbox: Res<GameplayStatboxState>,
-    inv_scroll: Res<GameplayInventoryScrollState>,
-    mut q: Query<(&GameplayUiScrollKnob, &mut Transform)>,
-) {
-    ui::statbox::run_gameplay_update_scroll_knobs(statbox, inv_scroll, q);
-}
-
-/// Updates HUD stat bar fill widths and visibility (HP/Endurance/Mana).
-pub(crate) fn run_gameplay_update_stat_bars(
-    player_state: Res<PlayerState>,
-    mut q: Query<(&GameplayUiBar, &mut Sprite, &mut Visibility)>,
-) {
-    ui::hud::run_gameplay_update_stat_bars(player_state, q);
 }
 
 /// Returns the cursor position in game/viewport coordinates, if available.
@@ -1464,380 +694,6 @@ fn cursor_game_pos(
 /// Checks whether a point is inside an axis-aligned rectangle.
 fn in_rect(game: Vec2, x: f32, y: f32, w: f32, h: f32) -> bool {
     game.x >= x && game.x <= x + w && game.y >= y && game.y <= y + h
-}
-
-/// Handles UI toggle buttons and mode buttons (keyboard + mouse), including exit/reset.
-pub(crate) fn run_gameplay_buttonbox_toggles(
-    keys: Res<ButtonInput<KeyCode>>,
-    mouse: Res<ButtonInput<MouseButton>>,
-    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
-    cameras: Query<&Camera, With<Camera2d>>,
-    net: Res<NetworkRuntime>,
-    mut player_state: ResMut<PlayerState>,
-    mut exit_state: ResMut<GameplayExitState>,
-    mut q_boxes: Query<(&GameplayUiToggleBox, &mut Visibility), Without<GameplayUiModeBox>>,
-    mut q_mode_boxes: Query<(&GameplayUiModeBox, &mut Visibility), Without<GameplayUiToggleBox>>,
-) {
-    ui::hud::run_gameplay_buttonbox_toggles(
-        keys,
-        mouse,
-        windows,
-        cameras,
-        net,
-        player_state,
-        exit_state,
-        q_boxes,
-        q_mode_boxes,
-    );
-}
-
-/// Handles statbox input: raising stats/skills and managing skill hotbar assignments.
-pub(crate) fn run_gameplay_statbox_input(
-    keys: Res<ButtonInput<KeyCode>>,
-    mouse: Res<ButtonInput<MouseButton>>,
-    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
-    cameras: Query<&Camera, With<Camera2d>>,
-    net: Res<NetworkRuntime>,
-    mut player_state: ResMut<PlayerState>,
-    mut statbox: ResMut<GameplayStatboxState>,
-    mut inv_scroll: ResMut<GameplayInventoryScrollState>,
-    mut xbuttons: ResMut<GameplayXButtonsState>,
-) {
-    ui::statbox::run_gameplay_statbox_input(
-        keys,
-        mouse,
-        windows,
-        cameras,
-        net,
-        player_state,
-        statbox,
-        inv_scroll,
-        xbuttons,
-    );
-}
-
-/// Handles inventory UI hover and click interactions (equipment, backpack, money).
-pub(crate) fn run_gameplay_inventory_input(
-    keys: Res<ButtonInput<KeyCode>>,
-    mouse: Res<ButtonInput<MouseButton>>,
-    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
-    cameras: Query<&Camera, With<Camera2d>>,
-    net: Res<NetworkRuntime>,
-    mut player_state: ResMut<PlayerState>,
-    inv_scroll: Res<GameplayInventoryScrollState>,
-    mut hover: ResMut<GameplayInventoryHoverState>,
-    mut cursor_state: ResMut<GameplayCursorTypeState>,
-) {
-    ui::inventory::run_gameplay_inventory_input(
-        keys,
-        mouse,
-        windows,
-        cameras,
-        net,
-        player_state,
-        inv_scroll,
-        hover,
-        cursor_state,
-    );
-}
-
-/// Updates HUD labels (stats, attributes, skills, hotbar labels, etc.).
-pub(crate) fn run_gameplay_update_hud_labels(
-    player_state: Res<PlayerState>,
-    statbox: Res<GameplayStatboxState>,
-    mut last_state_rev: Local<u64>,
-    mut q: ParamSet<(
-        Query<
-            &mut BitmapText,
-            (
-                With<GameplayUiHitpointsLabel>,
-                Without<GameplayUiAttributeLabel>,
-                Without<GameplayUiSkillLabel>,
-                Without<GameplayUiRaiseStatText>,
-                Without<GameplayUiAttributeAuxText>,
-                Without<GameplayUiSkillAuxText>,
-                Without<GameplayUiXButtonLabel>,
-            ),
-        >,
-        Query<
-            &mut BitmapText,
-            (
-                With<GameplayUiEnduranceLabel>,
-                Without<GameplayUiAttributeLabel>,
-                Without<GameplayUiSkillLabel>,
-                Without<GameplayUiRaiseStatText>,
-                Without<GameplayUiAttributeAuxText>,
-                Without<GameplayUiSkillAuxText>,
-                Without<GameplayUiXButtonLabel>,
-            ),
-        >,
-        Query<
-            &mut BitmapText,
-            (
-                With<GameplayUiManaLabel>,
-                Without<GameplayUiAttributeLabel>,
-                Without<GameplayUiSkillLabel>,
-                Without<GameplayUiRaiseStatText>,
-                Without<GameplayUiAttributeAuxText>,
-                Without<GameplayUiSkillAuxText>,
-                Without<GameplayUiXButtonLabel>,
-            ),
-        >,
-        Query<
-            &mut BitmapText,
-            (
-                With<GameplayUiMoneyLabel>,
-                Without<GameplayUiAttributeLabel>,
-                Without<GameplayUiSkillLabel>,
-                Without<GameplayUiRaiseStatText>,
-                Without<GameplayUiAttributeAuxText>,
-                Without<GameplayUiSkillAuxText>,
-                Without<GameplayUiXButtonLabel>,
-            ),
-        >,
-        Query<
-            &mut BitmapText,
-            (
-                With<GameplayUiUpdateValue>,
-                Without<GameplayUiAttributeLabel>,
-                Without<GameplayUiSkillLabel>,
-                Without<GameplayUiRaiseStatText>,
-                Without<GameplayUiAttributeAuxText>,
-                Without<GameplayUiSkillAuxText>,
-                Without<GameplayUiXButtonLabel>,
-            ),
-        >,
-        Query<
-            &mut BitmapText,
-            (
-                With<GameplayUiWeaponValueLabel>,
-                Without<GameplayUiAttributeLabel>,
-                Without<GameplayUiSkillLabel>,
-                Without<GameplayUiRaiseStatText>,
-                Without<GameplayUiAttributeAuxText>,
-                Without<GameplayUiSkillAuxText>,
-                Without<GameplayUiXButtonLabel>,
-            ),
-        >,
-        Query<
-            &mut BitmapText,
-            (
-                With<GameplayUiArmorValueLabel>,
-                Without<GameplayUiAttributeLabel>,
-                Without<GameplayUiSkillLabel>,
-                Without<GameplayUiRaiseStatText>,
-                Without<GameplayUiAttributeAuxText>,
-                Without<GameplayUiSkillAuxText>,
-                Without<GameplayUiXButtonLabel>,
-            ),
-        >,
-        Query<
-            &mut BitmapText,
-            (
-                With<GameplayUiExperienceLabel>,
-                Without<GameplayUiAttributeLabel>,
-                Without<GameplayUiSkillLabel>,
-                Without<GameplayUiRaiseStatText>,
-                Without<GameplayUiAttributeAuxText>,
-                Without<GameplayUiSkillAuxText>,
-                Without<GameplayUiXButtonLabel>,
-            ),
-        >,
-    )>,
-    mut q_attrib: Query<
-        (&GameplayUiAttributeLabel, &mut BitmapText),
-        (
-            With<GameplayUiAttributeLabel>,
-            Without<GameplayUiSkillLabel>,
-            Without<GameplayUiRaiseStatText>,
-            Without<GameplayUiAttributeAuxText>,
-            Without<GameplayUiSkillAuxText>,
-            Without<GameplayUiXButtonLabel>,
-        ),
-    >,
-    mut q_attrib_aux: Query<
-        (&GameplayUiAttributeAuxText, &mut BitmapText),
-        (
-            With<GameplayUiAttributeAuxText>,
-            Without<GameplayUiAttributeLabel>,
-            Without<GameplayUiSkillLabel>,
-            Without<GameplayUiRaiseStatText>,
-            Without<GameplayUiSkillAuxText>,
-            Without<GameplayUiXButtonLabel>,
-        ),
-    >,
-    mut q_skill: Query<
-        (&GameplayUiSkillLabel, &mut BitmapText),
-        (
-            With<GameplayUiSkillLabel>,
-            Without<GameplayUiRaiseStatText>,
-            Without<GameplayUiAttributeLabel>,
-            Without<GameplayUiAttributeAuxText>,
-            Without<GameplayUiSkillAuxText>,
-            Without<GameplayUiXButtonLabel>,
-        ),
-    >,
-    mut q_skill_aux: Query<
-        (&GameplayUiSkillAuxText, &mut BitmapText),
-        (
-            With<GameplayUiSkillAuxText>,
-            Without<GameplayUiSkillLabel>,
-            Without<GameplayUiAttributeLabel>,
-            Without<GameplayUiRaiseStatText>,
-            Without<GameplayUiAttributeAuxText>,
-            Without<GameplayUiXButtonLabel>,
-        ),
-    >,
-    mut q_raise_stats: Query<
-        (&GameplayUiRaiseStatText, &mut BitmapText),
-        (
-            With<GameplayUiRaiseStatText>,
-            Without<GameplayUiAttributeLabel>,
-            Without<GameplayUiSkillLabel>,
-            Without<GameplayUiAttributeAuxText>,
-            Without<GameplayUiSkillAuxText>,
-            Without<GameplayUiXButtonLabel>,
-        ),
-    >,
-    mut q_xbuttons: Query<(&GameplayUiXButtonLabel, &mut BitmapText)>,
-) {
-    ui::hud::run_gameplay_update_hud_labels(
-        player_state,
-        statbox,
-        last_state_rev,
-        q,
-        q_attrib,
-        q_attrib_aux,
-        q_skill,
-        q_skill_aux,
-        q_raise_stats,
-        q_xbuttons,
-    );
-}
-
-/// Updates the "top selected name" label shown in the HUD.
-pub(crate) fn run_gameplay_update_top_selected_name(
-    player_state: Res<PlayerState>,
-    mut q: Query<(&mut BitmapText, &mut Transform), With<GameplayUiTopSelectedNameLabel>>,
-) {
-    let mut name: &str = "";
-
-    let selected = player_state.selected_char();
-    if selected != 0 {
-        // engine.c uses lookup(selected_char, 0) (0 means "ignore id")
-        if let Some(n) = player_state.lookup_name(selected, 0) {
-            name = n;
-        }
-    }
-
-    if name.is_empty() {
-        // Fallback to local player name
-        let pl = player_state.character_info();
-        let end = pl
-            .name
-            .iter()
-            .position(|&b| b == 0)
-            .unwrap_or(pl.name.len());
-        name = std::str::from_utf8(&pl.name[..end]).unwrap_or("");
-    }
-
-    let sx = centered_text_x(HUD_TOP_NAME_AREA_X, HUD_TOP_NAME_AREA_W, name);
-
-    for (mut text, mut t) in &mut q {
-        if text.text != name {
-            text.text.clear();
-            text.text.push_str(name);
-        }
-        t.translation = screen_to_world(sx, HUD_TOP_NAME_Y, Z_UI_TEXT);
-    }
-}
-
-/// Updates the portrait area name and rank labels.
-///
-/// Uses shop target or look target when those UIs are active, otherwise the player.
-pub(crate) fn run_gameplay_update_portrait_name_and_rank(
-    player_state: Res<PlayerState>,
-    mut q: ParamSet<(
-        Query<(&mut BitmapText, &mut Transform), With<GameplayUiPortraitNameLabel>>,
-        Query<(&mut BitmapText, &mut Transform), With<GameplayUiPortraitRankLabel>>,
-    )>,
-) {
-    // Matches engine.c behavior:
-    // - If shop is open: use shop target name/rank
-    // - Else if look is active: use look target name/rank
-    // - Else: use player name/rank
-    let (name, points_tot) = if player_state.should_show_shop() {
-        let shop = player_state.shop_target();
-        (
-            shop.name().unwrap_or(""),
-            shop.points().min(i32::MAX as u32) as i32,
-        )
-    } else if player_state.should_show_look() {
-        let look = player_state.look_target();
-        (
-            look.name().unwrap_or(""),
-            look.points().min(i32::MAX as u32) as i32,
-        )
-    } else {
-        let pl = player_state.character_info();
-        let end = pl
-            .name
-            .iter()
-            .position(|&b| b == 0)
-            .unwrap_or(pl.name.len());
-        (
-            std::str::from_utf8(&pl.name[..end]).unwrap_or(""),
-            pl.points_tot,
-        )
-    };
-
-    let rank = rank_name(points_tot);
-
-    let name_x = centered_text_x(HUD_PORTRAIT_TEXT_AREA_X, HUD_PORTRAIT_TEXT_AREA_W, name);
-    let rank_x = centered_text_x(HUD_PORTRAIT_TEXT_AREA_X, HUD_PORTRAIT_TEXT_AREA_W, rank);
-
-    for (mut text, mut t) in q.p0().iter_mut() {
-        if text.text != name {
-            text.text.clear();
-            text.text.push_str(name);
-        }
-        t.translation = screen_to_world(name_x, HUD_PORTRAIT_NAME_Y, Z_UI_TEXT);
-    }
-    for (mut text, mut t) in q.p1().iter_mut() {
-        if text.text != rank {
-            text.text.clear();
-            text.text.push_str(rank);
-        }
-        t.translation = screen_to_world(rank_x, HUD_PORTRAIT_RANK_Y, Z_UI_TEXT);
-    }
-}
-
-/// Updates the money label text (gold/silver) in the HUD.
-fn update_ui_money_text(
-    player_state: &PlayerState,
-    mut q: Query<&mut BitmapText, With<GameplayUiMoneyLabel>>,
-) {
-    // Display gold and silver. This mirrors the money display in run_gameplay_update_hud_labels
-    // but can be called separately if needed.
-    let pl = player_state.character_info();
-
-    if let Some(mut text) = q.iter_mut().next() {
-        let desired = format!("Money  {:8}G {:2}S", pl.gold / 100, pl.gold % 100);
-        if text.text != desired {
-            text.text = desired;
-        }
-    }
-}
-
-/// Updates smaller auxiliary UI elements that don't fit elsewhere.
-///
-/// Currently updates the money text (also covered by the main HUD-label system).
-pub(crate) fn run_gameplay_update_extra_ui(
-    player_state: Res<PlayerState>,
-    mut q: ParamSet<(Query<&mut BitmapText, With<GameplayUiMoneyLabel>>,)>,
-) {
-    // Keep as a thin shim; money is also updated in run_gameplay_update_hud_labels.
-    update_ui_money_text(&player_state, q.p0());
 }
 
 /// Runs the core gameplay update loop (rendering + simulation + UI glue).
@@ -2095,8 +951,7 @@ pub(crate) fn run_gameplay(
             ypos,
             xoff,
             yoff,
-        )
-        else {
+        ) else {
             if *visibility != Visibility::Hidden {
                 *visibility = Visibility::Hidden;
             }
@@ -2181,7 +1036,7 @@ pub(crate) fn run_gameplay(
                 // else draw obj1+1 (hide walls/high objects).
                 let hide_enabled = player_state.player_data().hide != 0;
                 let is_item = (tile.flags & ISITEM) != 0;
-                if hide_enabled && id > 0 && !is_item && !autohide(x, y) {
+                if hide_enabled && id > 0 && !is_item && !legacy_engine::autohide(x, y) {
                     // engine.c mine hack: substitute special sprites for certain mine-wall IDs
                     // when hide is enabled and tile isn't directly in front of the player.
                     let is_mine_wall = id > 16335
@@ -2190,7 +1045,7 @@ pub(crate) fn run_gameplay(
                             id,
                             16357 | 16365 | 16373 | 16381 | 16389 | 16397 | 16405 | 16413 | 16421
                         )
-                        && !facing(x, y, player_state.character_info().dir);
+                        && !legacy_engine::facing(x, y, player_state.character_info().dir);
 
                     if is_mine_wall {
                         let tmp2 = if id < 16358 {
@@ -2500,7 +1355,7 @@ pub(crate) fn run_gameplay(
             continue;
         }
 
-        let Some((sx_i, sy_i)) = copysprite_screen_pos(
+        let Some((sx_i, sy_i)) = legacy_engine::copysprite_screen_pos(
             sprite_id as usize,
             &gfx,
             &images,
@@ -2550,48 +1405,19 @@ pub(crate) fn run_gameplay(
     }
 
     let t_ui = perf_enabled.then(Instant::now);
-    // Update UI portrait
-    if let Some((mut sprite, mut visibility, mut last)) = q_ui.p0().iter_mut().next() {
-        if ui_portrait_sprite_id > 0 {
-            if last.sprite_id != ui_portrait_sprite_id {
-                if let Some(src) = gfx.get_sprite(ui_portrait_sprite_id as usize) {
-                    *sprite = src.clone();
-                    last.sprite_id = ui_portrait_sprite_id;
-                    *visibility = Visibility::Visible;
-                } else {
-                    *visibility = Visibility::Hidden;
-                }
-            } else {
-                *visibility = Visibility::Visible;
-            }
-        } else {
-            *visibility = Visibility::Hidden;
-        }
-    }
+    ui::portrait::update_ui_portrait_sprite(&gfx, ui_portrait_sprite_id, &mut q_ui.p0());
+    ui::portrait::update_ui_rank_sprite(&gfx, ui_rank_sprite_id, &mut q_ui.p1());
 
-    // Update UI rank badge
-    if let Some((mut sprite, mut visibility, mut last)) = q_ui.p1().iter_mut().next() {
-        if ui_rank_sprite_id > 0 {
-            if last.sprite_id != ui_rank_sprite_id {
-                if let Some(src) = gfx.get_sprite(ui_rank_sprite_id as usize) {
-                    *sprite = src.clone();
-                    last.sprite_id = ui_rank_sprite_id;
-                    *visibility = Visibility::Visible;
-                } else {
-                    *visibility = Visibility::Hidden;
-                }
-            } else {
-                *visibility = Visibility::Visible;
-            }
-        } else {
-            *visibility = Visibility::Hidden;
-        }
-    }
-
-    draw_inventory_ui(&gfx, &player_state, &inv_scroll, &inv_hover, &mut q_ui.p5());
-    draw_equipment_ui(&gfx, &player_state, &inv_hover, &mut q_ui.p2());
-    draw_active_spells_ui(&gfx, &player_state, &mut q_ui.p3());
-    draw_shop_window_ui(&gfx, &player_state, &shop_hover, &mut q_ui.p4());
+    ui::inventory_draw::draw_inventory_ui(
+        &gfx,
+        &player_state,
+        &inv_scroll,
+        &inv_hover,
+        &mut q_ui.p5(),
+    );
+    ui::inventory_draw::draw_equipment_ui(&gfx, &player_state, &inv_hover, &mut q_ui.p2());
+    ui::inventory_draw::draw_active_spells_ui(&gfx, &player_state, &mut q_ui.p3());
+    ui::shop::draw_shop_window_ui(&gfx, &player_state, &shop_hover, &mut q_ui.p4());
 
     if let Some(t0) = t_ui {
         perf.ui += t0.elapsed();

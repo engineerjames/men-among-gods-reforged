@@ -22,7 +22,7 @@ use bevy::window::WindowResolution;
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::gfx_cache::GraphicsCache;
 use crate::sfx_cache::SoundCache;
-use crate::systems::debug;
+use crate::systems::debug::{self, GameplayDebugSettings};
 use crate::systems::display;
 use crate::systems::map_hover;
 use crate::systems::nameplates;
@@ -83,7 +83,7 @@ fn main() {
         .insert_resource(SoundCache::new(sfx_dir.to_string_lossy().as_ref()))
         .init_resource::<font_cache::FontCache>()
         .init_resource::<sound::SoundEventQueue>()
-        .init_resource::<states::gameplay::GameplayDebugSettings>()
+        .init_resource::<GameplayDebugSettings>()
         .init_resource::<states::gameplay::MiniMapState>()
         .init_resource::<player_state::PlayerState>()
         .add_plugins(
@@ -164,28 +164,32 @@ fn main() {
         )
         .add_systems(
             Update,
-            states::gameplay::run_gameplay_buttonbox_toggles.run_if(in_state(GameState::Gameplay)),
-        )
-        .add_systems(
-            Update,
-            states::gameplay::run_gameplay_statbox_input.run_if(in_state(GameState::Gameplay)),
-        )
-        .add_systems(
-            Update,
-            states::gameplay::run_gameplay_inventory_input.run_if(in_state(GameState::Gameplay)),
-        )
-        .add_systems(
-            Update,
-            states::gameplay::run_gameplay_shop_input.run_if(in_state(GameState::Gameplay)),
-        )
-        .add_systems(
-            Update,
-            states::gameplay::run_gameplay_update_cursor_and_carried_item
+            states::gameplay::ui::hud::run_gameplay_buttonbox_toggles
                 .run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
             Update,
-            states::gameplay::run_gameplay_update_equipment_blocks
+            states::gameplay::ui::statbox::run_gameplay_statbox_input
+                .run_if(in_state(GameState::Gameplay)),
+        )
+        .add_systems(
+            Update,
+            states::gameplay::ui::inventory::run_gameplay_inventory_input
+                .run_if(in_state(GameState::Gameplay)),
+        )
+        .add_systems(
+            Update,
+            states::gameplay::ui::shop::run_gameplay_shop_input
+                .run_if(in_state(GameState::Gameplay)),
+        )
+        .add_systems(
+            Update,
+            states::gameplay::ui::cursor::run_gameplay_update_cursor_and_carried_item
+                .run_if(in_state(GameState::Gameplay)),
+        )
+        .add_systems(
+            Update,
+            states::gameplay::ui::inventory::run_gameplay_update_equipment_blocks
                 .run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
@@ -226,46 +230,49 @@ fn main() {
         )
         .add_systems(
             Update,
-            states::gameplay::run_gameplay_update_hud_labels.run_if(in_state(GameState::Gameplay)),
-        )
-        .add_systems(
-            Update,
-            states::gameplay::run_gameplay_update_extra_ui.run_if(in_state(GameState::Gameplay)),
-        )
-        .add_systems(
-            Update,
-            states::gameplay::run_gameplay_update_stat_bars.run_if(in_state(GameState::Gameplay)),
-        )
-        .add_systems(
-            Update,
-            states::gameplay::run_gameplay_update_scroll_knobs
+            states::gameplay::ui::hud::run_gameplay_update_hud_labels
                 .run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
             Update,
-            states::gameplay::run_gameplay_update_top_selected_name
+            states::gameplay::ui::extra::run_gameplay_update_extra_ui
                 .run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
             Update,
-            states::gameplay::run_gameplay_update_portrait_name_and_rank
+            states::gameplay::ui::hud::run_gameplay_update_stat_bars
                 .run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
             Update,
-            states::gameplay::run_gameplay_update_shop_price_labels
+            states::gameplay::ui::statbox::run_gameplay_update_scroll_knobs
+                .run_if(in_state(GameState::Gameplay)),
+        )
+        .add_systems(
+            Update,
+            states::gameplay::ui::portrait::run_gameplay_update_top_selected_name
+                .run_if(in_state(GameState::Gameplay)),
+        )
+        .add_systems(
+            Update,
+            states::gameplay::ui::portrait::run_gameplay_update_portrait_name_and_rank
+                .run_if(in_state(GameState::Gameplay)),
+        )
+        .add_systems(
+            Update,
+            states::gameplay::ui::shop::run_gameplay_update_shop_price_labels
                 .run_if(in_state(GameState::Gameplay))
-                .after(states::gameplay::run_gameplay_shop_input),
+                .after(states::gameplay::ui::shop::run_gameplay_shop_input),
         )
         .add_systems(
             Update,
             states::gameplay::run_gameplay_bitmap_text_renderer
                 .run_if(in_state(GameState::Gameplay))
-                .after(states::gameplay::run_gameplay_update_extra_ui)
-                .after(states::gameplay::run_gameplay_update_stat_bars)
-                .after(states::gameplay::run_gameplay_update_top_selected_name)
-                .after(states::gameplay::run_gameplay_update_portrait_name_and_rank)
-                .after(states::gameplay::run_gameplay_update_shop_price_labels)
+                .after(states::gameplay::ui::extra::run_gameplay_update_extra_ui)
+                .after(states::gameplay::ui::hud::run_gameplay_update_stat_bars)
+                .after(states::gameplay::ui::portrait::run_gameplay_update_top_selected_name)
+                .after(states::gameplay::ui::portrait::run_gameplay_update_portrait_name_and_rank)
+                .after(states::gameplay::ui::shop::run_gameplay_update_shop_price_labels)
                 .after(nameplates::run_gameplay_nameplates),
         )
         //
