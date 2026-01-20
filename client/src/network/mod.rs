@@ -42,6 +42,7 @@ pub struct LoginStatus {
 }
 
 impl Default for LoginStatus {
+    /// Creates a default status message for a disconnected client.
     fn default() -> Self {
         Self {
             message: "Disconnected".to_string(),
@@ -79,6 +80,7 @@ pub struct NetworkRuntime {
 }
 
 impl Default for NetworkRuntime {
+    /// Creates an unstarted network runtime (no task, no channels, not logged in).
     fn default() -> Self {
         Self {
             command_tx: None,
@@ -93,10 +95,14 @@ impl Default for NetworkRuntime {
 }
 
 impl NetworkRuntime {
+    /// Returns the client-side tick counter (used for `CL_CMD_CTICK`).
     pub fn client_ticker(&self) -> u32 {
         self.client_ticker
     }
 
+    /// Queues raw bytes to be written to the server by the network task.
+    ///
+    /// No-op if the network task hasn't started.
     pub fn send(&self, bytes: Vec<u8>) {
         let Some(tx) = &self.command_tx else {
             return;
@@ -105,6 +111,9 @@ impl NetworkRuntime {
     }
 
     #[allow(dead_code)]
+    /// Requests a graceful shutdown of the network task.
+    ///
+    /// No-op if the network task hasn't started.
     pub fn shutdown(&self) {
         let Some(tx) = &self.command_tx else {
             return;
@@ -116,6 +125,7 @@ impl NetworkRuntime {
 pub struct NetworkPlugin;
 
 impl Plugin for NetworkPlugin {
+    /// Registers networking resources, messages, and the login/network processing systems.
     fn build(&self, app: &mut App) {
         app.init_resource::<LoginStatus>()
             .init_resource::<NetworkRuntime>()
@@ -136,6 +146,9 @@ impl Plugin for NetworkPlugin {
     }
 }
 
+/// Sends the periodic client tick (`CL_CMD_CTICK`) while in gameplay.
+///
+/// This mirrors the original client behavior (one tick command every 16 processed server ticks).
 fn send_client_tick(mut net: ResMut<NetworkRuntime>) {
     if !net.logged_in {
         return;
@@ -169,6 +182,10 @@ fn send_client_tick(mut net: ResMut<NetworkRuntime>) {
     }
 }
 
+/// Drains events produced by the network task and applies them to game state.
+///
+/// This updates the on-screen login status, forwards server commands to `PlayerState`, and
+/// advances the game state once login completes.
 fn process_network_events(
     mut net: ResMut<NetworkRuntime>,
     mut status: ResMut<LoginStatus>,

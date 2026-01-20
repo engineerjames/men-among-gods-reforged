@@ -294,30 +294,43 @@ pub struct Look6Entry {
     pub price: u32,
 }
 
+/// Reads a little-endian `u16` from `bytes` at `offset`.
+///
+/// Returns `None` if the slice is too short.
 fn read_u16(bytes: &[u8], offset: usize) -> Option<u16> {
     Some(u16::from_le_bytes(
         bytes.get(offset..offset + 2)?.try_into().ok()?,
     ))
 }
 
+/// Reads a little-endian `i16` from `bytes` at `offset`.
+///
+/// Returns `None` if the slice is too short.
 fn read_i16(bytes: &[u8], offset: usize) -> Option<i16> {
     Some(i16::from_le_bytes(
         bytes.get(offset..offset + 2)?.try_into().ok()?,
     ))
 }
 
+/// Reads a little-endian `u32` from `bytes` at `offset`.
+///
+/// Returns `None` if the slice is too short.
 fn read_u32(bytes: &[u8], offset: usize) -> Option<u32> {
     Some(u32::from_le_bytes(
         bytes.get(offset..offset + 4)?.try_into().ok()?,
     ))
 }
 
+/// Reads a little-endian `i32` from `bytes` at `offset`.
+///
+/// Returns `None` if the slice is too short.
 fn read_i32(bytes: &[u8], offset: usize) -> Option<i32> {
     Some(i32::from_le_bytes(
         bytes.get(offset..offset + 4)?.try_into().ok()?,
     ))
 }
 
+/// Decodes a fixed-size, NUL-padded text field into a Rust `String`.
 fn parse_fixed_text(bytes: &[u8]) -> String {
     let mut end = bytes.len();
     while end > 0 && bytes[end - 1] == 0 {
@@ -326,6 +339,10 @@ fn parse_fixed_text(bytes: &[u8]) -> String {
     String::from_utf8_lossy(&bytes[..end]).to_string()
 }
 
+/// Attempts to decode a raw server command into its typed representation.
+///
+/// Returns `(header, structured_data)` on success, or `None` if the opcode is unknown or the
+/// payload is too short for the expected format.
 fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
     if bytes.is_empty() {
         return None;
@@ -878,6 +895,9 @@ pub struct ServerCommand {
 }
 
 impl ServerCommand {
+    /// Parses a complete server command packet.
+    ///
+    /// Most commands are 16 bytes, but tick payload parsing can yield variable-length commands.
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         if bytes.is_empty() {
             return None;

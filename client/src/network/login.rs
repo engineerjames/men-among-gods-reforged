@@ -15,6 +15,10 @@ use super::{
     NetworkEvent, NetworkRuntime,
 };
 
+/// Starts the async network task for a login attempt.
+///
+/// Reads the most recent `LoginRequested` message, allocates the command/event channels, and
+/// spawns a background task that performs the TCP connect + login handshake + main loop.
 pub(super) fn start_login(
     mut ev: MessageReader<LoginRequested>,
     mut net: ResMut<NetworkRuntime>,
@@ -49,6 +53,9 @@ pub(super) fn start_login(
     log::debug!("start_login - end");
 }
 
+/// Runs the connection and login sequence, then enters the main network loop.
+///
+/// All user-facing state updates are emitted back to the main thread via `NetworkEvent`s.
 fn run_network_task(
     req: LoginRequested,
     command_rx: mpsc::Receiver<NetworkCommand>,
@@ -88,6 +95,9 @@ fn run_network_task(
     }
 }
 
+/// Connects a TCP stream to the requested host/port.
+///
+/// Returns a user-displayable error string on failure.
 fn connect_stream(req: &LoginRequested) -> Result<TcpStream, String> {
     let addr = format!("{}:{}", req.host, req.port);
     TcpStream::connect(&addr).map_err(|e| {
@@ -96,6 +106,9 @@ fn connect_stream(req: &LoginRequested) -> Result<TcpStream, String> {
     })
 }
 
+/// Reads one 16-byte login-phase server command and decodes it.
+///
+/// The original protocol uses fixed 16-byte commands during login.
 fn get_server_response(stream: &mut TcpStream) -> Option<server_commands::ServerCommand> {
     // Read exactly 16 bytes (login-phase command size in original client).
     let mut buf = [0u8; 16];
@@ -103,6 +116,10 @@ fn get_server_response(stream: &mut TcpStream) -> Option<server_commands::Server
     server_commands::ServerCommand::from_bytes(&buf)
 }
 
+/// Performs the login handshake, mirroring the original client's `socket.c` flow.
+///
+/// This sends either a new-player login or an existing login depending on whether stored
+/// credentials are present (`user_id != 0`). On success, emits `NetworkEvent::LoggedIn`.
 fn login_handshake(
     stream: &mut TcpStream,
     req: &LoginRequested,
@@ -231,6 +248,10 @@ fn login_handshake(
     }
 }
 
+/// Main network loop: interleaves outgoing writes with incoming tick packet parsing.
+///
+/// The server sends framed tick packets with a 2-byte length/flags header. Payloads may be
+/// uncompressed (raw tick bytes) or a chunk of a streaming zlib stream.
 fn run_network_loop(
     mut stream: TcpStream,
     command_rx: mpsc::Receiver<NetworkCommand>,
