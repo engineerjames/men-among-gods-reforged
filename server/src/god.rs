@@ -1866,7 +1866,7 @@ impl God {
 
         // Print header line depending on player or NPC
         if player_flag {
-            let rank = helpers::points2rank(pts as u32) as usize;
+            let rank = core::ranks::points2rank(pts as u32) as usize;
             let rank_short = helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
             State::with(|state| {
                 state.do_character_log(
@@ -1895,7 +1895,7 @@ impl God {
                     String::new()
                 }
             });
-            let rank = helpers::points2rank(pts as u32) as usize;
+            let rank = core::ranks::points2rank(pts as u32) as usize;
             let rank_short = helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
             State::with(|state| {
                 state.do_character_log(
@@ -2284,7 +2284,7 @@ impl God {
                         continue;
                     }
 
-                    let rank = helpers::points2rank(c.points_tot as u32) as usize;
+                    let rank = core::ranks::points2rank(c.points_tot as u32) as usize;
                     let rank_short = helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
 
                     let name = c.get_name();
@@ -2483,7 +2483,7 @@ impl God {
                         showarea = false;
                     }
 
-                    let rank = helpers::points2rank(c.points_tot as u32) as usize;
+                    let rank = core::ranks::points2rank(c.points_tot as u32) as usize;
                     let rank_short = helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
                     let name = c.get_name();
                     let area_str = if showarea {

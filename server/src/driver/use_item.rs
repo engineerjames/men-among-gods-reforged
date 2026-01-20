@@ -2,7 +2,7 @@ use crate::area::is_in_pentagram_quest;
 use crate::core::types::skilltab;
 use crate::effect::EffectManager;
 use crate::god::God;
-use crate::helpers::{self, points2rank};
+use crate::helpers::{self};
 use crate::lab9::Labyrinth9;
 use crate::repository::Repository;
 use crate::state::State;
@@ -3560,11 +3560,6 @@ pub fn use_grolm(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn boost_char(cn: usize, divi: usize) -> i32 {
-    use crate::god::God;
-    use crate::helpers::points2rank;
-    use crate::repository::Repository;
-    use core::constants::MAXSKILL;
-
     // Boost attributes
     Repository::with_characters_mut(|characters| {
         for n in 0..5 {
@@ -3597,7 +3592,7 @@ pub fn boost_char(cn: usize, divi: usize) -> i32 {
         let (exp, rank) = Repository::with_characters(|characters| {
             let exp = characters[cn].points_tot as u32 / 10
                 + (rand::random::<u32>() % (characters[cn].points_tot as u32 / 20 + 1));
-            let rank = points2rank(exp);
+            let rank = core::ranks::points2rank(exp);
             (exp, rank)
         });
 
@@ -3876,7 +3871,7 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
 
     // Check rank restriction
     let (r1, r2) = Repository::with_characters(|characters| {
-        let r1 = points2rank(characters[cn].points_tot as u32) as i32;
+        let r1 = core::ranks::points2rank(characters[cn].points_tot as u32) as i32;
         let r2 = Repository::with_items(|items| {
             let mut r2 = items[item_idx].data[9];
             if r2 < 5 {
@@ -4332,7 +4327,7 @@ pub fn use_shrine(cn: usize, _item_idx: usize) -> i32 {
 
     // Calculate rank threshold
     let rank = Repository::with_characters(|characters| {
-        let r = points2rank(characters[cn].points_tot as u32) as i32 + 1;
+        let r = core::ranks::points2rank(characters[cn].points_tot as u32) as i32 + 1;
         r * r * r * 4
     });
 
@@ -6188,7 +6183,7 @@ pub fn use_driver(cn: usize, item_idx: usize, carried: bool) {
             // Check min_rank requirement
             let min_rank = Repository::with_items(|items| items[item_idx].min_rank);
             let curr_rank = Repository::with_characters(|characters| {
-                crate::helpers::points2rank(characters[cn].points_tot as u32)
+                core::ranks::points2rank(characters[cn].points_tot as u32)
             });
             if min_rank as i32 > curr_rank as i32 {
                 State::with(|state| {
@@ -6315,7 +6310,7 @@ pub fn use_soulstone(cn: usize, item_idx: usize) -> i32 {
             let mut rng = rand::thread_rng();
             let exp_gain = rng.gen_range(0..=items[in2].data[1]);
             items[item_idx].data[1] += exp_gain;
-            let rank = points2rank(items[item_idx].data[1]);
+            let rank = core::ranks::points2rank(items[item_idx].data[1]);
             items[item_idx].data[0] = rank;
 
             // Update description - read data value first to avoid packed field reference

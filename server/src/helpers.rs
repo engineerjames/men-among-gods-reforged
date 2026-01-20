@@ -372,34 +372,6 @@ pub fn show_time(cn: usize) {
     });
 }
 
-/// Full rank names matching `WHO_RANK_NAME` indices.
-pub const RANK_NAMES: [&str; core::constants::RANKS] = [
-    "Private",
-    "Private First Class",
-    "Lance Corporal",
-    "Corporal",
-    "Sergeant",
-    "Staff Sergeant",
-    "Master Sergeant",
-    "First Sergeant",
-    "Sergeant Major",
-    "Second Lieutenant",
-    "First Lieutenant",
-    "Captain",
-    "Major",
-    "Lieutenant Colonel",
-    "Colonel",
-    "Brigadier General",
-    "Major General",
-    "Lieutenant General",
-    "General",
-    "Field Marshal",
-    "Knight",
-    "Baron",
-    "Earl",
-    "Warlord",
-];
-
 // WTF is this some kind of weird hash function?
 /// Generate a pseudo-unique integer id for character `cn`.
 ///
@@ -423,42 +395,6 @@ pub fn char_id(cn: usize) -> i32 {
     })
 }
 
-/// Map total points to a rank index.
-///
-/// Implements the server's `points2rank` thresholds to convert experience
-/// points into a discrete rank used for comparison and display.
-///
-/// # Arguments
-/// * `value` - Total experience points
-pub fn points2rank(value: u32) -> u32 {
-    match value {
-        0..50 => 0,
-        50..850 => 1,
-        850..4900 => 2,
-        4900..17700 => 3,
-        17700..48950 => 4,
-        48950..113750 => 5,
-        113750..233800 => 6,
-        233800..438600 => 7,
-        438600..766650 => 8,
-        766650..1266650 => 9,
-        1266650..1998700 => 10,
-        1998700..3035500 => 11,
-        3035500..4463550 => 12,
-        4463550..6384350 => 13,
-        6384350..8915600 => 14,
-        8915600..12192400 => 15,
-        12192400..16368450 => 16,
-        16368450..21617250 => 17,
-        21617250..28133300 => 18,
-        28133300..36133300 => 19,
-        36133300..49014500 => 20,
-        49014500..63000600 => 21,
-        63000600..80977100 => 22,
-        _ => 23,
-    }
-}
-
 /// Calculate experience required to reach the next rank from `current_experience`.
 ///
 /// Uses `points2rank` and a binary search to find the minimal additional
@@ -468,7 +404,7 @@ pub fn points2rank(value: u32) -> u32 {
 /// # Arguments
 /// * `current_experience` - Current total experience points
 pub fn points_tolevel(current_experience: u32) -> u32 {
-    let curr_level = points2rank(current_experience);
+    let curr_level = core::ranks::points2rank(current_experience);
     if curr_level == 23 {
         return 0;
     }
@@ -484,7 +420,7 @@ pub fn points_tolevel(current_experience: u32) -> u32 {
         }
 
         p5 = (p0 + p9) / 2;
-        let r = points2rank(current_experience + p5);
+        let r = core::ranks::points2rank(current_experience + p5);
 
         if r < next_level {
             p0 = p5 + 1;
@@ -514,7 +450,7 @@ pub fn rankdiff(cn: i32, co: i32) -> i32 {
     let co_experience =
         Repository::with_characters(|characters| characters[co as usize].points_tot as u32);
 
-    points2rank(co_experience) as i32 - points2rank(cn_experience) as i32
+    core::ranks::points2rank(co_experience) as i32 - core::ranks::points2rank(cn_experience) as i32
 }
 
 /// Absolute rank difference between two characters.
@@ -567,7 +503,7 @@ pub fn scale_exps2(cn: i32, co_rank: i32, exp: i32) -> i32 {
     let player_experience =
         Repository::with_characters(|characters| characters[cn as usize].points_tot as u32);
 
-    let mut diff = co_rank - points2rank(player_experience) as i32;
+    let mut diff = co_rank - core::ranks::points2rank(player_experience) as i32;
 
     diff += 24;
     diff = diff.clamp(0, 48);
@@ -587,7 +523,7 @@ pub fn scale_exps2(cn: i32, co_rank: i32, exp: i32) -> i32 {
 pub fn scale_exps(cn: i32, co: i32, exp: i32) -> i32 {
     let co_experience =
         Repository::with_characters(|characters| characters[co as usize].points_tot as u32);
-    scale_exps2(cn, points2rank(co_experience) as i32, exp)
+    scale_exps2(cn, core::ranks::points2rank(co_experience) as i32, exp)
 }
 
 /// Port of `it_base_status` from `svr_tick.cpp`
@@ -944,28 +880,28 @@ mod tests {
     #[test]
     fn test_points2rank() {
         // Test all rank boundaries
-        assert_eq!(points2rank(0), 0);
-        assert_eq!(points2rank(49), 0);
-        assert_eq!(points2rank(50), 1);
-        assert_eq!(points2rank(849), 1);
-        assert_eq!(points2rank(850), 2);
-        assert_eq!(points2rank(4899), 2);
-        assert_eq!(points2rank(4900), 3);
-        assert_eq!(points2rank(17699), 3);
-        assert_eq!(points2rank(17700), 4);
+        assert_eq!(core::ranks::points2rank(0), 0);
+        assert_eq!(core::ranks::points2rank(49), 0);
+        assert_eq!(core::ranks::points2rank(50), 1);
+        assert_eq!(core::ranks::points2rank(849), 1);
+        assert_eq!(core::ranks::points2rank(850), 2);
+        assert_eq!(core::ranks::points2rank(4899), 2);
+        assert_eq!(core::ranks::points2rank(4900), 3);
+        assert_eq!(core::ranks::points2rank(17699), 3);
+        assert_eq!(core::ranks::points2rank(17700), 4);
 
         // Test higher ranks
-        assert_eq!(points2rank(48950), 5);
-        assert_eq!(points2rank(113750), 6);
-        assert_eq!(points2rank(233800), 7);
-        assert_eq!(points2rank(438600), 8);
-        assert_eq!(points2rank(766650), 9);
-        assert_eq!(points2rank(1266650), 10);
+        assert_eq!(core::ranks::points2rank(48950), 5);
+        assert_eq!(core::ranks::points2rank(113750), 6);
+        assert_eq!(core::ranks::points2rank(233800), 7);
+        assert_eq!(core::ranks::points2rank(438600), 8);
+        assert_eq!(core::ranks::points2rank(766650), 9);
+        assert_eq!(core::ranks::points2rank(1266650), 10);
 
         // Test maximum rank
-        assert_eq!(points2rank(80977099), 22);
-        assert_eq!(points2rank(80977100), 23);
-        assert_eq!(points2rank(u32::MAX), 23);
+        assert_eq!(core::ranks::points2rank(80977099), 22);
+        assert_eq!(core::ranks::points2rank(80977100), 23);
+        assert_eq!(core::ranks::points2rank(u32::MAX), 23);
     }
 
     #[test]
@@ -982,16 +918,16 @@ mod tests {
         assert_eq!(points_tolevel(25), 25); // Need 25 more to get from 25 to 50 (rank 1)
 
         // Test that the function works correctly for known rank boundaries
-        assert_eq!(points2rank(0), 0);
-        assert_eq!(points2rank(49), 0);
-        assert_eq!(points2rank(50), 1);
+        assert_eq!(core::ranks::points2rank(0), 0);
+        assert_eq!(core::ranks::points2rank(49), 0);
+        assert_eq!(core::ranks::points2rank(50), 1);
 
         // Test mid-range values where we expect the function to work
         let test_points = 100u32; // This is in rank 1
         let needed = points_tolevel(test_points);
         if needed > 0 {
-            let current_rank = points2rank(test_points);
-            let new_rank = points2rank(test_points + needed);
+            let current_rank = core::ranks::points2rank(test_points);
+            let new_rank = core::ranks::points2rank(test_points + needed);
             assert_eq!(
                 new_rank,
                 current_rank + 1,
@@ -1005,13 +941,13 @@ mod tests {
 
         // Test that points_tolevel is consistent for various middle-range values
         for test_points in [100u32, 1000, 5000, 20000] {
-            let current_rank = points2rank(test_points);
+            let current_rank = core::ranks::points2rank(test_points);
             let needed = points_tolevel(test_points);
 
             if current_rank < 23 && needed > 0 {
                 // Not at max rank and function returned something
                 let new_points = test_points + needed;
-                let new_rank = points2rank(new_points);
+                let new_rank = core::ranks::points2rank(new_points);
                 assert_eq!(
                     new_rank,
                     current_rank + 1,

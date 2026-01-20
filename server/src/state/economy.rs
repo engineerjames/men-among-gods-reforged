@@ -381,11 +381,11 @@ impl State {
     /// * `cn` - Character id to view requirements for
     pub(crate) fn do_view_exp_to_rank(&self, cn: usize) {
         let current_rank =
-            crate::helpers::points2rank(Repository::with_characters(|ch| ch[cn].points_tot as u32))
+            core::ranks::points2rank(Repository::with_characters(|ch| ch[cn].points_tot as u32))
                 as usize;
         let exp_to_next = self.rank2points(current_rank as i32);
         let exp_needed = exp_to_next - Repository::with_characters(|ch| ch[cn].points_tot);
-        let next_name = crate::helpers::RANK_NAMES
+        let next_name = core::ranks::RANK_NAMES
             .get(current_rank + 1)
             .unwrap_or(&"Unknown");
         self.do_character_log(

@@ -1332,7 +1332,7 @@ impl State {
                 return;
             }
 
-            let rank = crate::helpers::points2rank(characters[cn].points_tot as u32) as usize;
+            let rank = core::ranks::points2rank(characters[cn].points_tot as u32) as usize;
 
             // Check if current rank is less than new rank
             if (characters[cn].data[45] as usize) < rank {
@@ -1412,8 +1412,8 @@ impl State {
                 // Have the herald yell it out
                 if herald_cn != 0 {
                     let char_name = characters[cn].get_name().to_string();
-                    let rank_name = if rank < helpers::RANK_NAMES.len() {
-                        helpers::RANK_NAMES[rank]
+                    let rank_name = if rank < core::ranks::RANK_NAMES.len() {
+                        core::ranks::RANK_NAMES[rank]
                     } else {
                         "Unknown Rank"
                     };
@@ -1814,7 +1814,7 @@ impl State {
                 && noexp == 0
             {
                 let tmp = self.do_char_score(co);
-                let rank = helpers::points2rank(Repository::with_characters(|ch| {
+                let rank = core::ranks::points2rank(Repository::with_characters(|ch| {
                     ch[co].points_tot as u32
                 })) as i32;
                 // Some bonuses for spells are handled in do_give_exp/do_char_killed

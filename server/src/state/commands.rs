@@ -171,7 +171,7 @@ impl State {
     /// Create a soulstone item.
     pub(crate) fn do_make_soulstone(&self, cn: usize, cexp: i32) {
         if let Some(in_idx) = God::create_item(1146) {
-            let rank = crate::helpers::points2rank(cexp as u32);
+            let rank = core::ranks::points2rank(cexp as u32);
 
             Repository::with_items_mut(|items| {
                 let it = &mut items[in_idx];
