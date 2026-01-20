@@ -16,6 +16,7 @@ pub struct LoadingLabel;
 #[derive(Component)]
 pub struct LoadingBarFill;
 
+/// Spawns the loading screen UI and resets asset cache initialization state.
 pub fn setup_loading_ui(
     mut commands: Commands,
     mut gfx: ResMut<GraphicsCache>,
@@ -68,6 +69,10 @@ pub fn setup_loading_ui(
     log::debug!("setup_loading_ui - end");
 }
 
+/// Advances graphics/sound cache initialization while keeping the UI responsive.
+///
+/// This system processes initialization work for a small time budget per frame and updates the
+/// progress bar. Once both caches are initialized, it transitions to `GameState::LoggingIn`.
 pub fn run_loading(
     mut gfx: ResMut<GraphicsCache>,
     mut sfx: ResMut<SoundCache>,
@@ -153,6 +158,7 @@ pub fn run_loading(
     next_state.set(GameState::LoggingIn);
 }
 
+/// Despawns the loading UI tree.
 pub fn teardown_loading_ui(
     mut commands: Commands,
     roots: Query<Entity, With<LoadingUi>>,

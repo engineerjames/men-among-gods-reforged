@@ -15,6 +15,10 @@ use crate::network::{LoginRequested, LoginStatus};
 use crate::player_state::PlayerState;
 use crate::types::mag_files;
 
+/// Writes a Rust string into a fixed-size, NUL-terminated ASCII buffer.
+///
+/// This mirrors the original client's C string behavior (NUL-terminated, zero padded, and
+/// non-ASCII/control characters replaced with spaces).
 fn write_ascii_into_fixed(dst: &mut [u8], s: &str) {
     // Match the original client's fixed-size C strings:
     // - NUL-terminated
@@ -79,6 +83,7 @@ enum ConfirmAction {
 }
 
 impl Default for LoginUIState {
+    /// Creates a default login UI model and initializes file dialogs.
     fn default() -> Self {
         Self {
             username: String::new(),
@@ -114,6 +119,9 @@ impl Default for LoginUIState {
     }
 }
 
+/// Sets up the login screen state.
+///
+/// Loads persisted `mag.dat` (if present) to pre-fill the UI and update `PlayerState`.
 pub fn setup_logging_in(
     mut commands: Commands,
     _asset_server: Res<AssetServer>,
@@ -158,11 +166,15 @@ pub fn setup_logging_in(
     log::debug!("setup_logging_in - end");
 }
 
+/// Tears down the login screen state.
 pub fn teardown_logging_in() {
     log::debug!("teardown_logging_in - start");
     log::debug!("teardown_logging_in - end");
 }
 
+/// Runs the login screen UI (egui) and emits `LoginRequested` when the user logs in.
+///
+/// Also handles persistence: saving `mag.dat`, and saving/loading character `.mag` files.
 pub fn run_logging_in(
     mut contexts: EguiContexts,
     mut login_info: ResMut<LoginUIState>,
@@ -454,6 +466,7 @@ pub fn run_logging_in(
     debug_once!("run_logging_in completed");
 }
 
+/// Ensures a selected path ends with the `.mag` extension.
 fn ensure_mag_extension(mut path: PathBuf) -> PathBuf {
     match path.extension().and_then(|e| e.to_str()) {
         Some("mag") => path,
@@ -464,6 +477,7 @@ fn ensure_mag_extension(mut path: PathBuf) -> PathBuf {
     }
 }
 
+/// Decodes the legacy race integer into `(is_male, class)`.
 fn class_from_race(race: i32) -> (bool, Class) {
     match race {
         3 => (true, Class::Templar),
@@ -488,6 +502,7 @@ fn class_from_race(race: i32) -> (bool, Class) {
     }
 }
 
+/// Encodes `(is_male, class)` into the legacy race integer.
 fn get_race_integer(is_male: bool, class: Class) -> i32 {
     if is_male {
         match class {

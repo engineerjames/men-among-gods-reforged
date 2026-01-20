@@ -17,6 +17,9 @@ use std::time::{Duration, Instant};
 use tracing::info;
 
 #[inline]
+/// Reads an environment variable as a boolean feature flag.
+///
+/// Accepts common false-y values like "0", "false", and "no" (case-insensitive).
 fn env_flag(name: &str) -> bool {
     std::env::var(name)
         .ok()
@@ -28,6 +31,9 @@ fn env_flag(name: &str) -> bool {
 }
 
 #[inline]
+/// Returns whether gameplay rendering profiling is enabled.
+///
+/// This uses a `OnceLock` to read and cache the `MAG_PROFILE_RENDERING` env var once.
 fn profile_rendering_enabled() -> bool {
     static ENABLED: OnceLock<bool> = OnceLock::new();
     *ENABLED.get_or_init(|| env_flag("MAG_PROFILE_RENDERING"))
@@ -155,6 +161,10 @@ const BAR_W_MAX: u32 = 124;
 const HIGH_VAL: i32 = i32::MAX;
 
 #[inline]
+/// Computes the stat-point cost to raise an attribute to `v`.
+///
+/// Mirrors the original client's cubic cost formula and returns `HIGH_VAL` if the requested
+/// value is at/above the maximum.
 fn attrib_needed(pl: &mag_core::types::ClientPlayer, n: usize, v: i32) -> i32 {
     let max_v = pl.attrib[n][2] as i32;
     if v >= max_v {
@@ -166,6 +176,10 @@ fn attrib_needed(pl: &mag_core::types::ClientPlayer, n: usize, v: i32) -> i32 {
 }
 
 #[inline]
+/// Computes the stat-point cost to raise a skill to `v`.
+///
+/// Mirrors the original client's cost formula and returns `HIGH_VAL` if the requested value is
+/// at/above the maximum.
 fn skill_needed(pl: &mag_core::types::ClientPlayer, n: usize, v: i32) -> i32 {
     let max_v = pl.skill[n][2] as i32;
     if v >= max_v {
@@ -178,6 +192,9 @@ fn skill_needed(pl: &mag_core::types::ClientPlayer, n: usize, v: i32) -> i32 {
 }
 
 #[inline]
+/// Computes the stat-point cost to raise max hitpoints to `v`.
+///
+/// Returns `HIGH_VAL` if `v` is at/above the maximum.
 fn hp_needed(pl: &mag_core::types::ClientPlayer, v: i32) -> i32 {
     if v >= pl.hp[2] as i32 {
         return HIGH_VAL;
@@ -186,6 +203,9 @@ fn hp_needed(pl: &mag_core::types::ClientPlayer, v: i32) -> i32 {
 }
 
 #[inline]
+/// Computes the stat-point cost to raise max endurance to `v`.
+///
+/// Returns `HIGH_VAL` if `v` is at/above the maximum.
 fn end_needed(pl: &mag_core::types::ClientPlayer, v: i32) -> i32 {
     if v >= pl.end[2] as i32 {
         return HIGH_VAL;
@@ -194,6 +214,9 @@ fn end_needed(pl: &mag_core::types::ClientPlayer, v: i32) -> i32 {
 }
 
 #[inline]
+/// Computes the stat-point cost to raise max mana to `v`.
+///
+/// Returns `HIGH_VAL` if `v` is at/above the maximum.
 fn mana_needed(pl: &mag_core::types::ClientPlayer, v: i32) -> i32 {
     if v >= pl.mana[2] as i32 {
         return HIGH_VAL;
@@ -201,6 +224,9 @@ fn mana_needed(pl: &mag_core::types::ClientPlayer, v: i32) -> i32 {
     (v as i64 * pl.mana[3] as i64).clamp(0, i32::MAX as i64) as i32
 }
 
+/// Produces a stable skill ordering for the gameplay UI.
+///
+/// Sorts unused skills last, learned skills before unlearned, then by the legacy sort key/name.
 fn build_sorted_skills(pl: &mag_core::types::ClientPlayer) -> Vec<usize> {
     let mut sorted_skills: Vec<usize> = (0..MAX_SKILLS).collect();
     sorted_skills.sort_by(|&a, &b| {
@@ -236,6 +262,7 @@ fn build_sorted_skills(pl: &mag_core::types::ClientPlayer) -> Vec<usize> {
 }
 
 #[inline]
+/// Returns the HUD bar colors (background + fill colors).
 fn ui_bar_colors() -> (Color, Color, Color) {
     // The original dd_showbar does a darkening blend against the framebuffer.
     // For our sprite-rect bars we want the classic readable look: bright green/red
@@ -545,6 +572,9 @@ pub(crate) struct GameplayXButtonsState {
 }
 
 #[inline]
+/// Returns the xbuttons hotbar slot index at the given gameplay-space cursor position.
+///
+/// The hotbar is a 3x4 grid (12 slots) laid out to match the legacy UI.
 fn xbuttons_slot_at(x: f32, y: f32) -> Option<usize> {
     let y_rows = [XBUTTONS_Y_ROW1, XBUTTONS_Y_ROW2, XBUTTONS_Y_ROW3];
     for (row, &y0) in y_rows.iter().enumerate() {
@@ -561,6 +591,7 @@ fn xbuttons_slot_at(x: f32, y: f32) -> Option<usize> {
 }
 
 #[inline]
+/// Truncates a skill label for display in the xbuttons hotbar.
 fn xbuttons_truncate_label(name: &str) -> String {
     name.chars().take(7).collect()
 }
@@ -581,6 +612,7 @@ pub(crate) enum GameplayCursorType {
 }
 
 impl Default for GameplayCursorType {
+    /// Default gameplay cursor type.
     fn default() -> Self {
         Self::None
     }
@@ -610,6 +642,7 @@ pub(crate) struct GameplayUiScrollKnob {
 }
 
 impl Default for GameplayStatboxState {
+    /// Creates a cleared statbox state (no pending raises).
     fn default() -> Self {
         Self {
             stat_raised: [0; 108],
@@ -620,10 +653,12 @@ impl Default for GameplayStatboxState {
 }
 
 impl GameplayStatboxState {
+    /// Returns remaining spendable stat points after accounting for pending spends.
     fn available_points(&self, pl: &mag_core::types::ClientPlayer) -> i32 {
         (pl.points - self.stat_points_used).max(0)
     }
 
+    /// Clears all pending stat raises/spends.
     fn clear(&mut self) {
         self.stat_raised.fill(0);
         self.stat_points_used = 0;
@@ -647,6 +682,7 @@ pub(crate) struct GameplayDebugSettings {
 }
 
 impl Default for GameplayDebugSettings {
+    /// Reads debug settings from environment variables.
     fn default() -> Self {
         // Set `MAG_DEBUG_TILE_OVERLAYS=1` to enable.
         let enabled = env_flag("MAG_DEBUG_TILE_OVERLAYS");
@@ -658,6 +694,9 @@ impl Default for GameplayDebugSettings {
 }
 
 impl MiniMapState {
+    /// Ensures the minimap backing storage and image handle exist.
+    ///
+    /// Returns the image handle used for the minimap UI sprite.
     fn ensure_initialized(&mut self, image_assets: &mut Assets<Image>) -> Handle<Image> {
         if self.xmap.len() != 1024 * 1024 {
             self.xmap = vec![0u16; 1024 * 1024];
@@ -684,6 +723,7 @@ impl MiniMapState {
         handle
     }
 
+    /// Computes (and memoizes) the average RGB565 color for a sprite.
     fn avg_color_rgb565(
         &mut self,
         sprite_id: usize,
@@ -709,6 +749,7 @@ impl MiniMapState {
     }
 }
 
+/// Converts a packed RGB565 color to an sRGBA8 pixel (alpha = 255).
 fn rgb565_to_rgba8(c: u16) -> [u8; 4] {
     let r5 = ((c >> 11) & 0x1f) as u32;
     let g6 = ((c >> 5) & 0x3f) as u32;
@@ -720,6 +761,7 @@ fn rgb565_to_rgba8(c: u16) -> [u8; 4] {
     [r, g, b, 255]
 }
 
+/// Converts an sRGB8 triplet to packed RGB565.
 fn rgba8_to_rgb565(r: u8, g: u8, b: u8) -> u16 {
     let r5 = ((r as u32 * 31 + 127) / 255) as u16;
     let g6 = ((g as u32 * 63 + 127) / 255) as u16;
@@ -727,6 +769,9 @@ fn rgba8_to_rgb565(r: u8, g: u8, b: u8) -> u16 {
     (r5 << 11) | (g6 << 5) | b5
 }
 
+/// Computes the average RGB565 color of an image.
+///
+/// Used to approximate minimap tile colors.
 fn avg_color_rgb565_from_image(image: &Image) -> u16 {
     let format = image.texture_descriptor.format;
     let Some(data) = image.data.as_deref() else {
@@ -779,6 +824,7 @@ mod color_tests {
     use super::{rgb565_to_rgba8, rgba8_to_rgb565};
 
     #[test]
+    /// Sanity-check: primary colors map to expected RGB565 values.
     fn rgb565_known_primaries_match_expected() {
         assert_eq!(rgba8_to_rgb565(255, 0, 0), 0xF800);
         assert_eq!(rgba8_to_rgb565(0, 255, 0), 0x07E0);
@@ -788,6 +834,7 @@ mod color_tests {
     }
 
     #[test]
+    /// Ensures RGB565 round-trips through the RGBA8 conversion helpers.
     fn rgb565_roundtrips_through_rgba8() {
         let colors = [
             (12u8, 34u8, 56u8),
@@ -806,6 +853,7 @@ mod color_tests {
     }
 }
 
+/// Sends a chat input line to the server using the legacy 8x15-byte packet split.
 fn send_chat_input(net: &NetworkRuntime, text: &str) {
     // Original client sends 8 packets of 15 bytes each (total 120).
     // We zero-pad and ensure a NUL terminator is present after the provided text.
@@ -820,6 +868,7 @@ fn send_chat_input(net: &NetworkRuntime, text: &str) {
     }
 }
 
+/// Requests an exit from the game, mirroring the legacy client's double-confirm behavior.
 fn cmd_exit(
     exit_state: &mut GameplayExitState,
     net: &NetworkRuntime,
@@ -853,6 +902,7 @@ fn cmd_exit(
     );
 }
 
+/// Spawns the gameplay log text lines (bitmap text entities).
 fn spawn_ui_log_text(commands: &mut Commands) {
     for line in 0..LOG_LINES {
         let sx = LOG_X;
@@ -874,6 +924,7 @@ fn spawn_ui_log_text(commands: &mut Commands) {
     }
 }
 
+/// Spawns the gameplay input text line (bitmap text entity).
 fn spawn_ui_input_text(commands: &mut Commands) {
     commands.spawn((
         GameplayRenderEntity,
@@ -891,6 +942,7 @@ fn spawn_ui_input_text(commands: &mut Commands) {
     ));
 }
 
+/// Spawns HUD labels used in gameplay (HP/End/Mana, stats, skills, etc.).
 fn spawn_ui_hud_labels(commands: &mut Commands) {
     // Hitpoints label
     commands.spawn((
@@ -1259,6 +1311,9 @@ fn spawn_ui_hud_labels(commands: &mut Commands) {
     }
 }
 
+/// Updates shop sell/buy price labels based on the currently hovered shop slot.
+///
+/// When the shop UI is closed, hides the price labels.
 pub(crate) fn run_gameplay_update_shop_price_labels(
     player_state: Res<PlayerState>,
     shop_hover: Res<GameplayShopHoverState>,
@@ -1340,6 +1395,7 @@ pub(crate) fn run_gameplay_update_shop_price_labels(
     }
 }
 
+/// Spawns the orange outline boxes used for gameplay toggles and mode selection.
 fn spawn_ui_toggle_boxes(commands: &mut Commands, image_assets: &mut Assets<Image>) {
     // A single white pixel stretched + tinted to match dd_showbox's outline.
     let pixel = Image::new(
@@ -1445,6 +1501,7 @@ fn spawn_ui_toggle_boxes(commands: &mut Commands, image_assets: &mut Assets<Imag
     spawn_mode_box(commands, 0, MODE_SLOW_X, MODE_BOX_Y);
 }
 
+/// Spawns the HUD stat bars (background + fill rectangles).
 fn spawn_ui_stat_bars(commands: &mut Commands, image_assets: &mut Assets<Image>) {
     // A single white pixel stretched + tinted for dd_showbar-like rectangles.
     let pixel = Image::new(
@@ -1517,6 +1574,7 @@ fn spawn_ui_stat_bars(commands: &mut Commands, image_assets: &mut Assets<Image>)
     }
 }
 
+/// Spawns the skill/inventory scroll knobs used by the gameplay UI.
 fn spawn_ui_scroll_knobs(commands: &mut Commands, image_assets: &mut Assets<Image>) {
     // A single white pixel stretched + tinted for dd_showbar-like rectangles.
     let pixel = Image::new(
@@ -1666,6 +1724,7 @@ pub(crate) fn run_gameplay_bitmap_text_renderer(
     }
 }
 
+/// Spawns the minimap UI sprite using the provided image handle.
 fn spawn_ui_minimap(commands: &mut Commands, image: Handle<Image>) {
     commands.spawn((
         GameplayRenderEntity,
@@ -1760,6 +1819,9 @@ pub(crate) struct GameplayPerfAccum {
 }
 
 impl GameplayPerfAccum {
+    /// Emits periodic gameplay performance logs and resets the counters.
+    ///
+    /// Only active in debug builds when `MAG_PROFILE_RENDERING` is enabled.
     fn maybe_report_and_reset(&mut self) {
         if !cfg!(debug_assertions) || !profile_rendering_enabled() {
             return;
@@ -1815,6 +1877,9 @@ pub(crate) struct BitmapTextPerfAccum {
 }
 
 impl BitmapTextPerfAccum {
+    /// Emits periodic bitmap-text performance logs and resets the counters.
+    ///
+    /// Only active in debug builds when `MAG_PROFILE_RENDERING` is enabled.
     fn maybe_report_and_reset(&mut self) {
         if !cfg!(debug_assertions) || !profile_rendering_enabled() {
             return;
@@ -1859,12 +1924,16 @@ pub(crate) struct SendOptClock {
 }
 
 #[inline]
+/// Converts gameplay "screen" coordinates (top-left origin) to Bevy world coordinates.
 fn screen_to_world(sx: f32, sy: f32, z: f32) -> Vec3 {
     // Treat (0,0) as top-left in "screen" pixels like the original client.
     // Convert into Bevy world coordinates (origin centered, +Y up).
     Vec3::new(sx - TARGET_WIDTH * 0.5, TARGET_HEIGHT * 0.5 - sy, z)
 }
 
+/// Spawns a tile sprite entity used by the world renderer.
+///
+/// Returns the entity ID, or `None` if the placeholder sprite couldn't be resolved.
 fn spawn_tile_entity(
     commands: &mut Commands,
     gfx: &GraphicsCache,
@@ -1902,6 +1971,9 @@ fn spawn_tile_entity(
     Some(id)
 }
 
+/// Spawns a debug overlay sprite entity for a map tile (flags visualization).
+///
+/// Returns the entity ID, or `None` if the placeholder sprite couldn't be resolved.
 fn spawn_tile_overlay_entity(
     commands: &mut Commands,
     gfx: &GraphicsCache,
@@ -1933,6 +2005,9 @@ fn spawn_tile_overlay_entity(
     Some(id)
 }
 
+/// Spawns a shadow sprite entity for a tile.
+///
+/// Returns the entity ID, or `None` if the placeholder sprite couldn't be resolved.
 fn spawn_shadow_entity(
     commands: &mut Commands,
     gfx: &GraphicsCache,
@@ -1965,6 +2040,7 @@ fn spawn_shadow_entity(
     Some(id)
 }
 
+/// Spawns the main UI overlay sprite (the large fixed UI background).
 fn spawn_ui_overlay(commands: &mut Commands, gfx: &GraphicsCache) {
     // Matches `copyspritex(1,0,0,0)` in engine.c
     let Some(sprite) = gfx.get_sprite(1) else {
@@ -1984,6 +2060,7 @@ fn spawn_ui_overlay(commands: &mut Commands, gfx: &GraphicsCache) {
     ));
 }
 
+/// Spawns the portrait sprite entity (updated dynamically from player/rank state).
 fn spawn_ui_portrait(commands: &mut Commands, gfx: &GraphicsCache) {
     let Some(empty) = gfx.get_sprite(SPR_EMPTY as usize) else {
         return;
@@ -2007,6 +2084,7 @@ fn spawn_ui_portrait(commands: &mut Commands, gfx: &GraphicsCache) {
     ));
 }
 
+/// Spawns the rank insignia sprite and portrait name/rank labels.
 fn spawn_ui_rank(commands: &mut Commands, gfx: &GraphicsCache) {
     let Some(empty) = gfx.get_sprite(SPR_EMPTY as usize) else {
         return;
@@ -2069,6 +2147,7 @@ fn spawn_ui_rank(commands: &mut Commands, gfx: &GraphicsCache) {
     ));
 }
 
+/// Spawns the visible backpack slot sprite entities.
 fn spawn_ui_backpack(commands: &mut Commands, gfx: &GraphicsCache) {
     // Matches `eng_display_win`: copyspritex(pl.item[n+inv_pos],220+(n%2)*35,2+(n/2)*35,...)
     // We spawn one stable entity per visible backpack slot and update its sprite each frame.
@@ -2098,6 +2177,7 @@ fn spawn_ui_backpack(commands: &mut Commands, gfx: &GraphicsCache) {
     }
 }
 
+/// Spawns the equipment (worn item) slot sprite entities.
 fn spawn_ui_equipment(commands: &mut Commands, gfx: &GraphicsCache) {
     // Matches `eng_display_win`: copyspritex(pl.worn[wntab[n]],303+(n%2)*35,2+(n/2)*35,...)
     // We spawn one stable entity per slot and update its sprite each frame.
@@ -2132,6 +2212,7 @@ fn spawn_ui_equipment(commands: &mut Commands, gfx: &GraphicsCache) {
     }
 }
 
+/// Spawns overlay entities indicating equipment slots blocked by a carried item.
 fn spawn_ui_equipment_blocks(commands: &mut Commands, gfx: &GraphicsCache) {
     // Matches engine.c: if (inv_block[wntab[n]]) copyspritex(4,303+(n%2)*35,2+(n/2)*35,0);
     // Use sprite 4 (block overlay) when available.
@@ -2160,6 +2241,7 @@ fn spawn_ui_equipment_blocks(commands: &mut Commands, gfx: &GraphicsCache) {
     }
 }
 
+/// Spawns the carried-item sprite entity (drawn under the cursor).
 fn spawn_ui_carried_item(commands: &mut Commands, gfx: &GraphicsCache) {
     let Some(empty) = gfx.get_sprite(SPR_EMPTY as usize) else {
         return;
@@ -2182,6 +2264,7 @@ fn spawn_ui_carried_item(commands: &mut Commands, gfx: &GraphicsCache) {
     ));
 }
 
+/// Spawns the spell icon slot sprite entities.
 fn spawn_ui_spells(commands: &mut Commands, gfx: &GraphicsCache) {
     // Matches `eng_display_win`: copyspritex(pl.spell[n],374+(n%5)*24,4+(n/5)*24,...)
     let Some(empty) = gfx.get_sprite(SPR_EMPTY as usize) else {
@@ -2210,6 +2293,7 @@ fn spawn_ui_spells(commands: &mut Commands, gfx: &GraphicsCache) {
     }
 }
 
+/// Spawns the shop window panel and item slot sprite entities.
 fn spawn_ui_shop_window(commands: &mut Commands, gfx: &GraphicsCache) {
     // Matches `eng_display_win` shop layout:
     // - copyspritex(92,220,260,0);
@@ -2261,6 +2345,9 @@ fn spawn_ui_shop_window(commands: &mut Commands, gfx: &GraphicsCache) {
     }
 }
 
+/// Converts total points into a rank index using legacy thresholds.
+///
+/// Ported from the original C client (`engine.c`).
 fn points2rank(v: i32) -> i32 {
     // Ported from client/src/orig/engine.c
     if v < 50 {
@@ -2362,11 +2449,17 @@ const RANK_NAMES: [&str; 24] = [
     "Warlord",
 ];
 
+/// Returns the human-readable rank name for the given total points.
 fn rank_name(points: i32) -> &'static str {
+    // NOTE: `points2rank` already clamps via the returned range, but we still clamp
+    // here defensively to ensure indexing safety if thresholds change.
     let idx = points2rank(points).clamp(0, 23) as usize;
     RANK_NAMES[idx]
 }
 
+/// Returns the left X such that `text` is centered within `[area_x, area_x + area_w]`.
+///
+/// Uses the classic UI assumption of fixed-width bitmap glyphs.
 fn centered_text_x(area_x: f32, area_w: f32, text: &str) -> f32 {
     // Match engine.c centering logic: 6px per character.
     let visible_chars = text
@@ -2378,12 +2471,19 @@ fn centered_text_x(area_x: f32, area_w: f32, text: &str) -> f32 {
     area_x + (area_w - text_w) * 0.5
 }
 
+/// Returns the sprite id to use for the rank insignia based on total points.
+///
+/// This matches the original logic of `10 + min(20, points2rank(points))`.
 fn rank_insignia_sprite(points_tot: i32) -> i32 {
     // engine.c: copyspritex(10+min(20,points2rank(pl.points_tot)),463,54-16,0);
     let rank = points2rank(points_tot).clamp(0, 20);
     10 + rank
 }
 
+/// Sends the legacy split `CL_CMD_SETUSER` packets that persist option state.
+///
+/// The original client sends user profile chunks (name/desc) in 18 steps while
+/// `pdata.changed` is set; this helper reproduces that throttled behavior.
 fn send_opt(net: &NetworkRuntime, player_state: &mut PlayerState, clock: &mut SendOptClock) {
     // Ported from `client/src/orig/engine.c::send_opt()`.
     //
@@ -2454,6 +2554,7 @@ fn send_opt(net: &NetworkRuntime, player_state: &mut PlayerState, clock: &mut Se
     }
 }
 
+/// Updates backpack UI sprites/visibility based on current inventory scroll/hover state.
 fn draw_inventory_ui(
     gfx: &GraphicsCache,
     player_state: &PlayerState,
@@ -2501,6 +2602,7 @@ fn draw_inventory_ui(
     }
 }
 
+/// Updates worn equipment UI sprites/visibility based on current hover state.
 fn draw_equipment_ui(
     gfx: &GraphicsCache,
     player_state: &PlayerState,
@@ -2545,6 +2647,7 @@ fn draw_equipment_ui(
     }
 }
 
+/// Updates the active-spells UI sprites/visibility and applies dimming by duration.
 fn draw_active_spells_ui(
     gfx: &GraphicsCache,
     player_state: &PlayerState,
@@ -2585,6 +2688,7 @@ fn draw_active_spells_ui(
     }
 }
 
+/// Updates shop window UI panel/items sprites/visibility and hover highlighting.
 fn draw_shop_window_ui(
     gfx: &GraphicsCache,
     player_state: &PlayerState,
@@ -2654,6 +2758,7 @@ fn draw_shop_window_ui(
     }
 }
 
+/// Handles mouse interactions with the shop UI (hover, close, buy/sell actions).
 pub(crate) fn run_gameplay_shop_input(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
@@ -2717,6 +2822,7 @@ pub(crate) fn run_gameplay_shop_input(
 }
 
 #[inline]
+/// Returns whether a sprite ID should receive a shadow overlay.
 fn should_draw_shadow(sprite_id: i32) -> bool {
     // dd.c::dd_shadow: only certain sprite id ranges get shadows.
     (2000..16_336).contains(&sprite_id) || sprite_id > 17_360
@@ -2727,6 +2833,9 @@ fn should_draw_shadow(sprite_id: i32) -> bool {
 // At default gamma=5000, LEFFECT=120.
 const DD_LEFFECT: f32 = 120.0;
 
+/// Approximates legacy dd.c lighting/effect flags as a per-sprite tint color.
+///
+/// This implements darkness, highlight, and other effect bits from the original renderer.
 pub(crate) fn dd_effect_tint(effect: u32) -> Color {
     // We approximate the dd.c per-pixel effect with a per-sprite tint.
     // This matches the most important behavior: darkness from `effect` and
@@ -2814,6 +2923,9 @@ pub(crate) fn dd_effect_tint(effect: u32) -> Color {
     Color::srgba(clamp(r), clamp(g), clamp(b), 1.0)
 }
 
+/// Computes the on-screen position for `copysprite`-style isometric sprite drawing.
+///
+/// Returns `(rx, ry)` in screen pixel coordinates, matching the legacy math from `dd.c`.
 fn copysprite_screen_pos(
     sprite_id: usize,
     gfx: &GraphicsCache,
@@ -2837,12 +2949,18 @@ fn copysprite_screen_pos(
     Some((rx, ry))
 }
 
+/// Returns whether the local tile should be hidden by auto-hide logic.
+///
+/// Ported from `engine.c::autohide` and based on the camera-centric tile coords.
 fn autohide(x: usize, y: usize) -> bool {
     // Ported from engine.c::autohide.
     // NOTE: engine.c uses TILEX/2 in both comparisons.
     !(x >= (TILEX / 2) || (y <= (TILEX / 2)))
 }
 
+/// Returns whether a tile coordinate is directly in front of the player.
+///
+/// Ported from `engine.c::facing`.
 fn facing(x: usize, y: usize, dir: i32) -> bool {
     // Ported from engine.c::facing.
     let cx = TILEX / 2;
@@ -2862,11 +2980,15 @@ const STATTAB: [i32; 11] = [0, 1, 1, 6, 6, 2, 3, 4, 5, 7, 4];
 const ATTRIBUTE_NAMES: [&str; 5] = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
 
 #[inline]
+/// Returns whether this `ctick` advances animation/movement for `ch_speed`.
 fn speedo(ch_speed: u8, ctick: usize) -> bool {
     let speed = (ch_speed as usize).min(19);
     SPEEDTAB[speed][ctick.min(19)] != 0
 }
 
+/// Computes a smooth per-frame offset for movement animations.
+///
+/// When `update` is true, advances the internal stepping based on `SPEEDTAB`.
 fn speedstep(ch_speed: u8, ch_status: u8, d: i32, s: i32, update: bool, ctick: usize) -> i32 {
     let speed = (ch_speed as usize).min(19);
     let hard_step = (ch_status as i32) - d;
@@ -2923,6 +3045,7 @@ fn speedstep(ch_speed: u8, ch_status: u8, d: i32, s: i32, update: bool, ctick: u
 }
 
 #[inline]
+/// Returns an idle animation frame offset for certain sprites.
 fn do_idle(idle_ani: i32, sprite: u16) -> i32 {
     if sprite == 22480 {
         idle_ani
@@ -2931,6 +3054,9 @@ fn do_idle(idle_ani: i32, sprite: u16) -> i32 {
     }
 }
 
+/// Advances an item animation state and returns the sprite id to render.
+///
+/// Ported from the legacy engine, where `it_status` drives frame selection.
 fn eng_item(it_sprite: u16, it_status: &mut u8, ctick: usize, ticker: u32) -> i32 {
     let base = it_sprite as i32;
     match *it_status {
@@ -3059,6 +3185,9 @@ fn eng_item(it_sprite: u16, it_status: &mut u8, ctick: usize, ticker: u32) -> i3
     }
 }
 
+/// Advances a character animation state for a map tile and returns sprite id.
+///
+/// This updates tile offsets (`obj_xoff/obj_yoff`) to create smooth movement.
 fn eng_char(tile: &mut crate::types::map::CMapTile, ctick: usize) -> i32 {
     let mut update = true;
     if (tile.flags & STUNNED) != 0 {
@@ -3341,6 +3470,9 @@ fn eng_char(tile: &mut crate::types::map::CMapTile, ctick: usize) -> i32 {
     }
 }
 
+/// Runs one legacy-style animation tick over all visible map tiles.
+///
+/// Populates `back/obj1/obj2` sprite ids and overlay offsets used by the renderer.
 fn engine_tick(player_state: &mut PlayerState, ticker: u32, ctick: usize) {
     let map = player_state.map_mut();
     let len = map.len();
@@ -3375,6 +3507,10 @@ fn engine_tick(player_state: &mut PlayerState, ticker: u32, ctick: usize) {
     }
 }
 
+/// Spawns gameplay-world entities and gameplay UI elements.
+///
+/// This initializes gameplay resources, clears any previous gameplay render entities, and builds
+/// the world/UI hierarchy when entering `GameState::Gameplay`.
 pub(crate) fn setup_gameplay(
     mut commands: Commands,
     gfx: Res<GraphicsCache>,
@@ -3571,6 +3707,7 @@ pub(crate) fn setup_gameplay(
     log::debug!("setup_gameplay - end");
 }
 
+/// Updates equipment-slot overlay blocks (e.g., blocked slots for carried items/two-handers).
 pub(crate) fn run_gameplay_update_equipment_blocks(
     gfx: Res<GraphicsCache>,
     player_state: Res<PlayerState>,
@@ -3630,6 +3767,7 @@ pub(crate) fn run_gameplay_update_equipment_blocks(
     }
 }
 
+/// Updates the OS cursor and draws the carried-item sprite under the mouse.
 pub(crate) fn run_gameplay_update_cursor_and_carried_item(
     mut commands: Commands,
     window_entities: Query<Entity, With<PrimaryWindow>>,
@@ -3702,6 +3840,7 @@ pub(crate) fn run_gameplay_update_cursor_and_carried_item(
     *vis = Visibility::Visible;
 }
 
+/// Updates scrollbar knob positions for the skill list and inventory list.
 pub(crate) fn run_gameplay_update_scroll_knobs(
     statbox: Res<GameplayStatboxState>,
     inv_scroll: Res<GameplayInventoryScrollState>,
@@ -3728,6 +3867,7 @@ pub(crate) fn run_gameplay_update_scroll_knobs(
     }
 }
 
+/// Updates HUD stat bar fill widths and visibility (HP/Endurance/Mana).
 pub(crate) fn run_gameplay_update_stat_bars(
     player_state: Res<PlayerState>,
     mut q: Query<(&GameplayUiBar, &mut Sprite, &mut Visibility)>,
@@ -3797,6 +3937,7 @@ pub(crate) fn run_gameplay_update_stat_bars(
     }
 }
 
+/// Handles gameplay chat input and updates the on-screen log/input text.
 pub(crate) fn run_gameplay_text_ui(
     keys: Res<ButtonInput<KeyCode>>,
     mut kb: MessageReader<KeyboardInput>,
@@ -3924,6 +4065,9 @@ pub(crate) fn run_gameplay_text_ui(
     }
 }
 
+/// Returns the cursor position in game/viewport coordinates, if available.
+///
+/// This accounts for the window scale factor and the 2D camera viewport.
 fn cursor_game_pos(
     windows: &Query<&Window, With<bevy::window::PrimaryWindow>>,
     cameras: &Query<&Camera, With<Camera2d>>,
@@ -3976,10 +4120,12 @@ fn cursor_game_pos(
     ))
 }
 
+/// Checks whether a point is inside an axis-aligned rectangle.
 fn in_rect(game: Vec2, x: f32, y: f32, w: f32, h: f32) -> bool {
     game.x >= x && game.x <= x + w && game.y >= y && game.y <= y + h
 }
 
+/// Handles UI toggle buttons and mode buttons (keyboard + mouse), including exit/reset.
 pub(crate) fn run_gameplay_buttonbox_toggles(
     keys: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
@@ -4105,6 +4251,7 @@ pub(crate) fn run_gameplay_buttonbox_toggles(
     }
 }
 
+/// Handles statbox input: raising stats/skills and managing skill hotbar assignments.
 pub(crate) fn run_gameplay_statbox_input(
     keys: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
@@ -4468,6 +4615,7 @@ pub(crate) fn run_gameplay_statbox_input(
     }
 }
 
+/// Handles inventory UI hover and click interactions (equipment, backpack, money).
 pub(crate) fn run_gameplay_inventory_input(
     keys: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
@@ -4723,6 +4871,7 @@ pub(crate) fn run_gameplay_inventory_input(
     }
 }
 
+/// Updates HUD labels (stats, attributes, skills, hotbar labels, etc.).
 pub(crate) fn run_gameplay_update_hud_labels(
     player_state: Res<PlayerState>,
     statbox: Res<GameplayStatboxState>,
@@ -5338,6 +5487,7 @@ pub(crate) fn run_gameplay_update_hud_labels(
     }
 }
 
+/// Updates the "top selected name" label shown in the HUD.
 pub(crate) fn run_gameplay_update_top_selected_name(
     player_state: Res<PlayerState>,
     mut q: Query<(&mut BitmapText, &mut Transform), With<GameplayUiTopSelectedNameLabel>>,
@@ -5374,6 +5524,9 @@ pub(crate) fn run_gameplay_update_top_selected_name(
     }
 }
 
+/// Updates the portrait area name and rank labels.
+///
+/// Uses shop target or look target when those UIs are active, otherwise the player.
 pub(crate) fn run_gameplay_update_portrait_name_and_rank(
     player_state: Res<PlayerState>,
     mut q: ParamSet<(
@@ -5431,6 +5584,7 @@ pub(crate) fn run_gameplay_update_portrait_name_and_rank(
     }
 }
 
+/// Updates the money label text (gold/silver) in the HUD.
 fn update_ui_money_text(
     player_state: &PlayerState,
     mut q: Query<&mut BitmapText, With<GameplayUiMoneyLabel>>,
@@ -5447,6 +5601,9 @@ fn update_ui_money_text(
     }
 }
 
+/// Updates smaller auxiliary UI elements that don't fit elsewhere.
+///
+/// Currently updates the money text (also covered by the main HUD-label system).
 pub(crate) fn run_gameplay_update_extra_ui(
     player_state: Res<PlayerState>,
     mut q: ParamSet<(Query<&mut BitmapText, With<GameplayUiMoneyLabel>>,)>,
@@ -5455,6 +5612,10 @@ pub(crate) fn run_gameplay_update_extra_ui(
     update_ui_money_text(&player_state, q.p0());
 }
 
+/// Runs the core gameplay update loop (rendering + simulation + UI glue).
+///
+/// This is the main system for `GameState::Gameplay` and is intended to mirror the legacy
+/// client's per-frame behavior.
 pub(crate) fn run_gameplay(
     net: Res<NetworkRuntime>,
     gfx: Res<GraphicsCache>,
@@ -6208,6 +6369,7 @@ pub(crate) fn run_gameplay(
     }
 }
 
+/// Updates the minimap texture from currently visible tiles and cached map colors.
 fn update_minimap(
     minimap: &mut MiniMapState,
     gfx: &GraphicsCache,
