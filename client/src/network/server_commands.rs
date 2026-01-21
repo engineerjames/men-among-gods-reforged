@@ -1,3 +1,5 @@
+use mag_core::string_operations::c_string_to_str;
+
 #[derive(Copy, Clone, Debug)]
 #[repr(u8)]
 pub enum ServerCommandType {
@@ -330,15 +332,6 @@ fn read_i32(bytes: &[u8], offset: usize) -> Option<i32> {
     ))
 }
 
-/// Decodes a fixed-size, NUL-padded text field into a Rust `String`.
-fn parse_fixed_text(bytes: &[u8]) -> String {
-    let mut end = bytes.len();
-    while end > 0 && bytes[end - 1] == 0 {
-        end -= 1;
-    }
-    String::from_utf8_lossy(&bytes[..end]).to_string()
-}
-
 /// Attempts to decode a raw server command into its typed representation.
 ///
 /// Returns `(header, structured_data)` on success, or `None` if the opcode is unknown or the
@@ -460,19 +453,19 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
         3 => Some((
             ServerCommandType::SetCharName1,
             ServerCommandData::SetCharName1 {
-                chunk: parse_fixed_text(bytes.get(1..16)?),
+                chunk: c_string_to_str(bytes.get(1..16)?).to_string(),
             },
         )),
         4 => Some((
             ServerCommandType::SetCharName2,
             ServerCommandData::SetCharName2 {
-                chunk: parse_fixed_text(bytes.get(1..16)?),
+                chunk: c_string_to_str(bytes.get(1..16)?).to_string(),
             },
         )),
         5 => Some((
             ServerCommandType::SetCharName3,
             ServerCommandData::SetCharName3 {
-                chunk: parse_fixed_text(bytes.get(1..11)?),
+                chunk: c_string_to_str(bytes.get(1..11)?).to_string(),
                 race: read_u32(bytes, 11)?,
             },
         )),
@@ -705,7 +698,7 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
         50 => Some((
             ServerCommandType::Look5,
             ServerCommandData::Look5 {
-                name: parse_fixed_text(bytes.get(1..16)?),
+                name: c_string_to_str(bytes.get(1..16)?).to_string(),
             },
         )),
         51 => {
@@ -733,28 +726,28 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
             ServerCommandType::Log0,
             ServerCommandData::Log {
                 font: 0,
-                chunk: parse_fixed_text(bytes.get(1..16)?),
+                chunk: c_string_to_str(bytes.get(1..16)?).to_string(),
             },
         )),
         53 => Some((
             ServerCommandType::Log1,
             ServerCommandData::Log {
                 font: 1,
-                chunk: parse_fixed_text(bytes.get(1..16)?),
+                chunk: c_string_to_str(bytes.get(1..16)?).to_string(),
             },
         )),
         54 => Some((
             ServerCommandType::Log2,
             ServerCommandData::Log {
                 font: 2,
-                chunk: parse_fixed_text(bytes.get(1..16)?),
+                chunk: c_string_to_str(bytes.get(1..16)?).to_string(),
             },
         )),
         55 => Some((
             ServerCommandType::Log3,
             ServerCommandData::Log {
                 font: 3,
-                chunk: parse_fixed_text(bytes.get(1..16)?),
+                chunk: c_string_to_str(bytes.get(1..16)?).to_string(),
             },
         )),
         56 => Some((
@@ -767,49 +760,49 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
         58 => Some((
             ServerCommandType::Mod1,
             ServerCommandData::Mod1 {
-                text: parse_fixed_text(bytes.get(1..16)?),
+                text: c_string_to_str(bytes.get(1..16)?).to_string(),
             },
         )),
         59 => Some((
             ServerCommandType::Mod2,
             ServerCommandData::Mod2 {
-                text: parse_fixed_text(bytes.get(1..16)?),
+                text: c_string_to_str(bytes.get(1..16)?).to_string(),
             },
         )),
         60 => Some((
             ServerCommandType::Mod3,
             ServerCommandData::Mod3 {
-                text: parse_fixed_text(bytes.get(1..16)?),
+                text: c_string_to_str(bytes.get(1..16)?).to_string(),
             },
         )),
         61 => Some((
             ServerCommandType::Mod4,
             ServerCommandData::Mod4 {
-                text: parse_fixed_text(bytes.get(1..16)?),
+                text: c_string_to_str(bytes.get(1..16)?).to_string(),
             },
         )),
         62 => Some((
             ServerCommandType::Mod5,
             ServerCommandData::Mod5 {
-                text: parse_fixed_text(bytes.get(1..16)?),
+                text: c_string_to_str(bytes.get(1..16)?).to_string(),
             },
         )),
         63 => Some((
             ServerCommandType::Mod6,
             ServerCommandData::Mod6 {
-                text: parse_fixed_text(bytes.get(1..16)?),
+                text: c_string_to_str(bytes.get(1..16)?).to_string(),
             },
         )),
         64 => Some((
             ServerCommandType::Mod7,
             ServerCommandData::Mod7 {
-                text: parse_fixed_text(bytes.get(1..16)?),
+                text: c_string_to_str(bytes.get(1..16)?).to_string(),
             },
         )),
         65 => Some((
             ServerCommandType::Mod8,
             ServerCommandData::Mod8 {
-                text: parse_fixed_text(bytes.get(1..16)?),
+                text: c_string_to_str(bytes.get(1..16)?).to_string(),
             },
         )),
         66 => {

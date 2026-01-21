@@ -4,7 +4,6 @@ use bevy::window::PrimaryWindow;
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::gfx_cache::GraphicsCache;
-use crate::map::{TILEX, TILEY};
 use crate::network::{client_commands::ClientCommand, NetworkRuntime};
 use crate::player_state::PlayerState;
 use crate::states::gameplay::{
@@ -14,8 +13,8 @@ use crate::states::gameplay::{
 use crate::systems::sound::SoundEventQueue;
 
 use mag_core::constants::{
-    DR_DROP, DR_GIVE, DR_PICKUP, DR_USE, INFRARED, INVIS, ISCHAR, ISITEM, ISUSABLE, STONED, UWATER,
-    XPOS, YPOS,
+    DR_DROP, DR_GIVE, DR_PICKUP, DR_USE, INFRARED, INVIS, ISCHAR, ISITEM, ISUSABLE, STONED, TILEX,
+    TILEY, UWATER, XPOS, YPOS,
 };
 
 // Keep these in-sync with the draw ordering in `states/gameplay.rs`.

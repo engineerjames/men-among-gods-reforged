@@ -1,4 +1,4 @@
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 #[repr(u8)]
 pub enum ClientCommandType {
     _Empty = 0,
@@ -38,6 +38,7 @@ pub enum ClientCommandType {
     CmdCTick = 255,
 }
 
+#[derive(Debug)]
 pub struct ClientCommand {
     header: ClientCommandType,
     payload: Vec<u8>,
@@ -97,6 +98,12 @@ impl ClientCommand {
         payload.extend_from_slice(&client_version.to_le_bytes());
         payload.extend_from_slice(&race.to_le_bytes());
 
+        log::info!(
+            "Building challenge packet: server_challenge={}, client_version={}, race={}",
+            server_challenge,
+            client_version,
+            race
+        );
         Self::new(ClientCommandType::Challenge, payload)
     }
 
@@ -106,6 +113,11 @@ impl ClientCommand {
         payload.extend_from_slice(&unique_value_1.to_le_bytes());
         payload.extend_from_slice(&unique_value_2.to_le_bytes());
 
+        log::info!(
+            "Building unique packet: unique_value_1={}, unique_value_2={}",
+            unique_value_1,
+            unique_value_2
+        );
         Self::new(ClientCommandType::CmdUnique, payload)
     }
 
@@ -117,11 +129,18 @@ impl ClientCommand {
         payload.extend_from_slice(&pass1.to_le_bytes());
         payload.extend_from_slice(&pass2.to_le_bytes());
 
+        log::info!(
+            "Building existing-login packet: user_id={}, pass1={}, pass2={}",
+            user_id,
+            pass1,
+            pass2
+        );
         Self::new(ClientCommandType::Login, payload)
     }
 
     /// Builds the new-player login packet (`CL_NEWLOGIN`).
     pub fn new_newplayer_login() -> Self {
+        log::info!("Building new-player login packet");
         Self::new(ClientCommandType::NewLogin, Vec::new())
     }
 
@@ -130,6 +149,8 @@ impl ClientCommand {
         let mut payload = vec![0u8; 15];
         let n = password.len().min(15);
         payload[..n].copy_from_slice(&password[..n]);
+
+        log::info!("Building password packet: password={:?}", &password[..n]);
         Self::new(ClientCommandType::Passwd, payload)
     }
 
@@ -142,6 +163,14 @@ impl ClientCommand {
         payload[2..4].copy_from_slice(&skip.to_le_bytes());
         payload[4..6].copy_from_slice(&idle.to_le_bytes());
         payload[6..10].copy_from_slice(&pskip.to_le_bytes());
+
+        log::info!(
+            "Building perf_report packet: ticksize={}, skip={}, idle={}, pskip={}",
+            ticksize,
+            skip,
+            idle,
+            pskip
+        );
         Self::new(ClientCommandType::PerfReport, payload)
     }
 
@@ -152,6 +181,12 @@ impl ClientCommand {
         payload[1] = offset;
         let n = data.len().min(13);
         payload[2..2 + n].copy_from_slice(&data[..n]);
+        log::info!(
+            "Building setuser packet: group={}, offset={}, data={:?}",
+            group,
+            offset,
+            &data[..n]
+        );
         Self::new(ClientCommandType::CmdSetUser, payload)
     }
 
@@ -172,6 +207,12 @@ impl ClientCommand {
         let mut payload = vec![0u8; 15];
         let n = chunk.len().min(15);
         payload[..n].copy_from_slice(&chunk[..n]);
+
+        log::info!(
+            "Building input chunk packet: kind={:?}, chunk={:?}",
+            kind,
+            &chunk[..n]
+        );
         Self::new(kind, payload)
     }
 
@@ -198,6 +239,7 @@ impl ClientCommand {
             let end = (start + 15).min(text.len());
             out.push(Self::new_input_chunk(kind, &text[start..end]));
         }
+        log::info!("Building say packet: {:?}", out);
         out
     }
 
@@ -205,96 +247,129 @@ impl ClientCommand {
     ///
     /// The server reads a 4-byte little-endian tick counter at payload offset 1.
     pub fn new_tick(rtick: u32) -> Self {
+        log::debug!("Building tick packet: rtick={}", rtick);
         Self::cmd_u32(ClientCommandType::CmdCTick, rtick)
     }
 
     /// `CL_CMD_MOVE` (`inter.c::cmd`).
     pub fn new_move(x: i16, y: i32) -> Self {
+        log::info!("Building move packet: x={}, y={}", x, y);
         Self::cmd_xy_i16_i32(ClientCommandType::CmdMove, x, y)
     }
 
     /// `CL_CMD_PICKUP` (`inter.c::cmd`).
     pub fn new_pickup(x: i16, y: i32) -> Self {
+        log::info!("Building pickup packet: x={}, y={}", x, y);
         Self::cmd_xy_i16_i32(ClientCommandType::CmdPickup, x, y)
     }
 
     /// `CL_CMD_DROP` (`inter.c::cmd`).
     pub fn new_drop(x: i16, y: i32) -> Self {
+        log::info!("Building drop packet: x={}, y={}", x, y);
         Self::cmd_xy_i16_i32(ClientCommandType::CmdDrop, x, y)
     }
 
     /// `CL_CMD_TURN` (`inter.c::cmd`).
     pub fn new_turn(x: i16, y: i32) -> Self {
+        log::info!("Building turn packet: x={}, y={}", x, y);
         Self::cmd_xy_i16_i32(ClientCommandType::CmdTurn, x, y)
     }
 
     /// `CL_CMD_USE` (`inter.c::cmd`).
     pub fn new_use(x: i16, y: i32) -> Self {
+        log::info!("Building use packet: x={}, y={}", x, y);
         Self::cmd_xy_i16_i32(ClientCommandType::CmdUse, x, y)
     }
 
     /// `CL_CMD_LOOK_ITEM` (`inter.c::cmd`).
     pub fn new_look_item(x: i16, y: i32) -> Self {
+        log::info!("Building look_item packet: x={}, y={}", x, y);
         Self::cmd_xy_i16_i32(ClientCommandType::CmdLookItem, x, y)
     }
 
     /// `CL_CMD_MODE` (`inter.c::cmd`).
     pub fn new_mode(mode: i16) -> Self {
+        log::info!("Building mode packet: mode={}", mode);
         Self::cmd_xy_i16_i32(ClientCommandType::CmdMode, mode, 0)
     }
 
     /// `CL_CMD_RESET` (`main.c` ESC handler uses `cmd(CL_CMD_RESET,0,0)`).
     pub fn new_reset() -> Self {
+        log::info!("Building reset packet");
         Self::cmd_xy_i16_i32(ClientCommandType::CmdReset, 0, 0)
     }
 
     /// `CL_CMD_SHOP` (`inter.c::cmd`).
     pub fn new_shop(shop_nr: i16, action: i32) -> Self {
+        log::info!(
+            "Building shop packet: shop_nr={}, action={}",
+            shop_nr,
+            action
+        );
         Self::cmd_xy_i16_i32(ClientCommandType::CmdShop, shop_nr, action)
     }
 
     /// `CL_CMD_STAT` (`inter.c` uses `cmd(CL_CMD_STAT, m, stat_raised[n])`).
     pub fn new_stat(which: i16, value: i32) -> Self {
+        log::info!("Building stat packet: which={}, value={}", which, value);
         Self::cmd_xy_i16_i32(ClientCommandType::CmdStat, which, value)
     }
 
     /// `CL_CMD_ATTACK` (`inter.c::cmd1`).
     pub fn new_attack(target: u32) -> Self {
+        log::info!("Building attack packet: target={}", target);
         Self::cmd_u32(ClientCommandType::CmdAttack, target)
     }
 
     /// `CL_CMD_GIVE` (`inter.c::cmd1`).
     pub fn new_give(target: u32) -> Self {
+        log::info!("Building give packet: target={}", target);
         Self::cmd_u32(ClientCommandType::CmdGive, target)
     }
 
     /// `CL_CMD_LOOK` (`inter.c::cmd1`).
     pub fn new_look(target: u32) -> Self {
+        log::info!("Building look packet: target={}", target);
         Self::cmd_u32(ClientCommandType::CmdLook, target)
     }
 
     /// `CL_CMD_EXIT` (`engine.c::cmd_exit` uses `cmd1(CL_CMD_EXIT,0)`).
     pub fn new_exit() -> Self {
+        log::info!("Building exit packet");
         Self::cmd_u32(ClientCommandType::CmdExit, 0)
     }
 
     /// `CL_CMD_AUTOLOOK` (`engine.c` uses `cmd1s(CL_CMD_AUTOLOOK, lookat)`).
     pub fn new_autolook(lookat: u32) -> Self {
+        log::debug!("Building autolook packet: lookat={}", lookat);
         Self::cmd_u32(ClientCommandType::CmdAutoLook, lookat)
     }
 
     /// `CL_CMD_INV` (`inter.c::cmd3`).
     pub fn new_inv(a: u32, b: u32, selected_char: u32) -> Self {
+        log::info!(
+            "Building inv packet: a={}, b={}, selected_char={}",
+            a,
+            b,
+            selected_char
+        );
         Self::cmd_u32_u32_u32(ClientCommandType::CmdInv, a, b, selected_char)
     }
 
     /// `CL_CMD_INV_LOOK` (`inter.c::cmd3`).
     pub fn new_inv_look(a: u32, b: u32, c: u32) -> Self {
+        log::info!("Building inv_look packet: a={}, b={}, c={}", a, b, c);
         Self::cmd_u32_u32_u32(ClientCommandType::CmdInvLook, a, b, c)
     }
 
     /// `CL_CMD_SKILL` (`inter.c::cmd3`).
     pub fn new_skill(skill: u32, selected_char: u32, attrib0: u32) -> Self {
+        log::info!(
+            "Building skill packet: skill={}, selected_char={}, attrib0={}",
+            skill,
+            selected_char,
+            attrib0
+        );
         Self::cmd_u32_u32_u32(ClientCommandType::CmdSkill, skill, selected_char, attrib0)
     }
 }

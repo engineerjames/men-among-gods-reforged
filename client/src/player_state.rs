@@ -306,28 +306,44 @@ impl PlayerState {
         // Check for command specific processing, then update state based on structured data.
         match command.header {
             ServerCommandType::ScrollDown => {
+                log::debug!("Processing ScrollDown command");
                 self.map.scroll_down();
+                return;
             }
             ServerCommandType::ScrollUp => {
+                log::debug!("Processing ScrollUp command");
                 self.map.scroll_up();
+                return;
             }
             ServerCommandType::ScrollLeft => {
+                log::debug!("Processing ScrollLeft command");
                 self.map.scroll_left();
+                return;
             }
             ServerCommandType::ScrollRight => {
+                log::debug!("Processing ScrollRight command");
                 self.map.scroll_right();
+                return;
             }
             ServerCommandType::ScrollLeftDown => {
+                log::debug!("Processing ScrollLeftDown command");
                 self.map.scroll_left_down();
+                return;
             }
             ServerCommandType::ScrollLeftUp => {
+                log::debug!("Processing ScrollLeftUp command");
                 self.map.scroll_left_up();
+                return;
             }
             ServerCommandType::ScrollRightDown => {
+                log::debug!("Processing ScrollRightDown command");
                 self.map.scroll_right_down();
+                return;
             }
             ServerCommandType::ScrollRightUp => {
+                log::debug!("Processing ScrollRightUp command");
                 self.map.scroll_right_up();
+                return;
             }
             _ => {}
         }
@@ -339,58 +355,76 @@ impl PlayerState {
                 pass2,
                 server_version,
             } => {
+                log::info!("Received NewPlayer command: player_id={:?}, pass1={:?}, pass2={:?}, server_version={:?}", player_id, pass1, pass2, server_version);
                 self.moa_file_data.usnr = *player_id;
                 self.moa_file_data.pass1 = *pass1;
                 self.moa_file_data.pass2 = *pass2;
                 self.server_version = *server_version;
             }
             ServerCommandData::LoginOk { server_version } => {
+                log::info!(
+                    "Received LoginOk command: server_version={:?}",
+                    server_version
+                );
                 self.server_version = *server_version;
             }
             ServerCommandData::SetCharName1 { chunk } => {
+                log::info!("SetCharName1 chunk: {:?}", chunk);
                 self.write_name_chunk(0, 15, chunk);
             }
             ServerCommandData::SetCharName2 { chunk } => {
+                log::info!("SetCharName2 chunk: {:?}", chunk);
                 self.write_name_chunk(15, 15, chunk);
             }
             ServerCommandData::SetCharName3 { chunk, race } => {
+                log::info!("SetCharName3 chunk: {:?}, race: {:?}", chunk, race);
                 self.write_name_chunk(30, 10, chunk);
                 self.moa_file_data.race = (*race).try_into().unwrap_or(0);
             }
             ServerCommandData::SetCharMode { mode } => {
+                log::info!("SetCharMode: {:?}", mode);
                 self.character_info.mode = *mode as i32;
             }
             ServerCommandData::SetCharAttrib { index, values } => {
+                log::info!("SetCharAttrib: index={:?}, values={:?}", index, values);
                 let idx = *index as usize;
                 if idx < self.character_info.attrib.len() {
                     self.character_info.attrib[idx] = *values;
                 }
             }
             ServerCommandData::SetCharSkill { index, values } => {
+                log::info!("SetCharSkill: index={:?}, values={:?}", index, values);
                 let idx = *index as usize;
                 if idx < self.character_info.skill.len() {
                     self.character_info.skill[idx] = *values;
                 }
             }
             ServerCommandData::SetCharHp { values } => {
+                log::info!("SetCharHp: values={:?}", values);
                 self.character_info.hp = *values;
             }
             ServerCommandData::SetCharEndur { values } => {
+                log::info!("SetCharEndur: values={:?}", values);
                 self.character_info.end = (*values).map(|v| v.max(0) as u16);
             }
             ServerCommandData::SetCharMana { values } => {
+                log::info!("SetCharMana: values={:?}", values);
                 self.character_info.mana = (*values).map(|v| v.max(0) as u16);
             }
             ServerCommandData::SetCharAHP { value } => {
+                log::info!("SetCharAHP: value={:?}", value);
                 self.character_info.a_hp = *value as i32;
             }
             ServerCommandData::SetCharAEnd { value } => {
+                log::info!("SetCharAEnd: value={:?}", value);
                 self.character_info.a_end = *value as i32;
             }
             ServerCommandData::SetCharAMana { value } => {
+                log::info!("SetCharAMana: value={:?}", value);
                 self.character_info.a_mana = *value as i32;
             }
             ServerCommandData::SetCharDir { dir } => {
+                log::info!("SetCharDir: dir={:?}", dir);
                 self.character_info.dir = *dir as i32;
             }
             ServerCommandData::SetCharPts {
@@ -398,6 +432,12 @@ impl PlayerState {
                 points_total,
                 kindred,
             } => {
+                log::info!(
+                    "SetCharPts: points={:?}, points_total={:?}, kindred={:?}",
+                    points,
+                    points_total,
+                    kindred
+                );
                 self.character_info.points = *points as i32;
                 self.character_info.points_tot = *points_total as i32;
                 self.character_info.kindred = *kindred as i32;
@@ -407,6 +447,12 @@ impl PlayerState {
                 armor,
                 weapon,
             } => {
+                log::info!(
+                    "SetCharGold: gold={:?}, armor={:?}, weapon={:?}",
+                    gold,
+                    armor,
+                    weapon
+                );
                 self.character_info.gold = *gold as i32;
                 self.character_info.armor = *armor as i32;
                 self.character_info.weapon = *weapon as i32;
@@ -416,6 +462,12 @@ impl PlayerState {
                 item,
                 item_p,
             } => {
+                log::info!(
+                    "SetCharItem: index={:?}, item={:?}, item_p={:?}",
+                    index,
+                    item,
+                    item_p
+                );
                 let idx = *index as usize;
                 if idx < self.character_info.item.len() {
                     self.character_info.item[idx] = *item as i32;
@@ -427,6 +479,12 @@ impl PlayerState {
                 worn,
                 worn_p,
             } => {
+                log::info!(
+                    "SetCharWorn: index={:?}, worn={:?}, worn_p={:?}",
+                    index,
+                    worn,
+                    worn_p
+                );
                 let idx = *index as usize;
                 if idx < self.character_info.worn.len() {
                     self.character_info.worn[idx] = *worn as i32;
@@ -438,6 +496,12 @@ impl PlayerState {
                 spell,
                 active,
             } => {
+                log::info!(
+                    "SetCharSpell: index={:?}, spell={:?}, active={:?}",
+                    index,
+                    spell,
+                    active
+                );
                 let idx = *index as usize;
                 if idx < self.character_info.spell.len() {
                     self.character_info.spell[idx] = *spell as i32;
@@ -445,14 +509,17 @@ impl PlayerState {
                 }
             }
             ServerCommandData::SetCharObj { citem, citem_p } => {
+                log::info!("SetCharObj: citem={:?}, citem_p={:?}", citem, citem_p);
                 self.character_info.citem = *citem as i32;
                 self.character_info.citem_p = *citem_p as i32;
             }
             ServerCommandData::Tick { ctick } => {
+                log::debug!("Tick: ctick={:?}", ctick);
                 self.server_ctick = *ctick;
                 self.server_ctick_pending = true;
             }
             ServerCommandData::SetOrigin { x, y } => {
+                log::debug!("SetOrigin: x={:?}, y={:?}", x, y);
                 self.map.set_origin(*x, *y);
             }
             ServerCommandData::SetTarget {
@@ -463,6 +530,15 @@ impl PlayerState {
                 misc_target1,
                 misc_target2,
             } => {
+                log::info!(
+                    "SetTarget: attack_cn={:?}, goto_x={:?}, goto_y={:?}, misc_action={:?}, misc_target1={:?}, misc_target2={:?}",
+                    attack_cn,
+                    goto_x,
+                    goto_y,
+                    misc_action,
+                    misc_target1,
+                    misc_target2
+                );
                 self.character_info.attack_cn = *attack_cn as i32;
                 self.character_info.goto_x = *goto_x as i32;
                 self.character_info.goto_y = *goto_y as i32;
@@ -471,13 +547,16 @@ impl PlayerState {
                 self.character_info.misc_target2 = *misc_target2 as i32;
             }
             ServerCommandData::Load { load } => {
+                log::debug!("Load: load={:?}", load);
                 self.load_percentage = *load;
             }
             ServerCommandData::Unique { unique1, unique2 } => {
+                log::info!("Unique: unique1={:?}, unique2={:?}", unique1, unique2);
                 self.unique1 = *unique1;
                 self.unique2 = *unique2;
             }
             ServerCommandData::Log { font, chunk } => {
+                log::info!("Log: font={:?}, chunk={:?}", font, chunk);
                 self.handle_log_chunk(*font, chunk);
             }
             ServerCommandData::Mod1 { text }
@@ -489,6 +568,7 @@ impl PlayerState {
             | ServerCommandData::Mod7 { text }
             | ServerCommandData::Mod8 { text } => {
                 // MOTD chunks (15 bytes each in original client)
+                log::info!("Mod: text={:?}", text);
                 self.handle_log_chunk(0, text);
             }
             ServerCommandData::Look1 {
@@ -501,6 +581,17 @@ impl PlayerState {
                 worn8,
                 autoflag,
             } => {
+                log::info!(
+                    "Look1: worn0={:?}, worn2={:?}, worn3={:?}, worn5={:?}, worn6={:?}, worn7={:?}, worn8={:?}, autoflag={:?}",
+                    worn0,
+                    worn2,
+                    worn3,
+                    worn5,
+                    worn6,
+                    worn7,
+                    worn8,
+                    autoflag
+                );
                 self.look_target.set_worn(0, *worn0);
                 self.look_target.set_worn(2, *worn2);
                 self.look_target.set_worn(3, *worn3);
@@ -517,6 +608,14 @@ impl PlayerState {
                 hp,
                 worn10,
             } => {
+                log::info!(
+                    "Look2: worn9={:?}, sprite={:?}, points={:?}, hp={:?}, worn10={:?}",
+                    worn9,
+                    sprite,
+                    points,
+                    hp,
+                    worn10
+                );
                 self.look_target.set_worn(9, *worn9);
                 self.look_target.set_sprite(*sprite);
                 self.look_target.set_points(*points);
@@ -532,6 +631,16 @@ impl PlayerState {
                 mana,
                 a_mana,
             } => {
+                log::info!(
+                    "Look3: end={:?}, a_hp={:?}, a_end={:?}, nr={:?}, id={:?}, mana={:?}, a_mana={:?}",
+                    end,
+                    a_hp,
+                    a_end,
+                    nr,
+                    id,
+                    mana,
+                    a_mana
+                );
                 self.look_target.set_end(*end);
                 self.look_target.set_a_hp(*a_hp);
                 self.look_target.set_a_end(*a_end);
@@ -549,6 +658,16 @@ impl PlayerState {
                 worn12,
                 worn13,
             } => {
+                log::info!(
+                    "Look4: worn1={:?}, worn4={:?}, extended={:?}, pl_price={:?}, worn11={:?}, worn12={:?}, worn13={:?}",
+                    worn1,
+                    worn4,
+                    extended,
+                    pl_price,
+                    worn11,
+                    worn12,
+                    worn13
+                );
                 self.look_target.set_worn(1, *worn1);
                 self.look_target.set_worn(4, *worn4);
                 self.look_target.set_extended(*extended);
@@ -558,6 +677,7 @@ impl PlayerState {
                 self.look_target.set_worn(13, *worn13);
             }
             ServerCommandData::Look5 { name } => {
+                log::info!("Look5: name={:?}", name);
                 self.look_target.set_name(name);
 
                 // engine.c: add_look(tmplook.nr, tmplook.name, tmplook.id)
@@ -574,6 +694,7 @@ impl PlayerState {
                 }
             }
             ServerCommandData::Look6 { start, entries } => {
+                log::info!("Look6: start={:?}, entries={:?}", start, entries);
                 for e in entries {
                     self.look_target.set_shop_entry(e.index, e.item, e.price);
                 }
@@ -601,6 +722,23 @@ impl PlayerState {
                 ch_speed,
                 ch_proz,
             } => {
+                log::debug!(
+                    "SetMap: off={:?}, absolute_tile_index={:?}, ba_sprite={:?}, flags1={:?}, flags2={:?}, it_sprite={:?}, it_status={:?}, ch_sprite={:?}, ch_status={:?}, ch_stat_off={:?}, ch_nr={:?}, ch_id={:?}, ch_speed={:?}, ch_proz={:?}",
+                    off,
+                    absolute_tile_index,
+                    ba_sprite,
+                    flags1,
+                    flags2,
+                    it_sprite,
+                    it_status,
+                    ch_sprite,
+                    ch_status,
+                    ch_stat_off,
+                    ch_nr,
+                    ch_id,
+                    ch_speed,
+                    ch_proz
+                );
                 self.map.apply_set_map(
                     *off,
                     *absolute_tile_index,
@@ -624,16 +762,21 @@ impl PlayerState {
                 base_light,
                 packed,
             } => {
+                log::debug!(
+                    "SetMap3: start_index={:?}, base_light={:?}, packed_len={:?}",
+                    start_index,
+                    base_light,
+                    packed.len()
+                );
                 self.map.apply_set_map3(*start_index, *base_light, packed);
             }
 
             ServerCommandData::Exit { reason } => {
-                // TODO: Handle exit reason codes more gracefully.
+                log::info!("Exit: reason={:?}", reason);
                 self.tlog(3, format!("Server requested exit (reason={reason})"));
             }
             _ => {
-                // Keep this quiet for now; there are many SV_* packets not yet wired into gameplay.
-                log::debug!("PlayerState ignoring server command: {:?}", command.header);
+                log::error!("PlayerState ignoring server command: {:?}", command.header);
             }
         }
 

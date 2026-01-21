@@ -1,12 +1,11 @@
 use bevy::prelude::*;
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
-use crate::map::{TILEX, TILEY};
 use crate::network::{client_commands::ClientCommand, NetworkRuntime};
 use crate::player_state::PlayerState;
 use crate::states::gameplay::{BitmapText, GameplayRenderEntity};
 
-use mag_core::constants::{XPOS, YPOS};
+use mag_core::constants::{TILEX, TILEY, XPOS, YPOS};
 
 // Keep these in-sync with the draw ordering in `states/gameplay.rs`.
 const Z_WORLD_STEP: f32 = 0.01;

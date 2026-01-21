@@ -33,7 +33,7 @@ samply record cargo run --bin server
 This will generate a flamegraph that you can use to analyze the performance of the server.
 
 # Client
-The client uses [Bevy](https://bevyengine.org/) for its rendering and input handling. At the moment, the client is still a heavy work in progress and is not playable.
+The client uses [Bevy](https://bevyengine.org/) for its rendering and input handling. It is still in ALPHA stage and is not yet fully functional. Many features from the original Mercenaries of Astonia (v2) game are missing, and there are likely to be bugs. However, you should be able to connect to a server and explore the world to some extent.
 
 # Server
 The server is a command-line application that listens for incoming connections from clients. It is still in ALPHA stage and is not yet fully functional. You should be able to connect to it using any Merceneries of Astonia (v2) client, but expect bugs.
