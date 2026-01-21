@@ -5,11 +5,11 @@ edition = "2021"
 
 [dependencies]
 mag_core = { path = "../core", package = "core" }
-bevy = { version = "0.17.3", features = ["wav", "default_font"] }
+bevy = { version = "0.18", default-features = false, features = ["2d"] }
 log = "0.4.29"
 tracing-appender = "0.2.4"
 zip = "0.6.6"
-bevy_egui = "0.38.1"
+bevy_egui = "0.39"
 egui-file-dialog = "0.12.0"
 flate2 = "1.1.5"
 tracing = "0.1.44"
