@@ -306,28 +306,44 @@ impl PlayerState {
         // Check for command specific processing, then update state based on structured data.
         match command.header {
             ServerCommandType::ScrollDown => {
+                log::debug!("Processing ScrollDown command");
                 self.map.scroll_down();
+                return;
             }
             ServerCommandType::ScrollUp => {
+                log::debug!("Processing ScrollUp command");
                 self.map.scroll_up();
+                return;
             }
             ServerCommandType::ScrollLeft => {
+                log::debug!("Processing ScrollLeft command");
                 self.map.scroll_left();
+                return;
             }
             ServerCommandType::ScrollRight => {
+                log::debug!("Processing ScrollRight command");
                 self.map.scroll_right();
+                return;
             }
             ServerCommandType::ScrollLeftDown => {
+                log::debug!("Processing ScrollLeftDown command");
                 self.map.scroll_left_down();
+                return;
             }
             ServerCommandType::ScrollLeftUp => {
+                log::debug!("Processing ScrollLeftUp command");
                 self.map.scroll_left_up();
+                return;
             }
             ServerCommandType::ScrollRightDown => {
+                log::debug!("Processing ScrollRightDown command");
                 self.map.scroll_right_down();
+                return;
             }
             ServerCommandType::ScrollRightUp => {
+                log::debug!("Processing ScrollRightUp command");
                 self.map.scroll_right_up();
+                return;
             }
             _ => {}
         }
@@ -503,7 +519,7 @@ impl PlayerState {
                 self.server_ctick_pending = true;
             }
             ServerCommandData::SetOrigin { x, y } => {
-                log::info!("SetOrigin: x={:?}, y={:?}", x, y);
+                log::debug!("SetOrigin: x={:?}, y={:?}", x, y);
                 self.map.set_origin(*x, *y);
             }
             ServerCommandData::SetTarget {

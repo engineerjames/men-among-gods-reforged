@@ -541,10 +541,24 @@ pub(crate) fn setup_gameplay(
             commands.entity(world_root).add_child(e);
         }
 
+        // Tile flag overlays (ported from engine.c: marker/effect sprites on tiles).
+        // We always spawn gameplay-critical overlays. Debug-only overlays remain optional
+        // since spawning them for every tile is expensive.
+        let gameplay_overlay_kinds = [
+            TileFlagOverlayKind::Injured,
+            TileFlagOverlayKind::Death,
+            TileFlagOverlayKind::Tomb,
+        ];
+        for kind in gameplay_overlay_kinds {
+            if let Some(e) =
+                spawn_tile_overlay_entity(&mut commands, &gfx, TileFlagOverlay { index, kind })
+            {
+                commands.entity(world_root).add_child(e);
+            }
+        }
+
         if debug.tile_flag_overlays {
-            // Tile flag overlays (ported from engine.c: marker/effect sprites on tiles).
-            // Debug-only: spawning these for every tile is expensive.
-            let overlay_kinds = [
+            let debug_overlay_kinds = [
                 TileFlagOverlayKind::MoveBlock,
                 TileFlagOverlayKind::SightBlock,
                 TileFlagOverlayKind::Indoors,
@@ -558,12 +572,8 @@ pub(crate) fn setup_gameplay(
                 TileFlagOverlayKind::Arena,
                 TileFlagOverlayKind::NoExpire,
                 TileFlagOverlayKind::UnknownHighBit,
-                TileFlagOverlayKind::Injured,
-                TileFlagOverlayKind::Death,
-                TileFlagOverlayKind::Tomb,
             ];
-
-            for kind in overlay_kinds {
+            for kind in debug_overlay_kinds {
                 if let Some(e) =
                     spawn_tile_overlay_entity(&mut commands, &gfx, TileFlagOverlay { index, kind })
                 {
@@ -612,7 +622,7 @@ pub(crate) fn setup_gameplay(
     commands.insert_resource(GameplayExitState::default());
 
     // Bitmap font (sprite atlas) used for UI text.
-    font_cache.ensure_bitmap_initialized(&gfx, &mut atlas_layouts);
+    once!(font_cache.ensure_bitmap_initialized(&gfx, &mut atlas_layouts));
 
     // Character name/proz overlays (engine.c: dd_gputtext + lookup/set_look_proz).
     crate::systems::nameplates::spawn_gameplay_nameplates(&mut commands, world_root);

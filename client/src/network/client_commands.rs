@@ -247,7 +247,7 @@ impl ClientCommand {
     ///
     /// The server reads a 4-byte little-endian tick counter at payload offset 1.
     pub fn new_tick(rtick: u32) -> Self {
-        log::info!("Building tick packet: rtick={}", rtick);
+        log::debug!("Building tick packet: rtick={}", rtick);
         Self::cmd_u32(ClientCommandType::CmdCTick, rtick)
     }
 
