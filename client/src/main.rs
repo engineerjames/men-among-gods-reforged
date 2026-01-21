@@ -18,6 +18,7 @@ use tracing_appender::{non_blocking::WorkerGuard, rolling};
 use bevy::log::{tracing_subscriber::Layer, BoxedLayer, LogPlugin};
 use bevy::prelude::*;
 use bevy::window::WindowResolution;
+use bevy::winit::{UpdateMode, WinitSettings};
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::gfx_cache::GraphicsCache;
@@ -81,6 +82,12 @@ fn main() {
         // Setup resources
         .insert_resource(GraphicsCache::new(gfx_zip.to_string_lossy().as_ref()))
         .insert_resource(SoundCache::new(sfx_dir.to_string_lossy().as_ref()))
+        // Keep the game simulation running even when the window is unfocused/minimized.
+        .insert_resource(WinitSettings {
+            focused_mode: UpdateMode::Continuous,
+            unfocused_mode: UpdateMode::Continuous,
+            ..default()
+        })
         .init_resource::<font_cache::FontCache>()
         .init_resource::<sound::SoundEventQueue>()
         .init_resource::<GameplayDebugSettings>()
