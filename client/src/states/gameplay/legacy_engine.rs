@@ -1,10 +1,9 @@
 use bevy::prelude::*;
 
 use crate::gfx_cache::GraphicsCache;
-use crate::map::{TILEX, TILEY};
 use crate::player_state::PlayerState;
 
-use mag_core::constants::{SPEEDTAB, STUNNED, XPOS, YPOS};
+use mag_core::constants::{SPEEDTAB, STUNNED, TILEX, TILEY, XPOS, YPOS};
 
 /// Computes the on-screen position for `copysprite`-style isometric sprite drawing.
 ///

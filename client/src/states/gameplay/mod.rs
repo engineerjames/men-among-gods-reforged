@@ -2,6 +2,7 @@ use bevy::prelude::*;
 
 use bevy::ecs::query::Without;
 use bevy::sprite::Anchor;
+use mag_core::constants::{TILEX, TILEY};
 
 use std::cmp::Ordering;
 use std::time::Instant;
@@ -32,7 +33,6 @@ pub(crate) use world_render::dd_effect_tint;
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::font_cache::{FontCache, BITMAP_GLYPH_W};
 use crate::gfx_cache::GraphicsCache;
-use crate::map::{TILEX, TILEY};
 use crate::network::{client_commands::ClientCommand, NetworkRuntime};
 use crate::player_state::PlayerState;
 use crate::systems::debug::{

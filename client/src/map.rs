@@ -1,9 +1,6 @@
-use crate::types::map::CMapTile;
+use mag_core::constants::{TILEX, TILEY};
 
-// These are the *client view* tile dimensions (matches original client: 34x34).
-// Do NOT use SERVER_MAPX/Y here; those represent the full world map size.
-pub const TILEX: usize = mag_core::constants::TILEX;
-pub const TILEY: usize = mag_core::constants::TILEY;
+use crate::types::map::CMapTile;
 
 #[derive(Debug)]
 pub struct GameMap {

@@ -6,9 +6,8 @@ use bevy::sprite::Anchor;
 use std::collections::HashMap;
 
 use crate::gfx_cache::GraphicsCache;
-use crate::map::{TILEX, TILEY};
 
-use mag_core::constants::INVIS;
+use mag_core::constants::{INVIS, TILEX, TILEY};
 
 use super::components::{GameplayRenderEntity, GameplayUiMinimap};
 use super::layout::{MINIMAP_SIZE, MINIMAP_X, MINIMAP_Y, Z_UI_MINIMAP};

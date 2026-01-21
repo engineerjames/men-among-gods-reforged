@@ -4,13 +4,13 @@ use bevy::sprite::Anchor;
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::gfx_cache::GraphicsCache;
-use crate::map::{GameMap, TILEX, TILEY};
+use crate::map::GameMap;
 use crate::player_state::PlayerState;
 
 use mag_core::constants::{
     DEATH, INFRARED, INJURED, INJURED1, INJURED2, INVIS, ISITEM, MF_ARENA, MF_BANK, MF_DEATHTRAP,
     MF_INDOORS, MF_MOVEBLOCK, MF_NOEXPIRE, MF_NOLAG, MF_NOMAGIC, MF_NOMONST, MF_SIGHTBLOCK,
-    MF_TAVERN, MF_UWATER, SPR_EMPTY, STONED, TOMB, UWATER,
+    MF_TAVERN, MF_UWATER, SPR_EMPTY, STONED, TILEX, TILEY, TOMB, UWATER,
 };
 
 use super::components::{
