@@ -228,10 +228,10 @@ fn process_network_events(
                         &cmd.structured_data
                     {
                         sound_queue.push_server_play_sound(*nr, *vol, *pan);
+                    } else {
+                        player_state.update_from_server_command(&cmd);
+                        log::debug!("Received server command: {:?}", cmd);
                     }
-
-                    player_state.update_from_server_command(&cmd);
-                    log::debug!("Received server command: {:?}", cmd);
                 } else {
                     log::warn!(
                         "Received unknown/invalid server command opcode={} ({} bytes)",
