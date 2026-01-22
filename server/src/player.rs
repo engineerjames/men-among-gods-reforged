@@ -6315,10 +6315,7 @@ fn plr_cmd_inv(nr: usize) {
         // check for lag scroll template on the item
         let tmp = Repository::with_characters(|ch| ch[cn].item[n] as usize);
         let is_lag = Repository::with_items(|items| {
-            if tmp != 0
-                && tmp < items.len()
-                && items[tmp].used == core::constants::USE_ACTIVE
-            {
+            if tmp != 0 && tmp < items.len() && items[tmp].used == core::constants::USE_ACTIVE {
                 items[tmp].temp as i32 == core::constants::IT_LAGSCROLL
             } else {
                 false
@@ -6338,6 +6335,7 @@ fn plr_cmd_inv(nr: usize) {
                     ch[cn].gold += tmpval as i32;
                 }
                 ch[cn].citem = 0;
+                #[allow(clippy::needless_return)]
                 return;
             } else {
                 if !ch[cn].is_building() {
