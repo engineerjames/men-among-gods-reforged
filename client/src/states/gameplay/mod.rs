@@ -24,6 +24,7 @@ use world_render::*;
 pub(crate) use components::BitmapText;
 pub use components::GameplayRenderEntity;
 pub(crate) use minimap::MiniMapState;
+pub(crate) use resources::CursorActionTextSettings;
 pub(crate) use resources::{GameplayCursorType, GameplayCursorTypeState};
 pub(crate) use world_render::{TileLayer, TileRender};
 

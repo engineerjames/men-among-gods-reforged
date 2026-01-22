@@ -91,6 +91,17 @@ pub(crate) struct GameplayShopHoverState {
     pub(crate) over_close: bool,
 }
 
+#[derive(Resource, Debug, Clone, Copy)]
+pub(crate) struct CursorActionTextSettings {
+    pub(crate) enabled: bool,
+}
+
+impl Default for CursorActionTextSettings {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub(crate) enum GameplayCursorType {
     #[default]

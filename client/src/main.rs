@@ -107,6 +107,7 @@ fn main() {
         .init_resource::<font_cache::FontCache>()
         .init_resource::<sound::SoundEventQueue>()
         .init_resource::<sound::SoundSettings>()
+        .init_resource::<states::gameplay::CursorActionTextSettings>()
         .init_resource::<GameplayDebugSettings>()
         .init_resource::<states::gameplay::MiniMapState>()
         .init_resource::<player_state::PlayerState>()

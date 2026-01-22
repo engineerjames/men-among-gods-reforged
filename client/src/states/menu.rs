@@ -6,6 +6,7 @@ use bevy_egui::{
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::player_state::PlayerState;
+use crate::states::gameplay::CursorActionTextSettings;
 use crate::systems::sound::SoundSettings;
 use crate::GameState;
 
@@ -38,6 +39,7 @@ pub fn run_menu(
     menu_ui: ResMut<MenuUiState>,
     mut player_state: ResMut<PlayerState>,
     mut sound_settings: ResMut<SoundSettings>,
+    mut cursor_action_text: ResMut<CursorActionTextSettings>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
@@ -77,6 +79,13 @@ pub fn run_menu(
             let mut shadows = player_state.player_data().are_shadows_enabled != 0;
             if ui.checkbox(&mut shadows, "Render shadows").changed() {
                 player_state.player_data_mut().are_shadows_enabled = if shadows { 1 } else { 0 };
+            }
+
+            if ui
+                .checkbox(&mut cursor_action_text.enabled, "Show cursor action text")
+                .changed()
+            {
+                // no-op; applied by the cursor UI system
             }
 
             if ui

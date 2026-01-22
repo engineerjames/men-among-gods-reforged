@@ -157,12 +157,18 @@ pub(crate) fn run_gameplay_update_cursor_action_text(
     windows: Query<&Window, With<PrimaryWindow>>,
     cameras: Query<&Camera, With<Camera2d>>,
     player_state: Res<PlayerState>,
+    cursor_action_text_settings: Res<CursorActionTextSettings>,
     hovered: Res<GameplayHoveredTile>,
     mut q: Query<(&mut Text2d, &mut Transform, &mut Visibility), With<GameplayUiCursorActionText>>,
 ) {
     let Some((mut text, mut t, mut vis)) = q.iter_mut().next() else {
         return;
     };
+
+    if !cursor_action_text_settings.enabled {
+        *vis = Visibility::Hidden;
+        return;
+    }
 
     let Some(game) = cursor_game_pos(&windows, &cameras) else {
         *vis = Visibility::Hidden;

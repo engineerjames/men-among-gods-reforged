@@ -51,14 +51,32 @@ impl FontCache {
         }
 
         // Create the shared 96-column atlas layout for all 4 fonts.
+        //
+        // Important: `TextureAtlasLayout::from_grid` does NOT include `offset` in `layout.size`.
+        // Because we use a Y offset (the glyph row starts at y=1), that would produce UVs with
+        // `v > 1.0` and cause subtle edge artifacts.
+        //
+        // Additionally, the original font sheet uses 6px cells but effectively 5px glyphs with a
+        // 1px spacer column; sampling the full 6px width can show "next glyph" bleed on the
+        // right edge depending on exact screen placement. We therefore crop the atlas rect width
+        // to 5px while keeping the 6px advance.
         if self.bitmap_layout.is_none() {
-            let layout = TextureAtlasLayout::from_grid(
-                UVec2::new(BITMAP_GLYPH_W as u32, BITMAP_GLYPH_H as u32),
-                BITMAP_GLYPH_COUNT as u32,
-                1,
-                None,
-                Some(UVec2::new(0, BITMAP_GLYPH_Y_OFFSET as u32)),
-            );
+            let cell_w = BITMAP_GLYPH_W as u32;
+            let cell_h = BITMAP_GLYPH_H as u32;
+            let offset_y = BITMAP_GLYPH_Y_OFFSET as u32;
+
+            let mut layout = TextureAtlasLayout::new_empty(UVec2::new(
+                cell_w * BITMAP_GLYPH_COUNT as u32,
+                offset_y + cell_h,
+            ));
+
+            for i in 0..BITMAP_GLYPH_COUNT as u32 {
+                let x = i * cell_w;
+                let min = UVec2::new(x, offset_y);
+                let max = UVec2::new(x + cell_w.saturating_sub(1), offset_y + cell_h);
+                layout.add_texture(URect { min, max });
+            }
+
             self.bitmap_layout = Some(atlas_layouts.add(layout));
         }
 
