@@ -11,11 +11,11 @@ pub(in crate::states::gameplay) const MAP_X_SHIFT: f32 = -176.0;
 // Pass 1: all backgrounds in (y desc, x asc) order.
 // Pass 2: objects -> character shadow -> characters in the same order.
 // We encode this by giving each pass its own z-range and then adding draw_order.
+// Within pass-2, objects/shadows/characters must share the same z-range (with small per-layer
+// biases) so that later tiles can occlude earlier tiles (e.g. pillars/walls in front of players).
 pub(in crate::states::gameplay) const Z_WORLD_STEP: f32 = 0.01;
 pub(in crate::states::gameplay) const Z_BG_BASE: f32 = 0.0;
 pub(in crate::states::gameplay) const Z_OBJ_BASE: f32 = 100.0;
-pub(in crate::states::gameplay) const Z_SHADOW_BASE: f32 = 100.1;
-pub(in crate::states::gameplay) const Z_CHAR_BASE: f32 = 100.2;
 pub(in crate::states::gameplay) const Z_FX_BASE: f32 = 100.25;
 // Must stay within the Camera2d default orthographic near/far (default_2d far is 1000).
 pub(in crate::states::gameplay) const Z_UI: f32 = 900.0;
