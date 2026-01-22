@@ -342,7 +342,6 @@ pub fn is_exhausted(cn: usize) -> i32 {
 
 pub fn add_exhaust(cn: usize, exhaust_length: i32) {
     // Ported from C++ add_exhaust(int cn, int len)
-    use core::constants::*;
     let in_ = God::create_item(1);
     if in_.is_none() {
         log::error!("god_create_item failed in add_exhaust");
@@ -383,40 +382,42 @@ pub fn spell_from_item(cn: usize, in2: usize) {
         log::error!("god_create_item failed in skill_from_item");
         return;
     }
+
+    let in_ = in_.unwrap();
     Repository::with_items_mut(|it| {
-        it[in_.unwrap()].name = Repository::with_items(|it2| it2[in2].name);
-        it[in_.unwrap()].flags |= ItemFlags::IF_SPELL.bits();
-        it[in_.unwrap()].armor[1] = Repository::with_items(|it2| it2[in2].armor[1]);
-        it[in_.unwrap()].weapon[1] = Repository::with_items(|it2| it2[in2].weapon[1]);
-        it[in_.unwrap()].hp[1] = Repository::with_items(|it2| it2[in2].hp[1]);
-        it[in_.unwrap()].end[1] = Repository::with_items(|it2| it2[in2].end[1]);
-        it[in_.unwrap()].mana[1] = Repository::with_items(|it2| it2[in2].mana[1]);
-        it[in_.unwrap()].sprite_override = Repository::with_items(|it2| it2[in2].sprite_override);
+        it[in_].name = Repository::with_items(|it2| it2[in2].name);
+        it[in_].flags |= ItemFlags::IF_SPELL.bits();
+        it[in_].armor[1] = Repository::with_items(|it2| it2[in2].armor[1]);
+        it[in_].weapon[1] = Repository::with_items(|it2| it2[in2].weapon[1]);
+        it[in_].hp[1] = Repository::with_items(|it2| it2[in2].hp[1]);
+        it[in_].end[1] = Repository::with_items(|it2| it2[in2].end[1]);
+        it[in_].mana[1] = Repository::with_items(|it2| it2[in2].mana[1]);
+        it[in_].sprite_override = Repository::with_items(|it2| it2[in2].sprite_override);
         for n in 0..5 {
-            it[in_.unwrap()].attrib[n][1] = Repository::with_items(|it2| it2[in2].attrib[n][1]);
+            it[in_].attrib[n][1] = Repository::with_items(|it2| it2[in2].attrib[n][1]);
         }
         for n in 0..50 {
-            it[in_.unwrap()].skill[n][1] = Repository::with_items(|it2| it2[in2].skill[n][1]);
+            it[in_].skill[n][1] = Repository::with_items(|it2| it2[in2].skill[n][1]);
         }
         let data0 = Repository::with_items(|it2| it2[in2].data[0]);
         if data0 != 0 {
-            it[in_.unwrap()].sprite[1] = data0 as i16;
+            it[in_].sprite[1] = data0 as i16;
         } else {
-            it[in_.unwrap()].sprite[1] = 93;
+            it[in_].sprite[1] = 93;
         }
         let duration = Repository::with_items(|it2| it2[in2].duration);
-        it[in_.unwrap()].duration = duration;
-        it[in_.unwrap()].active = duration;
+        it[in_].duration = duration;
+        it[in_].active = duration;
         let data1 = Repository::with_items(|it2| it2[in2].data[1]);
         if data1 != 0 {
-            it[in_.unwrap()].temp = data1 as u16;
+            it[in_].temp = data1 as u16;
         } else {
-            it[in_.unwrap()].temp = 101;
+            it[in_].temp = 101;
         }
-        it[in_.unwrap()].power = Repository::with_items(|it2| it2[in2].power);
+        it[in_].power = Repository::with_items(|it2| it2[in2].power);
     });
-    if add_spell(cn, in_.unwrap()) == 0 {
-        let name = Repository::with_items(|it| it[in_.unwrap()].get_name().to_string());
+    if add_spell(cn, in_) == 0 {
+        let name = Repository::with_items(|it| it[in_].get_name().to_string());
         State::with(|state| {
             state.do_character_log(
                 cn,
