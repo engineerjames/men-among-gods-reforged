@@ -124,23 +124,46 @@ pub(crate) fn run_gameplay_statbox_input(
 
         // Skill hotbar (xbuttons) assign/unassign (orig/inter.c via button_help cases 16..27).
         if let Some(slot) = xbuttons_slot_at(x, y) {
-            let slot_data = &mut player_state.player_data_mut().skill_buttons[slot];
+            let mut changed_xbuttons = false;
 
-            if let Some(skill_id) = xbuttons.pending_skill_id {
-                let skill_nr = get_skill_nr(skill_id) as u32;
-                if !slot_data.is_unassigned() && slot_data.skill_nr() == skill_nr {
-                    slot_data.set_unassigned();
-                } else {
-                    let label = xbuttons_truncate_label(get_skill_name(skill_id));
-                    slot_data.set_skill_nr(skill_nr);
-                    slot_data.set_name(&label);
-                }
-                player_state.mark_dirty();
-            } else {
-                // No pending skill selected: allow clearing the slot.
-                if !slot_data.is_unassigned() {
-                    slot_data.set_unassigned();
+            {
+                let slot_data = &mut player_state.player_data_mut().skill_buttons[slot];
+
+                if let Some(skill_id) = xbuttons.pending_skill_id {
+                    let skill_nr = get_skill_nr(skill_id) as u32;
+                    if !slot_data.is_unassigned() && slot_data.skill_nr() == skill_nr {
+                        slot_data.set_unassigned();
+                    } else {
+                        let label = xbuttons_truncate_label(get_skill_name(skill_id));
+                        slot_data.set_skill_nr(skill_nr);
+                        slot_data.set_name(&label);
+                    }
+                    changed_xbuttons = true;
                     player_state.mark_dirty();
+                } else {
+                    // No pending skill selected: allow clearing the slot.
+                    if !slot_data.is_unassigned() {
+                        slot_data.set_unassigned();
+                        changed_xbuttons = true;
+                        player_state.mark_dirty();
+                    }
+                }
+            }
+
+            // Persist updated xbuttons into mag.dat so they survive restarts and subsequent
+            // character `.mag` saves.
+            if changed_xbuttons {
+                match crate::types::mag_files::load_mag_dat() {
+                    Ok(mut mag_dat) => {
+                        mag_dat.save_file = *player_state.save_file();
+                        mag_dat.player_data = *player_state.player_data();
+                        if let Err(e) = crate::types::mag_files::save_mag_dat(&mag_dat) {
+                            log::warn!("Failed to save mag.dat after xbuttons change: {e}");
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to load mag.dat after xbuttons change: {e}");
+                    }
                 }
             }
             return;

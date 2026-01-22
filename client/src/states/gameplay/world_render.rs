@@ -17,8 +17,44 @@ use super::components::{
     GameplayRenderEntity, GameplayUiBackpackSlot, GameplayUiEquipmentSlot, GameplayUiPortrait,
     GameplayUiRank, GameplayUiShop, GameplayUiSpellSlot,
 };
-use super::layout::{Z_BG_BASE, Z_CHAR_BASE, Z_FX_BASE, Z_OBJ_BASE, Z_SHADOW_BASE, Z_WORLD_STEP};
+use super::layout::{Z_BG_BASE, Z_FX_BASE, Z_OBJ_BASE, Z_WORLD_STEP};
 use super::legacy_engine;
+
+// Pass-2 painter ordering matches the legacy client:
+// for each tile in scan order: draw object -> character shadow -> character.
+// IMPORTANT: these must share the same Z range so later tiles can occlude earlier tiles,
+// otherwise characters end up globally "on top" of objects (pillars/walls).
+const Z_PASS2_OBJ_BIAS: f32 = 0.0000;
+const Z_PASS2_SHADOW_BIAS: f32 = 0.0005;
+const Z_PASS2_CHAR_BIAS: f32 = 0.0010;
+
+#[inline]
+fn tile_draw_order(x: usize, y: usize) -> f32 {
+    // Matches the engine.c scan order used for pass-2 drawing.
+    ((TILEY - 1 - y) * TILEX + x) as f32
+}
+
+#[inline]
+fn tile_draw_order_with_obj_offset(x: usize, y: usize, xoff: i32, yoff: i32) -> f32 {
+    // When a character is moving, its sprite is smoothly offset on screen via obj_xoff/obj_yoff.
+    // If we keep depth purely tile-based, the sprite can be sorted incorrectly until it comes
+    // fully to rest. We approximate a fractional tile position by inverting the isometric mapping.
+    //
+    // From copysprite_screen_pos (ignoring constants and sprite size terms):
+    //   rx ~= 16*x + 16*y
+    //   ry ~=  8*x -  8*y
+    // Therefore for small screen deltas (dx_rx, dy_ry):
+    //   dx ~= (dx_rx/16 + dy_ry/8)/2
+    //   dy ~= (dx_rx/16 - dy_ry/8)/2
+    let xoff = xoff as f32;
+    let yoff = yoff as f32;
+    let dx = 0.5 * (xoff / 16.0 + yoff / 8.0);
+    let dy = 0.5 * (xoff / 16.0 - yoff / 8.0);
+
+    let xf = x as f32 + dx;
+    let yf = y as f32 + dy;
+    (TILEY as f32 - 1.0 - yf) * (TILEX as f32) + xf
+}
 
 #[inline]
 pub(crate) fn should_draw_shadow(sprite_id: i32) -> bool {
@@ -331,7 +367,6 @@ pub(crate) fn update_world_shadows(
 
         let x = shadow.index % TILEX;
         let y = shadow.index / TILEX;
-        let draw_order = ((TILEY - 1 - y) * TILEX + x) as f32;
 
         let xpos = (x as i32) * 32;
         let ypos = (y as i32) * 32;
@@ -377,6 +412,7 @@ pub(crate) fn update_world_shadows(
             }
             continue;
         };
+
         let Some((_xs, ys)) = gfx.get_sprite_tiles_xy(sprite_id as usize) else {
             if *visibility != Visibility::Hidden {
                 *visibility = Visibility::Hidden;
@@ -411,7 +447,9 @@ pub(crate) fn update_world_shadows(
         if *visibility != Visibility::Visible {
             *visibility = Visibility::Visible;
         }
-        let z = Z_SHADOW_BASE + draw_order * Z_WORLD_STEP;
+        // Keep the original tile scan order, but allow moving characters to shift depth smoothly.
+        let draw_order = tile_draw_order_with_obj_offset(x, y, xoff, yoff);
+        let z = Z_OBJ_BASE + draw_order * Z_WORLD_STEP + Z_PASS2_SHADOW_BIAS;
         transform.translation = screen_to_world(sx_f, shadow_sy_f, z);
         transform.scale = Vec3::new(1.0, 0.25, 1.0);
     }
@@ -448,7 +486,7 @@ pub(crate) fn update_world_tiles(
 
         let x = render.index % TILEX;
         let y = render.index / TILEX;
-        let draw_order = ((TILEY - 1 - y) * TILEX + x) as f32;
+        let draw_order = tile_draw_order(x, y);
 
         // dd.c uses x*32/y*32 as "map space" inputs to the isometric projection.
         let xpos = (x as i32) * 32;
@@ -539,9 +577,15 @@ pub(crate) fn update_world_tiles(
         let (sx_f, sy_f) = (sx_i as f32, sy_i as f32);
 
         let z = match render.layer {
+            // Backgrounds are static and don't interpolate; keep the original draw-order mapping.
             TileLayer::Background => Z_BG_BASE + draw_order * Z_WORLD_STEP,
-            TileLayer::Object => Z_OBJ_BASE + draw_order * Z_WORLD_STEP,
-            TileLayer::Character => Z_CHAR_BASE + draw_order * Z_WORLD_STEP,
+            // Objects are static (per-tile); keep original painter order so occlusion matches.
+            TileLayer::Object => Z_OBJ_BASE + draw_order * Z_WORLD_STEP + Z_PASS2_OBJ_BIAS,
+            // Characters interpolate via obj_xoff/obj_yoff; adjust draw_order smoothly.
+            TileLayer::Character => {
+                let d = tile_draw_order_with_obj_offset(x, y, xoff_i, yoff_i);
+                Z_OBJ_BASE + d * Z_WORLD_STEP + Z_PASS2_CHAR_BIAS
+            }
         };
 
         // Match engine.c's per-layer effect flags.
@@ -669,7 +713,6 @@ pub(crate) fn update_world_overlays(
 
         let x = ovl.index % TILEX;
         let y = ovl.index / TILEX;
-        let draw_order = ((TILEY - 1 - y) * TILEX + x) as f32;
 
         let xpos = (x as i32) * 32;
         let ypos = (y as i32) * 32;
@@ -825,7 +868,14 @@ pub(crate) fn update_world_overlays(
         };
 
         let (sx_f, sy_f) = (sx_i as f32, sy_i as f32);
-        let z = Z_FX_BASE + draw_order * Z_WORLD_STEP + z_bias;
+        // Overlays are mostly static; keep original tile scan order. If an overlay uses
+        // obj offsets (eg injury/death markers), allow smooth depth shifts.
+        let base_order = if xoff_i != 0 || yoff_i != 0 {
+            tile_draw_order_with_obj_offset(x, y, xoff_i, yoff_i)
+        } else {
+            tile_draw_order(x, y)
+        };
+        let z = Z_FX_BASE + base_order * Z_WORLD_STEP + z_bias;
 
         if sprite_id == last.sprite_id
             && (sx_f - last.sx).abs() < 0.01

@@ -27,3 +27,5 @@ target
 profile.json.gz
 
 **/logs/**
+
+**/orig/**

@@ -17,8 +17,14 @@ use tracing_appender::{non_blocking::WorkerGuard, rolling};
 
 use bevy::log::{tracing_subscriber::Layer, BoxedLayer, LogPlugin};
 use bevy::prelude::*;
+#[cfg(not(target_os = "macos"))]
+use bevy::window::PrimaryWindow;
 use bevy::window::WindowResolution;
+#[cfg(not(target_os = "macos"))]
+use bevy::winit::WinitWindows;
 use bevy::winit::{UpdateMode, WinitSettings};
+#[cfg(not(target_os = "macos"))]
+use winit::window::Icon;
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::gfx_cache::GraphicsCache;
@@ -31,12 +37,20 @@ use crate::systems::sound;
 
 static LOG_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
 
+#[cfg(target_os = "macos")]
+#[derive(Default)]
+struct MacosMainThreadToken;
+
+#[derive(Resource, Clone, Debug)]
+struct ClientAssetsDir(PathBuf);
+
 #[derive(States, Clone, Copy, PartialEq, Eq, Hash, Debug)]
 enum GameState {
     Loading,
     LoggingIn,
     Gameplay,
     Menu,
+    Exited,
 }
 
 fn custom_layer(_app: &mut App) -> Option<BoxedLayer> {
@@ -78,10 +92,12 @@ fn main() {
     let gfx_zip = assets_dir.join("GFX").join("images.zip");
     let sfx_dir = assets_dir.join("SFX");
 
-    App::new()
+    let mut app = App::new();
+    app
         // Setup resources
         .insert_resource(GraphicsCache::new(gfx_zip.to_string_lossy().as_ref()))
         .insert_resource(SoundCache::new(sfx_dir.to_string_lossy().as_ref()))
+        .insert_resource(ClientAssetsDir(assets_dir))
         // Keep the game simulation running even when the window is unfocused/minimized.
         .insert_resource(WinitSettings {
             focused_mode: UpdateMode::Continuous,
@@ -90,6 +106,7 @@ fn main() {
         })
         .init_resource::<font_cache::FontCache>()
         .init_resource::<sound::SoundEventQueue>()
+        .init_resource::<sound::SoundSettings>()
         .init_resource::<GameplayDebugSettings>()
         .init_resource::<states::gameplay::MiniMapState>()
         .init_resource::<player_state::PlayerState>()
@@ -162,12 +179,16 @@ fn main() {
         .add_systems(
             Update,
             states::gameplay::run_gameplay
-                .run_if(in_state(GameState::Gameplay))
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu)))
                 .after(network::NetworkSet::Receive),
         )
         .add_systems(
             Update,
             sound::play_queued_sounds.run_if(in_state(GameState::Gameplay)),
+        )
+        .add_systems(
+            Update,
+            sound::play_queued_sounds.run_if(in_state(GameState::Menu)),
         )
         .add_systems(
             Update,
@@ -206,75 +227,77 @@ fn main() {
         .add_systems(
             Update,
             map_hover::run_gameplay_move_target_marker
-                .run_if(in_state(GameState::Gameplay))
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu)))
                 .after(states::gameplay::run_gameplay),
         )
         .add_systems(
             Update,
             map_hover::run_gameplay_attack_target_marker
-                .run_if(in_state(GameState::Gameplay))
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu)))
                 .after(states::gameplay::run_gameplay),
         )
         .add_systems(
             Update,
             map_hover::run_gameplay_misc_action_marker
-                .run_if(in_state(GameState::Gameplay))
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu)))
                 .after(states::gameplay::run_gameplay),
         )
         .add_systems(
             Update,
             map_hover::run_gameplay_sprite_highlight
-                .run_if(in_state(GameState::Gameplay))
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu)))
                 .after(states::gameplay::run_gameplay),
         )
         .add_systems(
             Update,
-            nameplates::run_gameplay_nameplates.run_if(in_state(GameState::Gameplay)),
+            nameplates::run_gameplay_nameplates
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu))),
         )
         .add_systems(
             Update,
-            states::gameplay::run_gameplay_text_ui.run_if(in_state(GameState::Gameplay)),
+            states::gameplay::run_gameplay_text_ui
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu))),
         )
         .add_systems(
             Update,
             states::gameplay::ui::hud::run_gameplay_update_hud_labels
-                .run_if(in_state(GameState::Gameplay)),
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu))),
         )
         .add_systems(
             Update,
             states::gameplay::ui::extra::run_gameplay_update_extra_ui
-                .run_if(in_state(GameState::Gameplay)),
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu))),
         )
         .add_systems(
             Update,
             states::gameplay::ui::hud::run_gameplay_update_stat_bars
-                .run_if(in_state(GameState::Gameplay)),
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu))),
         )
         .add_systems(
             Update,
             states::gameplay::ui::statbox::run_gameplay_update_scroll_knobs
-                .run_if(in_state(GameState::Gameplay)),
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu))),
         )
         .add_systems(
             Update,
             states::gameplay::ui::portrait::run_gameplay_update_top_selected_name
-                .run_if(in_state(GameState::Gameplay)),
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu))),
         )
         .add_systems(
             Update,
             states::gameplay::ui::portrait::run_gameplay_update_portrait_name_and_rank
-                .run_if(in_state(GameState::Gameplay)),
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu))),
         )
         .add_systems(
             Update,
             states::gameplay::ui::shop::run_gameplay_update_shop_price_labels
-                .run_if(in_state(GameState::Gameplay))
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu)))
                 .after(states::gameplay::ui::shop::run_gameplay_shop_input),
         )
         .add_systems(
             Update,
             states::gameplay::run_gameplay_bitmap_text_renderer
-                .run_if(in_state(GameState::Gameplay))
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu)))
                 .after(states::gameplay::ui::extra::run_gameplay_update_extra_ui)
                 .after(states::gameplay::ui::hud::run_gameplay_update_stat_bars)
                 .after(states::gameplay::ui::portrait::run_gameplay_update_top_selected_name)
@@ -287,16 +310,175 @@ fn main() {
         //
         .add_systems(OnEnter(GameState::Menu), states::menu::setup_menu)
         .add_systems(
-            Update,
+            EguiPrimaryContextPass,
             states::menu::run_menu.run_if(in_state(GameState::Menu)),
         )
         .add_systems(OnExit(GameState::Menu), states::menu::teardown_menu)
         //
+        // Exited state
+        //
+        .add_systems(OnEnter(GameState::Exited), states::exited::setup_exited)
+        .add_systems(
+            Update,
+            states::exited::apply_exit_request.run_if(in_state(GameState::Exited)),
+        )
+        .add_systems(
+            EguiPrimaryContextPass,
+            states::exited::run_exited.run_if(in_state(GameState::Exited)),
+        )
+        .add_systems(OnExit(GameState::Exited), states::exited::teardown_exited)
+        //
         // Global (utility) systems
         //
         .add_systems(StateTransition, debug::run_on_any_transition)
-        .add_systems(Update, display::enforce_aspect_and_pixel_coords)
-        .run();
+        .add_systems(Update, display::enforce_aspect_and_pixel_coords);
+
+    // macOS: Set Dock icon via AppKit on the main thread.
+    #[cfg(target_os = "macos")]
+    {
+        app.insert_non_send_resource(MacosMainThreadToken::default());
+        app.add_systems(Startup, set_macos_dock_icon_startup);
+    }
+
+    // Windows/Linux: Set the winit window icon once the native window exists.
+    #[cfg(not(target_os = "macos"))]
+    {
+        app.add_systems(Update, set_window_icon_once);
+    }
+
+    app.run();
+}
+
+#[cfg(target_os = "macos")]
+fn set_macos_dock_icon_from_rgba(
+    rgba: &[u8],
+    width: u32,
+    height: u32,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::{NSApplication, NSImage};
+    use objc2_foundation::NSData;
+    use std::io::Cursor;
+
+    let image = image::RgbaImage::from_raw(width, height, rgba.to_vec())
+        .ok_or("Invalid RGBA buffer for icon")?;
+
+    let mut png_bytes = Vec::new();
+    image::DynamicImage::ImageRgba8(image)
+        .write_to(&mut Cursor::new(&mut png_bytes), image::ImageFormat::Png)?;
+
+    let mtm = MainThreadMarker::new().ok_or("Setting Dock icon must run on the main thread")?;
+
+    let data = NSData::with_bytes(&png_bytes);
+    let ns_image = NSImage::initWithData(mtm.alloc::<NSImage>(), &data)
+        .ok_or("Failed to create NSImage from PNG bytes")?;
+
+    let app = NSApplication::sharedApplication(mtm);
+    unsafe {
+        app.setApplicationIconImage(Some(&ns_image));
+    }
+
+    // Nudge the Dock to redraw. This can help when the process is launched via `cargo run`.
+    app.dockTile().display();
+
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn set_macos_dock_icon_startup(
+    _main_thread: NonSend<MacosMainThreadToken>,
+    assets_dir: Res<ClientAssetsDir>,
+) {
+    let icon_path = assets_dir.0.join("TLB.ICO");
+    let icon_bytes = match std::fs::read(&icon_path) {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            log::warn!("Failed to read icon file at {:?}: {err}", icon_path);
+            return;
+        }
+    };
+
+    let decoded = match image::load_from_memory(&icon_bytes) {
+        Ok(img) => img.into_rgba8(),
+        Err(err) => {
+            log::warn!("Failed to decode icon file at {:?}: {err}", icon_path);
+            return;
+        }
+    };
+
+    let (width, height) = decoded.dimensions();
+    let rgba = decoded.into_raw();
+
+    match set_macos_dock_icon_from_rgba(&rgba, width, height) {
+        Ok(()) => log::info!("Set Dock icon"),
+        Err(err) => log::warn!("Failed to set Dock icon: {err}"),
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn set_window_icon_once(
+    winit_windows: NonSend<WinitWindows>,
+    primary_window: Query<Entity, With<PrimaryWindow>>,
+    assets_dir: Res<ClientAssetsDir>,
+    mut done: Local<bool>,
+    mut attempts: Local<u16>,
+) {
+    if *done {
+        return;
+    }
+
+    let winit_windows = &*winit_windows;
+    let Some(window_entity) = primary_window.iter().next() else {
+        log::warn!("Primary window entity not available yet");
+        *attempts = attempts.saturating_add(1);
+        return;
+    };
+
+    if *attempts >= 300 {
+        log::warn!("Giving up on setting app icon after too many attempts");
+        *done = true;
+        return;
+    }
+
+    // Gate on native window existence.
+    let Some(window) = winit_windows.get_window(window_entity) else {
+        return;
+    };
+
+    let icon_path = assets_dir.0.join("TLB.ICO");
+    let icon_bytes = match std::fs::read(&icon_path) {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            log::warn!("Failed to read icon file at {:?}: {err}", icon_path);
+            *done = true;
+            return;
+        }
+    };
+
+    let decoded = match image::load_from_memory(&icon_bytes) {
+        Ok(img) => img.into_rgba8(),
+        Err(err) => {
+            log::warn!("Failed to decode icon file at {:?}: {err}", icon_path);
+            *done = true;
+            return;
+        }
+    };
+
+    let (width, height) = decoded.dimensions();
+    let rgba = decoded.into_raw();
+    *attempts = attempts.saturating_add(1);
+
+    match Icon::from_rgba(rgba, width, height) {
+        Ok(icon) => {
+            window.set_window_icon(Some(icon));
+            log::info!("Set window icon");
+        }
+        Err(err) => {
+            log::warn!("Failed to create winit icon: {err}");
+        }
+    }
+
+    *done = true;
 }
 
 fn setup_camera(mut commands: Commands) {

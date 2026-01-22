@@ -2905,7 +2905,7 @@ pub fn use_pile(cn: usize, item_idx: usize) -> i32 {
         items[item_idx].used = USE_EMPTY;
     });
 
-    let m = (x as usize) + (y as usize) * core::constants::MAPX;
+    let m = (x as usize) + (y as usize) * core::constants::SERVER_MAPX as usize;
     Repository::with_map_mut(|map| {
         map[m].it = 0;
     });
@@ -3045,7 +3045,7 @@ pub fn mine_wall(cn: usize, item_idx: usize) -> i32 {
                 (characters[cn].x as usize, characters[cn].y as usize)
             }
         });
-        let m = x + y * core::constants::MAPX;
+        let m = x + y * core::constants::SERVER_MAPX as usize;
         let map_item = Repository::with_map(|map| map[m].it);
         if map_item == 0 {
             return 0;
@@ -7651,6 +7651,35 @@ pub fn item_tick_expire() {
                 (items[in_idx].x, items[in_idx].y, items[in_idx].used)
             });
             if it_x != x as u16 || it_y != y as u16 || it_used != USE_ACTIVE {
+                Repository::with_items(|items| {
+                    if in_idx < items.len() {
+                        let item = &items[in_idx];
+                        let temp = item.temp;
+                        let carried = item.carried;
+                        let used = item.used;
+                        let item_x = item.x;
+                        let item_y = item.y;
+                        log::debug!(
+                            "map[{},{}].it invalid -> item {} (temp={}, name='{}', carried={}, used={}, pos=({},{})); clearing map reference",
+                            x,
+                            y,
+                            in_idx,
+                            temp,
+                            item.get_name(),
+                            carried,
+                            used,
+                            item_x,
+                            item_y,
+                        );
+                    } else {
+                        log::debug!(
+                            "map[{},{}].it invalid -> item index {} out of bounds; clearing map reference",
+                            x,
+                            y,
+                            in_idx
+                        );
+                    }
+                });
                 log::error!("map[{},{}].it reset from {} to 0", x, y, in_idx);
                 Repository::with_map_mut(|map| {
                     map[m].it = 0;

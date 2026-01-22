@@ -172,7 +172,29 @@ pub fn build_mag_dat(
 pub fn load_character_file(path: &Path) -> io::Result<(SaveFile, PlayerData)> {
     let mut file = File::open(path)?;
     let save_file: SaveFile = read_struct(&mut file)?;
+
+    // Our character `.mag` format is a simple binary dump of:
+    // `SaveFile` followed by `PlayerData`.
     let player_data: PlayerData = read_struct(&mut file)?;
+
+    // Critical validation: a character save must include a character name.
+    // The authoritative name is stored in `pdata.cname`.
+    if fixed_ascii_to_string(&player_data.cname).is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Invalid .mag file: missing character name (pdata.cname)",
+        ));
+    }
+
+    // Be strict: refuse trailing bytes so silent layout mismatches don't go unnoticed.
+    let mut trailing = [0u8; 1];
+    if file.read(&mut trailing)? != 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Unexpected trailing bytes after PlayerData in .mag",
+        ));
+    }
+
     Ok((save_file, player_data))
 }
 
@@ -239,7 +261,14 @@ mod tests {
         player_data.changed = 1;
         player_data.hide = 1;
         player_data.show_names = 1;
+        player_data.cname[0..4].copy_from_slice(b"Test");
         player_data.desc[0..11].copy_from_slice(b"Hello world");
+
+        // Ensure xbuttons are part of the roundtrip.
+        player_data.skill_buttons[0].set_skill_nr(123);
+        player_data.skill_buttons[0].set_name("Fire");
+        player_data.skill_buttons[7].set_skill_nr(999);
+        player_data.skill_buttons[7].set_name("Heal");
 
         save_character_file(&path, &save_file, &player_data).unwrap();
         let (loaded_save, loaded_pdata) = load_character_file(&path).unwrap();

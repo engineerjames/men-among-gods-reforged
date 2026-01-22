@@ -13,3 +13,10 @@ bevy_egui = "0.39"
 egui-file-dialog = "0.12.0"
 flate2 = "1.1.5"
 tracing = "0.1.44"
+image = { version = "0.25", default-features = false, features = ["ico", "png"] }
+winit = "0.30"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSDockTile", "NSImage"] }
+objc2-foundation = { version = "0.3" }

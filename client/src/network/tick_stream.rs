@@ -1,6 +1,6 @@
 use flate2::{Decompress, FlushDecompress, Status};
 use mag_core::constants::{
-    SV_IGNORE, SV_LOAD, SV_PLAYSOUND, SV_SCROLL_DOWN, SV_SCROLL_LEFT, SV_SCROLL_LEFTDOWN,
+    SV_EXIT, SV_IGNORE, SV_LOAD, SV_PLAYSOUND, SV_SCROLL_DOWN, SV_SCROLL_LEFT, SV_SCROLL_LEFTDOWN,
     SV_SCROLL_LEFTUP, SV_SCROLL_RIGHT, SV_SCROLL_RIGHTDOWN, SV_SCROLL_RIGHTUP, SV_SCROLL_UP,
     SV_SETCHAR_AEND, SV_SETCHAR_AHP, SV_SETCHAR_AMANA, SV_SETCHAR_ATTRIB, SV_SETCHAR_DIR,
     SV_SETCHAR_ENDUR, SV_SETCHAR_GOLD, SV_SETCHAR_HP, SV_SETCHAR_ITEM, SV_SETCHAR_MANA,
@@ -180,6 +180,14 @@ fn sv_cmd_len(bytes: &[u8], last_setmap_n: &mut i32) -> Result<usize, String> {
 
         SV_LOAD => 5,
         SV_UNIQUE => 9,
+
+        SV_EXIT => {
+            if bytes.len() >= 16 {
+                16
+            } else {
+                5
+            }
+        }
         SV_IGNORE => {
             if bytes.len() < 5 {
                 return Err("SV_IGNORE truncated (need 5 bytes for size)".to_string());
@@ -212,9 +220,22 @@ pub(super) fn split_tick_payload(payload: &[u8]) -> Result<Vec<Vec<u8>>, String>
             return Err("sv_cmd_len returned 0".to_string());
         }
         if idx + len > payload.len() {
+            let opcode = payload[idx];
+            let remaining = payload.len() - idx;
+
+            // The original client is tolerant of a short SV_EXIT at the end of a tick payload.
+            // Our higher-level parser expects at least 5 bytes (opcode + u32 reason), so pad.
+            if opcode == SV_EXIT && remaining < 5 {
+                let mut cmd = vec![0u8; 5];
+                cmd[0] = SV_EXIT;
+                cmd[1..1 + remaining.saturating_sub(1)]
+                    .copy_from_slice(&payload[idx + 1..payload.len()]);
+                out.push(cmd);
+                break;
+            }
+
             return Err(format!(
-                "Truncated server command: need {len} bytes, have {}",
-                payload.len() - idx
+                "Truncated server command opcode={opcode} at offset={idx}: need {len} bytes, have {remaining}"
             ));
         }
         out.push(payload[idx..idx + len].to_vec());

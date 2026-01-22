@@ -2,6 +2,7 @@ use bevy::ecs::resource::Resource;
 use mag_core::{circular_buffer::CircularBuffer, constants::TICKS, types::ClientPlayer};
 
 use crate::{
+    helpers::exit_reason_string,
     map::GameMap,
     network::server_commands::{ServerCommand, ServerCommandData},
     types::save_file::SaveFile,
@@ -43,6 +44,9 @@ pub struct PlayerState {
 
     // Monotonically increasing revision for "state changed" checks (UI throttling, etc).
     state_revision: u64,
+
+    // Set when the server sends SV_EXIT. A system will transition to GameState::Exited.
+    exit_requested_reason: Option<u32>,
 }
 
 #[derive(Clone, Debug)]
@@ -81,11 +85,17 @@ impl Default for PlayerState {
             local_ctick: 0,
 
             state_revision: 0,
+
+            exit_requested_reason: None,
         }
     }
 }
 
 impl PlayerState {
+    pub fn take_exit_requested_reason(&mut self) -> Option<u32> {
+        self.exit_requested_reason.take()
+    }
+
     pub fn state_revision(&self) -> u64 {
         self.state_revision
     }
@@ -772,8 +782,17 @@ impl PlayerState {
             }
 
             ServerCommandData::Exit { reason } => {
-                log::info!("Exit: reason={:?}", reason);
-                self.tlog(3, format!("Server requested exit (reason={reason})"));
+                log::info!("Exit: reason={:?}", exit_reason_string(*reason));
+                self.tlog(
+                    3,
+                    format!(
+                        "Server requested exit (reason={})",
+                        exit_reason_string(*reason)
+                    ),
+                );
+
+                // Defer the actual state transition to a system (we don't have access to NextState here).
+                self.exit_requested_reason = Some(*reason);
             }
             _ => {
                 log::error!("PlayerState ignoring server command: {:?}", command.header);

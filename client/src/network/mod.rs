@@ -145,7 +145,7 @@ impl Plugin for NetworkPlugin {
             .add_systems(
                 Update,
                 send_client_tick
-                    .run_if(in_state(GameState::Gameplay))
+                    .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu)))
                     .in_set(NetworkSet::Send)
                     .after(NetworkSet::Receive),
             );
@@ -231,6 +231,10 @@ fn process_network_events(
                     } else {
                         player_state.update_from_server_command(&cmd);
                         log::debug!("Received server command: {:?}", cmd);
+
+                        if player_state.take_exit_requested_reason().is_some() {
+                            next_state.set(GameState::Exited);
+                        }
                     }
                 } else {
                     log::warn!(
