@@ -319,6 +319,10 @@ fn main() {
         //
         .add_systems(OnEnter(GameState::Exited), states::exited::setup_exited)
         .add_systems(
+            Update,
+            states::exited::apply_exit_request.run_if(in_state(GameState::Exited)),
+        )
+        .add_systems(
             EguiPrimaryContextPass,
             states::exited::run_exited.run_if(in_state(GameState::Exited)),
         )
