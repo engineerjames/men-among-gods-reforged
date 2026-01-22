@@ -50,6 +50,7 @@ enum GameState {
     LoggingIn,
     Gameplay,
     Menu,
+    Exited,
 }
 
 fn custom_layer(_app: &mut App) -> Option<BoxedLayer> {
@@ -313,6 +314,15 @@ fn main() {
             states::menu::run_menu.run_if(in_state(GameState::Menu)),
         )
         .add_systems(OnExit(GameState::Menu), states::menu::teardown_menu)
+        //
+        // Exited state
+        //
+        .add_systems(OnEnter(GameState::Exited), states::exited::setup_exited)
+        .add_systems(
+            EguiPrimaryContextPass,
+            states::exited::run_exited.run_if(in_state(GameState::Exited)),
+        )
+        .add_systems(OnExit(GameState::Exited), states::exited::teardown_exited)
         //
         // Global (utility) systems
         //

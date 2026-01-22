@@ -231,6 +231,10 @@ fn process_network_events(
                     } else {
                         player_state.update_from_server_command(&cmd);
                         log::debug!("Received server command: {:?}", cmd);
+
+                        if player_state.take_exit_requested_reason().is_some() {
+                            next_state.set(GameState::Exited);
+                        }
                     }
                 } else {
                     log::warn!(
