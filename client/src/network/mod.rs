@@ -126,6 +126,20 @@ impl NetworkRuntime {
         };
         let _ = tx.send(NetworkCommand::Shutdown);
     }
+
+    /// Stops the network runtime immediately by dropping channels and the task handle.
+    ///
+    /// This is useful during state transitions or app shutdown to ensure we can't get
+    /// stuck processing an unbounded backlog of network events.
+    pub fn stop(&mut self) {
+        self.command_tx = None;
+        self.event_rx = None;
+        self.task = None;
+        self.started = false;
+        self.logged_in = false;
+        self.client_ticker = 0;
+        self.last_ctick_sent = 0;
+    }
 }
 
 pub struct NetworkPlugin;
@@ -141,7 +155,19 @@ impl Plugin for NetworkPlugin {
                 Update,
                 login::start_login.run_if(in_state(GameState::LoggingIn)),
             )
-            .add_systems(Update, process_network_events.in_set(NetworkSet::Receive))
+            // Only process network events while we're in active network-driven states.
+            // When the "Exited" UI is showing, we intentionally stop draining the queue so
+            // the main thread can't stall on a large backlog while the user tries to quit.
+            .add_systems(
+                Update,
+                process_network_events
+                    .run_if(
+                        in_state(GameState::LoggingIn)
+                            .or(in_state(GameState::Gameplay))
+                            .or(in_state(GameState::Menu)),
+                    )
+                    .in_set(NetworkSet::Receive),
+            )
             .add_systems(
                 Update,
                 send_client_tick
