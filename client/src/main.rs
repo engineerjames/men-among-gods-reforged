@@ -105,6 +105,7 @@ fn main() {
         })
         .init_resource::<font_cache::FontCache>()
         .init_resource::<sound::SoundEventQueue>()
+        .init_resource::<sound::SoundSettings>()
         .init_resource::<GameplayDebugSettings>()
         .init_resource::<states::gameplay::MiniMapState>()
         .init_resource::<player_state::PlayerState>()
@@ -177,12 +178,16 @@ fn main() {
         .add_systems(
             Update,
             states::gameplay::run_gameplay
-                .run_if(in_state(GameState::Gameplay))
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu)))
                 .after(network::NetworkSet::Receive),
         )
         .add_systems(
             Update,
             sound::play_queued_sounds.run_if(in_state(GameState::Gameplay)),
+        )
+        .add_systems(
+            Update,
+            sound::play_queued_sounds.run_if(in_state(GameState::Menu)),
         )
         .add_systems(
             Update,
@@ -221,75 +226,77 @@ fn main() {
         .add_systems(
             Update,
             map_hover::run_gameplay_move_target_marker
-                .run_if(in_state(GameState::Gameplay))
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu)))
                 .after(states::gameplay::run_gameplay),
         )
         .add_systems(
             Update,
             map_hover::run_gameplay_attack_target_marker
-                .run_if(in_state(GameState::Gameplay))
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu)))
                 .after(states::gameplay::run_gameplay),
         )
         .add_systems(
             Update,
             map_hover::run_gameplay_misc_action_marker
-                .run_if(in_state(GameState::Gameplay))
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu)))
                 .after(states::gameplay::run_gameplay),
         )
         .add_systems(
             Update,
             map_hover::run_gameplay_sprite_highlight
-                .run_if(in_state(GameState::Gameplay))
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu)))
                 .after(states::gameplay::run_gameplay),
         )
         .add_systems(
             Update,
-            nameplates::run_gameplay_nameplates.run_if(in_state(GameState::Gameplay)),
+            nameplates::run_gameplay_nameplates
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu))),
         )
         .add_systems(
             Update,
-            states::gameplay::run_gameplay_text_ui.run_if(in_state(GameState::Gameplay)),
+            states::gameplay::run_gameplay_text_ui
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu))),
         )
         .add_systems(
             Update,
             states::gameplay::ui::hud::run_gameplay_update_hud_labels
-                .run_if(in_state(GameState::Gameplay)),
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu))),
         )
         .add_systems(
             Update,
             states::gameplay::ui::extra::run_gameplay_update_extra_ui
-                .run_if(in_state(GameState::Gameplay)),
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu))),
         )
         .add_systems(
             Update,
             states::gameplay::ui::hud::run_gameplay_update_stat_bars
-                .run_if(in_state(GameState::Gameplay)),
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu))),
         )
         .add_systems(
             Update,
             states::gameplay::ui::statbox::run_gameplay_update_scroll_knobs
-                .run_if(in_state(GameState::Gameplay)),
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu))),
         )
         .add_systems(
             Update,
             states::gameplay::ui::portrait::run_gameplay_update_top_selected_name
-                .run_if(in_state(GameState::Gameplay)),
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu))),
         )
         .add_systems(
             Update,
             states::gameplay::ui::portrait::run_gameplay_update_portrait_name_and_rank
-                .run_if(in_state(GameState::Gameplay)),
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu))),
         )
         .add_systems(
             Update,
             states::gameplay::ui::shop::run_gameplay_update_shop_price_labels
-                .run_if(in_state(GameState::Gameplay))
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu)))
                 .after(states::gameplay::ui::shop::run_gameplay_shop_input),
         )
         .add_systems(
             Update,
             states::gameplay::run_gameplay_bitmap_text_renderer
-                .run_if(in_state(GameState::Gameplay))
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu)))
                 .after(states::gameplay::ui::extra::run_gameplay_update_extra_ui)
                 .after(states::gameplay::ui::hud::run_gameplay_update_stat_bars)
                 .after(states::gameplay::ui::portrait::run_gameplay_update_top_selected_name)
@@ -302,7 +309,7 @@ fn main() {
         //
         .add_systems(OnEnter(GameState::Menu), states::menu::setup_menu)
         .add_systems(
-            Update,
+            EguiPrimaryContextPass,
             states::menu::run_menu.run_if(in_state(GameState::Menu)),
         )
         .add_systems(OnExit(GameState::Menu), states::menu::teardown_menu)

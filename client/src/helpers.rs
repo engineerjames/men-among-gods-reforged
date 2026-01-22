@@ -6,5 +6,7 @@ pub fn despawn_tree(entity: Entity, children_q: &Query<&Children>, commands: &mu
             despawn_tree(child, children_q, commands);
         }
     }
-    commands.entity(entity).despawn();
+    commands.entity(entity).queue_silenced(|e: EntityWorldMut| {
+        e.despawn();
+    });
 }

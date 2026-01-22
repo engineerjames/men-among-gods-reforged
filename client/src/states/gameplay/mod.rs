@@ -248,7 +248,9 @@ pub(crate) fn run_gameplay_bitmap_text_renderer(
         // Trim extra glyphs.
         if existing_children.len() > desired_len {
             for child in existing_children.iter().skip(desired_len) {
-                commands.entity(*child).despawn();
+                commands.entity(*child).queue_silenced(|e: EntityWorldMut| {
+                        e.despawn();
+                    });
                 if perf_enabled {
                     perf.glyph_despawned = perf.glyph_despawned.saturating_add(1);
                 }
@@ -451,7 +453,9 @@ pub(crate) fn setup_gameplay(
 
     // Clear any previous gameplay sprites (re-entering gameplay, etc.)
     for e in &existing_render {
-        commands.entity(e).despawn();
+            commands.entity(e).queue_silenced(|e: EntityWorldMut| {
+            e.despawn();
+        });
     }
 
     if !gfx.is_initialized() {

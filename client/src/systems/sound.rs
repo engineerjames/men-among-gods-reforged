@@ -3,6 +3,22 @@ use bevy::prelude::*;
 
 use crate::sfx_cache::SoundCache;
 
+#[derive(Resource, Debug, Clone, Copy)]
+pub struct SoundSettings {
+    pub enabled: bool,
+    /// Master volume multiplier in [0.0, 1.0].
+    pub master_volume: f32,
+}
+
+impl Default for SoundSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            master_volume: 1.0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum SoundEvent {
     Click,
@@ -33,17 +49,20 @@ impl SoundEventQueue {
 }
 
 /// Convert DirectSound volume units into Bevy `Volume`.
-fn volume_from_directsound(vol: i32) -> Volume {
+fn volume_linear_from_directsound(vol: i32) -> f32 {
     // Legacy client uses DirectSound volume values:
     // - range is typically [-10000..0], unit is 1/100 dB.
     // - example: -1000 means -10 dB.
     // Treat anything <= -10000 as effectively muted.
     if vol <= -10000 {
-        return Volume::Linear(0.0);
+        return 0.0;
     }
 
     let db = (vol as f32) / 100.0;
-    Volume::Decibels(db.clamp(-100.0, 24.0))
+
+    // Convert dB (amplitude) to linear gain. Clamp to keep it sane.
+    let db = db.clamp(-100.0, 24.0);
+    (10.0_f32).powf(db / 20.0).clamp(0.0, 4.0)
 }
 
 /// Convert DirectSound pan into a small 2D spatial x offset.
@@ -58,8 +77,13 @@ pub fn play_queued_sounds(
     mut commands: Commands,
     mut queue: ResMut<SoundEventQueue>,
     sfx: Res<SoundCache>,
+    settings: Res<SoundSettings>,
 ) {
     for evt in queue.drain() {
+        if !settings.enabled || settings.master_volume <= 0.0 {
+            continue;
+        }
+
         let (handle, vol, pan) = match evt {
             SoundEvent::Click => {
                 let Some(h) = sfx.click() else {
@@ -76,8 +100,11 @@ pub fn play_queued_sounds(
             }
         };
 
+        let base = volume_linear_from_directsound(vol);
+        let gain = (base * settings.master_volume).clamp(0.0, 4.0);
+
         let settings = PlaybackSettings::DESPAWN
-            .with_volume(volume_from_directsound(vol))
+            .with_volume(Volume::Linear(gain))
             .with_speed(1.0);
         let x = pan_to_x(pan);
 

@@ -145,7 +145,7 @@ impl Plugin for NetworkPlugin {
             .add_systems(
                 Update,
                 send_client_tick
-                    .run_if(in_state(GameState::Gameplay))
+                    .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu)))
                     .in_set(NetworkSet::Send)
                     .after(NetworkSet::Receive),
             );

@@ -647,6 +647,7 @@ pub(crate) fn run_gameplay_buttonbox_toggles(
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     cameras: Query<&Camera, With<Camera2d>>,
     net: Res<NetworkRuntime>,
+    mut next_state: ResMut<NextState<crate::GameState>>,
     mut player_state: ResMut<PlayerState>,
     mut exit_state: ResMut<GameplayExitState>,
     mut q_boxes: Query<(&GameplayUiToggleBox, &mut Visibility), Without<GameplayUiModeBox>>,
@@ -656,6 +657,7 @@ pub(crate) fn run_gameplay_buttonbox_toggles(
     if keys.just_pressed(KeyCode::Escape) {
         net.send(ClientCommand::new_reset().to_bytes());
         player_state.close_shop();
+        next_state.set(crate::GameState::Menu);
     }
 
     // Keyboard shortcuts for mode buttons (orig client: F1/F2/F3).
