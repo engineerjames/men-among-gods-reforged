@@ -13,6 +13,7 @@ use egui_file_dialog::FileDialog;
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::network::{LoginRequested, LoginStatus};
 use crate::player_state::PlayerState;
+use crate::settings::UserSettingsState;
 use crate::types::mag_files;
 
 /// Writes a Rust string into a fixed-size, NUL-terminated ASCII buffer.
@@ -126,6 +127,7 @@ pub fn setup_logging_in(
     mut commands: Commands,
     _asset_server: Res<AssetServer>,
     mut player_state: ResMut<PlayerState>,
+    user_settings: Res<UserSettingsState>,
 ) {
     log::debug!("setup_logging_in - start");
 
@@ -158,6 +160,14 @@ pub fn setup_logging_in(
             login_info.class = class;
 
             player_state.set_character_from_file(mag_dat.save_file, mag_dat.player_data);
+            // mag.dat/.mag contain PlayerData; re-apply global user settings on top.
+            // (Only shadows currently overlaps PlayerData.)
+            player_state.player_data_mut().are_shadows_enabled =
+                if user_settings.settings.render_shadows {
+                    1
+                } else {
+                    0
+                };
         }
         Err(e) => {
             // Non-fatal. UI will still work with defaults.
@@ -187,6 +197,7 @@ pub fn run_logging_in(
     status: Res<LoginStatus>,
     mut login_ev: MessageWriter<LoginRequested>,
     mut player_state: ResMut<PlayerState>,
+    user_settings: Res<UserSettingsState>,
 ) {
     debug_once!("run_logging_in called");
 
@@ -301,6 +312,14 @@ pub fn run_logging_in(
                         match mag_files::load_character_file(&picked) {
                             Ok((save_file, player_data)) => {
                                 player_state.set_character_from_file(save_file, player_data);
+
+                                // Re-apply global user settings (character load overwrites pdata).
+                                player_state.player_data_mut().are_shadows_enabled =
+                                    if user_settings.settings.render_shadows {
+                                        1
+                                    } else {
+                                        0
+                                    };
 
                                 login_info.loaded_character_file = Some(picked);
 

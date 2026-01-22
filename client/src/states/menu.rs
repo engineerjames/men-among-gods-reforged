@@ -6,6 +6,7 @@ use bevy_egui::{
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::player_state::PlayerState;
+use crate::settings::UserSettingsState;
 use crate::states::gameplay::CursorActionTextSettings;
 use crate::systems::sound::SoundSettings;
 use crate::GameState;
@@ -40,6 +41,7 @@ pub fn run_menu(
     mut player_state: ResMut<PlayerState>,
     mut sound_settings: ResMut<SoundSettings>,
     mut cursor_action_text: ResMut<CursorActionTextSettings>,
+    mut user_settings: ResMut<UserSettingsState>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
@@ -79,28 +81,53 @@ pub fn run_menu(
             let mut shadows = player_state.player_data().are_shadows_enabled != 0;
             if ui.checkbox(&mut shadows, "Render shadows").changed() {
                 player_state.player_data_mut().are_shadows_enabled = if shadows { 1 } else { 0 };
+                user_settings.sync_from_resources(
+                    &player_state,
+                    &sound_settings,
+                    &cursor_action_text,
+                );
+                user_settings.request_save();
             }
 
             if ui
                 .checkbox(&mut cursor_action_text.enabled, "Show cursor action text")
                 .changed()
             {
-                // no-op; applied by the cursor UI system
+                user_settings.sync_from_resources(
+                    &player_state,
+                    &sound_settings,
+                    &cursor_action_text,
+                );
+                user_settings.request_save();
             }
 
             if ui
                 .checkbox(&mut sound_settings.enabled, "Play sounds")
                 .changed()
             {
-                // no-op; behavior is applied in the sound system
+                user_settings.sync_from_resources(
+                    &player_state,
+                    &sound_settings,
+                    &cursor_action_text,
+                );
+                user_settings.request_save();
             }
 
             ui.horizontal(|ui| {
                 ui.label("Volume");
                 let slider = egui::Slider::new(&mut sound_settings.master_volume, 0.0..=1.0)
                     .show_value(false);
-                ui.add_sized([220.0, 18.0], slider);
+                let changed = ui.add_sized([220.0, 18.0], slider).changed();
                 ui.label(format!("{:3.0}%", sound_settings.master_volume * 100.0));
+
+                if changed {
+                    user_settings.sync_from_resources(
+                        &player_state,
+                        &sound_settings,
+                        &cursor_action_text,
+                    );
+                    user_settings.request_save();
+                }
             });
         });
 }

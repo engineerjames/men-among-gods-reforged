@@ -5,6 +5,7 @@ mod helpers;
 mod map;
 mod network;
 mod player_state;
+mod settings;
 mod sfx_cache;
 mod states;
 mod systems;
@@ -339,7 +340,9 @@ fn main() {
         // Global (utility) systems
         //
         .add_systems(StateTransition, debug::run_on_any_transition)
-        .add_systems(Update, display::enforce_aspect_and_pixel_coords);
+        .add_systems(Update, display::enforce_aspect_and_pixel_coords)
+        .add_systems(Startup, settings::load_user_settings_startup)
+        .add_systems(Update, settings::save_user_settings_if_pending);
 
     // macOS: Set Dock icon via AppKit on the main thread.
     #[cfg(target_os = "macos")]
