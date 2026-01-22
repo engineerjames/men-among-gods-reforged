@@ -142,7 +142,13 @@ pub fn setup_logging_in(
             }
 
             // Apply the stored character info to both UI and runtime state.
-            let username = mag_files::fixed_ascii_to_string(&mag_dat.save_file.name);
+            // The authoritative character name is `pdata.cname`.
+            let username = mag_files::fixed_ascii_to_string(&mag_dat.player_data.cname);
+            let username = if username.is_empty() {
+                mag_files::fixed_ascii_to_string(&mag_dat.save_file.name)
+            } else {
+                username
+            };
             if !username.is_empty() {
                 login_info.username = username;
             }
@@ -297,8 +303,15 @@ pub fn run_logging_in(
                                 player_state.set_character_from_file(save_file, player_data);
 
                                 login_info.loaded_character_file = Some(picked);
-                                login_info.username =
-                                    mag_files::fixed_ascii_to_string(&save_file.name);
+
+                                // The authoritative character name is `pdata.cname`.
+                                // (Empty cname is rejected by `load_character_file`.)
+                                let username = mag_files::fixed_ascii_to_string(&player_data.cname);
+                                login_info.username = username.clone();
+
+                                // Keep key name in sync with cname for persistence.
+                                let save_file = player_state.save_file_mut();
+                                write_ascii_into_fixed(&mut save_file.name, &username);
                                 login_info.description =
                                     mag_files::fixed_ascii_to_string(&player_data.desc);
                                 let (is_male, class) = class_from_race(save_file.race);

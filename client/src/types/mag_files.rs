@@ -177,6 +177,15 @@ pub fn load_character_file(path: &Path) -> io::Result<(SaveFile, PlayerData)> {
     // `SaveFile` followed by `PlayerData`.
     let player_data: PlayerData = read_struct(&mut file)?;
 
+    // Critical validation: a character save must include a character name.
+    // The authoritative name is stored in `pdata.cname`.
+    if fixed_ascii_to_string(&player_data.cname).is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Invalid .mag file: missing character name (pdata.cname)",
+        ));
+    }
+
     // Be strict: refuse trailing bytes so silent layout mismatches don't go unnoticed.
     let mut trailing = [0u8; 1];
     if file.read(&mut trailing)? != 0 {
@@ -252,6 +261,7 @@ mod tests {
         player_data.changed = 1;
         player_data.hide = 1;
         player_data.show_names = 1;
+        player_data.cname[0..4].copy_from_slice(b"Test");
         player_data.desc[0..11].copy_from_slice(b"Hello world");
 
         // Ensure xbuttons are part of the roundtrip.
