@@ -45,12 +45,11 @@ pub(crate) fn spawn_ui_cursor_action_text(commands: &mut Commands) {
     commands.spawn((
         GameplayRenderEntity,
         GameplayUiCursorActionText,
-        BitmapText {
-            text: String::new(),
-            // Slightly dimmer than normal UI white so it feels like a hint.
-            color: Color::srgba(1.0, 1.0, 1.0, 0.85),
-            font: UI_BITMAP_FONT,
-        },
+        Text2d::new(""),
+        // Use Bevy's default font; we only control size.
+        TextFont::from_font_size(10.0),
+        // Slightly dimmer than normal UI white so it feels like a hint.
+        TextColor(Color::srgba(1.0, 1.0, 1.0, 0.85)),
         Transform::from_translation(screen_to_world(0.0, 0.0, Z_UI_CURSOR + 0.2)),
         GlobalTransform::default(),
         Visibility::Hidden,
@@ -159,10 +158,7 @@ pub(crate) fn run_gameplay_update_cursor_action_text(
     cameras: Query<&Camera, With<Camera2d>>,
     player_state: Res<PlayerState>,
     hovered: Res<GameplayHoveredTile>,
-    mut q: Query<
-        (&mut BitmapText, &mut Transform, &mut Visibility),
-        With<GameplayUiCursorActionText>,
-    >,
+    mut q: Query<(&mut Text2d, &mut Transform, &mut Visibility), With<GameplayUiCursorActionText>>,
 ) {
     let Some((mut text, mut t, mut vis)) = q.iter_mut().next() else {
         return;
@@ -192,13 +188,12 @@ pub(crate) fn run_gameplay_update_cursor_action_text(
         return;
     };
 
-    if text.text != label {
-        text.text.clear();
-        text.text.push_str(label);
+    if **text != label {
+        **text = label.to_string();
     }
 
     // Place it slightly offset from the cursor so it doesn't sit directly under it.
-    t.translation = screen_to_world(game.x + 14.0, game.y + 18.0, Z_UI_CURSOR + 0.2);
+    t.translation = screen_to_world(game.x + 20.0, game.y + 20.0, Z_UI_CURSOR + 0.2);
 
     if *vis != Visibility::Visible {
         *vis = Visibility::Visible;
