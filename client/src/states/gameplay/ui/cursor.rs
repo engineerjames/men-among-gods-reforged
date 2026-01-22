@@ -10,6 +10,7 @@ use crate::states::gameplay::components::*;
 use crate::states::gameplay::layout::*;
 use crate::states::gameplay::resources::*;
 use crate::states::gameplay::LastRender;
+use crate::systems::map_hover::GameplayHoveredTile;
 
 use mag_core::constants::SPR_EMPTY;
 
@@ -32,6 +33,25 @@ pub(crate) fn spawn_ui_carried_item(commands: &mut Commands, gfx: &GraphicsCache
         empty.clone(),
         Anchor::TOP_LEFT,
         Transform::from_translation(screen_to_world(0.0, 0.0, Z_UI_CURSOR)),
+        GlobalTransform::default(),
+        Visibility::Hidden,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
+    ));
+}
+
+/// Spawns the cursor action label entity (bitmap text, updated each frame).
+pub(crate) fn spawn_ui_cursor_action_text(commands: &mut Commands) {
+    commands.spawn((
+        GameplayRenderEntity,
+        GameplayUiCursorActionText,
+        BitmapText {
+            text: String::new(),
+            // Slightly dimmer than normal UI white so it feels like a hint.
+            color: Color::srgba(1.0, 1.0, 1.0, 0.85),
+            font: UI_BITMAP_FONT,
+        },
+        Transform::from_translation(screen_to_world(0.0, 0.0, Z_UI_CURSOR + 0.2)),
         GlobalTransform::default(),
         Visibility::Hidden,
         InheritedVisibility::default(),
@@ -110,4 +130,77 @@ pub(crate) fn run_gameplay_update_cursor_and_carried_item(
         _ => Color::WHITE,
     };
     *vis = Visibility::Visible;
+}
+
+fn get_helper_action_text(has_item: bool, shift: bool, ctrl: bool) -> Option<&'static str> {
+    if ctrl {
+        if has_item {
+            return Some("GIVE");
+        } else {
+            return Some("ATTACK");
+        }
+    }
+
+    if shift {
+        if has_item {
+            return Some("DROP");
+        } else {
+            return Some("USE");
+        }
+    }
+
+    Some("WALK")
+}
+
+/// Updates the on-cursor action label (what left-click will do).
+pub(crate) fn run_gameplay_update_cursor_action_text(
+    keys: Res<ButtonInput<KeyCode>>,
+    windows: Query<&Window, With<PrimaryWindow>>,
+    cameras: Query<&Camera, With<Camera2d>>,
+    player_state: Res<PlayerState>,
+    hovered: Res<GameplayHoveredTile>,
+    mut q: Query<
+        (&mut BitmapText, &mut Transform, &mut Visibility),
+        With<GameplayUiCursorActionText>,
+    >,
+) {
+    let Some((mut text, mut t, mut vis)) = q.iter_mut().next() else {
+        return;
+    };
+
+    let Some(game) = cursor_game_pos(&windows, &cameras) else {
+        *vis = Visibility::Hidden;
+        return;
+    };
+
+    // No hovered tile means we're not over the mapbox.
+    if hovered.tile_x < 0 || hovered.tile_y < 0 {
+        *vis = Visibility::Hidden;
+        return;
+    }
+
+    let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+    let ctrl = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
+
+    let pl = player_state.character_info();
+
+    let has_item = pl.citem != 0;
+    let label: Option<&'static str> = get_helper_action_text(has_item, shift, ctrl);
+
+    let Some(label) = label else {
+        *vis = Visibility::Hidden;
+        return;
+    };
+
+    if text.text != label {
+        text.text.clear();
+        text.text.push_str(label);
+    }
+
+    // Place it slightly offset from the cursor so it doesn't sit directly under it.
+    t.translation = screen_to_world(game.x + 14.0, game.y + 18.0, Z_UI_CURSOR + 0.2);
+
+    if *vis != Visibility::Visible {
+        *vis = Visibility::Visible;
+    }
 }

@@ -609,6 +609,9 @@ pub(crate) fn setup_gameplay(
     // Carried item cursor sprite (engine.c draws pl.citem at the mouse position).
     ui::cursor::spawn_ui_carried_item(&mut commands, &gfx);
 
+    // Cursor action label (small hint text near mouse).
+    ui::cursor::spawn_ui_cursor_action_text(&mut commands);
+
     // Shop window (panel + item slots)
     ui::shop::spawn_ui_shop_window(&mut commands, &gfx);
 

@@ -226,6 +226,13 @@ fn main() {
         )
         .add_systems(
             Update,
+            states::gameplay::ui::cursor::run_gameplay_update_cursor_action_text
+                .run_if(in_state(GameState::Gameplay))
+                .after(map_hover::run_gameplay_map_hover_and_click)
+                .before(states::gameplay::run_gameplay_bitmap_text_renderer),
+        )
+        .add_systems(
+            Update,
             map_hover::run_gameplay_move_target_marker
                 .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu)))
                 .after(states::gameplay::run_gameplay),
