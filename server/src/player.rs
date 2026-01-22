@@ -6335,6 +6335,7 @@ fn plr_cmd_inv(nr: usize) {
                     ch[cn].gold += tmpval as i32;
                 }
                 ch[cn].citem = 0;
+                return;
             } else {
                 if !ch[cn].is_building() {
                     ch[cn].item[n] = ch[cn].citem;
@@ -6344,6 +6345,8 @@ fn plr_cmd_inv(nr: usize) {
                 ch[cn].citem = tmp as u32;
             }
         });
+
+        return;
     }
 
     // what == 1 : big inventory swap
