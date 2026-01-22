@@ -2,6 +2,7 @@ use bevy::ecs::resource::Resource;
 use mag_core::{circular_buffer::CircularBuffer, constants::TICKS, types::ClientPlayer};
 
 use crate::{
+    helpers::exit_reason_string,
     map::GameMap,
     network::server_commands::{ServerCommand, ServerCommandData},
     types::save_file::SaveFile,
@@ -772,8 +773,14 @@ impl PlayerState {
             }
 
             ServerCommandData::Exit { reason } => {
-                log::info!("Exit: reason={:?}", reason);
-                self.tlog(3, format!("Server requested exit (reason={reason})"));
+                log::info!("Exit: reason={:?}", exit_reason_string(*reason));
+                self.tlog(
+                    3,
+                    format!(
+                        "Server requested exit (reason={})",
+                        exit_reason_string(*reason)
+                    ),
+                );
             }
             _ => {
                 log::error!("PlayerState ignoring server command: {:?}", command.header);
