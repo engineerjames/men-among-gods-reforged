@@ -335,6 +335,20 @@ pub fn run_logging_in(
 
                     if let Some(path) = login_info.save_character_dialog.take_picked() {
                         let picked = ensure_mag_extension(path.to_path_buf());
+
+                        // Ensure the `.mag` file reflects the current login UI fields.
+                        // (xbuttons are already stored in `player_state.player_data()`.)
+                        {
+                            let save_file = player_state.save_file_mut();
+                            write_ascii_into_fixed(&mut save_file.name, &login_info.username);
+                            save_file.race = get_race_integer(login_info.is_male, login_info.class);
+                        }
+                        {
+                            let pdata = player_state.player_data_mut();
+                            write_ascii_into_fixed(&mut pdata.cname, &login_info.username);
+                            write_ascii_into_fixed(&mut pdata.desc, &login_info.description);
+                        }
+
                         if let Err(e) = mag_files::save_character_file(
                             &picked,
                             player_state.save_file(),
