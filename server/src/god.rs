@@ -2590,33 +2590,71 @@ impl God {
             return;
         }
 
-        let item_id = Self::create_item(x as usize);
+        // Match original behavior: require a sane, take-able template.
+        if x == 0 {
+            State::with(|state| {
+                state.do_character_log(cn, core::types::FontColor::Red, "No such item.\n")
+            });
+            return;
+        }
+
+        let template_id = x as usize;
+        if !core::types::Item::is_sane_item_template(template_id) {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("Bad item number: {}.\n", x),
+                )
+            });
+            return;
+        }
+
+        let is_takeable = Repository::with_item_templates(|item_templates| {
+            (item_templates[template_id].flags & core::constants::ItemFlags::IF_TAKE.bits()) != 0
+        });
+
+        if !is_takeable {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("Item template {} is not take-able.\n", x),
+                )
+            });
+            return;
+        }
+
+        let item_id = Self::create_item(template_id);
 
         if let Some(item_id) = item_id {
-            if Self::give_character_item(cn, item_id) {
-                State::with(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Green,
-                        &format!("Created item {} and gave to character {}\n", item_id, cn),
-                    );
-                });
-            } else {
+            if !Self::give_character_item(cn, item_id) {
                 State::with(|state| {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Red,
-                        &format!("Failed to give item {} to character {}\n", item_id, cn),
-                    );
+                        "Your inventory is full!\n",
+                    )
                 });
+                return;
             }
+
+            let item_name = Repository::with_items(|items| items[item_id].get_name().to_string());
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!("Created one {}.\n", item_name),
+                )
+            });
+            chlog!(cn, "IMP: created one {}.", item_name);
         } else {
             State::with(|state| {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Red,
-                    &format!("Failed to create item from template {}\n", x),
-                );
+                    &format!("god_create_item() failed for {}.\n", x),
+                )
             });
         }
     }
