@@ -261,7 +261,8 @@ fn main() {
         .add_systems(
             Update,
             nameplates::run_gameplay_nameplates
-                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu))),
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu)))
+                .after(states::gameplay::run_gameplay),
         )
         .add_systems(
             Update,
