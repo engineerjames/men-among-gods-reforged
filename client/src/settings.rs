@@ -104,6 +104,7 @@ impl UserSettingsState {
 }
 
 fn default_settings_path() -> PathBuf {
+    // TODO: Use platform-specific config dirs (e.g. XDG on Linux, AppData on Windows)
     if let Ok(home) = std::env::var("HOME") {
         return PathBuf::from(home)
             .join(".men-among-gods-reforged")
