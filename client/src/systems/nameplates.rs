@@ -1,9 +1,11 @@
 use bevy::prelude::*;
+use bevy::camera::visibility::RenderLayers;
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::network::{client_commands::ClientCommand, NetworkRuntime};
 use crate::player_state::PlayerState;
 use crate::states::gameplay::{BitmapText, GameplayRenderEntity};
+use crate::systems::magic_postprocess::UI_LAYER;
 
 use mag_core::constants::{TILEX, TILEY, XPOS, YPOS};
 
@@ -71,6 +73,9 @@ pub(crate) fn spawn_gameplay_nameplates(commands: &mut Commands, world_root: Ent
             .spawn((
                 GameplayRenderEntity,
                 GameplayNameplate { index },
+                // Draw nameplates as an overlay on the on-screen camera to avoid postprocess
+                // distortion/jitter from render-to-texture.
+                RenderLayers::layer(UI_LAYER),
                 BitmapText {
                     text: String::new(),
                     color: Color::WHITE,

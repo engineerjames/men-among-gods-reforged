@@ -4,13 +4,14 @@ use bevy::prelude::*;
 use bevy::window::{PrimaryWindow, WindowResized};
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
+use crate::systems::magic_postprocess::MagicScreenCamera;
 
 /// Enforce 4:3 viewport letterboxing and fixed 800x600 pixel coordinates.
 pub fn enforce_aspect_and_pixel_coords(
     mut window_resized: MessageReader<WindowResized>,
     mut initialized: Local<bool>,
     windows: Query<&Window, With<PrimaryWindow>>,
-    mut cameras: Query<(&mut Camera, &mut Projection), With<Camera2d>>,
+    mut cameras: Query<(&mut Camera, &mut Projection), (With<Camera2d>, With<MagicScreenCamera>)>,
 ) {
     let mut should_update = !*initialized;
     for _ in window_resized.read() {

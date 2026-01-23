@@ -15,8 +15,8 @@ use crate::states::gameplay::GameplayRenderEntity;
 
 use mag_core::constants::{CMAGIC, EMAGIC, GMAGIC, TILEX, TILEY, XPOS, YPOS};
 
-const WORLD_LAYER: usize = 0;
-const UI_LAYER: usize = 1;
+pub(crate) const WORLD_LAYER: usize = 0;
+pub(crate) const UI_LAYER: usize = 1;
 
 // Duplicated from gameplay layout (kept private there).
 const MAP_X_SHIFT: f32 = -176.0;
@@ -164,10 +164,11 @@ fn setup_magic_cameras_and_quad(
         }),
         RenderLayers::layer(WORLD_LAYER),
         Projection::from(OrthographicProjection {
-            scaling_mode: bevy::camera::ScalingMode::AutoMin {
-                min_width: TARGET_WIDTH,
-                min_height: TARGET_HEIGHT,
+            scaling_mode: bevy::camera::ScalingMode::Fixed {
+                width: TARGET_WIDTH,
+                height: TARGET_HEIGHT,
             },
+            scale: 1.0,
             ..OrthographicProjection::default_2d()
         }),
         Transform::default(),

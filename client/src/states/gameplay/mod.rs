@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy::camera::visibility::RenderLayers;
 
 use bevy::ecs::query::Without;
 use bevy::sprite::Anchor;
@@ -222,7 +223,7 @@ pub(crate) fn run_gameplay_bitmap_text_renderer(
     font_cache: Res<FontCache>,
     mut perf: Local<BitmapTextPerfAccum>,
     q_text: Query<
-        (Entity, &BitmapText, Option<&Children>),
+        (Entity, &BitmapText, Option<&Children>, Option<&RenderLayers>),
         Or<(Added<BitmapText>, Changed<BitmapText>)>,
     >,
 ) {
@@ -233,7 +234,7 @@ pub(crate) fn run_gameplay_bitmap_text_renderer(
         return;
     };
 
-    for (entity, text, children) in &q_text {
+    for (entity, text, children, parent_layers) in &q_text {
         if perf_enabled {
             perf.entities = perf.entities.saturating_add(1);
         }
@@ -266,6 +267,10 @@ pub(crate) fn run_gameplay_bitmap_text_renderer(
             let local_z = (i as f32) * 0.0001;
 
             if let Some(&child) = existing_children.get(i) {
+                if let Some(layers) = parent_layers {
+                    commands.entity(child).insert(layers.clone());
+                }
+
                 commands.entity(child).insert((
                     Sprite {
                         image: image.clone(),
@@ -301,6 +306,10 @@ pub(crate) fn run_gameplay_bitmap_text_renderer(
                         ViewVisibility::default(),
                     ))
                     .id();
+
+                if let Some(layers) = parent_layers {
+                    commands.entity(child).insert(layers.clone());
+                }
                 commands.entity(entity).add_child(child);
 
                 if perf_enabled {
