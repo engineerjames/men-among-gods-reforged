@@ -437,14 +437,12 @@ impl TemplateViewerApp {
                         let s0 = skill[0];
                         let s1 = skill[1];
                         let s2 = skill[2];
-                        if s0 != 0 || s1 != 0 || s2 != 0 {
-                            centered_label(ui, format!("{}", i));
-                            ui.label(get_skill_name(i));
-                            centered_label(ui, format!("{:+}", s0));
-                            centered_label(ui, format!("{:+}", s1));
-                            centered_label(ui, format!("{}", s2));
-                            ui.end_row();
-                        }
+                        centered_label(ui, format!("{}", i));
+                        ui.label(get_skill_name(i));
+                        centered_label(ui, format!("{:+}", s0));
+                        centered_label(ui, format!("{:+}", s1));
+                        centered_label(ui, format!("{}", s2));
+                        ui.end_row();
                     }
                 });
 
@@ -457,11 +455,9 @@ impl TemplateViewerApp {
                 .show(ui, |ui| {
                     for i in 0..10 {
                         let data = item.data[i];
-                        if data != 0 {
-                            ui.label(format!("data[{}]:", i));
-                            centered_label(ui, format!("{}", data));
-                            ui.end_row();
-                        }
+                        ui.label(format!("data[{}]:", i));
+                        centered_label(ui, format!("{}", data));
+                        ui.end_row();
                     }
                 });
         });
@@ -702,7 +698,7 @@ impl TemplateViewerApp {
                 });
 
             ui.separator();
-            ui.heading("Skills (Non-Zero Only)");
+            ui.heading("Skills");
             egui::Grid::new("character_skills")
                 .num_columns(8)
                 .spacing([15.0, 4.0])
@@ -719,20 +715,18 @@ impl TemplateViewerApp {
                     ui.end_row();
 
                     for (i, skill) in character.skill.iter().enumerate() {
-                        if skill.iter().any(|&s| s != 0) {
-                            centered_label(ui, format!("{}", i));
-                            ui.label(get_skill_name(i));
-                            for j in 0..6 {
-                                let val = skill[j];
-                                centered_label(ui, format!("{}", val));
-                            }
-                            ui.end_row();
+                        centered_label(ui, format!("{}", i));
+                        ui.label(get_skill_name(i));
+                        for j in 0..6 {
+                            let val = skill[j];
+                            centered_label(ui, format!("{}", val));
                         }
+                        ui.end_row();
                     }
                 });
 
             ui.separator();
-            ui.heading("Inventory (Non-Zero Only)");
+            ui.heading("Inventory");
             egui::Grid::new("character_inventory")
                 .num_columns(4)
                 .spacing([20.0, 4.0])
@@ -753,28 +747,16 @@ impl TemplateViewerApp {
                             0
                         };
 
-                        if item1 != 0 || item2 != 0 {
-                            if item1 != 0 {
-                                centered_label(ui, format!("{}", i));
-                                centered_label(ui, format!("{}", item1));
-                            } else {
-                                ui.label("");
-                                ui.label("");
-                            }
-                            if item2 != 0 {
-                                centered_label(ui, format!("{}", i + 1));
-                                centered_label(ui, format!("{}", item2));
-                            } else {
-                                ui.label("");
-                                ui.label("");
-                            }
-                            ui.end_row();
-                        }
+                        centered_label(ui, format!("{}", i));
+                        centered_label(ui, format!("{}", item1));
+                        centered_label(ui, format!("{}", i + 1));
+                        centered_label(ui, format!("{}", item2));
+                        ui.end_row();
                     }
                 });
 
             ui.separator();
-            ui.heading("Worn Equipment (Non-Zero Only)");
+            ui.heading("Worn Equipment");
             egui::Grid::new("character_worn")
                 .num_columns(4)
                 .spacing([20.0, 4.0])
@@ -795,28 +777,16 @@ impl TemplateViewerApp {
                             0
                         };
 
-                        if worn1 != 0 || worn2 != 0 {
-                            if worn1 != 0 {
-                                centered_label(ui, format!("{}", i));
-                                centered_label(ui, format!("{}", worn1));
-                            } else {
-                                ui.label("");
-                                ui.label("");
-                            }
-                            if worn2 != 0 {
-                                centered_label(ui, format!("{}", i + 1));
-                                centered_label(ui, format!("{}", worn2));
-                            } else {
-                                ui.label("");
-                                ui.label("");
-                            }
-                            ui.end_row();
-                        }
+                        centered_label(ui, format!("{}", i));
+                        centered_label(ui, format!("{}", worn1));
+                        centered_label(ui, format!("{}", i + 1));
+                        centered_label(ui, format!("{}", worn2));
+                        ui.end_row();
                     }
                 });
 
             ui.separator();
-            ui.heading("Driver Data (Non-Zero Only)");
+            ui.heading("Driver Data");
             egui::Grid::new("character_driver_data")
                 .num_columns(4)
                 .spacing([20.0, 4.0])
@@ -830,24 +800,11 @@ impl TemplateViewerApp {
                             0
                         };
 
-                        if data1 != 0 || data2 != 0 {
-                            if data1 != 0 {
-                                ui.label(format!("data[{}]:", i));
-                                centered_label(ui, format!("{}", data1));
-                            } else {
-                                ui.label("");
-                                ui.label("");
-                            }
-
-                            if data2 != 0 {
-                                ui.label(format!("data[{}]:", i + 1));
-                                centered_label(ui, format!("{}", data2));
-                            } else {
-                                ui.label("");
-                                ui.label("");
-                            }
-                            ui.end_row();
-                        }
+                        ui.label(format!("data[{}]:", i));
+                        centered_label(ui, format!("{}", data1));
+                        ui.label(format!("data[{}]:", i + 1));
+                        centered_label(ui, format!("{}", data2));
+                        ui.end_row();
                     }
                 });
         });
@@ -1071,7 +1028,12 @@ impl eframe::App for TemplateViewerApp {
                     .resizable(true)
                     .default_width(300.0)
                     .show_inside(ui, |ui| {
-                        ui.heading(format!("Item Templates ({})", self.item_templates.len()));
+                        let used_count = self
+                            .item_templates
+                            .iter()
+                            .filter(|item| item.used == 1)
+                            .count();
+                        ui.heading(format!("Item Templates ({})", used_count));
                         ui.separator();
                         self.render_item_list(ui);
                     });
@@ -1093,10 +1055,12 @@ impl eframe::App for TemplateViewerApp {
                     .resizable(true)
                     .default_width(300.0)
                     .show_inside(ui, |ui| {
-                        ui.heading(format!(
-                            "Character Templates ({})",
-                            self.character_templates.len()
-                        ));
+                        let used_count = self
+                            .character_templates
+                            .iter()
+                            .filter(|character| character.used == 1)
+                            .count();
+                        ui.heading(format!("Character Templates ({})", used_count));
                         ui.separator();
                         self.render_character_list(ui);
                     });
