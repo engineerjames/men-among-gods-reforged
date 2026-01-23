@@ -150,6 +150,15 @@ pub(crate) fn run_gameplay_update_equipment_blocks(
         &mut LastRender,
     )>,
 ) {
+    // These overlays reflect *local* equipment restrictions (carried item, two-handers).
+    // When shop/look UI is active we draw another character's equipment, so hide blocks.
+    if player_state.should_show_shop() || player_state.should_show_look() {
+        for (_, _, mut vis, _) in &mut q {
+            *vis = Visibility::Hidden;
+        }
+        return;
+    }
+
     let pl = player_state.character_info();
     let mut inv_block = [false; 20];
     let citem = pl.citem;

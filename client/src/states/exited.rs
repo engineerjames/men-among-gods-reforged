@@ -6,14 +6,21 @@ use bevy_egui::{
     EguiContexts,
 };
 
+use crate::network::NetworkRuntime;
+
 #[derive(Resource, Default)]
 pub struct ExitedUiState {
     request_exit: bool,
 }
 
 /// Initializes resources for the in-game exited state.
-pub fn setup_exited(mut commands: Commands) {
+pub fn setup_exited(mut commands: Commands, mut net: ResMut<NetworkRuntime>) {
     commands.insert_resource(ExitedUiState::default());
+
+    // We are no longer in an active session once we enter Exited.
+    // Request the network task to shut down so it can't block app exit.
+    net.shutdown();
+    net.stop();
 }
 
 /// Cleans up resources created by `setup_exited`.
@@ -28,10 +35,18 @@ pub fn teardown_exited() {
 pub fn apply_exit_request(
     mut ui_state: ResMut<ExitedUiState>,
     mut exit_events: MessageWriter<AppExit>,
+    mut net: ResMut<NetworkRuntime>,
 ) {
     if ui_state.request_exit {
+        log::info!("Exit requested from Exited UI state.");
         ui_state.request_exit = false;
+
+        // Ensure the background network task is asked to terminate before Bevy begins
+        // shutting down systems/task pools.
+        net.shutdown();
+        net.stop();
         exit_events.write(AppExit::Success);
+        log::info!("AppExit event emitted.");
     }
 }
 
@@ -43,8 +58,8 @@ pub fn run_exited(mut contexts: EguiContexts, mut ui_state: ResMut<ExitedUiState
         return;
     };
 
-    egui::Window::new("Exited")
-        .title_bar(false)
+    egui::Window::new("Disconnected from Server")
+        .title_bar(true)
         .collapsible(false)
         .resizable(false)
         .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
@@ -59,6 +74,7 @@ pub fn run_exited(mut contexts: EguiContexts, mut ui_state: ResMut<ExitedUiState
                         .clicked()
                     {
                         ui_state.request_exit = true;
+                        log::info!("Exit button clicked in Exited UI.");
                     }
                 },
             );

@@ -65,6 +65,11 @@ impl Look {
         self.sprite
     }
 
+    /// Return the worn sprite id at `index`, or 0 if out of bounds.
+    pub fn worn(&self, index: usize) -> u16 {
+        self.worn.get(index).copied().unwrap_or(0)
+    }
+
     /// Return the points value.
     pub fn points(&self) -> u32 {
         self.points

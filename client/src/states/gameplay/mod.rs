@@ -24,6 +24,7 @@ use world_render::*;
 pub(crate) use components::BitmapText;
 pub use components::GameplayRenderEntity;
 pub(crate) use minimap::MiniMapState;
+pub(crate) use resources::CursorActionTextSettings;
 pub(crate) use resources::{GameplayCursorType, GameplayCursorTypeState};
 pub(crate) use world_render::{TileLayer, TileRender};
 
@@ -608,6 +609,9 @@ pub(crate) fn setup_gameplay(
 
     // Carried item cursor sprite (engine.c draws pl.citem at the mouse position).
     ui::cursor::spawn_ui_carried_item(&mut commands, &gfx);
+
+    // Cursor action label (small hint text near mouse).
+    ui::cursor::spawn_ui_cursor_action_text(&mut commands);
 
     // Shop window (panel + item slots)
     ui::shop::spawn_ui_shop_window(&mut commands, &gfx);

@@ -5,6 +5,7 @@ mod helpers;
 mod map;
 mod network;
 mod player_state;
+mod settings;
 mod sfx_cache;
 mod states;
 mod systems;
@@ -12,7 +13,6 @@ mod types;
 
 use bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
 use std::path::PathBuf;
-use std::sync::OnceLock;
 use tracing_appender::{non_blocking::WorkerGuard, rolling};
 
 use bevy::log::{tracing_subscriber::Layer, BoxedLayer, LogPlugin};
@@ -35,7 +35,8 @@ use crate::systems::map_hover;
 use crate::systems::nameplates;
 use crate::systems::sound;
 
-static LOG_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
+#[derive(Resource)]
+struct LogGuard(#[allow(dead_code)] WorkerGuard);
 
 #[cfg(target_os = "macos")]
 #[derive(Default)]
@@ -53,10 +54,10 @@ enum GameState {
     Exited,
 }
 
-fn custom_layer(_app: &mut App) -> Option<BoxedLayer> {
+fn custom_layer(app: &mut App) -> Option<BoxedLayer> {
     let file_appender = rolling::daily("logs", "client.log");
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
-    let _ = LOG_GUARD.set(guard);
+    app.insert_resource(LogGuard(guard));
     Some(
         bevy::log::tracing_subscriber::fmt::layer()
             .with_ansi(false)
@@ -107,6 +108,7 @@ fn main() {
         .init_resource::<font_cache::FontCache>()
         .init_resource::<sound::SoundEventQueue>()
         .init_resource::<sound::SoundSettings>()
+        .init_resource::<states::gameplay::CursorActionTextSettings>()
         .init_resource::<GameplayDebugSettings>()
         .init_resource::<states::gameplay::MiniMapState>()
         .init_resource::<player_state::PlayerState>()
@@ -226,6 +228,13 @@ fn main() {
         )
         .add_systems(
             Update,
+            states::gameplay::ui::cursor::run_gameplay_update_cursor_action_text
+                .run_if(in_state(GameState::Gameplay))
+                .after(map_hover::run_gameplay_map_hover_and_click)
+                .before(states::gameplay::run_gameplay_bitmap_text_renderer),
+        )
+        .add_systems(
+            Update,
             map_hover::run_gameplay_move_target_marker
                 .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu)))
                 .after(states::gameplay::run_gameplay),
@@ -331,7 +340,9 @@ fn main() {
         // Global (utility) systems
         //
         .add_systems(StateTransition, debug::run_on_any_transition)
-        .add_systems(Update, display::enforce_aspect_and_pixel_coords);
+        .add_systems(Update, display::enforce_aspect_and_pixel_coords)
+        .add_systems(Startup, settings::load_user_settings_startup)
+        .add_systems(Update, settings::save_user_settings_if_pending);
 
     // macOS: Set Dock icon via AppKit on the main thread.
     #[cfg(target_os = "macos")]

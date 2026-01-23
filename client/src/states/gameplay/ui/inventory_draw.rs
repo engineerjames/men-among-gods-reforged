@@ -68,10 +68,25 @@ pub(crate) fn draw_equipment_ui(
         &mut LastRender,
     )>,
 ) {
-    let pl = player_state.character_info();
+    // Match portrait behavior: while shop/look UI is active, show that target's equipment.
+    enum EquipSource<'a> {
+        Player(&'a mag_core::types::ClientPlayer),
+        Look(&'a crate::types::look::Look),
+    }
+
+    let src = if player_state.should_show_shop() {
+        EquipSource::Look(player_state.shop_target())
+    } else if player_state.should_show_look() {
+        EquipSource::Look(player_state.look_target())
+    } else {
+        EquipSource::Player(player_state.character_info())
+    };
 
     for (slot, mut sprite, mut visibility, mut last) in q.iter_mut() {
-        let sprite_id = pl.worn.get(slot.worn_index).copied().unwrap_or(0);
+        let sprite_id: i32 = match src {
+            EquipSource::Player(pl) => pl.worn.get(slot.worn_index).copied().unwrap_or(0),
+            EquipSource::Look(look) => look.worn(slot.worn_index) as i32,
+        };
 
         // Hover highlight tint.
         let is_hovered = hover.equipment_worn_index == Some(slot.worn_index);

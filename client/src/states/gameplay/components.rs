@@ -49,6 +49,9 @@ pub(crate) struct GameplayUiBackpackSlot {
 #[derive(Component)]
 pub(crate) struct GameplayUiCarriedItem;
 
+#[derive(Component)]
+pub(crate) struct GameplayUiCursorActionText;
+
 #[derive(Component, Clone, Copy, Debug)]
 pub(crate) struct GameplayUiSpellSlot {
     pub(crate) index: usize,

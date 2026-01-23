@@ -305,22 +305,34 @@ fn run_network_loop(
         let mut did_work = false;
 
         // Process outgoing commands.
-        while let Ok(cmd) = command_rx.try_recv() {
-            did_work = true;
-            match cmd {
-                NetworkCommand::Send(bytes) => {
-                    stream
-                        .write_all(&bytes)
-                        .map_err(|e| format!("Send failed: {e}"))?;
-                    log::debug!("Sent {} bytes to server: {:?}", bytes.len(), bytes);
-                }
-                NetworkCommand::Shutdown => {
-                    if event_tx
-                        .send(NetworkEvent::Status("Disconnected".to_string()))
-                        .is_err()
-                    {
-                        log::warn!("Network task: event receiver dropped, should shut down");
+        loop {
+            match command_rx.try_recv() {
+                Ok(cmd) => {
+                    did_work = true;
+                    match cmd {
+                        NetworkCommand::Send(bytes) => {
+                            stream
+                                .write_all(&bytes)
+                                .map_err(|e| format!("Send failed: {e}"))?;
+                            log::debug!("Sent {} bytes to server: {:?}", bytes.len(), bytes);
+                        }
+                        NetworkCommand::Shutdown => {
+                            if event_tx
+                                .send(NetworkEvent::Status("Disconnected".to_string()))
+                                .is_err()
+                            {
+                                log::warn!(
+                                    "Network task: event receiver dropped, should shut down"
+                                );
+                            }
+                            return Ok(());
+                        }
                     }
+                }
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    // The main thread dropped the sender (e.g. app shutdown). Exit so the
+                    // task can't keep the app alive / block shutdown.
                     return Ok(());
                 }
             }

@@ -131,6 +131,14 @@ impl PlayerState {
         self.should_show_look
     }
 
+    pub fn close_look(&mut self) {
+        if self.should_show_look {
+            self.should_show_look = false;
+            self.look_timer = 0.0;
+            self.mark_dirty();
+        }
+    }
+
     pub fn look_target(&self) -> &Look {
         &self.look_target
     }
@@ -194,6 +202,18 @@ impl PlayerState {
 
     pub fn on_tick_packet(&mut self, client_ticker: u32) {
         let _ = client_ticker;
+
+        // Match original client behavior: show_look is temporary.
+        // Our Look5 handler sets look_timer to (10*TICKS); decrement once per tick packet.
+        if self.should_show_look {
+            if self.look_timer > 0.0 {
+                self.look_timer -= 1.0;
+            }
+            if self.look_timer <= 0.0 {
+                self.close_look();
+            }
+        }
+
         if self.server_ctick_pending {
             self.local_ctick = self.server_ctick.min(19);
             self.server_ctick_pending = false;
