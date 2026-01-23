@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::player_state::PlayerState;
 use crate::states::gameplay::CursorActionTextSettings;
+use crate::systems::magic_postprocess::MagicPostProcessSettings;
 use crate::systems::sound::SoundSettings;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -15,6 +16,8 @@ pub struct UserSettings {
     pub play_sounds: bool,
     pub master_volume: f32,
     pub show_cursor_action_text: bool,
+    pub magic_effects_enabled: bool,
+    pub gamma: f32,
 }
 
 impl Default for UserSettings {
@@ -24,6 +27,8 @@ impl Default for UserSettings {
             play_sounds: true,
             master_volume: 1.0,
             show_cursor_action_text: true,
+            magic_effects_enabled: true,
+            gamma: 1.0,
         }
     }
 }
@@ -51,11 +56,14 @@ impl UserSettingsState {
         player_state: &PlayerState,
         sound_settings: &SoundSettings,
         cursor_action_text: &CursorActionTextSettings,
+        magic_settings: &MagicPostProcessSettings,
     ) {
         self.settings.render_shadows = player_state.player_data().are_shadows_enabled != 0;
         self.settings.play_sounds = sound_settings.enabled;
         self.settings.master_volume = sound_settings.master_volume.clamp(0.0, 1.0);
         self.settings.show_cursor_action_text = cursor_action_text.enabled;
+        self.settings.magic_effects_enabled = magic_settings.enabled;
+        self.settings.gamma = magic_settings.gamma.clamp(0.1, 5.0);
     }
 
     pub fn apply_to_resources(
@@ -63,12 +71,15 @@ impl UserSettingsState {
         player_state: &mut PlayerState,
         sound_settings: &mut SoundSettings,
         cursor_action_text: &mut CursorActionTextSettings,
+        magic_settings: &mut MagicPostProcessSettings,
     ) {
         player_state.player_data_mut().are_shadows_enabled =
             if self.settings.render_shadows { 1 } else { 0 };
         sound_settings.enabled = self.settings.play_sounds;
         sound_settings.master_volume = self.settings.master_volume.clamp(0.0, 1.0);
         cursor_action_text.enabled = self.settings.show_cursor_action_text;
+        magic_settings.enabled = self.settings.magic_effects_enabled;
+        magic_settings.gamma = self.settings.gamma.clamp(0.1, 5.0);
     }
 
     pub fn request_save(&mut self) {
@@ -137,6 +148,7 @@ pub fn load_user_settings_startup(
     mut player_state: ResMut<PlayerState>,
     mut sound_settings: ResMut<SoundSettings>,
     mut cursor_action_text: ResMut<CursorActionTextSettings>,
+    mut magic_settings: ResMut<MagicPostProcessSettings>,
 ) {
     let path = default_settings_path();
     let settings = load_settings_from_disk(&path);
@@ -146,6 +158,7 @@ pub fn load_user_settings_startup(
         &mut player_state,
         &mut sound_settings,
         &mut cursor_action_text,
+        &mut magic_settings,
     );
 
     commands.insert_resource(state);

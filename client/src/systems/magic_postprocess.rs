@@ -31,6 +31,22 @@ pub(crate) struct MagicWorldCamera;
 #[derive(Component)]
 pub(crate) struct MagicScreenCamera;
 
+#[derive(Resource, Debug, Clone)]
+pub(crate) struct MagicPostProcessSettings {
+    pub enabled: bool,
+    /// 1.0 = no change. Applied as exponent 1/gamma.
+    pub gamma: f32,
+}
+
+impl Default for MagicPostProcessSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            gamma: 1.0,
+        }
+    }
+}
+
 #[derive(Resource, Clone)]
 pub(crate) struct MagicPostProcessMaterialHandle(pub(crate) Handle<MagicPostProcessMaterial>);
 
@@ -47,7 +63,9 @@ pub(crate) struct MagicSources {
 pub(crate) struct MagicPostProcessParams {
     pub(crate) screen_size: Vec2,
     pub(crate) source_count: u32,
-    pub(crate) _pad0: u32,
+    pub(crate) magic_enabled: u32,
+    pub(crate) gamma: f32,
+    pub(crate) _pad0: Vec3,
 }
 
 #[repr(C)]
@@ -83,6 +101,7 @@ pub(crate) struct MagicPostProcessPlugin;
 impl Plugin for MagicPostProcessPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MagicSources>()
+            .init_resource::<MagicPostProcessSettings>()
             .add_plugins(Material2dPlugin::<MagicPostProcessMaterial>::default())
             .add_systems(Startup, setup_magic_cameras_and_quad)
             // Ensure gameplay entities are partitioned so UI isn’t postprocessed.
@@ -181,7 +200,9 @@ fn setup_magic_cameras_and_quad(
         params: MagicPostProcessParams {
             screen_size: Vec2::new(TARGET_WIDTH, TARGET_HEIGHT),
             source_count: 0,
-            _pad0: 0,
+            magic_enabled: 1,
+            gamma: 1.0,
+            _pad0: Vec3::ZERO,
         },
         sources: sources_buffer,
     });
@@ -221,8 +242,16 @@ fn assign_gameplay_render_layers(
     }
 }
 
-fn collect_magic_sources(player_state: Res<PlayerState>, mut sources: ResMut<MagicSources>) {
+fn collect_magic_sources(
+    player_state: Res<PlayerState>,
+    settings: Res<MagicPostProcessSettings>,
+    mut sources: ResMut<MagicSources>,
+) {
     sources.sources.clear();
+
+    if !settings.enabled {
+        return;
+    }
 
     let map = player_state.map();
 
@@ -285,6 +314,7 @@ fn collect_magic_sources(player_state: Res<PlayerState>, mut sources: ResMut<Mag
 
 fn push_magic_sources_to_material(
     sources: Res<MagicSources>,
+    settings: Res<MagicPostProcessSettings>,
     buffer: Option<Res<MagicSourcesBuffer>>,
     handle: Option<Res<MagicPostProcessMaterialHandle>>,
     mut materials: ResMut<Assets<MagicPostProcessMaterial>>,
@@ -302,7 +332,13 @@ fn push_magic_sources_to_material(
         return;
     };
 
-    material.params.source_count = sources.sources.len().min(u32::MAX as usize) as u32;
+    material.params.magic_enabled = if settings.enabled { 1 } else { 0 };
+    material.params.gamma = settings.gamma.clamp(0.1, 5.0);
+    material.params.source_count = if settings.enabled {
+        sources.sources.len().min(u32::MAX as usize) as u32
+    } else {
+        0
+    };
 
     let Some(storage) = buffers.get_mut(&buffer.0) else {
         return;

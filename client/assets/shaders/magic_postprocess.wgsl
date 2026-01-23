@@ -3,7 +3,9 @@
 struct Params {
     screen_size: vec2<f32>,
     source_count: u32,
-    _pad0: u32,
+    magic_enabled: u32,
+    gamma: f32,
+    _pad0: vec3<f32>,
 };
 
 struct MagicSource {
@@ -81,25 +83,29 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
     let uv = mesh.uv;
     let px = uv * params.screen_size;
 
-    var color = textureSample(scene_tex, scene_sampler, uv);
+    var out = textureSample(scene_tex, scene_sampler, uv);
 
-    // Match dd.c behavior: it never writes above y=200.
-    if (px.y < 200.0) {
-        return color;
+    // Apply magic only when enabled and in the classic region.
+    if (params.magic_enabled != 0u && px.y >= 200.0 && params.source_count > 0u) {
+        // Convert to RGB565-like integer space.
+        var r = i32(round(clamp(out.r, 0.0, 1.0) * 31.0));
+        var g = i32(round(clamp(out.g, 0.0, 1.0) * 63.0));
+        var b = i32(round(clamp(out.b, 0.0, 1.0) * 31.0));
+
+        let count = params.source_count;
+        for (var i = 0u; i < count; i = i + 1u) {
+            let rgb = apply_magic_one(r, g, b, sources[i], px);
+            r = rgb.x;
+            g = rgb.y;
+            b = rgb.z;
+        }
+
+        out = vec4<f32>(f32(r) / 31.0, f32(g) / 63.0, f32(b) / 31.0, out.a);
     }
 
-    // Convert to RGB565-like integer space.
-    var r = i32(round(clamp(color.r, 0.0, 1.0) * 31.0));
-    var g = i32(round(clamp(color.g, 0.0, 1.0) * 63.0));
-    var b = i32(round(clamp(color.b, 0.0, 1.0) * 31.0));
-
-    let count = params.source_count;
-    for (var i = 0u; i < count; i = i + 1u) {
-        let rgb = apply_magic_one(r, g, b, sources[i], px);
-        r = rgb.x;
-        g = rgb.y;
-        b = rgb.z;
-    }
-
-    return vec4<f32>(f32(r) / 31.0, f32(g) / 63.0, f32(b) / 31.0, color.a);
+    // Gamma correction (applied even when magic disabled).
+    let g = max(0.001, params.gamma);
+    let inv_gamma = 1.0 / g;
+    let rgb = pow(max(out.rgb, vec3<f32>(0.0)), vec3<f32>(inv_gamma));
+    return vec4<f32>(rgb, out.a);
 }
