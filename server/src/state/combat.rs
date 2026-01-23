@@ -1,4 +1,5 @@
 use core::constants::{CharacterFlags, ItemFlags};
+use core::string_operations::c_string_to_str;
 use core::types::FontColor;
 
 use rand::Rng;
@@ -171,7 +172,8 @@ impl State {
         }
 
         // If caller has text[1], make NPC say its text[1] with victim name substitution
-        let caller_has_text1 = Repository::with_characters(|ch| !ch[cn].text[1].is_empty());
+        let caller_has_text1 =
+            Repository::with_characters(|ch| !c_string_to_str(&ch[cn].text[1]).is_empty());
         if caller_has_text1 {
             let victim_name = Repository::with_characters(|ch| ch[cv].get_name().to_string());
             driver::npc_saytext_n(co, 1, Some(&victim_name));

@@ -218,27 +218,34 @@ pub fn npc_saytext_n(npc: usize, n: usize, name: Option<&str>) {
             return;
         }
 
+        if n >= ch_npc.text.len() {
+            return;
+        }
+
+        let base_text = c_string_to_str(&ch_npc.text[n]);
+        if base_text.is_empty() {
+            return;
+        }
+
         let text = if let Some(name_str) = name {
-            c_string_to_str(&ch_npc.text[n]).replace("%s", name_str)
+            base_text.replace("%s", name_str)
         } else {
-            c_string_to_str(&ch_npc.text[n]).to_string()
+            base_text.to_string()
         };
 
-        if !ch_npc.text[n].is_empty() {
-            let temp = ch_npc.temp;
-            let talkative = ch_npc.data[71]; // CHD_TALKATIVE
+        let temp = ch_npc.temp;
+        let talkative = ch_npc.data[71]; // CHD_TALKATIVE
 
-            if temp == CT_COMPANION as u16 {
-                if talkative == -10 {
-                    State::with(|state| {
-                        state.do_sayx(npc, &text);
-                    });
-                }
-            } else {
+        if temp == CT_COMPANION as u16 {
+            if talkative == -10 {
                 State::with(|state| {
                     state.do_sayx(npc, &text);
                 });
             }
+        } else {
+            State::with(|state| {
+                state.do_sayx(npc, &text);
+            });
         }
     });
 }
