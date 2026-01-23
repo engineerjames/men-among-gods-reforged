@@ -1,7 +1,7 @@
 use eframe::egui;
 use mag_core::string_operations::c_string_to_str;
 use std::fs;
-use std::path::Path;
+use std::path::PathBuf;
 
 fn main() -> Result<(), eframe::Error> {
     env_logger::init();
@@ -28,7 +28,6 @@ struct TemplateViewerApp {
     view_mode: ViewMode,
     item_filter: String,
     character_filter: String,
-    data_dir: String,
     load_error: Option<String>,
 }
 
@@ -40,7 +39,7 @@ enum ViewMode {
 
 impl Default for TemplateViewerApp {
     fn default() -> Self {
-        let mut app = Self {
+        Self {
             item_templates: Vec::new(),
             character_templates: Vec::new(),
             selected_item_index: None,
@@ -48,24 +47,20 @@ impl Default for TemplateViewerApp {
             view_mode: ViewMode::Items,
             item_filter: String::new(),
             character_filter: String::new(),
-            data_dir: String::from("./assets/.dat"),
             load_error: None,
-        };
-
-        // Try to auto-load templates on startup
-        app.load_templates();
-        app
+        }
     }
 }
 
 impl TemplateViewerApp {
-    fn load_templates(&mut self) {
+    fn load_item_templates_from_file(&mut self, path: PathBuf) {
         self.load_error = None;
+        log::info!("Loading item templates from {:?}", path);
 
-        // Load item templates
-        match self.load_item_templates() {
+        match self.load_item_templates(&path) {
             Ok(items) => {
                 self.item_templates = items;
+                self.view_mode = ViewMode::Items;
                 log::info!("Loaded {} item templates", self.item_templates.len());
             }
             Err(e) => {
@@ -73,31 +68,29 @@ impl TemplateViewerApp {
                 log::error!("Failed to load item templates: {}", e);
             }
         }
+    }
 
-        // Load character templates
-        match self.load_character_templates() {
+    fn load_character_templates_from_file(&mut self, path: PathBuf) {
+        self.load_error = None;
+        log::info!("Loading character templates from {:?}", path);
+
+        match self.load_character_templates(&path) {
             Ok(chars) => {
                 self.character_templates = chars;
+                self.view_mode = ViewMode::Characters;
                 log::info!(
                     "Loaded {} character templates",
                     self.character_templates.len()
                 );
             }
             Err(e) => {
-                if let Some(ref mut err) = self.load_error {
-                    err.push_str(&format!("\nFailed to load character templates: {}", e));
-                } else {
-                    self.load_error = Some(format!("Failed to load character templates: {}", e));
-                }
+                self.load_error = Some(format!("Failed to load character templates: {}", e));
                 log::error!("Failed to load character templates: {}", e);
             }
         }
     }
 
-    fn load_item_templates(&self) -> Result<Vec<mag_core::types::Item>, String> {
-        let path = Path::new(&self.data_dir).join("titem.dat");
-        log::info!("Loading item templates from {:?}", path);
-
+    fn load_item_templates(&self, path: &PathBuf) -> Result<Vec<mag_core::types::Item>, String> {
         let data = fs::read(&path).map_err(|e| e.to_string())?;
         let expected_size =
             mag_core::constants::MAXTITEM * std::mem::size_of::<mag_core::types::Item>();
@@ -126,10 +119,10 @@ impl TemplateViewerApp {
         Ok(templates)
     }
 
-    fn load_character_templates(&self) -> Result<Vec<mag_core::types::Character>, String> {
-        let path = Path::new(&self.data_dir).join("tchar.dat");
-        log::info!("Loading character templates from {:?}", path);
-
+    fn load_character_templates(
+        &self,
+        path: &PathBuf,
+    ) -> Result<Vec<mag_core::types::Character>, String> {
         let data = fs::read(&path).map_err(|e| e.to_string())?;
         let expected_size =
             mag_core::constants::MAXTCHARS * std::mem::size_of::<mag_core::types::Character>();
@@ -1003,8 +996,36 @@ fn get_character_flag_info() -> Vec<mag_core::constants::CharacterFlags> {
 impl eframe::App for TemplateViewerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.heading("Template Viewer");
+            egui::menu::bar(ui, |ui| {
+                ui.menu_button("File", |ui| {
+                    if ui.button("Open Item Templates...").clicked() {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("DAT files", &["dat"])
+                            .set_can_create_directories(true)
+                            .pick_file()
+                        {
+                            self.load_item_templates_from_file(path);
+                        }
+                        ui.close_menu();
+                    }
+                    if ui.button("Open Character Templates...").clicked() {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("DAT files", &["dat"])
+                            .set_can_create_directories(true)
+                            .pick_file()
+                        {
+                            self.load_character_templates_from_file(path);
+                        }
+                        ui.close_menu();
+                    }
+
+                    ui.separator();
+
+                    if ui.button("Exit").clicked() {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
+                });
+
                 ui.separator();
 
                 if ui
@@ -1021,14 +1042,6 @@ impl eframe::App for TemplateViewerApp {
                     .clicked()
                 {
                     self.view_mode = ViewMode::Characters;
-                }
-
-                ui.separator();
-                ui.label("Data Directory:");
-                ui.text_edit_singleline(&mut self.data_dir);
-
-                if ui.button("Reload").clicked() {
-                    self.load_templates();
                 }
             });
 
