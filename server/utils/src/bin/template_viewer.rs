@@ -372,7 +372,7 @@ impl TemplateViewerApp {
                 });
 
             ui.separator();
-            ui.heading("Attributes");
+            centered_heading(ui, "Attributes");
             egui::Grid::new("item_attributes")
                 .num_columns(4)
                 .spacing([20.0, 4.0])
@@ -425,7 +425,7 @@ impl TemplateViewerApp {
                 });
 
             ui.separator();
-            ui.heading("Skills");
+            centered_heading(ui, "Skills");
             egui::Grid::new("item_skills")
                 .num_columns(5)
                 .spacing([20.0, 4.0])
@@ -452,7 +452,7 @@ impl TemplateViewerApp {
                 });
 
             ui.separator();
-            ui.heading("Driver Data");
+            centered_heading(ui, "Driver Data");
             egui::Grid::new("item_driver_data")
                 .num_columns(2)
                 .spacing([40.0, 4.0])
@@ -619,7 +619,7 @@ impl TemplateViewerApp {
                 });
 
             ui.separator();
-            ui.heading("Attributes");
+            centered_heading(ui, "Attributes");
             egui::Grid::new("character_attributes")
                 .num_columns(7)
                 .spacing([15.0, 4.0])
@@ -683,7 +683,7 @@ impl TemplateViewerApp {
                 });
 
             ui.separator();
-            ui.heading("Active Values");
+            centered_heading(ui, "Active Values");
             egui::Grid::new("character_active")
                 .num_columns(2)
                 .spacing([40.0, 4.0])
@@ -703,7 +703,7 @@ impl TemplateViewerApp {
                 });
 
             ui.separator();
-            ui.heading("Skills");
+            centered_heading(ui, "Skills");
             egui::Grid::new("character_skills")
                 .num_columns(8)
                 .spacing([15.0, 4.0])
@@ -731,9 +731,9 @@ impl TemplateViewerApp {
                 });
 
             ui.separator();
-            ui.heading("Inventory");
+            centered_heading(ui, "Inventory");
             egui::Grid::new("character_inventory")
-                .num_columns(4)
+                .num_columns(2)
                 .spacing([20.0, 4.0])
                 .striped(true)
                 .show(ui, |ui| {
@@ -761,54 +761,36 @@ impl TemplateViewerApp {
                 });
 
             ui.separator();
-            ui.heading("Worn Equipment");
+            centered_heading(ui, "Worn Equipment");
             egui::Grid::new("character_worn")
-                .num_columns(4)
+                .num_columns(2)
                 .spacing([20.0, 4.0])
                 .striped(true)
                 .show(ui, |ui| {
-                    centered_label(ui, "Slot");
-                    centered_label(ui, "Item ID");
                     centered_label(ui, "Slot");
                     centered_label(ui, "Item ID");
                     ui.end_row();
 
                     let worn_count = 20;
-                    for i in (0..worn_count).step_by(2) {
-                        let worn1 = character.worn[i];
-                        let worn2 = if i + 1 < worn_count {
-                            character.worn[i + 1]
-                        } else {
-                            0
-                        };
-
+                    for i in 0..worn_count {
+                        let worn_item = character.worn[i];
                         centered_label(ui, format!("{}", i));
-                        centered_label(ui, format!("{}", worn1));
-                        centered_label(ui, format!("{}", i + 1));
-                        centered_label(ui, format!("{}", worn2));
+                        centered_label(ui, format!("{}", worn_item));
                         ui.end_row();
                     }
                 });
 
             ui.separator();
-            ui.heading("Driver Data");
+            centered_heading(ui, "Driver Data");
             egui::Grid::new("character_driver_data")
-                .num_columns(4)
+                .num_columns(2)
                 .spacing([20.0, 4.0])
                 .striped(true)
                 .show(ui, |ui| {
-                    for i in (0..100).step_by(2) {
-                        let data1 = character.data[i];
-                        let data2 = if i + 1 < 100 {
-                            character.data[i + 1]
-                        } else {
-                            0
-                        };
-
+                    for i in 0..100 {
+                        let data = character.data[i];
                         ui.label(format!("data[{}]:", i));
-                        centered_label(ui, format!("{}", data1));
-                        ui.label(format!("data[{}]:", i + 1));
-                        centered_label(ui, format!("{}", data2));
+                        centered_label(ui, format!("{}", data));
                         ui.end_row();
                     }
                 });
@@ -834,6 +816,15 @@ fn centered_label(ui: &mut egui::Ui, text: impl Into<egui::WidgetText>) {
         egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
         |ui| {
             ui.label(text);
+        },
+    );
+}
+
+fn centered_heading(ui: &mut egui::Ui, text: impl Into<egui::RichText>) {
+    ui.with_layout(
+        egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
+        |ui| {
+            ui.heading(text);
         },
     );
 }
