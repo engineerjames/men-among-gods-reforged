@@ -54,11 +54,12 @@ impl Default for TemplateViewerApp {
 }
 
 impl TemplateViewerApp {
-    fn load_item_templates_from_file(&mut self, path: PathBuf) {
+    fn load_templates_from_dir(&mut self, dir: PathBuf) {
         self.load_error = None;
-        log::info!("Loading item templates from {:?}", path);
+        log::info!("Loading templates from {:?}", dir);
 
-        match self.load_item_templates(&path) {
+        let item_path = dir.join("titem.dat");
+        match self.load_item_templates(&item_path) {
             Ok(items) => {
                 self.item_templates = items;
                 self.view_mode = ViewMode::Items;
@@ -69,23 +70,27 @@ impl TemplateViewerApp {
                 log::error!("Failed to load item templates: {}", e);
             }
         }
-    }
 
-    fn load_character_templates_from_file(&mut self, path: PathBuf) {
-        self.load_error = None;
-        log::info!("Loading character templates from {:?}", path);
-
-        match self.load_character_templates(&path) {
+        let char_path = dir.join("tchar.dat");
+        match self.load_character_templates(&char_path) {
             Ok(chars) => {
                 self.character_templates = chars;
-                self.view_mode = ViewMode::Characters;
+                if self.item_templates.is_empty() {
+                    self.view_mode = ViewMode::Characters;
+                }
                 log::info!(
                     "Loaded {} character templates",
                     self.character_templates.len()
                 );
             }
             Err(e) => {
-                self.load_error = Some(format!("Failed to load character templates: {}", e));
+                let message = format!("Failed to load character templates: {}", e);
+                if let Some(ref mut error) = self.load_error {
+                    error.push_str("\n");
+                    error.push_str(&message);
+                } else {
+                    self.load_error = Some(message);
+                }
                 log::error!("Failed to load character templates: {}", e);
             }
         }
@@ -969,23 +974,12 @@ impl eframe::App for TemplateViewerApp {
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
-                    if ui.button("Open Item Templates...").clicked() {
+                    if ui.button("Select Data Directory...").clicked() {
                         if let Some(path) = rfd::FileDialog::new()
-                            .add_filter("DAT files", &["dat"])
                             .set_can_create_directories(true)
-                            .pick_file()
+                            .pick_folder()
                         {
-                            self.load_item_templates_from_file(path);
-                        }
-                        ui.close_menu();
-                    }
-                    if ui.button("Open Character Templates...").clicked() {
-                        if let Some(path) = rfd::FileDialog::new()
-                            .add_filter("DAT files", &["dat"])
-                            .set_can_create_directories(true)
-                            .pick_file()
-                        {
-                            self.load_character_templates_from_file(path);
+                            self.load_templates_from_dir(path);
                         }
                         ui.close_menu();
                     }
