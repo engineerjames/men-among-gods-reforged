@@ -1,5 +1,6 @@
 use eframe::egui;
 use mag_core::string_operations::c_string_to_str;
+use mag_core::types::skilltab::get_skill_name;
 use std::fs;
 use std::path::PathBuf;
 
@@ -160,32 +161,36 @@ impl TemplateViewerApp {
 
         ui.separator();
 
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            for (idx, item) in self.item_templates.iter().enumerate() {
-                if item.used == mag_core::constants::USE_EMPTY {
-                    continue;
-                }
+        let list_width = ui.available_width();
+        egui::ScrollArea::vertical()
+            .auto_shrink([false; 2])
+            .show(ui, |ui| {
+                ui.set_min_width(list_width);
+                for (idx, item) in self.item_templates.iter().enumerate() {
+                    if item.used == mag_core::constants::USE_EMPTY {
+                        continue;
+                    }
 
-                let name = item.get_name();
-                if !self.item_filter.is_empty()
-                    && !name
-                        .to_lowercase()
-                        .contains(&self.item_filter.to_lowercase())
-                {
-                    continue;
-                }
+                    let name = item.get_name();
+                    if !self.item_filter.is_empty()
+                        && !name
+                            .to_lowercase()
+                            .contains(&self.item_filter.to_lowercase())
+                    {
+                        continue;
+                    }
 
-                if ui
-                    .selectable_label(
-                        self.selected_item_index == Some(idx),
-                        format!("[{}] {}", idx, name),
-                    )
-                    .clicked()
-                {
-                    self.selected_item_index = Some(idx);
+                    if ui
+                        .selectable_label(
+                            self.selected_item_index == Some(idx),
+                            format!("[{}] {}", idx, name),
+                        )
+                        .clicked()
+                    {
+                        self.selected_item_index = Some(idx);
+                    }
                 }
-            }
-        });
+            });
     }
 
     fn render_character_list(&mut self, ui: &mut egui::Ui) {
@@ -196,32 +201,36 @@ impl TemplateViewerApp {
 
         ui.separator();
 
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            for (idx, character) in self.character_templates.iter().enumerate() {
-                if character.used == mag_core::constants::USE_EMPTY {
-                    continue;
-                }
+        let list_width = ui.available_width();
+        egui::ScrollArea::vertical()
+            .auto_shrink([false; 2])
+            .show(ui, |ui| {
+                ui.set_min_width(list_width);
+                for (idx, character) in self.character_templates.iter().enumerate() {
+                    if character.used == mag_core::constants::USE_EMPTY {
+                        continue;
+                    }
 
-                let name = character.get_name();
-                if !self.character_filter.is_empty()
-                    && !name
-                        .to_lowercase()
-                        .contains(&self.character_filter.to_lowercase())
-                {
-                    continue;
-                }
+                    let name = character.get_name();
+                    if !self.character_filter.is_empty()
+                        && !name
+                            .to_lowercase()
+                            .contains(&self.character_filter.to_lowercase())
+                    {
+                        continue;
+                    }
 
-                if ui
-                    .selectable_label(
-                        self.selected_character_index == Some(idx),
-                        format!("[{}] {}", idx, name),
-                    )
-                    .clicked()
-                {
-                    self.selected_character_index = Some(idx);
+                    if ui
+                        .selectable_label(
+                            self.selected_character_index == Some(idx),
+                            format!("[{}] {}", idx, name),
+                        )
+                        .clicked()
+                    {
+                        self.selected_character_index = Some(idx);
+                    }
                 }
-            }
-        });
+            });
     }
 
     fn render_item_details(&self, ui: &mut egui::Ui, item: &mag_core::types::Item) {
@@ -898,49 +907,6 @@ fn placement_label(placement: u16) -> String {
     }
 
     format!("Unknown (0x{:04X})", placement)
-}
-
-// Helper function to get skill name from skill index
-fn get_skill_name(skill_num: usize) -> &'static str {
-    match skill_num {
-        0 => "Hand",
-        1 => "Karate",
-        2 => "Sword",
-        3 => "Dagger",
-        4 => "Staff",
-        5 => "Two-Handed",
-        6 => "Axe",
-        7 => "Whip",
-        8 => "Shield",
-        9 => "Attack",
-        10 => "Parry",
-        11 => "Warcry",
-        12 => "Tactics",
-        13 => "Stealth",
-        14 => "Perception",
-        15 => "Bravery",
-        16 => "Willpower",
-        17 => "Endurance",
-        18 => "Hitpoints",
-        19 => "Mana",
-        20 => "Fire Magic",
-        21 => "Freeze Magic",
-        22 => "Magic Shield",
-        23 => "Healing",
-        24 => "Ghost",
-        25 => "Blast",
-        26 => "Lightning",
-        27 => "Hail",
-        28 => "Regenerate",
-        29 => "Meditate",
-        30 => "Light",
-        31 => "Magicshield",
-        32 => "Bless",
-        33 => "Warcry Alt",
-        34 => "Rest",
-        35 => "Pray",
-        _ => "Unknown",
-    }
 }
 
 fn get_item_flag_info() -> Vec<(mag_core::constants::ItemFlags, &'static str)> {
