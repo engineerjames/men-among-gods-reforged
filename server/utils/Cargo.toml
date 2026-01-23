@@ -1,0 +1,18 @@
+[package]
+name = "server-utils"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "MIT"
+description = "Utility executables for the server"
+
+[dependencies]
+mag_core = { path = "../../core", package = "core" }
+eframe = "0.30"
+egui = "0.30"
+log = "0.4"
+env_logger = "0.11"
+
+[[bin]]
+name = "template_viewer"
+path = "src/bin/template_viewer.rs"
