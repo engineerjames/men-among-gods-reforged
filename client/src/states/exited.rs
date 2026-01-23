@@ -58,6 +58,16 @@ pub fn run_exited(mut contexts: EguiContexts, mut ui_state: ResMut<ExitedUiState
         return;
     };
 
+    // Dim the game behind the modal without affecting egui widgets.
+    {
+        let screen_rect = ctx.input(|i| i.viewport_rect());
+        let painter = ctx.layer_painter(egui::LayerId::new(
+            egui::Order::Background,
+            egui::Id::new("exited_dim_background"),
+        ));
+        painter.rect_filled(screen_rect, 0.0, egui::Color32::from_black_alpha(200));
+    }
+
     egui::Window::new("Disconnected from Server")
         .title_bar(true)
         .collapsible(false)

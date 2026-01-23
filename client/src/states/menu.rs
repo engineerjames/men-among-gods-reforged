@@ -55,6 +55,16 @@ pub fn run_menu(
         return;
     }
 
+    // Dim the game behind the menu UI without affecting egui widgets.
+    {
+        let screen_rect = ctx.input(|i| i.viewport_rect());
+        let painter = ctx.layer_painter(egui::LayerId::new(
+            egui::Order::Background,
+            egui::Id::new("menu_dim_background"),
+        ));
+        painter.rect_filled(screen_rect, 0.0, egui::Color32::from_black_alpha(200));
+    }
+
     egui::Window::new("Menu")
         .default_height(TARGET_HEIGHT)
         .default_width(TARGET_WIDTH)
