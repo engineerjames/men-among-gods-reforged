@@ -13,7 +13,6 @@ mod types;
 
 use bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
 use std::path::PathBuf;
-use std::sync::OnceLock;
 use tracing_appender::{non_blocking::WorkerGuard, rolling};
 
 use bevy::log::{tracing_subscriber::Layer, BoxedLayer, LogPlugin};
@@ -36,7 +35,8 @@ use crate::systems::map_hover;
 use crate::systems::nameplates;
 use crate::systems::sound;
 
-static LOG_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
+#[derive(Resource)]
+struct LogGuard(#[allow(dead_code)] WorkerGuard);
 
 #[cfg(target_os = "macos")]
 #[derive(Default)]
@@ -54,10 +54,10 @@ enum GameState {
     Exited,
 }
 
-fn custom_layer(_app: &mut App) -> Option<BoxedLayer> {
+fn custom_layer(app: &mut App) -> Option<BoxedLayer> {
     let file_appender = rolling::daily("logs", "client.log");
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
-    let _ = LOG_GUARD.set(guard);
+    app.insert_resource(LogGuard(guard));
     Some(
         bevy::log::tracing_subscriber::fmt::layer()
             .with_ansi(false)
