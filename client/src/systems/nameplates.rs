@@ -1,5 +1,5 @@
-use bevy::prelude::*;
 use bevy::camera::visibility::RenderLayers;
+use bevy::prelude::*;
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::network::{client_commands::ClientCommand, NetworkRuntime};

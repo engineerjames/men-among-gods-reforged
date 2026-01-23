@@ -10,8 +10,8 @@ use crate::states::gameplay::components::*;
 use crate::states::gameplay::layout::*;
 use crate::states::gameplay::resources::*;
 use crate::states::gameplay::LastRender;
-use crate::systems::map_hover::GameplayHoveredTile;
 use crate::systems::magic_postprocess::MagicScreenCamera;
+use crate::systems::map_hover::GameplayHoveredTile;
 
 use mag_core::constants::SPR_EMPTY;
 

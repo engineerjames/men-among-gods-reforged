@@ -1,5 +1,5 @@
-use bevy::prelude::*;
 use bevy::camera::visibility::RenderLayers;
+use bevy::prelude::*;
 
 use bevy::ecs::query::Without;
 use bevy::sprite::Anchor;
@@ -37,10 +37,10 @@ use crate::font_cache::{FontCache, BITMAP_GLYPH_W};
 use crate::gfx_cache::GraphicsCache;
 use crate::network::{client_commands::ClientCommand, NetworkRuntime};
 use crate::player_state::PlayerState;
-use crate::systems::magic_postprocess::MagicScreenCamera;
 use crate::systems::debug::{
     profile_rendering_enabled, BitmapTextPerfAccum, GameplayDebugSettings, GameplayPerfAccum,
 };
+use crate::systems::magic_postprocess::MagicScreenCamera;
 
 use mag_core::types::skilltab::{get_skill_name, get_skill_sortkey, MAX_SKILLS};
 
@@ -223,7 +223,12 @@ pub(crate) fn run_gameplay_bitmap_text_renderer(
     font_cache: Res<FontCache>,
     mut perf: Local<BitmapTextPerfAccum>,
     q_text: Query<
-        (Entity, &BitmapText, Option<&Children>, Option<&RenderLayers>),
+        (
+            Entity,
+            &BitmapText,
+            Option<&Children>,
+            Option<&RenderLayers>,
+        ),
         Or<(Added<BitmapText>, Changed<BitmapText>)>,
     >,
 ) {
