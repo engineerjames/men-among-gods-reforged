@@ -8,6 +8,7 @@ use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::player_state::PlayerState;
 use crate::settings::UserSettingsState;
 use crate::states::gameplay::CursorActionTextSettings;
+use crate::systems::magic_postprocess::MagicPostProcessSettings;
 use crate::systems::sound::SoundSettings;
 use crate::GameState;
 
@@ -42,6 +43,7 @@ pub fn run_menu(
     mut sound_settings: ResMut<SoundSettings>,
     mut cursor_action_text: ResMut<CursorActionTextSettings>,
     mut user_settings: ResMut<UserSettingsState>,
+    mut magic_settings: ResMut<MagicPostProcessSettings>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
@@ -53,6 +55,16 @@ pub fn run_menu(
         return;
     }
 
+    // Dim the game behind the menu UI without affecting egui widgets.
+    {
+        let screen_rect = ctx.input(|i| i.viewport_rect());
+        let painter = ctx.layer_painter(egui::LayerId::new(
+            egui::Order::Background,
+            egui::Id::new("menu_dim_background"),
+        ));
+        painter.rect_filled(screen_rect, 0.0, egui::Color32::from_black_alpha(200));
+    }
+
     egui::Window::new("Menu")
         .default_height(TARGET_HEIGHT)
         .default_width(TARGET_WIDTH)
@@ -61,7 +73,6 @@ pub fn run_menu(
         .resizable(false)
         .show(ctx, |ui| {
             ui.heading("Men Among Gods Reforged");
-            ui.label("Paused");
 
             if let Some(err) = menu_ui.last_error.as_deref() {
                 ui.colored_label(egui::Color32::LIGHT_RED, err);
@@ -85,6 +96,7 @@ pub fn run_menu(
                     &player_state,
                     &sound_settings,
                     &cursor_action_text,
+                    &magic_settings,
                 );
                 user_settings.request_save();
             }
@@ -97,6 +109,7 @@ pub fn run_menu(
                     &player_state,
                     &sound_settings,
                     &cursor_action_text,
+                    &magic_settings,
                 );
                 user_settings.request_save();
             }
@@ -109,6 +122,7 @@ pub fn run_menu(
                     &player_state,
                     &sound_settings,
                     &cursor_action_text,
+                    &magic_settings,
                 );
                 user_settings.request_save();
             }
@@ -125,6 +139,41 @@ pub fn run_menu(
                         &player_state,
                         &sound_settings,
                         &cursor_action_text,
+                        &magic_settings,
+                    );
+                    user_settings.request_save();
+                }
+            });
+
+            ui.separator();
+            ui.heading("Graphics");
+
+            if ui
+                .checkbox(&mut magic_settings.enabled, "Enable magic screen effects")
+                .changed()
+            {
+                user_settings.sync_from_resources(
+                    &player_state,
+                    &sound_settings,
+                    &cursor_action_text,
+                    &magic_settings,
+                );
+                user_settings.request_save();
+            }
+
+            ui.horizontal(|ui| {
+                ui.label("Gamma");
+                let slider =
+                    egui::Slider::new(&mut magic_settings.gamma, 0.8..=1.2).show_value(false);
+                let changed = ui.add_sized([220.0, 18.0], slider).changed();
+                ui.label(format!("{:.2}", magic_settings.gamma));
+
+                if changed {
+                    user_settings.sync_from_resources(
+                        &player_state,
+                        &sound_settings,
+                        &cursor_action_text,
+                        &magic_settings,
                     );
                     user_settings.request_save();
                 }

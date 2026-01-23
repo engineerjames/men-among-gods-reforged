@@ -12,6 +12,8 @@ use crate::player_state::PlayerState;
 use crate::states::gameplay::components::*;
 use crate::states::gameplay::layout::*;
 use crate::states::gameplay::resources::*;
+use crate::systems::magic_postprocess::MagicScreenCamera;
+use crate::types::mag_files;
 
 use mag_core::types::skilltab::{get_skill_name, get_skill_sortkey};
 
@@ -645,7 +647,7 @@ pub(crate) fn run_gameplay_buttonbox_toggles(
     keys: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
-    cameras: Query<&Camera, With<Camera2d>>,
+    cameras: Query<&Camera, (With<Camera2d>, With<MagicScreenCamera>)>,
     net: Res<NetworkRuntime>,
     mut next_state: ResMut<NextState<crate::GameState>>,
     mut player_state: ResMut<PlayerState>,
@@ -653,6 +655,39 @@ pub(crate) fn run_gameplay_buttonbox_toggles(
     mut q_boxes: Query<(&GameplayUiToggleBox, &mut Visibility), Without<GameplayUiModeBox>>,
     mut q_mode_boxes: Query<(&GameplayUiModeBox, &mut Visibility), Without<GameplayUiToggleBox>>,
 ) {
+    fn persist_mag_dat(player_state: &PlayerState) {
+        match mag_files::load_mag_dat() {
+            Ok(mut mag_dat) => {
+                mag_dat.save_file = *player_state.save_file();
+                mag_dat.player_data = *player_state.player_data();
+                if let Err(e) = mag_files::save_mag_dat(&mag_dat) {
+                    log::warn!("Failed to save mag.dat after HUD toggle: {e}");
+                }
+            }
+            Err(e) => {
+                log::warn!("Failed to load mag.dat after HUD toggle: {e}");
+            }
+        }
+    }
+
+    fn toggle_show_names_and_persist(player_state: &mut PlayerState) {
+        let cur = player_state.player_data().show_names;
+        player_state.player_data_mut().show_names = 1 - cur;
+        persist_mag_dat(player_state);
+    }
+
+    fn toggle_show_proz_and_persist(player_state: &mut PlayerState) {
+        let cur = player_state.player_data().show_proz;
+        player_state.player_data_mut().show_proz = 1 - cur;
+        persist_mag_dat(player_state);
+    }
+
+    fn toggle_hide_and_persist(player_state: &mut PlayerState) {
+        let cur = player_state.player_data().hide;
+        player_state.player_data_mut().hide = 1 - cur;
+        persist_mag_dat(player_state);
+    }
+
     // Reset (orig/main.c ESC): cmd(CL_CMD_RESET,0,0); show_shop=0; noshop=QSIZE*12; xmove=0;
     if keys.just_pressed(KeyCode::Escape) {
         net.send(ClientCommand::new_reset().to_bytes());
@@ -678,16 +713,13 @@ pub(crate) fn run_gameplay_buttonbox_toggles(
 
     // Keyboard shortcuts (orig/main.c): F4=show_proz, F6=hide, F7=show_names.
     if keys.just_pressed(KeyCode::F4) {
-        let cur = player_state.player_data().show_proz;
-        player_state.player_data_mut().show_proz = 1 - cur;
+        toggle_show_proz_and_persist(&mut player_state);
     }
     if keys.just_pressed(KeyCode::F6) {
-        let cur = player_state.player_data().hide;
-        player_state.player_data_mut().hide = 1 - cur;
+        toggle_hide_and_persist(&mut player_state);
     }
     if keys.just_pressed(KeyCode::F7) {
-        let cur = player_state.player_data().show_names;
-        player_state.player_data_mut().show_names = 1 - cur;
+        toggle_show_names_and_persist(&mut player_state);
     }
 
     // Mouse buttonbox click areas (orig/inter.c::trans_button + mouse_buttonbox).
@@ -714,24 +746,21 @@ pub(crate) fn run_gameplay_buttonbox_toggles(
             let f4_x = BUTTONBOX_X + 3.0 * BUTTONBOX_STEP_X;
             let f4_y = BUTTONBOX_Y_ROW1;
             if in_rect(game, f4_x, f4_y, BUTTONBOX_BUTTON_W, BUTTONBOX_BUTTON_H) {
-                let cur = player_state.player_data().show_proz;
-                player_state.player_data_mut().show_proz = 1 - cur;
+                toggle_show_proz_and_persist(&mut player_state);
             }
 
             // F6 (nr=5): row2 col1
             let f6_x = BUTTONBOX_X + 1.0 * BUTTONBOX_STEP_X;
             let f6_y = BUTTONBOX_Y_ROW2;
             if in_rect(game, f6_x, f6_y, BUTTONBOX_BUTTON_W, BUTTONBOX_BUTTON_H) {
-                let cur = player_state.player_data().hide;
-                player_state.player_data_mut().hide = 1 - cur;
+                toggle_hide_and_persist(&mut player_state);
             }
 
             // F7 (nr=6): row2 col2
             let f7_x = BUTTONBOX_X + 2.0 * BUTTONBOX_STEP_X;
             let f7_y = BUTTONBOX_Y_ROW2;
             if in_rect(game, f7_x, f7_y, BUTTONBOX_BUTTON_W, BUTTONBOX_BUTTON_H) {
-                let cur = player_state.player_data().show_names;
-                player_state.player_data_mut().show_names = 1 - cur;
+                toggle_show_names_and_persist(&mut player_state);
             }
 
             // F12 / EXIT (nr=11): row3 col3 ("bottom right").

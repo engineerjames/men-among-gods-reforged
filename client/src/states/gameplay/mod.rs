@@ -1,3 +1,4 @@
+use bevy::camera::visibility::RenderLayers;
 use bevy::prelude::*;
 
 use bevy::ecs::query::Without;
@@ -39,6 +40,7 @@ use crate::player_state::PlayerState;
 use crate::systems::debug::{
     profile_rendering_enabled, BitmapTextPerfAccum, GameplayDebugSettings, GameplayPerfAccum,
 };
+use crate::systems::magic_postprocess::MagicScreenCamera;
 
 use mag_core::types::skilltab::{get_skill_name, get_skill_sortkey, MAX_SKILLS};
 
@@ -221,7 +223,12 @@ pub(crate) fn run_gameplay_bitmap_text_renderer(
     font_cache: Res<FontCache>,
     mut perf: Local<BitmapTextPerfAccum>,
     q_text: Query<
-        (Entity, &BitmapText, Option<&Children>),
+        (
+            Entity,
+            &BitmapText,
+            Option<&Children>,
+            Option<&RenderLayers>,
+        ),
         Or<(Added<BitmapText>, Changed<BitmapText>)>,
     >,
 ) {
@@ -232,7 +239,7 @@ pub(crate) fn run_gameplay_bitmap_text_renderer(
         return;
     };
 
-    for (entity, text, children) in &q_text {
+    for (entity, text, children, parent_layers) in &q_text {
         if perf_enabled {
             perf.entities = perf.entities.saturating_add(1);
         }
@@ -265,6 +272,10 @@ pub(crate) fn run_gameplay_bitmap_text_renderer(
             let local_z = (i as f32) * 0.0001;
 
             if let Some(&child) = existing_children.get(i) {
+                if let Some(layers) = parent_layers {
+                    commands.entity(child).insert(layers.clone());
+                }
+
                 commands.entity(child).insert((
                     Sprite {
                         image: image.clone(),
@@ -300,6 +311,10 @@ pub(crate) fn run_gameplay_bitmap_text_renderer(
                         ViewVisibility::default(),
                     ))
                     .id();
+
+                if let Some(layers) = parent_layers {
+                    commands.entity(child).insert(layers.clone());
+                }
                 commands.entity(entity).add_child(child);
 
                 if perf_enabled {
@@ -647,7 +662,7 @@ pub(crate) fn setup_gameplay(
 /// This accounts for the window scale factor and the 2D camera viewport.
 fn cursor_game_pos(
     windows: &Query<&Window, With<bevy::window::PrimaryWindow>>,
-    cameras: &Query<&Camera, With<Camera2d>>,
+    cameras: &Query<&Camera, (With<Camera2d>, With<MagicScreenCamera>)>,
 ) -> Option<Vec2> {
     let window = windows.single().ok()?;
     let cursor_logical = window.cursor_position()?;

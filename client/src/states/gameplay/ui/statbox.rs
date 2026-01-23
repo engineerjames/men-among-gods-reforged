@@ -11,6 +11,7 @@ use crate::player_state::PlayerState;
 use crate::states::gameplay::components::*;
 use crate::states::gameplay::layout::*;
 use crate::states::gameplay::resources::*;
+use crate::systems::magic_postprocess::MagicScreenCamera;
 
 use mag_core::types::skilltab::{get_skill_desc, get_skill_name, get_skill_nr};
 
@@ -106,7 +107,7 @@ pub(crate) fn run_gameplay_statbox_input(
     keys: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
-    cameras: Query<&Camera, With<Camera2d>>,
+    cameras: Query<&Camera, (With<Camera2d>, With<MagicScreenCamera>)>,
     net: Res<NetworkRuntime>,
     mut player_state: ResMut<PlayerState>,
     mut statbox: ResMut<GameplayStatboxState>,

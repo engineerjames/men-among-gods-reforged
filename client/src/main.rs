@@ -26,11 +26,11 @@ use bevy::winit::{UpdateMode, WinitSettings};
 #[cfg(not(target_os = "macos"))]
 use winit::window::Icon;
 
-use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::gfx_cache::GraphicsCache;
 use crate::sfx_cache::SoundCache;
 use crate::systems::debug::{self, GameplayDebugSettings};
 use crate::systems::display;
+use crate::systems::magic_postprocess::MagicPostProcessPlugin;
 use crate::systems::map_hover;
 use crate::systems::nameplates;
 use crate::systems::sound;
@@ -131,6 +131,7 @@ fn main() {
                 }),
         )
         .add_plugins(EguiPlugin::default())
+        .add_plugins(MagicPostProcessPlugin)
         .add_plugins(network::NetworkPlugin)
         // Initialize the state to loading
         .insert_state(GameState::Loading)
@@ -140,7 +141,7 @@ fn main() {
         //
         // Initial setup
         //
-        .add_systems(Startup, setup_camera)
+        // Cameras are set up by MagicPostProcessPlugin (world -> texture -> postprocess -> UI).
         //
         // Loading state
         //
@@ -260,7 +261,8 @@ fn main() {
         .add_systems(
             Update,
             nameplates::run_gameplay_nameplates
-                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu))),
+                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu)))
+                .after(states::gameplay::run_gameplay),
         )
         .add_systems(
             Update,
@@ -490,21 +492,4 @@ fn set_window_icon_once(
     }
 
     *done = true;
-}
-
-fn setup_camera(mut commands: Commands) {
-    commands.spawn((
-        Name::new("Camera"),
-        Camera2d::default(),
-        SpatialListener::default(),
-        Transform::default(),
-        GlobalTransform::default(),
-        Projection::from(OrthographicProjection {
-            scaling_mode: bevy::camera::ScalingMode::AutoMin {
-                min_width: TARGET_WIDTH,
-                min_height: TARGET_HEIGHT,
-            },
-            ..OrthographicProjection::default_2d()
-        }),
-    ));
 }

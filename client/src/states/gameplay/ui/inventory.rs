@@ -11,6 +11,7 @@ use crate::states::gameplay::components::*;
 use crate::states::gameplay::layout::*;
 use crate::states::gameplay::resources::*;
 use crate::states::gameplay::LastRender;
+use crate::systems::magic_postprocess::MagicScreenCamera;
 
 use mag_core::constants::{
     PL_ARMS, PL_BELT, PL_BODY, PL_CLOAK, PL_FEET, PL_HEAD, PL_LEGS, PL_NECK, PL_RING, PL_SHIELD,
@@ -213,7 +214,7 @@ pub(crate) fn run_gameplay_inventory_input(
     keys: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
-    cameras: Query<&Camera, With<Camera2d>>,
+    cameras: Query<&Camera, (With<Camera2d>, With<MagicScreenCamera>)>,
     net: Res<NetworkRuntime>,
     mut player_state: ResMut<PlayerState>,
     inv_scroll: Res<GameplayInventoryScrollState>,

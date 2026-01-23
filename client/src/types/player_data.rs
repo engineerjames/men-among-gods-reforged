@@ -9,7 +9,7 @@ pub struct PlayerData {
     pub desc: [u8; 160],
     pub changed: i8,
     pub hide: i32,
-    pub show_names: i32,
+    pub show_names: i32, // TODO: Change these to bools
     pub show_proz: i32,
     pub are_shadows_enabled: i32,
     pub skill_buttons: [SkillButtons; 12],
@@ -28,7 +28,7 @@ impl Default for PlayerData {
             desc: [0; 160],
             changed: 0,
             hide: 0,
-            show_names: 0,
+            show_names: 1,
             show_proz: 0,
             are_shadows_enabled: 1,
             skill_buttons: [SkillButtons::default(); 12],
