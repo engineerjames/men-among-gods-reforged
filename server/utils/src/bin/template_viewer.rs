@@ -257,11 +257,11 @@ impl TemplateViewerApp {
                 .striped(true)
                 .show(ui, |ui| {
                     ui.label("Index:");
-                    ui.label(format!("{}", temp));
+                    centered_label(ui, format!("{}", temp));
                     ui.end_row();
 
                     ui.label("Used:");
-                    ui.label(format!("{}", used));
+                    centered_label(ui, format!("{}", used));
                     ui.end_row();
 
                     ui.label("Reference:");
@@ -273,11 +273,17 @@ impl TemplateViewerApp {
                     ui.end_row();
 
                     ui.label("Value:");
-                    ui.label(format_gold_silver(value as i32));
+                    centered_label(ui, format_gold_silver(value as i32));
                     ui.end_row();
 
                     ui.label("Placement:");
-                    ui.label(format!("{}", placement));
+                    egui::ComboBox::from_id_salt(format!("placement_combo_{}", temp))
+                        .selected_text(placement_label(placement))
+                        .show_ui(ui, |ui| {
+                            for (value, name) in placement_options() {
+                                let _ = ui.selectable_label(*value == placement, *name);
+                            }
+                        });
                     ui.end_row();
 
                     ui.label("Flags:");
@@ -311,43 +317,43 @@ impl TemplateViewerApp {
                 .striped(true)
                 .show(ui, |ui| {
                     ui.label("Sprite:");
-                    ui.label(format!("[{}, {}]", sprite_0, sprite_1));
+                    centered_label(ui, format!("[{}, {}]", sprite_0, sprite_1));
                     ui.end_row();
 
                     ui.label("Status:");
-                    ui.label(format!("[{}, {}]", status_0, status_1));
+                    centered_label(ui, format!("[{}, {}]", status_0, status_1));
                     ui.end_row();
 
                     ui.label("Armor:");
-                    ui.label(format!("[{}, {}]", armor_0, armor_1));
+                    centered_label(ui, format!("[{}, {}]", armor_0, armor_1));
                     ui.end_row();
 
                     ui.label("Weapon:");
-                    ui.label(format!("[{}, {}]", weapon_0, weapon_1));
+                    centered_label(ui, format!("[{}, {}]", weapon_0, weapon_1));
                     ui.end_row();
 
                     ui.label("Light:");
-                    ui.label(format!("[{}, {}]", light_0, light_1));
+                    centered_label(ui, format!("[{}, {}]", light_0, light_1));
                     ui.end_row();
 
                     ui.label("Duration:");
-                    ui.label(format!("{}", duration));
+                    centered_label(ui, format!("{}", duration));
                     ui.end_row();
 
                     ui.label("Cost:");
-                    ui.label(format!("{}", cost));
+                    centered_label(ui, format!("{}", cost));
                     ui.end_row();
 
                     ui.label("Power:");
-                    ui.label(format!("{}", power));
+                    centered_label(ui, format!("{}", power));
                     ui.end_row();
 
                     ui.label("Min Rank:");
-                    ui.label(format!("{}", min_rank));
+                    centered_label(ui, format!("{}", min_rank));
                     ui.end_row();
 
                     ui.label("Driver:");
-                    ui.label(format!("{}", driver));
+                    centered_label(ui, format!("{}", driver));
                     ui.end_row();
                 });
 
@@ -358,10 +364,10 @@ impl TemplateViewerApp {
                 .spacing([20.0, 4.0])
                 .striped(true)
                 .show(ui, |ui| {
-                    ui.label("Stat");
-                    ui.label("Worn");
-                    ui.label("Active");
-                    ui.label("Min Required");
+                    centered_label(ui, "Stat");
+                    centered_label(ui, "Worn");
+                    centered_label(ui, "Active");
+                    centered_label(ui, "Min Required");
                     ui.end_row();
 
                     let attrib_names = ["Strength", "Intuition", "Agility", "Wisdom", "Hitpoints"];
@@ -370,9 +376,9 @@ impl TemplateViewerApp {
                         let val_1 = item.attrib[i][1];
                         let val_2 = item.attrib[i][2];
                         ui.label(*name);
-                        ui.label(format!("{:+}", val_0));
-                        ui.label(format!("{:+}", val_1));
-                        ui.label(format!("{}", val_2));
+                        centered_label(ui, format!("{:+}", val_0));
+                        centered_label(ui, format!("{:+}", val_1));
+                        centered_label(ui, format!("{}", val_2));
                         ui.end_row();
                     }
 
@@ -380,27 +386,27 @@ impl TemplateViewerApp {
                     let hp_1 = item.hp[1];
                     let hp_2 = item.hp[2];
                     ui.label("HP");
-                    ui.label(format!("{:+}", hp_0));
-                    ui.label(format!("{:+}", hp_1));
-                    ui.label(format!("{}", hp_2));
+                    centered_label(ui, format!("{:+}", hp_0));
+                    centered_label(ui, format!("{:+}", hp_1));
+                    centered_label(ui, format!("{}", hp_2));
                     ui.end_row();
 
                     let end_0 = item.end[0];
                     let end_1 = item.end[1];
                     let end_2 = item.end[2];
                     ui.label("Endurance");
-                    ui.label(format!("{:+}", end_0));
-                    ui.label(format!("{:+}", end_1));
-                    ui.label(format!("{}", end_2));
+                    centered_label(ui, format!("{:+}", end_0));
+                    centered_label(ui, format!("{:+}", end_1));
+                    centered_label(ui, format!("{}", end_2));
                     ui.end_row();
 
                     let mana_0 = item.mana[0];
                     let mana_1 = item.mana[1];
                     let mana_2 = item.mana[2];
                     ui.label("Mana");
-                    ui.label(format!("{:+}", mana_0));
-                    ui.label(format!("{:+}", mana_1));
-                    ui.label(format!("{}", mana_2));
+                    centered_label(ui, format!("{:+}", mana_0));
+                    centered_label(ui, format!("{:+}", mana_1));
+                    centered_label(ui, format!("{}", mana_2));
                     ui.end_row();
                 });
 
@@ -411,11 +417,11 @@ impl TemplateViewerApp {
                 .spacing([20.0, 4.0])
                 .striped(true)
                 .show(ui, |ui| {
-                    ui.label("Skill #");
-                    ui.label("Skill Name");
-                    ui.label("Worn");
-                    ui.label("Active");
-                    ui.label("Min Required");
+                    centered_label(ui, "Skill #");
+                    centered_label(ui, "Skill Name");
+                    centered_label(ui, "Worn");
+                    centered_label(ui, "Active");
+                    centered_label(ui, "Min Required");
                     ui.end_row();
 
                     for (i, skill) in item.skill.iter().enumerate() {
@@ -423,11 +429,11 @@ impl TemplateViewerApp {
                         let s1 = skill[1];
                         let s2 = skill[2];
                         if s0 != 0 || s1 != 0 || s2 != 0 {
-                            ui.label(format!("{}", i));
+                            centered_label(ui, format!("{}", i));
                             ui.label(get_skill_name(i));
-                            ui.label(format!("{:+}", s0));
-                            ui.label(format!("{:+}", s1));
-                            ui.label(format!("{}", s2));
+                            centered_label(ui, format!("{:+}", s0));
+                            centered_label(ui, format!("{:+}", s1));
+                            centered_label(ui, format!("{}", s2));
                             ui.end_row();
                         }
                     }
@@ -444,7 +450,7 @@ impl TemplateViewerApp {
                         let data = item.data[i];
                         if data != 0 {
                             ui.label(format!("data[{}]:", i));
-                            ui.label(format!("{}", data));
+                            centered_label(ui, format!("{}", data));
                             ui.end_row();
                         }
                     }
@@ -490,11 +496,11 @@ impl TemplateViewerApp {
                 .striped(true)
                 .show(ui, |ui| {
                     ui.label("Index:");
-                    ui.label(format!("{}", temp));
+                    centered_label(ui, format!("{}", temp));
                     ui.end_row();
 
                     ui.label("Used:");
-                    ui.label(format!("{}", used));
+                    centered_label(ui, format!("{}", used));
                     ui.end_row();
 
                     ui.label("Reference:");
@@ -506,15 +512,15 @@ impl TemplateViewerApp {
                     ui.end_row();
 
                     ui.label("Kindred:");
-                    ui.label(format!("{}", kindred));
+                    centered_label(ui, format!("{}", kindred));
                     ui.end_row();
 
                     ui.label("Sprite:");
-                    ui.label(format!("{}", sprite));
+                    centered_label(ui, format!("{}", sprite));
                     ui.end_row();
 
                     ui.label("Sound:");
-                    ui.label(format!("{}", sound));
+                    centered_label(ui, format!("{}", sound));
                     ui.end_row();
 
                     ui.label("Flags:");
@@ -554,51 +560,51 @@ impl TemplateViewerApp {
                 .striped(true)
                 .show(ui, |ui| {
                     ui.label("Alignment:");
-                    ui.label(format!("{}", alignment));
+                    centered_label(ui, format!("{}", alignment));
                     ui.end_row();
 
                     ui.label("Temple:");
-                    ui.label(format!("({}, {})", temple_x, temple_y));
+                    centered_label(ui, format!("({}, {})", temple_x, temple_y));
                     ui.end_row();
 
                     ui.label("Tavern:");
-                    ui.label(format!("({}, {})", tavern_x, tavern_y));
+                    centered_label(ui, format!("({}, {})", tavern_x, tavern_y));
                     ui.end_row();
 
                     ui.label("Position:");
-                    ui.label(format!("({}, {})", x, y));
+                    centered_label(ui, format!("({}, {})", x, y));
                     ui.end_row();
 
                     ui.label("Gold:");
-                    ui.label(format_gold_silver(gold));
+                    centered_label(ui, format_gold_silver(gold));
                     ui.end_row();
 
                     ui.label("Points:");
-                    ui.label(format!("{} / {}", points, points_tot));
+                    centered_label(ui, format!("{} / {}", points, points_tot));
                     ui.end_row();
 
                     ui.label("Armor:");
-                    ui.label(format!("{}", armor));
+                    centered_label(ui, format!("{}", armor));
                     ui.end_row();
 
                     ui.label("Weapon:");
-                    ui.label(format!("{}", weapon));
+                    centered_label(ui, format!("{}", weapon));
                     ui.end_row();
 
                     ui.label("Light:");
-                    ui.label(format!("{}", light));
+                    centered_label(ui, format!("{}", light));
                     ui.end_row();
 
                     ui.label("Mode:");
-                    ui.label(format!("{}", mode));
+                    centered_label(ui, format!("{}", mode));
                     ui.end_row();
 
                     ui.label("Speed:");
-                    ui.label(format!("{}", speed));
+                    centered_label(ui, format!("{}", speed));
                     ui.end_row();
 
                     ui.label("Monster Class:");
-                    ui.label(format!("{}", monster_class));
+                    centered_label(ui, format!("{}", monster_class));
                     ui.end_row();
                 });
 
@@ -609,13 +615,13 @@ impl TemplateViewerApp {
                 .spacing([15.0, 4.0])
                 .striped(true)
                 .show(ui, |ui| {
-                    ui.label("Stat");
-                    ui.label("Base");
-                    ui.label("Preset");
-                    ui.label("Max");
-                    ui.label("Difficulty");
-                    ui.label("Dynamic");
-                    ui.label("Total");
+                    centered_label(ui, "Stat");
+                    centered_label(ui, "Base");
+                    centered_label(ui, "Preset");
+                    centered_label(ui, "Max");
+                    centered_label(ui, "Difficulty");
+                    centered_label(ui, "Dynamic");
+                    centered_label(ui, "Total");
                     ui.end_row();
 
                     let attrib_names = ["Strength", "Intuition", "Agility", "Wisdom", "Hitpoints"];
@@ -623,7 +629,7 @@ impl TemplateViewerApp {
                         ui.label(*name);
                         for j in 0..6 {
                             let val = character.attrib[i][j];
-                            ui.label(format!("{}", val));
+                            centered_label(ui, format!("{}", val));
                         }
                         ui.end_row();
                     }
@@ -635,33 +641,33 @@ impl TemplateViewerApp {
                 .spacing([15.0, 4.0])
                 .striped(true)
                 .show(ui, |ui| {
-                    ui.label("Vital");
-                    ui.label("[0]");
-                    ui.label("[1]");
-                    ui.label("[2]");
-                    ui.label("[3]");
-                    ui.label("[4]");
-                    ui.label("[5]");
+                    centered_label(ui, "Vital");
+                    centered_label(ui, "[0]");
+                    centered_label(ui, "[1]");
+                    centered_label(ui, "[2]");
+                    centered_label(ui, "[3]");
+                    centered_label(ui, "[4]");
+                    centered_label(ui, "[5]");
                     ui.end_row();
 
                     ui.label("HP");
                     for i in 0..6 {
                         let val = character.hp[i];
-                        ui.label(format!("{}", val));
+                        centered_label(ui, format!("{}", val));
                     }
                     ui.end_row();
 
                     ui.label("Endurance");
                     for i in 0..6 {
                         let val = character.end[i];
-                        ui.label(format!("{}", val));
+                        centered_label(ui, format!("{}", val));
                     }
                     ui.end_row();
 
                     ui.label("Mana");
                     for i in 0..6 {
                         let val = character.mana[i];
-                        ui.label(format!("{}", val));
+                        centered_label(ui, format!("{}", val));
                     }
                     ui.end_row();
                 });
@@ -674,15 +680,15 @@ impl TemplateViewerApp {
                 .striped(true)
                 .show(ui, |ui| {
                     ui.label("Active HP:");
-                    ui.label(format!("{}", a_hp));
+                    centered_label(ui, format!("{}", a_hp));
                     ui.end_row();
 
                     ui.label("Active Endurance:");
-                    ui.label(format!("{}", a_end));
+                    centered_label(ui, format!("{}", a_end));
                     ui.end_row();
 
                     ui.label("Active Mana:");
-                    ui.label(format!("{}", a_mana));
+                    centered_label(ui, format!("{}", a_mana));
                     ui.end_row();
                 });
 
@@ -693,23 +699,23 @@ impl TemplateViewerApp {
                 .spacing([15.0, 4.0])
                 .striped(true)
                 .show(ui, |ui| {
-                    ui.label("Skill #");
-                    ui.label("Skill Name");
-                    ui.label("[0]");
-                    ui.label("[1]");
-                    ui.label("[2]");
-                    ui.label("[3]");
-                    ui.label("[4]");
-                    ui.label("[5]");
+                    centered_label(ui, "Skill #");
+                    centered_label(ui, "Skill Name");
+                    centered_label(ui, "[0]");
+                    centered_label(ui, "[1]");
+                    centered_label(ui, "[2]");
+                    centered_label(ui, "[3]");
+                    centered_label(ui, "[4]");
+                    centered_label(ui, "[5]");
                     ui.end_row();
 
                     for (i, skill) in character.skill.iter().enumerate() {
                         if skill.iter().any(|&s| s != 0) {
-                            ui.label(format!("{}", i));
+                            centered_label(ui, format!("{}", i));
                             ui.label(get_skill_name(i));
                             for j in 0..6 {
                                 let val = skill[j];
-                                ui.label(format!("{}", val));
+                                centered_label(ui, format!("{}", val));
                             }
                             ui.end_row();
                         }
@@ -723,10 +729,10 @@ impl TemplateViewerApp {
                 .spacing([20.0, 4.0])
                 .striped(true)
                 .show(ui, |ui| {
-                    ui.label("Slot");
-                    ui.label("Item ID");
-                    ui.label("Slot");
-                    ui.label("Item ID");
+                    centered_label(ui, "Slot");
+                    centered_label(ui, "Item ID");
+                    centered_label(ui, "Slot");
+                    centered_label(ui, "Item ID");
                     ui.end_row();
 
                     let item_count = 40; // character.item.len()
@@ -740,15 +746,15 @@ impl TemplateViewerApp {
 
                         if item1 != 0 || item2 != 0 {
                             if item1 != 0 {
-                                ui.label(format!("{}", i));
-                                ui.label(format!("{}", item1));
+                                centered_label(ui, format!("{}", i));
+                                centered_label(ui, format!("{}", item1));
                             } else {
                                 ui.label("");
                                 ui.label("");
                             }
                             if item2 != 0 {
-                                ui.label(format!("{}", i + 1));
-                                ui.label(format!("{}", item2));
+                                centered_label(ui, format!("{}", i + 1));
+                                centered_label(ui, format!("{}", item2));
                             } else {
                                 ui.label("");
                                 ui.label("");
@@ -765,10 +771,10 @@ impl TemplateViewerApp {
                 .spacing([20.0, 4.0])
                 .striped(true)
                 .show(ui, |ui| {
-                    ui.label("Slot");
-                    ui.label("Item ID");
-                    ui.label("Slot");
-                    ui.label("Item ID");
+                    centered_label(ui, "Slot");
+                    centered_label(ui, "Item ID");
+                    centered_label(ui, "Slot");
+                    centered_label(ui, "Item ID");
                     ui.end_row();
 
                     let worn_count = 20;
@@ -782,15 +788,15 @@ impl TemplateViewerApp {
 
                         if worn1 != 0 || worn2 != 0 {
                             if worn1 != 0 {
-                                ui.label(format!("{}", i));
-                                ui.label(format!("{}", worn1));
+                                centered_label(ui, format!("{}", i));
+                                centered_label(ui, format!("{}", worn1));
                             } else {
                                 ui.label("");
                                 ui.label("");
                             }
                             if worn2 != 0 {
-                                ui.label(format!("{}", i + 1));
-                                ui.label(format!("{}", worn2));
+                                centered_label(ui, format!("{}", i + 1));
+                                centered_label(ui, format!("{}", worn2));
                             } else {
                                 ui.label("");
                                 ui.label("");
@@ -818,7 +824,7 @@ impl TemplateViewerApp {
                         if data1 != 0 || data2 != 0 {
                             if data1 != 0 {
                                 ui.label(format!("data[{}]:", i));
-                                ui.label(format!("{}", data1));
+                                centered_label(ui, format!("{}", data1));
                             } else {
                                 ui.label("");
                                 ui.label("");
@@ -826,7 +832,7 @@ impl TemplateViewerApp {
 
                             if data2 != 0 {
                                 ui.label(format!("data[{}]:", i + 1));
-                                ui.label(format!("{}", data2));
+                                centered_label(ui, format!("{}", data2));
                             } else {
                                 ui.label("");
                                 ui.label("");
@@ -850,6 +856,48 @@ fn format_gold_silver(value: i32) -> String {
     } else {
         format!("{} silver", silver)
     }
+}
+
+fn centered_label(ui: &mut egui::Ui, text: impl Into<egui::WidgetText>) {
+    ui.with_layout(
+        egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
+        |ui| {
+            ui.label(text);
+        },
+    );
+}
+
+fn placement_options() -> &'static [(u16, &'static str)] {
+    &[
+        (0, "Unset"),
+        (mag_core::constants::PL_HEAD, "Head"),
+        (mag_core::constants::PL_NECK, "Neck"),
+        (mag_core::constants::PL_BODY, "Body"),
+        (mag_core::constants::PL_ARMS, "Arms"),
+        (mag_core::constants::PL_BELT, "Belt"),
+        (mag_core::constants::PL_LEGS, "Legs"),
+        (mag_core::constants::PL_FEET, "Feet"),
+        (mag_core::constants::PL_WEAPON, "Weapon"),
+        (mag_core::constants::PL_SHIELD, "Shield"),
+        (mag_core::constants::PL_CLOAK, "Cloak"),
+        (mag_core::constants::PL_TWOHAND, "Two-Hand"),
+        (0x0900, "Two-Handed"),
+        (mag_core::constants::PL_RING, "Ring"),
+    ]
+}
+
+fn placement_label(placement: u16) -> String {
+    if placement == 0 {
+        return "Unset".to_string();
+    }
+
+    for (value, name) in placement_options() {
+        if *value == placement {
+            return (*name).to_string();
+        }
+    }
+
+    format!("Unknown (0x{:04X})", placement)
 }
 
 // Helper function to get skill name from skill index
