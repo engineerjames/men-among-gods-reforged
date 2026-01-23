@@ -26,6 +26,7 @@ struct TemplateViewerApp {
     character_templates: Vec<mag_core::types::Character>,
     selected_item_index: Option<usize>,
     selected_character_index: Option<usize>,
+    item_popup_id: Option<u32>,
     view_mode: ViewMode,
     item_filter: String,
     character_filter: String,
@@ -45,6 +46,7 @@ impl Default for TemplateViewerApp {
             character_templates: Vec::new(),
             selected_item_index: None,
             selected_character_index: None,
+            item_popup_id: None,
             view_mode: ViewMode::Items,
             item_filter: String::new(),
             character_filter: String::new(),
@@ -54,6 +56,55 @@ impl Default for TemplateViewerApp {
 }
 
 impl TemplateViewerApp {
+    fn find_item_template(&self, item_id: u32) -> Option<&mag_core::types::Item> {
+        let index = item_id as usize;
+        if index < self.item_templates.len() {
+            return Some(&self.item_templates[index]);
+        }
+
+        let temp_id = item_id as u16;
+        self.item_templates.iter().find(|item| item.temp == temp_id)
+    }
+
+    fn render_item_popup(&mut self, ctx: &egui::Context) {
+        let Some(item_id) = self.item_popup_id else {
+            return;
+        };
+
+        let mut open = true;
+        egui::Window::new(format!("Item {}", item_id))
+            .open(&mut open)
+            .show(ctx, |ui| {
+                if let Some(item) = self.find_item_template(item_id) {
+                    self.render_item_details(ui, item);
+                } else {
+                    ui.label(format!("No item template found for ID {}", item_id));
+                }
+            });
+
+        if !open {
+            self.item_popup_id = None;
+        }
+    }
+
+    fn centered_clickable_item_id(&mut self, ui: &mut egui::Ui, item_id: u32) {
+        if item_id == 0 {
+            centered_label(ui, "0");
+            return;
+        }
+
+        let response = ui
+            .with_layout(
+                egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
+                |ui| ui.add(egui::Label::new(format!("{}", item_id)).sense(egui::Sense::click())),
+            )
+            .inner;
+
+        if response.clicked() {
+            self.item_popup_id = Some(item_id);
+        }
+    }
+
     fn load_templates_from_dir(&mut self, dir: PathBuf) {
         self.load_error = None;
         log::info!("Loading templates from {:?}", dir);
@@ -291,13 +342,15 @@ impl TemplateViewerApp {
                     ui.end_row();
 
                     ui.label("Placement:");
-                    egui::ComboBox::from_id_salt(format!("placement_combo_{}", temp))
-                        .selected_text(placement_label(placement))
-                        .show_ui(ui, |ui| {
-                            for (value, name) in placement_options() {
-                                let _ = ui.selectable_label(*value == placement, *name);
-                            }
-                        });
+                    ui.add_enabled_ui(false, |ui| {
+                        egui::ComboBox::from_id_salt(format!("placement_combo_{}", temp))
+                            .selected_text(placement_label(placement))
+                            .show_ui(ui, |ui| {
+                                for (value, name) in placement_options() {
+                                    let _ = ui.selectable_label(*value == placement, *name);
+                                }
+                            });
+                    });
                     ui.end_row();
 
                     ui.label("Flags:");
@@ -384,7 +437,7 @@ impl TemplateViewerApp {
                     centered_label(ui, "Min Required");
                     ui.end_row();
 
-                    let attrib_names = ["Strength", "Intuition", "Agility", "Wisdom", "Hitpoints"];
+                    let attrib_names = ["Bravery", "Willpower", "Intuition", "Agility", "Strength"];
                     for (i, name) in attrib_names.iter().enumerate() {
                         let val_0 = item.attrib[i][0];
                         let val_1 = item.attrib[i][1];
@@ -468,7 +521,11 @@ impl TemplateViewerApp {
         });
     }
 
-    fn render_character_details(&self, ui: &mut egui::Ui, character: &mag_core::types::Character) {
+    fn render_character_details(
+        &mut self,
+        ui: &mut egui::Ui,
+        character: &mag_core::types::Character,
+    ) {
         egui::ScrollArea::vertical().show(ui, |ui| {
             ui.heading(character.get_name());
             ui.separator();
@@ -634,7 +691,7 @@ impl TemplateViewerApp {
                     centered_label(ui, "Total");
                     ui.end_row();
 
-                    let attrib_names = ["Strength", "Intuition", "Agility", "Wisdom", "Hitpoints"];
+                    let attrib_names = ["Bravery", "Willpower", "Intuition", "Agility", "Strength"];
                     for (i, name) in attrib_names.iter().enumerate() {
                         ui.label(*name);
                         for j in 0..6 {
@@ -753,9 +810,9 @@ impl TemplateViewerApp {
                         };
 
                         centered_label(ui, format!("{}", i));
-                        centered_label(ui, format!("{}", item1));
+                        self.centered_clickable_item_id(ui, item1);
                         centered_label(ui, format!("{}", i + 1));
-                        centered_label(ui, format!("{}", item2));
+                        self.centered_clickable_item_id(ui, item2);
                         ui.end_row();
                     }
                 });
@@ -775,7 +832,7 @@ impl TemplateViewerApp {
                     for i in 0..worn_count {
                         let worn_item = character.worn[i];
                         centered_label(ui, format!("{}", i));
-                        centered_label(ui, format!("{}", worn_item));
+                        self.centered_clickable_item_id(ui, worn_item);
                         ui.end_row();
                     }
                 });
@@ -821,12 +878,9 @@ fn centered_label(ui: &mut egui::Ui, text: impl Into<egui::WidgetText>) {
 }
 
 fn centered_heading(ui: &mut egui::Ui, text: impl Into<egui::RichText>) {
-    ui.with_layout(
-        egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
-        |ui| {
-            ui.heading(text);
-        },
-    );
+    ui.horizontal_centered(|ui| {
+        ui.heading(text);
+    });
 }
 
 fn placement_options() -> &'static [(u16, &'static str)] {
@@ -1053,7 +1107,8 @@ impl eframe::App for TemplateViewerApp {
                 egui::CentralPanel::default().show_inside(ui, |ui| {
                     if let Some(idx) = self.selected_character_index {
                         if idx < self.character_templates.len() {
-                            self.render_character_details(ui, &self.character_templates[idx]);
+                            let character = self.character_templates[idx];
+                            self.render_character_details(ui, &character);
                         }
                     } else {
                         ui.centered_and_justified(|ui| {
@@ -1063,5 +1118,7 @@ impl eframe::App for TemplateViewerApp {
                 });
             }
         });
+
+        self.render_item_popup(ctx);
     }
 }
