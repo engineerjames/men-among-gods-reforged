@@ -642,6 +642,13 @@ impl TemplateViewerApp {
                     centered_label(ui, format!("({}, {})", x, y));
                     ui.end_row();
 
+                    ui.label("Area:");
+                    ui.label(
+                        mag_core::area::get_area_m(x as i32, y as i32)
+                            .unwrap_or_else(|| "Unknown".to_string()),
+                    );
+                    ui.end_row();
+
                     ui.label("Gold:");
                     centered_label(ui, format_gold_silver(gold));
                     ui.end_row();
