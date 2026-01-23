@@ -14,8 +14,8 @@ cargo run --package server-utils --bin template_viewer
 ```
 
 **Features:**
-- Browse all item templates (titem.dat)
-- Browse all character templates (tchar.dat)
+- Open and browse item templates (titem.dat) via File menu
+- Open and browse character templates (tchar.dat) via File menu
 - View detailed information about each template including:
   - Basic properties (name, description, sprite, etc.)
   - Attributes and stats
@@ -23,10 +23,14 @@ cargo run --package server-utils --bin template_viewer
   - Inventory and equipment (for characters)
   - Driver data
 - Filter templates by name
-- Configurable data directory path
+- Native file picker for selecting template files
 
-**Default Data Directory:**
-The viewer looks for `.dat` files in `./assets/.dat` by default. You can change this path in the UI.
+**How to Use:**
+1. Run the application
+2. Click **File** → **Open Item Templates...** or **Open Character Templates...**
+3. Navigate to your `.dat` files (typically in `server/assets/.dat/`)
+4. Select `titem.dat` for items or `tchar.dat` for characters
+5. Browse and inspect templates in the viewer
 
 **Running from the project root:**
 ```bash

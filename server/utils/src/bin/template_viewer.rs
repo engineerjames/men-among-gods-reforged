@@ -276,11 +276,11 @@ impl TemplateViewerApp {
                     ui.end_row();
 
                     ui.label("Description:");
-                    ui.label(c_string_to_str(&item.description));
+                    ui.add(egui::Label::new(c_string_to_str(&item.description)).wrap());
                     ui.end_row();
 
                     ui.label("Value:");
-                    ui.label(format!("{}", value));
+                    ui.label(format_gold_silver(value as i32));
                     ui.end_row();
 
                     ui.label("Placement:");
@@ -288,9 +288,35 @@ impl TemplateViewerApp {
                     ui.end_row();
 
                     ui.label("Flags:");
-                    ui.label(format!("0x{:016X}", flags));
                     ui.end_row();
+                });
 
+            let item_flags = mag_core::constants::ItemFlags::from_bits_truncate(flags);
+            egui::Grid::new(format!("item_flags_grid_{}", temp))
+                .num_columns(3)
+                .spacing([10.0, 4.0])
+                .striped(true)
+                .show(ui, |ui| {
+                    let mut col = 0;
+                    for (flag, name) in get_item_flag_info() {
+                        let mut is_set = item_flags.contains(flag);
+                        ui.add_enabled(false, egui::Checkbox::new(&mut is_set, name));
+                        col += 1;
+                        if col == 3 {
+                            ui.end_row();
+                            col = 0;
+                        }
+                    }
+                    if col != 0 {
+                        ui.end_row();
+                    }
+                });
+
+            egui::Grid::new(format!("item_details_grid2_{}", temp))
+                .num_columns(2)
+                .spacing([40.0, 4.0])
+                .striped(true)
+                .show(ui, |ui| {
                     ui.label("Sprite:");
                     ui.label(format!("[{}, {}]", sprite_0, sprite_1));
                     ui.end_row();
@@ -388,11 +414,12 @@ impl TemplateViewerApp {
             ui.separator();
             ui.heading("Skills");
             egui::Grid::new("item_skills")
-                .num_columns(4)
+                .num_columns(5)
                 .spacing([20.0, 4.0])
                 .striped(true)
                 .show(ui, |ui| {
                     ui.label("Skill #");
+                    ui.label("Skill Name");
                     ui.label("Worn");
                     ui.label("Active");
                     ui.label("Min Required");
@@ -404,6 +431,7 @@ impl TemplateViewerApp {
                         let s2 = skill[2];
                         if s0 != 0 || s1 != 0 || s2 != 0 {
                             ui.label(format!("{}", i));
+                            ui.label(get_skill_name(i));
                             ui.label(format!("{:+}", s0));
                             ui.label(format!("{:+}", s1));
                             ui.label(format!("{}", s2));
@@ -481,7 +509,7 @@ impl TemplateViewerApp {
                     ui.end_row();
 
                     ui.label("Description:");
-                    ui.label(c_string_to_str(&character.description));
+                    ui.add(egui::Label::new(c_string_to_str(&character.description)).wrap());
                     ui.end_row();
 
                     ui.label("Kindred:");
@@ -497,9 +525,41 @@ impl TemplateViewerApp {
                     ui.end_row();
 
                     ui.label("Flags:");
-                    ui.label(format!("0x{:016X}", flags));
                     ui.end_row();
+                });
 
+            let character_flags = mag_core::constants::CharacterFlags::from_bits_truncate(flags);
+            egui::Grid::new(format!("character_flags_grid_{}", temp))
+                .num_columns(3)
+                .spacing([10.0, 4.0])
+                .striped(true)
+                .show(ui, |ui| {
+                    let mut col = 0;
+                    for flag in get_character_flag_info() {
+                        let mut is_set = character_flags.contains(flag);
+                        ui.add_enabled(
+                            false,
+                            egui::Checkbox::new(
+                                &mut is_set,
+                                mag_core::constants::character_flags_name(flag),
+                            ),
+                        );
+                        col += 1;
+                        if col == 3 {
+                            ui.end_row();
+                            col = 0;
+                        }
+                    }
+                    if col != 0 {
+                        ui.end_row();
+                    }
+                });
+
+            egui::Grid::new(format!("character_details_grid2_{}", temp))
+                .num_columns(2)
+                .spacing([40.0, 4.0])
+                .striped(true)
+                .show(ui, |ui| {
                     ui.label("Alignment:");
                     ui.label(format!("{}", alignment));
                     ui.end_row();
@@ -517,7 +577,7 @@ impl TemplateViewerApp {
                     ui.end_row();
 
                     ui.label("Gold:");
-                    ui.label(format!("{}", gold));
+                    ui.label(format_gold_silver(gold));
                     ui.end_row();
 
                     ui.label("Points:");
@@ -636,11 +696,12 @@ impl TemplateViewerApp {
             ui.separator();
             ui.heading("Skills (Non-Zero Only)");
             egui::Grid::new("character_skills")
-                .num_columns(7)
+                .num_columns(8)
                 .spacing([15.0, 4.0])
                 .striped(true)
                 .show(ui, |ui| {
                     ui.label("Skill #");
+                    ui.label("Skill Name");
                     ui.label("[0]");
                     ui.label("[1]");
                     ui.label("[2]");
@@ -652,6 +713,7 @@ impl TemplateViewerApp {
                     for (i, skill) in character.skill.iter().enumerate() {
                         if skill.iter().any(|&s| s != 0) {
                             ui.label(format!("{}", i));
+                            ui.label(get_skill_name(i));
                             for j in 0..6 {
                                 let val = skill[j];
                                 ui.label(format!("{}", val));
@@ -782,6 +844,160 @@ impl TemplateViewerApp {
                 });
         });
     }
+}
+
+// Helper function to format currency as gold and silver
+fn format_gold_silver(value: i32) -> String {
+    let gold = value / 1000;
+    let silver = value % 1000;
+    if gold > 0 && silver > 0 {
+        format!("{} gold, {} silver", gold, silver)
+    } else if gold > 0 {
+        format!("{} gold", gold)
+    } else {
+        format!("{} silver", silver)
+    }
+}
+
+// Helper function to get skill name from skill index
+fn get_skill_name(skill_num: usize) -> &'static str {
+    match skill_num {
+        0 => "Hand",
+        1 => "Karate",
+        2 => "Sword",
+        3 => "Dagger",
+        4 => "Staff",
+        5 => "Two-Handed",
+        6 => "Axe",
+        7 => "Whip",
+        8 => "Shield",
+        9 => "Attack",
+        10 => "Parry",
+        11 => "Warcry",
+        12 => "Tactics",
+        13 => "Stealth",
+        14 => "Perception",
+        15 => "Bravery",
+        16 => "Willpower",
+        17 => "Endurance",
+        18 => "Hitpoints",
+        19 => "Mana",
+        20 => "Fire Magic",
+        21 => "Freeze Magic",
+        22 => "Magic Shield",
+        23 => "Healing",
+        24 => "Ghost",
+        25 => "Blast",
+        26 => "Lightning",
+        27 => "Hail",
+        28 => "Regenerate",
+        29 => "Meditate",
+        30 => "Light",
+        31 => "Magicshield",
+        32 => "Bless",
+        33 => "Warcry Alt",
+        34 => "Rest",
+        35 => "Pray",
+        _ => "Unknown",
+    }
+}
+
+fn get_item_flag_info() -> Vec<(mag_core::constants::ItemFlags, &'static str)> {
+    use mag_core::constants::ItemFlags;
+    vec![
+        (ItemFlags::IF_MOVEBLOCK, "Move Block"),
+        (ItemFlags::IF_SIGHTBLOCK, "Sight Block"),
+        (ItemFlags::IF_TAKE, "Take"),
+        (ItemFlags::IF_MONEY, "Money"),
+        (ItemFlags::IF_LOOK, "Look"),
+        (ItemFlags::IF_LOOKSPECIAL, "Look Special"),
+        (ItemFlags::IF_SPELL, "Spell"),
+        (ItemFlags::IF_NOREPAIR, "No Repair"),
+        (ItemFlags::IF_ARMOR, "Armor"),
+        (ItemFlags::IF_USE, "Use"),
+        (ItemFlags::IF_USESPECIAL, "Use Special"),
+        (ItemFlags::IF_SINGLEAGE, "Single Age"),
+        (ItemFlags::IF_SHOPDESTROY, "Shop Destroy"),
+        (ItemFlags::IF_UPDATE, "Update"),
+        (ItemFlags::IF_ALWAYSEXP1, "Always Expire 1"),
+        (ItemFlags::IF_ALWAYSEXP2, "Always Expire 2"),
+        (ItemFlags::IF_WP_SWORD, "Weapon Sword"),
+        (ItemFlags::IF_WP_DAGGER, "Weapon Dagger"),
+        (ItemFlags::IF_WP_AXE, "Weapon Axe"),
+        (ItemFlags::IF_WP_STAFF, "Weapon Staff"),
+        (ItemFlags::IF_WP_TWOHAND, "Weapon Two-Hand"),
+        (ItemFlags::IF_USEDESTROY, "Use Destroy"),
+        (ItemFlags::IF_USEACTIVATE, "Use Activate"),
+        (ItemFlags::IF_USEDEACTIVATE, "Use Deactivate"),
+        (ItemFlags::IF_MAGIC, "Magic"),
+        (ItemFlags::IF_MISC, "Misc"),
+        (ItemFlags::IF_REACTIVATE, "Reactivate"),
+        (ItemFlags::IF_PERMSPELL, "Perm Spell"),
+        (ItemFlags::IF_UNIQUE, "Unique"),
+        (ItemFlags::IF_DONATE, "Donate"),
+        (ItemFlags::IF_LABYDESTROY, "Laby Destroy"),
+        (ItemFlags::IF_NOMARKET, "No Market"),
+        (ItemFlags::IF_HIDDEN, "Hidden"),
+        (ItemFlags::IF_STEPACTION, "Step Action"),
+        (ItemFlags::IF_NODEPOT, "No Depot"),
+        (ItemFlags::IF_LIGHTAGE, "Light Age"),
+        (ItemFlags::IF_EXPIREPROC, "Expire Proc"),
+        (ItemFlags::IF_IDENTIFIED, "Identified"),
+        (ItemFlags::IF_NOEXPIRE, "No Expire"),
+        (ItemFlags::IF_SOULSTONE, "Soulstone"),
+    ]
+}
+
+fn get_character_flag_info() -> Vec<mag_core::constants::CharacterFlags> {
+    use mag_core::constants::CharacterFlags;
+    vec![
+        CharacterFlags::Immortal,
+        CharacterFlags::God,
+        CharacterFlags::Creator,
+        CharacterFlags::BuildMode,
+        CharacterFlags::Respawn,
+        CharacterFlags::Player,
+        CharacterFlags::NewUser,
+        CharacterFlags::NoTell,
+        CharacterFlags::NoShout,
+        CharacterFlags::Merchant,
+        CharacterFlags::Staff,
+        CharacterFlags::NoHpReg,
+        CharacterFlags::NoEndReg,
+        CharacterFlags::NoManaReg,
+        CharacterFlags::Invisible,
+        CharacterFlags::Infrared,
+        CharacterFlags::Body,
+        CharacterFlags::NoSleep,
+        CharacterFlags::Undead,
+        CharacterFlags::NoMagic,
+        CharacterFlags::Stoned,
+        CharacterFlags::Usurp,
+        CharacterFlags::Imp,
+        CharacterFlags::ShutUp,
+        CharacterFlags::NoDesc,
+        CharacterFlags::Profile,
+        CharacterFlags::Simple,
+        CharacterFlags::Kicked,
+        CharacterFlags::NoList,
+        CharacterFlags::NoWho,
+        CharacterFlags::SpellIgnore,
+        CharacterFlags::ComputerControlledPlayer,
+        CharacterFlags::Safe,
+        CharacterFlags::NoStaff,
+        CharacterFlags::Poh,
+        CharacterFlags::PohLeader,
+        CharacterFlags::Thrall,
+        CharacterFlags::LabKeeper,
+        CharacterFlags::IsLooting,
+        CharacterFlags::Golden,
+        CharacterFlags::Black,
+        CharacterFlags::Passwd,
+        CharacterFlags::Update,
+        CharacterFlags::SaveMe,
+        CharacterFlags::GreaterGod,
+        CharacterFlags::GreaterInv,
+    ]
 }
 
 impl eframe::App for TemplateViewerApp {

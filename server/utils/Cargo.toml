@@ -10,6 +10,7 @@ description = "Utility executables for the server"
 mag_core = { path = "../../core", package = "core" }
 eframe = "0.30"
 egui = "0.30"
+rfd = "0.15"
 log = "0.4"
 env_logger = "0.11"
 
