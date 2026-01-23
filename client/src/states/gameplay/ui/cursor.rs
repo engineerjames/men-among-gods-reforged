@@ -11,6 +11,7 @@ use crate::states::gameplay::layout::*;
 use crate::states::gameplay::resources::*;
 use crate::states::gameplay::LastRender;
 use crate::systems::map_hover::GameplayHoveredTile;
+use crate::systems::magic_postprocess::MagicScreenCamera;
 
 use mag_core::constants::SPR_EMPTY;
 
@@ -63,7 +64,7 @@ pub(crate) fn run_gameplay_update_cursor_and_carried_item(
     mut commands: Commands,
     window_entities: Query<Entity, With<PrimaryWindow>>,
     windows: Query<&Window, With<PrimaryWindow>>,
-    cameras: Query<&Camera, With<Camera2d>>,
+    cameras: Query<&Camera, (With<Camera2d>, With<MagicScreenCamera>)>,
     gfx: Res<GraphicsCache>,
     player_state: Res<PlayerState>,
     cursor_state: Res<GameplayCursorTypeState>,
@@ -155,7 +156,7 @@ fn get_helper_action_text(has_item: bool, shift: bool, ctrl: bool) -> Option<&'s
 pub(crate) fn run_gameplay_update_cursor_action_text(
     keys: Res<ButtonInput<KeyCode>>,
     windows: Query<&Window, With<PrimaryWindow>>,
-    cameras: Query<&Camera, With<Camera2d>>,
+    cameras: Query<&Camera, (With<Camera2d>, With<MagicScreenCamera>)>,
     player_state: Res<PlayerState>,
     cursor_action_text_settings: Res<CursorActionTextSettings>,
     hovered: Res<GameplayHoveredTile>,

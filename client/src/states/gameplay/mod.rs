@@ -36,6 +36,7 @@ use crate::font_cache::{FontCache, BITMAP_GLYPH_W};
 use crate::gfx_cache::GraphicsCache;
 use crate::network::{client_commands::ClientCommand, NetworkRuntime};
 use crate::player_state::PlayerState;
+use crate::systems::magic_postprocess::MagicScreenCamera;
 use crate::systems::debug::{
     profile_rendering_enabled, BitmapTextPerfAccum, GameplayDebugSettings, GameplayPerfAccum,
 };
@@ -647,7 +648,7 @@ pub(crate) fn setup_gameplay(
 /// This accounts for the window scale factor and the 2D camera viewport.
 fn cursor_game_pos(
     windows: &Query<&Window, With<bevy::window::PrimaryWindow>>,
-    cameras: &Query<&Camera, With<Camera2d>>,
+    cameras: &Query<&Camera, (With<Camera2d>, With<MagicScreenCamera>)>,
 ) -> Option<Vec2> {
     let window = windows.single().ok()?;
     let cursor_logical = window.cursor_position()?;

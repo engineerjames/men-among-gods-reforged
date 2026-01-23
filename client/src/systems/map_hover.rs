@@ -10,6 +10,7 @@ use crate::states::gameplay::{
     dd_effect_tint, GameplayCursorType, GameplayCursorTypeState, GameplayRenderEntity, TileLayer,
     TileRender,
 };
+use crate::systems::magic_postprocess::MagicScreenCamera;
 use crate::systems::sound::SoundEventQueue;
 
 use mag_core::constants::{
@@ -98,7 +99,7 @@ fn screen_to_world(sx: f32, sy: f32, z: f32) -> Vec3 {
 /// Mirrors `systems/debug.rs::print_click_coords`.
 fn cursor_game_pos(
     windows: &Query<&Window, With<PrimaryWindow>>,
-    cameras: &Query<&Camera, With<Camera2d>>,
+    cameras: &Query<&Camera, (With<Camera2d>, With<MagicScreenCamera>)>,
 ) -> Option<Vec2> {
     let window = windows.single().ok()?;
     let cursor_logical = window.cursor_position()?;
@@ -683,7 +684,7 @@ pub(crate) fn run_gameplay_misc_action_marker(
 pub(crate) fn run_gameplay_map_hover_and_click(
     keys: Res<ButtonInput<KeyCode>>,
     windows: Query<&Window, With<PrimaryWindow>>,
-    cameras: Query<&Camera, With<Camera2d>>,
+    cameras: Query<&Camera, (With<Camera2d>, With<MagicScreenCamera>)>,
     mouse: Res<ButtonInput<MouseButton>>,
     net: Res<NetworkRuntime>,
     mut sound_queue: ResMut<SoundEventQueue>,

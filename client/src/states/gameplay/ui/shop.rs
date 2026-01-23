@@ -11,6 +11,7 @@ use crate::states::gameplay::components::*;
 use crate::states::gameplay::layout::*;
 use crate::states::gameplay::resources::*;
 use crate::states::gameplay::LastRender;
+use crate::systems::magic_postprocess::MagicScreenCamera;
 
 use mag_core::constants::SPR_EMPTY;
 
@@ -227,7 +228,7 @@ pub(crate) fn draw_shop_window_ui(
 pub(crate) fn run_gameplay_shop_input(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
-    cameras: Query<&Camera, With<Camera2d>>,
+    cameras: Query<&Camera, (With<Camera2d>, With<MagicScreenCamera>)>,
     net: Res<NetworkRuntime>,
     mut player_state: ResMut<PlayerState>,
     mut shop_hover: ResMut<GameplayShopHoverState>,
