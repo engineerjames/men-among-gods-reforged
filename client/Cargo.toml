@@ -3,6 +3,10 @@ name = "client"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "men-among-gods-client"
+path = "src/main.rs"
+
 [dependencies]
 mag_core = { path = "../core", package = "core" }
 bevy = { version = "0.18", default-features = false, features = ["2d", "wav", "mp3"] }

@@ -458,11 +458,11 @@ fn set_macos_dock_icon_startup(
     _main_thread: NonSend<MacosMainThreadToken>,
     assets_dir: Res<ClientAssetsDir>,
 ) {
-    let icon_path = assets_dir.0.join("TLB.ICO");
-    let icon_bytes = match std::fs::read(&icon_path) {
+    let png_path = assets_dir.0.join("gfx").join("mag_logo.png");
+    let icon_bytes = match std::fs::read(&png_path) {
         Ok(bytes) => bytes,
         Err(err) => {
-            log::warn!("Failed to read icon file at {:?}: {err}", icon_path);
+            log::warn!("Failed to read icon file at {:?}: {err}", png_path);
             return;
         }
     };
@@ -470,7 +470,7 @@ fn set_macos_dock_icon_startup(
     let decoded = match image::load_from_memory(&icon_bytes) {
         Ok(img) => img.into_rgba8(),
         Err(err) => {
-            log::warn!("Failed to decode icon file at {:?}: {err}", icon_path);
+            log::warn!("Failed to decode icon file at {:?}: {err}", png_path);
             return;
         }
     };
@@ -514,11 +514,11 @@ fn set_window_icon_once(
         return;
     };
 
-    let icon_path = assets_dir.0.join("TLB.ICO");
-    let icon_bytes = match std::fs::read(&icon_path) {
+    let png_path = assets_dir.0.join("gfx").join("mag_logo.png");
+    let icon_bytes = match std::fs::read(&png_path) {
         Ok(bytes) => bytes,
         Err(err) => {
-            log::warn!("Failed to read icon file at {:?}: {err}", icon_path);
+            log::warn!("Failed to read icon file at {:?}: {err}", png_path);
             *done = true;
             return;
         }
@@ -527,7 +527,7 @@ fn set_window_icon_once(
     let decoded = match image::load_from_memory(&icon_bytes) {
         Ok(img) => img.into_rgba8(),
         Err(err) => {
-            log::warn!("Failed to decode icon file at {:?}: {err}", icon_path);
+            log::warn!("Failed to decode icon file at {:?}: {err}", png_path);
             *done = true;
             return;
         }
