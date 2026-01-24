@@ -81,7 +81,9 @@ fn resolve_log_dir() -> PathBuf {
     #[cfg(windows)]
     {
         if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
-            return PathBuf::from(local_app_data).join("MenAmongGodsReforged").join("logs");
+            return PathBuf::from(local_app_data)
+                .join("MenAmongGodsReforged")
+                .join("logs");
         }
     }
 
@@ -97,7 +99,9 @@ fn resolve_log_dir() -> PathBuf {
             .join("men-among-gods-reforged");
     }
 
-    std::env::temp_dir().join("men-among-gods-reforged").join("logs")
+    std::env::temp_dir()
+        .join("men-among-gods-reforged")
+        .join("logs")
 }
 
 fn custom_layer(app: &mut App) -> Option<BoxedLayer> {
