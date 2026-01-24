@@ -11,6 +11,7 @@ This folder contains small scripts used by GitHub Actions workflows (and runnabl
 - `package.sh`
   - Creates release `.zip` packages on Linux/macOS.
   - Produces `dist/men-among-gods-{server,client}-<version>-<platform>.zip`.
+  - On macOS, the client package contains a `.app` bundle to avoid launching via Terminal.
 - `package_windows.ps1`
   - Creates release `.zip` packages on Windows.
   - Produces `dist/men-among-gods-{server,client}-<version>-<platform>.zip`.
