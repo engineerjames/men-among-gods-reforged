@@ -19,3 +19,7 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 [[bin]]
 name = "template_viewer"
 path = "src/bin/template_viewer.rs"
+
+[[bin]]
+name = "map_viewer"
+path = "src/bin/map_viewer.rs"

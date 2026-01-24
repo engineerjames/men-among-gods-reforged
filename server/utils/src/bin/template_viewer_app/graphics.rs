@@ -9,6 +9,7 @@ pub(crate) struct GraphicsZipCache {
     zip_path: PathBuf,
     entries: HashMap<usize, String>,
     textures: HashMap<usize, egui::TextureHandle>,
+    sprite_tiles: HashMap<usize, (i32, i32)>,
 }
 
 impl GraphicsZipCache {
@@ -45,7 +46,18 @@ impl GraphicsZipCache {
             zip_path,
             entries,
             textures: HashMap::new(),
+            sprite_tiles: HashMap::new(),
         })
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn sprite_tiles_xy(
+        &mut self,
+        ctx: &egui::Context,
+        sprite_id: usize,
+    ) -> Result<Option<(i32, i32)>, String> {
+        let _ = self.texture_for(ctx, sprite_id)?;
+        Ok(self.sprite_tiles.get(&sprite_id).copied())
     }
 
     pub(crate) fn texture_for(
@@ -79,6 +91,13 @@ impl GraphicsZipCache {
             .map_err(|e| format!("Failed to decode {:?}: {e}", entry_name))?;
         let rgba = decoded.to_rgba8();
         let (w, h) = rgba.dimensions();
+
+        // dd.c tile dimensions in 32x32 blocks.
+        let w_i = (w.max(1) as i32).max(1);
+        let h_i = (h.max(1) as i32).max(1);
+        let xs = ((w_i + 31) / 32).max(1);
+        let ys = ((h_i + 31) / 32).max(1);
+
         let pixels = rgba.into_raw();
 
         let color =
@@ -90,6 +109,7 @@ impl GraphicsZipCache {
             egui::TextureOptions::NEAREST,
         );
         self.textures.insert(sprite_id, texture);
+        self.sprite_tiles.insert(sprite_id, (xs, ys));
 
         Ok(self.textures.get(&sprite_id))
     }

@@ -42,6 +42,23 @@ cargo build --package server-utils
 ./target/debug/template_viewer
 ```
 
+### Map Viewer
+
+An egui tool for viewing the world map loaded from `map.dat` using the client sprite archive.
+
+**Usage:**
+```bash
+cargo run --package server-utils --bin map_viewer
+```
+
+**Optional args:**
+- `--dat-dir <path>` (directory containing `map.dat`)
+- `--graphics-zip <path>` (path to `images.zip`)
+
+**Controls:**
+- `W/A/S/D`: pan
+- Drag with mouse: pan
+
 ## Adding New Utilities
 
 To add a new utility binary:
