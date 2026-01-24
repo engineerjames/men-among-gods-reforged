@@ -1,8 +1,68 @@
 use eframe::egui;
 use mag_core::string_operations::c_string_to_str;
 use mag_core::types::skilltab::get_skill_name;
+use std::collections::HashMap;
 use std::fs;
+use std::fs::File;
+use std::io::Read;
 use std::path::PathBuf;
+use zip::ZipArchive;
+
+fn default_dat_dir() -> Option<PathBuf> {
+    let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let candidate = crate_dir.join("../assets/.dat");
+    if candidate.is_dir() {
+        return Some(candidate);
+    }
+
+    None
+}
+
+fn dat_dir_from_args() -> Option<PathBuf> {
+    let mut args = std::env::args_os().skip(1);
+    while let Some(arg) = args.next() {
+        if arg == "--dat-dir" || arg == "--data-dir" {
+            if let Some(dir) = args.next().map(PathBuf::from) {
+                if dir.is_dir() {
+                    return Some(dir);
+                }
+            }
+            continue;
+        }
+
+        let dir = PathBuf::from(arg);
+        if dir.is_dir() {
+            return Some(dir);
+        }
+    }
+    None
+}
+
+fn default_graphics_zip_path() -> Option<PathBuf> {
+    let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let candidates = [
+        crate_dir.join("../../client/assets/gfx/images.zip"),
+        crate_dir.join("../../client/assets/gfx/images.ZIP"),
+    ];
+
+    candidates.into_iter().find(|candidate| candidate.is_file())
+}
+
+fn graphics_zip_from_args() -> Option<PathBuf> {
+    let mut args = std::env::args_os().skip(1);
+    while let Some(arg) = args.next() {
+        if arg == "--graphics-zip" || arg == "--gfx-zip" {
+            if let Some(path) = args.next().map(PathBuf::from) {
+                if path.is_file() {
+                    return Some(path);
+                }
+            }
+            continue;
+        }
+    }
+
+    None
+}
 
 fn main() -> Result<(), eframe::Error> {
     env_logger::init();
@@ -17,7 +77,7 @@ fn main() -> Result<(), eframe::Error> {
     eframe::run_native(
         "Template Viewer",
         options,
-        Box::new(|_cc| Ok(Box::new(TemplateViewerApp::default()))),
+        Box::new(|_cc| Ok(Box::new(TemplateViewerApp::new()))),
     )
 }
 
@@ -31,6 +91,8 @@ struct TemplateViewerApp {
     item_filter: String,
     character_filter: String,
     load_error: Option<String>,
+    graphics_zip: Option<GraphicsZipCache>,
+    graphics_zip_error: Option<String>,
 }
 
 #[derive(PartialEq)]
@@ -51,11 +113,150 @@ impl Default for TemplateViewerApp {
             item_filter: String::new(),
             character_filter: String::new(),
             load_error: None,
+            graphics_zip: None,
+            graphics_zip_error: None,
         }
     }
 }
 
 impl TemplateViewerApp {
+    fn new() -> Self {
+        let mut app = Self::default();
+        if let Some(dir) = dat_dir_from_args().or_else(default_dat_dir) {
+            app.load_templates_from_dir(dir);
+        }
+
+        if let Some(zip_path) = graphics_zip_from_args().or_else(default_graphics_zip_path) {
+            app.load_graphics_zip(zip_path);
+        }
+        app
+    }
+}
+
+struct GraphicsZipCache {
+    zip_path: PathBuf,
+    entries: HashMap<usize, String>,
+    textures: HashMap<usize, egui::TextureHandle>,
+}
+
+impl GraphicsZipCache {
+    fn load(zip_path: PathBuf) -> Result<Self, String> {
+        let file = File::open(&zip_path)
+            .map_err(|e| format!("Failed to open graphics zip {:?}: {e}", zip_path))?;
+        let mut archive =
+            ZipArchive::new(file).map_err(|e| format!("Failed to read zip {:?}: {e}", zip_path))?;
+
+        let mut entries: HashMap<usize, String> = HashMap::new();
+        for i in 0..archive.len() {
+            let Ok(file) = archive.by_index(i) else {
+                continue;
+            };
+
+            let name = file.name().to_string();
+            if name.ends_with('/') {
+                continue;
+            }
+
+            let stem = name.split('.').next().unwrap_or("");
+            if let Ok(id) = stem.parse::<usize>() {
+                entries.insert(id, name);
+            }
+        }
+
+        log::info!(
+            "GraphicsZipCache loaded {:?} ({} indexed sprites)",
+            zip_path,
+            entries.len()
+        );
+
+        Ok(Self {
+            zip_path,
+            entries,
+            textures: HashMap::new(),
+        })
+    }
+
+    fn texture_for(
+        &mut self,
+        ctx: &egui::Context,
+        sprite_id: usize,
+    ) -> Result<Option<&egui::TextureHandle>, String> {
+        if self.textures.contains_key(&sprite_id) {
+            return Ok(self.textures.get(&sprite_id));
+        }
+
+        let Some(entry_name) = self.entries.get(&sprite_id).cloned() else {
+            return Ok(None);
+        };
+
+        let file = File::open(&self.zip_path)
+            .map_err(|e| format!("Failed to open graphics zip {:?}: {e}", self.zip_path))?;
+        let mut archive = ZipArchive::new(file)
+            .map_err(|e| format!("Failed to read graphics zip {:?}: {e}", self.zip_path))?;
+
+        let mut entry = archive
+            .by_name(&entry_name)
+            .map_err(|e| format!("Failed to read zip entry {:?}: {e}", entry_name))?;
+
+        let mut bytes = Vec::new();
+        entry
+            .read_to_end(&mut bytes)
+            .map_err(|e| format!("Failed to read zip entry {:?} bytes: {e}", entry_name))?;
+
+        let decoded = image::load_from_memory(&bytes)
+            .map_err(|e| format!("Failed to decode {:?}: {e}", entry_name))?;
+        let rgba = decoded.to_rgba8();
+        let (w, h) = rgba.dimensions();
+        let pixels = rgba.into_raw();
+
+        let color =
+            egui::ColorImage::from_rgba_unmultiplied([w as usize, h as usize], pixels.as_slice());
+
+        let texture = ctx.load_texture(
+            format!("sprite:{}:{}", self.zip_path.display(), sprite_id),
+            color,
+            egui::TextureOptions::NEAREST,
+        );
+        self.textures.insert(sprite_id, texture);
+
+        Ok(self.textures.get(&sprite_id))
+    }
+}
+
+impl TemplateViewerApp {
+    fn load_graphics_zip(&mut self, zip_path: PathBuf) {
+        self.graphics_zip_error = None;
+        match GraphicsZipCache::load(zip_path) {
+            Ok(cache) => {
+                self.graphics_zip = Some(cache);
+            }
+            Err(e) => {
+                self.graphics_zip = None;
+                self.graphics_zip_error = Some(e);
+            }
+        }
+    }
+
+    fn sprite_cell(&mut self, ui: &mut egui::Ui, sprite_id: usize) {
+        let Some(cache) = self.graphics_zip.as_mut() else {
+            centered_label(ui, format!("{}", sprite_id));
+            return;
+        };
+
+        match cache.texture_for(ui.ctx(), sprite_id) {
+            Ok(Some(texture)) => {
+                ui.image(texture);
+            }
+            Ok(None) => {
+                centered_label(ui, format!("{}", sprite_id));
+            }
+            Err(e) => {
+                self.graphics_zip_error = Some(e);
+                centered_label(ui, format!("{}", sprite_id));
+            }
+        }
+    }
+
     fn find_item_template(&self, item_id: u32) -> Option<&mag_core::types::Item> {
         let index = item_id as usize;
         if index < self.item_templates.len() {
@@ -75,8 +276,8 @@ impl TemplateViewerApp {
         egui::Window::new(format!("Item {}", item_id))
             .open(&mut open)
             .show(ctx, |ui| {
-                if let Some(item) = self.find_item_template(item_id) {
-                    self.render_item_details(ui, item);
+                if let Some(item) = self.find_item_template(item_id).copied() {
+                    self.render_item_details(ui, &item);
                 } else {
                     ui.label(format!("No item template found for ID {}", item_id));
                 }
@@ -289,7 +490,7 @@ impl TemplateViewerApp {
             });
     }
 
-    fn render_item_details(&self, ui: &mut egui::Ui, item: &mag_core::types::Item) {
+    fn render_item_details(&mut self, ui: &mut egui::Ui, item: &mag_core::types::Item) {
         egui::ScrollArea::vertical().show(ui, |ui| {
             ui.heading(item.get_name());
             ui.separator();
@@ -383,8 +584,12 @@ impl TemplateViewerApp {
                 .spacing([40.0, 4.0])
                 .striped(true)
                 .show(ui, |ui| {
-                    ui.label("Sprite:");
-                    centered_label(ui, format!("[{}, {}]", sprite_0, sprite_1));
+                    ui.label("Sprite[0]:");
+                    self.sprite_cell(ui, sprite_0 as usize);
+                    ui.end_row();
+
+                    ui.label("Sprite[1]:");
+                    self.sprite_cell(ui, sprite_1 as usize);
                     ui.end_row();
 
                     ui.label("Status:");
@@ -416,7 +621,18 @@ impl TemplateViewerApp {
                     ui.end_row();
 
                     ui.label("Min Rank:");
-                    centered_label(ui, format!("{}", min_rank));
+                    ui.add_enabled_ui(false, |ui| {
+                        egui::ComboBox::from_id_salt(format!("min_rank_combo_{}", temp))
+                            .selected_text(rank_label(min_rank))
+                            .show_ui(ui, |ui| {
+                                let none_label = "-1: None";
+                                let _ = ui.selectable_label(min_rank < 0, none_label);
+                                for (idx, name) in mag_core::ranks::RANK_NAMES.iter().enumerate() {
+                                    let label = format!("{}: {}", idx, name);
+                                    let _ = ui.selectable_label(min_rank == idx as i8, label);
+                                }
+                            });
+                    });
                     ui.end_row();
 
                     ui.label("Driver:");
@@ -583,7 +799,7 @@ impl TemplateViewerApp {
                     ui.end_row();
 
                     ui.label("Sprite:");
-                    centered_label(ui, format!("{}", sprite));
+                    self.sprite_cell(ui, sprite as usize);
                     ui.end_row();
 
                     ui.label("Sound:");
@@ -890,6 +1106,19 @@ fn centered_heading(ui: &mut egui::Ui, text: impl Into<egui::RichText>) {
     });
 }
 
+fn rank_label(min_rank: i8) -> String {
+    if min_rank < 0 {
+        return "-1: None".to_string();
+    }
+
+    let idx = min_rank as usize;
+    if idx < mag_core::ranks::RANK_NAMES.len() {
+        format!("{}: {}", idx, mag_core::ranks::RANK_NAMES[idx])
+    } else {
+        format!("Unknown ({})", min_rank)
+    }
+}
+
 fn placement_options() -> &'static [(u16, &'static str)] {
     &[
         (0, "Unset"),
@@ -1036,6 +1265,24 @@ impl eframe::App for TemplateViewerApp {
                         ui.close_menu();
                     }
 
+                    if ui.button("Select Graphics Zip...").clicked() {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("Zip", &["zip"])
+                            .pick_file()
+                        {
+                            self.load_graphics_zip(path);
+                        }
+                        ui.close_menu();
+                    }
+
+                    if self.graphics_zip.is_some() {
+                        if ui.button("Clear Graphics Zip").clicked() {
+                            self.graphics_zip = None;
+                            self.graphics_zip_error = None;
+                            ui.close_menu();
+                        }
+                    }
+
                     ui.separator();
 
                     if ui.button("Exit").clicked() {
@@ -1066,6 +1313,11 @@ impl eframe::App for TemplateViewerApp {
                 ui.separator();
                 ui.colored_label(egui::Color32::RED, format!("Error: {}", error));
             }
+
+            if let Some(ref error) = self.graphics_zip_error {
+                ui.separator();
+                ui.colored_label(egui::Color32::YELLOW, format!("GFX: {}", error));
+            }
         });
 
         egui::CentralPanel::default().show(ctx, |ui| match self.view_mode {
@@ -1087,7 +1339,8 @@ impl eframe::App for TemplateViewerApp {
                 egui::CentralPanel::default().show_inside(ui, |ui| {
                     if let Some(idx) = self.selected_item_index {
                         if idx < self.item_templates.len() {
-                            self.render_item_details(ui, &self.item_templates[idx]);
+                            let item = self.item_templates[idx];
+                            self.render_item_details(ui, &item);
                         }
                     } else {
                         ui.centered_and_justified(|ui| {

@@ -5913,8 +5913,10 @@ dependencies = [
  "eframe",
  "egui 0.30.0",
  "env_logger",
+ "image 0.25.9",
  "log",
  "rfd",
+ "zip",
 ]
 
 [[package]]
