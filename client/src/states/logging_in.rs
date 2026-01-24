@@ -14,7 +14,7 @@ use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::helpers::open_dir_in_file_manager;
 use crate::network::{LoginRequested, LoginStatus};
 use crate::player_state::PlayerState;
-use crate::settings::UserSettingsState;
+use crate::settings::{UserSettingsState, DEFAULT_SERVER_IP, DEFAULT_SERVER_PORT};
 use crate::types::mag_files;
 
 /// Writes a Rust string into a fixed-size, NUL-terminated ASCII buffer.
@@ -111,8 +111,8 @@ impl Default for LoginUIState {
                 .default_file_filter("MAG Files")
                 .initial_directory(std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))),
             is_logging_in: false,
-            server_ip: String::from("127.0.0.1"),
-            server_port: String::from("5555"),
+            server_ip: DEFAULT_SERVER_IP.to_string(),
+            server_port: DEFAULT_SERVER_PORT.to_string(),
 
             confirm: None,
             last_error: None,
@@ -133,7 +133,10 @@ pub fn setup_logging_in(
     log::debug!("setup_logging_in - start");
 
     // Load persisted mag.dat (if present) and pre-fill UI + runtime pdata/key.
+    // Start with persisted user settings defaults (settings.json), then let mag.dat override.
     let mut login_info = LoginUIState::default();
+    login_info.server_ip = user_settings.settings.default_server_ip.clone();
+    login_info.server_port = user_settings.settings.default_server_port.to_string();
     match mag_files::load_mag_dat() {
         Ok(mag_dat) => {
             let ip = mag_files::fixed_ascii_to_string(&mag_dat.server_ip);
@@ -198,7 +201,7 @@ pub fn run_logging_in(
     status: Res<LoginStatus>,
     mut login_ev: MessageWriter<LoginRequested>,
     mut player_state: ResMut<PlayerState>,
-    user_settings: Res<UserSettingsState>,
+    mut user_settings: ResMut<UserSettingsState>,
 ) {
     debug_once!("run_logging_in called");
 
@@ -419,6 +422,27 @@ pub fn run_logging_in(
                     if login_button.clicked() {
                         login_info.is_logging_in = true;
 
+                        // Persist the login screen server fields into settings.json only when the
+                        // user commits the action (presses Login), not while typing.
+                        let committed_ip = login_info.server_ip.trim().to_string();
+                        let committed_port = login_info.server_port.trim().parse::<u16>().ok();
+                        if !committed_ip.is_empty() {
+                            let mut changed = false;
+                            if user_settings.settings.default_server_ip != committed_ip {
+                                user_settings.settings.default_server_ip = committed_ip;
+                                changed = true;
+                            }
+                            if let Some(port) = committed_port {
+                                if user_settings.settings.default_server_port != port {
+                                    user_settings.settings.default_server_port = port;
+                                    changed = true;
+                                }
+                            }
+                            if changed {
+                                user_settings.request_save();
+                            }
+                        }
+
                         // Mirror login selections into the persisted key file layout.
                         {
                             let save_file = player_state.save_file_mut();
@@ -460,7 +484,10 @@ pub fn run_logging_in(
                         let save_file = *player_state.save_file();
                         login_ev.write(LoginRequested {
                             host: login_info.server_ip.clone(),
-                            port: login_info.server_port.parse().unwrap_or(5555),
+                            port: login_info
+                                .server_port
+                                .parse()
+                                .unwrap_or(DEFAULT_SERVER_PORT),
                             username: login_info.username.clone(),
                             password: login_info.password.clone(),
                             race: get_race_integer(login_info.is_male, login_info.class),
@@ -497,6 +524,10 @@ pub fn run_logging_in(
                         match action {
                             ConfirmAction::Clear => {
                                 *login_info = LoginUIState::default();
+                                login_info.server_ip =
+                                    user_settings.settings.default_server_ip.clone();
+                                login_info.server_port =
+                                    user_settings.settings.default_server_port.to_string();
                                 player_state.set_character_from_file(
                                     crate::types::save_file::SaveFile::default(),
                                     crate::types::player_data::PlayerData::default(),

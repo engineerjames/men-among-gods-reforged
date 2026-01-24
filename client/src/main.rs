@@ -146,8 +146,8 @@ fn resolve_assets_base_dir() -> PathBuf {
 
 fn main() {
     let assets_dir = resolve_assets_base_dir();
-    let gfx_zip = assets_dir.join("GFX").join("images.zip");
-    let sfx_dir = assets_dir.join("SFX");
+    let gfx_zip = assets_dir.join("gfx").join("images.zip");
+    let sfx_dir = assets_dir.join("sfx");
 
     let mut app = App::new();
     app
