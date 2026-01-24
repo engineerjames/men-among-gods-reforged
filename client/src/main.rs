@@ -56,7 +56,7 @@ enum GameState {
     Exited,
 }
 
-fn resolve_log_dir() -> PathBuf {
+pub(crate) fn resolve_log_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("MAG_LOG_DIR") {
         if !dir.is_empty() {
             return PathBuf::from(dir);

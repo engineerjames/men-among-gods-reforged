@@ -11,6 +11,7 @@ use bevy_egui::{
 use egui_file_dialog::FileDialog;
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
+use crate::helpers::open_dir_in_file_manager;
 use crate::network::{LoginRequested, LoginStatus};
 use crate::player_state::PlayerState;
 use crate::settings::UserSettingsState;
@@ -301,6 +302,23 @@ pub fn run_logging_in(
                         log::info!("Opening file dialog to save character file...");
                         login_info.save_character_dialog.save_file();
                         login_info.last_notice = None;
+                    }
+
+                    let open_logs_button =
+                        ui.add_sized([120., 40.], egui::Button::new("Open logs"));
+                    if open_logs_button.clicked() {
+                        let log_dir = crate::resolve_log_dir();
+                        match open_dir_in_file_manager(&log_dir) {
+                            Ok(()) => {
+                                login_info.last_error = None;
+                                login_info.last_notice =
+                                    Some(format!("Opened logs folder: {}", log_dir.display()));
+                            }
+                            Err(err) => {
+                                login_info.last_error = Some(err);
+                                login_info.last_notice = None;
+                            }
+                        }
                     }
 
                     login_info.load_character_dialog.update(ctx);

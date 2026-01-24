@@ -5,6 +5,7 @@ use bevy_egui::{
 };
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
+use crate::helpers::open_dir_in_file_manager;
 use crate::player_state::PlayerState;
 use crate::settings::UserSettingsState;
 use crate::states::gameplay::CursorActionTextSettings;
@@ -38,7 +39,7 @@ pub fn run_menu(
     mut contexts: EguiContexts,
     keys: Res<ButtonInput<KeyCode>>,
     mut next_state: ResMut<NextState<GameState>>,
-    menu_ui: ResMut<MenuUiState>,
+    mut menu_ui: ResMut<MenuUiState>,
     mut player_state: ResMut<PlayerState>,
     mut sound_settings: ResMut<SoundSettings>,
     mut cursor_action_text: ResMut<CursorActionTextSettings>,
@@ -79,6 +80,19 @@ pub fn run_menu(
             }
 
             ui.separator();
+
+            if ui
+                .add_sized([180., 36.], egui::Button::new("Open logs folder"))
+                .clicked()
+            {
+                let log_dir = crate::resolve_log_dir();
+                match open_dir_in_file_manager(&log_dir) {
+                    Ok(()) => menu_ui.last_error = None,
+                    Err(err) => menu_ui.last_error = Some(err),
+                }
+            }
+
+            ui.add_space(10.0);
 
             if ui
                 .add_sized([180., 40.], egui::Button::new("Return to game"))

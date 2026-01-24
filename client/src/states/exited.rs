@@ -6,11 +6,13 @@ use bevy_egui::{
     EguiContexts,
 };
 
+use crate::helpers::open_dir_in_file_manager;
 use crate::network::NetworkRuntime;
 
 #[derive(Resource, Default)]
 pub struct ExitedUiState {
     request_exit: bool,
+    last_error: Option<String>,
 }
 
 /// Initializes resources for the in-game exited state.
@@ -73,12 +75,30 @@ pub fn run_exited(mut contexts: EguiContexts, mut ui_state: ResMut<ExitedUiState
         .collapsible(false)
         .resizable(false)
         .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
-        .fixed_size(Vec2::new(280.0, 140.0))
+        .fixed_size(Vec2::new(320.0, 190.0))
         .show(ctx, |ui| {
             ui.allocate_ui_with_layout(
                 ui.available_size(),
                 egui::Layout::centered_and_justified(egui::Direction::TopDown),
                 |ui| {
+                    if let Some(err) = ui_state.last_error.as_deref() {
+                        ui.colored_label(egui::Color32::LIGHT_RED, err);
+                        ui.add_space(8.0);
+                    }
+
+                    if ui
+                        .add_sized([180.0, 36.0], egui::Button::new("Open logs folder"))
+                        .clicked()
+                    {
+                        let log_dir = crate::resolve_log_dir();
+                        match open_dir_in_file_manager(&log_dir) {
+                            Ok(()) => ui_state.last_error = None,
+                            Err(err) => ui_state.last_error = Some(err),
+                        }
+                    }
+
+                    ui.add_space(10.0);
+
                     if ui
                         .add_sized([140.0, 44.0], egui::Button::new("Exit"))
                         .clicked()
