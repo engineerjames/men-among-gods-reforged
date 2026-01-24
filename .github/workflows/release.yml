@@ -32,71 +32,28 @@ jobs:
 
       - name: Install Linux build dependencies (Bevy)
         if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            pkg-config \
-            libasound2-dev \
-            libudev-dev \
-            libwayland-dev \
-            libxkbcommon-dev \
-            libx11-dev \
-            libxi-dev \
-            libxrandr-dev \
-            libxcursor-dev \
-            libxinerama-dev
+        shell: bash
+        run: bash pipelines/install_linux_deps.sh
 
       - name: Build (release)
-        run: cargo build --release -p server -p client
+        shell: bash
+        run: bash pipelines/build_release.sh
 
       - name: Package (linux/macos)
         if: matrix.os != 'windows-latest'
         shell: bash
-        run: |
-          set -euo pipefail
-
-          VERSION='${{ inputs.version }}'
-          PLATFORM='${{ matrix.platform }}'
-
-          SERVER_DIR="men-among-gods-server-${VERSION}-${PLATFORM}"
-          CLIENT_DIR="men-among-gods-client-${VERSION}-${PLATFORM}"
-
-          rm -rf dist
-          mkdir -p "dist/${SERVER_DIR}/.dat" "dist/${CLIENT_DIR}/assets"
-
-          cp -R server/assets/.dat/. "dist/${SERVER_DIR}/.dat/"
-          cp "target/release/server" "dist/${SERVER_DIR}/server"
-
-          cp -R client/assets/. "dist/${CLIENT_DIR}/assets/"
-          cp "target/release/client" "dist/${CLIENT_DIR}/client"
-
-          (cd dist && zip -r "${SERVER_DIR}.zip" "${SERVER_DIR}")
-          (cd dist && zip -r "${CLIENT_DIR}.zip" "${CLIENT_DIR}")
+        run: >-
+          bash pipelines/package.sh
+          --version '${{ inputs.version }}'
+          --platform '${{ matrix.platform }}'
 
       - name: Package (windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-
-          $version = '${{ inputs.version }}'
-          $platform = '${{ matrix.platform }}'
-
-          $serverDir = "men-among-gods-server-$version-$platform"
-          $clientDir = "men-among-gods-client-$version-$platform"
-
-          Remove-Item -Recurse -Force dist -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Force -Path "dist/$serverDir/.dat" | Out-Null
-          New-Item -ItemType Directory -Force -Path "dist/$clientDir/assets" | Out-Null
-
-          Copy-Item -Recurse -Force "server/assets/.dat/*" "dist/$serverDir/.dat/"
-          Copy-Item -Force "target/release/server.exe" "dist/$serverDir/server.exe"
-
-          Copy-Item -Recurse -Force "client/assets/*" "dist/$clientDir/assets/"
-          Copy-Item -Force "target/release/client.exe" "dist/$clientDir/client.exe"
-
-          Compress-Archive -Force -Path "dist/$serverDir" -DestinationPath "dist/$serverDir.zip"
-          Compress-Archive -Force -Path "dist/$clientDir" -DestinationPath "dist/$clientDir.zip"
+        run: >-
+          pwsh -File pipelines/package_windows.ps1
+          -Version '${{ inputs.version }}'
+          -Platform '${{ matrix.platform }}'
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -123,22 +80,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-
-          VERSION='${{ inputs.version }}'
-
-          mapfile -t FILES < <(find artifacts -type f -name '*.zip' -print)
-          if [[ ${#FILES[@]} -eq 0 ]]; then
-            echo "No .zip artifacts found to upload" >&2
-            exit 1
-          fi
-
-          if gh release view "$VERSION" --repo "$GH_REPO" >/dev/null 2>&1; then
-            gh release upload "$VERSION" "${FILES[@]}" --repo "$GH_REPO" --clobber
-          else
-            gh release create "$VERSION" "${FILES[@]}" --repo "$GH_REPO" \
-              --title "$VERSION" \
-              --target "${GITHUB_SHA}" \
-              --notes "Automated release for $VERSION"
-          fi
+        run: >-
+          bash pipelines/create_github_release.sh
+          --version '${{ inputs.version }}'
+          --artifacts-dir artifacts

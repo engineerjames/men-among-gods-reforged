@@ -26,6 +26,7 @@ If applicable, add screenshots to help explain your problem.
 **Client Version (Windows only)**
 - [ ] Original v2
 - [ ] Men Among Gods
+- [ ] Men Among Gods - Reforged
 - [ ] Other (please specify): __________
 
 **Reforged Server OS**
