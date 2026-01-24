@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::helpers::get_mag_base_dir;
 use crate::player_state::PlayerState;
 use crate::states::gameplay::CursorActionTextSettings;
 use crate::systems::magic_postprocess::MagicPostProcessSettings;
@@ -126,32 +127,15 @@ impl UserSettingsState {
 }
 
 fn default_settings_path() -> PathBuf {
-    if let Ok(home) = std::env::var("HOME") {
-        log::info!(
-            "Using settings path: {}",
-            PathBuf::from(&home)
-                .as_os_str()
-                .to_str()
-                .unwrap_or("<invalid UTF-8>")
-        );
-        return PathBuf::from(home)
-            .join(".men-among-gods-reforged")
-            .join("settings.json");
-    } else if let Ok(appdata) = std::env::var("APPDATA") {
-        log::info!(
-            "Using settings path: {}",
-            PathBuf::from(&appdata)
-                .as_os_str()
-                .to_str()
-                .unwrap_or("<invalid UTF-8>")
-        );
-        return PathBuf::from(appdata)
-            .join(".men-among-gods-reforged")
-            .join("settings.json");
+    if let Some(base) = get_mag_base_dir() {
+        let path = base.join("settings.json");
+        log::info!("Using settings path: {}", path.display());
+        return path;
     }
 
-    log::info!("Using fallback settings path: ./settings.json");
-    PathBuf::from("settings.json")
+    let fallback = PathBuf::from("settings.json");
+    log::info!("Using fallback settings path: {}", fallback.display());
+    fallback
 }
 
 fn load_settings_from_disk(path: &Path) -> UserSettings {

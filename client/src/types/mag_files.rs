@@ -50,23 +50,49 @@ impl Default for MagDatV1 {
     }
 }
 
-/// Encode ASCII into a fixed-size, NUL-terminated buffer.
-fn ascii_to_fixed<const N: usize>(s: &str) -> [u8; N] {
-    let mut out = [0u8; N];
-    if N == 0 {
-        return out;
-    }
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct MagDatV2 {
+    /// Magic/version marker for format detection.
+    pub magic: [u8; 4],
+    /// Format version (little-endian on disk).
+    pub version: u32,
 
-    let mut i = 0usize;
-    for &b in s.as_bytes() {
-        if i >= N.saturating_sub(1) {
-            break;
-        }
-        out[i] = if (32..=126).contains(&b) { b } else { b' ' };
-        i += 1;
-    }
-    out
+    /// Matches original `.moa` (key) binary layout.
+    pub save_file: SaveFile,
+    /// Matches original `pdata` binary layout.
+    pub player_data: PlayerData,
 }
+
+const _: () = {
+    // 4 + 4 + 56 + 484
+    assert!(std::mem::size_of::<MagDatV2>() == 548);
+};
+
+impl Default for MagDatV2 {
+    /// Create a default `mag.dat` payload with empty fields.
+    fn default() -> Self {
+        Self {
+            magic: *b"MAGD",
+            version: 2,
+            save_file: SaveFile::default(),
+            player_data: PlayerData::default(),
+        }
+    }
+}
+
+impl From<MagDatV1> for MagDatV2 {
+    fn from(v1: MagDatV1) -> Self {
+        Self {
+            magic: *b"MAGD",
+            version: 2,
+            save_file: v1.save_file,
+            player_data: v1.player_data,
+        }
+    }
+}
+
+pub type MagDat = MagDatV2;
 
 /// Decode a fixed-size NUL-terminated ASCII buffer into a trimmed string.
 pub fn fixed_ascii_to_string(bytes: &[u8]) -> String {
@@ -110,57 +136,73 @@ pub fn mag_dat_path() -> PathBuf {
 }
 
 /// Load `mag.dat` from the default location.
-pub fn load_mag_dat() -> io::Result<MagDatV1> {
+pub fn load_mag_dat() -> io::Result<MagDat> {
     let path = mag_dat_path();
     load_mag_dat_at(&path)
 }
 
 /// Save `mag.dat` to the default location.
-pub fn save_mag_dat(data: &MagDatV1) -> io::Result<()> {
+pub fn save_mag_dat(data: &MagDat) -> io::Result<()> {
     let path = mag_dat_path();
     save_mag_dat_at(&path, data)
 }
 
 /// Load `mag.dat` from an explicit path.
-pub fn load_mag_dat_at(path: &Path) -> io::Result<MagDatV1> {
+pub fn load_mag_dat_at(path: &Path) -> io::Result<MagDat> {
     let mut file = match File::open(path) {
         Ok(f) => f,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(MagDatV1::default()),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(MagDat::default()),
         Err(e) => {
             log::error!("Failed to open mag.dat at {:?}: {e}", path);
             return Err(e);
         }
     };
 
-    let data: MagDatV1 = read_struct(&mut file)?;
-    if &data.magic != b"MAGD" || data.version != 1 {
-        // Unknown format; don't fail hard.
-        log::warn!(
-            "mag.dat had unexpected header (magic={:?}, version={}); using defaults",
-            data.magic,
-            data.version
-        );
-        return Ok(MagDatV1::default());
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)?;
+
+    if bytes.len() == std::mem::size_of::<MagDat>() {
+        let data: MagDat = read_struct(std::io::Cursor::new(&bytes))?;
+        if &data.magic != b"MAGD" || data.version != 2 {
+            log::warn!(
+                "mag.dat had unexpected header (magic={:?}, version={}); using defaults",
+                data.magic,
+                data.version
+            );
+            return Ok(MagDat::default());
+        }
+        return Ok(data);
     }
-    Ok(data)
+
+    if bytes.len() == std::mem::size_of::<MagDatV1>() {
+        let data: MagDatV1 = read_struct(std::io::Cursor::new(&bytes))?;
+        if &data.magic != b"MAGD" || data.version != 1 {
+            log::warn!(
+                "mag.dat had unexpected header (magic={:?}, version={}); using defaults",
+                data.magic,
+                data.version
+            );
+            return Ok(MagDat::default());
+        }
+        return Ok(MagDat::from(data));
+    }
+
+    log::warn!(
+        "mag.dat had unexpected size ({} bytes); using defaults",
+        bytes.len()
+    );
+    Ok(MagDat::default())
 }
 
 /// Save `mag.dat` to an explicit path.
-pub fn save_mag_dat_at(path: &Path, data: &MagDatV1) -> io::Result<()> {
+pub fn save_mag_dat_at(path: &Path, data: &MagDat) -> io::Result<()> {
     let mut file = File::create(path)?;
     write_struct(&mut file, data)
 }
 
 /// Build a `mag.dat` payload from runtime values.
-pub fn build_mag_dat(
-    server_ip: &str,
-    server_port: u16,
-    save_file: &SaveFile,
-    player_data: &PlayerData,
-) -> MagDatV1 {
-    let mut out = MagDatV1::default();
-    out.server_ip = ascii_to_fixed(server_ip);
-    out.server_port = server_port;
+pub fn build_mag_dat(save_file: &SaveFile, player_data: &PlayerData) -> MagDat {
+    let mut out = MagDat::default();
     out.save_file = *save_file;
     out.player_data = *player_data;
     out
@@ -288,7 +330,7 @@ mod tests {
 
         let loaded = load_mag_dat_at(&path).unwrap();
         assert_eq!(&loaded.magic, b"MAGD");
-        assert_eq!(loaded.version, 1);
+        assert_eq!(loaded.version, 2);
 
         let _ = fs::remove_dir_all(&dir);
     }
@@ -300,13 +342,13 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("mag.dat");
 
-        let mut bad = MagDatV1::default();
+        let mut bad = MagDat::default();
         bad.magic = *b"NOPE";
         save_mag_dat_at(&path, &bad).unwrap();
 
         let loaded = load_mag_dat_at(&path).unwrap();
         assert_eq!(&loaded.magic, b"MAGD");
-        assert_eq!(loaded.version, 1);
+        assert_eq!(loaded.version, 2);
 
         let _ = fs::remove_dir_all(&dir);
     }
@@ -329,11 +371,47 @@ mod tests {
         player_data.show_proz = 1;
         player_data.desc[0..4].copy_from_slice(b"Desc");
 
-        let mag = build_mag_dat("127.0.0.1", 5555, &save_file, &player_data);
+        let mag = build_mag_dat(&save_file, &player_data);
         save_mag_dat_at(&path, &mag).unwrap();
         let loaded = load_mag_dat_at(&path).unwrap();
 
         assert_eq!(as_bytes(&loaded), as_bytes(&mag));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    /// Ensure legacy v1 mag.dat files still load (but ip/port are ignored).
+    fn mag_dat_v1_loads_and_discards_server_fields() {
+        let dir = unique_temp_dir("mag_dat_v1");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("mag.dat");
+
+        let mut save_file = SaveFile::default();
+        save_file.usnr = 42;
+        save_file.pass1 = 7;
+        save_file.pass2 = 9;
+        save_file.race = 3;
+        save_file.name[0..3].copy_from_slice(b"Bob");
+
+        let mut player_data = PlayerData::default();
+        player_data.cname[0..3].copy_from_slice(b"Bob");
+        player_data.desc[0..5].copy_from_slice(b"Hello");
+
+        let mut v1 = MagDatV1::default();
+        v1.server_ip[0..9].copy_from_slice(b"127.0.0.1");
+        v1.server_port = 5555;
+        v1.save_file = save_file;
+        v1.player_data = player_data;
+
+        let mut file = File::create(&path).unwrap();
+        write_struct(&mut file, &v1).unwrap();
+
+        let loaded = load_mag_dat_at(&path).unwrap();
+        assert_eq!(&loaded.magic, b"MAGD");
+        assert_eq!(loaded.version, 2);
+        assert_eq!(as_bytes(&loaded.save_file), as_bytes(&save_file));
+        assert_eq!(as_bytes(&loaded.player_data), as_bytes(&player_data));
 
         let _ = fs::remove_dir_all(&dir);
     }

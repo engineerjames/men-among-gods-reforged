@@ -63,45 +63,11 @@ pub(crate) fn resolve_log_dir() -> PathBuf {
         }
     }
 
-    // Prefer a simple local ./logs directory when it is writable (dev runs).
-    let local_logs = PathBuf::from("logs");
-    if std::fs::create_dir_all(&local_logs).is_ok() {
-        return local_logs;
+    if let Some(base) = helpers::get_mag_base_dir() {
+        return base;
     }
 
-    // Packaged apps launched from Finder often have a non-writable working directory.
-    // Fall back to OS-appropriate user-writable locations.
-    #[cfg(target_os = "macos")]
-    {
-        if let Ok(home) = std::env::var("HOME") {
-            return PathBuf::from(home).join("Library/Logs/men-among-gods-reforged");
-        }
-    }
-
-    #[cfg(windows)]
-    {
-        if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
-            return PathBuf::from(local_app_data)
-                .join("MenAmongGodsReforged")
-                .join("logs");
-        }
-    }
-
-    // Linux/other: prefer XDG state dir if present.
-    if let Ok(xdg_state_home) = std::env::var("XDG_STATE_HOME") {
-        if !xdg_state_home.is_empty() {
-            return PathBuf::from(xdg_state_home).join("men-among-gods-reforged");
-        }
-    }
-    if let Ok(home) = std::env::var("HOME") {
-        return PathBuf::from(home)
-            .join(".local/state")
-            .join("men-among-gods-reforged");
-    }
-
-    std::env::temp_dir()
-        .join("men-among-gods-reforged")
-        .join("logs")
+    std::env::temp_dir().join(".men-among-gods")
 }
 
 fn custom_layer(app: &mut App) -> Option<BoxedLayer> {

@@ -139,14 +139,6 @@ pub fn setup_logging_in(
     login_info.server_port = user_settings.settings.default_server_port.to_string();
     match mag_files::load_mag_dat() {
         Ok(mag_dat) => {
-            let ip = mag_files::fixed_ascii_to_string(&mag_dat.server_ip);
-            if !ip.is_empty() {
-                login_info.server_ip = ip;
-            }
-            if mag_dat.server_port != 0 {
-                login_info.server_port = mag_dat.server_port.to_string();
-            }
-
             // Apply the stored character info to both UI and runtime state.
             // The authoritative character name is `pdata.cname`.
             let username = mag_files::fixed_ascii_to_string(&mag_dat.player_data.cname);
@@ -359,23 +351,17 @@ pub fn run_logging_in(
                                 login_info.class = class;
 
                                 // Persist the latest state into mag.dat.
-                                if let Ok(port) = login_info.server_port.parse::<u16>() {
-                                    let mag_dat = mag_files::build_mag_dat(
-                                        &login_info.server_ip,
-                                        port,
-                                        player_state.save_file(),
-                                        player_state.player_data(),
-                                    );
-                                    if let Err(e) = mag_files::save_mag_dat(&mag_dat) {
-                                        log::error!(
-                                            "Failed to save mag.dat after loading .mag: {e}"
-                                        );
-                                        login_info.last_error =
-                                            Some(format!("Failed to save mag.dat: {e}"));
-                                        login_info.last_notice = None;
-                                    } else {
-                                        login_info.last_error = None;
-                                    }
+                                let mag_dat = mag_files::build_mag_dat(
+                                    player_state.save_file(),
+                                    player_state.player_data(),
+                                );
+                                if let Err(e) = mag_files::save_mag_dat(&mag_dat) {
+                                    log::error!("Failed to save mag.dat after loading .mag: {e}");
+                                    login_info.last_error =
+                                        Some(format!("Failed to save mag.dat: {e}"));
+                                    login_info.last_notice = None;
+                                } else {
+                                    login_info.last_error = None;
                                 }
                             }
                             Err(e) => {
@@ -460,18 +446,13 @@ pub fn run_logging_in(
                         }
 
                         // Persist current UI/runtime state into mag.dat.
-                        if let Ok(port) = login_info.server_port.parse::<u16>() {
-                            let mag_dat = mag_files::build_mag_dat(
-                                &login_info.server_ip,
-                                port,
-                                player_state.save_file(),
-                                player_state.player_data(),
-                            );
-                            if let Err(e) = mag_files::save_mag_dat(&mag_dat) {
-                                log::error!("Failed to save mag.dat during login: {e}");
-                                login_info.last_error =
-                                    Some(format!("Failed to save mag.dat: {e}"));
-                            }
+                        let mag_dat = mag_files::build_mag_dat(
+                            player_state.save_file(),
+                            player_state.player_data(),
+                        );
+                        if let Err(e) = mag_files::save_mag_dat(&mag_dat) {
+                            log::error!("Failed to save mag.dat during login: {e}");
+                            login_info.last_error = Some(format!("Failed to save mag.dat: {e}"));
                         }
 
                         log::info!(
@@ -534,18 +515,14 @@ pub fn run_logging_in(
                                 );
 
                                 // Persist cleared state.
-                                if let Ok(port) = login_info.server_port.parse::<u16>() {
-                                    let mag_dat = mag_files::build_mag_dat(
-                                        &login_info.server_ip,
-                                        port,
-                                        player_state.save_file(),
-                                        player_state.player_data(),
-                                    );
-                                    if let Err(e) = mag_files::save_mag_dat(&mag_dat) {
-                                        log::error!("Failed to save mag.dat after Clear: {e}");
-                                        login_info.last_error =
-                                            Some(format!("Failed to save mag.dat: {e}"));
-                                    }
+                                let mag_dat = mag_files::build_mag_dat(
+                                    player_state.save_file(),
+                                    player_state.player_data(),
+                                );
+                                if let Err(e) = mag_files::save_mag_dat(&mag_dat) {
+                                    log::error!("Failed to save mag.dat after Clear: {e}");
+                                    login_info.last_error =
+                                        Some(format!("Failed to save mag.dat: {e}"));
                                 }
                             }
                             ConfirmAction::Load => {

@@ -1,4 +1,3 @@
-use bevy::platform::cfg;
 use bevy::prelude::*;
 use mag_core::constants::{
     LO_CHALLENGE, LO_EXIT, LO_FAILURE, LO_IDLE, LO_KICKED, LO_NONACTIVE, LO_NOROOM, LO_PARAMS,
@@ -74,7 +73,12 @@ pub fn get_mag_base_dir() -> Option<PathBuf> {
     // This should give us a directory in target/{debug|release}
     let cargo_directory = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     if cargo_directory.exists() {
-        return Some(cargo_directory.join("target").join(debug_or_release));
+        return Some(
+            cargo_directory
+                .join("..")
+                .join("target")
+                .join(debug_or_release),
+        );
     }
 
     // Next, check standard user directories for Unix/Mac OS/Linux
