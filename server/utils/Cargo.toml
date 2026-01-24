@@ -1,0 +1,25 @@
+[package]
+name = "server-utils"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "MIT"
+description = "Utility executables for the server"
+
+[dependencies]
+mag_core = { path = "../../core", package = "core" }
+eframe = "0.30"
+egui = "0.30"
+rfd = "0.15"
+log = "0.4"
+env_logger = "0.11"
+zip = "0.6.6"
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+[[bin]]
+name = "template_viewer"
+path = "src/bin/template_viewer.rs"
+
+[[bin]]
+name = "map_viewer"
+path = "src/bin/map_viewer.rs"

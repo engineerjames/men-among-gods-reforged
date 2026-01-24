@@ -12,6 +12,7 @@ use std::{backtrace, env};
 
 #[macro_use]
 pub mod byte_operations;
+pub mod area;
 pub mod circular_buffer;
 pub mod constants;
 pub mod encrypt;
