@@ -15,8 +15,8 @@ impl GraphicsZipCache {
     pub(crate) fn load(zip_path: PathBuf) -> Result<Self, String> {
         let file = File::open(&zip_path)
             .map_err(|e| format!("Failed to open graphics zip {:?}: {e}", zip_path))?;
-        let mut archive = ZipArchive::new(file)
-            .map_err(|e| format!("Failed to read zip {:?}: {e}", zip_path))?;
+        let mut archive =
+            ZipArchive::new(file).map_err(|e| format!("Failed to read zip {:?}: {e}", zip_path))?;
 
         let mut entries: HashMap<usize, String> = HashMap::new();
         for i in 0..archive.len() {

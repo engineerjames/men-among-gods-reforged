@@ -51,7 +51,9 @@ impl TemplateViewerApp {
             app.load_templates_from_dir(dir);
         }
 
-        if let Some(zip_path) = crate::graphics_zip_from_args().or_else(crate::default_graphics_zip_path) {
+        if let Some(zip_path) =
+            crate::graphics_zip_from_args().or_else(crate::default_graphics_zip_path)
+        {
             app.load_graphics_zip(zip_path);
         }
         app
@@ -490,13 +492,7 @@ impl TemplateViewerApp {
                     crate::centered_label(ui, "Min Required");
                     ui.end_row();
 
-                    let attrib_names = [
-                        "Bravery",
-                        "Willpower",
-                        "Intuition",
-                        "Agility",
-                        "Strength",
-                    ];
+                    let attrib_names = ["Bravery", "Willpower", "Intuition", "Agility", "Strength"];
                     for (i, name) in attrib_names.iter().enumerate() {
                         let val_0 = item.attrib[i][0];
                         let val_1 = item.attrib[i][1];
@@ -715,7 +711,10 @@ impl TemplateViewerApp {
                     ui.label("Points:");
                     let points_tot_u32 = (points_tot as i64).max(0) as u32;
                     let rank_name = mag_core::ranks::rank_name(points_tot_u32);
-                    crate::centered_label(ui, format!("{} / {} ({})", points, points_tot, rank_name));
+                    crate::centered_label(
+                        ui,
+                        format!("{} / {} ({})", points, points_tot, rank_name),
+                    );
                     ui.end_row();
 
                     ui.label("Armor:");
@@ -759,13 +758,7 @@ impl TemplateViewerApp {
                     crate::centered_label(ui, "Total");
                     ui.end_row();
 
-                    let attrib_names = [
-                        "Bravery",
-                        "Willpower",
-                        "Intuition",
-                        "Agility",
-                        "Strength",
-                    ];
+                    let attrib_names = ["Bravery", "Willpower", "Intuition", "Agility", "Strength"];
                     for (i, name) in attrib_names.iter().enumerate() {
                         ui.label(*name);
                         for j in 0..6 {
