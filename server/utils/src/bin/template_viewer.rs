@@ -1,4 +1,5 @@
 use eframe::egui;
+use egui::Vec2;
 use mag_core::string_operations::c_string_to_str;
 use mag_core::types::skilltab::get_skill_name;
 use std::collections::HashMap;
@@ -245,7 +246,11 @@ impl TemplateViewerApp {
 
         match cache.texture_for(ui.ctx(), sprite_id) {
             Ok(Some(texture)) => {
-                ui.image(texture);
+                ui.add(
+                    egui::Image::new(texture)
+                        .fit_to_exact_size(Vec2::new(125.0, 125.0))
+                        .maintain_aspect_ratio(true),
+                );
             }
             Ok(None) => {
                 centered_label(ui, format!("{}", sprite_id));
