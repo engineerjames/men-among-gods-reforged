@@ -1,3 +1,5 @@
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod constants;
 mod font_cache;
 mod gfx_cache;
@@ -54,8 +56,28 @@ enum GameState {
     Exited,
 }
 
+pub(crate) fn resolve_log_dir() -> PathBuf {
+    if let Ok(dir) = std::env::var("MAG_LOG_DIR") {
+        if !dir.is_empty() {
+            return PathBuf::from(dir);
+        }
+    }
+
+    if let Some(base) = helpers::get_mag_base_dir() {
+        return base;
+    }
+
+    std::env::temp_dir().join(".men-among-gods")
+}
+
 fn custom_layer(app: &mut App) -> Option<BoxedLayer> {
-    let file_appender = rolling::daily("logs", "client.log");
+    let log_dir = resolve_log_dir();
+    // Avoid panicking on startup if the log directory cannot be created.
+    if std::fs::create_dir_all(&log_dir).is_err() {
+        return None;
+    }
+
+    let file_appender = rolling::daily(log_dir, "client.log");
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
     app.insert_resource(LogGuard(guard));
     Some(
@@ -90,8 +112,8 @@ fn resolve_assets_base_dir() -> PathBuf {
 
 fn main() {
     let assets_dir = resolve_assets_base_dir();
-    let gfx_zip = assets_dir.join("GFX").join("images.zip");
-    let sfx_dir = assets_dir.join("SFX");
+    let gfx_zip = assets_dir.join("gfx").join("images.zip");
+    let sfx_dir = assets_dir.join("sfx");
 
     let mut app = App::new();
     app
@@ -402,11 +424,11 @@ fn set_macos_dock_icon_startup(
     _main_thread: NonSend<MacosMainThreadToken>,
     assets_dir: Res<ClientAssetsDir>,
 ) {
-    let icon_path = assets_dir.0.join("TLB.ICO");
-    let icon_bytes = match std::fs::read(&icon_path) {
+    let png_path = assets_dir.0.join("gfx").join("mag_logo.png");
+    let icon_bytes = match std::fs::read(&png_path) {
         Ok(bytes) => bytes,
         Err(err) => {
-            log::warn!("Failed to read icon file at {:?}: {err}", icon_path);
+            log::warn!("Failed to read icon file at {:?}: {err}", png_path);
             return;
         }
     };
@@ -414,7 +436,7 @@ fn set_macos_dock_icon_startup(
     let decoded = match image::load_from_memory(&icon_bytes) {
         Ok(img) => img.into_rgba8(),
         Err(err) => {
-            log::warn!("Failed to decode icon file at {:?}: {err}", icon_path);
+            log::warn!("Failed to decode icon file at {:?}: {err}", png_path);
             return;
         }
     };
@@ -458,11 +480,11 @@ fn set_window_icon_once(
         return;
     };
 
-    let icon_path = assets_dir.0.join("TLB.ICO");
-    let icon_bytes = match std::fs::read(&icon_path) {
+    let png_path = assets_dir.0.join("gfx").join("mag_logo.png");
+    let icon_bytes = match std::fs::read(&png_path) {
         Ok(bytes) => bytes,
         Err(err) => {
-            log::warn!("Failed to read icon file at {:?}: {err}", icon_path);
+            log::warn!("Failed to read icon file at {:?}: {err}", png_path);
             *done = true;
             return;
         }
@@ -471,7 +493,7 @@ fn set_window_icon_once(
     let decoded = match image::load_from_memory(&icon_bytes) {
         Ok(img) => img.into_rgba8(),
         Err(err) => {
-            log::warn!("Failed to decode icon file at {:?}: {err}", icon_path);
+            log::warn!("Failed to decode icon file at {:?}: {err}", png_path);
             *done = true;
             return;
         }

@@ -4,10 +4,14 @@ use std::path::{Path, PathBuf};
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::helpers::get_mag_base_dir;
 use crate::player_state::PlayerState;
 use crate::states::gameplay::CursorActionTextSettings;
 use crate::systems::magic_postprocess::MagicPostProcessSettings;
 use crate::systems::sound::SoundSettings;
+
+pub const DEFAULT_SERVER_IP: &str = "menamonggods.ddns.net";
+pub const DEFAULT_SERVER_PORT: u16 = 5555;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -18,6 +22,11 @@ pub struct UserSettings {
     pub show_cursor_action_text: bool,
     pub magic_effects_enabled: bool,
     pub gamma: f32,
+
+    /// Default server address shown on the login screen.
+    pub default_server_ip: String,
+    /// Default server port shown on the login screen.
+    pub default_server_port: u16,
 }
 
 impl Default for UserSettings {
@@ -29,6 +38,9 @@ impl Default for UserSettings {
             show_cursor_action_text: true,
             magic_effects_enabled: true,
             gamma: 1.0,
+
+            default_server_ip: DEFAULT_SERVER_IP.to_string(),
+            default_server_port: DEFAULT_SERVER_PORT,
         }
     }
 }
@@ -115,14 +127,15 @@ impl UserSettingsState {
 }
 
 fn default_settings_path() -> PathBuf {
-    // TODO: Use platform-specific config dirs (e.g. XDG on Linux, AppData on Windows)
-    if let Ok(home) = std::env::var("HOME") {
-        return PathBuf::from(home)
-            .join(".men-among-gods-reforged")
-            .join("settings.json");
+    if let Some(base) = get_mag_base_dir() {
+        let path = base.join("settings.json");
+        log::info!("Using settings path: {}", path.display());
+        return path;
     }
 
-    PathBuf::from("settings.json")
+    let fallback = PathBuf::from("settings.json");
+    log::info!("Using fallback settings path: {}", fallback.display());
+    fallback
 }
 
 fn load_settings_from_disk(path: &Path) -> UserSettings {

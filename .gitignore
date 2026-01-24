@@ -29,3 +29,4 @@ profile.json.gz
 **/logs/**
 
 **/orig/**
+dist/**

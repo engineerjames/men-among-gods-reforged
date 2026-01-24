@@ -2,6 +2,11 @@
 name = "client"
 version = "0.1.0"
 edition = "2021"
+build = "build.rs"
+
+[[bin]]
+name = "men-among-gods-client"
+path = "src/main.rs"
 
 [dependencies]
 mag_core = { path = "../core", package = "core" }
@@ -22,3 +27,6 @@ serde_json = "1.0"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSDockTile", "NSImage"] }
 objc2-foundation = { version = "0.3" }
+
+[build-dependencies]
+embed-resource = "2"
