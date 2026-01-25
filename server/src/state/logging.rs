@@ -40,7 +40,13 @@ impl State {
                 return;
             }
 
-            self.do_log(character_id, font, message);
+            let message_with_newline = if message.ends_with('\n') {
+                message.to_string()
+            } else {
+                format!("{}\n", message)
+            };
+
+            self.do_log(character_id, font, &message_with_newline);
         });
     }
 

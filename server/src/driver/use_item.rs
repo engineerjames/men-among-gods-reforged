@@ -868,7 +868,7 @@ pub fn stone_sword(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                &format!("You got a {}.", item_ref),
+                &format!("You got a {}.\n", item_ref),
             );
         });
     });
