@@ -1545,9 +1545,9 @@ impl God {
 
         let (character_name, character_visible) = Repository::with_characters(|ch| {
             (
-                ch[cn].get_name().to_string(),
-                ch[cn].flags & CharacterFlags::Invisible.bits() == 0
-                    && ch[cn].flags & CharacterFlags::GreaterInv.bits() == 0,
+                ch[co].get_name().to_string(),
+                ch[co].flags & CharacterFlags::Invisible.bits() == 0
+                    && ch[co].flags & CharacterFlags::GreaterInv.bits() == 0,
             )
         });
         for goto_fn in goto_functions.iter() {
@@ -1560,9 +1560,24 @@ impl God {
                 if character_visible {
                     EffectManager::fx_add_effect(12, 0, orig_pos.0 as i32, orig_pos.1 as i32, 0);
                 }
-                Self::transfer_char(co, x, y);
+
+                if !Self::transfer_char(co, x, y) {
+                    State::with(|state| {
+                        state.do_character_log(
+                            cn,
+                            core::types::FontColor::Red,
+                            "GOTO failed. Dykstra was right (Elrac will explain this comment if you ask nicely).\n",
+                        );
+                    });
+                    return;
+                }
+
+                let new_pos = Repository::with_characters(|ch| {
+                    let character = &ch[co];
+                    (character.x as i32, character.y as i32)
+                });
                 if character_visible {
-                    EffectManager::fx_add_effect(12, 0, x as i32, y as i32, 0);
+                    EffectManager::fx_add_effect(12, 0, new_pos.0, new_pos.1, 0);
                 }
                 State::with(|state| {
                     state.do_character_log(
@@ -1571,8 +1586,8 @@ impl God {
                         &format!(
                             "{} teleported to ({}, {})\n",
                             if cn == co { "You" } else { &character_name },
-                            x,
-                            y
+                            new_pos.0,
+                            new_pos.1
                         ),
                     );
                 });
