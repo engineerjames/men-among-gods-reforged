@@ -4061,7 +4061,7 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
     );
 
     // Check if quest solved
-    let penta_needed = 5; // TODO: Calculate based on active players
+    let penta_needed = State::with(|state| state.penta_needed);
     if act >= penta_needed {
         solved_pentagram(cn, item_idx);
         return 0;
