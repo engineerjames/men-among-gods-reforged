@@ -8,9 +8,10 @@ use crate::repository::Repository;
 use crate::state::State;
 use crate::{chlog, driver, player, populate};
 use core::constants::{
-    CharacterFlags, ItemFlags, DX_RIGHT, KIN_HARAKIM, KIN_MALE, KIN_MERCENARY, KIN_SEYAN_DU,
-    KIN_SORCERER, KIN_TEMPLAR, KIN_WARRIOR, MAXITEM, MAXSKILL, MF_NOEXPIRE, NT_HITME, SERVER_MAPX,
-    SERVER_MAPY, SK_LOCK, SK_RECALL, SK_RESIST, TICKS, USE_ACTIVE, USE_EMPTY, WN_RHAND,
+    CharacterFlags, ItemFlags, AT_STREN, DX_RIGHT, KIN_HARAKIM, KIN_MALE, KIN_MERCENARY,
+    KIN_SEYAN_DU, KIN_SORCERER, KIN_TEMPLAR, KIN_WARRIOR, MAXITEM, MAXSKILL, MAXTITEM, MF_NOEXPIRE,
+    NT_HITME, SERVER_MAPX, SERVER_MAPY, SK_LOCK, SK_RECALL, SK_RESIST, TICKS, USE_ACTIVE,
+    USE_EMPTY, WN_RHAND,
 };
 use core::string_operations::c_string_to_str;
 use core::types::FontColor;
@@ -818,12 +819,8 @@ pub fn use_chain(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn stone_sword(cn: usize, item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::MAXTITEM;
-
     if cn == 0 {
+        log::error!("stone_sword called with cn=0");
         return 0;
     }
 
@@ -831,17 +828,21 @@ pub fn stone_sword(cn: usize, item_idx: usize) -> i32 {
         Repository::with_items(|items| (items[item_idx].active, items[item_idx].data[0] as usize));
 
     if active != 0 {
+        log::error!("stone_sword called on active item");
         return 0;
     }
 
     if template_id <= 0 || template_id >= MAXTITEM {
+        log::error!(
+            "stone_sword called with invalid template_id: {}",
+            template_id
+        );
         return 0;
     }
 
     // Check if character has enough strength (100+)
-    let strength = Repository::with_characters(|characters| {
-        characters[cn].attrib[0][5] // AT_STREN = 0
-    });
+    let strength =
+        Repository::with_characters(|characters| characters[cn].attrib[AT_STREN as usize][5]);
 
     if strength < 100 {
         State::with(|state| {
@@ -5494,11 +5495,6 @@ pub fn use_lab8_moneyshrine(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn change_to_archtemplar(cn: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-
-    const KIN_MALE: i32 = 0x00000001;
-
     // Check agility requirement
     let agility = Repository::with_characters(|characters| characters[cn].attrib[0][0]);
     if agility < 90 {
@@ -5528,7 +5524,7 @@ pub fn change_to_archtemplar(cn: usize) {
     // Change race based on gender
     let (is_male, name) = Repository::with_characters(|characters| {
         (
-            (characters[cn].kindred & KIN_MALE) != 0,
+            (characters[cn].kindred as u32 & KIN_MALE) != 0,
             characters[cn].get_name().to_string(),
         )
     });
@@ -5578,10 +5574,9 @@ pub fn change_to_archharakim(cn: usize) {
     }
 
     // Change race based on gender
-    const KIN_MALE: i32 = 0x00000001;
     let (is_male, name) = Repository::with_characters(|characters| {
         (
-            (characters[cn].kindred & KIN_MALE) != 0,
+            (characters[cn].kindred as u32 & KIN_MALE) != 0,
             characters[cn].get_name().to_string(),
         )
     });
@@ -5602,11 +5597,6 @@ pub fn change_to_archharakim(cn: usize) {
 }
 
 pub fn change_to_warrior(cn: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-
-    const KIN_MALE: i32 = 0x00000001;
-
     // Check agility requirement
     let agility = Repository::with_characters(|characters| characters[cn].attrib[0][0]);
     if agility < 60 {
@@ -5636,7 +5626,7 @@ pub fn change_to_warrior(cn: usize) {
     // Change race based on gender
     let (is_male, name) = Repository::with_characters(|characters| {
         (
-            (characters[cn].kindred & KIN_MALE) != 0,
+            (characters[cn].kindred as u32 & KIN_MALE) != 0,
             characters[cn].get_name().to_string(),
         )
     });
