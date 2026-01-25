@@ -1,10 +1,15 @@
 // key from original C headers
-#[derive(Copy, Clone)]
+use serde::{Deserialize, Serialize};
+use serde_big_array::BigArray;
+
+// key from original C headers
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 #[repr(C)]
 pub struct SaveFile {
     pub usnr: u32,
     pub pass1: u32,
     pub pass2: u32,
+    #[serde(with = "BigArray")]
     pub name: [u8; 40],
     pub race: i32,
 }

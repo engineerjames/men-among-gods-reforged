@@ -9,6 +9,7 @@ use crate::player_state::PlayerState;
 use crate::states::gameplay::CursorActionTextSettings;
 use crate::systems::magic_postprocess::MagicPostProcessSettings;
 use crate::systems::sound::SoundSettings;
+use crate::types::{player_data::PlayerData, save_file::SaveFile};
 
 pub const DEFAULT_SERVER_IP: &str = "menamonggods.ddns.net";
 pub const DEFAULT_SERVER_PORT: u16 = 5555;
@@ -27,6 +28,10 @@ pub struct UserSettings {
     pub default_server_ip: String,
     /// Default server port shown on the login screen.
     pub default_server_port: u16,
+
+    /// Persisted character/key data (replaces legacy mag.dat).
+    pub save_file: SaveFile,
+    pub player_data: PlayerData,
 }
 
 impl Default for UserSettings {
@@ -41,6 +46,9 @@ impl Default for UserSettings {
 
             default_server_ip: DEFAULT_SERVER_IP.to_string(),
             default_server_port: DEFAULT_SERVER_PORT,
+
+            save_file: SaveFile::default(),
+            player_data: PlayerData::default(),
         }
     }
 }
@@ -97,6 +105,11 @@ impl UserSettingsState {
     pub fn request_save(&mut self) {
         self.pending_save = true;
         self.save_debounce.reset();
+    }
+
+    pub fn sync_character_from_player_state(&mut self, player_state: &PlayerState) {
+        self.settings.save_file = *player_state.save_file();
+        self.settings.player_data = *player_state.player_data();
     }
 
     fn try_save_now(&mut self) {
@@ -165,6 +178,9 @@ pub fn load_user_settings_startup(
 ) {
     let path = default_settings_path();
     let settings = load_settings_from_disk(&path);
+
+    // Restore persisted character/key data (replaces mag.dat).
+    player_state.set_character_from_file(settings.save_file, settings.player_data);
 
     let state = UserSettingsState::new(path, settings);
     state.apply_to_resources(

@@ -9,9 +9,11 @@ use bevy::prelude::*;
 use bevy::tasks::Task;
 
 use crate::player_state::PlayerState;
+use crate::settings::UserSettingsState;
 use crate::systems::sound::SoundEventQueue;
 use crate::GameState;
 use server_commands::ServerCommand;
+use server_commands::ServerCommandData;
 
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NetworkSet {
@@ -224,6 +226,7 @@ fn process_network_events(
     mut next_state: ResMut<NextState<GameState>>,
     mut player_state: ResMut<PlayerState>,
     mut sound_queue: ResMut<SoundEventQueue>,
+    mut user_settings: ResMut<UserSettingsState>,
 ) {
     let Some(rx_arc) = net.event_rx.clone() else {
         return;
@@ -257,6 +260,13 @@ fn process_network_events(
                     } else {
                         player_state.update_from_server_command(&cmd);
                         log::debug!("Received server command: {:?}", cmd);
+
+                        // Persist updated character name/race once the full name arrives.
+                        // The server sends it in 3 chunks; chunk 3 completes the name.
+                        if matches!(cmd.structured_data, ServerCommandData::SetCharName3 { .. }) {
+                            user_settings.sync_character_from_player_state(&player_state);
+                            user_settings.request_save();
+                        }
 
                         if player_state.take_exit_requested_reason().is_some() {
                             next_state.set(GameState::Exited);
@@ -302,18 +312,8 @@ fn process_network_events(
                     save.pass2 = pass2;
                 }
 
-                match crate::types::mag_files::load_mag_dat() {
-                    Ok(mut mag_dat) => {
-                        mag_dat.save_file = *player_state.save_file();
-                        mag_dat.player_data = *player_state.player_data();
-                        if let Err(e) = crate::types::mag_files::save_mag_dat(&mag_dat) {
-                            log::error!("Failed to persist mag.dat with new credentials: {e}");
-                        }
-                    }
-                    Err(e) => {
-                        log::error!("Failed to load mag.dat to persist new credentials: {e}");
-                    }
-                }
+                user_settings.sync_character_from_player_state(&player_state);
+                user_settings.request_save();
             }
         }
     }

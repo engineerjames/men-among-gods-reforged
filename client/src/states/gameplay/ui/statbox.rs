@@ -8,6 +8,7 @@ use bevy::sprite::Anchor;
 use crate::network::client_commands::ClientCommand;
 use crate::network::NetworkRuntime;
 use crate::player_state::PlayerState;
+use crate::settings::UserSettingsState;
 use crate::states::gameplay::components::*;
 use crate::states::gameplay::layout::*;
 use crate::states::gameplay::resources::*;
@@ -110,6 +111,7 @@ pub(crate) fn run_gameplay_statbox_input(
     cameras: Query<&Camera, (With<Camera2d>, With<MagicScreenCamera>)>,
     net: Res<NetworkRuntime>,
     mut player_state: ResMut<PlayerState>,
+    mut user_settings: ResMut<UserSettingsState>,
     mut statbox: ResMut<GameplayStatboxState>,
     mut inv_scroll: ResMut<GameplayInventoryScrollState>,
     mut xbuttons: ResMut<GameplayXButtonsState>,
@@ -151,21 +153,11 @@ pub(crate) fn run_gameplay_statbox_input(
                 }
             }
 
-            // Persist updated xbuttons into mag.dat so they survive restarts and subsequent
-            // character `.mag` saves.
+            // Persist updated xbuttons into settings.json so they survive restarts and
+            // subsequent character `.mag` saves.
             if changed_xbuttons {
-                match crate::types::mag_files::load_mag_dat() {
-                    Ok(mut mag_dat) => {
-                        mag_dat.save_file = *player_state.save_file();
-                        mag_dat.player_data = *player_state.player_data();
-                        if let Err(e) = crate::types::mag_files::save_mag_dat(&mag_dat) {
-                            log::warn!("Failed to save mag.dat after xbuttons change: {e}");
-                        }
-                    }
-                    Err(e) => {
-                        log::warn!("Failed to load mag.dat after xbuttons change: {e}");
-                    }
-                }
+                user_settings.sync_character_from_player_state(&player_state);
+                user_settings.request_save();
             }
             return;
         }
