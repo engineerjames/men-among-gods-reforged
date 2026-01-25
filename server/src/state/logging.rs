@@ -1,4 +1,4 @@
-use core::constants::{CharacterFlags, MAXCHARS, MAXPLAYER};
+use core::constants::{CharacterFlags, CT_LGUARD, MAXCHARS, MAXPLAYER};
 use std::cmp;
 use std::sync::OnceLock;
 
@@ -31,12 +31,7 @@ impl State {
     ) {
         Repository::with_characters(|characters| {
             let ch = &characters[character_id];
-            if ch.player == 0 && ch.temp != 15 {
-                // TODO: Re-evaluate if we should be logging this
-                // log::warn!(
-                //     "do_character_log: Character '{}' has no associated player.",
-                //     ch.get_name(),
-                // );
+            if ch.player == 0 && ch.temp != CT_LGUARD as u16 {
                 return;
             }
 
@@ -397,7 +392,9 @@ impl State {
             anon.clone()
         };
         for n in 1..core::constants::MAXCHARS {
-            if !Repository::with_characters(|ch| ch[n].player != 0 || ch[n].temp == 15) {
+            if !Repository::with_characters(|ch| {
+                ch[n].player != 0 || ch[n].temp == CT_LGUARD as u16
+            }) {
                 continue;
             }
             if source != 0
@@ -439,7 +436,9 @@ impl State {
         };
         for n in 1..core::constants::MAXCHARS {
             // Exclude if not a player and not temp==15
-            if !Repository::with_characters(|ch| ch[n].player != 0 || ch[n].temp == 15) {
+            if !Repository::with_characters(|ch| {
+                ch[n].player != 0 || ch[n].temp == CT_LGUARD as u16
+            }) {
                 continue;
             }
             // C++: if ( ( ch[ source ].flags & ( CF_INVISIBLE | CF_NOWHO ) ) && invis_level( source ) > invis_level( n ) ) continue;
@@ -624,7 +623,7 @@ impl State {
 
             // Check if cc is a sane character (active/used). If helper missing, leave TODO
             let sane = Repository::with_characters(|ch| {
-                ch[cc].used == core::constants::USE_ACTIVE || ch[cc].temp == 15
+                ch[cc].used == core::constants::USE_ACTIVE || ch[cc].temp == CT_LGUARD as u16
             });
             if !sane {
                 continue;
