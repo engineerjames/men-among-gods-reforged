@@ -1,5 +1,8 @@
 // xbutton from original C headers
-#[derive(Copy, Clone)]
+use serde::{Deserialize, Serialize};
+
+// xbutton from original C headers
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 #[repr(C)]
 pub struct SkillButtons {
     name: [u8; 8],

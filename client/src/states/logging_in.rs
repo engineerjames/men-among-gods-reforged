@@ -14,7 +14,7 @@ use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::helpers::open_dir_in_file_manager;
 use crate::network::{LoginRequested, LoginStatus};
 use crate::player_state::PlayerState;
-use crate::settings::{UserSettingsState, DEFAULT_SERVER_IP, DEFAULT_SERVER_PORT};
+use crate::settings::{UserSettings, UserSettingsState, DEFAULT_SERVER_IP, DEFAULT_SERVER_PORT};
 use crate::types::mag_files;
 
 /// Writes a Rust string into a fixed-size, NUL-terminated ASCII buffer.
@@ -76,6 +76,10 @@ pub struct LoginUIState {
     confirm: Option<ConfirmAction>,
     last_error: Option<String>,
     last_notice: Option<String>,
+
+    /// When set, the UI will re-apply initial values from `settings.json`.
+    /// Used after failed login attempts to unlock the screen and restore defaults.
+    reset_to_settings: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -117,13 +121,53 @@ impl Default for LoginUIState {
             confirm: None,
             last_error: None,
             last_notice: None,
+
+            reset_to_settings: false,
         }
     }
 }
 
+impl LoginUIState {
+    pub fn on_login_failed(&mut self, err: String) {
+        self.is_logging_in = false;
+        self.reset_to_settings = true;
+        self.last_error = Some(err);
+        self.last_notice = None;
+    }
+}
+
+fn apply_settings_to_login_ui(
+    login_info: &mut LoginUIState,
+    player_state: &mut PlayerState,
+    settings: &UserSettings,
+) {
+    login_info.server_ip = settings.default_server_ip.clone();
+    login_info.server_port = settings.default_server_port.to_string();
+
+    player_state.set_character_from_file(settings.save_file, settings.player_data);
+
+    // The authoritative character name is `pdata.cname`.
+    let username = mag_files::fixed_ascii_to_string(&settings.player_data.cname);
+    let username = if username.is_empty() {
+        mag_files::fixed_ascii_to_string(&settings.save_file.name)
+    } else {
+        username
+    };
+
+    login_info.username = username;
+    login_info.password.clear();
+    login_info.description = mag_files::fixed_ascii_to_string(&settings.player_data.desc);
+
+    let (is_male, class) = class_from_race(settings.save_file.race);
+    login_info.is_male = is_male;
+    login_info.class = class;
+
+    login_info.loaded_character_file = None;
+    login_info.is_logging_in = false;
+    login_info.confirm = None;
+}
+
 /// Sets up the login screen state.
-///
-/// Loads persisted `mag.dat` (if present) to pre-fill the UI and update `PlayerState`.
 pub fn setup_logging_in(
     mut commands: Commands,
     _asset_server: Res<AssetServer>,
@@ -132,45 +176,15 @@ pub fn setup_logging_in(
 ) {
     log::debug!("setup_logging_in - start");
 
-    // Load persisted mag.dat (if present) and pre-fill UI + runtime pdata/key.
-    // Start with persisted user settings defaults (settings.json), then let mag.dat override.
+    // Prefill UI and runtime state from settings.json.
+    let settings = &user_settings.settings;
     let mut login_info = LoginUIState::default();
-    login_info.server_ip = user_settings.settings.default_server_ip.clone();
-    login_info.server_port = user_settings.settings.default_server_port.to_string();
-    match mag_files::load_mag_dat() {
-        Ok(mag_dat) => {
-            // Apply the stored character info to both UI and runtime state.
-            // The authoritative character name is `pdata.cname`.
-            let username = mag_files::fixed_ascii_to_string(&mag_dat.player_data.cname);
-            let username = if username.is_empty() {
-                mag_files::fixed_ascii_to_string(&mag_dat.save_file.name)
-            } else {
-                username
-            };
-            if !username.is_empty() {
-                login_info.username = username;
-            }
-            login_info.description = mag_files::fixed_ascii_to_string(&mag_dat.player_data.desc);
-            let (is_male, class) = class_from_race(mag_dat.save_file.race);
-            login_info.is_male = is_male;
-            login_info.class = class;
+    apply_settings_to_login_ui(&mut login_info, &mut player_state, settings);
 
-            player_state.set_character_from_file(mag_dat.save_file, mag_dat.player_data);
-            // mag.dat/.mag contain PlayerData; re-apply global user settings on top.
-            // (Only shadows currently overlaps PlayerData.)
-            player_state.player_data_mut().are_shadows_enabled =
-                if user_settings.settings.render_shadows {
-                    1
-                } else {
-                    0
-                };
-        }
-        Err(e) => {
-            // Non-fatal. UI will still work with defaults.
-            log::error!("Failed to load mag.dat: {e}");
-            login_info.last_error = Some(format!("Failed to load mag.dat: {e}"));
-        }
-    }
+    // Re-apply global user settings on top of persisted character state.
+    // (Only shadows currently overlaps PlayerData.)
+    player_state.player_data_mut().are_shadows_enabled =
+        if settings.render_shadows { 1 } else { 0 };
 
     commands.insert_resource(login_info);
 
@@ -186,7 +200,7 @@ pub fn teardown_logging_in() {
 
 /// Runs the login screen UI (egui) and emits `LoginRequested` when the user logs in.
 ///
-/// Also handles persistence: saving `mag.dat`, and saving/loading character `.mag` files.
+/// Also handles persistence: saving/loading character `.mag` files.
 pub fn run_logging_in(
     mut contexts: EguiContexts,
     mut login_info: ResMut<LoginUIState>,
@@ -202,6 +216,15 @@ pub fn run_logging_in(
         // TODO: Transition to critical error state?
         return;
     };
+
+    if login_info.reset_to_settings {
+        login_info.reset_to_settings = false;
+        let last_error = login_info.last_error.clone();
+        apply_settings_to_login_ui(&mut login_info, &mut player_state, &user_settings.settings);
+        // Keep the error visible after reset.
+        login_info.last_error = last_error;
+        login_info.last_notice = None;
+    }
 
     egui::Window::new("Men Among Gods Reforged - Login")
         .default_height(TARGET_HEIGHT)
@@ -350,19 +373,10 @@ pub fn run_logging_in(
                                 login_info.is_male = is_male;
                                 login_info.class = class;
 
-                                // Persist the latest state into mag.dat.
-                                let mag_dat = mag_files::build_mag_dat(
-                                    player_state.save_file(),
-                                    player_state.player_data(),
-                                );
-                                if let Err(e) = mag_files::save_mag_dat(&mag_dat) {
-                                    log::error!("Failed to save mag.dat after loading .mag: {e}");
-                                    login_info.last_error =
-                                        Some(format!("Failed to save mag.dat: {e}"));
-                                    login_info.last_notice = None;
-                                } else {
-                                    login_info.last_error = None;
-                                }
+                                // Persist the latest state into settings.json.
+                                user_settings.sync_character_from_player_state(&player_state);
+                                user_settings.request_save();
+                                login_info.last_error = None;
                             }
                             Err(e) => {
                                 log::error!("Failed to load .mag file {:?}: {e}", picked);
@@ -445,15 +459,9 @@ pub fn run_logging_in(
                             pdata.changed = 1;
                         }
 
-                        // Persist current UI/runtime state into mag.dat.
-                        let mag_dat = mag_files::build_mag_dat(
-                            player_state.save_file(),
-                            player_state.player_data(),
-                        );
-                        if let Err(e) = mag_files::save_mag_dat(&mag_dat) {
-                            log::error!("Failed to save mag.dat during login: {e}");
-                            login_info.last_error = Some(format!("Failed to save mag.dat: {e}"));
-                        }
+                        // Persist current UI/runtime state into settings.json.
+                        user_settings.sync_character_from_player_state(&player_state);
+                        user_settings.request_save();
 
                         log::info!(
                             "Attempting login for user '{}' to {}:{}",
@@ -515,15 +523,8 @@ pub fn run_logging_in(
                                 );
 
                                 // Persist cleared state.
-                                let mag_dat = mag_files::build_mag_dat(
-                                    player_state.save_file(),
-                                    player_state.player_data(),
-                                );
-                                if let Err(e) = mag_files::save_mag_dat(&mag_dat) {
-                                    log::error!("Failed to save mag.dat after Clear: {e}");
-                                    login_info.last_error =
-                                        Some(format!("Failed to save mag.dat: {e}"));
-                                }
+                                user_settings.sync_character_from_player_state(&player_state);
+                                user_settings.request_save();
                             }
                             ConfirmAction::Load => {
                                 log::info!("Opening file dialog to load character file...");

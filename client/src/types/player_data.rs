@@ -1,11 +1,16 @@
 use crate::types::skill_buttons::SkillButtons;
+use serde::{Deserialize, Serialize};
+use serde_big_array::BigArray;
 
 // pdata from original C headers
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 #[repr(C)]
 pub struct PlayerData {
+    #[serde(with = "BigArray")]
     pub cname: [u8; 80],
+    #[serde(with = "BigArray")]
     pub reference: [u8; 80],
+    #[serde(with = "BigArray")]
     pub desc: [u8; 160],
     pub changed: i8,
     pub hide: i32,
@@ -44,5 +49,11 @@ mod tests {
     fn default_has_shadows_enabled() {
         let pdata = PlayerData::default();
         assert_eq!(pdata.are_shadows_enabled, 1);
+    }
+
+    #[test]
+    fn default_has_names_shown() {
+        let pdata = PlayerData::default();
+        assert_eq!(pdata.show_names, 1);
     }
 }

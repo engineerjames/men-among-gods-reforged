@@ -8,12 +8,23 @@ use std::{
 use bevy::prelude::*;
 use bevy::tasks::IoTaskPool;
 use flate2::Decompress;
+use mag_core::constants::LO_PASSWORD;
 use mag_core::encrypt::xcrypt;
+
+use crate::helpers::exit_reason_string;
 
 use super::{
     client_commands, server_commands, tick_stream, LoginRequested, LoginStatus, NetworkCommand,
     NetworkEvent, NetworkRuntime,
 };
+
+fn login_exit_reason_message(reason: u32) -> String {
+    if (reason as u8) == LO_PASSWORD {
+        "Invalid password".to_string()
+    } else {
+        exit_reason_string(reason).to_string()
+    }
+}
 
 /// Starts the async network task for a login attempt.
 ///
@@ -106,14 +117,37 @@ fn connect_stream(req: &LoginRequested) -> Result<TcpStream, String> {
     })
 }
 
-/// Reads one 16-byte login-phase server command and decodes it.
+/// Reads one login-phase server command and decodes it.
 ///
-/// The original protocol uses fixed 16-byte commands during login.
-fn get_server_response(stream: &mut TcpStream) -> Option<server_commands::ServerCommand> {
-    // Read exactly 16 bytes (login-phase command size in original client).
-    let mut buf = [0u8; 16];
-    stream.read_exact(&mut buf).ok()?;
+/// Most login-phase packets are 16 bytes (challenge/login ok/new player/mod data),
+/// but some (notably `SV_EXIT` and `SV_TICK`) are only 2 bytes.
+fn get_server_response(stream: &mut TcpStream) -> Result<server_commands::ServerCommand, String> {
+    let mut header = [0u8; 1];
+    stream
+        .read_exact(&mut header)
+        .map_err(|e| format!("Read failed: {e}"))?;
+
+    let opcode = header[0];
+    let remaining = match opcode {
+        // SV_TICK (27) and SV_EXIT (48) are sent as 2 bytes by the server.
+        27 | 48 => 1usize,
+        // Everything else we care about during login is 16 bytes.
+        _ => 15usize,
+    };
+
+    let mut buf = Vec::with_capacity(1 + remaining);
+    buf.push(opcode);
+
+    if remaining > 0 {
+        let mut rest = vec![0u8; remaining];
+        stream
+            .read_exact(&mut rest)
+            .map_err(|e| format!("Read failed: {e}"))?;
+        buf.extend_from_slice(&rest);
+    }
+
     server_commands::ServerCommand::from_bytes(&buf)
+        .ok_or_else(|| "Failed to parse server response".to_string())
 }
 
 /// Performs the login handshake, mirroring the original client's `socket.c` flow.
@@ -155,9 +189,9 @@ fn login_handshake(
         .map_err(|e| format!("Send failed: {e}"))?;
 
     log::info!("Waiting for server response to login command");
-    let login_response = get_server_response(stream).ok_or_else(|| {
-        log::error!("Failed to read login response command");
-        "Read failed".to_string()
+    let login_response = get_server_response(stream).map_err(|e| {
+        log::error!("Failed to read login response command: {e}");
+        e
     })?;
     log::info!("Received login response command: {:?}", login_response);
     let _ = event_tx.send(NetworkEvent::Status(
@@ -176,6 +210,14 @@ fn login_handshake(
                 .write_all(&challenge_response.to_bytes())
                 .map_err(|e| format!("Send failed: {e}"))?;
         }
+        server_commands::ServerCommandData::Exit { reason } => {
+            return Err(login_exit_reason_message(reason));
+        }
+        server_commands::ServerCommandData::Empty
+        | server_commands::ServerCommandData::Ignore { .. } => {
+            log::warn!("Server did not send Challenge; got {:?}", login_response);
+            return Err("Server did not respond with a login challenge".to_string());
+        }
         _ => {
             log::error!(
                 "Unexpected server response during login (expected Challenge): {:?}",
@@ -192,10 +234,10 @@ fn login_handshake(
         .map_err(|e| format!("Send failed: {e}"))?;
 
     loop {
-        let Some(is_logged_in) = get_server_response(stream) else {
-            log::error!("Failed to read login completion response");
-            return Err("Read failed".to_string());
-        };
+        let is_logged_in = get_server_response(stream).map_err(|e| {
+            log::error!("Failed to read login completion response: {e}");
+            e
+        })?;
 
         match is_logged_in.structured_data {
             // For an existing player
@@ -240,10 +282,7 @@ fn login_handshake(
             }
             server_commands::ServerCommandData::Exit { reason } => {
                 log::warn!("Server demanded exit during login, reason={reason}");
-                return Err(format!(
-                    "Server closed connection during login, reason code: {}",
-                    reason
-                ));
+                return Err(login_exit_reason_message(reason));
             }
             _ => {
                 log::error!(

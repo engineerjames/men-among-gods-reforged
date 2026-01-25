@@ -101,6 +101,49 @@ impl God {
 
             Repository::with_items_mut(|items| {
                 let character = &mut characters[character_id];
+                let (old_x, old_y, old_carried, old_active, old_light_inactive, old_light_active) = {
+                    let item = &items[item_id];
+                    (
+                        item.x,
+                        item.y,
+                        item.carried,
+                        item.active,
+                        item.light[0],
+                        item.light[1],
+                    )
+                };
+
+                // If the item is currently on the ground, ensure the map no longer references it
+                // before we move it into inventory. Otherwise, the item GC will later notice the
+                // map->item mismatch and clear the tile, which can produce visible sprite glitches.
+                if old_carried == 0 && Map::is_sane_coordinates(old_x as usize, old_y as usize) {
+                    let map_index =
+                        (old_x as usize) + (old_y as usize) * core::constants::SERVER_MAPX as usize;
+
+                    let map_it = Repository::with_map(|map| map[map_index].it);
+                    if map_it == item_id as u32 {
+                        let light_value = if old_active != 0 {
+                            old_light_active
+                        } else {
+                            old_light_inactive
+                        };
+
+                        if light_value != 0 {
+                            State::with_mut(|state| {
+                                state.do_add_light(
+                                    old_x as i32,
+                                    old_y as i32,
+                                    -(light_value as i32),
+                                );
+                            });
+                        }
+
+                        Repository::with_map_mut(|map| {
+                            map[map_index].it = 0;
+                        });
+                    }
+                }
+
                 let item = &mut items[item_id];
 
                 log::debug!(
@@ -1246,10 +1289,8 @@ impl God {
             return false;
         }
 
-        Repository::with_map_mut(|map| {
-            map[map_index].it = item_id as u32;
-        });
-
+        // Update the item first so if other systems validate map->item consistency
+        // concurrently, they won't observe a map reference to an item with stale coordinates.
         Repository::with_items_mut(|items| {
             items[item_id].x = x as u16;
             items[item_id].y = y as u16;
@@ -1266,6 +1307,11 @@ impl God {
                     state.do_add_light(x as i32, y as i32, light_value as i32);
                 });
             }
+        });
+
+        // Write the map reference last.
+        Repository::with_map_mut(|map| {
+            map[map_index].it = item_id as u32;
         });
 
         true
