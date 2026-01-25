@@ -10,8 +10,9 @@ use crate::{chlog, driver, player, populate};
 use core::constants::{
     CharacterFlags, ItemFlags, AT_AGIL, AT_INT, AT_STREN, AT_WILL, DX_RIGHT, KIN_HARAKIM, KIN_MALE,
     KIN_MERCENARY, KIN_SEYAN_DU, KIN_SORCERER, KIN_TEMPLAR, KIN_WARRIOR, MAXITEM, MAXSKILL,
-    MAXTITEM, MF_NOEXPIRE, NT_HITME, SERVER_MAPX, SERVER_MAPY, SK_LOCK, SK_RECALL, SK_RESIST,
-    TICKS, USE_ACTIVE, USE_EMPTY, WN_RHAND,
+    MAXTITEM, MF_NOEXPIRE, NT_HITME, SERVER_MAPX, SERVER_MAPY, SK_BLESS, SK_CURSE, SK_ENHANCE,
+    SK_LIGHT, SK_LOCK, SK_MSHIELD, SK_PROTECT, SK_RECALL, SK_RESIST, SK_STUN, TICKS, USE_ACTIVE,
+    USE_EMPTY, WN_RHAND,
 };
 use core::string_operations::c_string_to_str;
 use core::types::FontColor;
@@ -257,11 +258,6 @@ pub fn use_door(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_create_item(cn: usize, item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::MAXTITEM;
-
     if cn == 0 {
         return 0;
     }
@@ -379,9 +375,6 @@ pub fn use_create_item(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_create_gold(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-
     if cn == 0 {
         return 0;
     }
@@ -425,11 +418,6 @@ pub fn use_create_gold(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_create_item2(cn: usize, item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::{MAXTITEM, USE_EMPTY};
-
     if cn == 0 {
         return 0;
     }
@@ -514,12 +502,6 @@ pub fn use_create_item2(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_create_item3(cn: usize, item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::{MAXTITEM, USE_EMPTY};
-    use rand::Rng;
-
     if cn == 0 {
         return 0;
     }
@@ -612,11 +594,6 @@ pub fn use_create_item3(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_mix_potion(cn: usize, item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::{ItemFlags, USE_EMPTY};
-
     if cn == 0 {
         return 0;
     }
@@ -748,11 +725,6 @@ pub fn use_mix_potion(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_chain(cn: usize, item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::{ItemFlags, USE_EMPTY};
-
     if cn == 0 {
         return 0;
     }
@@ -1051,8 +1023,6 @@ pub fn finish_laby_teleport(cn: usize, nr: usize, exp: usize) -> i32 {
 }
 
 pub fn is_nolab_item(item_idx: usize) -> bool {
-    use crate::repository::Repository;
-
     if !core::types::Item::is_sane_item(item_idx) {
         return false;
     }
@@ -1479,9 +1449,6 @@ pub fn use_ladder(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_bag(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-
     // Get the character ID stored in the bag's data[0]
     let co = Repository::with_items(|items| items[item_idx].data[0] as usize);
 
@@ -1676,6 +1643,7 @@ pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_scroll2(cn: usize, item_idx: usize) -> i32 {
+    // TODO: Move these to core library
     const AT_NAME: [&str; 5] = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
 
     // Get the attribute number from data[0]
@@ -3628,11 +3596,6 @@ pub fn boost_char(cn: usize, divi: usize) -> i32 {
 }
 
 pub fn spawn_penta_enemy(item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::populate::pop_create_char;
-    use crate::repository::Repository;
-    use core::constants::{CharacterFlags, USE_EMPTY};
-
     // Determine enemy type from data[9]
     let data9 = Repository::with_items(|items| items[item_idx].data[9]);
 
@@ -3660,15 +3623,15 @@ pub fn spawn_penta_enemy(item_idx: usize) -> i32 {
         if tmp > 3 {
             tmp = 3;
         }
-        pop_create_char((1094 + tmp) as usize, false)
+        populate::pop_create_char((1094 + tmp) as usize, false)
     } else if tmp > 17 {
         tmp -= 17;
         if tmp > 4 {
             tmp = 4;
         }
-        pop_create_char((538 + tmp) as usize, false)
+        populate::pop_create_char((538 + tmp) as usize, false)
     } else {
-        pop_create_char((364 + tmp) as usize, false)
+        populate::pop_create_char((364 + tmp) as usize, false)
     };
 
     let cn = match spawned {
@@ -4497,11 +4460,6 @@ pub fn use_kill_undead(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn teleport3(cn: usize, item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::{CharacterFlags, ItemFlags, SK_RECALL, USE_EMPTY};
-
     if cn == 0 {
         return 1;
     }
@@ -4707,11 +4665,6 @@ pub fn teleport3(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::{ItemFlags, MAXITEM, USE_ACTIVE, USE_EMPTY, WN_RHAND};
-
     if cn == 0 {
         return 0;
     }
@@ -4875,8 +4828,6 @@ pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_seyan_door(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-
     if cn != 0 {
         // Check if character is Seyan'Du (KIN_SEYAN_DU = 0x00000008)
         let is_seyan =
@@ -5033,12 +4984,6 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn spell_scroll(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::{
-        SK_BLESS, SK_CURSE, SK_ENHANCE, SK_LIGHT, SK_MSHIELD, SK_PROTECT, SK_STUN,
-    };
-
     // Read scroll data
     let (spell, power, charges) = Repository::with_items(|items| {
         (
@@ -5144,9 +5089,6 @@ pub fn spell_scroll(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_blook_pentagram(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-
     if cn == 0 {
         return 0;
     }
@@ -5169,11 +5111,6 @@ pub fn use_blook_pentagram(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_create_npc(cn: usize, item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::populate::pop_create_char;
-    use crate::repository::Repository;
-    use core::constants::USE_EMPTY;
-
     // Check if already active
     let active = Repository::with_items(|items| items[item_idx].active);
     if active != 0 {
@@ -5186,7 +5123,7 @@ pub fn use_create_npc(cn: usize, item_idx: usize) -> i32 {
 
     // Create NPC from template
     let template = Repository::with_items(|items| items[item_idx].data[0]);
-    let co = match pop_create_char(template as usize, false) {
+    let co = match populate::pop_create_char(template as usize, false) {
         Some(co) => co,
         None => return 0,
     };
@@ -5211,9 +5148,6 @@ pub fn use_create_npc(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_rotate(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-    use core::constants::ItemFlags;
-
     if cn == 0 {
         return 0;
     }
@@ -5232,11 +5166,6 @@ pub fn use_rotate(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_lab8_key(cn: usize, item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::USE_EMPTY;
-
     // data[0] = matching key part
     // data[1] = resulting key part
     // data[2] = (optional) other matching key part
@@ -5409,10 +5338,6 @@ pub fn use_lab8_shrine(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_lab8_moneyshrine(cn: usize, item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::repository::Repository;
-    use crate::state::State;
-
     // data[0] = minimum offering accepted
     // data[1] = teleport coordinate x
     // data[2] = teleport coordinate y
