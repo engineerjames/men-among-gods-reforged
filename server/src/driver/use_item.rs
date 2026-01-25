@@ -5657,11 +5657,6 @@ pub fn change_to_warrior(cn: usize) {
 }
 
 pub fn change_to_sorcerer(cn: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-
-    const KIN_MALE: i32 = 0x00000001;
-
     // Check willpower requirement
     let willpower = Repository::with_characters(|characters| characters[cn].attrib[3][0]);
     if willpower < 60 {
@@ -5691,7 +5686,7 @@ pub fn change_to_sorcerer(cn: usize) {
     // Change race based on gender
     let (is_male, name) = Repository::with_characters(|characters| {
         (
-            (characters[cn].kindred & KIN_MALE) != 0,
+            (characters[cn].kindred as u32 & KIN_MALE) != 0,
             characters[cn].get_name().to_string(),
         )
     });

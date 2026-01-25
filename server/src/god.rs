@@ -4805,23 +4805,11 @@ impl God {
 
             if template.used == core::constants::USE_EMPTY {
                 log::error!("Template {} is not in use", temp);
-
                 return;
             }
 
-            let template_name = c_string_to_str(&template.name);
-
             Repository::with_characters_mut(|characters| {
                 let character = &mut characters[cn];
-
-                // Log the change
-                State::with(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Green,
-                        &format!("Changed into {}", template_name),
-                    );
-                });
 
                 // Set HP, END, MANA from template
                 character.hp[1] = template.hp[1];
