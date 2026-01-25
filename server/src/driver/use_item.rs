@@ -175,7 +175,7 @@ pub fn use_door(cn: usize, item_idx: usize) -> i32 {
                                     state.do_character_log(
                                         cn,
                                         core::types::FontColor::Blue,
-                                        "You failed to pick the lock.",
+                                        "You failed to pick the lock.\n",
                                     );
                                 });
                             }
@@ -190,7 +190,7 @@ pub fn use_door(cn: usize, item_idx: usize) -> i32 {
                         state.do_character_log(
                             cn,
                             core::types::FontColor::Blue,
-                            "It's locked and you don't have the right key.",
+                            "It's locked and you don't have the right key.\n",
                         );
                     });
                     return 0;
@@ -290,7 +290,7 @@ pub fn use_create_item(cn: usize, item_idx: usize) -> i32 {
                     cn,
                     core::types::FontColor::Blue,
                     &format!(
-                        "Your backpack is full, so you can't take the {}.",
+                        "Your backpack is full, so you can't take the {}.\n",
                         c_string_to_str(&item_ref)
                     ),
                 );
@@ -311,7 +311,7 @@ pub fn use_create_item(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                &format!("You got a {}.", c_string_to_str(&item_ref)),
+                &format!("You got a {}.\n", c_string_to_str(&item_ref)),
             );
         });
 
@@ -333,7 +333,7 @@ pub fn use_create_item(cn: usize, item_idx: usize) -> i32 {
                             cn,
                             core::types::FontColor::Blue,
                             &format!(
-                                "You feel yourself form a magical connection with the {}.",
+                                "You feel yourself form a magical connection with the {}.\n",
                                 c_string_to_str(&item.reference)
                             ),
                         );
@@ -404,7 +404,7 @@ pub fn use_create_gold(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                &format!("You got a {}G.", gold_amount),
+                &format!("You got a {}G.\n", gold_amount),
             );
         });
 
@@ -476,7 +476,10 @@ pub fn use_create_item2(cn: usize, item_idx: usize) -> i32 {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Blue,
-                    &format!("Your backpack is full, so you can't take the {}.", item_ref),
+                    &format!(
+                        "Your backpack is full, so you can't take the {}.\n",
+                        item_ref
+                    ),
                 );
             });
         });
@@ -574,7 +577,7 @@ pub fn use_create_item3(cn: usize, item_idx: usize) -> i32 {
         Some(id) => id,
         None => {
             State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Green, "It's empty...");
+                state.do_character_log(cn, core::types::FontColor::Green, "It's empty...\n");
             });
             return 1;
         }
@@ -585,7 +588,7 @@ pub fn use_create_item3(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Blue,
-                "Your backpack is full, so you can't take anything.",
+                "Your backpack is full, so you can't take anything.\n",
             );
         });
         Repository::with_items_mut(|items| {
@@ -600,7 +603,7 @@ pub fn use_create_item3(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                &format!("You got a {}.", item_ref),
+                &format!("You got a {}.\n", item_ref),
             );
         });
     });
@@ -637,7 +640,7 @@ pub fn use_mix_potion(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Blue,
-                "Too difficult to do on the ground.",
+                "Too difficult to do on the ground.\n",
             );
         });
         return 0;
@@ -717,7 +720,7 @@ pub fn use_mix_potion(cn: usize, item_idx: usize) -> i32 {
         Some(t) => t,
         None => {
             State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Blue, "Sorry?");
+                state.do_character_log(cn, core::types::FontColor::Blue, "Sorry?\n");
             });
             return 0;
         }
@@ -761,7 +764,7 @@ pub fn use_chain(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Blue,
-                "What do you want to do with it?",
+                "What do you want to do with it?\n",
             );
         });
         return 0;
@@ -773,7 +776,7 @@ pub fn use_chain(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Blue,
-                "Too difficult to do on the ground.",
+                "Too difficult to do on the ground.\n",
             );
         });
         return 0;
@@ -782,7 +785,7 @@ pub fn use_chain(cn: usize, item_idx: usize) -> i32 {
     let citem_temp = Repository::with_items(|items| items[citem].temp);
     if citem_temp != 206 {
         State::with(|state| {
-            state.do_character_log(cn, core::types::FontColor::Blue, "Sorry?");
+            state.do_character_log(cn, core::types::FontColor::Blue, "Sorry?\n");
         });
         return 0;
     }
@@ -792,7 +795,7 @@ pub fn use_chain(cn: usize, item_idx: usize) -> i32 {
 
     if current_temp as u32 >= max_data {
         State::with(|state| {
-            state.do_character_log(cn, core::types::FontColor::Blue, "It won't fit anymore.");
+            state.do_character_log(cn, core::types::FontColor::Blue, "It won't fit anymore.\n");
         });
         return 0;
     }
@@ -849,7 +852,7 @@ pub fn stone_sword(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Blue,
-                "You're not strong enough.",
+                "You're not strong enough.\n",
             );
         });
         return 0;
@@ -6373,7 +6376,7 @@ pub fn use_soulstone(cn: usize, item_idx: usize) -> i32 {
         }
         _ => {
             State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Blue, "Nothing happened.");
+                state.do_character_log(cn, core::types::FontColor::Blue, "Nothing happened.\n");
             });
             0
         }
@@ -7950,7 +7953,11 @@ pub fn start_trap(cn: usize, item_idx: usize) {
         0 => {
             log::info!("Character {} stepped on Arrow Trap", cn);
             State::with_mut(|state| {
-                state.do_character_log(cn, core::types::FontColor::Red, "You feel a sudden pain!");
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    "You feel a sudden pain!\n",
+                );
                 state.do_hurt(0, cn, 250, 0);
             });
         }
@@ -8561,7 +8568,7 @@ pub fn step_teleport(cn: usize, item_idx: usize) -> i32 {
 
 pub fn step_firefloor(cn: usize, item_idx: usize) -> i32 {
     State::with(|state| {
-        state.do_character_log(cn, core::types::FontColor::Red, "Outch!");
+        state.do_character_log(cn, core::types::FontColor::Red, "Outch!\n");
     });
 
     let in2 = match God::create_item(1) {
