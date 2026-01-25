@@ -10,6 +10,7 @@ use bevy::tasks::Task;
 
 use crate::player_state::PlayerState;
 use crate::settings::UserSettingsState;
+use crate::states::logging_in::LoginUIState;
 use crate::systems::sound::SoundEventQueue;
 use crate::GameState;
 use server_commands::ServerCommand;
@@ -227,6 +228,7 @@ fn process_network_events(
     mut player_state: ResMut<PlayerState>,
     mut sound_queue: ResMut<SoundEventQueue>,
     mut user_settings: ResMut<UserSettingsState>,
+    mut login_ui: Option<ResMut<LoginUIState>>,
 ) {
     let Some(rx_arc) = net.event_rx.clone() else {
         return;
@@ -243,6 +245,17 @@ fn process_network_events(
             NetworkEvent::Status(s) => status.message = s,
             NetworkEvent::Error(e) => {
                 log::error!("Network error: {e}");
+
+                // During the login screen, errors should put us back into a usable state.
+                // Otherwise, the UI stays disabled (is_logging_in=true) and `net.started=true`
+                // prevents new attempts.
+                if !net.logged_in {
+                    net.stop();
+                    if let Some(login_ui) = login_ui.as_mut() {
+                        login_ui.on_login_failed(e.clone());
+                    }
+                }
+
                 status.message = format!("Error: {e}");
             }
             NetworkEvent::Bytes(bytes) => {

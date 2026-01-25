@@ -8,12 +8,23 @@ use std::{
 use bevy::prelude::*;
 use bevy::tasks::IoTaskPool;
 use flate2::Decompress;
+use mag_core::constants::LO_PASSWORD;
 use mag_core::encrypt::xcrypt;
+
+use crate::helpers::exit_reason_string;
 
 use super::{
     client_commands, server_commands, tick_stream, LoginRequested, LoginStatus, NetworkCommand,
     NetworkEvent, NetworkRuntime,
 };
+
+fn login_exit_reason_message(reason: u32) -> String {
+    if (reason as u8) == LO_PASSWORD {
+        "Invalid password".to_string()
+    } else {
+        exit_reason_string(reason).to_string()
+    }
+}
 
 /// Starts the async network task for a login attempt.
 ///
@@ -176,6 +187,14 @@ fn login_handshake(
                 .write_all(&challenge_response.to_bytes())
                 .map_err(|e| format!("Send failed: {e}"))?;
         }
+        server_commands::ServerCommandData::Exit { reason } => {
+            return Err(login_exit_reason_message(reason));
+        }
+        server_commands::ServerCommandData::Empty
+        | server_commands::ServerCommandData::Ignore { .. } => {
+            log::warn!("Server did not send Challenge; got {:?}", login_response);
+            return Err("Server did not respond with a login challenge".to_string());
+        }
         _ => {
             log::error!(
                 "Unexpected server response during login (expected Challenge): {:?}",
@@ -240,10 +259,7 @@ fn login_handshake(
             }
             server_commands::ServerCommandData::Exit { reason } => {
                 log::warn!("Server demanded exit during login, reason={reason}");
-                return Err(format!(
-                    "Server closed connection during login, reason code: {}",
-                    reason
-                ));
+                return Err(login_exit_reason_message(reason));
             }
             _ => {
                 log::error!(
