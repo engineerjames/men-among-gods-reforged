@@ -5717,10 +5717,6 @@ pub fn shrine_of_change(cn: usize, _item_idx: usize) -> i32 {
     // Greater Healing Potion (127/274) -> Warrior
     // Greater Mana Potion (131/273) -> Sorcerer
 
-    const KIN_TEMPLAR: i32 = 0x00000004;
-    const KIN_HARAKIM: i32 = 0x00000002;
-    const KIN_MERCENARY: i32 = 0x00000010;
-
     if cn == 0 {
         return 0;
     }
@@ -5745,9 +5741,9 @@ pub fn shrine_of_change(cn: usize, _item_idx: usize) -> i32 {
 
     // Potion of life -> Archtemplar/Archharakim
     if citem_temp == 148 {
-        if (kindred & KIN_TEMPLAR) != 0 {
+        if (kindred as u32 & KIN_TEMPLAR) != 0 {
             change_to_archtemplar(cn);
-        } else if (kindred & KIN_HARAKIM) != 0 {
+        } else if (kindred as u32 & KIN_HARAKIM) != 0 {
             change_to_archharakim(cn);
         } else {
             State::with(|state| {
@@ -5763,7 +5759,7 @@ pub fn shrine_of_change(cn: usize, _item_idx: usize) -> i32 {
 
     // Greater healing potion -> Warrior
     if citem_temp == 127 || citem_temp == 274 {
-        if (kindred & KIN_MERCENARY) != 0 {
+        if (kindred as u32 & KIN_MERCENARY) != 0 {
             change_to_warrior(cn);
         } else {
             State::with(|state| {
@@ -5779,7 +5775,7 @@ pub fn shrine_of_change(cn: usize, _item_idx: usize) -> i32 {
 
     // Greater mana potion -> Sorcerer
     if citem_temp == 131 || citem_temp == 273 {
-        if (kindred & KIN_MERCENARY) != 0 {
+        if (kindred as u32 & KIN_MERCENARY) != 0 {
             change_to_sorcerer(cn);
         } else {
             State::with(|state| {
