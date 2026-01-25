@@ -691,7 +691,13 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
         48 => Some((
             ServerCommandType::Exit,
             ServerCommandData::Exit {
-                reason: u32::from_le_bytes(bytes.get(1..5)?.try_into().ok()?),
+                // Server commonly sends SV_EXIT as 2 bytes: [opcode, reason_u8].
+                // Some variants may send a u32 reason.
+                reason: if bytes.len() >= 5 {
+                    u32::from_le_bytes(bytes.get(1..5)?.try_into().ok()?)
+                } else {
+                    *bytes.get(1)? as u32
+                },
             },
         )),
         49 => Some((ServerCommandType::Msg, ServerCommandData::Empty)),
