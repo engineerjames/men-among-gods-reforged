@@ -73,8 +73,52 @@ impl God {
     /// Find a free item slot in the global item array.
     ///
     /// Returns `Some(index)` when a free slot is found, otherwise `None`.
-    fn get_free_item(items: &[core::types::Item]) -> Option<usize> {
-        (1..core::constants::MAXITEM).find(|&i| items[i].used == core::constants::USE_EMPTY)
+    fn get_free_item(items: &mut [core::types::Item]) -> Option<usize> {
+        for item_id in 1..core::constants::MAXITEM {
+            if items[item_id].used != core::constants::USE_EMPTY {
+                continue;
+            }
+
+            // Safety net: if an item was destroyed but left referenced by a character,
+            // reusing this slot would make the client briefly show it as a different
+            // template before server-side validity checks clear it.
+            let carried = items[item_id].carried as usize;
+            if carried != 0 {
+                if Character::is_sane_character(carried) {
+                    Repository::with_characters_mut(|ch| {
+                        if ch[carried].citem as usize == item_id {
+                            ch[carried].citem = 0;
+                        }
+                        for slot in 0..40 {
+                            if ch[carried].item[slot] as usize == item_id {
+                                ch[carried].item[slot] = 0;
+                            }
+                        }
+                        for slot in 0..20 {
+                            if ch[carried].worn[slot] as usize == item_id {
+                                ch[carried].worn[slot] = 0;
+                            }
+                            if ch[carried].spell[slot] as usize == item_id {
+                                ch[carried].spell[slot] = 0;
+                            }
+                        }
+                        for slot in 0..62 {
+                            if ch[carried].depot[slot] as usize == item_id {
+                                ch[carried].depot[slot] = 0;
+                            }
+                        }
+                        ch[carried].set_do_update_flags();
+                    });
+                }
+
+                items[item_id].carried = 0;
+                items[item_id].x = 0;
+                items[item_id].y = 0;
+            }
+
+            return Some(item_id);
+        }
+        None
     }
 
     // Implementation of god_give_char from svr_god.cpp
@@ -4021,8 +4065,12 @@ impl God {
 
         // Try to drop the item at the donation location
         if !Self::drop_item_fuzzy(item_id, x, y) {
-            // If drop fails, destroy the item
+            // If drop fails, destroy the item. Clear carried field to prevent
+            // stale references (though drop_item_fuzzy should have already done this).
             Repository::with_items_mut(|items| {
+                items[item_id].carried = 0;
+                items[item_id].x = 0;
+                items[item_id].y = 0;
                 items[item_id].used = core::constants::USE_EMPTY;
             });
         }

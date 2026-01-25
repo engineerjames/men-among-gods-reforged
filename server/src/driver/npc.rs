@@ -2493,8 +2493,13 @@ pub fn npc_equip_item(cn: usize, in_idx: usize) -> bool {
 }
 
 pub fn npc_loot_grave(cn: usize, in_idx: usize) -> bool {
-    let (ch_x, ch_y, ch_dir) = Repository::with_characters(|characters| {
-        (characters[cn].x, characters[cn].y, characters[cn].dir)
+    let (ch_x, ch_y, ch_dir, frust) = Repository::with_characters(|characters| {
+        (
+            characters[cn].x,
+            characters[cn].y,
+            characters[cn].dir,
+            characters[cn].data[36], // frustration counter
+        )
     });
 
     let (it_x, it_y) = Repository::with_items(|items| (items[in_idx].x, items[in_idx].y));
@@ -2504,6 +2509,17 @@ pub fn npc_loot_grave(cn: usize, in_idx: usize) -> bool {
         || helpers::drv_dcoor2dir(it_x as i32 - ch_x as i32, it_y as i32 - ch_y as i32)
             != ch_dir as i32
     {
+        // If frustration is too high, give up on this grave
+        if frust > 20 {
+            log::debug!(
+                "NPC {} giving up on grave {} due to high frustration ({})",
+                cn,
+                in_idx,
+                frust
+            );
+            return false; // Give up, mark grave as searched
+        }
+
         Repository::with_characters_mut(|characters| {
             characters[cn].misc_action = DR_USE as u16;
             characters[cn].misc_target1 = it_x;
@@ -2513,6 +2529,32 @@ pub fn npc_loot_grave(cn: usize, in_idx: usize) -> bool {
     }
 
     let co = Repository::with_items(|items| items[in_idx].data[0]) as usize;
+
+    // Safety check: ensure corpse character is valid and is actually a corpse/body
+    if !Character::is_sane_character(co) {
+        log::warn!(
+            "NPC {} tried to loot grave {} but corpse character {} is invalid",
+            cn,
+            in_idx,
+            co
+        );
+        return false; // Mark grave as searched since corpse is invalid
+    }
+
+    // Check if the corpse is actually a dead body (not a reused character slot)
+    let is_body = Repository::with_characters(|characters| {
+        (characters[co].flags & CharacterFlags::Body.bits()) != 0
+    });
+
+    if !is_body {
+        log::warn!(
+            "NPC {} tried to loot grave {} but corpse character {} is not a body (slot reused?)",
+            cn,
+            in_idx,
+            co
+        );
+        return false; // Mark grave as searched since corpse slot was reused
+    }
 
     // Try to loot worn items
     for n in 0..20 {
