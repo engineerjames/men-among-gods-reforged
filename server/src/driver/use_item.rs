@@ -8,10 +8,10 @@ use crate::repository::Repository;
 use crate::state::State;
 use crate::{chlog, driver, player, populate};
 use core::constants::{
-    CharacterFlags, ItemFlags, AT_STREN, DX_RIGHT, KIN_HARAKIM, KIN_MALE, KIN_MERCENARY,
-    KIN_SEYAN_DU, KIN_SORCERER, KIN_TEMPLAR, KIN_WARRIOR, MAXITEM, MAXSKILL, MAXTITEM, MF_NOEXPIRE,
-    NT_HITME, SERVER_MAPX, SERVER_MAPY, SK_LOCK, SK_RECALL, SK_RESIST, TICKS, USE_ACTIVE,
-    USE_EMPTY, WN_RHAND,
+    CharacterFlags, ItemFlags, AT_AGIL, AT_INT, AT_STREN, AT_WILL, DX_RIGHT, KIN_HARAKIM, KIN_MALE,
+    KIN_MERCENARY, KIN_SEYAN_DU, KIN_SORCERER, KIN_TEMPLAR, KIN_WARRIOR, MAXITEM, MAXSKILL,
+    MAXTITEM, MF_NOEXPIRE, NT_HITME, SERVER_MAPX, SERVER_MAPY, SK_LOCK, SK_RECALL, SK_RESIST,
+    TICKS, USE_ACTIVE, USE_EMPTY, WN_RHAND,
 };
 use core::string_operations::c_string_to_str;
 use core::types::FontColor;
@@ -5499,7 +5499,8 @@ pub fn use_lab8_moneyshrine(cn: usize, item_idx: usize) -> i32 {
 
 pub fn change_to_archtemplar(cn: usize) {
     // Check agility requirement
-    let agility = Repository::with_characters(|characters| characters[cn].attrib[0][0]);
+    let agility =
+        Repository::with_characters(|characters| characters[cn].attrib[AT_AGIL as usize][0]);
     if agility < 90 {
         State::with(|state| {
             state.do_character_log(
@@ -5512,7 +5513,8 @@ pub fn change_to_archtemplar(cn: usize) {
     }
 
     // Check strength requirement
-    let strength = Repository::with_characters(|characters| characters[cn].attrib[1][0]);
+    let strength =
+        Repository::with_characters(|characters| characters[cn].attrib[AT_STREN as usize][0]);
     if strength < 90 {
         State::with(|state| {
             state.do_character_log(
@@ -5551,7 +5553,8 @@ pub fn change_to_archharakim(cn: usize) {
     use crate::state::State;
 
     // Check willpower requirement
-    let willpower = Repository::with_characters(|characters| characters[cn].attrib[3][0]);
+    let willpower =
+        Repository::with_characters(|characters| characters[cn].attrib[AT_WILL as usize][0]);
     if willpower < 90 {
         State::with(|state| {
             state.do_character_log(
@@ -5564,7 +5567,8 @@ pub fn change_to_archharakim(cn: usize) {
     }
 
     // Check intuition requirement
-    let intuition = Repository::with_characters(|characters| characters[cn].attrib[4][0]);
+    let intuition =
+        Repository::with_characters(|characters| characters[cn].attrib[AT_INT as usize][0]);
     if intuition < 90 {
         State::with(|state| {
             state.do_character_log(
@@ -5601,7 +5605,8 @@ pub fn change_to_archharakim(cn: usize) {
 
 pub fn change_to_warrior(cn: usize) {
     // Check agility requirement
-    let agility = Repository::with_characters(|characters| characters[cn].attrib[0][0]);
+    let agility =
+        Repository::with_characters(|characters| characters[cn].attrib[AT_AGIL as usize][0]);
     if agility < 60 {
         State::with(|state| {
             state.do_character_log(
@@ -5614,7 +5619,8 @@ pub fn change_to_warrior(cn: usize) {
     }
 
     // Check strength requirement
-    let strength = Repository::with_characters(|characters| characters[cn].attrib[1][0]);
+    let strength =
+        Repository::with_characters(|characters| characters[cn].attrib[AT_STREN as usize][0]);
     if strength < 60 {
         State::with(|state| {
             state.do_character_log(
@@ -5651,7 +5657,8 @@ pub fn change_to_warrior(cn: usize) {
 
 pub fn change_to_sorcerer(cn: usize) {
     // Check willpower requirement
-    let willpower = Repository::with_characters(|characters| characters[cn].attrib[3][0]);
+    let willpower =
+        Repository::with_characters(|characters| characters[cn].attrib[AT_WILL as usize][0]);
     if willpower < 60 {
         State::with(|state| {
             state.do_character_log(
@@ -5664,7 +5671,8 @@ pub fn change_to_sorcerer(cn: usize) {
     }
 
     // Check intuition requirement
-    let intuition = Repository::with_characters(|characters| characters[cn].attrib[4][0]);
+    let intuition =
+        Repository::with_characters(|characters| characters[cn].attrib[AT_INT as usize][0]);
     if intuition < 60 {
         State::with(|state| {
             state.do_character_log(
