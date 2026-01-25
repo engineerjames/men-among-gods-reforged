@@ -101,25 +101,24 @@ impl God {
 
             Repository::with_items_mut(|items| {
                 let character = &mut characters[character_id];
-                let (old_x, old_y, old_carried, old_active, old_light_inactive, old_light_active) =
-                    {
-                        let item = &items[item_id];
-                        (
-                            item.x,
-                            item.y,
-                            item.carried,
-                            item.active,
-                            item.light[0],
-                            item.light[1],
-                        )
-                    };
+                let (old_x, old_y, old_carried, old_active, old_light_inactive, old_light_active) = {
+                    let item = &items[item_id];
+                    (
+                        item.x,
+                        item.y,
+                        item.carried,
+                        item.active,
+                        item.light[0],
+                        item.light[1],
+                    )
+                };
 
                 // If the item is currently on the ground, ensure the map no longer references it
                 // before we move it into inventory. Otherwise, the item GC will later notice the
                 // map->item mismatch and clear the tile, which can produce visible sprite glitches.
                 if old_carried == 0 && Map::is_sane_coordinates(old_x as usize, old_y as usize) {
-                    let map_index = (old_x as usize)
-                        + (old_y as usize) * core::constants::SERVER_MAPX as usize;
+                    let map_index =
+                        (old_x as usize) + (old_y as usize) * core::constants::SERVER_MAPX as usize;
 
                     let map_it = Repository::with_map(|map| map[map_index].it);
                     if map_it == item_id as u32 {

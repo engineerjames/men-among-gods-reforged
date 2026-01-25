@@ -398,8 +398,13 @@ impl EffectManager {
                         map[map_index].flags &= !(core::constants::MF_MOVEBLOCK as u64);
                     });
 
-                    if let Some(_cn) = populate::pop_create_char(effects[n].data[2] as usize, true)
-                    {
+                    // Port of `svr_effect.c`: only reschedule the respawn timer if spawning
+                    // failed (e.g., tile became blocked again). If spawning succeeded, let
+                    // the mist animation finish and then expire normally.
+                    let spawned =
+                        populate::pop_create_char(effects[n].data[2] as usize, true).is_some();
+
+                    if !spawned {
                         let respawn_flag = Repository::with_character_templates(|char_templates| {
                             (char_templates[effects[n].data[2] as usize].flags
                                 & CharacterFlags::Respawn.bits())
