@@ -23,7 +23,10 @@ pub fn inflate_chunk(z: &mut Decompress, input: &[u8]) -> Result<Vec<u8>, String
     let mut in_pos = 0usize;
     let mut scratch = [0u8; 8192];
 
-    while in_pos < input.len() {
+    // IMPORTANT: flate2 may be able to produce output without consuming additional input
+    // (e.g., when the output buffer filled on the previous call). We must keep calling
+    // decompress until it makes no progress.
+    while in_pos <= input.len() {
         let before_in = z.total_in() as usize;
         let before_out = z.total_out() as usize;
 
@@ -41,16 +44,22 @@ pub fn inflate_chunk(z: &mut Decompress, input: &[u8]) -> Result<Vec<u8>, String
             out.extend_from_slice(&scratch[..produced]);
         }
 
-        if consumed == 0 {
-            // Avoid an infinite loop if the inflater can't make forward progress.
-            // This can happen if the input is truncated mid-stream.
-            if status == Status::Ok && produced == 0 {
-                return Err("zlib inflate made no progress (truncated input?)".to_string());
-            }
-            break;
+        if consumed > 0 {
+            in_pos += consumed;
+            continue;
         }
 
-        in_pos += consumed;
+        if produced > 0 {
+            // Made progress by producing output; keep looping to drain remaining output.
+            continue;
+        }
+
+        // No progress in either direction.
+        // If we still have input left, it's likely truncated/corrupt.
+        if in_pos < input.len() && status == Status::Ok {
+            return Err("zlib inflate made no progress (truncated input?)".to_string());
+        }
+        break;
     }
 
     Ok(out)
@@ -294,6 +303,23 @@ mod tests {
             let part = inflate_chunk(&mut dec, &c).unwrap();
             out.extend_from_slice(&part);
         }
+        assert_eq!(out, original);
+    }
+
+    #[test]
+    fn inflate_chunk_can_produce_more_than_scratch_size() {
+        // Regression test: the inflater can produce output without consuming more input
+        // when the output buffer is filled. Ensure we drain all available output.
+        let original = vec![0xABu8; 50_000];
+
+        let mut enc = ZlibEncoder::new(Vec::<u8>::new(), Compression::default());
+        enc.write_all(&original).unwrap();
+        enc.flush().unwrap();
+        let compressed = enc.finish().unwrap();
+
+        let mut dec = Decompress::new(true);
+        let out = inflate_chunk(&mut dec, &compressed).unwrap();
+        assert_eq!(out.len(), original.len());
         assert_eq!(out, original);
     }
 

@@ -1969,16 +1969,27 @@ pub fn skill_curse(cn: usize) {
     );
 
     let co_orig = co;
-    let m = Repository::with_characters(|ch| ch[cn].x)
-        + Repository::with_characters(|ch| ch[cn].y) * core::constants::SERVER_MAPX as i16;
-    let adj = [
-        1,
-        -1,
-        core::constants::SERVER_MAPX,
-        -core::constants::SERVER_MAPX,
-    ];
-    for &d in adj.iter() {
-        let maybe_co = Repository::with_map(|map| map[(m as i32 + d) as usize].ch as usize);
+    let (x, y) = Repository::with_characters(|ch| (ch[cn].x as i32, ch[cn].y as i32));
+    let adj: [(i32, i32); 4] = [(1, 0), (-1, 0), (0, 1), (0, -1)];
+
+    for (dx, dy) in adj {
+        let nx = x + dx;
+        let ny = y + dy;
+
+        // Prevent negative/out-of-bounds coords from wrapping into huge usize indices.
+        if nx < 0
+            || ny < 0
+            || nx >= core::constants::SERVER_MAPX
+            || ny >= core::constants::SERVER_MAPY
+        {
+            continue;
+        }
+
+        let idx = (nx + ny * core::constants::SERVER_MAPX) as usize;
+        let maybe_co = Repository::with_map(|map| map[idx].ch as usize);
+        if maybe_co == 0 || maybe_co >= core::constants::MAXCHARS {
+            continue;
+        }
         if maybe_co != 0
             && Repository::with_characters(|ch| ch[maybe_co].attack_cn as usize) == cn
             && co_orig != maybe_co

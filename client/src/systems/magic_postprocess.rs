@@ -13,7 +13,7 @@ use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::player_state::PlayerState;
 use crate::states::gameplay::GameplayRenderEntity;
 
-use mag_core::constants::{CMAGIC, EMAGIC, GMAGIC, TILEX, TILEY, XPOS, YPOS};
+use mag_core::constants::{CMAGIC, EMAGIC, GMAGIC, INVIS, TILEX, TILEY, XPOS, YPOS};
 
 pub(crate) const WORLD_LAYER: usize = 0;
 pub(crate) const UI_LAYER: usize = 1;
@@ -271,6 +271,12 @@ fn collect_magic_sources(
             let Some(tile) = map.tile_at_xy(x, y) else {
                 continue;
             };
+
+            // Respect visibility: if the tile itself isn't visible (dark/fog/LOS blocked),
+            // don't show magic effects originating from it.
+            if (tile.flags & INVIS) != 0 {
+                continue;
+            }
 
             let mut alpha: u32 = 0;
             let mut alphastr: u32 = 0;
