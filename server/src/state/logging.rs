@@ -40,6 +40,7 @@ impl State {
                 return;
             }
 
+            // TODO: Think of a better way to handle newlines
             let message_with_newline = if message.ends_with('\n') {
                 message.to_string()
             } else {
