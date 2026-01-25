@@ -73,7 +73,10 @@ impl FontCache {
             for i in 0..BITMAP_GLYPH_COUNT as u32 {
                 let x = i * cell_w;
                 let min = UVec2::new(x, offset_y);
-                let max = UVec2::new(x + cell_w.saturating_sub(1), offset_y + cell_h);
+                let max = UVec2::new(
+                    x + cell_w.saturating_sub(1),
+                    offset_y + cell_h.saturating_sub(1),
+                );
                 layout.add_texture(URect { min, max });
             }
 
