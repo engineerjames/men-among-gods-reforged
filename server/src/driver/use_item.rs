@@ -7659,7 +7659,7 @@ pub fn item_tick_expire() {
                         let used = item.used;
                         let item_x = item.x;
                         let item_y = item.y;
-                        log::debug!(
+                        log::error!(
                             "map[{},{}].it invalid -> item {} (temp={}, name='{}', carried={}, used={}, pos=({},{})); clearing map reference",
                             x,
                             y,
@@ -7672,7 +7672,7 @@ pub fn item_tick_expire() {
                             item_y,
                         );
                     } else {
-                        log::debug!(
+                        log::error!(
                             "map[{},{}].it invalid -> item index {} out of bounds; clearing map reference",
                             x,
                             y,
