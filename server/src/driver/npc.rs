@@ -8,6 +8,7 @@ use crate::{god::God, repository::Repository, state::State};
 use core::constants::*;
 use core::string_operations::c_string_to_str;
 use core::types::skilltab;
+use core::types::Character;
 use rand::Rng;
 
 // Helper functions
