@@ -4857,7 +4857,7 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
         State::with(|state| {
             state.do_character_log(
                 cn,
-                core::types::FontColor::Yellow,
+                core::types::FontColor::Blue,
                 "You're already Seyan'Du, aren't you?\n",
             );
         });
@@ -4865,7 +4865,7 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
         State::with(|state| {
             state.do_character_log(
                 cn,
-                core::types::FontColor::Yellow,
+                core::types::FontColor::Blue,
                 &format!("The Seyan'Du welcome you among their ranks, {}!\n", cn_name),
             );
         });
@@ -4878,10 +4878,13 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
         }
 
         // Give Seyan'Du sword (template 682)
-        let in2 = God::create_item(682);
-        God::give_character_item(cn, in2.unwrap());
+        let in2 = match God::create_item(682) {
+            Some(id) => id,
+            None => return 0,
+        };
+        God::give_character_item(cn, in2);
         Repository::with_items_mut(|items| {
-            items[in2.unwrap()].data[0] = cn as u32;
+            items[in2].data[0] = cn as u32;
         });
     }
 
@@ -4902,7 +4905,7 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
             State::with(|state| {
                 state.do_character_log(
                     cn,
-                    core::types::FontColor::Yellow,
+                    core::types::FontColor::Green,
                     &format!("Your {} vanished.\n", c_string_to_str(&item_ref)),
                 );
             });
@@ -4929,7 +4932,7 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
                 State::with(|state| {
                     state.do_character_log(
                         cn,
-                        core::types::FontColor::Yellow,
+                        core::types::FontColor::Green,
                         &format!("Your {} vanished.\n", c_string_to_str(&item_ref)),
                     );
                 });
@@ -4957,7 +4960,7 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
                 State::with(|state| {
                     state.do_character_log(
                         cn,
-                        core::types::FontColor::Yellow,
+                        core::types::FontColor::Green,
                         &format!("Your {} vanished.\n", c_string_to_str(&item_ref)),
                     );
                 });
