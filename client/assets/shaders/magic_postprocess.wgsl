@@ -84,6 +84,7 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
     let px = uv * params.screen_size;
 
     var out = textureSample(scene_tex, scene_sampler, uv);
+    let base = out;
 
     // Apply magic only when enabled and in the classic region.
     if (params.magic_enabled != 0u && px.y >= 200.0 && params.source_count > 0u) {
@@ -92,15 +93,28 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
         var g = i32(round(clamp(out.g, 0.0, 1.0) * 63.0));
         var b = i32(round(clamp(out.b, 0.0, 1.0) * 31.0));
 
+        // IMPORTANT: Only write back when magic actually changes this pixel.
+        // Otherwise we'd quantize the whole scene whenever *any* magic source exists,
+        // which shows up as widespread miscoloring/banding in darker areas.
+        var changed = false;
+
         let count = params.source_count;
         for (var i = 0u; i < count; i = i + 1u) {
+            let prev = vec3<i32>(r, g, b);
             let rgb = apply_magic_one(r, g, b, sources[i], px);
+            if (rgb.x != prev.x || rgb.y != prev.y || rgb.z != prev.z) {
+                changed = true;
+            }
             r = rgb.x;
             g = rgb.y;
             b = rgb.z;
         }
 
-        out = vec4<f32>(f32(r) / 31.0, f32(g) / 63.0, f32(b) / 31.0, out.a);
+        if (changed) {
+            out = vec4<f32>(f32(r) / 31.0, f32(g) / 63.0, f32(b) / 31.0, out.a);
+        } else {
+            out = base;
+        }
     }
 
     // Gamma correction (applied even when magic disabled).

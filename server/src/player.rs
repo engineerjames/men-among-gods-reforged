@@ -589,21 +589,26 @@ pub fn plr_map_set(cn: usize) {
         let wears_481 = State::with(|s| s.char_wears_item(cn, 481));
 
         if is_nomagic && !wears_466 && !wears_481 {
+            // Match original behavior: only apply/remove spells and log once
+            // when entering a no-magic tile (i.e., on flag transition).
+            let mut became_nomagic = false;
             Repository::with_characters_mut(|characters| {
                 if (characters[cn].flags & CharacterFlags::NoMagic.bits()) == 0 {
                     characters[cn].flags |= CharacterFlags::NoMagic.bits();
+                    became_nomagic = true;
                 }
             });
 
-            // remove all spells and notify
-            driver::remove_spells(cn);
-            State::with(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Red,
-                    "You feel your magic fail.\n",
-                );
-            });
+            if became_nomagic {
+                driver::remove_spells(cn);
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Red,
+                        "You feel your magic fail.\n",
+                    );
+                });
+            }
         } else {
             let mut was_nomagic = false;
             Repository::with_characters_mut(|characters| {

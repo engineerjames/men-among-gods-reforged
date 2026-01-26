@@ -8,9 +8,11 @@ use crate::repository::Repository;
 use crate::state::State;
 use crate::{chlog, driver, player, populate};
 use core::constants::{
-    CharacterFlags, ItemFlags, DX_RIGHT, KIN_HARAKIM, KIN_MALE, KIN_MERCENARY, KIN_SEYAN_DU,
-    KIN_SORCERER, KIN_TEMPLAR, KIN_WARRIOR, MAXITEM, MAXSKILL, MF_NOEXPIRE, NT_HITME, SERVER_MAPX,
-    SERVER_MAPY, SK_LOCK, SK_RECALL, SK_RESIST, TICKS, USE_ACTIVE, USE_EMPTY, WN_RHAND,
+    CharacterFlags, ItemFlags, AT_AGIL, AT_INT, AT_STREN, AT_WILL, DX_RIGHT, KIN_HARAKIM, KIN_MALE,
+    KIN_MERCENARY, KIN_SEYAN_DU, KIN_SORCERER, KIN_TEMPLAR, KIN_WARRIOR, MAXITEM, MAXSKILL,
+    MAXTITEM, MF_NOEXPIRE, NT_HITME, SERVER_MAPX, SERVER_MAPY, SK_BLESS, SK_CURSE, SK_ENHANCE,
+    SK_LIGHT, SK_LOCK, SK_MSHIELD, SK_PROTECT, SK_RECALL, SK_RESIST, SK_STUN, TICKS, USE_ACTIVE,
+    USE_EMPTY, WN_RHAND,
 };
 use core::string_operations::c_string_to_str;
 use core::types::FontColor;
@@ -174,7 +176,7 @@ pub fn use_door(cn: usize, item_idx: usize) -> i32 {
                                     state.do_character_log(
                                         cn,
                                         core::types::FontColor::Blue,
-                                        "You failed to pick the lock.",
+                                        "You failed to pick the lock.\n",
                                     );
                                 });
                             }
@@ -189,7 +191,7 @@ pub fn use_door(cn: usize, item_idx: usize) -> i32 {
                         state.do_character_log(
                             cn,
                             core::types::FontColor::Blue,
-                            "It's locked and you don't have the right key.",
+                            "It's locked and you don't have the right key.\n",
                         );
                     });
                     return 0;
@@ -256,11 +258,6 @@ pub fn use_door(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_create_item(cn: usize, item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::MAXTITEM;
-
     if cn == 0 {
         return 0;
     }
@@ -289,7 +286,7 @@ pub fn use_create_item(cn: usize, item_idx: usize) -> i32 {
                     cn,
                     core::types::FontColor::Blue,
                     &format!(
-                        "Your backpack is full, so you can't take the {}.",
+                        "Your backpack is full, so you can't take the {}.\n",
                         c_string_to_str(&item_ref)
                     ),
                 );
@@ -310,7 +307,7 @@ pub fn use_create_item(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                &format!("You got a {}.", c_string_to_str(&item_ref)),
+                &format!("You got a {}.\n", c_string_to_str(&item_ref)),
             );
         });
 
@@ -332,7 +329,7 @@ pub fn use_create_item(cn: usize, item_idx: usize) -> i32 {
                             cn,
                             core::types::FontColor::Blue,
                             &format!(
-                                "You feel yourself form a magical connection with the {}.",
+                                "You feel yourself form a magical connection with the {}.\n",
                                 c_string_to_str(&item.reference)
                             ),
                         );
@@ -378,9 +375,6 @@ pub fn use_create_item(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_create_gold(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-
     if cn == 0 {
         return 0;
     }
@@ -403,7 +397,7 @@ pub fn use_create_gold(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                &format!("You got a {}G.", gold_amount),
+                &format!("You got a {}G.\n", gold_amount),
             );
         });
 
@@ -424,11 +418,6 @@ pub fn use_create_gold(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_create_item2(cn: usize, item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::{MAXTITEM, USE_EMPTY};
-
     if cn == 0 {
         return 0;
     }
@@ -475,7 +464,10 @@ pub fn use_create_item2(cn: usize, item_idx: usize) -> i32 {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Blue,
-                    &format!("Your backpack is full, so you can't take the {}.", item_ref),
+                    &format!(
+                        "Your backpack is full, so you can't take the {}.\n",
+                        item_ref
+                    ),
                 );
             });
         });
@@ -510,12 +502,6 @@ pub fn use_create_item2(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_create_item3(cn: usize, item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::{MAXTITEM, USE_EMPTY};
-    use rand::Rng;
-
     if cn == 0 {
         return 0;
     }
@@ -573,7 +559,7 @@ pub fn use_create_item3(cn: usize, item_idx: usize) -> i32 {
         Some(id) => id,
         None => {
             State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Green, "It's empty...");
+                state.do_character_log(cn, core::types::FontColor::Green, "It's empty...\n");
             });
             return 1;
         }
@@ -584,7 +570,7 @@ pub fn use_create_item3(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Blue,
-                "Your backpack is full, so you can't take anything.",
+                "Your backpack is full, so you can't take anything.\n",
             );
         });
         Repository::with_items_mut(|items| {
@@ -599,7 +585,7 @@ pub fn use_create_item3(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                &format!("You got a {}.", item_ref),
+                &format!("You got a {}.\n", item_ref),
             );
         });
     });
@@ -608,11 +594,6 @@ pub fn use_create_item3(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_mix_potion(cn: usize, item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::{ItemFlags, USE_EMPTY};
-
     if cn == 0 {
         return 0;
     }
@@ -636,7 +617,7 @@ pub fn use_mix_potion(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Blue,
-                "Too difficult to do on the ground.",
+                "Too difficult to do on the ground.\n",
             );
         });
         return 0;
@@ -716,7 +697,7 @@ pub fn use_mix_potion(cn: usize, item_idx: usize) -> i32 {
         Some(t) => t,
         None => {
             State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Blue, "Sorry?");
+                state.do_character_log(cn, core::types::FontColor::Blue, "Sorry?\n");
             });
             return 0;
         }
@@ -744,11 +725,6 @@ pub fn use_mix_potion(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_chain(cn: usize, item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::{ItemFlags, USE_EMPTY};
-
     if cn == 0 {
         return 0;
     }
@@ -760,7 +736,7 @@ pub fn use_chain(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Blue,
-                "What do you want to do with it?",
+                "What do you want to do with it?\n",
             );
         });
         return 0;
@@ -772,7 +748,7 @@ pub fn use_chain(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Blue,
-                "Too difficult to do on the ground.",
+                "Too difficult to do on the ground.\n",
             );
         });
         return 0;
@@ -781,7 +757,7 @@ pub fn use_chain(cn: usize, item_idx: usize) -> i32 {
     let citem_temp = Repository::with_items(|items| items[citem].temp);
     if citem_temp != 206 {
         State::with(|state| {
-            state.do_character_log(cn, core::types::FontColor::Blue, "Sorry?");
+            state.do_character_log(cn, core::types::FontColor::Blue, "Sorry?\n");
         });
         return 0;
     }
@@ -791,7 +767,7 @@ pub fn use_chain(cn: usize, item_idx: usize) -> i32 {
 
     if current_temp as u32 >= max_data {
         State::with(|state| {
-            state.do_character_log(cn, core::types::FontColor::Blue, "It won't fit anymore.");
+            state.do_character_log(cn, core::types::FontColor::Blue, "It won't fit anymore.\n");
         });
         return 0;
     }
@@ -818,12 +794,8 @@ pub fn use_chain(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn stone_sword(cn: usize, item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::MAXTITEM;
-
     if cn == 0 {
+        log::error!("stone_sword called with cn=0");
         return 0;
     }
 
@@ -831,24 +803,28 @@ pub fn stone_sword(cn: usize, item_idx: usize) -> i32 {
         Repository::with_items(|items| (items[item_idx].active, items[item_idx].data[0] as usize));
 
     if active != 0 {
+        log::error!("stone_sword called on active item");
         return 0;
     }
 
     if template_id <= 0 || template_id >= MAXTITEM {
+        log::error!(
+            "stone_sword called with invalid template_id: {}",
+            template_id
+        );
         return 0;
     }
 
     // Check if character has enough strength (100+)
-    let strength = Repository::with_characters(|characters| {
-        characters[cn].attrib[0][5] // AT_STREN = 0
-    });
+    let strength =
+        Repository::with_characters(|characters| characters[cn].attrib[AT_STREN as usize][5]);
 
     if strength < 100 {
         State::with(|state| {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Blue,
-                "You're not strong enough.",
+                "You're not strong enough.\n",
             );
         });
         return 0;
@@ -867,7 +843,7 @@ pub fn stone_sword(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                &format!("You got a {}.", item_ref),
+                &format!("You got a {}.\n", item_ref),
             );
         });
     });
@@ -1047,8 +1023,6 @@ pub fn finish_laby_teleport(cn: usize, nr: usize, exp: usize) -> i32 {
 }
 
 pub fn is_nolab_item(item_idx: usize) -> bool {
-    use crate::repository::Repository;
-
     if !core::types::Item::is_sane_item(item_idx) {
         return false;
     }
@@ -1475,9 +1449,6 @@ pub fn use_ladder(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_bag(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-
     // Get the character ID stored in the bag's data[0]
     let co = Repository::with_items(|items| items[item_idx].data[0] as usize);
 
@@ -1672,6 +1643,7 @@ pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_scroll2(cn: usize, item_idx: usize) -> i32 {
+    // TODO: Move these to core library
     const AT_NAME: [&str; 5] = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
 
     // Get the attribute number from data[0]
@@ -3624,11 +3596,6 @@ pub fn boost_char(cn: usize, divi: usize) -> i32 {
 }
 
 pub fn spawn_penta_enemy(item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::populate::pop_create_char;
-    use crate::repository::Repository;
-    use core::constants::{CharacterFlags, USE_EMPTY};
-
     // Determine enemy type from data[9]
     let data9 = Repository::with_items(|items| items[item_idx].data[9]);
 
@@ -3656,15 +3623,15 @@ pub fn spawn_penta_enemy(item_idx: usize) -> i32 {
         if tmp > 3 {
             tmp = 3;
         }
-        pop_create_char((1094 + tmp) as usize, false)
+        populate::pop_create_char((1094 + tmp) as usize, false)
     } else if tmp > 17 {
         tmp -= 17;
         if tmp > 4 {
             tmp = 4;
         }
-        pop_create_char((538 + tmp) as usize, false)
+        populate::pop_create_char((538 + tmp) as usize, false)
     } else {
-        pop_create_char((364 + tmp) as usize, false)
+        populate::pop_create_char((364 + tmp) as usize, false)
     };
 
     let cn = match spawned {
@@ -4061,7 +4028,7 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
     );
 
     // Check if quest solved
-    let penta_needed = 5; // TODO: Calculate based on active players
+    let penta_needed = State::with(|state| state.penta_needed);
     if act >= penta_needed {
         solved_pentagram(cn, item_idx);
         return 0;
@@ -4493,11 +4460,6 @@ pub fn use_kill_undead(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn teleport3(cn: usize, item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::{CharacterFlags, ItemFlags, SK_RECALL, USE_EMPTY};
-
     if cn == 0 {
         return 1;
     }
@@ -4703,11 +4665,6 @@ pub fn teleport3(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::{ItemFlags, MAXITEM, USE_ACTIVE, USE_EMPTY, WN_RHAND};
-
     if cn == 0 {
         return 0;
     }
@@ -4871,8 +4828,6 @@ pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_seyan_door(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-
     if cn != 0 {
         // Check if character is Seyan'Du (KIN_SEYAN_DU = 0x00000008)
         let is_seyan =
@@ -4902,7 +4857,7 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
         State::with(|state| {
             state.do_character_log(
                 cn,
-                core::types::FontColor::Yellow,
+                core::types::FontColor::Blue,
                 "You're already Seyan'Du, aren't you?\n",
             );
         });
@@ -4910,7 +4865,7 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
         State::with(|state| {
             state.do_character_log(
                 cn,
-                core::types::FontColor::Yellow,
+                core::types::FontColor::Blue,
                 &format!("The Seyan'Du welcome you among their ranks, {}!\n", cn_name),
             );
         });
@@ -4923,10 +4878,13 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
         }
 
         // Give Seyan'Du sword (template 682)
-        let in2 = God::create_item(682);
-        God::give_character_item(cn, in2.unwrap());
+        let in2 = match God::create_item(682) {
+            Some(id) => id,
+            None => return 0,
+        };
+        God::give_character_item(cn, in2);
         Repository::with_items_mut(|items| {
-            items[in2.unwrap()].data[0] = cn as u32;
+            items[in2].data[0] = cn as u32;
         });
     }
 
@@ -4947,7 +4905,7 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
             State::with(|state| {
                 state.do_character_log(
                     cn,
-                    core::types::FontColor::Yellow,
+                    core::types::FontColor::Green,
                     &format!("Your {} vanished.\n", c_string_to_str(&item_ref)),
                 );
             });
@@ -4974,7 +4932,7 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
                 State::with(|state| {
                     state.do_character_log(
                         cn,
-                        core::types::FontColor::Yellow,
+                        core::types::FontColor::Green,
                         &format!("Your {} vanished.\n", c_string_to_str(&item_ref)),
                     );
                 });
@@ -5002,7 +4960,7 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
                 State::with(|state| {
                     state.do_character_log(
                         cn,
-                        core::types::FontColor::Yellow,
+                        core::types::FontColor::Green,
                         &format!("Your {} vanished.\n", c_string_to_str(&item_ref)),
                     );
                 });
@@ -5029,12 +4987,6 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn spell_scroll(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::{
-        SK_BLESS, SK_CURSE, SK_ENHANCE, SK_LIGHT, SK_MSHIELD, SK_PROTECT, SK_STUN,
-    };
-
     // Read scroll data
     let (spell, power, charges) = Repository::with_items(|items| {
         (
@@ -5140,9 +5092,6 @@ pub fn spell_scroll(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_blook_pentagram(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-
     if cn == 0 {
         return 0;
     }
@@ -5165,11 +5114,6 @@ pub fn use_blook_pentagram(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_create_npc(cn: usize, item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::populate::pop_create_char;
-    use crate::repository::Repository;
-    use core::constants::USE_EMPTY;
-
     // Check if already active
     let active = Repository::with_items(|items| items[item_idx].active);
     if active != 0 {
@@ -5182,7 +5126,7 @@ pub fn use_create_npc(cn: usize, item_idx: usize) -> i32 {
 
     // Create NPC from template
     let template = Repository::with_items(|items| items[item_idx].data[0]);
-    let co = match pop_create_char(template as usize, false) {
+    let co = match populate::pop_create_char(template as usize, false) {
         Some(co) => co,
         None => return 0,
     };
@@ -5207,9 +5151,6 @@ pub fn use_create_npc(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_rotate(cn: usize, item_idx: usize) -> i32 {
-    use crate::repository::Repository;
-    use core::constants::ItemFlags;
-
     if cn == 0 {
         return 0;
     }
@@ -5228,11 +5169,6 @@ pub fn use_rotate(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_lab8_key(cn: usize, item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::USE_EMPTY;
-
     // data[0] = matching key part
     // data[1] = resulting key part
     // data[2] = (optional) other matching key part
@@ -5405,10 +5341,6 @@ pub fn use_lab8_shrine(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_lab8_moneyshrine(cn: usize, item_idx: usize) -> i32 {
-    use crate::god::God;
-    use crate::repository::Repository;
-    use crate::state::State;
-
     // data[0] = minimum offering accepted
     // data[1] = teleport coordinate x
     // data[2] = teleport coordinate y
@@ -5494,13 +5426,9 @@ pub fn use_lab8_moneyshrine(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn change_to_archtemplar(cn: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-
-    const KIN_MALE: i32 = 0x00000001;
-
     // Check agility requirement
-    let agility = Repository::with_characters(|characters| characters[cn].attrib[0][0]);
+    let agility =
+        Repository::with_characters(|characters| characters[cn].attrib[AT_AGIL as usize][0]);
     if agility < 90 {
         State::with(|state| {
             state.do_character_log(
@@ -5513,7 +5441,8 @@ pub fn change_to_archtemplar(cn: usize) {
     }
 
     // Check strength requirement
-    let strength = Repository::with_characters(|characters| characters[cn].attrib[1][0]);
+    let strength =
+        Repository::with_characters(|characters| characters[cn].attrib[AT_STREN as usize][0]);
     if strength < 90 {
         State::with(|state| {
             state.do_character_log(
@@ -5528,7 +5457,7 @@ pub fn change_to_archtemplar(cn: usize) {
     // Change race based on gender
     let (is_male, name) = Repository::with_characters(|characters| {
         (
-            (characters[cn].kindred & KIN_MALE) != 0,
+            (characters[cn].kindred as u32 & KIN_MALE) != 0,
             characters[cn].get_name().to_string(),
         )
     });
@@ -5552,7 +5481,8 @@ pub fn change_to_archharakim(cn: usize) {
     use crate::state::State;
 
     // Check willpower requirement
-    let willpower = Repository::with_characters(|characters| characters[cn].attrib[3][0]);
+    let willpower =
+        Repository::with_characters(|characters| characters[cn].attrib[AT_WILL as usize][0]);
     if willpower < 90 {
         State::with(|state| {
             state.do_character_log(
@@ -5565,7 +5495,8 @@ pub fn change_to_archharakim(cn: usize) {
     }
 
     // Check intuition requirement
-    let intuition = Repository::with_characters(|characters| characters[cn].attrib[4][0]);
+    let intuition =
+        Repository::with_characters(|characters| characters[cn].attrib[AT_INT as usize][0]);
     if intuition < 90 {
         State::with(|state| {
             state.do_character_log(
@@ -5578,10 +5509,9 @@ pub fn change_to_archharakim(cn: usize) {
     }
 
     // Change race based on gender
-    const KIN_MALE: i32 = 0x00000001;
     let (is_male, name) = Repository::with_characters(|characters| {
         (
-            (characters[cn].kindred & KIN_MALE) != 0,
+            (characters[cn].kindred as u32 & KIN_MALE) != 0,
             characters[cn].get_name().to_string(),
         )
     });
@@ -5602,13 +5532,9 @@ pub fn change_to_archharakim(cn: usize) {
 }
 
 pub fn change_to_warrior(cn: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-
-    const KIN_MALE: i32 = 0x00000001;
-
     // Check agility requirement
-    let agility = Repository::with_characters(|characters| characters[cn].attrib[0][0]);
+    let agility =
+        Repository::with_characters(|characters| characters[cn].attrib[AT_AGIL as usize][0]);
     if agility < 60 {
         State::with(|state| {
             state.do_character_log(
@@ -5621,7 +5547,8 @@ pub fn change_to_warrior(cn: usize) {
     }
 
     // Check strength requirement
-    let strength = Repository::with_characters(|characters| characters[cn].attrib[1][0]);
+    let strength =
+        Repository::with_characters(|characters| characters[cn].attrib[AT_STREN as usize][0]);
     if strength < 60 {
         State::with(|state| {
             state.do_character_log(
@@ -5636,7 +5563,7 @@ pub fn change_to_warrior(cn: usize) {
     // Change race based on gender
     let (is_male, name) = Repository::with_characters(|characters| {
         (
-            (characters[cn].kindred & KIN_MALE) != 0,
+            (characters[cn].kindred as u32 & KIN_MALE) != 0,
             characters[cn].get_name().to_string(),
         )
     });
@@ -5657,13 +5584,9 @@ pub fn change_to_warrior(cn: usize) {
 }
 
 pub fn change_to_sorcerer(cn: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-
-    const KIN_MALE: i32 = 0x00000001;
-
     // Check willpower requirement
-    let willpower = Repository::with_characters(|characters| characters[cn].attrib[3][0]);
+    let willpower =
+        Repository::with_characters(|characters| characters[cn].attrib[AT_WILL as usize][0]);
     if willpower < 60 {
         State::with(|state| {
             state.do_character_log(
@@ -5676,7 +5599,8 @@ pub fn change_to_sorcerer(cn: usize) {
     }
 
     // Check intuition requirement
-    let intuition = Repository::with_characters(|characters| characters[cn].attrib[4][0]);
+    let intuition =
+        Repository::with_characters(|characters| characters[cn].attrib[AT_INT as usize][0]);
     if intuition < 60 {
         State::with(|state| {
             state.do_character_log(
@@ -5691,7 +5615,7 @@ pub fn change_to_sorcerer(cn: usize) {
     // Change race based on gender
     let (is_male, name) = Repository::with_characters(|characters| {
         (
-            (characters[cn].kindred & KIN_MALE) != 0,
+            (characters[cn].kindred as u32 & KIN_MALE) != 0,
             characters[cn].get_name().to_string(),
         )
     });
@@ -5717,10 +5641,6 @@ pub fn shrine_of_change(cn: usize, _item_idx: usize) -> i32 {
     // Greater Healing Potion (127/274) -> Warrior
     // Greater Mana Potion (131/273) -> Sorcerer
 
-    const KIN_TEMPLAR: i32 = 0x00000004;
-    const KIN_HARAKIM: i32 = 0x00000002;
-    const KIN_MERCENARY: i32 = 0x00000010;
-
     if cn == 0 {
         return 0;
     }
@@ -5745,9 +5665,9 @@ pub fn shrine_of_change(cn: usize, _item_idx: usize) -> i32 {
 
     // Potion of life -> Archtemplar/Archharakim
     if citem_temp == 148 {
-        if (kindred & KIN_TEMPLAR) != 0 {
+        if (kindred as u32 & KIN_TEMPLAR) != 0 {
             change_to_archtemplar(cn);
-        } else if (kindred & KIN_HARAKIM) != 0 {
+        } else if (kindred as u32 & KIN_HARAKIM) != 0 {
             change_to_archharakim(cn);
         } else {
             State::with(|state| {
@@ -5763,7 +5683,7 @@ pub fn shrine_of_change(cn: usize, _item_idx: usize) -> i32 {
 
     // Greater healing potion -> Warrior
     if citem_temp == 127 || citem_temp == 274 {
-        if (kindred & KIN_MERCENARY) != 0 {
+        if (kindred as u32 & KIN_MERCENARY) != 0 {
             change_to_warrior(cn);
         } else {
             State::with(|state| {
@@ -5779,7 +5699,7 @@ pub fn shrine_of_change(cn: usize, _item_idx: usize) -> i32 {
 
     // Greater mana potion -> Sorcerer
     if citem_temp == 131 || citem_temp == 273 {
-        if (kindred & KIN_MERCENARY) != 0 {
+        if (kindred as u32 & KIN_MERCENARY) != 0 {
             change_to_sorcerer(cn);
         } else {
             State::with(|state| {
@@ -6392,7 +6312,7 @@ pub fn use_soulstone(cn: usize, item_idx: usize) -> i32 {
         }
         _ => {
             State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Blue, "Nothing happened.");
+                state.do_character_log(cn, core::types::FontColor::Blue, "Nothing happened.\n");
             });
             0
         }
@@ -7969,7 +7889,11 @@ pub fn start_trap(cn: usize, item_idx: usize) {
         0 => {
             log::info!("Character {} stepped on Arrow Trap", cn);
             State::with_mut(|state| {
-                state.do_character_log(cn, core::types::FontColor::Red, "You feel a sudden pain!");
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    "You feel a sudden pain!\n",
+                );
                 state.do_hurt(0, cn, 250, 0);
             });
         }
@@ -8580,7 +8504,7 @@ pub fn step_teleport(cn: usize, item_idx: usize) -> i32 {
 
 pub fn step_firefloor(cn: usize, item_idx: usize) -> i32 {
     State::with(|state| {
-        state.do_character_log(cn, core::types::FontColor::Red, "Outch!");
+        state.do_character_log(cn, core::types::FontColor::Red, "Outch!\n");
     });
 
     let in2 = match God::create_item(1) {

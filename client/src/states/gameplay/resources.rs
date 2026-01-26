@@ -120,6 +120,6 @@ pub(crate) struct GameplayCursorTypeState {
 // Equipment slot ordering used by the original client UI.
 // Matches engine.c's `wntab[]` for drawing worn items.
 pub(crate) const EQUIP_WNTAB: [usize; 12] = [
-    WN_HEAD, WN_CLOAK, WN_BODY, WN_ARMS, WN_NECK, WN_BELT, WN_RHAND, WN_LHAND, WN_RRING, WN_LRING,
+    WN_HEAD, WN_CLOAK, WN_BODY, WN_ARMS, WN_NECK, WN_BELT, WN_RHAND, WN_LHAND, WN_LRING, WN_RRING,
     WN_LEGS, WN_FEET,
 ];
