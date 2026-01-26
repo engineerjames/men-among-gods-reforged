@@ -13,6 +13,9 @@ use mag_core::constants::{TILEX, TILEY, XPOS, YPOS};
 const Z_WORLD_STEP: f32 = 0.01;
 const Z_CHAR_BASE: f32 = 100.2;
 const Z_NAMEPLATE_BIAS: f32 = 0.02;
+const Z_NAMEPLATE_SHADOW_BIAS: f32 = 0.019;
+const NAMEPLATE_SHADOW_OFFSET_X: i32 = 1;
+const NAMEPLATE_SHADOW_OFFSET_Y: i32 = 1;
 
 // dd_gputtext uses YPOS-64.
 const NAMEPLATE_Y_SHIFT: i32 = 64;
@@ -20,6 +23,7 @@ const NAMEPLATE_Y_SHIFT: i32 = 64;
 #[derive(Component)]
 pub(crate) struct GameplayNameplate {
     pub index: usize,
+    pub is_shadow: bool,
 }
 
 #[inline]
@@ -69,28 +73,36 @@ fn player_display_name(player_state: &PlayerState) -> String {
 /// Spawn hidden nameplate entities for all map tiles.
 pub(crate) fn spawn_gameplay_nameplates(commands: &mut Commands, world_root: Entity) {
     for index in 0..(TILEX * TILEY) {
-        let id = commands
-            .spawn((
-                GameplayRenderEntity,
-                GameplayNameplate { index },
-                // Draw nameplates as an overlay on the on-screen camera to avoid postprocess
-                // distortion/jitter from render-to-texture.
-                RenderLayers::layer(UI_LAYER),
-                BitmapText {
-                    text: String::new(),
-                    color: Color::WHITE,
-                    // Yellow is 701 => index 1.
-                    font: 1,
-                },
-                Transform::default(),
-                GlobalTransform::default(),
-                Visibility::Hidden,
-                InheritedVisibility::default(),
-                ViewVisibility::default(),
-            ))
-            .id();
+        for is_shadow in [true, false] {
+            let color = if is_shadow {
+                Color::BLACK
+            } else {
+                Color::WHITE
+            };
 
-        commands.entity(world_root).add_child(id);
+            let id = commands
+                .spawn((
+                    GameplayRenderEntity,
+                    GameplayNameplate { index, is_shadow },
+                    // Draw nameplates as an overlay on the on-screen camera to avoid postprocess
+                    // distortion/jitter from render-to-texture.
+                    RenderLayers::layer(UI_LAYER),
+                    BitmapText {
+                        text: String::new(),
+                        color,
+                        // Yellow is 701 => index 1.
+                        font: 1,
+                    },
+                    Transform::default(),
+                    GlobalTransform::default(),
+                    Visibility::Hidden,
+                    InheritedVisibility::default(),
+                    ViewVisibility::default(),
+                ))
+                .id();
+
+            commands.entity(world_root).add_child(id);
+        }
     }
 }
 
@@ -176,12 +188,26 @@ pub(crate) fn run_gameplay_nameplates(
             dd_gputtext_screen_pos(xpos, ypos, text.len(), tile.obj_xoff, tile.obj_yoff);
 
         let draw_order = ((TILEY - 1 - (view_y as usize)) * TILEX + (view_x as usize)) as f32;
-        let z = Z_CHAR_BASE + draw_order * Z_WORLD_STEP + Z_NAMEPLATE_BIAS;
+        let z_bias = if plate.is_shadow {
+            Z_NAMEPLATE_SHADOW_BIAS
+        } else {
+            Z_NAMEPLATE_BIAS
+        };
+        let z = Z_CHAR_BASE + draw_order * Z_WORLD_STEP + z_bias;
 
         text2d.text = text;
         text2d.font = 1;
-        text2d.color = Color::WHITE;
-        transform.translation = screen_to_world(sx_i as f32, sy_i as f32, z);
+        if plate.is_shadow {
+            text2d.color = Color::BLACK;
+            transform.translation = screen_to_world(
+                (sx_i + NAMEPLATE_SHADOW_OFFSET_X) as f32,
+                (sy_i + NAMEPLATE_SHADOW_OFFSET_Y) as f32,
+                z,
+            );
+        } else {
+            text2d.color = Color::WHITE;
+            transform.translation = screen_to_world(sx_i as f32, sy_i as f32, z);
+        }
         *visibility = Visibility::Visible;
     }
 
