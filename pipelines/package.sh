@@ -58,8 +58,8 @@ if [[ "$PLATFORM" == "macos" ]]; then
   # The client expects assets next to the executable (current_exe()/assets).
   cp -R client/assets/. "${MACOS_DIR}/assets/"
 
-  cp "target/release/client" "${MACOS_DIR}/client"
-  chmod +x "${MACOS_DIR}/client"
+  cp "target/release/men-among-gods-client" "${MACOS_DIR}/men-among-gods-client"
+  chmod +x "${MACOS_DIR}/men-among-gods-client"
 
   # Bundle a proper macOS app icon.
   ICON_SRC="client/assets/gfx/mag_logo.png"
@@ -104,7 +104,7 @@ if [[ "$PLATFORM" == "macos" ]]; then
   <key>CFBundleIdentifier</key>
   <string>com.menamonggods.reforged.client</string>
   <key>CFBundleExecutable</key>
-  <string>client</string>
+  <string>men-among-gods-client</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
@@ -121,7 +121,7 @@ EOF
 else
   mkdir -p "dist/${CLIENT_DIR}/assets"
   cp -R client/assets/. "dist/${CLIENT_DIR}/assets/"
-  cp "target/release/client" "dist/${CLIENT_DIR}/client"
+  cp "target/release/men-among-gods-client" "dist/${CLIENT_DIR}/men-among-gods-client"
 fi
 
 (cd dist && zip -r "${SERVER_DIR}.zip" "${SERVER_DIR}")
