@@ -20,7 +20,7 @@ This will build both the client and server in release mode. The binaries will th
 
 ```bash
 # Only the server exists currently
-cargo run --release --bin <client|server>
+cargo run --release --bin <men-among-gods-client|server>
 ```
 
 ## Profiling with Samply
