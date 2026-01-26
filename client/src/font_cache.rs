@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use crate::gfx_cache::GraphicsCache;
 
 pub const BITMAP_GLYPH_W: f32 = 6.0;
-pub const BITMAP_GLYPH_H: f32 = 9.0;
+pub const BITMAP_GLYPH_H: f32 = 10.0;
 pub const BITMAP_GLYPH_COUNT: usize = 96; // ASCII 32..=127 inclusive
 pub const BITMAP_GLYPH_Y_OFFSET: f32 = 1.0; // dd.c uses +576 (one row) before glyph pixels
 pub const BITMAP_FONT_FIRST_SPRITE_ID: usize = 700;
