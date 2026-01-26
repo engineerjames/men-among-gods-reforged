@@ -499,7 +499,7 @@ fn set_macos_dock_icon_startup(
 
 #[cfg(not(target_os = "macos"))]
 fn set_window_icon_once(
-    winit_windows: NonSend<WinitWindows>,
+    winit_windows: Option<NonSend<WinitWindows>>,
     primary_window: Query<Entity, With<PrimaryWindow>>,
     assets_dir: Res<ClientAssetsDir>,
     mut done: Local<bool>,
@@ -509,7 +509,14 @@ fn set_window_icon_once(
         return;
     }
 
-    let winit_windows = &*winit_windows;
+    let Some(winit_windows) = winit_windows.as_ref() else {
+        // On some platforms / runners this NonSend resource may not exist yet on the first few
+        // updates. Avoid a hard panic; we'll try again next frame.
+        *attempts = attempts.saturating_add(1);
+        return;
+    };
+
+    let winit_windows = &**winit_windows;
     let Some(window_entity) = primary_window.iter().next() else {
         log::warn!("Primary window entity not available yet");
         *attempts = attempts.saturating_add(1);
