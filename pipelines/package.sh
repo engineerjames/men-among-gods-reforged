@@ -40,6 +40,8 @@ mkdir -p "dist/${SERVER_DIR}/.dat"
 
 cp -R server/assets/.dat/. "dist/${SERVER_DIR}/.dat/"
 cp "target/release/server" "dist/${SERVER_DIR}/server"
+cp "target/release/map_viewer" "dist/${SERVER_DIR}/map_viewer"
+cp "target/release/template_viewer" "dist/${SERVER_DIR}/template_viewer"
 
 if [[ "$PLATFORM" == "macos" ]]; then
   # If you double-click a raw executable on macOS, Finder launches it via Terminal.
