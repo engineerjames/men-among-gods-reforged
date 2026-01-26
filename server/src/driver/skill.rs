@@ -3758,11 +3758,11 @@ pub fn skill_ghost(cn: usize) {
         if rank < 6 {
             // GC not yet Master Sergeant
             State::with(|state| {
-                state.do_sayx(cc, &format!("I shall defend you and obey your commands, {}. I will WAIT, FOLLOW , be QUIET or ATTACK for you and tell you WHAT TIME. You may also command me to TRANSFER my experience to you, though I'd rather you didn't.", cn_name))
+                state.do_sayx(cc, &format!("I shall defend you and obey your commands, {}. I will WAIT, FOLLOW , be QUIET or ATTACK for you and tell you WHAT TIME. You may also command me to TRANSFER my experience to you, though I'd rather you didn't.\n", cn_name))
             });
         } else {
             State::with(|state| {
-                state.do_sayx(cc, &format!("Thank you for creating me, {}!", cn_name))
+                state.do_sayx(cc, &format!("Thank you for creating me, {}!\n", cn_name))
             });
         }
     }
