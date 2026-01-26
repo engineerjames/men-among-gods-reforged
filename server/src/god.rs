@@ -4335,7 +4335,7 @@ impl God {
                 let old_depot = character.depot;
 
                 // Replace character with template
-                *character = template.clone();
+                *character = *template;
 
                 // Restore preserved fields
                 character.temp = temp as u16;
