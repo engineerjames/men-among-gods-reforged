@@ -107,6 +107,26 @@ fn custom_layer(app: &mut App) -> Option<BoxedLayer> {
     )
 }
 
+fn resolve_log_filter() -> String {
+    // Respect an explicit user override.
+    if let Ok(filter) = std::env::var("RUST_LOG") {
+        if !filter.trim().is_empty() {
+            return filter;
+        }
+    }
+
+    // The Vulkan loader can emit very loud "ERROR" messages on Windows when there are stale
+    // (uninstalled/moved) implicit layer registrations. These are often non-fatal and can be
+    // confusing to users.
+    //
+    // If you need to debug Vulkan instance creation, set `RUST_LOG` explicitly.
+    if cfg!(target_os = "windows") {
+        "info,wgpu_hal::vulkan::instance=off".to_string()
+    } else {
+        "info".to_string()
+    }
+}
+
 fn resolve_assets_base_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("MAG_ASSETS_DIR") {
         if !dir.is_empty() {
@@ -135,6 +155,7 @@ fn main() {
     let sfx_dir = assets_dir.join("sfx");
 
     let mut app = App::new();
+    let log_filter = resolve_log_filter();
     app
         // Setup resources
         .insert_resource(GraphicsCache::new(gfx_zip.to_string_lossy().as_ref()))
@@ -159,6 +180,7 @@ fn main() {
                 .set(ImagePlugin::default_nearest())
                 .set(LogPlugin {
                     custom_layer,
+                    filter: log_filter,
                     ..default()
                 })
                 .set(WindowPlugin {

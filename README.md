@@ -37,6 +37,17 @@ This will generate a flamegraph that you can use to analyze the performance of t
 # Client
 The client uses [Bevy](https://bevyengine.org/) for its rendering and input handling. It is still in ALPHA stage and is not yet fully functional. Many features from the original Mercenaries of Astonia (v2) game are missing, and there are likely to be bugs. However, you should be able to connect to a server and explore the world to some extent.
 
+## Windows Vulkan Loader Messages
+On some Windows setups you may see Vulkan loader messages like:
+
+`Failed to open JSON file ... VkLayer_*.json`
+
+This is usually caused by stale Vulkan layer registrations from uninstalled/moved software (e.g. old Vulkan SDKs, overlays). It’s often non-fatal.
+
+- The client suppresses these messages by default on Windows.
+- To see full graphics backend logs, set `RUST_LOG` explicitly.
+- If you want to avoid Vulkan entirely, try running with `WGPU_BACKEND=dx12`.
+
 # Server
 The server is a command-line application that listens for incoming connections from clients. It is still in ALPHA stage and is not yet fully functional. You should be able to connect to it using any Merceneries of Astonia (v2) client, but expect bugs.
 
