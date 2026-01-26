@@ -1,3 +1,5 @@
+[![Rust](https://github.com/engineerjames/men-among-gods-reforged/actions/workflows/rust.yml/badge.svg)](https://github.com/engineerjames/men-among-gods-reforged/actions/workflows/rust.yml)
+
 # men-among-gods-reforged
 Men Among Gods (MoA) client and server written in Rust. Both the client and server should be cross-platform; but have only been tested on macOS and Windows so far.
 
