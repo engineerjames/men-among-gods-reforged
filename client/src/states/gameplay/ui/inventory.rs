@@ -385,8 +385,8 @@ pub(crate) fn run_gameplay_inventory_input(
                 (1, 2) => Some(4),  // belt
                 (0, 3) => Some(8),  // right hand
                 (1, 3) => Some(7),  // left hand
-                (0, 4) => Some(10), // right ring
-                (1, 4) => Some(11), // left ring
+                (0, 4) => Some(10), // left ring (WN_LRING)
+                (1, 4) => Some(11), // right ring (WN_RRING)
                 (0, 5) => Some(5),  // legs
                 (1, 5) => Some(6),  // feet
                 _ => None,
@@ -451,8 +451,8 @@ pub(crate) fn run_gameplay_inventory_input(
             (1, 2) => Some(4),  // belt
             (0, 3) => Some(8),  // right hand
             (1, 3) => Some(7),  // left hand
-            (0, 4) => Some(10), // right ring
-            (1, 4) => Some(11), // left ring
+            (0, 4) => Some(10), // left ring (WN_LRING)
+            (1, 4) => Some(11), // right ring (WN_RRING)
             (0, 5) => Some(5),  // legs
             (1, 5) => Some(6),  // feet
             _ => None,

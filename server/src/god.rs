@@ -73,8 +73,52 @@ impl God {
     /// Find a free item slot in the global item array.
     ///
     /// Returns `Some(index)` when a free slot is found, otherwise `None`.
-    fn get_free_item(items: &[core::types::Item]) -> Option<usize> {
-        (1..core::constants::MAXITEM).find(|&i| items[i].used == core::constants::USE_EMPTY)
+    fn get_free_item(items: &mut [core::types::Item]) -> Option<usize> {
+        for item_id in 1..core::constants::MAXITEM {
+            if items[item_id].used != core::constants::USE_EMPTY {
+                continue;
+            }
+
+            // Safety net: if an item was destroyed but left referenced by a character,
+            // reusing this slot would make the client briefly show it as a different
+            // template before server-side validity checks clear it.
+            let carried = items[item_id].carried as usize;
+            if carried != 0 {
+                if Character::is_sane_character(carried) {
+                    Repository::with_characters_mut(|ch| {
+                        if ch[carried].citem as usize == item_id {
+                            ch[carried].citem = 0;
+                        }
+                        for slot in 0..40 {
+                            if ch[carried].item[slot] as usize == item_id {
+                                ch[carried].item[slot] = 0;
+                            }
+                        }
+                        for slot in 0..20 {
+                            if ch[carried].worn[slot] as usize == item_id {
+                                ch[carried].worn[slot] = 0;
+                            }
+                            if ch[carried].spell[slot] as usize == item_id {
+                                ch[carried].spell[slot] = 0;
+                            }
+                        }
+                        for slot in 0..62 {
+                            if ch[carried].depot[slot] as usize == item_id {
+                                ch[carried].depot[slot] = 0;
+                            }
+                        }
+                        ch[carried].set_do_update_flags();
+                    });
+                }
+
+                items[item_id].carried = 0;
+                items[item_id].x = 0;
+                items[item_id].y = 0;
+            }
+
+            return Some(item_id);
+        }
+        None
     }
 
     // Implementation of god_give_char from svr_god.cpp
@@ -1545,9 +1589,9 @@ impl God {
 
         let (character_name, character_visible) = Repository::with_characters(|ch| {
             (
-                ch[cn].get_name().to_string(),
-                ch[cn].flags & CharacterFlags::Invisible.bits() == 0
-                    && ch[cn].flags & CharacterFlags::GreaterInv.bits() == 0,
+                ch[co].get_name().to_string(),
+                ch[co].flags & CharacterFlags::Invisible.bits() == 0
+                    && ch[co].flags & CharacterFlags::GreaterInv.bits() == 0,
             )
         });
         for goto_fn in goto_functions.iter() {
@@ -1560,9 +1604,24 @@ impl God {
                 if character_visible {
                     EffectManager::fx_add_effect(12, 0, orig_pos.0 as i32, orig_pos.1 as i32, 0);
                 }
-                Self::transfer_char(co, x, y);
+
+                if !Self::transfer_char(co, x, y) {
+                    State::with(|state| {
+                        state.do_character_log(
+                            cn,
+                            core::types::FontColor::Red,
+                            "GOTO failed. Dykstra was right (Elrac will explain this comment if you ask nicely).\n",
+                        );
+                    });
+                    return;
+                }
+
+                let new_pos = Repository::with_characters(|ch| {
+                    let character = &ch[co];
+                    (character.x as i32, character.y as i32)
+                });
                 if character_visible {
-                    EffectManager::fx_add_effect(12, 0, x as i32, y as i32, 0);
+                    EffectManager::fx_add_effect(12, 0, new_pos.0, new_pos.1, 0);
                 }
                 State::with(|state| {
                     state.do_character_log(
@@ -1571,8 +1630,8 @@ impl God {
                         &format!(
                             "{} teleported to ({}, {})\n",
                             if cn == co { "You" } else { &character_name },
-                            x,
-                            y
+                            new_pos.0,
+                            new_pos.1
                         ),
                     );
                 });
@@ -4006,8 +4065,12 @@ impl God {
 
         // Try to drop the item at the donation location
         if !Self::drop_item_fuzzy(item_id, x, y) {
-            // If drop fails, destroy the item
+            // If drop fails, destroy the item. Clear carried field to prevent
+            // stale references (though drop_item_fuzzy should have already done this).
             Repository::with_items_mut(|items| {
+                items[item_id].carried = 0;
+                items[item_id].x = 0;
+                items[item_id].y = 0;
                 items[item_id].used = core::constants::USE_EMPTY;
             });
         }
@@ -4192,9 +4255,17 @@ impl God {
 
     /// Change the race/template of character `co` to `temp`.
     ///
-    /// Applies template defaults and may reconfigure stats and equipment.
+    /// Completely replaces the character with the template, preserving only
+    /// essential account information like name, passwords, gold, and depot.
+    /// This resets all stats, skills, and experience to template defaults.
     pub fn racechange(co: usize, temp: i32) {
         if !Character::is_sane_character(co) {
+            return;
+        }
+
+        // Only allow for players
+        let is_player = Repository::with_characters(|characters| characters[co].is_player());
+        if !is_player {
             return;
         }
 
@@ -4225,24 +4296,121 @@ impl God {
                 return;
             }
 
+            // First destroy all items
+            Self::destroy_items(co);
+
             Repository::with_characters_mut(|characters| {
                 let character = &mut characters[co];
 
-                // Preserve important data
-                let old_name = character.name;
-                let old_items = character.item;
-                let old_worn = character.worn;
+                // Preserve important data before replacing
+                let old_pass1 = character.pass1;
+                let old_pass2 = character.pass2;
                 let old_gold = character.gold;
+                let old_name = character.name;
+                let old_reference = character.reference;
+                let old_description = character.description;
+                let old_dir = character.dir;
+                let old_creation_date = character.creation_date;
+                let old_login_date = character.login_date;
+                let old_flags = character.flags;
+                let old_kindred = character.kindred;
+                let old_total_online_time = character.total_online_time;
+                let old_current_online_time = character.current_online_time;
+                let old_comp_volume = character.comp_volume;
+                let old_raw_volume = character.raw_volume;
+                let old_idle = character.idle;
+                let old_x = character.x;
+                let old_y = character.y;
+                let old_tox = character.tox;
+                let old_toy = character.toy;
+                let old_frx = character.frx;
+                let old_fry = character.fry;
+                let old_mode = character.mode;
+                let old_player = character.player;
+                let old_luck = character.luck;
+                let old_light = character.light;
+                let old_status = character.status;
+                let old_status2 = character.status2;
+                let old_data = character.data;
+                let old_depot = character.depot;
 
-                // Apply template
-                character.sprite = template.sprite;
-                character.kindred = template.kindred;
+                // Replace character with template
+                *character = *template;
 
-                // Restore preserved data
-                character.name = old_name;
-                character.item = old_items;
-                character.worn = old_worn;
+                // Restore preserved fields
+                character.temp = temp as u16;
+                character.pass1 = old_pass1;
+                character.pass2 = old_pass2;
                 character.gold = old_gold;
+                character.name = old_name;
+                character.reference = old_reference;
+                character.description = old_description;
+                character.dir = old_dir;
+
+                // Set temple/tavern to mercenary home by default
+                character.temple_x = 512;
+                character.temple_y = 512;
+                character.tavern_x = 512;
+                character.tavern_y = 512;
+
+                character.creation_date = old_creation_date;
+                character.login_date = old_login_date;
+                character.flags = old_flags;
+
+                // Preserve purple kindred if they had it
+                if (old_kindred & 0x00000001) != 0 {
+                    character.kindred |= 0x00000001; // KIN_PURPLE
+                    character.temple_x = 558;
+                    character.temple_y = 542;
+                }
+
+                character.total_online_time = old_total_online_time;
+                character.current_online_time = old_current_online_time;
+                character.comp_volume = old_comp_volume;
+                character.raw_volume = old_raw_volume;
+                character.idle = old_idle;
+
+                // Set action times to max (full health/mana/endurance)
+                character.a_end = 1000000;
+                character.a_hp = 1000000;
+                character.a_mana = 1000000;
+
+                // Restore position
+                character.x = old_x;
+                character.y = old_y;
+                character.tox = old_tox;
+                character.toy = old_toy;
+                character.frx = old_frx;
+                character.fry = old_fry;
+
+                character.mode = old_mode;
+                character.used = core::constants::USE_ACTIVE;
+                character.player = old_player;
+                character.alignment = 0;
+                character.luck = old_luck;
+                character.light = old_light;
+                character.status = old_status;
+                character.status2 = old_status2;
+
+                // Clear inventory, worn, and spell arrays (already done by destroy_items)
+                for n in 0..40 {
+                    character.item[n] = 0;
+                }
+                for n in 0..20 {
+                    character.worn[n] = 0;
+                    character.spell[n] = 0;
+                }
+
+                // Restore data array but reset specific fields
+                character.data = old_data;
+                character.data[18] = 0; // pentagram experience
+                character.data[20] = 0; // highest gorge solved
+                character.data[21] = 0; // seyan'du sword bits
+                character.data[22] = 0; // arena monster reset
+                character.data[45] = 0; // current rank
+
+                // Restore depot
+                character.depot = old_depot;
 
                 character.set_do_update_flags();
 
@@ -4257,12 +4425,16 @@ impl God {
                         ),
                     );
                     log::info!(
-                        "Changed race of character {} to template {}\n",
+                        "Changed race of character {} to template {}",
                         character.get_name(),
                         temp
                     );
                 });
             });
+        });
+
+        State::with(|state| {
+            state.do_update_char(co);
         });
     }
 
@@ -4805,23 +4977,11 @@ impl God {
 
             if template.used == core::constants::USE_EMPTY {
                 log::error!("Template {} is not in use", temp);
-
                 return;
             }
 
-            let template_name = c_string_to_str(&template.name);
-
             Repository::with_characters_mut(|characters| {
                 let character = &mut characters[cn];
-
-                // Log the change
-                State::with(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Green,
-                        &format!("Changed into {}", template_name),
-                    );
-                });
 
                 // Set HP, END, MANA from template
                 character.hp[1] = template.hp[1];

@@ -3,7 +3,7 @@ use crate::network_manager::NetworkManager;
 use crate::repository::Repository;
 use crate::state::State;
 use crate::{driver, helpers};
-use core::constants::CharacterFlags;
+use core::constants::{CharacterFlags, CT_LGUARD};
 use core::string_operations::c_string_to_str;
 use core::types::FontColor;
 use rand::Rng;
@@ -1584,7 +1584,7 @@ impl State {
             let send = Repository::with_characters(|ch| {
                 ((ch[n].flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
                     != 0
-                    || ch[n].temp == 15)
+                    || ch[n].temp == CT_LGUARD as u16)
                     && ch[n].used == core::constants::USE_ACTIVE
             });
             if send {

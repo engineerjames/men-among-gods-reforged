@@ -1969,16 +1969,27 @@ pub fn skill_curse(cn: usize) {
     );
 
     let co_orig = co;
-    let m = Repository::with_characters(|ch| ch[cn].x)
-        + Repository::with_characters(|ch| ch[cn].y) * core::constants::SERVER_MAPX as i16;
-    let adj = [
-        1,
-        -1,
-        core::constants::SERVER_MAPX,
-        -core::constants::SERVER_MAPX,
-    ];
-    for &d in adj.iter() {
-        let maybe_co = Repository::with_map(|map| map[(m as i32 + d) as usize].ch as usize);
+    let (x, y) = Repository::with_characters(|ch| (ch[cn].x as i32, ch[cn].y as i32));
+    let adj: [(i32, i32); 4] = [(1, 0), (-1, 0), (0, 1), (0, -1)];
+
+    for (dx, dy) in adj {
+        let nx = x + dx;
+        let ny = y + dy;
+
+        // Prevent negative/out-of-bounds coords from wrapping into huge usize indices.
+        if nx < 0
+            || ny < 0
+            || nx >= core::constants::SERVER_MAPX
+            || ny >= core::constants::SERVER_MAPY
+        {
+            continue;
+        }
+
+        let idx = (nx + ny * core::constants::SERVER_MAPX) as usize;
+        let maybe_co = Repository::with_map(|map| map[idx].ch as usize);
+        if maybe_co == 0 || maybe_co >= core::constants::MAXCHARS {
+            continue;
+        }
         if maybe_co != 0
             && Repository::with_characters(|ch| ch[maybe_co].attack_cn as usize) == cn
             && co_orig != maybe_co
@@ -3382,22 +3393,388 @@ pub fn skill_dispel(cn: usize) {
 }
 
 pub fn skill_ghost(cn: usize) {
+    use crate::god::God;
+    use crate::helpers::{
+        attrib_needed, char_id, end_needed, hp_needed, mana_needed, skill_needed,
+    };
+    use crate::populate::pop_create_char;
+    use crate::repository::Repository;
     use crate::state::State;
-    use core::types::FontColor;
+    use core::constants::*;
+    use core::string_operations::c_string_to_str;
+    use core::types::{Character, FontColor};
 
-    // Minimal implementation: perform basic checks and create a ghost companion placeholder.
+    // Check if in build mode
+    if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::BuildMode.bits()) != 0) {
+        State::with(|state| state.do_character_log(cn, FontColor::Red, "Not in build mode.\n"));
+        return;
+    }
+
+    // Check if player already has a companion
+    let existing_companion = Repository::with_characters(|ch| {
+        if (ch[cn].flags & CharacterFlags::Player.bits()) != 0 {
+            let co = ch[cn].data[CHD_COMPANION] as usize;
+            if co != 0 {
+                // Validate companion still exists
+                if Character::is_sane_character(co)
+                    && ch[co].data[63] == cn as i32
+                    && (ch[co].flags & CharacterFlags::Body.bits()) == 0
+                    && ch[co].used != USE_EMPTY
+                {
+                    Some(co)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    });
+
+    if let Some(co) = existing_companion {
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                FontColor::Red,
+                &format!("You may not have more than one Ghost Companion ({}).\n", co),
+            )
+        });
+        return;
+    }
+
+    // Get target
+    let mut co = Repository::with_characters(|ch| ch[cn].skill_target1 as usize);
+    if co == cn {
+        co = 0;
+    }
+
+    // Check visibility
+    if co != 0 && State::with_mut(|state| state.do_char_can_see(cn, co)) == 0 {
+        State::with(|state| {
+            state.do_character_log(cn, FontColor::Red, "You cannot see your target.\n")
+        });
+        return;
+    }
+
     if is_exhausted(cn) != 0 {
         return;
     }
 
-    // For now, just notify player that the feature is not fully implemented.
-    State::with(|state| {
-        state.do_character_log(
+    // Check if can attack target
+    if co != 0 && State::with(|state| state.may_attack_msg(cn, co, true)) == 0 {
+        chlog!(
             cn,
-            FontColor::Green,
-            "Ghost companion not implemented yet.\n",
+            "Prevented from attacking {} ({})",
+            Repository::with_characters(|ch| ch[co].get_name().to_string()),
+            co
+        );
+        return;
+    }
+
+    if spellcost(cn, 45) != 0 {
+        return;
+    }
+
+    // No GC in Gatekeeper's room
+    let (cx, cy) = Repository::with_characters(|ch| (ch[cn].x, ch[cn].y));
+    if (39..=47).contains(&cx) && (594..=601).contains(&cy) {
+        State::with(|state| {
+            state.do_character_log(cn, FontColor::Red, "You must fight this battle alone.\n")
+        });
+        return;
+    }
+
+    // Chance check
+    if chance(cn, 15) != 0 {
+        if co != 0 && cn != co {
+            let sense = Repository::with_characters(|ch| ch[co].skill[SK_SENSE][5] as i32);
+            let ghost_skill = Repository::with_characters(|ch| ch[cn].skill[SK_GHOST][5] as i32);
+            if sense > ghost_skill + 5 {
+                let cn_ref = Repository::with_characters(|ch| ch[cn].reference);
+                State::with(|state| {
+                    state.do_character_log(
+                        co,
+                        FontColor::Green,
+                        &format!(
+                            "{} tried to cast ghost companion on you but failed.\n",
+                            c_string_to_str(&cn_ref)
+                        ),
+                    )
+                });
+                if Repository::with_characters(|ch| {
+                    (ch[co].flags & CharacterFlags::SpellIgnore.bits()) == 0
+                }) {
+                    State::with(|state| {
+                        state.do_notify_character(co as u32, NT_GOTMISS as i32, cn as i32, 0, 0, 0)
+                    });
+                }
+            }
+        }
+        return;
+    }
+
+    // Create companion
+    let cc_opt = pop_create_char(CT_COMPANION as usize, true);
+    if cc_opt.is_none() {
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                FontColor::Red,
+                "The ghost companion could not materialize.\n",
+            )
+        });
+        return;
+    }
+    let cc = cc_opt.unwrap();
+
+    let (cc_x, cc_y) = Repository::with_characters(|ch| (ch[cn].x as usize, ch[cn].y as usize));
+    if !God::drop_char_fuzzy(cc, cc_x, cc_y) {
+        Repository::with_characters_mut(|ch| {
+            ch[cc].used = USE_EMPTY;
+        });
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                FontColor::Red,
+                "The ghost companion could not materialize.\n",
+            )
+        });
+        return;
+    }
+
+    // Notify target and attacker
+    if co != 0 {
+        if Repository::with_characters(|ch| {
+            (ch[co].flags & CharacterFlags::SpellIgnore.bits()) == 0
+        }) {
+            State::with(|state| {
+                state.do_notify_character(co as u32, NT_GOTHIT as i32, cn as i32, 0, 0, 0)
+            });
+        }
+        State::with(|state| {
+            state.do_notify_character(cn as u32, NT_DIDHIT as i32, co as i32, 0, 0, 0)
+        });
+    }
+
+    // Set player companion reference
+    if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Player.bits()) != 0) {
+        Repository::with_characters_mut(|ch| {
+            ch[cn].data[CHD_COMPANION] = cc as i32;
+        });
+    }
+
+    // Calculate base power
+    let mut base = Repository::with_characters(|ch| (ch[cn].skill[SK_GHOST][5] as i32 * 4) / 11);
+    let kindred = Repository::with_characters(|ch| ch[cn].kindred);
+    base = spell_race_mod(base, kindred);
+
+    let ticker = Repository::with_globals(|g| g.ticker);
+
+    // Configure companion
+    Repository::with_characters_mut(|ch| {
+        ch[cc].data[29] = 0; // reset experience earned
+        ch[cc].data[42] = 65536 + cn as i32; // set group
+        ch[cc].kindred &= !(KIN_MONSTER as i32);
+
+        if co != 0 {
+            ch[cc].attack_cn = co as u16;
+            let idx = co as i32 | (char_id(co) << 16);
+            ch[cc].data[80] = idx; // add enemy to kill list
+        }
+
+        ch[cc].data[63] = cn as i32;
+        ch[cc].data[69] = cn as i32;
+
+        if (ch[cn].flags & CharacterFlags::Player.bits()) != 0 {
+            ch[cc].data[CHD_COMPANION] = 0; // player GCs stay forever
+        } else {
+            ch[cc].data[CHD_COMPANION] = ticker + TICKS * 60 * 5; // NPC GCs stay only for 5 minutes
+        }
+        ch[cc].data[98] = ticker + COMPANION_TIMEOUT;
+
+        // Set text
+        let text0 = b"#14#Yes! %s buys the farm!";
+        ch[cc].text[0][..text0.len()].copy_from_slice(text0);
+        let text1 = b"#13#Yahoo! An enemy! Prepare to die, %s!";
+        ch[cc].text[1][..text1.len()].copy_from_slice(text1);
+        let text3 = b"My successor will avenge me, %s!";
+        ch[cc].text[3][..text3.len()].copy_from_slice(text3);
+
+        ch[cc].data[48] = 33;
+    });
+
+    // Copy talkative setting from template
+    Repository::with_character_templates(|templates| {
+        Repository::with_characters_mut(|ch| {
+            ch[cc].data[CHD_TALKATIVE] = templates[CT_COMPANION as usize].data[CHD_TALKATIVE];
+        });
+    });
+
+    // Set attributes
+    Repository::with_characters_mut(|ch| {
+        for n in 0..5 {
+            let mut tmp = base;
+            tmp = tmp * 3 / std::cmp::max(1, ch[cc].attrib[n][3] as i32);
+            ch[cc].attrib[n][0] =
+                std::cmp::max(10, std::cmp::min(ch[cc].attrib[n][2] as i32, tmp) as u8);
+        }
+    });
+
+    // Set skills
+    Repository::with_characters_mut(|ch| {
+        for n in 0..50 {
+            let mut tmp = base;
+            tmp = tmp * 3 / std::cmp::max(1, ch[cc].skill[n][3] as i32);
+            if ch[cc].skill[n][2] != 0 {
+                ch[cc].skill[n][0] = std::cmp::min(ch[cc].skill[n][2], tmp as u8);
+            }
+        }
+    });
+
+    // Set hp, end, mana
+    Repository::with_characters_mut(|ch| {
+        ch[cc].hp[0] = std::cmp::max(50, std::cmp::min(ch[cc].hp[2] as i32, base * 5)) as u16;
+        ch[cc].end[0] = std::cmp::max(50, std::cmp::min(ch[cc].end[2] as i32, base * 5)) as u16;
+        ch[cc].mana[0] = 0;
+    });
+
+    // Calculate experience points
+    let mut pts = 0i32;
+
+    let (attribs, hp0, end0, mana0, skills) = Repository::with_characters(|ch| {
+        (
+            ch[cc].attrib,
+            ch[cc].hp[0],
+            ch[cc].end[0],
+            ch[cc].mana[0],
+            ch[cc].skill,
         )
     });
+
+    // Attributes
+    for z in 0..5 {
+        for m in 10..(attribs[z][0] as i32) {
+            pts += attrib_needed(m, 3);
+        }
+    }
+
+    // HP
+    for m in 50..(hp0 as i32) {
+        pts += hp_needed(m, 3);
+    }
+
+    // Endurance
+    for m in 50..(end0 as i32) {
+        pts += end_needed(m, 2);
+    }
+
+    // Mana
+    for m in 50..(mana0 as i32) {
+        pts += mana_needed(m, 3);
+    }
+
+    // Skills
+    for z in 0..50 {
+        for m in 1..(skills[z][0] as i32) {
+            pts += skill_needed(m, 2);
+        }
+    }
+
+    // Set points and action timers
+    Repository::with_characters_mut(|ch| {
+        ch[cc].points_tot = pts;
+        ch[cc].gold = 0;
+        ch[cc].a_hp = 999999;
+        ch[cc].a_end = 999999;
+        ch[cc].a_mana = 999999;
+
+        // Set alignment
+        ch[cc].alignment = ch[cn].alignment / 2;
+    });
+
+    // Set equipment bonuses based on attributes
+    let (agil, stren) = Repository::with_characters(|ch| {
+        (
+            ch[cc].attrib[AT_AGIL as usize][0],
+            ch[cc].attrib[AT_STREN as usize][0],
+        )
+    });
+
+    Repository::with_characters_mut(|ch| {
+        if agil >= 90 && stren >= 90 {
+            // titanium
+            ch[cc].armor_bonus = 48 + 32;
+            ch[cc].weapon_bonus = 40 + 32;
+        } else if agil >= 72 && stren >= 72 {
+            // crystal
+            ch[cc].armor_bonus = 36 + 28;
+            ch[cc].weapon_bonus = 32 + 28;
+        } else if agil >= 40 && stren >= 40 {
+            // gold
+            ch[cc].armor_bonus = 30 + 24;
+            ch[cc].weapon_bonus = 24 + 24;
+        } else if agil >= 24 && stren >= 24 {
+            // steel
+            ch[cc].armor_bonus = 24 + 20;
+            ch[cc].weapon_bonus = 16 + 20;
+        } else if agil >= 16 && stren >= 16 {
+            // bronze
+            ch[cc].armor_bonus = 18 + 16;
+            ch[cc].weapon_bonus = 8 + 16;
+        } else if agil >= 12 && stren >= 12 {
+            // leather
+            ch[cc].armor_bonus = 12 + 12;
+            ch[cc].weapon_bonus = 8 + 12;
+        } else if agil >= 10 && stren >= 10 {
+            // cloth
+            ch[cc].armor_bonus = 6 + 8;
+            ch[cc].weapon_bonus = 8 + 8;
+        }
+    });
+
+    let (cc_name, cn_ref) = Repository::with_characters(|ch| (ch[cc].name, ch[cn].reference));
+    log::info!(
+        "Created {} ({}) with base {} as Ghost Companion for {}",
+        c_string_to_str(&cc_name),
+        cc,
+        base,
+        c_string_to_str(&cn_ref)
+    );
+
+    // Make companion speak
+    if co != 0 {
+        let co_name = Repository::with_characters(|ch| ch[co].get_name().to_string());
+        State::with(|state| {
+            state.do_sayx(
+                cc,
+                &format!("#13#Yahoo! An enemy! Prepare to die, {}!", co_name),
+            )
+        });
+    } else {
+        let rank = core::ranks::points2rank(pts as u32);
+        let cn_name = Repository::with_characters(|ch| ch[cn].get_name().to_string());
+        if rank < 6 {
+            // GC not yet Master Sergeant
+            State::with(|state| {
+                state.do_sayx(cc, &format!("I shall defend you and obey your commands, {}. I will WAIT, FOLLOW , be QUIET or ATTACK for you and tell you WHAT TIME. You may also command me to TRANSFER my experience to you, though I'd rather you didn't.\n", cn_name))
+            });
+        } else {
+            State::with(|state| {
+                state.do_sayx(cc, &format!("Thank you for creating me, {}!\n", cn_name))
+            });
+        }
+    }
+
+    State::with(|state| state.do_update_char(cc));
+
+    add_exhaust(cn, TICKS * 4);
+
+    let (cc_x, cc_y) = Repository::with_characters(|ch| (ch[cc].x as i32, ch[cc].y as i32));
+    EffectManager::fx_add_effect(6, 0, cc_x, cc_y, 0);
+    let (cn_x, cn_y) = Repository::with_characters(|ch| (ch[cn].x as i32, ch[cn].y as i32));
+    EffectManager::fx_add_effect(7, 0, cn_x, cn_y, 0);
 }
 
 pub fn is_facing(cn: usize, co: usize) -> i32 {

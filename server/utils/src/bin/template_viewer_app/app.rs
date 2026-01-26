@@ -9,12 +9,20 @@ use std::path::PathBuf;
 pub(crate) struct TemplateViewerApp {
     item_templates: Vec<mag_core::types::Item>,
     character_templates: Vec<mag_core::types::Character>,
+    items: Vec<mag_core::types::Item>,
+    characters: Vec<mag_core::types::Character>,
+    map_tiles: Vec<mag_core::types::Map>,
     selected_item_index: Option<usize>,
     selected_character_index: Option<usize>,
+    selected_item_instance_index: Option<usize>,
+    selected_character_instance_index: Option<usize>,
     item_popup_id: Option<u32>,
     view_mode: ViewMode,
     item_filter: String,
     character_filter: String,
+    item_instance_filter: String,
+    character_instance_filter: String,
+    character_instances_player_only: bool,
     load_error: Option<String>,
     graphics_zip: Option<GraphicsZipCache>,
     graphics_zip_error: Option<String>,
@@ -22,6 +30,8 @@ pub(crate) struct TemplateViewerApp {
 
 #[derive(PartialEq)]
 enum ViewMode {
+    ItemTemplates,
+    CharacterTemplates,
     Items,
     Characters,
 }
@@ -31,12 +41,20 @@ impl Default for TemplateViewerApp {
         Self {
             item_templates: Vec::new(),
             character_templates: Vec::new(),
+            items: Vec::new(),
+            characters: Vec::new(),
+            map_tiles: Vec::new(),
             selected_item_index: None,
             selected_character_index: None,
+            selected_item_instance_index: None,
+            selected_character_instance_index: None,
             item_popup_id: None,
-            view_mode: ViewMode::Items,
+            view_mode: ViewMode::ItemTemplates,
             item_filter: String::new(),
             character_filter: String::new(),
+            item_instance_filter: String::new(),
+            character_instance_filter: String::new(),
+            character_instances_player_only: false,
             load_error: None,
             graphics_zip: None,
             graphics_zip_error: None,
@@ -145,6 +163,28 @@ impl TemplateViewerApp {
         }
     }
 
+    fn centered_clickable_item_instance_id(&mut self, ui: &mut egui::Ui, item_id: u32) {
+        if item_id == 0 {
+            crate::centered_label(ui, "0");
+            return;
+        }
+
+        let response = ui
+            .with_layout(
+                egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
+                |ui| ui.add(egui::Label::new(format!("{}", item_id)).sense(egui::Sense::click())),
+            )
+            .inner;
+
+        if response.clicked() {
+            let idx = item_id as usize;
+            if idx < self.items.len() && self.items[idx].used != mag_core::constants::USE_EMPTY {
+                self.selected_item_instance_index = Some(idx);
+                self.view_mode = ViewMode::Items;
+            }
+        }
+    }
+
     fn load_templates_from_dir(&mut self, dir: PathBuf) {
         self.load_error = None;
         log::info!("Loading templates from {:?}", dir);
@@ -153,7 +193,7 @@ impl TemplateViewerApp {
         match self.load_item_templates(&item_path) {
             Ok(items) => {
                 self.item_templates = items;
-                self.view_mode = ViewMode::Items;
+                self.view_mode = ViewMode::ItemTemplates;
                 log::info!("Loaded {} item templates", self.item_templates.len());
             }
             Err(e) => {
@@ -167,7 +207,7 @@ impl TemplateViewerApp {
             Ok(chars) => {
                 self.character_templates = chars;
                 if self.item_templates.is_empty() {
-                    self.view_mode = ViewMode::Characters;
+                    self.view_mode = ViewMode::CharacterTemplates;
                 }
                 log::info!(
                     "Loaded {} character templates",
@@ -184,6 +224,71 @@ impl TemplateViewerApp {
                 }
                 log::error!("Failed to load character templates: {}", e);
             }
+        }
+
+        let item_path = dir.join("item.dat");
+        match self.load_items(&item_path) {
+            Ok(items) => {
+                self.items = items;
+                log::info!("Loaded {} items", self.items.len());
+            }
+            Err(e) => {
+                let message = format!("Failed to load items: {}", e);
+                if let Some(ref mut error) = self.load_error {
+                    error.push_str("\n");
+                    error.push_str(&message);
+                } else {
+                    self.load_error = Some(message);
+                }
+                log::error!("Failed to load items: {}", e);
+            }
+        }
+
+        let char_path = dir.join("char.dat");
+        match self.load_characters(&char_path) {
+            Ok(chars) => {
+                self.characters = chars;
+                log::info!("Loaded {} characters", self.characters.len());
+            }
+            Err(e) => {
+                let message = format!("Failed to load characters: {}", e);
+                if let Some(ref mut error) = self.load_error {
+                    error.push_str("\n");
+                    error.push_str(&message);
+                } else {
+                    self.load_error = Some(message);
+                }
+                log::error!("Failed to load characters: {}", e);
+            }
+        }
+
+        let map_path = dir.join("map.dat");
+        match self.load_map(&map_path) {
+            Ok(map_tiles) => {
+                self.map_tiles = map_tiles;
+                log::info!("Loaded {} map tiles", self.map_tiles.len());
+            }
+            Err(e) => {
+                let message = format!("Failed to load map: {}", e);
+                if let Some(ref mut error) = self.load_error {
+                    error.push_str("\n");
+                    error.push_str(&message);
+                } else {
+                    self.load_error = Some(message);
+                }
+                log::error!("Failed to load map: {}", e);
+            }
+        }
+
+        // Pick a sensible default view.
+        if !self.item_templates.is_empty() {
+            self.view_mode = ViewMode::ItemTemplates;
+        } else if !self.character_templates.is_empty() {
+            self.view_mode = ViewMode::CharacterTemplates;
+        } else if !self.items.is_empty() {
+            self.view_mode = ViewMode::Items;
+        } else if !self.characters.is_empty() {
+            self.view_mode = ViewMode::Characters;
         }
     }
 
@@ -214,6 +319,35 @@ impl TemplateViewerApp {
         }
 
         Ok(templates)
+    }
+
+    fn load_items(&self, path: &PathBuf) -> Result<Vec<mag_core::types::Item>, String> {
+        let data = fs::read(&path).map_err(|e| e.to_string())?;
+        let expected_size =
+            mag_core::constants::MAXITEM * std::mem::size_of::<mag_core::types::Item>();
+
+        if data.len() != expected_size {
+            return Err(format!(
+                "Items size mismatch: expected {}, got {}",
+                expected_size,
+                data.len()
+            ));
+        }
+
+        let mut items = Vec::new();
+        let item_size = std::mem::size_of::<mag_core::types::Item>();
+
+        for i in 0..mag_core::constants::MAXITEM {
+            let offset = i * item_size;
+            if let Some(item) = mag_core::types::Item::from_bytes(&data[offset..offset + item_size])
+            {
+                items.push(item);
+            } else {
+                return Err(format!("Failed to parse item at index {}", i));
+            }
+        }
+
+        Ok(items)
     }
 
     fn load_character_templates(
@@ -247,6 +381,66 @@ impl TemplateViewerApp {
         }
 
         Ok(templates)
+    }
+
+    fn load_characters(&self, path: &PathBuf) -> Result<Vec<mag_core::types::Character>, String> {
+        let data = fs::read(&path).map_err(|e| e.to_string())?;
+        let expected_size =
+            mag_core::constants::MAXCHARS * std::mem::size_of::<mag_core::types::Character>();
+
+        if data.len() != expected_size {
+            return Err(format!(
+                "Characters size mismatch: expected {}, got {}",
+                expected_size,
+                data.len()
+            ));
+        }
+
+        let mut chars = Vec::new();
+        let char_size = std::mem::size_of::<mag_core::types::Character>();
+
+        for i in 0..mag_core::constants::MAXCHARS {
+            let offset = i * char_size;
+            if let Some(character) =
+                mag_core::types::Character::from_bytes(&data[offset..offset + char_size])
+            {
+                chars.push(character);
+            } else {
+                return Err(format!("Failed to parse character at index {}", i));
+            }
+        }
+
+        Ok(chars)
+    }
+
+    fn load_map(&self, path: &PathBuf) -> Result<Vec<mag_core::types::Map>, String> {
+        let data = fs::read(&path).map_err(|e| e.to_string())?;
+        let tile_count = (mag_core::constants::SERVER_MAPX as usize)
+            * (mag_core::constants::SERVER_MAPY as usize);
+        let expected_size = tile_count * std::mem::size_of::<mag_core::types::Map>();
+
+        if data.len() != expected_size {
+            return Err(format!(
+                "Map size mismatch: expected {}, got {}",
+                expected_size,
+                data.len()
+            ));
+        }
+
+        let mut map_tiles = Vec::with_capacity(tile_count);
+        let tile_size = std::mem::size_of::<mag_core::types::Map>();
+
+        for i in 0..tile_count {
+            let offset = i * tile_size;
+            if let Some(tile) = mag_core::types::Map::from_bytes(&data[offset..offset + tile_size])
+            {
+                map_tiles.push(tile);
+            } else {
+                return Err(format!("Failed to parse map tile at index {}", i));
+            }
+        }
+
+        Ok(map_tiles)
     }
 
     fn render_item_list(&mut self, ui: &mut egui::Ui) {
@@ -289,6 +483,46 @@ impl TemplateViewerApp {
             });
     }
 
+    fn render_item_instance_list(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.label("Filter:");
+            ui.text_edit_singleline(&mut self.item_instance_filter);
+        });
+
+        ui.separator();
+
+        let list_width = ui.available_width();
+        egui::ScrollArea::vertical()
+            .auto_shrink([false; 2])
+            .show(ui, |ui| {
+                ui.set_min_width(list_width);
+                for (idx, item) in self.items.iter().enumerate() {
+                    if item.used == mag_core::constants::USE_EMPTY {
+                        continue;
+                    }
+
+                    let name = item.get_name();
+                    if !self.item_instance_filter.is_empty()
+                        && !name
+                            .to_lowercase()
+                            .contains(&self.item_instance_filter.to_lowercase())
+                    {
+                        continue;
+                    }
+
+                    if ui
+                        .selectable_label(
+                            self.selected_item_instance_index == Some(idx),
+                            format!("[{}] {}", idx, name),
+                        )
+                        .clicked()
+                    {
+                        self.selected_item_instance_index = Some(idx);
+                    }
+                }
+            });
+    }
+
     fn render_character_list(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.label("Filter:");
@@ -324,6 +558,60 @@ impl TemplateViewerApp {
                         .clicked()
                     {
                         self.selected_character_index = Some(idx);
+                    }
+                }
+            });
+    }
+
+    fn render_character_instance_list(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.label("Filter:");
+            ui.text_edit_singleline(&mut self.character_instance_filter);
+        });
+
+        ui.horizontal(|ui| {
+            ui.checkbox(&mut self.character_instances_player_only, "Player only");
+        });
+
+        ui.separator();
+
+        let list_width = ui.available_width();
+        egui::ScrollArea::vertical()
+            .auto_shrink([false; 2])
+            .show(ui, |ui| {
+                ui.set_min_width(list_width);
+                for (idx, character) in self.characters.iter().enumerate() {
+                    if character.used == mag_core::constants::USE_EMPTY {
+                        continue;
+                    }
+
+                    if self.character_instances_player_only {
+                        // "Player-held" character slots: those that are actual player characters.
+                        // This is the most stable indicator across save states.
+                        if (character.flags & mag_core::constants::CharacterFlags::Player.bits())
+                            == 0
+                        {
+                            continue;
+                        }
+                    }
+
+                    let name = character.get_name();
+                    if !self.character_instance_filter.is_empty()
+                        && !name
+                            .to_lowercase()
+                            .contains(&self.character_instance_filter.to_lowercase())
+                    {
+                        continue;
+                    }
+
+                    if ui
+                        .selectable_label(
+                            self.selected_character_instance_index == Some(idx),
+                            format!("[{}] {}", idx, name),
+                        )
+                        .clicked()
+                    {
+                        self.selected_character_instance_index = Some(idx);
                     }
                 }
             });
@@ -573,6 +861,87 @@ impl TemplateViewerApp {
                         ui.end_row();
                     }
                 });
+
+            if self.view_mode == ViewMode::ItemTemplates {
+                ui.separator();
+
+                // For templates, the *slot index* is the template id. The `temp` field inside
+                // `titem.dat` entries is not reliable for this purpose.
+                let template_id = self
+                    .selected_item_index
+                    .map(|idx| idx as u16)
+                    .unwrap_or(temp);
+                let tile_w = mag_core::constants::SERVER_MAPX as usize;
+                let mut locations: Vec<(u32, u16, u16, String)> = Vec::new();
+
+                for (tile_idx, tile) in self.map_tiles.iter().enumerate() {
+                    let item_id = tile.it;
+                    if item_id == 0 {
+                        continue;
+                    }
+
+                    let item_idx = item_id as usize;
+                    if item_idx >= self.items.len() {
+                        continue;
+                    }
+
+                    let it = self.items[item_idx];
+                    if it.used == mag_core::constants::USE_EMPTY {
+                        continue;
+                    }
+
+                    if it.temp != template_id {
+                        continue;
+                    }
+
+                    let x = (tile_idx % tile_w) as u16;
+                    let y = (tile_idx / tile_w) as u16;
+                    let area = mag_core::area::get_area_m(x as i32, y as i32)
+                        .unwrap_or_else(|| "Unknown".to_string());
+                    locations.push((item_id, x, y, area));
+                }
+
+                locations.sort_by(|a, b| a.3.cmp(&b.3).then(a.2.cmp(&b.2)).then(a.1.cmp(&b.1)));
+
+                let total = locations.len();
+                let limit: usize = 500;
+
+                egui::CollapsingHeader::new(format!("Where used ({} on map)", total))
+                    .default_open(total > 0 && total <= 20)
+                    .show(ui, |ui| {
+                        if total == 0 {
+                            ui.label("No instances of this template were found on the map.");
+                            return;
+                        }
+
+                        if total > limit {
+                            ui.colored_label(
+                                egui::Color32::YELLOW,
+                                format!("Showing first {} of {} results", limit, total),
+                            );
+                        }
+
+                        egui::Grid::new(format!("item_where_used_{}", template_id))
+                            .num_columns(4)
+                            .spacing([20.0, 4.0])
+                            .striped(true)
+                            .show(ui, |ui| {
+                                crate::centered_label(ui, "Item");
+                                crate::centered_label(ui, "X");
+                                crate::centered_label(ui, "Y");
+                                ui.label("Area");
+                                ui.end_row();
+
+                                for (item_id, x, y, area) in locations.iter().take(limit) {
+                                    self.centered_clickable_item_instance_id(ui, *item_id);
+                                    crate::centered_label(ui, format!("{}", x));
+                                    crate::centered_label(ui, format!("{}", y));
+                                    ui.label(area);
+                                    ui.end_row();
+                                }
+                            });
+                    });
+            }
         });
     }
 
@@ -965,16 +1334,28 @@ impl eframe::App for TemplateViewerApp {
                 ui.separator();
 
                 if ui
-                    .selectable_label(self.view_mode == ViewMode::Items, "Item Templates")
+                    .selectable_label(self.view_mode == ViewMode::ItemTemplates, "Item Templates")
+                    .clicked()
+                {
+                    self.view_mode = ViewMode::ItemTemplates;
+                }
+                if ui
+                    .selectable_label(
+                        self.view_mode == ViewMode::CharacterTemplates,
+                        "Character Templates",
+                    )
+                    .clicked()
+                {
+                    self.view_mode = ViewMode::CharacterTemplates;
+                }
+                if ui
+                    .selectable_label(self.view_mode == ViewMode::Items, "Items")
                     .clicked()
                 {
                     self.view_mode = ViewMode::Items;
                 }
                 if ui
-                    .selectable_label(
-                        self.view_mode == ViewMode::Characters,
-                        "Character Templates",
-                    )
+                    .selectable_label(self.view_mode == ViewMode::Characters, "Characters")
                     .clicked()
                 {
                     self.view_mode = ViewMode::Characters;
@@ -993,8 +1374,8 @@ impl eframe::App for TemplateViewerApp {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| match self.view_mode {
-            ViewMode::Items => {
-                egui::SidePanel::left("item_list")
+            ViewMode::ItemTemplates => {
+                egui::SidePanel::left("item_template_list")
                     .resizable(true)
                     .default_width(300.0)
                     .show_inside(ui, |ui| {
@@ -1021,8 +1402,8 @@ impl eframe::App for TemplateViewerApp {
                     }
                 });
             }
-            ViewMode::Characters => {
-                egui::SidePanel::left("character_list")
+            ViewMode::CharacterTemplates => {
+                egui::SidePanel::left("character_template_list")
                     .resizable(true)
                     .default_width(300.0)
                     .show_inside(ui, |ui| {
@@ -1045,6 +1426,62 @@ impl eframe::App for TemplateViewerApp {
                     } else {
                         ui.centered_and_justified(|ui| {
                             ui.label("Select a character template from the list");
+                        });
+                    }
+                });
+            }
+            ViewMode::Items => {
+                egui::SidePanel::left("item_list")
+                    .resizable(true)
+                    .default_width(300.0)
+                    .show_inside(ui, |ui| {
+                        let used_count = self
+                            .items
+                            .iter()
+                            .filter(|item| item.used != mag_core::constants::USE_EMPTY)
+                            .count();
+                        ui.heading(format!("Items ({})", used_count));
+                        ui.separator();
+                        self.render_item_instance_list(ui);
+                    });
+
+                egui::CentralPanel::default().show_inside(ui, |ui| {
+                    if let Some(idx) = self.selected_item_instance_index {
+                        if idx < self.items.len() {
+                            let item = self.items[idx];
+                            self.render_item_details(ui, &item);
+                        }
+                    } else {
+                        ui.centered_and_justified(|ui| {
+                            ui.label("Select an item from the list");
+                        });
+                    }
+                });
+            }
+            ViewMode::Characters => {
+                egui::SidePanel::left("character_list")
+                    .resizable(true)
+                    .default_width(300.0)
+                    .show_inside(ui, |ui| {
+                        let used_count = self
+                            .characters
+                            .iter()
+                            .filter(|character| character.used != mag_core::constants::USE_EMPTY)
+                            .count();
+                        ui.heading(format!("Characters ({})", used_count));
+                        ui.separator();
+                        self.render_character_instance_list(ui);
+                    });
+
+                egui::CentralPanel::default().show_inside(ui, |ui| {
+                    if let Some(idx) = self.selected_character_instance_index {
+                        if idx < self.characters.len() {
+                            let character = self.characters[idx];
+                            self.render_character_details(ui, &character);
+                        }
+                    } else {
+                        ui.centered_and_justified(|ui| {
+                            ui.label("Select a character from the list");
                         });
                     }
                 });

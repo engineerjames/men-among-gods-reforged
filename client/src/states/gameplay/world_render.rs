@@ -24,9 +24,12 @@ use super::legacy_engine;
 // for each tile in scan order: draw object -> character shadow -> character.
 // IMPORTANT: these must share the same Z range so later tiles can occlude earlier tiles,
 // otherwise characters end up globally "on top" of objects (pillars/walls).
+//
+// The biases must be large enough to overcome intra-tile draw_order shifts from
+// obj_xoff/obj_yoff movement (which can vary by up to ±1 tile = ±0.01 in Z).
 const Z_PASS2_OBJ_BIAS: f32 = 0.0000;
-const Z_PASS2_SHADOW_BIAS: f32 = 0.0005;
-const Z_PASS2_CHAR_BIAS: f32 = 0.0010;
+const Z_PASS2_SHADOW_BIAS: f32 = 0.015;
+const Z_PASS2_CHAR_BIAS: f32 = 0.020;
 
 #[inline]
 fn tile_draw_order(x: usize, y: usize) -> f32 {
@@ -41,15 +44,18 @@ fn tile_draw_order_with_obj_offset(x: usize, y: usize, xoff: i32, yoff: i32) -> 
     // fully to rest. We approximate a fractional tile position by inverting the isometric mapping.
     //
     // From copysprite_screen_pos (ignoring constants and sprite size terms):
-    //   rx ~= 16*x + 16*y
-    //   ry ~=  8*x -  8*y
-    // Therefore for small screen deltas (dx_rx, dy_ry):
-    //   dx ~= (dx_rx/16 + dy_ry/8)/2
-    //   dy ~= (dx_rx/16 - dy_ry/8)/2
+    //   rx ~= 16*x + 16*y + xoff
+    //   ry ~=  8*x -  8*y + yoff
+    // Solving for tile deltas from screen-space offsets:
+    //   16*dx + 16*dy = xoff  =>  dx + dy = xoff/16
+    //    8*dx -  8*dy = yoff  =>  dx - dy = yoff/8
+    // Therefore:
+    //   dx = (xoff/16 + yoff/8) / 2
+    //   dy = (xoff/16 - yoff/8) / 2
     let xoff = xoff as f32;
     let yoff = yoff as f32;
-    let dx = 0.5 * (xoff / 16.0 + yoff / 8.0);
-    let dy = 0.5 * (xoff / 16.0 - yoff / 8.0);
+    let dx = (xoff / 16.0 + yoff / 8.0) * 0.5;
+    let dy = (xoff / 16.0 - yoff / 8.0) * 0.5;
 
     let xf = x as f32 + dx;
     let yf = y as f32 + dy;
