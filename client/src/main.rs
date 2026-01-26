@@ -37,6 +37,23 @@ use crate::systems::map_hover;
 use crate::systems::nameplates;
 use crate::systems::sound;
 
+fn install_crash_handler() {
+    std::panic::set_hook(Box::new(|info| {
+        // Best-effort: write a crash report to the same directory we use for logs.
+        let log_dir = resolve_log_dir();
+        let _ = std::fs::create_dir_all(&log_dir);
+
+        let crash_path = log_dir.join("client.crash.log");
+        let backtrace = std::backtrace::Backtrace::force_capture();
+
+        let payload =
+            format!("Men Among Gods client panic\n\n{info}\n\nBacktrace:\n{backtrace:?}\n");
+
+        // Avoid panicking inside the panic hook.
+        let _ = std::fs::write(&crash_path, payload);
+    }));
+}
+
 #[derive(Resource)]
 struct LogGuard(#[allow(dead_code)] WorkerGuard);
 
@@ -111,6 +128,8 @@ fn resolve_assets_base_dir() -> PathBuf {
 }
 
 fn main() {
+    install_crash_handler();
+
     let assets_dir = resolve_assets_base_dir();
     let gfx_zip = assets_dir.join("gfx").join("images.zip");
     let sfx_dir = assets_dir.join("sfx");
