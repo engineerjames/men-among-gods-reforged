@@ -11,6 +11,7 @@ pub(crate) struct TemplateViewerApp {
     character_templates: Vec<mag_core::types::Character>,
     items: Vec<mag_core::types::Item>,
     characters: Vec<mag_core::types::Character>,
+    map_tiles: Vec<mag_core::types::Map>,
     selected_item_index: Option<usize>,
     selected_character_index: Option<usize>,
     selected_item_instance_index: Option<usize>,
@@ -42,6 +43,7 @@ impl Default for TemplateViewerApp {
             character_templates: Vec::new(),
             items: Vec::new(),
             characters: Vec::new(),
+            map_tiles: Vec::new(),
             selected_item_index: None,
             selected_character_index: None,
             selected_item_instance_index: None,
@@ -238,6 +240,24 @@ impl TemplateViewerApp {
             }
         }
 
+        let map_path = dir.join("map.dat");
+        match self.load_map(&map_path) {
+            Ok(map_tiles) => {
+                self.map_tiles = map_tiles;
+                log::info!("Loaded {} map tiles", self.map_tiles.len());
+            }
+            Err(e) => {
+                let message = format!("Failed to load map: {}", e);
+                if let Some(ref mut error) = self.load_error {
+                    error.push_str("\n");
+                    error.push_str(&message);
+                } else {
+                    self.load_error = Some(message);
+                }
+                log::error!("Failed to load map: {}", e);
+            }
+        }
+
         // Pick a sensible default view.
         if !self.item_templates.is_empty() {
             self.view_mode = ViewMode::ItemTemplates;
@@ -369,6 +389,36 @@ impl TemplateViewerApp {
         }
 
         Ok(chars)
+    }
+
+    fn load_map(&self, path: &PathBuf) -> Result<Vec<mag_core::types::Map>, String> {
+        let data = fs::read(&path).map_err(|e| e.to_string())?;
+        let tile_count = (mag_core::constants::SERVER_MAPX as usize)
+            * (mag_core::constants::SERVER_MAPY as usize);
+        let expected_size = tile_count * std::mem::size_of::<mag_core::types::Map>();
+
+        if data.len() != expected_size {
+            return Err(format!(
+                "Map size mismatch: expected {}, got {}",
+                expected_size,
+                data.len()
+            ));
+        }
+
+        let mut map_tiles = Vec::with_capacity(tile_count);
+        let tile_size = std::mem::size_of::<mag_core::types::Map>();
+
+        for i in 0..tile_count {
+            let offset = i * tile_size;
+            if let Some(tile) = mag_core::types::Map::from_bytes(&data[offset..offset + tile_size])
+            {
+                map_tiles.push(tile);
+            } else {
+                return Err(format!("Failed to parse map tile at index {}", i));
+            }
+        }
+
+        Ok(map_tiles)
     }
 
     fn render_item_list(&mut self, ui: &mut egui::Ui) {
@@ -789,6 +839,87 @@ impl TemplateViewerApp {
                         ui.end_row();
                     }
                 });
+
+            if self.view_mode == ViewMode::ItemTemplates {
+                ui.separator();
+
+                // For templates, the *slot index* is the template id. The `temp` field inside
+                // `titem.dat` entries is not reliable for this purpose.
+                let template_id = self
+                    .selected_item_index
+                    .map(|idx| idx as u16)
+                    .unwrap_or(temp);
+                let tile_w = mag_core::constants::SERVER_MAPX as usize;
+                let mut locations: Vec<(u32, u16, u16, String)> = Vec::new();
+
+                for (tile_idx, tile) in self.map_tiles.iter().enumerate() {
+                    let item_id = tile.it;
+                    if item_id == 0 {
+                        continue;
+                    }
+
+                    let item_idx = item_id as usize;
+                    if item_idx >= self.items.len() {
+                        continue;
+                    }
+
+                    let it = self.items[item_idx];
+                    if it.used == mag_core::constants::USE_EMPTY {
+                        continue;
+                    }
+
+                    if it.temp != template_id {
+                        continue;
+                    }
+
+                    let x = (tile_idx % tile_w) as u16;
+                    let y = (tile_idx / tile_w) as u16;
+                    let area = mag_core::area::get_area_m(x as i32, y as i32)
+                        .unwrap_or_else(|| "Unknown".to_string());
+                    locations.push((item_id, x, y, area));
+                }
+
+                locations.sort_by(|a, b| a.3.cmp(&b.3).then(a.2.cmp(&b.2)).then(a.1.cmp(&b.1)));
+
+                let total = locations.len();
+                let limit: usize = 500;
+
+                egui::CollapsingHeader::new(format!("Where used ({} on map)", total))
+                    .default_open(total > 0 && total <= 20)
+                    .show(ui, |ui| {
+                        if total == 0 {
+                            ui.label("No instances of this template were found on the map.");
+                            return;
+                        }
+
+                        if total > limit {
+                            ui.colored_label(
+                                egui::Color32::YELLOW,
+                                format!("Showing first {} of {} results", limit, total),
+                            );
+                        }
+
+                        egui::Grid::new(format!("item_where_used_{}", template_id))
+                            .num_columns(4)
+                            .spacing([20.0, 4.0])
+                            .striped(true)
+                            .show(ui, |ui| {
+                                crate::centered_label(ui, "Item");
+                                crate::centered_label(ui, "X");
+                                crate::centered_label(ui, "Y");
+                                ui.label("Area");
+                                ui.end_row();
+
+                                for (item_id, x, y, area) in locations.iter().take(limit) {
+                                    crate::centered_label(ui, format!("{}", item_id));
+                                    crate::centered_label(ui, format!("{}", x));
+                                    crate::centered_label(ui, format!("{}", y));
+                                    ui.label(area);
+                                    ui.end_row();
+                                }
+                            });
+                    });
+            }
         });
     }
 
