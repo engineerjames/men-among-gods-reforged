@@ -163,6 +163,28 @@ impl TemplateViewerApp {
         }
     }
 
+    fn centered_clickable_item_instance_id(&mut self, ui: &mut egui::Ui, item_id: u32) {
+        if item_id == 0 {
+            crate::centered_label(ui, "0");
+            return;
+        }
+
+        let response = ui
+            .with_layout(
+                egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
+                |ui| ui.add(egui::Label::new(format!("{}", item_id)).sense(egui::Sense::click())),
+            )
+            .inner;
+
+        if response.clicked() {
+            let idx = item_id as usize;
+            if idx < self.items.len() && self.items[idx].used != mag_core::constants::USE_EMPTY {
+                self.selected_item_instance_index = Some(idx);
+                self.view_mode = ViewMode::Items;
+            }
+        }
+    }
+
     fn load_templates_from_dir(&mut self, dir: PathBuf) {
         self.load_error = None;
         log::info!("Loading templates from {:?}", dir);
@@ -911,7 +933,7 @@ impl TemplateViewerApp {
                                 ui.end_row();
 
                                 for (item_id, x, y, area) in locations.iter().take(limit) {
-                                    crate::centered_label(ui, format!("{}", item_id));
+                                    self.centered_clickable_item_instance_id(ui, *item_id);
                                     crate::centered_label(ui, format!("{}", x));
                                     crate::centered_label(ui, format!("{}", y));
                                     ui.label(area);
