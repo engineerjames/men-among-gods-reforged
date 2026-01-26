@@ -154,6 +154,12 @@ fn main() {
     let gfx_zip = assets_dir.join("gfx").join("images.zip");
     let sfx_dir = assets_dir.join("sfx");
 
+    log::info!("Using assets directory: {:?}", assets_dir);
+    log::info!("Using graphics zip: {:?}", gfx_zip);
+    log::info!("Using sound effects directory: {:?}", sfx_dir);
+    log::info!("Base directory: {:?}", helpers::get_mag_base_dir());
+    log::info!("Log directory: {:?}", resolve_log_dir());
+
     let mut app = App::new();
     let log_filter = resolve_log_filter();
     app
