@@ -498,10 +498,7 @@ impl TemplateViewerApp {
         });
 
         ui.horizontal(|ui| {
-            ui.checkbox(
-                &mut self.character_instances_player_only,
-                "Player only",
-            );
+            ui.checkbox(&mut self.character_instances_player_only, "Player only");
         });
 
         ui.separator();
