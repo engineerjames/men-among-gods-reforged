@@ -98,6 +98,11 @@ impl GraphicsCache {
                 }
             };
 
+            log::info!(
+                "GraphicsCache::initialize opened graphics zip {:?}",
+                self.assets_zip
+            );
+
             self.archive = match ZipArchive::new(file) {
                 Ok(a) => Some(a),
                 Err(e) => {
@@ -118,9 +123,14 @@ impl GraphicsCache {
                     let name = file.name().to_string();
                     // Skip directory entries
                     if !name.ends_with('/') {
-                        // Our sprite IDs are numeric filenames (e.g. 00031.png). We load them
-                        // into `gfx[id]` so indices match the server/original client.
-                        let stem = name.split('.').next().unwrap_or("");
+                        // Our sprite IDs are numeric filenames (e.g. 00031.png). Some zip builds
+                        // include a directory prefix (e.g. images/00031.png), so parse only the
+                        // final path component.
+                        let file_name = std::path::Path::new(&name)
+                            .file_name()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("");
+                        let stem = file_name.split('.').next().unwrap_or("");
                         if let Ok(id) = stem.parse::<usize>() {
                             entries.push((id, name));
                         }
