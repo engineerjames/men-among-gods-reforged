@@ -19,14 +19,8 @@ use tracing_appender::{non_blocking::WorkerGuard, rolling};
 
 use bevy::log::{tracing_subscriber::Layer, BoxedLayer, LogPlugin};
 use bevy::prelude::*;
-#[cfg(not(target_os = "macos"))]
-use bevy::window::PrimaryWindow;
 use bevy::window::WindowResolution;
-#[cfg(not(target_os = "macos"))]
-use bevy::winit::WinitWindows;
 use bevy::winit::{UpdateMode, WinitSettings};
-#[cfg(not(target_os = "macos"))]
-use winit::window::Icon;
 
 use crate::gfx_cache::GraphicsCache;
 use crate::sfx_cache::SoundCache;
