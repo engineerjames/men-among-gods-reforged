@@ -19,6 +19,18 @@ pub(crate) struct GameplayTextInput {
 }
 
 #[derive(Resource, Default, Debug)]
+pub(crate) struct GameplayLogScrollState {
+    /// Number of log lines scrolled up from the most recent message.
+    ///
+    /// 0 means "follow the tail" (show newest messages). Larger values show older messages.
+    pub(crate) offset: usize,
+
+    /// Tracks `PlayerState::log_revision()` so we can keep the viewport stable when new log
+    /// messages arrive while the user is scrolled up.
+    pub(crate) last_log_revision: u64,
+}
+
+#[derive(Resource, Default, Debug)]
 pub(crate) struct GameplayExitState {
     pub(crate) firstquit: bool,
     pub(crate) wantquit: bool,

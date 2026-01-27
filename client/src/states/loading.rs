@@ -41,7 +41,7 @@ pub fn setup_loading_ui(
         children![
             (
                 LoadingLabel,
-                Text::new("Loading Graphics Assets..."),
+                Text::new("Loading graphical assets..."),
                 TextFont::from_font_size(42.0),
                 TextColor(Color::srgb(0.95, 0.95, 0.95)),
             ),
@@ -97,7 +97,7 @@ pub fn run_loading(
     const LOADING_BUDGET: Duration = Duration::from_millis(250);
 
     if !gfx.is_initialized() {
-        **label = "Loading Graphics Assets...".to_string();
+        **label = "Loading graphical assets...".to_string();
         let start = Instant::now();
         let mut last_progress;
         loop {
@@ -113,7 +113,7 @@ pub fn run_loading(
                     break;
                 }
                 CacheInitStatus::Error(err) => {
-                    **label = "LOADING GFX (ERROR)".to_string();
+                    **label = "Loading graphical assets (error)".to_string();
                     log::error!("GraphicsCache init failed: {err}");
                     // Advance anyway so we don't soft-lock on the loading screen.
                     last_progress = 1.0;
@@ -127,7 +127,7 @@ pub fn run_loading(
     }
 
     if !sfx.is_initialized() {
-        **label = "Loading Sound Assets...".to_string();
+        **label = "Loading sound assets...".to_string();
         let start = Instant::now();
         let mut last_progress;
         loop {
@@ -143,7 +143,7 @@ pub fn run_loading(
                     break;
                 }
                 CacheInitStatus::Error(err) => {
-                    **label = "Loading Sound Assets (ERROR)".to_string();
+                    **label = "Loading sound assets (error)".to_string();
                     log::error!("SoundCache init failed: {err}");
                     last_progress = 1.0;
                     break;

@@ -3,6 +3,7 @@
 use bevy::ecs::message::MessageReader;
 use bevy::ecs::query::Without;
 use bevy::input::keyboard::KeyboardInput;
+use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
 use bevy::input::ButtonState;
 use bevy::prelude::*;
 
@@ -13,9 +14,11 @@ use crate::states::gameplay::components::{
     BitmapText, GameplayRenderEntity, GameplayUiInputText, GameplayUiLogLine,
 };
 use crate::states::gameplay::layout::*;
-use crate::states::gameplay::resources::GameplayTextInput;
+use crate::states::gameplay::resources::{GameplayLogScrollState, GameplayTextInput};
+use crate::systems::magic_postprocess::MagicScreenCamera;
 
 use super::super::world_render::screen_to_world;
+use super::super::{cursor_game_pos, in_rect};
 
 /// Sends a chat input line to the server using the legacy 8x15-byte packet split.
 fn send_chat_input(net: &NetworkRuntime, text: &str) {
@@ -76,9 +79,13 @@ pub(crate) fn spawn_ui_input_text(commands: &mut Commands) {
 pub(crate) fn run_gameplay_text_ui(
     keys: Res<ButtonInput<KeyCode>>,
     mut kb: MessageReader<KeyboardInput>,
+    mut wheel: MessageReader<MouseWheel>,
     net: Res<NetworkRuntime>,
     mut player_state: ResMut<PlayerState>,
     mut input: ResMut<GameplayTextInput>,
+    mut log_scroll: ResMut<GameplayLogScrollState>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
+    cameras: Query<&Camera, (With<Camera2d>, With<MagicScreenCamera>)>,
     mut q_log: Query<(&GameplayUiLogLine, &mut BitmapText), Without<GameplayUiInputText>>,
     mut q_input: Query<&mut BitmapText, (With<GameplayUiInputText>, Without<GameplayUiLogLine>)>,
 ) {
@@ -154,9 +161,67 @@ pub(crate) fn run_gameplay_text_ui(
         input.current.clear();
     }
 
+    // Log scrolling.
+    //
+    // - `offset == 0` means show the newest LOG_LINES messages.
+    // - When scrolled up (offset > 0), keep the viewport stable while new messages arrive.
+    let log_len = player_state.log_len();
+    let max_offset = log_len.saturating_sub(LOG_LINES);
+
+    let page = LOG_LINES.max(1);
+    if keys.just_pressed(KeyCode::PageUp) {
+        log_scroll.offset = log_scroll.offset.saturating_add(page);
+    }
+    if keys.just_pressed(KeyCode::PageDown) {
+        log_scroll.offset = log_scroll.offset.saturating_sub(page);
+    }
+
+    let over_log = cursor_game_pos(&windows, &cameras).is_some_and(|game| {
+        let log_w = crate::constants::TARGET_WIDTH - LOG_X;
+        let log_h = LOG_LINE_H * (LOG_LINES as f32);
+        in_rect(game, LOG_X, LOG_Y, log_w, log_h)
+    });
+
+    if over_log {
+        for ev in wheel.read() {
+            // Bevy: positive y is typically "scroll up".
+            let y = match ev.unit {
+                MouseScrollUnit::Line => ev.y,
+                MouseScrollUnit::Pixel => ev.y / 20.0,
+            };
+
+            let ticks = y.round() as i32;
+            if ticks == 0 {
+                continue;
+            }
+
+            // Make wheel movement feel more like a log scroller than a precision slider.
+            let lines = ticks.saturating_mul(3);
+            if lines > 0 {
+                log_scroll.offset = log_scroll.offset.saturating_add(lines as usize);
+            } else {
+                log_scroll.offset = log_scroll.offset.saturating_sub((-lines) as usize);
+            }
+        }
+    }
+
+    // If we're scrolled up and new log lines have arrived since last frame, increase the
+    // offset by the same amount so the viewed content stays put.
+    let rev_now = player_state.log_revision();
+    let rev_delta = rev_now.saturating_sub(log_scroll.last_log_revision) as usize;
+    if rev_delta > 0 && log_scroll.offset > 0 {
+        log_scroll.offset = log_scroll.offset.saturating_add(rev_delta);
+    }
+    log_scroll.last_log_revision = rev_now;
+
+    // Clamp after applying inputs + revision adjustment.
+    log_scroll.offset = log_scroll.offset.min(max_offset);
+
     // Update log text (22 lines), oldest at top like `engine.c`.
     for (line, mut text) in &mut q_log {
-        let idx_from_most_recent = LOG_LINES.saturating_sub(1).saturating_sub(line.line);
+        let idx_from_most_recent = log_scroll
+            .offset
+            .saturating_add(LOG_LINES.saturating_sub(1).saturating_sub(line.line));
         if let Some(msg) = player_state.log_message(idx_from_most_recent) {
             let desired_font = bitmap_font_for_log_color(msg.color);
             if text.font != desired_font {

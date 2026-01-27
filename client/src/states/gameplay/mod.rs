@@ -642,6 +642,7 @@ pub(crate) fn setup_gameplay(
 
     // Gameplay text input/log UI state
     commands.insert_resource(GameplayTextInput::default());
+    commands.insert_resource(GameplayLogScrollState::default());
     commands.insert_resource(GameplayExitState::default());
 
     // Bitmap font (sprite atlas) used for UI text.
