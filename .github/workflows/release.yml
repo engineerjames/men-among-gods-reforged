@@ -80,7 +80,22 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: >-
-          bash pipelines/create_github_release.sh
-          --version '${{ inputs.version }}'
-          --artifacts-dir artifacts
+        run: |
+          set -euo pipefail
+
+          VERSION='${{ inputs.version }}'
+
+          mapfile -t FILES < <(find artifacts -type f -name '*.zip' -print)
+          if [[ ${#FILES[@]} -eq 0 ]]; then
+            echo "No .zip artifacts found to upload" >&2
+            exit 1
+          fi
+
+          if gh release view "$VERSION" --repo "$GH_REPO" >/dev/null 2>&1; then
+            gh release upload "$VERSION" "${FILES[@]}" --repo "$GH_REPO" --clobber
+          else
+            gh release create "$VERSION" "${FILES[@]}" --repo "$GH_REPO" \
+              --title "$VERSION" \
+              --target "${GITHUB_SHA}" \
+              --notes "Automated release for $VERSION"
+          fi
