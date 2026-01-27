@@ -121,16 +121,20 @@ pub fn use_door(cn: usize, item_idx: usize) -> i32 {
     }
 
     let mut lock = 0;
+    let mut key_vanishes = false;
+    let mut key_slot: Option<usize> = None;
 
     // Check lock requirements
-    Repository::with_items(|items| {
+    let locked_without_key = Repository::with_items(|items| {
         let item = &items[item_idx];
 
         if item.data[0] != 0 {
             if cn == 0 {
                 lock = 1;
+                false
             } else if item.data[0] >= 65500 {
                 lock = sub_door_driver(cn, item_idx);
+                false
             } else {
                 // Check if character has the right key
                 Repository::with_characters(|characters| {
@@ -144,7 +148,8 @@ pub fn use_door(cn: usize, item_idx: usize) -> i32 {
                     {
                         lock = 1;
                         if item.data[3] != 0 {
-                            // Key vanishes - will be handled in mutable section
+                            key_vanishes = true;
+                            key_slot = None; // citem
                         }
                     } else {
                         // Check inventory
@@ -152,6 +157,10 @@ pub fn use_door(cn: usize, item_idx: usize) -> i32 {
                             let in2 = character.item[n] as usize;
                             if in2 != 0 && items[in2].temp == item.data[0] as u16 {
                                 lock = 1;
+                                if item.data[3] != 0 {
+                                    key_vanishes = true;
+                                    key_slot = Some(n); // inventory slot
+                                }
                                 break;
                             }
                         }
@@ -186,21 +195,49 @@ pub fn use_door(cn: usize, item_idx: usize) -> i32 {
                     });
                 }
 
-                if item.data[1] != 0 && lock == 0 {
-                    State::with(|state| {
-                        state.do_character_log(
-                            cn,
-                            core::types::FontColor::Blue,
-                            "It's locked and you don't have the right key.\n",
-                        );
-                    });
-                    return 0;
-                }
+                // Return whether the door is locked without proper key
+                item.data[1] != 0 && lock == 0
             }
+        } else {
+            false
         }
-
-        0
     });
+
+    // If door is locked and player doesn't have key, exit early
+    if locked_without_key {
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "It's locked and you don't have the right key.\n",
+            );
+        });
+        return 0;
+    }
+
+    // Handle key vanishing if needed
+    if key_vanishes {
+        Repository::with_characters_mut(|characters| {
+            if let Some(slot) = key_slot {
+                // Key was in inventory
+                let item_idx = characters[cn].item[slot] as usize;
+                characters[cn].item[slot] = 0;
+                Repository::with_items_mut(|items| {
+                    items[item_idx].used = USE_EMPTY;
+                });
+            } else {
+                // Key was in citem
+                let item_idx = characters[cn].citem as usize;
+                characters[cn].citem = 0;
+                Repository::with_items_mut(|items| {
+                    items[item_idx].used = USE_EMPTY;
+                });
+            }
+        });
+        State::with(|state| {
+            state.do_character_log(cn, core::types::FontColor::Yellow, "The key vanished.\n");
+        });
+    }
 
     // Now modify the door state
     Repository::with_items_mut(|items| {
