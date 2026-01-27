@@ -3,4 +3,4 @@ set -euo pipefail
 
 # Build release binaries for server + client.
 
-cargo build --release -p server -p client
+cargo build --release

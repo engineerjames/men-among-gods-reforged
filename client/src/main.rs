@@ -19,14 +19,8 @@ use tracing_appender::{non_blocking::WorkerGuard, rolling};
 
 use bevy::log::{tracing_subscriber::Layer, BoxedLayer, LogPlugin};
 use bevy::prelude::*;
-#[cfg(not(target_os = "macos"))]
-use bevy::window::PrimaryWindow;
 use bevy::window::WindowResolution;
-#[cfg(not(target_os = "macos"))]
-use bevy::winit::WinitWindows;
 use bevy::winit::{UpdateMode, WinitSettings};
-#[cfg(not(target_os = "macos"))]
-use winit::window::Icon;
 
 use crate::gfx_cache::GraphicsCache;
 use crate::sfx_cache::SoundCache;
@@ -37,15 +31,28 @@ use crate::systems::map_hover;
 use crate::systems::nameplates;
 use crate::systems::sound;
 
+fn install_crash_handler() {
+    std::panic::set_hook(Box::new(|info| {
+        // Best-effort: write a crash report to the same directory we use for logs.
+        let log_dir = resolve_log_dir();
+        let _ = std::fs::create_dir_all(&log_dir);
+
+        let crash_path = log_dir.join("client.crash.log");
+        let backtrace = std::backtrace::Backtrace::force_capture();
+
+        let payload =
+            format!("Men Among Gods client panic\n\n{info}\n\nBacktrace:\n{backtrace:?}\n");
+
+        // Avoid panicking inside the panic hook.
+        let _ = std::fs::write(&crash_path, payload);
+    }));
+}
+
 #[derive(Resource)]
 struct LogGuard(#[allow(dead_code)] WorkerGuard);
 
-#[cfg(target_os = "macos")]
-#[derive(Default)]
-struct MacosMainThreadToken;
-
 #[derive(Resource, Clone, Debug)]
-struct ClientAssetsDir(PathBuf);
+struct ClientAssetsDir(#[allow(dead_code)] PathBuf);
 
 #[derive(States, Clone, Copy, PartialEq, Eq, Hash, Debug)]
 enum GameState {
@@ -90,6 +97,26 @@ fn custom_layer(app: &mut App) -> Option<BoxedLayer> {
     )
 }
 
+fn resolve_log_filter() -> String {
+    // Respect an explicit user override.
+    if let Ok(filter) = std::env::var("RUST_LOG") {
+        if !filter.trim().is_empty() {
+            return filter;
+        }
+    }
+
+    // The Vulkan loader can emit very loud "ERROR" messages on Windows when there are stale
+    // (uninstalled/moved) implicit layer registrations. These are often non-fatal and can be
+    // confusing to users.
+    //
+    // If you need to debug Vulkan instance creation, set `RUST_LOG` explicitly.
+    if cfg!(target_os = "windows") {
+        "info,wgpu_hal::vulkan::instance=off".to_string()
+    } else {
+        "info".to_string()
+    }
+}
+
 fn resolve_assets_base_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("MAG_ASSETS_DIR") {
         if !dir.is_empty() {
@@ -111,11 +138,20 @@ fn resolve_assets_base_dir() -> PathBuf {
 }
 
 fn main() {
+    install_crash_handler();
+
     let assets_dir = resolve_assets_base_dir();
     let gfx_zip = assets_dir.join("gfx").join("images.zip");
     let sfx_dir = assets_dir.join("sfx");
 
+    log::info!("Using assets directory: {:?}", assets_dir);
+    log::info!("Using graphics zip: {:?}", gfx_zip);
+    log::info!("Using sound effects directory: {:?}", sfx_dir);
+    log::info!("Base directory: {:?}", helpers::get_mag_base_dir());
+    log::info!("Log directory: {:?}", resolve_log_dir());
+
     let mut app = App::new();
+    let log_filter = resolve_log_filter();
     app
         // Setup resources
         .insert_resource(GraphicsCache::new(gfx_zip.to_string_lossy().as_ref()))
@@ -140,6 +176,7 @@ fn main() {
                 .set(ImagePlugin::default_nearest())
                 .set(LogPlugin {
                     custom_layer,
+                    filter: log_filter,
                     ..default()
                 })
                 .set(WindowPlugin {
@@ -368,150 +405,5 @@ fn main() {
         .add_systems(Startup, settings::load_user_settings_startup)
         .add_systems(Update, settings::save_user_settings_if_pending);
 
-    // macOS: Set Dock icon via AppKit on the main thread.
-    #[cfg(target_os = "macos")]
-    {
-        app.insert_non_send_resource(MacosMainThreadToken::default());
-        app.add_systems(Startup, set_macos_dock_icon_startup);
-    }
-
-    // Windows/Linux: Set the winit window icon once the native window exists.
-    #[cfg(not(target_os = "macos"))]
-    {
-        app.add_systems(Update, set_window_icon_once);
-    }
-
     app.run();
-}
-
-#[cfg(target_os = "macos")]
-fn set_macos_dock_icon_from_rgba(
-    rgba: &[u8],
-    width: u32,
-    height: u32,
-) -> Result<(), Box<dyn std::error::Error>> {
-    use objc2::MainThreadMarker;
-    use objc2_app_kit::{NSApplication, NSImage};
-    use objc2_foundation::NSData;
-    use std::io::Cursor;
-
-    let image = image::RgbaImage::from_raw(width, height, rgba.to_vec())
-        .ok_or("Invalid RGBA buffer for icon")?;
-
-    let mut png_bytes = Vec::new();
-    image::DynamicImage::ImageRgba8(image)
-        .write_to(&mut Cursor::new(&mut png_bytes), image::ImageFormat::Png)?;
-
-    let mtm = MainThreadMarker::new().ok_or("Setting Dock icon must run on the main thread")?;
-
-    let data = NSData::with_bytes(&png_bytes);
-    let ns_image = NSImage::initWithData(mtm.alloc::<NSImage>(), &data)
-        .ok_or("Failed to create NSImage from PNG bytes")?;
-
-    let app = NSApplication::sharedApplication(mtm);
-    unsafe {
-        app.setApplicationIconImage(Some(&ns_image));
-    }
-
-    // Nudge the Dock to redraw. This can help when the process is launched via `cargo run`.
-    app.dockTile().display();
-
-    Ok(())
-}
-
-#[cfg(target_os = "macos")]
-fn set_macos_dock_icon_startup(
-    _main_thread: NonSend<MacosMainThreadToken>,
-    assets_dir: Res<ClientAssetsDir>,
-) {
-    let png_path = assets_dir.0.join("gfx").join("mag_logo.png");
-    let icon_bytes = match std::fs::read(&png_path) {
-        Ok(bytes) => bytes,
-        Err(err) => {
-            log::warn!("Failed to read icon file at {:?}: {err}", png_path);
-            return;
-        }
-    };
-
-    let decoded = match image::load_from_memory(&icon_bytes) {
-        Ok(img) => img.into_rgba8(),
-        Err(err) => {
-            log::warn!("Failed to decode icon file at {:?}: {err}", png_path);
-            return;
-        }
-    };
-
-    let (width, height) = decoded.dimensions();
-    let rgba = decoded.into_raw();
-
-    match set_macos_dock_icon_from_rgba(&rgba, width, height) {
-        Ok(()) => log::info!("Set Dock icon"),
-        Err(err) => log::warn!("Failed to set Dock icon: {err}"),
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-fn set_window_icon_once(
-    winit_windows: NonSend<WinitWindows>,
-    primary_window: Query<Entity, With<PrimaryWindow>>,
-    assets_dir: Res<ClientAssetsDir>,
-    mut done: Local<bool>,
-    mut attempts: Local<u16>,
-) {
-    if *done {
-        return;
-    }
-
-    let winit_windows = &*winit_windows;
-    let Some(window_entity) = primary_window.iter().next() else {
-        log::warn!("Primary window entity not available yet");
-        *attempts = attempts.saturating_add(1);
-        return;
-    };
-
-    if *attempts >= 300 {
-        log::warn!("Giving up on setting app icon after too many attempts");
-        *done = true;
-        return;
-    }
-
-    // Gate on native window existence.
-    let Some(window) = winit_windows.get_window(window_entity) else {
-        return;
-    };
-
-    let png_path = assets_dir.0.join("gfx").join("mag_logo.png");
-    let icon_bytes = match std::fs::read(&png_path) {
-        Ok(bytes) => bytes,
-        Err(err) => {
-            log::warn!("Failed to read icon file at {:?}: {err}", png_path);
-            *done = true;
-            return;
-        }
-    };
-
-    let decoded = match image::load_from_memory(&icon_bytes) {
-        Ok(img) => img.into_rgba8(),
-        Err(err) => {
-            log::warn!("Failed to decode icon file at {:?}: {err}", png_path);
-            *done = true;
-            return;
-        }
-    };
-
-    let (width, height) = decoded.dimensions();
-    let rgba = decoded.into_raw();
-    *attempts = attempts.saturating_add(1);
-
-    match Icon::from_rgba(rgba, width, height) {
-        Ok(icon) => {
-            window.set_window_icon(Some(icon));
-            log::info!("Set window icon");
-        }
-        Err(err) => {
-            log::warn!("Failed to create winit icon: {err}");
-        }
-    }
-
-    *done = true;
 }

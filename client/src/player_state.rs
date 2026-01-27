@@ -19,6 +19,7 @@ pub struct PlayerState {
     shop_target: Look,
     player_info: PlayerData,
     message_log: CircularBuffer<LogMessage>,
+    log_revision: u64,
     should_show_look: bool,
     should_show_shop: bool,
     look_timer: f32,
@@ -63,6 +64,7 @@ impl Default for PlayerState {
             shop_target: Look::default(),
             player_info: PlayerData::default(),
             message_log: CircularBuffer::new(300), // TODO: Customize this?
+            log_revision: 0,
             should_show_look: false,
             should_show_shop: false,
             look_timer: 0.0,
@@ -92,6 +94,14 @@ impl Default for PlayerState {
 }
 
 impl PlayerState {
+    pub fn log_revision(&self) -> u64 {
+        self.log_revision
+    }
+
+    pub fn log_len(&self) -> usize {
+        self.message_log.len()
+    }
+
     pub fn take_exit_requested_reason(&mut self) -> Option<u32> {
         self.exit_requested_reason.take()
     }
@@ -239,6 +249,7 @@ impl PlayerState {
             color: Self::log_color_from_font(font),
         };
         self.message_log.push(msg);
+        self.log_revision = self.log_revision.wrapping_add(1);
     }
 
     /// Inserts extra `\n` so log text won't run off the end of the screen.

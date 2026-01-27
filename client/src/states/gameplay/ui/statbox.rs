@@ -1,6 +1,8 @@
 // Statbox (raise stats/skills) systems live here.
 
 use bevy::asset::RenderAssetUsages;
+use bevy::ecs::message::MessageReader;
+use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::sprite::Anchor;
@@ -107,6 +109,7 @@ pub(crate) fn run_gameplay_update_scroll_knobs(
 pub(crate) fn run_gameplay_statbox_input(
     keys: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
+    mut wheel: MessageReader<MouseWheel>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     cameras: Query<&Camera, (With<Camera2d>, With<MagicScreenCamera>)>,
     net: Res<NetworkRuntime>,
@@ -119,6 +122,55 @@ pub(crate) fn run_gameplay_statbox_input(
     let Some(game) = cursor_game_pos(&windows, &cameras) else {
         return;
     };
+
+    // Mouse wheel scrolling (only when hovered over the relevant list area).
+    // Matches original button behavior:
+    // - inventory scroll moves by 2 (because items are in 2 columns)
+    // - skill list scroll moves by 2 (two rows per scroll step)
+    {
+        let x = game.x;
+        let y = game.y;
+
+        // Inventory list area (eng_display_win): two columns at x=220 and x=255,
+        // five rows starting at y=2 with 35px spacing.
+        let over_inventory = (220.0..=290.0).contains(&x) && (2.0..=177.0).contains(&y);
+
+        // Skill list area (orig/inter.c::mouse_statbox2). For wheel scrolling we use a wider
+        // rectangle so hovering over the right-hand value column still scrolls.
+        // Keep it left of the +/- columns (x>=133) to avoid accidental scrolls while adjusting.
+        let over_skills = (2.0..=132.0).contains(&x) && (114.0..=251.0).contains(&y);
+
+        if over_inventory || over_skills {
+            for ev in wheel.read() {
+                let y = match ev.unit {
+                    MouseScrollUnit::Line => ev.y,
+                    MouseScrollUnit::Pixel => ev.y / 20.0,
+                };
+                let ticks = y.round() as i32;
+                if ticks == 0 {
+                    continue;
+                }
+
+                let steps = ticks.unsigned_abs() as usize;
+                let delta = 2usize.saturating_mul(steps);
+
+                // Bevy/winit: positive y is typically "scroll up".
+                if over_inventory {
+                    if ticks > 0 {
+                        inv_scroll.inv_pos = inv_scroll.inv_pos.saturating_sub(delta);
+                    } else {
+                        inv_scroll.inv_pos = (inv_scroll.inv_pos + delta).min(30);
+                    }
+                } else if over_skills {
+                    if ticks > 0 {
+                        statbox.skill_pos = statbox.skill_pos.saturating_sub(delta);
+                    } else {
+                        statbox.skill_pos = (statbox.skill_pos + delta).min(40);
+                    }
+                }
+            }
+        }
+    }
 
     // Right-click help texts (orig/inter.c::_mouse_statbox).
     if mouse.just_released(MouseButton::Right) {

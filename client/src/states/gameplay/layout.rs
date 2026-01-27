@@ -112,8 +112,8 @@ pub(in crate::states::gameplay) const BUTTONBOX_BUTTON_W: f32 = 41.0;
 pub(in crate::states::gameplay) const BUTTONBOX_BUTTON_H: f32 = 14.0;
 pub(in crate::states::gameplay) const BUTTONBOX_STEP_X: f32 = 49.0;
 
-pub(in crate::states::gameplay) const TOGGLE_BOX_W: f32 = 45.0;
-pub(in crate::states::gameplay) const TOGGLE_BOX_H: f32 = 12.0;
+pub(in crate::states::gameplay) const TOGGLE_BOX_W: f32 = 46.0;
+pub(in crate::states::gameplay) const TOGGLE_BOX_H: f32 = 13.0;
 pub(in crate::states::gameplay) const TOGGLE_SHOW_PROZ_X: f32 = 753.0;
 pub(in crate::states::gameplay) const TOGGLE_SHOW_PROZ_Y: f32 = 554.0;
 pub(in crate::states::gameplay) const TOGGLE_SHOW_NAMES_X: f32 = 704.0;
@@ -121,8 +121,8 @@ pub(in crate::states::gameplay) const TOGGLE_SHOW_NAMES_Y: f32 = 569.0;
 pub(in crate::states::gameplay) const TOGGLE_HIDE_X: f32 = 656.0;
 pub(in crate::states::gameplay) const TOGGLE_HIDE_Y: f32 = 569.0;
 
-pub(in crate::states::gameplay) const MODE_BOX_W: f32 = 45.0;
-pub(in crate::states::gameplay) const MODE_BOX_H: f32 = 12.0;
+pub(in crate::states::gameplay) const MODE_BOX_W: f32 = 46.0;
+pub(in crate::states::gameplay) const MODE_BOX_H: f32 = 13.0;
 pub(in crate::states::gameplay) const MODE_FAST_X: f32 = 608.0; // pl.mode==2
 pub(in crate::states::gameplay) const MODE_NORMAL_X: f32 = 656.0; // pl.mode==1
 pub(in crate::states::gameplay) const MODE_SLOW_X: f32 = 704.0; // pl.mode==0

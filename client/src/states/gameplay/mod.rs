@@ -153,9 +153,9 @@ fn ui_bar_colors() -> (Color, Color, Color) {
     // The original dd_showbar does a darkening blend against the framebuffer.
     // For our sprite-rect bars we want the classic readable look: bright green/red
     // over a blue background, with depletion revealing the blue.
-    let blue = Color::srgb(0.0, 0.0, 0.90);
-    let green = Color::srgb(0.0, 0.85, 0.0);
-    let red = Color::srgb(0.90, 0.0, 0.0);
+    let blue = Color::srgb_u8(9, 4, 58);
+    let green = Color::srgb_u8(8, 77, 23);
+    let red = Color::srgb_u8(155, 7, 7);
     (blue, green, red)
 }
 
@@ -642,6 +642,7 @@ pub(crate) fn setup_gameplay(
 
     // Gameplay text input/log UI state
     commands.insert_resource(GameplayTextInput::default());
+    commands.insert_resource(GameplayLogScrollState::default());
     commands.insert_resource(GameplayExitState::default());
 
     // Bitmap font (sprite atlas) used for UI text.
