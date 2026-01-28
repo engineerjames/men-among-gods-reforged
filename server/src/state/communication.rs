@@ -1080,8 +1080,8 @@ impl State {
 
         if p != 0 {
             Repository::with_characters_mut(|characters| {
-                characters[cn].points += p;
-                characters[cn].points_tot += p;
+                characters[cn].points += p * 10;
+                characters[cn].points_tot += p * 10;
             });
             self.do_character_log(
                 cn,
