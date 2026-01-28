@@ -2,8 +2,8 @@ use core::{
     constants::{
         CharacterFlags, ItemFlags, SERVER_MAPX, SK_AXE, SK_BLAST, SK_BLESS, SK_CONCEN, SK_CURSE,
         SK_DAGGER, SK_DISPEL, SK_ENHANCE, SK_GHOST, SK_HEAL, SK_IDENT, SK_IMMUN, SK_LIGHT, SK_LOCK,
-        SK_MEDIT, SK_MSHIELD, SK_PROTECT, SK_RECALL, SK_REGEN, SK_REPAIR, SK_REST, SK_STAFF,
-        SK_STUN, SK_SURROUND, SK_SWORD, SK_TWOHAND, SK_WARCRY, SK_WIMPY,
+        SK_MEDIT, SK_MSHIELD, SK_PROTECT, SK_RECALL, SK_REGEN, SK_REPAIR, SK_REST, SK_SENSE,
+        SK_STAFF, SK_STUN, SK_SURROUND, SK_SWORD, SK_TWOHAND, SK_WARCRY, SK_WIMPY, TICKS,
     },
     string_operations::c_string_to_str,
     types::FontColor,
@@ -208,8 +208,7 @@ pub fn spell_immunity(power: i32, immun: i32) -> i32 {
 pub fn spell_race_mod(power: i32, kindred: i32) -> i32 {
     // Ported from C++ spell_race_mod(int power, int kindred)
 
-    #[allow(unused_assignments)]
-    let mut modf = 1.0;
+    let mut modf;
     if (kindred & core::constants::KIN_ARCHHARAKIM as i32) != 0 {
         modf = 1.05;
     } else if (kindred & core::constants::KIN_ARCHTEMPLAR as i32) != 0 {
@@ -621,11 +620,6 @@ pub fn spellpower(cn: usize) -> i32 {
 }
 
 pub fn spell_protect(cn: usize, co: usize, power: i32) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-    use core::types::FontColor;
-
     let in_opt = God::create_item(1);
     if in_opt.is_none() {
         log::error!("god_create_item failed in skill_protect");
@@ -637,6 +631,27 @@ pub fn spell_protect(cn: usize, co: usize, power: i32) -> i32 {
     let mut power = power;
     let target_spellpower = spellpower(co);
     if power > target_spellpower {
+        if cn != co {
+            let reference = Repository::with_characters(|ch| ch[co].reference);
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    FontColor::Green,
+                    &format!(
+                        "Seeing that {} is not powerful enough for your spell, you reduced its strength.\n",
+                        c_string_to_str(&reference)
+                    ),
+                )
+            });
+        } else {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    FontColor::Green,
+                    "You are not powerful enough to use the full strength of this spell.\n",
+                )
+            });
+        }
         power = target_spellpower;
     }
 
@@ -677,26 +692,19 @@ pub fn spell_protect(cn: usize, co: usize, power: i32) -> i32 {
                 state.do_character_log(
                     co,
                     FontColor::Green,
-                    &format!(
-                        "{} tried to cast protection on you but failed.\n",
-                        c_string_to_str(&reference)
-                    ),
+                    &format!("{} cast protect on you.\n", c_string_to_str(&reference)),
                 )
             });
         } else {
             State::with(|state| {
-                state.do_character_log(co, FontColor::Green, "You are now protected.\n")
+                state.do_character_log(co, FontColor::Red, "You feel protected.\n")
             });
         }
 
         let name = Repository::with_characters(|ch| ch[co].get_name().to_string());
-        let (x, y) = Repository::with_characters(|ch| (ch[co].x, ch[co].y));
         State::with(|state| {
-            state.do_area_log(
-                co,
-                0,
-                x as i32,
-                y as i32,
+            state.do_character_log(
+                cn,
                 FontColor::Green,
                 &format!("{} is now protected.\n", name),
             )
@@ -704,6 +712,8 @@ pub fn spell_protect(cn: usize, co: usize, power: i32) -> i32 {
         let sound = Repository::with_characters(|ch| ch[cn].sound);
         State::char_play_sound(co, sound as i32 + 1, -150, 0);
         State::char_play_sound(cn, sound as i32 + 1, -150, 0);
+        let target_name = Repository::with_characters(|ch| ch[co].get_name().to_string());
+        chlog!(cn, "Cast Protect on {}", target_name);
         EffectManager::fx_add_effect(
             6,
             0,
@@ -746,11 +756,6 @@ pub fn spell_protect(cn: usize, co: usize, power: i32) -> i32 {
 }
 
 pub fn skill_protect(cn: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-    use core::types::FontColor;
-
     let has_skill = Repository::with_characters(|ch| ch[cn].skill[SK_PROTECT][5] != 0);
     if !has_skill {
         return;
@@ -3207,7 +3212,7 @@ pub fn skill_stun(cn: usize) {
 
     if Repository::with_characters(|ch| (ch[co].flags & CharacterFlags::Immortal.bits()) != 0) {
         State::with(|state| {
-            state.do_character_log(cn, core::types::FontColor::Green, "You lost your focus.\n")
+            state.do_character_log(cn, core::types::FontColor::Red, "You lost your focus.\n")
         });
         return;
     }
