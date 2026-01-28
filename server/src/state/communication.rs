@@ -70,6 +70,9 @@ impl State {
         dat3: i32,
         dat4: i32,
     ) {
+        if character_id == 0 || character_id as usize >= core::constants::MAXCHARS {
+            return;
+        }
         driver::driver_msg(character_id as usize, notify_type, dat1, dat2, dat3, dat4);
     }
 

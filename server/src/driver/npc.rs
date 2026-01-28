@@ -1257,7 +1257,7 @@ pub fn die_companion(cn: usize) {
     });
 
     State::with(|state| {
-        state.do_character_killed(0, cn);
+        state.do_character_killed(cn, 0);
     });
 }
 

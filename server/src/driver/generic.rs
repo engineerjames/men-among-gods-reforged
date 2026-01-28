@@ -1823,6 +1823,11 @@ pub fn drv_skill(cn: usize) {
 }
 
 pub fn driver_msg(cn: usize, msg_type: i32, dat1: i32, dat2: i32, dat3: i32, dat4: i32) {
+    if cn == 0 || cn >= core::constants::MAXCHARS {
+        log::warn!("driver_msg: invalid character id {}", cn);
+        return;
+    }
+
     // Mirror C++ driver_msg default handling
     // if stunned -> ignore
     let stunned = Repository::with_characters(|ch| ch[cn].stunned != 0);

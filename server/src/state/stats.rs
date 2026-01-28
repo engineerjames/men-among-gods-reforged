@@ -785,7 +785,7 @@ impl State {
                         FontColor::Red,
                         &format!("The {} killed {}.\n", spell_name, cn),
                     );
-                    self.do_character_killed(0, cn);
+                    self.do_character_killed(cn, 0);
                     return;
                 }
 
@@ -1002,7 +1002,7 @@ impl State {
 
                 let is_dead = Repository::with_characters(|ch| ch[cn].a_hp < 500);
                 if is_dead {
-                    self.do_character_killed(0, cn);
+                    self.do_character_killed(cn, 0);
                 }
             }
         }
