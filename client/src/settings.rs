@@ -2,6 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
+use bevy::window::{MonitorSelection, PrimaryWindow, VideoModeSelection, Window, WindowMode};
 use serde::{Deserialize, Serialize};
 
 use crate::helpers::get_mag_base_dir;
@@ -14,6 +15,50 @@ use crate::types::{player_data::PlayerData, save_file::SaveFile};
 pub const DEFAULT_SERVER_IP: &str = "menamonggods.ddns.net";
 pub const DEFAULT_SERVER_PORT: u16 = 5555;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VideoModeSetting {
+    Windowed,
+    BorderlessFullscreen,
+    Fullscreen,
+}
+
+impl Default for VideoModeSetting {
+    fn default() -> Self {
+        Self::Windowed
+    }
+}
+
+impl VideoModeSetting {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Windowed => "Windowed",
+            Self::BorderlessFullscreen => "Borderless fullscreen",
+            Self::Fullscreen => "Fullscreen",
+        }
+    }
+
+    pub fn to_window_mode(self) -> WindowMode {
+        match self {
+            Self::Windowed => WindowMode::Windowed,
+            Self::BorderlessFullscreen => {
+                WindowMode::BorderlessFullscreen(MonitorSelection::Current)
+            }
+            Self::Fullscreen => {
+                WindowMode::Fullscreen(MonitorSelection::Current, VideoModeSelection::Current)
+            }
+        }
+    }
+
+    pub fn from_window_mode(mode: &WindowMode) -> Self {
+        match mode {
+            WindowMode::Windowed => Self::Windowed,
+            WindowMode::BorderlessFullscreen(_) => Self::BorderlessFullscreen,
+            WindowMode::Fullscreen(_, _) => Self::Fullscreen,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct UserSettings {
@@ -23,6 +68,8 @@ pub struct UserSettings {
     pub show_cursor_action_text: bool,
     pub magic_effects_enabled: bool,
     pub gamma: f32,
+
+    pub video_mode: VideoModeSetting,
 
     /// Default server address shown on the login screen.
     pub default_server_ip: String,
@@ -43,6 +90,8 @@ impl Default for UserSettings {
             show_cursor_action_text: true,
             magic_effects_enabled: true,
             gamma: 1.0,
+
+            video_mode: VideoModeSetting::Windowed,
 
             default_server_ip: DEFAULT_SERVER_IP.to_string(),
             default_server_port: DEFAULT_SERVER_PORT,
@@ -171,6 +220,7 @@ fn load_settings_from_disk(path: &Path) -> UserSettings {
 /// This intentionally stays separate from `mag.dat` / character `.mag` formats.
 pub fn load_user_settings_startup(
     mut commands: Commands,
+    mut windows: Query<&mut Window, With<PrimaryWindow>>,
     mut player_state: ResMut<PlayerState>,
     mut sound_settings: ResMut<SoundSettings>,
     mut cursor_action_text: ResMut<CursorActionTextSettings>,
@@ -189,6 +239,10 @@ pub fn load_user_settings_startup(
         &mut cursor_action_text,
         &mut magic_settings,
     );
+
+    if let Some(mut window) = windows.iter_mut().next() {
+        window.mode = state.settings.video_mode.to_window_mode();
+    }
 
     commands.insert_resource(state);
 }

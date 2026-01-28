@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy::window::PrimaryWindow;
 use bevy_egui::{
     egui::{self, Pos2},
     EguiContexts,
@@ -7,7 +8,7 @@ use bevy_egui::{
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::helpers::open_dir_in_file_manager;
 use crate::player_state::PlayerState;
-use crate::settings::UserSettingsState;
+use crate::settings::{UserSettingsState, VideoModeSetting};
 use crate::states::gameplay::CursorActionTextSettings;
 use crate::systems::magic_postprocess::MagicPostProcessSettings;
 use crate::systems::sound::SoundSettings;
@@ -40,6 +41,7 @@ pub fn run_menu(
     keys: Res<ButtonInput<KeyCode>>,
     mut next_state: ResMut<NextState<GameState>>,
     mut menu_ui: ResMut<MenuUiState>,
+    mut windows: Query<&mut Window, With<PrimaryWindow>>,
     mut player_state: ResMut<PlayerState>,
     mut sound_settings: ResMut<SoundSettings>,
     mut cursor_action_text: ResMut<CursorActionTextSettings>,
@@ -161,6 +163,48 @@ pub fn run_menu(
 
             ui.separator();
             ui.heading("Graphics");
+
+            if let Some(mut window) = windows.iter_mut().next() {
+                ui.horizontal(|ui| {
+                    ui.label("Video mode");
+
+                    let current = VideoModeSetting::from_window_mode(&window.mode);
+                    let mut selected = current;
+                    let mut changed = false;
+
+                    egui::ComboBox::from_id_salt("video_mode_combo")
+                        .selected_text(selected.label())
+                        .show_ui(ui, |ui| {
+                            changed |= ui
+                                .selectable_value(
+                                    &mut selected,
+                                    VideoModeSetting::Windowed,
+                                    VideoModeSetting::Windowed.label(),
+                                )
+                                .changed();
+                            changed |= ui
+                                .selectable_value(
+                                    &mut selected,
+                                    VideoModeSetting::BorderlessFullscreen,
+                                    VideoModeSetting::BorderlessFullscreen.label(),
+                                )
+                                .changed();
+                            changed |= ui
+                                .selectable_value(
+                                    &mut selected,
+                                    VideoModeSetting::Fullscreen,
+                                    VideoModeSetting::Fullscreen.label(),
+                                )
+                                .changed();
+                        });
+
+                    if changed && selected != current {
+                        window.mode = selected.to_window_mode();
+                        user_settings.settings.video_mode = selected;
+                        user_settings.request_save();
+                    }
+                });
+            }
 
             if ui
                 .checkbox(&mut magic_settings.enabled, "Enable magic screen effects")
