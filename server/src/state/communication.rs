@@ -889,9 +889,7 @@ impl State {
             let mut co_actual = co;
 
             // Player companion? Act as if trying to attack the master instead
-            if (characters[cn].flags & CharacterFlags::Body.bits()) != 0
-                && characters[cn].data[64] == 0
-            {
+            if characters[cn].temp as usize == CT_COMPANION && characters[cn].data[CHD_COMPANION] == 0 {
                 cn_actual = characters[cn].data[CHD_MASTER] as usize;
                 if cn_actual == 0 || cn_actual >= MAXCHARS || characters[cn_actual].used == 0 {
                     return 1; // Bad values, let them try
@@ -924,8 +922,8 @@ impl State {
                 }
 
                 // Player companion target? Act as if trying to attack the master instead
-                if (characters[co_actual].flags & CharacterFlags::Body.bits()) != 0
-                    && characters[co_actual].data[64] == 0
+                if characters[co_actual].temp as usize == CT_COMPANION
+                    && characters[co_actual].data[CHD_COMPANION] == 0
                 {
                     co_actual = characters[co_actual].data[CHD_MASTER] as usize;
                     if co_actual == 0 || co_actual >= MAXCHARS || characters[co_actual].used == 0 {
@@ -972,6 +970,23 @@ impl State {
                             &format!(
                                 "{} is not a follower of the Purple One. {} is protected.\n",
                                 co_name, pronoun
+                            ),
+                        );
+                    }
+                    return 0;
+                }
+
+                if helpers::absrankdiff(cn_actual as i32, co_actual as i32)
+                    > core::constants::ATTACK_RANGE as u32
+                {
+                    if msg {
+                        let co_name = characters[co_actual].get_name();
+                        self.do_character_log(
+                            cn,
+                            core::types::FontColor::Red,
+                            &format!(
+                                "You're not allowed to attack {}. The rank difference is too large.\n",
+                                co_name
                             ),
                         );
                     }
