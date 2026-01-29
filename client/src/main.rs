@@ -298,17 +298,18 @@ fn main() {
         )
         .add_systems(
             Update,
-            states::gameplay::ui::cursor::run_gameplay_update_cursor_and_carried_item
-                .run_if(in_state(GameState::Gameplay)),
-        )
-        .add_systems(
-            Update,
             states::gameplay::ui::inventory::run_gameplay_update_equipment_blocks
                 .run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
             Update,
             map_hover::run_gameplay_map_hover_and_click.run_if(in_state(GameState::Gameplay)),
+        )
+        .add_systems(
+            Update,
+            states::gameplay::ui::cursor::run_gameplay_update_cursor_and_carried_item
+                .run_if(in_state(GameState::Gameplay))
+                .after(map_hover::run_gameplay_map_hover_and_click),
         )
         .add_systems(
             Update,
