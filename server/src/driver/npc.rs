@@ -678,13 +678,57 @@ pub fn npc_give(cn: usize, co: usize, in_item: usize, money: i32) -> i32 {
             // Quest-requested items: teach skill / give exp
             let nr = characters[cn].data[50];
             if nr != 0 {
-                let nr_usize = nr as usize;
-                let skill_name = skilltab::get_skill_name(nr_usize);
+                let mut skill_nr = nr as usize;
+                let co_kindred = characters[co].kindred as u32;
+
+                if skill_nr == SK_STUN && (co_kindred & (KIN_TEMPLAR | KIN_ARCHTEMPLAR)) != 0 {
+                    skill_nr = SK_IMMUN;
+                }
+                if skill_nr == SK_CURSE && (co_kindred & (KIN_TEMPLAR | KIN_ARCHTEMPLAR)) != 0 {
+                    skill_nr = SK_SURROUND;
+                }
+                if skill_nr == SK_STUN
+                    && (co_kindred & KIN_SEYAN_DU) != 0
+                    && characters[co].skill[SK_STUN][0] != 0
+                {
+                    skill_nr = SK_IMMUN;
+                }
+                if skill_nr == SK_CURSE
+                    && (co_kindred & KIN_SEYAN_DU) != 0
+                    && characters[co].skill[SK_CURSE][0] != 0
+                {
+                    skill_nr = SK_SURROUND;
+                }
+
+                if skill_nr == SK_STUN && (co_kindred & KIN_SEYAN_DU) != 0 {
+                    State::with(|state| {
+                        state.do_sayx(
+                            cn,
+                            &format!(
+                                "Bring me the item again to learn Immunity, {}!",
+                                characters[co].get_name()
+                            ),
+                        );
+                    });
+                }
+                if skill_nr == SK_CURSE && (co_kindred & KIN_SEYAN_DU) != 0 {
+                    State::with(|state| {
+                        state.do_sayx(
+                            cn,
+                            &format!(
+                                "Bring me the item again to learn Surround Hit, {}!",
+                                characters[co].get_name()
+                            ),
+                        );
+                    });
+                }
+
+                let skill_name = skilltab::get_skill_name(skill_nr);
                 State::with(|state| {
                     state.do_sayx(cn, &format!("Now I'll teach you {}.", skill_name));
                 });
 
-                if characters[co].skill[nr_usize][0] != 0 {
+                if characters[co].skill[skill_nr][0] != 0 {
                     State::with(|state| {
                         state.do_sayx(
                             cn,
@@ -713,7 +757,7 @@ pub fn npc_give(cn: usize, co: usize, in_item: usize, money: i32) -> i32 {
                     });
                 } else {
                     // teach skill
-                    characters[co].skill[nr_usize][0] = 1;
+                    characters[co].skill[skill_nr][0] = 1;
                     State::with(|state| {
                         state.do_character_log(
                             co,
