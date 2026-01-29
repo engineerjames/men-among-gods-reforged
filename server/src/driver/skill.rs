@@ -846,13 +846,13 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
         if cn != co {
             let reference = Repository::with_characters(|ch| ch[co].reference);
             State::with(|state| {
-                state.do_character_log(cn, FontColor::Green, &format!("Seeing that {} is not powerful enough for your spell, you reduced its strength.\n", c_string_to_str(&reference)))
+                state.do_character_log(cn, FontColor::Yellow, &format!("Seeing that {} is not powerful enough for your spell, you reduced its strength.\n", c_string_to_str(&reference)))
             });
         } else {
             State::with(|state| {
                 state.do_character_log(
                     cn,
-                    FontColor::Green,
+                    FontColor::Yellow,
                     "You are not powerful enough to use the full strength of this spell.\n",
                 )
             });
@@ -883,7 +883,7 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
             State::with(|state| {
                 state.do_character_log(
                     cn,
-                    FontColor::Green,
+                    FontColor::Yellow,
                     &format!("Magical interference neutralised the {}'s effect.\n", name),
                 )
             });
@@ -895,7 +895,7 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
             State::with(|state| {
                 state.do_character_log(
                     co,
-                    FontColor::Green,
+                    FontColor::Yellow,
                     &format!(
                         "{} cast enhance weapon on you.\n",
                         c_string_to_str(&reference)
@@ -910,7 +910,7 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
         State::with(|state| {
             state.do_character_log(
                 cn,
-                FontColor::Green,
+                FontColor::Yellow,
                 &format!(
                     "{}'s weapon is now stronger.\n",
                     Repository::with_characters(|ch| ch[co].get_name().to_string())
@@ -936,14 +936,14 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
             State::with(|state| {
                 state.do_character_log(
                     cn,
-                    FontColor::Green,
+                    FontColor::Yellow,
                     &format!("Magical interference neutralised the {}'s effect.\n", name),
                 )
             });
             return 0;
         }
         State::with(|state| {
-            state.do_character_log(cn, FontColor::Green, "Your weapon feels stronger.\n")
+            state.do_character_log(cn, FontColor::Yellow, "Your weapon feels stronger.\n")
         });
         let sound = Repository::with_characters(|ch| ch[cn].sound);
         State::char_play_sound(cn, sound as i32 + 1, -150, 0);
@@ -1024,7 +1024,7 @@ pub fn skill_enhance(cn: usize) {
                     State::with(|state| {
                         state.do_character_log(
                             co,
-                            FontColor::Green,
+                            FontColor::Yellow,
                             &format!(
                                 "{} tried to cast enhance weapon on you but failed.\n",
                                 c_string_to_str(&reference)
@@ -1053,7 +1053,7 @@ pub fn skill_enhance(cn: usize) {
                 State::with(|state| {
                     state.do_character_log(
                         co,
-                        FontColor::Green,
+                        FontColor::Yellow,
                         &format!(
                             "{} tried to cast enhance weapon on you but failed.\n",
                             c_string_to_str(&reference)
@@ -1089,13 +1089,13 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
         if cn != co {
             let reference = Repository::with_characters(|ch| ch[co].reference);
             State::with(|state| {
-                state.do_character_log(cn, FontColor::Green, &format!("Seeing that {} is not powerful enough for your spell, you reduced its strength.\n", c_string_to_str(&reference)))
+                state.do_character_log(cn, FontColor::Yellow, &format!("Seeing that {} is not powerful enough for your spell, you reduced its strength.\n", c_string_to_str(&reference)))
             });
         } else {
             State::with(|state| {
                 state.do_character_log(
                     cn,
-                    FontColor::Green,
+                    FontColor::Yellow,
                     "You are not powerful enough to use the full strength of this spell.\n",
                 )
             });
@@ -1128,7 +1128,7 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
             State::with(|state| {
                 state.do_character_log(
                     cn,
-                    FontColor::Green,
+                    FontColor::Yellow,
                     &format!("Magical interference neutralised the {}'s effect.\n", name),
                 )
             });
@@ -1140,7 +1140,7 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
             State::with(|state| {
                 state.do_character_log(
                     co,
-                    FontColor::Green,
+                    FontColor::Yellow,
                     &format!("{} cast bless on you.\n", c_string_to_str(&reference)),
                 )
             });
@@ -1152,7 +1152,7 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
         State::with(|state| {
             state.do_character_log(
                 cn,
-                FontColor::Green,
+                FontColor::Yellow,
                 &format!(
                     "{} was blessed.\n",
                     Repository::with_characters(|ch| ch[co].get_name().to_string())
@@ -1180,14 +1180,14 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
             State::with(|state| {
                 state.do_character_log(
                     cn,
-                    FontColor::Green,
+                    FontColor::Yellow,
                     &format!("Magical interference neutralised the {}'s effect.\n", name),
                 )
             });
             return 0;
         }
         State::with(|state| {
-            state.do_character_log(cn, FontColor::Green, "You have been blessed.\n")
+            state.do_character_log(cn, FontColor::Yellow, "You have been blessed.\n")
         });
         let sound = Repository::with_characters(|ch| ch[cn].sound);
         State::char_play_sound(cn, sound as i32 + 1, -150, 0);
@@ -1267,7 +1267,7 @@ pub fn skill_bless(cn: usize) {
                     State::with(|state| {
                         state.do_character_log(
                             co,
-                            FontColor::Green,
+                            FontColor::Yellow,
                             &format!(
                                 "{} tried to cast bless on you but failed.\n",
                                 c_string_to_str(&reference)
@@ -1299,7 +1299,7 @@ pub fn skill_bless(cn: usize) {
                 State::with(|state| {
                     state.do_character_log(
                         co,
-                        FontColor::Green,
+                        FontColor::Yellow,
                         &format!(
                             "{} tried to cast bless on you but failed.\n",
                             c_string_to_str(&reference)
