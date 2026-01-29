@@ -889,7 +889,8 @@ impl State {
             let mut co_actual = co;
 
             // Player companion? Act as if trying to attack the master instead
-            if characters[cn].temp as usize == CT_COMPANION && characters[cn].data[CHD_COMPANION] == 0 {
+            if characters[cn].temp as i32 == CT_COMPANION && characters[cn].data[CHD_COMPANION] == 0
+            {
                 cn_actual = characters[cn].data[CHD_MASTER] as usize;
                 if cn_actual == 0 || cn_actual >= MAXCHARS || characters[cn_actual].used == 0 {
                     return 1; // Bad values, let them try
@@ -922,7 +923,7 @@ impl State {
                 }
 
                 // Player companion target? Act as if trying to attack the master instead
-                if characters[co_actual].temp as usize == CT_COMPANION
+                if characters[co_actual].temp as i32 == CT_COMPANION
                     && characters[co_actual].data[CHD_COMPANION] == 0
                 {
                     co_actual = characters[co_actual].data[CHD_MASTER] as usize;
