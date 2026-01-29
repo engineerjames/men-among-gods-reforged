@@ -6041,7 +6041,10 @@ pub fn use_driver(cn: usize, item_idx: usize, carried: bool) {
                         characters[cn].cerrno = core::constants::ERR_FAILED as u16;
                     });
                 }
-            } else if !carried {
+                return;
+            }
+
+            if !carried {
                 Repository::with_characters_mut(|characters| {
                     characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
                 });

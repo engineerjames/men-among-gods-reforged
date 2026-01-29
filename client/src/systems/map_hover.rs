@@ -698,6 +698,20 @@ pub(crate) fn run_gameplay_map_hover_and_click(
     hover_target.tile_x = -1;
     hover_target.tile_y = -1;
 
+    if player_state.selected_char() != 0 {
+        let selected_nr = player_state.selected_char();
+        let selected_id = player_state.selected_char_id();
+        let map = player_state.map();
+        let still_present = if selected_id != 0 {
+            find_view_tile_for_char_id(map, selected_id as i32).is_some()
+        } else {
+            find_view_tile_for_char_nr(map, selected_nr as i32).is_some()
+        };
+        if !still_present {
+            player_state.clear_selected_char();
+        }
+    }
+
     // If a UI system already claimed the cursor (inventory hover, etc), don't override it.
     let ui_has_cursor = cursor_state.cursor != GameplayCursorType::None;
 
@@ -730,7 +744,7 @@ pub(crate) fn run_gameplay_map_hover_and_click(
     };
 
     // Resolve which tile we are *actually* interacting with (may snap to nearby item/char).
-    let (use_mx, use_my, has_item, has_usable, has_char, char_nr, world_x, world_y) = {
+    let (use_mx, use_my, has_item, has_usable, has_char, char_nr, char_id, world_x, world_y) = {
         let map = player_state.map();
         let mut use_mx = base_map_mx;
         let mut use_my = base_map_my;
@@ -758,6 +772,7 @@ pub(crate) fn run_gameplay_map_hover_and_click(
         let has_usable = (tile.flags & ISUSABLE) != 0;
         let has_char = (tile.flags & ISCHAR) != 0;
         let char_nr = tile.ch_nr as u32;
+        let char_id = tile.ch_id as u32;
 
         (
             use_mx,
@@ -766,6 +781,7 @@ pub(crate) fn run_gameplay_map_hover_and_click(
             has_usable,
             has_char,
             char_nr,
+            char_id,
             tile.x as i16,
             tile.y as i32,
         )
@@ -883,16 +899,16 @@ pub(crate) fn run_gameplay_map_hover_and_click(
                 if lb_up {
                     let curr = player_state.selected_char();
                     if curr as u32 == char_nr {
-                        player_state.set_selected_char(0);
+                        player_state.clear_selected_char();
                     } else {
-                        player_state.set_selected_char(char_nr as u16);
+                        player_state.set_selected_char_with_id(char_nr as u16, char_id as u16);
                     }
                 } else if rb_up {
                     sound_queue.push_click();
                     net.send(ClientCommand::new_look(char_nr).to_bytes());
                 }
             } else if lb_up {
-                player_state.set_selected_char(0);
+                player_state.clear_selected_char();
             }
         }
         _ => {}
@@ -905,68 +921,114 @@ pub(crate) fn run_gameplay_sprite_highlight(
     player_state: Res<PlayerState>,
     mut q_tiles: Query<(&TileRender, &mut Sprite)>,
 ) {
-    let layer = match hover_target.kind {
-        GameplayHoverTargetKind::Background => TileLayer::Background,
-        GameplayHoverTargetKind::Object => TileLayer::Object,
-        GameplayHoverTargetKind::Character => TileLayer::Character,
-        GameplayHoverTargetKind::None => return,
-    };
+    let mut hovered_tile: Option<(i32, i32, TileLayer)> = None;
 
-    let tx = hover_target.tile_x;
-    let ty = hover_target.tile_y;
-    if tx < 0 || ty < 0 {
+    if hover_target.kind != GameplayHoverTargetKind::None {
+        let layer = match hover_target.kind {
+            GameplayHoverTargetKind::Background => TileLayer::Background,
+            GameplayHoverTargetKind::Object => TileLayer::Object,
+            GameplayHoverTargetKind::Character => TileLayer::Character,
+            GameplayHoverTargetKind::None => TileLayer::Background,
+        };
+
+        let tx = hover_target.tile_x;
+        let ty = hover_target.tile_y;
+        if tx >= 0 && ty >= 0 {
+            if let Some(tile) = player_state.map().tile_at_xy(tx as usize, ty as usize) {
+                // Compute engine.c effect bits for this layer, then apply highlight (|16).
+                let mut effect: u32 = tile.light as u32;
+                match layer {
+                    TileLayer::Background => {
+                        if (tile.flags & INVIS) != 0 {
+                            effect |= 64;
+                        }
+                        if (tile.flags & INFRARED) != 0 {
+                            effect |= 256;
+                        }
+                        if (tile.flags & UWATER) != 0 {
+                            effect |= 512;
+                        }
+                    }
+                    TileLayer::Object => {
+                        if (tile.flags & INFRARED) != 0 {
+                            effect |= 256;
+                        }
+                        if (tile.flags & UWATER) != 0 {
+                            effect |= 512;
+                        }
+                    }
+                    TileLayer::Character => {
+                        if tile.ch_nr != 0 && tile.ch_nr == player_state.selected_char() {
+                            effect |= 32;
+                        }
+                        if (tile.flags & STONED) != 0 {
+                            effect |= 128;
+                        }
+                        if (tile.flags & INFRARED) != 0 {
+                            effect |= 256;
+                        }
+                        if (tile.flags & UWATER) != 0 {
+                            effect |= 512;
+                        }
+                    }
+                }
+
+                effect |= 16;
+                let tint = dd_effect_tint(effect);
+
+                for (render, mut sprite) in &mut q_tiles {
+                    let x = (render.index % TILEX) as i32;
+                    let y = (render.index / TILEX) as i32;
+                    if x == tx && y == ty && render.layer == layer {
+                        sprite.color = tint;
+                        hovered_tile = Some((tx, ty, layer));
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    let selected = player_state.selected_char();
+    if selected == 0 {
         return;
     }
 
-    let Some(tile) = player_state.map().tile_at_xy(tx as usize, ty as usize) else {
+    let Some((sel_mx, sel_my)) = find_view_tile_for_char_nr(player_state.map(), selected as i32)
+    else {
         return;
     };
 
-    // Compute engine.c effect bits for this layer, then apply highlight (|16).
+    if let Some((hx, hy, layer)) = hovered_tile {
+        if hx == sel_mx && hy == sel_my && layer == TileLayer::Character {
+            return;
+        }
+    }
+
+    let Some(tile) = player_state
+        .map()
+        .tile_at_xy(sel_mx as usize, sel_my as usize)
+    else {
+        return;
+    };
+
     let mut effect: u32 = tile.light as u32;
-    match layer {
-        TileLayer::Background => {
-            if (tile.flags & INVIS) != 0 {
-                effect |= 64;
-            }
-            if (tile.flags & INFRARED) != 0 {
-                effect |= 256;
-            }
-            if (tile.flags & UWATER) != 0 {
-                effect |= 512;
-            }
-        }
-        TileLayer::Object => {
-            if (tile.flags & INFRARED) != 0 {
-                effect |= 256;
-            }
-            if (tile.flags & UWATER) != 0 {
-                effect |= 512;
-            }
-        }
-        TileLayer::Character => {
-            if tile.ch_nr != 0 && tile.ch_nr == player_state.selected_char() {
-                effect |= 32;
-            }
-            if (tile.flags & STONED) != 0 {
-                effect |= 128;
-            }
-            if (tile.flags & INFRARED) != 0 {
-                effect |= 256;
-            }
-            if (tile.flags & UWATER) != 0 {
-                effect |= 512;
-            }
-        }
+    effect |= 32;
+    if (tile.flags & STONED) != 0 {
+        effect |= 128;
     }
-
-    effect |= 16;
+    if (tile.flags & INFRARED) != 0 {
+        effect |= 256;
+    }
+    if (tile.flags & UWATER) != 0 {
+        effect |= 512;
+    }
     let tint = dd_effect_tint(effect);
 
     for (render, mut sprite) in &mut q_tiles {
         let x = (render.index % TILEX) as i32;
         let y = (render.index / TILEX) as i32;
-        if x == tx && y == ty && render.layer == layer {
+        if x == sel_mx && y == sel_my && render.layer == TileLayer::Character {
             sprite.color = tint;
             break;
         }

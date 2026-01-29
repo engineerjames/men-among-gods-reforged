@@ -27,6 +27,7 @@ pub struct PlayerState {
 
     // Mirrors engine.c's `selected_char` (0 = none). Used by UI and certain commands.
     selected_char: u16,
+    selected_char_id: u16,
 
     // Mirrors engine.c's `looks[]` name cache (nr -> {id,name}). Used for show_names/show_proz.
     look_names: Vec<Option<LookNameEntry>>,
@@ -71,6 +72,7 @@ impl Default for PlayerState {
             character_info: ClientPlayer::default(),
 
             selected_char: 0,
+            selected_char_id: 0,
 
             look_names: Vec::new(),
 
@@ -191,8 +193,18 @@ impl PlayerState {
         self.selected_char
     }
 
-    pub fn set_selected_char(&mut self, selected_char: u16) {
+    pub fn selected_char_id(&self) -> u16 {
+        self.selected_char_id
+    }
+
+    pub fn set_selected_char_with_id(&mut self, selected_char: u16, selected_char_id: u16) {
         self.selected_char = selected_char;
+        self.selected_char_id = selected_char_id;
+    }
+
+    pub fn clear_selected_char(&mut self) {
+        self.selected_char = 0;
+        self.selected_char_id = 0;
     }
 
     fn set_known_name(&mut self, nr: u16, id: u16, name: &str) {
