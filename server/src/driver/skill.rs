@@ -3549,6 +3549,47 @@ pub fn skill_ghost(cn: usize) {
         return;
     }
 
+    // Assign a randomized name to the companion
+    let random_name = {
+        let mut candidate = None;
+        for _ in 0..100 {
+            let name = God::randomly_generate_name();
+            let name_exists = Repository::with_characters(|ch| {
+                ch.iter().enumerate().any(|(idx, other)| {
+                    idx != cc
+                        && other.used != USE_EMPTY
+                        && other.get_name().eq_ignore_ascii_case(&name)
+                })
+            });
+            if !name_exists {
+                candidate = Some(name);
+                break;
+            }
+        }
+        candidate.unwrap_or_else(God::randomly_generate_name)
+    };
+
+    Repository::with_characters_mut(|ch| {
+        let companion = &mut ch[cc];
+
+        let mut name_bytes = [0u8; 40];
+        let name_src = random_name.as_bytes();
+        let name_len = name_src.len().min(name_bytes.len());
+        name_bytes[..name_len].copy_from_slice(&name_src[..name_len]);
+        companion.name = name_bytes;
+
+        let mut reference_bytes = [0u8; 40];
+        reference_bytes[..name_len].copy_from_slice(&name_src[..name_len]);
+        companion.reference = reference_bytes;
+
+        let desc = companion.get_default_description();
+        let desc_src = desc.as_bytes();
+        let mut desc_bytes = [0u8; 200];
+        let desc_len = desc_src.len().min(desc_bytes.len());
+        desc_bytes[..desc_len].copy_from_slice(&desc_src[..desc_len]);
+        companion.description = desc_bytes;
+    });
+
     // Notify target and attacker
     if co != 0 {
         if Repository::with_characters(|ch| {
