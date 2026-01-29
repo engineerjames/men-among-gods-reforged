@@ -154,7 +154,10 @@ pub(crate) fn dd_effect_tint(effect: u32) -> Color {
 
     // engine.c selection uses `|32` for characters; dd.c bumps green.
     if green {
-        g = (g + 0.5).min(1.0);
+        // Boost visibility in both bright and dark areas.
+        g = (g + 0.65).clamp(0.85, 1.35);
+        r *= 0.6;
+        b *= 0.6;
     }
 
     if invis {

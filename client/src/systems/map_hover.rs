@@ -902,6 +902,12 @@ pub(crate) fn run_gameplay_map_hover_and_click(
                         player_state.clear_selected_char();
                     } else {
                         player_state.set_selected_char_with_id(char_nr as u16, char_id as u16);
+                        if player_state
+                            .lookup_name(char_nr as u16, char_id as u16)
+                            .is_none()
+                        {
+                            net.send(ClientCommand::new_autolook(char_nr).to_bytes());
+                        }
                     }
                 } else if rb_up {
                     sound_queue.push_click();
