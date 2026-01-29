@@ -20,6 +20,10 @@ pub(crate) struct MiniMapState {
     pub(crate) xmap: Vec<u16>,
     pub(crate) avg_cache: HashMap<usize, u16>,
     pub(crate) image: Option<Handle<Image>>,
+
+    /// Last known player world position (as reported by the center tile).
+    /// Used to avoid rebuilding the minimap when the player hasn't moved.
+    pub(crate) last_player_xy: Option<(u16, u16)>,
 }
 
 impl MiniMapState {
@@ -194,6 +198,14 @@ pub(crate) fn update_minimap(
     let Some(center) = map.tile_at_xy(TILEX / 2, TILEY / 2) else {
         return;
     };
+
+    // Only refresh the minimap when the player actually moved.
+    // `center.x/y` are world coordinates for the player tile.
+    let center_xy = (center.x, center.y);
+    if minimap.last_player_xy == Some(center_xy) {
+        return;
+    }
+    minimap.last_player_xy = Some(center_xy);
 
     let center_x = center.x as usize;
     let center_y = center.y as usize;
