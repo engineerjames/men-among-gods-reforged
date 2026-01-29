@@ -1991,21 +1991,19 @@ pub fn answer_transfer(cn: usize, co: usize) {
         );
     });
 
-    // Add visual effects (fx_add_effect equivalent - would need to be implemented)
-    EffectManager::fx_add_effect(6, 0, _co_x as i32, _co_y as i32, 0);
-    EffectManager::fx_add_effect(7, 0, _cn_x as i32, _cn_y as i32, 0);
-
     // Give experience (do_give_exp equivalent - would need to be implemented)
     State::with_mut(|state| {
         state.do_give_exp(co, exp_to_give, 1, -1);
     });
 
+    // Add visual effects (fx_add_effect equivalent - would need to be implemented)
+    EffectManager::fx_add_effect(6, 0, _co_x as i32, _co_y as i32, 0);
+    EffectManager::fx_add_effect(7, 0, _cn_x as i32, _cn_y as i32, 0);
+
     driver::die_companion(cn);
 
     Repository::with_characters_mut(|characters| {
-        if characters[co].luck > 0 {
-            characters[co].luck -= 1;
-        }
+        characters[co].luck -= 1;
     });
 
     log::info!(

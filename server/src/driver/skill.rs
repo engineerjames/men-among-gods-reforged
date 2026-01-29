@@ -3582,6 +3582,7 @@ pub fn skill_ghost(cn: usize) {
         ch[cc].data[29] = 0; // reset experience earned
         ch[cc].data[42] = 65536 + cn as i32; // set group
         ch[cc].kindred &= !(KIN_MONSTER as i32);
+        ch[cc].flags &= !CharacterFlags::Player.bits();
 
         if co != 0 {
             ch[cc].attack_cn = co as u16;

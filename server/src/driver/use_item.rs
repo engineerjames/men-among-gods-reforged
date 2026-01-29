@@ -2489,7 +2489,7 @@ pub fn use_mine_respawn(_cn: usize, item_idx: usize) -> i32 {
         let mut count = 0;
         for n in 1..core::constants::MAXCHARS {
             if characters[n].used == core::constants::USE_ACTIVE
-                && (characters[n].flags & 0x00000001) == 0 // !CF_BODY
+                && (characters[n].flags & CharacterFlags::Body.bits()) == 0
                 && characters[n].data[42] == group
             {
                 count += 1;
@@ -3046,7 +3046,7 @@ pub fn use_grave(_cn: usize, item_idx: usize) -> i32 {
 
 pub fn mine_wall(cn: usize, item_idx: usize) -> i32 {
     // If no item provided, get it from the map
-    let (in_idx, x, y) = if item_idx == 0 {
+    let in_idx = if item_idx == 0 {
         let (x, y) = Repository::with_characters(|characters| {
             if cn == 0 {
                 (0, 0)
@@ -3059,43 +3059,43 @@ pub fn mine_wall(cn: usize, item_idx: usize) -> i32 {
         if map_item == 0 {
             return 0;
         }
-        (map_item as usize, x, y)
+        map_item as usize
     } else {
-        (item_idx, 0, 0)
+        item_idx
     };
 
+    // Get original template, position, and carried status
+    let (temp, item_x, item_y, carried, should_rebuild) = Repository::with_items(|items| {
+        (
+            items[in_idx].data[0] as usize,
+            items[in_idx].x as i32,
+            items[in_idx].y as i32,
+            items[in_idx].carried,
+            items[in_idx].data[3] != 0,
+        )
+    });
+
     // Add rebuild wall effect if data[3] is set
-    let should_rebuild = Repository::with_items(|items| items[in_idx].data[3] != 0);
     if should_rebuild {
         // Use the template id as the effect parameter (matches original server behavior)
-        let temp = Repository::with_items(|items| items[in_idx].temp);
+        let temp_id = Repository::with_items(|items| items[in_idx].temp);
         EffectManager::fx_add_effect(
             10,
             core::constants::TICKS * 60 * 15,
-            x as i32,
-            y as i32,
-            temp as i32,
+            item_x,
+            item_y,
+            temp_id as i32,
         );
-        log::info!("mine_wall: added rebuild effect (temp={})", temp);
+        log::info!("mine_wall: added rebuild effect (temp={})", temp_id);
     }
-
-    // Get original template, position, and carried status
-    let (temp, item_x, item_y, carried) = Repository::with_items(|items| {
-        (
-            items[in_idx].data[0] as usize,
-            items[in_idx].x,
-            items[in_idx].y,
-            items[in_idx].carried,
-        )
-    });
 
     // Replace the item with a copy of the item template (it_temp[temp]) and
     // restore position/carried/temp fields (this mirrors the original C++ behavior).
     let template_copy = Repository::with_item_templates(|templates| templates[temp]);
     Repository::with_items_mut(|items| {
         items[in_idx] = template_copy;
-        items[in_idx].x = item_x;
-        items[in_idx].y = item_y;
+        items[in_idx].x = item_x as u16;
+        items[in_idx].y = item_y as u16;
         items[in_idx].carried = carried;
         items[in_idx].temp = temp as u16;
         if carried != 0 {
@@ -3214,8 +3214,11 @@ pub fn use_mine(cn: usize, item_idx: usize) -> i32 {
 
     // Apply damage to mine wall
     let tmp = Repository::with_items_mut(|items| {
-        let new_val = items[item_idx].data[1] - str as u32;
-        items[item_idx].data[1] = new_val;
+        let current = items[item_idx].data[1] as i32;
+        let new_val = current - str;
+        if new_val > 0 {
+            items[item_idx].data[1] = new_val as u32;
+        }
         new_val
     });
 
