@@ -842,7 +842,7 @@ pub(crate) fn update_world_overlays(
                             xoff_i = tile.obj_xoff;
                             yoff_i = tile.obj_yoff;
                         }
-                        z_base = Z_OBJ_BASE;
+                        z_base = Z_FX_BASE;
                         z_bias = 0.0021;
                     }
                 }
@@ -852,7 +852,7 @@ pub(crate) fn update_world_overlays(
                     let n = ((tile.flags & TOMB) >> 12) as i32;
                     if n > 0 {
                         sprite_id = 240 + (n - 1);
-                        z_base = Z_OBJ_BASE;
+                        z_base = Z_FX_BASE;
                         z_bias = 0.0022;
                     }
                 }

@@ -5832,9 +5832,17 @@ pub fn explorer_point(cn: usize, item_idx: usize) -> i32 {
         );
 
         State::with_mut(|state| state.do_give_exp(cn, exp as i32, 0, -1))
+    } else {
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "Hmm. Seems somewhat familiar. You've been here before...\n",
+            );
+        });
     }
 
-    0
+    1
 }
 
 pub fn use_garbage(cn: usize, _item_idx: usize) -> i32 {
