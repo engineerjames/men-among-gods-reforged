@@ -148,11 +148,13 @@ pub(crate) fn run_gameplay_nameplates(
             continue;
         };
 
-        if tile.ch_nr == 0 || (!show_names && !show_proz) {
+        if tile.ch_sprite == 0 || (!show_names && !show_proz) {
             text2d.text.clear();
             *visibility = Visibility::Hidden;
             continue;
         }
+
+        let has_char_nr = tile.ch_nr != 0;
 
         let is_center = {
             let x = plate.index % TILEX;
@@ -162,7 +164,7 @@ pub(crate) fn run_gameplay_nameplates(
 
         // Lifetime-of-app cache: map character integer (nr) -> resolved name.
         // Names are stable for a given character id, so once inserted they never change.
-        let (name_str, has_name) = if show_names {
+        let (name_str, has_name) = if show_names && has_char_nr {
             if is_center {
                 (Some(player_name), true)
             } else {
@@ -218,33 +220,35 @@ pub(crate) fn run_gameplay_nameplates(
             has_name,
         };
 
-        // If the label inputs didn't change, don't touch the BitmapText.
-        // Avoids triggering the bitmap text renderer every frame.
-        if *last_key != desired_key {
-            text2d.text.clear();
+        if has_char_nr {
+            // If the label inputs didn't change, don't touch the BitmapText.
+            // Avoids triggering the bitmap text renderer every frame.
+            if *last_key != desired_key {
+                text2d.text.clear();
 
-            match (show_names, show_proz, name_str, proz) {
-                (true, true, Some(n), Some(p)) if !n.is_empty() => {
-                    text2d.text.push_str(n);
-                    text2d.text.push(' ');
-                    let _ = write!(&mut text2d.text, "{p}%");
+                match (show_names, show_proz, name_str, proz) {
+                    (true, true, Some(n), Some(p)) if !n.is_empty() => {
+                        text2d.text.push_str(n);
+                        text2d.text.push(' ');
+                        let _ = write!(&mut text2d.text, "{p}%");
+                    }
+                    (true, true, _, Some(p)) => {
+                        let _ = write!(&mut text2d.text, "{p}%");
+                    }
+                    (true, true, Some(n), None) => {
+                        text2d.text.push_str(n);
+                    }
+                    (true, false, Some(n), _) => {
+                        text2d.text.push_str(n);
+                    }
+                    (false, true, _, Some(p)) => {
+                        let _ = write!(&mut text2d.text, "{p}%");
+                    }
+                    _ => {}
                 }
-                (true, true, _, Some(p)) => {
-                    let _ = write!(&mut text2d.text, "{p}%");
-                }
-                (true, true, Some(n), None) => {
-                    text2d.text.push_str(n);
-                }
-                (true, false, Some(n), _) => {
-                    text2d.text.push_str(n);
-                }
-                (false, true, _, Some(p)) => {
-                    let _ = write!(&mut text2d.text, "{p}%");
-                }
-                _ => {}
+
+                *last_key = desired_key;
             }
-
-            *last_key = desired_key;
         }
 
         if text2d.text.is_empty() {
