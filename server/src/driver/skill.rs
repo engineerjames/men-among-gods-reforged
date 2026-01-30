@@ -1,9 +1,11 @@
 use core::{
     constants::{
-        CharacterFlags, ItemFlags, SERVER_MAPX, SK_AXE, SK_BLAST, SK_BLESS, SK_CONCEN, SK_CURSE,
-        SK_DAGGER, SK_DISPEL, SK_ENHANCE, SK_GHOST, SK_HEAL, SK_IDENT, SK_IMMUN, SK_LIGHT, SK_LOCK,
-        SK_MEDIT, SK_MSHIELD, SK_PROTECT, SK_RECALL, SK_REGEN, SK_REPAIR, SK_REST, SK_SENSE,
-        SK_STAFF, SK_STUN, SK_SURROUND, SK_SWORD, SK_TWOHAND, SK_WARCRY, SK_WIMPY, TICKS,
+        CharacterFlags, ItemFlags, AT_AGIL, AT_STREN, CHD_COMPANION, CHD_TALKATIVE,
+        COMPANION_TIMEOUT, CT_COMPANION, KIN_MONSTER, NT_DIDHIT, NT_GOTHIT, NT_GOTMISS,
+        SERVER_MAPX, SK_AXE, SK_BLAST, SK_BLESS, SK_CONCEN, SK_CURSE, SK_DAGGER, SK_DISPEL,
+        SK_ENHANCE, SK_GHOST, SK_HEAL, SK_IDENT, SK_IMMUN, SK_LIGHT, SK_LOCK, SK_MEDIT, SK_MSHIELD,
+        SK_PROTECT, SK_RECALL, SK_REGEN, SK_REPAIR, SK_RESIST, SK_REST, SK_SENSE, SK_STAFF,
+        SK_STUN, SK_SURROUND, SK_SWORD, SK_TWOHAND, SK_WARCRY, SK_WIMPY, TICKS, USE_EMPTY,
     },
     string_operations::c_string_to_str,
     types::FontColor,
@@ -11,7 +13,10 @@ use core::{
 
 use rand::Rng;
 
-use crate::{chlog, driver, effect::EffectManager, god::God, repository::Repository, state::State};
+use crate::{
+    chlog, core::types::Character, driver, effect::EffectManager, god::God, helpers, populate,
+    repository::Repository, state::State,
+};
 
 // Static skill table (taken from server/original_source/SkillTab.cpp)
 const SKILL_NAMES: [&str; 50] = [
@@ -827,11 +832,6 @@ pub fn skill_protect(cn: usize) {
 }
 
 pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-    use core::types::FontColor;
-
     let in_opt = God::create_item(1);
     if in_opt.is_none() {
         log::error!("god_create_item failed in skill_enhance");
@@ -972,11 +972,6 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
 }
 
 pub fn skill_enhance(cn: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-    use core::types::FontColor;
-
     let co = Repository::with_characters(|ch| {
         if ch[cn].skill_target1 != 0 {
             ch[cn].skill_target1 as usize
@@ -1071,11 +1066,6 @@ pub fn skill_enhance(cn: usize) {
 }
 
 pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-    use core::types::FontColor;
-
     let in_opt = God::create_item(1);
     if in_opt.is_none() {
         log::error!("god_create_item failed in skill_bless");
@@ -1216,11 +1206,6 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
 }
 
 pub fn skill_bless(cn: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-    use core::types::FontColor;
-
     let co = Repository::with_characters(|ch| {
         if ch[cn].skill_target1 != 0 {
             ch[cn].skill_target1 as usize
@@ -1428,11 +1413,6 @@ pub fn skill_wimp(cn: usize) {
 }
 
 pub fn spell_mshield(cn: usize, co: usize, power: i32) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-    use core::types::FontColor;
-
     let in_opt = God::create_item(1);
     if in_opt.is_none() {
         log::error!("god_create_item failed in skill_mshield");
@@ -1554,8 +1534,6 @@ pub fn spell_mshield(cn: usize, co: usize, power: i32) -> i32 {
 }
 
 pub fn skill_mshield(cn: usize) {
-    use crate::repository::Repository;
-
     if is_exhausted(cn) != 0 {
         return;
     }
@@ -1576,10 +1554,6 @@ pub fn skill_mshield(cn: usize) {
 }
 
 pub fn spell_heal(cn: usize, co: usize, power: i32) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::types::FontColor;
-
     if cn != co {
         Repository::with_characters_mut(|ch| {
             ch[co].a_hp += spell_race_mod(power * 2500, ch[cn].kindred);
@@ -1664,11 +1638,6 @@ pub fn spell_heal(cn: usize, co: usize, power: i32) -> i32 {
 }
 
 pub fn skill_heal(cn: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-    use core::types::FontColor;
-
     let mut co = Repository::with_characters(|ch| {
         if ch[cn].skill_target1 != 0 {
             ch[cn].skill_target1 as usize
@@ -1768,11 +1737,6 @@ pub fn skill_heal(cn: usize) {
 }
 
 pub fn spell_curse(cn: usize, co: usize, power: i32) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-    use core::types::FontColor;
-
     let flags = Repository::with_characters(|ch| ch[co].flags);
     if (flags & CharacterFlags::Immortal.bits()) != 0 {
         return 0;
@@ -1867,9 +1831,6 @@ pub fn spell_curse(cn: usize, co: usize, power: i32) -> i32 {
 }
 
 pub fn skill_curse(cn: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-
     let co = Repository::with_characters(|ch| {
         if ch[cn].skill_target1 != 0 {
             ch[cn].skill_target1 as usize
@@ -2200,10 +2161,6 @@ pub fn skill_warcry(cn: usize) {
 }
 
 pub fn item_info(cn: usize, in_: usize, _look: i32) {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::types::FontColor;
-
     let at_name = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
 
     // Name
@@ -2359,10 +2316,6 @@ pub fn item_info(cn: usize, in_: usize, _look: i32) {
 }
 
 pub fn char_info(cn: usize, co: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::types::FontColor;
-
     let at_name = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
 
     // Header
@@ -2493,10 +2446,6 @@ pub fn char_info(cn: usize, co: usize) {
 }
 
 pub fn skill_identify(cn: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-
     if is_exhausted(cn) != 0 {
         return;
     }
@@ -2821,10 +2770,6 @@ pub fn skill_blast(cn: usize) {
 }
 
 pub fn skill_repair(cn: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-
     let in_idx = Repository::with_characters(|ch| ch[cn].citem as usize);
     if in_idx == 0 {
         State::with(|state| {
@@ -2921,10 +2866,6 @@ pub fn skill_repair(cn: usize) {
 }
 
 pub fn skill_recall(cn: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-
     if is_exhausted(cn) != 0 {
         return;
     }
@@ -3118,9 +3059,6 @@ pub fn spell_stun(cn: usize, co: usize, power: i32) -> i32 {
 }
 
 pub fn skill_stun(cn: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-
     let co = Repository::with_characters(|ch| {
         if ch[cn].skill_target1 != 0 {
             ch[cn].skill_target1 as usize
@@ -3269,8 +3207,6 @@ pub fn skill_stun(cn: usize) {
 }
 
 pub fn remove_spells(cn: usize) {
-    use crate::repository::Repository;
-
     for n in 0..20usize {
         let in_idx = Repository::with_characters(|ch| ch[cn].spell[n] as usize);
         if in_idx == 0 {
@@ -3283,10 +3219,6 @@ pub fn remove_spells(cn: usize) {
 }
 
 pub fn skill_dispel(cn: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-
     let co = Repository::with_characters(|ch| {
         if ch[cn].skill_target1 != 0 {
             ch[cn].skill_target1 as usize
@@ -3398,17 +3330,6 @@ pub fn skill_dispel(cn: usize) {
 }
 
 pub fn skill_ghost(cn: usize) {
-    use crate::god::God;
-    use crate::helpers::{
-        attrib_needed, char_id, end_needed, hp_needed, mana_needed, skill_needed,
-    };
-    use crate::populate::pop_create_char;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-    use core::string_operations::c_string_to_str;
-    use core::types::{Character, FontColor};
-
     // Check if in build mode
     if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::BuildMode.bits()) != 0) {
         State::with(|state| state.do_character_log(cn, FontColor::Red, "Not in build mode.\n"));
@@ -3521,7 +3442,7 @@ pub fn skill_ghost(cn: usize) {
     }
 
     // Create companion
-    let cc_opt = pop_create_char(CT_COMPANION as usize, true);
+    let cc_opt = populate::pop_create_char(CT_COMPANION as usize, true);
     if cc_opt.is_none() {
         State::with(|state| {
             state.do_character_log(
@@ -3627,7 +3548,7 @@ pub fn skill_ghost(cn: usize) {
 
         if co != 0 {
             ch[cc].attack_cn = co as u16;
-            let idx = co as i32 | (char_id(co) << 16);
+            let idx = co as i32 | (helpers::char_id(co) << 16);
             ch[cc].data[80] = idx; // add enemy to kill list
         }
 
@@ -3703,29 +3624,29 @@ pub fn skill_ghost(cn: usize) {
     // Attributes
     for z in 0..5 {
         for m in 10..(attribs[z][0] as i32) {
-            pts += attrib_needed(m, 3);
+            pts += helpers::attrib_needed(m, 3);
         }
     }
 
     // HP
     for m in 50..(hp0 as i32) {
-        pts += hp_needed(m, 3);
+        pts += helpers::hp_needed(m, 3);
     }
 
     // Endurance
     for m in 50..(end0 as i32) {
-        pts += end_needed(m, 2);
+        pts += helpers::end_needed(m, 2);
     }
 
     // Mana
     for m in 50..(mana0 as i32) {
-        pts += mana_needed(m, 3);
+        pts += helpers::mana_needed(m, 3);
     }
 
     // Skills
     for z in 0..50 {
         for m in 1..(skills[z][0] as i32) {
-            pts += skill_needed(m, 2);
+            pts += helpers::skill_needed(m, 2);
         }
     }
 
