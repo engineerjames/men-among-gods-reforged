@@ -430,8 +430,7 @@ impl Labyrinth9 {
                 if guesser_id > 0 {
                     Repository::with_characters_mut(|characters| {
                         let guesser_usize = guesser_id as usize;
-                        if guesser_usize < characters.len()
-                            && characters[guesser_usize].is_player()
+                        if guesser_usize < characters.len() && characters[guesser_usize].is_player()
                         {
                             characters[guesser_usize].data[core::constants::CHD_RIDDLER] = 0;
                         }

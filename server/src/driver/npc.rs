@@ -1401,8 +1401,7 @@ pub fn npc_driver_high(cn: usize) -> i32 {
 
     // Count down riddle timeout for riddle givers
     {
-        let area_of_knowledge =
-            Repository::with_characters(|characters| characters[cn].data[72]);
+        let area_of_knowledge = Repository::with_characters(|characters| characters[cn].data[72]);
         if (core::constants::RIDDLE_MIN_AREA..=core::constants::RIDDLE_MAX_AREA)
             .contains(&area_of_knowledge)
         {
@@ -1643,11 +1642,10 @@ pub fn npc_driver_high(cn: usize) -> i32 {
             {
                 if npc_try_spell(cn, co, SK_STUN) {
                     Repository::with_characters_mut(|characters| {
-                        characters[cn].data[75] =
-                            Repository::with_globals(|g| g.ticker)
-                                + Repository::with_characters(|chars| chars[cn].skill[SK_STUN][5])
-                                    as i32
-                                + 18 * 8
+                        characters[cn].data[75] = Repository::with_globals(|g| g.ticker)
+                            + Repository::with_characters(|chars| chars[cn].skill[SK_STUN][5])
+                                as i32
+                            + 18 * 8
                     });
                     return 1;
                 }
