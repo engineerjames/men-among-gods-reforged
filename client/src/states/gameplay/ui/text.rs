@@ -81,7 +81,7 @@ pub(crate) fn run_gameplay_text_ui(
     mut kb: MessageReader<KeyboardInput>,
     mut wheel: MessageReader<MouseWheel>,
     net: Res<NetworkRuntime>,
-    mut player_state: ResMut<PlayerState>,
+    player_state: Res<PlayerState>,
     mut input: ResMut<GameplayTextInput>,
     mut log_scroll: ResMut<GameplayLogScrollState>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
@@ -153,8 +153,6 @@ pub(crate) fn run_gameplay_text_ui(
         let line = input.current.trim().to_string();
         if !line.is_empty() {
             send_chat_input(&net, &line);
-            player_state.tlog(1, format!("> {line}"));
-
             input.history.push(line.clone());
             input.history_pos = None;
         }
