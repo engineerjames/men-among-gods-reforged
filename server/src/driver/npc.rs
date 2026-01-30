@@ -1345,15 +1345,19 @@ pub fn npc_driver_high(cn: usize) -> i32 {
                 }
                 if characters[cn].data[64] < ticker {
                     // NPC should self-destruct
-                    // TODO: Port do_sayx(cn, "Free!")
-                    characters[cn].used = USE_EMPTY;
                     do_die = true;
                 }
             }
         });
         if do_die {
+            State::with(|state| {
+                state.do_sayx(cn, "Free!");
+            });
             God::destroy_items(cn);
             player::plr_map_remove(cn);
+            Repository::with_characters_mut(|characters| {
+                characters[cn].used = USE_EMPTY;
+            });
             npc_remove_enemy(cn, 0);
             return 1;
         }
@@ -1392,6 +1396,19 @@ pub fn npc_driver_high(cn: usize) -> i32 {
                 die_companion(cn);
                 return 1;
             }
+        }
+    }
+
+    // Count down riddle timeout for riddle givers
+    {
+        let area_of_knowledge =
+            Repository::with_characters(|characters| characters[cn].data[72]);
+        if (core::constants::RIDDLE_MIN_AREA..=core::constants::RIDDLE_MAX_AREA)
+            .contains(&area_of_knowledge)
+        {
+            crate::lab9::Labyrinth9::with_mut(|lab9| {
+                lab9.tick_riddle_timeout(cn);
+            });
         }
     }
 
@@ -1446,7 +1463,7 @@ pub fn npc_driver_high(cn: usize) -> i32 {
             });
             if take_action {
                 Repository::with_items_mut(|items| items[it39].used = USE_EMPTY);
-                Repository::with_characters_mut(|characters| characters[cn].item[39] = 0);
+                Repository::with_characters_mut(|characters| characters[cn].citem = 0);
             } else {
                 Repository::with_items_mut(|items| {
                     items[it39].current_age[0] = 0;
@@ -1513,7 +1530,7 @@ pub fn npc_driver_high(cn: usize) -> i32 {
         }
     }
 
-    // create light (approximation: attempt spell if conditions met)
+    // create light
     {
         let (data62, _data58) = Repository::with_characters(|characters| {
             (characters[cn].data[62], characters[cn].data[58])
@@ -1523,7 +1540,11 @@ pub fn npc_driver_high(cn: usize) -> i32 {
                 (characters[cn].x as usize, characters[cn].y as usize)
             });
             let light = State::check_dlight(cx, cy);
-            if light < 20 {
+            let map_light = Repository::with_map(|map| {
+                let idx = cx + cy * SERVER_MAPX as usize;
+                map[idx].light
+            });
+            if light < 20 && map_light < 20 {
                 if npc_try_spell(cn, cn, SK_LIGHT) {
                     return 1;
                 }
@@ -1623,7 +1644,9 @@ pub fn npc_driver_high(cn: usize) -> i32 {
                 if npc_try_spell(cn, co, SK_STUN) {
                     Repository::with_characters_mut(|characters| {
                         characters[cn].data[75] =
-                            Repository::with_characters(|chars| chars[cn].skill[SK_STUN][5]) as i32
+                            Repository::with_globals(|g| g.ticker)
+                                + Repository::with_characters(|chars| chars[cn].skill[SK_STUN][5])
+                                    as i32
                                 + 18 * 8
                     });
                     return 1;
@@ -1693,7 +1716,13 @@ pub fn npc_driver_high(cn: usize) -> i32 {
         let co = Repository::with_characters(|characters| characters[cn].data[69] as usize);
         if Repository::with_characters(|characters| characters[cn].attack_cn) == 0 && co != 0 {
             if driver::follow_driver(cn, co) {
-                Repository::with_characters_mut(|characters| characters[cn].data[58] = 2);
+                let (cn_x, cn_y, co_y) = Repository::with_characters(|characters| {
+                    (characters[cn].x, characters[cn].y, characters[co].y)
+                });
+                let dist = (cn_x - co_y).abs() + (cn_y - co_y).abs();
+                Repository::with_characters_mut(|characters| {
+                    characters[cn].data[58] = if dist > 6 { 2 } else { 1 };
+                });
                 return 1;
             }
         }
@@ -1770,7 +1799,8 @@ pub fn npc_driver_high(cn: usize) -> i32 {
                     let (ch_x, ch_y) = Repository::with_characters(|characters| {
                         (characters[cn].x as i32, characters[cn].y as i32)
                     });
-                    let can_reach = State::with_mut(|state| state.can_go(ch_x, ch_y, x as i32, y as i32)) != 0;
+                    let can_reach =
+                        State::with_mut(|state| state.can_go(ch_x, ch_y, x as i32, y as i32)) != 0;
                     let can_see =
                         State::with_mut(|state| state.do_char_can_see_item(cn, map_it)) != 0;
 
@@ -1789,7 +1819,8 @@ pub fn npc_driver_high(cn: usize) -> i32 {
                     let (ch_x, ch_y) = Repository::with_characters(|characters| {
                         (characters[cn].x as i32, characters[cn].y as i32)
                     });
-                    let can_reach = State::with_mut(|state| state.can_go(ch_x, ch_y, x as i32, y as i32)) != 0;
+                    let can_reach =
+                        State::with_mut(|state| state.can_go(ch_x, ch_y, x as i32, y as i32)) != 0;
                     let can_see =
                         State::with_mut(|state| state.do_char_can_see_item(cn, map_it)) != 0;
 

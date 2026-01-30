@@ -413,6 +413,49 @@ impl Labyrinth9 {
         self.guesser[idx]
     }
 
+    pub fn tick_riddle_timeout(&mut self, riddler_id: usize) {
+        let area_of_knowledge =
+            Repository::with_characters(|characters| characters[riddler_id].data[72]);
+        if !(core::constants::RIDDLE_MIN_AREA..=core::constants::RIDDLE_MAX_AREA)
+            .contains(&area_of_knowledge)
+        {
+            return;
+        }
+
+        let guesser_index = (area_of_knowledge - core::constants::RIDDLE_MIN_AREA) as usize;
+        if self.riddle_timeout[guesser_index] > 0 {
+            self.riddle_timeout[guesser_index] -= 1;
+            if self.riddle_timeout[guesser_index] <= 0 {
+                let guesser_id = self.guesser[guesser_index];
+                if guesser_id > 0 {
+                    Repository::with_characters_mut(|characters| {
+                        let guesser_usize = guesser_id as usize;
+                        if guesser_usize < characters.len()
+                            && characters[guesser_usize].is_player()
+                        {
+                            characters[guesser_usize].data[core::constants::CHD_RIDDLER] = 0;
+                        }
+                    });
+                }
+                self.guesser[guesser_index] = 0;
+
+                let riddler_name = Repository::with_characters(|characters| {
+                    characters[riddler_id].get_name().to_string()
+                });
+                State::with(|state| {
+                    state.do_character_log(
+                        riddler_id,
+                        core::types::FontColor::Yellow,
+                        &format!(
+                            "{} tells you: Too late! Too late! Try again some time.\n",
+                            riddler_name
+                        ),
+                    );
+                });
+            }
+        }
+    }
+
     pub fn lab9_guesser_says(&mut self, character_id: usize, text: &str) -> bool {
         let is_player =
             Repository::with_characters(|characters| characters[character_id].is_player());
