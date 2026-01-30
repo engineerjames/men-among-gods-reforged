@@ -252,6 +252,7 @@ pub fn add_spell(cn: usize, in_: usize) -> i32 {
     let in2: usize;
     let mut weak = 999;
     let mut weakest = 99;
+    let mut rejected = false;
     let m = Repository::with_characters(|ch| {
         ch[cn].x as usize + ch[cn].y as usize * core::constants::SERVER_MAPX as usize
     });
@@ -273,6 +274,7 @@ pub fn add_spell(cn: usize, in_: usize) -> i32 {
                     let active_in2 = Repository::with_items(|it| it[it_in2].active);
                     if power_in < power_in2 && active_in2 > core::constants::TICKS as u32 * 60 {
                         Repository::with_items_mut(|it| it[in_].used = core::constants::USE_EMPTY);
+                        rejected = true;
                         found = true;
                         return;
                     }
@@ -284,6 +286,9 @@ pub fn add_spell(cn: usize, in_: usize) -> i32 {
             }
         }
     });
+    if rejected {
+        return 0;
+    }
     if found {
         // n is set by the loop above
     } else {
