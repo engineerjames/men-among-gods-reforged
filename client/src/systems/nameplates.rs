@@ -166,13 +166,12 @@ pub(crate) fn run_gameplay_nameplates(
             if is_center {
                 (Some(player_name), true)
             } else {
-                let cached = name_cache
-                    .get(&tile.ch_nr)
-                    .map(|(cached_id, cached)| (*cached_id, cached.clone()));
+                let cached_id = name_cache.get(&tile.ch_nr).map(|(id, _)| *id);
 
-                if let Some((cached_id, cached)) = cached {
+                if let Some(cached_id) = cached_id {
                     if cached_id == tile.ch_id {
-                        (Some(cached.as_str()), true)
+                        let s = name_cache.get(&tile.ch_nr).map(|(_, v)| v.as_str());
+                        (s, s.is_some())
                     } else {
                         name_cache.remove(&tile.ch_nr);
                         if let Some(resolved) = player_state.lookup_name(tile.ch_nr, tile.ch_id) {
