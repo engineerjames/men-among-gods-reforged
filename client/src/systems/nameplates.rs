@@ -132,7 +132,7 @@ pub(crate) fn run_gameplay_nameplates(
         &mut NameplateLabelKey,
     )>,
     mut last_sent_ticker: Local<u32>,
-    mut name_cache: Local<HashMap<u16, String>>,
+    mut name_cache: Local<HashMap<u16, (u16, String)>>,
 ) {
     let pdata = player_state.player_data();
     let show_names = pdata.show_names != 0;
@@ -165,19 +165,40 @@ pub(crate) fn run_gameplay_nameplates(
         let (name_str, has_name) = if show_names {
             if is_center {
                 (Some(player_name), true)
-            } else if let Some(cached) = name_cache.get(&tile.ch_nr) {
-                (Some(cached.as_str()), true)
-            } else if let Some(resolved) = player_state.lookup_name(tile.ch_nr, tile.ch_id) {
-                name_cache.insert(tile.ch_nr, resolved.to_string());
-                // Pull back out to borrow from the cache.
-                let s = name_cache
-                    .get(&tile.ch_nr)
-                    .map(|v| v.as_str())
-                    .unwrap_or(resolved);
-                (Some(s), true)
             } else {
-                first_unknown.get_or_insert(tile.ch_nr);
-                (None, false)
+                let cached = name_cache
+                    .get(&tile.ch_nr)
+                    .map(|(cached_id, cached)| (*cached_id, cached.clone()));
+
+                if let Some((cached_id, cached)) = cached {
+                    if cached_id == tile.ch_id {
+                        (Some(cached.as_str()), true)
+                    } else {
+                        name_cache.remove(&tile.ch_nr);
+                        if let Some(resolved) = player_state.lookup_name(tile.ch_nr, tile.ch_id) {
+                            name_cache.insert(tile.ch_nr, (tile.ch_id, resolved.to_string()));
+                            let s = name_cache
+                                .get(&tile.ch_nr)
+                                .map(|(_, v)| v.as_str())
+                                .unwrap_or(resolved);
+                            (Some(s), true)
+                        } else {
+                            first_unknown.get_or_insert(tile.ch_nr);
+                            (None, false)
+                        }
+                    }
+                } else if let Some(resolved) = player_state.lookup_name(tile.ch_nr, tile.ch_id) {
+                    name_cache.insert(tile.ch_nr, (tile.ch_id, resolved.to_string()));
+                    // Pull back out to borrow from the cache.
+                    let s = name_cache
+                        .get(&tile.ch_nr)
+                        .map(|(_, v)| v.as_str())
+                        .unwrap_or(resolved);
+                    (Some(s), true)
+                } else {
+                    first_unknown.get_or_insert(tile.ch_nr);
+                    (None, false)
+                }
             }
         } else {
             (None, false)
