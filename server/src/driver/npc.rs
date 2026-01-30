@@ -1767,19 +1767,14 @@ pub fn npc_driver_high(cn: usize) -> i32 {
             {
                 let flags = Repository::with_items(|items| items[map_it].flags);
                 if flags & ItemFlags::IF_TAKE.bits() != 0 {
-                    // TODO: check can_go and do_char_can_see_item
-                    Repository::with_characters_mut(|characters| {
-                        characters[cn].misc_action = DR_PICKUP as u16;
-                        characters[cn].misc_target1 = x as u16;
-                        characters[cn].misc_target2 = y as u16;
-                        characters[cn].goto_x = 0u16;
-                        characters[cn].data[58] = 1;
+                    let (ch_x, ch_y) = Repository::with_characters(|characters| {
+                        (characters[cn].x as i32, characters[cn].y as i32)
                     });
-                    return 1;
-                }
-                if Repository::with_items(|items| items[map_it].driver) == 7 {
-                    let map_idx = m;
-                    if player::plr_check_target(map_idx) {
+                    let can_reach = State::with_mut(|state| state.can_go(ch_x, ch_y, x as i32, y as i32)) != 0;
+                    let can_see =
+                        State::with_mut(|state| state.do_char_can_see_item(cn, map_it)) != 0;
+
+                    if can_reach && can_see && it_temp != 18 {
                         Repository::with_characters_mut(|characters| {
                             characters[cn].misc_action = DR_PICKUP as u16;
                             characters[cn].misc_target1 = x as u16;
@@ -1788,6 +1783,36 @@ pub fn npc_driver_high(cn: usize) -> i32 {
                             characters[cn].data[58] = 1;
                         });
                         return 1;
+                    }
+                }
+                if Repository::with_items(|items| items[map_it].driver) == 7 {
+                    let (ch_x, ch_y) = Repository::with_characters(|characters| {
+                        (characters[cn].x as i32, characters[cn].y as i32)
+                    });
+                    let can_reach = State::with_mut(|state| state.can_go(ch_x, ch_y, x as i32, y as i32)) != 0;
+                    let can_see =
+                        State::with_mut(|state| state.do_char_can_see_item(cn, map_it)) != 0;
+
+                    if can_reach && can_see && x + 1 < SERVER_MAPX as usize {
+                        let map_idx = x + 1 + y * SERVER_MAPX as usize;
+                        let is_empty = Repository::with_map(|map| map[map_idx].it == 0);
+
+                        if is_empty && player::plr_check_target(map_idx) {
+                            if let Some(in2) = God::create_item(18) {
+                                Repository::with_items_mut(|items| {
+                                    items[in2].carried = cn as u16;
+                                });
+                                Repository::with_characters_mut(|characters| {
+                                    characters[cn].citem = in2 as u32;
+                                    characters[cn].misc_action = DR_DROP as u16;
+                                    characters[cn].misc_target1 = (x + 1) as u16;
+                                    characters[cn].misc_target2 = y as u16;
+                                    characters[cn].goto_x = 0u16;
+                                    characters[cn].data[58] = 1;
+                                });
+                                return 1;
+                            }
+                        }
                     }
                 }
             }
