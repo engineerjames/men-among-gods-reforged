@@ -1,9 +1,6 @@
 use bevy::camera::visibility::RenderLayers;
 use bevy::prelude::*;
 
-use std::collections::HashMap;
-use std::fmt::Write;
-
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::network::{client_commands::ClientCommand, NetworkRuntime};
 use crate::player_state::PlayerState;
@@ -27,16 +24,6 @@ const NAMEPLATE_Y_SHIFT: i32 = 64;
 pub(crate) struct GameplayNameplate {
     pub index: usize,
     pub is_shadow: bool,
-}
-
-#[derive(Component, Default, Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct NameplateLabelKey {
-    ch_nr: u16,
-    ch_id: u16,
-    ch_proz: u8,
-    show_names: bool,
-    show_proz: bool,
-    has_name: bool,
 }
 
 #[inline]
@@ -72,15 +59,15 @@ fn bytes_to_trimmed_str(bytes: &[u8]) -> Option<&str> {
 }
 
 /// Resolve the preferred player display name from runtime or saved data.
-fn player_display_name_str<'a>(player_state: &'a PlayerState) -> &'a str {
+fn player_display_name(player_state: &PlayerState) -> String {
     // Prefer the runtime player name, but fall back to persisted pdata.cname.
     if let Some(s) = bytes_to_trimmed_str(&player_state.character_info().name) {
-        return s;
+        return s.to_string();
     }
     if let Some(s) = bytes_to_trimmed_str(&player_state.player_data().cname) {
-        return s;
+        return s.to_string();
     }
-    "Player"
+    "Player".to_string()
 }
 
 /// Spawn hidden nameplate entities for all map tiles.
@@ -97,7 +84,6 @@ pub(crate) fn spawn_gameplay_nameplates(commands: &mut Commands, world_root: Ent
                 .spawn((
                     GameplayRenderEntity,
                     GameplayNameplate { index, is_shadow },
-                    NameplateLabelKey::default(),
                     // Draw nameplates as an overlay on the on-screen camera to avoid postprocess
                     // distortion/jitter from render-to-texture.
                     RenderLayers::layer(UI_LAYER),
@@ -129,10 +115,8 @@ pub(crate) fn run_gameplay_nameplates(
         &mut BitmapText,
         &mut Transform,
         &mut Visibility,
-        &mut NameplateLabelKey,
     )>,
     mut last_sent_ticker: Local<u32>,
-    mut name_cache: Local<HashMap<u16, (u16, String)>>,
 ) {
     let pdata = player_state.player_data();
     let show_names = pdata.show_names != 0;
@@ -140,21 +124,17 @@ pub(crate) fn run_gameplay_nameplates(
 
     let mut first_unknown: Option<u16> = None;
 
-    let player_name = player_display_name_str(&player_state);
-
-    for (plate, mut text2d, mut transform, mut visibility, mut last_key) in &mut q {
+    for (plate, mut text2d, mut transform, mut visibility) in &mut q {
         let Some(tile) = player_state.map().tile_at_index(plate.index) else {
             *visibility = Visibility::Hidden;
             continue;
         };
 
-        if tile.ch_sprite == 0 || (!show_names && !show_proz) {
+        if tile.ch_nr == 0 || (!show_names && !show_proz) {
             text2d.text.clear();
             *visibility = Visibility::Hidden;
             continue;
         }
-
-        let has_char_nr = tile.ch_nr != 0;
 
         let is_center = {
             let x = plate.index % TILEX;
@@ -162,47 +142,18 @@ pub(crate) fn run_gameplay_nameplates(
             x == TILEX / 2 && y == TILEY / 2
         };
 
-        // Lifetime-of-app cache: map character integer (nr) -> resolved name.
-        // Names are stable for a given character id, so once inserted they never change.
-        let (name_str, has_name) = if show_names && has_char_nr {
+        let name = if show_names {
             if is_center {
-                (Some(player_name), true)
+                Some(player_display_name(&player_state))
             } else {
-                let cached_id = name_cache.get(&tile.ch_nr).map(|(id, _)| *id);
-
-                if let Some(cached_id) = cached_id {
-                    if cached_id == tile.ch_id {
-                        let s = name_cache.get(&tile.ch_nr).map(|(_, v)| v.as_str());
-                        (s, s.is_some())
-                    } else {
-                        name_cache.remove(&tile.ch_nr);
-                        if let Some(resolved) = player_state.lookup_name(tile.ch_nr, tile.ch_id) {
-                            name_cache.insert(tile.ch_nr, (tile.ch_id, resolved.to_string()));
-                            let s = name_cache
-                                .get(&tile.ch_nr)
-                                .map(|(_, v)| v.as_str())
-                                .unwrap_or(resolved);
-                            (Some(s), true)
-                        } else {
-                            first_unknown.get_or_insert(tile.ch_nr);
-                            (None, false)
-                        }
-                    }
-                } else if let Some(resolved) = player_state.lookup_name(tile.ch_nr, tile.ch_id) {
-                    name_cache.insert(tile.ch_nr, (tile.ch_id, resolved.to_string()));
-                    // Pull back out to borrow from the cache.
-                    let s = name_cache
-                        .get(&tile.ch_nr)
-                        .map(|(_, v)| v.as_str())
-                        .unwrap_or(resolved);
-                    (Some(s), true)
-                } else {
+                let cached = player_state.lookup_name(tile.ch_nr, tile.ch_id);
+                if cached.is_none() {
                     first_unknown.get_or_insert(tile.ch_nr);
-                    (None, false)
                 }
+                cached.map(|s| s.to_string())
             }
         } else {
-            (None, false)
+            None
         };
 
         let proz = if show_proz && tile.ch_proz != 0 {
@@ -211,47 +162,17 @@ pub(crate) fn run_gameplay_nameplates(
             None
         };
 
-        let desired_key = NameplateLabelKey {
-            ch_nr: tile.ch_nr,
-            ch_id: tile.ch_id,
-            ch_proz: tile.ch_proz,
-            show_names,
-            show_proz,
-            has_name,
+        let text = match (show_names, show_proz, name.as_deref(), proz) {
+            (true, true, Some(n), Some(p)) if !n.is_empty() => format!("{n} {p}%"),
+            (true, true, _, Some(p)) => format!("{p}%"),
+            (true, true, Some(n), None) => n.to_string(),
+            (true, false, Some(n), _) => n.to_string(),
+            (false, true, _, Some(p)) => format!("{p}%"),
+            _ => String::new(),
         };
 
-        if has_char_nr {
-            // If the label inputs didn't change, don't touch the BitmapText.
-            // Avoids triggering the bitmap text renderer every frame.
-            if *last_key != desired_key {
-                text2d.text.clear();
-
-                match (show_names, show_proz, name_str, proz) {
-                    (true, true, Some(n), Some(p)) if !n.is_empty() => {
-                        text2d.text.push_str(n);
-                        text2d.text.push(' ');
-                        let _ = write!(&mut text2d.text, "{p}%");
-                    }
-                    (true, true, _, Some(p)) => {
-                        let _ = write!(&mut text2d.text, "{p}%");
-                    }
-                    (true, true, Some(n), None) => {
-                        text2d.text.push_str(n);
-                    }
-                    (true, false, Some(n), _) => {
-                        text2d.text.push_str(n);
-                    }
-                    (false, true, _, Some(p)) => {
-                        let _ = write!(&mut text2d.text, "{p}%");
-                    }
-                    _ => {}
-                }
-
-                *last_key = desired_key;
-            }
-        }
-
-        if text2d.text.is_empty() {
+        if text.is_empty() {
+            text2d.text.clear();
             *visibility = Visibility::Hidden;
             continue;
         }
@@ -264,7 +185,7 @@ pub(crate) fn run_gameplay_nameplates(
         let ypos = view_y * 32;
 
         let (sx_i, sy_i) =
-            dd_gputtext_screen_pos(xpos, ypos, text2d.text.len(), tile.obj_xoff, tile.obj_yoff);
+            dd_gputtext_screen_pos(xpos, ypos, text.len(), tile.obj_xoff, tile.obj_yoff);
 
         let draw_order = ((TILEY - 1 - (view_y as usize)) * TILEX + (view_x as usize)) as f32;
         let z_bias = if plate.is_shadow {
@@ -274,6 +195,7 @@ pub(crate) fn run_gameplay_nameplates(
         };
         let z = Z_CHAR_BASE + draw_order * Z_WORLD_STEP + z_bias;
 
+        text2d.text = text;
         text2d.font = 1;
         if plate.is_shadow {
             text2d.color = Color::BLACK;
