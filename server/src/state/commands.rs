@@ -9,7 +9,7 @@ use crate::repository::Repository;
 use crate::state::State;
 use crate::{driver, helpers};
 
-const ALL_COMMANDS: &'static [&str; 133] = &[
+const ALL_COMMANDS: &'static [&str; 128] = &[
     "addban",
     "afk",
     "allow",
@@ -56,14 +56,12 @@ const ALL_COMMANDS: &'static [&str; 133] = &[
     "ignore",
     "iignore",
     "iinfo",
-    "imm",
     "immortal",
     "imp",
     "info",
     "infra",
     "infrared",
     "init",
-    "inv",
     "invisible",
     "ipshow",
     "itell",
@@ -75,11 +73,8 @@ const ALL_COMMANDS: &'static [&str; 133] = &[
     "listgolden",
     "listimps",
     "look",
-    "lookd",
     "lookdepot",
-    "looke",
     "lookequip",
-    "looki",
     "lookinv",
     "looting",
     "lower",
@@ -146,34 +141,57 @@ const ALL_COMMANDS: &'static [&str; 133] = &[
 ];
 
 fn match_command(input: &str) -> Option<&'static str> {
-    let input_lower = input.to_lowercase();
-    let mut hamming_score = [0; ALL_COMMANDS.len()];
+    let input = input.trim();
+    if input.is_empty() {
+        return None;
+    }
 
-    // Calculate a quick and dirty Hamming distance
-    for (i, c) in ALL_COMMANDS.iter().enumerate() {
-        if c.len() < input.len() {
+    let input_lower = input.to_ascii_lowercase();
+    let input_len = input_lower.len();
+
+    // Allow a small number of mismatches for typo-tolerance, scaled by input length.
+    // Keep this conservative to avoid returning arbitrary commands.
+    let max_mismatches = match input_len {
+        0..=4 => 0,
+        5..=7 => 1,
+        _ => 2,
+    };
+
+    let mut best: Option<(&'static str, usize)> = None;
+
+    for &cmd in ALL_COMMANDS {
+        if cmd.len() < input_len {
             continue;
         }
 
-        // target command is greater than or equal to our input
-        for j in 0..input.len() {
-            if input_lower.chars().nth(j) != c.chars().nth(j) {
-                hamming_score[i] += 1;
+        let mut mismatches = 0usize;
+        for (a, b) in input_lower.bytes().zip(cmd.bytes()) {
+            if a != b {
+                mismatches += 1;
+                if mismatches > max_mismatches {
+                    break;
+                }
+            }
+        }
+
+        if mismatches > max_mismatches {
+            continue;
+        }
+
+        match best {
+            None => best = Some((cmd, mismatches)),
+            Some((best_cmd, best_score)) => {
+                // Prefer fewer mismatches; tie-break to shorter command (more specific for prefixes).
+                if mismatches < best_score
+                    || (mismatches == best_score && cmd.len() < best_cmd.len())
+                {
+                    best = Some((cmd, mismatches));
+                }
             }
         }
     }
 
-    let found_command_index = hamming_score
-        .iter()
-        .enumerate()
-        .min_by_key(|&(_, &val)| val)
-        .map(|(index, _)| index);
-
-    if let Some(found_command) = found_command_index {
-        Some(ALL_COMMANDS[found_command])
-    } else {
-        None
-    }
+    best.map(|(cmd, _)| cmd)
 }
 
 impl State {
@@ -1551,5 +1569,72 @@ impl State {
 
         // Unknown command
         self.do_character_log(cn, FontColor::Red, &format!("Unknown command #{}\n", cmd));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{match_command, ALL_COMMANDS};
+
+    #[test]
+    fn match_command_empty_is_none() {
+        assert_eq!(match_command(""), None);
+        assert_eq!(match_command("   "), None);
+    }
+
+    #[test]
+    fn match_command_common_commands() {
+        assert_eq!(match_command("wh"), Some("who"));
+        assert_eq!(match_command("ra"), Some("rank"));
+        assert_eq!(match_command("gt"), Some("gtell"));
+    }
+
+    #[test]
+    fn match_command_exact_match() {
+        assert_eq!(match_command("afk"), Some("afk"));
+        assert_eq!(match_command("withdraw"), Some("withdraw"));
+    }
+
+    #[test]
+    fn match_command_case_insensitive() {
+        assert_eq!(match_command("AFK"), Some("afk"));
+        assert_eq!(match_command("WiThDrAw"), Some("withdraw"));
+    }
+
+    #[test]
+    fn match_command_trims_input() {
+        assert_eq!(match_command("  afk  "), Some("afk"));
+    }
+
+    #[test]
+    fn match_command_aliases_are_supported_when_present() {
+        // These are intentionally in ALL_COMMANDS because do_command supports them explicitly.
+        assert_eq!(match_command("imm"), Some("immortal"));
+        assert_eq!(match_command("lookd"), Some("lookdepot"));
+        assert_eq!(match_command("looke"), Some("lookequip"));
+        assert_eq!(match_command("looki"), Some("lookinv"));
+    }
+
+    #[test]
+    fn match_command_typo_tolerance() {
+        // One mismatch allowed for len 5..=7.
+        assert_eq!(match_command("follaw"), Some("follow"));
+
+        // Two mismatches allowed for len >= 8.
+        assert_eq!(match_command("withdrqw"), Some("withdraw"));
+    }
+
+    #[test]
+    fn match_command_rejects_totally_unrelated_inputs() {
+        assert_eq!(match_command("zzzzzz"), None);
+        assert_eq!(match_command("thisisnotacommand"), None);
+    }
+
+    #[test]
+    fn match_command_returns_none_when_input_longer_than_any_command() {
+        // Make sure we don't accidentally return the first entry when no candidate can match.
+        let longest = ALL_COMMANDS.iter().map(|c| c.len()).max().unwrap_or(0);
+        let input = "x".repeat(longest + 1);
+        assert_eq!(match_command(&input), None);
     }
 }
