@@ -1,11 +1,12 @@
 use core::{
     constants::{
-        CharacterFlags, ItemFlags, AT_AGIL, AT_STREN, CHD_COMPANION, CHD_TALKATIVE,
-        COMPANION_TIMEOUT, CT_COMPANION, KIN_MONSTER, NT_DIDHIT, NT_GOTHIT, NT_GOTMISS,
-        SERVER_MAPX, SK_AXE, SK_BLAST, SK_BLESS, SK_CONCEN, SK_CURSE, SK_DAGGER, SK_DISPEL,
-        SK_ENHANCE, SK_GHOST, SK_HEAL, SK_IDENT, SK_IMMUN, SK_LIGHT, SK_LOCK, SK_MEDIT, SK_MSHIELD,
-        SK_PROTECT, SK_RECALL, SK_REGEN, SK_REPAIR, SK_RESIST, SK_REST, SK_SENSE, SK_STAFF,
-        SK_STUN, SK_SURROUND, SK_SWORD, SK_TWOHAND, SK_WARCRY, SK_WIMPY, TICKS, USE_EMPTY,
+        CharacterFlags, ItemFlags, AT_AGIL, AT_STREN, CHD_COMPANION, CHD_TALKATIVE, CNTSAY,
+        COMPANION_TIMEOUT, CT_COMPANION, DX_DOWN, DX_LEFT, DX_RIGHT, DX_UP, KIN_MONSTER, MAXSAY,
+        NT_DIDHIT, NT_GOTHIT, NT_GOTMISS, SERVER_MAPX, SK_AXE, SK_BLAST, SK_BLESS, SK_CONCEN,
+        SK_CURSE, SK_DAGGER, SK_DISPEL, SK_ENHANCE, SK_GHOST, SK_HEAL, SK_IDENT, SK_IMMUN,
+        SK_LIGHT, SK_LOCK, SK_MEDIT, SK_MSHIELD, SK_PROTECT, SK_RECALL, SK_REGEN, SK_REPAIR,
+        SK_RESIST, SK_REST, SK_SENSE, SK_STAFF, SK_STUN, SK_SURROUND, SK_SWORD, SK_TWOHAND,
+        SK_WARCRY, SK_WIMPY, TICKS, USE_EMPTY,
     },
     string_operations::c_string_to_str,
     types::FontColor,
@@ -85,30 +86,6 @@ pub fn skill_name(n: usize) -> &'static str {
     } else {
         ""
     }
-}
-
-/// Determines if a friend is considered an enemy for the given character.
-///
-/// # Arguments
-///
-/// * `cn` - Character number (index)
-/// * `cc` - Friend character number (index)
-///
-/// # Returns
-///
-/// Returns 1 if the friend is an enemy, 0 otherwise.
-#[allow(dead_code)]
-pub fn friend_is_enemy(cn: usize, cc: usize) -> i32 {
-    // Rust port of C++ friend_is_enemy
-    let co = Repository::with_characters(|ch| ch[cn].attack_cn as usize);
-    if co == 0 {
-        return 0;
-    }
-
-    if State::with(|state| state.may_attack_msg(cc, co, false)) != 0 {
-        return 1;
-    }
-    0
 }
 
 pub fn player_or_ghost(cn: usize, co: usize) -> i32 {
@@ -545,11 +522,6 @@ pub fn spell_light(cn: usize, co: usize, power: i32) -> i32 {
 }
 
 pub fn skill_light(cn: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-    use core::types::FontColor;
-
     // rate limit for player
     let is_player =
         Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Player.bits()) != 0);
@@ -1308,10 +1280,6 @@ pub fn skill_bless(cn: usize) {
 }
 
 pub fn skill_wimp(cn: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-
     // If Guardian Angel already active, remove it
     for n in 0..20 {
         let in_idx = Repository::with_characters(|ch| ch[cn].spell[n]);
@@ -2921,10 +2889,6 @@ pub fn skill_recall(cn: usize) {
 }
 
 pub fn spell_stun(cn: usize, co: usize, power: i32) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::types::FontColor;
-
     if Repository::with_characters(|ch| (ch[co].flags & CharacterFlags::Immortal.bits()) != 0) {
         return 0;
     }
@@ -3740,9 +3704,6 @@ pub fn skill_ghost(cn: usize) {
 }
 
 pub fn is_facing(cn: usize, co: usize) -> i32 {
-    use crate::repository::Repository;
-    use core::constants::*;
-
     let dir = Repository::with_characters(|ch| ch[cn].dir);
     let cx = Repository::with_characters(|ch| ch[cn].x);
     let cy = Repository::with_characters(|ch| ch[cn].y);
@@ -3783,9 +3744,6 @@ pub fn is_facing(cn: usize, co: usize) -> i32 {
 }
 
 pub fn is_back(cn: usize, co: usize) -> i32 {
-    use crate::repository::Repository;
-    use core::constants::*;
-
     let dir = Repository::with_characters(|ch| ch[cn].dir);
     let cx = Repository::with_characters(|ch| ch[cn].x);
     let cy = Repository::with_characters(|ch| ch[cn].y);
