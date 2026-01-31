@@ -103,6 +103,16 @@ pub(crate) struct GameplayShopHoverState {
     pub(crate) over_close: bool,
 }
 
+/// A simple one-frame capture flag for UI interactions.
+///
+/// Some UI actions (e.g., closing the shop window) would otherwise also be processed by the
+/// world click handler in the same frame.
+#[derive(Resource, Default, Debug)]
+pub(crate) struct GameplayUiClickCapture {
+    /// When set, the next world click handler should treat the click as consumed.
+    pub(crate) consume_world_click: bool,
+}
+
 #[derive(Resource, Debug, Clone, Copy)]
 pub(crate) struct CursorActionTextSettings {
     pub(crate) enabled: bool,

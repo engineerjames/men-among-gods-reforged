@@ -692,7 +692,17 @@ pub(crate) fn run_gameplay_map_hover_and_click(
     mut hovered: ResMut<GameplayHoveredTile>,
     mut hover_target: ResMut<GameplayHoverTarget>,
     mut cursor_state: ResMut<GameplayCursorTypeState>,
+    mut click_capture: ResMut<crate::states::gameplay::resources::GameplayUiClickCapture>,
 ) {
+    // Some UI actions (like closing the shop) should consume the click and prevent it from also
+    // being interpreted as a world action.
+    if click_capture.consume_world_click
+        && (mouse.just_released(MouseButton::Left) || mouse.just_released(MouseButton::Right))
+    {
+        click_capture.consume_world_click = false;
+        return;
+    }
+
     hovered.clear();
     hover_target.kind = GameplayHoverTargetKind::None;
     hover_target.tile_x = -1;

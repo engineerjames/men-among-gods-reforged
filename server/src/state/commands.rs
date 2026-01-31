@@ -9,6 +9,173 @@ use crate::repository::Repository;
 use crate::state::State;
 use crate::{driver, helpers};
 
+const ALL_COMMANDS: &'static [&str; 133] = &[
+    "addban",
+    "afk",
+    "allow",
+    "announce",
+    "balance",
+    "black",
+    "bow",
+    "build",
+    "cap",
+    "caution",
+    "ccp",
+    "closenemey",
+    "create",
+    "creator",
+    "delban",
+    "deposit",
+    "depot",
+    "diffi",
+    "effect",
+    "emote",
+    "enemy",
+    "enter",
+    "eras",
+    "erase",
+    "exit",
+    "fightback",
+    "follow",
+    "force",
+    "gargoyle",
+    "ggold",
+    "give",
+    "god",
+    "gold",
+    "golden",
+    "goto",
+    "greatergod",
+    "greaterinv",
+    "grolm",
+    "grolminfo",
+    "grolmstart",
+    "group",
+    "gtell",
+    "help",
+    "ignore",
+    "iignore",
+    "iinfo",
+    "imm",
+    "immortal",
+    "imp",
+    "info",
+    "infra",
+    "infrared",
+    "init",
+    "inv",
+    "invisible",
+    "ipshow",
+    "itell",
+    "kick",
+    "lag",
+    "leave",
+    "listban",
+    "listblack",
+    "listgolden",
+    "listimps",
+    "look",
+    "lookd",
+    "lookdepot",
+    "looke",
+    "lookequip",
+    "looki",
+    "lookinv",
+    "looting",
+    "lower",
+    "luck",
+    "mailpass",
+    "mark",
+    "mayhem",
+    "me",
+    "mirror",
+    "name",
+    "nodesc",
+    "noluck",
+    "nolist",
+    "noshout",
+    "nostaff",
+    "notell",
+    "nowho",
+    "npclist",
+    "password",
+    "pent",
+    "perase",
+    "pktcl",
+    "pktcnt",
+    "poh",
+    "pol",
+    "prof",
+    "purple",
+    "raise",
+    "rank",
+    "recall",
+    "respawn",
+    "safe",
+    "save",
+    "seen",
+    "send",
+    "shout",
+    "shutup",
+    "skill",
+    "skua",
+    "slap",
+    "soulstone",
+    "sort",
+    "speedy",
+    "spellignore",
+    "sprite",
+    "staff",
+    "stat",
+    "steal",
+    "stell",
+    "summon",
+    "tavern",
+    "tell",
+    "temple",
+    "thrall",
+    "time",
+    "tinfo",
+    "top",
+    "unique",
+    "usurp",
+    "wave",
+    "who",
+    "withdraw",
+    "write",
+];
+
+fn match_command(input: &str) -> Option<&'static str> {
+    let input_lower = input.to_lowercase();
+    let mut hamming_score = [0; ALL_COMMANDS.len()];
+
+    // Calculate a quick and dirty Hamming distance
+    for (i, c) in ALL_COMMANDS.iter().enumerate() {
+        if c.len() < input.len() {
+            continue;
+        }
+
+        // target command is greater than or equal to our input
+        for j in 0..input.len() {
+            if input_lower.chars().nth(j) != c.chars().nth(j) {
+                hamming_score[i] += 1;
+            }
+        }
+    }
+
+    let found_command_index = hamming_score
+        .iter()
+        .enumerate()
+        .min_by_key(|&(_, &val)| val)
+        .map(|(index, _)| index);
+
+    if let Some(found_command) = found_command_index {
+        Some(ALL_COMMANDS[found_command])
+    } else {
+        None
+    }
+}
+
 impl State {
     /// Creates a note item with custom text for the character.
     ///

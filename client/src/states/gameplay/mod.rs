@@ -12,7 +12,7 @@ mod components;
 mod layout;
 mod legacy_engine;
 mod minimap;
-mod resources;
+pub(crate) mod resources;
 pub mod ui;
 mod world_render;
 
@@ -464,6 +464,7 @@ pub(crate) fn setup_gameplay(
     commands.insert_resource(GameplayInventoryScrollState::default());
     commands.insert_resource(GameplayInventoryHoverState::default());
     commands.insert_resource(GameplayShopHoverState::default());
+    commands.insert_resource(GameplayUiClickCapture::default());
     commands.insert_resource(GameplayCursorTypeState::default());
     commands.insert_resource(GameplayXButtonsState::default());
 

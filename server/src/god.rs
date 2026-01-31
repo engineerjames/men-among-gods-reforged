@@ -4563,7 +4563,7 @@ impl God {
             return;
         }
 
-        let value = value.clamp(-127, 127);
+        let value = value.clamp(-10000, 10000);
 
         Repository::with_characters_mut(|characters| {
             let target = &mut characters[co];
