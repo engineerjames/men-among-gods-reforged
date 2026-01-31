@@ -86,7 +86,13 @@ pub(crate) fn run_gameplay_update_cursor_and_carried_item(
         GameplayCursorType::None => SystemCursorIcon::Default,
         GameplayCursorType::Take => SystemCursorIcon::Grab,
         GameplayCursorType::Drop => SystemCursorIcon::Grabbing,
-        GameplayCursorType::Swap => SystemCursorIcon::Move,
+        GameplayCursorType::Swap => {
+            if cfg!(target_os = "windows") {
+                SystemCursorIcon::Grabbing
+            } else {
+                SystemCursorIcon::Move
+            }
+        }
         GameplayCursorType::Use => SystemCursorIcon::Pointer,
     };
     commands

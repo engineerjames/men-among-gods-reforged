@@ -5050,10 +5050,8 @@ fn send_mod(nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index to challenge
 fn plr_challenge_newlogin(nr: usize) {
-    use rand::Rng;
-
     // Generate random challenge value (0x3fffffff max, ensure non-zero)
-    let mut tmp = rand::thread_rng().gen_range(1..0x3fffffff_u32);
+    let mut tmp = helpers::random_mod(0x3fffffff_u32 - 1) + 1;
     if tmp == 0 {
         tmp = 42;
     }
@@ -5188,12 +5186,10 @@ fn plr_challenge(nr: usize) {
 /// supplied by the client, stores `pass1`/`pass2` fragments and sends the
 /// challenge (and mod packets) back to the client.
 fn plr_challenge_login(nr: usize) {
-    use rand::Rng;
-
     log::debug!("Player {} challenge_login", nr);
 
     // Generate random challenge value (0x3fffffff max, ensure non-zero)
-    let mut tmp = rand::thread_rng().gen_range(1..0x3fffffff_u32);
+    let mut tmp = helpers::random_mod(0x3fffffff_u32 - 1) + 1;
     if tmp == 0 {
         tmp = 42;
     }

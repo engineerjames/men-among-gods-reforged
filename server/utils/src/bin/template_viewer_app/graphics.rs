@@ -2,7 +2,7 @@ use eframe::egui;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use zip::ZipArchive;
 
 pub(crate) struct GraphicsZipCache {
@@ -30,7 +30,10 @@ impl GraphicsZipCache {
                 continue;
             }
 
-            let stem = name.split('.').next().unwrap_or("");
+            let stem = Path::new(&name)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("");
             if let Ok(id) = stem.parse::<usize>() {
                 entries.insert(id, name);
             }

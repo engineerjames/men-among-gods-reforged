@@ -13,6 +13,8 @@ mod states;
 mod systems;
 mod types;
 
+use bevy::app::TaskPoolThreadAssignmentPolicy;
+use bevy::tasks::available_parallelism;
 use bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
 use std::path::PathBuf;
 use tracing_appender::{non_blocking::WorkerGuard, rolling};
@@ -61,6 +63,12 @@ enum GameState {
     Gameplay,
     Menu,
     Exited,
+}
+
+pub fn initialize_framepace_settings(
+    mut framepace_settings: ResMut<bevy_framepace::FramepaceSettings>,
+) {
+    framepace_settings.limiter = bevy_framepace::Limiter::from_framerate(30.0);
 }
 
 pub(crate) fn resolve_log_dir() -> PathBuf {
@@ -187,11 +195,26 @@ fn main() {
                         ..default()
                     }),
                     ..default()
+                })
+                .set(TaskPoolPlugin {
+                    task_pool_options: TaskPoolOptions {
+                        min_total_threads: 1,
+                        max_total_threads: available_parallelism(),
+                        io: TaskPoolThreadAssignmentPolicy {
+                            min_threads: 1,
+                            max_threads: 1,
+                            percent: 0.0,
+                            on_thread_destroy: None,
+                            on_thread_spawn: None,
+                        },
+                        ..default()
+                    },
                 }),
         )
         .add_plugins(EguiPlugin::default())
         .add_plugins(MagicPostProcessPlugin)
         .add_plugins(network::NetworkPlugin)
+        .add_plugins(bevy_framepace::FramepacePlugin)
         // Initialize the state to loading
         .insert_state(GameState::Loading)
         .insert_resource(ClearColor(Color::BLACK))
@@ -200,6 +223,7 @@ fn main() {
         //
         // Initial setup
         //
+        .add_systems(Startup, initialize_framepace_settings)
         // Cameras are set up by MagicPostProcessPlugin (world -> texture -> postprocess -> UI).
         //
         // Loading state
@@ -274,17 +298,18 @@ fn main() {
         )
         .add_systems(
             Update,
-            states::gameplay::ui::cursor::run_gameplay_update_cursor_and_carried_item
-                .run_if(in_state(GameState::Gameplay)),
-        )
-        .add_systems(
-            Update,
             states::gameplay::ui::inventory::run_gameplay_update_equipment_blocks
                 .run_if(in_state(GameState::Gameplay)),
         )
         .add_systems(
             Update,
             map_hover::run_gameplay_map_hover_and_click.run_if(in_state(GameState::Gameplay)),
+        )
+        .add_systems(
+            Update,
+            states::gameplay::ui::cursor::run_gameplay_update_cursor_and_carried_item
+                .run_if(in_state(GameState::Gameplay))
+                .after(map_hover::run_gameplay_map_hover_and_click),
         )
         .add_systems(
             Update,

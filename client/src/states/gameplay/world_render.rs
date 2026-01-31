@@ -154,7 +154,10 @@ pub(crate) fn dd_effect_tint(effect: u32) -> Color {
 
     // engine.c selection uses `|32` for characters; dd.c bumps green.
     if green {
-        g = (g + 0.5).min(1.0);
+        // Boost visibility in both bright and dark areas.
+        g = (g + 0.65).clamp(0.85, 1.35);
+        r *= 0.6;
+        b *= 0.6;
     }
 
     if invis {
@@ -589,7 +592,12 @@ pub(crate) fn update_world_tiles(
             TileLayer::Object => Z_OBJ_BASE + draw_order * Z_WORLD_STEP + Z_PASS2_OBJ_BIAS,
             // Characters interpolate via obj_xoff/obj_yoff; adjust draw_order smoothly.
             TileLayer::Character => {
-                let d = tile_draw_order_with_obj_offset(x, y, xoff_i, yoff_i);
+                // Only apply fractional depth when walking between tiles.
+                let d = if (16..=47).contains(&tile.ch_status) {
+                    tile_draw_order_with_obj_offset(x, y, xoff_i, yoff_i)
+                } else {
+                    tile_draw_order(x, y)
+                };
                 Z_OBJ_BASE + d * Z_WORLD_STEP + Z_PASS2_CHAR_BIAS
             }
         };
@@ -727,6 +735,7 @@ pub(crate) fn update_world_overlays(
         let mut xoff_i: i32 = 0;
         let mut yoff_i: i32 = 0;
         let mut z_bias: f32 = 0.0;
+        let mut z_base: f32 = Z_FX_BASE;
 
         match ovl.kind {
             TileFlagOverlayKind::MoveBlock => {
@@ -833,6 +842,7 @@ pub(crate) fn update_world_overlays(
                             xoff_i = tile.obj_xoff;
                             yoff_i = tile.obj_yoff;
                         }
+                        z_base = Z_FX_BASE;
                         z_bias = 0.0021;
                     }
                 }
@@ -842,6 +852,7 @@ pub(crate) fn update_world_overlays(
                     let n = ((tile.flags & TOMB) >> 12) as i32;
                     if n > 0 {
                         sprite_id = 240 + (n - 1);
+                        z_base = Z_FX_BASE;
                         z_bias = 0.0022;
                     }
                 }
@@ -881,7 +892,7 @@ pub(crate) fn update_world_overlays(
         } else {
             tile_draw_order(x, y)
         };
-        let z = Z_FX_BASE + base_order * Z_WORLD_STEP + z_bias;
+        let z = z_base + base_order * Z_WORLD_STEP + z_bias;
 
         if sprite_id == last.sprite_id
             && (sx_f - last.sx).abs() < 0.01

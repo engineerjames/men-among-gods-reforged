@@ -20,6 +20,15 @@ use crate::systems::magic_postprocess::MagicScreenCamera;
 use super::super::world_render::screen_to_world;
 use super::super::{cursor_game_pos, in_rect};
 
+const BACKSPACE_REPEAT_DELAY_SECS: f32 = 0.5;
+const BACKSPACE_REPEAT_INTERVAL_SECS: f32 = 0.05;
+
+#[derive(Default)]
+pub(crate) struct BackspaceRepeatState {
+    hold_time: f32,
+    repeat_time: f32,
+}
+
 /// Sends a chat input line to the server using the legacy 8x15-byte packet split.
 fn send_chat_input(net: &NetworkRuntime, text: &str) {
     // Original client sends 8 packets of 15 bytes each (total 120).
@@ -81,9 +90,11 @@ pub(crate) fn run_gameplay_text_ui(
     mut kb: MessageReader<KeyboardInput>,
     mut wheel: MessageReader<MouseWheel>,
     net: Res<NetworkRuntime>,
-    mut player_state: ResMut<PlayerState>,
+    player_state: Res<PlayerState>,
     mut input: ResMut<GameplayTextInput>,
     mut log_scroll: ResMut<GameplayLogScrollState>,
+    time: Res<Time>,
+    mut backspace_repeat: Local<BackspaceRepeatState>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     cameras: Query<&Camera, (With<Camera2d>, With<MagicScreenCamera>)>,
     mut q_log: Query<(&GameplayUiLogLine, &mut BitmapText), Without<GameplayUiInputText>>,
@@ -122,6 +133,25 @@ pub(crate) fn run_gameplay_text_ui(
 
     if keys.just_pressed(KeyCode::Backspace) {
         input.current.pop();
+        backspace_repeat.hold_time = 0.0;
+        backspace_repeat.repeat_time = 0.0;
+    }
+
+    if keys.just_released(KeyCode::Backspace) {
+        backspace_repeat.hold_time = 0.0;
+        backspace_repeat.repeat_time = 0.0;
+    }
+
+    if keys.pressed(KeyCode::Backspace) {
+        backspace_repeat.hold_time += time.delta().as_secs_f32();
+
+        if backspace_repeat.hold_time >= BACKSPACE_REPEAT_DELAY_SECS {
+            backspace_repeat.repeat_time += time.delta().as_secs_f32();
+            while backspace_repeat.repeat_time >= BACKSPACE_REPEAT_INTERVAL_SECS {
+                input.current.pop();
+                backspace_repeat.repeat_time -= BACKSPACE_REPEAT_INTERVAL_SECS;
+            }
+        }
     }
 
     if keys.just_pressed(KeyCode::ArrowUp) && !input.history.is_empty() {
@@ -153,8 +183,6 @@ pub(crate) fn run_gameplay_text_ui(
         let line = input.current.trim().to_string();
         if !line.is_empty() {
             send_chat_input(&net, &line);
-            player_state.tlog(1, format!("> {line}"));
-
             input.history.push(line.clone());
             input.history_pos = None;
         }

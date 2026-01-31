@@ -9,7 +9,6 @@ use core::constants::*;
 use core::string_operations::c_string_to_str;
 use core::types::skilltab;
 use core::types::Character;
-use rand::Rng;
 
 // Helper functions
 
@@ -678,13 +677,57 @@ pub fn npc_give(cn: usize, co: usize, in_item: usize, money: i32) -> i32 {
             // Quest-requested items: teach skill / give exp
             let nr = characters[cn].data[50];
             if nr != 0 {
-                let nr_usize = nr as usize;
-                let skill_name = skilltab::get_skill_name(nr_usize);
+                let mut skill_nr = nr as usize;
+                let co_kindred = characters[co].kindred as u32;
+
+                if skill_nr == SK_STUN && (co_kindred & (KIN_TEMPLAR | KIN_ARCHTEMPLAR)) != 0 {
+                    skill_nr = SK_IMMUN;
+                }
+                if skill_nr == SK_CURSE && (co_kindred & (KIN_TEMPLAR | KIN_ARCHTEMPLAR)) != 0 {
+                    skill_nr = SK_SURROUND;
+                }
+                if skill_nr == SK_STUN
+                    && (co_kindred & KIN_SEYAN_DU) != 0
+                    && characters[co].skill[SK_STUN][0] != 0
+                {
+                    skill_nr = SK_IMMUN;
+                }
+                if skill_nr == SK_CURSE
+                    && (co_kindred & KIN_SEYAN_DU) != 0
+                    && characters[co].skill[SK_CURSE][0] != 0
+                {
+                    skill_nr = SK_SURROUND;
+                }
+
+                if skill_nr == SK_STUN && (co_kindred & KIN_SEYAN_DU) != 0 {
+                    State::with(|state| {
+                        state.do_sayx(
+                            cn,
+                            &format!(
+                                "Bring me the item again to learn Immunity, {}!",
+                                characters[co].get_name()
+                            ),
+                        );
+                    });
+                }
+                if skill_nr == SK_CURSE && (co_kindred & KIN_SEYAN_DU) != 0 {
+                    State::with(|state| {
+                        state.do_sayx(
+                            cn,
+                            &format!(
+                                "Bring me the item again to learn Surround Hit, {}!",
+                                characters[co].get_name()
+                            ),
+                        );
+                    });
+                }
+
+                let skill_name = skilltab::get_skill_name(skill_nr);
                 State::with(|state| {
                     state.do_sayx(cn, &format!("Now I'll teach you {}.", skill_name));
                 });
 
-                if characters[co].skill[nr_usize][0] != 0 {
+                if characters[co].skill[skill_nr][0] != 0 {
                     State::with(|state| {
                         state.do_sayx(
                             cn,
@@ -713,7 +756,7 @@ pub fn npc_give(cn: usize, co: usize, in_item: usize, money: i32) -> i32 {
                     });
                 } else {
                     // teach skill
-                    characters[co].skill[nr_usize][0] = 1;
+                    characters[co].skill[skill_nr][0] = 1;
                     State::with(|state| {
                         state.do_character_log(
                             co,
@@ -832,7 +875,7 @@ pub fn npc_died(cn: usize, co: usize) -> i32 {
         let chance = characters[cn].data[48];
         if chance != 0 && co > 0 {
             // random 0..99 < chance
-            let roll = rand::thread_rng().gen_range(0..100) as i32;
+            let roll = helpers::random_mod_i32(100);
             if roll < chance {
                 let co_name = if co < MAXCHARS {
                     characters[co].get_name().to_string()
@@ -1257,7 +1300,7 @@ pub fn die_companion(cn: usize) {
     });
 
     State::with(|state| {
-        state.do_character_killed(0, cn);
+        state.do_character_killed(cn, 0);
     });
 }
 
@@ -1301,15 +1344,19 @@ pub fn npc_driver_high(cn: usize) -> i32 {
                 }
                 if characters[cn].data[64] < ticker {
                     // NPC should self-destruct
-                    // TODO: Port do_sayx(cn, "Free!")
-                    characters[cn].used = USE_EMPTY;
                     do_die = true;
                 }
             }
         });
         if do_die {
+            State::with(|state| {
+                state.do_sayx(cn, "Free!");
+            });
             God::destroy_items(cn);
             player::plr_map_remove(cn);
+            Repository::with_characters_mut(|characters| {
+                characters[cn].used = USE_EMPTY;
+            });
             npc_remove_enemy(cn, 0);
             return 1;
         }
@@ -1348,6 +1395,18 @@ pub fn npc_driver_high(cn: usize) -> i32 {
                 die_companion(cn);
                 return 1;
             }
+        }
+    }
+
+    // Count down riddle timeout for riddle givers
+    {
+        let area_of_knowledge = Repository::with_characters(|characters| characters[cn].data[72]);
+        if (core::constants::RIDDLE_MIN_AREA..=core::constants::RIDDLE_MAX_AREA)
+            .contains(&area_of_knowledge)
+        {
+            crate::lab9::Labyrinth9::with_mut(|lab9| {
+                lab9.tick_riddle_timeout(cn);
+            });
         }
     }
 
@@ -1402,7 +1461,7 @@ pub fn npc_driver_high(cn: usize) -> i32 {
             });
             if take_action {
                 Repository::with_items_mut(|items| items[it39].used = USE_EMPTY);
-                Repository::with_characters_mut(|characters| characters[cn].item[39] = 0);
+                Repository::with_characters_mut(|characters| characters[cn].citem = 0);
             } else {
                 Repository::with_items_mut(|items| {
                     items[it39].current_age[0] = 0;
@@ -1469,7 +1528,7 @@ pub fn npc_driver_high(cn: usize) -> i32 {
         }
     }
 
-    // create light (approximation: attempt spell if conditions met)
+    // create light
     {
         let (data62, _data58) = Repository::with_characters(|characters| {
             (characters[cn].data[62], characters[cn].data[58])
@@ -1479,7 +1538,11 @@ pub fn npc_driver_high(cn: usize) -> i32 {
                 (characters[cn].x as usize, characters[cn].y as usize)
             });
             let light = State::check_dlight(cx, cy);
-            if light < 20 {
+            let map_light = Repository::with_map(|map| {
+                let idx = cx + cy * SERVER_MAPX as usize;
+                map[idx].light
+            });
+            if light < 20 && map_light < 20 {
                 if npc_try_spell(cn, cn, SK_LIGHT) {
                     return 1;
                 }
@@ -1565,7 +1628,7 @@ pub fn npc_driver_high(cn: usize) -> i32 {
             if co != 0
                 && (Repository::with_characters(|characters| characters[cn].a_hp)
                     < Repository::with_characters(|characters| characters[cn].hp[5]) as i32 * 600
-                    || rand::thread_rng().gen_range(0..10) == 0)
+                    || helpers::random_mod_i32(10) == 0)
             {
                 if npc_try_spell(cn, co, SK_BLAST) {
                     return 1;
@@ -1578,9 +1641,10 @@ pub fn npc_driver_high(cn: usize) -> i32 {
             {
                 if npc_try_spell(cn, co, SK_STUN) {
                     Repository::with_characters_mut(|characters| {
-                        characters[cn].data[75] =
-                            Repository::with_characters(|chars| chars[cn].skill[SK_STUN][5]) as i32
-                                + 18 * 8
+                        characters[cn].data[75] = Repository::with_globals(|g| g.ticker)
+                            + Repository::with_characters(|chars| chars[cn].skill[SK_STUN][5])
+                                as i32
+                            + 18 * 8
                     });
                     return 1;
                 }
@@ -1635,8 +1699,8 @@ pub fn npc_driver_high(cn: usize) -> i32 {
         && Repository::with_characters(|characters| characters[cn].goto_x) == 0
     {
         let (x, y) = Repository::with_characters(|characters| (characters[cn].x, characters[cn].y));
-        let rx = rand::thread_rng().gen_range(0..10) as i32;
-        let ry = rand::thread_rng().gen_range(0..10) as i32;
+        let rx = helpers::random_mod_i32(10);
+        let ry = helpers::random_mod_i32(10);
         Repository::with_characters_mut(|characters| {
             characters[cn].goto_x = (x as i32 + 5 - rx) as u16;
             characters[cn].goto_y = (y as i32 + 5 - ry) as u16;
@@ -1649,7 +1713,13 @@ pub fn npc_driver_high(cn: usize) -> i32 {
         let co = Repository::with_characters(|characters| characters[cn].data[69] as usize);
         if Repository::with_characters(|characters| characters[cn].attack_cn) == 0 && co != 0 {
             if driver::follow_driver(cn, co) {
-                Repository::with_characters_mut(|characters| characters[cn].data[58] = 2);
+                let (cn_x, cn_y, co_y) = Repository::with_characters(|characters| {
+                    (characters[cn].x, characters[cn].y, characters[co].y)
+                });
+                let dist = (cn_x - co_y).abs() + (cn_y - co_y).abs();
+                Repository::with_characters_mut(|characters| {
+                    characters[cn].data[58] = if dist > 6 { 2 } else { 1 };
+                });
                 return 1;
             }
         }
@@ -1723,19 +1793,15 @@ pub fn npc_driver_high(cn: usize) -> i32 {
             {
                 let flags = Repository::with_items(|items| items[map_it].flags);
                 if flags & ItemFlags::IF_TAKE.bits() != 0 {
-                    // TODO: check can_go and do_char_can_see_item
-                    Repository::with_characters_mut(|characters| {
-                        characters[cn].misc_action = DR_PICKUP as u16;
-                        characters[cn].misc_target1 = x as u16;
-                        characters[cn].misc_target2 = y as u16;
-                        characters[cn].goto_x = 0u16;
-                        characters[cn].data[58] = 1;
+                    let (ch_x, ch_y) = Repository::with_characters(|characters| {
+                        (characters[cn].x as i32, characters[cn].y as i32)
                     });
-                    return 1;
-                }
-                if Repository::with_items(|items| items[map_it].driver) == 7 {
-                    let map_idx = m;
-                    if player::plr_check_target(map_idx) {
+                    let can_reach =
+                        State::with_mut(|state| state.can_go(ch_x, ch_y, x as i32, y as i32)) != 0;
+                    let can_see =
+                        State::with_mut(|state| state.do_char_can_see_item(cn, map_it)) != 0;
+
+                    if can_reach && can_see && it_temp != 18 {
                         Repository::with_characters_mut(|characters| {
                             characters[cn].misc_action = DR_PICKUP as u16;
                             characters[cn].misc_target1 = x as u16;
@@ -1744,6 +1810,37 @@ pub fn npc_driver_high(cn: usize) -> i32 {
                             characters[cn].data[58] = 1;
                         });
                         return 1;
+                    }
+                }
+                if Repository::with_items(|items| items[map_it].driver) == 7 {
+                    let (ch_x, ch_y) = Repository::with_characters(|characters| {
+                        (characters[cn].x as i32, characters[cn].y as i32)
+                    });
+                    let can_reach =
+                        State::with_mut(|state| state.can_go(ch_x, ch_y, x as i32, y as i32)) != 0;
+                    let can_see =
+                        State::with_mut(|state| state.do_char_can_see_item(cn, map_it)) != 0;
+
+                    if can_reach && can_see && x + 1 < SERVER_MAPX as usize {
+                        let map_idx = x + 1 + y * SERVER_MAPX as usize;
+                        let is_empty = Repository::with_map(|map| map[map_idx].it == 0);
+
+                        if is_empty && player::plr_check_target(map_idx) {
+                            if let Some(in2) = God::create_item(18) {
+                                Repository::with_items_mut(|items| {
+                                    items[in2].carried = cn as u16;
+                                });
+                                Repository::with_characters_mut(|characters| {
+                                    characters[cn].citem = in2 as u32;
+                                    characters[cn].misc_action = DR_DROP as u16;
+                                    characters[cn].misc_target1 = (x + 1) as u16;
+                                    characters[cn].misc_target2 = y as u16;
+                                    characters[cn].goto_x = 0u16;
+                                    characters[cn].data[58] = 1;
+                                });
+                                return 1;
+                            }
+                        }
                     }
                 }
             }

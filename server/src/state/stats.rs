@@ -1,6 +1,5 @@
 use core::constants::{CharacterFlags, ItemFlags, MAXCHARS};
 use core::types::FontColor;
-use rand::Rng;
 
 use crate::core::types::skilltab;
 use crate::effect::EffectManager;
@@ -785,7 +784,7 @@ impl State {
                         FontColor::Red,
                         &format!("The {} killed {}.\n", spell_name, cn),
                     );
-                    self.do_character_killed(0, cn);
+                    self.do_character_killed(cn, 0);
                     return;
                 }
 
@@ -1002,7 +1001,7 @@ impl State {
 
                 let is_dead = Repository::with_characters(|ch| ch[cn].a_hp < 500);
                 if is_dead {
-                    self.do_character_killed(0, cn);
+                    self.do_character_killed(cn, 0);
                 }
             }
         }
@@ -1666,9 +1665,9 @@ impl State {
                 map[idx].flags & core::constants::MF_ARENA as u64
             });
 
-            let mut rng = rand::thread_rng();
             if mf_arena == 0
-                && rng.gen_range(0..10000) < 5000 + Repository::with_characters(|ch| ch[co].luck)
+                && helpers::random_mod_i32(10000)
+                    < 5000 + Repository::with_characters(|ch| ch[co].luck)
             {
                 // Save the character
                 Repository::with_characters_mut(|characters| {
@@ -1834,8 +1833,7 @@ impl State {
             if type_hurt == 0 {
                 let gethit = Repository::with_characters(|ch| ch[co].gethit_dam);
                 if gethit > 0 {
-                    let mut rng = rand::thread_rng();
-                    let odam = rng.gen_range(0..(gethit as i32)) + 1;
+                    let odam = helpers::random_mod_i32(gethit as i32) + 1;
                     // call do_hurt on attacker
                     self.do_hurt(co, cn, odam, 3);
                 }

@@ -1,17 +1,21 @@
 use core::{
     constants::{
-        CharacterFlags, ItemFlags, SERVER_MAPX, SK_AXE, SK_BLAST, SK_BLESS, SK_CONCEN, SK_CURSE,
-        SK_DAGGER, SK_DISPEL, SK_ENHANCE, SK_GHOST, SK_HEAL, SK_IDENT, SK_IMMUN, SK_LIGHT, SK_LOCK,
-        SK_MEDIT, SK_MSHIELD, SK_PROTECT, SK_RECALL, SK_REGEN, SK_REPAIR, SK_REST, SK_STAFF,
-        SK_STUN, SK_SURROUND, SK_SWORD, SK_TWOHAND, SK_WARCRY, SK_WIMPY,
+        CharacterFlags, ItemFlags, AT_AGIL, AT_STREN, CHD_COMPANION, CHD_TALKATIVE, CNTSAY,
+        COMPANION_TIMEOUT, CT_COMPANION, DX_DOWN, DX_LEFT, DX_RIGHT, DX_UP, KIN_MONSTER, MAXSAY,
+        NT_DIDHIT, NT_GOTHIT, NT_GOTMISS, SERVER_MAPX, SK_AXE, SK_BLAST, SK_BLESS, SK_CONCEN,
+        SK_CURSE, SK_DAGGER, SK_DISPEL, SK_ENHANCE, SK_GHOST, SK_HEAL, SK_IDENT, SK_IMMUN,
+        SK_LIGHT, SK_LOCK, SK_MEDIT, SK_MSHIELD, SK_PROTECT, SK_RECALL, SK_REGEN, SK_REPAIR,
+        SK_RESIST, SK_REST, SK_SENSE, SK_STAFF, SK_STUN, SK_SURROUND, SK_SWORD, SK_TWOHAND,
+        SK_WARCRY, SK_WIMPY, TICKS, USE_EMPTY,
     },
     string_operations::c_string_to_str,
     types::FontColor,
 };
 
-use rand::Rng;
-
-use crate::{chlog, driver, effect::EffectManager, god::God, repository::Repository, state::State};
+use crate::{
+    chlog, core::types::Character, driver, effect::EffectManager, god::God, helpers, populate,
+    repository::Repository, state::State,
+};
 
 // Static skill table (taken from server/original_source/SkillTab.cpp)
 const SKILL_NAMES: [&str; 50] = [
@@ -82,30 +86,6 @@ pub fn skill_name(n: usize) -> &'static str {
     } else {
         ""
     }
-}
-
-/// Determines if a friend is considered an enemy for the given character.
-///
-/// # Arguments
-///
-/// * `cn` - Character number (index)
-/// * `cc` - Friend character number (index)
-///
-/// # Returns
-///
-/// Returns 1 if the friend is an enemy, 0 otherwise.
-#[allow(dead_code)]
-pub fn friend_is_enemy(cn: usize, cc: usize) -> i32 {
-    // Rust port of C++ friend_is_enemy
-    let co = Repository::with_characters(|ch| ch[cn].attack_cn as usize);
-    if co == 0 {
-        return 0;
-    }
-
-    if State::with(|state| state.may_attack_msg(cc, co, false)) != 0 {
-        return 1;
-    }
-    0
 }
 
 pub fn player_or_ghost(cn: usize, co: usize) -> i32 {
@@ -208,8 +188,7 @@ pub fn spell_immunity(power: i32, immun: i32) -> i32 {
 pub fn spell_race_mod(power: i32, kindred: i32) -> i32 {
     // Ported from C++ spell_race_mod(int power, int kindred)
 
-    #[allow(unused_assignments)]
-    let mut modf = 1.0;
+    let mut modf;
     if (kindred & core::constants::KIN_ARCHHARAKIM as i32) != 0 {
         modf = 1.05;
     } else if (kindred & core::constants::KIN_ARCHTEMPLAR as i32) != 0 {
@@ -248,6 +227,7 @@ pub fn add_spell(cn: usize, in_: usize) -> i32 {
     let in2: usize;
     let mut weak = 999;
     let mut weakest = 99;
+    let mut rejected = false;
     let m = Repository::with_characters(|ch| {
         ch[cn].x as usize + ch[cn].y as usize * core::constants::SERVER_MAPX as usize
     });
@@ -269,6 +249,7 @@ pub fn add_spell(cn: usize, in_: usize) -> i32 {
                     let active_in2 = Repository::with_items(|it| it[it_in2].active);
                     if power_in < power_in2 && active_in2 > core::constants::TICKS as u32 * 60 {
                         Repository::with_items_mut(|it| it[in_].used = core::constants::USE_EMPTY);
+                        rejected = true;
                         found = true;
                         return;
                     }
@@ -280,6 +261,9 @@ pub fn add_spell(cn: usize, in_: usize) -> i32 {
             }
         }
     });
+    if rejected {
+        return 0;
+    }
     if found {
         // n is set by the loop above
     } else {
@@ -538,11 +522,6 @@ pub fn spell_light(cn: usize, co: usize, power: i32) -> i32 {
 }
 
 pub fn skill_light(cn: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-    use core::types::FontColor;
-
     // rate limit for player
     let is_player =
         Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Player.bits()) != 0);
@@ -621,11 +600,6 @@ pub fn spellpower(cn: usize) -> i32 {
 }
 
 pub fn spell_protect(cn: usize, co: usize, power: i32) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-    use core::types::FontColor;
-
     let in_opt = God::create_item(1);
     if in_opt.is_none() {
         log::error!("god_create_item failed in skill_protect");
@@ -637,6 +611,27 @@ pub fn spell_protect(cn: usize, co: usize, power: i32) -> i32 {
     let mut power = power;
     let target_spellpower = spellpower(co);
     if power > target_spellpower {
+        if cn != co {
+            let reference = Repository::with_characters(|ch| ch[co].reference);
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    FontColor::Green,
+                    &format!(
+                        "Seeing that {} is not powerful enough for your spell, you reduced its strength.\n",
+                        c_string_to_str(&reference)
+                    ),
+                )
+            });
+        } else {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    FontColor::Green,
+                    "You are not powerful enough to use the full strength of this spell.\n",
+                )
+            });
+        }
         power = target_spellpower;
     }
 
@@ -677,26 +672,19 @@ pub fn spell_protect(cn: usize, co: usize, power: i32) -> i32 {
                 state.do_character_log(
                     co,
                     FontColor::Green,
-                    &format!(
-                        "{} tried to cast protection on you but failed.\n",
-                        c_string_to_str(&reference)
-                    ),
+                    &format!("{} cast protect on you.\n", c_string_to_str(&reference)),
                 )
             });
         } else {
             State::with(|state| {
-                state.do_character_log(co, FontColor::Green, "You are now protected.\n")
+                state.do_character_log(co, FontColor::Red, "You feel protected.\n")
             });
         }
 
         let name = Repository::with_characters(|ch| ch[co].get_name().to_string());
-        let (x, y) = Repository::with_characters(|ch| (ch[co].x, ch[co].y));
         State::with(|state| {
-            state.do_area_log(
-                co,
-                0,
-                x as i32,
-                y as i32,
+            state.do_character_log(
+                cn,
                 FontColor::Green,
                 &format!("{} is now protected.\n", name),
             )
@@ -704,6 +692,8 @@ pub fn spell_protect(cn: usize, co: usize, power: i32) -> i32 {
         let sound = Repository::with_characters(|ch| ch[cn].sound);
         State::char_play_sound(co, sound as i32 + 1, -150, 0);
         State::char_play_sound(cn, sound as i32 + 1, -150, 0);
+        let target_name = Repository::with_characters(|ch| ch[co].get_name().to_string());
+        chlog!(cn, "Cast Protect on {}", target_name);
         EffectManager::fx_add_effect(
             6,
             0,
@@ -746,11 +736,6 @@ pub fn spell_protect(cn: usize, co: usize, power: i32) -> i32 {
 }
 
 pub fn skill_protect(cn: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-    use core::types::FontColor;
-
     let has_skill = Repository::with_characters(|ch| ch[cn].skill[SK_PROTECT][5] != 0);
     if !has_skill {
         return;
@@ -822,11 +807,6 @@ pub fn skill_protect(cn: usize) {
 }
 
 pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-    use core::types::FontColor;
-
     let in_opt = God::create_item(1);
     if in_opt.is_none() {
         log::error!("god_create_item failed in skill_enhance");
@@ -841,13 +821,13 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
         if cn != co {
             let reference = Repository::with_characters(|ch| ch[co].reference);
             State::with(|state| {
-                state.do_character_log(cn, FontColor::Green, &format!("Seeing that {} is not powerful enough for your spell, you reduced its strength.\n", c_string_to_str(&reference)))
+                state.do_character_log(cn, FontColor::Yellow, &format!("Seeing that {} is not powerful enough for your spell, you reduced its strength.\n", c_string_to_str(&reference)))
             });
         } else {
             State::with(|state| {
                 state.do_character_log(
                     cn,
-                    FontColor::Green,
+                    FontColor::Yellow,
                     "You are not powerful enough to use the full strength of this spell.\n",
                 )
             });
@@ -878,7 +858,7 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
             State::with(|state| {
                 state.do_character_log(
                     cn,
-                    FontColor::Green,
+                    FontColor::Yellow,
                     &format!("Magical interference neutralised the {}'s effect.\n", name),
                 )
             });
@@ -890,7 +870,7 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
             State::with(|state| {
                 state.do_character_log(
                     co,
-                    FontColor::Green,
+                    FontColor::Yellow,
                     &format!(
                         "{} cast enhance weapon on you.\n",
                         c_string_to_str(&reference)
@@ -905,7 +885,7 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
         State::with(|state| {
             state.do_character_log(
                 cn,
-                FontColor::Green,
+                FontColor::Yellow,
                 &format!(
                     "{}'s weapon is now stronger.\n",
                     Repository::with_characters(|ch| ch[co].get_name().to_string())
@@ -931,14 +911,14 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
             State::with(|state| {
                 state.do_character_log(
                     cn,
-                    FontColor::Green,
+                    FontColor::Yellow,
                     &format!("Magical interference neutralised the {}'s effect.\n", name),
                 )
             });
             return 0;
         }
         State::with(|state| {
-            state.do_character_log(cn, FontColor::Green, "Your weapon feels stronger.\n")
+            state.do_character_log(cn, FontColor::Yellow, "Your weapon feels stronger.\n")
         });
         let sound = Repository::with_characters(|ch| ch[cn].sound);
         State::char_play_sound(cn, sound as i32 + 1, -150, 0);
@@ -967,11 +947,6 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
 }
 
 pub fn skill_enhance(cn: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-    use core::types::FontColor;
-
     let co = Repository::with_characters(|ch| {
         if ch[cn].skill_target1 != 0 {
             ch[cn].skill_target1 as usize
@@ -1019,7 +994,7 @@ pub fn skill_enhance(cn: usize) {
                     State::with(|state| {
                         state.do_character_log(
                             co,
-                            FontColor::Green,
+                            FontColor::Yellow,
                             &format!(
                                 "{} tried to cast enhance weapon on you but failed.\n",
                                 c_string_to_str(&reference)
@@ -1048,7 +1023,7 @@ pub fn skill_enhance(cn: usize) {
                 State::with(|state| {
                     state.do_character_log(
                         co,
-                        FontColor::Green,
+                        FontColor::Yellow,
                         &format!(
                             "{} tried to cast enhance weapon on you but failed.\n",
                             c_string_to_str(&reference)
@@ -1066,11 +1041,6 @@ pub fn skill_enhance(cn: usize) {
 }
 
 pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-    use core::types::FontColor;
-
     let in_opt = God::create_item(1);
     if in_opt.is_none() {
         log::error!("god_create_item failed in skill_bless");
@@ -1084,13 +1054,13 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
         if cn != co {
             let reference = Repository::with_characters(|ch| ch[co].reference);
             State::with(|state| {
-                state.do_character_log(cn, FontColor::Green, &format!("Seeing that {} is not powerful enough for your spell, you reduced its strength.\n", c_string_to_str(&reference)))
+                state.do_character_log(cn, FontColor::Yellow, &format!("Seeing that {} is not powerful enough for your spell, you reduced its strength.\n", c_string_to_str(&reference)))
             });
         } else {
             State::with(|state| {
                 state.do_character_log(
                     cn,
-                    FontColor::Green,
+                    FontColor::Yellow,
                     "You are not powerful enough to use the full strength of this spell.\n",
                 )
             });
@@ -1123,7 +1093,7 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
             State::with(|state| {
                 state.do_character_log(
                     cn,
-                    FontColor::Green,
+                    FontColor::Yellow,
                     &format!("Magical interference neutralised the {}'s effect.\n", name),
                 )
             });
@@ -1135,7 +1105,7 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
             State::with(|state| {
                 state.do_character_log(
                     co,
-                    FontColor::Green,
+                    FontColor::Yellow,
                     &format!("{} cast bless on you.\n", c_string_to_str(&reference)),
                 )
             });
@@ -1147,7 +1117,7 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
         State::with(|state| {
             state.do_character_log(
                 cn,
-                FontColor::Green,
+                FontColor::Yellow,
                 &format!(
                     "{} was blessed.\n",
                     Repository::with_characters(|ch| ch[co].get_name().to_string())
@@ -1175,14 +1145,14 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
             State::with(|state| {
                 state.do_character_log(
                     cn,
-                    FontColor::Green,
+                    FontColor::Yellow,
                     &format!("Magical interference neutralised the {}'s effect.\n", name),
                 )
             });
             return 0;
         }
         State::with(|state| {
-            state.do_character_log(cn, FontColor::Green, "You have been blessed.\n")
+            state.do_character_log(cn, FontColor::Yellow, "You have been blessed.\n")
         });
         let sound = Repository::with_characters(|ch| ch[cn].sound);
         State::char_play_sound(cn, sound as i32 + 1, -150, 0);
@@ -1211,11 +1181,6 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
 }
 
 pub fn skill_bless(cn: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-    use core::types::FontColor;
-
     let co = Repository::with_characters(|ch| {
         if ch[cn].skill_target1 != 0 {
             ch[cn].skill_target1 as usize
@@ -1262,7 +1227,7 @@ pub fn skill_bless(cn: usize) {
                     State::with(|state| {
                         state.do_character_log(
                             co,
-                            FontColor::Green,
+                            FontColor::Yellow,
                             &format!(
                                 "{} tried to cast bless on you but failed.\n",
                                 c_string_to_str(&reference)
@@ -1294,7 +1259,7 @@ pub fn skill_bless(cn: usize) {
                 State::with(|state| {
                     state.do_character_log(
                         co,
-                        FontColor::Green,
+                        FontColor::Yellow,
                         &format!(
                             "{} tried to cast bless on you but failed.\n",
                             c_string_to_str(&reference)
@@ -1315,10 +1280,6 @@ pub fn skill_bless(cn: usize) {
 }
 
 pub fn skill_wimp(cn: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-
     // If Guardian Angel already active, remove it
     for n in 0..20 {
         let in_idx = Repository::with_characters(|ch| ch[cn].spell[n]);
@@ -1423,11 +1384,6 @@ pub fn skill_wimp(cn: usize) {
 }
 
 pub fn spell_mshield(cn: usize, co: usize, power: i32) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-    use core::types::FontColor;
-
     let in_opt = God::create_item(1);
     if in_opt.is_none() {
         log::error!("god_create_item failed in skill_mshield");
@@ -1549,8 +1505,6 @@ pub fn spell_mshield(cn: usize, co: usize, power: i32) -> i32 {
 }
 
 pub fn skill_mshield(cn: usize) {
-    use crate::repository::Repository;
-
     if is_exhausted(cn) != 0 {
         return;
     }
@@ -1571,10 +1525,6 @@ pub fn skill_mshield(cn: usize) {
 }
 
 pub fn spell_heal(cn: usize, co: usize, power: i32) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::types::FontColor;
-
     if cn != co {
         Repository::with_characters_mut(|ch| {
             ch[co].a_hp += spell_race_mod(power * 2500, ch[cn].kindred);
@@ -1659,11 +1609,6 @@ pub fn spell_heal(cn: usize, co: usize, power: i32) -> i32 {
 }
 
 pub fn skill_heal(cn: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-    use core::types::FontColor;
-
     let mut co = Repository::with_characters(|ch| {
         if ch[cn].skill_target1 != 0 {
             ch[cn].skill_target1 as usize
@@ -1763,11 +1708,6 @@ pub fn skill_heal(cn: usize) {
 }
 
 pub fn spell_curse(cn: usize, co: usize, power: i32) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-    use core::types::FontColor;
-
     let flags = Repository::with_characters(|ch| ch[co].flags);
     if (flags & CharacterFlags::Immortal.bits()) != 0 {
         return 0;
@@ -1862,9 +1802,6 @@ pub fn spell_curse(cn: usize, co: usize, power: i32) -> i32 {
 }
 
 pub fn skill_curse(cn: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-
     let co = Repository::with_characters(|ch| {
         if ch[cn].skill_target1 != 0 {
             ch[cn].skill_target1 as usize
@@ -1994,13 +1931,12 @@ pub fn skill_curse(cn: usize) {
             && Repository::with_characters(|ch| ch[maybe_co].attack_cn as usize) == cn
             && co_orig != maybe_co
         {
-            let mut rng = rand::thread_rng();
             if Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_CURSE][5]) as i32
-                + rng.gen_range(0..20)
+                + helpers::random_mod_i32(20)
                 > Repository::with_characters(|ch| {
                     ch[maybe_co].skill[core::constants::SK_RESIST][5]
                 }) as i32
-                    + rng.gen_range(0..20)
+                    + helpers::random_mod_i32(20)
             {
                 spell_curse(
                     cn,
@@ -2195,10 +2131,6 @@ pub fn skill_warcry(cn: usize) {
 }
 
 pub fn item_info(cn: usize, in_: usize, _look: i32) {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::types::FontColor;
-
     let at_name = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
 
     // Name
@@ -2271,7 +2203,7 @@ pub fn item_info(cn: usize, in_: usize, _look: i32) {
         });
     }
 
-    // Skills on item (print index as placeholder for name)
+    // Skills on item
     for n in 0..50 {
         let (s0, s1, s2) = Repository::with_items(|it| {
             (
@@ -2283,17 +2215,12 @@ pub fn item_info(cn: usize, in_: usize, _look: i32) {
         if s0 == 0 && s1 == 0 && s2 == 0 {
             continue;
         }
+        let skill_label = skill_name(n);
         State::with(|state| {
             state.do_character_log(
                 cn,
                 FontColor::Green,
-                &format!(
-                    "{:<12} {:+4} {:+4} {:3}\n",
-                    format!("Skill {:02}", n),
-                    s0,
-                    s1,
-                    s2
-                ),
+                &format!("{:<12} {:+4} {:+4} {:3}\n", skill_label, s0, s1, s2),
             )
         });
     }
@@ -2354,10 +2281,6 @@ pub fn item_info(cn: usize, in_: usize, _look: i32) {
 }
 
 pub fn char_info(cn: usize, co: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::types::FontColor;
-
     let at_name = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
 
     // Header
@@ -2488,10 +2411,6 @@ pub fn char_info(cn: usize, co: usize) {
 }
 
 pub fn skill_identify(cn: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-
     if is_exhausted(cn) != 0 {
         return;
     }
@@ -2816,10 +2735,6 @@ pub fn skill_blast(cn: usize) {
 }
 
 pub fn skill_repair(cn: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-
     let in_idx = Repository::with_characters(|ch| ch[cn].citem as usize);
     if in_idx == 0 {
         State::with(|state| {
@@ -2865,9 +2780,10 @@ pub fn skill_repair(cn: usize) {
     let cost = Repository::with_items(|it| it[in_idx].power as i32);
     Repository::with_characters_mut(|ch| ch[cn].a_end -= cost * 1000);
 
-    let mut chan = if Repository::with_items(|it| it[in_idx].power) != 0 {
-        Repository::with_characters(|ch| ch[cn].skill[SK_REPAIR][5]) * 15
-            / Repository::with_items(|it| it[in_idx].power) as u8
+    let mut chan: i32 = if Repository::with_items(|it| it[in_idx].power) != 0 {
+        let skill = Repository::with_characters(|ch| ch[cn].skill[SK_REPAIR][5]) as i32;
+        let power = Repository::with_items(|it| it[in_idx].power) as i32;
+        skill * 15 / power
     } else {
         18
     };
@@ -2876,10 +2792,7 @@ pub fn skill_repair(cn: usize) {
         chan = 18;
     }
 
-    let mut rng = rand::thread_rng();
-
-    // TODO: Is this the same as RANDOM(20)?
-    let die = rng.gen_range(0..20);
+    let die = helpers::random_mod_i32(20);
 
     if die <= chan {
         let in2_opt = God::create_item(Repository::with_items(|it| it[in_idx].temp) as usize);
@@ -2916,10 +2829,6 @@ pub fn skill_repair(cn: usize) {
 }
 
 pub fn skill_recall(cn: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-
     if is_exhausted(cn) != 0 {
         return;
     }
@@ -2980,10 +2889,6 @@ pub fn skill_recall(cn: usize) {
 }
 
 pub fn spell_stun(cn: usize, co: usize, power: i32) -> i32 {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::types::FontColor;
-
     if Repository::with_characters(|ch| (ch[co].flags & CharacterFlags::Immortal.bits()) != 0) {
         return 0;
     }
@@ -3113,9 +3018,6 @@ pub fn spell_stun(cn: usize, co: usize, power: i32) -> i32 {
 }
 
 pub fn skill_stun(cn: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-
     let co = Repository::with_characters(|ch| {
         if ch[cn].skill_target1 != 0 {
             ch[cn].skill_target1 as usize
@@ -3207,7 +3109,7 @@ pub fn skill_stun(cn: usize) {
 
     if Repository::with_characters(|ch| (ch[co].flags & CharacterFlags::Immortal.bits()) != 0) {
         State::with(|state| {
-            state.do_character_log(cn, core::types::FontColor::Green, "You lost your focus.\n")
+            state.do_character_log(cn, core::types::FontColor::Red, "You lost your focus.\n")
         });
         return;
     }
@@ -3233,9 +3135,8 @@ pub fn skill_stun(cn: usize) {
             && Repository::with_characters(|ch| ch[maybe_co].attack_cn) == cn as u16
             && maybe_co != co_orig
         {
-            let mut rng = rand::thread_rng();
-            let s_rand = rng.gen_range(0..20);
-            let o_rand = rng.gen_range(0..20);
+            let s_rand = helpers::random_mod_i32(20);
+            let o_rand = helpers::random_mod_i32(20);
             if Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_STUN][5] as i32)
                 + s_rand
                 > Repository::with_characters(|ch| {
@@ -3264,8 +3165,6 @@ pub fn skill_stun(cn: usize) {
 }
 
 pub fn remove_spells(cn: usize) {
-    use crate::repository::Repository;
-
     for n in 0..20usize {
         let in_idx = Repository::with_characters(|ch| ch[cn].spell[n] as usize);
         if in_idx == 0 {
@@ -3278,10 +3177,6 @@ pub fn remove_spells(cn: usize) {
 }
 
 pub fn skill_dispel(cn: usize) {
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-
     let co = Repository::with_characters(|ch| {
         if ch[cn].skill_target1 != 0 {
             ch[cn].skill_target1 as usize
@@ -3393,17 +3288,6 @@ pub fn skill_dispel(cn: usize) {
 }
 
 pub fn skill_ghost(cn: usize) {
-    use crate::god::God;
-    use crate::helpers::{
-        attrib_needed, char_id, end_needed, hp_needed, mana_needed, skill_needed,
-    };
-    use crate::populate::pop_create_char;
-    use crate::repository::Repository;
-    use crate::state::State;
-    use core::constants::*;
-    use core::string_operations::c_string_to_str;
-    use core::types::{Character, FontColor};
-
     // Check if in build mode
     if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::BuildMode.bits()) != 0) {
         State::with(|state| state.do_character_log(cn, FontColor::Red, "Not in build mode.\n"));
@@ -3516,7 +3400,7 @@ pub fn skill_ghost(cn: usize) {
     }
 
     // Create companion
-    let cc_opt = pop_create_char(CT_COMPANION as usize, true);
+    let cc_opt = populate::pop_create_char(CT_COMPANION as usize, true);
     if cc_opt.is_none() {
         State::with(|state| {
             state.do_character_log(
@@ -3543,6 +3427,47 @@ pub fn skill_ghost(cn: usize) {
         });
         return;
     }
+
+    // Assign a randomized name to the companion
+    let random_name = {
+        let mut candidate = None;
+        for _ in 0..100 {
+            let name = God::randomly_generate_name();
+            let name_exists = Repository::with_characters(|ch| {
+                ch.iter().enumerate().any(|(idx, other)| {
+                    idx != cc
+                        && other.used != USE_EMPTY
+                        && other.get_name().eq_ignore_ascii_case(&name)
+                })
+            });
+            if !name_exists {
+                candidate = Some(name);
+                break;
+            }
+        }
+        candidate.unwrap_or_else(God::randomly_generate_name)
+    };
+
+    Repository::with_characters_mut(|ch| {
+        let companion = &mut ch[cc];
+
+        let mut name_bytes = [0u8; 40];
+        let name_src = random_name.as_bytes();
+        let name_len = name_src.len().min(name_bytes.len());
+        name_bytes[..name_len].copy_from_slice(&name_src[..name_len]);
+        companion.name = name_bytes;
+
+        let mut reference_bytes = [0u8; 40];
+        reference_bytes[..name_len].copy_from_slice(&name_src[..name_len]);
+        companion.reference = reference_bytes;
+
+        let desc = companion.get_default_description();
+        let desc_src = desc.as_bytes();
+        let mut desc_bytes = [0u8; 200];
+        let desc_len = desc_src.len().min(desc_bytes.len());
+        desc_bytes[..desc_len].copy_from_slice(&desc_src[..desc_len]);
+        companion.description = desc_bytes;
+    });
 
     // Notify target and attacker
     if co != 0 {
@@ -3577,10 +3502,11 @@ pub fn skill_ghost(cn: usize) {
         ch[cc].data[29] = 0; // reset experience earned
         ch[cc].data[42] = 65536 + cn as i32; // set group
         ch[cc].kindred &= !(KIN_MONSTER as i32);
+        ch[cc].flags &= !CharacterFlags::Player.bits();
 
         if co != 0 {
             ch[cc].attack_cn = co as u16;
-            let idx = co as i32 | (char_id(co) << 16);
+            let idx = co as i32 | (helpers::char_id(co) << 16);
             ch[cc].data[80] = idx; // add enemy to kill list
         }
 
@@ -3656,29 +3582,29 @@ pub fn skill_ghost(cn: usize) {
     // Attributes
     for z in 0..5 {
         for m in 10..(attribs[z][0] as i32) {
-            pts += attrib_needed(m, 3);
+            pts += helpers::attrib_needed(m, 3);
         }
     }
 
     // HP
     for m in 50..(hp0 as i32) {
-        pts += hp_needed(m, 3);
+        pts += helpers::hp_needed(m, 3);
     }
 
     // Endurance
     for m in 50..(end0 as i32) {
-        pts += end_needed(m, 2);
+        pts += helpers::end_needed(m, 2);
     }
 
     // Mana
     for m in 50..(mana0 as i32) {
-        pts += mana_needed(m, 3);
+        pts += helpers::mana_needed(m, 3);
     }
 
     // Skills
     for z in 0..50 {
         for m in 1..(skills[z][0] as i32) {
-            pts += skill_needed(m, 2);
+            pts += helpers::skill_needed(m, 2);
         }
     }
 
@@ -3778,9 +3704,6 @@ pub fn skill_ghost(cn: usize) {
 }
 
 pub fn is_facing(cn: usize, co: usize) -> i32 {
-    use crate::repository::Repository;
-    use core::constants::*;
-
     let dir = Repository::with_characters(|ch| ch[cn].dir);
     let cx = Repository::with_characters(|ch| ch[cn].x);
     let cy = Repository::with_characters(|ch| ch[cn].y);
@@ -3821,9 +3744,6 @@ pub fn is_facing(cn: usize, co: usize) -> i32 {
 }
 
 pub fn is_back(cn: usize, co: usize) -> i32 {
-    use crate::repository::Repository;
-    use core::constants::*;
-
     let dir = Repository::with_characters(|ch| ch[cn].dir);
     let cx = Repository::with_characters(|ch| ch[cn].x);
     let cy = Repository::with_characters(|ch| ch[cn].y);

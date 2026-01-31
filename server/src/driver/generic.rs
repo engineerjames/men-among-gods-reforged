@@ -4,8 +4,7 @@ use crate::path_finding::PathFinder;
 use crate::player;
 use crate::state::State;
 use crate::Repository;
-use crate::{core, driver};
-use rand::Rng;
+use crate::{core, driver, helpers};
 
 /// Notifies the area of the character's presence if the ticker matches.
 ///
@@ -408,7 +407,7 @@ pub fn act_attack(cn: usize) {
     if !is_simple {
         let mut vv: i32;
         loop {
-            vv = rand::thread_rng().gen_range(0..3);
+            vv = helpers::random_mod_i32(3);
             let last = Repository::with_characters(|ch| ch[cn].lastattack);
             if vv != last as i32 {
                 break;
@@ -1823,6 +1822,11 @@ pub fn drv_skill(cn: usize) {
 }
 
 pub fn driver_msg(cn: usize, msg_type: i32, dat1: i32, dat2: i32, dat3: i32, dat4: i32) {
+    if cn == 0 || cn >= core::constants::MAXCHARS {
+        log::warn!("driver_msg: invalid character id {}", cn);
+        return;
+    }
+
     // Mirror C++ driver_msg default handling
     // if stunned -> ignore
     let stunned = Repository::with_characters(|ch| ch[cn].stunned != 0);

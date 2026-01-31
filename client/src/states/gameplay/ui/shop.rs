@@ -231,6 +231,7 @@ pub(crate) fn run_gameplay_shop_input(
     cameras: Query<&Camera, (With<Camera2d>, With<MagicScreenCamera>)>,
     net: Res<NetworkRuntime>,
     mut player_state: ResMut<PlayerState>,
+    mut click_capture: ResMut<GameplayUiClickCapture>,
     mut shop_hover: ResMut<GameplayShopHoverState>,
     mut cursor_state: ResMut<GameplayCursorTypeState>,
 ) {
@@ -248,11 +249,24 @@ pub(crate) fn run_gameplay_shop_input(
     let x = game.x;
     let y = game.y;
 
+    let click_released =
+        mouse.just_released(MouseButton::Left) || mouse.just_released(MouseButton::Right);
+
+    // When the shop is open, any click outside the window should close it and consume the click.
+    // This prevents the same click from also issuing a move command.
+    let in_shop_window = (220.0..=516.0).contains(&x) && (260.0..=552.0).contains(&y);
+    if click_released && !in_shop_window {
+        player_state.close_shop();
+        click_capture.consume_world_click = true;
+        return;
+    }
+
     // Close button (orig/inter.c::mouse_shop): x 499..516, y 260..274.
     if (499.0..=516.0).contains(&x) && (260.0..=274.0).contains(&y) {
         shop_hover.over_close = true;
         if mouse.just_released(MouseButton::Left) {
             player_state.close_shop();
+            click_capture.consume_world_click = true;
         }
         return;
     }

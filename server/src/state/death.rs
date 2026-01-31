@@ -1,6 +1,5 @@
 use core::constants::{CharacterFlags, MAXCHARS};
 use core::types::{Character, FontColor};
-use rand::Rng;
 
 use crate::effect::EffectManager;
 use crate::god::God;
@@ -27,6 +26,17 @@ impl State {
     /// * `character_id` - The character who died
     /// * `killer_id` - The character who killed them (0 if none)
     pub(crate) fn do_character_killed(&self, character_id: usize, killer_id: usize) {
+        if !Character::is_sane_character(character_id) {
+            log::warn!("do_character_killed: invalid character_id {}", character_id);
+            return;
+        }
+
+        let killer_id = if killer_id != 0 && Character::is_sane_character(killer_id) {
+            killer_id
+        } else {
+            0
+        };
+
         // Send death notification
         self.do_notify_character(
             character_id as u32,
@@ -740,8 +750,7 @@ impl State {
         // Handle gold
         Repository::with_characters_mut(|characters| {
             if characters[co].gold != 0 {
-                let mut rng = rand::thread_rng();
-                if wimp < rng.gen_range(0..100) {
+                if wimp < helpers::random_mod_i32(100) {
                     characters[co].gold = 0;
                 } else {
                     characters[cc].gold = 0;
@@ -770,8 +779,7 @@ impl State {
                 continue;
             }
 
-            let mut rng = rand::thread_rng();
-            if wimp <= rng.gen_range(0..100) {
+            if wimp <= helpers::random_mod_i32(100) {
                 // Drop in grave
                 Repository::with_characters_mut(|characters| {
                     characters[co].item[n] = 0;
@@ -810,8 +818,7 @@ impl State {
                     characters[cc].citem = 0;
                 });
             } else {
-                let mut rng = rand::thread_rng();
-                if wimp <= rng.gen_range(0..100) {
+                if wimp <= helpers::random_mod_i32(100) {
                     Repository::with_characters_mut(|characters| {
                         characters[co].citem = 0;
                     });
@@ -854,8 +861,7 @@ impl State {
                 continue;
             }
 
-            let mut rng = rand::thread_rng();
-            if wimp <= rng.gen_range(0..100) {
+            if wimp <= helpers::random_mod_i32(100) {
                 Repository::with_characters_mut(|characters| {
                     characters[co].worn[n] = 0;
                 });
@@ -904,11 +910,19 @@ impl State {
     /// # Arguments
     /// * `co` - Character id to apply permanent penalties to
     pub(crate) fn apply_death_penalties(&self, co: usize) {
+        if !Character::is_sane_character(co) {
+            log::warn!("apply_death_penalties: invalid character {}", co);
+            return;
+        }
+
         Repository::with_characters_mut(|characters| {
+            let perm_hp = characters[co].hp[0] as i32;
+            let perm_mana = characters[co].mana[0] as i32;
+
             // HP penalty
-            let mut hp_tmp = characters[co].hp[0] / 10;
-            if characters[co].hp[0] - hp_tmp < 50 {
-                hp_tmp = characters[co].hp[0] - 50;
+            let mut hp_tmp = perm_hp / 10;
+            if perm_hp - hp_tmp < 50 {
+                hp_tmp = perm_hp - 50;
             }
             if hp_tmp > 0 {
                 self.do_character_log(
@@ -931,9 +945,9 @@ impl State {
             // TODO: Endurance penalty?
 
             // Mana penalty
-            let mut mana_tmp = characters[co].mana[0] / 10;
-            if characters[co].mana[0] - mana_tmp < 50 {
-                mana_tmp = characters[co].mana[0] - 50;
+            let mut mana_tmp = perm_mana / 10;
+            if perm_mana - mana_tmp < 50 {
+                mana_tmp = perm_mana - 50;
             }
             if mana_tmp > 0 {
                 self.do_character_log(
