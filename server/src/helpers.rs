@@ -24,6 +24,43 @@ pub fn format_number(value: i32) -> String {
     }
 }
 
+/// C-like `RANDOM(a)` helper.
+///
+/// Mimics `random() % a` from the original codebase. This intentionally has
+/// modulo-style distribution (including modulo bias) similar to the C macro.
+///
+/// Returns `0` when `a == 0`.
+#[inline]
+pub fn random_mod(a: u32) -> u32 {
+    if a == 0 {
+        return 0;
+    }
+    rand::random::<u32>() % a
+}
+
+/// Signed convenience wrapper around [`random_mod`].
+///
+/// Returns a value in `[0, a)` when `a > 0`, otherwise returns `0`.
+#[inline]
+pub fn random_mod_i32(a: i32) -> i32 {
+    if a <= 0 {
+        return 0;
+    }
+    random_mod(a as u32) as i32
+}
+
+/// `usize` convenience wrapper around [`random_mod`].
+///
+/// Returns a value in `[0, a)` when `a > 0`, otherwise returns `0`.
+#[inline]
+pub fn random_mod_usize(a: usize) -> usize {
+    if a == 0 {
+        return 0;
+    }
+    debug_assert!(a <= u32::MAX as usize);
+    random_mod(a as u32) as usize
+}
+
 /// Port of `use_labtransfer(int cn, int nr, int exp)` from `svr_do.cpp`
 ///
 /// Attempts to spawn the appropriate lab enemy for `nr` and transfer the
@@ -812,6 +849,37 @@ mod tests {
         assert_eq!(format_number(-99_000), "-99000");
         assert_eq!(format_number(-1_234_567), "-1234567");
         assert_eq!(format_number(i32::MIN), "-2147483648");
+    }
+
+    #[test]
+    fn test_random_mod_bounds() {
+        assert_eq!(random_mod(0), 0);
+
+        for _ in 0..10_000 {
+            let v = random_mod(7);
+            assert!(v < 7);
+        }
+    }
+
+    #[test]
+    fn test_random_mod_i32_bounds() {
+        assert_eq!(random_mod_i32(0), 0);
+        assert_eq!(random_mod_i32(-1), 0);
+
+        for _ in 0..10_000 {
+            let v = random_mod_i32(7);
+            assert!((0..7).contains(&v));
+        }
+    }
+
+    #[test]
+    fn test_random_mod_usize_bounds() {
+        assert_eq!(random_mod_usize(0), 0);
+
+        for _ in 0..10_000 {
+            let v = random_mod_usize(7);
+            assert!(v < 7);
+        }
     }
 
     #[test]

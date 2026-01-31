@@ -1878,8 +1878,6 @@ static KNOW: [Know; 227] = [
     },
 ];
 
-use rand::Rng;
-
 use crate::effect::EffectManager;
 use crate::god::God;
 use crate::repository::Repository;
@@ -2148,13 +2146,11 @@ pub fn answer_move(cn: usize, co: usize) {
         let cn_x = characters[cn].x;
         let cn_y = characters[cn].y;
 
-        let mut rng = rand::thread_rng();
-
         characters[cn].attack_cn = 0;
         characters[cn].goto_x =
-            (cn_x as i32 + 4 - rng.gen_range(0..9)).clamp(0, SERVER_MAPX - 1) as u16;
+            (cn_x as i32 + 4 - helpers::random_mod_i32(9)).clamp(0, SERVER_MAPX - 1) as u16;
         characters[cn].goto_y =
-            (cn_y as i32 + 4 - rng.gen_range(0..9)).clamp(0, SERVER_MAPY - 1) as u16;
+            (cn_y as i32 + 4 - helpers::random_mod_i32(9)).clamp(0, SERVER_MAPY - 1) as u16;
         characters[cn].misc_action = 0;
 
         let co_name = characters[co].get_name().to_string();

@@ -8,7 +8,7 @@
 use core::{constants::ItemFlags, types::Character};
 use std::sync::{OnceLock, RwLock};
 
-use crate::{god::God, repository::Repository, state::State};
+use crate::{god::God, helpers, repository::Repository, state::State};
 
 #[derive(Clone, Copy)]
 struct Destination {
@@ -622,7 +622,7 @@ impl Labyrinth9 {
             characters[riddler_id].data[72] - core::constants::RIDDLE_MIN_AREA
         });
 
-        let riddle_number = 1 + rand::random::<u32>() % core::constants::MAX_RIDDLES as u32;
+        let riddle_number = 1 + helpers::random_mod(core::constants::MAX_RIDDLES as u32);
         let question = self.riddles[riddle_index as usize][riddle_number as usize - 1].question;
         self.guesser[riddle_index as usize] = character_id as i32;
         self.riddleno[riddle_index as usize] = riddle_number as i32;
@@ -811,7 +811,7 @@ impl Labyrinth9 {
             let mut unique: bool;
 
             loop {
-                q = 1 + (rand::random::<u32>() % core::constants::BANK_QUESTIONS as u32) as i32;
+                q = 1 + helpers::random_mod(core::constants::BANK_QUESTIONS as u32) as i32;
 
                 self.questions[bankidx][n] = q;
 

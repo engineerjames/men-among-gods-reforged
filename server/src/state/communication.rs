@@ -6,7 +6,6 @@ use crate::{driver, helpers};
 use core::constants::{CharacterFlags, CT_LGUARD};
 use core::string_operations::c_string_to_str;
 use core::types::FontColor;
-use rand::Rng;
 
 impl State {
     /// Notifies all characters in an area about an event, excluding `cn` and `co`.
@@ -523,10 +522,9 @@ impl State {
 
             // Apply random variation if visibility is poor (populate shared diffs)
             if visibility > 75 {
-                let mut rng = rand::thread_rng();
-                hp_diff = (hp5 as i32) / 2 - rng.gen_range(0..=(hp5 as i32));
-                end_diff = (end5 as i32) / 2 - rng.gen_range(0..=(end5 as i32));
-                mana_diff = (mana5 as i32) / 2 - rng.gen_range(0..=(mana5 as i32));
+                hp_diff = (hp5 as i32) / 2 - helpers::random_mod_i32(hp5 as i32 + 1);
+                end_diff = (end5 as i32) / 2 - helpers::random_mod_i32(end5 as i32 + 1);
+                mana_diff = (mana5 as i32) / 2 - helpers::random_mod_i32(mana5 as i32 + 1);
             } else {
                 hp_diff = 0;
                 end_diff = 0;
@@ -1177,9 +1175,8 @@ impl State {
             let is_purple =
                 text == "Purple!" && (kindred & core::constants::KIN_PURPLE as i32) != 0;
             if (is_skua || is_purple) && ch[cn].luck > 100 {
-                let mut rng = rand::thread_rng();
                 if ch[cn].a_hp < ch[cn].hp[5] as i32 * 200 {
-                    ch[cn].a_hp += 50000 + rng.gen_range(0..100000);
+                    ch[cn].a_hp += 50000 + helpers::random_mod_i32(100000);
                     let cap = ch[cn].hp[5] as i32 * 1000;
                     if ch[cn].a_hp > cap {
                         ch[cn].a_hp = cap;
@@ -1187,7 +1184,7 @@ impl State {
                     ch[cn].luck -= 25;
                 }
                 if ch[cn].a_end < ch[cn].end[5] as i32 * 200 {
-                    ch[cn].a_end += 50000 + rng.gen_range(0..100000);
+                    ch[cn].a_end += 50000 + helpers::random_mod_i32(100000);
                     let cap = ch[cn].end[5] as i32 * 1000;
                     if ch[cn].a_end > cap {
                         ch[cn].a_end = cap;
@@ -1195,7 +1192,7 @@ impl State {
                     ch[cn].luck -= 10;
                 }
                 if ch[cn].a_mana < ch[cn].mana[5] as i32 * 200 {
-                    ch[cn].a_mana += 50000 + rng.gen_range(0..100000);
+                    ch[cn].a_mana += 50000 + helpers::random_mod_i32(100000);
                     let cap = ch[cn].mana[5] as i32 * 1000;
                     if ch[cn].a_mana > cap {
                         ch[cn].a_mana = cap;

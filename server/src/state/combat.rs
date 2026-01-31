@@ -2,9 +2,8 @@ use core::constants::{CharacterFlags, ItemFlags};
 use core::string_operations::c_string_to_str;
 use core::types::FontColor;
 
-use rand::Rng;
-
 use crate::driver;
+use crate::helpers;
 use crate::repository::Repository;
 use crate::state::State;
 
@@ -337,8 +336,7 @@ impl State {
             bonus = 20;
         }
 
-        let mut rng = rand::thread_rng();
-        let die = rng.gen_range(1..=20);
+        let die = helpers::random_mod_i32(20) + 1;
         let hit = die <= chance;
 
         if hit {
@@ -350,18 +348,18 @@ impl State {
             // Base damage uses character.weapon
             let base_weapon =
                 Repository::with_characters(|characters| characters[cn].weapon as i32);
-            let mut dam = base_weapon + rng.gen_range(1..=6);
+            let mut dam = base_weapon + helpers::random_mod_i32(6) + 1;
             if strn > 3 {
                 let extra_max = strn / 2;
                 if extra_max > 0 {
-                    dam += rng.gen_range(0..extra_max);
+                    dam += helpers::random_mod_i32(extra_max);
                 }
             }
             if die == 2 {
-                dam += rng.gen_range(1..=6);
+                dam += helpers::random_mod_i32(6) + 1;
             }
             if die == 1 {
-                dam += rng.gen_range(1..=6) + rng.gen_range(1..=6) + 2;
+                dam += helpers::random_mod_i32(6) + helpers::random_mod_i32(6) + 4;
             }
 
             let odam = dam;
@@ -433,7 +431,7 @@ impl State {
                         {
                             continue;
                         }
-                        if surround_eff + rng.gen_range(0..20) > self.get_fight_skill(co2) {
+                        if surround_eff + helpers::random_mod_i32(20) > self.get_fight_skill(co2) {
                             let sdam = odam - odam / 4;
                             self.do_hurt(cn, co2, sdam, 0);
                         }
@@ -543,8 +541,7 @@ impl State {
 
         chance = chance.clamp(0, 18);
 
-        let mut rng = rand::thread_rng();
-        if rng.gen_range(0..20) <= chance {
+        if helpers::random_mod_i32(20) <= chance {
             self.do_character_log(cn, core::types::FontColor::Green, "You manage to escape!\n");
             Repository::with_characters_mut(|characters| {
                 for m in 0..4 {
@@ -567,8 +564,6 @@ impl State {
     ///
     /// Handle looting a corpse.
     pub(crate) fn do_ransack_corpse(&self, cn: usize, co: usize, msg: &str) {
-        let mut rng = rand::thread_rng();
-
         let sense_skill = Repository::with_characters(|characters| {
             characters[cn].skill[core::constants::SK_SENSE][5] as i32
         });
@@ -585,7 +580,7 @@ impl State {
                     false
                 }
             });
-            if unique && sense_skill > rng.gen_range(0..200) {
+            if unique && sense_skill > helpers::random_mod_i32(200) {
                 let message = msg.replacen("%s", "a rare weapon", 1);
                 self.do_character_log(cn, FontColor::Yellow, &message);
             }
@@ -611,7 +606,7 @@ impl State {
                 continue;
             }
 
-            if unique && sense_skill > rng.gen_range(0..200) {
+            if unique && sense_skill > helpers::random_mod_i32(200) {
                 let message = msg.replacen("%s", "a rare weapon", 1);
                 self.do_character_log(cn, FontColor::Yellow, &message);
                 continue;
@@ -621,7 +616,7 @@ impl State {
             let is_scroll = (699..=716).contains(&(temp as i32))
                 || (175..=178).contains(&(temp as i32))
                 || (181..=189).contains(&(temp as i32));
-            if is_scroll && sense_skill > rng.gen_range(0..200) {
+            if is_scroll && sense_skill > helpers::random_mod_i32(200) {
                 let message = msg.replacen("%s", "a magical scroll", 1);
                 self.do_character_log(cn, FontColor::Yellow, &message);
                 continue;
@@ -632,14 +627,16 @@ impl State {
                 temp as i32,
                 101 | 102 | 127 | 131 | 135 | 148 | 224 | 273 | 274 | 449
             );
-            if is_potion && sense_skill > rng.gen_range(0..200) {
+            if is_potion && sense_skill > helpers::random_mod_i32(200) {
                 let message = msg.replacen("%s", "a magical potion", 1);
                 self.do_character_log(cn, FontColor::Yellow, &message);
                 continue;
             }
 
             // belt / placement check
-            if (placement & core::constants::PL_BELT) != 0 && sense_skill > rng.gen_range(0..200) {
+            if (placement & core::constants::PL_BELT) != 0
+                && sense_skill > helpers::random_mod_i32(200)
+            {
                 let message = msg.replacen("%s", "a magical belt", 1);
                 self.do_character_log(cn, FontColor::Yellow, &message);
                 continue;

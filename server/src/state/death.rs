@@ -1,6 +1,5 @@
 use core::constants::{CharacterFlags, MAXCHARS};
 use core::types::{Character, FontColor};
-use rand::Rng;
 
 use crate::effect::EffectManager;
 use crate::god::God;
@@ -751,8 +750,7 @@ impl State {
         // Handle gold
         Repository::with_characters_mut(|characters| {
             if characters[co].gold != 0 {
-                let mut rng = rand::thread_rng();
-                if wimp < rng.gen_range(0..100) {
+                if wimp < helpers::random_mod_i32(100) {
                     characters[co].gold = 0;
                 } else {
                     characters[cc].gold = 0;
@@ -781,8 +779,7 @@ impl State {
                 continue;
             }
 
-            let mut rng = rand::thread_rng();
-            if wimp <= rng.gen_range(0..100) {
+            if wimp <= helpers::random_mod_i32(100) {
                 // Drop in grave
                 Repository::with_characters_mut(|characters| {
                     characters[co].item[n] = 0;
@@ -821,8 +818,7 @@ impl State {
                     characters[cc].citem = 0;
                 });
             } else {
-                let mut rng = rand::thread_rng();
-                if wimp <= rng.gen_range(0..100) {
+                if wimp <= helpers::random_mod_i32(100) {
                     Repository::with_characters_mut(|characters| {
                         characters[co].citem = 0;
                     });
@@ -865,8 +861,7 @@ impl State {
                 continue;
             }
 
-            let mut rng = rand::thread_rng();
-            if wimp <= rng.gen_range(0..100) {
+            if wimp <= helpers::random_mod_i32(100) {
                 Repository::with_characters_mut(|characters| {
                     characters[co].worn[n] = 0;
                 });

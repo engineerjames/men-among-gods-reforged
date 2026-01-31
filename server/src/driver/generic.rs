@@ -4,8 +4,7 @@ use crate::path_finding::PathFinder;
 use crate::player;
 use crate::state::State;
 use crate::Repository;
-use crate::{core, driver};
-use rand::Rng;
+use crate::{core, driver, helpers};
 
 /// Notifies the area of the character's presence if the ticker matches.
 ///
@@ -408,7 +407,7 @@ pub fn act_attack(cn: usize) {
     if !is_simple {
         let mut vv: i32;
         loop {
-            vv = rand::thread_rng().gen_range(0..3);
+            vv = helpers::random_mod_i32(3);
             let last = Repository::with_characters(|ch| ch[cn].lastattack);
             if vv != last as i32 {
                 break;
