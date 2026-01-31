@@ -312,8 +312,8 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
 
     // Update item properties
     Repository::with_items_mut(|items| {
-        items[in_id].power += (5 * num_skills) as u32;
-        items[in_id].value += (10000 * num_skills) as u32;
+        items[in_id].power += 5 * num_skills;
+        items[in_id].value += 10000 * num_skills;
     });
 
     // Add random skills to belt

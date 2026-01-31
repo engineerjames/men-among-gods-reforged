@@ -2238,7 +2238,7 @@ pub fn item_info(cn: usize, in_: usize, _look: i32) {
         });
     }
 
-    // Skills on item (print index as placeholder for name)
+    // Skills on item
     for n in 0..50 {
         let (s0, s1, s2) = Repository::with_items(|it| {
             (
@@ -2250,17 +2250,12 @@ pub fn item_info(cn: usize, in_: usize, _look: i32) {
         if s0 == 0 && s1 == 0 && s2 == 0 {
             continue;
         }
+        let skill_label = skill_name(n);
         State::with(|state| {
             state.do_character_log(
                 cn,
                 FontColor::Green,
-                &format!(
-                    "{:<12} {:+4} {:+4} {:3}\n",
-                    format!("Skill {:02}", n),
-                    s0,
-                    s1,
-                    s2
-                ),
+                &format!("{:<12} {:+4} {:+4} {:3}\n", skill_label, s0, s1, s2),
             )
         });
     }
