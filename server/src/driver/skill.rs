@@ -11,8 +11,6 @@ use core::{
     types::FontColor,
 };
 
-use rand::Rng;
-
 use crate::{
     chlog, core::types::Character, driver, effect::EffectManager, god::God, helpers, populate,
     repository::Repository, state::State,
@@ -1965,13 +1963,12 @@ pub fn skill_curse(cn: usize) {
             && Repository::with_characters(|ch| ch[maybe_co].attack_cn as usize) == cn
             && co_orig != maybe_co
         {
-            let mut rng = rand::thread_rng();
             if Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_CURSE][5]) as i32
-                + rng.gen_range(0..20)
+                + helpers::random_mod_i32(20)
                 > Repository::with_characters(|ch| {
                     ch[maybe_co].skill[core::constants::SK_RESIST][5]
                 }) as i32
-                    + rng.gen_range(0..20)
+                    + helpers::random_mod_i32(20)
             {
                 spell_curse(
                     cn,
@@ -2815,9 +2812,10 @@ pub fn skill_repair(cn: usize) {
     let cost = Repository::with_items(|it| it[in_idx].power as i32);
     Repository::with_characters_mut(|ch| ch[cn].a_end -= cost * 1000);
 
-    let mut chan = if Repository::with_items(|it| it[in_idx].power) != 0 {
-        Repository::with_characters(|ch| ch[cn].skill[SK_REPAIR][5]) * 15
-            / Repository::with_items(|it| it[in_idx].power) as u8
+    let mut chan: i32 = if Repository::with_items(|it| it[in_idx].power) != 0 {
+        let skill = Repository::with_characters(|ch| ch[cn].skill[SK_REPAIR][5]) as i32;
+        let power = Repository::with_items(|it| it[in_idx].power) as i32;
+        skill * 15 / power
     } else {
         18
     };
@@ -2826,10 +2824,7 @@ pub fn skill_repair(cn: usize) {
         chan = 18;
     }
 
-    let mut rng = rand::thread_rng();
-
-    // TODO: Is this the same as RANDOM(20)?
-    let die = rng.gen_range(0..20);
+    let die = helpers::random_mod_i32(20);
 
     if die <= chan {
         let in2_opt = God::create_item(Repository::with_items(|it| it[in_idx].temp) as usize);
@@ -3176,9 +3171,8 @@ pub fn skill_stun(cn: usize) {
             && Repository::with_characters(|ch| ch[maybe_co].attack_cn) == cn as u16
             && maybe_co != co_orig
         {
-            let mut rng = rand::thread_rng();
-            let s_rand = rng.gen_range(0..20);
-            let o_rand = rng.gen_range(0..20);
+            let s_rand = helpers::random_mod_i32(20);
+            let o_rand = helpers::random_mod_i32(20);
             if Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_STUN][5] as i32)
                 + s_rand
                 > Repository::with_characters(|ch| {

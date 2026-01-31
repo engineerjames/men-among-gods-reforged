@@ -16,7 +16,6 @@ use core::constants::{
 };
 use core::string_operations::c_string_to_str;
 use core::types::FontColor;
-use rand::Rng;
 
 // Helper function to take an item from a character
 fn take_item_from_char(item_idx: usize, cn: usize) {
@@ -174,11 +173,10 @@ pub fn use_door(cn: usize, item_idx: usize) -> i32 {
                         let citem = character.citem as usize;
 
                         if citem != 0 && (citem & 0x80000000) == 0 && items[citem].driver == 3 {
-                            let mut rng = rand::thread_rng();
                             let skill = character.skill[SK_LOCK][5] + items[citem].data[0] as u8;
                             let power = item.data[2];
 
-                            if power == 0 || skill >= (power + rng.gen_range(0..20)) as u8 {
+                            if power == 0 || skill >= (power + helpers::random_mod(20)) as u8 {
                                 lock = 1;
                             } else {
                                 State::with(|state| {
@@ -571,8 +569,7 @@ pub fn use_create_item3(cn: usize, item_idx: usize) -> i32 {
     };
 
     // Pick a random entry
-    let mut rng = rand::thread_rng();
-    let n = rng.gen_range(0..count);
+    let n = helpers::random_mod_usize(count);
     let template_id = data[n] as usize;
 
     if template_id <= 0 || template_id >= MAXTITEM {
@@ -1993,8 +1990,7 @@ pub fn use_crystal_sub(_cn: usize, item_idx: usize) -> i32 {
 
     // choose a random template from temps
     let temps: [usize; 6] = [2, 4, 76, 78, 150, 151];
-    let mut rng = rand::thread_rng();
-    let tmp = temps[rng.gen_range(0..temps.len())];
+    let tmp = temps[helpers::random_mod_usize(temps.len())];
 
     // create char
     let cc_i32 = match God::create_char(tmp, false) {
@@ -2020,8 +2016,8 @@ pub fn use_crystal_sub(_cn: usize, item_idx: usize) -> i32 {
 
     // pick spawn tile until valid
     let m = loop {
-        let m_try = (rng.gen_range(0..64) + 128)
-            + (rng.gen_range(0..64) + 64) * core::constants::SERVER_MAPX as usize;
+        let m_try = (helpers::random_mod_usize(64) + 128)
+            + (helpers::random_mod_usize(64) + 64) * core::constants::SERVER_MAPX as usize;
         if player::plr_check_target(m_try) {
             break m_try;
         }
@@ -2048,11 +2044,11 @@ pub fn use_crystal_sub(_cn: usize, item_idx: usize) -> i32 {
         ch.data[48] = 33;
 
         // base and attributes
-        let base = (sbase * 5) as i32 + rng.gen_range(0..5) as i32;
+        let base = (sbase * 5) as i32 + helpers::random_mod_i32(5);
         ch.data[0] = base;
 
         for n in 0..5 {
-            let mut t = base + rng.gen_range(0..15) as i32;
+            let mut t = base + helpers::random_mod_i32(15);
             let diff = std::cmp::max(1, ch.attrib[n][3] as i32);
             t = t * 3 / diff;
             let maxv = ch.attrib[n][2] as i32;
@@ -2061,7 +2057,7 @@ pub fn use_crystal_sub(_cn: usize, item_idx: usize) -> i32 {
         }
 
         for n in 0..50 {
-            let mut t = base + rng.gen_range(0..15) as i32;
+            let mut t = base + helpers::random_mod_i32(15);
             let diff = std::cmp::max(1, ch.skill[n][3] as i32);
             t = t * 3 / diff;
             if ch.skill[n][2] != 0 {
@@ -2072,15 +2068,15 @@ pub fn use_crystal_sub(_cn: usize, item_idx: usize) -> i32 {
 
         ch.hp[0] = std::cmp::max(
             50,
-            std::cmp::min(ch.hp[2] as i32, base * 5 + rng.gen_range(0..50) as i32),
+            std::cmp::min(ch.hp[2] as i32, base * 5 + helpers::random_mod_i32(50)),
         ) as u16;
         ch.end[0] = std::cmp::max(
             50,
-            std::cmp::min(ch.end[2] as i32, base * 5 + rng.gen_range(0..50) as i32),
+            std::cmp::min(ch.end[2] as i32, base * 5 + helpers::random_mod_i32(50)),
         ) as u16;
         ch.mana[0] = std::cmp::max(
             50,
-            std::cmp::min(ch.mana[2] as i32, base * 5 + rng.gen_range(0..50) as i32),
+            std::cmp::min(ch.mana[2] as i32, base * 5 + helpers::random_mod_i32(50)),
         ) as u16;
 
         // calculate experience points
@@ -2114,12 +2110,12 @@ pub fn use_crystal_sub(_cn: usize, item_idx: usize) -> i32 {
         } else {
             let mut v = 1i32;
             for _ in 0..6 {
-                v *= rng.gen_range(0..4) as i32;
+                v *= helpers::random_mod_i32(4);
             }
             ch.a_mana = v * 100;
         }
 
-        ch.alignment = -(rng.gen_range(0..7500) as i16);
+        ch.alignment = -(helpers::random_mod_i32(7500) as i16);
     });
 
     log::info!("Created random dungeon NPC from crystal (template {})", tmp);
@@ -2416,19 +2412,18 @@ pub fn use_crystal_sub(_cn: usize, item_idx: usize) -> i32 {
     }
 
     // occasional extra items (partial port)
-    let mut rng2 = rand::thread_rng();
-    if rng2.gen_range(0..30) == 0 && Repository::with_characters(|ch| ch[cc].data[0] > 5) {
-        if let Some(it) = God::create_item(rand::random::<usize>() % 2 + 273) {
+    if helpers::random_mod_i32(30) == 0 && Repository::with_characters(|ch| ch[cc].data[0] > 5) {
+        if let Some(it) = God::create_item(helpers::random_mod_usize(2) + 273) {
             God::give_character_item(cc, it);
         }
     }
-    if rng2.gen_range(0..60) == 0 && Repository::with_characters(|ch| ch[cc].data[0] > 15) {
-        if let Some(it) = God::create_item(rand::random::<usize>() % 2 + 192) {
+    if helpers::random_mod_i32(60) == 0 && Repository::with_characters(|ch| ch[cc].data[0] > 15) {
+        if let Some(it) = God::create_item(helpers::random_mod_usize(2) + 192) {
             God::give_character_item(cc, it);
         }
     }
-    if rng2.gen_range(0..150) == 0 && Repository::with_characters(|ch| ch[cc].data[0] > 20) {
-        if let Some(it) = God::create_item(rand::random::<usize>() % 9 + 181) {
+    if helpers::random_mod_i32(150) == 0 && Repository::with_characters(|ch| ch[cc].data[0] > 20) {
+        if let Some(it) = God::create_item(helpers::random_mod_usize(9) + 181) {
             God::give_character_item(cc, it);
         }
     }
@@ -5817,12 +5812,9 @@ pub fn explorer_point(cn: usize, item_idx: usize) -> i32 {
             (base, pts)
         });
 
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
-
-        let mut exp = base_exp / 2 + rng.gen_range(0..base_exp);
+        let mut exp = base_exp / 2 + helpers::random_mod(base_exp);
         exp = std::cmp::min(points_tot as u32 / 10, exp); // Not more than 10% of total experience
-        exp += rng.gen_range(0..(exp / 10 + 1)); // Some more randomness
+        exp += helpers::random_mod(exp / 10 + 1); // Some more randomness
 
         log::info!(
             "exp point giving {} ({}) exp, char has {} exp",
@@ -6278,8 +6270,7 @@ pub fn use_soulstone(cn: usize, item_idx: usize) -> i32 {
     if in2_driver == 68 {
         // Absorb the second soulstone into the first
         Repository::with_items_mut(|items| {
-            let mut rng = rand::thread_rng();
-            let exp_gain = rng.gen_range(0..=items[in2].data[1]);
+            let exp_gain = helpers::random_mod(items[in2].data[1].saturating_add(1));
             items[item_idx].data[1] += exp_gain;
             let rank = core::ranks::points2rank(items[item_idx].data[1]);
             items[item_idx].data[0] = rank;
@@ -6432,9 +6423,6 @@ fn soul_trans_equipment(cn: usize, soulstone_idx: usize, item_idx: usize) {
         SK_IMMUN, SK_MSHIELD, SK_PROTECT, SK_RESIST, SK_STEALTH, SK_STUN, SK_SURROUND, SK_SWORD,
         SK_TWOHAND, SK_WARCRY,
     };
-    use rand::Rng;
-
-    let mut rng = rand::thread_rng();
     let mut rank = Repository::with_items(|items| items[soulstone_idx].data[0]);
 
     let is_weapon = Repository::with_items(|items| {
@@ -6442,13 +6430,13 @@ fn soul_trans_equipment(cn: usize, soulstone_idx: usize, item_idx: usize) {
     });
 
     while rank > 0 {
-        let stren = rng.gen_range(0..=rank);
+        let stren = helpers::random_mod(rank.saturating_add(1));
         rank -= stren;
 
         let ran = if is_weapon {
-            rng.gen_range(0..27)
+            helpers::random_mod_usize(27)
         } else {
-            rng.gen_range(0..26)
+            helpers::random_mod_usize(26)
         };
 
         Repository::with_items_mut(|items| {
@@ -6862,15 +6850,12 @@ pub fn item_damage_citem(cn: usize, damage: i32) {
 pub fn item_damage_armor(cn: usize, damage: i32) {
     let dam = damage / 4 + 1;
 
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
-
     const WN_RHAND: usize = 8;
     const WN_LHAND: usize = 17;
 
     for n in 0..20 {
         if n != WN_RHAND && n != WN_LHAND {
-            if rng.gen_range(0..3) != 0 {
+            if helpers::random_mod_i32(3) != 0 {
                 item_damage_worn(cn, n, dam);
             }
         }
@@ -7200,8 +7185,7 @@ pub fn pentagram(item_idx: usize) {
         return;
     }
 
-    let mut rng = rand::thread_rng();
-    if rng.gen_range(0..18) != 0 {
+    if helpers::random_mod_i32(18) != 0 {
         return;
     }
 
@@ -7241,8 +7225,7 @@ pub fn spiderweb(item_idx: usize) {
         return;
     }
 
-    let mut rng = rand::thread_rng();
-    if rng.gen_range(0..60) != 0 {
+    if helpers::random_mod_i32(60) != 0 {
         return;
     }
 
@@ -7265,7 +7248,7 @@ pub fn spiderweb(item_idx: usize) {
 
         if should_spawn {
             // Create spider (template 390-392)
-            let spider_template = 390 + rng.gen_range(0..3);
+            let spider_template = 390usize + helpers::random_mod_usize(3);
             let cn = match populate::pop_create_char(spider_template, false) {
                 Some(cn) => cn,
                 None => continue,
@@ -7306,8 +7289,7 @@ pub fn greenlingball(item_idx: usize) {
         return;
     }
 
-    let mut rng = rand::thread_rng();
-    if rng.gen_range(0..20) != 0 {
+    if helpers::random_mod_i32(20) != 0 {
         return;
     }
 
@@ -7556,11 +7538,10 @@ pub fn item_tick_expire() {
 
                                 if temp != 0 && respawn_flag {
                                     // Schedule a respawn effect (type 2 = RSPAWN)
-                                    let mut rng = rand::thread_rng();
                                     let dur = if temp == 189 || temp == 561 {
-                                        TICKS * 60 * 20 + rng.gen_range(0..(TICKS * 60 * 5))
+                                        TICKS * 60 * 20 + helpers::random_mod_i32(TICKS * 60 * 5)
                                     } else {
-                                        (TICKS * 60) + rng.gen_range(0..TICKS * 60)
+                                        (TICKS * 60) + helpers::random_mod_i32(TICKS * 60)
                                     };
 
                                     // Use the template's coordinates for the respawn location
@@ -7843,8 +7824,7 @@ pub fn trap1(cn: usize, item_idx: usize) {
         }
     }
 
-    let mut rng = rand::thread_rng();
-    let slot = rng.gen_range(0..12);
+    let slot = helpers::random_mod_usize(12);
     let in_worn = Repository::with_characters(|characters| characters[cn].worn[slot]);
 
     if in_worn != 0 {

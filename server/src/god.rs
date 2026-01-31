@@ -11,7 +11,6 @@ use crate::{
     area, chlog, driver, effect::EffectManager, enums::LogoutReason, helpers, player, populate,
     repository::Repository, server::Server, state::State,
 };
-use rand::Rng;
 
 pub struct God {}
 impl God {
@@ -1215,23 +1214,22 @@ impl God {
         ];
         let syl3 = ["a", "e", "i", "o", "u"];
 
-        let mut rng = rand::thread_rng();
         let mut name = String::new();
 
-        let n = rng.gen_range(0..syl1.len());
+        let n = helpers::random_mod_usize(syl1.len());
         name.push_str(syl1[n]);
         if let Some(first_char) = name.chars().next() {
             name.replace_range(0..1, &first_char.to_uppercase().to_string());
         }
 
-        let n = rng.gen_range(0..syl2.len());
+        let n = helpers::random_mod_usize(syl2.len());
         name.push_str(syl2[n]);
 
-        if rng.gen_bool(0.5) {
+        if helpers::random_mod_i32(2) == 0 {
             return name;
         }
 
-        let n = rng.gen_range(0..syl3.len());
+        let n = helpers::random_mod_usize(syl3.len());
         name.push_str(syl3[n]);
 
         name
@@ -4054,8 +4052,7 @@ impl God {
 
         // If place is not 1 or 2, pick randomly
         let place = if !(1..=2).contains(&place) {
-            use rand::Rng;
-            rand::thread_rng().gen_range(1..=2)
+            1 + helpers::random_mod_i32(2)
         } else {
             place
         };

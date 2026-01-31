@@ -9,7 +9,6 @@ use core::constants::*;
 use core::string_operations::c_string_to_str;
 use core::types::skilltab;
 use core::types::Character;
-use rand::Rng;
 
 // Helper functions
 
@@ -876,7 +875,7 @@ pub fn npc_died(cn: usize, co: usize) -> i32 {
         let chance = characters[cn].data[48];
         if chance != 0 && co > 0 {
             // random 0..99 < chance
-            let roll = rand::thread_rng().gen_range(0..100) as i32;
+            let roll = helpers::random_mod_i32(100);
             if roll < chance {
                 let co_name = if co < MAXCHARS {
                     characters[co].get_name().to_string()
@@ -1629,7 +1628,7 @@ pub fn npc_driver_high(cn: usize) -> i32 {
             if co != 0
                 && (Repository::with_characters(|characters| characters[cn].a_hp)
                     < Repository::with_characters(|characters| characters[cn].hp[5]) as i32 * 600
-                    || rand::thread_rng().gen_range(0..10) == 0)
+                    || helpers::random_mod_i32(10) == 0)
             {
                 if npc_try_spell(cn, co, SK_BLAST) {
                     return 1;
@@ -1700,8 +1699,8 @@ pub fn npc_driver_high(cn: usize) -> i32 {
         && Repository::with_characters(|characters| characters[cn].goto_x) == 0
     {
         let (x, y) = Repository::with_characters(|characters| (characters[cn].x, characters[cn].y));
-        let rx = rand::thread_rng().gen_range(0..10) as i32;
-        let ry = rand::thread_rng().gen_range(0..10) as i32;
+        let rx = helpers::random_mod_i32(10);
+        let ry = helpers::random_mod_i32(10);
         Repository::with_characters_mut(|characters| {
             characters[cn].goto_x = (x as i32 + 5 - rx) as u16;
             characters[cn].goto_y = (y as i32 + 5 - ry) as u16;
