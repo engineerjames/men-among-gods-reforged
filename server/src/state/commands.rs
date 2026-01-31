@@ -799,771 +799,713 @@ impl State {
         let f_gius = f_giu || f_s;
 
         // helper closures
-        let starts = |s: &str| cmd.starts_with(s);
         let arg_get = |i: usize| arg.get(i).map(|s| s.as_str()).unwrap_or("");
         let args_get = |i: usize| args.get(i).and_then(|o| *o).unwrap_or("");
         let parse_usize = |s: &str| s.parse::<usize>().unwrap_or(0usize);
         let parse_i32 = |s: &str| s.parse::<i32>().unwrap_or(0i32);
         let parse_u32 = |s: &str| s.parse::<u32>().unwrap_or(0u32);
 
-        let first = cmd.chars().next().unwrap_or('\0');
-
         log::debug!("Command received from {}: cmd={} ptr={}", cn, cmd, ptr);
 
-        match first {
-            'a' => {
-                if starts("afk") && f_p {
-                    log::debug!("Processing afk command for {}", cn);
-                    self.do_afk(cn, args_get(0));
-                    return;
-                }
-                if starts("allow") && f_p {
-                    log::debug!("Processing allow command for {}", cn);
-                    self.do_allow(cn, parse_usize(arg_get(1)));
-                    return;
-                }
-                if starts("announce") && f_gius {
-                    log::debug!("Processing announce command for {}", cn);
-                    self.do_announce(cn, cn, args_get(0));
-                    return;
-                }
-                if starts("addban") && f_gi {
-                    log::debug!("Processing addban command for {}", cn);
-                    God::add_ban(cn, parse_usize(arg_get(1)));
-                    return;
-                }
-            }
-            'b' => {
-                if starts("bow") && !f_sh {
-                    log::debug!("Processing bow command for {}", cn);
-                    Repository::with_characters_mut(|characters| {
-                        characters[cn].misc_action = core::constants::DR_BOW as u16;
-                    });
-                    return;
-                }
-                if starts("balance") && !f_m {
-                    log::debug!("Processing balance command for {}", cn);
-                    self.do_balance(cn);
-                    return;
-                }
-                if starts("black") && f_g {
-                    log::debug!("Processing black command for {}", cn);
-                    God::set_flag(cn, arg_get(1), CharacterFlags::Black.bits());
-                    return;
-                }
-                if starts("build") && f_c {
-                    log::debug!("Processing build command for {}", cn);
-                    God::build(cn, parse_i32(arg_get(1)) as u32);
-                    return;
-                }
-            }
-            'c' => {
-                if starts("cap") && f_g {
-                    // TODO: `set_cap(int cn,int nr)` from original C++
-                    // Original call: set_cap(cn, atoi(arg[1]));
-                    // Not implemented elsewhere in Rust yet; preserve as TODO.
-                    log::warn!("TODO: set_cap not implemented - call set_cap({}, arg1)", cn);
-                    self.do_character_log(cn, FontColor::Red, "cap command not implemented\n");
-                    return;
-                }
-                if starts("caution") && f_gius {
-                    log::debug!("Processing caution command for {}", cn);
-                    self.do_caution(cn, cn, args_get(0));
-                    return;
-                }
-                if starts("ccp") && f_i {
-                    log::debug!("Processing ccp command for {}", cn);
-                    God::set_flag(
-                        cn,
-                        arg_get(1),
-                        CharacterFlags::ComputerControlledPlayer.bits(),
-                    );
-                    return;
-                }
-                if starts("closenemey") && f_g {
-                    log::debug!("Processing closeenemy command for {}", cn);
-                    God::set_gflag(cn, GF_CLOSEENEMY);
-                    return;
-                }
-                if starts("create") && f_g {
-                    log::debug!("Processing create command for {}", cn);
-                    God::create(cn, parse_i32(arg_get(1)));
-                    return;
-                }
-                if starts("creator") && f_gg {
-                    log::debug!("Processing creator command for {}", cn);
-                    God::set_flag(cn, arg_get(1), CharacterFlags::Creator.bits());
-                    return;
-                }
-            }
-            'd' => {
-                if starts("deposit") && !f_m {
-                    log::debug!("Processing deposit command for {}", cn);
-                    self.do_deposit(cn, parse_i32(arg_get(1)), parse_i32(arg_get(2)));
-                    return;
-                }
-                if starts("depot") && !f_m {
-                    log::debug!("Processing depot command for {}", cn);
-                    self.do_depot(cn);
-                    return;
-                }
-                if starts("delban") && f_giu {
-                    log::debug!("Processing delban command for {}", cn);
-                    God::del_ban(cn, parse_usize(arg_get(1)));
-                    return;
-                }
-                if starts("diffi") && f_g {
-                    // TODO: Intentionally left unimplemented - wtf was this for?
-                    log::warn!("TODO: diffi command not implemented - original purpose unclear");
-                    return;
-                }
-            }
-            'e' => {
-                if starts("effect") && f_g {
-                    // TODO: `effectlist(int cn)` from original C++
-                    // Original call: effectlist(cn);
-                    // No Rust equivalent found; leave TODO for later implementation.
-                    log::warn!(
-                        "TODO: effectlist not implemented - would list active effects for {}",
-                        cn
-                    );
-                    self.do_character_log(cn, FontColor::Red, "effectlist not implemented\n");
-                    return;
-                }
-                if starts("emote") {
-                    log::debug!("Processing emote command for {}", cn);
-                    self.do_emote(cn, args_get(0));
-                    return;
-                }
-                if starts("enemy") && f_giu {
-                    log::debug!("Processing enemy command for {}", cn);
-                    self.do_enemy(cn, arg_get(1), arg_get(2));
-                    return;
-                }
-                if starts("enter") && f_gi {
-                    log::debug!("Processing enter command for {}", cn);
-                    self.do_enter(cn);
-                    return;
-                }
-                if starts("exit") && f_u {
-                    log::debug!("Processing exit command for {}", cn);
-                    God::exit_usurp(cn);
-                    return;
-                }
-                if starts("eras") && f_g {
-                    return; // to avoid ambiguity with "erase"
-                }
-                if starts("erase") && f_g {
-                    log::debug!("Processing erase command for {}", cn);
-                    God::erase(cn, parse_usize(arg_get(1)), 0);
-                    return;
-                }
-            }
-            'f' => {
-                if starts("fightback") {
-                    log::debug!("Processing fightback command for {}", cn);
-                    self.do_fightback(cn);
-                    return;
-                }
-                if starts("follow") && !f_m {
-                    log::debug!("Processing follow command for {}", cn);
-                    self.do_follow(cn, args_get(0));
-                    return;
-                }
-                if starts("force") && f_giu {
-                    log::debug!("Processing force command for {}", cn);
-                    God::force(cn, arg_get(1), args_get(1));
-                    return;
-                }
-            }
-            'g' => {
-                if starts("gtell") && !f_m {
-                    log::debug!("Processing gtell command for {}", cn);
-                    self.do_gtell(cn, args_get(0));
-                    return;
-                }
-                if starts("gold") {
-                    log::debug!("Processing gold command for {}", cn);
-                    self.do_gold(cn, parse_i32(arg_get(1)));
-                    return;
-                }
-                if starts("golden") && f_g {
-                    log::debug!("Processing golden command for {}", cn);
-                    God::set_flag(cn, arg_get(1), CharacterFlags::Golden.bits());
-                    return;
-                }
-                if starts("group") && !f_m {
-                    log::debug!("Processing group command for {}", cn);
-                    self.do_group(cn, args_get(0));
-                    return;
-                }
-                if starts("gargoyle") && f_gi {
-                    log::debug!("Processing gargoyle command for {}", cn);
-                    God::gargoyle(cn);
-                    return;
-                }
-                if starts("ggold") && f_g {
-                    log::debug!("Processing ggold command for {}", cn);
-                    God::gold_char(cn, arg_get(1), parse_u32(arg_get(2)), parse_u32(arg_get(3)));
-                    return;
-                }
-                if starts("give") && f_giu {
-                    log::debug!("Processing give command for {}", cn);
-                    self.do_god_give(cn, parse_usize(arg_get(1)));
-                    return;
-                }
-                if starts("goto") && f_giu {
-                    log::debug!("Processing goto command for {}", cn);
-                    God::goto(cn, cn, arg_get(1), arg_get(2));
-                    return;
-                }
-                if starts("god") && f_g {
-                    log::debug!("Processing god command for {}", cn);
-                    God::set_flag(cn, arg_get(1), CharacterFlags::God.bits());
-                    return;
-                }
-                if starts("greatergod") && f_gg {
-                    log::debug!("Processing greatergod command for {}", cn);
-                    God::set_flag(cn, arg_get(1), CharacterFlags::GreaterGod.bits());
-                    return;
-                }
+        let matched_cmd = match_command(&cmd);
 
-                if starts("greaterinv") && f_gg {
-                    log::debug!("Processing greaterinv command for {}", cn);
-                    God::set_flag(cn, arg_get(1), CharacterFlags::GreaterInv.bits());
-                    return;
-                }
+        match matched_cmd {
+            Some("afk") if f_p => {
+                log::debug!("Processing afk command for {}", cn);
+                self.do_afk(cn, args_get(0));
+                return;
+            }
+            Some("allow") if f_p => {
+                log::debug!("Processing allow command for {}", cn);
+                self.do_allow(cn, parse_usize(arg_get(1)));
+                return;
+            }
+            Some("announce") if f_gius => {
+                log::debug!("Processing announce command for {}", cn);
+                self.do_announce(cn, cn, args_get(0));
+                return;
+            }
+            Some("addban") if f_gi => {
+                log::debug!("Processing addban command for {}", cn);
+                God::add_ban(cn, parse_usize(arg_get(1)));
+                return;
+            }
 
-                if starts("grolm") && f_gi {
-                    log::debug!("Processing grolm command for {}", cn);
-                    God::grolm(cn);
-                    return;
-                }
+            Some("bow") if !f_sh => {
+                log::debug!("Processing bow command for {}", cn);
+                Repository::with_characters_mut(|characters| {
+                    characters[cn].misc_action = core::constants::DR_BOW as u16;
+                });
+                return;
+            }
+            Some("balance") if !f_m => {
+                log::debug!("Processing balance command for {}", cn);
+                self.do_balance(cn);
+                return;
+            }
+            Some("black") if f_g => {
+                log::debug!("Processing black command for {}", cn);
+                God::set_flag(cn, arg_get(1), CharacterFlags::Black.bits());
+                return;
+            }
+            Some("build") if f_c => {
+                log::debug!("Processing build command for {}", cn);
+                God::build(cn, parse_i32(arg_get(1)) as u32);
+                return;
+            }
 
-                if starts("grolminfo") && f_gi {
-                    log::debug!("Processing grolminfo command for {}", cn);
-                    God::grolm_info(cn);
-                    return;
-                }
+            Some("cap") if f_g => {
+                // TODO: `set_cap(int cn,int nr)` from original C++
+                // Original call: set_cap(cn, atoi(arg[1]));
+                // Not implemented elsewhere in Rust yet; preserve as TODO.
+                log::warn!("TODO: set_cap not implemented - call set_cap({}, arg1)", cn);
+                self.do_character_log(cn, FontColor::Red, "cap command not implemented\n");
+                return;
+            }
+            Some("caution") if f_gius => {
+                log::debug!("Processing caution command for {}", cn);
+                self.do_caution(cn, cn, args_get(0));
+                return;
+            }
+            Some("ccp") if f_i => {
+                log::debug!("Processing ccp command for {}", cn);
+                God::set_flag(
+                    cn,
+                    arg_get(1),
+                    CharacterFlags::ComputerControlledPlayer.bits(),
+                );
+                return;
+            }
+            Some("closenemey") if f_g => {
+                log::debug!("Processing closeenemy command for {}", cn);
+                God::set_gflag(cn, GF_CLOSEENEMY);
+                return;
+            }
+            Some("create") if f_g => {
+                log::debug!("Processing create command for {}", cn);
+                God::create(cn, parse_i32(arg_get(1)));
+                return;
+            }
+            Some("creator") if f_gg => {
+                log::debug!("Processing creator command for {}", cn);
+                God::set_flag(cn, arg_get(1), CharacterFlags::Creator.bits());
+                return;
+            }
 
-                if starts("grolmstart") && f_g {
-                    log::debug!("Processing grolmstart command for {}", cn);
-                    God::grolm_start(cn);
-                    return;
-                }
+            Some("deposit") if !f_m => {
+                log::debug!("Processing deposit command for {}", cn);
+                self.do_deposit(cn, parse_i32(arg_get(1)), parse_i32(arg_get(2)));
+                return;
             }
-            'h' => {
-                if starts("help") {
-                    log::debug!("Processing help command for {}", cn);
-                    self.do_help(cn, arg_get(1));
-                    return;
-                }
+            Some("depot") if !f_m => {
+                log::debug!("Processing depot command for {}", cn);
+                self.do_depot(cn);
+                return;
             }
-            'i' => {
-                if starts("ignore") && !f_m {
-                    log::debug!("Processing ignore command for {}", cn);
-                    self.do_ignore(cn, arg_get(1), 0);
-                    return;
-                }
-                if starts("iignore") && !f_m {
-                    log::debug!("Processing iignore command for {}", cn);
-                    self.do_ignore(cn, arg_get(1), 1);
-                    return;
-                }
-                if starts("iinfo") && f_g {
-                    log::debug!("Processing iinfo command for {}", cn);
-                    God::iinfo(cn, parse_usize(arg_get(1)));
-                    return;
-                }
-                if (starts("immortal") || starts("imm")) && f_u {
-                    log::debug!("Processing immortal command for {}", cn);
-                    God::set_flag(cn, arg_get(1), CharacterFlags::Immortal.bits());
-                    return;
-                }
-                if (starts("immortal") || starts("imm")) && f_g {
-                    log::debug!("Processing god-immortal command for {}", cn);
-                    God::set_flag(cn, arg_get(1), CharacterFlags::Immortal.bits());
-                    return;
-                }
-                if starts("imp") && f_g {
-                    log::debug!("Processing imp command for {}", cn);
-                    God::set_flag(cn, arg_get(1), CharacterFlags::Imp.bits());
-                    return;
-                }
-                if starts("info") && f_gius {
-                    log::debug!("Processing info command for {}", cn);
-                    God::info(cn, parse_usize(arg_get(1)));
-                    return;
-                }
-                if starts("init") && f_g {
-                    log::warn!("TODO: init command not implemented -- this used to init badwords but we do it differently now.");
-                    self.do_character_log(cn, FontColor::Green, "Done.\n");
-                    return;
-                }
-                if (starts("infrared") || starts("infra")) && f_giu {
-                    log::debug!("Processing infrared command for {}", cn);
-                    God::set_flag(cn, arg_get(1), CharacterFlags::Infrared.bits());
-                    return;
-                }
-                if (starts("invisible") || starts("inv")) && f_giu {
-                    log::debug!("Processing invisible command for {}", cn);
-                    God::set_flag(cn, arg_get(1), CharacterFlags::Invisible.bits());
-                    return;
-                }
-                if starts("ipshow") && f_giu {
-                    log::debug!("Processing ipshow command for {}", cn);
-                    self.do_list_net(cn, parse_usize(arg_get(1)));
-                    return;
-                }
-                if starts("itell") && f_giu {
-                    log::debug!("Processing itell command for {}", cn);
-                    self.do_itell(cn, args_get(0));
-                    return;
-                }
+            Some("delban") if f_giu => {
+                log::debug!("Processing delban command for {}", cn);
+                God::del_ban(cn, parse_usize(arg_get(1)));
+                return;
             }
-            'k' => {
-                if starts("kick") && f_giu {
-                    log::debug!("Processing kick command for {}", cn);
-                    God::kick(cn, parse_usize(arg_get(1)));
-                    return;
-                }
+            Some("diffi") if f_g => {
+                // TODO: Intentionally left unimplemented - wtf was this for?
+                log::warn!("TODO: diffi command not implemented - original purpose unclear");
+                return;
             }
-            'l' => {
-                if starts("lag") && !f_m {
-                    log::debug!("Processing lag command for {}", cn);
-                    self.do_lag(cn, parse_i32(arg_get(1)));
-                    return;
-                }
-                if starts("leave") && f_gi {
-                    log::debug!("Processing leave command for {}", cn);
-                    self.do_leave(cn);
-                    return;
-                }
-                if starts("look") && f_gius {
-                    log::debug!("Processing look command for {}", cn);
-                    // do_look_char expects numbers in original; use parse
-                    self.do_look_char(cn, parse_usize(arg_get(1)), 1, 0, 0);
-                    return;
-                }
-                if (starts("lookdepot") || starts("lookd")) && f_gg {
-                    log::debug!("Processing lookdepot command for {}", cn);
-                    self.do_look_player_depot(cn, parse_usize(arg_get(1)));
-                    return;
-                }
-                if (starts("lookinv") || starts("looki")) && f_gg {
-                    log::debug!("Processing lookinv command for {}", cn);
-                    self.do_look_player_inventory(cn, parse_usize(arg_get(1)));
-                    return;
-                }
-                if (starts("lookequip") || starts("looke")) && f_gg {
-                    log::debug!("Processing lookequip command for {}", cn);
-                    self.do_look_player_equipment(cn, parse_usize(arg_get(1)));
-                    return;
-                }
-                if starts("looting") && f_g {
-                    log::debug!("Processing looting command for {}", cn);
-                    God::set_gflag(cn, GF_LOOTING);
-                    return;
-                }
-                if starts("lower") && f_g {
-                    log::debug!("Processing lower command for {}", cn);
-                    God::lower_char(cn, arg_get(1), arg_get(2));
-                    return;
-                }
-                if starts("luck") && f_giu {
-                    log::debug!("Processing luck command for {}", cn);
-                    God::luck(cn, parse_usize(arg_get(1)), parse_i32(arg_get(2)));
-                    return;
-                }
-                if starts("listban") && f_giu {
-                    log::debug!("Processing listban command for {}", cn);
-                    God::list_ban(cn);
-                    return;
-                }
-                if starts("listimps") && f_giu {
-                    log::debug!("Processing listimps command for {}", cn);
-                    God::implist(cn);
-                    return;
-                }
-                if starts("listgolden") && f_giu {
-                    log::debug!("Processing listgolden command for {}", cn);
-                    self.do_list_all_flags(cn, CharacterFlags::Golden.bits());
-                    return;
-                }
-                if starts("listblack") && f_giu {
-                    log::debug!("Processing listblack command for {}", cn);
-                    self.do_list_all_flags(cn, CharacterFlags::Black.bits());
-                    return;
-                }
+
+            Some("effect") if f_g => {
+                // TODO: `effectlist(int cn)` from original C++
+                // Original call: effectlist(cn);
+                // No Rust equivalent found; leave TODO for later implementation.
+                log::warn!(
+                    "TODO: effectlist not implemented - would list active effects for {}",
+                    cn
+                );
+                self.do_character_log(cn, FontColor::Red, "effectlist not implemented\n");
+                return;
             }
-            'm' => {
-                if starts("mayhem") && f_g {
-                    log::debug!("Processing mayhem command for {}", cn);
-                    God::set_gflag(cn, GF_MAYHEM);
-                    return;
-                }
-                if starts("mark") && f_giu {
-                    log::debug!("Processing mark command for {}", cn);
-                    self.do_mark(cn, parse_usize(arg_get(1)), args_get(1));
-                    return;
-                }
-                if starts("me") {
-                    log::debug!("Processing me command for {}", cn);
-                    self.do_emote(cn, args_get(0));
-                    return;
-                }
-                if starts("mirror") && f_giu {
-                    log::debug!("Processing mirror command for {}", cn);
-                    God::mirror(cn, arg_get(1), arg_get(2));
-                    return;
-                }
-                if starts("mailpass") && f_g {
-                    // TODO: Left unimplemented for now
-                    log::warn!("TODO: mailpass command not implemented");
-                    //God::mail_password(cn, arg_get(1), arg_get(2));
-                    return;
-                }
+            Some("emote") => {
+                log::debug!("Processing emote command for {}", cn);
+                self.do_emote(cn, args_get(0));
+                return;
             }
-            'n' => {
-                if starts("noshout") && !f_m {
-                    log::debug!("Processing noshout command for {}", cn);
-                    self.do_noshout(cn);
-                    return;
-                }
-                if starts("nostaff") && f_giu {
-                    log::debug!("Processing nostaff command for {}", cn);
-                    self.do_nostaff(cn);
-                    return;
-                }
-                if starts("notell") && !f_m {
-                    log::debug!("Processing notell command for {}", cn);
-                    self.do_notell(cn);
-                    return;
-                }
-                if starts("name") && f_giu {
-                    log::debug!("Processing name command for {}", cn);
-                    God::set_name(cn, parse_usize(arg_get(1)), args_get(1));
-                    return;
-                }
-                if starts("nodesc") && f_giu {
-                    log::debug!("Processing nodesc command for {}", cn);
-                    God::reset_description(cn, parse_usize(arg_get(1)));
-                    return;
-                }
-                if starts("nolist") && f_gi {
-                    log::debug!("Processing nolist command for {}", cn);
-                    God::set_flag(cn, arg_get(1), CharacterFlags::NoList.bits());
-                    return;
-                }
-                if starts("noluck") && f_giu {
-                    log::debug!("Processing noluck command for {}", cn);
-                    God::luck(cn, parse_usize(arg_get(1)), -parse_i32(arg_get(2)));
-                    return;
-                }
-                if starts("nowho") && f_gi {
-                    log::debug!("Processing nowho command for {}", cn);
-                    God::set_flag(cn, arg_get(1), CharacterFlags::NoWho.bits());
-                    return;
-                }
-                if starts("npclist") && f_giu {
-                    log::debug!("Processing npclist command for {}", cn);
-                    self.do_npclist(cn, args_get(0));
-                    return;
-                }
+            Some("enemy") if f_giu => {
+                log::debug!("Processing enemy command for {}", cn);
+                self.do_enemy(cn, arg_get(1), arg_get(2));
+                return;
             }
-            'p' => {
-                if starts("password") && f_g {
+            Some("enter") if f_gi => {
+                log::debug!("Processing enter command for {}", cn);
+                self.do_enter(cn);
+                return;
+            }
+            Some("exit") if f_u => {
+                log::debug!("Processing exit command for {}", cn);
+                God::exit_usurp(cn);
+                return;
+            }
+            Some("eras") if f_g => {
+                return;
+            }
+            Some("erase") if f_g => {
+                log::debug!("Processing erase command for {}", cn);
+                God::erase(cn, parse_usize(arg_get(1)), 0);
+                return;
+            }
+
+            Some("fightback") => {
+                log::debug!("Processing fightback command for {}", cn);
+                self.do_fightback(cn);
+                return;
+            }
+            Some("follow") if !f_m => {
+                log::debug!("Processing follow command for {}", cn);
+                self.do_follow(cn, args_get(0));
+                return;
+            }
+            Some("force") if f_giu => {
+                log::debug!("Processing force command for {}", cn);
+                God::force(cn, arg_get(1), args_get(1));
+                return;
+            }
+
+            Some("gtell") if !f_m => {
+                log::debug!("Processing gtell command for {}", cn);
+                self.do_gtell(cn, args_get(0));
+                return;
+            }
+            Some("gold") => {
+                log::debug!("Processing gold command for {}", cn);
+                self.do_gold(cn, parse_i32(arg_get(1)));
+                return;
+            }
+            Some("golden") if f_g => {
+                log::debug!("Processing golden command for {}", cn);
+                God::set_flag(cn, arg_get(1), CharacterFlags::Golden.bits());
+                return;
+            }
+            Some("group") if !f_m => {
+                log::debug!("Processing group command for {}", cn);
+                self.do_group(cn, args_get(0));
+                return;
+            }
+            Some("gargoyle") if f_gi => {
+                log::debug!("Processing gargoyle command for {}", cn);
+                God::gargoyle(cn);
+                return;
+            }
+            Some("ggold") if f_g => {
+                log::debug!("Processing ggold command for {}", cn);
+                God::gold_char(cn, arg_get(1), parse_u32(arg_get(2)), parse_u32(arg_get(3)));
+                return;
+            }
+            Some("give") if f_giu => {
+                log::debug!("Processing give command for {}", cn);
+                self.do_god_give(cn, parse_usize(arg_get(1)));
+                return;
+            }
+            Some("goto") if f_giu => {
+                log::debug!("Processing goto command for {}", cn);
+                God::goto(cn, cn, arg_get(1), arg_get(2));
+                return;
+            }
+            Some("god") if f_g => {
+                log::debug!("Processing god command for {}", cn);
+                God::set_flag(cn, arg_get(1), CharacterFlags::God.bits());
+                return;
+            }
+            Some("greatergod") if f_gg => {
+                log::debug!("Processing greatergod command for {}", cn);
+                God::set_flag(cn, arg_get(1), CharacterFlags::GreaterGod.bits());
+                return;
+            }
+            Some("greaterinv") if f_gg => {
+                log::debug!("Processing greaterinv command for {}", cn);
+                God::set_flag(cn, arg_get(1), CharacterFlags::GreaterInv.bits());
+                return;
+            }
+            Some("grolm") if f_gi => {
+                log::debug!("Processing grolm command for {}", cn);
+                God::grolm(cn);
+                return;
+            }
+            Some("grolminfo") if f_gi => {
+                log::debug!("Processing grolminfo command for {}", cn);
+                God::grolm_info(cn);
+                return;
+            }
+            Some("grolmstart") if f_g => {
+                log::debug!("Processing grolmstart command for {}", cn);
+                God::grolm_start(cn);
+                return;
+            }
+
+            Some("help") => {
+                log::debug!("Processing help command for {}", cn);
+                self.do_help(cn, arg_get(1));
+                return;
+            }
+
+            Some("ignore") if !f_m => {
+                log::debug!("Processing ignore command for {}", cn);
+                self.do_ignore(cn, arg_get(1), 0);
+                return;
+            }
+            Some("iignore") if !f_m => {
+                log::debug!("Processing iignore command for {}", cn);
+                self.do_ignore(cn, arg_get(1), 1);
+                return;
+            }
+            Some("iinfo") if f_g => {
+                log::debug!("Processing iinfo command for {}", cn);
+                God::iinfo(cn, parse_usize(arg_get(1)));
+                return;
+            }
+            Some("immortal") if f_u || f_g => {
+                log::debug!("Processing immortal command for {}", cn);
+                God::set_flag(cn, arg_get(1), CharacterFlags::Immortal.bits());
+                return;
+            }
+            Some("imp") if f_g => {
+                log::debug!("Processing imp command for {}", cn);
+                God::set_flag(cn, arg_get(1), CharacterFlags::Imp.bits());
+                return;
+            }
+            Some("info") if f_gius => {
+                log::debug!("Processing info command for {}", cn);
+                God::info(cn, parse_usize(arg_get(1)));
+                return;
+            }
+            Some("init") if f_g => {
+                log::warn!("TODO: init command not implemented -- this used to init badwords but we do it differently now.");
+                self.do_character_log(cn, FontColor::Green, "Done.\n");
+                return;
+            }
+            Some("infra") | Some("infrared") if f_giu => {
+                log::debug!("Processing infrared command for {}", cn);
+                God::set_flag(cn, arg_get(1), CharacterFlags::Infrared.bits());
+                return;
+            }
+            Some("invisible") if f_giu => {
+                log::debug!("Processing invisible command for {}", cn);
+                God::set_flag(cn, arg_get(1), CharacterFlags::Invisible.bits());
+                return;
+            }
+            Some("ipshow") if f_giu => {
+                log::debug!("Processing ipshow command for {}", cn);
+                self.do_list_net(cn, parse_usize(arg_get(1)));
+                return;
+            }
+            Some("itell") if f_giu => {
+                log::debug!("Processing itell command for {}", cn);
+                self.do_itell(cn, args_get(0));
+                return;
+            }
+
+            Some("kick") if f_giu => {
+                log::debug!("Processing kick command for {}", cn);
+                God::kick(cn, parse_usize(arg_get(1)));
+                return;
+            }
+
+            Some("lag") if !f_m => {
+                log::debug!("Processing lag command for {}", cn);
+                self.do_lag(cn, parse_i32(arg_get(1)));
+                return;
+            }
+            Some("leave") if f_gi => {
+                log::debug!("Processing leave command for {}", cn);
+                self.do_leave(cn);
+                return;
+            }
+            Some("look") if f_gius => {
+                log::debug!("Processing look command for {}", cn);
+                // do_look_char expects numbers in original; use parse
+                self.do_look_char(cn, parse_usize(arg_get(1)), 1, 0, 0);
+                return;
+            }
+            Some("lookdepot") if f_gg => {
+                log::debug!("Processing lookdepot command for {}", cn);
+                self.do_look_player_depot(cn, parse_usize(arg_get(1)));
+                return;
+            }
+            Some("lookinv") if f_gg => {
+                log::debug!("Processing lookinv command for {}", cn);
+                self.do_look_player_inventory(cn, parse_usize(arg_get(1)));
+                return;
+            }
+            Some("lookequip") if f_gg => {
+                log::debug!("Processing lookequip command for {}", cn);
+                self.do_look_player_equipment(cn, parse_usize(arg_get(1)));
+                return;
+            }
+            Some("looting") if f_g => {
+                log::debug!("Processing looting command for {}", cn);
+                God::set_gflag(cn, GF_LOOTING);
+                return;
+            }
+            Some("lower") if f_g => {
+                log::debug!("Processing lower command for {}", cn);
+                God::lower_char(cn, arg_get(1), arg_get(2));
+                return;
+            }
+            Some("luck") if f_giu => {
+                log::debug!("Processing luck command for {}", cn);
+                God::luck(cn, parse_usize(arg_get(1)), parse_i32(arg_get(2)));
+                return;
+            }
+            Some("listban") if f_giu => {
+                log::debug!("Processing listban command for {}", cn);
+                God::list_ban(cn);
+                return;
+            }
+            Some("listimps") if f_giu => {
+                log::debug!("Processing listimps command for {}", cn);
+                God::implist(cn);
+                return;
+            }
+            Some("listgolden") if f_giu => {
+                log::debug!("Processing listgolden command for {}", cn);
+                self.do_list_all_flags(cn, CharacterFlags::Golden.bits());
+                return;
+            }
+            Some("listblack") if f_giu => {
+                log::debug!("Processing listblack command for {}", cn);
+                self.do_list_all_flags(cn, CharacterFlags::Black.bits());
+                return;
+            }
+
+            Some("mayhem") if f_g => {
+                log::debug!("Processing mayhem command for {}", cn);
+                God::set_gflag(cn, GF_MAYHEM);
+                return;
+            }
+            Some("mark") if f_giu => {
+                log::debug!("Processing mark command for {}", cn);
+                self.do_mark(cn, parse_usize(arg_get(1)), args_get(1));
+                return;
+            }
+            Some("me") => {
+                log::debug!("Processing me command for {}", cn);
+                self.do_emote(cn, args_get(0));
+                return;
+            }
+            Some("mirror") if f_giu => {
+                log::debug!("Processing mirror command for {}", cn);
+                God::mirror(cn, arg_get(1), arg_get(2));
+                return;
+            }
+            Some("mailpass") if f_g => {
+                // TODO: Left unimplemented for now
+                log::warn!("TODO: mailpass command not implemented");
+                //God::mail_password(cn, arg_get(1), arg_get(2));
+                return;
+            }
+
+            Some("noshout") if !f_m => {
+                log::debug!("Processing noshout command for {}", cn);
+                self.do_noshout(cn);
+                return;
+            }
+            Some("nostaff") if f_giu => {
+                log::debug!("Processing nostaff command for {}", cn);
+                self.do_nostaff(cn);
+                return;
+            }
+            Some("notell") if !f_m => {
+                log::debug!("Processing notell command for {}", cn);
+                self.do_notell(cn);
+                return;
+            }
+            Some("name") if f_giu => {
+                log::debug!("Processing name command for {}", cn);
+                God::set_name(cn, parse_usize(arg_get(1)), args_get(1));
+                return;
+            }
+            Some("nodesc") if f_giu => {
+                log::debug!("Processing nodesc command for {}", cn);
+                God::reset_description(cn, parse_usize(arg_get(1)));
+                return;
+            }
+            Some("nolist") if f_gi => {
+                log::debug!("Processing nolist command for {}", cn);
+                God::set_flag(cn, arg_get(1), CharacterFlags::NoList.bits());
+                return;
+            }
+            Some("noluck") if f_giu => {
+                log::debug!("Processing noluck command for {}", cn);
+                God::luck(cn, parse_usize(arg_get(1)), -parse_i32(arg_get(2)));
+                return;
+            }
+            Some("nowho") if f_gi => {
+                log::debug!("Processing nowho command for {}", cn);
+                God::set_flag(cn, arg_get(1), CharacterFlags::NoWho.bits());
+                return;
+            }
+            Some("npclist") if f_giu => {
+                log::debug!("Processing npclist command for {}", cn);
+                self.do_npclist(cn, args_get(0));
+                return;
+            }
+
+            Some("password") => {
+                if f_g {
                     log::debug!("Processing others-password command for {}", cn);
                     // change another's password
                     God::change_pass(cn, parse_usize(arg_get(1)), arg_get(2));
                     return;
                 }
-                if starts("password") {
-                    log::debug!("Processing own-password command for {}", cn);
-                    // change own password
-                    God::change_pass(cn, cn, arg_get(1));
-                    return;
-                }
-                if starts("pent") {
-                    log::debug!("Processing pent command for {}", cn);
-                    self.do_check_pent_count(cn);
-                    return;
-                }
-                if starts("poh") && f_pol {
-                    log::debug!("Processing poh command for {}", cn);
-                    God::set_flag(cn, arg_get(1), CharacterFlags::Poh.bits());
-                    return;
-                }
-                if starts("pol") && f_pol {
-                    log::debug!("Processing pol command for {}", cn);
-                    God::set_flag(cn, arg_get(1), CharacterFlags::PohLeader.bits());
-                    return;
-                }
 
-                if starts("prof") && f_g {
-                    log::debug!("Processing prof command for {}", cn);
-                    God::set_flag(cn, arg_get(1), CharacterFlags::PohLeader.bits());
-                    return;
-                }
-
-                if starts("purple") && !f_g && !f_m {
+                log::debug!("Processing own-password command for {}", cn);
+                // change own password
+                God::change_pass(cn, cn, arg_get(1));
+                return;
+            }
+            Some("pent") => {
+                log::debug!("Processing pent command for {}", cn);
+                self.do_check_pent_count(cn);
+                return;
+            }
+            Some("poh") if f_pol => {
+                log::debug!("Processing poh command for {}", cn);
+                God::set_flag(cn, arg_get(1), CharacterFlags::Poh.bits());
+                return;
+            }
+            Some("pol") if f_pol => {
+                log::debug!("Processing pol command for {}", cn);
+                God::set_flag(cn, arg_get(1), CharacterFlags::PohLeader.bits());
+                return;
+            }
+            Some("prof") if f_g => {
+                log::debug!("Processing prof command for {}", cn);
+                God::set_flag(cn, arg_get(1), CharacterFlags::PohLeader.bits());
+                return;
+            }
+            Some("purple") => {
+                if !f_g && !f_m {
                     log::debug!("Processing become_purple command for {}", cn);
                     self.do_become_purple(cn);
                     return;
                 }
 
-                if starts("purple") && f_g {
+                if f_g {
                     log::debug!("Processing set_purple command for {}", cn);
                     God::set_purple(cn, parse_usize(arg_get(1)));
                     return;
                 }
-
-                if starts("perase") && f_g {
-                    log::debug!("Processing perase command for {}", cn);
-                    God::erase(cn, parse_usize(arg_get(1)), 1);
-                    return;
-                }
-
-                if starts("pktcnt") && f_g {
-                    // TODO: pkt_list();
-                    log::warn!("TODO: pktcnt command not implemented - original purpose unclear");
-                    return;
-                }
-
-                if starts("pktcl") && f_g {
-                    log::debug!("Processing pktcl command for {}", cn);
-                    cl_list();
-                    return;
-                }
             }
-            'r' => {
-                if starts("rank") {
-                    log::debug!("Processing rank command for {}", cn);
-                    self.do_view_exp_to_rank(cn);
-                    return;
-                }
-
-                if starts("raise") && f_giu {
-                    log::debug!("Processing raise command for {}", cn);
-                    God::raise_char(cn, arg_get(1), arg_get(2));
-                    return;
-                }
-
-                if starts("recall") && f_giu {
-                    log::debug!("Processing recall command for {}", cn);
-                    God::goto(cn, cn, "512", "512");
-                    return;
-                }
-
-                if starts("respawn") && f_giu {
-                    log::debug!("Processing respawn command for {}", cn);
-                    self.do_respawn(cn, parse_usize(arg_get(1)));
-                    return;
-                }
+            Some("perase") if f_g => {
+                log::debug!("Processing perase command for {}", cn);
+                God::erase(cn, parse_usize(arg_get(1)), 1);
+                return;
             }
-            's' => {
-                if starts("shout") {
-                    log::debug!("Processing shout command for {}", cn);
-                    self.do_shout(cn, args_get(0));
-                    return;
-                }
-
-                if starts("safe") && f_g {
-                    log::debug!("Processing safe command for {}", cn);
-                    God::set_flag(cn, arg_get(1), CharacterFlags::Safe.bits());
-                    return;
-                }
-
-                if starts("save") && f_g {
-                    log::debug!("Processing save command for {}", cn);
-                    God::save(cn, parse_usize(arg_get(1)));
-                    return;
-                }
-
-                if starts("seen") {
-                    log::debug!("Processing seen command for {}", cn);
-                    self.do_seen(cn, arg_get(1));
-                    return;
-                }
-
-                if starts("send") {
-                    log::debug!("Processing send command for {}", cn);
-                    God::goto(cn, parse_usize(arg_get(1)), arg_get(2), arg_get(3));
-                    return;
-                }
-
-                if starts("shutup") && f_gius {
-                    log::debug!("Processing shutup command for {}", cn);
-                    God::shutup(cn, parse_usize(arg_get(1)));
-                    return;
-                }
-
-                if starts("skill") && f_g {
-                    log::debug!("Processing skill command for {}", cn);
-                    God::skill(
-                        cn,
-                        parse_usize(arg_get(1)),
-                        driver::skill_lookup(arg_get(2)),
-                        parse_i32(arg_get(3)),
-                    );
-                    return;
-                }
-
-                if starts("skua") {
-                    log::debug!("Processing skua command for {}", cn);
-                    self.do_become_skua(cn);
-                    return;
-                }
-
-                if starts("slap") && f_giu {
-                    log::debug!("Processing slap command for {}", cn);
-                    God::slap(cn, parse_usize(arg_get(1)));
-                    return;
-                }
-
-                if starts("sort") {
-                    log::debug!("Processing sort command for {}", cn);
-                    self.do_sort(cn, arg_get(1));
-                    return;
-                }
-
-                if starts("soulstone") && f_g {
-                    log::debug!("Processing soulstone command for {}", cn);
-                    self.do_make_soulstone(cn, parse_i32(arg_get(1)));
-                    return;
-                }
-
-                if starts("speedy") && f_g {
-                    log::debug!("Processing speedy command for {}", cn);
-                    God::set_gflag(cn, GF_SPEEDY);
-                    return;
-                }
-
-                if starts("spellignore") && !f_m {
-                    log::debug!("Processing spellignore command for {}", cn);
-                    self.do_spellignore(cn);
-                    return;
-                }
-
-                if starts("sprite") && f_giu {
-                    log::debug!("Processing sprite command for {}", cn);
-                    God::spritechange(cn, parse_usize(arg_get(1)), parse_i32(arg_get(2)));
-                    return;
-                }
-
-                if starts("stell") && f_giu {
-                    log::debug!("Processing stell command for {}", cn);
-                    State::with(|state| state.do_stell(cn, args_get(0)));
-                    return;
-                }
-
-                if starts("stat") && f_g {
-                    log::debug!("Processing stat command for {}", cn);
-                    self.do_stat(cn);
-                    return;
-                }
-
-                if starts("staff") && f_g {
-                    log::debug!("Processing staff command for {}", cn);
-                    God::set_flag(cn, arg_get(1), CharacterFlags::Staff.bits());
-                    return;
-                }
-
-                if starts("steal") && f_gg {
-                    log::debug!("Processing steal command for {}", cn);
-                    self.do_steal_player(cn, arg_get(1), arg_get(2));
-                    return;
-                }
-
-                if starts("summon") && f_g {
-                    log::debug!("Processing summon command for {}", cn);
-                    God::summon(cn, arg_get(1), arg_get(2), arg_get(3));
-                    return;
-                }
+            Some("pktcnt") if f_g => {
+                // TODO: pkt_list();
+                log::warn!("TODO: pktcnt command not implemented - original purpose unclear");
+                return;
             }
-            't' => {
-                if starts("tell") {
-                    log::debug!("Processing tell command for {}", cn);
-                    self.do_tell(cn, arg_get(1), args_get(1));
-                    return;
-                }
-
-                if starts("tavern") && f_g && !f_m {
-                    log::debug!("Processing tavern command for {}", cn);
-                    God::tavern(cn);
-                    return;
-                }
-
-                if starts("temple") && f_giu {
-                    log::debug!("Processing temple command for {}", cn);
-                    God::goto(cn, cn, "800", "800");
-                    return;
-                }
-
-                if starts("thrall") && f_giu {
-                    log::debug!("Processing thrall command for {}", cn);
-                    God::thrall(cn, arg_get(1), arg_get(2));
-                    return;
-                }
-
-                if starts("time") {
-                    log::debug!("Processing time command for {}", cn);
-                    helpers::show_time(cn);
-                    return;
-                }
-
-                if starts("tinfo") && f_g {
-                    log::debug!("Processing tinfo command for {}", cn);
-                    God::tinfo(cn, parse_usize(arg_get(1)));
-                    return;
-                }
-
-                if starts("top") && f_g {
-                    log::debug!("Processing top command for {}", cn);
-                    God::top(cn);
-                    return;
-                }
+            Some("pktcl") if f_g => {
+                log::debug!("Processing pktcl command for {}", cn);
+                cl_list();
+                return;
             }
-            'u' => {
-                if starts("unique") && f_g {
-                    log::debug!("Processing unique command for {}", cn);
-                    God::unique(cn);
-                    return;
-                }
-                if starts("usurp") && f_giu {
-                    log::debug!("Processing usurp command for {}", cn);
-                    God::usurp(cn, parse_usize(arg_get(1)));
-                    return;
-                }
+
+            Some("rank") => {
+                log::debug!("Processing rank command for {}", cn);
+                self.do_view_exp_to_rank(cn);
+                return;
             }
-            'w' => {
-                if starts("who") {
-                    log::debug!("Processing who command for {}", cn);
-                    if f_gius {
-                        God::who(cn);
-                    } else {
-                        God::user_who(cn);
-                    }
-                    return;
-                }
-                if starts("wave") && !f_sh {
-                    log::debug!("Processing wave command for {}", cn);
-                    Repository::with_characters_mut(|characters| {
-                        characters[cn].misc_action = core::constants::DR_WAVE as u16;
-                    });
-                    return;
-                }
-                if starts("withdraw") && !f_m {
-                    log::debug!("Processing withdraw command for {}", cn);
-                    self.do_withdraw(cn, parse_i32(arg_get(1)), parse_i32(arg_get(2)));
-                    return;
-                }
-                if starts("write") && f_giu {
-                    log::debug!("Processing write command for {}", cn);
-                    self.do_create_note(cn, args_get(0));
-                    return;
-                }
+            Some("raise") if f_giu => {
+                log::debug!("Processing raise command for {}", cn);
+                God::raise_char(cn, arg_get(1), arg_get(2));
+                return;
             }
+            Some("recall") if f_giu => {
+                log::debug!("Processing recall command for {}", cn);
+                God::goto(cn, cn, "512", "512");
+                return;
+            }
+            Some("respawn") if f_giu => {
+                log::debug!("Processing respawn command for {}", cn);
+                self.do_respawn(cn, parse_usize(arg_get(1)));
+                return;
+            }
+
+            Some("shout") => {
+                log::debug!("Processing shout command for {}", cn);
+                self.do_shout(cn, args_get(0));
+                return;
+            }
+            Some("safe") if f_g => {
+                log::debug!("Processing safe command for {}", cn);
+                God::set_flag(cn, arg_get(1), CharacterFlags::Safe.bits());
+                return;
+            }
+            Some("save") if f_g => {
+                log::debug!("Processing save command for {}", cn);
+                God::save(cn, parse_usize(arg_get(1)));
+                return;
+            }
+            Some("seen") => {
+                log::debug!("Processing seen command for {}", cn);
+                self.do_seen(cn, arg_get(1));
+                return;
+            }
+            Some("send") => {
+                log::debug!("Processing send command for {}", cn);
+                God::goto(cn, parse_usize(arg_get(1)), arg_get(2), arg_get(3));
+                return;
+            }
+            Some("shutup") if f_gius => {
+                log::debug!("Processing shutup command for {}", cn);
+                God::shutup(cn, parse_usize(arg_get(1)));
+                return;
+            }
+            Some("skill") if f_g => {
+                log::debug!("Processing skill command for {}", cn);
+                God::skill(
+                    cn,
+                    parse_usize(arg_get(1)),
+                    driver::skill_lookup(arg_get(2)),
+                    parse_i32(arg_get(3)),
+                );
+                return;
+            }
+            Some("skua") => {
+                log::debug!("Processing skua command for {}", cn);
+                self.do_become_skua(cn);
+                return;
+            }
+            Some("slap") if f_giu => {
+                log::debug!("Processing slap command for {}", cn);
+                God::slap(cn, parse_usize(arg_get(1)));
+                return;
+            }
+            Some("sort") => {
+                log::debug!("Processing sort command for {}", cn);
+                self.do_sort(cn, arg_get(1));
+                return;
+            }
+            Some("soulstone") if f_g => {
+                log::debug!("Processing soulstone command for {}", cn);
+                self.do_make_soulstone(cn, parse_i32(arg_get(1)));
+                return;
+            }
+            Some("speedy") if f_g => {
+                log::debug!("Processing speedy command for {}", cn);
+                God::set_gflag(cn, GF_SPEEDY);
+                return;
+            }
+            Some("spellignore") if !f_m => {
+                log::debug!("Processing spellignore command for {}", cn);
+                self.do_spellignore(cn);
+                return;
+            }
+            Some("sprite") if f_giu => {
+                log::debug!("Processing sprite command for {}", cn);
+                God::spritechange(cn, parse_usize(arg_get(1)), parse_i32(arg_get(2)));
+                return;
+            }
+            Some("stell") if f_giu => {
+                log::debug!("Processing stell command for {}", cn);
+                State::with(|state| state.do_stell(cn, args_get(0)));
+                return;
+            }
+            Some("stat") if f_g => {
+                log::debug!("Processing stat command for {}", cn);
+                self.do_stat(cn);
+                return;
+            }
+            Some("staff") if f_g => {
+                log::debug!("Processing staff command for {}", cn);
+                God::set_flag(cn, arg_get(1), CharacterFlags::Staff.bits());
+                return;
+            }
+            Some("steal") if f_gg => {
+                log::debug!("Processing steal command for {}", cn);
+                self.do_steal_player(cn, arg_get(1), arg_get(2));
+                return;
+            }
+            Some("summon") if f_g => {
+                log::debug!("Processing summon command for {}", cn);
+                God::summon(cn, arg_get(1), arg_get(2), arg_get(3));
+                return;
+            }
+
+            Some("tell") => {
+                log::debug!("Processing tell command for {}", cn);
+                self.do_tell(cn, arg_get(1), args_get(1));
+                return;
+            }
+            Some("tavern") if f_g && !f_m => {
+                log::debug!("Processing tavern command for {}", cn);
+                God::tavern(cn);
+                return;
+            }
+            Some("temple") if f_giu => {
+                log::debug!("Processing temple command for {}", cn);
+                God::goto(cn, cn, "800", "800");
+                return;
+            }
+            Some("thrall") if f_giu => {
+                log::debug!("Processing thrall command for {}", cn);
+                God::thrall(cn, arg_get(1), arg_get(2));
+                return;
+            }
+            Some("time") => {
+                log::debug!("Processing time command for {}", cn);
+                helpers::show_time(cn);
+                return;
+            }
+            Some("tinfo") if f_g => {
+                log::debug!("Processing tinfo command for {}", cn);
+                God::tinfo(cn, parse_usize(arg_get(1)));
+                return;
+            }
+            Some("top") if f_g => {
+                log::debug!("Processing top command for {}", cn);
+                God::top(cn);
+                return;
+            }
+
+            Some("unique") if f_g => {
+                log::debug!("Processing unique command for {}", cn);
+                God::unique(cn);
+                return;
+            }
+            Some("usurp") if f_giu => {
+                log::debug!("Processing usurp command for {}", cn);
+                God::usurp(cn, parse_usize(arg_get(1)));
+                return;
+            }
+
+            Some("who") => {
+                log::debug!("Processing who command for {}", cn);
+                if f_gius {
+                    God::who(cn);
+                } else {
+                    God::user_who(cn);
+                }
+                return;
+            }
+            Some("wave") if !f_sh => {
+                log::debug!("Processing wave command for {}", cn);
+                Repository::with_characters_mut(|characters| {
+                    characters[cn].misc_action = core::constants::DR_WAVE as u16;
+                });
+                return;
+            }
+            Some("withdraw") if !f_m => {
+                log::debug!("Processing withdraw command for {}", cn);
+                self.do_withdraw(cn, parse_i32(arg_get(1)), parse_i32(arg_get(2)));
+                return;
+            }
+            Some("write") if f_giu => {
+                log::debug!("Processing write command for {}", cn);
+                self.do_create_note(cn, args_get(0));
+                return;
+            }
+
             _ => {}
         }
 
