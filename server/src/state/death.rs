@@ -1,4 +1,4 @@
-use core::constants::{CharacterFlags, CHD_CORPSEOWNER, MAXCHARS};
+use core::constants::{CharacterFlags, CHD_CORPSEOWNER, MAXCHARS, USE_EMPTY};
 use core::types::{Character, FontColor};
 
 use crate::effect::EffectManager;
@@ -738,8 +738,6 @@ impl State {
     /// * `wimp` - Guardian angel / wimpy chance (0-255). Higher means less dropping
     /// * `cn` - Killer id
     pub(crate) fn handle_item_drops(&self, co: usize, cc: usize, wimp: i32, cn: usize) {
-        use core::constants::*;
-
         // Handle gold
         Repository::with_characters_mut(|characters| {
             if characters[co].gold != 0 {
