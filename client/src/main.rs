@@ -68,7 +68,7 @@ enum GameState {
 pub fn initialize_framepace_settings(
     mut framepace_settings: ResMut<bevy_framepace::FramepaceSettings>,
 ) {
-    framepace_settings.limiter = bevy_framepace::Limiter::from_framerate(30.0);
+    framepace_settings.limiter = bevy_framepace::Limiter::from_framerate(100.0);
 }
 
 pub(crate) fn resolve_log_dir() -> PathBuf {

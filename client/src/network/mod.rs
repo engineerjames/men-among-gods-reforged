@@ -299,7 +299,7 @@ fn process_network_events(
                 player_state.map_mut().reset_last_setmap_index();
                 // Match original client: process one tick packet per frame.
                 // Stop draining further events so animation steps aren't skipped.
-                break;
+                //break;
             }
             NetworkEvent::LoggedIn => {
                 log::info!("Login process complete, switching to Gameplay state");
