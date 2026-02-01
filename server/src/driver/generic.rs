@@ -2042,34 +2042,21 @@ pub fn driver(cn: usize) {
         driver::npc_driver_high(cn);
     }
 
-    // 2. If CCP, run CCP driver (feature-gated)
-    let is_ccp = Repository::with_characters(|ch| {
-        (ch[cn].flags & CharacterFlags::ComputerControlledPlayer.bits()) != 0
-    });
-    #[cfg(feature = "REAL_CCP")]
-    if is_ccp {
-        crate::driver_ccp::ccp_driver(cn);
-    }
-    #[cfg(not(feature = "REAL_CCP"))]
-    if is_ccp {
-        log::error!("ccp_driver not implemented for {}", cn);
-    }
-
-    // 3. use_nr (highest priority)
+    // 2. use_nr (highest priority)
     let use_nr = Repository::with_characters(|ch| ch[cn].use_nr);
     if use_nr != 0 {
         drv_use(cn, use_nr as i32);
         return;
     }
 
-    // 4. skill_nr
+    // 3. skill_nr
     let skill_nr = Repository::with_characters(|ch| ch[cn].skill_nr);
     if skill_nr != 0 {
         drv_skill(cn);
         return;
     }
 
-    // 5. If player/usurp and not attacking, run player_driver_med
+    // 4. If player/usurp and not attacking, run player_driver_med
     let is_player_or_usurp = Repository::with_characters(|ch| {
         (ch[cn].flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits())) != 0
     });
@@ -2078,7 +2065,7 @@ pub fn driver(cn: usize) {
         player::player_driver_med(cn);
     }
 
-    // 6. goto_x (moveto)
+    // 5. goto_x (moveto)
     let goto_x = Repository::with_characters(|ch| ch[cn].goto_x);
     if goto_x != 0 {
         let goto_y = Repository::with_characters(|ch| ch[cn].goto_y);
@@ -2086,14 +2073,14 @@ pub fn driver(cn: usize) {
         return;
     }
 
-    // 7. attack_cn
+    // 6. attack_cn
     let attack_cn = Repository::with_characters(|ch| ch[cn].attack_cn);
     if attack_cn != 0 {
         drv_attack_char(cn, attack_cn as usize);
         return;
     }
 
-    // 8. misc_action dispatch
+    // 7. misc_action dispatch
     let misc_action = Repository::with_characters(|ch| ch[cn].misc_action);
     match misc_action as u32 {
         x if x == core::constants::DR_IDLE => {
