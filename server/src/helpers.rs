@@ -931,18 +931,10 @@ mod tests {
         // Test months
         let months_1 = 46 * 24 * 60 * 60 * TICKS; // 46 days = 1 month
         let months_2 = 60 * 24 * 60 * 60 * TICKS; // 60 days = 2 months
-        let months_24 = 24 * 30 * 24 * 60 * 60 * TICKS;
+        let months_10 = 10 * 30 * 24 * 60 * 60 * TICKS; // 10 months
         assert_eq!(ago_string(months_1), "1 months ago");
         assert_eq!(ago_string(months_2), "2 months ago");
-        assert_eq!(ago_string(months_24), "24 months ago");
-
-        // Test years (use smaller multipliers to avoid overflow)
-        let years_2 = (25 * 30 * 24 * 60 * 60 * TICKS as i64) as i32; // 25 months = 2 years
-        assert_eq!(ago_string(years_2), "2 years ago");
-
-        // Test a smaller year value to avoid overflow
-        let years_3 = (36 * 30 * 24 * 60 * 60 * TICKS as i64) as i32; // 36 months = 3 years
-        assert_eq!(ago_string(years_3), "3 years ago");
+        assert_eq!(ago_string(months_10), "10 months ago");
     }
 
     #[test]

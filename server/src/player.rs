@@ -1,8 +1,8 @@
 use core::{
     constants::{
-        CharacterFlags, ItemFlags, INFRARED, INJURED, INJURED1, INJURED2, INVIS, ISCHAR, ISITEM,
-        ISUSABLE, MF_GFX_CMAGIC, MF_GFX_DEATH, MF_GFX_EMAGIC, MF_GFX_GMAGIC, MF_GFX_INJURED,
-        MF_GFX_INJURED1, MF_GFX_INJURED2, MF_GFX_TOMB, MF_UWATER, SPEEDTAB, STONED, STUNNED,
+        speed_tab, CharacterFlags, ItemFlags, INFRARED, INJURED, INJURED1, INJURED2, INVIS, ISCHAR,
+        ISITEM, ISUSABLE, MF_GFX_CMAGIC, MF_GFX_DEATH, MF_GFX_EMAGIC, MF_GFX_GMAGIC,
+        MF_GFX_INJURED, MF_GFX_INJURED1, MF_GFX_INJURED2, MF_GFX_TOMB, MF_UWATER, STONED, STUNNED,
         UWATER,
     },
     encrypt::xcrypt,
@@ -2504,7 +2504,7 @@ pub fn speedo(n: usize) -> i32 {
     let speed = Repository::with_characters(|characters| characters[n].speed as usize);
     let ctick =
         Repository::with_globals(|globals| (globals.ticker % core::constants::TICKS) as usize);
-    SPEEDTAB[speed][ctick] as i32
+    speed_tab(speed, ctick) as i32
 }
 
 /// Clear the saved small map for all players to force a full resend

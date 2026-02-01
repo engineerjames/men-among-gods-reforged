@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use crate::gfx_cache::GraphicsCache;
 use crate::player_state::PlayerState;
 
-use mag_core::constants::{SPEEDTAB, STUNNED, TILEX, TILEY, XPOS, YPOS};
+use mag_core::constants::{speed_tab, STUNNED, TILEX, TILEY, XPOS, YPOS};
 
 /// Computes the on-screen position for `copysprite`-style isometric sprite drawing.
 ///
@@ -63,7 +63,7 @@ const STATTAB: [i32; 11] = [0, 1, 1, 6, 6, 2, 3, 4, 5, 7, 4];
 /// Returns whether this `ctick` advances animation/movement for `ch_speed`.
 fn speedo(ch_speed: u8, ctick: usize) -> bool {
     let speed = (ch_speed as usize).min(19);
-    SPEEDTAB[speed][ctick.min(19)] != 0
+    speed_tab(speed, ctick.min(19))
 }
 
 /// Computes a smooth per-frame offset for movement animations.
@@ -87,7 +87,7 @@ fn speedstep(ch_speed: u8, ch_status: u8, d: i32, s: i32, update: bool, ctick: u
             z = 19;
         }
         soft_step += 1;
-        if SPEEDTAB[speed][z as usize] != 0 {
+        if speed_tab(speed, z as usize) {
             m -= 1;
         }
     }
@@ -96,7 +96,7 @@ fn speedstep(ch_speed: u8, ch_status: u8, d: i32, s: i32, update: bool, ctick: u
         if z < 0 {
             z = 19;
         }
-        if SPEEDTAB[speed][z as usize] != 0 {
+        if speed_tab(speed, z as usize) {
             break;
         }
         soft_step += 1;
@@ -108,7 +108,7 @@ fn speedstep(ch_speed: u8, ch_status: u8, d: i32, s: i32, update: bool, ctick: u
     let mut m = s - hard_step;
 
     loop {
-        if SPEEDTAB[speed][z as usize] != 0 {
+        if speed_tab(speed, z as usize) {
             m -= 1;
         }
         if m < 1 {
@@ -143,118 +143,118 @@ fn eng_item(it_sprite: u16, it_status: &mut u8, ctick: usize, ticker: u32) -> i3
         0 | 1 => base,
 
         2 => {
-            if SPEEDTAB[10][ctick] != 0 {
+            if speed_tab(10, ctick) {
                 *it_status = 3;
             }
             base
         }
         3 => {
-            if SPEEDTAB[10][ctick] != 0 {
+            if speed_tab(10, ctick) {
                 *it_status = 4;
             }
             base + 2
         }
         4 => {
-            if SPEEDTAB[10][ctick] != 0 {
+            if speed_tab(10, ctick) {
                 *it_status = 5;
             }
             base + 4
         }
         5 => {
-            if SPEEDTAB[10][ctick] != 0 {
+            if speed_tab(10, ctick) {
                 *it_status = 2;
             }
             base + 6
         }
 
         6 => {
-            if SPEEDTAB[10][ctick] != 0 {
+            if speed_tab(10, ctick) {
                 *it_status = 7;
             }
             base
         }
         7 => {
-            if SPEEDTAB[10][ctick] != 0 {
+            if speed_tab(10, ctick) {
                 *it_status = 6;
             }
             base + 1
         }
 
         8 => {
-            if SPEEDTAB[10][ctick] != 0 {
+            if speed_tab(10, ctick) {
                 *it_status = 9;
             }
             base
         }
         9 => {
-            if SPEEDTAB[10][ctick] != 0 {
+            if speed_tab(10, ctick) {
                 *it_status = 10;
             }
             base + 1
         }
         10 => {
-            if SPEEDTAB[10][ctick] != 0 {
+            if speed_tab(10, ctick) {
                 *it_status = 11;
             }
             base + 2
         }
         11 => {
-            if SPEEDTAB[10][ctick] != 0 {
+            if speed_tab(10, ctick) {
                 *it_status = 12;
             }
             base + 3
         }
         12 => {
-            if SPEEDTAB[10][ctick] != 0 {
+            if speed_tab(10, ctick) {
                 *it_status = 13;
             }
             base + 4
         }
         13 => {
-            if SPEEDTAB[10][ctick] != 0 {
+            if speed_tab(10, ctick) {
                 *it_status = 14;
             }
             base + 5
         }
         14 => {
-            if SPEEDTAB[10][ctick] != 0 {
+            if speed_tab(10, ctick) {
                 *it_status = 15;
             }
             base + 6
         }
         15 => {
-            if SPEEDTAB[10][ctick] != 0 {
+            if speed_tab(10, ctick) {
                 *it_status = 8;
             }
             base + 7
         }
 
         16 => {
-            if SPEEDTAB[10][ctick] != 0 {
+            if speed_tab(10, ctick) {
                 *it_status = 17;
             }
             base
         }
         17 => {
-            if SPEEDTAB[10][ctick] != 0 {
+            if speed_tab(10, ctick) {
                 *it_status = 18;
             }
             base + 1
         }
         18 => {
-            if SPEEDTAB[10][ctick] != 0 {
+            if speed_tab(10, ctick) {
                 *it_status = 19;
             }
             base + 2
         }
         19 => {
-            if SPEEDTAB[10][ctick] != 0 {
+            if speed_tab(10, ctick) {
                 *it_status = 20;
             }
             base + 3
         }
         20 => {
-            if SPEEDTAB[10][ctick] != 0 {
+            if speed_tab(10, ctick) {
                 *it_status = 16;
             }
             base + 4
