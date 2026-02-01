@@ -229,16 +229,16 @@ impl eframe::App for MapViewerApp {
         let mut delta = Vec2::ZERO;
         ctx.input(|i| {
             if i.key_down(egui::Key::W) {
-                delta.y -= 1.0;
-            }
-            if i.key_down(egui::Key::S) {
                 delta.y += 1.0;
             }
+            if i.key_down(egui::Key::S) {
+                delta.y -= 1.0;
+            }
             if i.key_down(egui::Key::A) {
-                delta.x -= 1.0;
+                delta.x += 1.0;
             }
             if i.key_down(egui::Key::D) {
-                delta.x += 1.0;
+                delta.x -= 1.0;
             }
         });
         if delta != Vec2::ZERO {
