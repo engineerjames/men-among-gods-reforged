@@ -14,7 +14,7 @@ pub const VERSION: u32 = 0x020E07;
 pub const MINVERSION: u32 = 0x020E06;
 
 /// Ticks per second
-pub const TICKS: i32 = 48;
+pub const TICKS: i32 = 20;
 /// Microseconds per tick
 pub const TICK: i64 = 1_000_000 / TICKS as i64;
 
@@ -49,14 +49,28 @@ pub const MAXSAY: i32 = TICKS * 7;
 /// God password
 pub const GODPASSWORD: &str = "devpassword";
 
-pub fn speed_tab(speed: usize, tick: usize) -> bool {
-    let result = ((speed * (TICKS as usize - tick)) % TICKS as usize) < (TICKS as usize - tick);
-    println!(
-        "speed_tab: speed={}, tick={}, result={}",
-        speed, tick, result
-    );
-    result
-}
+pub const SPEEDTAB: [[u8; 20]; 20] = [
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1],
+    [1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1],
+    [1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1],
+    [1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1],
+    [1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1],
+    [1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0],
+    [0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1],
+    [0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1],
+    [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
+    [1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0],
+    [1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0],
+    [0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1],
+    [0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0],
+    [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0],
+    [0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0],
+    [0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+    [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+];
 
 // =============================================================================
 // Wear Positions (from gendefs.h)
@@ -846,228 +860,6 @@ pub const AT_STREN: i32 = 4;
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    const SPEEDTAB: [[bool; 20]; 20] = [
-        [
-            true, true, true, true, true, true, true, true, true, true, true, true, true, true,
-            true, true, true, true, true, true,
-        ],
-        [
-            true, true, true, true, true, true, true, true, true, false, true, true, true, true,
-            true, true, true, true, true, true,
-        ],
-        [
-            true, true, true, true, true, false, true, true, true, true, true, true, true, true,
-            false, true, true, true, true, true,
-        ],
-        [
-            true, true, true, false, true, true, true, true, true, false, true, true, true, true,
-            true, true, false, true, true, true,
-        ],
-        [
-            true, true, false, true, true, true, true, false, true, true, true, true, false, true,
-            true, true, true, false, true, true,
-        ],
-        [
-            true, true, false, true, true, true, false, true, true, true, false, true, true, true,
-            false, true, true, true, false, true,
-        ],
-        [
-            true, false, true, true, false, true, true, true, false, true, true, false, true, true,
-            false, true, true, false, true, true,
-        ],
-        [
-            true, false, true, true, false, true, true, false, true, true, false, true, true,
-            false, true, true, false, true, true, false,
-        ],
-        [
-            false, true, true, false, true, true, false, true, false, true, true, false, true,
-            true, false, true, false, true, false, true,
-        ],
-        [
-            false, true, false, true, false, true, false, true, true, false, true, false, true,
-            false, true, false, true, true, false, true,
-        ],
-        [
-            true, false, true, false, true, false, true, false, true, false, true, false, true,
-            false, true, false, true, false, true, false,
-        ],
-        [
-            true, false, true, false, true, false, true, false, false, true, false, true, false,
-            true, false, true, false, false, true, false,
-        ],
-        [
-            true, false, false, true, false, false, true, false, true, false, false, true, false,
-            false, true, false, true, false, true, false,
-        ],
-        [
-            false, true, false, false, true, false, false, true, false, false, true, false, false,
-            true, false, false, true, false, false, true,
-        ],
-        [
-            false, true, false, false, true, false, false, false, true, false, false, true, false,
-            false, true, false, false, true, false, false,
-        ],
-        [
-            false, false, true, false, false, false, true, false, false, false, true, false, false,
-            false, true, false, false, false, true, false,
-        ],
-        [
-            false, false, true, false, false, false, false, true, false, false, false, false, true,
-            false, false, false, false, true, false, false,
-        ],
-        [
-            false, false, false, true, false, false, false, false, false, true, false, false,
-            false, false, false, false, true, false, false, false,
-        ],
-        [
-            false, false, false, false, false, true, false, false, false, false, false, false,
-            false, false, true, false, false, false, false, false,
-        ],
-        [
-            false, false, false, false, false, false, false, false, false, true, false, false,
-            false, false, false, false, false, false, false, false,
-        ],
-    ];
-
-    #[test]
-    fn test_speed_tab_matches_table() {
-        let mut mismatches = 0;
-        for speed in 0..20 {
-            for tick in 0..20 {
-                mismatches += if speed_tab(speed, tick) != SPEEDTAB[speed][tick] {
-                    1
-                } else {
-                    0
-                };
-            }
-        }
-
-        assert_eq!(mismatches, 0, "speed_tab has {} mismatches", mismatches);
-    }
-
-    #[test]
-    fn test_speed_tab_speed_zero_always_true() {
-        // Speed 0 should always return true (fastest)
-        for tick in 0..TICKS as usize {
-            assert!(speed_tab(0, tick), "speed_tab(0, {}) should be true", tick);
-        }
-    }
-
-    #[test]
-    fn test_speed_tab_even_distribution() {
-        // For middle speeds, true values should be distributed evenly
-        let speed = 24; // middle speed
-        let mut true_positions = Vec::new();
-        for tick in 0..TICKS as usize {
-            if speed_tab(speed, tick) {
-                true_positions.push(tick);
-            }
-        }
-
-        // Verify some true values exist for middle speeds
-        assert!(
-            !true_positions.is_empty(),
-            "Middle speed should have some true values"
-        );
-
-        // Check gaps between true values are roughly equal
-        if true_positions.len() > 1 {
-            let gaps: Vec<usize> = true_positions.windows(2).map(|w| w[1] - w[0]).collect();
-
-            // All gaps should be similar (within 1 of each other for even distribution)
-            if !gaps.is_empty() {
-                let min_gap = *gaps.iter().min().unwrap();
-                let max_gap = *gaps.iter().max().unwrap();
-                assert!(
-                    max_gap - min_gap <= 1,
-                    "Gaps should be evenly distributed: min={}, max={}",
-                    min_gap,
-                    max_gap
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn test_speed_tab_formula_correctness() {
-        // Test the formula: (speed * (48 - tick)) % 48 < (48 - tick)
-        // This should match the table for all valid inputs
-        for speed in 0..TICKS as usize {
-            for tick in 0..TICKS as usize {
-                let result = (speed * (48 - tick)) % 48 < (48 - tick);
-                assert_eq!(
-                    speed_tab(speed, tick),
-                    result,
-                    "Formula mismatch at speed={}, tick={}",
-                    speed,
-                    tick
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn test_speed_tab_boundary_conditions() {
-        // Test boundary conditions at tick 0 and tick 47
-        for speed in 0..TICKS as usize {
-            // At tick 0: (speed * 48) % 48 = 0, which is always < 48
-            assert!(
-                speed_tab(speed, 0),
-                "speed_tab({}, 0) should always be true",
-                speed
-            );
-
-            // At tick 47: (speed * 1) % 48 < 1, only true if speed == 0
-            let expected = speed == 0;
-            assert_eq!(
-                speed_tab(speed, 47),
-                expected,
-                "speed_tab({}, 47) returned unexpected value",
-                speed
-            );
-        }
-    }
-
-    #[test]
-    fn test_speed_tab_symmetry_properties() {
-        // The Bresenham algorithm should produce symmetric-ish patterns
-        for speed in 0..TICKS as usize {
-            let mut true_indices = Vec::new();
-            for tick in 0..TICKS as usize {
-                if speed_tab(speed, tick) {
-                    true_indices.push(tick);
-                }
-            }
-
-            // Each speed level should have a consistent count
-            // (non-increasing as speed increases)
-            let count = true_indices.len();
-            assert!(
-                count > 0,
-                "Every speed should have at least one true value at tick 0"
-            );
-        }
-    }
-
-    #[test]
-    fn test_speed_tab_modulo_behavior() {
-        // The function uses modulo 48, so values should wrap correctly
-        for speed in 0..TICKS as usize {
-            for tick in 0..TICKS as usize {
-                let divisor = 48 - tick;
-                let remainder = (speed * divisor) % 48;
-                let expected = remainder < divisor;
-                assert_eq!(
-                    speed_tab(speed, tick),
-                    expected,
-                    "Modulo calculation failed for speed={}, tick={}",
-                    speed,
-                    tick
-                );
-            }
-        }
-    }
 
     #[test]
     fn test_character_flags_basic_operations() {
