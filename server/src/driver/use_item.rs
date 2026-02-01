@@ -10,9 +10,10 @@ use crate::{chlog, driver, player, populate};
 use core::constants::{
     CharacterFlags, ItemFlags, AT_AGIL, AT_INT, AT_STREN, AT_WILL, DX_RIGHT, KIN_HARAKIM, KIN_MALE,
     KIN_MERCENARY, KIN_SEYAN_DU, KIN_SORCERER, KIN_TEMPLAR, KIN_WARRIOR, MAXITEM, MAXSKILL,
-    MAXTITEM, MF_NOEXPIRE, NT_HITME, SERVER_MAPX, SERVER_MAPY, SK_BLESS, SK_CURSE, SK_ENHANCE,
-    SK_LIGHT, SK_LOCK, SK_MSHIELD, SK_PROTECT, SK_RECALL, SK_RESIST, SK_STUN, TICKS, USE_ACTIVE,
-    USE_EMPTY, WN_RHAND,
+    MAXTITEM, MF_NOEXPIRE, NT_HITME, SERVER_MAPX, SERVER_MAPY, SK_BLAST, SK_BLESS, SK_CONCEN,
+    SK_CURSE, SK_DAGGER, SK_ENHANCE, SK_GHOST, SK_HEAL, SK_IMMUN, SK_LIGHT, SK_LOCK, SK_MSHIELD,
+    SK_PROTECT, SK_RECALL, SK_RESIST, SK_STEALTH, SK_STUN, SK_SURROUND, SK_SWORD, SK_TWOHAND,
+    SK_WARCRY, TICKS, USE_ACTIVE, USE_EMPTY, WN_RHAND,
 };
 use core::string_operations::c_string_to_str;
 use core::types::FontColor;
@@ -6418,11 +6419,6 @@ fn soul_destroy(cn: usize, item_idx: usize) {
 
 /// Transfer soulstone power to equipment
 fn soul_trans_equipment(cn: usize, soulstone_idx: usize, item_idx: usize) {
-    use core::constants::{
-        SK_BLAST, SK_BLESS, SK_CONCEN, SK_CURSE, SK_DAGGER, SK_ENHANCE, SK_GHOST, SK_HEAL,
-        SK_IMMUN, SK_MSHIELD, SK_PROTECT, SK_RESIST, SK_STEALTH, SK_STUN, SK_SURROUND, SK_SWORD,
-        SK_TWOHAND, SK_WARCRY,
-    };
     let mut rank = Repository::with_items(|items| items[soulstone_idx].data[0]);
 
     let is_weapon = Repository::with_items(|items| {
@@ -6590,9 +6586,9 @@ fn soul_trans_equipment(cn: usize, soulstone_idx: usize, item_idx: usize) {
             "A {} enhanced by a rank {} soulstone.",
             item_name, soulstone_rank
         );
-        items[item_idx].description.copy_from_slice(&[0u8; 120]);
+        items[item_idx].description.fill(0);
         let bytes = description.as_bytes();
-        let len = bytes.len().min(119);
+        let len = bytes.len().min(199);
         items[item_idx].description[..len].copy_from_slice(&bytes[..len]);
     });
 
