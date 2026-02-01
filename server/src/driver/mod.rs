@@ -1,4 +1,3 @@
-pub mod ccp;
 pub mod generic;
 pub mod look;
 pub mod npc;
