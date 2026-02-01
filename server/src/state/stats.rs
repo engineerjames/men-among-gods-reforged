@@ -407,7 +407,9 @@ impl State {
             // Keep it independent of `TICKS` so we can change the engine tick rate
             // without changing the SPEEDTAB cadence.
             characters[cn].speed = (core::constants::SPEEDTAB_PHASES_I32 - speed_calc) as i16;
-            characters[cn].speed = characters[cn].speed.clamp(0, (core::constants::SPEEDTAB_PHASES_I32 - 1) as i16);
+            characters[cn].speed = characters[cn]
+                .speed
+                .clamp(0, (core::constants::SPEEDTAB_PHASES_I32 - 1) as i16);
 
             // Cap current stats at their maximums
             if characters[cn].a_hp > characters[cn].hp[5] as i32 * 1000 {
