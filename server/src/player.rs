@@ -2502,8 +2502,11 @@ pub fn plr_act(cn: usize) {
 /// * `n` - Character index
 pub fn speedo(n: usize) -> i32 {
     let speed = Repository::with_characters(|characters| characters[n].speed as usize);
-    let ctick =
-        Repository::with_globals(|globals| (globals.ticker % core::constants::TICKS) as usize);
+    let ctick = Repository::with_globals(|globals| {
+        (globals
+            .ticker
+            .rem_euclid(core::constants::SPEEDTAB_PHASES_I32)) as usize
+    });
     SPEEDTAB[speed][ctick] as i32
 }
 
@@ -3137,7 +3140,11 @@ fn plr_newlogin(nr: usize) {
     // send tick
     let mut tbuf: [u8; 2] = [0; 2];
     tbuf[0] = core::constants::SV_TICK;
-    tbuf[1] = Repository::with_globals(|globals| (globals.ticker % core::constants::TICKS) as u8);
+    tbuf[1] = Repository::with_globals(|globals| {
+        globals
+            .ticker
+            .rem_euclid(core::constants::SPEEDTAB_PHASES_I32) as u8
+    });
     NetworkManager::with(|network| {
         network.xsend(nr, &tbuf, 2);
     });
@@ -3313,7 +3320,11 @@ fn plr_login(nr: usize) {
     // send tick
     let mut tbuf: [u8; 2] = [0; 2];
     tbuf[0] = core::constants::SV_TICK;
-    tbuf[1] = Repository::with_globals(|globals| (globals.ticker % core::constants::TICKS) as u8);
+    tbuf[1] = Repository::with_globals(|globals| {
+        globals
+            .ticker
+            .rem_euclid(core::constants::SPEEDTAB_PHASES_I32) as u8
+    });
     NetworkManager::with(|network| {
         network.xsend(nr, &tbuf, 2);
     });

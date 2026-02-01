@@ -1,4 +1,4 @@
-use core::constants::{CharacterFlags, ItemFlags, MAXCHARS, TICKS};
+use core::constants::{CharacterFlags, ItemFlags, MAXCHARS};
 use core::types::FontColor;
 
 use crate::core::types::skilltab;
@@ -403,8 +403,11 @@ impl State {
                 speed_calc = (agil + stren) / 50 + speed_mod + 16;
             }
 
-            characters[cn].speed = (TICKS - speed_calc) as i16;
-            characters[cn].speed = characters[cn].speed.clamp(0, TICKS as i16);
+            // Character speed is a SPEEDTAB index (0..19), not "ticks per second".
+            // Keep it independent of `TICKS` so we can change the engine tick rate
+            // without changing the SPEEDTAB cadence.
+            characters[cn].speed = (core::constants::SPEEDTAB_PHASES_I32 - speed_calc) as i16;
+            characters[cn].speed = characters[cn].speed.clamp(0, (core::constants::SPEEDTAB_PHASES_I32 - 1) as i16);
 
             // Cap current stats at their maximums
             if characters[cn].a_hp > characters[cn].hp[5] as i32 * 1000 {

@@ -14,9 +14,15 @@ pub const VERSION: u32 = 0x020E07;
 pub const MINVERSION: u32 = 0x020E06;
 
 /// Ticks per second
-pub const TICKS: i32 = 20;
+pub const TICKS: i32 = 48;
 /// Microseconds per tick
 pub const TICK: i64 = 1_000_000 / TICKS as i64;
+
+/// SPEEDTAB phase count ("subticks" per speed schedule cycle).
+///
+/// This is intentionally independent from `TICKS` (ticks per second).
+pub const SPEEDTAB_PHASES: usize = 20;
+pub const SPEEDTAB_PHASES_I32: i32 = SPEEDTAB_PHASES as i32;
 
 /// Server map dimensions
 pub const SERVER_MAPX: i32 = 1024;
@@ -156,7 +162,6 @@ pub const SP_DISPEL: u32 = 1 << 7;
 // Constants.h - Client Frame and Kindred Constants
 // =============================================================================
 
-pub const CLIENT_FRAME_LIMIT: u32 = 24;
 pub const LOOK_TIME_IN_SECONDS: f32 = 10.0;
 
 // Kindred flags

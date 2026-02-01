@@ -196,7 +196,7 @@ fn send_client_tick(mut net: ResMut<NetworkRuntime>) {
     // Match original C client behavior:
     // - `ticker` increments once per processed server tick packet.
     // - send `CL_CMD_CTICK` when `(ticker & 15) == 0` (i.e. every 16 ticks).
-    // With `TICKS=20`, that's 0.8s.
+    // Real-time interval is approximately `16 / TICKS` seconds.
     let t = net.client_ticker;
     if t == 0 {
         return;
