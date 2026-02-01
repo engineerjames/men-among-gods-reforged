@@ -2187,7 +2187,10 @@ pub fn item_info(cn: usize, in_: usize, _look: i32) {
             state.do_character_log(
                 cn,
                 FontColor::Green,
-                &format!("{:<12.12} {:+4} {:+4} {:3}\n", "Endurance", end0, end1, end2),
+                &format!(
+                    "{:<12.12} {:+4} {:+4} {:3}\n",
+                    "Endurance", end0, end1, end2
+                ),
             )
         });
     }
