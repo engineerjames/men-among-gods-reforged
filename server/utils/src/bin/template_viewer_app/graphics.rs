@@ -10,6 +10,9 @@ pub(crate) struct GraphicsZipCache {
     entries: HashMap<usize, String>,
     textures: HashMap<usize, egui::TextureHandle>,
     sprite_tiles: HashMap<usize, (i32, i32)>,
+    // Cache decoded images to avoid re-decoding on every frame
+    decoded_cache: HashMap<usize, Vec<u8>>,
+    decoded_dims: HashMap<usize, (u32, u32)>,
 }
 
 impl GraphicsZipCache {
@@ -50,6 +53,8 @@ impl GraphicsZipCache {
             entries,
             textures: HashMap::new(),
             sprite_tiles: HashMap::new(),
+            decoded_cache: HashMap::new(),
+            decoded_dims: HashMap::new(),
         })
     }
 
@@ -76,32 +81,45 @@ impl GraphicsZipCache {
             return Ok(None);
         };
 
-        let file = File::open(&self.zip_path)
-            .map_err(|e| format!("Failed to open graphics zip {:?}: {e}", self.zip_path))?;
-        let mut archive = ZipArchive::new(file)
-            .map_err(|e| format!("Failed to read graphics zip {:?}: {e}", self.zip_path))?;
+        // Check if we have decoded bytes cached
+        let (pixels, w, h) = if let Some(cached_bytes) = self.decoded_cache.get(&sprite_id) {
+            let (w, h) = self.decoded_dims.get(&sprite_id).copied().unwrap_or((1, 1));
+            (cached_bytes.clone(), w, h)
+        } else {
+            // Load and decode from ZIP
+            let file = File::open(&self.zip_path)
+                .map_err(|e| format!("Failed to open graphics zip {:?}: {e}", self.zip_path))?;
+            let mut archive = ZipArchive::new(file)
+                .map_err(|e| format!("Failed to read graphics zip {:?}: {e}", self.zip_path))?;
 
-        let mut entry = archive
-            .by_name(&entry_name)
-            .map_err(|e| format!("Failed to read zip entry {:?}: {e}", entry_name))?;
+            let mut entry = archive
+                .by_name(&entry_name)
+                .map_err(|e| format!("Failed to read zip entry {:?}: {e}", entry_name))?;
 
-        let mut bytes = Vec::new();
-        entry
-            .read_to_end(&mut bytes)
-            .map_err(|e| format!("Failed to read zip entry {:?} bytes: {e}", entry_name))?;
+            let mut bytes = Vec::new();
+            entry
+                .read_to_end(&mut bytes)
+                .map_err(|e| format!("Failed to read zip entry {:?} bytes: {e}", entry_name))?;
 
-        let decoded = image::load_from_memory(&bytes)
-            .map_err(|e| format!("Failed to decode {:?}: {e}", entry_name))?;
-        let rgba = decoded.to_rgba8();
-        let (w, h) = rgba.dimensions();
+            let decoded = image::load_from_memory(&bytes)
+                .map_err(|e| format!("Failed to decode {:?}: {e}", entry_name))?;
+            let rgba = decoded.to_rgba8();
+            let (w, h) = rgba.dimensions();
+
+            let pixels = rgba.into_raw();
+
+            // Cache the decoded pixels and dimensions for future frames
+            self.decoded_cache.insert(sprite_id, pixels.clone());
+            self.decoded_dims.insert(sprite_id, (w, h));
+
+            (pixels, w, h)
+        };
 
         // dd.c tile dimensions in 32x32 blocks.
         let w_i = (w.max(1) as i32).max(1);
         let h_i = (h.max(1) as i32).max(1);
         let xs = ((w_i + 31) / 32).max(1);
         let ys = ((h_i + 31) / 32).max(1);
-
-        let pixels = rgba.into_raw();
 
         let color =
             egui::ColorImage::from_rgba_unmultiplied([w as usize, h as usize], pixels.as_slice());
