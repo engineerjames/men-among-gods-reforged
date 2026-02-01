@@ -26,21 +26,23 @@ pub(crate) struct MapViewerApp {
 
     // Cached hover state for the right panel.
     hovered_tile: Option<(usize, usize)>,
+
+    // Hide mode: clips non-background sprites to show only top half
+    hide_enabled: bool,
+
+    // Track if we've done initial load
+    initial_load_done: bool,
+
+    // Track frames to delay loading slightly so window appears first
+    frame_count: u32,
 }
 
 impl MapViewerApp {
     pub(crate) fn new() -> Self {
-        let mut app = Self::default();
+        let app = Self::default();
 
-        if let Some(dir) = crate::dat_dir_from_args().or_else(crate::default_dat_dir) {
-            app.load_map_from_dir(dir);
-        }
-
-        if let Some(zip_path) =
-            crate::graphics_zip_from_args().or_else(crate::default_graphics_zip_path)
-        {
-            app.load_graphics_zip(zip_path);
-        }
+        // Don't load map/graphics in constructor - it blocks window creation
+        // We'll load on first update instead
 
         app
     }
@@ -223,6 +225,29 @@ fn clamp_range(min: i32, max: i32, lo: i32, hi: i32) -> (usize, usize) {
 
 impl eframe::App for MapViewerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.frame_count += 1;
+
+        // Load map/graphics after a couple frames (window has appeared)
+        if !self.initial_load_done && self.frame_count > 2 {
+            self.initial_load_done = true;
+            if let Some(dir) = crate::dat_dir_from_args().or_else(crate::default_dat_dir) {
+                self.load_map_from_dir(dir);
+            }
+            if let Some(zip_path) =
+                crate::graphics_zip_from_args().or_else(crate::default_graphics_zip_path)
+            {
+                self.load_graphics_zip(zip_path);
+            }
+        }
+
+        // Preload graphics incrementally
+        if let Some(cache) = self.graphics_zip.as_mut() {
+            if !cache.loading_done {
+                let _ = cache.preload_step(ctx);
+                ctx.request_repaint();
+            }
+        }
+
         // Keyboard pan (WASD).
         let dt = ctx.input(|i| i.stable_dt).max(1.0 / 240.0);
         let speed = 750.0; // px/sec
@@ -268,6 +293,20 @@ impl eframe::App for MapViewerApp {
                     self.pan_initialized = false;
                 }
 
+                ui.separator();
+
+                if ui
+                    .button(if self.hide_enabled {
+                        "Hide: ON"
+                    } else {
+                        "Hide: OFF"
+                    })
+                    .clicked()
+                {
+                    self.hide_enabled = !self.hide_enabled;
+                    ctx.request_repaint();
+                }
+
                 if let Some(dir) = &self.dat_dir {
                     ui.separator();
                     ui.label(format!("dat: {}", dir.display()));
@@ -296,6 +335,22 @@ impl eframe::App for MapViewerApp {
                 ui.separator();
                 ui.label(format!("Map size: {} x {}", SERVER_MAPX, SERVER_MAPY));
                 ui.label(format!("Loaded tiles: {}", self.map_tiles.len()));
+
+                // Show loading progress
+                if let Some(cache) = &self.graphics_zip {
+                    if !cache.loading_done {
+                        let (loaded, total) = cache.loading_progress();
+                        ui.separator();
+                        ui.label(format!("Loading sprites: {}/{}", loaded, total));
+                        if total > 0 {
+                            let progress = loaded as f32 / total as f32;
+                            ui.add(
+                                egui::ProgressBar::new(progress)
+                                    .text(format!("{:.0}%", progress * 100.0)),
+                            );
+                        }
+                    }
+                }
 
                 ui.separator();
                 ui.label("Controls:");
@@ -371,23 +426,37 @@ impl eframe::App for MapViewerApp {
                     return None;
                 }
 
-                // Screen-space position relative to the dd.c coordinate system.
-                let local = pos - rect.min - self.pan;
-                let base_x = local.x - (32 + XPOS - (((TILEX as i32 - 34) / 2) * 32)) as f32;
-                let base_y = local.y - (YPOS as f32);
+                // Convert to map coordinate space
+                let screen_pos = pos - rect.min - self.pan;
 
-                // Inverse of:
-                //   base_x ~= 16*x + 16*y
-                //   base_y ~=  8*x -  8*y
-                let xf = 0.5 * (base_x / 16.0 + base_y / 8.0);
-                let yf = 0.5 * (base_x / 16.0 - base_y / 8.0);
+                // Invert dd_tile_origin_screen_pos:
+                // rx = (xpos / 2) + (ypos / 2) + 32 + XPOS - (((TILEX as i32 - 34) / 2) * 32)
+                // ry = (xpos / 4) - (ypos / 4) + YPOS
+                //
+                // Solving for xpos, ypos:
+                // Let rx' = rx - offset_x, ry' = ry - offset_y
+                // rx' = xpos/2 + ypos/2
+                // ry' = xpos/4 - ypos/4
+                // => xpos/2 = rx' - ypos/2
+                // => xpos/4 = ry' + ypos/4
+                // => 2*ry' + ypos/2 = rx' - ypos/2
+                // => ypos = rx' - 2*ry'
+                // => xpos = 2*rx' - ypos = 2*rx' - (rx' - 2*ry') = rx' + 2*ry'
 
-                let xi = xf.floor() as i32;
-                let yi = yf.floor() as i32;
-                if xi < 0 || yi < 0 {
+                let offset_x = 32 + XPOS - (((TILEX as i32 - 34) / 2) * 32);
+                let offset_y = YPOS;
+                let rx_prime = screen_pos.x - offset_x as f32;
+                let ry_prime = screen_pos.y - offset_y as f32;
+
+                let xpos = rx_prime + 2.0 * ry_prime;
+                let ypos = rx_prime - 2.0 * ry_prime;
+
+                let x = (xpos / 32.0).floor() as i32;
+                let y = (ypos / 32.0).floor() as i32;
+                if x < 0 || y < 0 {
                     return None;
                 }
-                let (x, y) = (xi as usize, yi as usize);
+                let (x, y) = (x as usize, y as usize);
                 if x >= SERVER_MAPX as usize || y >= SERVER_MAPY as usize {
                     return None;
                 }
@@ -396,18 +465,6 @@ impl eframe::App for MapViewerApp {
 
             let painter = ui.painter_at(rect);
             painter.rect_filled(rect, 0.0, egui::Color32::from_rgb(20, 22, 26));
-
-            // Draw a small crosshair at the dd.c origin for tile (0,0).
-            let (ox, oy) = dd_tile_origin_screen_pos(0, 0);
-            let origin = rect.min + self.pan + Vec2::new(ox as f32, oy as f32);
-            painter.line_segment(
-                [origin + Vec2::new(-6.0, 0.0), origin + Vec2::new(6.0, 0.0)],
-                (1.0, egui::Color32::DARK_GRAY),
-            );
-            painter.line_segment(
-                [origin + Vec2::new(0.0, -6.0), origin + Vec2::new(0.0, 6.0)],
-                (1.0, egui::Color32::DARK_GRAY),
-            );
 
             if self.map_tiles.is_empty() {
                 painter.text(
@@ -506,6 +563,7 @@ impl eframe::App for MapViewerApp {
                             ypos,
                             0,
                             0,
+                            egui::Color32::WHITE,
                         ) {
                             self.graphics_zip_error = Some(e);
                         }
@@ -513,17 +571,24 @@ impl eframe::App for MapViewerApp {
 
                     // Foreground
                     if tile.fsprite != 0 {
+                        // Match client hide logic: substitute sprite_id + 1 when hide is enabled
+                        let sprite_id = if self.hide_enabled {
+                            tile.fsprite + 1
+                        } else {
+                            tile.fsprite
+                        };
                         if let Err(e) = paint_sprite_dd(
                             &painter,
                             ctx,
                             cache,
-                            tile.fsprite as usize,
+                            sprite_id as usize,
                             rect,
                             self.pan,
                             xpos,
                             ypos,
                             0,
                             0,
+                            egui::Color32::WHITE,
                         ) {
                             self.graphics_zip_error = Some(e);
                         }
@@ -533,6 +598,13 @@ impl eframe::App for MapViewerApp {
                         if it_idx < self.items.len() {
                             let item = self.items[it_idx];
                             if let Some(item_sprite) = item_map_sprite(item) {
+                                // Highlight items red when hovering over them
+                                let is_hovered = self.hovered_tile == Some((x, y));
+                                let tint = if is_hovered {
+                                    egui::Color32::from_rgb(255, 50, 50)
+                                } else {
+                                    egui::Color32::WHITE
+                                };
                                 if let Err(e) = paint_sprite_dd(
                                     &painter,
                                     ctx,
@@ -544,6 +616,7 @@ impl eframe::App for MapViewerApp {
                                     ypos,
                                     0,
                                     0,
+                                    tint,
                                 ) {
                                     self.graphics_zip_error = Some(e);
                                 }
@@ -576,6 +649,7 @@ fn paint_sprite_dd(
     ypos: i32,
     xoff: i32,
     yoff: i32,
+    tint: egui::Color32,
 ) -> Result<(), String> {
     let Some((xs, ys)) = cache.sprite_tiles_xy(ctx, sprite_id)? else {
         return Ok(());
@@ -593,7 +667,7 @@ fn paint_sprite_dd(
         texture.id(),
         dst,
         Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)),
-        egui::Color32::WHITE,
+        tint,
     );
 
     Ok(())
