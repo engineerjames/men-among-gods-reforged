@@ -199,7 +199,7 @@ impl State {
         // Basic attack handling: permission checks, enemy bookkeeping,
         // hit/miss roll, damage calculation, item damage and surround hits.
 
-        if self.may_attack(cn, co, true) == 0 {
+        if self.may_attack_msg(cn, co, true) == 0 {
             Repository::with_characters_mut(|characters| {
                 characters[cn].attack_cn = 0;
                 characters[cn].cerrno = core::constants::ERR_FAILED as u16;
@@ -219,7 +219,27 @@ impl State {
         }
 
         // Ensure the target remembers the attacker (npc enemy list etc.)
-        driver::npc_add_enemy(co, cn, true);
+        // However, respect the fightback flag for players: if a player has fightback disabled,
+        // they shouldn't auto-target the attacker. This is a fix for the original C code bug
+        // where fightback was only checked in driver_msg, not in the actual attack function.
+        let co_is_player = Repository::with_characters(|characters| {
+            (characters[co].flags & CharacterFlags::Player.bits()) != 0
+        });
+
+        if !co_is_player {
+            // NPCs always get added as enemies
+            driver::npc_add_enemy(co, cn, true);
+        } else {
+            // For players, respect the fightback flag
+            let co_fightback = Repository::with_characters(|characters| {
+                characters[co].data[core::constants::CHD_FIGHTBACK]
+            });
+            if co_fightback == 0 {
+                // Fightback is enabled (0), so add the NPC as an enemy
+                driver::npc_add_enemy(co, cn, true);
+            }
+            // If fightback is disabled (non-zero), don't call npc_add_enemy which would set attack_cn
+        }
         self.remember_pvp(cn, co);
 
         // Read base fight skills
@@ -359,18 +379,23 @@ impl State {
                 dam += helpers::random_mod_i32(6) + 1;
             }
             if die == 1 {
-                dam += helpers::random_mod_i32(6) + helpers::random_mod_i32(6) + 4;
+                dam += helpers::random_mod_i32(6) + helpers::random_mod_i32(6) + 2;
             }
 
             let odam = dam;
             dam += bonus;
 
             // Apply weapon wear if wielding (only for players in original)
-            let rhand = Repository::with_characters(|characters| {
-                characters[cn].worn[core::constants::WN_RHAND] as usize
+            let cn_is_player = Repository::with_characters(|characters| {
+                (characters[cn].flags & CharacterFlags::Player.bits()) != 0
             });
-            if rhand != 0 {
-                driver::item_damage_weapon(cn, dam);
+            if cn_is_player {
+                let rhand = Repository::with_characters(|characters| {
+                    characters[cn].worn[core::constants::WN_RHAND] as usize
+                });
+                if rhand != 0 {
+                    driver::item_damage_weapon(cn, dam);
+                }
             }
 
             // Apply damage and capture actual applied damage
@@ -669,47 +694,143 @@ impl State {
     /// # Returns
     /// * 1 if attack is allowed
     /// * 0 if attack is not allowed
-    pub(crate) fn may_attack(&self, cn: usize, co: usize, msg: bool) -> i32 {
-        // Port from state_backup.rs may_attack_msg
+    pub(crate) fn may_attack_msg(&self, cn: usize, co: usize, msg: bool) -> i32 {
+        use core::constants::*;
+
         Repository::with_characters(|characters| {
-            let cn_flags = characters[cn].flags;
-            let co_flags = characters[co].flags;
-
-            // Can't attack yourself
-            if cn == co {
-                if msg {
-                    self.do_character_log(cn, FontColor::Red, "You cannot attack yourself.\n");
-                }
-                return 0;
+            // Sanity checks
+            if cn == 0 || cn >= MAXCHARS || co == 0 || co >= MAXCHARS {
+                return 1;
+            }
+            if characters[cn].used == 0 || characters[co].used == 0 {
+                return 1;
             }
 
-            // Can't attack if you're a merchant
-            if (cn_flags & CharacterFlags::Merchant.bits()) != 0 {
-                if msg {
-                    self.do_character_log(cn, FontColor::Red, "Merchants cannot attack.\n");
-                }
-                return 0;
+            // Unsafe gods may attack anyone
+            if (characters[cn].flags & CharacterFlags::God.bits()) != 0
+                && (characters[cn].flags & CharacterFlags::Safe.bits()) == 0
+            {
+                return 1;
             }
 
-            // Can't attack if target is a merchant
-            if (co_flags & CharacterFlags::Merchant.bits()) != 0 {
-                if msg {
-                    self.do_character_log(cn, FontColor::Red, "You cannot attack merchants.\n");
-                }
-                return 0;
+            // Unsafe gods may be attacked by anyone
+            if (characters[co].flags & CharacterFlags::God.bits()) != 0
+                && (characters[co].flags & CharacterFlags::Safe.bits()) == 0
+            {
+                return 1;
             }
 
-            // Can't attack corpses
-            if (co_flags & CharacterFlags::Body.bits()) != 0 {
-                if msg {
-                    self.do_character_log(cn, FontColor::Red, "Your target is already dead.\n");
+            let mut cn_actual = cn;
+            let mut co_actual = co;
+
+            // Player companion? Act as if trying to attack the master instead
+            if characters[cn].temp as i32 == CT_COMPANION && characters[cn].data[CHD_COMPANION] == 0
+            {
+                cn_actual = characters[cn].data[CHD_MASTER] as usize;
+                if cn_actual == 0 || cn_actual >= MAXCHARS || characters[cn_actual].used == 0 {
+                    return 1; // Bad values, let them try
                 }
-                return 0;
             }
 
-            // TODO: Add more attack validation rules as needed
+            // NPCs may attack anyone, anywhere
+            if (characters[cn_actual].flags & CharacterFlags::Player.bits()) == 0 {
+                return 1;
+            }
 
-            1
+            // Check for NOFIGHT
+            Repository::with_map(|map| {
+                let m1 = (characters[cn_actual].x as i32
+                    + characters[cn_actual].y as i32 * SERVER_MAPX)
+                    as usize;
+                let m2 = (characters[co_actual].x as i32
+                    + characters[co_actual].y as i32 * SERVER_MAPX)
+                    as usize;
+
+                if ((map[m1].flags | map[m2].flags) & MF_NOFIGHT) != 0 {
+                    if msg {
+                        self.do_character_log(
+                            cn,
+                            core::types::FontColor::Red,
+                            "You can't attack anyone here!\n",
+                        );
+                    }
+                    return 0;
+                }
+
+                // Player companion target? Act as if trying to attack the master instead
+                if characters[co_actual].temp as i32 == CT_COMPANION
+                    && characters[co_actual].data[CHD_COMPANION] == 0
+                {
+                    co_actual = characters[co_actual].data[CHD_MASTER] as usize;
+                    if co_actual == 0 || co_actual >= MAXCHARS || characters[co_actual].used == 0 {
+                        return 1; // Bad values, let them try
+                    }
+                }
+
+                // Check for player-npc (OK)
+                if (characters[cn_actual].flags & CharacterFlags::Player.bits()) == 0
+                    || (characters[co_actual].flags & CharacterFlags::Player.bits()) == 0
+                {
+                    return 1;
+                }
+
+                // Both are players. Check for Arena (OK)
+                if ((map[m1].flags & map[m2].flags) & MF_ARENA as u64) != 0 {
+                    return 1;
+                }
+
+                // Check if aggressor is purple
+                if (characters[cn_actual].kindred & KIN_PURPLE as i32) == 0 {
+                    if msg {
+                        self.do_character_log(
+                            cn,
+                            core::types::FontColor::Red,
+                            "You can't attack other players! You're not a follower of the Purple One.\n",
+                        );
+                    }
+                    return 0;
+                }
+
+                // Check if victim is purple
+                if (characters[co_actual].kindred & KIN_PURPLE as i32) == 0 {
+                    if msg {
+                        let co_name = characters[co_actual].get_name();
+                        let pronoun = if (characters[co_actual].kindred & KIN_MALE as i32) != 0 {
+                            "He"
+                        } else {
+                            "She"
+                        };
+                        self.do_character_log(
+                            cn,
+                            core::types::FontColor::Red,
+                            &format!(
+                                "{} is not a follower of the Purple One. {} is protected.\n",
+                                co_name, pronoun
+                            ),
+                        );
+                    }
+                    return 0;
+                }
+
+                if helpers::absrankdiff(cn_actual as i32, co_actual as i32)
+                    > core::constants::ATTACK_RANGE as u32
+                {
+                    if msg {
+                        let co_name = characters[co_actual].get_name();
+                        self.do_character_log(
+                            cn,
+                            core::types::FontColor::Red,
+                            &format!(
+                                "You're not allowed to attack {}. The rank difference is too large.\n",
+                                co_name
+                            ),
+                        );
+                    }
+                    return 0;
+                }
+
+                1
+            })
         })
     }
 

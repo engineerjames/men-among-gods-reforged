@@ -2163,7 +2163,7 @@ pub fn item_info(cn: usize, in_: usize, _look: i32) {
             state.do_character_log(
                 cn,
                 FontColor::Green,
-                &format!("{:<12} {:+4} {:+4} {:3}\n", at_name[n], a0, a1, a2),
+                &format!("{:<12.12} {:+4} {:+4} {:3}\n", at_name[n], a0, a1, a2),
             )
         });
     }
@@ -2176,7 +2176,7 @@ pub fn item_info(cn: usize, in_: usize, _look: i32) {
             state.do_character_log(
                 cn,
                 FontColor::Green,
-                &format!("{:<12} {:+4} {:+4} {:3}\n", "Hitpoints", hp0, hp1, hp2),
+                &format!("{:<12.12} {:+4} {:+4} {:3}\n", "Hitpoints", hp0, hp1, hp2),
             )
         });
     }
@@ -2187,7 +2187,10 @@ pub fn item_info(cn: usize, in_: usize, _look: i32) {
             state.do_character_log(
                 cn,
                 FontColor::Green,
-                &format!("{:<12} {:+4} {:+4} {:3}\n", "Endurance", end0, end1, end2),
+                &format!(
+                    "{:<12.12} {:+4} {:+4} {:3}\n",
+                    "Endurance", end0, end1, end2
+                ),
             )
         });
     }
@@ -2198,7 +2201,7 @@ pub fn item_info(cn: usize, in_: usize, _look: i32) {
             state.do_character_log(
                 cn,
                 FontColor::Green,
-                &format!("{:<12} {:+4} {:+4} {:3}\n", "Mana", mana0, mana1, mana2),
+                &format!("{:<12.12} {:+4} {:+4} {:3}\n", "Mana", mana0, mana1, mana2),
             )
         });
     }
@@ -2220,7 +2223,7 @@ pub fn item_info(cn: usize, in_: usize, _look: i32) {
             state.do_character_log(
                 cn,
                 FontColor::Green,
-                &format!("{:<12} {:+4} {:+4} {:3}\n", skill_label, s0, s1, s2),
+                &format!("{:<12.12} {:+4} {:+4} {:3}\n", skill_label, s0, s1, s2),
             )
         });
     }
@@ -2232,7 +2235,7 @@ pub fn item_info(cn: usize, in_: usize, _look: i32) {
             state.do_character_log(
                 cn,
                 FontColor::Green,
-                &format!("{:<12} {:+4} {:+4}\n", "Weapon", w0, w1),
+                &format!("{:<12.12} {:+4} {:+4}\n", "Weapon", w0, w1),
             )
         });
     }
@@ -2242,7 +2245,7 @@ pub fn item_info(cn: usize, in_: usize, _look: i32) {
             state.do_character_log(
                 cn,
                 FontColor::Green,
-                &format!("{:<12} {:+4} {:+4}\n", "Armor", ar0, ar1),
+                &format!("{:<12.12} {:+4} {:+4}\n", "Armor", ar0, ar1),
             )
         });
     }
@@ -2252,7 +2255,7 @@ pub fn item_info(cn: usize, in_: usize, _look: i32) {
             state.do_character_log(
                 cn,
                 FontColor::Green,
-                &format!("{:<12} {:+4} {:+4}\n", "Light", l0, l1),
+                &format!("{:<12.12} {:+4} {:+4}\n", "Light", l0, l1),
             )
         });
     }
@@ -2263,7 +2266,7 @@ pub fn item_info(cn: usize, in_: usize, _look: i32) {
             state.do_character_log(
                 cn,
                 FontColor::Green,
-                &format!("{:<12} {:+4}\n", "Power", power),
+                &format!("{:<12.12} {:+4}\n", "Power", power),
             )
         });
     }
@@ -2274,7 +2277,7 @@ pub fn item_info(cn: usize, in_: usize, _look: i32) {
             state.do_character_log(
                 cn,
                 FontColor::Green,
-                &format!("{:<12} {:+4}\n", "Min. Rank", min_rank),
+                &format!("{:<12.12} {:+4}\n", "Min. Rank", min_rank),
             )
         });
     }

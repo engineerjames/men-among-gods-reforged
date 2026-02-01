@@ -1,4 +1,4 @@
-use core::constants::{CharacterFlags, MAXCHARS};
+use core::constants::{CharacterFlags, CHD_CORPSEOWNER, MAXCHARS, USE_EMPTY};
 use core::types::{Character, FontColor};
 
 use crate::effect::EffectManager;
@@ -611,37 +611,30 @@ impl State {
             characters[co].a_hp = 0;
 
             // Set corpse owner (killer only mode vs all can loot)
-            #[cfg(feature = "KILLERONLY")]
-            {
-                let cc = Repository::with_characters(|ch| {
-                    if cn != 0 && !(ch[cn].flags & CharacterFlags::CF_PLAYER.bits() != 0) {
-                        let cc = ch[cn].data[63] as usize;
-                        if cc != 0 && (ch[cc].flags & CharacterFlags::CF_PLAYER.bits() != 0) {
-                            Some(cc)
-                        } else {
-                            None
-                        }
+            let cc = Repository::with_characters(|ch| {
+                if cn != 0 && !(ch[cn].flags & CharacterFlags::Player.bits() != 0) {
+                    let cc = ch[cn].data[63] as usize;
+                    if cc != 0 && (ch[cc].flags & CharacterFlags::Player.bits() != 0) {
+                        Some(cc)
                     } else {
                         None
                     }
-                });
+                } else {
+                    None
+                }
+            });
 
-                if let Some(cc) = cc {
-                    characters[co].data[CHD_CORPSEOWNER] = cc as i32;
-                } else if cn != 0 {
-                    let is_cn_player = characters[cn].flags & CharacterFlags::CF_PLAYER.bits() != 0;
-                    if is_cn_player {
-                        characters[co].data[CHD_CORPSEOWNER] = cn as i32;
-                    } else {
-                        characters[co].data[CHD_CORPSEOWNER] = 0;
-                    }
+            if let Some(cc) = cc {
+                characters[co].data[CHD_CORPSEOWNER] = cc as i32;
+            } else if cn != 0 {
+                let is_cn_player = characters[cn].flags & CharacterFlags::Player.bits() != 0;
+                if is_cn_player {
+                    characters[co].data[CHD_CORPSEOWNER] = cn as i32;
                 } else {
                     characters[co].data[CHD_CORPSEOWNER] = 0;
                 }
-            }
-            #[cfg(not(feature = "KILLERONLY"))]
-            {
-                characters[co].data[core::constants::CHD_CORPSEOWNER] = 0;
+            } else {
+                characters[co].data[CHD_CORPSEOWNER] = 0;
             }
 
             characters[co].data[99] = 0;
@@ -745,8 +738,6 @@ impl State {
     /// * `wimp` - Guardian angel / wimpy chance (0-255). Higher means less dropping
     /// * `cn` - Killer id
     pub(crate) fn handle_item_drops(&self, co: usize, cc: usize, wimp: i32, cn: usize) {
-        use core::constants::*;
-
         // Handle gold
         Repository::with_characters_mut(|characters| {
             if characters[co].gold != 0 {
