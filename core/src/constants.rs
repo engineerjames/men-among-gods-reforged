@@ -50,8 +50,22 @@ pub const MAXSAY: i32 = TICKS * 7;
 /// God password
 pub const GODPASSWORD: &str = "devpassword";
 
-pub const MAX_SPEEDTAB_INDEX: usize = SPEEDTAB[0].len() - 1;
+/// SPEEDTAB row index bounds (character `speed` value).
+///
+/// `SPEEDTAB` has 20 rows (0..=19) mapping *speed tier* -> tick pattern.
+pub const MAX_SPEEDTAB_SPEED_INDEX: usize = SPEEDTAB.len() - 1;
+
+/// SPEEDTAB column index bounds (server/client `ctick` value).
+///
+/// `SPEEDTAB` has 40 columns (0..=39) mapping tick-in-cycle -> whether to advance.
+pub const MAX_CTICK_INDEX: usize = SPEEDTAB[0].len() - 1;
 pub const MIN_SPEEDTAB_INDEX: usize = 0;
+
+/// Number of `ctick` values in one SPEEDTAB cycle.
+pub const CTICK_CYCLE_LEN: usize = SPEEDTAB[0].len();
+
+/// Backwards-compat alias: historically this meant the `ctick` max index.
+pub const MAX_SPEEDTAB_INDEX: usize = MAX_CTICK_INDEX;
 
 // Turn off cargo-fmt for the large SPEEDTAB array
 #[rustfmt::skip]
