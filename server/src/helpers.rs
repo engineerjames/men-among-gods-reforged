@@ -65,7 +65,7 @@ pub fn random_mod_usize(a: usize) -> usize {
     random_mod(a as u32) as usize
 }
 
-fn write_c_string(buf: &mut [u8], s: &str) {
+pub fn write_c_string(buf: &mut [u8], s: &str) {
     buf.fill(0);
     let bytes = s.as_bytes();
     let n = bytes.len().min(buf.len().saturating_sub(1));
