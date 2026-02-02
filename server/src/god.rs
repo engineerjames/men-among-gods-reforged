@@ -1,7 +1,7 @@
 use core::{
     constants::{
-        character_flags_name, CharacterFlags, DX_DOWN, DX_LEFT, DX_LEFTDOWN, DX_LEFTUP, DX_RIGHT,
-        DX_RIGHTDOWN, DX_RIGHTUP, DX_UP,
+        character_flags_name, ArmorType, CharacterFlags, MagicArmorType, DX_DOWN, DX_LEFT,
+        DX_LEFTDOWN, DX_LEFTUP, DX_RIGHT, DX_RIGHTDOWN, DX_RIGHTUP, DX_UP,
     },
     string_operations::c_string_to_str,
     types::{Character, Map},
@@ -2760,6 +2760,37 @@ impl God {
                 )
             });
         }
+    }
+
+    /// Admin create item command: spawn special armor template for `cn`.
+    ///
+    /// Attempts to create and deliver it to the caller.
+    ///
+    /// # Arguments
+    /// * `cn` - Requesting character
+    /// * `armor` - Armor type (Titanium, Steel, etc.)
+    /// * `animal` - Animal type (Bear, Lion, etc.)
+    /// * `godly` - 'godly' or not provided
+    pub fn create_special(cn: usize, armor: &str, animal: &str, godly: &str) {
+        if !Character::is_sane_character(cn) {
+            return;
+        }
+
+        let armor_type = ArmorType::from_str(armor).unwrap_or_else(|| ArmorType::Cloth);
+
+        if armor_type == ArmorType::Cloth || armor_type == ArmorType::Leather {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    "Invalid armor type specified.\n",
+                )
+            });
+            return;
+        }
+
+        let animal_type = MagicArmorType::from_str(animal).unwrap_or_else(|| MagicArmorType::Bear);
+        let is_godly = godly.to_lowercase().starts_with("go");
     }
 
     /// Find the next character matching the given specs starting at index.

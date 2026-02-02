@@ -886,6 +886,11 @@ impl State {
                 God::create(cn, parse_i32(arg_get(1)));
                 return;
             }
+            Some("createspecial") if f_g => {
+                log::debug!("Processing createspecial command for {}", cn);
+                God::create_special(cn, arg_get(1), arg_get(2), arg_get(3));
+                return;
+            }
             Some("creator") if f_gg => {
                 log::debug!("Processing creator command for {}", cn);
                 God::set_flag(cn, arg_get(1), CharacterFlags::Creator.bits());

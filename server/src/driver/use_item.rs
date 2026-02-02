@@ -519,11 +519,11 @@ pub fn use_create_item2(cn: usize, item_idx: usize) -> i32 {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                &format!("You got a {}.", item_ref),
+                &format!("You got a {}.\n", item_ref),
             );
         });
 
-        log::info!("Character {} got item from source", cn);
+        chlog!(cn, "Got {} from {}", items[in2].get_name(), items[item_idx].get_name());
     });
 
     // Remove the consumed item
@@ -580,12 +580,7 @@ pub fn use_create_item3(cn: usize, item_idx: usize) -> i32 {
     // Check if this is a special item template
     let in2 = match template_id {
         57 | 59 | 63 | 65 | 69 | 71 | 75 | 76 | 94 | 95 | 981 | 982 => {
-            // These would call create_special_item, but we don't have that yet
-            log::warn!(
-                "Special item {} requested but create_special_item not implemented yet",
-                template_id
-            );
-            God::create_item(template_id)
+            helpers::create_special_item(template_id)
         }
         _ => God::create_item(template_id),
     };
@@ -623,6 +618,8 @@ pub fn use_create_item3(cn: usize, item_idx: usize) -> i32 {
                 &format!("You got a {}.\n", item_ref),
             );
         });
+
+        chlog!(cn, "Got {} from {}", items[in2].get_name(), items[item_idx].get_name());
     });
 
     1
