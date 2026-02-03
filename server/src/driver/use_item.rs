@@ -523,7 +523,12 @@ pub fn use_create_item2(cn: usize, item_idx: usize) -> i32 {
             );
         });
 
-        chlog!(cn, "Got {} from {}", items[in2].get_name(), items[item_idx].get_name());
+        chlog!(
+            cn,
+            "Got {} from {}",
+            items[in2].get_name(),
+            items[item_idx].get_name()
+        );
     });
 
     // Remove the consumed item
@@ -619,7 +624,12 @@ pub fn use_create_item3(cn: usize, item_idx: usize) -> i32 {
             );
         });
 
-        chlog!(cn, "Got {} from {}", items[in2].get_name(), items[item_idx].get_name());
+        chlog!(
+            cn,
+            "Got {} from {}",
+            items[in2].get_name(),
+            items[item_idx].get_name()
+        );
     });
 
     1
