@@ -218,41 +218,60 @@ impl State {
             return;
         }
 
-        // Ensure the target remembers the attacker (npc enemy list etc.)
-        // However, respect the fightback flag for players: if a player has fightback disabled,
-        // they shouldn't auto-target the attacker. This is a fix for the original C code bug
-        // where fightback was only checked in driver_msg, not in the actual attack function.
-        let co_is_player = Repository::with_characters(|characters| {
-            (characters[co].flags & CharacterFlags::Player.bits()) != 0
-        });
-
-        if !co_is_player {
-            // NPCs always get added as enemies
-            driver::npc_add_enemy(co, cn, true);
-        } else {
-            // For players, respect the fightback flag
-            let co_fightback = Repository::with_characters(|characters| {
-                characters[co].data[core::constants::CHD_FIGHTBACK]
+        // Update current_enemy if it changed (for logging purposes in original C)
+        let current_enemy = Repository::with_characters(|characters| characters[cn].current_enemy);
+        if current_enemy as usize != co {
+            Repository::with_characters_mut(|characters| {
+                characters[cn].current_enemy = co as u16;
             });
-            if co_fightback == 0 {
-                // Fightback is enabled (0), so add the NPC as an enemy
-                driver::npc_add_enemy(co, cn, true);
-            }
-            // If fightback is disabled (non-zero), don't call npc_add_enemy which would set attack_cn
+            let co_name = Repository::with_characters(|ch| ch[co].get_name().to_string());
+            log::info!("Character {} attacks {} ({})", cn, co_name, co);
         }
+
+        // Port of add_enemy(co, cn) from C - this only updates the enemy array,
+        // it does NOT set attack_cn. The fightback behavior is handled in driver_msg
+        // when NT_GOTHIT/NT_GOTMISS messages are processed.
+        State::add_enemy(co, cn);
+
         self.remember_pvp(cn, co);
 
         // Read base fight skills
         let mut s1 = self.get_fight_skill(cn);
         let mut s2 = self.get_fight_skill(co);
 
+        // GF_MAYHEM: In mayhem mode, non-player characters get a skill bonus.
+        let mayhem =
+            Repository::with_globals(|globs| (globs.flags & core::constants::GF_MAYHEM) != 0);
+        if mayhem {
+            let (cn_is_player, co_is_player) = Repository::with_characters(|characters| {
+                (
+                    (characters[cn].flags & CharacterFlags::Player.bits()) != 0,
+                    (characters[co].flags & CharacterFlags::Player.bits()) != 0,
+                )
+            });
+            if !cn_is_player {
+                s1 += 10;
+            }
+            if !co_is_player {
+                s2 += 10;
+            }
+        }
+
         // Apply negative luck adjustments if present (C++: luck < 0 -> luck/250 - 1)
-        let (cn_luck, co_luck) =
-            Repository::with_characters(|characters| (characters[cn].luck, characters[co].luck));
-        if cn_luck < 0 {
+        // Only applies to players in the original C code
+        let (cn_is_player, cn_luck, co_is_player, co_luck) =
+            Repository::with_characters(|characters| {
+                (
+                    (characters[cn].flags & CharacterFlags::Player.bits()) != 0,
+                    characters[cn].luck,
+                    (characters[co].flags & CharacterFlags::Player.bits()) != 0,
+                    characters[co].luck,
+                )
+            });
+        if cn_is_player && cn_luck < 0 {
             s1 += cn_luck / 250 - 1;
         }
-        if co_luck < 0 {
+        if co_is_player && co_luck < 0 {
             s2 += co_luck / 250 - 1;
         }
 
@@ -271,24 +290,6 @@ impl State {
         });
         if def_stunned_or_no_attack {
             s2 -= 10;
-        }
-
-        // GF_MAYHEM: In mayhem mode, non-player characters get a skill bonus.
-        let mayhem =
-            Repository::with_globals(|globs| (globs.flags & core::constants::GF_MAYHEM) != 0);
-        if mayhem {
-            let (cn_is_player, co_is_player) = Repository::with_characters(|characters| {
-                (
-                    (characters[cn].flags & CharacterFlags::Player.bits()) != 0,
-                    (characters[co].flags & CharacterFlags::Player.bits()) != 0,
-                )
-            });
-            if !cn_is_player {
-                s1 += 10;
-            }
-            if !co_is_player {
-                s2 += 10;
-            }
         }
 
         // Now compute diff -> chance/bonus mapping per original C++ table
@@ -667,6 +668,32 @@ impl State {
                 continue;
             }
         }
+    }
+
+    /// Port of `add_enemy(int cn, int co)` from `svr_do.c`
+    ///
+    /// Simple function to add `co` to `cn`'s enemy array (NOT the same as npc_add_enemy).
+    /// This does NOT set attack_cn or any other state - just tracks who is fighting whom.
+    pub(crate) fn add_enemy(cn: usize, co: usize) {
+        Repository::with_characters_mut(|characters| {
+            // Check if co is already in the enemy list
+            if characters[cn].enemy[0] as usize != co
+                && characters[cn].enemy[1] as usize != co
+                && characters[cn].enemy[2] as usize != co
+                && characters[cn].enemy[3] as usize != co
+            {
+                // Add to first empty slot
+                if characters[cn].enemy[0] == 0 {
+                    characters[cn].enemy[0] = co as u16;
+                } else if characters[cn].enemy[1] == 0 {
+                    characters[cn].enemy[1] = co as u16;
+                } else if characters[cn].enemy[2] == 0 {
+                    characters[cn].enemy[2] = co as u16;
+                } else if characters[cn].enemy[3] == 0 {
+                    characters[cn].enemy[3] = co as u16;
+                }
+            }
+        });
     }
 
     pub(crate) fn remove_enemy(co: usize) {
