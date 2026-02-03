@@ -9,7 +9,7 @@ use crate::repository::Repository;
 use crate::state::State;
 use crate::{driver, helpers};
 
-const ALL_COMMANDS: &'static [&str; 128] = &[
+const ALL_COMMANDS: &'static [&str; 129] = &[
     "addban",
     "afk",
     "allow",
@@ -23,6 +23,7 @@ const ALL_COMMANDS: &'static [&str; 128] = &[
     "ccp",
     "closenemey",
     "create",
+    "createspecial",
     "creator",
     "delban",
     "deposit",
