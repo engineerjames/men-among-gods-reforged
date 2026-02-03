@@ -1,7 +1,4 @@
-use std::{
-    sync::OnceLock,
-    time::{Duration, Instant},
-};
+use std::time::Duration;
 
 use bevy::prelude::*;
 
@@ -47,18 +44,8 @@ pub fn env_flag(name: &str) -> bool {
         .unwrap_or(false)
 }
 
-#[inline]
-/// Returns whether gameplay rendering profiling is enabled.
-///
-/// This uses a `OnceLock` to read and cache the `MAG_PROFILE_RENDERING` env var once.
-pub fn profile_rendering_enabled() -> bool {
-    static ENABLED: OnceLock<bool> = OnceLock::new();
-    *ENABLED.get_or_init(|| env_flag("MAG_PROFILE_RENDERING"))
-}
-
 #[derive(Default)]
 pub(crate) struct GameplayPerfAccum {
-    pub last_report: Option<Instant>,
     pub frames: u32,
 
     pub total: Duration,
@@ -72,41 +59,7 @@ pub(crate) struct GameplayPerfAccum {
 }
 
 impl GameplayPerfAccum {
-    /// Emits periodic gameplay performance logs and resets the counters.
-    ///
-    /// Only active in debug builds when `MAG_PROFILE_RENDERING` is enabled.
-    pub fn maybe_report_and_reset(&mut self) {
-        if !cfg!(debug_assertions) || !profile_rendering_enabled() {
-            return;
-        }
-
-        let now = Instant::now();
-        let Some(last) = self.last_report else {
-            self.last_report = Some(now);
-            return;
-        };
-
-        if now.duration_since(last) < Duration::from_secs(2) {
-            return;
-        }
-
-        let frames = self.frames.max(1) as f64;
-        let to_ms = |d: Duration| d.as_secs_f64() * 1000.0;
-
-        info!(
-            "perf gameplay: total={:.2}ms/f (engine={:.2} send_opt={:.2} minimap={:.2} shadows={:.2} tiles={:.2} ovl={:.2} ui={:.2}) over {} frames",
-            to_ms(self.total) / frames,
-            to_ms(self.engine_tick) / frames,
-            to_ms(self.send_opt) / frames,
-            to_ms(self.minimap) / frames,
-            to_ms(self.world_shadows) / frames,
-            to_ms(self.world_tiles) / frames,
-            to_ms(self.world_overlays) / frames,
-            to_ms(self.ui) / frames,
-            self.frames,
-        );
-
-        self.last_report = Some(now);
+    pub fn reset_counters(&mut self) {
         self.frames = 0;
         self.total = Duration::ZERO;
         self.engine_tick = Duration::ZERO;
@@ -121,7 +74,6 @@ impl GameplayPerfAccum {
 
 #[derive(Default)]
 pub(crate) struct BitmapTextPerfAccum {
-    pub last_report: Option<Instant>,
     pub runs: u32,
     pub total: Duration,
     pub entities: u32,
@@ -130,33 +82,7 @@ pub(crate) struct BitmapTextPerfAccum {
 }
 
 impl BitmapTextPerfAccum {
-    /// Emits periodic bitmap-text performance logs and resets the counters.
-    ///
-    /// Only active in debug builds when `MAG_PROFILE_RENDERING` is enabled.
-    pub fn maybe_report_and_reset(&mut self) {
-        if !cfg!(debug_assertions) || !profile_rendering_enabled() {
-            return;
-        }
-
-        let now = Instant::now();
-        let Some(last) = self.last_report else {
-            self.last_report = Some(now);
-            return;
-        };
-
-        if now.duration_since(last) < Duration::from_secs(2) {
-            return;
-        }
-
-        let runs = self.runs.max(1) as f64;
-        let ms_per_run = (self.total.as_secs_f64() * 1000.0) / runs;
-
-        info!(
-            "perf bitmap_text: {:.3}ms/run (runs={} entities={} spawned={} despawned={})",
-            ms_per_run, self.runs, self.entities, self.glyph_spawned, self.glyph_despawned,
-        );
-
-        self.last_report = Some(now);
+    pub fn reset_counters(&mut self) {
         self.runs = 0;
         self.total = Duration::ZERO;
         self.entities = 0;

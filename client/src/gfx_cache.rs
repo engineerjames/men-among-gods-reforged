@@ -5,6 +5,7 @@ use bevy::{
     ecs::resource::Resource,
     image::{CompressedImageFormats, Image, ImageSampler, ImageType},
     prelude::Assets,
+    render::render_resource::TextureFormat,
     sprite::Sprite,
 };
 use zip::ZipArchive;
@@ -30,6 +31,8 @@ pub struct GraphicsCache {
     assets_zip: PathBuf,
     gfx: Vec<Option<Sprite>>,
     sprite_tiles: Vec<Option<(i32, i32)>>,
+    sprite_avg_rgb565: Vec<Option<u16>>,
+    sprite_avg_rgba8: Vec<Option<[u8; 4]>>,
     initialized: bool,
     init_state: Option<InitState>,
     init_error: Option<String>,
@@ -42,6 +45,8 @@ impl GraphicsCache {
             assets_zip: PathBuf::from(assets_zip),
             gfx: Vec::new(),
             sprite_tiles: Vec::new(),
+            sprite_avg_rgb565: Vec::new(),
+            sprite_avg_rgba8: Vec::new(),
             initialized: false,
             init_state: None,
             init_error: None,
@@ -52,6 +57,8 @@ impl GraphicsCache {
     pub fn reset_loading(&mut self) {
         self.gfx.clear();
         self.sprite_tiles.clear();
+        self.sprite_avg_rgb565.clear();
+        self.sprite_avg_rgba8.clear();
         self.initialized = false;
         self.init_state = None;
         self.init_error = None;
@@ -68,6 +75,13 @@ impl GraphicsCache {
 
     pub fn get_sprite_tiles_xy(&self, index: usize) -> Option<(i32, i32)> {
         self.sprite_tiles
+            .get(index)
+            .and_then(|v| v.as_ref())
+            .copied()
+    }
+
+    pub fn get_sprite_avg_rgb565(&self, index: usize) -> Option<u16> {
+        self.sprite_avg_rgb565
             .get(index)
             .and_then(|v| v.as_ref())
             .copied()
@@ -144,6 +158,9 @@ impl GraphicsCache {
             if let Some((max_id, _)) = entries.last() {
                 self.gfx.resize(max_id.saturating_add(1), None);
                 self.sprite_tiles.resize(max_id.saturating_add(1), None);
+                self.sprite_avg_rgb565
+                    .resize(max_id.saturating_add(1), None);
+                self.sprite_avg_rgba8.resize(max_id.saturating_add(1), None);
             }
 
             log::info!(
@@ -237,6 +254,9 @@ impl GraphicsCache {
             }
         };
 
+        let avg_rgba8 = avg_color_rgba8_from_image(&image);
+        let avg_rgb565 = rgba8_to_rgb565(avg_rgba8[0], avg_rgba8[1], avg_rgba8[2]);
+
         // Cache dd.c tile dimensions (in 32x32 blocks). This avoids per-frame image-size queries.
         let size = image.size();
         let w = (size.x.max(1) as i32).max(1);
@@ -248,12 +268,72 @@ impl GraphicsCache {
         if *sprite_id >= self.gfx.len() {
             self.gfx.resize(sprite_id.saturating_add(1), None);
             self.sprite_tiles.resize(sprite_id.saturating_add(1), None);
+            self.sprite_avg_rgb565
+                .resize(sprite_id.saturating_add(1), None);
+            self.sprite_avg_rgba8
+                .resize(sprite_id.saturating_add(1), None);
         }
         self.gfx[*sprite_id] = Some(Sprite::from_image(image_handle));
         self.sprite_tiles[*sprite_id] = Some((xs, ys));
+        self.sprite_avg_rgb565[*sprite_id] = Some(avg_rgb565);
+        self.sprite_avg_rgba8[*sprite_id] = Some(avg_rgba8);
         state.index += 1;
 
         let progress = state.index as f32 / state.entries.len() as f32;
         CacheInitStatus::InProgress { progress }
+    }
+}
+
+fn rgba8_to_rgb565(r: u8, g: u8, b: u8) -> u16 {
+    let r5 = ((r as u32 * 31 + 127) / 255) as u16;
+    let g6 = ((g as u32 * 63 + 127) / 255) as u16;
+    let b5 = ((b as u32 * 31 + 127) / 255) as u16;
+    (r5 << 11) | (g6 << 5) | b5
+}
+
+fn avg_color_rgba8_from_image(image: &Image) -> [u8; 4] {
+    let format = image.texture_descriptor.format;
+    let Some(data) = image.data.as_deref() else {
+        return [0, 0, 0, 255];
+    };
+
+    match format {
+        TextureFormat::Rgba8Unorm
+        | TextureFormat::Rgba8UnormSrgb
+        | TextureFormat::Bgra8Unorm
+        | TextureFormat::Bgra8UnormSrgb => {
+            let mut sum_r: u64 = 0;
+            let mut sum_g: u64 = 0;
+            let mut sum_b: u64 = 0;
+            let mut count: u64 = 0;
+
+            for px in data.chunks_exact(4) {
+                let (r, g, b, a) = match format {
+                    TextureFormat::Bgra8Unorm | TextureFormat::Bgra8UnormSrgb => {
+                        (px[2], px[1], px[0], px[3])
+                    }
+                    _ => (px[0], px[1], px[2], px[3]),
+                };
+
+                if a == 0 {
+                    continue;
+                }
+
+                sum_r += r as u64;
+                sum_g += g as u64;
+                sum_b += b as u64;
+                count += 1;
+            }
+
+            if count == 0 {
+                return [0, 0, 0, 255];
+            }
+
+            let r = (sum_r / count) as u8;
+            let g = (sum_g / count) as u8;
+            let b = (sum_b / count) as u8;
+            [r, g, b, 255]
+        }
+        _ => [0, 0, 0, 255],
     }
 }
