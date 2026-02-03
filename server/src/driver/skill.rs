@@ -1779,7 +1779,12 @@ pub fn spell_curse(cn: usize, co: usize, power: i32) -> i32 {
         state.do_character_log(cn, FontColor::Green, &format!("{} was cursed.\n", name))
     });
 
-    State::with(|state| state.do_notify_character(co as u32, NT_GOTHIT as i32, cn as i32, 0, 0, 0));
+    // Match C: don't generate spell-attack notifications when the target is ignoring spells.
+    if Repository::with_characters(|ch| (ch[co].flags & CharacterFlags::SpellIgnore.bits()) == 0) {
+        State::with(|state| {
+            state.do_notify_character(co as u32, NT_GOTHIT as i32, cn as i32, 0, 0, 0)
+        });
+    }
     State::with(|state| state.do_notify_character(cn as u32, NT_DIDHIT as i32, co as i32, 0, 0, 0));
 
     let sound = Repository::with_characters(|ch| ch[cn].sound);
@@ -3180,21 +3185,13 @@ pub fn remove_spells(cn: usize) {
 }
 
 pub fn skill_dispel(cn: usize) {
-    let co = Repository::with_characters(|ch| {
-        if ch[cn].skill_target1 != 0 {
-            ch[cn].skill_target1 as usize
-        } else {
-            cn
-        }
-    });
+    // Port of C `skill_dispel(int cn)`.
+    let target = Repository::with_characters(|ch| ch[cn].skill_target1 as usize);
+    let co = if target != 0 { target } else { cn };
 
     if State::with_mut(|state| state.do_char_can_see(cn, co)) == 0 {
         State::with(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                "You cannot see your target.\n",
-            )
+            state.do_character_log(cn, FontColor::Red, "You cannot see your target.\n")
         });
         return;
     }
@@ -3203,83 +3200,199 @@ pub fn skill_dispel(cn: usize) {
         return;
     }
 
-    // Try removing curse from target
-    let mut found_in: usize = 0;
-    let mut found_n: isize = -1;
+    // Select which spell slot to remove.
+    let mut slot: Option<usize> = None;
+
+    // 1) Prefer removing curse from target.
     for n in 0..20usize {
         let in_idx = Repository::with_characters(|ch| ch[co].spell[n] as usize);
         if in_idx == 0 {
             continue;
         }
         if Repository::with_items(|it| it[in_idx].temp) == SK_CURSE as u16 {
-            found_in = in_idx;
-            found_n = n as isize;
+            slot = Some(n);
             break;
         }
     }
 
-    // Try dispelling self (non-curse) if none and target is self
-    if found_in == 0 && co == cn {
-        for n in 0..20usize {
-            let in_idx = Repository::with_characters(|ch| ch[cn].spell[n] as usize);
-            if in_idx == 0 {
-                continue;
-            }
-            if Repository::with_items(|it| it[in_idx].temp) != SK_CURSE as u16 {
-                found_in = in_idx;
-                found_n = n as isize;
-                break;
-            }
-        }
-    }
-
-    // Try dispelling someone else (any spell)
-    if found_in == 0 {
+    // 2) If no curse found, remove first non-wimpy spell.
+    if slot.is_none() {
         for n in 0..20usize {
             let in_idx = Repository::with_characters(|ch| ch[co].spell[n] as usize);
             if in_idx == 0 {
                 continue;
             }
-            found_in = in_idx;
-            found_n = n as isize;
+            let temp = Repository::with_items(|it| it[in_idx].temp);
+            if temp == SK_WIMPY as u16 {
+                continue;
+            }
+            slot = Some(n);
             break;
+        }
+
+        // No target spell found.
+        if slot.is_none() {
+            if co == cn {
+                State::with(|state| {
+                    state.do_character_log(cn, FontColor::Red, "But you aren't spelled!\n")
+                });
+            } else {
+                let name = Repository::with_characters(|ch| ch[co].get_name().to_string());
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        FontColor::Red,
+                        &format!("{} isn't spelled!\n", name),
+                    )
+                });
+            }
+            return;
+        }
+
+        // Dispelling someone else's non-curse spell is treated like an attack.
+        if target != 0 {
+            if State::with(|state| state.may_attack_msg(cn, co, true)) == 0 {
+                chlog!(
+                    cn,
+                    "Prevented from dispelling {}",
+                    Repository::with_characters(|ch| ch[co].get_name().to_string())
+                );
+                return;
+            }
         }
     }
 
-    if found_in == 0 {
-        State::with(|state| {
-            state.do_character_log(cn, core::types::FontColor::Green, "Nothing to dispel.\n")
-        });
+    let slot = slot.expect("slot must be set");
+    let in_idx = Repository::with_characters(|ch| ch[co].spell[slot] as usize);
+    if in_idx == 0 {
         return;
     }
 
-    let pwr = Repository::with_items(|it| it[found_in].power as i32);
+    let pwr = Repository::with_items(|it| it[in_idx].power as i32);
 
     if spellcost(cn, 25) != 0 {
         return;
     }
 
-    if chance_base(
-        cn,
-        spell_race_mod(
-            Repository::with_characters(|ch| ch[cn].skill[SK_DISPEL][5] as i32),
-            Repository::with_characters(|ch| ch[cn].kindred),
-        ),
-        12,
-        pwr,
-    ) != 0
-    {
+    let dispel_skill = Repository::with_characters(|ch| ch[cn].skill[SK_DISPEL][5] as i32);
+    let kindred = Repository::with_characters(|ch| ch[cn].kindred);
+    if chance_base(cn, spell_race_mod(dispel_skill, kindred), 12, pwr) != 0 {
+        if cn != co {
+            let sense = Repository::with_characters(|ch| ch[co].skill[SK_SENSE][5] as i32);
+            if sense > dispel_skill + 5 {
+                let reference = Repository::with_characters(|ch| ch[cn].reference);
+                State::with(|state| {
+                    state.do_character_log(
+                        co,
+                        FontColor::Green,
+                        &format!(
+                            "{} tried to cast dispel magic on you but failed.\n",
+                            c_string_to_str(&reference)
+                        ),
+                    )
+                });
+            }
+        }
         return;
     }
 
-    // Remove the spell
-    Repository::with_items_mut(|it| it[found_in].used = core::constants::USE_EMPTY);
-    if found_n >= 0 {
-        let idx = found_n as usize;
-        Repository::with_characters_mut(|ch| ch[co].spell[idx] = 0);
+    let removed_temp = Repository::with_items(|it| it[in_idx].temp);
+    let removed_name = Repository::with_items(|it| it[in_idx].get_name().to_string());
+
+    // Remove the spell item and unlink it from the target.
+    Repository::with_items_mut(|it| it[in_idx].used = core::constants::USE_EMPTY);
+    Repository::with_characters_mut(|ch| ch[co].spell[slot] = 0);
+    State::with(|state| state.do_update_char(co));
+
+    // Remember PvP attacks when dispelling non-curse from someone else.
+    if target != 0 && removed_temp != SK_CURSE as u16 {
+        State::with(|state| state.remember_pvp(cn, co));
     }
 
-    State::with(|state| state.do_character_log(cn, core::types::FontColor::Green, "Dispelled.\n"));
+    let sound = Repository::with_characters(|ch| ch[cn].sound) as i32;
+
+    if target != 0 {
+        let sense = Repository::with_characters(|ch| ch[co].skill[SK_SENSE][5] as i32);
+        if sense + 10 > dispel_skill {
+            let reference = Repository::with_characters(|ch| ch[cn].reference);
+            State::with(|state| {
+                state.do_character_log(
+                    co,
+                    FontColor::Green,
+                    &format!(
+                        "{} cast dispel magic on you.\n",
+                        c_string_to_str(&reference)
+                    ),
+                )
+            });
+        } else {
+            State::with(|state| {
+                state.do_character_log(
+                    co,
+                    FontColor::Green,
+                    &format!("{} has been removed.\n", removed_name),
+                )
+            });
+        }
+
+        let target_name = Repository::with_characters(|ch| ch[co].get_name().to_string());
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                FontColor::Green,
+                &format!("Removed {} from {}.\n", removed_name, target_name),
+            )
+        });
+
+        // Match C: only notify (as an attack) when dispelling a non-curse spell from an NPC.
+        let target_is_player =
+            Repository::with_characters(|ch| (ch[co].flags & CharacterFlags::Player.bits()) != 0);
+        if removed_temp != SK_CURSE as u16 && !target_is_player {
+            if Repository::with_characters(|ch| {
+                (ch[co].flags & CharacterFlags::SpellIgnore.bits()) == 0
+            }) {
+                State::with(|state| {
+                    state.do_notify_character(co as u32, NT_GOTHIT as i32, cn as i32, 0, 0, 0)
+                });
+            }
+            State::with(|state| {
+                state.do_notify_character(cn as u32, NT_DIDHIT as i32, co as i32, 0, 0, 0)
+            });
+        }
+
+        State::char_play_sound(co, sound + 1, -150, 0);
+        State::char_play_sound(cn, sound + 1, -150, 0);
+        chlog!(
+            cn,
+            "Cast Dispel on {}",
+            Repository::with_characters(|ch| ch[co].get_name().to_string())
+        );
+        EffectManager::fx_add_effect(
+            6,
+            0,
+            Repository::with_characters(|ch| ch[co].x) as i32,
+            Repository::with_characters(|ch| ch[co].y) as i32,
+            0,
+        );
+    } else {
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                FontColor::Green,
+                &format!("{} has been removed.\n", removed_name),
+            )
+        });
+        State::char_play_sound(cn, sound + 1, -150, 0);
+        chlog!(cn, "Cast Dispel");
+        EffectManager::fx_add_effect(
+            6,
+            0,
+            Repository::with_characters(|ch| ch[cn].x) as i32,
+            Repository::with_characters(|ch| ch[cn].y) as i32,
+            0,
+        );
+    }
+
     add_exhaust(cn, TICKS * 2);
     EffectManager::fx_add_effect(
         7,

@@ -855,6 +855,15 @@ pub(crate) fn run_gameplay(
         }
     }
 
+    // Match original client behavior: after a shop action, re-LOOK the shop target
+    // to refresh the shop/depot window contents.
+    if did_tick && player_state.should_show_shop() && player_state.take_shop_refresh_requested() {
+        let target = player_state.shop_target().nr() as u32;
+        if target != 0 {
+            net.send(ClientCommand::new_look(target).to_bytes());
+        }
+    }
+
     // Ported options transfer behavior (engine.c::send_opt).
     {
         let t0 = perf_enabled.then(Instant::now);

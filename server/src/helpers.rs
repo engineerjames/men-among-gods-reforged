@@ -1,4 +1,8 @@
-use core::{constants::CharacterFlags, types::FontColor};
+use core::{
+    constants::{CharacterFlags, AT_AGIL, AT_BRAVE, AT_INT, AT_STREN, AT_WILL},
+    string_operations::c_string_to_str,
+    types::FontColor,
+};
 
 use crate::{driver, god::God, populate, repository::Repository, state::State};
 
@@ -59,6 +63,112 @@ pub fn random_mod_usize(a: usize) -> usize {
     }
     debug_assert!(a <= u32::MAX as usize);
     random_mod(a as u32) as usize
+}
+
+pub fn write_c_string(buf: &mut [u8], s: &str) {
+    buf.fill(0);
+    let bytes = s.as_bytes();
+    let n = bytes.len().min(buf.len().saturating_sub(1));
+    buf[..n].copy_from_slice(&bytes[..n]);
+}
+
+/// Port of `create_special_item(int temp)` from `server/src/orig/helper.c`.
+///
+/// Creates a template item, then applies randomized prefix/suffix modifiers, sprite overrides,
+/// and rewrites name/reference/description. Returns the new item id, or `None` if creation fails.
+pub fn create_special_item(temp: usize) -> Option<usize> {
+    let item_id = God::create_item(temp)?;
+
+    Repository::with_items_mut(|items| {
+        let item = &mut items[item_id];
+
+        // Match C: the resulting item should not be linked to its original template.
+        item.temp = 0;
+
+        let mut mul: i16 = 1;
+        let pref: &str = match random_mod_usize(8) {
+            0 => {
+                // "Shining " +10 light
+                item.light[0] += 10;
+                "Shining "
+            }
+            1 => {
+                // "Godly " doubles suffix bonuses
+                mul = 2;
+                "Godly "
+            }
+            _ => "",
+        };
+
+        let suffix: &str = match random_mod_usize(8) {
+            0 => {
+                item.attrib[AT_BRAVE as usize][0] += 4 * mul as i8;
+                " of the Lion"
+            }
+            1 => {
+                item.attrib[AT_WILL as usize][0] += 4 * mul as i8;
+                " of the Snake"
+            }
+            2 => {
+                item.attrib[AT_INT as usize][0] += 4 * mul as i8;
+                " of the Owl"
+            }
+            3 => {
+                item.attrib[AT_AGIL as usize][0] += 4 * mul as i8;
+                " of the Weasel"
+            }
+            4 => {
+                item.attrib[AT_STREN as usize][0] += 4 * mul as i8;
+                " of the Bear"
+            }
+            5 => {
+                item.mana[0] += 10 * mul;
+                " of Magic"
+            }
+            6 => {
+                item.hp[0] += 10 * mul;
+                " of Life"
+            }
+            7 => {
+                item.armor[0] += 2 * mul as i8;
+                " of Defence"
+            }
+            _ => "",
+        };
+
+        let spr: i16 = match temp {
+            57 => 840,    // Bronze Helmet
+            59 => 845,    // Bronze Armor
+            63 => 830,    // Steel Helmt
+            65 => 835,    // Steel Armor
+            69 => 870,    // Golden Helmet
+            71 => 875,    // Golden Armor
+            75 => 850,    // Crystal Helmet
+            76 => 855,    // Crystal Armor
+            94 => 860,    // Titanium Helmet
+            95 => 865,    // Titanium Armor
+            981 => 16775, // Emerald Helmet
+            982 => 16780, // Emerald Armor
+            _ => item.sprite[0],
+        };
+
+        item.sprite[0] = spr;
+        item.max_damage = 0;
+
+        let base_name = c_string_to_str(&item.name);
+        let combined = format!("{}{}{}", pref, base_name, suffix);
+
+        write_c_string(&mut item.name, &combined);
+        // Match C: titlecase first letter of *name* only.
+        if let Some(b0) = item.name.first_mut() {
+            *b0 = b0.to_ascii_uppercase();
+        }
+
+        write_c_string(&mut item.reference, &combined);
+        write_c_string(&mut item.description, &format!("A {}.", combined));
+    });
+
+    Some(item_id)
 }
 
 /// Port of `use_labtransfer(int cn, int nr, int exp)` from `svr_do.cpp`

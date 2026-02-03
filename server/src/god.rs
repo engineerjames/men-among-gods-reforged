@@ -1,7 +1,7 @@
 use core::{
     constants::{
-        character_flags_name, CharacterFlags, DX_DOWN, DX_LEFT, DX_LEFTDOWN, DX_LEFTUP, DX_RIGHT,
-        DX_RIGHTDOWN, DX_RIGHTUP, DX_UP,
+        character_flags_name, ArmorType, CharacterFlags, MagicArmorType, DX_DOWN, DX_LEFT,
+        DX_LEFTDOWN, DX_LEFTUP, DX_RIGHT, DX_RIGHTDOWN, DX_RIGHTUP, DX_UP,
     },
     string_operations::c_string_to_str,
     types::{Character, Map},
@@ -2760,6 +2760,203 @@ impl God {
                 )
             });
         }
+    }
+
+    /// Admin create item command: spawn special armor template for `cn`.
+    ///
+    /// Attempts to create and deliver it to the caller.
+    ///
+    /// # Arguments
+    /// * `cn` - Requesting character
+    /// * `armor` - Armor type (Titanium, Steel, etc.)
+    /// * `animal` - Animal type (Bear, Lion, etc.)
+    /// * `godly` - 'godly' or not provided
+    pub fn create_special(cn: usize, armor: &str, animal: &str, godly: &str) {
+        if !Character::is_sane_character(cn) {
+            return;
+        }
+
+        let armor_type = ArmorType::from_str(armor).unwrap_or_else(|| ArmorType::Cloth);
+
+        if armor_type == ArmorType::Cloth || armor_type == ArmorType::Leather {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    "Invalid armor type specified.\n",
+                )
+            });
+            return;
+        }
+
+        let animal_type = MagicArmorType::from_str(animal).unwrap_or_else(|| MagicArmorType::Bear);
+        let is_godly = godly.to_lowercase().starts_with("go");
+
+        let (helmet_temp, armor_temp) = match armor_type {
+            ArmorType::Bronze => (57usize, 59usize),
+            ArmorType::Steel => (63usize, 65usize),
+            ArmorType::Gold => (69usize, 71usize),
+            ArmorType::Crystal => (75usize, 76usize),
+            ArmorType::Titanium => (94usize, 95usize),
+            ArmorType::Emerald => (981usize, 982usize),
+            ArmorType::Cloth | ArmorType::Leather => {
+                // Already filtered above, but keep an explicit guard.
+                State::with(|state| {
+                    state.do_character_log(
+                        cn,
+                        core::types::FontColor::Red,
+                        "Invalid armor type specified.\n",
+                    )
+                });
+                return;
+            }
+        };
+
+        let mut created: [usize; 2] = [0, 0];
+        for (idx, temp) in [helmet_temp, armor_temp].iter().copied().enumerate() {
+            let item_id = match Self::create_item(temp) {
+                Some(item_id) => item_id,
+                None => {
+                    // Clean up any items already created.
+                    Repository::with_items_mut(|items| {
+                        for &id in created.iter() {
+                            if id != 0 {
+                                items[id].used = core::constants::USE_EMPTY;
+                            }
+                        }
+                    });
+                    State::with(|state| {
+                        state.do_character_log(
+                            cn,
+                            core::types::FontColor::Red,
+                            &format!("god_create_item() failed for {}.\n", temp),
+                        )
+                    });
+                    return;
+                }
+            };
+
+            created[idx] = item_id;
+
+            // Apply the same logic as helpers::create_special_item, but deterministically based on args.
+            Repository::with_items_mut(|items| {
+                let item = &mut items[item_id];
+
+                // Match C: the resulting item should not be linked to its original template.
+                item.temp = 0;
+
+                let mul: i16 = if is_godly { 2 } else { 1 };
+                let pref: &str = if is_godly { "Godly " } else { "" };
+
+                let suffix: &str = match animal_type {
+                    MagicArmorType::Lion => {
+                        item.attrib[core::constants::AT_BRAVE as usize][0] += 4 * mul as i8;
+                        " of the Lion"
+                    }
+                    MagicArmorType::Snake => {
+                        item.attrib[core::constants::AT_WILL as usize][0] += 4 * mul as i8;
+                        " of the Snake"
+                    }
+                    MagicArmorType::Owl => {
+                        item.attrib[core::constants::AT_INT as usize][0] += 4 * mul as i8;
+                        " of the Owl"
+                    }
+                    MagicArmorType::Weasel => {
+                        item.attrib[core::constants::AT_AGIL as usize][0] += 4 * mul as i8;
+                        " of the Weasel"
+                    }
+                    MagicArmorType::Bear => {
+                        item.attrib[core::constants::AT_STREN as usize][0] += 4 * mul as i8;
+                        " of the Bear"
+                    }
+                    MagicArmorType::Magic => {
+                        item.mana[0] += 10 * mul;
+                        " of Magic"
+                    }
+                    MagicArmorType::Life => {
+                        item.hp[0] += 10 * mul;
+                        " of Life"
+                    }
+                    MagicArmorType::Defence => {
+                        item.armor[0] += 2 * mul as i8;
+                        " of Defence"
+                    }
+                };
+
+                let spr: i16 = match temp {
+                    57 => 840,    // Bronze Helmet
+                    59 => 845,    // Bronze Armor
+                    63 => 830,    // Steel Helmt
+                    65 => 835,    // Steel Armor
+                    69 => 870,    // Golden Helmet
+                    71 => 875,    // Golden Armor
+                    75 => 850,    // Crystal Helmet
+                    76 => 855,    // Crystal Armor
+                    94 => 860,    // Titanium Helmet
+                    95 => 865,    // Titanium Armor
+                    981 => 16775, // Emerald Helmet
+                    982 => 16780, // Emerald Armor
+                    _ => item.sprite[0],
+                };
+                item.sprite[0] = spr;
+
+                item.max_damage = 0;
+
+                let base_name = c_string_to_str(&item.name);
+                let combined = format!("{}{}{}", pref, base_name, suffix);
+
+                helpers::write_c_string(&mut item.name, &combined);
+                // Match C: titlecase first letter of *name* only.
+                if let Some(b0) = item.name.first_mut() {
+                    *b0 = b0.to_ascii_uppercase();
+                }
+
+                helpers::write_c_string(&mut item.reference, &combined);
+                helpers::write_c_string(&mut item.description, &format!("A {}.", combined));
+            });
+        }
+
+        // Deliver both items (and roll back cleanly if we can't give the full pair).
+        if !Self::give_character_item(cn, created[0]) {
+            Repository::with_items_mut(|items| items[created[0]].used = core::constants::USE_EMPTY);
+            State::with(|state| {
+                state.do_character_log(cn, core::types::FontColor::Red, "Your inventory is full!\n")
+            });
+            return;
+        }
+        if !Self::give_character_item(cn, created[1]) {
+            // Remove the first item again to keep behavior consistent (we create a pair).
+            let _ = Self::remove_item(cn, created[0]);
+            Repository::with_items_mut(|items| {
+                items[created[0]].used = core::constants::USE_EMPTY;
+                items[created[1]].used = core::constants::USE_EMPTY;
+            });
+            State::with(|state| {
+                state.do_character_log(cn, core::types::FontColor::Red, "Your inventory is full!\n")
+            });
+            return;
+        }
+
+        let (helmet_name, armor_name) = Repository::with_items(|items| {
+            (
+                items[created[0]].get_name().to_string(),
+                items[created[1]].get_name().to_string(),
+            )
+        });
+
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                &format!("Created special items: {}, {}.\n", helmet_name, armor_name),
+            )
+        });
+        chlog!(
+            cn,
+            "IMP: created special items: {}, {}.",
+            helmet_name,
+            armor_name
+        );
     }
 
     /// Find the next character matching the given specs starting at index.

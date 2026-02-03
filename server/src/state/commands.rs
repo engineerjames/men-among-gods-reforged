@@ -9,7 +9,7 @@ use crate::repository::Repository;
 use crate::state::State;
 use crate::{driver, helpers};
 
-const ALL_COMMANDS: &'static [&str; 128] = &[
+const ALL_COMMANDS: &'static [&str; 129] = &[
     "addban",
     "afk",
     "allow",
@@ -23,6 +23,7 @@ const ALL_COMMANDS: &'static [&str; 128] = &[
     "ccp",
     "closenemey",
     "create",
+    "createspecial",
     "creator",
     "delban",
     "deposit",
@@ -884,6 +885,11 @@ impl State {
             Some("create") if f_g => {
                 log::debug!("Processing create command for {}", cn);
                 God::create(cn, parse_i32(arg_get(1)));
+                return;
+            }
+            Some("createspecial") if f_g => {
+                log::debug!("Processing createspecial command for {}", cn);
+                God::create_special(cn, arg_get(1), arg_get(2), arg_get(3));
                 return;
             }
             Some("creator") if f_gg => {

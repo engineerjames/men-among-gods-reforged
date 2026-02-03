@@ -929,9 +929,7 @@ impl State {
     /// * `cn` - Character index
     pub(crate) fn do_depot(&self, cn: usize) {
         self.do_character_log(cn, core::types::FontColor::Yellow, "This is your bank depot. You can store up to 62 items here. But you have to pay a rent for each item.\n");
-        // delegate to look depot helper if present
-        if let Some(_) = None::<()> {
-            // placeholder
-        }
+        // Match original `do_depot`: immediately open the depot (shop-style) UI.
+        self.do_look_depot(cn, cn);
     }
 }

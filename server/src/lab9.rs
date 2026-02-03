@@ -675,13 +675,16 @@ impl Labyrinth9 {
 
             let question = self.questions[bank_index as usize][n];
             let switch_is_true =
-                Repository::with_items(|items| items[item_number as usize].data[1] == 1);
+                Repository::with_items(|items| items[item_number as usize].data[1] == 0);
 
             if switch_is_true
                 != self.switch_questions[bank_index as usize][question as usize - 1].should_be_true
             {
                 correct = false;
             }
+
+            // Next switch is one tile south.
+            m += core::constants::SERVER_MAPX;
         }
 
         // Door logic
@@ -701,7 +704,8 @@ impl Labyrinth9 {
         if correct {
             // Open the door
             Repository::with_items_mut(|items| {
-                if items[item_number as usize].active == 0 {
+                // Only open if currently closed.
+                if items[item_number as usize].active != 0 {
                     return;
                 }
 
@@ -734,7 +738,8 @@ impl Labyrinth9 {
         } else {
             // Close the door
             Repository::with_items_mut(|items| {
-                if !correct && items[item_number as usize].active != 0 {
+                // Only close if currently open.
+                if items[item_number as usize].active == 0 {
                     return;
                 }
 
