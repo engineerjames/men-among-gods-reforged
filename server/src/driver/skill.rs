@@ -2052,6 +2052,9 @@ pub fn warcry(cn: usize, co: usize, power: i32) -> i32 {
 
     add_spell(co, in2);
 
+    let co_name = Repository::with_characters(|ch| ch[co].get_name().to_string());
+    log::info!("Character {} cast Warcry on {}", cn, co_name);
+
     EffectManager::fx_add_effect(
         5,
         0,
