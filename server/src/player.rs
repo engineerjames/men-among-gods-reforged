@@ -2505,7 +2505,7 @@ pub fn speedo(n: usize) -> i32 {
         (characters[n].speed as usize).min(core::constants::MAX_SPEEDTAB_SPEED_INDEX)
     });
     let ctick = Repository::with_globals(|globals| {
-        (globals.ticker as usize % core::constants::CTICK_CYCLE_LEN)
+        globals.ticker as usize % core::constants::CTICK_CYCLE_LEN
     });
     SPEEDTAB[speed][ctick] as i32
 }
