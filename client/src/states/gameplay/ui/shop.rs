@@ -249,13 +249,27 @@ pub(crate) fn run_gameplay_shop_input(
     let x = game.x;
     let y = game.y;
 
+    // While the shop/depot window is open, the player should still be able to
+    // interact with the HUD (inventory/equipment/etc) without closing it.
+    // Close only when clicking on the world/background outside the shop window.
+    let over_inventory_or_equipment =
+        // Backpack grid (orig/inter.c::mouse_inventory): x 219..288, y 1..175.
+        ((219.0..=288.0).contains(&x) && (1.0..=175.0).contains(&y))
+        // Money (orig/inter.c::mouse_inventory): x 219..301, y 176..259.
+        || ((219.0..=301.0).contains(&x) && (176.0..=259.0).contains(&y))
+        // Equipment grid (orig/inter.c::mouse_inventory): x 302..371, y 1..210.
+        || ((302.0..=371.0).contains(&x) && (1.0..=210.0).contains(&y))
+        // Active spells area (eng_display_win): x 374..494, y 4..100.
+        || ((374.0..=494.0).contains(&x) && (4.0..=100.0).contains(&y));
+
     let click_released =
         mouse.just_released(MouseButton::Left) || mouse.just_released(MouseButton::Right);
 
-    // When the shop is open, any click outside the window should close it and consume the click.
+    // When the shop is open, any click on the world outside the window should close it
+    // and consume the click. HUD interactions should not close it.
     // This prevents the same click from also issuing a move command.
     let in_shop_window = (220.0..=516.0).contains(&x) && (260.0..=552.0).contains(&y);
-    if click_released && !in_shop_window {
+    if click_released && !in_shop_window && !over_inventory_or_equipment {
         player_state.close_shop();
         click_capture.consume_world_click = true;
         return;
