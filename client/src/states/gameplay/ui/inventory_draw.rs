@@ -68,15 +68,14 @@ pub(crate) fn draw_equipment_ui(
         &mut LastRender,
     )>,
 ) {
-    // Match portrait behavior: while shop/look UI is active, show that target's equipment.
+    // Only LOOK should switch the equipment view to another target.
+    // The shop/depot window should not replace the player's own equipment display.
     enum EquipSource<'a> {
         Player(&'a mag_core::types::ClientPlayer),
         Look(&'a crate::types::look::Look),
     }
 
-    let src = if player_state.should_show_shop() {
-        EquipSource::Look(player_state.shop_target())
-    } else if player_state.should_show_look() {
+    let src = if player_state.should_show_look() {
         EquipSource::Look(player_state.look_target())
     } else {
         EquipSource::Player(player_state.character_info())

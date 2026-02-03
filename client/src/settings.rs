@@ -69,6 +69,10 @@ pub struct UserSettings {
     pub magic_effects_enabled: bool,
     pub gamma: f32,
 
+    /// When enabled, continuously logs per-frame performance metrics to the client log.
+    /// Default is off because this can generate a lot of log output.
+    pub log_performance_metrics: bool,
+
     pub video_mode: VideoModeSetting,
 
     /// Default server address shown on the login screen.
@@ -90,6 +94,8 @@ impl Default for UserSettings {
             show_cursor_action_text: true,
             magic_effects_enabled: true,
             gamma: 1.0,
+
+            log_performance_metrics: false,
 
             video_mode: VideoModeSetting::Windowed,
 

@@ -877,6 +877,95 @@ pub const AT_INT: i32 = 2;
 pub const AT_AGIL: i32 = 3;
 pub const AT_STREN: i32 = 4;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArmorType {
+    Cloth,
+    Leather,
+    Bronze,
+    Steel,
+    Gold,
+    Emerald,
+    Crystal,
+    Titanium,
+}
+
+impl ArmorType {
+    pub fn from_str(s: &str) -> Option<ArmorType> {
+        let binding = s.to_lowercase();
+        let s_lower = binding.trim();
+
+        if s_lower.starts_with("cl") {
+            return Some(ArmorType::Cloth);
+        }
+        if s_lower.starts_with("le") {
+            return Some(ArmorType::Leather);
+        }
+        if s_lower.starts_with("br") {
+            return Some(ArmorType::Bronze);
+        }
+        if s_lower.starts_with("st") {
+            return Some(ArmorType::Steel);
+        }
+        if s_lower.starts_with("go") {
+            return Some(ArmorType::Gold);
+        }
+        if s_lower.starts_with("em") {
+            return Some(ArmorType::Emerald);
+        }
+        if s_lower.starts_with("cr") {
+            return Some(ArmorType::Crystal);
+        }
+        if s_lower.starts_with("ti") {
+            return Some(ArmorType::Titanium);
+        }
+        None
+    }
+}
+
+pub enum MagicArmorType {
+    Bear,
+    Lion,
+    Weasel,
+    Snake,
+    Owl,
+    Magic,
+    Life,
+    Defence,
+}
+
+impl MagicArmorType {
+    pub fn from_str(s: &str) -> Option<MagicArmorType> {
+        let binding = s.to_lowercase();
+        let s_lower = binding.trim();
+
+        if s_lower.starts_with("be") {
+            return Some(MagicArmorType::Bear);
+        }
+        if s_lower.starts_with("li") {
+            return Some(MagicArmorType::Lion);
+        }
+        if s_lower.starts_with("we") {
+            return Some(MagicArmorType::Weasel);
+        }
+        if s_lower.starts_with("sn") {
+            return Some(MagicArmorType::Snake);
+        }
+        if s_lower.starts_with("ow") {
+            return Some(MagicArmorType::Owl);
+        }
+        if s_lower.starts_with("ma") {
+            return Some(MagicArmorType::Magic);
+        }
+        if s_lower.starts_with("lif") {
+            return Some(MagicArmorType::Life);
+        }
+        if s_lower.starts_with("de") {
+            return Some(MagicArmorType::Defence);
+        }
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

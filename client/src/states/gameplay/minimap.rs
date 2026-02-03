@@ -3,8 +3,6 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::sprite::Anchor;
 
-use std::collections::HashMap;
-
 use crate::gfx_cache::GraphicsCache;
 
 use mag_core::constants::{INVIS, TILEX, TILEY};
@@ -18,7 +16,6 @@ pub(crate) struct MiniMapState {
     /// Original client keeps a persistent 1024x1024 color buffer in 16-bit 5:6:5.
     /// Indexing matches the C code: idx = y + x*1024.
     pub(crate) xmap: Vec<u16>,
-    pub(crate) avg_cache: HashMap<usize, u16>,
     pub(crate) image: Option<Handle<Image>>,
 
     /// Last known player world position (as reported by the center tile).
@@ -53,28 +50,8 @@ impl MiniMapState {
         handle
     }
 
-    fn avg_color_rgb565(
-        &mut self,
-        sprite_id: usize,
-        gfx: &GraphicsCache,
-        images: &Assets<Image>,
-    ) -> u16 {
-        if let Some(cached) = self.avg_cache.get(&sprite_id).copied() {
-            return cached;
-        }
-
-        let Some(sprite) = gfx.get_sprite(sprite_id) else {
-            self.avg_cache.insert(sprite_id, 0);
-            return 0;
-        };
-        let Some(image) = images.get(&sprite.image) else {
-            self.avg_cache.insert(sprite_id, 0);
-            return 0;
-        };
-
-        let col = avg_color_rgb565_from_image(image);
-        self.avg_cache.insert(sprite_id, col);
-        col
+    fn avg_color_rgb565(sprite_id: usize, gfx: &GraphicsCache) -> u16 {
+        gfx.get_sprite_avg_rgb565(sprite_id).unwrap_or(0)
     }
 }
 
@@ -89,58 +66,12 @@ fn rgb565_to_rgba8(c: u16) -> [u8; 4] {
     [r, g, b, 255]
 }
 
+#[cfg(test)]
 fn rgba8_to_rgb565(r: u8, g: u8, b: u8) -> u16 {
     let r5 = ((r as u32 * 31 + 127) / 255) as u16;
     let g6 = ((g as u32 * 63 + 127) / 255) as u16;
     let b5 = ((b as u32 * 31 + 127) / 255) as u16;
     (r5 << 11) | (g6 << 5) | b5
-}
-
-fn avg_color_rgb565_from_image(image: &Image) -> u16 {
-    let format = image.texture_descriptor.format;
-    let Some(data) = image.data.as_deref() else {
-        return 0;
-    };
-
-    match format {
-        TextureFormat::Rgba8Unorm
-        | TextureFormat::Rgba8UnormSrgb
-        | TextureFormat::Bgra8Unorm
-        | TextureFormat::Bgra8UnormSrgb => {
-            let mut sum_r: u64 = 0;
-            let mut sum_g: u64 = 0;
-            let mut sum_b: u64 = 0;
-            let mut count: u64 = 0;
-
-            for px in data.chunks_exact(4) {
-                let (r, g, b, a) = match format {
-                    TextureFormat::Bgra8Unorm | TextureFormat::Bgra8UnormSrgb => {
-                        (px[2], px[1], px[0], px[3])
-                    }
-                    _ => (px[0], px[1], px[2], px[3]),
-                };
-
-                if a == 0 {
-                    continue;
-                }
-
-                sum_r += r as u64;
-                sum_g += g as u64;
-                sum_b += b as u64;
-                count += 1;
-            }
-
-            if count == 0 {
-                return 0;
-            }
-
-            let r = (sum_r / count) as u8;
-            let g = (sum_g / count) as u8;
-            let b = (sum_b / count) as u8;
-            rgba8_to_rgb565(r, g, b)
-        }
-        _ => 0,
-    }
 }
 
 #[cfg(test)]
@@ -232,13 +163,13 @@ pub(crate) fn update_minimap(
         if back_id != 0 {
             let cur = minimap.xmap[cell];
             if cur == 0 || cur == 0xffff {
-                minimap.xmap[cell] = minimap.avg_color_rgb565(back_id, gfx, images);
+                minimap.xmap[cell] = MiniMapState::avg_color_rgb565(back_id, gfx);
             }
         }
 
         // Objects override the background.
         if tile.obj1 > 0 {
-            minimap.xmap[cell] = minimap.avg_color_rgb565(tile.obj1 as usize, gfx, images);
+            minimap.xmap[cell] = MiniMapState::avg_color_rgb565(tile.obj1 as usize, gfx);
         }
     }
 

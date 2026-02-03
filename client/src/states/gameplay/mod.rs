@@ -37,9 +37,8 @@ use crate::font_cache::{FontCache, BITMAP_GLYPH_W};
 use crate::gfx_cache::GraphicsCache;
 use crate::network::{client_commands::ClientCommand, NetworkRuntime};
 use crate::player_state::PlayerState;
-use crate::systems::debug::{
-    profile_rendering_enabled, BitmapTextPerfAccum, GameplayDebugSettings, GameplayPerfAccum,
-};
+use crate::settings::UserSettingsState;
+use crate::systems::debug::{BitmapTextPerfAccum, GameplayDebugSettings, GameplayPerfAccum};
 use crate::systems::magic_postprocess::MagicScreenCamera;
 
 use mag_core::types::skilltab::{get_skill_name, get_skill_sortkey, MAX_SKILLS};
@@ -221,6 +220,7 @@ fn cmd_exit(
 pub(crate) fn run_gameplay_bitmap_text_renderer(
     mut commands: Commands,
     font_cache: Res<FontCache>,
+    user_settings: Res<UserSettingsState>,
     mut perf: Local<BitmapTextPerfAccum>,
     q_text: Query<
         (
@@ -232,7 +232,12 @@ pub(crate) fn run_gameplay_bitmap_text_renderer(
         Or<(Added<BitmapText>, Changed<BitmapText>)>,
     >,
 ) {
-    let perf_enabled = cfg!(debug_assertions) && profile_rendering_enabled();
+    let per_run_logging = user_settings.settings.log_performance_metrics;
+    let perf_enabled = per_run_logging;
+
+    if per_run_logging {
+        perf.reset_counters();
+    }
     let run_start = perf_enabled.then(Instant::now);
 
     let Some(layout) = font_cache.bitmap_layout() else {
@@ -327,7 +332,14 @@ pub(crate) fn run_gameplay_bitmap_text_renderer(
     if let Some(start) = run_start {
         perf.runs = perf.runs.saturating_add(1);
         perf.total += start.elapsed();
-        perf.maybe_report_and_reset();
+
+        let runs = perf.runs.max(1) as f64;
+        let ms_per_run = (perf.total.as_secs_f64() * 1000.0) / runs;
+        info!(
+            "perf bitmap_text (live): {:.3}ms/run (runs={} entities={} spawned={} despawned={})",
+            ms_per_run, perf.runs, perf.entities, perf.glyph_spawned, perf.glyph_despawned,
+        );
+        perf.reset_counters();
     }
 }
 
@@ -728,6 +740,7 @@ pub(crate) fn run_gameplay(
     gfx: Res<GraphicsCache>,
     mut images: ResMut<Assets<Image>>,
     mut player_state: ResMut<PlayerState>,
+    user_settings: Res<UserSettingsState>,
     mut minimap: ResMut<MiniMapState>,
     mut clock: Local<EngineClock>,
     mut opt_clock: Local<SendOptClock>,
@@ -832,7 +845,12 @@ pub(crate) fn run_gameplay(
         return;
     }
 
-    let perf_enabled = cfg!(debug_assertions) && profile_rendering_enabled();
+    let per_frame_logging = user_settings.settings.log_performance_metrics;
+    let perf_enabled = per_frame_logging;
+
+    if per_frame_logging {
+        perf.reset_counters();
+    }
     let frame_start = perf_enabled.then(Instant::now);
 
     // Match original client behavior: advance the engine visuals only when a full server tick
@@ -852,6 +870,15 @@ pub(crate) fn run_gameplay(
 
         if let Some(t0) = t0 {
             perf.engine_tick += t0.elapsed();
+        }
+    }
+
+    // Match original client behavior: after a shop action, re-LOOK the shop target
+    // to refresh the shop/depot window contents.
+    if did_tick && player_state.should_show_shop() && player_state.take_shop_refresh_requested() {
+        let target = player_state.shop_target().nr() as u32;
+        if target != 0 {
+            net.send(ClientCommand::new_look(target).to_bytes());
         }
     }
 
@@ -964,6 +991,20 @@ pub(crate) fn run_gameplay(
     if let Some(start) = frame_start {
         perf.frames = perf.frames.saturating_add(1);
         perf.total += start.elapsed();
-        perf.maybe_report_and_reset();
+
+        let frames = perf.frames.max(1) as f64;
+        let to_ms = |d: std::time::Duration| d.as_secs_f64() * 1000.0;
+        info!(
+            "perf gameplay (live): total={:.2}ms/f (engine={:.2} send_opt={:.2} minimap={:.2} shadows={:.2} tiles={:.2} ovl={:.2} ui={:.2})",
+            to_ms(perf.total) / frames,
+            to_ms(perf.engine_tick) / frames,
+            to_ms(perf.send_opt) / frames,
+            to_ms(perf.minimap) / frames,
+            to_ms(perf.world_shadows) / frames,
+            to_ms(perf.world_tiles) / frames,
+            to_ms(perf.world_overlays) / frames,
+            to_ms(perf.ui) / frames,
+        );
+        perf.reset_counters();
     }
 }
