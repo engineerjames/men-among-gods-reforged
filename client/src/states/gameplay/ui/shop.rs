@@ -293,8 +293,10 @@ pub(crate) fn run_gameplay_shop_input(
                 let shop_nr = shop.nr() as i16;
                 if mouse.just_released(MouseButton::Left) {
                     net.send(ClientCommand::new_shop(shop_nr, nr as i32).to_bytes());
+                    player_state.request_shop_refresh();
                 } else if mouse.just_released(MouseButton::Right) {
                     net.send(ClientCommand::new_shop(shop_nr, (nr + 62) as i32).to_bytes());
+                    player_state.request_shop_refresh();
                 }
             }
         }

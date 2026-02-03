@@ -22,6 +22,9 @@ pub struct PlayerState {
     log_revision: u64,
     should_show_look: bool,
     should_show_shop: bool,
+    // When true, request a fresh LOOK on the shop target on the next tick.
+    // This keeps depot/shop UI in sync after actions (deposit/withdraw/buy/sell).
+    shop_refresh_requested: bool,
     look_timer: f32,
     character_info: ClientPlayer,
 
@@ -68,6 +71,7 @@ impl Default for PlayerState {
             log_revision: 0,
             should_show_look: false,
             should_show_shop: false,
+            shop_refresh_requested: false,
             look_timer: 0.0,
             character_info: ClientPlayer::default(),
 
@@ -135,8 +139,21 @@ impl PlayerState {
     pub fn close_shop(&mut self) {
         if self.should_show_shop {
             self.should_show_shop = false;
+            self.shop_refresh_requested = false;
             self.mark_dirty();
         }
+    }
+
+    /// Request a shop/depot refresh on the next processed tick.
+    pub fn request_shop_refresh(&mut self) {
+        self.shop_refresh_requested = true;
+    }
+
+    /// Returns whether a refresh was requested and clears the flag.
+    pub fn take_shop_refresh_requested(&mut self) -> bool {
+        let was = self.shop_refresh_requested;
+        self.shop_refresh_requested = false;
+        was
     }
 
     pub fn should_show_look(&self) -> bool {
