@@ -236,5 +236,19 @@ pub fn run_menu(
                     user_settings.request_save();
                 }
             });
+
+            ui.separator();
+            ui.heading("Performance");
+
+            let mut perf_logging = user_settings.settings.log_performance_metrics;
+            if ui
+                .checkbox(&mut perf_logging, "Log performance metrics (per-frame)")
+                .changed()
+            {
+                user_settings.settings.log_performance_metrics = perf_logging;
+                user_settings.request_save();
+            }
+
+            ui.label("Writes one log line per frame while enabled (can get very large).");
         });
 }
