@@ -3819,7 +3819,9 @@ pub fn solved_pentagram(cn: usize, item_idx: usize) -> i32 {
 
     let new_solve = State::with_mut(|state| {
         state.penta_needed = characters_in_pents * 5 + rand::random::<usize>() % 6;
-        state.penta_needed
+
+        // Ensure at least 5 are needed
+        state.penta_needed.max(5)
     });
 
     log::info!(
