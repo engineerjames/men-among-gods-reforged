@@ -9,7 +9,7 @@ use crate::repository::Repository;
 use crate::state::State;
 use crate::{driver, helpers};
 
-const ALL_COMMANDS: &'static [&str; 129] = &[
+const ALL_COMMANDS: &'static [&str; 130] = &[
     "addban",
     "afk",
     "allow",
@@ -86,6 +86,7 @@ const ALL_COMMANDS: &'static [&str; 129] = &[
     "me",
     "mirror",
     "name",
+    "network",
     "nodesc",
     "noluck",
     "nolist",
@@ -1334,6 +1335,11 @@ impl State {
             Some("respawn") if f_giu => {
                 log::debug!("Processing respawn command for {}", cn);
                 self.do_respawn(cn, parse_usize(arg_get(1)));
+                return;
+            }
+            Some("network") if f_gius => {
+                log::debug!("Processing network command for {}", cn);
+                God::show_network_info(cn, args_get(0));
                 return;
             }
 
