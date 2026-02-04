@@ -4839,6 +4839,7 @@ pub fn plr_cmd(nr: usize) {
     if cmd != core::constants::CL_CMD_AUTOLOOK
         && cmd != core::constants::CL_PERF_REPORT
         && cmd != core::constants::CL_CMD_CTICK
+        && cmd != core::constants::CL_PING
     {
         let ticker = Repository::with_globals(|globals| globals.ticker as u32);
         Server::with_players_mut(|players| {
@@ -4850,6 +4851,10 @@ pub fn plr_cmd(nr: usize) {
     match cmd {
         core::constants::CL_PERF_REPORT => {
             plr_perf_report(nr);
+            return;
+        }
+        core::constants::CL_PING => {
+            plr_cmd_ping(nr);
             return;
         }
         core::constants::CL_CMD_LOOK => {
@@ -5806,6 +5811,35 @@ fn plr_cmd_ctick(nr: usize) {
         players[nr].rtick = rtick;
         players[nr].lasttick = ticker;
     });
+}
+
+/// Handle client ping request.
+///
+/// Reads `seq` and `client_time_ms` from the client's inbuf and replies with
+/// `SV_PONG`, echoing both values back to the client so it can compute RTT.
+fn plr_cmd_ping(nr: usize) {
+    let (seq, client_time_ms) = Server::with_players(|players| {
+        let seq = u32::from_le_bytes([
+            players[nr].inbuf[1],
+            players[nr].inbuf[2],
+            players[nr].inbuf[3],
+            players[nr].inbuf[4],
+        ]);
+        let client_time_ms = u32::from_le_bytes([
+            players[nr].inbuf[5],
+            players[nr].inbuf[6],
+            players[nr].inbuf[7],
+            players[nr].inbuf[8],
+        ]);
+        (seq, client_time_ms)
+    });
+
+    let mut buf = [0u8; 16];
+    buf[0] = core::constants::SV_PONG;
+    buf[1..5].copy_from_slice(&seq.to_le_bytes());
+    buf[5..9].copy_from_slice(&client_time_ms.to_le_bytes());
+
+    NetworkManager::with(|network| network.xsend(nr, &buf, 16));
 }
 
 /// Handle look at item on ground

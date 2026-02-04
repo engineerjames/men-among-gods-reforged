@@ -301,7 +301,7 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
         // Help request for good aligned characters
         if characters[cn].alignment > 1000
             && characters[cn].data[70] < ticker
-            && characters[cn].a_mana < (characters[cn].mana[5] * 333) as i32
+            && characters[cn].a_mana < characters[cn].mana[5] as i32 * 333
         {
             State::with(|state| {
                 state.do_sayx(cn, "Skua! Help me!");
@@ -312,8 +312,7 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
         }
 
         // Shout for help
-        if characters[cn].data[52] != 0 && characters[cn].a_hp < (characters[cn].hp[5] * 666) as i32
-        {
+        if characters[cn].data[52] != 0 && characters[cn].a_hp < characters[cn].hp[5] as i32 * 666 {
             if characters[cn].data[55] + (TICKS * 60) < ticker {
                 characters[cn].data[54] = 0;
                 characters[cn].data[55] = ticker;

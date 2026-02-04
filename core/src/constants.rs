@@ -634,6 +634,12 @@ pub const CL_CMD_INPUT8: u8 = 30;
 pub const CL_CMD_EXIT: u8 = 31;
 pub const CL_CMD_UNIQUE: u8 = 32;
 pub const CL_PASSWD: u8 = 33;
+/// Client ping request (custom extension).
+///
+/// Payload (little-endian):
+/// - u32 sequence @ +1
+/// - u32 client_time_ms @ +5
+pub const CL_PING: u8 = 34;
 pub const CL_CMD_CTICK: u8 = 255;
 
 // =============================================================================
@@ -705,6 +711,12 @@ pub const SV_SETCHAR_AMANA: u8 = 70;
 pub const SV_SETCHAR_DIR: u8 = 71;
 pub const SV_UNIQUE: u8 = 72;
 pub const SV_IGNORE: u8 = 73;
+/// Server pong response to `CL_PING` (custom extension).
+///
+/// Echoes the `CL_PING` payload:
+/// - u32 sequence @ +1
+/// - u32 client_time_ms @ +5
+pub const SV_PONG: u8 = 74;
 pub const SV_SETMAP: u8 = 128; // 128-255 are used !!!
 
 // =============================================================================

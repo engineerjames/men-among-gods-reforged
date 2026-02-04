@@ -35,6 +35,7 @@ pub enum ClientCommandType {
     CmdExit = 31,
     CmdUnique = 32,
     Passwd = 33,
+    Ping = 34,
     CmdCTick = 255,
 }
 
@@ -87,6 +88,14 @@ impl ClientCommand {
         payload.extend_from_slice(&x.to_le_bytes());
         payload.extend_from_slice(&y.to_le_bytes());
         payload.extend_from_slice(&z.to_le_bytes());
+        Self::new(cmd, payload)
+    }
+
+    /// Packet helper: u32 at +1, +5.
+    fn cmd_u32_u32(cmd: ClientCommandType, x: u32, y: u32) -> Self {
+        let mut payload = Vec::with_capacity(8);
+        payload.extend_from_slice(&x.to_le_bytes());
+        payload.extend_from_slice(&y.to_le_bytes());
         Self::new(cmd, payload)
     }
 
@@ -249,6 +258,14 @@ impl ClientCommand {
     pub fn new_tick(rtick: u32) -> Self {
         log::debug!("Building tick packet: rtick={}", rtick);
         Self::cmd_u32(ClientCommandType::CmdCTick, rtick)
+    }
+
+    /// Sends a ping to the server for RTT measurement.
+    ///
+    /// The server replies with `SV_PONG` echoing the sequence and timestamp.
+    pub fn new_ping(seq: u32, client_time_ms: u32) -> Self {
+        log::debug!("Building ping packet: seq={}, client_time_ms={}", seq, client_time_ms);
+        Self::cmd_u32_u32(ClientCommandType::Ping, seq, client_time_ms)
     }
 
     /// `CL_CMD_MOVE` (`inter.c::cmd`).
