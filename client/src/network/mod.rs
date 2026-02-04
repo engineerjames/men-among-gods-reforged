@@ -3,7 +3,9 @@ pub mod login;
 pub mod server_commands;
 pub mod tick_stream;
 
+use std::collections::HashMap;
 use std::sync::{mpsc, Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use bevy::prelude::*;
 use bevy::tasks::Task;
@@ -86,6 +88,16 @@ pub struct NetworkRuntime {
     /// In the original C client this is `ticker`, incremented once per processed server tick.
     client_ticker: u32,
     last_ctick_sent: u32,
+
+    // ---------------------------------------------------------------------
+    // Ping / Pong RTT tracking (custom extension)
+    // ---------------------------------------------------------------------
+    start_instant: Instant,
+    ping_seq: u32,
+    last_ping_sent_at: Option<Instant>,
+    pings_in_flight: HashMap<u32, Instant>,
+    last_rtt_ms: Option<u32>,
+    rtt_ewma_ms: Option<f32>,
 }
 
 impl Default for NetworkRuntime {
@@ -99,6 +111,12 @@ impl Default for NetworkRuntime {
             logged_in: false,
             client_ticker: 0,
             last_ctick_sent: 0,
+            start_instant: Instant::now(),
+            ping_seq: 0,
+            last_ping_sent_at: None,
+            pings_in_flight: HashMap::new(),
+            last_rtt_ms: None,
+            rtt_ewma_ms: None,
         }
     }
 }
@@ -107,6 +125,16 @@ impl NetworkRuntime {
     /// Returns the client-side tick counter (used for `CL_CMD_CTICK`).
     pub fn client_ticker(&self) -> u32 {
         self.client_ticker
+    }
+
+    /// Most recent measured RTT in milliseconds (from `CL_PING`/`SV_PONG`).
+    pub fn last_rtt_ms(&self) -> Option<u32> {
+        self.last_rtt_ms
+    }
+
+    /// Smoothed RTT (EWMA) in milliseconds.
+    pub fn rtt_ewma_ms(&self) -> Option<f32> {
+        self.rtt_ewma_ms
     }
 
     /// Queues raw bytes to be written to the server by the network task.
@@ -142,6 +170,12 @@ impl NetworkRuntime {
         self.logged_in = false;
         self.client_ticker = 0;
         self.last_ctick_sent = 0;
+        self.start_instant = Instant::now();
+        self.ping_seq = 0;
+        self.last_ping_sent_at = None;
+        self.pings_in_flight.clear();
+        self.last_rtt_ms = None;
+        self.rtt_ewma_ms = None;
     }
 }
 
@@ -177,8 +211,60 @@ impl Plugin for NetworkPlugin {
                     .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu)))
                     .in_set(NetworkSet::Send)
                     .after(NetworkSet::Receive),
+            )
+            .add_systems(
+                Update,
+                send_ping
+                    .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu)))
+                    .in_set(NetworkSet::Send)
+                    .after(NetworkSet::Receive),
             );
     }
+}
+
+/// Sends a periodic ping (`CL_PING`) used to compute effective RTT on the client.
+fn send_ping(mut net: ResMut<NetworkRuntime>) {
+    if !net.logged_in {
+        return;
+    }
+
+    // Don't start until we have processed at least one tick.
+    if net.client_ticker == 0 {
+        return;
+    }
+
+    // One ping every 5 seconds is plenty; keep it stable across framerates.
+    const PING_INTERVAL: Duration = Duration::from_secs(5);
+    const PING_TIMEOUT: Duration = Duration::from_secs(30);
+    const MAX_IN_FLIGHT: usize = 3;
+    let now = Instant::now();
+
+    // Expire stale ping entries (e.g. if the server stopped responding).
+    net.pings_in_flight
+        .retain(|_, sent_at| now.duration_since(*sent_at) <= PING_TIMEOUT);
+    if net.pings_in_flight.len() >= MAX_IN_FLIGHT {
+        return;
+    }
+
+    if let Some(last) = net.last_ping_sent_at {
+        if now.duration_since(last) < PING_INTERVAL {
+            return;
+        }
+    }
+
+    let client_time_ms: u32 = now
+        .duration_since(net.start_instant)
+        .as_millis()
+        .min(u128::from(u32::MAX)) as u32;
+
+    net.ping_seq = net.ping_seq.wrapping_add(1);
+    let seq = net.ping_seq;
+
+    net.last_ping_sent_at = Some(now);
+    net.pings_in_flight.insert(seq, now);
+
+    let cmd = client_commands::ClientCommand::new_ping(seq, client_time_ms);
+    net.send(cmd.to_bytes());
 }
 
 /// Sends the periodic client tick (`CL_CMD_CTICK`) while in gameplay.
@@ -266,23 +352,45 @@ fn process_network_events(
                 }
 
                 if let Some(cmd) = ServerCommand::from_bytes(&bytes) {
-                    if let server_commands::ServerCommandData::PlaySound { nr, vol, pan } =
-                        &cmd.structured_data
-                    {
-                        sound_queue.push_server_play_sound(*nr, *vol, *pan);
-                    } else {
-                        player_state.update_from_server_command(&cmd);
-                        log::debug!("Received server command: {:?}", cmd);
-
-                        // Persist updated character name/race once the full name arrives.
-                        // The server sends it in 3 chunks; chunk 3 completes the name.
-                        if matches!(cmd.structured_data, ServerCommandData::SetCharName3 { .. }) {
-                            user_settings.sync_character_from_player_state(&player_state);
-                            user_settings.request_save();
+                    match &cmd.structured_data {
+                        ServerCommandData::Pong {
+                            seq,
+                            client_time_ms,
+                        } => {
+                            if let Some(sent_at) = net.pings_in_flight.remove(seq) {
+                                let rtt_ms = sent_at.elapsed().as_millis() as u32;
+                                net.last_rtt_ms = Some(rtt_ms);
+                                net.rtt_ewma_ms = Some(match net.rtt_ewma_ms {
+                                    Some(prev) => prev * 0.8 + (rtt_ms as f32) * 0.2,
+                                    None => rtt_ms as f32,
+                                });
+                                log::info!(
+                                    "Ping RTT: {} ms (seq={}, client_time_ms={})",
+                                    rtt_ms,
+                                    seq,
+                                    client_time_ms
+                                );
+                            }
+                            continue;
                         }
+                        server_commands::ServerCommandData::PlaySound { nr, vol, pan } => {
+                            sound_queue.push_server_play_sound(*nr, *vol, *pan);
+                        }
+                        _ => {
+                            player_state.update_from_server_command(&cmd);
+                            log::debug!("Received server command: {:?}", cmd);
 
-                        if player_state.take_exit_requested_reason().is_some() {
-                            next_state.set(GameState::Exited);
+                            // Persist updated character name/race once the full name arrives.
+                            // The server sends it in 3 chunks; chunk 3 completes the name.
+                            if matches!(cmd.structured_data, ServerCommandData::SetCharName3 { .. })
+                            {
+                                user_settings.sync_character_from_player_state(&player_state);
+                                user_settings.request_save();
+                            }
+
+                            if player_state.take_exit_requested_reason().is_some() {
+                                next_state.set(GameState::Exited);
+                            }
                         }
                     }
                 } else {

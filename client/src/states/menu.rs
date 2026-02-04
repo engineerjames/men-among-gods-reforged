@@ -7,6 +7,7 @@ use bevy_egui::{
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::helpers::open_dir_in_file_manager;
+use crate::network::NetworkRuntime;
 use crate::player_state::PlayerState;
 use crate::settings::{UserSettingsState, VideoModeSetting};
 use crate::states::gameplay::CursorActionTextSettings;
@@ -42,6 +43,7 @@ pub fn run_menu(
     mut next_state: ResMut<NextState<GameState>>,
     mut menu_ui: ResMut<MenuUiState>,
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
+    net: Res<NetworkRuntime>,
     mut player_state: ResMut<PlayerState>,
     mut sound_settings: ResMut<SoundSettings>,
     mut cursor_action_text: ResMut<CursorActionTextSettings>,
@@ -76,6 +78,13 @@ pub fn run_menu(
         .resizable(false)
         .show(ctx, |ui| {
             ui.heading("Men Among Gods Reforged");
+
+            let rtt_text = match (net.last_rtt_ms(), net.rtt_ewma_ms()) {
+                (Some(last), Some(avg)) => format!("RTT: {last} ms (avg {:.0} ms)", avg),
+                (Some(last), None) => format!("RTT: {last} ms"),
+                _ => "RTT: —".to_string(),
+            };
+            ui.label(rtt_text);
 
             if let Some(err) = menu_ui.last_error.as_deref() {
                 ui.colored_label(egui::Color32::LIGHT_RED, err);

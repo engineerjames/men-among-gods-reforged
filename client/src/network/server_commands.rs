@@ -67,12 +67,17 @@ pub enum ServerCommandType {
     SetCharDir = 71,
     Unique = 72,
     Ignore = 73,
+    Pong = 74,
     SetMap = 128, // 128-255 are used !!!
 }
 
 #[derive(Debug)]
 pub enum ServerCommandData {
     Empty,
+    Pong {
+        seq: u32,
+        client_time_ms: u32,
+    },
     SetMap {
         /// For SV_SETMAP opcodes, the lower 7 bits encode an offset (0 means absolute index is present).
         off: u8,
@@ -879,6 +884,13 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
             ServerCommandType::Ignore,
             ServerCommandData::Ignore {
                 _size: read_u32(bytes, 1)?,
+            },
+        )),
+        74 => Some((
+            ServerCommandType::Pong,
+            ServerCommandData::Pong {
+                seq: read_u32(bytes, 1)?,
+                client_time_ms: read_u32(bytes, 5)?,
             },
         )),
         // NOTE: Any opcode with 0x80 set is handled by the early-return SetMap branch above.
