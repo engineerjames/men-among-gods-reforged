@@ -1,3 +1,5 @@
+use core::constants::TICKS;
+
 use crate::god::God;
 use crate::repository::Repository;
 use crate::state::State;
@@ -39,7 +41,7 @@ impl State {
         // get_depot_cost placeholder
         let tmp = 0;
         if tmp != 0 {
-            self.do_character_log(cn, core::types::FontColor::Yellow, &format!("The rent for your depot is {}G {}S per Astonian day or {}G {}S per Earth day.\n", tmp / 100, tmp % 100, (tmp * 18) / 100, (tmp * 18) % 100));
+            self.do_character_log(cn, core::types::FontColor::Yellow, &format!("The rent for your depot is {}G {}S per Astonian day or {}G {}S per Earth day.\n", tmp / 100, tmp % 100, (tmp * TICKS) / 100, (tmp * TICKS) % 100));
         }
 
         if depot_sold != 0 {

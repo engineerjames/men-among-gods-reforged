@@ -5,6 +5,13 @@ use crate::{god::God, helpers, player, populate, repository::Repository, state::
 pub struct EffectManager {}
 
 impl EffectManager {
+    // Animation duration constants - doubled for TICKS=36 (was designed for TICKS=18)
+    // Each animation frame is displayed for 2 ticks to maintain original animation speed
+    const EFFECT_DEATH_MIST_DURATION: u32 = 38; // 19 frames * 2 ticks per frame
+    const EFFECT_DEATH_MIST_MIDPOINT: u32 = 18; // Midpoint at frame 9 * 2
+    const EFFECT_TOMBSTONE_DURATION: u32 = 58; // 29 frames * 2 ticks per frame
+    const EFFECT_MAGIC_DURATION: u32 = 16; // 8 frames * 2 ticks per frame
+
     /// Port of `can_drop(int m)` from `svr_effect.cpp`
     /// Checks if an item can be dropped at the given map index
     pub fn can_drop(map_index: usize) -> bool {
@@ -144,7 +151,7 @@ impl EffectManager {
             let map_index = effects[n].data[0] as usize
                 + effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
 
-            if effects[n].duration == 19 {
+            if effects[n].duration == Self::EFFECT_DEATH_MIST_DURATION {
                 effects[n].used = core::constants::USE_EMPTY;
 
                 Repository::with_map_mut(|map| {
@@ -153,10 +160,10 @@ impl EffectManager {
             } else {
                 Repository::with_map_mut(|map| {
                     map[map_index].flags &= !core::constants::MF_GFX_DEATH;
-                    map[map_index].flags |= (effects[n].duration as u64) << 40;
+                    map[map_index].flags |= ((effects[n].duration / 2) as u64) << 40;
                 });
 
-                if effects[n].duration == 9 {
+                if effects[n].duration == Self::EFFECT_DEATH_MIST_MIDPOINT {
                     let co = effects[n].data[2] as usize;
                     player::plr_map_remove(co);
 
@@ -208,7 +215,7 @@ impl EffectManager {
             let map_index = effects[n].data[0] as usize
                 + effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
 
-            if effects[n].duration == 29 {
+            if effects[n].duration == Self::EFFECT_TOMBSTONE_DURATION {
                 effects[n].used = core::constants::USE_EMPTY;
                 let co = effects[n].data[2] as usize;
 
@@ -285,7 +292,7 @@ impl EffectManager {
             } else {
                 Repository::with_map_mut(|map| {
                     map[map_index].flags &= !core::constants::MF_GFX_TOMB;
-                    map[map_index].flags |= (effects[n].duration as u64) << 35;
+                    map[map_index].flags |= ((effects[n].duration / 2) as u64) << 35;
                 });
             }
         });
@@ -303,7 +310,7 @@ impl EffectManager {
             let map_index = effects[n].data[0] as usize
                 + effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
 
-            if effects[n].duration == 8 {
+            if effects[n].duration == Self::EFFECT_MAGIC_DURATION {
                 effects[n].used = core::constants::USE_EMPTY;
                 Repository::with_map_mut(|map| {
                     map[map_index].flags &= !core::constants::MF_GFX_EMAGIC;
@@ -311,7 +318,7 @@ impl EffectManager {
             } else {
                 Repository::with_map_mut(|map| {
                     map[map_index].flags &= !core::constants::MF_GFX_EMAGIC;
-                    map[map_index].flags |= (effects[n].duration as u64) << 45;
+                    map[map_index].flags |= ((effects[n].duration / 2) as u64) << 45;
                 });
             }
         });
@@ -329,7 +336,7 @@ impl EffectManager {
             let map_index = effects[n].data[0] as usize
                 + effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
 
-            if effects[n].duration == 8 {
+            if effects[n].duration == Self::EFFECT_MAGIC_DURATION {
                 effects[n].used = core::constants::USE_EMPTY;
                 Repository::with_map_mut(|map| {
                     map[map_index].flags &= !core::constants::MF_GFX_GMAGIC;
@@ -337,7 +344,7 @@ impl EffectManager {
             } else {
                 Repository::with_map_mut(|map| {
                     map[map_index].flags &= !core::constants::MF_GFX_GMAGIC;
-                    map[map_index].flags |= (effects[n].duration as u64) << 48;
+                    map[map_index].flags |= ((effects[n].duration / 2) as u64) << 48;
                 });
             }
         });
@@ -355,7 +362,7 @@ impl EffectManager {
             let map_index = effects[n].data[0] as usize
                 + effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
 
-            if effects[n].duration == 8 {
+            if effects[n].duration == Self::EFFECT_MAGIC_DURATION {
                 effects[n].used = core::constants::USE_EMPTY;
                 Repository::with_map_mut(|map| {
                     map[map_index].flags &= !core::constants::MF_GFX_CMAGIC;
@@ -363,7 +370,7 @@ impl EffectManager {
             } else {
                 Repository::with_map_mut(|map| {
                     map[map_index].flags &= !core::constants::MF_GFX_CMAGIC;
-                    map[map_index].flags |= (effects[n].duration as u64) << 51;
+                    map[map_index].flags |= ((effects[n].duration / 2) as u64) << 51;
                 });
             }
         });
@@ -381,7 +388,7 @@ impl EffectManager {
             let map_index = effects[n].data[0] as usize
                 + effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
 
-            if effects[n].duration == 19 {
+            if effects[n].duration == Self::EFFECT_DEATH_MIST_DURATION {
                 effects[n].used = core::constants::USE_EMPTY;
                 Repository::with_map_mut(|map| {
                     map[map_index].flags &= !core::constants::MF_GFX_DEATH;
@@ -389,10 +396,10 @@ impl EffectManager {
             } else {
                 Repository::with_map_mut(|map| {
                     map[map_index].flags &= !core::constants::MF_GFX_DEATH;
-                    map[map_index].flags |= (effects[n].duration as u64) << 40;
+                    map[map_index].flags |= ((effects[n].duration / 2) as u64) << 40;
                 });
 
-                if effects[n].duration == 9 {
+                if effects[n].duration == Self::EFFECT_DEATH_MIST_MIDPOINT {
                     Repository::with_map_mut(|map| {
                         // See note above about cast/negation precedence.
                         map[map_index].flags &= !(core::constants::MF_MOVEBLOCK as u64);
@@ -560,7 +567,7 @@ impl EffectManager {
             let map_index = effects[n].data[0] as usize
                 + effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
 
-            if effects[n].duration == 19 {
+            if effects[n].duration == Self::EFFECT_DEATH_MIST_DURATION {
                 effects[n].used = core::constants::USE_EMPTY;
                 Repository::with_map_mut(|map| {
                     map[map_index].flags &= !core::constants::MF_GFX_DEATH;
@@ -568,7 +575,7 @@ impl EffectManager {
             } else {
                 Repository::with_map_mut(|map| {
                     map[map_index].flags &= !core::constants::MF_GFX_DEATH;
-                    map[map_index].flags |= (effects[n].duration as u64) << 40;
+                    map[map_index].flags |= ((effects[n].duration / 2) as u64) << 40;
                 });
             }
         });

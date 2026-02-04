@@ -3,7 +3,7 @@ use bevy::prelude::*;
 
 use bevy::ecs::query::Without;
 use bevy::sprite::Anchor;
-use mag_core::constants::{TILEX, TILEY};
+use mag_core::constants::{MAX_SPEEDTAB_INDEX, TILEX, TILEY};
 
 use std::cmp::Ordering;
 use std::time::Instant;
@@ -863,7 +863,7 @@ pub(crate) fn run_gameplay(
     // This matches the original client where engine_tick() is called once per tick packet.
     if net_ticker != clock.ticker {
         let t0 = perf_enabled.then(Instant::now);
-        let ctick = player_state.local_ctick().min(19) as usize;
+        let ctick = player_state.local_ctick().min(MAX_SPEEDTAB_INDEX as u8) as usize;
         clock.ticker = net_ticker;
         legacy_engine::engine_tick(&mut player_state, clock.ticker, ctick);
         did_tick = true;

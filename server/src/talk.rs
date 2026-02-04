@@ -1,4 +1,4 @@
-use core::constants::{CT_COMPANION, NT_GOTMISS, SERVER_MAPX, SERVER_MAPY};
+use core::constants::{CT_COMPANION, NT_GOTMISS, SERVER_MAPX, SERVER_MAPY, TICKS};
 use core::string_operations::c_string_to_str;
 
 struct Know {
@@ -1933,8 +1933,8 @@ pub fn answer_spellinfo(cn: usize, co: usize) {
             for n in 0..20 {
                 let spell_idx = characters[cn].spell[n] as usize;
                 if spell_idx != 0 && core::types::Item::is_sane_item(spell_idx) {
-                    let minutes = items[spell_idx].active / (18 * 60);
-                    let seconds = (items[spell_idx].active / 18) % 60;
+                    let minutes = items[spell_idx].active / (TICKS as u32 * 60);
+                    let seconds = (items[spell_idx].active / TICKS as u32) % 60;
                     let name = items[spell_idx].get_name();
 
                     State::with(|state| {

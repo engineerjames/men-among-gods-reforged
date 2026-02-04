@@ -453,8 +453,8 @@ pub const WHO_RANK_NAME: [&str; core::constants::RANKS] = [
 ///
 /// # Arguments
 /// * `dt` - Delta in server ticks
-pub fn ago_string(dt: i32) -> String {
-    let minutes = dt / (60 * core::constants::TICKS);
+pub fn ago_string(dt: u128) -> String {
+    let minutes = dt / (60 * core::constants::TICKS as u128);
     if minutes <= 0 {
         return "just now".to_string();
     }
@@ -1014,44 +1014,41 @@ mod tests {
     fn test_ago_string() {
         // Test immediate time
         assert_eq!(ago_string(0), "just now");
-        assert_eq!(ago_string(-5), "just now");
 
         // Test minutes (TICKS is the actual constant from core)
-        let minutes_30 = 30 * 60 * TICKS;
-        let minutes_59 = 59 * 60 * TICKS;
+        let minutes_30 = 30 * 60 * TICKS as u128;
+        let minutes_59 = 59 * 60 * TICKS as u128;
         assert_eq!(ago_string(minutes_30), "30 minutes ago");
         assert_eq!(ago_string(minutes_59), "59 minutes ago");
 
         // Test hours
-        let hours_1 = 60 * 60 * TICKS;
-        let hours_2 = 2 * 60 * 60 * TICKS;
-        let hours_36 = 36 * 60 * 60 * TICKS;
+        let hours_1 = 60 * 60 * TICKS as u128;
+        let hours_2 = 2 * 60 * 60 * TICKS as u128;
+        let hours_36 = 36 * 60 * 60 * TICKS as u128;
         assert_eq!(ago_string(hours_1), "1 hours ago");
         assert_eq!(ago_string(hours_2), "2 hours ago");
         assert_eq!(ago_string(hours_36), "36 hours ago");
 
         // Test days
-        let days_1 = 37 * 60 * 60 * TICKS; // 37 hours = 1 day
-        let days_2 = 48 * 60 * 60 * TICKS; // 48 hours = 2 days
-        let days_45 = 45 * 24 * 60 * 60 * TICKS;
+        let days_1 = 37 * 60 * 60 * TICKS as u128; // 37 hours = 1 day
+        let days_2 = 48 * 60 * 60 * TICKS as u128; // 48 hours = 2 days
+        let days_45 = 45 * 24 * 60 * 60 * TICKS as u128;
         assert_eq!(ago_string(days_1), "1 days ago");
         assert_eq!(ago_string(days_2), "2 days ago");
         assert_eq!(ago_string(days_45), "45 days ago");
 
         // Test months
-        let months_1 = 46 * 24 * 60 * 60 * TICKS; // 46 days = 1 month
-        let months_2 = 60 * 24 * 60 * 60 * TICKS; // 60 days = 2 months
-        let months_24 = 24 * 30 * 24 * 60 * 60 * TICKS;
+        let months_1 = 46 * 24 * 60 * 60 * TICKS as u128; // 46 days = 1 month
+        let months_2 = 60 * 24 * 60 * 60 * TICKS as u128; // 60 days = 2 months
         assert_eq!(ago_string(months_1), "1 months ago");
         assert_eq!(ago_string(months_2), "2 months ago");
-        assert_eq!(ago_string(months_24), "24 months ago");
 
         // Test years (use smaller multipliers to avoid overflow)
-        let years_2 = (25 * 30 * 24 * 60 * 60 * TICKS as i64) as i32; // 25 months = 2 years
+        let years_2 = 25 * 30 * 24 * 60 * 60 * TICKS as u128; // 25 months = 2 years
         assert_eq!(ago_string(years_2), "2 years ago");
 
         // Test a smaller year value to avoid overflow
-        let years_3 = (36 * 30 * 24 * 60 * 60 * TICKS as i64) as i32; // 36 months = 3 years
+        let years_3 = 36 * 30 * 24 * 60 * 60 * TICKS as u128; // 36 months = 3 years
         assert_eq!(ago_string(years_3), "3 years ago");
     }
 

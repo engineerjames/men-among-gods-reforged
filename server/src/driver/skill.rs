@@ -918,7 +918,7 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
             return 0;
         }
         State::with(|state| {
-            state.do_character_log(cn, FontColor::Yellow, "Your weapon feels stronger.\n")
+            state.do_character_log(cn, FontColor::Green, "Your weapon feels stronger.\n")
         });
         let sound = Repository::with_characters(|ch| ch[cn].sound);
         State::char_play_sound(cn, sound as i32 + 1, -150, 0);
@@ -1152,7 +1152,7 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
             return 0;
         }
         State::with(|state| {
-            state.do_character_log(cn, FontColor::Yellow, "You have been blessed.\n")
+            state.do_character_log(cn, FontColor::Green, "You have been blessed.\n")
         });
         let sound = Repository::with_characters(|ch| ch[cn].sound);
         State::char_play_sound(cn, sound as i32 + 1, -150, 0);
@@ -2312,8 +2312,8 @@ pub fn char_info(cn: usize, co: usize) {
         if in_idx != 0 {
             let item_name = Repository::with_items(|it| it[in_idx].get_name().to_string());
             let active = Repository::with_items(|it| it[in_idx].active);
-            let minutes = active / (18 * 60);
-            let seconds = (active / 18) % 60;
+            let minutes = active / (TICKS as u32 * 60);
+            let seconds = (active / TICKS as u32) % 60;
             let power = Repository::with_items(|it| it[in_idx].power);
             State::with(|state| {
                 state.do_character_log(
