@@ -2,7 +2,7 @@ use core::{
     constants::{
         CharacterFlags, ItemFlags, INFRARED, INJURED, INJURED1, INJURED2, INVIS, ISCHAR, ISITEM,
         ISUSABLE, MF_GFX_CMAGIC, MF_GFX_DEATH, MF_GFX_EMAGIC, MF_GFX_GMAGIC, MF_GFX_INJURED,
-        MF_GFX_INJURED1, MF_GFX_INJURED2, MF_GFX_TOMB, MF_UWATER, SPEEDTAB, STONED, STUNNED,
+        MF_GFX_INJURED1, MF_GFX_INJURED2, MF_GFX_TOMB, MF_UWATER, SPEEDTAB, STONED, STUNNED, TICKS,
         UWATER,
     },
     encrypt::xcrypt,
@@ -1656,12 +1656,6 @@ pub fn player_driver_med(cn: usize) {
     });
 }
 
-/// Client list stub (not implemented)
-///
-/// Placeholder for the client list command – intended to handle listing
-/// connected clients or similar functionality in the original server.
-pub fn cl_list() {}
-
 /// Port of `plr_drop` from `svr_act.cpp`
 ///
 /// Drops the currently carried item (cursor/item in hand) onto the tile in
@@ -2501,9 +2495,12 @@ pub fn plr_act(cn: usize) {
 /// # Arguments
 /// * `n` - Character index
 pub fn speedo(n: usize) -> i32 {
-    let speed = Repository::with_characters(|characters| characters[n].speed as usize);
-    let ctick =
-        Repository::with_globals(|globals| (globals.ticker % core::constants::TICKS) as usize);
+    let speed = Repository::with_characters(|characters| {
+        (characters[n].speed as usize).min(core::constants::MAX_SPEEDTAB_SPEED_INDEX)
+    });
+    let ctick = Repository::with_globals(|globals| {
+        globals.ticker as usize % core::constants::CTICK_CYCLE_LEN
+    });
     SPEEDTAB[speed][ctick] as i32
 }
 
@@ -3137,7 +3134,9 @@ fn plr_newlogin(nr: usize) {
     // send tick
     let mut tbuf: [u8; 2] = [0; 2];
     tbuf[0] = core::constants::SV_TICK;
-    tbuf[1] = Repository::with_globals(|globals| (globals.ticker % core::constants::TICKS) as u8);
+    tbuf[1] = Repository::with_globals(|globals| {
+        (globals.ticker as usize % core::constants::CTICK_CYCLE_LEN) as u8
+    });
     NetworkManager::with(|network| {
         network.xsend(nr, &tbuf, 2);
     });
@@ -3313,7 +3312,9 @@ fn plr_login(nr: usize) {
     // send tick
     let mut tbuf: [u8; 2] = [0; 2];
     tbuf[0] = core::constants::SV_TICK;
-    tbuf[1] = Repository::with_globals(|globals| (globals.ticker % core::constants::TICKS) as u8);
+    tbuf[1] = Repository::with_globals(|globals| {
+        (globals.ticker as usize % core::constants::CTICK_CYCLE_LEN) as u8
+    });
     NetworkManager::with(|network| {
         network.xsend(nr, &tbuf, 2);
     });
@@ -4707,7 +4708,7 @@ pub fn plr_tick(nr: usize) {
             log::info!(
                 "Character '{}' turned to stone due to lag ({:.2}s)",
                 ch[cn].get_name(),
-                (ltick.wrapping_sub(rtick)) as f64 / 18.0
+                (ltick.wrapping_sub(rtick)) as f64 / TICKS as f64
             );
             ch[cn].flags |= CharacterFlags::Stoned.bits();
         });
@@ -4717,7 +4718,7 @@ pub fn plr_tick(nr: usize) {
     else if ltick
         < rtick
             .wrapping_add(data_19 as u32)
-            .wrapping_sub(core::constants::TICKS as u32)
+            .wrapping_sub(TICKS as u32)
         && is_stoned
     {
         Repository::with_characters_mut(|ch| {

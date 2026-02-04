@@ -1,4 +1,6 @@
-use core::constants::{CharacterFlags, ItemFlags, MAXCHARS};
+use core::constants::{
+    CharacterFlags, ItemFlags, MAXCHARS, MAX_SPEEDTAB_SPEED_INDEX, MIN_SPEEDTAB_INDEX,
+};
 use core::types::FontColor;
 
 use crate::core::types::skilltab;
@@ -405,7 +407,9 @@ impl State {
             }
 
             characters[cn].speed = 20 - speed_calc as i16;
-            characters[cn].speed = characters[cn].speed.clamp(0, 19);
+            characters[cn].speed = characters[cn]
+                .speed
+                .clamp(MIN_SPEEDTAB_INDEX as i16, MAX_SPEEDTAB_SPEED_INDEX as i16);
 
             // Cap current stats at their maximums
             if characters[cn].a_hp > characters[cn].hp[5] as i32 * 1000 {

@@ -3,7 +3,10 @@ use bevy::prelude::*;
 use crate::gfx_cache::GraphicsCache;
 use crate::player_state::PlayerState;
 
-use mag_core::constants::{SPEEDTAB, STUNNED, TILEX, TILEY, XPOS, YPOS};
+use mag_core::constants::{
+    MAX_CTICK_INDEX, MAX_SPEEDTAB_SPEED_INDEX, MIN_SPEEDTAB_INDEX, SPEEDTAB, STUNNED, TILEX, TILEY,
+    XPOS, YPOS,
+};
 
 /// Computes the on-screen position for `copysprite`-style isometric sprite drawing.
 ///
@@ -62,15 +65,15 @@ const STATTAB: [i32; 11] = [0, 1, 1, 6, 6, 2, 3, 4, 5, 7, 4];
 #[inline]
 /// Returns whether this `ctick` advances animation/movement for `ch_speed`.
 fn speedo(ch_speed: u8, ctick: usize) -> bool {
-    let speed = (ch_speed as usize).min(19);
-    SPEEDTAB[speed][ctick.min(19)] != 0
+    let speed = (ch_speed as usize).min(MAX_SPEEDTAB_SPEED_INDEX);
+    SPEEDTAB[speed][ctick.min(MAX_CTICK_INDEX)] != 0
 }
 
 /// Computes a smooth per-frame offset for movement animations.
 ///
 /// When `update` is true, advances the internal stepping based on `SPEEDTAB`.
 fn speedstep(ch_speed: u8, ch_status: u8, d: i32, s: i32, update: bool, ctick: usize) -> i32 {
-    let speed = (ch_speed as usize).min(19);
+    let speed = (ch_speed as usize).min(MAX_SPEEDTAB_SPEED_INDEX);
     let hard_step = (ch_status as i32) - d;
 
     if !update {
@@ -83,8 +86,8 @@ fn speedstep(ch_speed: u8, ch_status: u8, d: i32, s: i32, update: bool, ctick: u
 
     while m != 0 {
         z -= 1;
-        if z < 0 {
-            z = 19;
+        if z < MIN_SPEEDTAB_INDEX as i32 {
+            z = MAX_CTICK_INDEX as i32;
         }
         soft_step += 1;
         if SPEEDTAB[speed][z as usize] != 0 {
@@ -93,8 +96,8 @@ fn speedstep(ch_speed: u8, ch_status: u8, d: i32, s: i32, update: bool, ctick: u
     }
     loop {
         z -= 1;
-        if z < 0 {
-            z = 19;
+        if z < MIN_SPEEDTAB_INDEX as i32 {
+            z = MAX_CTICK_INDEX as i32;
         }
         if SPEEDTAB[speed][z as usize] != 0 {
             break;
@@ -115,8 +118,8 @@ fn speedstep(ch_speed: u8, ch_status: u8, d: i32, s: i32, update: bool, ctick: u
             break;
         }
         z += 1;
-        if z > 19 {
-            z = 0;
+        if z > MAX_CTICK_INDEX as i32 {
+            z = MIN_SPEEDTAB_INDEX as i32;
         }
         total_step += 1;
     }

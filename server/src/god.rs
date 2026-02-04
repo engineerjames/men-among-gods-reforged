@@ -2066,7 +2066,7 @@ impl God {
                             core::types::FontColor::Yellow,
                             &format!(
                                 "Last PvP attack: {}, against {}.\n",
-                                helpers::ago_string(dt),
+                                helpers::ago_string(dt as u128),
                                 victim_name
                             ),
                         )
@@ -2077,7 +2077,7 @@ impl God {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Yellow,
-                        &format!("Last PvP attack: {}.\n", helpers::ago_string(dt)),
+                        &format!("Last PvP attack: {}.\n", helpers::ago_string(dt as u128)),
                     )
                 });
             }
@@ -5507,9 +5507,14 @@ impl God {
         });
     }
 
-    /// Display network information and RTT for a character.
+    /// Display basic network timing for a character.
     ///
-    /// Shows round-trip time, client tick, server tick, last packet time, and connection info.
+    /// Note: the current protocol does not provide a true RTT measurement.
+    /// The client periodically sends its own tick counter (`CL_CMD_CTICK`),
+    /// and the server maintains a per-connection tick counter (`ltick`).
+    /// The difference `ltick - rtick` is a *tick lag* / backlog indicator
+    /// (how far behind the client is), which we report as an approximate
+    /// latency in milliseconds.
     pub fn show_network_info(cn: usize, target: &str) {
         if !Character::is_sane_character(cn) {
             return;
@@ -5611,121 +5616,43 @@ impl God {
 
         let player_id = player_id as usize;
 
-        // Get network stats from the player slot
-        let (rtick, lasttick, lasttick2, addr, state_val) = Server::with_players(|players| {
-            (
-                players[player_id].rtick,
-                players[player_id].lasttick,
-                players[player_id].lasttick2,
-                players[player_id].addr,
-                players[player_id].state,
-            )
-        });
+        // Get timing counters from the player slot.
+        // - `ltick` is server-maintained (increments each server tick)
+        // - `rtick` is client-maintained (sent via CL_CMD_CTICK)
+        let (ltick, rtick) =
+            Server::with_players(|players| (players[player_id].ltick, players[player_id].rtick));
 
-        let server_tick = Repository::with_globals(|globals| globals.ticker);
+        // `rtick` starts at 0 and only updates when we receive CTICK.
+        // Until then, we can't compute a meaningful lag.
+        let lag_ms: Option<f64> = if rtick == 0 {
+            None
+        } else {
+            let lag_ticks = ltick.wrapping_sub(rtick);
+            Some((lag_ticks as f64 * 1000.0) / core::constants::TICKS as f64)
+        };
 
-        // Calculate RTT (round trip time) in ticks
-        // This is approximate: (server_tick - lasttick) represents the time since last packet
-        let rtt_ticks = server_tick.saturating_sub(lasttick as i32);
-        let rtt_ms = (rtt_ticks as f32 * 1000.0) / core::constants::TICKS as f32;
-
-        // Calculate time since last non-automated command
-        let idle_ticks = server_tick.saturating_sub(lasttick2 as i32);
-        let idle_seconds = idle_ticks / core::constants::TICKS;
-
-        // Calculate client vs server tick difference
-        let tick_diff = server_tick as i64 - rtick as i64;
-
-        // Decode IP address
-        let ip_a = (addr & 0xFF) as u8;
-        let ip_b = ((addr >> 8) & 0xFF) as u8;
-        let ip_c = ((addr >> 16) & 0xFF) as u8;
-        let ip_d = ((addr >> 24) & 0xFF) as u8;
-
-        // Build the info message
         State::with(|state| {
             state.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
-                &format!("═══ Network Info for {} ═══\n", target_name),
+                "Name               Lag(ms)\n",
             );
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "-------------------------\n",
+            );
+
+            let lag_str = match lag_ms {
+                Some(ms) => format!("{ms:>7.0}"),
+                None => "   n/a".to_string(),
+            };
 
             state.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
-                &format!("IP Address: {}.{}.{}.{}\n", ip_a, ip_b, ip_c, ip_d),
-            );
-
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                &format!("Connection State: {}\n", state_val),
-            );
-
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "─────────────────────────\n",
-            );
-
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                &format!(
-                    "RTT (Round Trip Time): {} ticks (~{:.0} ms)\n",
-                    rtt_ticks, rtt_ms
-                ),
-            );
-
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                &format!("Client Tick: {} | Server Tick: {}\n", rtick, server_tick),
-            );
-
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                &format!("Tick Difference: {}\n", tick_diff),
-            );
-
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "─────────────────────────\n",
-            );
-
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                &format!("Last Packet: {} ticks ago\n", rtt_ticks),
-            );
-
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                &format!(
-                    "Last Command: {} ticks ago (~{} seconds)\n",
-                    idle_ticks, idle_seconds
-                ),
-            );
-
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "═════════════════════════\n",
+                &format!("{:<18} {}\n", target_name, lag_str),
             );
         });
-
-        log::info!(
-            "Network info displayed for character {} (player {}): RTT={} ticks, IP={}.{}.{}.{}",
-            target_cn,
-            player_id,
-            rtt_ticks,
-            ip_a,
-            ip_b,
-            ip_c,
-            ip_d
-        );
     }
 }

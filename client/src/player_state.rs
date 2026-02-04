@@ -1,5 +1,9 @@
 use bevy::ecs::resource::Resource;
-use mag_core::{circular_buffer::CircularBuffer, constants::TICKS, types::ClientPlayer};
+use mag_core::{
+    circular_buffer::CircularBuffer,
+    constants::{MAX_SPEEDTAB_INDEX, TICKS},
+    types::ClientPlayer,
+};
 
 use crate::{
     helpers::exit_reason_string,
@@ -41,7 +45,7 @@ pub struct PlayerState {
     unique1: u32,
     unique2: u32,
 
-    // Server-provided ctick (0..19), sent in ServerCommandData::Tick.
+    // Server-provided ctick (0..MAX_SPEEDTAB_INDEX), sent in ServerCommandData::Tick.
     // Using this keeps SPEEDTAB-based animations perfectly in-phase with the server.
     server_ctick: u8,
     server_ctick_pending: bool,
@@ -254,10 +258,10 @@ impl PlayerState {
         }
 
         if self.server_ctick_pending {
-            self.local_ctick = self.server_ctick.min(19);
+            self.local_ctick = self.server_ctick.min(MAX_SPEEDTAB_INDEX as u8);
             self.server_ctick_pending = false;
         } else {
-            self.local_ctick = (self.local_ctick + 1) % 20;
+            self.local_ctick = (self.local_ctick + 1) % (MAX_SPEEDTAB_INDEX as u8 + 1);
         }
     }
 
