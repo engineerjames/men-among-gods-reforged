@@ -2958,12 +2958,12 @@ pub fn use_pile(cn: usize, item_idx: usize) -> i32 {
     }
 
     // Roll for loot
-    if !rand::random::<u32>().is_multiple_of(chance) {
+    if crate::helpers::random_mod(chance) != 0 {
         return 1; // Nothing found
     }
 
     // Determine what to give based on level
-    let tmp_idx = (rand::random::<u32>() % 30) as usize + (level as usize * 30);
+    let tmp_idx = crate::helpers::random_mod_usize(30) + (level as usize * 30);
     let tmp_idx = tmp_idx.min(89); // Clamp to valid range
     let tmp = FIND[tmp_idx];
 
@@ -3579,7 +3579,9 @@ pub fn boost_char(cn: usize, divi: usize) -> i32 {
     Repository::with_characters_mut(|characters| {
         for n in 0..5 {
             if characters[cn].attrib[n][0] as i32 > divi as i32 {
-                let boost = rand::random::<u8>() % (characters[cn].attrib[n][0] / divi as u8);
+                let boost =
+                    crate::helpers::random_mod(characters[cn].attrib[n][0] as u32 / divi as u32)
+                        as u8;
                 characters[cn].attrib[n][0] = characters[cn].attrib[n][0].saturating_add(boost);
             }
         }
@@ -3587,7 +3589,9 @@ pub fn boost_char(cn: usize, divi: usize) -> i32 {
         // Boost skills
         for n in 0..MAXSKILL {
             if characters[cn].skill[n][0] as i32 > divi as i32 {
-                let boost = rand::random::<u8>() % (characters[cn].skill[n][0] / divi as u8);
+                let boost =
+                    crate::helpers::random_mod(characters[cn].skill[n][0] as u32 / divi as u32)
+                        as u8;
                 characters[cn].skill[n][0] = characters[cn].skill[n][0].saturating_add(boost);
             }
         }
@@ -3606,7 +3610,7 @@ pub fn boost_char(cn: usize, divi: usize) -> i32 {
     if let Some(in_idx) = God::create_item(1146) {
         let (exp, rank) = Repository::with_characters(|characters| {
             let exp = characters[cn].points_tot as u32 / 10
-                + (rand::random::<u32>() % (characters[cn].points_tot as u32 / 20 + 1));
+                + crate::helpers::random_mod(characters[cn].points_tot as u32 / 20 + 1);
             let rank = core::ranks::points2rank(exp);
             (exp, rank)
         });
@@ -3643,13 +3647,13 @@ pub fn spawn_penta_enemy(item_idx: usize) -> i32 {
     let data9 = Repository::with_items(|items| items[item_idx].data[9]);
 
     let mut tmp = if data9 == 10 {
-        (rand::random::<u32>() % 2) + 9
+        crate::helpers::random_mod(2) + 9
     } else if data9 == 11 {
-        (rand::random::<u32>() % 2) + 11
+        crate::helpers::random_mod(2) + 11
     } else if data9 == 17 {
-        (rand::random::<u32>() % 2) + 17
+        crate::helpers::random_mod(2) + 17
     } else if data9 == 18 {
-        (rand::random::<u32>() % 2) + 18
+        crate::helpers::random_mod(2) + 18
     } else if data9 == 21 {
         22
     } else if data9 == 22 {
@@ -3657,7 +3661,7 @@ pub fn spawn_penta_enemy(item_idx: usize) -> i32 {
     } else if data9 == 23 {
         24
     } else {
-        (rand::random::<u32>() % 3) + data9 - 1
+        crate::helpers::random_mod(3) + data9 - 1
     };
 
     // Create appropriate character template
@@ -3698,7 +3702,7 @@ pub fn spawn_penta_enemy(item_idx: usize) -> i32 {
     });
 
     // Randomly boost character (1 in 25 chance)
-    if rand::random::<u32>().is_multiple_of(25) {
+    if crate::helpers::random_mod(25) == 0 {
         boost_char(cn, 5);
     }
 
@@ -3812,14 +3816,16 @@ pub fn solved_pentagram(cn: usize, item_idx: usize) -> i32 {
                     });
                 }
             }
-            items[n].duration = 10 * 60 + (rand::random::<u32>() % (20 * 60)) as u32;
+            items[n].duration = 10 * 60 + crate::helpers::random_mod(20 * 60);
             items[n].active = items[n].duration;
         }
     });
 
     let new_solve = State::with_mut(|state| {
-        state.penta_needed = characters_in_pents * 5 + rand::random::<usize>() % 6;
-        state.penta_needed
+        state.penta_needed = characters_in_pents * 5 + crate::helpers::random_mod_usize(6);
+
+        // Ensure at least 5 are needed
+        state.penta_needed.max(5)
     });
 
     log::info!(
@@ -4333,7 +4339,7 @@ pub fn use_shrine(cn: usize, _item_idx: usize) -> i32 {
         value as i32
     };
 
-    let val = val + (rand::random::<u32>() % (val as u32 + 1)) as i32;
+    let val = val + crate::helpers::random_mod(val as u32 + 1) as i32;
 
     // Calculate rank threshold
     let rank = Repository::with_characters(|characters| {

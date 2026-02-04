@@ -215,46 +215,84 @@ pub fn pop_create_item(temp: usize, cn: usize) -> usize {
     in_id
 }
 
-/// Port of `pop_create_bonus` from `populate.cpp`
-/// Creates bonus items based on character rank
+/// Port of `pop_create_bonus` from `populate.c`
+/// Creates bonus items based on character rank (points_tot)
 pub fn pop_create_bonus(cn: usize, _chance: i32) -> i32 {
     let points_tot = Repository::with_characters(|characters| characters[cn].points_tot);
 
-    let in_id = if points_tot > 20000000 {
-        // Very high rank - create special items
-        let choice = helpers::random_mod(12);
-        match choice {
-            0 => God::create_item(1107),  // Special item 1
-            1 => God::create_item(1108),  // Special item 2
-            2 => God::create_item(1109),  // Special item 3
-            3 => God::create_item(1110),  // Special item 4
-            4 => God::create_item(1111),  // Special item 5
-            5 => God::create_item(1112),  // Special item 6
-            6 => God::create_item(1113),  // Special item 7
-            7 => God::create_item(1114),  // Special item 8
-            8 => God::create_item(1115),  // Special item 9
-            9 => God::create_item(1116),  // Special item 10
-            10 => God::create_item(1117), // Special item 11
-            _ => God::create_item(1118),  // Special item 12
+    let template = if points_tot > 20000000 {
+        // Very high rank items
+        const GOOD_ITEMS: [usize; 2] = [273, 274];
+        const GREAT_ITEMS: [usize; 32] = [
+            273, 274, 693, 273, 274, 694, 273, 274, 695, 273, 274, 696, 273, 274, 697, 273, 274,
+            698, 361, 360, 487, 361, 360, 488, 361, 360, 489, 337, 361, 292, 525, 526,
+        ];
+
+        if helpers::random_mod(5) != 0 {
+            GOOD_ITEMS[helpers::random_mod_usize(GOOD_ITEMS.len())]
+        } else {
+            GREAT_ITEMS[helpers::random_mod_usize(GREAT_ITEMS.len())]
+        }
+    } else if points_tot > 1500000 {
+        // High rank items
+        const GOOD_ITEMS: [usize; 2] = [273, 274];
+        const GREAT_ITEMS: [usize; 31] = [
+            273, 274, 699, 273, 274, 700, 273, 274, 701, 273, 274, 702, 273, 274, 703, 273, 274,
+            704, 361, 360, 347, 361, 360, 344, 361, 360, 341, 337, 283, 287, 291,
+        ];
+
+        if helpers::random_mod(5) != 0 {
+            GOOD_ITEMS[helpers::random_mod_usize(GOOD_ITEMS.len())]
+        } else {
+            GREAT_ITEMS[helpers::random_mod_usize(GREAT_ITEMS.len())]
+        }
+    } else if points_tot > 125000 {
+        // Medium rank items
+        const GOOD_ITEMS: [usize; 2] = [101, 102];
+        const GREAT_ITEMS: [usize; 29] = [
+            101, 102, 705, 101, 102, 706, 101, 102, 707, 101, 102, 708, 101, 102, 709, 101, 102,
+            710, 360, 338, 361, 340, 361, 343, 361, 346, 282, 286, 290,
+        ];
+
+        if helpers::random_mod(5) != 0 {
+            GOOD_ITEMS[helpers::random_mod_usize(GOOD_ITEMS.len())]
+        } else {
+            GREAT_ITEMS[helpers::random_mod_usize(GREAT_ITEMS.len())]
+        }
+    } else if points_tot > 11250 {
+        // Low rank items
+        const GOOD_ITEMS: [usize; 3] = [18, 46, 100];
+        const GREAT_ITEMS: [usize; 29] = [
+            18, 46, 711, 18, 46, 712, 18, 46, 713, 18, 46, 714, 18, 46, 715, 18, 46, 716, 360, 338,
+            361, 339, 361, 342, 361, 345, 281, 285, 289,
+        ];
+
+        if helpers::random_mod(5) != 0 {
+            GOOD_ITEMS[helpers::random_mod_usize(GOOD_ITEMS.len())]
+        } else {
+            GREAT_ITEMS[helpers::random_mod_usize(GREAT_ITEMS.len())]
         }
     } else {
-        // Normal bonus items based on random choice
-        let choice = helpers::random_mod(50);
-        if choice < 10 {
-            God::create_item(1100) // Bonus item template 1
-        } else if choice < 20 {
-            God::create_item(1101) // Bonus item template 2
-        } else if choice < 30 {
-            God::create_item(1102) // Bonus item template 3
-        } else if choice < 40 {
-            God::create_item(1103) // Bonus item template 4
+        // Lowest rank items
+        const GOOD_ITEMS: [usize; 3] = [18, 46, 100];
+        const GREAT_ITEMS: [usize; 15] = [
+            18, 46, 361, 348, 18, 46, 351, 18, 46, 354, 361, 338, 280, 284, 288,
+        ];
+
+        if helpers::random_mod(5) != 0 {
+            GOOD_ITEMS[helpers::random_mod_usize(GOOD_ITEMS.len())]
         } else {
-            God::create_item(1104) // Bonus item template 5
+            GREAT_ITEMS[helpers::random_mod_usize(GREAT_ITEMS.len())]
         }
     };
 
+    let in_id = God::create_item(template);
+
     if let Some(in_id) = in_id {
-        log::info!("Created bonus item {} for character {}", in_id, cn);
+        let char_name =
+            Repository::with_characters(|characters| characters[cn].get_name().to_string());
+        let item_name = Repository::with_items(|items| items[in_id].get_name().to_string());
+        log::info!("{} got {} (template={})", char_name, item_name, template);
         in_id as i32
     } else {
         0
