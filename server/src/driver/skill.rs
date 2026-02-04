@@ -918,7 +918,7 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
             return 0;
         }
         State::with(|state| {
-            state.do_character_log(cn, FontColor::Yellow, "Your weapon feels stronger.\n")
+            state.do_character_log(cn, FontColor::Green, "Your weapon feels stronger.\n")
         });
         let sound = Repository::with_characters(|ch| ch[cn].sound);
         State::char_play_sound(cn, sound as i32 + 1, -150, 0);
@@ -1152,7 +1152,7 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
             return 0;
         }
         State::with(|state| {
-            state.do_character_log(cn, FontColor::Yellow, "You have been blessed.\n")
+            state.do_character_log(cn, FontColor::Green, "You have been blessed.\n")
         });
         let sound = Repository::with_characters(|ch| ch[cn].sound);
         State::char_play_sound(cn, sound as i32 + 1, -150, 0);
