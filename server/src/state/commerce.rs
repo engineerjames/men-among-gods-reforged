@@ -1,4 +1,4 @@
-use core::constants::{CharacterFlags, ItemFlags};
+use core::constants::{CharacterFlags, ItemFlags, TICKS};
 use core::string_operations::c_string_to_str;
 use core::types::FontColor;
 
@@ -834,7 +834,7 @@ impl State {
 
                 // Calculate costs per day (Astonian and Earth)
                 let astonian_cost = storage_cost;
-                let earth_cost = storage_cost * 18; // 18 Astonian days per Earth day
+                let earth_cost = storage_cost * TICKS; // TICKS*Astonian days per Earth day
 
                 self.do_character_log(
                     cn,

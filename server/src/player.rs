@@ -2,7 +2,7 @@ use core::{
     constants::{
         CharacterFlags, ItemFlags, INFRARED, INJURED, INJURED1, INJURED2, INVIS, ISCHAR, ISITEM,
         ISUSABLE, MF_GFX_CMAGIC, MF_GFX_DEATH, MF_GFX_EMAGIC, MF_GFX_GMAGIC, MF_GFX_INJURED,
-        MF_GFX_INJURED1, MF_GFX_INJURED2, MF_GFX_TOMB, MF_UWATER, SPEEDTAB, STONED, STUNNED,
+        MF_GFX_INJURED1, MF_GFX_INJURED2, MF_GFX_TOMB, MF_UWATER, SPEEDTAB, STONED, STUNNED, TICKS,
         UWATER,
     },
     encrypt::xcrypt,
@@ -4708,7 +4708,7 @@ pub fn plr_tick(nr: usize) {
             log::info!(
                 "Character '{}' turned to stone due to lag ({:.2}s)",
                 ch[cn].get_name(),
-                (ltick.wrapping_sub(rtick)) as f64 / 18.0
+                (ltick.wrapping_sub(rtick)) as f64 / TICKS as f64
             );
             ch[cn].flags |= CharacterFlags::Stoned.bits();
         });
@@ -4718,7 +4718,7 @@ pub fn plr_tick(nr: usize) {
     else if ltick
         < rtick
             .wrapping_add(data_19 as u32)
-            .wrapping_sub(core::constants::TICKS as u32)
+            .wrapping_sub(TICKS as u32)
         && is_stoned
     {
         Repository::with_characters_mut(|ch| {
