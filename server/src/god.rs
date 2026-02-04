@@ -4206,6 +4206,8 @@ impl God {
 
         let val = val.clamp(0, 127);
 
+        let skill_name = core::types::skilltab::get_skill_name(n as usize);
+
         Repository::with_characters_mut(|characters| {
             let target = &mut characters[co];
             target.skill[n as usize][0] = val as u8;
@@ -4217,8 +4219,9 @@ impl God {
                     cn,
                     core::types::FontColor::Green,
                     &format!(
-                        "Set skill {} to {} for character {}\n",
+                        "Set skill {} ({}) to {} for character {}\n",
                         n,
+                        skill_name,
                         val,
                         target.get_name()
                     ),
