@@ -2066,7 +2066,7 @@ impl God {
                             core::types::FontColor::Yellow,
                             &format!(
                                 "Last PvP attack: {}, against {}.\n",
-                                helpers::ago_string(dt),
+                                helpers::ago_string(dt as u128),
                                 victim_name
                             ),
                         )
@@ -2077,7 +2077,7 @@ impl God {
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Yellow,
-                        &format!("Last PvP attack: {}.\n", helpers::ago_string(dt)),
+                        &format!("Last PvP attack: {}.\n", helpers::ago_string(dt as u128)),
                     )
                 });
             }
