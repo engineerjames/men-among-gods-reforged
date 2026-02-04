@@ -802,8 +802,13 @@ pub(crate) fn run_gameplay_map_hover_and_click(
     hover_target.tile_y = use_my;
     hover_target.kind = if matches!(keys_mask, 2 | 4) && has_char {
         GameplayHoverTargetKind::Character
-    } else if keys_mask == 1 && has_item {
-        GameplayHoverTargetKind::Object
+    } else if keys_mask == 1 {
+        // Shift key: only highlight if there's an item or usable object
+        if has_item || has_usable {
+            GameplayHoverTargetKind::Object
+        } else {
+            GameplayHoverTargetKind::None
+        }
     } else {
         GameplayHoverTargetKind::Background
     };

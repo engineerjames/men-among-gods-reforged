@@ -245,8 +245,9 @@ impl State {
                     }
 
                     // Check for special spell effects
-                    if spell.temp == core::constants::SK_STUN as u16 || spell.temp == 59 {
-                        // SK_WARCRY2 = 59
+                    if spell.temp == core::constants::SK_STUN as u16
+                        || spell.temp == core::constants::SK_WARCRY2 as u16
+                    {
                         Repository::with_characters_mut(|characters| {
                             characters[cn].stunned = 1;
                         });

@@ -147,7 +147,7 @@ pub fn chance_base(cn: usize, skill: i32, d20: i32, power: i32) -> i32 {
 
     chance = chance.clamp(0, 18);
 
-    let roll = rand::random::<u8>() % 20;
+    let roll = crate::helpers::random_mod(20);
     if roll as i32 > chance || power > skill + (skill / 2) {
         State::with(|state| {
             state.do_character_log(cn, core::types::FontColor::Red, "You lost your focus!\n");
@@ -168,7 +168,7 @@ pub fn chance(cn: usize, d20: i32) -> i32 {
 
     d20 = d20.clamp(0, 18);
 
-    let roll = rand::random::<u8>() % 20;
+    let roll = crate::helpers::random_mod(20);
     if roll as i32 > d20 {
         State::with(|state| {
             state.do_character_log(cn, core::types::FontColor::Red, "You lost your focus!\n");
@@ -2051,6 +2051,9 @@ pub fn warcry(cn: usize, co: usize, power: i32) -> i32 {
     });
 
     add_spell(co, in2);
+
+    let co_name = Repository::with_characters(|ch| ch[co].get_name().to_string());
+    log::info!("Character {} cast Warcry on {}", cn, co_name);
 
     EffectManager::fx_add_effect(
         5,

@@ -946,8 +946,8 @@ impl God {
             *character =
                 Repository::with_character_templates(|char_templates| char_templates[template_id]);
 
-            character.pass1 = rand::random::<u32>() % 0x3fffffff;
-            character.pass2 = rand::random::<u32>() % 0x3fffffff;
+            character.pass1 = crate::helpers::random_mod(0x3fffffff);
+            character.pass2 = crate::helpers::random_mod(0x3fffffff);
             character.temp = template_id as u16;
 
             loop {
@@ -4206,6 +4206,8 @@ impl God {
 
         let val = val.clamp(0, 127);
 
+        let skill_name = core::types::skilltab::get_skill_name(n as usize);
+
         Repository::with_characters_mut(|characters| {
             let target = &mut characters[co];
             target.skill[n as usize][0] = val as u8;
@@ -4217,8 +4219,9 @@ impl God {
                     cn,
                     core::types::FontColor::Green,
                     &format!(
-                        "Set skill {} to {} for character {}\n",
+                        "Set skill {} ({}) to {} for character {}\n",
                         n,
+                        skill_name,
                         val,
                         target.get_name()
                     ),
@@ -5502,5 +5505,227 @@ impl God {
 
             target.set_do_update_flags();
         });
+    }
+
+    /// Display network information and RTT for a character.
+    ///
+    /// Shows round-trip time, client tick, server tick, last packet time, and connection info.
+    pub fn show_network_info(cn: usize, target: &str) {
+        if !Character::is_sane_character(cn) {
+            return;
+        }
+
+        // Determine target character
+        let target_cn = if target.is_empty() {
+            // No target specified, show info for self
+            cn
+        } else if target.chars().all(|c| c.is_ascii_digit()) {
+            // Target is a number, parse it as character ID
+            match target.parse::<usize>() {
+                Ok(id) => id,
+                Err(_) => {
+                    State::with(|state| {
+                        state.do_character_log(
+                            cn,
+                            core::types::FontColor::Red,
+                            "Invalid character number.\n",
+                        );
+                    });
+                    return;
+                }
+            }
+        } else {
+            // Target is a name, search for matching player
+            let target_lower = target.to_lowercase();
+            let found = Repository::with_characters(|characters| {
+                for co in 1..core::constants::MAXCHARS {
+                    if characters[co].used == core::constants::USE_EMPTY {
+                        continue;
+                    }
+                    if (characters[co].flags & CharacterFlags::Player.bits()) == 0 {
+                        continue;
+                    }
+                    let name = characters[co].get_name().to_lowercase();
+                    if name.contains(&target_lower) {
+                        return Some(co);
+                    }
+                }
+                None
+            });
+
+            match found {
+                Some(co) => co,
+                None => {
+                    State::with(|state| {
+                        state.do_character_log(
+                            cn,
+                            core::types::FontColor::Red,
+                            &format!("No player found matching '{}'.\n", target),
+                        );
+                    });
+                    return;
+                }
+            }
+        };
+
+        if !Character::is_sane_character(target_cn) {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    "Invalid character number.\n",
+                );
+            });
+            return;
+        }
+
+        let (target_name, player_id, is_player) = Repository::with_characters(|characters| {
+            (
+                characters[target_cn].get_name().to_string(),
+                characters[target_cn].player,
+                (characters[target_cn].flags & CharacterFlags::Player.bits()) != 0,
+            )
+        });
+
+        if !is_player {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    "Target is not a player character.\n",
+                );
+            });
+            return;
+        }
+
+        if player_id <= 0 || player_id >= core::constants::MAXPLAYER as i32 {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    "Character has no active player connection.\n",
+                );
+            });
+            return;
+        }
+
+        let player_id = player_id as usize;
+
+        // Get network stats from the player slot
+        let (rtick, lasttick, lasttick2, addr, state_val) = Server::with_players(|players| {
+            (
+                players[player_id].rtick,
+                players[player_id].lasttick,
+                players[player_id].lasttick2,
+                players[player_id].addr,
+                players[player_id].state,
+            )
+        });
+
+        let server_tick = Repository::with_globals(|globals| globals.ticker);
+
+        // Calculate RTT (round trip time) in ticks
+        // This is approximate: (server_tick - lasttick) represents the time since last packet
+        let rtt_ticks = server_tick.saturating_sub(lasttick as i32);
+        let rtt_ms = (rtt_ticks as f32 * 1000.0) / core::constants::TICKS as f32;
+
+        // Calculate time since last non-automated command
+        let idle_ticks = server_tick.saturating_sub(lasttick2 as i32);
+        let idle_seconds = idle_ticks / core::constants::TICKS;
+
+        // Calculate client vs server tick difference
+        let tick_diff = server_tick as i64 - rtick as i64;
+
+        // Decode IP address
+        let ip_a = (addr & 0xFF) as u8;
+        let ip_b = ((addr >> 8) & 0xFF) as u8;
+        let ip_c = ((addr >> 16) & 0xFF) as u8;
+        let ip_d = ((addr >> 24) & 0xFF) as u8;
+
+        // Build the info message
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!("═══ Network Info for {} ═══\n", target_name),
+            );
+
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!("IP Address: {}.{}.{}.{}\n", ip_a, ip_b, ip_c, ip_d),
+            );
+
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!("Connection State: {}\n", state_val),
+            );
+
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "─────────────────────────\n",
+            );
+
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!(
+                    "RTT (Round Trip Time): {} ticks (~{:.0} ms)\n",
+                    rtt_ticks, rtt_ms
+                ),
+            );
+
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!("Client Tick: {} | Server Tick: {}\n", rtick, server_tick),
+            );
+
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!("Tick Difference: {}\n", tick_diff),
+            );
+
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "─────────────────────────\n",
+            );
+
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!("Last Packet: {} ticks ago\n", rtt_ticks),
+            );
+
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!(
+                    "Last Command: {} ticks ago (~{} seconds)\n",
+                    idle_ticks, idle_seconds
+                ),
+            );
+
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "═════════════════════════\n",
+            );
+        });
+
+        log::info!(
+            "Network info displayed for character {} (player {}): RTT={} ticks, IP={}.{}.{}.{}",
+            target_cn,
+            player_id,
+            rtt_ticks,
+            ip_a,
+            ip_b,
+            ip_c,
+            ip_d
+        );
     }
 }
