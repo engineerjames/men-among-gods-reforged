@@ -1656,12 +1656,6 @@ pub fn player_driver_med(cn: usize) {
     });
 }
 
-/// Client list stub (not implemented)
-///
-/// Placeholder for the client list command – intended to handle listing
-/// connected clients or similar functionality in the original server.
-pub fn cl_list() {}
-
 /// Port of `plr_drop` from `svr_act.cpp`
 ///
 /// Drops the currently carried item (cursor/item in hand) onto the tile in

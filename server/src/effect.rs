@@ -5,12 +5,12 @@ use crate::{god::God, helpers, player, populate, repository::Repository, state::
 pub struct EffectManager {}
 
 impl EffectManager {
-    // Animation duration constants scaled to current tick rate
-    // Original values were designed for TICKS=18, scaled proportionally
-    const EFFECT_DEATH_MIST_DURATION: u32 = (core::constants::TICKS * 19 / 18) as u32;
-    const EFFECT_DEATH_MIST_MIDPOINT: u32 = (core::constants::TICKS * 9 / 18) as u32;
-    const EFFECT_TOMBSTONE_DURATION: u32 = (core::constants::TICKS * 29 / 18) as u32;
-    const EFFECT_MAGIC_DURATION: u32 = (core::constants::TICKS * 8 / 18) as u32;
+    // Animation duration constants - doubled for TICKS=36 (was designed for TICKS=18)
+    // Each animation frame is displayed for 2 ticks to maintain original animation speed
+    const EFFECT_DEATH_MIST_DURATION: u32 = 38; // 19 frames * 2 ticks per frame
+    const EFFECT_DEATH_MIST_MIDPOINT: u32 = 18; // Midpoint at frame 9 * 2
+    const EFFECT_TOMBSTONE_DURATION: u32 = 58; // 29 frames * 2 ticks per frame
+    const EFFECT_MAGIC_DURATION: u32 = 16; // 8 frames * 2 ticks per frame
 
     /// Port of `can_drop(int m)` from `svr_effect.cpp`
     /// Checks if an item can be dropped at the given map index
@@ -160,7 +160,7 @@ impl EffectManager {
             } else {
                 Repository::with_map_mut(|map| {
                     map[map_index].flags &= !core::constants::MF_GFX_DEATH;
-                    map[map_index].flags |= (effects[n].duration as u64) << 40;
+                    map[map_index].flags |= ((effects[n].duration / 2) as u64) << 40;
                 });
 
                 if effects[n].duration == Self::EFFECT_DEATH_MIST_MIDPOINT {
@@ -292,7 +292,7 @@ impl EffectManager {
             } else {
                 Repository::with_map_mut(|map| {
                     map[map_index].flags &= !core::constants::MF_GFX_TOMB;
-                    map[map_index].flags |= (effects[n].duration as u64) << 35;
+                    map[map_index].flags |= ((effects[n].duration / 2) as u64) << 35;
                 });
             }
         });
@@ -318,7 +318,7 @@ impl EffectManager {
             } else {
                 Repository::with_map_mut(|map| {
                     map[map_index].flags &= !core::constants::MF_GFX_EMAGIC;
-                    map[map_index].flags |= (effects[n].duration as u64) << 45;
+                    map[map_index].flags |= ((effects[n].duration / 2) as u64) << 45;
                 });
             }
         });
@@ -344,7 +344,7 @@ impl EffectManager {
             } else {
                 Repository::with_map_mut(|map| {
                     map[map_index].flags &= !core::constants::MF_GFX_GMAGIC;
-                    map[map_index].flags |= (effects[n].duration as u64) << 48;
+                    map[map_index].flags |= ((effects[n].duration / 2) as u64) << 48;
                 });
             }
         });
@@ -370,7 +370,7 @@ impl EffectManager {
             } else {
                 Repository::with_map_mut(|map| {
                     map[map_index].flags &= !core::constants::MF_GFX_CMAGIC;
-                    map[map_index].flags |= (effects[n].duration as u64) << 51;
+                    map[map_index].flags |= ((effects[n].duration / 2) as u64) << 51;
                 });
             }
         });
@@ -396,7 +396,7 @@ impl EffectManager {
             } else {
                 Repository::with_map_mut(|map| {
                     map[map_index].flags &= !core::constants::MF_GFX_DEATH;
-                    map[map_index].flags |= (effects[n].duration as u64) << 40;
+                    map[map_index].flags |= ((effects[n].duration / 2) as u64) << 40;
                 });
 
                 if effects[n].duration == Self::EFFECT_DEATH_MIST_MIDPOINT {
@@ -575,7 +575,7 @@ impl EffectManager {
             } else {
                 Repository::with_map_mut(|map| {
                     map[map_index].flags &= !core::constants::MF_GFX_DEATH;
-                    map[map_index].flags |= (effects[n].duration as u64) << 40;
+                    map[map_index].flags |= ((effects[n].duration / 2) as u64) << 40;
                 });
             }
         });

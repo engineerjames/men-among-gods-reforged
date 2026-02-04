@@ -4,12 +4,11 @@ use core::types::FontColor;
 
 use crate::effect::EffectManager;
 use crate::god::God;
-use crate::player::cl_list;
 use crate::repository::Repository;
 use crate::state::State;
 use crate::{driver, helpers};
 
-const ALL_COMMANDS: &'static [&str; 129] = &[
+const ALL_COMMANDS: &'static [&str; 125] = &[
     "addban",
     "afk",
     "allow",
@@ -28,8 +27,6 @@ const ALL_COMMANDS: &'static [&str; 129] = &[
     "delban",
     "deposit",
     "depot",
-    "diffi",
-    "effect",
     "emote",
     "enemy",
     "enter",
@@ -97,8 +94,6 @@ const ALL_COMMANDS: &'static [&str; 129] = &[
     "password",
     "pent",
     "perase",
-    "pktcl",
-    "pktcnt",
     "poh",
     "pol",
     "prof",
@@ -913,23 +908,6 @@ impl State {
                 God::del_ban(cn, parse_usize(arg_get(1)));
                 return;
             }
-            Some("diffi") if f_g => {
-                // TODO: Intentionally left unimplemented - wtf was this for?
-                log::warn!("TODO: diffi command not implemented - original purpose unclear");
-                return;
-            }
-
-            Some("effect") if f_g => {
-                // TODO: `effectlist(int cn)` from original C++
-                // Original call: effectlist(cn);
-                // No Rust equivalent found; leave TODO for later implementation.
-                log::warn!(
-                    "TODO: effectlist not implemented - would list active effects for {}",
-                    cn
-                );
-                self.do_character_log(cn, FontColor::Red, "effectlist not implemented\n");
-                return;
-            }
             Some("emote") => {
                 log::debug!("Processing emote command for {}", cn);
                 self.do_emote(cn, args_get(0));
@@ -958,7 +936,6 @@ impl State {
                 God::erase(cn, parse_usize(arg_get(1)), 0);
                 return;
             }
-
             Some("fightback") => {
                 log::debug!("Processing fightback command for {}", cn);
                 self.do_fightback(cn);
@@ -1079,12 +1056,12 @@ impl State {
             }
             Some("info") if f_gius => {
                 log::debug!("Processing info command for {}", cn);
-                God::info(cn, parse_usize(arg_get(1)));
-                return;
-            }
-            Some("init") if f_g => {
-                log::warn!("TODO: init command not implemented -- this used to init badwords but we do it differently now.");
-                self.do_character_log(cn, FontColor::Green, "Done.\n");
+                let target = if arg_get(1).is_empty() {
+                    cn
+                } else {
+                    parse_usize(arg_get(1))
+                };
+                God::info(cn, target);
                 return;
             }
             Some("infra") | Some("infrared") if f_giu => {
@@ -1107,13 +1084,11 @@ impl State {
                 self.do_itell(cn, args_get(0));
                 return;
             }
-
             Some("kick") if f_giu => {
                 log::debug!("Processing kick command for {}", cn);
                 God::kick(cn, parse_usize(arg_get(1)));
                 return;
             }
-
             Some("lag") if !f_m => {
                 log::debug!("Processing lag command for {}", cn);
                 self.do_lag(cn, parse_i32(arg_get(1)));
@@ -1180,7 +1155,6 @@ impl State {
                 self.do_list_all_flags(cn, CharacterFlags::Black.bits());
                 return;
             }
-
             Some("mayhem") if f_g => {
                 log::debug!("Processing mayhem command for {}", cn);
                 God::set_gflag(cn, GF_MAYHEM);
@@ -1201,13 +1175,6 @@ impl State {
                 God::mirror(cn, arg_get(1), arg_get(2));
                 return;
             }
-            Some("mailpass") if f_g => {
-                // TODO: Left unimplemented for now
-                log::warn!("TODO: mailpass command not implemented");
-                //God::mail_password(cn, arg_get(1), arg_get(2));
-                return;
-            }
-
             Some("noshout") if !f_m => {
                 log::debug!("Processing noshout command for {}", cn);
                 self.do_noshout(cn);
@@ -1253,7 +1220,6 @@ impl State {
                 self.do_npclist(cn, args_get(0));
                 return;
             }
-
             Some("password") => {
                 if f_g {
                     log::debug!("Processing others-password command for {}", cn);
@@ -1261,7 +1227,6 @@ impl State {
                     God::change_pass(cn, parse_usize(arg_get(1)), arg_get(2));
                     return;
                 }
-
                 log::debug!("Processing own-password command for {}", cn);
                 // change own password
                 God::change_pass(cn, cn, arg_get(1));
@@ -1284,7 +1249,7 @@ impl State {
             }
             Some("prof") if f_g => {
                 log::debug!("Processing prof command for {}", cn);
-                God::set_flag(cn, arg_get(1), CharacterFlags::PohLeader.bits());
+                God::set_flag(cn, arg_get(1), CharacterFlags::Profile.bits());
                 return;
             }
             Some("purple") => {
@@ -1305,17 +1270,6 @@ impl State {
                 God::erase(cn, parse_usize(arg_get(1)), 1);
                 return;
             }
-            Some("pktcnt") if f_g => {
-                // TODO: pkt_list();
-                log::warn!("TODO: pktcnt command not implemented - original purpose unclear");
-                return;
-            }
-            Some("pktcl") if f_g => {
-                log::debug!("Processing pktcl command for {}", cn);
-                cl_list();
-                return;
-            }
-
             Some("rank") => {
                 log::debug!("Processing rank command for {}", cn);
                 self.do_view_exp_to_rank(cn);
@@ -1437,7 +1391,6 @@ impl State {
                 God::summon(cn, arg_get(1), arg_get(2), arg_get(3));
                 return;
             }
-
             Some("tell") => {
                 log::debug!("Processing tell command for {}", cn);
                 self.do_tell(cn, arg_get(1), args_get(1));
@@ -1473,7 +1426,6 @@ impl State {
                 God::top(cn);
                 return;
             }
-
             Some("unique") if f_g => {
                 log::debug!("Processing unique command for {}", cn);
                 God::unique(cn);
@@ -1484,7 +1436,6 @@ impl State {
                 God::usurp(cn, parse_usize(arg_get(1)));
                 return;
             }
-
             Some("who") => {
                 log::debug!("Processing who command for {}", cn);
                 if f_gius {
