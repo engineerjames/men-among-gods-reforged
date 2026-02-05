@@ -75,6 +75,79 @@ impl MapViewerApp {
         app
     }
 
+    fn ui_tile_preview_row(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+        sprite: u16,
+        fsprite: u16,
+        it: u32,
+        preview_size: Vec2,
+    ) {
+        ui.horizontal(|ui| {
+            if let Some(cache) = self.graphics_zip.as_mut() {
+                let mut try_draw = |ui: &mut egui::Ui, sprite_id: usize| -> bool {
+                    if let Ok(Some(texture)) = cache.texture_for(ctx, sprite_id) {
+                        ui.add(
+                            egui::Image::new(texture)
+                                .fit_to_exact_size(preview_size)
+                                .maintain_aspect_ratio(true),
+                        );
+                        true
+                    } else {
+                        false
+                    }
+                };
+
+                // Background
+                if sprite != 0 {
+                    if !try_draw(ui, sprite as usize) {
+                        ui.allocate_exact_size(preview_size, egui::Sense::hover());
+                    }
+                } else {
+                    ui.allocate_exact_size(preview_size, egui::Sense::hover());
+                }
+
+                // Foreground
+                if fsprite != 0 {
+                    let sprite_id = if self.hide_enabled {
+                        fsprite + 1
+                    } else {
+                        fsprite
+                    };
+                    if !try_draw(ui, sprite_id as usize) {
+                        ui.allocate_exact_size(preview_size, egui::Sense::hover());
+                    }
+                } else {
+                    ui.allocate_exact_size(preview_size, egui::Sense::hover());
+                }
+
+                // Item (instance)
+                if it != 0 {
+                    let it_idx = it as usize;
+                    let item_sprite = if it_idx < self.items.len() {
+                        item_map_sprite(self.items[it_idx])
+                    } else {
+                        None
+                    };
+                    if let Some(item_sprite) = item_sprite {
+                        if !try_draw(ui, item_sprite as usize) {
+                            ui.allocate_exact_size(preview_size, egui::Sense::hover());
+                        }
+                    } else {
+                        ui.allocate_exact_size(preview_size, egui::Sense::hover());
+                    }
+                } else {
+                    ui.allocate_exact_size(preview_size, egui::Sense::hover());
+                }
+            } else {
+                ui.allocate_exact_size(preview_size, egui::Sense::hover());
+                ui.allocate_exact_size(preview_size, egui::Sense::hover());
+                ui.allocate_exact_size(preview_size, egui::Sense::hover());
+            }
+        });
+    }
+
     pub(crate) fn load_graphics_zip(&mut self, zip_path: PathBuf) {
         self.graphics_zip_error = None;
         match GraphicsZipCache::load(zip_path) {
@@ -694,43 +767,67 @@ impl eframe::App for MapViewerApp {
                 ui.label(format!("Pan: [{:.1}, {:.1}]", self.pan.x, self.pan.y));
 
                 ui.separator();
-                if let Some((x, y)) = self.hovered_tile {
-                    ui.label(format!("Hover tile: ({}, {})", x, y));
-                    if !self.map_tiles.is_empty() {
-                        let idx = tile_index(x, y);
-                        if idx < self.map_tiles.len() {
-                            // `Map` is `#[repr(packed)]`, so don't pass field references into
-                            // formatting macros (they may create unaligned references).
-                            let tile = self.map_tiles[idx];
-                            let sprite = tile.sprite;
-                            let fsprite = tile.fsprite;
-                            let flags = tile.flags;
-                            let light = tile.light;
-                            let dlight = tile.dlight;
-                            let ch = tile.ch;
-                            let to_ch = tile.to_ch;
-                            let it = tile.it;
-
-                            ui.label(format!("sprite: {}", sprite));
-                            ui.label(format!("fsprite: {}", fsprite));
-                            ui.label(format!("flags: 0x{:016X}", flags));
-                            ui.label(format!("light: {} (dlight {})", light, dlight));
-                            ui.label(format!("ch: {} to_ch: {} it: {}", ch, to_ch, it));
-
-                            if it != 0 {
-                                let it_idx = it as usize;
-                                if it_idx < self.items.len() {
-                                    let item = self.items[it_idx];
-                                    let sprite = item_map_sprite(item).unwrap_or(0);
-                                    ui.label(format!("item sprite: {}", sprite));
-                                } else {
-                                    ui.label("item sprite: (item.dat not loaded)");
-                                }
+                {
+                    let (hx, hy, hover_tile) = if let Some((x, y)) = self.hovered_tile {
+                        if !self.map_tiles.is_empty() {
+                            let idx = tile_index(x, y);
+                            if idx < self.map_tiles.len() {
+                                (Some(x), Some(y), Some(self.map_tiles[idx]))
+                            } else {
+                                (Some(x), Some(y), None)
                             }
+                        } else {
+                            (Some(x), Some(y), None)
                         }
+                    } else {
+                        (None, None, None)
+                    };
+
+                    if let (Some(x), Some(y)) = (hx, hy) {
+                        ui.label(format!("Hover tile: ({}, {})", x, y));
+                    } else {
+                        ui.label("Hover tile: (N/A)");
                     }
-                } else {
-                    ui.label("Hover tile: (none)");
+
+                    let preview_size = Vec2::new(64.0, 64.0);
+                    if let Some(tile) = hover_tile {
+                        let sprite = tile.sprite;
+                        let fsprite = tile.fsprite;
+                        let flags = tile.flags;
+                        let light = tile.light;
+                        let dlight = tile.dlight;
+                        let ch = tile.ch;
+                        let to_ch = tile.to_ch;
+                        let it = tile.it;
+
+                        ui.label(format!("sprite: {}", sprite));
+                        ui.label(format!("fsprite: {}", fsprite));
+                        ui.label(format!("flags: 0x{:016X}", flags));
+                        ui.label(format!("light: {} (dlight {})", light, dlight));
+                        ui.label(format!("ch: {} to_ch: {} it: {}", ch, to_ch, it));
+                        self.ui_tile_preview_row(ui, ctx, sprite, fsprite, it, preview_size);
+
+                        if it != 0 {
+                            let it_idx = it as usize;
+                            if it_idx < self.items.len() {
+                                let item = self.items[it_idx];
+                                let sprite = item_map_sprite(item).unwrap_or(0);
+                                ui.label(format!("item sprite: {}", sprite));
+                            } else {
+                                ui.label("item sprite: (item.dat not loaded)");
+                            }
+                        } else {
+                            ui.label("item sprite: N/A");
+                        }
+                    } else {
+                        ui.label("sprite: N/A");
+                        ui.label("fsprite: N/A");
+                        ui.label("flags: N/A");
+                        ui.label("light: N/A");
+                        ui.label("ch: N/A to_ch: N/A it: N/A");
+                        self.ui_tile_preview_row(ui, ctx, 0, 0, 0, preview_size);
+                        ui.label("item sprite: N/A");
+                    }
                 }
 
                 ui.separator();
@@ -757,83 +854,19 @@ impl eframe::App for MapViewerApp {
 
                             // Visual preview of the selected tile's sprites.
                             let preview_size = Vec2::new(64.0, 64.0);
-                            ui.horizontal(|ui| {
-                                if let Some(cache) = self.graphics_zip.as_mut() {
-                                    let mut try_draw =
-                                        |ui: &mut egui::Ui, sprite_id: usize| -> bool {
-                                            if let Ok(Some(texture)) =
-                                                cache.texture_for(ctx, sprite_id)
-                                            {
-                                                ui.add(
-                                                    egui::Image::new(texture)
-                                                        .fit_to_exact_size(preview_size)
-                                                        .maintain_aspect_ratio(true),
-                                                );
-                                                true
-                                            } else {
-                                                false
-                                            }
-                                        };
+                            self.ui_tile_preview_row(ui, ctx, sprite, fsprite, it, preview_size);
 
-                                    // Background
-                                    if sprite != 0 {
-                                        if !try_draw(ui, sprite as usize) {
-                                            ui.allocate_exact_size(
-                                                preview_size,
-                                                egui::Sense::hover(),
-                                            );
-                                        }
-                                    } else {
-                                        ui.allocate_exact_size(preview_size, egui::Sense::hover());
+                            if sprite != 0 && fsprite != 0 {
+                                if ui.button("Clear fsprite").clicked() {
+                                    let mut updated = self.map_tiles[idx];
+                                    updated.fsprite = 0;
+                                    if updated != self.map_tiles[idx] {
+                                        self.map_tiles[idx] = updated;
+                                        self.dirty = true;
+                                        ctx.request_repaint();
                                     }
-
-                                    // Foreground
-                                    if fsprite != 0 {
-                                        let sprite_id = if self.hide_enabled {
-                                            fsprite + 1
-                                        } else {
-                                            fsprite
-                                        };
-                                        if !try_draw(ui, sprite_id as usize) {
-                                            ui.allocate_exact_size(
-                                                preview_size,
-                                                egui::Sense::hover(),
-                                            );
-                                        }
-                                    } else {
-                                        ui.allocate_exact_size(preview_size, egui::Sense::hover());
-                                    }
-
-                                    // Item (instance)
-                                    if it != 0 {
-                                        let it_idx = it as usize;
-                                        let item_sprite = if it_idx < self.items.len() {
-                                            item_map_sprite(self.items[it_idx])
-                                        } else {
-                                            None
-                                        };
-                                        if let Some(item_sprite) = item_sprite {
-                                            if !try_draw(ui, item_sprite as usize) {
-                                                ui.allocate_exact_size(
-                                                    preview_size,
-                                                    egui::Sense::hover(),
-                                                );
-                                            }
-                                        } else {
-                                            ui.allocate_exact_size(
-                                                preview_size,
-                                                egui::Sense::hover(),
-                                            );
-                                        }
-                                    } else {
-                                        ui.allocate_exact_size(preview_size, egui::Sense::hover());
-                                    }
-                                } else {
-                                    ui.allocate_exact_size(preview_size, egui::Sense::hover());
-                                    ui.allocate_exact_size(preview_size, egui::Sense::hover());
-                                    ui.allocate_exact_size(preview_size, egui::Sense::hover());
                                 }
-                            });
+                            }
 
                             if it != 0 {
                                 let it_idx = it as usize;
@@ -844,6 +877,8 @@ impl eframe::App for MapViewerApp {
                                 } else {
                                     ui.label("item sprite: (item.dat not loaded)");
                                 }
+                            } else {
+                                ui.label("item sprite: N/A");
                             }
 
                             ui.separator();
