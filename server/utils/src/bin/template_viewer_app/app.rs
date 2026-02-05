@@ -35,6 +35,8 @@ pub(crate) struct TemplateViewerApp {
     item_instance_filter: String,
     character_instance_filter: String,
     character_instances_player_only: bool,
+    show_unused_templates: bool,
+    show_all_data_fields: bool,
     load_error: Option<String>,
     graphics_zip: Option<GraphicsZipCache>,
     graphics_zip_error: Option<String>,
@@ -70,6 +72,8 @@ impl Default for TemplateViewerApp {
             item_instance_filter: String::new(),
             character_instance_filter: String::new(),
             character_instances_player_only: false,
+            show_unused_templates: false,
+            show_all_data_fields: false,
             load_error: None,
             graphics_zip: None,
             graphics_zip_error: None,
@@ -681,6 +685,10 @@ impl TemplateViewerApp {
             ui.text_edit_singleline(&mut self.item_filter);
         });
 
+        ui.horizontal(|ui| {
+            ui.checkbox(&mut self.show_unused_templates, "Show unused");
+        });
+
         ui.separator();
 
         let list_width = ui.available_width();
@@ -689,7 +697,7 @@ impl TemplateViewerApp {
             .show(ui, |ui| {
                 ui.set_min_width(list_width);
                 for (idx, item) in self.item_templates.iter().enumerate() {
-                    if item.used == mag_core::constants::USE_EMPTY {
+                    if !self.show_unused_templates && item.used == mag_core::constants::USE_EMPTY {
                         continue;
                     }
 
@@ -761,6 +769,10 @@ impl TemplateViewerApp {
             ui.text_edit_singleline(&mut self.character_filter);
         });
 
+        ui.horizontal(|ui| {
+            ui.checkbox(&mut self.show_unused_templates, "Show unused");
+        });
+
         ui.separator();
 
         let list_width = ui.available_width();
@@ -769,7 +781,9 @@ impl TemplateViewerApp {
             .show(ui, |ui| {
                 ui.set_min_width(list_width);
                 for (idx, character) in self.character_templates.iter().enumerate() {
-                    if character.used == mag_core::constants::USE_EMPTY {
+                    if !self.show_unused_templates
+                        && character.used == mag_core::constants::USE_EMPTY
+                    {
                         continue;
                     }
 
@@ -1170,12 +1184,33 @@ impl TemplateViewerApp {
 
             ui.separator();
             crate::centered_heading(ui, "Driver Data");
+            ui.horizontal(|ui| {
+                ui.checkbox(
+                    &mut self.show_all_data_fields,
+                    "Show all possible data fields",
+                );
+            });
             egui::Grid::new("item_driver_data")
                 .num_columns(2)
                 .spacing([40.0, 4.0])
                 .striped(true)
                 .show(ui, |ui| {
+                    let mut shown_any = false;
                     for i in 0..10 {
+                        if !self.show_all_data_fields && data[i] == 0 {
+                            continue;
+                        }
+
+                        shown_any = true;
+                        ui.label(format!("data[{}]:", i));
+                        changed |= ui
+                            .add(egui::DragValue::new(&mut data[i]).speed(1))
+                            .changed();
+                        ui.end_row();
+                    }
+
+                    if !shown_any {
+                        let i = 0;
                         ui.label(format!("data[{}]:", i));
                         changed |= ui
                             .add(egui::DragValue::new(&mut data[i]).speed(1))
@@ -1670,14 +1705,14 @@ impl TemplateViewerApp {
             ui.separator();
             crate::centered_heading(ui, "Inventory");
             egui::Grid::new("character_inventory")
-                .num_columns(2)
+                .num_columns(4)
                 .spacing([20.0, 4.0])
                 .striped(true)
                 .show(ui, |ui| {
-                    crate::centered_label(ui, "Slot");
-                    crate::centered_label(ui, "Item ID");
-                    crate::centered_label(ui, "Slot");
-                    crate::centered_label(ui, "Item ID");
+                    ui.label("Slot");
+                    ui.label("Item ID");
+                    ui.label("Slot");
+                    ui.label("Item ID");
                     ui.end_row();
 
                     let item_count = 40; // character.item.len()
@@ -1689,19 +1724,19 @@ impl TemplateViewerApp {
                             0
                         };
 
-                        crate::centered_label(ui, format!("{}", i));
+                        ui.label(format!("{}", i));
                         if ui.add(egui::DragValue::new(&mut item1).speed(1)).changed() {
                             inventory[i] = item1.max(0) as u32;
                             changed = true;
                         }
-                        crate::centered_label(ui, format!("{}", i + 1));
+                        ui.label(format!("{}", i + 1));
                         if i + 1 < item_count {
                             if ui.add(egui::DragValue::new(&mut item2).speed(1)).changed() {
                                 inventory[i + 1] = item2.max(0) as u32;
                                 changed = true;
                             }
                         } else {
-                            crate::centered_label(ui, "-");
+                            ui.label("-");
                         }
                         ui.end_row();
                     }
@@ -1714,14 +1749,14 @@ impl TemplateViewerApp {
                 .spacing([20.0, 4.0])
                 .striped(true)
                 .show(ui, |ui| {
-                    crate::centered_label(ui, "Slot");
-                    crate::centered_label(ui, "Item ID");
+                    ui.label("Slot");
+                    ui.label("Item ID");
                     ui.end_row();
 
                     let worn_count = 20;
                     for i in 0..worn_count {
                         let mut worn_item = worn[i] as i64;
-                        crate::centered_label(ui, format!("{}", i));
+                        ui.label(format!("{}", i));
                         if ui
                             .add(egui::DragValue::new(&mut worn_item).speed(1))
                             .changed()
@@ -1735,12 +1770,33 @@ impl TemplateViewerApp {
 
             ui.separator();
             crate::centered_heading(ui, "Driver Data");
+            ui.horizontal(|ui| {
+                ui.checkbox(
+                    &mut self.show_all_data_fields,
+                    "Show all possible data fields",
+                );
+            });
             egui::Grid::new("character_driver_data")
                 .num_columns(2)
                 .spacing([20.0, 4.0])
                 .striped(true)
                 .show(ui, |ui| {
+                    let mut shown_any = false;
                     for i in 0..100 {
+                        if !self.show_all_data_fields && data[i] == 0 {
+                            continue;
+                        }
+
+                        shown_any = true;
+                        ui.label(format!("data[{}]:", i));
+                        changed |= ui
+                            .add(egui::DragValue::new(&mut data[i]).speed(1))
+                            .changed();
+                        ui.end_row();
+                    }
+
+                    if !shown_any {
+                        let i = 0;
                         ui.label(format!("data[{}]:", i));
                         changed |= ui
                             .add(egui::DragValue::new(&mut data[i]).speed(1))
@@ -1956,7 +2012,15 @@ impl eframe::App for TemplateViewerApp {
                             .iter()
                             .filter(|item| item.used == 1)
                             .count();
-                        ui.heading(format!("Item Templates ({})", used_count));
+                        if self.show_unused_templates {
+                            ui.heading(format!(
+                                "Item Templates ({}/{})",
+                                used_count,
+                                self.item_templates.len()
+                            ));
+                        } else {
+                            ui.heading(format!("Item Templates ({})", used_count));
+                        }
                         ui.separator();
                         self.render_item_list(ui);
                     });
@@ -1987,7 +2051,15 @@ impl eframe::App for TemplateViewerApp {
                             .iter()
                             .filter(|character| character.used == 1)
                             .count();
-                        ui.heading(format!("Character Templates ({})", used_count));
+                        if self.show_unused_templates {
+                            ui.heading(format!(
+                                "Character Templates ({}/{})",
+                                used_count,
+                                self.character_templates.len()
+                            ));
+                        } else {
+                            ui.heading(format!("Character Templates ({})", used_count));
+                        }
                         ui.separator();
                         self.render_character_list(ui);
                     });
