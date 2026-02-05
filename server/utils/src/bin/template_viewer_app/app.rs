@@ -1431,9 +1431,68 @@ impl TemplateViewerApp {
                     ui.end_row();
 
                     ui.label("Kindred:");
-                    changed |= ui
-                        .add(egui::DragValue::new(&mut kindred).speed(1))
-                        .changed();
+                    ui.vertical(|ui| {
+                        ui.label(format!("{} (0x{:08X})", kindred, kindred as u32));
+                        changed |= ui
+                            .add(egui::DragValue::new(&mut kindred).speed(1))
+                            .changed();
+
+                        if kindred < 0 {
+                            kindred = 0;
+                            changed = true;
+                        }
+
+                        ui.separator();
+
+                        let mut kindred_bits = kindred as u32;
+                        let kindred_flags: [(u32, &str); 12] = [
+                            (mag_core::constants::KIN_MERCENARY, "Mercenary"),
+                            (mag_core::constants::KIN_SEYAN_DU, "Seyan Du"),
+                            (mag_core::constants::KIN_PURPLE, "Purple"),
+                            (mag_core::constants::KIN_MONSTER, "Monster"),
+                            (mag_core::constants::KIN_TEMPLAR, "Templar"),
+                            (mag_core::constants::KIN_ARCHTEMPLAR, "ArchTemplar"),
+                            (mag_core::constants::KIN_HARAKIM, "Harakim"),
+                            (mag_core::constants::KIN_MALE, "Male"),
+                            (mag_core::constants::KIN_FEMALE, "Female"),
+                            (mag_core::constants::KIN_ARCHHARAKIM, "ArchHarakim"),
+                            (mag_core::constants::KIN_WARRIOR, "Warrior"),
+                            (mag_core::constants::KIN_SORCERER, "Sorcerer"),
+                        ];
+
+                        egui::Grid::new(format!("kindred_flags_grid_{}", temp))
+                            .num_columns(2)
+                            .spacing([10.0, 4.0])
+                            .striped(false)
+                            .show(ui, |ui| {
+                                let mut col = 0;
+                                for (bit, name) in kindred_flags {
+                                    let mut is_set = (kindred_bits & bit) != 0;
+                                    if ui.checkbox(&mut is_set, name).changed() {
+                                        if is_set {
+                                            kindred_bits |= bit;
+                                        } else {
+                                            kindred_bits &= !bit;
+                                        }
+                                        changed = true;
+                                    }
+
+                                    col += 1;
+                                    if col == 2 {
+                                        ui.end_row();
+                                        col = 0;
+                                    }
+                                }
+                                if col != 0 {
+                                    ui.end_row();
+                                }
+                            });
+
+                        if kindred_bits != kindred as u32 {
+                            kindred = kindred_bits as i32;
+                            changed = true;
+                        }
+                    });
                     ui.end_row();
 
                     ui.label("Sprite:");
