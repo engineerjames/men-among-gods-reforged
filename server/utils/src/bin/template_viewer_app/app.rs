@@ -985,20 +985,20 @@ impl TemplateViewerApp {
                 .striped(true)
                 .show(ui, |ui| {
                     ui.label("Sprite[0]:");
-                    ui.horizontal(|ui| {
+                    ui.vertical(|ui| {
                         changed |= ui
                             .add(egui::DragValue::new(&mut sprite_0).speed(1))
                             .changed();
-                        self.sprite_cell(ui, (sprite_0.max(0)) as usize);
+                        self.sprite_cell(ui, sprite_0.max(0) as usize);
                     });
                     ui.end_row();
 
                     ui.label("Sprite[1]:");
-                    ui.horizontal(|ui| {
+                    ui.vertical(|ui| {
                         changed |= ui
                             .add(egui::DragValue::new(&mut sprite_1).speed(1))
                             .changed();
-                        self.sprite_cell(ui, (sprite_1.max(0)) as usize);
+                        self.sprite_cell(ui, sprite_1.max(0) as usize);
                     });
                     ui.end_row();
 
@@ -1402,7 +1402,7 @@ impl TemplateViewerApp {
                     ui.end_row();
 
                     ui.label("Sprite:");
-                    ui.horizontal(|ui| {
+                    ui.vertical(|ui| {
                         changed |= ui.add(egui::DragValue::new(&mut sprite).speed(1)).changed();
                         self.sprite_cell(ui, sprite.max(0) as usize);
                     });
