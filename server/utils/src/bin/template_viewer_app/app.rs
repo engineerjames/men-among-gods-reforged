@@ -1090,10 +1090,10 @@ impl TemplateViewerApp {
                 .spacing([20.0, 4.0])
                 .striped(true)
                 .show(ui, |ui| {
-                    crate::centered_label(ui, "Stat");
-                    crate::centered_label(ui, "Worn");
-                    crate::centered_label(ui, "Active");
-                    crate::centered_label(ui, "Min Required");
+                    ui.label("Stat");
+                    ui.label("Worn");
+                    ui.label("Active");
+                    ui.label("Min Required");
                     ui.end_row();
 
                     let attrib_names = ["Bravery", "Willpower", "Intuition", "Agility", "Strength"];
@@ -1147,11 +1147,11 @@ impl TemplateViewerApp {
                 .spacing([20.0, 4.0])
                 .striped(true)
                 .show(ui, |ui| {
-                    crate::centered_label(ui, "Skill #");
-                    crate::centered_label(ui, "Skill Name");
-                    crate::centered_label(ui, "Worn");
-                    crate::centered_label(ui, "Active");
-                    crate::centered_label(ui, "Min Required");
+                    ui.label("Skill #");
+                    ui.label("Skill Name");
+                    ui.label("Worn");
+                    ui.label("Active");
+                    ui.label("Min Required");
                     ui.end_row();
 
                     for i in 0..skill.len() {
@@ -1547,13 +1547,13 @@ impl TemplateViewerApp {
                 .spacing([15.0, 4.0])
                 .striped(true)
                 .show(ui, |ui| {
-                    crate::centered_label(ui, "Stat");
-                    crate::centered_label(ui, "Base");
-                    crate::centered_label(ui, "Preset");
-                    crate::centered_label(ui, "Max");
-                    crate::centered_label(ui, "Difficulty");
-                    crate::centered_label(ui, "Dynamic");
-                    crate::centered_label(ui, "Total");
+                    ui.label("Stat");
+                    ui.label("Base");
+                    ui.label("Preset");
+                    ui.label("Max");
+                    ui.label("Difficulty");
+                    ui.label("Dynamic");
+                    ui.label("Total");
                     ui.end_row();
 
                     let attrib_names = ["Bravery", "Willpower", "Intuition", "Agility", "Strength"];
@@ -1576,13 +1576,13 @@ impl TemplateViewerApp {
                 .spacing([15.0, 4.0])
                 .striped(true)
                 .show(ui, |ui| {
-                    crate::centered_label(ui, "Vital");
-                    crate::centered_label(ui, "[0]");
-                    crate::centered_label(ui, "[1]");
-                    crate::centered_label(ui, "[2]");
-                    crate::centered_label(ui, "[3]");
-                    crate::centered_label(ui, "[4]");
-                    crate::centered_label(ui, "[5]");
+                    ui.label("Vital");
+                    ui.label("[0]");
+                    ui.label("[1]");
+                    ui.label("[2]");
+                    ui.label("[3]");
+                    ui.label("[4]");
+                    ui.label("[5]");
                     ui.end_row();
 
                     ui.label("HP");
@@ -1643,14 +1643,14 @@ impl TemplateViewerApp {
                 .spacing([15.0, 4.0])
                 .striped(true)
                 .show(ui, |ui| {
-                    crate::centered_label(ui, "Skill #");
-                    crate::centered_label(ui, "Skill Name");
-                    crate::centered_label(ui, "[0]");
-                    crate::centered_label(ui, "[1]");
-                    crate::centered_label(ui, "[2]");
-                    crate::centered_label(ui, "[3]");
-                    crate::centered_label(ui, "[4]");
-                    crate::centered_label(ui, "[5]");
+                    ui.label("Skill #");
+                    ui.label("Skill Name");
+                    ui.label("[0]");
+                    ui.label("[1]");
+                    ui.label("[2]");
+                    ui.label("[3]");
+                    ui.label("[4]");
+                    ui.label("[5]");
                     ui.end_row();
 
                     for (i, _skill) in character.skill.iter().enumerate() {
