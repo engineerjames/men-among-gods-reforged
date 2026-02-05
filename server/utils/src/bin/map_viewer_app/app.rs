@@ -1,7 +1,9 @@
 use super::graphics::GraphicsZipCache;
 use eframe::egui;
 use egui::{Pos2, Rect, Vec2};
-use mag_core::constants::{ItemFlags, MAXITEM, SERVER_MAPX, SERVER_MAPY, TILEX, XPOS, YPOS};
+use mag_core::constants::{
+    ItemFlags, MAXITEM, MAXTITEM, SERVER_MAPX, SERVER_MAPY, TILEX, USE_EMPTY, XPOS, YPOS,
+};
 use mag_core::types::{Item, Map};
 use std::fs;
 use std::path::PathBuf;
@@ -28,6 +30,8 @@ pub(crate) struct MapViewerApp {
 
     items: Vec<Item>,
     items_error: Option<String>,
+    item_templates: Vec<Item>,
+    item_templates_error: Option<String>,
 
     graphics_zip: Option<GraphicsZipCache>,
     graphics_zip_error: Option<String>,
@@ -40,6 +44,9 @@ pub(crate) struct MapViewerApp {
 
     // Cached hover state for the right panel.
     hovered_tile: Option<(usize, usize)>,
+
+    // Frozen selection (click on map when no palette entry is selected).
+    selected_tile: Option<(usize, usize)>,
 
     // Hide mode: clips non-background sprites to show only top half
     hide_enabled: bool,
@@ -85,6 +92,7 @@ impl MapViewerApp {
         self.dat_dir = Some(dir.clone());
         self.map_error = None;
         self.items_error = None;
+        self.item_templates_error = None;
         self.pan_initialized = false;
         self.dirty = false;
         self.save_status = Some("Loaded map.dat".to_string());
@@ -116,6 +124,23 @@ impl MapViewerApp {
             }
         } else {
             self.items.clear();
+        }
+
+        // Optional: load item templates for palette item previews.
+        let item_templates_path = dir.join("titem.dat");
+        if item_templates_path.is_file() {
+            match load_item_templates_dat(&item_templates_path) {
+                Ok(templates) => {
+                    self.item_templates = templates;
+                    log::info!("Loaded item templates: {}", self.item_templates.len());
+                }
+                Err(e) => {
+                    self.item_templates.clear();
+                    self.item_templates_error = Some(e);
+                }
+            }
+        } else {
+            self.item_templates.clear();
         }
     }
 
@@ -224,8 +249,10 @@ impl MapViewerApp {
                             let mut preview_drawn = false;
                             let it_idx = self.draft_item_instance_id as usize;
 
-                            if it_idx < self.items.len() {
-                                if let Some(sprite) = item_map_sprite(self.items[it_idx]) {
+                            if it_idx < self.item_templates.len()
+                                && self.item_templates[it_idx].used != USE_EMPTY
+                            {
+                                if let Some(sprite) = item_map_sprite(self.item_templates[it_idx]) {
                                     if let Some(cache) = self.graphics_zip.as_mut() {
                                         if let Ok(Some(texture)) =
                                             cache.texture_for(ctx, sprite as usize)
@@ -279,8 +306,11 @@ impl MapViewerApp {
                                                         None
                                                     } else {
                                                         let it_idx = it as usize;
-                                                        if it_idx < self.items.len() {
-                                                            let item = self.items[it_idx];
+                                                        if it_idx < self.item_templates.len()
+                                                            && self.item_templates[it_idx].used
+                                                                != USE_EMPTY
+                                                        {
+                                                            let item = self.item_templates[it_idx];
                                                             item_map_sprite(item)
                                                                 .map(|s| s as usize)
                                                         } else {
@@ -630,6 +660,10 @@ impl eframe::App for MapViewerApp {
                     ui.separator();
                     ui.colored_label(egui::Color32::LIGHT_RED, err);
                 }
+                if let Some(err) = &self.item_templates_error {
+                    ui.separator();
+                    ui.colored_label(egui::Color32::LIGHT_RED, err);
+                }
 
                 ui.separator();
                 ui.label(format!("Map size: {} x {}", SERVER_MAPX, SERVER_MAPY));
@@ -698,6 +732,195 @@ impl eframe::App for MapViewerApp {
                 } else {
                     ui.label("Hover tile: (none)");
                 }
+
+                ui.separator();
+                if let Some((x, y)) = self.selected_tile {
+                    ui.label(format!("Selected tile: ({}, {})", x, y));
+                    if !self.map_tiles.is_empty() {
+                        let idx = tile_index(x, y);
+                        if idx < self.map_tiles.len() {
+                            let tile = self.map_tiles[idx];
+                            let sprite = tile.sprite;
+                            let fsprite = tile.fsprite;
+                            let mut flags = tile.flags;
+                            let light = tile.light;
+                            let dlight = tile.dlight;
+                            let ch = tile.ch;
+                            let to_ch = tile.to_ch;
+                            let it = tile.it;
+
+                            ui.label(format!("sprite: {}", sprite));
+                            ui.label(format!("fsprite: {}", fsprite));
+                            ui.label(format!("flags: 0x{:016X}", flags));
+                            ui.label(format!("light: {} (dlight {})", light, dlight));
+                            ui.label(format!("ch: {} to_ch: {} it: {}", ch, to_ch, it));
+
+                            // Visual preview of the selected tile's sprites.
+                            let preview_size = Vec2::new(64.0, 64.0);
+                            ui.horizontal(|ui| {
+                                if let Some(cache) = self.graphics_zip.as_mut() {
+                                    let mut try_draw =
+                                        |ui: &mut egui::Ui, sprite_id: usize| -> bool {
+                                            if let Ok(Some(texture)) =
+                                                cache.texture_for(ctx, sprite_id as usize)
+                                            {
+                                                ui.add(
+                                                    egui::Image::new(texture)
+                                                        .fit_to_exact_size(preview_size)
+                                                        .maintain_aspect_ratio(true),
+                                                );
+                                                true
+                                            } else {
+                                                false
+                                            }
+                                        };
+
+                                    // Background
+                                    if sprite != 0 {
+                                        if !try_draw(ui, sprite as usize) {
+                                            ui.allocate_exact_size(
+                                                preview_size,
+                                                egui::Sense::hover(),
+                                            );
+                                        }
+                                    } else {
+                                        ui.allocate_exact_size(preview_size, egui::Sense::hover());
+                                    }
+
+                                    // Foreground
+                                    if fsprite != 0 {
+                                        let sprite_id = if self.hide_enabled {
+                                            fsprite + 1
+                                        } else {
+                                            fsprite
+                                        };
+                                        if !try_draw(ui, sprite_id as usize) {
+                                            ui.allocate_exact_size(
+                                                preview_size,
+                                                egui::Sense::hover(),
+                                            );
+                                        }
+                                    } else {
+                                        ui.allocate_exact_size(preview_size, egui::Sense::hover());
+                                    }
+
+                                    // Item (instance)
+                                    if it != 0 {
+                                        let it_idx = it as usize;
+                                        let item_sprite = if it_idx < self.items.len() {
+                                            item_map_sprite(self.items[it_idx])
+                                        } else {
+                                            None
+                                        };
+                                        if let Some(item_sprite) = item_sprite {
+                                            if !try_draw(ui, item_sprite as usize) {
+                                                ui.allocate_exact_size(
+                                                    preview_size,
+                                                    egui::Sense::hover(),
+                                                );
+                                            }
+                                        } else {
+                                            ui.allocate_exact_size(
+                                                preview_size,
+                                                egui::Sense::hover(),
+                                            );
+                                        }
+                                    } else {
+                                        ui.allocate_exact_size(preview_size, egui::Sense::hover());
+                                    }
+                                } else {
+                                    ui.allocate_exact_size(preview_size, egui::Sense::hover());
+                                    ui.allocate_exact_size(preview_size, egui::Sense::hover());
+                                    ui.allocate_exact_size(preview_size, egui::Sense::hover());
+                                }
+                            });
+
+                            if it != 0 {
+                                let it_idx = it as usize;
+                                if it_idx < self.items.len() {
+                                    let item = self.items[it_idx];
+                                    let sprite = item_map_sprite(item).unwrap_or(0);
+                                    ui.label(format!("item sprite: {}", sprite));
+                                } else {
+                                    ui.label("item sprite: (item.dat not loaded)");
+                                }
+                            }
+
+                            ui.separator();
+                            ui.label("Map flags:");
+                            let mut flags_changed = false;
+
+                            // Keep this list aligned with `core/src/constants.rs` map flags.
+                            let defs: &[(u64, &str)] = &[
+                                (mag_core::constants::MF_MOVEBLOCK as u64, "MF_MOVEBLOCK"),
+                                (mag_core::constants::MF_SIGHTBLOCK as u64, "MF_SIGHTBLOCK"),
+                                (mag_core::constants::MF_INDOORS as u64, "MF_INDOORS"),
+                                (mag_core::constants::MF_UWATER as u64, "MF_UWATER"),
+                                (mag_core::constants::MF_NOLAG as u64, "MF_NOLAG"),
+                                (mag_core::constants::MF_NOMONST as u64, "MF_NOMONST"),
+                                (mag_core::constants::MF_BANK as u64, "MF_BANK"),
+                                (mag_core::constants::MF_TAVERN as u64, "MF_TAVERN"),
+                                (mag_core::constants::MF_NOMAGIC as u64, "MF_NOMAGIC"),
+                                (mag_core::constants::MF_DEATHTRAP as u64, "MF_DEATHTRAP"),
+                                (mag_core::constants::MF_ARENA as u64, "MF_ARENA"),
+                                (mag_core::constants::MF_NOEXPIRE as u64, "MF_NOEXPIRE"),
+                                (mag_core::constants::MF_NOFIGHT, "MF_NOFIGHT"),
+                                (mag_core::constants::MF_GFX_INJURED, "MF_GFX_INJURED"),
+                                (mag_core::constants::MF_GFX_INJURED1, "MF_GFX_INJURED1"),
+                                (mag_core::constants::MF_GFX_INJURED2, "MF_GFX_INJURED2"),
+                                (mag_core::constants::MF_GFX_TOMB, "MF_GFX_TOMB"),
+                                (mag_core::constants::MF_GFX_TOMB1, "MF_GFX_TOMB1"),
+                                (mag_core::constants::MF_GFX_DEATH, "MF_GFX_DEATH"),
+                                (mag_core::constants::MF_GFX_DEATH1, "MF_GFX_DEATH1"),
+                                (mag_core::constants::MF_GFX_EMAGIC, "MF_GFX_EMAGIC"),
+                                (mag_core::constants::MF_GFX_EMAGIC1, "MF_GFX_EMAGIC1"),
+                                (mag_core::constants::MF_GFX_GMAGIC, "MF_GFX_GMAGIC"),
+                                (mag_core::constants::MF_GFX_GMAGIC1, "MF_GFX_GMAGIC1"),
+                                (mag_core::constants::MF_GFX_CMAGIC, "MF_GFX_CMAGIC"),
+                                (mag_core::constants::MF_GFX_CMAGIC1, "MF_GFX_CMAGIC1"),
+                            ];
+
+                            egui::ScrollArea::vertical()
+                                .max_height(220.0)
+                                .show(ui, |ui| {
+                                    egui::Grid::new("selected_tile_map_flags")
+                                        .num_columns(2)
+                                        .spacing([10.0, 4.0])
+                                        .show(ui, |ui| {
+                                            for (i, (mask, name)) in defs.iter().enumerate() {
+                                                let mut on = (flags & *mask) != 0;
+                                                if ui.checkbox(&mut on, *name).changed() {
+                                                    flags_changed = true;
+                                                    if on {
+                                                        flags |= *mask;
+                                                    } else {
+                                                        flags &= !*mask;
+                                                    }
+                                                }
+                                                if i % 2 == 1 {
+                                                    ui.end_row();
+                                                }
+                                            }
+                                            if defs.len() % 2 == 1 {
+                                                ui.end_row();
+                                            }
+                                        });
+                                });
+
+                            if flags_changed {
+                                let mut updated = self.map_tiles[idx];
+                                updated.flags = flags;
+                                if updated != self.map_tiles[idx] {
+                                    self.map_tiles[idx] = updated;
+                                    self.dirty = true;
+                                    ctx.request_repaint();
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    ui.label("Selected tile: (none)");
+                }
             });
 
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -720,7 +943,11 @@ impl eframe::App for MapViewerApp {
 
                 if !clicked_palette {
                     let Some(sel_idx) = self.selected_palette_index else {
-                        // No selection => do not paint.
+                        // No palette selection => select the tile (freeze details).
+                        if let Some((x, y)) = self.hovered_tile {
+                            self.selected_tile = Some((x, y));
+                            ctx.request_repaint();
+                        }
                         return;
                     };
                     if sel_idx >= self.palette.len() {
@@ -946,10 +1173,12 @@ impl eframe::App for MapViewerApp {
                         let it_idx = tile.it as usize;
                         if it_idx < self.items.len() {
                             let item = self.items[it_idx];
-                            if let Some(item_sprite) = item_map_sprite(item) {
+                            let item_sprite = item_map_sprite(item);
+                            if let Some(item_sprite) = item_sprite {
                                 // Highlight items red when hovering over them
                                 let is_hovered = self.hovered_tile == Some((x, y));
-                                let tint = if is_hovered {
+                                let is_selected = self.selected_tile == Some((x, y));
+                                let tint = if is_hovered || is_selected {
                                     egui::Color32::from_rgb(255, 50, 50)
                                 } else {
                                     egui::Color32::WHITE
@@ -983,8 +1212,45 @@ impl eframe::App for MapViewerApp {
                 let pos = rect.min + self.pan + Vec2::new(tx as f32, ty as f32);
                 painter.circle_stroke(pos, 6.0, (2.0, egui::Color32::YELLOW));
             }
+
+            // Highlight selected tile (persistent).
+            if let Some((x, y)) = self.selected_tile {
+                let xpos = (x as i32) * 32;
+                let ypos = (y as i32) * 32;
+                let (tx, ty) = dd_tile_origin_screen_pos(xpos, ypos);
+                let pos = rect.min + self.pan + Vec2::new(tx as f32, ty as f32);
+                painter.circle_stroke(pos, 7.0, (3.0, egui::Color32::from_rgb(255, 50, 50)));
+            }
         });
     }
+}
+
+fn load_item_templates_dat(path: &PathBuf) -> Result<Vec<Item>, String> {
+    let data = fs::read(path).map_err(|e| format!("Failed to read {:?}: {e}", path))?;
+
+    let item_size = std::mem::size_of::<Item>();
+    let expected_bytes = MAXTITEM * item_size;
+
+    if data.len() != expected_bytes {
+        return Err(format!(
+            "titem.dat size mismatch: expected {} bytes ({} templates), got {}",
+            expected_bytes,
+            MAXTITEM,
+            data.len()
+        ));
+    }
+
+    let mut templates = Vec::with_capacity(MAXTITEM);
+    for i in 0..MAXTITEM {
+        let offset = i * item_size;
+        let end = offset + item_size;
+        let Some(item) = Item::from_bytes(&data[offset..end]) else {
+            return Err(format!("Failed to parse item template at index {i}"));
+        };
+        templates.push(item);
+    }
+
+    Ok(templates)
 }
 
 fn paint_sprite_dd(
