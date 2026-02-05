@@ -762,7 +762,7 @@ impl eframe::App for MapViewerApp {
                                     let mut try_draw =
                                         |ui: &mut egui::Ui, sprite_id: usize| -> bool {
                                             if let Ok(Some(texture)) =
-                                                cache.texture_for(ctx, sprite_id as usize)
+                                                cache.texture_for(ctx, sprite_id)
                                             {
                                                 ui.add(
                                                     egui::Image::new(texture)
