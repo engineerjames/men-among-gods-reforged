@@ -6,11 +6,25 @@ use mag_core::types::{Item, Map};
 use std::fs;
 use std::path::PathBuf;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PaletteEntryKind {
+    Sprite(u16),
+    Item(u32),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct PaletteEntry {
+    kind: PaletteEntryKind,
+}
+
 #[derive(Default)]
 pub(crate) struct MapViewerApp {
     dat_dir: Option<PathBuf>,
     map_tiles: Vec<Map>,
     map_error: Option<String>,
+
+    dirty: bool,
+    save_status: Option<String>,
 
     items: Vec<Item>,
     items_error: Option<String>,
@@ -35,6 +49,13 @@ pub(crate) struct MapViewerApp {
 
     // Track frames to delay loading slightly so window appears first
     frame_count: u32,
+
+    // Palette / painting
+    palette: Vec<PaletteEntry>,
+    selected_palette_index: Option<usize>,
+    draft_sprite: u16,
+    draft_item_instance_id: u32,
+    palette_rect: Option<Rect>,
 }
 
 impl MapViewerApp {
@@ -65,6 +86,8 @@ impl MapViewerApp {
         self.map_error = None;
         self.items_error = None;
         self.pan_initialized = false;
+        self.dirty = false;
+        self.save_status = Some("Loaded map.dat".to_string());
 
         let map_path = dir.join("map.dat");
         match load_map_dat(&map_path) {
@@ -94,6 +117,234 @@ impl MapViewerApp {
         } else {
             self.items.clear();
         }
+    }
+
+    fn default_save_filename(&self) -> &'static str {
+        "map_new.dat"
+    }
+
+    fn save_map_dialog(&mut self) {
+        self.save_status = None;
+
+        let mut dialog = rfd::FileDialog::new().add_filter("DAT", &["dat"]);
+        if let Some(dir) = self.dat_dir.as_ref() {
+            dialog = dialog.set_directory(dir);
+        }
+        dialog = dialog.set_file_name(self.default_save_filename());
+
+        let Some(path) = dialog.save_file() else {
+            return;
+        };
+
+        match self.save_map_to_path(&path) {
+            Ok(()) => {
+                self.dirty = false;
+                self.save_status = Some(format!("Saved: {}", path.display()));
+            }
+            Err(e) => {
+                self.save_status = Some(format!("Save failed: {e}"));
+            }
+        }
+    }
+
+    fn save_map_to_path(&self, path: &PathBuf) -> Result<(), String> {
+        if self.map_tiles.is_empty() {
+            return Err("No map loaded".to_string());
+        }
+
+        let tile_size = std::mem::size_of::<Map>();
+        let mut bytes = Vec::with_capacity(self.map_tiles.len() * tile_size);
+        for tile in &self.map_tiles {
+            bytes.extend_from_slice(&tile.to_bytes());
+        }
+
+        fs::write(path, bytes).map_err(|e| e.to_string())
+    }
+
+    fn revert_unsaved_changes(&mut self) {
+        let Some(dir) = self.dat_dir.clone() else {
+            self.save_status = Some("Revert failed: no dat dir".to_string());
+            return;
+        };
+
+        self.load_map_from_dir(dir);
+        self.dirty = false;
+        self.save_status = Some("Reverted (discarded unsaved changes)".to_string());
+    }
+
+    fn render_palette_overlay(&mut self, ctx: &egui::Context, anchor: Pos2) -> Rect {
+        let response = egui::Area::new("map_palette_overlay".into())
+            .order(egui::Order::Foreground)
+            .fixed_pos(anchor)
+            .show(ctx, |ui| {
+                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.set_min_width(260.0);
+                    ui.vertical(|ui| {
+                        ui.strong("Palette");
+                        ui.separator();
+
+                        ui.horizontal(|ui| {
+                            ui.label("sprite:");
+                            ui.add(egui::DragValue::new(&mut self.draft_sprite));
+
+                            let preview_size = Vec2::new(96.0, 96.0);
+                            let mut preview_drawn = false;
+
+                            if let Some(cache) = self.graphics_zip.as_mut() {
+                                if let Ok(Some(texture)) =
+                                    cache.texture_for(ctx, self.draft_sprite as usize)
+                                {
+                                    ui.add(
+                                        egui::Image::new(texture)
+                                            .fit_to_exact_size(preview_size)
+                                            .maintain_aspect_ratio(true),
+                                    );
+                                    preview_drawn = true;
+                                }
+                            }
+
+                            if !preview_drawn {
+                                ui.allocate_exact_size(preview_size, egui::Sense::hover());
+                            }
+
+                            if ui.small_button("Add").clicked() {
+                                if self.draft_sprite != 0 {
+                                    self.palette.push(PaletteEntry {
+                                        kind: PaletteEntryKind::Sprite(self.draft_sprite),
+                                    });
+                                }
+                            }
+                        });
+
+                        ui.horizontal(|ui| {
+                            ui.label("it:");
+                            ui.add(egui::DragValue::new(&mut self.draft_item_instance_id));
+
+                            let preview_size = Vec2::new(96.0, 96.0);
+                            let mut preview_drawn = false;
+                            let it_idx = self.draft_item_instance_id as usize;
+
+                            if it_idx < self.items.len() {
+                                if let Some(sprite) = item_map_sprite(self.items[it_idx]) {
+                                    if let Some(cache) = self.graphics_zip.as_mut() {
+                                        if let Ok(Some(texture)) =
+                                            cache.texture_for(ctx, sprite as usize)
+                                        {
+                                            ui.add(
+                                                egui::Image::new(texture)
+                                                    .fit_to_exact_size(preview_size)
+                                                    .maintain_aspect_ratio(true),
+                                            );
+                                            preview_drawn = true;
+                                        }
+                                    }
+                                }
+                            }
+
+                            if !preview_drawn {
+                                ui.allocate_exact_size(preview_size, egui::Sense::hover());
+                            }
+
+                            if ui.small_button("Add").clicked() {
+                                if self.draft_item_instance_id != 0 {
+                                    self.palette.push(PaletteEntry {
+                                        kind: PaletteEntryKind::Item(self.draft_item_instance_id),
+                                    });
+                                }
+                            }
+                        });
+
+                        ui.separator();
+
+                        egui::ScrollArea::vertical()
+                            .max_height(260.0)
+                            .show(ui, |ui| {
+                                let icon_size = Vec2::new(48.0, 48.0);
+                                egui::Grid::new("palette_image_grid")
+                                    .num_columns(4)
+                                    .spacing([6.0, 6.0])
+                                    .show(ui, |ui| {
+                                        let mut col = 0;
+                                        for (idx, entry) in self.palette.iter().enumerate() {
+                                            let sprite_id: Option<usize> = match entry.kind {
+                                                PaletteEntryKind::Sprite(sprite) => {
+                                                    if sprite == 0 {
+                                                        None
+                                                    } else {
+                                                        Some(sprite as usize)
+                                                    }
+                                                }
+                                                PaletteEntryKind::Item(it) => {
+                                                    if it == 0 {
+                                                        None
+                                                    } else {
+                                                        let it_idx = it as usize;
+                                                        if it_idx < self.items.len() {
+                                                            let item = self.items[it_idx];
+                                                            item_map_sprite(item)
+                                                                .map(|s| s as usize)
+                                                        } else {
+                                                            None
+                                                        }
+                                                    }
+                                                }
+                                            };
+
+                                            let Some(sprite_id) = sprite_id else {
+                                                continue;
+                                            };
+
+                                            let Some(cache) = self.graphics_zip.as_mut() else {
+                                                break;
+                                            };
+
+                                            let Ok(Some(texture)) =
+                                                cache.texture_for(ctx, sprite_id)
+                                            else {
+                                                continue;
+                                            };
+
+                                            let selected = self.selected_palette_index == Some(idx);
+                                            let tint = if selected {
+                                                egui::Color32::from_rgb(180, 255, 180)
+                                            } else {
+                                                egui::Color32::WHITE
+                                            };
+
+                                            let clicked = ui
+                                                .add(
+                                                    egui::Image::new(texture)
+                                                        .fit_to_exact_size(icon_size)
+                                                        .maintain_aspect_ratio(true)
+                                                        .tint(tint)
+                                                        .sense(egui::Sense::click()),
+                                                )
+                                                .clicked();
+
+                                            if clicked {
+                                                if selected {
+                                                    self.selected_palette_index = None;
+                                                } else {
+                                                    self.selected_palette_index = Some(idx);
+                                                }
+                                            }
+
+                                            col += 1;
+                                            if col == 4 {
+                                                ui.end_row();
+                                                col = 0;
+                                            }
+                                        }
+                                        if col != 0 {
+                                            ui.end_row();
+                                        }
+                                    });
+                            });
+                    });
+                });
+            });
+
+        response.response.rect
     }
 }
 
@@ -227,6 +478,12 @@ impl eframe::App for MapViewerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.frame_count += 1;
 
+        // Save shortcut (Cmd+S on macOS, Ctrl+S elsewhere).
+        let save_shortcut = ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::S));
+        if save_shortcut {
+            self.save_map_dialog();
+        }
+
         // Load map/graphics after a couple frames (window has appeared)
         if !self.initial_load_done && self.frame_count > 2 {
             self.initial_load_done = true;
@@ -272,28 +529,55 @@ impl eframe::App for MapViewerApp {
         }
 
         egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                if ui.button("Open dat dir...").clicked() {
-                    if let Some(dir) = rfd::FileDialog::new().pick_folder() {
-                        self.load_map_from_dir(dir);
+            egui::menu::bar(ui, |ui| {
+                ui.menu_button("File", |ui| {
+                    if ui.button("Open dat dir...").clicked() {
+                        ui.close_menu();
+                        if let Some(dir) = rfd::FileDialog::new().pick_folder() {
+                            self.load_map_from_dir(dir);
+                        }
                     }
-                }
 
-                if ui.button("Open graphics zip...").clicked() {
-                    if let Some(path) = rfd::FileDialog::new()
-                        .add_filter("zip", &["zip", "ZIP"])
-                        .pick_file()
-                    {
-                        self.load_graphics_zip(path);
+                    if ui.button("Open graphics zip...").clicked() {
+                        ui.close_menu();
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("zip", &["zip", "ZIP"])
+                            .pick_file()
+                        {
+                            self.load_graphics_zip(path);
+                        }
                     }
-                }
+
+                    ui.separator();
+
+                    let save_enabled = !self.map_tiles.is_empty() && self.dirty;
+                    if ui
+                        .add_enabled(save_enabled, egui::Button::new("Save..."))
+                        .clicked()
+                    {
+                        ui.close_menu();
+                        self.save_map_dialog();
+                    }
+
+                    let revert_enabled = self.dirty && self.dat_dir.is_some();
+                    if ui
+                        .add_enabled(
+                            revert_enabled,
+                            egui::Button::new("Revert (discard changes)"),
+                        )
+                        .clicked()
+                    {
+                        ui.close_menu();
+                        self.revert_unsaved_changes();
+                    }
+                });
+
+                ui.separator();
 
                 if ui.button("Reset view").clicked() {
                     self.pan = Vec2::ZERO;
                     self.pan_initialized = false;
                 }
-
-                ui.separator();
 
                 if ui
                     .button(if self.hide_enabled {
@@ -305,6 +589,21 @@ impl eframe::App for MapViewerApp {
                 {
                     self.hide_enabled = !self.hide_enabled;
                     ctx.request_repaint();
+                }
+
+                if self.dirty {
+                    ui.separator();
+                    ui.colored_label(egui::Color32::YELLOW, "Unsaved changes");
+                }
+
+                if let Some(status) = self.save_status.as_ref() {
+                    ui.separator();
+                    let color = if status.starts_with("Save failed") {
+                        egui::Color32::LIGHT_RED
+                    } else {
+                        egui::Color32::LIGHT_GREEN
+                    };
+                    ui.colored_label(color, status);
                 }
 
                 if let Some(dir) = &self.dat_dir {
@@ -402,11 +701,61 @@ impl eframe::App for MapViewerApp {
             });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            let (rect, response) = ui.allocate_exact_size(ui.available_size(), egui::Sense::drag());
+            let (rect, response) =
+                ui.allocate_exact_size(ui.available_size(), egui::Sense::click_and_drag());
+
+            // Overlay palette anchored in the map canvas.
+            let palette_rect =
+                self.render_palette_overlay(ctx, rect.left_top() + Vec2::new(12.0, 12.0));
+            self.palette_rect = Some(palette_rect);
 
             if response.dragged() {
                 self.pan += response.drag_delta();
                 ctx.request_repaint();
+            }
+
+            if response.clicked_by(egui::PointerButton::Primary) {
+                let pointer_pos = ctx.pointer_latest_pos();
+                let clicked_palette = pointer_pos.is_some_and(|p| palette_rect.contains(p));
+
+                if !clicked_palette {
+                    let Some(sel_idx) = self.selected_palette_index else {
+                        // No selection => do not paint.
+                        return;
+                    };
+                    if sel_idx >= self.palette.len() {
+                        self.selected_palette_index = None;
+                        return;
+                    }
+                    let Some((x, y)) = self.hovered_tile else {
+                        return;
+                    };
+                    let idx = tile_index(x, y);
+                    if idx >= self.map_tiles.len() {
+                        return;
+                    }
+
+                    let mut tile = self.map_tiles[idx];
+                    match self.palette[sel_idx].kind {
+                        PaletteEntryKind::Sprite(sprite) => {
+                            if sprite != 0 {
+                                tile.fsprite = sprite;
+                            }
+                        }
+                        PaletteEntryKind::Item(it) => {
+                            if it != 0 {
+                                tile.it = it;
+                                tile.fsprite = 0;
+                            }
+                        }
+                    }
+
+                    if tile != self.map_tiles[idx] {
+                        self.map_tiles[idx] = tile;
+                        self.dirty = true;
+                        ctx.request_repaint();
+                    }
+                }
             }
 
             // Auto-center on first paint after load.
