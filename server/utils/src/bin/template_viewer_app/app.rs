@@ -6,6 +6,18 @@ use mag_core::types::skilltab::get_skill_name;
 use std::fs;
 use std::path::PathBuf;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ItemDetailsSource {
+    ItemTemplates,
+    Items,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CharacterDetailsSource {
+    CharacterTemplates,
+    Characters,
+}
+
 pub(crate) struct TemplateViewerApp {
     item_templates: Vec<mag_core::types::Item>,
     character_templates: Vec<mag_core::types::Character>,
@@ -26,9 +38,12 @@ pub(crate) struct TemplateViewerApp {
     load_error: Option<String>,
     graphics_zip: Option<GraphicsZipCache>,
     graphics_zip_error: Option<String>,
+    dat_dir: Option<PathBuf>,
+    dirty: bool,
+    save_status: Option<String>,
 }
 
-#[derive(PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 enum ViewMode {
     ItemTemplates,
     CharacterTemplates,
@@ -58,6 +73,9 @@ impl Default for TemplateViewerApp {
             load_error: None,
             graphics_zip: None,
             graphics_zip_error: None,
+            dat_dir: None,
+            dirty: false,
+            save_status: None,
         }
     }
 }
@@ -77,6 +95,125 @@ impl TemplateViewerApp {
         app
     }
 
+    fn default_save_filename(&self) -> &'static str {
+        match self.view_mode {
+            ViewMode::ItemTemplates => "titem_new.dat",
+            ViewMode::CharacterTemplates => "tchar_new.dat",
+            ViewMode::Items => "items_new.dat",
+            ViewMode::Characters => "chars_new.dat",
+        }
+    }
+
+    fn save_current_view_dialog(&mut self) {
+        self.save_status = None;
+
+        let mut dialog = rfd::FileDialog::new().add_filter("DAT", &["dat"]);
+        if let Some(dir) = self.dat_dir.as_ref() {
+            dialog = dialog.set_directory(dir);
+        }
+        dialog = dialog.set_file_name(self.default_save_filename());
+
+        let Some(path) = dialog.save_file() else {
+            return;
+        };
+
+        match self.save_current_view_to_path(&path) {
+            Ok(()) => {
+                self.dirty = false;
+                self.save_status = Some(format!("Saved to {}", path.display()));
+            }
+            Err(e) => {
+                self.save_status = Some(format!("Save failed: {e}"));
+            }
+        }
+    }
+
+    fn save_current_view_to_path(&self, path: &PathBuf) -> Result<(), String> {
+        let mut bytes: Vec<u8> = Vec::new();
+
+        match self.view_mode {
+            ViewMode::ItemTemplates => {
+                for item in &self.item_templates {
+                    bytes.extend_from_slice(&item.to_bytes());
+                }
+            }
+            ViewMode::CharacterTemplates => {
+                for character in &self.character_templates {
+                    bytes.extend_from_slice(&character.to_bytes());
+                }
+            }
+            ViewMode::Items => {
+                for item in &self.items {
+                    bytes.extend_from_slice(&item.to_bytes());
+                }
+            }
+            ViewMode::Characters => {
+                for character in &self.characters {
+                    bytes.extend_from_slice(&character.to_bytes());
+                }
+            }
+        }
+
+        fs::write(path, bytes).map_err(|e| format!("Failed to write {}: {e}", path.display()))
+    }
+
+    fn revert_unsaved_changes(&mut self) {
+        self.save_status = None;
+
+        let Some(dir) = self.dat_dir.clone() else {
+            self.save_status = Some("Revert failed: no data directory selected".to_string());
+            return;
+        };
+
+        let prev_view_mode = self.view_mode;
+        let prev_selected_item_index = self.selected_item_index;
+        let prev_selected_character_index = self.selected_character_index;
+        let prev_selected_item_instance_index = self.selected_item_instance_index;
+        let prev_selected_character_instance_index = self.selected_character_instance_index;
+
+        self.load_templates_from_dir(dir);
+
+        // Restore view and selections where possible.
+        self.view_mode = prev_view_mode;
+        self.selected_item_index =
+            prev_selected_item_index.filter(|&i| i < self.item_templates.len());
+        self.selected_character_index =
+            prev_selected_character_index.filter(|&i| i < self.character_templates.len());
+        self.selected_item_instance_index =
+            prev_selected_item_instance_index.filter(|&i| i < self.items.len());
+        self.selected_character_instance_index =
+            prev_selected_character_instance_index.filter(|&i| i < self.characters.len());
+
+        self.dirty = false;
+        if self.load_error.is_some() {
+            self.save_status = Some("Reverted changes (with load errors)".to_string());
+        } else {
+            self.save_status = Some("Reverted unsaved changes".to_string());
+        }
+    }
+
+    fn mark_dirty_if(&mut self, changed: bool) {
+        if changed {
+            self.dirty = true;
+        }
+    }
+
+    fn clamp_i8(v: i32) -> i8 {
+        v.clamp(i8::MIN as i32, i8::MAX as i32) as i8
+    }
+
+    fn clamp_u8(v: i32) -> u8 {
+        v.clamp(u8::MIN as i32, u8::MAX as i32) as u8
+    }
+
+    fn clamp_i16(v: i32) -> i16 {
+        v.clamp(i16::MIN as i32, i16::MAX as i32) as i16
+    }
+
+    fn clamp_u16(v: i32) -> u16 {
+        v.clamp(u16::MIN as i32, u16::MAX as i32) as u16
+    }
+
     fn load_graphics_zip(&mut self, zip_path: PathBuf) {
         self.graphics_zip_error = None;
         match GraphicsZipCache::load(zip_path) {
@@ -86,6 +223,58 @@ impl TemplateViewerApp {
             Err(e) => {
                 self.graphics_zip = None;
                 self.graphics_zip_error = Some(e);
+            }
+        }
+    }
+
+    fn load_items_from_file(&mut self, path: PathBuf) {
+        self.load_error = None;
+        self.save_status = None;
+        self.dirty = false;
+        self.selected_item_instance_index = None;
+
+        if let Some(parent) = path.parent() {
+            self.dat_dir = Some(parent.to_path_buf());
+        }
+
+        match self.load_items(&path) {
+            Ok(items) => {
+                self.items = items;
+                self.view_mode = ViewMode::Items;
+                self.save_status = Some(format!("Loaded items from {}", path.display()));
+                log::info!("Loaded {} items from {:?}", self.items.len(), path);
+            }
+            Err(e) => {
+                self.load_error = Some(format!("Failed to load items: {}", e));
+                log::error!("Failed to load items from {:?}: {}", path, e);
+            }
+        }
+    }
+
+    fn load_characters_from_file(&mut self, path: PathBuf) {
+        self.load_error = None;
+        self.save_status = None;
+        self.dirty = false;
+        self.selected_character_instance_index = None;
+
+        if let Some(parent) = path.parent() {
+            self.dat_dir = Some(parent.to_path_buf());
+        }
+
+        match self.load_characters(&path) {
+            Ok(chars) => {
+                self.characters = chars;
+                self.view_mode = ViewMode::Characters;
+                self.save_status = Some(format!("Loaded characters from {}", path.display()));
+                log::info!(
+                    "Loaded {} characters from {:?}",
+                    self.characters.len(),
+                    path
+                );
+            }
+            Err(e) => {
+                self.load_error = Some(format!("Failed to load characters: {}", e));
+                log::error!("Failed to load characters from {:?}: {}", path, e);
             }
         }
     }
@@ -114,14 +303,72 @@ impl TemplateViewerApp {
         }
     }
 
-    fn find_item_template(&self, item_id: u32) -> Option<&mag_core::types::Item> {
+    fn find_item_template_index(&self, item_id: u32) -> Option<usize> {
         let index = item_id as usize;
         if index < self.item_templates.len() {
-            return Some(&self.item_templates[index]);
+            return Some(index);
         }
 
         let temp_id = item_id as u16;
-        self.item_templates.iter().find(|item| item.temp == temp_id)
+        self.item_templates
+            .iter()
+            .position(|item| item.temp == temp_id)
+    }
+
+    fn render_item_details_by_index(
+        &mut self,
+        ui: &mut egui::Ui,
+        source: ItemDetailsSource,
+        idx: usize,
+    ) {
+        let item_ptr: *mut mag_core::types::Item = match source {
+            ItemDetailsSource::ItemTemplates => {
+                if idx >= self.item_templates.len() {
+                    return;
+                }
+                unsafe { self.item_templates.as_mut_ptr().add(idx) }
+            }
+            ItemDetailsSource::Items => {
+                if idx >= self.items.len() {
+                    return;
+                }
+                unsafe { self.items.as_mut_ptr().add(idx) }
+            }
+        };
+
+        // SAFETY: `item_ptr` points into `self` and is valid for the duration
+        // of this call. We don't reallocate the backing Vec while rendering.
+        unsafe {
+            self.render_item_details(ui, &mut *item_ptr);
+        }
+    }
+
+    fn render_character_details_by_index(
+        &mut self,
+        ui: &mut egui::Ui,
+        source: CharacterDetailsSource,
+        idx: usize,
+    ) {
+        let character_ptr: *mut mag_core::types::Character = match source {
+            CharacterDetailsSource::CharacterTemplates => {
+                if idx >= self.character_templates.len() {
+                    return;
+                }
+                unsafe { self.character_templates.as_mut_ptr().add(idx) }
+            }
+            CharacterDetailsSource::Characters => {
+                if idx >= self.characters.len() {
+                    return;
+                }
+                unsafe { self.characters.as_mut_ptr().add(idx) }
+            }
+        };
+
+        // SAFETY: `character_ptr` points into `self` and remains valid for the
+        // duration of this call.
+        unsafe {
+            self.render_character_details(ui, &mut *character_ptr);
+        }
     }
 
     fn render_item_popup(&mut self, ctx: &egui::Context) {
@@ -133,8 +380,8 @@ impl TemplateViewerApp {
         egui::Window::new(format!("Item {}", item_id))
             .open(&mut open)
             .show(ctx, |ui| {
-                if let Some(item) = self.find_item_template(item_id).copied() {
-                    self.render_item_details(ui, &item);
+                if let Some(idx) = self.find_item_template_index(item_id) {
+                    self.render_item_details_by_index(ui, ItemDetailsSource::ItemTemplates, idx);
                 } else {
                     ui.label(format!("No item template found for ID {}", item_id));
                 }
@@ -142,24 +389,6 @@ impl TemplateViewerApp {
 
         if !open {
             self.item_popup_id = None;
-        }
-    }
-
-    fn centered_clickable_item_id(&mut self, ui: &mut egui::Ui, item_id: u32) {
-        if item_id == 0 {
-            crate::centered_label(ui, "0");
-            return;
-        }
-
-        let response = ui
-            .with_layout(
-                egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
-                |ui| ui.add(egui::Label::new(format!("{}", item_id)).sense(egui::Sense::click())),
-            )
-            .inner;
-
-        if response.clicked() {
-            self.item_popup_id = Some(item_id);
         }
     }
 
@@ -187,6 +416,9 @@ impl TemplateViewerApp {
 
     fn load_templates_from_dir(&mut self, dir: PathBuf) {
         self.load_error = None;
+        self.save_status = None;
+        self.dat_dir = Some(dir.clone());
+        self.dirty = false;
         log::info!("Loading templates from {:?}", dir);
 
         let item_path = dir.join("titem.dat");
@@ -617,32 +849,48 @@ impl TemplateViewerApp {
             });
     }
 
-    fn render_item_details(&mut self, ui: &mut egui::Ui, item: &mag_core::types::Item) {
+    fn render_item_details(&mut self, ui: &mut egui::Ui, item: &mut mag_core::types::Item) {
         egui::ScrollArea::vertical().show(ui, |ui| {
             ui.heading(item.get_name());
             ui.separator();
 
             // Copy all fields to avoid packed struct issues
-            let temp = item.temp;
-            let used = item.used;
-            let value = item.value;
-            let placement = item.placement;
+            let mut temp = item.temp as i32;
+            let mut used = item.used as i32;
+            let mut name_buf = item.name;
+            let mut reference_buf = item.reference;
+            let mut description_buf = item.description;
+            let mut name = c_string_to_str(&name_buf).to_string();
+            let mut reference = c_string_to_str(&reference_buf).to_string();
+            let mut description = c_string_to_str(&description_buf).to_string();
+
+            let mut value = item.value;
+            let mut placement = item.placement;
             let flags = item.flags;
-            let sprite_0 = item.sprite[0];
-            let sprite_1 = item.sprite[1];
-            let status_0 = item.status[0];
-            let status_1 = item.status[1];
-            let armor_0 = item.armor[0];
-            let armor_1 = item.armor[1];
-            let weapon_0 = item.weapon[0];
-            let weapon_1 = item.weapon[1];
-            let light_0 = item.light[0];
-            let light_1 = item.light[1];
-            let duration = item.duration;
-            let cost = item.cost;
-            let power = item.power;
-            let min_rank = item.min_rank;
-            let driver = item.driver;
+            let mut sprite_0 = item.sprite[0] as i32;
+            let mut sprite_1 = item.sprite[1] as i32;
+            let mut status_0 = item.status[0] as i32;
+            let mut status_1 = item.status[1] as i32;
+            let mut armor_0 = item.armor[0] as i32;
+            let mut armor_1 = item.armor[1] as i32;
+            let mut weapon_0 = item.weapon[0] as i32;
+            let mut weapon_1 = item.weapon[1] as i32;
+            let mut light_0 = item.light[0] as i32;
+            let mut light_1 = item.light[1] as i32;
+            let mut duration = item.duration;
+            let mut cost = item.cost;
+            let mut power = item.power;
+            let mut min_rank = item.min_rank as i32;
+            let mut driver = item.driver as i32;
+
+            let mut attrib = item.attrib;
+            let mut hp = item.hp;
+            let mut end = item.end;
+            let mut mana = item.mana;
+            let mut skill = item.skill;
+            let mut data = item.data;
+
+            let mut changed = false;
 
             egui::Grid::new("item_details")
                 .num_columns(2)
@@ -650,42 +898,60 @@ impl TemplateViewerApp {
                 .striped(true)
                 .show(ui, |ui| {
                     ui.label("Index:");
-                    crate::centered_label(ui, format!("{}", temp));
+                    changed |= ui.add(egui::DragValue::new(&mut temp).speed(1)).changed();
                     ui.end_row();
 
                     ui.label("Used:");
-                    crate::centered_label(ui, format!("{}", used));
+                    changed |= ui.add(egui::DragValue::new(&mut used).speed(1)).changed();
+                    ui.end_row();
+
+                    ui.label("Name:");
+                    changed |= ui
+                        .add(egui::TextEdit::singleline(&mut name).desired_width(240.0))
+                        .changed();
                     ui.end_row();
 
                     ui.label("Reference:");
-                    ui.label(c_string_to_str(&item.reference));
+                    changed |= ui
+                        .add(egui::TextEdit::singleline(&mut reference).desired_width(240.0))
+                        .changed();
                     ui.end_row();
 
                     ui.label("Description:");
-                    ui.add(egui::Label::new(c_string_to_str(&item.description)).wrap());
+                    changed |= ui
+                        .add(
+                            egui::TextEdit::multiline(&mut description)
+                                .desired_width(240.0)
+                                .desired_rows(3),
+                        )
+                        .changed();
                     ui.end_row();
 
                     ui.label("Value:");
-                    crate::centered_label(ui, crate::format_gold_silver(value as i32));
+                    ui.horizontal(|ui| {
+                        changed |= ui.add(egui::DragValue::new(&mut value).speed(1)).changed();
+                        ui.label(crate::format_gold_silver(value as i32));
+                    });
                     ui.end_row();
 
                     ui.label("Placement:");
-                    ui.add_enabled_ui(false, |ui| {
-                        egui::ComboBox::from_id_salt(format!("placement_combo_{}", temp))
-                            .selected_text(crate::placement_label(placement))
-                            .show_ui(ui, |ui| {
-                                for (value, name) in crate::placement_options() {
-                                    let _ = ui.selectable_label(*value == placement, *name);
+                    egui::ComboBox::from_id_salt(format!("placement_combo_{}", temp))
+                        .selected_text(crate::placement_label(placement))
+                        .show_ui(ui, |ui| {
+                            for (value, name) in crate::placement_options() {
+                                if ui.selectable_label(*value == placement, *name).clicked() {
+                                    placement = *value;
+                                    changed = true;
                                 }
-                            });
-                    });
+                            }
+                        });
                     ui.end_row();
 
                     ui.label("Flags:");
                     ui.end_row();
                 });
 
-            let item_flags = mag_core::constants::ItemFlags::from_bits_truncate(flags);
+            let mut item_flags = mag_core::constants::ItemFlags::from_bits_truncate(flags);
             egui::Grid::new(format!("item_flags_grid_{}", temp))
                 .num_columns(3)
                 .spacing([10.0, 4.0])
@@ -694,7 +960,14 @@ impl TemplateViewerApp {
                     let mut col = 0;
                     for (flag, name) in crate::get_item_flag_info() {
                         let mut is_set = item_flags.contains(flag);
-                        ui.add_enabled(false, egui::Checkbox::new(&mut is_set, name));
+                        if ui.checkbox(&mut is_set, name).changed() {
+                            if is_set {
+                                item_flags.insert(flag);
+                            } else {
+                                item_flags.remove(flag);
+                            }
+                            changed = true;
+                        }
                         col += 1;
                         if col == 3 {
                             ui.end_row();
@@ -712,58 +985,101 @@ impl TemplateViewerApp {
                 .striped(true)
                 .show(ui, |ui| {
                     ui.label("Sprite[0]:");
-                    self.sprite_cell(ui, sprite_0 as usize);
-                    ui.end_row();
-
-                    ui.label("Sprite[1]:");
-                    self.sprite_cell(ui, sprite_1 as usize);
-                    ui.end_row();
-
-                    ui.label("Status:");
-                    crate::centered_label(ui, format!("[{}, {}]", status_0, status_1));
-                    ui.end_row();
-
-                    ui.label("Armor:");
-                    crate::centered_label(ui, format!("[{}, {}]", armor_0, armor_1));
-                    ui.end_row();
-
-                    ui.label("Weapon:");
-                    crate::centered_label(ui, format!("[{}, {}]", weapon_0, weapon_1));
-                    ui.end_row();
-
-                    ui.label("Light:");
-                    crate::centered_label(ui, format!("[{}, {}]", light_0, light_1));
-                    ui.end_row();
-
-                    ui.label("Duration:");
-                    crate::centered_label(ui, format!("{}", duration));
-                    ui.end_row();
-
-                    ui.label("Cost:");
-                    crate::centered_label(ui, format!("{}", cost));
-                    ui.end_row();
-
-                    ui.label("Power:");
-                    crate::centered_label(ui, format!("{}", power));
-                    ui.end_row();
-
-                    ui.label("Min Rank:");
-                    ui.add_enabled_ui(false, |ui| {
-                        egui::ComboBox::from_id_salt(format!("min_rank_combo_{}", temp))
-                            .selected_text(crate::rank_label(min_rank))
-                            .show_ui(ui, |ui| {
-                                let none_label = "-1: None";
-                                let _ = ui.selectable_label(min_rank < 0, none_label);
-                                for (idx, name) in mag_core::ranks::RANK_NAMES.iter().enumerate() {
-                                    let label = format!("{}: {}", idx, name);
-                                    let _ = ui.selectable_label(min_rank == idx as i8, label);
-                                }
-                            });
+                    ui.horizontal(|ui| {
+                        changed |= ui
+                            .add(egui::DragValue::new(&mut sprite_0).speed(1))
+                            .changed();
+                        self.sprite_cell(ui, (sprite_0.max(0)) as usize);
                     });
                     ui.end_row();
 
+                    ui.label("Sprite[1]:");
+                    ui.horizontal(|ui| {
+                        changed |= ui
+                            .add(egui::DragValue::new(&mut sprite_1).speed(1))
+                            .changed();
+                        self.sprite_cell(ui, (sprite_1.max(0)) as usize);
+                    });
+                    ui.end_row();
+
+                    ui.label("Status:");
+                    ui.horizontal(|ui| {
+                        changed |= ui
+                            .add(egui::DragValue::new(&mut status_0).speed(1))
+                            .changed();
+                        changed |= ui
+                            .add(egui::DragValue::new(&mut status_1).speed(1))
+                            .changed();
+                    });
+                    ui.end_row();
+
+                    ui.label("Armor:");
+                    ui.horizontal(|ui| {
+                        changed |= ui
+                            .add(egui::DragValue::new(&mut armor_0).speed(1))
+                            .changed();
+                        changed |= ui
+                            .add(egui::DragValue::new(&mut armor_1).speed(1))
+                            .changed();
+                    });
+                    ui.end_row();
+
+                    ui.label("Weapon:");
+                    ui.horizontal(|ui| {
+                        changed |= ui
+                            .add(egui::DragValue::new(&mut weapon_0).speed(1))
+                            .changed();
+                        changed |= ui
+                            .add(egui::DragValue::new(&mut weapon_1).speed(1))
+                            .changed();
+                    });
+                    ui.end_row();
+
+                    ui.label("Light:");
+                    ui.horizontal(|ui| {
+                        changed |= ui
+                            .add(egui::DragValue::new(&mut light_0).speed(1))
+                            .changed();
+                        changed |= ui
+                            .add(egui::DragValue::new(&mut light_1).speed(1))
+                            .changed();
+                    });
+                    ui.end_row();
+
+                    ui.label("Duration:");
+                    changed |= ui
+                        .add(egui::DragValue::new(&mut duration).speed(1))
+                        .changed();
+                    ui.end_row();
+
+                    ui.label("Cost:");
+                    changed |= ui.add(egui::DragValue::new(&mut cost).speed(1)).changed();
+                    ui.end_row();
+
+                    ui.label("Power:");
+                    changed |= ui.add(egui::DragValue::new(&mut power).speed(1)).changed();
+                    ui.end_row();
+
+                    ui.label("Min Rank:");
+                    egui::ComboBox::from_id_salt(format!("min_rank_combo_{}", temp))
+                        .selected_text(crate::rank_label(min_rank as i8))
+                        .show_ui(ui, |ui| {
+                            if ui.selectable_label(min_rank < 0, "-1: None").clicked() {
+                                min_rank = -1;
+                                changed = true;
+                            }
+                            for (idx, name) in mag_core::ranks::RANK_NAMES.iter().enumerate() {
+                                let label = format!("{}: {}", idx, name);
+                                if ui.selectable_label(min_rank == idx as i32, label).clicked() {
+                                    min_rank = idx as i32;
+                                    changed = true;
+                                }
+                            }
+                        });
+                    ui.end_row();
+
                     ui.label("Driver:");
-                    crate::centered_label(ui, format!("{}", driver));
+                    changed |= ui.add(egui::DragValue::new(&mut driver).speed(1)).changed();
                     ui.end_row();
                 });
 
@@ -782,41 +1098,45 @@ impl TemplateViewerApp {
 
                     let attrib_names = ["Bravery", "Willpower", "Intuition", "Agility", "Strength"];
                     for (i, name) in attrib_names.iter().enumerate() {
-                        let val_0 = item.attrib[i][0];
-                        let val_1 = item.attrib[i][1];
-                        let val_2 = item.attrib[i][2];
                         ui.label(*name);
-                        crate::centered_label(ui, format!("{:+}", val_0));
-                        crate::centered_label(ui, format!("{:+}", val_1));
-                        crate::centered_label(ui, format!("{}", val_2));
+                        for j in 0..3 {
+                            let mut v = attrib[i][j] as i32;
+                            if ui.add(egui::DragValue::new(&mut v).speed(1)).changed() {
+                                attrib[i][j] = Self::clamp_i8(v);
+                                changed = true;
+                            }
+                        }
                         ui.end_row();
                     }
 
-                    let hp_0 = item.hp[0];
-                    let hp_1 = item.hp[1];
-                    let hp_2 = item.hp[2];
                     ui.label("HP");
-                    crate::centered_label(ui, format!("{:+}", hp_0));
-                    crate::centered_label(ui, format!("{:+}", hp_1));
-                    crate::centered_label(ui, format!("{}", hp_2));
+                    for j in 0..3 {
+                        let mut v = hp[j] as i32;
+                        if ui.add(egui::DragValue::new(&mut v).speed(1)).changed() {
+                            hp[j] = Self::clamp_i16(v);
+                            changed = true;
+                        }
+                    }
                     ui.end_row();
 
-                    let end_0 = item.end[0];
-                    let end_1 = item.end[1];
-                    let end_2 = item.end[2];
                     ui.label("Endurance");
-                    crate::centered_label(ui, format!("{:+}", end_0));
-                    crate::centered_label(ui, format!("{:+}", end_1));
-                    crate::centered_label(ui, format!("{}", end_2));
+                    for j in 0..3 {
+                        let mut v = end[j] as i32;
+                        if ui.add(egui::DragValue::new(&mut v).speed(1)).changed() {
+                            end[j] = Self::clamp_i16(v);
+                            changed = true;
+                        }
+                    }
                     ui.end_row();
 
-                    let mana_0 = item.mana[0];
-                    let mana_1 = item.mana[1];
-                    let mana_2 = item.mana[2];
                     ui.label("Mana");
-                    crate::centered_label(ui, format!("{:+}", mana_0));
-                    crate::centered_label(ui, format!("{:+}", mana_1));
-                    crate::centered_label(ui, format!("{}", mana_2));
+                    for j in 0..3 {
+                        let mut v = mana[j] as i32;
+                        if ui.add(egui::DragValue::new(&mut v).speed(1)).changed() {
+                            mana[j] = Self::clamp_i16(v);
+                            changed = true;
+                        }
+                    }
                     ui.end_row();
                 });
 
@@ -834,15 +1154,16 @@ impl TemplateViewerApp {
                     crate::centered_label(ui, "Min Required");
                     ui.end_row();
 
-                    for (i, skill) in item.skill.iter().enumerate() {
-                        let s0 = skill[0];
-                        let s1 = skill[1];
-                        let s2 = skill[2];
+                    for i in 0..skill.len() {
                         crate::centered_label(ui, format!("{}", i));
                         ui.label(get_skill_name(i));
-                        crate::centered_label(ui, format!("{:+}", s0));
-                        crate::centered_label(ui, format!("{:+}", s1));
-                        crate::centered_label(ui, format!("{}", s2));
+                        for j in 0..3 {
+                            let mut v = skill[i][j] as i32;
+                            if ui.add(egui::DragValue::new(&mut v).speed(1)).changed() {
+                                skill[i][j] = Self::clamp_i8(v);
+                                changed = true;
+                            }
+                        }
                         ui.end_row();
                     }
                 });
@@ -855,22 +1176,62 @@ impl TemplateViewerApp {
                 .striped(true)
                 .show(ui, |ui| {
                     for i in 0..10 {
-                        let data = item.data[i];
                         ui.label(format!("data[{}]:", i));
-                        crate::centered_label(ui, format!("{}", data));
+                        changed |= ui
+                            .add(egui::DragValue::new(&mut data[i]).speed(1))
+                            .changed();
                         ui.end_row();
                     }
                 });
+
+            // Commit edits back into the packed struct
+            item.temp = Self::clamp_u16(temp);
+            item.used = Self::clamp_u8(used);
+
+            crate::write_c_string(&mut name_buf, &name);
+            crate::write_c_string(&mut reference_buf, &reference);
+            crate::write_c_string(&mut description_buf, &description);
+            item.name = name_buf;
+            item.reference = reference_buf;
+            item.description = description_buf;
+
+            item.value = value;
+            item.placement = placement;
+            item.flags = item_flags.bits();
+            item.sprite[0] = Self::clamp_i16(sprite_0);
+            item.sprite[1] = Self::clamp_i16(sprite_1);
+            item.status[0] = Self::clamp_u8(status_0);
+            item.status[1] = Self::clamp_u8(status_1);
+            item.armor[0] = Self::clamp_i8(armor_0);
+            item.armor[1] = Self::clamp_i8(armor_1);
+            item.weapon[0] = Self::clamp_i8(weapon_0);
+            item.weapon[1] = Self::clamp_i8(weapon_1);
+            item.light[0] = Self::clamp_i16(light_0);
+            item.light[1] = Self::clamp_i16(light_1);
+            item.duration = duration;
+            item.cost = cost;
+            item.power = power;
+            item.min_rank = Self::clamp_i8(min_rank);
+            item.driver = Self::clamp_u8(driver);
+            item.attrib = attrib;
+            item.hp = hp;
+            item.end = end;
+            item.mana = mana;
+            item.skill = skill;
+            item.data = data;
+
+            self.mark_dirty_if(changed);
 
             if self.view_mode == ViewMode::ItemTemplates {
                 ui.separator();
 
                 // For templates, the *slot index* is the template id. The `temp` field inside
                 // `titem.dat` entries is not reliable for this purpose.
+                let temp_u16 = Self::clamp_u16(temp);
                 let template_id = self
                     .selected_item_index
                     .map(|idx| idx as u16)
-                    .unwrap_or(temp);
+                    .unwrap_or(temp_u16);
                 let tile_w = mag_core::constants::SERVER_MAPX as usize;
                 let mut locations: Vec<(u32, u16, u16, String)> = Vec::new();
 
@@ -948,38 +1309,56 @@ impl TemplateViewerApp {
     fn render_character_details(
         &mut self,
         ui: &mut egui::Ui,
-        character: &mag_core::types::Character,
+        character: &mut mag_core::types::Character,
     ) {
         egui::ScrollArea::vertical().show(ui, |ui| {
             ui.heading(character.get_name());
             ui.separator();
 
             // Copy all packed fields to avoid alignment issues
-            let temp = character.temp;
-            let used = character.used;
-            let kindred = character.kindred;
-            let sprite = character.sprite;
-            let sound = character.sound;
+            let mut temp = character.temp as i32;
+            let mut used = character.used as i32;
+            let mut name_buf = character.name;
+            let mut reference_buf = character.reference;
+            let mut description_buf = character.description;
+            let mut name = c_string_to_str(&name_buf).to_string();
+            let mut reference = c_string_to_str(&reference_buf).to_string();
+            let mut description = c_string_to_str(&description_buf).to_string();
+
+            let mut kindred = character.kindred;
+            let mut sprite = character.sprite as i32;
+            let mut sound = character.sound as i32;
             let flags = character.flags;
-            let alignment = character.alignment;
-            let temple_x = character.temple_x;
-            let temple_y = character.temple_y;
-            let tavern_x = character.tavern_x;
-            let tavern_y = character.tavern_y;
-            let x = character.x;
-            let y = character.y;
-            let gold = character.gold;
-            let points = character.points;
-            let points_tot = character.points_tot;
-            let armor = character.armor;
-            let weapon = character.weapon;
-            let light = character.light;
-            let mode = character.mode;
-            let speed = character.speed;
-            let monster_class = character.monster_class;
-            let a_hp = character.a_hp;
-            let a_end = character.a_end;
-            let a_mana = character.a_mana;
+            let mut alignment = character.alignment as i32;
+            let mut temple_x = character.temple_x as i32;
+            let mut temple_y = character.temple_y as i32;
+            let mut tavern_x = character.tavern_x as i32;
+            let mut tavern_y = character.tavern_y as i32;
+            let mut x = character.x as i32;
+            let mut y = character.y as i32;
+            let mut gold = character.gold;
+            let mut points = character.points;
+            let mut points_tot = character.points_tot;
+            let mut armor = character.armor as i32;
+            let mut weapon = character.weapon as i32;
+            let mut light = character.light as i32;
+            let mut mode = character.mode as i32;
+            let mut speed = character.speed as i32;
+            let mut monster_class = character.monster_class;
+            let mut a_hp = character.a_hp;
+            let mut a_end = character.a_end;
+            let mut a_mana = character.a_mana;
+
+            let mut attrib = character.attrib;
+            let mut hp = character.hp;
+            let mut end = character.end;
+            let mut mana = character.mana;
+            let mut skills = character.skill;
+            let mut inventory = character.item;
+            let mut worn = character.worn;
+            let mut data = character.data;
+
+            let mut changed = false;
 
             egui::Grid::new("character_details")
                 .num_columns(2)
@@ -987,38 +1366,58 @@ impl TemplateViewerApp {
                 .striped(true)
                 .show(ui, |ui| {
                     ui.label("Index:");
-                    crate::centered_label(ui, format!("{}", temp));
+                    changed |= ui.add(egui::DragValue::new(&mut temp).speed(1)).changed();
                     ui.end_row();
 
                     ui.label("Used:");
-                    crate::centered_label(ui, format!("{}", used));
+                    changed |= ui.add(egui::DragValue::new(&mut used).speed(1)).changed();
+                    ui.end_row();
+
+                    ui.label("Name:");
+                    changed |= ui
+                        .add(egui::TextEdit::singleline(&mut name).desired_width(240.0))
+                        .changed();
                     ui.end_row();
 
                     ui.label("Reference:");
-                    ui.label(character.get_reference());
+                    changed |= ui
+                        .add(egui::TextEdit::singleline(&mut reference).desired_width(240.0))
+                        .changed();
                     ui.end_row();
 
                     ui.label("Description:");
-                    ui.add(egui::Label::new(c_string_to_str(&character.description)).wrap());
+                    changed |= ui
+                        .add(
+                            egui::TextEdit::multiline(&mut description)
+                                .desired_width(240.0)
+                                .desired_rows(3),
+                        )
+                        .changed();
                     ui.end_row();
 
                     ui.label("Kindred:");
-                    crate::centered_label(ui, format!("{}", kindred));
+                    changed |= ui
+                        .add(egui::DragValue::new(&mut kindred).speed(1))
+                        .changed();
                     ui.end_row();
 
                     ui.label("Sprite:");
-                    self.sprite_cell(ui, sprite as usize);
+                    ui.horizontal(|ui| {
+                        changed |= ui.add(egui::DragValue::new(&mut sprite).speed(1)).changed();
+                        self.sprite_cell(ui, sprite.max(0) as usize);
+                    });
                     ui.end_row();
 
                     ui.label("Sound:");
-                    crate::centered_label(ui, format!("{}", sound));
+                    changed |= ui.add(egui::DragValue::new(&mut sound).speed(1)).changed();
                     ui.end_row();
 
                     ui.label("Flags:");
                     ui.end_row();
                 });
 
-            let character_flags = mag_core::constants::CharacterFlags::from_bits_truncate(flags);
+            let mut character_flags =
+                mag_core::constants::CharacterFlags::from_bits_truncate(flags);
             egui::Grid::new(format!("character_flags_grid_{}", temp))
                 .num_columns(3)
                 .spacing([10.0, 4.0])
@@ -1027,13 +1426,17 @@ impl TemplateViewerApp {
                     let mut col = 0;
                     for flag in crate::get_character_flag_info() {
                         let mut is_set = character_flags.contains(flag);
-                        ui.add_enabled(
-                            false,
-                            egui::Checkbox::new(
-                                &mut is_set,
-                                mag_core::constants::character_flags_name(flag),
-                            ),
-                        );
+                        if ui
+                            .checkbox(&mut is_set, mag_core::constants::character_flags_name(flag))
+                            .changed()
+                        {
+                            if is_set {
+                                character_flags.insert(flag);
+                            } else {
+                                character_flags.remove(flag);
+                            }
+                            changed = true;
+                        }
                         col += 1;
                         if col == 3 {
                             ui.end_row();
@@ -1051,63 +1454,89 @@ impl TemplateViewerApp {
                 .striped(true)
                 .show(ui, |ui| {
                     ui.label("Alignment:");
-                    crate::centered_label(ui, format!("{}", alignment));
+                    changed |= ui
+                        .add(egui::DragValue::new(&mut alignment).speed(1))
+                        .changed();
                     ui.end_row();
 
                     ui.label("Temple:");
-                    crate::centered_label(ui, format!("({}, {})", temple_x, temple_y));
+                    ui.horizontal(|ui| {
+                        changed |= ui
+                            .add(egui::DragValue::new(&mut temple_x).speed(1))
+                            .changed();
+                        changed |= ui
+                            .add(egui::DragValue::new(&mut temple_y).speed(1))
+                            .changed();
+                    });
                     ui.end_row();
 
                     ui.label("Tavern:");
-                    crate::centered_label(ui, format!("({}, {})", tavern_x, tavern_y));
+                    ui.horizontal(|ui| {
+                        changed |= ui
+                            .add(egui::DragValue::new(&mut tavern_x).speed(1))
+                            .changed();
+                        changed |= ui
+                            .add(egui::DragValue::new(&mut tavern_y).speed(1))
+                            .changed();
+                    });
                     ui.end_row();
 
                     ui.label("Position:");
-                    crate::centered_label(ui, format!("({}, {})", x, y));
+                    ui.horizontal(|ui| {
+                        changed |= ui.add(egui::DragValue::new(&mut x).speed(1)).changed();
+                        changed |= ui.add(egui::DragValue::new(&mut y).speed(1)).changed();
+                    });
                     ui.end_row();
 
                     ui.label("Area:");
                     ui.label(
-                        mag_core::area::get_area_m(x as i32, y as i32)
-                            .unwrap_or_else(|| "Unknown".to_string()),
+                        mag_core::area::get_area_m(x, y).unwrap_or_else(|| "Unknown".to_string()),
                     );
                     ui.end_row();
 
                     ui.label("Gold:");
-                    crate::centered_label(ui, crate::format_gold_silver(gold));
+                    ui.horizontal(|ui| {
+                        changed |= ui.add(egui::DragValue::new(&mut gold).speed(1)).changed();
+                        ui.label(crate::format_gold_silver(gold));
+                    });
                     ui.end_row();
 
                     ui.label("Points:");
                     let points_tot_u32 = (points_tot as i64).max(0) as u32;
                     let rank_name = mag_core::ranks::rank_name(points_tot_u32);
-                    crate::centered_label(
-                        ui,
-                        format!("{} / {} ({})", points, points_tot, rank_name),
-                    );
+                    ui.horizontal(|ui| {
+                        changed |= ui.add(egui::DragValue::new(&mut points).speed(1)).changed();
+                        changed |= ui
+                            .add(egui::DragValue::new(&mut points_tot).speed(1))
+                            .changed();
+                        ui.label(format!("({})", rank_name));
+                    });
                     ui.end_row();
 
                     ui.label("Armor:");
-                    crate::centered_label(ui, format!("{}", armor));
+                    changed |= ui.add(egui::DragValue::new(&mut armor).speed(1)).changed();
                     ui.end_row();
 
                     ui.label("Weapon:");
-                    crate::centered_label(ui, format!("{}", weapon));
+                    changed |= ui.add(egui::DragValue::new(&mut weapon).speed(1)).changed();
                     ui.end_row();
 
                     ui.label("Light:");
-                    crate::centered_label(ui, format!("{}", light));
+                    changed |= ui.add(egui::DragValue::new(&mut light).speed(1)).changed();
                     ui.end_row();
 
                     ui.label("Mode:");
-                    crate::centered_label(ui, format!("{}", mode));
+                    changed |= ui.add(egui::DragValue::new(&mut mode).speed(1)).changed();
                     ui.end_row();
 
                     ui.label("Speed:");
-                    crate::centered_label(ui, format!("{}", speed));
+                    changed |= ui.add(egui::DragValue::new(&mut speed).speed(1)).changed();
                     ui.end_row();
 
                     ui.label("Monster Class:");
-                    crate::centered_label(ui, format!("{}", monster_class));
+                    changed |= ui
+                        .add(egui::DragValue::new(&mut monster_class).speed(1))
+                        .changed();
                     ui.end_row();
                 });
 
@@ -1131,8 +1560,11 @@ impl TemplateViewerApp {
                     for (i, name) in attrib_names.iter().enumerate() {
                         ui.label(*name);
                         for j in 0..6 {
-                            let val = character.attrib[i][j];
-                            crate::centered_label(ui, format!("{}", val));
+                            let mut v = attrib[i][j] as i32;
+                            if ui.add(egui::DragValue::new(&mut v).speed(1)).changed() {
+                                attrib[i][j] = Self::clamp_u8(v);
+                                changed = true;
+                            }
                         }
                         ui.end_row();
                     }
@@ -1155,22 +1587,31 @@ impl TemplateViewerApp {
 
                     ui.label("HP");
                     for i in 0..6 {
-                        let val = character.hp[i];
-                        crate::centered_label(ui, format!("{}", val));
+                        let mut v = hp[i] as i32;
+                        if ui.add(egui::DragValue::new(&mut v).speed(1)).changed() {
+                            hp[i] = Self::clamp_u16(v);
+                            changed = true;
+                        }
                     }
                     ui.end_row();
 
                     ui.label("Endurance");
                     for i in 0..6 {
-                        let val = character.end[i];
-                        crate::centered_label(ui, format!("{}", val));
+                        let mut v = end[i] as i32;
+                        if ui.add(egui::DragValue::new(&mut v).speed(1)).changed() {
+                            end[i] = Self::clamp_u16(v);
+                            changed = true;
+                        }
                     }
                     ui.end_row();
 
                     ui.label("Mana");
                     for i in 0..6 {
-                        let val = character.mana[i];
-                        crate::centered_label(ui, format!("{}", val));
+                        let mut v = mana[i] as i32;
+                        if ui.add(egui::DragValue::new(&mut v).speed(1)).changed() {
+                            mana[i] = Self::clamp_u16(v);
+                            changed = true;
+                        }
                     }
                     ui.end_row();
                 });
@@ -1183,15 +1624,15 @@ impl TemplateViewerApp {
                 .striped(true)
                 .show(ui, |ui| {
                     ui.label("Active HP:");
-                    crate::centered_label(ui, format!("{}", a_hp));
+                    changed |= ui.add(egui::DragValue::new(&mut a_hp).speed(1)).changed();
                     ui.end_row();
 
                     ui.label("Active Endurance:");
-                    crate::centered_label(ui, format!("{}", a_end));
+                    changed |= ui.add(egui::DragValue::new(&mut a_end).speed(1)).changed();
                     ui.end_row();
 
                     ui.label("Active Mana:");
-                    crate::centered_label(ui, format!("{}", a_mana));
+                    changed |= ui.add(egui::DragValue::new(&mut a_mana).speed(1)).changed();
                     ui.end_row();
                 });
 
@@ -1212,12 +1653,15 @@ impl TemplateViewerApp {
                     crate::centered_label(ui, "[5]");
                     ui.end_row();
 
-                    for (i, skill) in character.skill.iter().enumerate() {
+                    for (i, _skill) in character.skill.iter().enumerate() {
                         crate::centered_label(ui, format!("{}", i));
                         ui.label(get_skill_name(i));
                         for j in 0..6 {
-                            let val = skill[j];
-                            crate::centered_label(ui, format!("{}", val));
+                            let mut v = skills[i][j] as i32;
+                            if ui.add(egui::DragValue::new(&mut v).speed(1)).changed() {
+                                skills[i][j] = Self::clamp_u8(v);
+                                changed = true;
+                            }
                         }
                         ui.end_row();
                     }
@@ -1238,17 +1682,27 @@ impl TemplateViewerApp {
 
                     let item_count = 40; // character.item.len()
                     for i in (0..item_count).step_by(2) {
-                        let item1 = character.item[i];
-                        let item2 = if i + 1 < item_count {
-                            character.item[i + 1]
+                        let mut item1 = inventory[i] as i64;
+                        let mut item2 = if i + 1 < item_count {
+                            inventory[i + 1] as i64
                         } else {
                             0
                         };
 
                         crate::centered_label(ui, format!("{}", i));
-                        self.centered_clickable_item_id(ui, item1);
+                        if ui.add(egui::DragValue::new(&mut item1).speed(1)).changed() {
+                            inventory[i] = item1.max(0) as u32;
+                            changed = true;
+                        }
                         crate::centered_label(ui, format!("{}", i + 1));
-                        self.centered_clickable_item_id(ui, item2);
+                        if i + 1 < item_count {
+                            if ui.add(egui::DragValue::new(&mut item2).speed(1)).changed() {
+                                inventory[i + 1] = item2.max(0) as u32;
+                                changed = true;
+                            }
+                        } else {
+                            crate::centered_label(ui, "-");
+                        }
                         ui.end_row();
                     }
                 });
@@ -1266,9 +1720,15 @@ impl TemplateViewerApp {
 
                     let worn_count = 20;
                     for i in 0..worn_count {
-                        let worn_item = character.worn[i];
+                        let mut worn_item = worn[i] as i64;
                         crate::centered_label(ui, format!("{}", i));
-                        self.centered_clickable_item_id(ui, worn_item);
+                        if ui
+                            .add(egui::DragValue::new(&mut worn_item).speed(1))
+                            .changed()
+                        {
+                            worn[i] = worn_item.max(0) as u32;
+                            changed = true;
+                        }
                         ui.end_row();
                     }
                 });
@@ -1281,21 +1741,118 @@ impl TemplateViewerApp {
                 .striped(true)
                 .show(ui, |ui| {
                     for i in 0..100 {
-                        let data = character.data[i];
                         ui.label(format!("data[{}]:", i));
-                        crate::centered_label(ui, format!("{}", data));
+                        changed |= ui
+                            .add(egui::DragValue::new(&mut data[i]).speed(1))
+                            .changed();
                         ui.end_row();
                     }
                 });
+
+            // Commit edits back into packed struct
+            character.temp = Self::clamp_u16(temp);
+            character.used = Self::clamp_u8(used);
+
+            crate::write_c_string(&mut name_buf, &name);
+            crate::write_c_string(&mut reference_buf, &reference);
+            crate::write_c_string(&mut description_buf, &description);
+            character.name = name_buf;
+            character.reference = reference_buf;
+            character.description = description_buf;
+
+            character.kindred = kindred;
+            character.sprite = Self::clamp_u16(sprite);
+            character.sound = Self::clamp_u16(sound);
+            character.flags = character_flags.bits();
+            character.alignment = Self::clamp_i16(alignment);
+            character.temple_x = Self::clamp_u16(temple_x);
+            character.temple_y = Self::clamp_u16(temple_y);
+            character.tavern_x = Self::clamp_u16(tavern_x);
+            character.tavern_y = Self::clamp_u16(tavern_y);
+            character.x = Self::clamp_i16(x);
+            character.y = Self::clamp_i16(y);
+            character.gold = gold;
+            character.points = points;
+            character.points_tot = points_tot;
+            character.armor = Self::clamp_i16(armor);
+            character.weapon = Self::clamp_i16(weapon);
+            character.light = Self::clamp_u8(light);
+            character.mode = Self::clamp_u8(mode);
+            character.speed = Self::clamp_i16(speed);
+            character.monster_class = monster_class;
+            character.a_hp = a_hp;
+            character.a_end = a_end;
+            character.a_mana = a_mana;
+            character.attrib = attrib;
+            character.hp = hp;
+            character.end = end;
+            character.mana = mana;
+            character.skill = skills;
+            character.item = inventory;
+            character.worn = worn;
+            character.data = data;
+
+            self.mark_dirty_if(changed);
         });
     }
 }
 
 impl eframe::App for TemplateViewerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let save_shortcut = ctx.input(|i| {
+            let mods = i.modifiers;
+            (mods.command || mods.ctrl) && i.key_pressed(egui::Key::S)
+        });
+        if save_shortcut {
+            self.save_current_view_dialog();
+        }
+
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
+                    if ui
+                        .add_enabled(self.dirty, egui::Button::new("Save...\tCtrl+S"))
+                        .clicked()
+                    {
+                        self.save_current_view_dialog();
+                        ui.close_menu();
+                    }
+
+                    if ui
+                        .add_enabled(
+                            self.dirty && self.dat_dir.is_some(),
+                            egui::Button::new("Revert (discard changes)"),
+                        )
+                        .clicked()
+                    {
+                        self.revert_unsaved_changes();
+                        ui.close_menu();
+                    }
+
+                    ui.separator();
+
+                    if ui.button("Open Items File... (item.dat)").clicked() {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("DAT", &["dat"])
+                            .pick_file()
+                        {
+                            self.load_items_from_file(path);
+                        }
+                        ui.close_menu();
+                    }
+
+                    if ui.button("Open Characters File... (char.dat)").clicked() {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("DAT", &["dat"])
+                            .pick_file()
+                        {
+                            self.load_characters_from_file(path);
+                        }
+                        ui.close_menu();
+                    }
+
+                    ui.separator();
+
                     if ui.button("Select Data Directory...").clicked() {
                         if let Some(path) = rfd::FileDialog::new()
                             .set_can_create_directories(true)
@@ -1371,6 +1928,21 @@ impl eframe::App for TemplateViewerApp {
                 ui.separator();
                 ui.colored_label(egui::Color32::YELLOW, format!("GFX: {}", error));
             }
+
+            if self.dirty {
+                ui.separator();
+                ui.colored_label(egui::Color32::YELLOW, "Unsaved changes");
+            }
+
+            if let Some(ref status) = self.save_status {
+                ui.separator();
+                let color = if status.starts_with("Save failed") {
+                    egui::Color32::RED
+                } else {
+                    egui::Color32::GREEN
+                };
+                ui.colored_label(color, status);
+            }
         });
 
         egui::CentralPanel::default().show(ctx, |ui| match self.view_mode {
@@ -1392,8 +1964,11 @@ impl eframe::App for TemplateViewerApp {
                 egui::CentralPanel::default().show_inside(ui, |ui| {
                     if let Some(idx) = self.selected_item_index {
                         if idx < self.item_templates.len() {
-                            let item = self.item_templates[idx];
-                            self.render_item_details(ui, &item);
+                            self.render_item_details_by_index(
+                                ui,
+                                ItemDetailsSource::ItemTemplates,
+                                idx,
+                            );
                         }
                     } else {
                         ui.centered_and_justified(|ui| {
@@ -1420,8 +1995,11 @@ impl eframe::App for TemplateViewerApp {
                 egui::CentralPanel::default().show_inside(ui, |ui| {
                     if let Some(idx) = self.selected_character_index {
                         if idx < self.character_templates.len() {
-                            let character = self.character_templates[idx];
-                            self.render_character_details(ui, &character);
+                            self.render_character_details_by_index(
+                                ui,
+                                CharacterDetailsSource::CharacterTemplates,
+                                idx,
+                            );
                         }
                     } else {
                         ui.centered_and_justified(|ui| {
@@ -1448,8 +2026,7 @@ impl eframe::App for TemplateViewerApp {
                 egui::CentralPanel::default().show_inside(ui, |ui| {
                     if let Some(idx) = self.selected_item_instance_index {
                         if idx < self.items.len() {
-                            let item = self.items[idx];
-                            self.render_item_details(ui, &item);
+                            self.render_item_details_by_index(ui, ItemDetailsSource::Items, idx);
                         }
                     } else {
                         ui.centered_and_justified(|ui| {
@@ -1476,8 +2053,11 @@ impl eframe::App for TemplateViewerApp {
                 egui::CentralPanel::default().show_inside(ui, |ui| {
                     if let Some(idx) = self.selected_character_instance_index {
                         if idx < self.characters.len() {
-                            let character = self.characters[idx];
-                            self.render_character_details(ui, &character);
+                            self.render_character_details_by_index(
+                                ui,
+                                CharacterDetailsSource::Characters,
+                                idx,
+                            );
                         }
                     } else {
                         ui.centered_and_justified(|ui| {
