@@ -1784,16 +1784,30 @@ impl TemplateViewerApp {
                         };
 
                         ui.label(format!("{}", i));
-                        if ui.add(egui::DragValue::new(&mut item1).speed(1)).changed() {
-                            inventory[i] = item1.max(0) as u32;
-                            changed = true;
-                        }
-                        ui.label(format!("{}", i + 1));
-                        if i + 1 < item_count {
-                            if ui.add(egui::DragValue::new(&mut item2).speed(1)).changed() {
-                                inventory[i + 1] = item2.max(0) as u32;
+                        ui.horizontal(|ui| {
+                            if ui.add(egui::DragValue::new(&mut item1).speed(1)).changed() {
+                                inventory[i] = item1.max(0) as u32;
                                 changed = true;
                             }
+
+                            let current_id = item1.max(0) as u32;
+                            if current_id != 0 && ui.small_button("View").clicked() {
+                                self.item_popup_id = Some(current_id);
+                            }
+                        });
+                        ui.label(format!("{}", i + 1));
+                        if i + 1 < item_count {
+                            ui.horizontal(|ui| {
+                                if ui.add(egui::DragValue::new(&mut item2).speed(1)).changed() {
+                                    inventory[i + 1] = item2.max(0) as u32;
+                                    changed = true;
+                                }
+
+                                let current_id = item2.max(0) as u32;
+                                if current_id != 0 && ui.small_button("View").clicked() {
+                                    self.item_popup_id = Some(current_id);
+                                }
+                            });
                         } else {
                             ui.label("-");
                         }
@@ -1816,13 +1830,20 @@ impl TemplateViewerApp {
                     for i in 0..worn_count {
                         let mut worn_item = worn[i] as i64;
                         ui.label(format!("{}", i));
-                        if ui
-                            .add(egui::DragValue::new(&mut worn_item).speed(1))
-                            .changed()
-                        {
-                            worn[i] = worn_item.max(0) as u32;
-                            changed = true;
-                        }
+                        ui.horizontal(|ui| {
+                            if ui
+                                .add(egui::DragValue::new(&mut worn_item).speed(1))
+                                .changed()
+                            {
+                                worn[i] = worn_item.max(0) as u32;
+                                changed = true;
+                            }
+
+                            let current_id = worn_item.max(0) as u32;
+                            if current_id != 0 && ui.small_button("View").clicked() {
+                                self.item_popup_id = Some(current_id);
+                            }
+                        });
                         ui.end_row();
                     }
                 });
