@@ -22,6 +22,7 @@ struct PaletteEntry {
 #[derive(Default)]
 pub(crate) struct MapViewerApp {
     dat_dir: Option<PathBuf>,
+    map_path: Option<PathBuf>,
     map_tiles: Vec<Map>,
     map_error: Option<String>,
 
@@ -162,15 +163,25 @@ impl MapViewerApp {
     }
 
     pub(crate) fn load_map_from_dir(&mut self, dir: PathBuf) {
-        self.dat_dir = Some(dir.clone());
+        self.load_map_from_path(dir.join("map.dat"));
+    }
+
+    pub(crate) fn load_map_from_path(&mut self, map_path: PathBuf) {
         self.map_error = None;
         self.items_error = None;
         self.item_templates_error = None;
         self.pan_initialized = false;
         self.dirty = false;
-        self.save_status = Some("Loaded map.dat".to_string());
 
-        let map_path = dir.join("map.dat");
+        self.dat_dir = map_path.parent().map(|p| p.to_path_buf());
+        self.map_path = Some(map_path.clone());
+
+        let display_name = map_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("(unknown)");
+        self.save_status = Some(format!("Loaded {}", display_name));
+
         match load_map_dat(&map_path) {
             Ok(tiles) => {
                 self.map_tiles = tiles;
@@ -181,6 +192,12 @@ impl MapViewerApp {
                 self.map_error = Some(e);
             }
         }
+
+        let Some(dir) = self.dat_dir.clone() else {
+            self.items.clear();
+            self.item_templates.clear();
+            return;
+        };
 
         // Optional: load item instances so we can render `Map.it` overlays.
         let item_path = dir.join("item.dat");
@@ -237,6 +254,8 @@ impl MapViewerApp {
         match self.save_map_to_path(&path) {
             Ok(()) => {
                 self.dirty = false;
+                self.dat_dir = path.parent().map(|p| p.to_path_buf());
+                self.map_path = Some(path.clone());
                 self.save_status = Some(format!("Saved: {}", path.display()));
             }
             Err(e) => {
@@ -260,12 +279,15 @@ impl MapViewerApp {
     }
 
     fn revert_unsaved_changes(&mut self) {
-        let Some(dir) = self.dat_dir.clone() else {
-            self.save_status = Some("Revert failed: no dat dir".to_string());
-            return;
-        };
-
-        self.load_map_from_dir(dir);
+        if let Some(path) = self.map_path.clone() {
+            self.load_map_from_path(path);
+        } else {
+            let Some(dir) = self.dat_dir.clone() else {
+                self.save_status = Some("Revert failed: no map loaded".to_string());
+                return;
+            };
+            self.load_map_from_dir(dir);
+        }
         self.dirty = false;
         self.save_status = Some("Reverted (discarded unsaved changes)".to_string());
     }
@@ -641,6 +663,17 @@ impl eframe::App for MapViewerApp {
                         }
                     }
 
+                    if ui.button("Open map file...").clicked() {
+                        ui.close_menu();
+                        let mut dialog = rfd::FileDialog::new().add_filter("DAT", &["dat"]);
+                        if let Some(dir) = self.dat_dir.as_ref() {
+                            dialog = dialog.set_directory(dir);
+                        }
+                        if let Some(path) = dialog.pick_file() {
+                            self.load_map_from_path(path);
+                        }
+                    }
+
                     if ui.button("Open graphics zip...").clicked() {
                         ui.close_menu();
                         if let Some(path) = rfd::FileDialog::new()
@@ -883,7 +916,7 @@ impl eframe::App for MapViewerApp {
 
                             ui.separator();
                             ui.label("Map flags:");
-                            let mut flags_changed = false;
+                            let original_flags = flags;
 
                             // Keep this list aligned with `core/src/constants.rs` map flags.
                             let defs: &[(u64, &str)] = &[
@@ -925,7 +958,6 @@ impl eframe::App for MapViewerApp {
                                             for (i, (mask, name)) in defs.iter().enumerate() {
                                                 let mut on = (flags & *mask) != 0;
                                                 if ui.checkbox(&mut on, *name).changed() {
-                                                    flags_changed = true;
                                                     if on {
                                                         flags |= *mask;
                                                     } else {
@@ -942,7 +974,7 @@ impl eframe::App for MapViewerApp {
                                         });
                                 });
 
-                            if flags_changed {
+                            if flags != original_flags {
                                 let mut updated = self.map_tiles[idx];
                                 updated.flags = flags;
                                 if updated != self.map_tiles[idx] {
