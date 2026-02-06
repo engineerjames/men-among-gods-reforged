@@ -914,7 +914,6 @@ impl State {
                 God::add_ban(cn, parse_usize(arg_get(1)));
                 return;
             }
-
             Some("bow") if !f_sh => {
                 log::debug!("Processing bow command for {}", cn);
                 Repository::with_characters_mut(|characters| {
@@ -937,7 +936,6 @@ impl State {
                 God::build(cn, parse_i32(arg_get(1)) as u32);
                 return;
             }
-
             Some("cap") if f_g => {
                 // TODO: `set_cap(int cn,int nr)` from original C++
                 // Original call: set_cap(cn, atoi(arg[1]));
@@ -980,7 +978,6 @@ impl State {
                 God::set_flag(cn, arg_get(1), CharacterFlags::Creator.bits());
                 return;
             }
-
             Some("deposit") if !f_m => {
                 log::debug!("Processing deposit command for {}", cn);
                 self.do_deposit(cn, parse_i32(arg_get(1)), parse_i32(arg_get(2)));
@@ -1039,7 +1036,6 @@ impl State {
                 God::force(cn, arg_get(1), args_get(1));
                 return;
             }
-
             Some("gtell") if !f_m => {
                 log::debug!("Processing gtell command for {}", cn);
                 self.do_gtell(cn, args_get(0));
@@ -1110,13 +1106,11 @@ impl State {
                 God::grolm_start(cn);
                 return;
             }
-
             Some("help") => {
                 log::debug!("Processing help command for {}", cn);
                 self.do_help(cn, arg_get(1));
                 return;
             }
-
             Some("ignore") if !f_m => {
                 log::debug!("Processing ignore command for {}", cn);
                 self.do_ignore(cn, arg_get(1), 0);
@@ -1383,7 +1377,6 @@ impl State {
                 God::show_network_info(cn, args_get(0));
                 return;
             }
-
             Some("shout") => {
                 log::debug!("Processing shout command for {}", cn);
                 self.do_shout(cn, args_get(0));
