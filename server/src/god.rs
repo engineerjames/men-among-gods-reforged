@@ -5678,7 +5678,12 @@ impl God {
                 if usnr == 0 || !Character::is_sane_character(usnr) {
                     continue;
                 }
-                v.push((player_id, usnr, players[player_id].ltick, players[player_id].rtick));
+                v.push((
+                    player_id,
+                    usnr,
+                    players[player_id].ltick,
+                    players[player_id].rtick,
+                ));
             }
             v
         });
