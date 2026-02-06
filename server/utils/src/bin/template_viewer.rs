@@ -78,6 +78,17 @@ fn main() -> Result<(), eframe::Error> {
     )
 }
 
+fn write_c_string(dst: &mut [u8], src: &str) {
+    dst.fill(0);
+    if dst.is_empty() {
+        return;
+    }
+
+    let bytes = src.as_bytes();
+    let limit = bytes.len().min(dst.len().saturating_sub(1));
+    dst[..limit].copy_from_slice(&bytes[..limit]);
+}
+
 // Helper function to format currency as gold and silver
 fn format_gold_silver(value: i32) -> String {
     let gold = value / 1000;

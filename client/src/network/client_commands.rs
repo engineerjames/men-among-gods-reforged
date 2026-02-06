@@ -264,7 +264,11 @@ impl ClientCommand {
     ///
     /// The server replies with `SV_PONG` echoing the sequence and timestamp.
     pub fn new_ping(seq: u32, client_time_ms: u32) -> Self {
-        log::debug!("Building ping packet: seq={}, client_time_ms={}", seq, client_time_ms);
+        log::debug!(
+            "Building ping packet: seq={}, client_time_ms={}",
+            seq,
+            client_time_ms
+        );
         Self::cmd_u32_u32(ClientCommandType::Ping, seq, client_time_ms)
     }
 
