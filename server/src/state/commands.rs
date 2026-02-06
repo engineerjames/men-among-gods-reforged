@@ -8,6 +8,92 @@ use crate::repository::Repository;
 use crate::state::State;
 use crate::{driver, helpers};
 
+fn atoi_i32(s: &str) -> i32 {
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+
+    let mut sign: i64 = 1;
+    if i < bytes.len() {
+        if bytes[i] == b'-' {
+            sign = -1;
+            i += 1;
+        } else if bytes[i] == b'+' {
+            i += 1;
+        }
+    }
+
+    let mut acc: i64 = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if !b.is_ascii_digit() {
+            break;
+        }
+        acc = acc.saturating_mul(10).saturating_add((b - b'0') as i64);
+        i += 1;
+    }
+
+    let v = acc.saturating_mul(sign);
+    v.clamp(i32::MIN as i64, i32::MAX as i64) as i32
+}
+
+fn atoi_u32(s: &str) -> u32 {
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+
+    // no sign for u32; match common C patterns: leading '-' yields 0
+    if i < bytes.len() && (bytes[i] == b'-' || bytes[i] == b'+') {
+        if bytes[i] == b'-' {
+            return 0;
+        }
+        i += 1;
+    }
+
+    let mut acc: u64 = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if !b.is_ascii_digit() {
+            break;
+        }
+        acc = acc.saturating_mul(10).saturating_add((b - b'0') as u64);
+        i += 1;
+    }
+
+    acc.min(u32::MAX as u64) as u32
+}
+
+fn atoi_usize(s: &str) -> usize {
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+
+    if i < bytes.len() && (bytes[i] == b'-' || bytes[i] == b'+') {
+        if bytes[i] == b'-' {
+            return 0;
+        }
+        i += 1;
+    }
+
+    let mut acc: u128 = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if !b.is_ascii_digit() {
+            break;
+        }
+        acc = acc.saturating_mul(10).saturating_add((b - b'0') as u128);
+        i += 1;
+    }
+
+    acc.min(usize::MAX as u128) as usize
+}
+
 const ALL_COMMANDS: &'static [&str; 126] = &[
     "addban",
     "afk",
@@ -798,9 +884,10 @@ impl State {
         // helper closures
         let arg_get = |i: usize| arg.get(i).map(|s| s.as_str()).unwrap_or("");
         let args_get = |i: usize| args.get(i).and_then(|o| *o).unwrap_or("");
-        let parse_usize = |s: &str| s.parse::<usize>().unwrap_or(0usize);
-        let parse_i32 = |s: &str| s.parse::<i32>().unwrap_or(0i32);
-        let parse_u32 = |s: &str| s.parse::<u32>().unwrap_or(0u32);
+        // Match original C behavior: numeric parsing is atoi-like (stops at first non-digit).
+        let parse_usize = |s: &str| atoi_usize(s);
+        let parse_i32 = |s: &str| atoi_i32(s);
+        let parse_u32 = |s: &str| atoi_u32(s);
 
         log::debug!("Command received from {}: cmd={} ptr={}", cn, cmd, ptr);
 
@@ -827,7 +914,6 @@ impl State {
                 God::add_ban(cn, parse_usize(arg_get(1)));
                 return;
             }
-
             Some("bow") if !f_sh => {
                 log::debug!("Processing bow command for {}", cn);
                 Repository::with_characters_mut(|characters| {
@@ -850,7 +936,6 @@ impl State {
                 God::build(cn, parse_i32(arg_get(1)) as u32);
                 return;
             }
-
             Some("cap") if f_g => {
                 // TODO: `set_cap(int cn,int nr)` from original C++
                 // Original call: set_cap(cn, atoi(arg[1]));
@@ -893,7 +978,6 @@ impl State {
                 God::set_flag(cn, arg_get(1), CharacterFlags::Creator.bits());
                 return;
             }
-
             Some("deposit") if !f_m => {
                 log::debug!("Processing deposit command for {}", cn);
                 self.do_deposit(cn, parse_i32(arg_get(1)), parse_i32(arg_get(2)));
@@ -952,7 +1036,6 @@ impl State {
                 God::force(cn, arg_get(1), args_get(1));
                 return;
             }
-
             Some("gtell") if !f_m => {
                 log::debug!("Processing gtell command for {}", cn);
                 self.do_gtell(cn, args_get(0));
@@ -1023,13 +1106,11 @@ impl State {
                 God::grolm_start(cn);
                 return;
             }
-
             Some("help") => {
                 log::debug!("Processing help command for {}", cn);
                 self.do_help(cn, arg_get(1));
                 return;
             }
-
             Some("ignore") if !f_m => {
                 log::debug!("Processing ignore command for {}", cn);
                 self.do_ignore(cn, arg_get(1), 0);
@@ -1293,10 +1374,14 @@ impl State {
             }
             Some("network") if f_gius => {
                 log::debug!("Processing network command for {}", cn);
-                God::show_network_info(cn, args_get(0));
+                let target = args_get(0).trim();
+                if f_gi && target.is_empty() {
+                    God::show_network_info_all(cn);
+                } else {
+                    God::show_network_info(cn, target);
+                }
                 return;
             }
-
             Some("shout") => {
                 log::debug!("Processing shout command for {}", cn);
                 self.do_shout(cn, args_get(0));

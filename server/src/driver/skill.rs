@@ -616,7 +616,7 @@ pub fn spell_protect(cn: usize, co: usize, power: i32) -> i32 {
             State::with(|state| {
                 state.do_character_log(
                     cn,
-                    FontColor::Green,
+                    FontColor::Yellow,
                     &format!(
                         "Seeing that {} is not powerful enough for your spell, you reduced its strength.\n",
                         c_string_to_str(&reference)

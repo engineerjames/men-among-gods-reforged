@@ -94,7 +94,9 @@ impl State {
             );
             return;
         }
-        let v = 100 * g + s;
+        // Match C semantics: signed 32-bit overflow wraps.
+        // This avoids debug-mode panics and keeps behavior consistent.
+        let v = g.wrapping_mul(100).wrapping_add(s);
         if v < 0 {
             self.do_character_log(
                 cn,
@@ -115,7 +117,6 @@ impl State {
         Repository::with_characters_mut(|chars| {
             chars[cn].gold += v;
             chars[cn].data[13] -= v;
-            chars[cn].set_do_update_flags();
         });
         self.do_update_char(cn);
         let newbal = Repository::with_characters(|ch| ch[cn].data[13]);
@@ -123,7 +124,7 @@ impl State {
             cn,
             core::types::FontColor::Yellow,
             &format!(
-                "You withdraw {}G {}; your new balance is {}G {}S.\n",
+                "You withdraw {}G {}S; your new balance is {}G {}S.\n",
                 v / 100,
                 v % 100,
                 newbal / 100,
@@ -156,7 +157,9 @@ impl State {
             );
             return;
         }
-        let v = 100 * g + s;
+        // Match C semantics: signed 32-bit overflow wraps.
+        // This avoids debug-mode panics and keeps behavior consistent.
+        let v = g.wrapping_mul(100).wrapping_add(s);
         if v < 0 {
             self.do_character_log(
                 cn,
@@ -177,7 +180,6 @@ impl State {
         Repository::with_characters_mut(|chars| {
             chars[cn].gold -= v;
             chars[cn].data[13] += v;
-            chars[cn].set_do_update_flags();
         });
         self.do_update_char(cn);
         let newbal = Repository::with_characters(|ch| ch[cn].data[13]);
@@ -185,7 +187,7 @@ impl State {
             cn,
             core::types::FontColor::Yellow,
             &format!(
-                "You deposited {}G {}; your new balance is {}G {}S.\n",
+                "You deposited {}G {}S; your new balance is {}G {}S.\n",
                 v / 100,
                 v % 100,
                 newbal / 100,

@@ -4718,9 +4718,10 @@ pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
         return 0;
     }
 
-    // Check if character is Seyan'Du (KIN_SEYAN_DU = 0x00000008)
-    let is_seyan =
-        Repository::with_characters(|characters| (characters[cn].kindred & 0x00000008) != 0);
+    // Check if character is Seyan'Du
+    let is_seyan = Repository::with_characters(|characters| {
+        (characters[cn].kindred & KIN_SEYAN_DU as i32) != 0
+    });
 
     if !is_seyan {
         State::with(|state| {
@@ -4760,14 +4761,16 @@ pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
                 let (x, y, carried) =
                     Repository::with_items(|items| (items[n].x, items[n].y, items[n].carried));
 
-                let broken_sword = God::create_item(683);
-                if broken_sword.unwrap() != 0 {
+                if let Some(broken_sword) = God::create_item(683) {
+                    if broken_sword == 0 {
+                        continue;
+                    }
                     Repository::with_items_mut(|items| {
-                        items[broken_sword.unwrap()].x = x;
-                        items[broken_sword.unwrap()].y = y;
-                        items[broken_sword.unwrap()].carried = carried;
-                        items[broken_sword.unwrap()].temp = 683;
-                        items[broken_sword.unwrap()].flags |= ItemFlags::IF_UPDATE.bits();
+                        items[broken_sword].x = x;
+                        items[broken_sword].y = y;
+                        items[broken_sword].carried = carried;
+                        items[broken_sword].temp = 683;
+                        items[broken_sword].flags |= ItemFlags::IF_UPDATE.bits();
                     });
                     Repository::with_items_mut(|items| {
                         items[n].used = USE_EMPTY;
@@ -4790,7 +4793,13 @@ pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
         }
 
         // Create new Seyan'Du sword (template 682)
-        in2 = God::create_item(682).unwrap();
+        let Some(new_sword) = God::create_item(682) else {
+            return 0;
+        };
+        if new_sword == 0 {
+            return 0;
+        }
+        in2 = new_sword;
         God::give_character_item(cn, in2);
         Repository::with_items_mut(|items| {
             items[in2].data[0] = cn as u32;
@@ -4878,10 +4887,18 @@ pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
 
 pub fn use_seyan_door(cn: usize, item_idx: usize) -> i32 {
     if cn != 0 {
-        // Check if character is Seyan'Du (KIN_SEYAN_DU = 0x00000008)
-        let is_seyan =
-            Repository::with_characters(|characters| (characters[cn].kindred & 0x00000008) != 0);
+        // Check if character is Seyan'Du
+        let is_seyan = Repository::with_characters(|characters| {
+            (characters[cn].kindred & KIN_SEYAN_DU as i32) != 0
+        });
         if !is_seyan {
+            State::with(|state| {
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    "You have the feeling this isn't meant for you.\n",
+                );
+            });
             return 0;
         }
     }
@@ -8109,7 +8126,6 @@ pub fn step_portal2_lab13(cn: usize, _item_idx: usize) -> i32 {
                 });
                 if is_other_player {
                     flag = 1;
-                    break;
                 }
             }
 
@@ -8120,6 +8136,13 @@ pub fn step_portal2_lab13(cn: usize, _item_idx: usize) -> i32 {
                     flag = 2;
                     break;
                 }
+            }
+
+            // Match original C: if we saw another player on this tile (flag=1),
+            // we still check for an expiring item (flag=2) on the same tile.
+            // Only after the item check do we stop scanning.
+            if flag == 1 {
+                break;
             }
         }
         if flag != 0 {
@@ -8139,7 +8162,6 @@ pub fn step_portal2_lab13(cn: usize, _item_idx: usize) -> i32 {
                     });
                     if is_other_player {
                         flag = 1;
-                        break;
                     }
                 }
 
@@ -8150,6 +8172,10 @@ pub fn step_portal2_lab13(cn: usize, _item_idx: usize) -> i32 {
                         flag = 2;
                         break;
                     }
+                }
+
+                if flag == 1 {
+                    break;
                 }
             }
             if flag != 0 {
@@ -8202,7 +8228,7 @@ pub fn step_portal2_lab13(cn: usize, _item_idx: usize) -> i32 {
         if temp != 51 {
             continue;
         }
-        if a_hp > (hp5 * 900) as i32 && a_mana > (mana5 * 900) as i32 {
+        if a_hp > (hp5 as i32 * 900) && a_mana > (mana5 as i32 * 900) {
             flag = 1;
         }
         break;

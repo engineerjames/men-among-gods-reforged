@@ -82,6 +82,10 @@ pub fn plr_logout(character_id: usize, player_id: usize, reason: enums::LogoutRe
         });
 
         if is_player && is_not_ccp {
+            let name = Repository::with_characters(|characters| {
+                characters[character_id].get_name().to_string()
+            });
+
             // Handle exit punishment
             if reason == enums::LogoutReason::Exit {
                 Repository::with_characters_mut(|characters| {
@@ -300,6 +304,10 @@ pub fn plr_logout(character_id: usize, player_id: usize, reason: enums::LogoutRe
                 if character.is_building() {
                     God::build(character_id, 0);
                 }
+            });
+
+            State::with(|state| {
+                state.do_announce(character_id, 0, &format!("{} left the game.\n", name));
             });
         }
     }
