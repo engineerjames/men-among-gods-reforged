@@ -8,6 +8,92 @@ use crate::repository::Repository;
 use crate::state::State;
 use crate::{driver, helpers};
 
+fn atoi_i32(s: &str) -> i32 {
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+
+    let mut sign: i64 = 1;
+    if i < bytes.len() {
+        if bytes[i] == b'-' {
+            sign = -1;
+            i += 1;
+        } else if bytes[i] == b'+' {
+            i += 1;
+        }
+    }
+
+    let mut acc: i64 = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if !b.is_ascii_digit() {
+            break;
+        }
+        acc = acc.saturating_mul(10).saturating_add((b - b'0') as i64);
+        i += 1;
+    }
+
+    let v = acc.saturating_mul(sign);
+    v.clamp(i32::MIN as i64, i32::MAX as i64) as i32
+}
+
+fn atoi_u32(s: &str) -> u32 {
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+
+    // no sign for u32; match common C patterns: leading '-' yields 0
+    if i < bytes.len() && (bytes[i] == b'-' || bytes[i] == b'+') {
+        if bytes[i] == b'-' {
+            return 0;
+        }
+        i += 1;
+    }
+
+    let mut acc: u64 = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if !b.is_ascii_digit() {
+            break;
+        }
+        acc = acc.saturating_mul(10).saturating_add((b - b'0') as u64);
+        i += 1;
+    }
+
+    acc.min(u32::MAX as u64) as u32
+}
+
+fn atoi_usize(s: &str) -> usize {
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+
+    if i < bytes.len() && (bytes[i] == b'-' || bytes[i] == b'+') {
+        if bytes[i] == b'-' {
+            return 0;
+        }
+        i += 1;
+    }
+
+    let mut acc: u128 = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if !b.is_ascii_digit() {
+            break;
+        }
+        acc = acc.saturating_mul(10).saturating_add((b - b'0') as u128);
+        i += 1;
+    }
+
+    acc.min(usize::MAX as u128) as usize
+}
+
 const ALL_COMMANDS: &'static [&str; 126] = &[
     "addban",
     "afk",
@@ -798,9 +884,10 @@ impl State {
         // helper closures
         let arg_get = |i: usize| arg.get(i).map(|s| s.as_str()).unwrap_or("");
         let args_get = |i: usize| args.get(i).and_then(|o| *o).unwrap_or("");
-        let parse_usize = |s: &str| s.parse::<usize>().unwrap_or(0usize);
-        let parse_i32 = |s: &str| s.parse::<i32>().unwrap_or(0i32);
-        let parse_u32 = |s: &str| s.parse::<u32>().unwrap_or(0u32);
+        // Match original C behavior: numeric parsing is atoi-like (stops at first non-digit).
+        let parse_usize = |s: &str| atoi_usize(s);
+        let parse_i32 = |s: &str| atoi_i32(s);
+        let parse_u32 = |s: &str| atoi_u32(s);
 
         log::debug!("Command received from {}: cmd={} ptr={}", cn, cmd, ptr);
 
