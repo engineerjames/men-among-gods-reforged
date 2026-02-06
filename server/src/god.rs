@@ -4611,22 +4611,11 @@ impl God {
 
                 character.set_do_update_flags();
 
-                State::with(|state| {
-                    state.do_character_log(
-                        co,
-                        core::types::FontColor::Green,
-                        &format!(
-                            "Changed race of character {} to template {}\n",
-                            character.get_name(),
-                            temp
-                        ),
-                    );
-                    log::info!(
-                        "Changed race of character {} to template {}",
-                        character.get_name(),
-                        temp
-                    );
-                });
+                log::info!(
+                    "Changed race of character {} to template {}",
+                    character.get_name(),
+                    temp
+                );
             });
         });
 

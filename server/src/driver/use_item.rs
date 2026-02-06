@@ -8126,7 +8126,6 @@ pub fn step_portal2_lab13(cn: usize, _item_idx: usize) -> i32 {
                 });
                 if is_other_player {
                     flag = 1;
-                    break;
                 }
             }
 
@@ -8137,6 +8136,13 @@ pub fn step_portal2_lab13(cn: usize, _item_idx: usize) -> i32 {
                     flag = 2;
                     break;
                 }
+            }
+
+            // Match original C: if we saw another player on this tile (flag=1),
+            // we still check for an expiring item (flag=2) on the same tile.
+            // Only after the item check do we stop scanning.
+            if flag == 1 {
+                break;
             }
         }
         if flag != 0 {
@@ -8156,7 +8162,6 @@ pub fn step_portal2_lab13(cn: usize, _item_idx: usize) -> i32 {
                     });
                     if is_other_player {
                         flag = 1;
-                        break;
                     }
                 }
 
@@ -8167,6 +8172,10 @@ pub fn step_portal2_lab13(cn: usize, _item_idx: usize) -> i32 {
                         flag = 2;
                         break;
                     }
+                }
+
+                if flag == 1 {
+                    break;
                 }
             }
             if flag != 0 {
@@ -8219,7 +8228,7 @@ pub fn step_portal2_lab13(cn: usize, _item_idx: usize) -> i32 {
         if temp != 51 {
             continue;
         }
-        if a_hp > (hp5 * 900) as i32 && a_mana > (mana5 * 900) as i32 {
+        if a_hp > (hp5 as i32 * 900) && a_mana > (mana5 as i32 * 900) {
             flag = 1;
         }
         break;
