@@ -1374,7 +1374,12 @@ impl State {
             }
             Some("network") if f_gius => {
                 log::debug!("Processing network command for {}", cn);
-                God::show_network_info(cn, args_get(0));
+                let target = args_get(0).trim();
+                if f_gi && target.is_empty() {
+                    God::show_network_info_all(cn);
+                } else {
+                    God::show_network_info(cn, target);
+                }
                 return;
             }
             Some("shout") => {

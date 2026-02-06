@@ -5655,4 +5655,79 @@ impl God {
             );
         });
     }
+
+    /// Display basic network timing for all connected player characters.
+    ///
+    /// This is intended for god/imp usage; it enumerates active player
+    /// connections and prints the same columns as `show_network_info`.
+    pub fn show_network_info_all(cn: usize) {
+        if !Character::is_sane_character(cn) {
+            return;
+        }
+
+        // Snapshot active player slots first, then resolve character names.
+        // We treat a slot as "connected" when it has an open socket and a
+        // sane controlled character (`usnr`).
+        let connected: Vec<(usize, usize, u32, u32)> = Server::with_players(|players| {
+            let mut v = Vec::new();
+            for player_id in 1..core::constants::MAXPLAYER {
+                if players[player_id].sock.is_none() {
+                    continue;
+                }
+                let usnr = players[player_id].usnr;
+                if usnr == 0 || !Character::is_sane_character(usnr) {
+                    continue;
+                }
+                v.push((player_id, usnr, players[player_id].ltick, players[player_id].rtick));
+            }
+            v
+        });
+
+        let rows: Vec<(String, Option<f64>)> = Repository::with_characters(|characters| {
+            let mut out = Vec::new();
+            for (_player_id, usnr, ltick, rtick) in connected.iter().copied() {
+                if characters[usnr].used == core::constants::USE_EMPTY {
+                    continue;
+                }
+                if (characters[usnr].flags & CharacterFlags::Player.bits()) == 0 {
+                    continue;
+                }
+
+                let lag_ms: Option<f64> = if rtick == 0 {
+                    None
+                } else {
+                    let lag_ticks = ltick.wrapping_sub(rtick);
+                    Some((lag_ticks as f64 * 1000.0) / core::constants::TICKS as f64)
+                };
+
+                out.push((characters[usnr].get_name().to_string(), lag_ms));
+            }
+            out
+        });
+
+        State::with(|state| {
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "Name               Lag(ms)\n",
+            );
+            state.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "-------------------------\n",
+            );
+
+            for (name, lag_ms) in rows {
+                let lag_str = match lag_ms {
+                    Some(ms) => format!("{ms:>7.0}"),
+                    None => "   n/a".to_string(),
+                };
+                state.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!("{:<18} {}\n", name, lag_str),
+                );
+            }
+        });
+    }
 }
