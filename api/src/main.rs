@@ -1,7 +1,7 @@
 pub mod types;
 
 use crate::types::{CreateAccountRequest, CreateAccountResponse, LoginRequest, LoginResponse};
-use axum::{http::StatusCode, routing::post, Json, Router};
+use axum::{extract::State, http::StatusCode, routing::post, Json, Router};
 use axum_governor::GovernorLayer;
 use lazy_limit::{init_rate_limiter, Duration, RuleConfig};
 use lazy_static::lazy_static;
@@ -21,7 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // TODO: Use Redis connection
     let client = redis::Client::open("redis://127.0.0.1:6379/")?;
-    let mut _con = client.get_multiplexed_async_connection().await?;
+    let con = client.get_multiplexed_async_connection().await?;
 
     // build our application with a route
     let app = Router::new()
@@ -31,14 +31,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             tower::ServiceBuilder::new()
                 .layer(RealIpLayer::default())
                 .layer(GovernorLayer::default()),
-        );
+        )
+        .with_state(con);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
     Ok(())
 }
 
-async fn login(Json(_payload): Json<LoginRequest>) -> (StatusCode, Json<LoginResponse>) {
+async fn login(
+    State(con): State<redis::aio::MultiplexedConnection>,
+    Json(_payload): Json<LoginRequest>,
+) -> (StatusCode, Json<LoginResponse>) {
     // insert your application logic here
     let response = LoginResponse {
         token: "fake_token".to_string(),
@@ -68,6 +72,7 @@ fn is_valid_password(password: &str) -> bool {
 }
 
 async fn create_account(
+    State(con): State<redis::aio::MultiplexedConnection>,
     Json(payload): Json<CreateAccountRequest>,
 ) -> (StatusCode, Json<CreateAccountResponse>) {
     let response = CreateAccountResponse {
