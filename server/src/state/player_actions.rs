@@ -686,9 +686,14 @@ impl State {
                 let hp = (ch[idx].a_hp + 500) / 1000;
                 let end = (ch[idx].a_end + 500) / 1000;
                 let mana = (ch[idx].a_mana + 500) / 1000;
+
+                let ch_hp = ch[idx].hp[5];
+                let ch_end = ch[idx].end[5];
+                let ch_mana = ch[idx].mana[5];
+
                 format!(
                     "{} {}/{}H, {}/{}E, {}/{}M\n",
-                    name, hp, ch[idx].hp[5], end, ch[idx].end[5], mana, ch[idx].mana[5]
+                    name, hp, ch_hp, end, ch_end, mana, ch_mana
                 )
             })
         };
