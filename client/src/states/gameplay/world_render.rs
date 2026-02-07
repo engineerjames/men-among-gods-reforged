@@ -677,6 +677,22 @@ pub(crate) fn update_world_tiles(
             }
         }
 
+        let mut w = last.w;
+        let mut h = last.h;
+        let size_known = !w.is_nan() && !h.is_nan();
+
+        if sprite_id == last.sprite_id
+            && (sx_f - last.sx).abs() < 0.01
+            && (sy_f - last.sy).abs() < 0.01
+            && size_known
+        {
+            // Even if the sprite/position didn't change, we must ensure visibility/z stay correct.
+            if *visibility != Visibility::Visible {
+                *visibility = Visibility::Visible;
+            }
+            continue;
+        }
+
         let Some(src) = gfx.get_sprite(sprite_id as usize) else {
             if *visibility != Visibility::Hidden {
                 *visibility = Visibility::Hidden;
@@ -684,15 +700,17 @@ pub(crate) fn update_world_tiles(
             continue;
         };
 
-        let Some(img) = images.get(&src.image) else {
-            if *visibility != Visibility::Hidden {
-                *visibility = Visibility::Hidden;
-            }
-            continue;
-        };
-        let size = img.size();
-        let w = size.x.max(1) as f32;
-        let h = size.y.max(1) as f32;
+        if !size_known || sprite_id != last.sprite_id {
+            let Some(img) = images.get(&src.image) else {
+                if *visibility != Visibility::Hidden {
+                    *visibility = Visibility::Hidden;
+                }
+                continue;
+            };
+            let size = img.size();
+            w = size.x.max(1) as f32;
+            h = size.y.max(1) as f32;
+        }
 
         let Some(mat) = materials.get_mut(&mat_handle.0) else {
             if *visibility != Visibility::Hidden {
@@ -700,20 +718,6 @@ pub(crate) fn update_world_tiles(
             }
             continue;
         };
-
-        if sprite_id == last.sprite_id
-            && (sx_f - last.sx).abs() < 0.01
-            && (sy_f - last.sy).abs() < 0.01
-            && (w - last.w).abs() < 0.01
-            && (h - last.h).abs() < 0.01
-        {
-            // Even if the sprite/position didn't change, we must ensure visibility/z stay correct.
-            if *visibility != Visibility::Visible {
-                *visibility = Visibility::Visible;
-            }
-            mat.params.effect = effect;
-            continue;
-        }
 
         last.sprite_id = sprite_id;
         last.sx = sx_f;

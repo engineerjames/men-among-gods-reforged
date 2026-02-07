@@ -940,7 +940,57 @@ pub(crate) fn run_gameplay_sprite_highlight(
     player_state: Res<PlayerState>,
     mut materials: ResMut<Assets<DdEffectSpriteMaterial>>,
     q_tiles: Query<(&TileRender, &MeshMaterial2d<DdEffectSpriteMaterial>)>,
+    mut last_highlight: Local<LastHighlightState>,
 ) {
+    let selected = player_state.selected_char();
+    let current_selected = if selected != 0 {
+        find_view_tile_for_char_nr(player_state.map(), selected as i32)
+    } else {
+        None
+    };
+
+    // Clear previous hover highlight if it moved.
+    if let Some((hx, hy, layer)) = last_highlight.hovered {
+        if hover_target.kind == GameplayHoverTargetKind::None
+            || hover_target.tile_x != hx
+            || hover_target.tile_y != hy
+            || layer
+                != match hover_target.kind {
+                    GameplayHoverTargetKind::Background => TileLayer::Background,
+                    GameplayHoverTargetKind::Object => TileLayer::Object,
+                    GameplayHoverTargetKind::Character => TileLayer::Character,
+                    GameplayHoverTargetKind::None => TileLayer::Background,
+                }
+        {
+            reset_tile_effect(
+                &player_state,
+                &mut materials,
+                &q_tiles,
+                hx,
+                hy,
+                layer,
+                selected,
+            );
+            last_highlight.hovered = None;
+        }
+    }
+
+    // Clear previous selected highlight if selection moved/cleared.
+    if let Some((sx, sy)) = last_highlight.selected {
+        if current_selected != Some((sx, sy)) {
+            reset_tile_effect(
+                &player_state,
+                &mut materials,
+                &q_tiles,
+                sx,
+                sy,
+                TileLayer::Character,
+                selected,
+            );
+            last_highlight.selected = None;
+        }
+    }
+
     let mut hovered_tile: Option<(i32, i32, TileLayer)> = None;
 
     if hover_target.kind != GameplayHoverTargetKind::None {
@@ -1009,13 +1059,8 @@ pub(crate) fn run_gameplay_sprite_highlight(
         }
     }
 
-    let selected = player_state.selected_char();
-    if selected == 0 {
-        return;
-    }
-
-    let Some((sel_mx, sel_my)) = find_view_tile_for_char_nr(player_state.map(), selected as i32)
-    else {
+    let Some((sel_mx, sel_my)) = current_selected else {
+        last_highlight.hovered = hovered_tile;
         return;
     };
 
@@ -1046,6 +1091,80 @@ pub(crate) fn run_gameplay_sprite_highlight(
     let sel_index = (sel_my as usize) * TILEX + (sel_mx as usize);
     for (render, mat_handle) in &q_tiles {
         if render.index != sel_index || render.layer != TileLayer::Character {
+            continue;
+        }
+        if let Some(mat) = materials.get_mut(&mat_handle.0) {
+            mat.params.effect = effect;
+        }
+        break;
+    }
+
+    last_highlight.hovered = hovered_tile;
+    last_highlight.selected = Some((sel_mx, sel_my));
+}
+
+#[derive(Default)]
+pub(crate) struct LastHighlightState {
+    hovered: Option<(i32, i32, TileLayer)>,
+    selected: Option<(i32, i32)>,
+}
+
+fn reset_tile_effect(
+    player_state: &PlayerState,
+    materials: &mut Assets<DdEffectSpriteMaterial>,
+    q_tiles: &Query<(&TileRender, &MeshMaterial2d<DdEffectSpriteMaterial>)>,
+    tx: i32,
+    ty: i32,
+    layer: TileLayer,
+    selected: u16,
+) {
+    if tx < 0 || ty < 0 {
+        return;
+    }
+    let Some(tile) = player_state.map().tile_at_xy(tx as usize, ty as usize) else {
+        return;
+    };
+
+    let mut effect: u32 = tile.light as u32;
+    match layer {
+        TileLayer::Background => {
+            if (tile.flags & INVIS) != 0 {
+                effect |= 64;
+            }
+            if (tile.flags & INFRARED) != 0 {
+                effect |= 256;
+            }
+            if (tile.flags & UWATER) != 0 {
+                effect |= 512;
+            }
+        }
+        TileLayer::Object => {
+            if (tile.flags & INFRARED) != 0 {
+                effect |= 256;
+            }
+            if (tile.flags & UWATER) != 0 {
+                effect |= 512;
+            }
+        }
+        TileLayer::Character => {
+            if tile.ch_nr != 0 && tile.ch_nr == selected {
+                effect |= 32;
+            }
+            if (tile.flags & STONED) != 0 {
+                effect |= 128;
+            }
+            if (tile.flags & INFRARED) != 0 {
+                effect |= 256;
+            }
+            if (tile.flags & UWATER) != 0 {
+                effect |= 512;
+            }
+        }
+    }
+
+    let target_index = (ty as usize) * TILEX + (tx as usize);
+    for (render, mat_handle) in q_tiles {
+        if render.index != target_index || render.layer != layer {
             continue;
         }
         if let Some(mat) = materials.get_mut(&mat_handle.0) {
