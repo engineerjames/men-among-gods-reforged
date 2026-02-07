@@ -1299,7 +1299,7 @@ pub fn die_companion(cn: usize) {
     });
 
     State::with(|state| {
-        state.do_character_killed(cn, 0);
+        state.do_character_killed(cn, 0, false);
     });
 }
 

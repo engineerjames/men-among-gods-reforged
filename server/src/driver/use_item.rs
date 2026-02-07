@@ -131,10 +131,8 @@ pub fn use_door(cn: usize, item_idx: usize) -> i32 {
         if item.data[0] != 0 {
             if cn == 0 {
                 lock = 1;
-                false
             } else if item.data[0] >= 65500 {
                 lock = sub_door_driver(cn, item_idx);
-                false
             } else {
                 // Check if character has the right key
                 Repository::with_characters(|characters| {
@@ -193,13 +191,15 @@ pub fn use_door(cn: usize, item_idx: usize) -> i32 {
                         }
                     });
                 }
-
-                // Return whether the door is locked without proper key
-                item.data[1] != 0 && lock == 0
             }
-        } else {
-            false
+
+            // If the door has a lock and we did not unlock it, block the use.
+            if item.data[1] != 0 && lock == 0 {
+                return true;
+            }
         }
+
+        false
     });
 
     // If door is locked and player doesn't have key, exit early
@@ -1494,16 +1494,19 @@ pub fn use_bag(cn: usize, item_idx: usize) -> i32 {
     // Get the character ID stored in the bag's data[0]
     let co = Repository::with_items(|items| items[item_idx].data[0] as usize);
 
-    // Get the owner of the corpse (CHD_CORPSEOWNER = 66)
-    let owner = Repository::with_characters(|characters| characters[co].data[66] as usize);
+    if !core::types::Character::is_sane_character(co) {
+        return 0;
+    }
+
+    let owner = Repository::with_characters(|characters| {
+        characters[co].data[core::constants::CHD_CORPSEOWNER] as usize
+    });
 
     // Check if grave robbing is allowed
     if owner != 0 && owner != cn {
-        let (may_attack, allowed_cn) = State::with(|state| {
-            let may_attack = state.may_attack_msg(cn, owner, false);
-            let allowed =
-                Repository::with_characters(|characters| characters[owner].data[65] as usize);
-            (may_attack, allowed)
+        let may_attack = State::with(|state| state.may_attack_msg(cn, owner, false));
+        let allowed_cn = Repository::with_characters(|characters| {
+            characters[owner].data[core::constants::CHD_ALLOW] as usize
         });
 
         if may_attack == 0 && allowed_cn != cn {
@@ -1511,26 +1514,28 @@ pub fn use_bag(cn: usize, item_idx: usize) -> i32 {
                 c_string_to_str(&characters[owner].name).to_string()
             });
 
+            let owner_is_male = Repository::with_characters(|characters| {
+                (characters[owner].kindred & core::constants::KIN_MALE as i32) != 0
+            });
+            let owner_pronoun = if owner_is_male { "his" } else { "her" };
+
             State::with(|state| {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Green,
                     &format!(
-                        "This is {}'s grave, not yours. You may only search it with their permission.\n",
-                        owner_name
+                        "This is {}'s grave, not yours. You may only search it with {} permission.\n",
+                        owner_name, owner_pronoun
                     ),
                 );
             });
 
             // Check if owner is active and notify them
-            let (is_active, owner_x) = Repository::with_characters(|characters| {
-                (
-                    characters[owner].is_living_character(owner),
-                    characters[owner].x,
-                )
+            let (corpse_active, owner_x) = Repository::with_characters(|characters| {
+                (characters[co].used == USE_ACTIVE, characters[owner].x)
             });
 
-            if is_active && owner_x != 0 {
+            if corpse_active && owner_x != 0 {
                 let cn_name = Repository::with_characters(|characters| {
                     c_string_to_str(&characters[cn].name).to_string()
                 });
@@ -6262,7 +6267,7 @@ pub fn use_driver(cn: usize, item_idx: usize, carried: bool) {
                             )
                         ),
                     );
-                    state.do_character_killed(cn, 0);
+                    state.do_character_killed(cn, 0, true);
                 });
             }
 

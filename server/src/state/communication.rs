@@ -1233,7 +1233,7 @@ impl State {
                 );
                 self.do_character_log(
                     cn,
-                    core::types::FontColor::Blue,
+                    core::types::FontColor::Yellow,
                     &format!("  \"{}\"\n", msg),
                 );
             } else {
@@ -1260,7 +1260,7 @@ impl State {
         } else {
             format!("{} tells you: \"{:.200}\"\n", cn_name, text)
         };
-        self.do_character_log(co, core::types::FontColor::Blue, &buf);
+        self.do_character_log(co, core::types::FontColor::Yellow, &buf);
         // ccp_tell omitted
         self.do_character_log(
             cn,
@@ -1283,6 +1283,15 @@ impl State {
     ///
     /// Send a message to all group members.
     pub(crate) fn do_gtell(&self, cn: usize, text: &str) {
+        let is_group_member = |owner: usize, member: usize| -> bool {
+            for n in core::constants::CHD_MINGROUP..=core::constants::CHD_MAXGROUP {
+                if Repository::with_characters(|ch| ch[owner].data[n] as usize) == member {
+                    return true;
+                }
+            }
+            false
+        };
+
         if text.is_empty() {
             self.do_character_log(cn, core::types::FontColor::Red, "Group-Tell. Yes. group-tell it will be. But what do you want to tell the other group members?\n");
             return;
@@ -1299,13 +1308,13 @@ impl State {
         for n in core::constants::CHD_MINGROUP..=core::constants::CHD_MAXGROUP {
             let co = Repository::with_characters(|ch| ch[cn].data[n] as usize);
             if co != 0 {
-                if true
-                /* isgroup */
-                {
+                if !is_group_member(co, cn) {
+                    Repository::with_characters_mut(|ch| ch[cn].data[n] = 0);
+                } else {
                     Repository::with_characters(|ch| {
                         self.do_character_log(
                             co,
-                            core::types::FontColor::Blue,
+                            core::types::FontColor::Green,
                             &format!("{} group-tells: \"{}\"\n", ch[cn].get_name(), text),
                         );
                     });
@@ -1316,7 +1325,7 @@ impl State {
         if found {
             self.do_character_log(
                 cn,
-                core::types::FontColor::Blue,
+                core::types::FontColor::Green,
                 &format!("Told the group: \"{}\"\n", text),
             );
             if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Player.bits()) != 0)

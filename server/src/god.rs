@@ -777,9 +777,6 @@ impl God {
             character.goto_y = y as u16; // TODO: This was missing before... should this be here?
         });
 
-        // Remove character from current map tile before attempting transfer
-        player::plr_map_remove(character_id);
-
         let positions_to_try: [(usize, usize); 5] =
             [(x, y), (x + 3, y), (x, y + 3), (x - 3, y), (x, y - 3)];
 
@@ -788,9 +785,6 @@ impl God {
                 return true;
             }
         }
-
-        // Place character back on the map (even if transfer failed) so map state stays consistent
-        player::plr_map_set(character_id);
 
         false
     }
@@ -1890,11 +1884,8 @@ impl God {
             need,
             player_flag,
             temp_val,
-            hp_cur,
             hp_max,
-            end_cur,
             end_max,
-            mana_cur,
             mana_max,
             speed,
             gold,
@@ -1906,6 +1897,11 @@ impl God {
             current_online_time,
             total_online_time,
             alignment,
+            armor,
+            weapon,
+            a_hp,
+            a_end,
+            a_mana,
         ) = Repository::with_characters(|ch| {
             let t = &ch[co];
             let posx = t.x as i32;
@@ -1921,11 +1917,8 @@ impl God {
                 player_flag,
                 t.temp as i32,
                 t.hp[5] as i32,
-                t.hp[0] as i32,
                 t.end[5] as i32,
-                t.end[0] as i32,
                 t.mana[5] as i32,
-                t.mana[0] as i32,
                 t.speed as i32,
                 t.gold,
                 t.data[13],
@@ -1936,26 +1929,45 @@ impl God {
                 t.current_online_time as i32,
                 t.total_online_time as i32,
                 t.alignment as i32,
+                t.armor as i32,
+                t.weapon as i32,
+                t.a_hp,
+                t.a_end,
+                t.a_mana,
             )
         });
 
-        // Hide position if invisible to caller (approximate original invis_level check)
+        let hp_cur = a_hp / 1000;
+        let end_cur = a_end / 1000;
+        let mana_cur = a_mana / 1000;
+
+        fn int2str(val: i32) -> String {
+            let val = val.max(0);
+            if val < 99_000 {
+                format!("{}", val)
+            } else if val < 99_000_000 {
+                format!("{}K", val / 1000)
+            } else {
+                format!("{}M", val / 1_000_000)
+            }
+        }
+
+        // Hide position if invisible to caller (match original invis_level check)
         let mut px = pos_x;
         let mut py = pos_y;
-        let hide_pos = Repository::with_characters(|ch| {
+        let (hide_pos, caller_priv) = Repository::with_characters(|ch| {
             let tflags = ch[co].flags;
+            let caller = &ch[cn];
             let invis_or_nowho = (tflags & CharacterFlags::Invisible.bits()) != 0
                 || (tflags & CharacterFlags::NoWho.bits()) != 0;
-            invis_or_nowho
+            let caller_priv = (caller.flags & CharacterFlags::Imp.bits()) != 0
+                || (caller.flags & CharacterFlags::Usurp.bits()) != 0;
+            (invis_or_nowho, caller_priv)
         });
-        if hide_pos {
-            if Self::invis(cn, co) != 0
-                && Repository::with_characters(|ch| {
-                    let caller = &ch[cn];
-                    !((caller.flags & CharacterFlags::Imp.bits()) != 0
-                        || (caller.flags & CharacterFlags::Usurp.bits()) != 0)
-                })
-            {
+        if hide_pos && !caller_priv {
+            let cn_invis_level = helpers::invis_level(cn);
+            let co_invis_level = helpers::invis_level(co);
+            if co_invis_level > cn_invis_level {
                 px = 0;
                 py = 0;
             }
@@ -1981,8 +1993,8 @@ impl God {
                         Repository::with_characters(|ch| ch[co].get_name().to_string()),
                         cnum_str,
                         pos_str,
-                        pts,
-                        need
+                        int2str(pts),
+                        int2str(need)
                     ),
                 )
             });
@@ -2121,11 +2133,15 @@ impl God {
                     core::types::FontColor::Yellow,
                     &format!(
                         "Armor={}, Weapon={}. Alignment={}.\n",
-                        data_vals[0], data_vals[1], alignment
+                        armor, weapon, alignment
                     ),
                 );
                 // Group/Single Awake/Spells
-                let group_count = if data_vals[42] != 0 { data_vals[42] } else { 0 };
+                let group_count = if Repository::with_characters(|ch| ch[co].group_active()) {
+                    1
+                } else {
+                    0
+                };
                 let single_awake = data_vals[92];
                 let spells = data_vals[96];
                 state.do_character_log(
@@ -2145,8 +2161,15 @@ impl God {
                     cn,
                     core::types::FontColor::Yellow,
                     &format!(
-                        "Current Online Time: {}s, Total Online Time: {}s.\n",
-                        current_online_time, total_online_time
+                        "Current Online Time: {}d {}h {}m {}s, Total Online Time: {}d {}h {}m {}s.\n",
+                        current_online_time / (core::constants::TICKS * 60 * 60 * 24),
+                        (current_online_time / (core::constants::TICKS * 60 * 60)) % 24,
+                        (current_online_time / (core::constants::TICKS * 60)) % 60,
+                        (current_online_time / core::constants::TICKS) % 60,
+                        total_online_time / (core::constants::TICKS * 60 * 60 * 24),
+                        (total_online_time / (core::constants::TICKS * 60 * 60)) % 24,
+                        (total_online_time / (core::constants::TICKS * 60)) % 60,
+                        (total_online_time / core::constants::TICKS) % 60
                     ),
                 );
             });
@@ -4097,7 +4120,7 @@ impl God {
 
             // Call do_char_killed(0, co)
             State::with(|state| {
-                state.do_character_killed(co, 0);
+                state.do_character_killed(co, 0, false);
             });
 
             State::with(|state| {

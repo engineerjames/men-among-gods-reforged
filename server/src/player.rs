@@ -125,7 +125,7 @@ pub fn plr_logout(character_id: usize, player_id: usize, reason: enums::LogoutRe
                                 core::types::FontColor::Red,
                                 String::from("The demon killed you.\n \n").as_str(),
                             );
-                            state.do_character_killed(character_id, 0);
+                            state.do_character_killed(character_id, 0, false);
                         });
                     } else {
                         if character.gold / 10 > 0 {
@@ -559,9 +559,13 @@ pub fn plr_map_set(cn: usize) {
 
                 if ret == 2 {
                     // TELEPORT_SUCCESS: just add light and return
-                    if light != 0 {
+                    let (tx, ty, current_light) = Repository::with_characters(|characters| {
+                        (characters[cn].x, characters[cn].y, characters[cn].light)
+                    });
+
+                    if current_light != 0 {
                         State::with_mut(|state| {
-                            state.do_add_light(x as i32, y as i32, light as i32);
+                            state.do_add_light(tx as i32, ty as i32, current_light as i32);
                         });
                     }
                     return;
@@ -661,10 +665,10 @@ pub fn plr_map_set(cn: usize) {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Red,
-                    "You entered a Deathtrap. You are dead!\n",
+                    "You entered a Deathtrap!\n",
                 );
                 log::info!("Character {} entered a Deathtrap", cn);
-                state.do_character_killed(cn, 0);
+                state.do_character_killed(cn, 0, true);
             });
             return;
         }

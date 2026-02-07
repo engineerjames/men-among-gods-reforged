@@ -25,7 +25,13 @@ impl State {
     /// # Arguments
     /// * `character_id` - The character who died
     /// * `killer_id` - The character who killed them (0 if none)
-    pub(crate) fn do_character_killed(&self, character_id: usize, killer_id: usize) {
+    /// * `force_save` - Whether to force the character to be saved from his death (used for deathtraps)
+    pub(crate) fn do_character_killed(
+        &self,
+        character_id: usize,
+        killer_id: usize,
+        force_save: bool,
+    ) {
         if !Character::is_sane_character(character_id) {
             log::warn!("do_character_killed: invalid character_id {}", character_id);
             return;
@@ -76,7 +82,7 @@ impl State {
                 let idx = cn.x as usize + cn.y as usize * core::constants::SERVER_MAPX as usize;
                 Repository::with_map(|map| map[idx].flags)
             });
-            map_flags &= cn_flags;
+            map_flags |= cn_flags;
         }
 
         // Play death sound effects
@@ -363,7 +369,10 @@ impl State {
                     co_x as i32 + co_y as i32 * core::constants::SERVER_MAPX;
             });
 
-            corpse_id = self.handle_player_death(character_id, killer_id, map_flags);
+            corpse_id = self.handle_player_death(character_id, killer_id, map_flags, force_save);
+            if force_save {
+                return;
+            }
         } else {
             // Handle NPC death
             let is_labkeeper = Repository::with_characters(|ch| {
@@ -409,7 +418,14 @@ impl State {
     /// * `co` - Character id of the dead player
     /// * `cn` - Killer id
     /// * `map_flags` - Map flags at the death location (used for arena/wimp checks)
-    pub(crate) fn handle_player_death(&self, co: usize, cn: usize, map_flags: u64) -> usize {
+    /// * `force_save` - Whether to force the character to be saved from his death (used for deathtraps)
+    pub(crate) fn handle_player_death(
+        &self,
+        co: usize,
+        cn: usize,
+        map_flags: u64,
+        force_save: bool,
+    ) -> usize {
         // Remember template if we're to respawn this character
         // TODO: Re-evaluate if we need to do anything here.
 
@@ -462,7 +478,27 @@ impl State {
         });
 
         // Drop items and money based on wimp chance
-        self.handle_item_drops(co, cc, wimp as i32, cn);
+        self.handle_item_drops(co, cc, wimp as i32, cn, force_save);
+
+        if force_save {
+            let (cc_x, cc_y) = Repository::with_characters(|ch| (ch[cc].x, ch[cc].y));
+            Repository::with_map_mut(|map| {
+                let idx = cc_x as usize + cc_y as usize * core::constants::SERVER_MAPX as usize;
+                if idx < map.len() {
+                    if map[idx].ch == cc as u32 {
+                        map[idx].ch = 0;
+                    }
+                    if map[idx].to_ch == cc as u32 {
+                        map[idx].to_ch = 0;
+                    }
+                }
+            });
+            Repository::with_characters_mut(|characters| {
+                characters[cc].used = USE_EMPTY;
+                characters[cc].player = 0;
+                characters[cc].flags = 0;
+            });
+        }
 
         // Move player to temple
         let (temple_x, temple_y, cur_x, cur_y) = Repository::with_characters(|ch| {
@@ -498,7 +534,7 @@ impl State {
         let is_god =
             Repository::with_characters(|ch| ch[co].flags & CharacterFlags::God.bits() != 0);
 
-        if !is_god && wimp == 0 {
+        if !is_god && wimp == 0 && !force_save {
             self.apply_death_penalties(co);
         } else if wimp != 0 && map_flags & core::constants::MF_ARENA as u64 == 0 {
             self.do_character_log(
@@ -508,44 +544,56 @@ impl State {
             );
         }
 
+        if force_save {
+            self.do_character_log(
+                co,
+                core::types::FontColor::Red,
+                "You feel a sudden force saving you from death! You have been spared, but something feels different...\n",
+            );
+        }
+
         // Update player character
         Repository::with_characters_mut(|ch| {
             ch[co].set_do_update_flags();
         });
 
-        // Setup the grave (body)
-        Repository::with_characters_mut(|characters| {
-            player::plr_reset_status(cc);
+        // Setup the grave (body) - but only if we didn't force the save
+        if !force_save {
+            Repository::with_characters_mut(|characters| {
+                player::plr_reset_status(cc);
 
-            characters[cc].player = 0;
-            characters[cc].flags = CharacterFlags::Body.bits();
-            characters[cc].a_hp = 0;
-            characters[cc].data[core::constants::CHD_CORPSEOWNER] = co as i32;
-            characters[cc].data[99] = 1;
-            characters[cc].data[98] = 0;
+                characters[cc].player = 0;
+                characters[cc].flags = CharacterFlags::Body.bits();
+                characters[cc].a_hp = 0;
+                characters[cc].data[core::constants::CHD_CORPSEOWNER] = co as i32;
+                characters[cc].data[99] = 1;
+                characters[cc].data[98] = 0;
 
-            characters[cc].attack_cn = 0;
-            characters[cc].skill_nr = 0;
-            characters[cc].goto_x = 0;
-            characters[cc].use_nr = 0;
-            characters[cc].misc_action = 0;
-            characters[cc].stunned = 0;
-            characters[cc].retry = 0;
-            characters[cc].current_enemy = 0;
-            for m in 0..4 {
-                characters[cc].enemy[m] = 0;
-            }
-        });
+                characters[cc].attack_cn = 0;
+                characters[cc].skill_nr = 0;
+                characters[cc].goto_x = 0;
+                characters[cc].use_nr = 0;
+                characters[cc].misc_action = 0;
+                characters[cc].stunned = 0;
+                characters[cc].retry = 0;
+                characters[cc].current_enemy = 0;
+                for m in 0..4 {
+                    characters[cc].enemy[m] = 0;
+                }
+            });
 
-        // Update grave character
-        Repository::with_characters_mut(|ch| {
-            ch[cc].set_do_update_flags();
-        });
+            // Update grave character
+            Repository::with_characters_mut(|ch| {
+                ch[cc].set_do_update_flags();
+            });
 
-        player::plr_map_set(cc);
+            player::plr_map_set(cc);
 
-        // After player death, `co` is reassigned to `cc` for corpse effects.
-        cc
+            // After player death, `co` is reassigned to `cc` for corpse effects.
+            cc
+        } else {
+            co
+        }
     }
 
     /// Port of `handle_npc_death(co, cn)` from the original server sources.
@@ -737,7 +785,35 @@ impl State {
     /// * `cc` - Clone/grave character id (where dropped items are carried)
     /// * `wimp` - Guardian angel / wimpy chance (0-255). Higher means less dropping
     /// * `cn` - Killer id
-    pub(crate) fn handle_item_drops(&self, co: usize, cc: usize, wimp: i32, cn: usize) {
+    /// * `force_save` - Whether to force the character to be saved from his death (used for deathtraps)
+    pub(crate) fn handle_item_drops(
+        &self,
+        co: usize,
+        cc: usize,
+        wimp: i32,
+        cn: usize,
+        force_save: bool,
+    ) {
+        if force_save {
+            // If we're forcing a save (e.g. deathtrap), don't drop anything but still destroy spells
+            // Handle active spells - always destroy
+            for n in 0..20 {
+                let spell_idx = Repository::with_characters(|ch| ch[co].spell[n]);
+                if spell_idx != 0 {
+                    Repository::with_characters_mut(|characters| {
+                        characters[co].spell[n] = 0;
+                        characters[cc].spell[n] = 0;
+                    });
+                    Repository::with_items_mut(|items| {
+                        if (spell_idx as usize) < items.len() {
+                            items[spell_idx as usize].used = USE_EMPTY;
+                        }
+                    });
+                }
+            }
+            return;
+        }
+
         // Handle gold
         Repository::with_characters_mut(|characters| {
             if characters[co].gold != 0 {
@@ -870,22 +946,6 @@ impl State {
             } else {
                 Repository::with_characters_mut(|characters| {
                     characters[cc].worn[n] = 0;
-                });
-            }
-        }
-
-        // Handle active spells - always destroy
-        for n in 0..20 {
-            let spell_idx = Repository::with_characters(|ch| ch[co].spell[n]);
-            if spell_idx != 0 {
-                Repository::with_characters_mut(|characters| {
-                    characters[co].spell[n] = 0;
-                    characters[cc].spell[n] = 0;
-                });
-                Repository::with_items_mut(|items| {
-                    if (spell_idx as usize) < items.len() {
-                        items[spell_idx as usize].used = USE_EMPTY;
-                    }
                 });
             }
         }

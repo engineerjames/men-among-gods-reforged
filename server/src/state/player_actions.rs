@@ -659,18 +659,73 @@ impl State {
     /// * `cn` - Caller character id
     /// * `name` - Name of player to add/remove (empty to display)
     pub(crate) fn do_group(&self, cn: usize, name: &str) {
+        let is_group_member = |owner: usize, member: usize| -> bool {
+            for n in core::constants::CHD_MINGROUP..=core::constants::CHD_MAXGROUP {
+                if Repository::with_characters(|ch| ch[owner].data[n] as usize) == member {
+                    return true;
+                }
+            }
+            false
+        };
+
+        let format_name_15 = |name: &str| -> String {
+            let mut trimmed = String::new();
+            for ch in name.chars().take(15) {
+                trimmed.push(ch);
+            }
+            let len = trimmed.len();
+            if len < 15 {
+                trimmed.push_str(&" ".repeat(15 - len));
+            }
+            trimmed
+        };
+
+        let format_group_stats = |idx: usize| -> String {
+            Repository::with_characters(|ch| {
+                let name = format_name_15(ch[idx].get_name());
+                let hp = (ch[idx].a_hp + 500) / 1000;
+                let end = (ch[idx].a_end + 500) / 1000;
+                let mana = (ch[idx].a_mana + 500) / 1000;
+
+                let ch_hp = ch[idx].hp[5];
+                let ch_end = ch[idx].end[5];
+                let ch_mana = ch[idx].mana[5];
+
+                format!(
+                    "{} {}/{}H, {}/{}E, {}/{}M\n",
+                    name, hp, ch_hp, end, ch_end, mana, ch_mana
+                )
+            })
+        };
+
         if name.is_empty() {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
                 "Your group consists of:\n",
             );
-            let me = Repository::with_characters(|ch| ch[cn].get_name().to_string());
-            self.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                &format!("{}-15.15s ...\n", me),
-            );
+            self.do_character_log(cn, core::types::FontColor::Yellow, &format_group_stats(cn));
+
+            for n in core::constants::CHD_MINGROUP..=core::constants::CHD_MAXGROUP {
+                let co = Repository::with_characters(|ch| ch[cn].data[n] as usize);
+                if co == 0 {
+                    continue;
+                }
+                if is_group_member(co, cn) {
+                    self.do_character_log(
+                        cn,
+                        core::types::FontColor::Yellow,
+                        &format_group_stats(co),
+                    );
+                } else {
+                    let name = Repository::with_characters(|ch| format_name_15(ch[co].get_name()));
+                    self.do_character_log(
+                        cn,
+                        core::types::FontColor::Yellow,
+                        &format!("{} (not acknowledged)\n", name),
+                    );
+                }
+            }
             return;
         }
 
@@ -700,7 +755,31 @@ impl State {
             return;
         }
 
-        for n in 1..10 {
+        let (co_used, co_flags) = Repository::with_characters(|ch| (ch[co].used, ch[co].flags));
+        let co_invis = (co_flags & CharacterFlags::Invisible.bits()) != 0;
+        let cn_invis_level = crate::helpers::invis_level(cn);
+        let co_invis_level = crate::helpers::invis_level(co);
+        if co_used != core::constants::USE_ACTIVE || (co_invis && cn_invis_level < co_invis_level) {
+            let nm = Repository::with_characters(|ch| ch[co].get_name().to_string());
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                &format!("Sorry, {} seems not to be online.\n", nm),
+            );
+            for n in core::constants::CHD_MINGROUP..=core::constants::CHD_MAXGROUP {
+                if Repository::with_characters(|ch| ch[cn].data[n] as usize) == co {
+                    Repository::with_characters_mut(|ch| ch[cn].data[n] = 0);
+                    self.do_character_log(
+                        cn,
+                        core::types::FontColor::Red,
+                        "Inactive player removed from your group.\n",
+                    );
+                }
+            }
+            return;
+        }
+
+        for n in core::constants::CHD_MINGROUP..=core::constants::CHD_MAXGROUP {
             if Repository::with_characters(|ch| ch[cn].data[n] as usize) == co {
                 Repository::with_characters_mut(|ch| ch[cn].data[n] = 0);
                 let nm = Repository::with_characters(|ch| ch[co].get_name().to_string());
@@ -721,7 +800,38 @@ impl State {
             }
         }
 
-        for n in 1..10 {
+        let (cn_rank, co_rank) = Repository::with_characters(|ch| {
+            (
+                core::ranks::points2rank(ch[cn].points_tot as u32) as i32,
+                core::ranks::points2rank(ch[co].points_tot as u32) as i32,
+            )
+        });
+        let max_rank = cn_rank.max(co_rank);
+        let allow = match max_rank {
+            21 => 4,
+            22 => 5,
+            23 => 6,
+            _ => 3,
+        };
+        let diff = crate::helpers::rankdiff(cn as i32, co as i32);
+        if diff.abs() > allow {
+            let nm = Repository::with_characters(|ch| ch[co].get_name().to_string());
+            let relation = if diff > 0 { "above" } else { "below" };
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                &format!(
+                    "Sorry, you cannot group with {}; he is {} ranks {} you. Maximum distance is {}.\n",
+                    nm,
+                    diff.abs(),
+                    relation,
+                    allow
+                ),
+            );
+            return;
+        }
+
+        for n in core::constants::CHD_MINGROUP..=core::constants::CHD_MAXGROUP {
             if Repository::with_characters(|ch| ch[cn].data[n]) == 0 {
                 Repository::with_characters_mut(|ch| ch[cn].data[n] = co as i32);
                 let nm = Repository::with_characters(|ch| ch[co].get_name().to_string());
@@ -738,6 +848,26 @@ impl State {
                         Repository::with_characters(|ch| ch[cn].get_name().to_string())
                     ),
                 );
+
+                if is_group_member(co, cn) {
+                    self.do_character_log(
+                        cn,
+                        core::types::FontColor::Yellow,
+                        "Two way group established.\n",
+                    );
+                    self.do_character_log(
+                        co,
+                        core::types::FontColor::Yellow,
+                        "Two way group established.\n",
+                    );
+                } else {
+                    let nm = Repository::with_characters(|ch| ch[cn].get_name().to_string());
+                    self.do_character_log(
+                        co,
+                        core::types::FontColor::Red,
+                        &format!("Use \"#group {}\" to add her/him to your group.\n", nm),
+                    );
+                }
                 return;
             }
         }
@@ -916,7 +1046,7 @@ impl State {
         self.do_character_log(
             cn,
             core::types::FontColor::Green,
-            "#gtell <message        tell to your group.\n",
+            "#gtell <message>       tell to your group.\n",
         );
         self.do_character_log(
             cn,
