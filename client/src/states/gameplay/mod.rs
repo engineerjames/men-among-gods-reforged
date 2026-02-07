@@ -30,7 +30,6 @@ pub(crate) use resources::{GameplayCursorType, GameplayCursorTypeState};
 pub(crate) use world_render::{TileLayer, TileRender};
 
 pub(crate) use ui::text::run_gameplay_text_ui;
-pub(crate) use world_render::dd_effect_tint;
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::font_cache::{FontCache, BITMAP_GLYPH_W};
@@ -461,6 +460,8 @@ const ATTRIBUTE_NAMES: [&str; 5] = ["Braveness", "Willpower", "Intuition", "Agil
 pub(crate) fn setup_gameplay(
     mut commands: Commands,
     gfx: Res<GraphicsCache>,
+    quad_mesh: Res<crate::systems::dd_effect_sprite::DdEffectUnitQuadMesh>,
+    mut dd_materials: ResMut<Assets<crate::systems::dd_effect_sprite::DdEffectSpriteMaterial>>,
     mut font_cache: ResMut<FontCache>,
     mut atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
     mut minimap: ResMut<MiniMapState>,
@@ -507,8 +508,8 @@ pub(crate) fn setup_gameplay(
         ))
         .id();
 
-    // Map hover highlight: a white silhouette overlay matching the exact target sprite.
-    crate::systems::map_hover::spawn_map_hover_highlight(&mut commands, &gfx, world_root);
+    // Map hover/selection highlight resources.
+    crate::systems::map_hover::spawn_map_hover_highlight(&mut commands);
 
     // Persistent move target marker (orig/engine.c draws sprite 31 at pl.goto_x/pl.goto_y).
     crate::systems::map_hover::spawn_map_move_target_marker(&mut commands, &gfx, world_root);
@@ -546,6 +547,8 @@ pub(crate) fn setup_gameplay(
         if let Some(e) = spawn_tile_entity(
             &mut commands,
             &gfx,
+            &quad_mesh.0,
+            &mut dd_materials,
             TileRender {
                 index,
                 layer: TileLayer::Background,
@@ -556,6 +559,8 @@ pub(crate) fn setup_gameplay(
         if let Some(e) = spawn_tile_entity(
             &mut commands,
             &gfx,
+            &quad_mesh.0,
+            &mut dd_materials,
             TileRender {
                 index,
                 layer: TileLayer::Object,
@@ -566,6 +571,8 @@ pub(crate) fn setup_gameplay(
         if let Some(e) = spawn_tile_entity(
             &mut commands,
             &gfx,
+            &quad_mesh.0,
+            &mut dd_materials,
             TileRender {
                 index,
                 layer: TileLayer::Character,
@@ -739,6 +746,7 @@ pub(crate) fn run_gameplay(
     net: Res<NetworkRuntime>,
     gfx: Res<GraphicsCache>,
     mut images: ResMut<Assets<Image>>,
+    mut dd_materials: ResMut<Assets<crate::systems::dd_effect_sprite::DdEffectSpriteMaterial>>,
     mut player_state: ResMut<PlayerState>,
     user_settings: Res<UserSettingsState>,
     mut minimap: ResMut<MiniMapState>,
@@ -778,7 +786,7 @@ pub(crate) fn run_gameplay(
         Query<
             (
                 &TileRender,
-                &mut Sprite,
+                &mut MeshMaterial2d<crate::systems::dd_effect_sprite::DdEffectSpriteMaterial>,
                 &mut Transform,
                 &mut Visibility,
                 &mut LastRender,
@@ -957,7 +965,14 @@ pub(crate) fn run_gameplay(
     }
 
     let t_tiles = perf_enabled.then(Instant::now);
-    world_render::update_world_tiles(&gfx, &images, map, &player_state, &mut q_world.p1());
+    world_render::update_world_tiles(
+        &gfx,
+        &images,
+        map,
+        &player_state,
+        &mut dd_materials,
+        &mut q_world.p1(),
+    );
     if let Some(t0) = t_tiles {
         perf.world_tiles += t0.elapsed();
     }

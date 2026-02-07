@@ -1,6 +1,7 @@
 use bevy::ecs::query::Without;
 use bevy::prelude::*;
 use bevy::sprite::Anchor;
+use bevy::sprite_render::MeshMaterial2d;
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::gfx_cache::GraphicsCache;
@@ -19,6 +20,8 @@ use super::components::{
 };
 use super::layout::{Z_BG_BASE, Z_FX_BASE, Z_OBJ_BASE, Z_WORLD_STEP};
 use super::legacy_engine;
+
+use crate::systems::dd_effect_sprite::{DdEffectSpriteMaterial, DdEffectSpriteParams};
 
 // Pass-2 painter ordering matches the legacy client:
 // for each tile in scan order: draw object -> character shadow -> character.
@@ -230,6 +233,8 @@ pub(crate) struct LastRender {
     pub(crate) sprite_id: i32,
     pub(crate) sx: f32,
     pub(crate) sy: f32,
+    pub(crate) w: f32,
+    pub(crate) h: f32,
 }
 
 #[derive(Component, Clone, Copy, Debug)]
@@ -238,6 +243,8 @@ pub(crate) struct GameplayWorldRoot;
 pub(crate) fn spawn_tile_entity(
     commands: &mut Commands,
     gfx: &GraphicsCache,
+    quad_mesh: &Handle<Mesh>,
+    materials: &mut Assets<DdEffectSpriteMaterial>,
     render: TileRender,
 ) -> Option<Entity> {
     let Some(empty) = gfx.get_sprite(SPR_EMPTY as usize) else {
@@ -249,6 +256,14 @@ pub(crate) fn spawn_tile_entity(
         TileLayer::Object | TileLayer::Character => Visibility::Hidden,
     };
 
+    let material_handle = materials.add(DdEffectSpriteMaterial {
+        image: empty.image.clone(),
+        params: DdEffectSpriteParams {
+            effect: 0,
+            _pad0: Vec3::ZERO,
+        },
+    });
+
     let id = commands
         .spawn((
             GameplayRenderEntity,
@@ -257,9 +272,11 @@ pub(crate) fn spawn_tile_entity(
                 sprite_id: i32::MIN,
                 sx: f32::NAN,
                 sy: f32::NAN,
+                w: f32::NAN,
+                h: f32::NAN,
             },
-            empty.clone(),
-            Anchor::TOP_LEFT,
+            Mesh2d(quad_mesh.clone()),
+            MeshMaterial2d(material_handle),
             Transform::default(),
             GlobalTransform::default(),
             initial_visibility,
@@ -288,6 +305,8 @@ pub(crate) fn spawn_tile_overlay_entity(
                 sprite_id: i32::MIN,
                 sx: f32::NAN,
                 sy: f32::NAN,
+                w: f32::NAN,
+                h: f32::NAN,
             },
             empty.clone(),
             Anchor::TOP_LEFT,
@@ -320,6 +339,8 @@ pub(crate) fn spawn_shadow_entity(
                 sprite_id: i32::MIN,
                 sx: f32::NAN,
                 sy: f32::NAN,
+                w: f32::NAN,
+                h: f32::NAN,
             },
             empty.clone(),
             Anchor::TOP_LEFT,
@@ -469,10 +490,11 @@ pub(crate) fn update_world_tiles(
     images: &Assets<Image>,
     map: &GameMap,
     player_state: &PlayerState,
+    materials: &mut Assets<DdEffectSpriteMaterial>,
     q: &mut Query<
         (
             &TileRender,
-            &mut Sprite,
+            &mut MeshMaterial2d<DdEffectSpriteMaterial>,
             &mut Transform,
             &mut Visibility,
             &mut LastRender,
@@ -488,7 +510,7 @@ pub(crate) fn update_world_tiles(
         ),
     >,
 ) {
-    for (render, mut sprite, mut transform, mut visibility, mut last) in q.iter_mut() {
+    for (render, mat_handle, mut transform, mut visibility, mut last) in q.iter_mut() {
         let Some(tile) = map.tile_at_index(render.index) else {
             continue;
         };
@@ -642,9 +664,6 @@ pub(crate) fn update_world_tiles(
                     }
                     continue;
                 }
-                if tile.ch_nr != 0 && tile.ch_nr == player_state.selected_char() {
-                    effect |= 32;
-                }
                 if (tile.flags & STONED) != 0 {
                     effect |= 128;
                 }
@@ -657,26 +676,6 @@ pub(crate) fn update_world_tiles(
             }
         }
 
-        let tint = dd_effect_tint(effect);
-
-        if sprite_id == last.sprite_id
-            && (sx_f - last.sx).abs() < 0.01
-            && (sy_f - last.sy).abs() < 0.01
-        {
-            // Even if the sprite/position didn't change, we must ensure visibility/z stay correct.
-            if *visibility != Visibility::Visible {
-                *visibility = Visibility::Visible;
-            }
-            if sprite.color != tint {
-                sprite.color = tint;
-            }
-            continue;
-        }
-
-        last.sprite_id = sprite_id;
-        last.sx = sx_f;
-        last.sy = sy_f;
-
         let Some(src) = gfx.get_sprite(sprite_id as usize) else {
             if *visibility != Visibility::Hidden {
                 *visibility = Visibility::Hidden;
@@ -684,12 +683,52 @@ pub(crate) fn update_world_tiles(
             continue;
         };
 
-        *sprite = src.clone();
-        sprite.color = tint;
+        let Some(img) = images.get(&src.image) else {
+            if *visibility != Visibility::Hidden {
+                *visibility = Visibility::Hidden;
+            }
+            continue;
+        };
+        let size = img.size();
+        let w = size.x.max(1) as f32;
+        let h = size.y.max(1) as f32;
+
+        let Some(mat) = materials.get_mut(&mat_handle.0) else {
+            if *visibility != Visibility::Hidden {
+                *visibility = Visibility::Hidden;
+            }
+            continue;
+        };
+
+        if sprite_id == last.sprite_id
+            && (sx_f - last.sx).abs() < 0.01
+            && (sy_f - last.sy).abs() < 0.01
+            && (w - last.w).abs() < 0.01
+            && (h - last.h).abs() < 0.01
+        {
+            // Even if the sprite/position didn't change, we must ensure visibility/z stay correct.
+            if *visibility != Visibility::Visible {
+                *visibility = Visibility::Visible;
+            }
+            mat.params.effect = effect;
+            continue;
+        }
+
+        last.sprite_id = sprite_id;
+        last.sx = sx_f;
+        last.sy = sy_f;
+        last.w = w;
+        last.h = h;
+
+        mat.image = src.image.clone();
+        mat.params.effect = effect;
         if *visibility != Visibility::Visible {
             *visibility = Visibility::Visible;
         }
-        transform.translation = screen_to_world(sx_f, sy_f, z);
+
+        // Mesh2d rectangles are centered at their origin; dd.c positions sprites by TOP_LEFT.
+        transform.translation = screen_to_world(sx_f + w * 0.5, sy_f + h * 0.5, z);
+        transform.scale = Vec3::new(w, h, 1.0);
     }
 }
 

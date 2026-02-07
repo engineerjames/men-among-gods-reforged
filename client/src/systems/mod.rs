@@ -1,3 +1,4 @@
+pub mod dd_effect_sprite;
 pub mod debug;
 pub mod display;
 pub mod magic_postprocess;

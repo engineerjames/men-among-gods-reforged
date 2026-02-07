@@ -26,6 +26,7 @@ use bevy::winit::{UpdateMode, WinitSettings};
 
 use crate::gfx_cache::GraphicsCache;
 use crate::sfx_cache::SoundCache;
+use crate::systems::dd_effect_sprite::DdEffectSpritePlugin;
 use crate::systems::debug::{self, GameplayDebugSettings};
 use crate::systems::display;
 use crate::systems::magic_postprocess::MagicPostProcessPlugin;
@@ -212,6 +213,7 @@ fn main() {
                 }),
         )
         .add_plugins(EguiPlugin::default())
+        .add_plugins(DdEffectSpritePlugin)
         .add_plugins(MagicPostProcessPlugin)
         .add_plugins(network::NetworkPlugin)
         .add_plugins(bevy_framepace::FramepacePlugin)

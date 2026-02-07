@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use bevy::sprite::Anchor;
+use bevy::sprite_render::MeshMaterial2d;
 use bevy::window::PrimaryWindow;
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
@@ -7,11 +8,12 @@ use crate::gfx_cache::GraphicsCache;
 use crate::network::{client_commands::ClientCommand, NetworkRuntime};
 use crate::player_state::PlayerState;
 use crate::states::gameplay::{
-    dd_effect_tint, GameplayCursorType, GameplayCursorTypeState, GameplayRenderEntity, TileLayer,
-    TileRender,
+    GameplayCursorType, GameplayCursorTypeState, GameplayRenderEntity, TileLayer, TileRender,
 };
 use crate::systems::magic_postprocess::MagicScreenCamera;
 use crate::systems::sound::SoundEventQueue;
+
+use crate::systems::dd_effect_sprite::DdEffectSpriteMaterial;
 
 use mag_core::constants::{
     DR_DROP, DR_GIVE, DR_PICKUP, DR_USE, INFRARED, INVIS, ISCHAR, ISITEM, ISUSABLE, STONED, TILEX,
@@ -360,11 +362,7 @@ fn copysprite_screen_pos(
 /// Insert gameplay hover/highlight resources.
 ///
 /// (The name is kept for wiring compatibility from setup_gameplay.)
-pub(crate) fn spawn_map_hover_highlight(
-    commands: &mut Commands,
-    _gfx: &GraphicsCache,
-    _world_root: Entity,
-) {
+pub(crate) fn spawn_map_hover_highlight(commands: &mut Commands) {
     commands.insert_resource(GameplayHoveredTile::default());
     commands.insert_resource(GameplayHoverTarget::default());
 }
@@ -940,7 +938,8 @@ pub(crate) fn run_gameplay_map_hover_and_click(
 pub(crate) fn run_gameplay_sprite_highlight(
     hover_target: Res<GameplayHoverTarget>,
     player_state: Res<PlayerState>,
-    mut q_tiles: Query<(&TileRender, &mut Sprite)>,
+    mut materials: ResMut<Assets<DdEffectSpriteMaterial>>,
+    q_tiles: Query<(&TileRender, &MeshMaterial2d<DdEffectSpriteMaterial>)>,
 ) {
     let mut hovered_tile: Option<(i32, i32, TileLayer)> = None;
 
@@ -995,16 +994,16 @@ pub(crate) fn run_gameplay_sprite_highlight(
                 }
 
                 effect |= 16;
-                let tint = dd_effect_tint(effect);
-
-                for (render, mut sprite) in &mut q_tiles {
-                    let x = (render.index % TILEX) as i32;
-                    let y = (render.index / TILEX) as i32;
-                    if x == tx && y == ty && render.layer == layer {
-                        sprite.color = tint;
-                        hovered_tile = Some((tx, ty, layer));
-                        break;
+                let target_index = (ty as usize) * TILEX + (tx as usize);
+                for (render, mat_handle) in &q_tiles {
+                    if render.index != target_index || render.layer != layer {
+                        continue;
                     }
+                    if let Some(mat) = materials.get_mut(&mat_handle.0) {
+                        mat.params.effect = effect;
+                        hovered_tile = Some((tx, ty, layer));
+                    }
+                    break;
                 }
             }
         }
@@ -1044,14 +1043,14 @@ pub(crate) fn run_gameplay_sprite_highlight(
     if (tile.flags & UWATER) != 0 {
         effect |= 512;
     }
-    let tint = dd_effect_tint(effect);
-
-    for (render, mut sprite) in &mut q_tiles {
-        let x = (render.index % TILEX) as i32;
-        let y = (render.index / TILEX) as i32;
-        if x == sel_mx && y == sel_my && render.layer == TileLayer::Character {
-            sprite.color = tint;
-            break;
+    let sel_index = (sel_my as usize) * TILEX + (sel_mx as usize);
+    for (render, mat_handle) in &q_tiles {
+        if render.index != sel_index || render.layer != TileLayer::Character {
+            continue;
         }
+        if let Some(mat) = materials.get_mut(&mat_handle.0) {
+            mat.params.effect = effect;
+        }
+        break;
     }
 }

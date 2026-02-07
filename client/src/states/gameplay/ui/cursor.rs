@@ -30,6 +30,8 @@ pub(crate) fn spawn_ui_carried_item(commands: &mut Commands, gfx: &GraphicsCache
             sprite_id: i32::MIN,
             sx: f32::NAN,
             sy: f32::NAN,
+            w: f32::NAN,
+            h: f32::NAN,
         },
         empty.clone(),
         Anchor::TOP_LEFT,
