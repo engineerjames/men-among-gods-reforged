@@ -1550,6 +1550,9 @@ impl State {
             }
         }
 
+        // Re-read armor after shield updates, matching C behavior.
+        let co_armor = Repository::with_characters(|ch| ch[co].armor);
+
         // Compute damage scaling by type
         let mut dam = dam;
         if type_hurt == 0 {
@@ -1656,6 +1659,21 @@ impl State {
             );
         }
 
+        // Combined map flags for arena checks (C includes both co/cn positions).
+        let mf_flags = Repository::with_map(|map| {
+            let co_idx = (Repository::with_characters(|ch| ch[co].x as i32)
+                + Repository::with_characters(|ch| ch[co].y as i32) * core::constants::SERVER_MAPX)
+                as usize;
+            let mut flags = map[co_idx].flags;
+            if cn != 0 {
+                let cn_idx = (Repository::with_characters(|ch| ch[cn].x as i32)
+                    + Repository::with_characters(|ch| ch[cn].y as i32)
+                        * core::constants::SERVER_MAPX) as usize;
+                flags |= map[cn_idx].flags;
+            }
+            flags
+        });
+
         // God save check
         let saved_by_god = Repository::with_characters(|ch| {
             let will_die_hp = ch[co].a_hp - dam;
@@ -1663,14 +1681,7 @@ impl State {
         });
 
         if saved_by_god {
-            let mf_arena = Repository::with_map(|map| {
-                let idx = (Repository::with_characters(|ch| ch[co].x as i32)
-                    + Repository::with_characters(|ch| ch[co].y as i32)
-                        * core::constants::SERVER_MAPX) as usize;
-                map[idx].flags & core::constants::MF_ARENA as u64
-            });
-
-            if mf_arena == 0
+            if (mf_flags & core::constants::MF_ARENA as u64) == 0
                 && helpers::random_mod_i32(10000)
                     < 5000 + Repository::with_characters(|ch| ch[co].luck)
             {
@@ -1702,10 +1713,6 @@ impl State {
                 );
                 let (new_x, new_y) = Repository::with_characters(|ch| (ch[co].x, ch[co].y));
                 crate::effect::EffectManager::fx_add_effect(6, 0, new_x as i32, new_y as i32, 0);
-
-                Repository::with_characters_mut(|characters| {
-                    characters[cn].data[44] += 1;
-                });
 
                 self.do_notify_character(
                     cn as u32,
@@ -1809,19 +1816,34 @@ impl State {
             // Score and EXP handing (defer to helpers/stubs)
             if type_hurt != 2
                 && cn != 0
-                && Repository::with_map(|map| {
-                    let idx = (Repository::with_characters(|ch| ch[co].x as i32)
-                        + Repository::with_characters(|ch| ch[co].y as i32)
-                            * core::constants::SERVER_MAPX) as usize;
-                    map[idx].flags & core::constants::MF_ARENA as u64 == 0
-                })
+                && (mf_flags & core::constants::MF_ARENA as u64) == 0
                 && noexp == 0
             {
                 let tmp = self.do_char_score(co);
                 let rank = core::ranks::points2rank(Repository::with_characters(|ch| {
                     ch[co].points_tot as u32
                 })) as i32;
-                // Some bonuses for spells are handled in do_give_exp/do_char_killed
+                let mut tmp = tmp;
+                let has_medit = Repository::with_characters(|ch| {
+                    ch[co].skill[core::constants::SK_MEDIT][0] != 0
+                });
+                if !has_medit {
+                    let spells = Repository::with_characters(|ch| ch[co].spell);
+                    for n in 0..20 {
+                        let in_idx = spells[n] as usize;
+                        if in_idx == 0 {
+                            continue;
+                        }
+                        let item_temp = Repository::with_items(|items| items[in_idx].temp);
+                        if item_temp == core::constants::SK_PROTECT as u16
+                            || item_temp == core::constants::SK_ENHANCE as u16
+                            || item_temp == core::constants::SK_BLESS as u16
+                        {
+                            tmp += tmp / 5;
+                        }
+                    }
+                }
+
                 self.do_character_killed(co, cn);
                 if type_hurt != 2 && cn != 0 && cn != co {
                     self.do_give_exp(cn, tmp, 1, rank);
