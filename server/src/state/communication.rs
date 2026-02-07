@@ -1314,7 +1314,7 @@ impl State {
                     Repository::with_characters(|ch| {
                         self.do_character_log(
                             co,
-                            core::types::FontColor::Blue,
+                            core::types::FontColor::Green,
                             &format!("{} group-tells: \"{}\"\n", ch[cn].get_name(), text),
                         );
                     });
@@ -1325,7 +1325,7 @@ impl State {
         if found {
             self.do_character_log(
                 cn,
-                core::types::FontColor::Blue,
+                core::types::FontColor::Green,
                 &format!("Told the group: \"{}\"\n", text),
             );
             if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Player.bits()) != 0)

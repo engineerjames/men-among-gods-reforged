@@ -1046,7 +1046,7 @@ impl State {
         self.do_character_log(
             cn,
             core::types::FontColor::Green,
-            "#gtell <message        tell to your group.\n",
+            "#gtell <message>       tell to your group.\n",
         );
         self.do_character_log(
             cn,
