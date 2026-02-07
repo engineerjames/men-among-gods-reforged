@@ -1,4 +1,5 @@
 use bevy::ecs::query::Without;
+use bevy::mesh::Mesh2d;
 use bevy::prelude::*;
 use bevy::sprite::Anchor;
 use bevy::sprite_render::MeshMaterial2d;
