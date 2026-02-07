@@ -62,7 +62,10 @@ enum NetworkCommand {
 
 enum NetworkEvent {
     Status(String),
-    Bytes(Vec<u8>),
+    Bytes {
+        bytes: Vec<u8>,
+        received_at: Instant,
+    },
     /// One complete framed server tick packet was processed.
     Tick,
     Error(String),
@@ -315,7 +318,16 @@ fn process_network_events(
     mut sound_queue: ResMut<SoundEventQueue>,
     mut user_settings: ResMut<UserSettingsState>,
     mut login_ui: Option<ResMut<LoginUIState>>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
 ) {
+    let window_focused = windows
+        .single()
+        .map(|window| window.focused)
+        .unwrap_or(true);
+
+    let max_ticks_per_frame = if window_focused { 1 } else { 64 };
+    let mut ticks_processed = 0u32;
+
     let Some(rx_arc) = net.event_rx.clone() else {
         return;
     };
@@ -344,7 +356,7 @@ fn process_network_events(
 
                 status.message = format!("Error: {e}");
             }
-            NetworkEvent::Bytes(bytes) => {
+            NetworkEvent::Bytes { bytes, received_at } => {
                 // After splitting, each event corresponds to exactly one server command.
                 if bytes.is_empty() {
                     log::debug!("Received empty server command bytes");
@@ -358,7 +370,11 @@ fn process_network_events(
                             client_time_ms,
                         } => {
                             if let Some(sent_at) = net.pings_in_flight.remove(seq) {
-                                let rtt_ms = sent_at.elapsed().as_millis() as u32;
+                                let rtt_ms = if received_at >= sent_at {
+                                    received_at.duration_since(sent_at).as_millis() as u32
+                                } else {
+                                    sent_at.elapsed().as_millis() as u32
+                                };
                                 net.last_rtt_ms = Some(rtt_ms);
                                 net.rtt_ewma_ms = Some(match net.rtt_ewma_ms {
                                     Some(prev) => prev * 0.8 + (rtt_ms as f32) * 0.2,
@@ -405,9 +421,12 @@ fn process_network_events(
                 net.client_ticker = net.client_ticker.wrapping_add(1);
                 player_state.on_tick_packet(net.client_ticker);
                 player_state.map_mut().reset_last_setmap_index();
-                // Match original client: process one tick packet per frame.
-                // Stop draining further events so animation steps aren't skipped.
-                break;
+                // Match original client: process one tick packet per frame while focused.
+                // When unfocused, allow draining more to avoid a growing backlog.
+                ticks_processed += 1;
+                if ticks_processed >= max_ticks_per_frame {
+                    break;
+                }
             }
             NetworkEvent::LoggedIn => {
                 log::info!("Login process complete, switching to Gameplay state");

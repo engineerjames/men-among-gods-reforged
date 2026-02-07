@@ -685,7 +685,7 @@ pub fn spell_protect(cn: usize, co: usize, power: i32) -> i32 {
         State::with(|state| {
             state.do_character_log(
                 cn,
-                FontColor::Green,
+                FontColor::Yellow,
                 &format!("{} is now protected.\n", name),
             )
         });

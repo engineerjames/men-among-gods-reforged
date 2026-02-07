@@ -2,7 +2,7 @@ use std::{
     io::{Read, Write},
     net::TcpStream,
     sync::mpsc,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use bevy::prelude::*;
@@ -442,7 +442,10 @@ fn run_network_loop(
                     format!("Tick parse failed (compressed): {e}")
                 })?;
                 for cmd in cmds {
-                    let _ = event_tx.send(NetworkEvent::Bytes(cmd));
+                    let _ = event_tx.send(NetworkEvent::Bytes {
+                        bytes: cmd,
+                        received_at: Instant::now(),
+                    });
                 }
                 let _ = event_tx.send(NetworkEvent::Tick);
             } else {
@@ -451,7 +454,10 @@ fn run_network_loop(
                     format!("Tick parse failed (uncompressed): {e}")
                 })?;
                 for cmd in cmds {
-                    let _ = event_tx.send(NetworkEvent::Bytes(cmd));
+                    let _ = event_tx.send(NetworkEvent::Bytes {
+                        bytes: cmd,
+                        received_at: Instant::now(),
+                    });
                 }
                 let _ = event_tx.send(NetworkEvent::Tick);
             }
