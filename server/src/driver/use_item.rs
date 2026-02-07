@@ -131,10 +131,8 @@ pub fn use_door(cn: usize, item_idx: usize) -> i32 {
         if item.data[0] != 0 {
             if cn == 0 {
                 lock = 1;
-                false
             } else if item.data[0] >= 65500 {
                 lock = sub_door_driver(cn, item_idx);
-                false
             } else {
                 // Check if character has the right key
                 Repository::with_characters(|characters| {
@@ -193,13 +191,15 @@ pub fn use_door(cn: usize, item_idx: usize) -> i32 {
                         }
                     });
                 }
-
-                // Return whether the door is locked without proper key
-                item.data[1] != 0 && lock == 0
             }
-        } else {
-            false
+
+            // If the door has a lock and we did not unlock it, block the use.
+            if item.data[1] != 0 && lock == 0 {
+                return true;
+            }
         }
+
+        false
     });
 
     // If door is locked and player doesn't have key, exit early
