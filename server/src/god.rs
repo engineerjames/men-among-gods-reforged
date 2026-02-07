@@ -777,9 +777,6 @@ impl God {
             character.goto_y = y as u16; // TODO: This was missing before... should this be here?
         });
 
-        // Remove character from current map tile before attempting transfer
-        player::plr_map_remove(character_id);
-
         let positions_to_try: [(usize, usize); 5] =
             [(x, y), (x + 3, y), (x, y + 3), (x - 3, y), (x, y - 3)];
 
@@ -788,9 +785,6 @@ impl God {
                 return true;
             }
         }
-
-        // Place character back on the map (even if transfer failed) so map state stays consistent
-        player::plr_map_set(character_id);
 
         false
     }
