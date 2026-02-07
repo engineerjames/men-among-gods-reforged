@@ -6262,7 +6262,7 @@ pub fn use_driver(cn: usize, item_idx: usize, carried: bool) {
                             )
                         ),
                     );
-                    state.do_character_killed(cn, 0);
+                    state.do_character_killed(cn, 0, true);
                 });
             }
 

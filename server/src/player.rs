@@ -125,7 +125,7 @@ pub fn plr_logout(character_id: usize, player_id: usize, reason: enums::LogoutRe
                                 core::types::FontColor::Red,
                                 String::from("The demon killed you.\n \n").as_str(),
                             );
-                            state.do_character_killed(character_id, 0);
+                            state.do_character_killed(character_id, 0, false);
                         });
                     } else {
                         if character.gold / 10 > 0 {
@@ -668,7 +668,7 @@ pub fn plr_map_set(cn: usize) {
                     "You entered a Deathtrap. You are dead!\n",
                 );
                 log::info!("Character {} entered a Deathtrap", cn);
-                state.do_character_killed(cn, 0);
+                state.do_character_killed(cn, 0, true);
             });
             return;
         }

@@ -1931,9 +1931,9 @@ impl God {
                 t.alignment as i32,
                 t.armor as i32,
                 t.weapon as i32,
-                t.a_hp as i32,
-                t.a_end as i32,
-                t.a_mana as i32,
+                t.a_hp,
+                t.a_end,
+                t.a_mana,
             )
         });
 
@@ -2162,14 +2162,14 @@ impl God {
                     core::types::FontColor::Yellow,
                     &format!(
                         "Current Online Time: {}d {}h {}m {}s, Total Online Time: {}d {}h {}m {}s.\n",
-                        current_online_time / (core::constants::TICKS * 60 * 60 * 24) as i32,
-                        (current_online_time / (core::constants::TICKS * 60 * 60) as i32) % 24,
-                        (current_online_time / (core::constants::TICKS * 60) as i32) % 60,
-                        (current_online_time / core::constants::TICKS as i32) % 60,
-                        total_online_time / (core::constants::TICKS * 60 * 60 * 24) as i32,
-                        (total_online_time / (core::constants::TICKS * 60 * 60) as i32) % 24,
-                        (total_online_time / (core::constants::TICKS * 60) as i32) % 60,
-                        (total_online_time / core::constants::TICKS as i32) % 60
+                        current_online_time / (core::constants::TICKS * 60 * 60 * 24),
+                        (current_online_time / (core::constants::TICKS * 60 * 60)) % 24,
+                        (current_online_time / (core::constants::TICKS * 60)) % 60,
+                        (current_online_time / core::constants::TICKS) % 60,
+                        total_online_time / (core::constants::TICKS * 60 * 60 * 24),
+                        (total_online_time / (core::constants::TICKS * 60 * 60)) % 24,
+                        (total_online_time / (core::constants::TICKS * 60)) % 60,
+                        (total_online_time / core::constants::TICKS) % 60
                     ),
                 );
             });
@@ -4120,7 +4120,7 @@ impl God {
 
             // Call do_char_killed(0, co)
             State::with(|state| {
-                state.do_character_killed(co, 0);
+                state.do_character_killed(co, 0, false);
             });
 
             State::with(|state| {

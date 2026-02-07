@@ -789,7 +789,7 @@ impl State {
                         FontColor::Red,
                         &format!("The {} killed {}.\n", spell_name, cn),
                     );
-                    self.do_character_killed(cn, 0);
+                    self.do_character_killed(cn, 0, false);
                     return;
                 }
 
@@ -1006,7 +1006,7 @@ impl State {
 
                 let is_dead = Repository::with_characters(|ch| ch[cn].a_hp < 500);
                 if is_dead {
-                    self.do_character_killed(cn, 0);
+                    self.do_character_killed(cn, 0, false);
                 }
             }
         }
@@ -1844,12 +1844,12 @@ impl State {
                     }
                 }
 
-                self.do_character_killed(co, cn);
+                self.do_character_killed(co, cn, false);
                 if type_hurt != 2 && cn != 0 && cn != co {
                     self.do_give_exp(cn, tmp, 1, rank);
                 }
             } else {
-                self.do_character_killed(co, cn);
+                self.do_character_killed(co, cn, false);
             }
 
             Repository::with_characters_mut(|characters| {
