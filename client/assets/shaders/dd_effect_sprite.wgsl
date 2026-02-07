@@ -91,6 +91,11 @@ fn apply_effect(color: vec4<f32>, effect: u32) -> vec4<f32> {
 
 @fragment
 fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
-    let color = textureSample(sprite_tex, sprite_sampler, mesh.uv);
-    return apply_effect(color, params.effect);
+    let base = textureSample(sprite_tex, sprite_sampler, mesh.uv);
+    #ifdef VERTEX_COLORS
+    let tinted = base * mesh.color;
+    return apply_effect(tinted, params.effect);
+    #else
+    return apply_effect(base, params.effect);
+    #endif
 }

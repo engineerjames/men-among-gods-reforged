@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy::reflect::TypePath;
 use bevy::render::render_resource::{AsBindGroup, ShaderType};
 use bevy::shader::ShaderRef;
-use bevy::sprite_render::{Material2d, Material2dPlugin};
+use bevy::sprite_render::{AlphaMode2d, Material2d, Material2dPlugin};
 
 #[repr(C)]
 #[derive(Clone, Copy, Default, ShaderType)]
@@ -24,6 +24,10 @@ pub(crate) struct DdEffectSpriteMaterial {
 impl Material2d for DdEffectSpriteMaterial {
     fn fragment_shader() -> ShaderRef {
         "shaders/dd_effect_sprite.wgsl".into()
+    }
+
+    fn alpha_mode(&self) -> AlphaMode2d {
+        AlphaMode2d::Blend
     }
 }
 
