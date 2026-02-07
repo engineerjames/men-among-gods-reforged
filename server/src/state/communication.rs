@@ -1233,7 +1233,7 @@ impl State {
                 );
                 self.do_character_log(
                     cn,
-                    core::types::FontColor::Blue,
+                    core::types::FontColor::Yellow,
                     &format!("  \"{}\"\n", msg),
                 );
             } else {
@@ -1260,7 +1260,7 @@ impl State {
         } else {
             format!("{} tells you: \"{:.200}\"\n", cn_name, text)
         };
-        self.do_character_log(co, core::types::FontColor::Blue, &buf);
+        self.do_character_log(co, core::types::FontColor::Yellow, &buf);
         // ccp_tell omitted
         self.do_character_log(
             cn,
