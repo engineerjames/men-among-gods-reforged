@@ -82,7 +82,7 @@ impl State {
                 let idx = cn.x as usize + cn.y as usize * core::constants::SERVER_MAPX as usize;
                 Repository::with_map(|map| map[idx].flags)
             });
-            map_flags &= cn_flags;
+            map_flags |= cn_flags;
         }
 
         // Play death sound effects
@@ -370,6 +370,9 @@ impl State {
             });
 
             corpse_id = self.handle_player_death(character_id, killer_id, map_flags, force_save);
+            if force_save {
+                return;
+            }
         } else {
             // Handle NPC death
             let is_labkeeper = Repository::with_characters(|ch| {
@@ -476,6 +479,26 @@ impl State {
 
         // Drop items and money based on wimp chance
         self.handle_item_drops(co, cc, wimp as i32, cn, force_save);
+
+        if force_save {
+            let (cc_x, cc_y) = Repository::with_characters(|ch| (ch[cc].x, ch[cc].y));
+            Repository::with_map_mut(|map| {
+                let idx = cc_x as usize + cc_y as usize * core::constants::SERVER_MAPX as usize;
+                if idx < map.len() {
+                    if map[idx].ch == cc as u32 {
+                        map[idx].ch = 0;
+                    }
+                    if map[idx].to_ch == cc as u32 {
+                        map[idx].to_ch = 0;
+                    }
+                }
+            });
+            Repository::with_characters_mut(|characters| {
+                characters[cc].used = USE_EMPTY;
+                characters[cc].player = 0;
+                characters[cc].flags = 0;
+            });
+        }
 
         // Move player to temple
         let (temple_x, temple_y, cur_x, cur_y) = Repository::with_characters(|ch| {
