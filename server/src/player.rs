@@ -665,7 +665,7 @@ pub fn plr_map_set(cn: usize) {
                 state.do_character_log(
                     cn,
                     core::types::FontColor::Red,
-                    "You entered a Deathtrap. You are dead!\n",
+                    "You entered a Deathtrap!\n",
                 );
                 log::info!("Character {} entered a Deathtrap", cn);
                 state.do_character_killed(cn, 0, true);
