@@ -2,6 +2,31 @@ use crate::types;
 use log::info;
 use redis::AsyncCommands;
 
+pub(crate) async fn update_character(
+    con: &mut redis::aio::MultiplexedConnection,
+    character_id: u64,
+    name: Option<&str>,
+    description: Option<&str>,
+) -> Result<(), redis::RedisError> {
+    let character_key = format!("character:{}", character_id);
+
+    let mut pipe = redis::pipe();
+    pipe.atomic();
+
+    if let Some(name) = name {
+        pipe.cmd("HSET").arg(&character_key).arg("name").arg(name);
+    }
+
+    if let Some(description) = description {
+        pipe.cmd("HSET")
+            .arg(&character_key)
+            .arg("description")
+            .arg(description);
+    }
+
+    pipe.query_async(con).await.map(|_: Vec<redis::Value>| ())
+}
+
 pub(crate) async fn delete_character(
     con: &mut redis::aio::MultiplexedConnection,
     account_id: u64,

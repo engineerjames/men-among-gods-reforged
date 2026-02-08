@@ -138,6 +138,7 @@ impl CreateCharacterRequest {
 
 #[derive(Deserialize)]
 pub struct UpdateCharacterRequest {
+    pub id: u64,
     pub name: Option<String>,
     pub description: Option<String>,
 }

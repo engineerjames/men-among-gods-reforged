@@ -478,11 +478,88 @@ pub(crate) async fn create_account(
 }
 
 pub(crate) async fn update_character(
-    State(_con): State<redis::aio::MultiplexedConnection>,
+    State(mut con): State<redis::aio::MultiplexedConnection>,
     headers: axum::http::HeaderMap,
-    Json(_payload): Json<types::UpdateCharacterRequest>,
+    Json(payload): Json<types::UpdateCharacterRequest>,
 ) -> StatusCode {
-    StatusCode::OK
+    let token = match helpers::get_token_from_headers(&headers).await {
+        Some(value) => value,
+        None => {
+            warn!("Unauthorized access attempt: missing Authorization header");
+            return StatusCode::UNAUTHORIZED;
+        }
+    };
+
+    let token_data = match helpers::verify_token(&token).await {
+        Ok(token_data) => token_data,
+        Err(err) => {
+            warn!("Unauthorized access attempt: {}", err);
+            return StatusCode::UNAUTHORIZED;
+        }
+    };
+
+    let username_key = format!("account:username:{}", token_data.claims.sub);
+    let account_id = match pipelines::get_account_id_by_username(&mut con, &username_key).await {
+        Ok(value) => match value {
+            Some(id) => id,
+            None => {
+                warn!(
+                    "Unauthorized update attempt: account not found for {}",
+                    token_data.claims.sub
+                );
+                return StatusCode::UNAUTHORIZED;
+            }
+        },
+        Err(err) => {
+            error!("Redis read failed: {}", err);
+            return StatusCode::INTERNAL_SERVER_ERROR;
+        }
+    };
+
+    let does_character_belong_to_user: bool =
+        match pipelines::check_character_ownership(&mut con, account_id, payload.id).await {
+            Ok(value) => value,
+            Err(err) => {
+                error!("Redis read failed: {}", err);
+                return StatusCode::INTERNAL_SERVER_ERROR;
+            }
+        };
+    if !does_character_belong_to_user {
+        warn!(
+            "Unauthorized update attempt: character {} does not belong to user {}",
+            payload.id, token_data.claims.sub
+        );
+        return StatusCode::UNAUTHORIZED;
+    }
+
+    if payload.name.is_none() && payload.description.is_none() {
+        warn!(
+            "Update character rejected: no fields to update for character {}",
+            payload.id
+        );
+        return StatusCode::BAD_REQUEST;
+    }
+
+    match pipelines::update_character(
+        &mut con,
+        payload.id,
+        payload.name.as_deref(),
+        payload.description.as_deref(),
+    )
+    .await
+    {
+        Ok(_) => {
+            info!(
+                "Character {} updated for account {}",
+                payload.id, token_data.claims.sub
+            );
+            StatusCode::OK
+        }
+        Err(err) => {
+            error!("Failed to update character: {}", err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+    }
 }
 
 pub(crate) async fn delete_character(
