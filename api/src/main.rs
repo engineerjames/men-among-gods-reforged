@@ -1,9 +1,8 @@
 pub mod types;
 
-use crate::types::{CreateAccountRequest, CreateAccountResponse, LoginRequest, LoginResponse};
-use axum::{extract::State, http::StatusCode, routing::post, Json, Router};
+use axum::{extract::State, http::StatusCode, routing::get, routing::post, Json, Router};
 use axum_governor::GovernorLayer;
-use jsonwebtoken::{EncodingKey, Header};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation};
 use lazy_limit::{init_rate_limiter, Duration, RuleConfig};
 use lazy_static::lazy_static;
 use log::{error, info, warn, LevelFilter};
@@ -82,6 +81,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = Router::new()
         .route("/login", post(login))
         .route("/accounts", post(create_account))
+        .route("/characters", get(get_characters))
         .layer(GovernorLayer::default())
         .layer(RealIpLayer::default())
         .with_state(con);
@@ -100,14 +100,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn login(
     State(mut con): State<redis::aio::MultiplexedConnection>,
-    Json(payload): Json<LoginRequest>,
-) -> (StatusCode, Json<LoginResponse>) {
+    Json(payload): Json<types::LoginRequest>,
+) -> (StatusCode, Json<types::LoginResponse>) {
     info!("Login request for username={}", payload.username);
     if !is_valid_password(&payload.password) {
         warn!("Login rejected: invalid password format");
         return (
             StatusCode::BAD_REQUEST,
-            Json(LoginResponse {
+            Json(types::LoginResponse {
                 token: String::new(),
             }),
         );
@@ -120,7 +120,7 @@ async fn login(
             error!("Redis read failed: {}", err);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(LoginResponse {
+                Json(types::LoginResponse {
                     token: String::new(),
                 }),
             );
@@ -133,7 +133,7 @@ async fn login(
             warn!("Login rejected: username not found {}", payload.username);
             return (
                 StatusCode::UNAUTHORIZED,
-                Json(LoginResponse {
+                Json(types::LoginResponse {
                     token: String::new(),
                 }),
             );
@@ -147,7 +147,7 @@ async fn login(
             error!("Redis read failed: {}", err);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(LoginResponse {
+                Json(types::LoginResponse {
                     token: String::new(),
                 }),
             );
@@ -163,7 +163,7 @@ async fn login(
             );
             return (
                 StatusCode::UNAUTHORIZED,
-                Json(LoginResponse {
+                Json(types::LoginResponse {
                     token: String::new(),
                 }),
             );
@@ -174,7 +174,7 @@ async fn login(
         warn!("Login rejected: password mismatch for {}", payload.username);
         return (
             StatusCode::UNAUTHORIZED,
-            Json(LoginResponse {
+            Json(types::LoginResponse {
                 token: String::new(),
             }),
         );
@@ -186,7 +186,7 @@ async fn login(
             error!("Login failed: API_JWT_SECRET is not set");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(LoginResponse {
+                Json(types::LoginResponse {
                     token: String::new(),
                 }),
             );
@@ -197,7 +197,7 @@ async fn login(
         .duration_since(UNIX_EPOCH)
         .unwrap_or(StdDuration::from_secs(0))
         .as_secs();
-    let claims = JwtClaims {
+    let claims = types::JwtClaims {
         sub: payload.username,
         exp: (now + 3600) as usize,
     };
@@ -212,20 +212,85 @@ async fn login(
             error!("JWT encode failed: {}", err);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(LoginResponse {
+                Json(types::LoginResponse {
                     token: String::new(),
                 }),
             );
         }
     };
 
-    (StatusCode::OK, Json(LoginResponse { token }))
+    (StatusCode::OK, Json(types::LoginResponse { token }))
 }
 
-#[derive(serde::Serialize)]
-struct JwtClaims {
-    sub: String,
-    exp: usize,
+async fn get_characters(
+    State(mut con): State<redis::aio::MultiplexedConnection>,
+    headers: axum::http::HeaderMap,
+) -> (StatusCode, Json<types::GetCharactersResponse>) {
+    let token = match headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+    {
+        Some(value) => value.trim(),
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(types::GetCharactersResponse { characters: vec![] }),
+            );
+        }
+    };
+
+    let token = token.strip_prefix("Bearer ").unwrap_or(token).trim();
+
+    let secret = match env::var("API_JWT_SECRET") {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => {
+            error!("JWT secret missing for get_characters");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(types::GetCharactersResponse { characters: vec![] }),
+            );
+        }
+    };
+
+    let token_data = match jsonwebtoken::decode::<types::JwtClaims>(
+        token,
+        &DecodingKey::from_secret(secret.as_bytes()),
+        &Validation::default(),
+    ) {
+        Ok(data) => data,
+        Err(err) => {
+            warn!("JWT decode failed: {}", err);
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(types::GetCharactersResponse { characters: vec![] }),
+            );
+        }
+    };
+
+    let username_key = format!("account:username:{}", token_data.claims.sub);
+    let user_id: Option<u64> = match con.get(&username_key).await {
+        Ok(value) => value,
+        Err(err) => {
+            error!("Redis read failed: {}", err);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(types::GetCharactersResponse { characters: vec![] }),
+            );
+        }
+    };
+
+    if user_id.is_none() {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(types::GetCharactersResponse { characters: vec![] }),
+        );
+    }
+
+    // TODO: Load characters for this account once the data model is defined.
+    (
+        StatusCode::OK,
+        Json(types::GetCharactersResponse { characters: vec![] }),
+    )
 }
 
 fn is_valid_email_regex(email: &str) -> bool {
@@ -314,13 +379,13 @@ async fn insert_account_hash(
 
 async fn create_account(
     State(mut con): State<redis::aio::MultiplexedConnection>,
-    Json(payload): Json<CreateAccountRequest>,
-) -> (StatusCode, Json<CreateAccountResponse>) {
+    Json(payload): Json<types::CreateAccountRequest>,
+) -> (StatusCode, Json<types::CreateAccountResponse>) {
     info!(
         "Create account request: username={}, email={}",
         payload.username, payload.email
     );
-    let response = CreateAccountResponse {
+    let response = types::CreateAccountResponse {
         id: None,
         error: None,
         username: payload.username.clone(),
@@ -332,7 +397,7 @@ async fn create_account(
         warn!("Create account rejected: invalid email {}", payload.email);
         return (
             StatusCode::BAD_REQUEST,
-            Json(CreateAccountResponse {
+            Json(types::CreateAccountResponse {
                 error: Some("Invalid email".to_string()),
                 ..response
             }),
@@ -346,7 +411,7 @@ async fn create_account(
         );
         return (
             StatusCode::BAD_REQUEST,
-            Json(CreateAccountResponse {
+            Json(types::CreateAccountResponse {
                 error: Some("Invalid username".to_string()),
                 ..response
             }),
@@ -357,7 +422,7 @@ async fn create_account(
         warn!("Create account rejected: invalid password format");
         return (
             StatusCode::BAD_REQUEST,
-            Json(CreateAccountResponse {
+            Json(types::CreateAccountResponse {
                 error: Some("Invalid password".to_string()),
                 ..response
             }),
@@ -384,7 +449,7 @@ async fn create_account(
             error!("Redis WATCH failed: {}", err);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(CreateAccountResponse {
+                Json(types::CreateAccountResponse {
                     error: Some(format!("Redis error: {}", err)),
                     ..response
                 }),
@@ -398,7 +463,7 @@ async fn create_account(
                     error!("Redis read failed: {}", err);
                     return (
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(CreateAccountResponse {
+                        Json(types::CreateAccountResponse {
                             error: Some(format!("Redis error: {}", err)),
                             ..response
                         }),
@@ -412,7 +477,7 @@ async fn create_account(
                 info!("Create account rejected: duplicate email {}", payload.email);
                 return (
                     StatusCode::CONFLICT,
-                    Json(CreateAccountResponse {
+                    Json(types::CreateAccountResponse {
                         error: Some("Email is already in use".to_string()),
                         ..response
                     }),
@@ -426,7 +491,7 @@ async fn create_account(
                 );
                 return (
                     StatusCode::CONFLICT,
-                    Json(CreateAccountResponse {
+                    Json(types::CreateAccountResponse {
                         error: Some("Username is already in use".to_string()),
                         ..response
                     }),
@@ -441,7 +506,7 @@ async fn create_account(
                 error!("Redis INCR failed: {}", err);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(CreateAccountResponse {
+                    Json(types::CreateAccountResponse {
                         error: Some(format!("Redis error: {}", err)),
                         ..response
                     }),
@@ -481,7 +546,7 @@ async fn create_account(
                     );
                     return (
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(CreateAccountResponse {
+                        Json(types::CreateAccountResponse {
                             error: Some(
                                 "Failed to create account, retry limit reached".to_string(),
                             ),
@@ -496,7 +561,7 @@ async fn create_account(
                 error!("Redis write failed: {}", err);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(CreateAccountResponse {
+                    Json(types::CreateAccountResponse {
                         error: Some(format!("Redis error: {}", err)),
                         ..response
                     }),
@@ -507,7 +572,7 @@ async fn create_account(
 
     (
         StatusCode::CREATED,
-        Json(CreateAccountResponse {
+        Json(types::CreateAccountResponse {
             id: Some(id),
             error: None,
             username: payload.username,
