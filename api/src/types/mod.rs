@@ -38,14 +38,14 @@ pub struct JwtClaims {
     pub exp: usize,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 #[repr(u32)]
 pub enum Sex {
     Male = KIN_MALE,
     Female = KIN_FEMALE,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Copy)]
 #[repr(u32)]
 pub enum Race {
     Mercenary = KIN_MERCENARY,
@@ -84,16 +84,16 @@ pub struct GetCharactersResponse {
     pub characters: Vec<CharacterSummary>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct CreateCharacterRequest {
-    name: String,
-    description: Option<String>,
-    sex: Sex,
-    race: Race,
+    pub name: String,
+    pub description: Option<String>,
+    pub sex: Sex,
+    pub race: Race,
 }
 
 impl CreateCharacterRequest {
-    pub fn new(name: String, description: Option<String>, sex: Sex, race: Race) -> Self {
+    pub fn validate(&self) -> bool {
         if [
             Race::SeyanDu,
             Race::Sorcerer,
@@ -101,26 +101,16 @@ impl CreateCharacterRequest {
             Race::ArchHarakim,
             Race::ArchTemplar,
         ]
-        .contains(&race)
+        .contains(&self.race)
         {
             log::error!(
                 "Invalid race selection: {:?}; Can only be achieved in-game.",
-                race
+                self.race
             );
-            return Self {
-                name,
-                description,
-                sex,
-                race: Race::Mercenary, // Default to Mercenary
-            };
+            return false;
         }
 
-        Self {
-            name,
-            description: description,
-            sex,
-            race,
-        }
+        true
     }
 }
 

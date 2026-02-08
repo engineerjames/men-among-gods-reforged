@@ -15,6 +15,8 @@ use std::env;
 use std::net::SocketAddr;
 use std::time::{Duration as StdDuration, SystemTime, UNIX_EPOCH};
 
+use crate::types::CreateCharacterRequest;
+
 fn parse_log_level(value: &str) -> Option<LevelFilter> {
     match value.to_lowercase().as_str() {
         "off" => Some(LevelFilter::Off),
@@ -104,9 +106,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn create_new_character(
-    State(con): State<redis::aio::MultiplexedConnection>,
-    Json(payload): Json<types::CreateCharacterRequest>,
+    State(mut con): State<redis::aio::MultiplexedConnection>,
     headers: axum::http::HeaderMap,
+    Json(payload): Json<types::CreateCharacterRequest>,
 ) -> (StatusCode, Json<types::CharacterSummary>) {
     let token = match get_token_from_headers(&headers).await {
         Some(value) => value,
@@ -119,7 +121,60 @@ async fn create_new_character(
         }
     };
 
-    (StatusCode::OK, Json(types::CharacterSummary::default()))
+    let token_data = match verify_token(&token).await {
+        Ok(token_data) => token_data,
+        Err(err) => {
+            warn!("Unauthorized access attempt: {}", err);
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(types::CharacterSummary::default()),
+            );
+        }
+    };
+
+    if !payload.validate() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(types::CharacterSummary::default()),
+        );
+    }
+
+    let result = insert_new_character(
+        &mut con,
+        &token_data.claims.sub,
+        &payload.name,
+        payload.description.as_deref(),
+        payload.sex,
+        payload.race,
+    )
+    .await;
+
+    match result {
+        Ok(character_id) => {
+            info!(
+                "Character created for account {}: id={}, name={}, sex={:?}, race={:?}",
+                token_data.claims.sub, character_id, payload.name, payload.sex, payload.race
+            );
+            (
+                StatusCode::OK,
+                Json(types::CharacterSummary {
+                    id: character_id,
+                    name: payload.name,
+                    description: payload.description.unwrap_or_default(),
+                    sex: payload.sex,
+                    race: payload.race,
+                }),
+            )
+        }
+        Err(err) => {
+            error!("Failed to create character: {}", err);
+
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(types::CharacterSummary::default()),
+            )
+        }
+    }
 }
 
 async fn update_character(
@@ -416,6 +471,37 @@ async fn check_account_duplicates(
     }
 
     Ok(DuplicateCheckResult::None)
+}
+
+async fn insert_new_character(
+    con: &mut redis::aio::MultiplexedConnection,
+    account_id: &str,
+    name: &str,
+    description: Option<&str>,
+    sex: types::Sex,
+    race: types::Race,
+) -> Result<u64, redis::RedisError> {
+    let character_id: u64 = con.incr("character:next_id", 1).await?;
+    let character_key = format!("character:{}", character_id);
+
+    let mut pipe = redis::pipe();
+    pipe.atomic()
+        .cmd("HSET")
+        .arg(&character_key)
+        .arg("account_id")
+        .arg(account_id)
+        .arg("name")
+        .arg(name)
+        .arg("description")
+        .arg(description.unwrap_or(""))
+        .arg("sex")
+        .arg(sex as u32)
+        .arg("race")
+        .arg(race as u32);
+
+    pipe.query_async(con)
+        .await
+        .map(|_: Vec<redis::Value>| character_id)
 }
 
 async fn insert_account_hash(
