@@ -48,16 +48,68 @@ def assert_status(expected, actual, label):
         raise AssertionError(f"{label}: expected {expected}, got {actual}")
 
 
+def create_login_seed(base_url, suffix):
+    short_suffix = str(suffix)[-8:]
+    payload = {
+        "email": f"login{short_suffix}@example.com",
+        "username": f"lg{short_suffix}",
+        "password": "$argon2id$v=19$m=65536,t=3,p=4$ZmFrZXNhbHQ$ZmFrZWhhc2g",
+    }
+    status, _ = request_json("POST", f"{base_url}/accounts", payload=payload)
+    assert_status(201, status, "login seed create status")
+    return payload
+
+
 def test_login_ok(base_url):
+    seed = create_login_seed(base_url, f"ok{int(time.time())}")
     status, body = request_json(
         "POST",
         f"{base_url}/login",
-        payload={"username": "user", "password": "ignored"},
+        payload={"username": seed["username"], "password": seed["password"]},
     )
     assert_status(200, status, "login status")
     data = json.loads(body or "{}")
-    if "token" not in data:
+    if "token" not in data or not data["token"]:
         raise AssertionError("login response missing token")
+
+
+def test_login_unknown_user(base_url):
+    status, _ = request_json(
+        "POST",
+        f"{base_url}/login",
+        payload={
+            "username": f"nope{int(time.time())}",
+            "password": "$argon2id$v=19$m=65536,t=3,p=4$ZmFrZXNhbHQ$ZmFrZWhhc2g",
+        },
+    )
+    assert_status(401, status, "unknown user login status")
+
+
+def test_login_wrong_password(base_url):
+    seed = create_login_seed(base_url, f"bad{int(time.time())}")
+    status, _ = request_json(
+        "POST",
+        f"{base_url}/login",
+        payload={
+            "username": seed["username"],
+            "password": "$argon2id$v=19$m=65536,t=3,p=4$ZmFrZXNhbHQ$ZmFrZWhhc2gX",
+        },
+    )
+    assert_status(401, status, "wrong password login status")
+
+
+def test_login_malformed_json(base_url):
+    req = urllib.request.Request(f"{base_url}/login", method="POST")
+    req.add_header("Content-Type", "application/json")
+    req.add_header("Accept", "application/json")
+    req.data = b"{not-json"
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            status = resp.status
+    except urllib.error.HTTPError as exc:
+        status = exc.code
+    if status < 400:
+        raise AssertionError("malformed JSON should return 4xx")
 
 
 def test_create_account_ok(base_url):
@@ -154,7 +206,8 @@ def test_rate_limit(base_url):
     global _LAST_REQUEST_AT
     _LAST_REQUEST_AT = 0.0
     time.sleep(1.2)
-    payload = {"username": "user", "password": "ignored"}
+    seed = create_login_seed(base_url, f"rl{int(time.time())}")
+    payload = {"username": seed["username"], "password": seed["password"]}
     status1, _ = request_json(
         "POST", f"{base_url}/login", payload=payload, throttle=False
     )
@@ -182,6 +235,9 @@ def main():
 
     tests = [
         test_login_ok,
+        test_login_unknown_user,
+        test_login_wrong_password,
+        test_login_malformed_json,
         test_create_account_ok,
         test_create_account_bad_email,
         test_create_account_bad_password,
