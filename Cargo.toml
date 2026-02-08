@@ -6,6 +6,7 @@ members = [
     "client/utils",
     "server",
     "server/utils",
+    "api",
 ]
 
 # Build with: `cargo build --profile profiling`
