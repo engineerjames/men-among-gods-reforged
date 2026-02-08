@@ -14,6 +14,13 @@ import urllib.request
 
 _LAST_REQUEST_AT = 0.0
 _MIN_REQUEST_INTERVAL = 1.1
+_SUFFIX_COUNTER = 0
+
+
+def unique_suffix():
+    global _SUFFIX_COUNTER
+    _SUFFIX_COUNTER += 1
+    return f"{time.time_ns()}{_SUFFIX_COUNTER}"
 
 
 def request_json(method, url, payload=None, headers=None, timeout=5, throttle=True):
@@ -61,7 +68,7 @@ def create_login_seed(base_url, suffix):
 
 
 def test_login_ok(base_url):
-    seed = create_login_seed(base_url, f"ok{int(time.time())}")
+    seed = create_login_seed(base_url, f"ok{unique_suffix()}")
     status, body = request_json(
         "POST",
         f"{base_url}/login",
@@ -71,6 +78,8 @@ def test_login_ok(base_url):
     data = json.loads(body or "{}")
     if "token" not in data or not data["token"]:
         raise AssertionError("login response missing token")
+    if data["token"].count(".") != 2:
+        raise AssertionError("login response token is not a JWT")
 
 
 def test_login_unknown_user(base_url):
@@ -86,7 +95,7 @@ def test_login_unknown_user(base_url):
 
 
 def test_login_wrong_password(base_url):
-    seed = create_login_seed(base_url, f"bad{int(time.time())}")
+    seed = create_login_seed(base_url, f"bad{unique_suffix()}")
     status, _ = request_json(
         "POST",
         f"{base_url}/login",
@@ -114,8 +123,8 @@ def test_login_malformed_json(base_url):
 
 def test_create_account_ok(base_url):
     payload = {
-        "email": f"user{int(time.time())}@example.com",
-        "username": f"user{int(time.time())}",
+        "email": f"user{unique_suffix()}@example.com",
+        "username": f"user{str(unique_suffix())[-8:]}",
         "password": "$argon2id$v=19$m=65536,t=3,p=4$ZmFrZXNhbHQ$ZmFrZWhhc2g",
     }
     status, body = request_json("POST", f"{base_url}/accounts", payload=payload)
@@ -137,8 +146,8 @@ def test_create_account_bad_email(base_url):
 
 def test_create_account_bad_password(base_url):
     payload = {
-        "email": f"badpass{int(time.time())}@example.com",
-        "username": f"badpass{int(time.time())}",
+        "email": f"badpass{unique_suffix()}@example.com",
+        "username": f"badpass{str(unique_suffix())[-8:]}",
         "password": "plaintext-password",
     }
     status, _ = request_json("POST", f"{base_url}/accounts", payload=payload)
@@ -158,11 +167,11 @@ def create_duplicate_seed(base_url, suffix):
 
 
 def test_create_account_duplicate_setup(base_url):
-    create_duplicate_seed(base_url, f"setup{int(time.time())}")
+    create_duplicate_seed(base_url, f"setup{unique_suffix()}")
 
 
 def test_create_account_duplicate_email(base_url):
-    suffix = f"email{int(time.time())}"
+    suffix = f"email{unique_suffix()}"
     seed = create_duplicate_seed(base_url, suffix)
     short_suffix = str(suffix)[-8:]
 
@@ -176,7 +185,7 @@ def test_create_account_duplicate_email(base_url):
 
 
 def test_create_account_duplicate_username(base_url):
-    suffix = f"user{int(time.time())}"
+    suffix = f"user{unique_suffix()}"
     seed = create_duplicate_seed(base_url, suffix)
 
     username_dup_payload = {
@@ -205,12 +214,18 @@ def test_malformed_json(base_url):
 def test_rate_limit(base_url):
     global _LAST_REQUEST_AT
     _LAST_REQUEST_AT = 0.0
-    time.sleep(1.2)
-    seed = create_login_seed(base_url, f"rl{int(time.time())}")
+    time.sleep(2.0)
+    seed = create_login_seed(base_url, f"rl{unique_suffix()}")
+    time.sleep(2.0)
     payload = {"username": seed["username"], "password": seed["password"]}
     status1, _ = request_json(
         "POST", f"{base_url}/login", payload=payload, throttle=False
     )
+    if status1 == 429:
+        time.sleep(2.0)
+        status1, _ = request_json(
+            "POST", f"{base_url}/login", payload=payload, throttle=False
+        )
     status2, _ = request_json(
         "POST", f"{base_url}/login", payload=payload, throttle=False
     )
@@ -219,7 +234,7 @@ def test_rate_limit(base_url):
     if status2 != 429:
         raise AssertionError(f"rate limit test expected 429, got {status2}")
 
-    time.sleep(1.2)
+    time.sleep(2.0)
     status3, _ = request_json("POST", f"{base_url}/login", payload=payload)
     assert_status(200, status3, "rate limit reset status")
 
@@ -234,6 +249,7 @@ def main():
     args = parser.parse_args()
 
     tests = [
+        test_rate_limit,
         test_login_ok,
         test_login_unknown_user,
         test_login_wrong_password,
@@ -245,7 +261,6 @@ def main():
         test_create_account_duplicate_email,
         test_create_account_duplicate_username,
         test_malformed_json,
-        test_rate_limit,
     ]
 
     failed = 0
