@@ -77,7 +77,146 @@ pub(crate) fn is_valid_password(password: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_valid_email_regex, is_valid_password, is_valid_username};
+    use super::{
+        get_token_from_headers, is_valid_email_regex, is_valid_password, is_valid_username,
+    };
+    use crate::types;
+    use jsonwebtoken::{EncodingKey, Header};
+    use std::sync::Mutex;
+
+    use super::verify_token;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn set_env_var(key: &str, value: Option<&str>) -> Option<String> {
+        let previous = std::env::var(key).ok();
+        match value {
+            Some(value) => std::env::set_var(key, value),
+            None => std::env::remove_var(key),
+        }
+        previous
+    }
+
+    fn restore_env_var(key: &str, previous: Option<String>) {
+        match previous {
+            Some(value) => std::env::set_var(key, value),
+            None => std::env::remove_var(key),
+        }
+    }
+
+    #[test]
+    fn token_from_headers_extracts_bearer() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        runtime.block_on(async {
+            let mut headers = axum::http::HeaderMap::new();
+            headers.insert(
+                axum::http::header::AUTHORIZATION,
+                "Bearer abc.def.ghi".parse().unwrap(),
+            );
+
+            let token = get_token_from_headers(&headers).await;
+            assert_eq!(Some("abc.def.ghi".to_string()), token);
+        });
+    }
+
+    #[test]
+    fn token_from_headers_accepts_raw_token() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        runtime.block_on(async {
+            let mut headers = axum::http::HeaderMap::new();
+            headers.insert(
+                axum::http::header::AUTHORIZATION,
+                "raw.token".parse().unwrap(),
+            );
+
+            let token = get_token_from_headers(&headers).await;
+            assert_eq!(Some("raw.token".to_string()), token);
+        });
+    }
+
+    #[test]
+    fn token_from_headers_missing_returns_none() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        runtime.block_on(async {
+            let headers = axum::http::HeaderMap::new();
+            let token = get_token_from_headers(&headers).await;
+            assert_eq!(None, token);
+        });
+    }
+
+    #[test]
+    fn verify_token_accepts_valid_jwt() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        runtime.block_on(async {
+            let _lock = ENV_LOCK.lock().unwrap();
+            let previous = set_env_var("API_JWT_SECRET", Some("test-secret"));
+
+            let claims = types::JwtClaims {
+                sub: "tester".to_string(),
+                exp: 1_999_999_999,
+            };
+            let token = jsonwebtoken::encode(
+                &Header::default(),
+                &claims,
+                &EncodingKey::from_secret(b"test-secret"),
+            )
+            .expect("token encode");
+
+            let result = verify_token(&token).await;
+            restore_env_var("API_JWT_SECRET", previous);
+            assert!(result.is_ok(), "expected valid token");
+        });
+    }
+
+    #[test]
+    fn verify_token_rejects_invalid_jwt() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        runtime.block_on(async {
+            let _lock = ENV_LOCK.lock().unwrap();
+            let previous = set_env_var("API_JWT_SECRET", Some("test-secret"));
+
+            let result = verify_token("not-a-jwt").await;
+            restore_env_var("API_JWT_SECRET", previous);
+            assert!(result.is_err(), "expected invalid token");
+        });
+    }
+
+    #[test]
+    fn verify_token_requires_secret() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        runtime.block_on(async {
+            let _lock = ENV_LOCK.lock().unwrap();
+            let previous = set_env_var("API_JWT_SECRET", None);
+
+            let result = verify_token("abc.def.ghi").await;
+            restore_env_var("API_JWT_SECRET", previous);
+            assert!(result.is_err(), "expected missing secret failure");
+        });
+    }
 
     #[test]
     fn email_validation_accepts_common_addresses() {
