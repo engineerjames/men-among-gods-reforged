@@ -83,8 +83,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Token required routes
         .route("/characters", get(routes::get_characters))
         .route("/characters", post(routes::create_new_character))
-        .route("/characters/:id", put(routes::update_character))
-        .route("/characters/:id", delete(routes::delete_character))
+        .route("/characters/{id}", put(routes::update_character))
+        .route("/characters/{id}", delete(routes::delete_character))
         .layer(GovernorLayer::default())
         .layer(RealIpLayer::default())
         .with_state(con);

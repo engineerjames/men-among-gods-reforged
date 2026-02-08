@@ -67,6 +67,21 @@ def create_login_seed(base_url, suffix):
     return payload
 
 
+def create_account_and_token(base_url, suffix):
+    seed = create_login_seed(base_url, suffix)
+    status, body = request_json(
+        "POST",
+        f"{base_url}/login",
+        payload={"username": seed["username"], "password": seed["password"]},
+    )
+    assert_status(200, status, "login status")
+    data = json.loads(body or "{}")
+    token = data.get("token")
+    if not token:
+        raise AssertionError("login response missing token")
+    return token, seed["username"]
+
+
 def test_login_ok(base_url):
     seed = create_login_seed(base_url, f"ok{unique_suffix()}")
     status, body = request_json(
@@ -197,6 +212,257 @@ def test_create_account_duplicate_username(base_url):
     assert_status(409, status, "duplicate username status")
 
 
+def test_get_characters_requires_auth(base_url):
+    global _LAST_REQUEST_AT
+    _LAST_REQUEST_AT = 0.0
+    time.sleep(1.2)
+    status, _ = request_json("GET", f"{base_url}/characters")
+    assert_status(401, status, "get characters auth status")
+
+
+def test_create_character_requires_auth(base_url):
+    payload = {
+        "name": f"hero{unique_suffix()}",
+        "description": "Brave",
+        "sex": "Male",
+        "race": "Mercenary",
+    }
+    status, _ = request_json("POST", f"{base_url}/characters", payload=payload)
+    assert_status(401, status, "create character auth status")
+
+
+def test_get_characters_empty(base_url):
+    token, _ = create_account_and_token(base_url, f"empty{unique_suffix()}")
+    status, body = request_json(
+        "GET",
+        f"{base_url}/characters",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert_status(200, status, "get characters status")
+    data = json.loads(body or "{}")
+    if data.get("characters") != []:
+        raise AssertionError("expected empty characters list")
+
+
+def test_create_character_ok_and_get(base_url):
+    token, _ = create_account_and_token(base_url, f"char{unique_suffix()}")
+    payload = {
+        "name": f"hero{unique_suffix()}",
+        "description": "First hero",
+        "sex": "Male",
+        "race": "Mercenary",
+    }
+    status, body = request_json(
+        "POST",
+        f"{base_url}/characters",
+        payload=payload,
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert_status(200, status, "create character status")
+    data = json.loads(body or "{}")
+    character_id = data.get("id")
+    if not isinstance(character_id, int) or character_id <= 0:
+        raise AssertionError("create character response missing id")
+
+    status, body = request_json(
+        "GET",
+        f"{base_url}/characters",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert_status(200, status, "get characters after create status")
+    data = json.loads(body or "{}")
+    characters = data.get("characters") or []
+    if not any(c.get("id") == character_id for c in characters):
+        raise AssertionError("created character missing from list")
+
+
+def test_create_character_invalid_race(base_url):
+    token, _ = create_account_and_token(base_url, f"race{unique_suffix()}")
+    payload = {
+        "name": f"hero{unique_suffix()}",
+        "description": "Forbidden",
+        "sex": "Female",
+        "race": "SeyanDu",
+    }
+    status, _ = request_json(
+        "POST",
+        f"{base_url}/characters",
+        payload=payload,
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert_status(400, status, "create character invalid race status")
+
+
+def test_update_character_ok(base_url):
+    token, _ = create_account_and_token(base_url, f"up{unique_suffix()}")
+    payload = {
+        "name": f"hero{unique_suffix()}",
+        "description": "Original",
+        "sex": "Male",
+        "race": "Mercenary",
+    }
+    status, body = request_json(
+        "POST",
+        f"{base_url}/characters",
+        payload=payload,
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert_status(200, status, "create character for update status")
+    character_id = json.loads(body or "{}").get("id")
+    if not isinstance(character_id, int) or character_id <= 0:
+        raise AssertionError("create character response missing id")
+
+    update_payload = {"id": character_id, "name": "Updated", "description": "Changed"}
+    status, _ = request_json(
+        "PUT",
+        f"{base_url}/characters/{character_id}",
+        payload=update_payload,
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert_status(200, status, "update character status")
+
+    status, body = request_json(
+        "GET",
+        f"{base_url}/characters",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert_status(200, status, "get characters after update status")
+    data = json.loads(body or "{}")
+    characters = data.get("characters") or []
+    updated = next((c for c in characters if c.get("id") == character_id), None)
+    if not updated:
+        raise AssertionError("updated character missing from list")
+    if updated.get("name") != "Updated" or updated.get("description") != "Changed":
+        raise AssertionError("character update did not persist")
+
+
+def test_update_character_missing_fields(base_url):
+    token, _ = create_account_and_token(base_url, f"upbad{unique_suffix()}")
+    payload = {
+        "name": f"hero{unique_suffix()}",
+        "description": "Original",
+        "sex": "Male",
+        "race": "Mercenary",
+    }
+    status, body = request_json(
+        "POST",
+        f"{base_url}/characters",
+        payload=payload,
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert_status(200, status, "create character for update missing fields status")
+    character_id = json.loads(body or "{}").get("id")
+    if not isinstance(character_id, int) or character_id <= 0:
+        raise AssertionError("create character response missing id")
+
+    update_payload = {"id": character_id}
+    status, _ = request_json(
+        "PUT",
+        f"{base_url}/characters/{character_id}",
+        payload=update_payload,
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert_status(400, status, "update character missing fields status")
+
+
+def test_update_character_wrong_user(base_url):
+    token_a, _ = create_account_and_token(base_url, f"upa{unique_suffix()}")
+    token_b, _ = create_account_and_token(base_url, f"upb{unique_suffix()}")
+    payload = {
+        "name": f"hero{unique_suffix()}",
+        "description": "Original",
+        "sex": "Male",
+        "race": "Mercenary",
+    }
+    status, body = request_json(
+        "POST",
+        f"{base_url}/characters",
+        payload=payload,
+        headers={"Authorization": f"Bearer {token_a}"},
+    )
+    assert_status(200, status, "create character for update wrong user status")
+    character_id = json.loads(body or "{}").get("id")
+    if not isinstance(character_id, int) or character_id <= 0:
+        raise AssertionError("create character response missing id")
+
+    update_payload = {"id": character_id, "name": "Intruder"}
+    status, _ = request_json(
+        "PUT",
+        f"{base_url}/characters/{character_id}",
+        payload=update_payload,
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert_status(401, status, "update character wrong user status")
+
+
+def test_delete_character_ok(base_url):
+    token, _ = create_account_and_token(base_url, f"del{unique_suffix()}")
+    payload = {
+        "name": f"hero{unique_suffix()}",
+        "description": "To delete",
+        "sex": "Female",
+        "race": "Templar",
+    }
+    status, body = request_json(
+        "POST",
+        f"{base_url}/characters",
+        payload=payload,
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert_status(200, status, "create character for delete status")
+    character_id = json.loads(body or "{}").get("id")
+    if not isinstance(character_id, int) or character_id <= 0:
+        raise AssertionError("create character response missing id")
+
+    status, _ = request_json(
+        "DELETE",
+        f"{base_url}/characters/{character_id}",
+        payload={"id": character_id},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert_status(200, status, "delete character status")
+
+    status, body = request_json(
+        "GET",
+        f"{base_url}/characters",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert_status(200, status, "get characters after delete status")
+    data = json.loads(body or "{}")
+    characters = data.get("characters") or []
+    if any(c.get("id") == character_id for c in characters):
+        raise AssertionError("deleted character still present")
+
+
+def test_delete_character_wrong_user(base_url):
+    token_a, _ = create_account_and_token(base_url, f"dela{unique_suffix()}")
+    token_b, _ = create_account_and_token(base_url, f"delb{unique_suffix()}")
+    payload = {
+        "name": f"hero{unique_suffix()}",
+        "description": "To delete",
+        "sex": "Female",
+        "race": "Templar",
+    }
+    status, body = request_json(
+        "POST",
+        f"{base_url}/characters",
+        payload=payload,
+        headers={"Authorization": f"Bearer {token_a}"},
+    )
+    assert_status(200, status, "create character for delete wrong user status")
+    character_id = json.loads(body or "{}").get("id")
+    if not isinstance(character_id, int) or character_id <= 0:
+        raise AssertionError("create character response missing id")
+
+    status, _ = request_json(
+        "DELETE",
+        f"{base_url}/characters/{character_id}",
+        payload={"id": character_id},
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert_status(401, status, "delete character wrong user status")
+
+
 def test_malformed_json(base_url):
     req = urllib.request.Request(f"{base_url}/accounts", method="POST")
     req.add_header("Content-Type", "application/json")
@@ -261,6 +527,16 @@ def main():
         test_create_account_duplicate_email,
         test_create_account_duplicate_username,
         test_malformed_json,
+        test_get_characters_requires_auth,
+        test_create_character_requires_auth,
+        test_get_characters_empty,
+        test_create_character_ok_and_get,
+        test_create_character_invalid_race,
+        test_update_character_ok,
+        test_update_character_missing_fields,
+        test_update_character_wrong_user,
+        test_delete_character_ok,
+        test_delete_character_wrong_user,
     ]
 
     failed = 0
