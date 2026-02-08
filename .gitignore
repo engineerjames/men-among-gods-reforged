@@ -30,3 +30,5 @@ profile.json.gz
 
 **/orig/**
 dist/**
+
+.env

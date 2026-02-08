@@ -3,6 +3,7 @@ pub mod types;
 use crate::types::{CreateAccountRequest, CreateAccountResponse, LoginRequest, LoginResponse};
 use axum::{extract::State, http::StatusCode, routing::post, Json, Router};
 use axum_governor::GovernorLayer;
+use jsonwebtoken::{EncodingKey, Header};
 use lazy_limit::{init_rate_limiter, Duration, RuleConfig};
 use lazy_static::lazy_static;
 use log::{error, info, warn, LevelFilter};
@@ -12,6 +13,7 @@ use redis::AsyncCommands;
 use regex::Regex;
 use std::env;
 use std::net::SocketAddr;
+use std::time::{Duration as StdDuration, SystemTime, UNIX_EPOCH};
 
 fn parse_log_level(value: &str) -> Option<LevelFilter> {
     match value.to_lowercase().as_str() {
@@ -66,6 +68,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .await;
     info!("Rate limiter initialized: 1 req/s");
 
+    // Ensure the right environment variables exist
+    if env::var("API_JWT_SECRET").is_err() {
+        error!("Environment variable API_JWT_SECRET is not set");
+        std::process::exit(1);
+    }
+
     let client = redis::Client::open("redis://127.0.0.1:5556/")?;
     let con = client.get_multiplexed_async_connection().await?;
     info!("Connected to KeyDB");
@@ -91,14 +99,133 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn login(
-    State(_con): State<redis::aio::MultiplexedConnection>,
+    State(mut con): State<redis::aio::MultiplexedConnection>,
     Json(payload): Json<LoginRequest>,
 ) -> (StatusCode, Json<LoginResponse>) {
     info!("Login request for username={}", payload.username);
-    let response = LoginResponse {
-        token: "fake_token".to_string(),
+    if !is_valid_password(&payload.password) {
+        warn!("Login rejected: invalid password format");
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(LoginResponse {
+                token: String::new(),
+            }),
+        );
+    }
+
+    let username_key = format!("account:username:{}", payload.username);
+    let user_id: Option<u64> = match con.get(&username_key).await {
+        Ok(value) => value,
+        Err(err) => {
+            error!("Redis read failed: {}", err);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(LoginResponse {
+                    token: String::new(),
+                }),
+            );
+        }
     };
-    (StatusCode::OK, Json(response))
+
+    let user_id = match user_id {
+        Some(value) => value,
+        None => {
+            warn!("Login rejected: username not found {}", payload.username);
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(LoginResponse {
+                    token: String::new(),
+                }),
+            );
+        }
+    };
+
+    let account_key = format!("account:{}", user_id);
+    let stored_hash: Option<String> = match con.hget(&account_key, "password").await {
+        Ok(value) => value,
+        Err(err) => {
+            error!("Redis read failed: {}", err);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(LoginResponse {
+                    token: String::new(),
+                }),
+            );
+        }
+    };
+
+    let stored_hash = match stored_hash {
+        Some(value) => value,
+        None => {
+            warn!(
+                "Login rejected: missing password hash for {}",
+                payload.username
+            );
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(LoginResponse {
+                    token: String::new(),
+                }),
+            );
+        }
+    };
+
+    if stored_hash != payload.password {
+        warn!("Login rejected: password mismatch for {}", payload.username);
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(LoginResponse {
+                token: String::new(),
+            }),
+        );
+    }
+
+    let secret = match env::var("API_JWT_SECRET") {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => {
+            error!("Login failed: API_JWT_SECRET is not set");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(LoginResponse {
+                    token: String::new(),
+                }),
+            );
+        }
+    };
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or(StdDuration::from_secs(0))
+        .as_secs();
+    let claims = JwtClaims {
+        sub: payload.username,
+        exp: (now + 3600) as usize,
+    };
+
+    let token = match jsonwebtoken::encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(secret.as_bytes()),
+    ) {
+        Ok(value) => value,
+        Err(err) => {
+            error!("JWT encode failed: {}", err);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(LoginResponse {
+                    token: String::new(),
+                }),
+            );
+        }
+    };
+
+    (StatusCode::OK, Json(LoginResponse { token }))
+}
+
+#[derive(serde::Serialize)]
+struct JwtClaims {
+    sub: String,
+    exp: usize,
 }
 
 fn is_valid_email_regex(email: &str) -> bool {
