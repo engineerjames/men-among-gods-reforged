@@ -5,24 +5,69 @@ use axum::{extract::State, http::StatusCode, routing::post, Json, Router};
 use axum_governor::GovernorLayer;
 use lazy_limit::{init_rate_limiter, Duration, RuleConfig};
 use lazy_static::lazy_static;
+use log::{error, info, warn, LevelFilter};
 use real::RealIpLayer;
 use redis;
 use redis::AsyncCommands;
 use regex::Regex;
+use std::env;
+
+fn parse_log_level(value: &str) -> Option<LevelFilter> {
+    match value.to_lowercase().as_str() {
+        "off" => Some(LevelFilter::Off),
+        "error" => Some(LevelFilter::Error),
+        "warn" | "warning" => Some(LevelFilter::Warn),
+        "info" => Some(LevelFilter::Info),
+        "debug" => Some(LevelFilter::Debug),
+        "trace" => Some(LevelFilter::Trace),
+        _ => None,
+    }
+}
+
+fn resolve_log_level() -> LevelFilter {
+    env::var("API_LOG_LEVEL")
+        .ok()
+        .as_deref()
+        .and_then(parse_log_level)
+        .unwrap_or(LevelFilter::Info)
+}
+
+fn resolve_log_file() -> Option<String> {
+    match env::var("API_LOG_FILE") {
+        Ok(value) => {
+            let trimmed = value.trim();
+            if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("none") {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        }
+        Err(_) => Some("api.log".to_string()),
+    }
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt::init();
+    let log_level = resolve_log_level();
+    let log_file = resolve_log_file();
+    core::initialize_logger(log_level, log_file.as_deref())?;
+
+    info!(
+        "API starting (level={}, logfile={})",
+        log_level,
+        log_file.as_deref().unwrap_or("none")
+    );
 
     // 1 req/s globally
     init_rate_limiter!(
         default: RuleConfig::new(Duration::seconds(1), 1)
     )
     .await;
+    info!("Rate limiter initialized: 1 req/s");
 
-    // TODO: Use Redis connection
-    let client = redis::Client::open("redis://127.0.0.1:6379/")?;
+    let client = redis::Client::open("redis://127.0.0.1:5556/")?;
     let con = client.get_multiplexed_async_connection().await?;
+    info!("Connected to KeyDB");
 
     // build our application with a route
     let app = Router::new()
@@ -35,16 +80,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .with_state(con);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    info!("Listening on 0.0.0.0:5554");
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:5554").await.unwrap();
+    axum::serve(listener, app).await?;
+
+    info!("Server shutdown");
     Ok(())
 }
 
 async fn login(
     State(_con): State<redis::aio::MultiplexedConnection>,
-    Json(_payload): Json<LoginRequest>,
+    Json(payload): Json<LoginRequest>,
 ) -> (StatusCode, Json<LoginResponse>) {
-    // insert your application logic here
+    info!("Login request for username={}", payload.username);
     let response = LoginResponse {
         token: "fake_token".to_string(),
     };
@@ -75,7 +123,7 @@ fn is_valid_password(password: &str) -> bool {
     PHC_RE.is_match(password)
 }
 
-enum DuplicateCheck {
+enum DuplicateCheckResult {
     None,
     Email,
     Username,
@@ -85,18 +133,18 @@ async fn check_account_duplicates(
     con: &mut redis::aio::MultiplexedConnection,
     email_key: &str,
     username_key: &str,
-) -> Result<DuplicateCheck, redis::RedisError> {
+) -> Result<DuplicateCheckResult, redis::RedisError> {
     let email_exists: Option<u64> = con.get(email_key).await?;
     if email_exists.is_some() {
-        return Ok(DuplicateCheck::Email);
+        return Ok(DuplicateCheckResult::Email);
     }
 
     let username_exists: Option<u64> = con.get(username_key).await?;
     if username_exists.is_some() {
-        return Ok(DuplicateCheck::Username);
+        return Ok(DuplicateCheckResult::Username);
     }
 
-    Ok(DuplicateCheck::None)
+    Ok(DuplicateCheckResult::None)
 }
 
 async fn insert_account_hash(
@@ -109,6 +157,10 @@ async fn insert_account_hash(
     username: &str,
     password: &str,
 ) -> Result<(), redis::RedisError> {
+    info!(
+        "Inserting account hash: account_key={}, email_key={}, username_key={}, id={}",
+        account_key, email_key, username_key, id
+    );
     let mut pipe = redis::pipe();
     pipe.atomic()
         .cmd("HSET")
@@ -135,6 +187,10 @@ async fn create_account(
     State(mut con): State<redis::aio::MultiplexedConnection>,
     Json(payload): Json<CreateAccountRequest>,
 ) -> (StatusCode, Json<CreateAccountResponse>) {
+    info!(
+        "Create account request: username={}, email={}",
+        payload.username, payload.email
+    );
     let response = CreateAccountResponse {
         id: None,
         error: None,
@@ -144,6 +200,7 @@ async fn create_account(
     };
 
     if !is_valid_email_regex(&payload.email) {
+        warn!("Create account rejected: invalid email {}", payload.email);
         return (
             StatusCode::BAD_REQUEST,
             Json(CreateAccountResponse {
@@ -154,6 +211,10 @@ async fn create_account(
     }
 
     if !is_valid_username(&payload.username) {
+        warn!(
+            "Create account rejected: invalid username {}",
+            payload.username
+        );
         return (
             StatusCode::BAD_REQUEST,
             Json(CreateAccountResponse {
@@ -164,6 +225,7 @@ async fn create_account(
     }
 
     if !is_valid_password(&payload.password) {
+        warn!("Create account rejected: invalid password format");
         return (
             StatusCode::BAD_REQUEST,
             Json(CreateAccountResponse {
@@ -190,6 +252,7 @@ async fn create_account(
             .await;
 
         if let Err(err) = watch_result {
+            error!("Redis WATCH failed: {}", err);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(CreateAccountResponse {
@@ -203,6 +266,7 @@ async fn create_account(
             match check_account_duplicates(&mut con, &email_key, &username_key).await {
                 Ok(value) => value,
                 Err(err) => {
+                    error!("Redis read failed: {}", err);
                     return (
                         StatusCode::INTERNAL_SERVER_ERROR,
                         Json(CreateAccountResponse {
@@ -214,8 +278,9 @@ async fn create_account(
             };
 
         match duplicate_check {
-            DuplicateCheck::Email => {
+            DuplicateCheckResult::Email => {
                 let _ = redis::cmd("UNWATCH").query_async::<()>(&mut con).await;
+                info!("Create account rejected: duplicate email {}", payload.email);
                 return (
                     StatusCode::CONFLICT,
                     Json(CreateAccountResponse {
@@ -224,8 +289,12 @@ async fn create_account(
                     }),
                 );
             }
-            DuplicateCheck::Username => {
+            DuplicateCheckResult::Username => {
                 let _ = redis::cmd("UNWATCH").query_async::<()>(&mut con).await;
+                info!(
+                    "Create account rejected: duplicate username {}",
+                    payload.username
+                );
                 return (
                     StatusCode::CONFLICT,
                     Json(CreateAccountResponse {
@@ -234,12 +303,13 @@ async fn create_account(
                     }),
                 );
             }
-            DuplicateCheck::None => {}
+            DuplicateCheckResult::None => {}
         }
 
         let new_id: u64 = match con.incr(id_key, 1).await {
             Ok(value) => value,
             Err(err) => {
+                error!("Redis INCR failed: {}", err);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(CreateAccountResponse {
@@ -249,6 +319,7 @@ async fn create_account(
                 );
             }
         };
+        info!("Allocated account id {}", new_id);
 
         let account_key = format!("{}{}", account_prefix, new_id);
         let exec_result = insert_account_hash(
@@ -264,11 +335,21 @@ async fn create_account(
         .await;
 
         match exec_result {
-            Ok(_) => break new_id,
+            Ok(_) => {
+                info!(
+                    "Account created: id={}, username={}",
+                    new_id, payload.username
+                );
+                break new_id;
+            }
             Err(err)
                 if err.kind() == redis::ErrorKind::Server(redis::ServerErrorKind::ExecAbort) =>
             {
                 if attempts >= MAX_RETRIES {
+                    error!(
+                        "Account creation retry limit reached for username={}",
+                        payload.username
+                    );
                     return (
                         StatusCode::INTERNAL_SERVER_ERROR,
                         Json(CreateAccountResponse {
@@ -279,9 +360,11 @@ async fn create_account(
                         }),
                     );
                 }
+                warn!("Account creation retry due to transaction abort");
                 continue;
             }
             Err(err) => {
+                error!("Redis write failed: {}", err);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(CreateAccountResponse {
@@ -293,8 +376,6 @@ async fn create_account(
         }
     };
 
-    // this will be converted into a JSON response
-    // with a status code of `201 Created`
     (
         StatusCode::CREATED,
         Json(CreateAccountResponse {
