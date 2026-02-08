@@ -11,6 +11,7 @@ use redis;
 use redis::AsyncCommands;
 use regex::Regex;
 use std::env;
+use std::net::SocketAddr;
 
 fn parse_log_level(value: &str) -> Option<LevelFilter> {
     match value.to_lowercase().as_str() {
@@ -73,16 +74,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = Router::new()
         .route("/login", post(login))
         .route("/accounts", post(create_account))
-        .layer(
-            tower::ServiceBuilder::new()
-                .layer(RealIpLayer::default())
-                .layer(GovernorLayer::default()),
-        )
+        .layer(GovernorLayer::default())
+        .layer(RealIpLayer::default())
         .with_state(con);
 
     info!("Listening on 0.0.0.0:5554");
     let listener = tokio::net::TcpListener::bind("0.0.0.0:5554").await.unwrap();
-    axum::serve(listener, app).await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
 
     info!("Server shutdown");
     Ok(())

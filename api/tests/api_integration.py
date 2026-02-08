@@ -13,8 +13,18 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+_LAST_REQUEST_AT = 0.0
+_MIN_REQUEST_INTERVAL = 1.1
 
-def request_json(method, url, payload=None, headers=None, timeout=5):
+
+def request_json(method, url, payload=None, headers=None, timeout=5, throttle=True):
+    global _LAST_REQUEST_AT
+    if throttle:
+        now = time.monotonic()
+        wait_for = _MIN_REQUEST_INTERVAL - (now - _LAST_REQUEST_AT)
+        if wait_for > 0:
+            time.sleep(wait_for)
+        _LAST_REQUEST_AT = time.monotonic()
     body = None
     if payload is not None:
         body = json.dumps(payload).encode("utf-8")
@@ -84,31 +94,44 @@ def test_create_account_bad_password(base_url):
     assert_status(400, status, "invalid password status")
 
 
-def test_create_account_duplicates(base_url):
-    now = int(time.time())
-    first_payload = {
-        "email": f"dup{now}@example.com",
-        "username": f"dupuser{now}",
+def create_duplicate_seed(base_url, suffix):
+    short_suffix = str(suffix)[-8:]
+    payload = {
+        "email": f"dup{short_suffix}@example.com",
+        "username": f"du{short_suffix}",
         "password": "$argon2id$v=19$m=65536,t=3,p=4$ZmFrZXNhbHQ$ZmFrZWhhc2g",
     }
-
-    status, _ = request_json("POST", f"{base_url}/accounts", payload=first_payload)
+    status, _ = request_json("POST", f"{base_url}/accounts", payload=payload)
     assert_status(201, status, "duplicate setup status")
+    return payload
 
-    time.sleep(1.1)
+
+def test_create_account_duplicate_setup(base_url):
+    create_duplicate_seed(base_url, f"setup{int(time.time())}")
+
+
+def test_create_account_duplicate_email(base_url):
+    suffix = f"email{int(time.time())}"
+    seed = create_duplicate_seed(base_url, suffix)
+    short_suffix = str(suffix)[-8:]
+
     email_dup_payload = {
-        "email": first_payload["email"],
-        "username": f"dupuser{now}_new",
-        "password": first_payload["password"],
+        "email": seed["email"],
+        "username": f"du{short_suffix}e",
+        "password": seed["password"],
     }
     status, _ = request_json("POST", f"{base_url}/accounts", payload=email_dup_payload)
     assert_status(409, status, "duplicate email status")
 
-    time.sleep(1.1)
+
+def test_create_account_duplicate_username(base_url):
+    suffix = f"user{int(time.time())}"
+    seed = create_duplicate_seed(base_url, suffix)
+
     username_dup_payload = {
-        "email": f"dup{now}_new@example.com",
-        "username": first_payload["username"],
-        "password": first_payload["password"],
+        "email": f"dup{suffix}_new@example.com",
+        "username": seed["username"],
+        "password": seed["password"],
     }
     status, _ = request_json("POST", f"{base_url}/accounts", payload=username_dup_payload)
     assert_status(409, status, "duplicate username status")
@@ -129,15 +152,22 @@ def test_malformed_json(base_url):
 
 
 def test_rate_limit(base_url):
+    global _LAST_REQUEST_AT
+    _LAST_REQUEST_AT = 0.0
+    time.sleep(1.2)
     payload = {"username": "user", "password": "ignored"}
-    status1, _ = request_json("POST", f"{base_url}/login", payload=payload)
-    status2, _ = request_json("POST", f"{base_url}/login", payload=payload)
+    status1, _ = request_json(
+        "POST", f"{base_url}/login", payload=payload, throttle=False
+    )
+    status2, _ = request_json(
+        "POST", f"{base_url}/login", payload=payload, throttle=False
+    )
     if status1 != 200:
         raise AssertionError(f"rate limit test first request failed: {status1}")
     if status2 != 429:
         raise AssertionError(f"rate limit test expected 429, got {status2}")
 
-    time.sleep(1.1)
+    time.sleep(1.2)
     status3, _ = request_json("POST", f"{base_url}/login", payload=payload)
     assert_status(200, status3, "rate limit reset status")
 
@@ -156,7 +186,9 @@ def main():
         test_create_account_ok,
         test_create_account_bad_email,
         test_create_account_bad_password,
-        test_create_account_duplicates,
+        test_create_account_duplicate_setup,
+        test_create_account_duplicate_email,
+        test_create_account_duplicate_username,
         test_malformed_json,
         test_rate_limit,
     ]
