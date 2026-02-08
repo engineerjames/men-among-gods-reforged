@@ -139,9 +139,35 @@ async fn create_new_character(
         );
     }
 
+    let username_key = format!("account:username:{}", token_data.claims.sub);
+    let user_id: Option<u64> = match con.get(&username_key).await {
+        Ok(value) => value,
+        Err(err) => {
+            error!("Redis read failed: {}", err);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(types::CharacterSummary::default()),
+            );
+        }
+    };
+
+    let user_id = match user_id {
+        Some(value) => value,
+        None => {
+            warn!(
+                "Create character rejected: account not found for {}",
+                token_data.claims.sub
+            );
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(types::CharacterSummary::default()),
+            );
+        }
+    };
+
     let result = insert_new_character(
         &mut con,
-        &token_data.claims.sub,
+        user_id,
         &payload.name,
         payload.description.as_deref(),
         payload.sex,
@@ -418,10 +444,118 @@ async fn get_characters(
         );
     }
 
-    // TODO: Load characters for this account once the data model is defined.
+    let user_id = user_id.unwrap();
+    let account_characters_key = format!("account:{}:characters", user_id);
+    let character_ids: Vec<u64> = match con.smembers(&account_characters_key).await {
+        Ok(values) => values,
+        Err(err) => {
+            error!("Redis read failed: {}", err);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(types::GetCharactersResponse { characters: vec![] }),
+            );
+        }
+    };
+
+    if character_ids.is_empty() {
+        return (
+            StatusCode::OK,
+            Json(types::GetCharactersResponse { characters: vec![] }),
+        );
+    }
+
+    let mut pipe = redis::pipe();
+    for character_id in &character_ids {
+        let character_key = format!("character:{}", character_id);
+        pipe.cmd("HGETALL").arg(character_key);
+    }
+
+    let results: Vec<redis::Value> = match pipe.query_async(&mut con).await {
+        Ok(values) => values,
+        Err(err) => {
+            error!("Redis read failed: {}", err);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(types::GetCharactersResponse { characters: vec![] }),
+            );
+        }
+    };
+
+    let mut characters = Vec::new();
+    for (index, result) in results.iter().enumerate() {
+        let character_id = character_ids[index];
+        let character_map: std::collections::HashMap<String, String> =
+            match redis::from_redis_value(result.clone()) {
+                Ok(value) => value,
+                Err(err) => {
+                    warn!("Failed to decode character {}: {}", character_id, err);
+                    continue;
+                }
+            };
+
+        let name = match character_map.get("name") {
+            Some(value) => value.clone(),
+            None => {
+                warn!("Character {} is missing name", character_id);
+                continue;
+            }
+        };
+
+        let description = character_map
+            .get("description")
+            .cloned()
+            .unwrap_or_default();
+
+        let sex_value: u32 = match character_map
+            .get("sex")
+            .and_then(|value| value.parse().ok())
+        {
+            Some(value) => value,
+            None => {
+                warn!("Character {} is missing sex", character_id);
+                continue;
+            }
+        };
+
+        let race_value: u32 = match character_map
+            .get("race")
+            .and_then(|value| value.parse().ok())
+        {
+            Some(value) => value,
+            None => {
+                warn!("Character {} is missing race", character_id);
+                continue;
+            }
+        };
+
+        let sex = match types::sex_from_u32(sex_value) {
+            Some(value) => value,
+            None => {
+                warn!("Character {} has invalid sex value", character_id);
+                continue;
+            }
+        };
+
+        let race = match types::race_from_u32(race_value) {
+            Some(value) => value,
+            None => {
+                warn!("Character {} has invalid race value", character_id);
+                continue;
+            }
+        };
+
+        characters.push(types::CharacterSummary {
+            id: character_id,
+            name,
+            description,
+            sex,
+            race,
+        });
+    }
+
     (
         StatusCode::OK,
-        Json(types::GetCharactersResponse { characters: vec![] }),
+        Json(types::GetCharactersResponse { characters }),
     )
 }
 
@@ -475,7 +609,7 @@ async fn check_account_duplicates(
 
 async fn insert_new_character(
     con: &mut redis::aio::MultiplexedConnection,
-    account_id: &str,
+    account_id: u64,
     name: &str,
     description: Option<&str>,
     sex: types::Sex,
@@ -483,6 +617,7 @@ async fn insert_new_character(
 ) -> Result<u64, redis::RedisError> {
     let character_id: u64 = con.incr("character:next_id", 1).await?;
     let character_key = format!("character:{}", character_id);
+    let account_characters_key = format!("account:{}:characters", account_id);
 
     let mut pipe = redis::pipe();
     pipe.atomic()
@@ -497,7 +632,10 @@ async fn insert_new_character(
         .arg("sex")
         .arg(sex as u32)
         .arg("race")
-        .arg(race as u32);
+        .arg(race as u32)
+        .cmd("SADD")
+        .arg(&account_characters_key)
+        .arg(character_id);
 
     pipe.query_async(con)
         .await
