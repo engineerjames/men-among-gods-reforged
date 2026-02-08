@@ -6962,19 +6962,19 @@ pub fn age_message(cn: usize, item_idx: usize, where_is: &str) {
     let (msg, font) = if driver == 60 {
         // Ice egg or cloak
         match damage_state {
-            1 => ("The {ref} {where} is beginning to melt.\n", FontColor::Red),
-            2 => ("The {ref} {where} is melting fairly rapidly.\n", FontColor::Red),
+            1 => ("The {ref} {where} is beginning to melt.\n", FontColor::Yellow),
+            2 => ("The {ref} {where} is melting fairly rapidly.\n", FontColor::Yellow),
             3 => (
                 "The {ref} {where} is melting down as you look and dripping water everywhere.\n",
-                FontColor::Red,
+                FontColor::Yellow,
             ),
             4 => (
                 "The {ref} {where} has melted down to a small icy lump and large puddles of water.\n",
-                FontColor::Yellow,
+                FontColor::Red,
             ),
             5 => (
                 "The {ref} {where} has completely melted away, leaving you all wet.\n",
-                FontColor::Yellow,
+                FontColor::Red,
             ),
             _ => ("The {ref} {where} is changing.\n", FontColor::Red),
         }
@@ -6983,17 +6983,20 @@ pub fn age_message(cn: usize, item_idx: usize, where_is: &str) {
         match damage_state {
             1 => (
                 "The {ref} {where} is showing signs of age.\n",
-                FontColor::Red,
+                FontColor::Yellow,
             ),
-            2 => ("The {ref} {where} is getting fairly old.\n", FontColor::Red),
-            3 => ("The {ref} {where} is getting old.\n", FontColor::Red),
+            2 => (
+                "The {ref} {where} is getting fairly old.\n",
+                FontColor::Yellow,
+            ),
+            3 => ("The {ref} {where} is getting old.\n", FontColor::Yellow),
             4 => (
                 "The {ref} {where} is getting very old and battered.\n",
-                FontColor::Yellow,
+                FontColor::Red,
             ),
             5 => (
                 "The {ref} {where} was so old and battered that it finally vanished.\n",
-                FontColor::Yellow,
+                FontColor::Red,
             ),
             _ => ("The {ref} {where} is aging.\n", FontColor::Red),
         }
