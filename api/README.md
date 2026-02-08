@@ -29,3 +29,131 @@ or
 ```bash
 python -c "import secrets; print(secrets.token_hex(32))"
 ```   
+
+# KeyDB data model (key/value layout)
+
+This service stores accounts and characters in KeyDB using a small set of predictable key patterns.
+
+## Key patterns
+
+```mermaid
+flowchart TB
+	%% Account ID allocation
+	A_NEXT["account:next_id\nString (integer)"]
+	A_HASH["account:{account_id}\nHASH\n- id\n- email\n- username\n- password"]
+
+	%% Account lookup indexes
+	A_EMAIL["account:email:{email}\nString -> account_id"]
+	A_USER["account:username:{username}\nString -> account_id"]
+
+	%% Characters owned by an account
+	A_CHARS["account:{account_id}:characters\nSET<character_id>"]
+
+	%% Character ID allocation + character storage
+	C_NEXT["character:next_id\nString (integer)"]
+	C_HASH["character:{character_id}\nHASH\n- account_id\n- name\n- description\n- sex\n- race"]
+
+	A_NEXT -->|INCR| A_HASH
+	A_EMAIL -->|GET| A_HASH
+	A_USER -->|GET| A_HASH
+
+	A_HASH -->|owns| A_CHARS
+	A_CHARS -->|ids| C_HASH
+	C_NEXT -->|INCR| C_HASH
+
+	C_HASH -. "account_id field" .-> A_HASH
+```
+
+## Relationships (conceptual)
+
+```mermaid
+erDiagram
+	ACCOUNT ||--o{ CHARACTER : owns
+
+	ACCOUNT {
+		u64 id
+		string email
+		string username
+		string password
+	}
+
+	CHARACTER {
+		u64 id
+		u64 account_id
+		string name
+		string description
+		u32 sex
+		u32 race
+	}
+```
+
+Notes:
+- The `ACCOUNT -> CHARACTER` relationship is materialized primarily via `account:{account_id}:characters` (a set of character IDs), and redundantly via the `account_id` field stored on `character:{character_id}`.
+- Username/email uniqueness is enforced via the index keys: `account:username:{username}` and `account:email:{email}`.
+
+# Client auth + JWT usage flow
+
+This is the intended client sequence to authenticate via `/login`, receive a JWT, and then call the validated endpoints for character list/create/update/delete.
+
+```mermaid
+sequenceDiagram
+	autonumber
+	participant C as Client
+	participant API as API (Axum)
+	participant KV as KeyDB
+
+	C->>API: POST /login { username, password }
+	API->>KV: GET account:username:{username}
+	KV-->>API: account_id (or nil)
+	API->>KV: HGET account:{account_id} password
+	KV-->>API: stored_password_hash
+	API-->>C: 200 { token: JWT(sub=username, exp=now+3600) }
+
+	Note over C: Store token locally
+	Note over C,API: Send on subsequent requests\nAuthorization: Bearer <JWT>
+
+	C->>API: GET /characters (Authorization)
+	API->>API: verify_token(JWT, API_JWT_SECRET)
+	API->>KV: GET account:username:{sub}
+	KV-->>API: account_id
+	API->>KV: SMEMBERS account:{account_id}:characters
+	KV-->>API: [character_id...]
+	API->>KV: HGETALL character:{character_id} (pipelined)
+	KV-->>API: character hashes
+	API-->>C: 200 { characters: [...] }
+
+	C->>API: POST /characters (Authorization, CreateCharacterRequest)
+	API->>API: verify_token(...)
+	API->>KV: GET account:username:{sub}
+	KV-->>API: account_id
+	API->>KV: INCR character:next_id
+	KV-->>API: new_character_id
+	API->>KV: HSET character:{new_character_id} {account_id,name,description,sex,race}
+	API->>KV: SADD account:{account_id}:characters new_character_id
+	API-->>C: 200 CharacterSummary
+
+	C->>API: PUT /characters/{id} (Authorization, UpdateCharacterRequest{name?, description?})
+	API->>API: verify_token(...)
+	API->>KV: GET account:username:{sub}
+	KV-->>API: account_id
+	API->>KV: SISMEMBER account:{account_id}:characters character_id
+	alt Character not owned
+		API-->>C: 401 Unauthorized
+	else Owned
+		API->>KV: HSET character:{character_id} name/description
+		API-->>C: 200 OK
+	end
+
+	C->>API: DELETE /characters/{id} (Authorization)
+	API->>API: verify_token(...)
+	API->>KV: GET account:username:{sub}
+	KV-->>API: account_id
+	API->>KV: SISMEMBER account:{account_id}:characters character_id
+	alt Character not owned
+		API-->>C: 401 Unauthorized
+	else Owned
+		API->>KV: DEL character:{character_id}
+		API->>KV: SREM account:{account_id}:characters character_id
+		API-->>C: 200 OK
+	end
+```

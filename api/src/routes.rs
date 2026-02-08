@@ -8,7 +8,7 @@ use crate::pipelines;
 use crate::pipelines::DuplicateCheckResult;
 use crate::types;
 
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{extract::Path, extract::State, http::StatusCode, Json};
 use jsonwebtoken::EncodingKey;
 use jsonwebtoken::Header;
 use log::{error, info, warn};
@@ -480,6 +480,7 @@ pub(crate) async fn create_account(
 pub(crate) async fn update_character(
     State(mut con): State<redis::aio::MultiplexedConnection>,
     headers: axum::http::HeaderMap,
+    Path(character_id): Path<u64>,
     Json(payload): Json<types::UpdateCharacterRequest>,
 ) -> StatusCode {
     let token = match helpers::get_token_from_headers(&headers).await {
@@ -517,7 +518,7 @@ pub(crate) async fn update_character(
     };
 
     let does_character_belong_to_user: bool =
-        match pipelines::check_character_ownership(&mut con, account_id, payload.id).await {
+        match pipelines::check_character_ownership(&mut con, account_id, character_id).await {
             Ok(value) => value,
             Err(err) => {
                 error!("Redis read failed: {}", err);
@@ -527,7 +528,7 @@ pub(crate) async fn update_character(
     if !does_character_belong_to_user {
         warn!(
             "Unauthorized update attempt: character {} does not belong to user {}",
-            payload.id, token_data.claims.sub
+            character_id, token_data.claims.sub
         );
         return StatusCode::UNAUTHORIZED;
     }
@@ -535,14 +536,14 @@ pub(crate) async fn update_character(
     if payload.name.is_none() && payload.description.is_none() {
         warn!(
             "Update character rejected: no fields to update for character {}",
-            payload.id
+            character_id
         );
         return StatusCode::BAD_REQUEST;
     }
 
     match pipelines::update_character(
         &mut con,
-        payload.id,
+        character_id,
         payload.name.as_deref(),
         payload.description.as_deref(),
     )
@@ -551,7 +552,7 @@ pub(crate) async fn update_character(
         Ok(_) => {
             info!(
                 "Character {} updated for account {}",
-                payload.id, token_data.claims.sub
+                character_id, token_data.claims.sub
             );
             StatusCode::OK
         }
@@ -565,7 +566,7 @@ pub(crate) async fn update_character(
 pub(crate) async fn delete_character(
     State(mut con): State<redis::aio::MultiplexedConnection>,
     headers: axum::http::HeaderMap,
-    Json(payload): Json<types::DeleteCharacterRequest>,
+    Path(character_id): Path<u64>,
 ) -> StatusCode {
     let token = match helpers::get_token_from_headers(&headers).await {
         Some(value) => value,
@@ -602,7 +603,7 @@ pub(crate) async fn delete_character(
     };
 
     let does_character_belong_to_user: bool =
-        match pipelines::check_character_ownership(&mut con, account_id, payload.id).await {
+        match pipelines::check_character_ownership(&mut con, account_id, character_id).await {
             Ok(value) => value,
             Err(err) => {
                 error!("Redis read failed: {}", err);
@@ -612,16 +613,16 @@ pub(crate) async fn delete_character(
     if !does_character_belong_to_user {
         warn!(
             "Unauthorized delete attempt: character {} does not belong to user {}",
-            payload.id, token_data.claims.sub
+            character_id, token_data.claims.sub
         );
         return StatusCode::UNAUTHORIZED;
     }
 
-    match pipelines::delete_character(&mut con, account_id, payload.id).await {
+    match pipelines::delete_character(&mut con, account_id, character_id).await {
         Ok(_) => {
             info!(
                 "Character {} deleted for account {}",
-                payload.id, token_data.claims.sub
+                character_id, token_data.claims.sub
             );
             StatusCode::OK
         }
