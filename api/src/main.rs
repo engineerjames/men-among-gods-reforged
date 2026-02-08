@@ -1,8 +1,9 @@
 pub mod types;
 
+use axum::routing::{delete, put};
 use axum::{extract::State, http::StatusCode, routing::get, routing::post, Json, Router};
 use axum_governor::GovernorLayer;
-use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, TokenData, Validation};
 use lazy_limit::{init_rate_limiter, Duration, RuleConfig};
 use lazy_static::lazy_static;
 use log::{error, info, warn, LevelFilter};
@@ -81,7 +82,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = Router::new()
         .route("/login", post(login))
         .route("/accounts", post(create_account))
+        // Token required routes
         .route("/characters", get(get_characters))
+        .route("/characters", post(create_new_character))
+        .route("/characters/:id", put(update_character))
+        .route("/characters/:id", delete(delete_character))
         .layer(GovernorLayer::default())
         .layer(RealIpLayer::default())
         .with_state(con);
@@ -96,6 +101,53 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Server shutdown");
     Ok(())
+}
+
+async fn create_new_character(
+    State(con): State<redis::aio::MultiplexedConnection>,
+    Json(payload): Json<types::CreateCharacterRequest>,
+    headers: axum::http::HeaderMap,
+) -> (StatusCode, Json<types::CharacterSummary>) {
+    let token = match get_token_from_headers(&headers).await {
+        Some(value) => value,
+        None => {
+            warn!("Unauthorized access attempt: missing Authorization header");
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(types::CharacterSummary::default()),
+            );
+        }
+    };
+
+    (StatusCode::OK, Json(types::CharacterSummary::default()))
+}
+
+async fn update_character(
+    State(con): State<redis::aio::MultiplexedConnection>,
+    Json(payload): Json<types::UpdateCharacterRequest>,
+) -> (StatusCode, Json<types::UpdateCharacterResponse>) {
+    (
+        StatusCode::OK,
+        Json(types::UpdateCharacterResponse {
+            id: todo!(),
+            error: todo!(),
+            name: todo!(),
+            description: todo!(),
+        }),
+    )
+}
+
+async fn delete_character(
+    State(con): State<redis::aio::MultiplexedConnection>,
+    Json(payload): Json<types::DeleteCharacterRequest>,
+) -> (StatusCode, Json<types::DeleteCharacterResponse>) {
+    (
+        StatusCode::OK,
+        Json(types::DeleteCharacterResponse {
+            id: todo!(),
+            error: todo!(),
+        }),
+    )
 }
 
 async fn login(
@@ -222,33 +274,12 @@ async fn login(
     (StatusCode::OK, Json(types::LoginResponse { token }))
 }
 
-async fn get_characters(
-    State(mut con): State<redis::aio::MultiplexedConnection>,
-    headers: axum::http::HeaderMap,
-) -> (StatusCode, Json<types::GetCharactersResponse>) {
-    let token = match headers
-        .get(axum::http::header::AUTHORIZATION)
-        .and_then(|value| value.to_str().ok())
-    {
-        Some(value) => value.trim(),
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(types::GetCharactersResponse { characters: vec![] }),
-            );
-        }
-    };
-
-    let token = token.strip_prefix("Bearer ").unwrap_or(token).trim();
-
+async fn verify_token(token: &str) -> Result<TokenData<types::JwtClaims>, String> {
     let secret = match env::var("API_JWT_SECRET") {
         Ok(value) if !value.trim().is_empty() => value,
         _ => {
             error!("JWT secret missing for get_characters");
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(types::GetCharactersResponse { characters: vec![] }),
-            );
+            return Err("Internal server error".to_string());
         }
     };
 
@@ -260,6 +291,52 @@ async fn get_characters(
         Ok(data) => data,
         Err(err) => {
             warn!("JWT decode failed: {}", err);
+            return Err("Unauthorized".to_string());
+        }
+    };
+
+    Ok(token_data)
+}
+
+async fn get_token_from_headers(headers: &axum::http::HeaderMap) -> Option<String> {
+    let token = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .map(|s| s.trim().to_string());
+
+    let token = match token {
+        Some(value) => value
+            .strip_prefix("Bearer ")
+            .unwrap_or(&value)
+            .trim()
+            .to_string(),
+        _ => {
+            return None;
+        }
+    };
+
+    Some(token)
+}
+
+async fn get_characters(
+    State(mut con): State<redis::aio::MultiplexedConnection>,
+    headers: axum::http::HeaderMap,
+) -> (StatusCode, Json<types::GetCharactersResponse>) {
+    let token = match get_token_from_headers(&headers).await {
+        Some(value) => value,
+        None => {
+            warn!("Unauthorized access attempt: missing Authorization header");
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(types::GetCharactersResponse { characters: vec![] }),
+            );
+        }
+    };
+
+    let token_data = match verify_token(&token).await {
+        Ok(token_data) => token_data,
+        Err(err) => {
+            warn!("Unauthorized access attempt: {}", err);
             return (
                 StatusCode::UNAUTHORIZED,
                 Json(types::GetCharactersResponse { characters: vec![] }),

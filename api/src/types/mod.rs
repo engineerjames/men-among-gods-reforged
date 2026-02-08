@@ -38,14 +38,14 @@ pub struct JwtClaims {
     pub exp: usize,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 #[repr(u32)]
 pub enum Sex {
     Male = KIN_MALE,
     Female = KIN_FEMALE,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[repr(u32)]
 pub enum Race {
     Mercenary = KIN_MERCENARY,
@@ -67,7 +67,84 @@ pub struct CharacterSummary {
     pub race: Race,
 }
 
+impl Default for CharacterSummary {
+    fn default() -> Self {
+        Self {
+            id: 0,
+            name: String::new(),
+            description: String::new(),
+            sex: Sex::Male,
+            race: Race::Mercenary,
+        }
+    }
+}
+
 #[derive(Serialize)]
 pub struct GetCharactersResponse {
     pub characters: Vec<CharacterSummary>,
+}
+
+#[derive(Deserialize)]
+pub struct CreateCharacterRequest {
+    name: String,
+    description: Option<String>,
+    sex: Sex,
+    race: Race,
+}
+
+impl CreateCharacterRequest {
+    pub fn new(name: String, description: Option<String>, sex: Sex, race: Race) -> Self {
+        if [
+            Race::SeyanDu,
+            Race::Sorcerer,
+            Race::Warrior,
+            Race::ArchHarakim,
+            Race::ArchTemplar,
+        ]
+        .contains(&race)
+        {
+            log::error!(
+                "Invalid race selection: {:?}; Can only be achieved in-game.",
+                race
+            );
+            return Self {
+                name,
+                description,
+                sex,
+                race: Race::Mercenary, // Default to Mercenary
+            };
+        }
+
+        Self {
+            name,
+            description: description,
+            sex,
+            race,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct UpdateCharacterRequest {
+    pub name: String,
+    pub description: String,
+}
+
+#[derive(Serialize)]
+pub struct UpdateCharacterResponse {
+    pub id: u64,
+    pub error: Option<String>,
+    pub name: String,
+    pub description: String,
+}
+
+#[derive(Deserialize)]
+pub struct DeleteCharacterRequest {
+    pub id: u64,
+}
+
+#[derive(Serialize)]
+pub struct DeleteCharacterResponse {
+    pub id: u64,
+    pub error: Option<String>,
 }
