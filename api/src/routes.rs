@@ -479,30 +479,80 @@ pub(crate) async fn create_account(
 
 pub(crate) async fn update_character(
     State(_con): State<redis::aio::MultiplexedConnection>,
+    headers: axum::http::HeaderMap,
     Json(_payload): Json<types::UpdateCharacterRequest>,
-) -> (StatusCode, Json<types::UpdateCharacterResponse>) {
-    (
-        StatusCode::OK,
-        Json(types::UpdateCharacterResponse {
-            id: todo!(),
-            error: todo!(),
-            name: todo!(),
-            description: todo!(),
-        }),
-    )
+) -> StatusCode {
+    StatusCode::OK
 }
 
 pub(crate) async fn delete_character(
-    State(_con): State<redis::aio::MultiplexedConnection>,
-    Json(_payload): Json<types::DeleteCharacterRequest>,
-) -> (StatusCode, Json<types::DeleteCharacterResponse>) {
-    (
-        StatusCode::OK,
-        Json(types::DeleteCharacterResponse {
-            id: todo!(),
-            error: todo!(),
-        }),
-    )
+    State(mut con): State<redis::aio::MultiplexedConnection>,
+    headers: axum::http::HeaderMap,
+    Json(payload): Json<types::DeleteCharacterRequest>,
+) -> StatusCode {
+    let token = match helpers::get_token_from_headers(&headers).await {
+        Some(value) => value,
+        None => {
+            warn!("Unauthorized access attempt: missing Authorization header");
+            return StatusCode::UNAUTHORIZED;
+        }
+    };
+
+    let token_data = match helpers::verify_token(&token).await {
+        Ok(token_data) => token_data,
+        Err(err) => {
+            warn!("Unauthorized access attempt: {}", err);
+            return StatusCode::UNAUTHORIZED;
+        }
+    };
+
+    let username_key = format!("account:username:{}", token_data.claims.sub);
+    let account_id = match pipelines::get_account_id_by_username(&mut con, &username_key).await {
+        Ok(value) => match value {
+            Some(id) => id,
+            None => {
+                warn!(
+                    "Unauthorized delete attempt: account not found for {}",
+                    token_data.claims.sub
+                );
+                return StatusCode::UNAUTHORIZED;
+            }
+        },
+        Err(err) => {
+            error!("Redis read failed: {}", err);
+            return StatusCode::INTERNAL_SERVER_ERROR;
+        }
+    };
+
+    let does_character_belong_to_user: bool =
+        match pipelines::check_character_ownership(&mut con, account_id, payload.id).await {
+            Ok(value) => value,
+            Err(err) => {
+                error!("Redis read failed: {}", err);
+                return StatusCode::INTERNAL_SERVER_ERROR;
+            }
+        };
+    if !does_character_belong_to_user {
+        warn!(
+            "Unauthorized delete attempt: character {} does not belong to user {}",
+            payload.id, token_data.claims.sub
+        );
+        return StatusCode::UNAUTHORIZED;
+    }
+
+    match pipelines::delete_character(&mut con, account_id, payload.id).await {
+        Ok(_) => {
+            info!(
+                "Character {} deleted for account {}",
+                payload.id, token_data.claims.sub
+            );
+            StatusCode::OK
+        }
+        Err(err) => {
+            error!("Failed to delete character: {}", err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+    }
 }
 
 pub(crate) async fn login(

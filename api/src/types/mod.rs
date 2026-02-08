@@ -138,25 +138,11 @@ impl CreateCharacterRequest {
 
 #[derive(Deserialize)]
 pub struct UpdateCharacterRequest {
-    pub name: String,
-    pub description: String,
-}
-
-#[derive(Serialize)]
-pub struct UpdateCharacterResponse {
-    pub id: u64,
-    pub error: Option<String>,
-    pub name: String,
-    pub description: String,
+    pub name: Option<String>,
+    pub description: Option<String>,
 }
 
 #[derive(Deserialize)]
 pub struct DeleteCharacterRequest {
     pub id: u64,
-}
-
-#[derive(Serialize)]
-pub struct DeleteCharacterResponse {
-    pub id: u64,
-    pub error: Option<String>,
 }

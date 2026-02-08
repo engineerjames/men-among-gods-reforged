@@ -2,6 +2,43 @@ use crate::types;
 use log::info;
 use redis::AsyncCommands;
 
+pub(crate) async fn delete_character(
+    con: &mut redis::aio::MultiplexedConnection,
+    account_id: u64,
+    character_id: u64,
+) -> Result<(), redis::RedisError> {
+    let character_key = format!("character:{}", character_id);
+    let account_characters_key = format!("account:{}:characters", account_id);
+
+    let mut pipe = redis::pipe();
+    pipe.atomic()
+        .cmd("DEL")
+        .arg(&character_key)
+        .cmd("SREM")
+        .arg(&account_characters_key)
+        .arg(character_id);
+
+    pipe.query_async(con).await.map(|_: Vec<redis::Value>| ())
+}
+
+pub(crate) async fn get_account_id_by_username(
+    con: &mut redis::aio::MultiplexedConnection,
+    username_key: &str,
+) -> Result<Option<u64>, redis::RedisError> {
+    let account_id: Option<u64> = con.get(username_key).await?;
+    Ok(account_id)
+}
+
+pub(crate) async fn check_character_ownership(
+    con: &mut redis::aio::MultiplexedConnection,
+    account_id: u64,
+    character_id: u64,
+) -> Result<bool, redis::RedisError> {
+    let account_characters_key = format!("account:{}:characters", account_id);
+    let is_member: bool = con.sismember(account_characters_key, character_id).await?;
+    Ok(is_member)
+}
+
 pub(crate) async fn insert_new_character(
     con: &mut redis::aio::MultiplexedConnection,
     account_id: u64,
