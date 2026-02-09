@@ -28,7 +28,6 @@ pub struct CreateAccountResponse {
     pub id: Option<u64>,
     pub error: Option<String>,
     pub username: String,
-    pub password: String,
     pub email: String,
 }
 

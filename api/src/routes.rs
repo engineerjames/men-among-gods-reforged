@@ -5,7 +5,6 @@ use std::time::UNIX_EPOCH;
 
 use crate::helpers;
 use crate::pipelines;
-use crate::pipelines::DuplicateCheckResult;
 use crate::types;
 
 use axum::{extract::Path, extract::State, http::StatusCode, Json};
@@ -62,27 +61,23 @@ pub(crate) async fn create_new_character(
         );
     }
 
-    let username_key = format!("account:username:{}", token_data.claims.sub);
-    let user_id: Option<u64> = match con.get(&username_key).await {
-        Ok(value) => value,
-        Err(err) => {
-            error!("Redis read failed: {}", err);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(types::CharacterSummary::default()),
-            );
-        }
-    };
-
-    let user_id = match user_id {
-        Some(value) => value,
-        None => {
+    let username_lc = token_data.claims.sub.trim().to_lowercase();
+    let user_id = match pipelines::find_account_id_by_username_scan(&mut con, &username_lc).await {
+        Ok(Some(value)) => value,
+        Ok(None) => {
             warn!(
                 "Create character rejected: account not found for {}",
                 token_data.claims.sub
             );
             return (
                 StatusCode::UNAUTHORIZED,
+                Json(types::CharacterSummary::default()),
+            );
+        }
+        Err(err) => {
+            error!("Redis read failed: {}", err);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
                 Json(types::CharacterSummary::default()),
             );
         }
@@ -165,9 +160,15 @@ pub(crate) async fn get_characters(
         }
     };
 
-    let username_key = format!("account:username:{}", token_data.claims.sub);
-    let user_id: Option<u64> = match con.get(&username_key).await {
-        Ok(value) => value,
+    let username_lc = token_data.claims.sub.trim().to_lowercase();
+    let user_id = match pipelines::find_account_id_by_username_scan(&mut con, &username_lc).await {
+        Ok(Some(value)) => value,
+        Ok(None) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(types::GetCharactersResponse { characters: vec![] }),
+            );
+        }
         Err(err) => {
             error!("Redis read failed: {}", err);
             return (
@@ -177,16 +178,7 @@ pub(crate) async fn get_characters(
         }
     };
 
-    if user_id.is_none() {
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(types::GetCharactersResponse { characters: vec![] }),
-        );
-    }
-
-    let user_id = user_id.unwrap();
-    let account_characters_key = format!("account:{}:characters", user_id);
-    let character_ids: Vec<u64> = match con.smembers(&account_characters_key).await {
+    let characters = match pipelines::list_characters_for_account_scan(&mut con, user_id).await {
         Ok(values) => values,
         Err(err) => {
             error!("Redis read failed: {}", err);
@@ -196,103 +188,6 @@ pub(crate) async fn get_characters(
             );
         }
     };
-
-    if character_ids.is_empty() {
-        return (
-            StatusCode::OK,
-            Json(types::GetCharactersResponse { characters: vec![] }),
-        );
-    }
-
-    let mut pipe = redis::pipe();
-    for character_id in &character_ids {
-        let character_key = format!("character:{}", character_id);
-        pipe.cmd("HGETALL").arg(character_key);
-    }
-
-    let results: Vec<redis::Value> = match pipe.query_async(&mut con).await {
-        Ok(values) => values,
-        Err(err) => {
-            error!("Redis read failed: {}", err);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(types::GetCharactersResponse { characters: vec![] }),
-            );
-        }
-    };
-
-    let mut characters = Vec::new();
-    for (index, result) in results.iter().enumerate() {
-        let character_id = character_ids[index];
-        let character_map: std::collections::HashMap<String, String> =
-            match redis::from_redis_value(result.clone()) {
-                Ok(value) => value,
-                Err(err) => {
-                    warn!("Failed to decode character {}: {}", character_id, err);
-                    continue;
-                }
-            };
-
-        let name = match character_map.get("name") {
-            Some(value) => value.clone(),
-            None => {
-                warn!("Character {} is missing name", character_id);
-                continue;
-            }
-        };
-
-        let description = character_map
-            .get("description")
-            .cloned()
-            .unwrap_or_default();
-
-        let sex_value: u32 = match character_map
-            .get("sex")
-            .and_then(|value| value.parse().ok())
-        {
-            Some(value) => value,
-            None => {
-                warn!("Character {} is missing sex", character_id);
-                continue;
-            }
-        };
-
-        let race_value: u32 = match character_map
-            .get("race")
-            .and_then(|value| value.parse().ok())
-        {
-            Some(value) => value,
-            None => {
-                warn!("Character {} is missing race", character_id);
-                continue;
-            }
-        };
-
-        let sex = match types::sex_from_u32(sex_value) {
-            Some(value) => value,
-            None => {
-                warn!("Character {} has invalid sex value", character_id);
-                continue;
-            }
-        };
-
-        let race = match types::race_from_u32(race_value) {
-            Some(value) => value,
-            None => {
-                warn!("Character {} has invalid race value", character_id);
-                continue;
-            }
-        };
-
-        characters.push(types::CharacterSummary {
-            id: character_id,
-            name,
-            description,
-            sex,
-            race,
-            server_id: None,
-        });
-    }
 
     (
         StatusCode::OK,
@@ -301,8 +196,8 @@ pub(crate) async fn get_characters(
 }
 
 /// Creates a new account and registers username/email index keys.
-/// Validates email/username/password formats, enforces uniqueness using KeyDB WATCH/transaction
-/// semantics, and writes the account hash and index keys.
+/// Validates email/username/password formats, enforces uniqueness by scanning KeyDB account hashes,
+/// and writes the account hash.
 ///
 /// # Arguments
 /// * `con` - Multiplexed KeyDB connection provided by Axum state.
@@ -317,20 +212,22 @@ pub(crate) async fn create_account(
     State(mut con): State<redis::aio::MultiplexedConnection>,
     Json(payload): Json<types::CreateAccountRequest>,
 ) -> (StatusCode, Json<types::CreateAccountResponse>) {
+    let email_lc = payload.email.trim().to_lowercase();
+    let username_lc = payload.username.trim().to_lowercase();
+
     info!(
         "Create account request: username={}, email={}",
-        payload.username, payload.email
+        username_lc, email_lc
     );
     let response = types::CreateAccountResponse {
         id: None,
         error: None,
-        username: payload.username.clone(),
-        password: payload.password.clone(),
-        email: payload.email.clone(),
+        username: username_lc.clone(),
+        email: email_lc.clone(),
     };
 
-    if !helpers::is_valid_email_regex(&payload.email) {
-        warn!("Create account rejected: invalid email {}", payload.email);
+    if !helpers::is_valid_email_regex(&email_lc) {
+        warn!("Create account rejected: invalid email {}", email_lc);
         return (
             StatusCode::BAD_REQUEST,
             Json(types::CreateAccountResponse {
@@ -340,11 +237,8 @@ pub(crate) async fn create_account(
         );
     }
 
-    if !helpers::is_valid_username(&payload.username) {
-        warn!(
-            "Create account rejected: invalid username {}",
-            payload.username
-        );
+    if !helpers::is_valid_username(&username_lc) {
+        warn!("Create account rejected: invalid username {}", username_lc);
         return (
             StatusCode::BAD_REQUEST,
             Json(types::CreateAccountResponse {
@@ -365,24 +259,32 @@ pub(crate) async fn create_account(
         );
     }
 
-    let email_key = format!("account:email:{}", payload.email);
-    let username_key = format!("account:username:{}", payload.username);
-    let id_key = "account:next_id";
-    let account_prefix = "account:";
-
-    const MAX_RETRIES: usize = 5;
-    let mut attempts = 0;
-
-    let id = loop {
-        attempts += 1;
-
-        let watch_result: Result<(), redis::RedisError> = redis::cmd("WATCH")
-            .arg(&[&email_key, &username_key])
-            .query_async(&mut con)
-            .await;
-
-        if let Err(err) = watch_result {
-            error!("Redis WATCH failed: {}", err);
+    // Ensure uniqueness under concurrency: serialize account creation with a short-lived lock.
+    // This avoids Redis transactions/WATCH while still preventing scan-then-write races.
+    const ACCOUNT_CREATE_LOCK_KEY: &str = "lock:account:create";
+    const ACCOUNT_CREATE_LOCK_TTL_MS: u64 = 5_000;
+    let lock_token = match pipelines::acquire_lock_with_retry(
+        &mut con,
+        ACCOUNT_CREATE_LOCK_KEY,
+        ACCOUNT_CREATE_LOCK_TTL_MS,
+        10,
+        50,
+    )
+    .await
+    {
+        Ok(Some(token)) => token,
+        Ok(None) => {
+            warn!("Create account rejected: lock contention");
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(types::CreateAccountResponse {
+                    error: Some("Server busy, please retry".to_string()),
+                    ..response
+                }),
+            );
+        }
+        Err(err) => {
+            error!("Redis lock acquire failed: {}", err);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(types::CreateAccountResponse {
@@ -391,55 +293,16 @@ pub(crate) async fn create_account(
                 }),
             );
         }
+    };
 
-        let duplicate_check =
-            match pipelines::check_account_duplicates(&mut con, &email_key, &username_key).await {
-                Ok(value) => value,
-                Err(err) => {
-                    error!("Redis read failed: {}", err);
-                    return (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(types::CreateAccountResponse {
-                            error: Some(format!("Redis error: {}", err)),
-                            ..response
-                        }),
-                    );
-                }
-            };
-
-        match duplicate_check {
-            DuplicateCheckResult::Email => {
-                let _ = redis::cmd("UNWATCH").query_async::<()>(&mut con).await;
-                info!("Create account rejected: duplicate email {}", payload.email);
-                return (
-                    StatusCode::CONFLICT,
-                    Json(types::CreateAccountResponse {
-                        error: Some("Email is already in use".to_string()),
-                        ..response
-                    }),
-                );
-            }
-            DuplicateCheckResult::Username => {
-                let _ = redis::cmd("UNWATCH").query_async::<()>(&mut con).await;
-                info!(
-                    "Create account rejected: duplicate username {}",
-                    payload.username
-                );
-                return (
-                    StatusCode::CONFLICT,
-                    Json(types::CreateAccountResponse {
-                        error: Some("Username is already in use".to_string()),
-                        ..response
-                    }),
-                );
-            }
-            DuplicateCheckResult::None => {}
-        }
-
-        let new_id: u64 = match con.incr(id_key, 1).await {
+    let id_key = "account:next_id";
+    let duplicate_check =
+        match pipelines::check_account_duplicates_scan(&mut con, &email_lc, &username_lc).await {
             Ok(value) => value,
             Err(err) => {
-                error!("Redis INCR failed: {}", err);
+                let _ =
+                    pipelines::release_lock(&mut con, ACCOUNT_CREATE_LOCK_KEY, &lock_token).await;
+                error!("Redis read failed: {}", err);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(types::CreateAccountResponse {
@@ -449,71 +312,76 @@ pub(crate) async fn create_account(
                 );
             }
         };
-        info!("Allocated account id {}", new_id);
 
-        let account_key = format!("{}{}", account_prefix, new_id);
-        let exec_result = pipelines::insert_account_hash(
-            &mut con,
-            &account_key,
-            &email_key,
-            &username_key,
-            new_id,
-            &payload.email,
-            &payload.username,
-            &payload.password,
-        )
-        .await;
+    match duplicate_check {
+        pipelines::DuplicateCheckResult::Email => {
+            let _ = pipelines::release_lock(&mut con, ACCOUNT_CREATE_LOCK_KEY, &lock_token).await;
+            info!("Create account rejected: duplicate email {}", email_lc);
+            return (
+                StatusCode::CONFLICT,
+                Json(types::CreateAccountResponse {
+                    error: Some("Email is already in use".to_string()),
+                    ..response
+                }),
+            );
+        }
+        pipelines::DuplicateCheckResult::Username => {
+            let _ = pipelines::release_lock(&mut con, ACCOUNT_CREATE_LOCK_KEY, &lock_token).await;
+            info!(
+                "Create account rejected: duplicate username {}",
+                username_lc
+            );
+            return (
+                StatusCode::CONFLICT,
+                Json(types::CreateAccountResponse {
+                    error: Some("Username is already in use".to_string()),
+                    ..response
+                }),
+            );
+        }
+        pipelines::DuplicateCheckResult::None => {}
+    }
 
-        match exec_result {
-            Ok(_) => {
-                info!(
-                    "Account created: id={}, username={}",
-                    new_id, payload.username
-                );
-                break new_id;
-            }
-            Err(err)
-                if err.kind() == redis::ErrorKind::Server(redis::ServerErrorKind::ExecAbort) =>
-            {
-                if attempts >= MAX_RETRIES {
-                    error!(
-                        "Account creation retry limit reached for username={}",
-                        payload.username
-                    );
-                    return (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(types::CreateAccountResponse {
-                            error: Some(
-                                "Failed to create account, retry limit reached".to_string(),
-                            ),
-                            ..response
-                        }),
-                    );
-                }
-                warn!("Account creation retry due to transaction abort");
-                continue;
-            }
-            Err(err) => {
-                error!("Redis write failed: {}", err);
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(types::CreateAccountResponse {
-                        error: Some(format!("Redis error: {}", err)),
-                        ..response
-                    }),
-                );
-            }
+    let id: u64 = match con.incr(id_key, 1).await {
+        Ok(value) => value,
+        Err(err) => {
+            let _ = pipelines::release_lock(&mut con, ACCOUNT_CREATE_LOCK_KEY, &lock_token).await;
+            error!("Redis INCR failed: {}", err);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(types::CreateAccountResponse {
+                    error: Some(format!("Redis error: {}", err)),
+                    ..response
+                }),
+            );
         }
     };
+    info!("Allocated account id {}", id);
+
+    if let Err(err) =
+        pipelines::insert_account_hash(&mut con, id, &email_lc, &username_lc, &payload.password)
+            .await
+    {
+        let _ = pipelines::release_lock(&mut con, ACCOUNT_CREATE_LOCK_KEY, &lock_token).await;
+        error!("Redis write failed: {}", err);
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(types::CreateAccountResponse {
+                error: Some(format!("Redis error: {}", err)),
+                ..response
+            }),
+        );
+    }
+
+    let _ = pipelines::release_lock(&mut con, ACCOUNT_CREATE_LOCK_KEY, &lock_token).await;
 
     (
         StatusCode::CREATED,
         Json(types::CreateAccountResponse {
             id: Some(id),
             error: None,
-            username: payload.username,
-            password: payload.password,
-            email: payload.email,
+            username: username_lc,
+            email: email_lc,
         }),
     )
 }
@@ -555,33 +423,31 @@ pub(crate) async fn update_character(
         }
     };
 
-    let username_key = format!("account:username:{}", token_data.claims.sub);
-    let account_id = match pipelines::get_account_id_by_username(&mut con, &username_key).await {
-        Ok(value) => match value {
-            Some(id) => id,
-            None => {
-                warn!(
-                    "Unauthorized update attempt: account not found for {}",
-                    token_data.claims.sub
-                );
-                return StatusCode::UNAUTHORIZED;
-            }
-        },
+    let username_lc = token_data.claims.sub.trim().to_lowercase();
+    let account_id = match pipelines::find_account_id_by_username_scan(&mut con, &username_lc).await
+    {
+        Ok(Some(id)) => id,
+        Ok(None) => {
+            warn!(
+                "Unauthorized update attempt: account not found for {}",
+                token_data.claims.sub
+            );
+            return StatusCode::UNAUTHORIZED;
+        }
         Err(err) => {
             error!("Redis read failed: {}", err);
             return StatusCode::INTERNAL_SERVER_ERROR;
         }
     };
 
-    let does_character_belong_to_user: bool =
-        match pipelines::check_character_ownership(&mut con, account_id, character_id).await {
-            Ok(value) => value,
-            Err(err) => {
-                error!("Redis read failed: {}", err);
-                return StatusCode::INTERNAL_SERVER_ERROR;
-            }
-        };
-    if !does_character_belong_to_user {
+    let character_owner = match pipelines::get_character_account_id(&mut con, character_id).await {
+        Ok(value) => value,
+        Err(err) => {
+            error!("Redis read failed: {}", err);
+            return StatusCode::INTERNAL_SERVER_ERROR;
+        }
+    };
+    if character_owner != Some(account_id) {
         warn!(
             "Unauthorized update attempt: character {} does not belong to user {}",
             character_id, token_data.claims.sub
@@ -653,33 +519,31 @@ pub(crate) async fn delete_character(
         }
     };
 
-    let username_key = format!("account:username:{}", token_data.claims.sub);
-    let account_id = match pipelines::get_account_id_by_username(&mut con, &username_key).await {
-        Ok(value) => match value {
-            Some(id) => id,
-            None => {
-                warn!(
-                    "Unauthorized delete attempt: account not found for {}",
-                    token_data.claims.sub
-                );
-                return StatusCode::UNAUTHORIZED;
-            }
-        },
+    let username_lc = token_data.claims.sub.trim().to_lowercase();
+    let account_id = match pipelines::find_account_id_by_username_scan(&mut con, &username_lc).await
+    {
+        Ok(Some(id)) => id,
+        Ok(None) => {
+            warn!(
+                "Unauthorized delete attempt: account not found for {}",
+                token_data.claims.sub
+            );
+            return StatusCode::UNAUTHORIZED;
+        }
         Err(err) => {
             error!("Redis read failed: {}", err);
             return StatusCode::INTERNAL_SERVER_ERROR;
         }
     };
 
-    let does_character_belong_to_user: bool =
-        match pipelines::check_character_ownership(&mut con, account_id, character_id).await {
-            Ok(value) => value,
-            Err(err) => {
-                error!("Redis read failed: {}", err);
-                return StatusCode::INTERNAL_SERVER_ERROR;
-            }
-        };
-    if !does_character_belong_to_user {
+    let character_owner = match pipelines::get_character_account_id(&mut con, character_id).await {
+        Ok(value) => value,
+        Err(err) => {
+            error!("Redis read failed: {}", err);
+            return StatusCode::INTERNAL_SERVER_ERROR;
+        }
+    };
+    if character_owner != Some(account_id) {
         warn!(
             "Unauthorized delete attempt: character {} does not belong to user {}",
             character_id, token_data.claims.sub
@@ -687,7 +551,7 @@ pub(crate) async fn delete_character(
         return StatusCode::UNAUTHORIZED;
     }
 
-    match pipelines::delete_character(&mut con, account_id, character_id).await {
+    match pipelines::delete_character(&mut con, character_id).await {
         Ok(_) => {
             info!(
                 "Character {} deleted for account {}",
@@ -719,7 +583,8 @@ pub(crate) async fn login(
     State(mut con): State<redis::aio::MultiplexedConnection>,
     Json(payload): Json<types::LoginRequest>,
 ) -> (StatusCode, Json<types::LoginResponse>) {
-    info!("Login request for username={}", payload.username);
+    let username_lc = payload.username.trim().to_lowercase();
+    info!("Login request for username={}", username_lc);
     if !helpers::is_valid_password(&payload.password) {
         warn!("Login rejected: invalid password format");
         return (
@@ -730,24 +595,10 @@ pub(crate) async fn login(
         );
     }
 
-    let username_key = format!("account:username:{}", payload.username);
-    let user_id: Option<u64> = match con.get(&username_key).await {
-        Ok(value) => value,
-        Err(err) => {
-            error!("Redis read failed: {}", err);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(types::LoginResponse {
-                    token: String::new(),
-                }),
-            );
-        }
-    };
-
-    let user_id = match user_id {
-        Some(value) => value,
-        None => {
-            warn!("Login rejected: username not found {}", payload.username);
+    let user_id = match pipelines::find_account_id_by_username_scan(&mut con, &username_lc).await {
+        Ok(Some(value)) => value,
+        Ok(None) => {
+            warn!("Login rejected: username not found {}", username_lc);
             return (
                 StatusCode::UNAUTHORIZED,
                 Json(types::LoginResponse {
@@ -755,11 +606,6 @@ pub(crate) async fn login(
                 }),
             );
         }
-    };
-
-    let account_key = format!("account:{}", user_id);
-    let stored_hash: Option<String> = match con.hget(&account_key, "password").await {
-        Ok(value) => value,
         Err(err) => {
             error!("Redis read failed: {}", err);
             return (
@@ -770,6 +616,20 @@ pub(crate) async fn login(
             );
         }
     };
+
+    let stored_hash: Option<String> =
+        match pipelines::get_account_password_hash(&mut con, user_id).await {
+            Ok(value) => value,
+            Err(err) => {
+                error!("Redis read failed: {}", err);
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(types::LoginResponse {
+                        token: String::new(),
+                    }),
+                );
+            }
+        };
 
     let stored_hash = match stored_hash {
         Some(value) => value,
@@ -788,7 +648,7 @@ pub(crate) async fn login(
     };
 
     if stored_hash != payload.password {
-        warn!("Login rejected: password mismatch for {}", payload.username);
+        warn!("Login rejected: password mismatch for {}", username_lc);
         return (
             StatusCode::UNAUTHORIZED,
             Json(types::LoginResponse {
@@ -815,7 +675,7 @@ pub(crate) async fn login(
         .unwrap_or(Duration::from_secs(0))
         .as_secs();
     let claims = types::JwtClaims {
-        sub: payload.username,
+        sub: username_lc,
         exp: (now + 3600) as usize,
     };
 

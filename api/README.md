@@ -40,20 +40,12 @@ This service stores accounts and characters in KeyDB using a small set of predic
 flowchart TB
     subgraph Accounts
         A_HASH["account:{account_id} (hash)"]
-        A_USER["account:username:{username} (string -> account_id)"]
-        A_EMAIL["account:email:{email} (string -> account_id)"]
-        A_CHARS["account:{account_id}:characters (set of character_id)"]
     end
 
     subgraph Characters
         C_HASH["character:{character_id} (hash)"]
     end
 
-    A_USER -->|lookup| A_HASH
-    A_EMAIL -->|lookup| A_HASH
-
-    A_HASH -->|owns| A_CHARS
-    A_CHARS -->|ids| C_HASH
     C_HASH -. "field: account_id" .-> A_HASH
 ```
 
@@ -81,8 +73,8 @@ erDiagram
 ```
 
 Notes:
-- The `ACCOUNT -> CHARACTER` relationship is materialized primarily via `account:{account_id}:characters` (a set of character IDs), and redundantly via the `account_id` field stored on `character:{character_id}`.
-- Username/email uniqueness is enforced via the index keys: `account:username:{username}` and `account:email:{email}`.
+- The `ACCOUNT -> CHARACTER` relationship is materialized via the `account_id` field stored on `character:{character_id}`.
+- Username/email uniqueness and username->account resolution are implemented by scanning account hashes.
 
 # Client auth + JWT usage flow
 
