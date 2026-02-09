@@ -40,6 +40,8 @@ This service stores accounts and characters in KeyDB using a small set of predic
 flowchart TB
     subgraph Accounts
         A_HASH["account:{account_id} (hash)"]
+        U_CLAIM["account:username:{username_lc} (string claim)"]
+        E_CLAIM["account:email:{email_lc} (string claim)"]
     end
 
     subgraph Characters
@@ -47,7 +49,36 @@ flowchart TB
     end
 
     C_HASH -. "field: account_id" .-> A_HASH
+
+    U_CLAIM -. "value: account_id" .-> A_HASH
+    E_CLAIM -. "value: account_id" .-> A_HASH
 ```
+
+## Claim keys (uniqueness + lookup)
+
+In addition to the account/character hashes, the service maintains two *claim keys* that act like lightweight unique indexes:
+
+- `account:username:{username_lc}` -> `{account_id}`
+- `account:email:{email_lc}` -> `{account_id}`
+
+These are written with an atomic `SET ... NX` operation:
+
+- If the key does not exist, the claim is created and the operation succeeds.
+- If the key already exists, the claim fails (meaning the username/email is already taken).
+
+The username claim key is also used to resolve a username directly to an account ID without scanning.
+
+### Pros
+
+- Fast uniqueness enforcement: one atomic write per claim (`SET NX`).
+- Fast username->account resolution: single `GET` on the claim key.
+- Avoids blocking operations: no `KEYS`, and no full scans of `account:*` for common lookups.
+
+### Cons
+
+- Requires cleanup/update logic: if usernames/emails ever become mutable, you must claim the new value and release the old claim safely.
+- Stale claims are possible if an account is deleted without releasing its claim keys.
+- Normalization must be consistent: keys assume lowercased values (`username_lc` / `email_lc`).
 
 ## Relationships (conceptual)
 
@@ -74,7 +105,7 @@ erDiagram
 
 Notes:
 - The `ACCOUNT -> CHARACTER` relationship is materialized via the `account_id` field stored on `character:{character_id}`.
-- Username/email uniqueness and username->account resolution are implemented by scanning account hashes.
+- Username/email uniqueness and username->account resolution are implemented via the claim keys described above.
 
 # Client auth + JWT usage flow
 
