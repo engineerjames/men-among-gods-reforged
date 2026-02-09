@@ -28,7 +28,6 @@ pub struct CreateAccountResponse {
     pub id: Option<u64>,
     pub error: Option<String>,
     pub username: String,
-    pub password: String,
     pub email: String,
 }
 
@@ -38,14 +37,14 @@ pub struct JwtClaims {
     pub exp: usize,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 #[repr(u32)]
 pub enum Sex {
     Male = KIN_MALE,
     Female = KIN_FEMALE,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Copy)]
 #[repr(u32)]
 pub enum Race {
     Mercenary = KIN_MERCENARY,
@@ -58,16 +57,105 @@ pub enum Race {
     SeyanDu = KIN_SEYAN_DU,
 }
 
+pub(crate) fn sex_from_u32(value: u32) -> Option<Sex> {
+    match value {
+        value if value == Sex::Male as u32 => Some(Sex::Male),
+        value if value == Sex::Female as u32 => Some(Sex::Female),
+        _ => None,
+    }
+}
+
+pub(crate) fn race_from_u32(value: u32) -> Option<Race> {
+    match value {
+        value if value == Race::Mercenary as u32 => Some(Race::Mercenary),
+        value if value == Race::Templar as u32 => Some(Race::Templar),
+        value if value == Race::Harakim as u32 => Some(Race::Harakim),
+        value if value == Race::Sorcerer as u32 => Some(Race::Sorcerer),
+        value if value == Race::Warrior as u32 => Some(Race::Warrior),
+        value if value == Race::ArchTemplar as u32 => Some(Race::ArchTemplar),
+        value if value == Race::ArchHarakim as u32 => Some(Race::ArchHarakim),
+        value if value == Race::SeyanDu as u32 => Some(Race::SeyanDu),
+        _ => None,
+    }
+}
+
+// TODO: Set max lengths for name and description, and enforce them in the database and API validation
 #[derive(Serialize)]
 pub struct CharacterSummary {
+    /// Unique character ID assigned by the database
     pub id: u64,
+
+    /// Character name
     pub name: String,
+
+    /// Character description
     pub description: String,
+
+    /// Male or Female
     pub sex: Sex,
+
+    /// Race of the character
     pub race: Race,
+
+    /// Server id
+    pub server_id: Option<u32>,
+}
+
+impl Default for CharacterSummary {
+    fn default() -> Self {
+        Self {
+            id: 0,
+            name: String::new(),
+            description: String::new(),
+            sex: Sex::Male,
+            race: Race::Mercenary,
+            server_id: None,
+        }
+    }
 }
 
 #[derive(Serialize)]
 pub struct GetCharactersResponse {
     pub characters: Vec<CharacterSummary>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct CreateCharacterRequest {
+    pub name: String,
+    pub description: Option<String>,
+    pub sex: Sex,
+    pub race: Race,
+}
+
+impl CreateCharacterRequest {
+    pub fn validate(&self) -> bool {
+        if [
+            Race::SeyanDu,
+            Race::Sorcerer,
+            Race::Warrior,
+            Race::ArchHarakim,
+            Race::ArchTemplar,
+        ]
+        .contains(&self.race)
+        {
+            log::error!(
+                "Invalid race selection: {:?}; Can only be achieved in-game.",
+                self.race
+            );
+            return false;
+        }
+
+        true
+    }
+}
+
+#[derive(Deserialize)]
+pub struct UpdateCharacterRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct DeleteCharacterRequest {
+    pub id: u64,
 }
