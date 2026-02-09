@@ -38,30 +38,23 @@ This service stores accounts and characters in KeyDB using a small set of predic
 
 ```mermaid
 flowchart TB
-    %% Account ID allocation
-    A_NEXT["account:next_id\nString (integer)"]
-    A_HASH["account:{account_id}\nHASH\n- id\n- email\n- username\n- password"]
+    subgraph Accounts
+        A_HASH["account:{account_id} (hash)"]
+        A_USER["account:username:{username} (string -> account_id)"]
+        A_EMAIL["account:email:{email} (string -> account_id)"]
+        A_CHARS["account:{account_id}:characters (set of character_id)"]
+    end
 
-    %% Account lookup indexes
-    A_EMAIL["account:email:{email}\nString -> account_id"]
-    A_USER["account:username:{username}\nString -> account_id"]
+    subgraph Characters
+        C_HASH["character:{character_id} (hash)"]
+    end
 
-    %% Characters owned by an account
-    A_CHARS["account:{account_id}:characters\nSET<character_id>"]
-
-    %% Character ID allocation + character storage
-    C_NEXT["character:next_id\nString (integer)"]
-    C_HASH["character:{character_id}\nHASH\n- account_id\n- name\n- description\n- sex\n- race"]
-
-    A_NEXT -->|INCR| A_HASH
-    A_EMAIL -->|GET| A_HASH
-    A_USER -->|GET| A_HASH
+    A_USER -->|lookup| A_HASH
+    A_EMAIL -->|lookup| A_HASH
 
     A_HASH -->|owns| A_CHARS
     A_CHARS -->|ids| C_HASH
-    C_NEXT -->|INCR| C_HASH
-
-    C_HASH -. "account_id field" .-> A_HASH
+    C_HASH -. "field: account_id" .-> A_HASH
 ```
 
 ## Relationships (conceptual)
