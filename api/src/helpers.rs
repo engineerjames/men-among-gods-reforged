@@ -7,11 +7,19 @@ use crate::types;
 use jsonwebtoken::{DecodingKey, TokenData, Validation};
 use log::error;
 
+/// Verifies the provided JWT token using the secret key from the environment variable `API_JWT_SECRET`.
+///
+/// # Arguments
+/// * `token` - The JWT token to verify.
+///
+/// # Returns
+/// * `Ok(TokenData<types::JwtClaims>)` if the token is valid, containing the decoded claims.
+/// * `Err(String)` if the token is invalid or if the secret key is missing.
 pub async fn verify_token(token: &str) -> Result<TokenData<types::JwtClaims>, String> {
     let secret = match env::var("API_JWT_SECRET") {
         Ok(value) if !value.trim().is_empty() => value,
         _ => {
-            error!("JWT secret missing for get_characters");
+            error!("JWT secret missing for verify_token");
             return Err("Internal server error".to_string());
         }
     };
@@ -31,6 +39,13 @@ pub async fn verify_token(token: &str) -> Result<TokenData<types::JwtClaims>, St
     Ok(token_data)
 }
 
+/// Retrieves the JWT token from the `Authorization` header in the provided headers.
+///
+/// # Arguments
+/// * `headers` - The HTTP headers from which to extract the token.
+///
+/// # Returns
+/// * `Some(String)` containing the token if found, `None` otherwise.
 pub async fn get_token_from_headers(headers: &axum::http::HeaderMap) -> Option<String> {
     let token = headers
         .get(axum::http::header::AUTHORIZATION)
@@ -51,6 +66,14 @@ pub async fn get_token_from_headers(headers: &axum::http::HeaderMap) -> Option<S
     Some(token)
 }
 
+/// Validates email format using a regex pattern. This is a basic check and may not cover
+/// all valid email formats, but it should be sufficient for common use cases.
+///
+/// # Arguments
+/// * `email` - The email address to validate.
+///
+/// # Returns
+/// * `true` if the email is valid, `false` otherwise.
 pub(crate) fn is_valid_email_regex(email: &str) -> bool {
     lazy_static! {
         static ref RE: Regex =
@@ -59,11 +82,30 @@ pub(crate) fn is_valid_email_regex(email: &str) -> bool {
     RE.is_match(email)
 }
 
+/// Validates username based on length constraints (between 3 and 20 characters).
+/// This is a simple check and can be expanded to include additional rules such as
+/// allowed characters, but it serves as a basic validation for username length.
+///
+/// # Arguments
+/// * `username` - The username to validate.
+///
+/// # Returns
+/// * `true` if the username is valid, `false` otherwise.
 pub(crate) fn is_valid_username(username: &str) -> bool {
     let len = username.chars().count();
     (3..=20).contains(&len)
 }
 
+/// Validates password format to ensure it is a valid Argon2 hash in PHC string format.
+/// This is a basic check to ensure that the password is not stored in plaintext and follows
+/// the expected format for Argon2 hashes. It does not verify the strength of the password or
+/// the parameters used in the hash.
+///
+/// # Arguments
+/// * `password` - The password hash to validate.
+///
+/// # Returns
+/// * `true` if the password hash is valid, `false` otherwise.
 pub(crate) fn is_valid_password(password: &str) -> bool {
     lazy_static! {
         static ref ARGON2_RE: Regex = Regex::new(

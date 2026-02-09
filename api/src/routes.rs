@@ -14,6 +14,20 @@ use jsonwebtoken::Header;
 use log::{error, info, warn};
 use redis::AsyncCommands;
 
+/// Creates a new character for the authenticated account.
+/// Validates the JWT from the `Authorization` header, validates the request payload, and then
+/// writes the character data to KeyDB.
+///
+/// # Arguments
+/// * `con` - Multiplexed KeyDB connection provided by Axum state.
+/// * `headers` - Request headers used to extract the `Authorization: Bearer <JWT>` token.
+/// * `payload` - Character creation fields (name/description/sex/race).
+///
+/// # Returns
+/// * `(StatusCode::OK, CharacterSummary)` on success.
+/// * `(StatusCode::UNAUTHORIZED, default)` when the token is missing/invalid or the account is not found.
+/// * `(StatusCode::BAD_REQUEST, default)` when the request payload is invalid.
+/// * `(StatusCode::INTERNAL_SERVER_ERROR, default)` on KeyDB or internal failures.
 pub(crate) async fn create_new_character(
     State(mut con): State<redis::aio::MultiplexedConnection>,
     headers: axum::http::HeaderMap,
@@ -113,6 +127,18 @@ pub(crate) async fn create_new_character(
     }
 }
 
+/// Fetches all characters for the authenticated account.
+/// Validates the JWT from the `Authorization` header, resolves the account ID via the username
+/// index key, then loads character hashes from KeyDB.
+///
+/// # Arguments
+/// * `con` - Multiplexed KeyDB connection provided by Axum state.
+/// * `headers` - Request headers used to extract the `Authorization: Bearer <JWT>` token.
+///
+/// # Returns
+/// * `(StatusCode::OK, GetCharactersResponse)` with zero or more characters.
+/// * `(StatusCode::UNAUTHORIZED, empty)` when the token is missing/invalid or the account is not found.
+/// * `(StatusCode::INTERNAL_SERVER_ERROR, empty)` on KeyDB or internal failures.
 pub(crate) async fn get_characters(
     State(mut con): State<redis::aio::MultiplexedConnection>,
     headers: axum::http::HeaderMap,
@@ -274,6 +300,19 @@ pub(crate) async fn get_characters(
     )
 }
 
+/// Creates a new account and registers username/email index keys.
+/// Validates email/username/password formats, enforces uniqueness using KeyDB WATCH/transaction
+/// semantics, and writes the account hash and index keys.
+///
+/// # Arguments
+/// * `con` - Multiplexed KeyDB connection provided by Axum state.
+/// * `payload` - Account creation fields (email/username/password).
+///
+/// # Returns
+/// * `(StatusCode::CREATED, CreateAccountResponse)` with `id` set on success.
+/// * `(StatusCode::BAD_REQUEST, CreateAccountResponse)` when validation fails.
+/// * `(StatusCode::CONFLICT, CreateAccountResponse)` when email or username already exists.
+/// * `(StatusCode::INTERNAL_SERVER_ERROR, CreateAccountResponse)` on KeyDB or internal failures.
 pub(crate) async fn create_account(
     State(mut con): State<redis::aio::MultiplexedConnection>,
     Json(payload): Json<types::CreateAccountRequest>,
@@ -479,6 +518,21 @@ pub(crate) async fn create_account(
     )
 }
 
+/// Updates an existing character owned by the authenticated account.
+/// Validates the JWT, checks character ownership via the account's character set, and updates
+/// the provided fields on the character hash.
+///
+/// # Arguments
+/// * `con` - Multiplexed KeyDB connection provided by Axum state.
+/// * `headers` - Request headers used to extract the `Authorization: Bearer <JWT>` token.
+/// * `character_id` - Character ID extracted from the URL path (`/characters/{id}`).
+/// * `payload` - Fields to update (`name` and/or `description`).
+///
+/// # Returns
+/// * `StatusCode::OK` on success.
+/// * `StatusCode::BAD_REQUEST` when no updatable fields are provided.
+/// * `StatusCode::UNAUTHORIZED` when the token is missing/invalid, the account is missing, or the character is not owned.
+/// * `StatusCode::INTERNAL_SERVER_ERROR` on KeyDB or internal failures.
 pub(crate) async fn update_character(
     State(mut con): State<redis::aio::MultiplexedConnection>,
     headers: axum::http::HeaderMap,
@@ -565,6 +619,19 @@ pub(crate) async fn update_character(
     }
 }
 
+/// Deletes an existing character owned by the authenticated account.
+/// Validates the JWT, checks character ownership via the account's character set, then deletes
+/// the character hash and removes it from the ownership set.
+///
+/// # Arguments
+/// * `con` - Multiplexed KeyDB connection provided by Axum state.
+/// * `headers` - Request headers used to extract the `Authorization: Bearer <JWT>` token.
+/// * `character_id` - Character ID extracted from the URL path (`/characters/{id}`).
+///
+/// # Returns
+/// * `StatusCode::OK` on success.
+/// * `StatusCode::UNAUTHORIZED` when the token is missing/invalid, the account is missing, or the character is not owned.
+/// * `StatusCode::INTERNAL_SERVER_ERROR` on KeyDB or internal failures.
 pub(crate) async fn delete_character(
     State(mut con): State<redis::aio::MultiplexedConnection>,
     headers: axum::http::HeaderMap,
@@ -635,6 +702,19 @@ pub(crate) async fn delete_character(
     }
 }
 
+/// Authenticates a user and returns a signed JWT.
+/// Resolves the account via the username index, compares the stored password/hash, and creates
+/// a JWT signed with `API_JWT_SECRET` that expires in ~1 hour.
+///
+/// # Arguments
+/// * `con` - Multiplexed KeyDB connection provided by Axum state.
+/// * `payload` - Login credentials (username/password).
+///
+/// # Returns
+/// * `(StatusCode::OK, LoginResponse)` containing a JWT token on success.
+/// * `(StatusCode::BAD_REQUEST, LoginResponse)` when the password format is invalid.
+/// * `(StatusCode::UNAUTHORIZED, LoginResponse)` when the username is unknown or the password does not match.
+/// * `(StatusCode::INTERNAL_SERVER_ERROR, LoginResponse)` when KeyDB fails or `API_JWT_SECRET` is missing.
 pub(crate) async fn login(
     State(mut con): State<redis::aio::MultiplexedConnection>,
     Json(payload): Json<types::LoginRequest>,
