@@ -62,7 +62,7 @@ pub(crate) async fn create_new_character(
     }
 
     let username_lc = token_data.claims.sub.trim().to_lowercase();
-    let user_id = match pipelines::find_account_id_by_username_scan(&mut con, &username_lc).await {
+    let user_id = match pipelines::get_account_id_by_username(&mut con, &username_lc).await {
         Ok(Some(value)) => value,
         Ok(None) => {
             warn!(
@@ -161,7 +161,7 @@ pub(crate) async fn get_characters(
     };
 
     let username_lc = token_data.claims.sub.trim().to_lowercase();
-    let user_id = match pipelines::find_account_id_by_username_scan(&mut con, &username_lc).await {
+    let user_id = match pipelines::get_account_id_by_username(&mut con, &username_lc).await {
         Ok(Some(value)) => value,
         Ok(None) => {
             return (
@@ -195,9 +195,9 @@ pub(crate) async fn get_characters(
     )
 }
 
-/// Creates a new account and registers username/email index keys.
-/// Validates email/username/password formats, enforces uniqueness by scanning KeyDB account hashes,
-/// and writes the account hash.
+/// Creates a new account and registers minimal claim keys for username/email uniqueness.
+/// Validates email/username/password formats, enforces uniqueness using atomic `SET ... NX` claim
+/// keys, and writes the account hash.
 ///
 /// # Arguments
 /// * `con` - Multiplexed KeyDB connection provided by Axum state.
@@ -259,93 +259,10 @@ pub(crate) async fn create_account(
         );
     }
 
-    // Ensure uniqueness under concurrency: serialize account creation with a short-lived lock.
-    // This avoids Redis transactions/WATCH while still preventing scan-then-write races.
-    const ACCOUNT_CREATE_LOCK_KEY: &str = "lock:account:create";
-    const ACCOUNT_CREATE_LOCK_TTL_MS: u64 = 5_000;
-    let lock_token = match pipelines::acquire_lock_with_retry(
-        &mut con,
-        ACCOUNT_CREATE_LOCK_KEY,
-        ACCOUNT_CREATE_LOCK_TTL_MS,
-        10,
-        50,
-    )
-    .await
-    {
-        Ok(Some(token)) => token,
-        Ok(None) => {
-            warn!("Create account rejected: lock contention");
-            return (
-                StatusCode::SERVICE_UNAVAILABLE,
-                Json(types::CreateAccountResponse {
-                    error: Some("Server busy, please retry".to_string()),
-                    ..response
-                }),
-            );
-        }
-        Err(err) => {
-            error!("Redis lock acquire failed: {}", err);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(types::CreateAccountResponse {
-                    error: Some(format!("Redis error: {}", err)),
-                    ..response
-                }),
-            );
-        }
-    };
-
     let id_key = "account:next_id";
-    let duplicate_check =
-        match pipelines::check_account_duplicates_scan(&mut con, &email_lc, &username_lc).await {
-            Ok(value) => value,
-            Err(err) => {
-                let _ =
-                    pipelines::release_lock(&mut con, ACCOUNT_CREATE_LOCK_KEY, &lock_token).await;
-                error!("Redis read failed: {}", err);
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(types::CreateAccountResponse {
-                        error: Some(format!("Redis error: {}", err)),
-                        ..response
-                    }),
-                );
-            }
-        };
-
-    match duplicate_check {
-        pipelines::DuplicateCheckResult::Email => {
-            let _ = pipelines::release_lock(&mut con, ACCOUNT_CREATE_LOCK_KEY, &lock_token).await;
-            info!("Create account rejected: duplicate email {}", email_lc);
-            return (
-                StatusCode::CONFLICT,
-                Json(types::CreateAccountResponse {
-                    error: Some("Email is already in use".to_string()),
-                    ..response
-                }),
-            );
-        }
-        pipelines::DuplicateCheckResult::Username => {
-            let _ = pipelines::release_lock(&mut con, ACCOUNT_CREATE_LOCK_KEY, &lock_token).await;
-            info!(
-                "Create account rejected: duplicate username {}",
-                username_lc
-            );
-            return (
-                StatusCode::CONFLICT,
-                Json(types::CreateAccountResponse {
-                    error: Some("Username is already in use".to_string()),
-                    ..response
-                }),
-            );
-        }
-        pipelines::DuplicateCheckResult::None => {}
-    }
-
     let id: u64 = match con.incr(id_key, 1).await {
         Ok(value) => value,
         Err(err) => {
-            let _ = pipelines::release_lock(&mut con, ACCOUNT_CREATE_LOCK_KEY, &lock_token).await;
             error!("Redis INCR failed: {}", err);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -358,11 +275,68 @@ pub(crate) async fn create_account(
     };
     info!("Allocated account id {}", id);
 
+    let username_claim_key = format!("account:username:{}", username_lc);
+    let email_claim_key = format!("account:email:{}", email_lc);
+
+    let username_claimed = match pipelines::claim_username(&mut con, &username_lc, id).await {
+        Ok(value) => value,
+        Err(err) => {
+            error!("Redis claim failed: {}", err);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(types::CreateAccountResponse {
+                    error: Some(format!("Redis error: {}", err)),
+                    ..response
+                }),
+            );
+        }
+    };
+    if !username_claimed {
+        info!(
+            "Create account rejected: duplicate username {}",
+            username_lc
+        );
+        return (
+            StatusCode::CONFLICT,
+            Json(types::CreateAccountResponse {
+                error: Some("Username is already in use".to_string()),
+                ..response
+            }),
+        );
+    }
+
+    let email_claimed = match pipelines::claim_email(&mut con, &email_lc, id).await {
+        Ok(value) => value,
+        Err(err) => {
+            let _ = pipelines::release_claim_if_matches(&mut con, &username_claim_key, id).await;
+            error!("Redis claim failed: {}", err);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(types::CreateAccountResponse {
+                    error: Some(format!("Redis error: {}", err)),
+                    ..response
+                }),
+            );
+        }
+    };
+    if !email_claimed {
+        let _ = pipelines::release_claim_if_matches(&mut con, &username_claim_key, id).await;
+        info!("Create account rejected: duplicate email {}", email_lc);
+        return (
+            StatusCode::CONFLICT,
+            Json(types::CreateAccountResponse {
+                error: Some("Email is already in use".to_string()),
+                ..response
+            }),
+        );
+    }
+
     if let Err(err) =
         pipelines::insert_account_hash(&mut con, id, &email_lc, &username_lc, &payload.password)
             .await
     {
-        let _ = pipelines::release_lock(&mut con, ACCOUNT_CREATE_LOCK_KEY, &lock_token).await;
+        let _ = pipelines::release_claim_if_matches(&mut con, &username_claim_key, id).await;
+        let _ = pipelines::release_claim_if_matches(&mut con, &email_claim_key, id).await;
         error!("Redis write failed: {}", err);
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -372,8 +346,6 @@ pub(crate) async fn create_account(
             }),
         );
     }
-
-    let _ = pipelines::release_lock(&mut con, ACCOUNT_CREATE_LOCK_KEY, &lock_token).await;
 
     (
         StatusCode::CREATED,
@@ -424,8 +396,7 @@ pub(crate) async fn update_character(
     };
 
     let username_lc = token_data.claims.sub.trim().to_lowercase();
-    let account_id = match pipelines::find_account_id_by_username_scan(&mut con, &username_lc).await
-    {
+    let account_id = match pipelines::get_account_id_by_username(&mut con, &username_lc).await {
         Ok(Some(id)) => id,
         Ok(None) => {
             warn!(
@@ -520,8 +491,7 @@ pub(crate) async fn delete_character(
     };
 
     let username_lc = token_data.claims.sub.trim().to_lowercase();
-    let account_id = match pipelines::find_account_id_by_username_scan(&mut con, &username_lc).await
-    {
+    let account_id = match pipelines::get_account_id_by_username(&mut con, &username_lc).await {
         Ok(Some(id)) => id,
         Ok(None) => {
             warn!(
@@ -595,7 +565,7 @@ pub(crate) async fn login(
         );
     }
 
-    let user_id = match pipelines::find_account_id_by_username_scan(&mut con, &username_lc).await {
+    let user_id = match pipelines::get_account_id_by_username(&mut con, &username_lc).await {
         Ok(Some(value)) => value,
         Ok(None) => {
             warn!("Login rejected: username not found {}", username_lc);

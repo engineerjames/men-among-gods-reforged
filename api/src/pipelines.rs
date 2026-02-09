@@ -1,13 +1,15 @@
 use crate::types;
 use log::info;
 use redis::AsyncCommands;
-use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::time::{sleep, Duration};
 
-pub(crate) enum DuplicateCheckResult {
-    None,
-    Email,
-    Username,
+/// Builds the claim key used to enforce uniqueness and resolve usernames to account IDs.
+fn username_claim_key(username_lc: &str) -> String {
+    format!("account:username:{}", username_lc)
+}
+
+/// Builds the claim key used to enforce uniqueness for emails.
+fn email_claim_key(email_lc: &str) -> String {
+    format!("account:email:{}", email_lc)
 }
 
 /// Parses a numeric ID from a KeyDB key suffix.
@@ -33,15 +35,6 @@ fn parse_numeric_id(prefix: &str, key: &str) -> Option<u64> {
 /// Scans KeyDB for keys matching a glob-style pattern.
 ///
 /// Uses `SCAN` to avoid blocking the server like `KEYS` would.
-///
-/// # Arguments
-/// * `con` - Multiplexed KeyDB connection used to issue SCAN commands.
-/// * `pattern` - SCAN `MATCH` pattern (e.g. `"account:*"`).
-/// * `count` - SCAN `COUNT` hint (not a strict limit).
-///
-/// # Returns
-/// * `Ok(Vec<String>)` with all keys returned by the full scan.
-/// * `Err(redis::RedisError)` when KeyDB returns an error.
 async fn scan_keys_matching(
     con: &mut redis::aio::MultiplexedConnection,
     pattern: &str,
@@ -57,115 +50,62 @@ async fn scan_keys_matching(
             .arg(pattern)
             .arg("COUNT")
             .arg(count)
-            .query_async(con)
+            .query_async(&mut *con)
             .await?;
-
         out.extend(keys);
-        if next_cursor == 0 {
+        cursor = next_cursor;
+        if cursor == 0 {
             break;
         }
-        cursor = next_cursor;
     }
 
     Ok(out)
 }
 
-/// Generates a best-effort unique token value for a lock key.
+/// Attempts to claim a username for a given account ID.
 ///
-/// This value is stored as the lock key's value so we can safely release only locks
-/// we acquired (via a GET-and-compare) without Lua.
-fn new_lock_token() -> String {
-    let pid = std::process::id();
-    let now_ns = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    format!("{}:{}", pid, now_ns)
-}
-
-/// Attempts to acquire a short-lived lock using `SET key value NX PX <ttl_ms>`.
-///
-/// # Arguments
-/// * `con` - Multiplexed KeyDB connection used to issue commands.
-/// * `key` - Lock key name.
-/// * `ttl_ms` - Lock time-to-live in milliseconds.
-///
-/// # Returns
-/// * `Ok(Some(token))` if the lock was acquired; `token` must be used to release.
-/// * `Ok(None)` if the lock is already held by someone else.
-/// * `Err(redis::RedisError)` on KeyDB failure.
-pub(crate) async fn try_acquire_lock(
+/// This uses a single atomic command: `SET account:username:{username} {account_id} NX`.
+pub(crate) async fn claim_username(
     con: &mut redis::aio::MultiplexedConnection,
-    key: &str,
-    ttl_ms: u64,
-) -> Result<Option<String>, redis::RedisError> {
-    let token = new_lock_token();
+    username_lc: &str,
+    account_id: u64,
+) -> Result<bool, redis::RedisError> {
+    let key = username_claim_key(username_lc);
     let result: Option<String> = redis::cmd("SET")
         .arg(key)
-        .arg(&token)
+        .arg(account_id)
         .arg("NX")
-        .arg("PX")
-        .arg(ttl_ms)
         .query_async(&mut *con)
         .await?;
-
-    Ok(result.map(|_| token))
+    Ok(result.is_some())
 }
 
-/// Acquires a lock with a small retry loop to smooth over brief contention.
+/// Attempts to claim an email for a given account ID.
 ///
-/// # Arguments
-/// * `con` - Multiplexed KeyDB connection used to issue commands.
-/// * `key` - Lock key name.
-/// * `ttl_ms` - Lock time-to-live in milliseconds.
-/// * `max_attempts` - Maximum number of attempts before giving up.
-/// * `sleep_ms` - Milliseconds to wait between attempts.
-///
-/// # Returns
-/// * `Ok(Some(token))` if the lock was acquired.
-/// * `Ok(None)` if lock could not be acquired after retries.
-/// * `Err(redis::RedisError)` on KeyDB failure.
-pub(crate) async fn acquire_lock_with_retry(
+/// This uses a single atomic command: `SET account:email:{email} {account_id} NX`.
+pub(crate) async fn claim_email(
     con: &mut redis::aio::MultiplexedConnection,
-    key: &str,
-    ttl_ms: u64,
-    max_attempts: usize,
-    sleep_ms: u64,
-) -> Result<Option<String>, redis::RedisError> {
-    for attempt in 0..max_attempts {
-        if let Some(token) = try_acquire_lock(con, key, ttl_ms).await? {
-            return Ok(Some(token));
-        }
-
-        if attempt + 1 < max_attempts {
-            sleep(Duration::from_millis(sleep_ms)).await;
-        }
-    }
-
-    Ok(None)
-}
-
-/// Releases a lock if (and only if) the lock value matches the provided token.
-///
-/// This avoids deleting someone else's lock if our lock expired and was re-acquired.
-/// This is not perfectly atomic without Lua, but is safe under the token check.
-///
-/// # Arguments
-/// * `con` - Multiplexed KeyDB connection used to issue commands.
-/// * `key` - Lock key name.
-/// * `token` - The token returned by `try_acquire_lock`.
-///
-/// # Returns
-/// * `Ok(true)` if the lock was deleted.
-/// * `Ok(false)` if the key was missing or owned by a different token.
-/// * `Err(redis::RedisError)` on KeyDB failure.
-pub(crate) async fn release_lock(
-    con: &mut redis::aio::MultiplexedConnection,
-    key: &str,
-    token: &str,
+    email_lc: &str,
+    account_id: u64,
 ) -> Result<bool, redis::RedisError> {
-    let current: Option<String> = con.get(key).await?;
-    if current.as_deref() != Some(token) {
+    let key = email_claim_key(email_lc);
+    let result: Option<String> = redis::cmd("SET")
+        .arg(key)
+        .arg(account_id)
+        .arg("NX")
+        .query_async(&mut *con)
+        .await?;
+    Ok(result.is_some())
+}
+
+/// Releases a claim key if (and only if) its stored account ID matches `account_id`.
+pub(crate) async fn release_claim_if_matches(
+    con: &mut redis::aio::MultiplexedConnection,
+    key: &str,
+    account_id: u64,
+) -> Result<bool, redis::RedisError> {
+    let current: Option<u64> = con.get(key).await?;
+    if current != Some(account_id) {
         return Ok(false);
     }
 
@@ -173,91 +113,19 @@ pub(crate) async fn release_lock(
     Ok(deleted > 0)
 }
 
-/// Checks whether an email or username already exists by scanning account hashes.
-///
-/// This is intentionally simple (no index keys) and is protected by a short-lived lock
-/// at the route layer to ensure uniqueness under concurrency.
-///
-/// # Arguments
-/// * `con` - Multiplexed KeyDB connection.
-/// * `email_lc` - Lowercased email to check.
-/// * `username_lc` - Lowercased username to check.
-///
-/// # Returns
-/// * `Ok(DuplicateCheckResult::Email)` if the email is already in use.
-/// * `Ok(DuplicateCheckResult::Username)` if the username is already in use.
-/// * `Ok(DuplicateCheckResult::None)` if neither is in use.
-/// * `Err(redis::RedisError)` on KeyDB failure.
-pub(crate) async fn check_account_duplicates_scan(
-    con: &mut redis::aio::MultiplexedConnection,
-    email_lc: &str,
-    username_lc: &str,
-) -> Result<DuplicateCheckResult, redis::RedisError> {
-    // Scan account hashes only: account:{id}
-    let keys = scan_keys_matching(con, "account:*", 200).await?;
-    for key in keys {
-        if key == "account:next_id" {
-            continue;
-        }
-        if parse_numeric_id("account:", &key).is_none() {
-            continue;
-        }
-
-        let (existing_email, existing_username): (Option<String>, Option<String>) =
-            redis::cmd("HMGET")
-                .arg(&key)
-                .arg(&["email", "username"])
-                .query_async(&mut *con)
-                .await?;
-
-        if existing_email.as_deref() == Some(email_lc) {
-            return Ok(DuplicateCheckResult::Email);
-        }
-        if existing_username.as_deref() == Some(username_lc) {
-            return Ok(DuplicateCheckResult::Username);
-        }
-    }
-
-    Ok(DuplicateCheckResult::None)
-}
-
-/// Resolves an account ID by scanning account hashes for a matching username.
-///
-/// # Arguments
-/// * `con` - Multiplexed KeyDB connection.
-/// * `username_lc` - Lowercased username to find.
-///
-/// # Returns
-/// * `Ok(Some(account_id))` if found.
-/// * `Ok(None)` if no account matches.
-/// * `Err(redis::RedisError)` on KeyDB failure.
-pub(crate) async fn find_account_id_by_username_scan(
+/// Resolves an account ID by username using the username claim key.
+pub(crate) async fn get_account_id_by_username(
     con: &mut redis::aio::MultiplexedConnection,
     username_lc: &str,
 ) -> Result<Option<u64>, redis::RedisError> {
-    let keys = scan_keys_matching(con, "account:*", 200).await?;
-    for key in keys {
-        if key == "account:next_id" {
-            continue;
-        }
-        let account_id = match parse_numeric_id("account:", &key) {
-            Some(value) => value,
-            None => continue,
-        };
-
-        let existing_username: Option<String> = con.hget(&key, "username").await?;
-        if existing_username.as_deref() == Some(username_lc) {
-            return Ok(Some(account_id));
-        }
-    }
-
-    Ok(None)
+    let key = username_claim_key(username_lc);
+    con.get(key).await
 }
 
 /// Inserts an account hash into KeyDB.
 ///
 /// This performs a single `HSET` with all fields. Uniqueness is expected to be enforced
-/// externally (by scanning + short-lived lock around the create flow).
+/// externally (by username/email claim keys).
 ///
 /// # Arguments
 /// * `con` - Multiplexed KeyDB connection.
