@@ -2,12 +2,25 @@ use crate::types;
 use log::info;
 use redis::AsyncCommands;
 
-/// Builds the claim key used to enforce uniqueness and resolve usernames to account IDs.
+/// Builds the KeyDB claim key used to enforce username uniqueness and resolve usernames
+/// to account IDs.
+///
+/// # Arguments
+/// * `username_lc` - Lowercased username.
+///
+/// # Returns
+/// * Claim key in the form `account:username:{username}`.
 fn username_claim_key(username_lc: &str) -> String {
     format!("account:username:{}", username_lc)
 }
 
-/// Builds the claim key used to enforce uniqueness for emails.
+/// Builds the KeyDB claim key used to enforce email uniqueness.
+///
+/// # Arguments
+/// * `email_lc` - Lowercased email.
+///
+/// # Returns
+/// * Claim key in the form `account:email:{email}`.
 fn email_claim_key(email_lc: &str) -> String {
     format!("account:email:{}", email_lc)
 }
@@ -35,6 +48,15 @@ fn parse_numeric_id(prefix: &str, key: &str) -> Option<u64> {
 /// Scans KeyDB for keys matching a glob-style pattern.
 ///
 /// Uses `SCAN` to avoid blocking the server like `KEYS` would.
+///
+/// # Arguments
+/// * `con` - Multiplexed KeyDB connection.
+/// * `pattern` - Glob-style match pattern (e.g. `character:*`).
+/// * `count` - SCAN count hint per iteration.
+///
+/// # Returns
+/// * `Ok(Vec<String>)` of matching key names.
+/// * `Err(redis::RedisError)` on KeyDB failure.
 async fn scan_keys_matching(
     con: &mut redis::aio::MultiplexedConnection,
     pattern: &str,
@@ -65,6 +87,16 @@ async fn scan_keys_matching(
 /// Attempts to claim a username for a given account ID.
 ///
 /// This uses a single atomic command: `SET account:username:{username} {account_id} NX`.
+///
+/// # Arguments
+/// * `con` - Multiplexed KeyDB connection.
+/// * `username_lc` - Lowercased username to claim.
+/// * `account_id` - Account ID to store as the claim value.
+///
+/// # Returns
+/// * `Ok(true)` if the claim was created.
+/// * `Ok(false)` if the claim already existed.
+/// * `Err(redis::RedisError)` on KeyDB failure.
 pub(crate) async fn claim_username(
     con: &mut redis::aio::MultiplexedConnection,
     username_lc: &str,
@@ -83,6 +115,16 @@ pub(crate) async fn claim_username(
 /// Attempts to claim an email for a given account ID.
 ///
 /// This uses a single atomic command: `SET account:email:{email} {account_id} NX`.
+///
+/// # Arguments
+/// * `con` - Multiplexed KeyDB connection.
+/// * `email_lc` - Lowercased email to claim.
+/// * `account_id` - Account ID to store as the claim value.
+///
+/// # Returns
+/// * `Ok(true)` if the claim was created.
+/// * `Ok(false)` if the claim already existed.
+/// * `Err(redis::RedisError)` on KeyDB failure.
 pub(crate) async fn claim_email(
     con: &mut redis::aio::MultiplexedConnection,
     email_lc: &str,
@@ -99,6 +141,18 @@ pub(crate) async fn claim_email(
 }
 
 /// Releases a claim key if (and only if) its stored account ID matches `account_id`.
+///
+/// This is used to safely clean up claim keys without deleting another account's claim.
+///
+/// # Arguments
+/// * `con` - Multiplexed KeyDB connection.
+/// * `key` - Claim key to release (e.g. `account:username:{username}`).
+/// * `account_id` - Account ID expected to be stored at `key`.
+///
+/// # Returns
+/// * `Ok(true)` if the key was deleted.
+/// * `Ok(false)` if the key did not match `account_id` or did not exist.
+/// * `Err(redis::RedisError)` on KeyDB failure.
 pub(crate) async fn release_claim_if_matches(
     con: &mut redis::aio::MultiplexedConnection,
     key: &str,
@@ -114,6 +168,15 @@ pub(crate) async fn release_claim_if_matches(
 }
 
 /// Resolves an account ID by username using the username claim key.
+///
+/// # Arguments
+/// * `con` - Multiplexed KeyDB connection.
+/// * `username_lc` - Lowercased username to resolve.
+///
+/// # Returns
+/// * `Ok(Some(account_id))` if the username is claimed.
+/// * `Ok(None)` if the username is not found.
+/// * `Err(redis::RedisError)` on KeyDB failure.
 pub(crate) async fn get_account_id_by_username(
     con: &mut redis::aio::MultiplexedConnection,
     username_lc: &str,
