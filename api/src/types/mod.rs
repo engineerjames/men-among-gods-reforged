@@ -80,13 +80,26 @@ pub(crate) fn race_from_u32(value: u32) -> Option<Race> {
     }
 }
 
+// TODO: Set max lengths for name and description, and enforce them in the database and API validation
 #[derive(Serialize)]
 pub struct CharacterSummary {
+    /// Unique character ID assigned by the database
     pub id: u64,
+
+    /// Character name
     pub name: String,
+
+    /// Character description
     pub description: String,
+
+    /// Male or Female
     pub sex: Sex,
+
+    /// Race of the character
     pub race: Race,
+
+    /// Server id
+    pub server_id: Option<u32>,
 }
 
 impl Default for CharacterSummary {
@@ -97,6 +110,7 @@ impl Default for CharacterSummary {
             description: String::new(),
             sex: Sex::Male,
             race: Race::Mercenary,
+            server_id: None,
         }
     }
 }

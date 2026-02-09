@@ -98,6 +98,7 @@ pub(crate) async fn create_new_character(
                     description: payload.description.unwrap_or_default(),
                     sex: payload.sex,
                     race: payload.race,
+                    server_id: None,
                 }),
             )
         }
@@ -263,6 +264,7 @@ pub(crate) async fn get_characters(
             description,
             sex,
             race,
+            server_id: None,
         });
     }
 
