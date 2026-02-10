@@ -59,6 +59,9 @@ struct ClientAssetsDir(#[allow(dead_code)] PathBuf);
 #[derive(States, Clone, Copy, PartialEq, Eq, Hash, Debug)]
 enum GameState {
     Loading,
+    AccountLogin,
+    AccountCreation,
+    CharacterSelection,
     LoggingIn,
     Gameplay,
     Menu,
@@ -239,6 +242,53 @@ fn main() {
         .add_systems(
             OnExit(GameState::Loading),
             states::loading::teardown_loading_ui,
+        )
+        //
+        // Account login state
+        //
+        .add_systems(
+            OnEnter(GameState::AccountLogin),
+            states::account_login::setup_account_login,
+        )
+        .add_systems(
+            EguiPrimaryContextPass,
+            states::account_login::run_account_login.run_if(in_state(GameState::AccountLogin)),
+        )
+        .add_systems(
+            OnExit(GameState::AccountLogin),
+            states::account_login::teardown_account_login,
+        )
+        //
+        // Account creation state
+        //
+        .add_systems(
+            OnEnter(GameState::AccountCreation),
+            states::account_creation::setup_account_creation,
+        )
+        .add_systems(
+            EguiPrimaryContextPass,
+            states::account_creation::run_account_creation
+                .run_if(in_state(GameState::AccountCreation)),
+        )
+        .add_systems(
+            OnExit(GameState::AccountCreation),
+            states::account_creation::teardown_account_creation,
+        )
+        //
+        // Character selection state
+        //
+        .add_systems(
+            OnEnter(GameState::CharacterSelection),
+            states::character_selection::setup_character_selection,
+        )
+        .add_systems(
+            EguiPrimaryContextPass,
+            states::character_selection::run_character_selection
+                .run_if(in_state(GameState::CharacterSelection)),
+        )
+        .add_systems(
+            OnExit(GameState::CharacterSelection),
+            states::character_selection::teardown_character_selection,
         )
         //
         // LoggingIn state

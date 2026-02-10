@@ -1,3 +1,4 @@
+pub mod account_api;
 pub mod client_commands;
 pub mod login;
 pub mod server_commands;
@@ -189,6 +190,7 @@ impl Plugin for NetworkPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<LoginStatus>()
             .init_resource::<NetworkRuntime>()
+            .init_resource::<account_api::ApiSession>()
             .add_message::<LoginRequested>()
             .configure_sets(Update, (NetworkSet::Receive, NetworkSet::Send).chain())
             .add_systems(
