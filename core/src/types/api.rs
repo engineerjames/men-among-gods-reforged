@@ -31,6 +31,17 @@ pub struct CreateAccountResponse {
     pub email: String,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CreateGameLoginTicketRequest {
+    pub character_id: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CreateGameLoginTicketResponse {
+    pub ticket: Option<u64>,
+    pub error: Option<String>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
 pub enum Sex {

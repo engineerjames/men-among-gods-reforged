@@ -10,8 +10,8 @@ use core::{
 };
 
 use crate::{
-    driver, enums, god::God, helpers, network_manager::NetworkManager, repository::Repository,
-    server::Server, state::State, types::cmap::CMap,
+    driver, enums, god::God, helpers, keydb, network_manager::NetworkManager,
+    repository::Repository, server::Server, state::State, types::cmap::CMap,
 };
 
 /// Port of `plr_logout(int cn, int player_id, LogoutReason reason)` from `svr_tick.cpp`
@@ -3201,6 +3201,30 @@ fn plr_login(nr: usize) {
         return;
     }
 
+    let login_ticket = Server::with_players(|players| players[nr].login_ticket);
+    let mut is_api_login = false;
+    if login_ticket != 0 {
+        is_api_login = true;
+        let cn = match resolve_api_login_character(nr, login_ticket) {
+            Ok(cn) => cn,
+            Err(reason) => {
+                log::warn!("API login denied: {:?}", reason);
+                plr_logout(0, nr, reason);
+                return;
+            }
+        };
+
+        let (pass1, pass2) =
+            Repository::with_characters(|characters| (characters[cn].pass1, characters[cn].pass2));
+
+        Server::with_players_mut(|players| {
+            players[nr].usnr = cn;
+            players[nr].pass1 = pass1;
+            players[nr].pass2 = pass2;
+            players[nr].login_ticket = 0;
+        });
+    }
+
     // get character number requested by player
     let cn = Server::with_players(|players| players[nr].usnr);
 
@@ -3210,38 +3234,40 @@ fn plr_login(nr: usize) {
         return;
     }
 
-    // password/pass1/pass2 check
-    let pass_ok = Repository::with_characters(|characters| {
-        let ch = &characters[cn];
-        let p1 = ch.pass1;
-        let p2 = ch.pass2;
-        let player_p1 = Server::with_players(|players| players[nr].pass1);
-        let player_p2 = Server::with_players(|players| players[nr].pass2);
-        p1 == player_p1 && p2 == player_p2
-    });
+    if !is_api_login {
+        // password/pass1/pass2 check
+        let pass_ok = Repository::with_characters(|characters| {
+            let ch = &characters[cn];
+            let p1 = ch.pass1;
+            let p2 = ch.pass2;
+            let player_p1 = Server::with_players(|players| players[nr].pass1);
+            let player_p2 = Server::with_players(|players| players[nr].pass2);
+            p1 == player_p1 && p2 == player_p2
+        });
 
-    if !pass_ok {
-        log::warn!("Login as {} denied (pass1/pass2)", cn);
-        plr_logout(0, nr, enums::LogoutReason::PasswordIncorrect);
-        return;
-    }
-
-    // If character has explicit password flag, compare stored passwd
-    let has_passwd_mismatch = Repository::with_characters(|characters| {
-        let ch = &characters[cn];
-        if (ch.flags & CharacterFlags::Passwd.bits()) != 0 {
-            let stored = ch.passwd;
-            let client = Server::with_players(|players| players[nr].passwd);
-            stored != client
-        } else {
-            false
+        if !pass_ok {
+            log::warn!("Login as {} denied (pass1/pass2)", cn);
+            plr_logout(0, nr, enums::LogoutReason::PasswordIncorrect);
+            return;
         }
-    });
 
-    if has_passwd_mismatch {
-        log::warn!("Login as {} denied (password)", cn);
-        plr_logout(0, nr, enums::LogoutReason::PasswordIncorrect);
-        return;
+        // If character has explicit password flag, compare stored passwd
+        let has_passwd_mismatch = Repository::with_characters(|characters| {
+            let ch = &characters[cn];
+            if (ch.flags & CharacterFlags::Passwd.bits()) != 0 {
+                let stored = ch.passwd;
+                let client = Server::with_players(|players| players[nr].passwd);
+                stored != client
+            } else {
+                false
+            }
+        });
+
+        if has_passwd_mismatch {
+            log::warn!("Login as {} denied (password)", cn);
+            plr_logout(0, nr, enums::LogoutReason::PasswordIncorrect);
+            return;
+        }
     }
 
     // Deleted account
@@ -3411,7 +3437,7 @@ fn plr_login(nr: usize) {
     // intro messages
     let intro1 = "Welcome to Men Among Gods, my friend!\n";
     let intro2 = "May your visit here be... interesting.\n";
-    let intro3 = " \n";
+    let intro3 = "\n";
     let intro4 = "Use #help (or /help) to get a listing of the text commands.\n";
 
     State::with(|state| {
@@ -3423,17 +3449,19 @@ fn plr_login(nr: usize) {
         state.do_character_log(cn, core::types::FontColor::Yellow, intro3);
     });
 
-    // do password change if provided
-    let needs_pass = Server::with_players(|players| players[nr].passwd[0] != 0);
-    if needs_pass {
-        Repository::with_characters(|characters| {
-            if (characters[cn].flags & CharacterFlags::Passwd.bits()) == 0 {
-                let pass = Server::with_players(|players| {
-                    c_string_to_str(&players[nr].passwd).to_string()
-                });
-                God::change_pass(cn, cn, &pass);
-            }
-        });
+    if !is_api_login {
+        // do password change if provided
+        let needs_pass = Server::with_players(|players| players[nr].passwd[0] != 0);
+        if needs_pass {
+            Repository::with_characters(|characters| {
+                if (characters[cn].flags & CharacterFlags::Passwd.bits()) == 0 {
+                    let pass = Server::with_players(|players| {
+                        c_string_to_str(&players[nr].passwd).to_string()
+                    });
+                    God::change_pass(cn, cn, &pass);
+                }
+            });
+        }
     }
 
     // If god, remind invisibility
@@ -3456,6 +3484,124 @@ fn plr_login(nr: usize) {
     State::with(|state| {
         state.do_announce(cn, 0, &format!("{} entered the game.\n", name));
     });
+}
+
+fn write_ascii_into_fixed(dst: &mut [u8], s: &str) {
+    dst.fill(0);
+    if dst.is_empty() {
+        return;
+    }
+
+    let mut i = 0usize;
+    for &b in s.as_bytes() {
+        if i >= dst.len().saturating_sub(1) {
+            break;
+        }
+
+        dst[i] = if (32..=126).contains(&b) { b } else { b' ' };
+        i += 1;
+    }
+}
+
+fn template_id_from_api_race_sex(race: core::types::api::Race, sex: core::types::api::Sex) -> i32 {
+    let is_male = matches!(sex, core::types::api::Sex::Male);
+
+    if is_male {
+        match race {
+            core::types::api::Race::Templar => 3,
+            core::types::api::Race::Mercenary => 2,
+            core::types::api::Race::Harakim => 4,
+            core::types::api::Race::SeyanDu => 13,
+            core::types::api::Race::ArchTemplar => 544,
+            core::types::api::Race::ArchHarakim => 545,
+            core::types::api::Race::Sorcerer => 546,
+            core::types::api::Race::Warrior => 547,
+        }
+    } else {
+        match race {
+            core::types::api::Race::Templar => 77,
+            core::types::api::Race::Mercenary => 76,
+            core::types::api::Race::Harakim => 78,
+            core::types::api::Race::SeyanDu => 79,
+            core::types::api::Race::ArchTemplar => 549,
+            core::types::api::Race::ArchHarakim => 550,
+            core::types::api::Race::Sorcerer => 551,
+            core::types::api::Race::Warrior => 552,
+        }
+    }
+}
+
+fn resolve_api_login_character(nr: usize, login_ticket: u64) -> Result<usize, enums::LogoutReason> {
+    let character_id = match keydb::consume_login_ticket(login_ticket) {
+        Ok(Some(value)) => value,
+        Ok(None) => {
+            log::warn!("API login ticket not found or expired");
+            return Err(enums::LogoutReason::PasswordIncorrect);
+        }
+        Err(err) => {
+            log::error!("KeyDB ticket consume failed: {}", err);
+            return Err(enums::LogoutReason::Failure);
+        }
+    };
+
+    let character = match keydb::load_character(character_id) {
+        Ok(Some(value)) => value,
+        Ok(None) => {
+            log::warn!("API character {} not found", character_id);
+            return Err(enums::LogoutReason::PasswordIncorrect);
+        }
+        Err(err) => {
+            log::error!("KeyDB character load failed: {}", err);
+            return Err(enums::LogoutReason::Failure);
+        }
+    };
+
+    let mut cn = None;
+    if let Some(server_id) = character.server_id {
+        let candidate = server_id as usize;
+        if candidate > 0
+            && candidate < core::constants::MAXCHARS
+            && Repository::with_characters(|characters| {
+                characters[candidate].used != core::constants::USE_EMPTY
+            })
+        {
+            cn = Some(candidate);
+        }
+    }
+
+    let cn = match cn {
+        Some(value) => value,
+        None => {
+            let template_id = template_id_from_api_race_sex(character.race, character.sex);
+            let maybe_cn = God::create_char(template_id as usize, true);
+            let cn = match maybe_cn {
+                Some(value) => value as usize,
+                None => {
+                    log::error!("Failed to create character for API id {}", character_id);
+                    return Err(enums::LogoutReason::Failure);
+                }
+            };
+
+            Repository::with_characters_mut(|characters| {
+                write_ascii_into_fixed(&mut characters[cn].name, &character.name);
+                characters[cn].reference = characters[cn].name;
+                write_ascii_into_fixed(&mut characters[cn].description, &character.description);
+                characters[cn].player = nr as i32;
+            });
+
+            cn
+        }
+    };
+
+    if let Err(err) = keydb::set_character_server_id(character_id, cn as u32) {
+        log::warn!(
+            "Failed to persist server_id for API character {}: {}",
+            character_id,
+            err
+        );
+    }
+
+    Ok(cn)
 }
 
 /// Port of `plr_change` from `svr_tick.cpp`
@@ -4828,6 +4974,9 @@ pub fn plr_cmd(nr: usize) {
         core::constants::CL_LOGIN => {
             plr_challenge_login(nr);
         }
+        core::constants::CL_API_LOGIN => {
+            plr_challenge_api_login(nr);
+        }
         core::constants::CL_CMD_UNIQUE => {
             plr_unique(nr);
             return;
@@ -5275,6 +5424,62 @@ fn plr_challenge_login(nr: usize) {
         "Player logged in as character index={} (players index={})",
         cn,
         nr
+    );
+
+    send_mod(nr);
+}
+
+/// Handle API ticket based login challenge.
+///
+/// The client sends `CL_API_LOGIN` with a u64 one-time ticket in the payload.
+/// We store the ticket on the player slot and then proceed with the normal
+/// `SV_CHALLENGE` / `CL_CHALLENGE` handshake.
+fn plr_challenge_api_login(nr: usize) {
+    log::debug!("Player {} challenge_api_login", nr);
+
+    // Generate random challenge value (0x3fffffff max, ensure non-zero)
+    let mut tmp = helpers::random_mod(0x3fffffff_u32 - 1) + 1;
+    if tmp == 0 {
+        tmp = 42;
+    }
+
+    let ticket = Server::with_players(|players| {
+        u64::from_le_bytes([
+            players[nr].inbuf[1],
+            players[nr].inbuf[2],
+            players[nr].inbuf[3],
+            players[nr].inbuf[4],
+            players[nr].inbuf[5],
+            players[nr].inbuf[6],
+            players[nr].inbuf[7],
+            players[nr].inbuf[8],
+        ])
+    });
+
+    let ticker = Repository::with_globals(|globals| globals.ticker as u32);
+    Server::with_players_mut(|players| {
+        players[nr].challenge = tmp;
+        players[nr].state = core::constants::ST_LOGIN_CHALLENGE;
+        players[nr].lasttick = ticker;
+        players[nr].login_ticket = ticket;
+        // Clear legacy credential fragments.
+        players[nr].usnr = 0;
+        players[nr].pass1 = 0;
+        players[nr].pass2 = 0;
+    });
+
+    // Send challenge to client
+    let mut buf: [u8; 16] = [0; 16];
+    buf[0] = core::constants::SV_CHALLENGE;
+    buf[1..5].copy_from_slice(&tmp.to_le_bytes());
+    NetworkManager::with(|network| {
+        network.csend(nr, &buf, 16);
+    });
+
+    log::info!(
+        "Player {} api login challenge issued (ticket={})",
+        nr,
+        ticket
     );
 
     send_mod(nr);

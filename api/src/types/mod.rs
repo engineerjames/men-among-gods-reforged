@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 
 pub use core::types::api::{
     CharacterSummary, CreateAccountRequest, CreateAccountResponse, CreateCharacterRequest,
-    GetCharactersResponse, LoginRequest, LoginResponse, Race, Sex,
+    CreateGameLoginTicketRequest, CreateGameLoginTicketResponse, GetCharactersResponse,
+    LoginRequest, LoginResponse, Race, Sex,
 };
 
 #[derive(Deserialize, Serialize)]

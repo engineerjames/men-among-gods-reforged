@@ -8,7 +8,8 @@ use reqwest::blocking::Client;
 use reqwest::StatusCode;
 
 use mag_core::types::api::{
-    CreateAccountRequest, CreateAccountResponse, CreateCharacterRequest, GetCharactersResponse,
+    CreateAccountRequest, CreateAccountResponse, CreateCharacterRequest,
+    CreateGameLoginTicketRequest, CreateGameLoginTicketResponse, GetCharactersResponse,
     LoginRequest, LoginResponse,
 };
 
@@ -309,4 +310,47 @@ pub fn delete_character(base_url: &str, token: &str, character_id: u64) -> Resul
     };
 
     Err(format!("{message} ({})", status.as_u16()))
+}
+
+/// Creates a short-lived, one-time login ticket for the game server.
+///
+/// The returned ticket is meant to be sent over the TCP login handshake using `CL_API_LOGIN`.
+pub fn create_game_login_ticket(
+    base_url: &str,
+    token: &str,
+    character_id: u64,
+) -> Result<u64, String> {
+    let client = Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|err| format!("Failed to build HTTP client: {err}"))?;
+
+    let url = format!("{}/game/login_ticket", base_url.trim_end_matches('/'));
+    let resp = client
+        .post(url)
+        .bearer_auth(token)
+        .json(&CreateGameLoginTicketRequest { character_id })
+        .send()
+        .map_err(|err| format!("Create login ticket request failed: {err}"))?;
+
+    let status = resp.status();
+    let body: CreateGameLoginTicketResponse = resp
+        .json()
+        .map_err(|err| format!("Failed to parse create ticket response: {err}"))?;
+
+    if status.is_success() {
+        if let Some(ticket) = body.ticket {
+            return Ok(ticket);
+        }
+        return Err("Ticket creation failed: empty ticket".to_string());
+    }
+
+    let fallback = match status {
+        StatusCode::UNAUTHORIZED => "Unauthorized",
+        StatusCode::BAD_REQUEST => "Invalid request",
+        StatusCode::INTERNAL_SERVER_ERROR => "Server error",
+        _ => "Ticket creation failed",
+    };
+
+    Err(body.error.unwrap_or_else(|| fallback.to_string()))
 }

@@ -159,34 +159,47 @@ fn login_handshake(
     req: &LoginRequested,
     event_tx: &mpsc::Sender<NetworkEvent>,
 ) -> Result<(), String> {
-    // Mirror `socket.c`:
-    // 1) if a password was provided, send CL_PASSWD
-    // 2) if we have stored credentials (user_id != 0), send CL_LOGIN; else send CL_NEWLOGIN
-
-    if !req.password.is_empty() {
-        log::info!("Sending password command");
-        let pw = client_commands::ClientCommand::new_password(req.password.as_bytes());
+    // Custom API ticket login path (account-managed characters).
+    if let Some(ticket) = req.login_ticket {
+        log::info!("Sending api login command (CL_API_LOGIN)");
+        let cmd = client_commands::ClientCommand::new_api_login(ticket);
         stream
-            .write_all(&pw.to_bytes())
+            .write_all(&cmd.to_bytes())
+            .map_err(|e| format!("Send failed: {e}"))?;
+    } else {
+        // Mirror `socket.c`:
+        // 1) if a password was provided, send CL_PASSWD
+        // 2) if we have stored credentials (user_id != 0), send CL_LOGIN; else send CL_NEWLOGIN
+
+        if !req.password.is_empty() {
+            log::info!("Sending password command");
+            let pw = client_commands::ClientCommand::new_password(req.password.as_bytes());
+            stream
+                .write_all(&pw.to_bytes())
+                .map_err(|e| format!("Send failed: {e}"))?;
+        }
+
+        let (login_pass1, login_pass2) = if req.password.is_empty() {
+            (req.pass1, req.pass2)
+        } else {
+            pass_hash_from_password(&req.password)
+        };
+
+        let login_command = if req.user_id != 0 {
+            log::info!("Sending existing login command (CL_LOGIN)");
+            client_commands::ClientCommand::new_existing_login(
+                req.user_id,
+                login_pass1,
+                login_pass2,
+            )
+        } else {
+            log::info!("Sending newplayer login command (CL_NEWLOGIN)");
+            client_commands::ClientCommand::new_newplayer_login()
+        };
+        stream
+            .write_all(&login_command.to_bytes())
             .map_err(|e| format!("Send failed: {e}"))?;
     }
-
-    let (login_pass1, login_pass2) = if req.password.is_empty() {
-        (req.pass1, req.pass2)
-    } else {
-        pass_hash_from_password(&req.password)
-    };
-
-    let login_command = if req.user_id != 0 {
-        log::info!("Sending existing login command (CL_LOGIN)");
-        client_commands::ClientCommand::new_existing_login(req.user_id, login_pass1, login_pass2)
-    } else {
-        log::info!("Sending newplayer login command (CL_NEWLOGIN)");
-        client_commands::ClientCommand::new_newplayer_login()
-    };
-    stream
-        .write_all(&login_command.to_bytes())
-        .map_err(|e| format!("Send failed: {e}"))?;
 
     log::info!("Waiting for server response to login command");
     let login_response = get_server_response(stream).map_err(|e| {

@@ -344,6 +344,24 @@ pub(crate) async fn update_character(
     cmd.query_async::<()>(&mut *con).await
 }
 
+/// Sets the `server_id` field for a character hash.
+///
+/// This is written by the game server once it assigns an internal character index.
+#[allow(dead_code)]
+pub(crate) async fn set_character_server_id(
+    con: &mut redis::aio::MultiplexedConnection,
+    character_id: u64,
+    server_id: u32,
+) -> Result<(), redis::RedisError> {
+    let character_key = format!("character:{}", character_id);
+    redis::cmd("HSET")
+        .arg(&character_key)
+        .arg("server_id")
+        .arg(server_id)
+        .query_async::<()>(&mut *con)
+        .await
+}
+
 /// Deletes a character hash from KeyDB.
 ///
 /// # Arguments
@@ -445,13 +463,17 @@ pub(crate) async fn list_characters_for_account_scan(
             None => continue,
         };
 
+        let server_id = character_map
+            .get("server_id")
+            .and_then(|value| value.parse::<u32>().ok());
+
         characters.push(types::CharacterSummary {
             id: character_id,
             name,
             description,
             sex,
             race,
-            server_id: None,
+            server_id,
         });
     }
 

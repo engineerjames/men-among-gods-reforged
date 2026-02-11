@@ -337,6 +337,7 @@ dependencies = [
  "lazy-limit",
  "lazy_static",
  "log",
+ "rand 0.8.5",
  "real",
  "redis",
  "regex",
@@ -6496,6 +6497,7 @@ dependencies = [
  "log",
  "parking_lot",
  "rand 0.8.5",
+ "redis",
 ]
 
 [[package]]

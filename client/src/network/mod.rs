@@ -40,6 +40,10 @@ pub struct LoginRequested {
     pub pass1: u32,
     /// Mirrors `okey.pass2` from the original client.
     pub pass2: u32,
+
+    /// When set, the client will use the custom API ticket login flow instead of
+    /// legacy per-character credentials.
+    pub login_ticket: Option<u64>,
 }
 
 #[derive(Resource, Debug, Clone)]

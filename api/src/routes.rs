@@ -11,6 +11,8 @@ use axum::{extract::Path, extract::State, http::StatusCode, Json};
 use jsonwebtoken::EncodingKey;
 use jsonwebtoken::Header;
 use log::{error, info, warn};
+use rand::rngs::OsRng;
+use rand::RngCore;
 use redis::AsyncCommands;
 
 /// Creates a new character for the authenticated account.
@@ -193,6 +195,154 @@ pub(crate) async fn get_characters(
         StatusCode::OK,
         Json(types::GetCharactersResponse { characters }),
     )
+}
+
+/// Creates a short-lived, one-time login ticket for the game server.
+///
+/// The client uses its account JWT to mint a ticket for a specific character ID.
+/// The game server later consumes the ticket from KeyDB during the TCP login handshake.
+pub(crate) async fn create_game_login_ticket(
+    State(mut con): State<redis::aio::MultiplexedConnection>,
+    headers: axum::http::HeaderMap,
+    Json(payload): Json<types::CreateGameLoginTicketRequest>,
+) -> (StatusCode, Json<types::CreateGameLoginTicketResponse>) {
+    let token = match helpers::get_token_from_headers(&headers).await {
+        Some(value) => value,
+        None => {
+            warn!("Unauthorized access attempt: missing Authorization header");
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(types::CreateGameLoginTicketResponse {
+                    ticket: None,
+                    error: Some("Unauthorized".to_string()),
+                }),
+            );
+        }
+    };
+
+    let token_data = match helpers::verify_token(&token).await {
+        Ok(token_data) => token_data,
+        Err(err) => {
+            warn!("Unauthorized access attempt: {}", err);
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(types::CreateGameLoginTicketResponse {
+                    ticket: None,
+                    error: Some("Unauthorized".to_string()),
+                }),
+            );
+        }
+    };
+
+    let username_lc = token_data.claims.sub.trim().to_lowercase();
+    let account_id = match pipelines::get_account_id_by_username(&mut con, &username_lc).await {
+        Ok(Some(value)) => value,
+        Ok(None) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(types::CreateGameLoginTicketResponse {
+                    ticket: None,
+                    error: Some("Unauthorized".to_string()),
+                }),
+            );
+        }
+        Err(err) => {
+            error!("Redis read failed: {}", err);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(types::CreateGameLoginTicketResponse {
+                    ticket: None,
+                    error: Some("Server error".to_string()),
+                }),
+            );
+        }
+    };
+
+    let owner_id = match pipelines::get_character_account_id(&mut con, payload.character_id).await {
+        Ok(value) => value,
+        Err(err) => {
+            error!("Redis read failed: {}", err);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(types::CreateGameLoginTicketResponse {
+                    ticket: None,
+                    error: Some("Server error".to_string()),
+                }),
+            );
+        }
+    };
+
+    if owner_id != Some(account_id) {
+        warn!(
+            "Create game login ticket rejected: account {} does not own character {}",
+            account_id, payload.character_id
+        );
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(types::CreateGameLoginTicketResponse {
+                ticket: None,
+                error: Some("Unauthorized".to_string()),
+            }),
+        );
+    }
+
+    // 30 second, one-time ticket stored as `SET game_login_ticket:{ticket} {character_id} EX 30 NX`.
+    // Uses a random u64 to make guessing infeasible.
+    let mut attempts = 0u32;
+    loop {
+        attempts += 1;
+        if attempts > 10 {
+            error!("Failed to allocate a unique login ticket after retries");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(types::CreateGameLoginTicketResponse {
+                    ticket: None,
+                    error: Some("Server error".to_string()),
+                }),
+            );
+        }
+
+        let mut ticket = OsRng.next_u64();
+        if ticket == 0 {
+            ticket = 1;
+        }
+        let key = format!("game_login_ticket:{}", ticket);
+        let result: Option<String> = match redis::cmd("SET")
+            .arg(&key)
+            .arg(payload.character_id)
+            .arg("EX")
+            .arg(30)
+            .arg("NX")
+            .query_async(&mut con)
+            .await
+        {
+            Ok(value) => value,
+            Err(err) => {
+                error!("Redis write failed: {}", err);
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(types::CreateGameLoginTicketResponse {
+                        ticket: None,
+                        error: Some("Server error".to_string()),
+                    }),
+                );
+            }
+        };
+
+        if result.is_some() {
+            info!(
+                "Issued game login ticket for account {} character {}",
+                account_id, payload.character_id
+            );
+            return (
+                StatusCode::OK,
+                Json(types::CreateGameLoginTicketResponse {
+                    ticket: Some(ticket),
+                    error: None,
+                }),
+            );
+        }
+    }
 }
 
 /// Creates a new account and registers minimal claim keys for username/email uniqueness.

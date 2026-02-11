@@ -11,6 +11,8 @@ use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::network::account_api::{
     self, ApiSession, CharacterRace, CharacterSex, CharacterSummary,
 };
+use crate::network::LoginRequested;
+use crate::settings::UserSettingsState;
 use crate::GameState;
 
 #[derive(Resource, Debug, Default)]
@@ -31,6 +33,11 @@ pub struct CharacterSelectionUiState {
     delete_is_busy: bool,
     delete_task: Option<Task<()>>,
     delete_rx: Option<Arc<Mutex<mpsc::Receiver<Result<(), String>>>>>,
+
+    login_is_busy: bool,
+    login_task: Option<Task<()>>,
+    login_rx: Option<Arc<Mutex<mpsc::Receiver<Result<u64, String>>>>>,
+    login_target: Option<(u64, i32)>,
 }
 
 pub fn setup_character_selection(mut commands: Commands) {
@@ -46,6 +53,8 @@ pub fn run_character_selection(
     mut ui_state: ResMut<CharacterSelectionUiState>,
     mut api_session: ResMut<ApiSession>,
     mut next_state: ResMut<NextState<GameState>>,
+    user_settings: Res<UserSettingsState>,
+    mut login_ev: MessageWriter<LoginRequested>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
@@ -113,6 +122,75 @@ pub fn run_character_selection(
                 ui_state.delete_error = Some("Delete failed: channel locked".to_string());
             }
             DeleteStatus::Empty => {}
+        }
+    }
+
+    let login_rx_arc = ui_state.login_rx.as_ref().map(Arc::clone);
+    if let Some(login_rx_arc) = login_rx_arc {
+        enum LoginTicketStatus {
+            Empty,
+            Disconnected,
+            Locked,
+            Ready(Result<u64, String>),
+        }
+
+        let status = match login_rx_arc.lock() {
+            Ok(rx) => match rx.try_recv() {
+                Ok(result) => LoginTicketStatus::Ready(result),
+                Err(mpsc::TryRecvError::Disconnected) => LoginTicketStatus::Disconnected,
+                Err(mpsc::TryRecvError::Empty) => LoginTicketStatus::Empty,
+            },
+            Err(_) => LoginTicketStatus::Locked,
+        };
+
+        match status {
+            LoginTicketStatus::Ready(result) => {
+                ui_state.login_rx = None;
+                ui_state.login_task = None;
+                ui_state.login_is_busy = false;
+
+                match result {
+                    Ok(ticket) => {
+                        let Some((_character_id, race_int)) = ui_state.login_target.take() else {
+                            ui_state.last_error = Some("Missing login target".to_string());
+                            return;
+                        };
+
+                        login_ev.write(LoginRequested {
+                            host: user_settings.settings.default_server_ip.clone(),
+                            port: user_settings.settings.default_server_port,
+                            username: String::new(),
+                            password: String::new(),
+                            race: race_int,
+
+                            user_id: 0,
+                            pass1: 0,
+                            pass2: 0,
+
+                            login_ticket: Some(ticket),
+                        });
+
+                        // Transition to the login state; the network task will pick up the event.
+                        next_state.set(GameState::LoggingIn);
+                    }
+                    Err(err) => {
+                        ui_state.last_error = Some(err);
+                    }
+                }
+            }
+            LoginTicketStatus::Disconnected => {
+                ui_state.login_rx = None;
+                ui_state.login_task = None;
+                ui_state.login_is_busy = false;
+                ui_state.last_error = Some("Ticket request failed: channel closed".to_string());
+            }
+            LoginTicketStatus::Locked => {
+                ui_state.login_rx = None;
+                ui_state.login_task = None;
+                ui_state.login_is_busy = false;
+                ui_state.last_error = Some("Ticket request failed: channel locked".to_string());
+            }
+            LoginTicketStatus::Empty => {}
         }
     }
 
@@ -277,7 +355,44 @@ pub fn run_character_selection(
                 .add(egui::Button::new("Continue to game login").min_size([200.0, 32.0].into()))
                 .clicked()
             {
-                next_state.set(GameState::LoggingIn);
+                if ui_state.login_is_busy {
+                    ui_state.last_error = Some("Login already in progress".to_string());
+                } else {
+                    let Some(token) = api_session.token.as_deref() else {
+                        ui_state.last_error = Some("Missing account session token".to_string());
+                        return;
+                    };
+
+                    let Some(character_id) = ui_state.selected_character_id else {
+                        ui_state.last_error = Some("Select a character first".to_string());
+                        return;
+                    };
+
+                    let Some(selected) = ui_state.characters.iter().find(|c| c.id == character_id)
+                    else {
+                        ui_state.last_error = Some("Selected character not found".to_string());
+                        return;
+                    };
+
+                    let race_int = login_race_integer(selected.sex, selected.race);
+                    ui_state.login_target = Some((character_id, race_int));
+
+                    ui_state.login_is_busy = true;
+                    ui_state.last_error = None;
+
+                    let base_url = api_session.base_url.clone();
+                    let token = token.to_string();
+                    let (tx, rx) = mpsc::channel();
+                    let rx = Arc::new(Mutex::new(rx));
+                    let task = IoTaskPool::get().spawn(async move {
+                        let result =
+                            account_api::create_game_login_ticket(&base_url, &token, character_id);
+                        let _ = tx.send(result);
+                    });
+
+                    ui_state.login_task = Some(task);
+                    ui_state.login_rx = Some(rx);
+                }
             }
 
             if ui
@@ -388,5 +503,33 @@ fn format_sex(sex: CharacterSex) -> &'static str {
     match sex {
         CharacterSex::Male => "Male",
         CharacterSex::Female => "Female",
+    }
+}
+
+fn login_race_integer(sex: CharacterSex, race: CharacterRace) -> i32 {
+    let is_male = matches!(sex, CharacterSex::Male);
+
+    if is_male {
+        match race {
+            CharacterRace::Templar => 3,
+            CharacterRace::Mercenary => 2,
+            CharacterRace::Harakim => 4,
+            CharacterRace::SeyanDu => 13,
+            CharacterRace::ArchTemplar => 544,
+            CharacterRace::ArchHarakim => 545,
+            CharacterRace::Sorcerer => 546,
+            CharacterRace::Warrior => 547,
+        }
+    } else {
+        match race {
+            CharacterRace::Templar => 77,
+            CharacterRace::Mercenary => 76,
+            CharacterRace::Harakim => 78,
+            CharacterRace::SeyanDu => 79,
+            CharacterRace::ArchTemplar => 549,
+            CharacterRace::ArchHarakim => 550,
+            CharacterRace::Sorcerer => 551,
+            CharacterRace::Warrior => 552,
+        }
     }
 }

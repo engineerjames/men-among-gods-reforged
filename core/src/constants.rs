@@ -660,6 +660,11 @@ pub const CL_PASSWD: u8 = 33;
 /// - u32 sequence @ +1
 /// - u32 client_time_ms @ +5
 pub const CL_PING: u8 = 34;
+/// Account-managed login using an API-issued one-time ticket (custom extension).
+///
+/// Payload (little-endian):
+/// - u64 ticket @ +1
+pub const CL_API_LOGIN: u8 = 35;
 pub const CL_CMD_CTICK: u8 = 255;
 
 // =============================================================================

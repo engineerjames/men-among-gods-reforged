@@ -16,6 +16,7 @@ pub mod area;
 pub mod circular_buffer;
 pub mod constants;
 pub mod encrypt;
+pub mod race;
 pub mod ranks;
 pub mod stat_buffer;
 pub mod string_operations;
