@@ -32,3 +32,5 @@ profile.json.gz
 dist/**
 
 .env
+*.mag
+*.rdb

@@ -4,7 +4,10 @@ use std::time::Duration;
 use bevy::prelude::Resource;
 use reqwest::blocking::Client;
 use reqwest::StatusCode;
-use serde::{Deserialize, Serialize};
+
+use mag_core::types::api::{
+    CreateAccountRequest, CreateAccountResponse, LoginRequest, LoginResponse,
+};
 
 #[derive(Debug, Default, Clone, Resource)]
 pub struct ApiSession {
@@ -20,32 +23,6 @@ impl ApiSession {
             self.base_url = default_api_base_url();
         }
     }
-}
-
-#[derive(Serialize)]
-struct LoginRequest {
-    username: String,
-    password: String,
-}
-
-#[derive(Deserialize)]
-struct LoginResponse {
-    token: String,
-}
-
-#[derive(Serialize)]
-struct CreateAccountRequest {
-    email: String,
-    username: String,
-    password: String,
-}
-
-#[derive(Deserialize)]
-struct CreateAccountResponse {
-    id: Option<u64>,
-    error: Option<String>,
-    username: String,
-    email: String,
 }
 
 pub fn default_api_base_url() -> String {

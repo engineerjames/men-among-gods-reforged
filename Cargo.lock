@@ -2520,6 +2520,7 @@ dependencies = [
  "flate2",
  "log",
  "log4rs",
+ "serde",
 ]
 
 [[package]]
