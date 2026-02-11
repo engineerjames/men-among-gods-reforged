@@ -212,14 +212,21 @@ sequenceDiagram
     end
 
     C->>GS: TCP connect :5555
-    Note over C,GS: First time entering the game server for this character
-    C->>GS: Login handshake (new player flow)
-    GS->>GS: Create/allocate in-game character slot in char.dat (cn)
-    GS-->>C: SV_NEWPLAYER { cn, pass1, pass2 } + SV_TICK
+    Note over C,API: Client mints a short-lived, one-time game login ticket
+    C->>API: POST /game/login_ticket (Authorization: Bearer JWT, character_id)
+    API->>DB: SET game_login_ticket:{ticket} {character_id} EX 30 NX
+    API-->>C: 200 { ticket }
 
-    GS->>DB: HSET character:{character_id} server_id=cn
-    Note over DB,API: server_id can now be returned to the client
-    Note over C,GS: Client stores (cn, pass1, pass2) for CL_LOGIN
+    Note over C,GS: Ticket is sent over the TCP login handshake
+    C->>GS: CL_API_LOGIN { ticket }
+    GS-->>C: SV_CHALLENGE
+    C->>GS: CL_CHALLENGE
+
+    GS->>DB: GET+DEL game_login_ticket:{ticket} (atomic consume)
+    GS->>DB: HGETALL character:{character_id}
+    GS->>GS: Create in-game character slot if needed and set name/description
+    GS->>DB: HSET character:{character_id} server_id={cn}
+    GS-->>C: SV_LOGIN_OK + SV_TICK
 ```
 
 ### Subsequent Login Flow
@@ -240,7 +247,17 @@ sequenceDiagram
     API-->>C: 200 { characters: [ ... server_id=cn ... ] }
 
     C->>GS: TCP connect :5555
-    C->>GS: Login handshake (existing player flow: CL_LOGIN cn + pass1/pass2)
-    GS->>GS: Load/validate character cn from char.dat
-    GS-->>C: SV_LOGINOK + SV_TICK
+    Note over C,API: Client mints a fresh one-time ticket each login
+    C->>API: POST /game/login_ticket (Authorization: Bearer JWT, character_id)
+    API->>DB: SET game_login_ticket:{ticket} {character_id} EX 30 NX
+    API-->>C: 200 { ticket }
+
+    C->>GS: CL_API_LOGIN { ticket }
+    GS-->>C: SV_CHALLENGE
+    C->>GS: CL_CHALLENGE
+
+    GS->>DB: GET+DEL game_login_ticket:{ticket} (atomic consume)
+    GS->>DB: HGETALL character:{character_id}
+    Note over GS: If character has a valid server_id, reuse that slot
+    GS-->>C: SV_LOGIN_OK + SV_TICK
 ```
