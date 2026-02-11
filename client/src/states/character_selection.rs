@@ -23,6 +23,14 @@ pub struct CharacterSelectionUiState {
     success_notice: Option<String>,
     pending_task: Option<Task<()>>,
     pending_rx: Option<Arc<Mutex<mpsc::Receiver<Result<Vec<CharacterSummary>, String>>>>>,
+    delete_dialog_open: bool,
+    delete_confirm_input: String,
+    delete_target_id: Option<u64>,
+    delete_target_name: Option<String>,
+    delete_error: Option<String>,
+    delete_is_busy: bool,
+    delete_task: Option<Task<()>>,
+    delete_rx: Option<Arc<Mutex<mpsc::Receiver<Result<(), String>>>>>,
 }
 
 pub fn setup_character_selection(mut commands: Commands) {
@@ -49,6 +57,63 @@ pub fn run_character_selection(
         ui_state.has_loaded = false;
         ui_state.characters.clear();
         ui_state.selected_character_id = None;
+    }
+
+    let delete_rx_arc = ui_state.delete_rx.as_ref().map(Arc::clone);
+    if let Some(delete_rx_arc) = delete_rx_arc {
+        enum DeleteStatus {
+            Empty,
+            Disconnected,
+            Locked,
+            Ready(Result<(), String>),
+        }
+
+        let status = match delete_rx_arc.lock() {
+            Ok(rx) => match rx.try_recv() {
+                Ok(result) => DeleteStatus::Ready(result),
+                Err(mpsc::TryRecvError::Disconnected) => DeleteStatus::Disconnected,
+                Err(mpsc::TryRecvError::Empty) => DeleteStatus::Empty,
+            },
+            Err(_) => DeleteStatus::Locked,
+        };
+
+        match status {
+            DeleteStatus::Ready(result) => {
+                ui_state.delete_rx = None;
+                ui_state.delete_task = None;
+                ui_state.delete_is_busy = false;
+
+                match result {
+                    Ok(()) => {
+                        ui_state.delete_dialog_open = false;
+                        ui_state.delete_confirm_input.clear();
+                        ui_state.delete_target_id = None;
+                        ui_state.delete_target_name = None;
+                        ui_state.delete_error = None;
+                        ui_state.success_notice = Some("Character deleted".to_string());
+                        ui_state.has_loaded = false;
+                        ui_state.characters.clear();
+                        ui_state.selected_character_id = None;
+                    }
+                    Err(err) => {
+                        ui_state.delete_error = Some(err);
+                    }
+                }
+            }
+            DeleteStatus::Disconnected => {
+                ui_state.delete_rx = None;
+                ui_state.delete_task = None;
+                ui_state.delete_is_busy = false;
+                ui_state.delete_error = Some("Delete failed: channel closed".to_string());
+            }
+            DeleteStatus::Locked => {
+                ui_state.delete_rx = None;
+                ui_state.delete_task = None;
+                ui_state.delete_is_busy = false;
+                ui_state.delete_error = Some("Delete failed: channel locked".to_string());
+            }
+            DeleteStatus::Empty => {}
+        }
     }
 
     let rx_arc = ui_state.pending_rx.as_ref().map(Arc::clone);
@@ -125,6 +190,11 @@ pub fn run_character_selection(
         ui_state.pending_rx = Some(rx);
     }
 
+    let selected_character_name = ui_state
+        .selected_character_id
+        .and_then(|id| ui_state.characters.iter().find(|c| c.id == id))
+        .map(|c| c.name.clone());
+
     egui::Window::new("Character Selection")
         .default_height(TARGET_HEIGHT)
         .default_width(TARGET_WIDTH)
@@ -187,6 +257,22 @@ pub fn run_character_selection(
                 next_state.set(GameState::CharacterCreation);
             }
 
+            let delete_enabled =
+                ui_state.selected_character_id.is_some() && !ui_state.delete_is_busy;
+            if ui
+                .add_enabled(
+                    delete_enabled,
+                    egui::Button::new("Delete selected character").min_size([200.0, 32.0].into()),
+                )
+                .clicked()
+            {
+                ui_state.delete_dialog_open = true;
+                ui_state.delete_confirm_input.clear();
+                ui_state.delete_error = None;
+                ui_state.delete_target_id = ui_state.selected_character_id;
+                ui_state.delete_target_name = selected_character_name.clone();
+            }
+
             if ui
                 .add(egui::Button::new("Continue to game login").min_size([200.0, 32.0].into()))
                 .clicked()
@@ -204,6 +290,85 @@ pub fn run_character_selection(
                 next_state.set(GameState::AccountLogin);
             }
         });
+
+    if ui_state.delete_dialog_open {
+        let target_name = ui_state
+            .delete_target_name
+            .clone()
+            .unwrap_or_else(|| "<unknown>".to_string());
+        let confirm_input = ui_state.delete_confirm_input.clone();
+        let confirm_matches = confirm_input.trim() == target_name;
+
+        egui::Window::new("Confirm Delete")
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.label("Type the full character name to confirm deletion:");
+                ui.label(format!("Character: {target_name}"));
+
+                if let Some(err) = ui_state.delete_error.as_deref() {
+                    ui.colored_label(egui::Color32::LIGHT_RED, err);
+                }
+
+                ui.add_space(8.0);
+                ui.add_enabled(
+                    !ui_state.delete_is_busy,
+                    egui::TextEdit::singleline(&mut ui_state.delete_confirm_input)
+                        .desired_width(260.0),
+                );
+
+                ui.add_space(12.0);
+
+                let confirm_clicked = ui
+                    .add_enabled(
+                        !ui_state.delete_is_busy && confirm_matches,
+                        egui::Button::new("Delete").min_size([120.0, 32.0].into()),
+                    )
+                    .clicked();
+
+                let cancel_clicked = ui
+                    .add_enabled(
+                        !ui_state.delete_is_busy,
+                        egui::Button::new("Cancel").min_size([120.0, 32.0].into()),
+                    )
+                    .clicked();
+
+                if confirm_clicked {
+                    let Some(token) = api_session.token.as_deref() else {
+                        ui_state.delete_error = Some("Missing account session token".to_string());
+                        return;
+                    };
+
+                    let Some(character_id) = ui_state.delete_target_id else {
+                        ui_state.delete_error = Some("Missing character selection".to_string());
+                        return;
+                    };
+
+                    ui_state.delete_is_busy = true;
+                    ui_state.delete_error = None;
+
+                    let base_url = api_session.base_url.clone();
+                    let token = token.to_string();
+                    let (tx, rx) = mpsc::channel();
+                    let rx = Arc::new(Mutex::new(rx));
+                    let task = IoTaskPool::get().spawn(async move {
+                        let result = account_api::delete_character(&base_url, &token, character_id);
+                        let _ = tx.send(result);
+                    });
+
+                    ui_state.delete_task = Some(task);
+                    ui_state.delete_rx = Some(rx);
+                }
+
+                if cancel_clicked {
+                    ui_state.delete_dialog_open = false;
+                    ui_state.delete_confirm_input.clear();
+                    ui_state.delete_target_id = None;
+                    ui_state.delete_target_name = None;
+                    ui_state.delete_error = None;
+                }
+            });
+    }
 }
 
 fn format_race(race: CharacterRace) -> &'static str {

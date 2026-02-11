@@ -50,20 +50,14 @@ pub async fn get_token_from_headers(headers: &axum::http::HeaderMap) -> Option<S
     let token = headers
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
-        .map(|s| s.trim().to_string());
+        .map(|s| s.trim());
 
-    let token = match token {
-        Some(value) => value
-            .strip_prefix("Bearer ")
-            .unwrap_or(&value)
-            .trim()
-            .to_string(),
-        _ => {
-            return None;
-        }
-    };
+    let token = token?.strip_prefix("Bearer ")?.trim();
+    if token.is_empty() {
+        return None;
+    }
 
-    Some(token)
+    Some(token.to_string())
 }
 
 /// Validates email format using a regex pattern. This is a basic check and may not cover

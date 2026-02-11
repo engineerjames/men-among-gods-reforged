@@ -268,3 +268,45 @@ pub fn get_characters(base_url: &str, token: &str) -> Result<Vec<CharacterSummar
 
     Err(format!("{message} ({})", status.as_u16()))
 }
+
+/// Deletes a character by id for the authenticated account.
+///
+/// # Arguments
+/// * `base_url` - API base URL.
+/// * `token` - JWT bearer token.
+/// * `character_id` - Character id to delete.
+///
+/// # Returns
+/// * `Ok(())` on success.
+/// * `Err(String)` when the request fails.
+pub fn delete_character(base_url: &str, token: &str, character_id: u64) -> Result<(), String> {
+    let client = Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|err| format!("Failed to build HTTP client: {err}"))?;
+
+    let url = format!(
+        "{}/characters/{}",
+        base_url.trim_end_matches('/'),
+        character_id
+    );
+    let resp = client
+        .delete(url)
+        .bearer_auth(token)
+        .send()
+        .map_err(|err| format!("Delete character request failed: {err}"))?;
+
+    let status = resp.status();
+    if status.is_success() {
+        return Ok(());
+    }
+
+    let message = match status {
+        StatusCode::BAD_REQUEST => "Invalid character delete request",
+        StatusCode::UNAUTHORIZED => "Unauthorized",
+        StatusCode::INTERNAL_SERVER_ERROR => "Server error",
+        _ => "Delete character failed",
+    };
+
+    Err(format!("{message} ({})", status.as_u16()))
+}
