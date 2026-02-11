@@ -358,7 +358,7 @@ def test_create_character_requires_auth(base_url: str) -> None:
         "name": f"hero{unique_suffix()}",
         "description": "Brave",
         "sex": "Male",
-        "race": "Mercenary",
+        "class": "Mercenary",
     }
     status, _ = request_json("POST", f"{base_url}/characters", payload=payload)
     assert_status(401, status, "create character auth status")
@@ -395,7 +395,7 @@ def test_create_character_ok_and_get(base_url: str) -> None:
         "name": f"hero{unique_suffix()}",
         "description": "First hero",
         "sex": "Male",
-        "race": "Mercenary",
+        "class": "Mercenary",
     }
     status, body = request_json(
         "POST",
@@ -422,7 +422,7 @@ def test_create_character_ok_and_get(base_url: str) -> None:
 
 
 def test_create_character_invalid_race(base_url: str) -> None:
-    """Test that creating a character rejects restricted races.
+    """Test that creating a character rejects restricted classes.
 
     :param base_url: Base URL for the API.
     :raises AssertionError: If the response status is not 400.
@@ -433,7 +433,7 @@ def test_create_character_invalid_race(base_url: str) -> None:
         "name": f"hero{unique_suffix()}",
         "description": "Forbidden",
         "sex": "Female",
-        "race": "SeyanDu",
+        "class": "SeyanDu",
     }
     status, _ = request_json(
         "POST",
@@ -456,7 +456,7 @@ def test_update_character_ok(base_url: str) -> None:
         "name": f"hero{unique_suffix()}",
         "description": "Original",
         "sex": "Male",
-        "race": "Mercenary",
+        "class": "Mercenary",
     }
     status, body = request_json(
         "POST",
@@ -505,7 +505,7 @@ def test_update_character_missing_fields(base_url: str) -> None:
         "name": f"hero{unique_suffix()}",
         "description": "Original",
         "sex": "Male",
-        "race": "Mercenary",
+        "class": "Mercenary",
     }
     status, body = request_json(
         "POST",
@@ -541,7 +541,7 @@ def test_update_character_wrong_user(base_url: str) -> None:
         "name": f"hero{unique_suffix()}",
         "description": "Original",
         "sex": "Male",
-        "race": "Mercenary",
+        "class": "Mercenary",
     }
     status, body = request_json(
         "POST",
@@ -576,7 +576,7 @@ def test_delete_character_ok(base_url: str) -> None:
         "name": f"hero{unique_suffix()}",
         "description": "To delete",
         "sex": "Female",
-        "race": "Templar",
+        "class": "Templar",
     }
     status, body = request_json(
         "POST",
@@ -621,7 +621,7 @@ def test_delete_character_wrong_user(base_url: str) -> None:
         "name": f"hero{unique_suffix()}",
         "description": "To delete",
         "sex": "Female",
-        "race": "Templar",
+        "class": "Templar",
     }
     status, body = request_json(
         "POST",
