@@ -8,7 +8,8 @@ use reqwest::blocking::Client;
 use reqwest::StatusCode;
 
 use mag_core::types::api::{
-    CreateAccountRequest, CreateAccountResponse, LoginRequest, LoginResponse,
+    CreateAccountRequest, CreateAccountResponse, CreateCharacterRequest, GetCharactersResponse,
+    LoginRequest, LoginResponse,
 };
 
 /// Stores API connection state and user context.
@@ -19,6 +20,8 @@ pub struct ApiSession {
     pub username: Option<String>,
     pub pending_notice: Option<String>,
 }
+
+pub use mag_core::types::api::{CharacterSummary, Race as CharacterRace, Sex as CharacterSex};
 
 impl ApiSession {
     /// Ensures the session has a usable API base URL.
@@ -168,4 +171,100 @@ pub fn create_account(
     };
 
     Err(body.error.unwrap_or_else(|| fallback.to_string()))
+}
+
+/// Creates a new character via the account API.
+///
+/// # Arguments
+/// * `base_url` - API base URL.
+/// * `token` - JWT bearer token.
+/// * `name` - Character name.
+/// * `description` - Character description.
+/// * `sex` - Character sex.
+/// * `race` - Character race.
+///
+/// # Returns
+/// * `Ok(CharacterSummary)` on success.
+/// * `Err(String)` when validation or the request fails.
+pub fn create_character(
+    base_url: &str,
+    token: &str,
+    name: &str,
+    description: Option<&str>,
+    sex: CharacterSex,
+    race: CharacterRace,
+) -> Result<CharacterSummary, String> {
+    let client = Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|err| format!("Failed to build HTTP client: {err}"))?;
+
+    let url = format!("{}/characters", base_url.trim_end_matches('/'));
+    let resp = client
+        .post(url)
+        .bearer_auth(token)
+        .json(&CreateCharacterRequest {
+            name: name.to_string(),
+            description: description.map(|value| value.to_string()),
+            sex,
+            race,
+        })
+        .send()
+        .map_err(|err| format!("Character creation request failed: {err}"))?;
+
+    let status = resp.status();
+    if status.is_success() {
+        let body: CharacterSummary = resp
+            .json()
+            .map_err(|err| format!("Failed to parse character creation response: {err}"))?;
+        return Ok(body);
+    }
+
+    let message = match status {
+        StatusCode::BAD_REQUEST => "Invalid character details",
+        StatusCode::UNAUTHORIZED => "Unauthorized",
+        StatusCode::INTERNAL_SERVER_ERROR => "Server error",
+        _ => "Character creation failed",
+    };
+
+    Err(format!("{message} ({})", status.as_u16()))
+}
+
+/// Retrieves all characters for the authenticated account.
+///
+/// # Arguments
+/// * `base_url` - API base URL.
+/// * `token` - JWT bearer token.
+///
+/// # Returns
+/// * `Ok(Vec<CharacterSummary>)` on success.
+/// * `Err(String)` when the request fails.
+pub fn get_characters(base_url: &str, token: &str) -> Result<Vec<CharacterSummary>, String> {
+    let client = Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|err| format!("Failed to build HTTP client: {err}"))?;
+
+    let url = format!("{}/characters", base_url.trim_end_matches('/'));
+    let resp = client
+        .get(url)
+        .bearer_auth(token)
+        .send()
+        .map_err(|err| format!("Get characters request failed: {err}"))?;
+
+    let status = resp.status();
+    if status.is_success() {
+        let body: GetCharactersResponse = resp
+            .json()
+            .map_err(|err| format!("Failed to parse characters response: {err}"))?;
+        return Ok(body.characters);
+    }
+
+    let message = match status {
+        StatusCode::UNAUTHORIZED => "Unauthorized",
+        StatusCode::INTERNAL_SERVER_ERROR => "Server error",
+        _ => "Get characters failed",
+    };
+
+    Err(format!("{message} ({})", status.as_u16()))
 }

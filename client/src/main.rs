@@ -62,6 +62,7 @@ enum GameState {
     AccountLogin,
     AccountCreation,
     CharacterSelection,
+    CharacterCreation,
     LoggingIn,
     Gameplay,
     Menu,
@@ -289,6 +290,22 @@ fn main() {
         .add_systems(
             OnExit(GameState::CharacterSelection),
             states::character_selection::teardown_character_selection,
+        )
+        //
+        // Character creation state
+        //
+        .add_systems(
+            OnEnter(GameState::CharacterCreation),
+            states::character_creation::setup_character_creation,
+        )
+        .add_systems(
+            EguiPrimaryContextPass,
+            states::character_creation::run_character_creation
+                .run_if(in_state(GameState::CharacterCreation)),
+        )
+        .add_systems(
+            OnExit(GameState::CharacterCreation),
+            states::character_creation::teardown_character_creation,
         )
         //
         // LoggingIn state
