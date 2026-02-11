@@ -6,18 +6,19 @@ use bevy_egui::{
     egui::{self, Pos2},
     EguiContexts, EguiTextureHandle,
 };
+use mag_core::race::{Class, Sex};
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::gfx_cache::GraphicsCache;
-use crate::network::account_api::{self, ApiSession, CharacterRace, CharacterSex};
+use crate::network::account_api::{self, ApiSession};
 use crate::GameState;
 
 #[derive(Resource, Debug)]
 pub struct CharacterCreationUiState {
     name: String,
     description: String,
-    selected_race: CharacterRace,
-    selected_sex: CharacterSex,
+    selected_class: Class,
+    selected_sex: Sex,
     is_busy: bool,
     last_error: Option<String>,
     pending_task: Option<Task<()>>,
@@ -29,8 +30,8 @@ impl Default for CharacterCreationUiState {
         Self {
             name: String::new(),
             description: String::new(),
-            selected_race: CharacterRace::Mercenary,
-            selected_sex: CharacterSex::Male,
+            selected_class: Class::Mercenary,
+            selected_sex: Sex::Male,
             is_busy: false,
             last_error: None,
             pending_task: None,
@@ -56,12 +57,10 @@ pub fn run_character_creation(
     mut next_state: ResMut<NextState<GameState>>,
 ) {
     let selected_sex = ui_state.selected_sex;
-    let harakim_texture =
-        texture_id_for_race(&mut contexts, &gfx, CharacterRace::Harakim, selected_sex);
-    let templar_texture =
-        texture_id_for_race(&mut contexts, &gfx, CharacterRace::Templar, selected_sex);
+    let harakim_texture = texture_id_for_race(&mut contexts, &gfx, Class::Harakim, selected_sex);
+    let templar_texture = texture_id_for_race(&mut contexts, &gfx, Class::Templar, selected_sex);
     let mercenary_texture =
-        texture_id_for_race(&mut contexts, &gfx, CharacterRace::Mercenary, selected_sex);
+        texture_id_for_race(&mut contexts, &gfx, Class::Mercenary, selected_sex);
 
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
@@ -163,22 +162,22 @@ pub fn run_character_creation(
                 ui.vertical(|ui| {
                     race_option_ui(
                         ui,
-                        &mut ui_state.selected_race,
-                        CharacterRace::Harakim,
+                        &mut ui_state.selected_class,
+                        Class::Harakim,
                         "Harakim",
                         harakim_texture,
                     );
                     race_option_ui(
                         ui,
-                        &mut ui_state.selected_race,
-                        CharacterRace::Templar,
+                        &mut ui_state.selected_class,
+                        Class::Templar,
                         "Templar",
                         templar_texture,
                     );
                     race_option_ui(
                         ui,
-                        &mut ui_state.selected_race,
-                        CharacterRace::Mercenary,
+                        &mut ui_state.selected_class,
+                        Class::Mercenary,
                         "Mercenary",
                         mercenary_texture,
                     );
@@ -190,8 +189,8 @@ pub fn run_character_creation(
 
             ui.group(|ui| {
                 ui.horizontal(|ui| {
-                    ui.radio_value(&mut ui_state.selected_sex, CharacterSex::Male, "Male");
-                    ui.radio_value(&mut ui_state.selected_sex, CharacterSex::Female, "Female");
+                    ui.radio_value(&mut ui_state.selected_sex, Sex::Male, "Male");
+                    ui.radio_value(&mut ui_state.selected_sex, Sex::Female, "Female");
                 });
             });
 
@@ -230,7 +229,7 @@ pub fn run_character_creation(
 
                 let base_url = api_session.base_url.clone();
                 let token = token.to_string();
-                let race = ui_state.selected_race;
+                let race = ui_state.selected_class;
                 let sex = ui_state.selected_sex;
                 let description = if description.is_empty() {
                     None
@@ -265,13 +264,13 @@ pub fn run_character_creation(
 
 fn race_option_ui(
     ui: &mut egui::Ui,
-    selected_race: &mut CharacterRace,
-    race: CharacterRace,
+    selected_class: &mut Class,
+    class: Class,
     label: &str,
     texture_id: Option<egui::TextureId>,
 ) {
     ui.horizontal(|ui| {
-        ui.radio_value(selected_race, race, label);
+        ui.radio_value(selected_class, class, label);
 
         if let Some(texture_id) = texture_id {
             let size = egui::vec2(64.0, 64.0);
@@ -286,10 +285,10 @@ fn race_option_ui(
 fn texture_id_for_race(
     contexts: &mut EguiContexts,
     gfx: &GraphicsCache,
-    race: CharacterRace,
-    sex: CharacterSex,
+    class: Class,
+    sex: Sex,
 ) -> Option<egui::TextureId> {
-    let sprite_id = sprite_id_for_selection(race, sex);
+    let sprite_id = sprite_id_for_selection(class, sex);
     let image = gfx
         .get_sprite(sprite_id)
         .map(|sprite| sprite.image.clone())?;
@@ -300,14 +299,14 @@ fn texture_id_for_race(
     Some(texture_id)
 }
 
-fn sprite_id_for_selection(race: CharacterRace, sex: CharacterSex) -> usize {
-    match (race, sex) {
-        (CharacterRace::Harakim, CharacterSex::Male) => 4048,
-        (CharacterRace::Templar, CharacterSex::Male) => 2000,
-        (CharacterRace::Mercenary, CharacterSex::Male) => 5072,
-        (CharacterRace::Harakim, CharacterSex::Female) => 6096,
-        (CharacterRace::Templar, CharacterSex::Female) => 8144,
-        (CharacterRace::Mercenary, CharacterSex::Female) => 7120,
+fn sprite_id_for_selection(class: Class, sex: Sex) -> usize {
+    match (class, sex) {
+        (Class::Harakim, Sex::Male) => 4048,
+        (Class::Templar, Sex::Male) => 2000,
+        (Class::Mercenary, Sex::Male) => 5072,
+        (Class::Harakim, Sex::Female) => 6096,
+        (Class::Templar, Sex::Female) => 8144,
+        (Class::Mercenary, Sex::Female) => 7120,
         _ => 5072,
     }
 }

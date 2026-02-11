@@ -6,6 +6,7 @@ use core::{
         UWATER,
     },
     encrypt::xcrypt,
+    race::{get_race_integer, Sex},
     string_operations::c_string_to_str,
 };
 
@@ -3503,34 +3504,6 @@ fn write_ascii_into_fixed(dst: &mut [u8], s: &str) {
     }
 }
 
-fn template_id_from_api_race_sex(race: core::types::api::Race, sex: core::types::api::Sex) -> i32 {
-    let is_male = matches!(sex, core::types::api::Sex::Male);
-
-    if is_male {
-        match race {
-            core::types::api::Race::Templar => 3,
-            core::types::api::Race::Mercenary => 2,
-            core::types::api::Race::Harakim => 4,
-            core::types::api::Race::SeyanDu => 13,
-            core::types::api::Race::ArchTemplar => 544,
-            core::types::api::Race::ArchHarakim => 545,
-            core::types::api::Race::Sorcerer => 546,
-            core::types::api::Race::Warrior => 547,
-        }
-    } else {
-        match race {
-            core::types::api::Race::Templar => 77,
-            core::types::api::Race::Mercenary => 76,
-            core::types::api::Race::Harakim => 78,
-            core::types::api::Race::SeyanDu => 79,
-            core::types::api::Race::ArchTemplar => 549,
-            core::types::api::Race::ArchHarakim => 550,
-            core::types::api::Race::Sorcerer => 551,
-            core::types::api::Race::Warrior => 552,
-        }
-    }
-}
-
 fn resolve_api_login_character(nr: usize, login_ticket: u64) -> Result<usize, enums::LogoutReason> {
     let character_id = match keydb::consume_login_ticket(login_ticket) {
         Ok(Some(value)) => value,
@@ -3572,7 +3545,7 @@ fn resolve_api_login_character(nr: usize, login_ticket: u64) -> Result<usize, en
     let cn = match cn {
         Some(value) => value,
         None => {
-            let template_id = template_id_from_api_race_sex(character.race, character.sex);
+            let template_id = get_race_integer(character.sex == Sex::Male, character.class);
             let maybe_cn = God::create_char(template_id as usize, true);
             let cn = match maybe_cn {
                 Some(value) => value as usize,

@@ -1,7 +1,7 @@
+use core::race::{Class, Sex};
+use core::types::CharacterSummary;
 use std::collections::HashMap;
 use std::env;
-
-use core::types::api::{Race, Sex};
 
 const DEFAULT_KEYDB_URL: &str = "redis://127.0.0.1:5556/";
 
@@ -16,37 +16,6 @@ fn connect() -> Result<redis::Connection, String> {
     client
         .get_connection()
         .map_err(|err| format!("Failed to connect to KeyDB: {err}"))
-}
-
-fn sex_from_u32(value: u32) -> Option<Sex> {
-    match value {
-        value if value == Sex::Male as u32 => Some(Sex::Male),
-        value if value == Sex::Female as u32 => Some(Sex::Female),
-        _ => None,
-    }
-}
-
-fn race_from_u32(value: u32) -> Option<Race> {
-    match value {
-        value if value == Race::Mercenary as u32 => Some(Race::Mercenary),
-        value if value == Race::Templar as u32 => Some(Race::Templar),
-        value if value == Race::Harakim as u32 => Some(Race::Harakim),
-        value if value == Race::Sorcerer as u32 => Some(Race::Sorcerer),
-        value if value == Race::Warrior as u32 => Some(Race::Warrior),
-        value if value == Race::ArchTemplar as u32 => Some(Race::ArchTemplar),
-        value if value == Race::ArchHarakim as u32 => Some(Race::ArchHarakim),
-        value if value == Race::SeyanDu as u32 => Some(Race::SeyanDu),
-        _ => None,
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct KeydbCharacter {
-    pub name: String,
-    pub description: String,
-    pub sex: Sex,
-    pub race: Race,
-    pub server_id: Option<u32>,
 }
 
 pub fn consume_login_ticket(ticket: u64) -> Result<Option<u64>, String> {
@@ -80,7 +49,7 @@ pub fn consume_login_ticket(ticket: u64) -> Result<Option<u64>, String> {
     Ok(Some(character_id))
 }
 
-pub fn load_character(character_id: u64) -> Result<Option<KeydbCharacter>, String> {
+pub fn load_character(character_id: u64) -> Result<Option<CharacterSummary>, String> {
     let mut con = connect()?;
     let key = format!("character:{}", character_id);
 
@@ -109,23 +78,30 @@ pub fn load_character(character_id: u64) -> Result<Option<KeydbCharacter>, Strin
         .get("sex")
         .and_then(|value| value.parse::<u32>().ok())
         .ok_or_else(|| "Missing character sex".to_string())?;
-    let sex = sex_from_u32(sex_value).ok_or_else(|| "Invalid character sex".to_string())?;
+    let sex = Sex::from_u32(sex_value).ok_or_else(|| "Invalid character sex".to_string())?;
 
-    let race_value = character_map
-        .get("race")
+    let class_value = character_map
+        .get("class")
         .and_then(|value| value.parse::<u32>().ok())
-        .ok_or_else(|| "Missing character race".to_string())?;
-    let race = race_from_u32(race_value).ok_or_else(|| "Invalid character race".to_string())?;
+        .ok_or_else(|| "Missing character class".to_string())?;
+    let class =
+        Class::from_u32(class_value).ok_or_else(|| "Invalid character class".to_string())?;
 
     let server_id = character_map
         .get("server_id")
         .and_then(|value| value.parse::<u32>().ok());
 
-    Ok(Some(KeydbCharacter {
+    let id = character_map
+        .get("id")
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(0);
+
+    Ok(Some(CharacterSummary {
+        id,
         name,
         description,
         sex,
-        race,
+        class,
         server_id,
     }))
 }

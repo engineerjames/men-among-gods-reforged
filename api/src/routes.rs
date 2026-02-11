@@ -91,15 +91,15 @@ pub(crate) async fn create_new_character(
         &payload.name,
         payload.description.as_deref(),
         payload.sex,
-        payload.race,
+        payload.class,
     )
     .await;
 
     match result {
         Ok(character_id) => {
             info!(
-                "Character created for account {}: id={}, name={}, sex={:?}, race={:?}",
-                token_data.claims.sub, character_id, payload.name, payload.sex, payload.race
+                "Character created for account {}: id={}, name={}, sex={:?}, class={:?}",
+                token_data.claims.sub, character_id, payload.name, payload.sex, payload.class
             );
             (
                 StatusCode::OK,
@@ -108,7 +108,7 @@ pub(crate) async fn create_new_character(
                     name: payload.name,
                     description: payload.description.unwrap_or_default(),
                     sex: payload.sex,
-                    race: payload.race,
+                    class: payload.class,
                     server_id: None,
                 }),
             )

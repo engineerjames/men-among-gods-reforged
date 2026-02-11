@@ -1,9 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::constants::{
-    KIN_ARCHHARAKIM, KIN_ARCHTEMPLAR, KIN_FEMALE, KIN_HARAKIM, KIN_MALE, KIN_MERCENARY,
-    KIN_SEYAN_DU, KIN_SORCERER, KIN_TEMPLAR, KIN_WARRIOR,
-};
+pub use crate::race::{Class, Sex};
 
 #[derive(Serialize, Deserialize)]
 pub struct LoginRequest {
@@ -42,26 +39,6 @@ pub struct CreateGameLoginTicketResponse {
     pub error: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u32)]
-pub enum Sex {
-    Male = KIN_MALE,
-    Female = KIN_FEMALE,
-}
-
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Copy)]
-#[repr(u32)]
-pub enum Race {
-    Mercenary = KIN_MERCENARY,
-    Templar = KIN_TEMPLAR,
-    Harakim = KIN_HARAKIM,
-    Sorcerer = KIN_SORCERER,
-    Warrior = KIN_WARRIOR,
-    ArchTemplar = KIN_ARCHTEMPLAR,
-    ArchHarakim = KIN_ARCHHARAKIM,
-    SeyanDu = KIN_SEYAN_DU,
-}
-
 // TODO: Set max lengths for name and description, and enforce them in the database and API validation
 #[allow(dead_code)]
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -78,8 +55,8 @@ pub struct CharacterSummary {
     /// Male or Female
     pub sex: Sex,
 
-    /// Race of the character
-    pub race: Race,
+    /// Class of the character
+    pub class: Class,
 
     /// Server id
     pub server_id: Option<u32>,
@@ -92,7 +69,7 @@ impl Default for CharacterSummary {
             name: String::new(),
             description: String::new(),
             sex: Sex::Male,
-            race: Race::Mercenary,
+            class: Class::Mercenary,
             server_id: None,
         }
     }
@@ -108,23 +85,23 @@ pub struct CreateCharacterRequest {
     pub name: String,
     pub description: Option<String>,
     pub sex: Sex,
-    pub race: Race,
+    pub class: Class,
 }
 
 impl CreateCharacterRequest {
     pub fn validate(&self) -> bool {
         if [
-            Race::SeyanDu,
-            Race::Sorcerer,
-            Race::Warrior,
-            Race::ArchHarakim,
-            Race::ArchTemplar,
+            Class::SeyanDu,
+            Class::Sorcerer,
+            Class::Warrior,
+            Class::ArchHarakim,
+            Class::ArchTemplar,
         ]
-        .contains(&self.race)
+        .contains(&self.class)
         {
             log::error!(
-                "Invalid race selection: {:?}; Can only be achieved in-game.",
-                self.race
+                "Invalid class selection: {:?}; Can only be achieved in-game.",
+                self.class
             );
             return false;
         }

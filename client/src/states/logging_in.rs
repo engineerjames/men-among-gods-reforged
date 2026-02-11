@@ -269,7 +269,7 @@ pub fn run_logging_in(
                     ui.vertical(|ui| {
                         ui.add_enabled_ui(false, |ui| {
                             ui.label("Achieved through gameplay:");
-                            ui.radio_value(&mut login_info.class, Class::Sorceror, "Sorceror");
+                            ui.radio_value(&mut login_info.class, Class::Sorcerer, "Sorcerer");
                             ui.radio_value(&mut login_info.class, Class::Warrior, "Warrior");
                             ui.radio_value(
                                 &mut login_info.class,

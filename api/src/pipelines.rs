@@ -1,3 +1,5 @@
+use core::race::{self, Class, Sex};
+
 use crate::types;
 use log::info;
 use redis::AsyncCommands;
@@ -257,7 +259,7 @@ pub(crate) async fn get_account_password_hash(
 /// * `name` - Character name.
 /// * `description` - Optional character description.
 /// * `sex` - Sex enum to store.
-/// * `race` - Race enum to store.
+/// * `class` - Class enum to store.
 ///
 /// # Returns
 /// * `Ok(character_id)` on success.
@@ -267,8 +269,8 @@ pub(crate) async fn insert_new_character(
     account_id: u64,
     name: &str,
     description: Option<&str>,
-    sex: types::Sex,
-    race: types::Race,
+    sex: race::Sex,
+    class: race::Class,
 ) -> Result<u64, redis::RedisError> {
     let character_id: u64 = con.incr("character:next_id", 1).await?;
     let character_key = format!("character:{}", character_id);
@@ -284,8 +286,8 @@ pub(crate) async fn insert_new_character(
         .arg(description.unwrap_or(""))
         .arg("sex")
         .arg(sex as u32)
-        .arg("race")
-        .arg(race as u32)
+        .arg("class")
+        .arg(class as u32)
         .query_async::<()>(&mut *con)
         .await?;
 
@@ -446,19 +448,19 @@ pub(crate) async fn list_characters_for_account_scan(
             Some(value) => value,
             None => continue,
         };
-        let sex = match types::sex_from_u32(sex_value) {
+        let sex = match Sex::from_u32(sex_value) {
             Some(value) => value,
             None => continue,
         };
 
-        let race_value: u32 = match character_map
-            .get("race")
+        let class_value: u32 = match character_map
+            .get("class")
             .and_then(|value| value.parse().ok())
         {
             Some(value) => value,
             None => continue,
         };
-        let race = match types::race_from_u32(race_value) {
+        let class = match Class::from_u32(class_value) {
             Some(value) => value,
             None => continue,
         };
@@ -472,7 +474,7 @@ pub(crate) async fn list_characters_for_account_scan(
             name,
             description,
             sex,
-            race,
+            class: class,
             server_id,
         });
     }

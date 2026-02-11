@@ -6,11 +6,10 @@ use bevy_egui::{
     egui::{self, Pos2},
     EguiContexts,
 };
+use mag_core::race;
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
-use crate::network::account_api::{
-    self, ApiSession, CharacterRace, CharacterSex, CharacterSummary,
-};
+use crate::network::account_api::{self, ApiSession, CharacterSummary};
 use crate::network::LoginRequested;
 use crate::settings::UserSettingsState;
 use crate::GameState;
@@ -312,8 +311,8 @@ pub fn run_character_selection(
                             let label = format!(
                                 "{} ({}, {}) (id={})",
                                 character.name,
-                                format_race(character.race),
-                                format_sex(character.sex),
+                                character.class.to_string(),
+                                character.sex.to_string(),
                                 character.id
                             );
                             let selected = next_selection == Some(character.id);
@@ -374,7 +373,8 @@ pub fn run_character_selection(
                         return;
                     };
 
-                    let race_int = login_race_integer(selected.sex, selected.race);
+                    let race_int =
+                        race::get_race_integer(selected.sex == race::Sex::Male, selected.class);
                     ui_state.login_target = Some((character_id, race_int));
 
                     ui_state.login_is_busy = true;
@@ -483,53 +483,5 @@ pub fn run_character_selection(
                     ui_state.delete_error = None;
                 }
             });
-    }
-}
-
-fn format_race(race: CharacterRace) -> &'static str {
-    match race {
-        CharacterRace::Mercenary => "Mercenary",
-        CharacterRace::Templar => "Templar",
-        CharacterRace::Harakim => "Harakim",
-        CharacterRace::Sorcerer => "Sorcerer",
-        CharacterRace::Warrior => "Warrior",
-        CharacterRace::ArchTemplar => "Arch Templar",
-        CharacterRace::ArchHarakim => "Arch Harakim",
-        CharacterRace::SeyanDu => "Seyan Du",
-    }
-}
-
-fn format_sex(sex: CharacterSex) -> &'static str {
-    match sex {
-        CharacterSex::Male => "Male",
-        CharacterSex::Female => "Female",
-    }
-}
-
-fn login_race_integer(sex: CharacterSex, race: CharacterRace) -> i32 {
-    let is_male = matches!(sex, CharacterSex::Male);
-
-    if is_male {
-        match race {
-            CharacterRace::Templar => 3,
-            CharacterRace::Mercenary => 2,
-            CharacterRace::Harakim => 4,
-            CharacterRace::SeyanDu => 13,
-            CharacterRace::ArchTemplar => 544,
-            CharacterRace::ArchHarakim => 545,
-            CharacterRace::Sorcerer => 546,
-            CharacterRace::Warrior => 547,
-        }
-    } else {
-        match race {
-            CharacterRace::Templar => 77,
-            CharacterRace::Mercenary => 76,
-            CharacterRace::Harakim => 78,
-            CharacterRace::SeyanDu => 79,
-            CharacterRace::ArchTemplar => 549,
-            CharacterRace::ArchHarakim => 550,
-            CharacterRace::Sorcerer => 551,
-            CharacterRace::Warrior => 552,
-        }
     }
 }

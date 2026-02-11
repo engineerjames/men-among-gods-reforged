@@ -4,9 +4,11 @@ use std::time::Duration;
 use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHasher};
 use bevy::prelude::Resource;
+use mag_core::race::{Class, Sex};
 use reqwest::blocking::Client;
 use reqwest::StatusCode;
 
+pub use mag_core::types::api::CharacterSummary;
 use mag_core::types::api::{
     CreateAccountRequest, CreateAccountResponse, CreateCharacterRequest,
     CreateGameLoginTicketRequest, CreateGameLoginTicketResponse, GetCharactersResponse,
@@ -21,8 +23,6 @@ pub struct ApiSession {
     pub username: Option<String>,
     pub pending_notice: Option<String>,
 }
-
-pub use mag_core::types::api::{CharacterSummary, Race as CharacterRace, Sex as CharacterSex};
 
 impl ApiSession {
     /// Ensures the session has a usable API base URL.
@@ -182,7 +182,7 @@ pub fn create_account(
 /// * `name` - Character name.
 /// * `description` - Character description.
 /// * `sex` - Character sex.
-/// * `race` - Character race.
+/// * `class` - Character class.
 ///
 /// # Returns
 /// * `Ok(CharacterSummary)` on success.
@@ -192,8 +192,8 @@ pub fn create_character(
     token: &str,
     name: &str,
     description: Option<&str>,
-    sex: CharacterSex,
-    race: CharacterRace,
+    sex: Sex,
+    class: Class,
 ) -> Result<CharacterSummary, String> {
     let client = Client::builder()
         .timeout(Duration::from_secs(10))
@@ -208,7 +208,7 @@ pub fn create_character(
             name: name.to_string(),
             description: description.map(|value| value.to_string()),
             sex,
-            race,
+            class,
         })
         .send()
         .map_err(|err| format!("Character creation request failed: {err}"))?;
