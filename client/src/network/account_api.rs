@@ -1,6 +1,8 @@
 use std::env;
 use std::time::Duration;
 
+use argon2::password_hash::SaltString;
+use argon2::{Argon2, PasswordHasher};
 use bevy::prelude::Resource;
 use reqwest::blocking::Client;
 use reqwest::StatusCode;
@@ -9,6 +11,7 @@ use mag_core::types::api::{
     CreateAccountRequest, CreateAccountResponse, LoginRequest, LoginResponse,
 };
 
+/// Stores API connection state and user context.
 #[derive(Debug, Default, Clone, Resource)]
 pub struct ApiSession {
     pub base_url: String,
@@ -18,6 +21,7 @@ pub struct ApiSession {
 }
 
 impl ApiSession {
+    /// Ensures the session has a usable API base URL.
     pub fn ensure_defaults(&mut self) {
         if self.base_url.trim().is_empty() {
             self.base_url = default_api_base_url();
@@ -25,6 +29,10 @@ impl ApiSession {
     }
 }
 
+/// Returns the API base URL, honoring `MAG_API_BASE_URL` when set.
+///
+/// # Returns
+/// * API base URL as a string.
 pub fn default_api_base_url() -> String {
     if let Ok(value) = env::var("MAG_API_BASE_URL") {
         let trimmed = value.trim();
@@ -40,7 +48,39 @@ pub fn default_api_base_url() -> String {
     }
 }
 
+/// Hashes a password into Argon2 PHC format using a deterministic salt.
+///
+/// # Arguments
+/// * `username` - Account username (used to derive the salt).
+/// * `password` - Raw password input.
+///
+/// # Returns
+/// * `Ok(hash)` containing the PHC string.
+/// * `Err(String)` when hashing fails.
+fn hash_password(username: &str, password: &str) -> Result<String, String> {
+    let username_lc = username.trim().to_lowercase();
+    let salt_seed = format!("mag:{}", username_lc);
+    let salt = SaltString::b64_encode(salt_seed.as_bytes())
+        .map_err(|err| format!("Failed to encode password salt: {err}"))?;
+    let password_hash = Argon2::default()
+        .hash_password(password.as_bytes(), &salt)
+        .map_err(|err| format!("Failed to hash password: {err}"))?
+        .to_string();
+    Ok(password_hash)
+}
+
+/// Logs in to the account API and returns a JWT on success.
+///
+/// # Arguments
+/// * `base_url` - API base URL.
+/// * `username` - Account username.
+/// * `password` - Raw password input.
+///
+/// # Returns
+/// * `Ok(token)` containing the JWT.
+/// * `Err(String)` when the request or authentication fails.
 pub fn login(base_url: &str, username: &str, password: &str) -> Result<String, String> {
+    let password_hash = hash_password(username, password)?;
     let client = Client::builder()
         .timeout(Duration::from_secs(10))
         .build()
@@ -51,7 +91,7 @@ pub fn login(base_url: &str, username: &str, password: &str) -> Result<String, S
         .post(url)
         .json(&LoginRequest {
             username: username.to_string(),
-            password: password.to_string(),
+            password: password_hash,
         })
         .send()
         .map_err(|err| format!("Login request failed: {err}"))?;
@@ -77,12 +117,24 @@ pub fn login(base_url: &str, username: &str, password: &str) -> Result<String, S
     Err(format!("{message} ({})", status.as_u16()))
 }
 
+/// Creates a new account via the account API.
+///
+/// # Arguments
+/// * `base_url` - API base URL.
+/// * `email` - Account email address.
+/// * `username` - Desired username.
+/// * `password` - Raw password input.
+///
+/// # Returns
+/// * `Ok(message)` on success.
+/// * `Err(String)` when validation or the request fails.
 pub fn create_account(
     base_url: &str,
     email: &str,
     username: &str,
     password: &str,
 ) -> Result<String, String> {
+    let password_hash = hash_password(username, password)?;
     let client = Client::builder()
         .timeout(Duration::from_secs(10))
         .build()
@@ -94,7 +146,7 @@ pub fn create_account(
         .json(&CreateAccountRequest {
             email: email.to_string(),
             username: username.to_string(),
-            password: password.to_string(),
+            password: password_hash,
         })
         .send()
         .map_err(|err| format!("Account creation request failed: {err}"))?;
