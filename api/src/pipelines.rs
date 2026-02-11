@@ -1,4 +1,4 @@
-use core::race::{self, Class, Sex};
+use core::traits::{self, Class, Sex};
 
 use crate::types;
 use log::info;
@@ -269,8 +269,8 @@ pub(crate) async fn insert_new_character(
     account_id: u64,
     name: &str,
     description: Option<&str>,
-    sex: race::Sex,
-    class: race::Class,
+    sex: traits::Sex,
+    class: traits::Class,
 ) -> Result<u64, redis::RedisError> {
     let character_id: u64 = con.incr("character:next_id", 1).await?;
     let character_key = format!("character:{}", character_id);

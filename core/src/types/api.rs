@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub use crate::race::{Class, Sex};
+pub use crate::traits::{Class, Sex};
 
 #[derive(Serialize, Deserialize)]
 pub struct LoginRequest {

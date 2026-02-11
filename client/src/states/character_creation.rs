@@ -6,7 +6,7 @@ use bevy_egui::{
     egui::{self, Pos2},
     EguiContexts, EguiTextureHandle,
 };
-use mag_core::race::{Class, Sex};
+use mag_core::traits::{Class, Sex};
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::gfx_cache::GraphicsCache;

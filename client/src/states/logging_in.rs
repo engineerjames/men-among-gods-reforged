@@ -9,7 +9,7 @@ use bevy_egui::{
     EguiContexts,
 };
 use egui_file_dialog::FileDialog;
-use mag_core::race::{self, Class};
+use mag_core::traits::{self, Class};
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::helpers::open_dir_in_file_manager;
@@ -144,7 +144,7 @@ fn apply_settings_to_login_ui(
     login_info.password.clear();
     login_info.description = mag_files::fixed_ascii_to_string(&settings.player_data.desc);
 
-    let (is_male, class) = race::get_sex_and_class(settings.save_file.race);
+    let (is_male, class) = traits::get_sex_and_class(settings.save_file.race);
     login_info.is_male = is_male;
     login_info.class = class;
 
@@ -355,7 +355,7 @@ pub fn run_logging_in(
                                 write_ascii_into_fixed(&mut save_file.name, &username);
                                 login_info.description =
                                     mag_files::fixed_ascii_to_string(&player_data.desc);
-                                let (is_male, class) = race::get_sex_and_class(save_file.race);
+                                let (is_male, class) = traits::get_sex_and_class(save_file.race);
                                 login_info.is_male = is_male;
                                 login_info.class = class;
 
@@ -381,7 +381,7 @@ pub fn run_logging_in(
                             let save_file = player_state.save_file_mut();
                             write_ascii_into_fixed(&mut save_file.name, &login_info.username);
                             save_file.race =
-                                race::get_race_integer(login_info.is_male, login_info.class);
+                                traits::get_race_integer(login_info.is_male, login_info.class);
                         }
                         {
                             let pdata = player_state.player_data_mut();
@@ -435,7 +435,7 @@ pub fn run_logging_in(
                             let save_file = player_state.save_file_mut();
                             write_ascii_into_fixed(&mut save_file.name, &login_info.username);
                             save_file.race =
-                                race::get_race_integer(login_info.is_male, login_info.class);
+                                traits::get_race_integer(login_info.is_male, login_info.class);
                         }
 
                         // Ensure user-entered character name/description are pushed to pdata
@@ -467,7 +467,7 @@ pub fn run_logging_in(
                                 .unwrap_or(DEFAULT_SERVER_PORT),
                             username: login_info.username.clone(),
                             password: login_info.password.clone(),
-                            race: race::get_race_integer(login_info.is_male, login_info.class),
+                            race: traits::get_race_integer(login_info.is_male, login_info.class),
 
                             user_id: save_file.usnr,
                             pass1: save_file.pass1,

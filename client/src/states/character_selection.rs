@@ -6,7 +6,7 @@ use bevy_egui::{
     egui::{self, Pos2},
     EguiContexts,
 };
-use mag_core::race;
+use mag_core::traits;
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::network::account_api::{self, ApiSession, CharacterSummary};
@@ -374,7 +374,7 @@ pub fn run_character_selection(
                     };
 
                     let race_int =
-                        race::get_race_integer(selected.sex == race::Sex::Male, selected.class);
+                        traits::get_race_integer(selected.sex == traits::Sex::Male, selected.class);
                     ui_state.login_target = Some((character_id, race_int));
 
                     ui_state.login_is_busy = true;

@@ -4,7 +4,7 @@ use std::time::Duration;
 use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHasher};
 use bevy::prelude::Resource;
-use mag_core::race::{Class, Sex};
+use mag_core::traits::{Class, Sex};
 use reqwest::blocking::Client;
 use reqwest::StatusCode;
 

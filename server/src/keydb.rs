@@ -1,4 +1,4 @@
-use core::race::{Class, Sex};
+use core::traits::{Class, Sex};
 use core::types::CharacterSummary;
 use std::collections::HashMap;
 use std::env;

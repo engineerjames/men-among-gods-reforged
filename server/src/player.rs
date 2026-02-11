@@ -6,8 +6,8 @@ use core::{
         UWATER,
     },
     encrypt::xcrypt,
-    race::{get_race_integer, Sex},
     string_operations::c_string_to_str,
+    traits::{get_race_integer, Sex},
 };
 
 use crate::{
