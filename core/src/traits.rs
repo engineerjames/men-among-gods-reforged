@@ -26,6 +26,14 @@ pub enum Class {
     SeyanDu = KIN_SEYAN_DU,
 }
 
+/// Maps a `(sex, class)` pair to the client/server "race" integer used by the protocol.
+///
+/// # Arguments
+/// * `is_male` - Whether the character is male (`true`) or female (`false`).
+/// * `class` - The character class.
+///
+/// # Returns
+/// * `i32` race identifier corresponding to the provided sex and class.
 pub fn get_race_integer(is_male: bool, class: Class) -> i32 {
     if is_male {
         match class {
@@ -52,6 +60,13 @@ pub fn get_race_integer(is_male: bool, class: Class) -> i32 {
     }
 }
 
+/// Maps a protocol "race" integer back to `(sex, class)`.
+///
+/// # Arguments
+/// * `race` - The protocol race identifier to decode.
+///
+/// # Returns
+/// * `(bool, Class)` containing `(is_male, class)`. Unknown values fall back to `(true, Class::Mercenary)`.
 pub fn get_sex_and_class(race: i32) -> (bool, Class) {
     match race {
         3 => (true, Class::Templar),
@@ -77,6 +92,13 @@ pub fn get_sex_and_class(race: i32) -> (bool, Class) {
 }
 
 impl Class {
+    /// Converts a raw `u32` kin/class value into a [`Class`].
+    ///
+    /// # Arguments
+    /// * `value` - The raw `u32` value to convert.
+    ///
+    /// # Returns
+    /// * `Some(Class)` if the value matches a known class, `None` otherwise.
     pub fn from_u32(value: u32) -> Option<Self> {
         match value {
             value if value == Class::Mercenary as u32 => Some(Class::Mercenary),
@@ -91,6 +113,13 @@ impl Class {
         }
     }
 
+    /// Returns the human-readable display name for this class.
+    ///
+    /// # Arguments
+    /// * `self` - The class to format.
+    ///
+    /// # Returns
+    /// * `&'static str` containing the display name.
     pub fn to_string(&self) -> &'static str {
         match self {
             Class::Mercenary => "Mercenary",
@@ -106,6 +135,13 @@ impl Class {
 }
 
 impl Sex {
+    /// Converts a raw `u32` kin/sex value into a [`Sex`].
+    ///
+    /// # Arguments
+    /// * `value` - The raw `u32` value to convert.
+    ///
+    /// # Returns
+    /// * `Some(Sex)` if the value matches a known sex, `None` otherwise.
     pub fn from_u32(value: u32) -> Option<Self> {
         match value {
             value if value == Sex::Male as u32 => Some(Sex::Male),
@@ -114,10 +150,98 @@ impl Sex {
         }
     }
 
+    /// Returns the human-readable display name for this sex.
+    ///
+    /// # Arguments
+    /// * `self` - The sex to format.
+    ///
+    /// # Returns
+    /// * `&'static str` containing the display name.
     pub fn to_string(&self) -> &'static str {
         match self {
             Sex::Female => "Female",
             Sex::Male => "Male",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{get_race_integer, get_sex_and_class, Class, Sex};
+
+    #[test]
+    fn race_mapping_roundtrips_for_all_classes_and_sexes() {
+        let classes = [
+            Class::Mercenary,
+            Class::Templar,
+            Class::Harakim,
+            Class::SeyanDu,
+            Class::ArchTemplar,
+            Class::ArchHarakim,
+            Class::Sorcerer,
+            Class::Warrior,
+        ];
+
+        for is_male in [true, false] {
+            for class in classes {
+                let race = get_race_integer(is_male, class);
+                let (decoded_is_male, decoded_class) = get_sex_and_class(race);
+                assert_eq!(decoded_is_male, is_male, "unexpected sex for race={race}");
+                assert_eq!(decoded_class, class, "unexpected class for race={race}");
+            }
+        }
+    }
+
+    #[test]
+    fn race_integer_matches_known_values_for_spot_checks() {
+        assert_eq!(get_race_integer(true, Class::Templar), 3);
+        assert_eq!(get_race_integer(false, Class::Mercenary), 76);
+        assert_eq!(get_race_integer(true, Class::ArchHarakim), 545);
+        assert_eq!(get_race_integer(false, Class::Warrior), 552);
+    }
+
+    #[test]
+    fn unknown_race_decodes_to_default() {
+        assert_eq!(get_sex_and_class(-1), (true, Class::Mercenary));
+        assert_eq!(get_sex_and_class(0), (true, Class::Mercenary));
+        assert_eq!(get_sex_and_class(999_999), (true, Class::Mercenary));
+    }
+
+    #[test]
+    fn class_from_u32_accepts_all_variants_and_rejects_unknown() {
+        let classes = [
+            Class::Mercenary,
+            Class::Templar,
+            Class::Harakim,
+            Class::Sorcerer,
+            Class::Warrior,
+            Class::ArchTemplar,
+            Class::ArchHarakim,
+            Class::SeyanDu,
+        ];
+
+        for class in classes {
+            let value = class as u32;
+            assert_eq!(Class::from_u32(value), Some(class));
+        }
+
+        assert_eq!(Class::from_u32(0), None);
+        assert_eq!(Class::from_u32(u32::MAX), None);
+    }
+
+    #[test]
+    fn sex_from_u32_accepts_variants_and_rejects_unknown() {
+        assert_eq!(Sex::from_u32(Sex::Male as u32), Some(Sex::Male));
+        assert_eq!(Sex::from_u32(Sex::Female as u32), Some(Sex::Female));
+        assert_eq!(Sex::from_u32(0), None);
+        assert_eq!(Sex::from_u32(u32::MAX), None);
+    }
+
+    #[test]
+    fn to_string_returns_expected_display_names() {
+        assert_eq!(Class::ArchTemplar.to_string(), "Arch Templar");
+        assert_eq!(Class::SeyanDu.to_string(), "Seyan Du");
+        assert_eq!(Sex::Male.to_string(), "Male");
+        assert_eq!(Sex::Female.to_string(), "Female");
     }
 }
