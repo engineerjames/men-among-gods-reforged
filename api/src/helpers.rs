@@ -160,7 +160,7 @@ mod tests {
     }
 
     #[test]
-    fn token_from_headers_accepts_raw_token() {
+    fn token_from_headers_does_not_accept_raw_token() {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -174,7 +174,7 @@ mod tests {
             );
 
             let token = get_token_from_headers(&headers).await;
-            assert_eq!(Some("raw.token".to_string()), token);
+            assert_eq!(None, token);
         });
     }
 
