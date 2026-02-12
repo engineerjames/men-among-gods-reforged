@@ -3526,7 +3526,10 @@ fn write_ascii_into_fixed(dst: &mut [u8], s: &str) {
     }
 }
 
-fn resolve_api_login_character(nr: usize, login_ticket: u64) -> Result<usize, enums::LogoutReason> {
+fn resolve_api_login_character(
+    _nr: usize,
+    login_ticket: u64,
+) -> Result<usize, enums::LogoutReason> {
     let character_id = match keydb::consume_login_ticket(login_ticket) {
         Ok(Some(value)) => value,
         Ok(None) => {
@@ -3550,6 +3553,8 @@ fn resolve_api_login_character(nr: usize, login_ticket: u64) -> Result<usize, en
             return Err(enums::LogoutReason::Failure);
         }
     };
+
+    let is_brand_new_character = character.server_id.is_none();
 
     let mut cn = None;
     if let Some(server_id) = character.server_id {
@@ -3581,7 +3586,30 @@ fn resolve_api_login_character(nr: usize, login_ticket: u64) -> Result<usize, en
                 write_ascii_into_fixed(&mut characters[cn].name, &character.name);
                 characters[cn].reference = characters[cn].name;
                 write_ascii_into_fixed(&mut characters[cn].description, &character.description);
-                characters[cn].player = nr as i32;
+
+                // Characters created from templates start out "in use" (often `USE_ACTIVE`) because
+                // templates represent live world entities. For API-created player characters, we
+                // want them to begin offline so the normal login path can attach and activate them.
+                characters[cn].used = core::constants::USE_NONACTIVE;
+                characters[cn].player = 0;
+
+                if is_brand_new_character {
+                    // API login does NOT go through `plr_newlogin`, so first-time characters
+                    // need the same baseline initialization (home temple/tavern, base stats).
+                    // Without this, `plr_login` can try to drop at (0,0).
+                    characters[cn].temple_x = core::constants::HOME_MERCENARY_X as u16;
+                    characters[cn].temple_y = core::constants::HOME_MERCENARY_Y as u16;
+                    characters[cn].tavern_x = core::constants::HOME_MERCENARY_X as u16;
+                    characters[cn].tavern_y = core::constants::HOME_MERCENARY_Y as u16;
+                    characters[cn].points = 0;
+                    characters[cn].points_tot = 0;
+                    characters[cn].luck = 205;
+                    characters[cn].mode = 1;
+
+                    // Mark as a player/new user in the same way as `plr_newlogin`.
+                    characters[cn].flags |=
+                        CharacterFlags::NewUser.bits() | CharacterFlags::Player.bits();
+                }
             });
 
             cn
