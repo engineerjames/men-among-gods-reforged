@@ -247,21 +247,39 @@ pub fn get_characters(base_url: &str, token: &str) -> Result<Vec<CharacterSummar
         .map_err(|err| format!("Failed to build HTTP client: {err}"))?;
 
     let url = format!("{}/characters", base_url.trim_end_matches('/'));
-    let resp = client
-        .get(url)
-        .bearer_auth(token)
-        .send()
-        .map_err(|err| format!("Get characters request failed: {err}"))?;
+    // The API is configured with a strict global rate limit (typically 1 req/sec).
+    // The client often performs back-to-back requests (e.g. login -> get characters),
+    // so retry once or twice on 429 to smooth UX.
+    let mut last_status = None;
+    for attempt in 0..=2u32 {
+        let resp = client
+            .get(&url)
+            .bearer_auth(token)
+            .send()
+            .map_err(|err| format!("Get characters request failed: {err}"))?;
 
-    let status = resp.status();
-    if status.is_success() {
-        let body: GetCharactersResponse = resp
-            .json()
-            .map_err(|err| format!("Failed to parse characters response: {err}"))?;
-        return Ok(body.characters);
+        let status = resp.status();
+        last_status = Some(status);
+
+        if status.is_success() {
+            let body: GetCharactersResponse = resp
+                .json()
+                .map_err(|err| format!("Failed to parse characters response: {err}"))?;
+            return Ok(body.characters);
+        }
+
+        if status == StatusCode::TOO_MANY_REQUESTS && attempt < 2 {
+            std::thread::sleep(Duration::from_millis(1100));
+            continue;
+        }
+
+        break;
     }
 
+    let status = last_status.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+
     let message = match status {
+        StatusCode::TOO_MANY_REQUESTS => "Rate limited",
         StatusCode::UNAUTHORIZED => "Unauthorized",
         StatusCode::INTERNAL_SERVER_ERROR => "Server error",
         _ => "Get characters failed",

@@ -123,9 +123,13 @@ fn connect_stream(req: &LoginRequested) -> Result<TcpStream, String> {
 /// but some (notably `SV_EXIT` and `SV_TICK`) are only 2 bytes.
 fn get_server_response(stream: &mut TcpStream) -> Result<server_commands::ServerCommand, String> {
     let mut header = [0u8; 1];
-    stream
-        .read_exact(&mut header)
-        .map_err(|e| format!("Read failed: {e}"))?;
+    stream.read_exact(&mut header).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::WouldBlock {
+            "Timed out waiting for server response (check game server IP/port)".to_string()
+        } else {
+            format!("Read failed: {e}")
+        }
+    })?;
 
     let opcode = header[0];
     let remaining = match opcode {
@@ -140,9 +144,13 @@ fn get_server_response(stream: &mut TcpStream) -> Result<server_commands::Server
 
     if remaining > 0 {
         let mut rest = vec![0u8; remaining];
-        stream
-            .read_exact(&mut rest)
-            .map_err(|e| format!("Read failed: {e}"))?;
+        stream.read_exact(&mut rest).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::WouldBlock {
+                "Timed out waiting for server response (check game server IP/port)".to_string()
+            } else {
+                format!("Read failed: {e}")
+            }
+        })?;
         buf.extend_from_slice(&rest);
     }
 

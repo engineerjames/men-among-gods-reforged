@@ -130,6 +130,11 @@ impl Default for NetworkRuntime {
 }
 
 impl NetworkRuntime {
+    /// Returns whether the background network task is running.
+    pub fn is_started(&self) -> bool {
+        self.started
+    }
+
     /// Returns the client-side tick counter (used for `CL_CMD_CTICK`).
     pub fn client_ticker(&self) -> u32 {
         self.client_ticker
@@ -199,7 +204,9 @@ impl Plugin for NetworkPlugin {
             .configure_sets(Update, (NetworkSet::Receive, NetworkSet::Send).chain())
             .add_systems(
                 Update,
-                login::start_login.run_if(in_state(GameState::LoggingIn)),
+                login::start_login.run_if(
+                    in_state(GameState::LoggingIn).or(in_state(GameState::CharacterSelection)),
+                ),
             )
             // Only process network events while we're in active network-driven states.
             // When the "Exited" UI is showing, we intentionally stop draining the queue so
@@ -209,6 +216,7 @@ impl Plugin for NetworkPlugin {
                 process_network_events
                     .run_if(
                         in_state(GameState::LoggingIn)
+                            .or(in_state(GameState::CharacterSelection))
                             .or(in_state(GameState::Gameplay))
                             .or(in_state(GameState::Menu)),
                     )

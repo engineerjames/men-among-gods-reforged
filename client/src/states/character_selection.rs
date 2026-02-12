@@ -10,7 +10,7 @@ use mag_core::traits;
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::network::account_api::{self, ApiSession, CharacterSummary};
-use crate::network::LoginRequested;
+use crate::network::{LoginRequested, LoginStatus, NetworkRuntime};
 use crate::settings::UserSettingsState;
 use crate::GameState;
 
@@ -52,6 +52,8 @@ pub fn run_character_selection(
     mut ui_state: ResMut<CharacterSelectionUiState>,
     mut api_session: ResMut<ApiSession>,
     mut next_state: ResMut<NextState<GameState>>,
+    net: Res<NetworkRuntime>,
+    status: Res<LoginStatus>,
     user_settings: Res<UserSettingsState>,
     mut login_ev: MessageWriter<LoginRequested>,
 ) {
@@ -146,7 +148,9 @@ pub fn run_character_selection(
             LoginTicketStatus::Ready(result) => {
                 ui_state.login_rx = None;
                 ui_state.login_task = None;
-                ui_state.login_is_busy = false;
+                // Keep the UI in a "busy" state while the TCP login handshake runs.
+                // We'll clear it if the network task reports an error.
+                ui_state.login_is_busy = true;
 
                 match result {
                     Ok(ticket) => {
@@ -168,11 +172,9 @@ pub fn run_character_selection(
 
                             login_ticket: Some(ticket),
                         });
-
-                        // Transition to the login state; the network task will pick up the event.
-                        next_state.set(GameState::LoggingIn);
                     }
                     Err(err) => {
+                        ui_state.login_is_busy = false;
                         ui_state.last_error = Some(err);
                     }
                 }
@@ -190,6 +192,14 @@ pub fn run_character_selection(
                 ui_state.last_error = Some("Ticket request failed: channel locked".to_string());
             }
             LoginTicketStatus::Empty => {}
+        }
+    }
+
+    // If we attempted to log in but the network task has stopped with an error, surface it here.
+    if ui_state.login_is_busy && !net.is_started() {
+        if let Some(msg) = status.message.strip_prefix("Error: ") {
+            ui_state.login_is_busy = false;
+            ui_state.last_error = Some(msg.to_string());
         }
     }
 
@@ -289,6 +299,10 @@ pub fn run_character_selection(
 
             if let Some(err) = ui_state.last_error.as_deref() {
                 ui.colored_label(egui::Color32::LIGHT_RED, err);
+            }
+
+            if ui_state.login_is_busy {
+                ui.colored_label(egui::Color32::LIGHT_BLUE, status.message.as_str());
             }
 
             if let Some(notice) = ui_state.success_notice.as_deref() {

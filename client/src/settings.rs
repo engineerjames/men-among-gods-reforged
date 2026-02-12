@@ -12,7 +12,11 @@ use crate::systems::magic_postprocess::MagicPostProcessSettings;
 use crate::systems::sound::SoundSettings;
 use crate::types::{player_data::PlayerData, save_file::SaveFile};
 
-pub const DEFAULT_SERVER_IP: &str = "menamonggods.ddns.net";
+pub const DEFAULT_SERVER_IP: &str = if cfg!(debug_assertions) {
+    "127.0.0.1"
+} else {
+    "menamonggods.ddns.net"
+};
 pub const DEFAULT_SERVER_PORT: u16 = 5555;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
