@@ -289,7 +289,7 @@ pub fn run_character_selection(
         .collapsible(false)
         .resizable(false)
         .show(ctx, |ui| {
-            ui.heading("Character selection (placeholder)");
+            ui.heading("Character selection");
 
             if let Some(username) = api_session.username.as_deref() {
                 ui.label(format!("Logged in as: {username}"));

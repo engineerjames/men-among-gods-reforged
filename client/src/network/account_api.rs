@@ -223,6 +223,7 @@ pub fn create_character(
 
     let message = match status {
         StatusCode::BAD_REQUEST => "Invalid character details",
+        StatusCode::CONFLICT => "You have too many characters",
         StatusCode::UNAUTHORIZED => "Unauthorized",
         StatusCode::INTERNAL_SERVER_ERROR => "Server error",
         _ => "Character creation failed",

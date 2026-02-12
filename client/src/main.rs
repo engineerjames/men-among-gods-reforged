@@ -308,21 +308,6 @@ fn main() {
             states::character_creation::teardown_character_creation,
         )
         //
-        // LoggingIn state
-        //
-        .add_systems(
-            OnEnter(GameState::LoggingIn),
-            states::logging_in::setup_logging_in,
-        )
-        .add_systems(
-            EguiPrimaryContextPass,
-            states::logging_in::run_logging_in.run_if(in_state(GameState::LoggingIn)),
-        )
-        .add_systems(
-            OnExit(GameState::LoggingIn),
-            states::logging_in::teardown_logging_in,
-        )
-        //
         // Gameplay state
         //
         .add_systems(

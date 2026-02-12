@@ -127,7 +127,7 @@ pub fn run_character_creation(
         .collapsible(false)
         .resizable(false)
         .show(ctx, |ui| {
-            ui.heading("Create character (placeholder)");
+            ui.heading("Create character");
 
             if let Some(username) = api_session.username.as_deref() {
                 ui.label(format!("Logged in as: {username}"));
