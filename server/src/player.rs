@@ -313,25 +313,28 @@ pub fn plr_logout(character_id: usize, player_id: usize, reason: enums::LogoutRe
         }
     }
 
-    // Send exit message to player
-    if player_id != 0
-        && reason != enums::LogoutReason::Unknown
-        && reason != enums::LogoutReason::Usurp
-    {
-        let mut buffer: [u8; 16] = [0; 16];
-        buffer[0] = core::constants::SV_EXIT;
-        buffer[1] = reason as u8;
+    // Send exit message to player (when applicable), and always finalize/clear the player slot.
+    //
+    // Important: for disconnects (`Unknown`) we still need to run `player_exit` to clear any
+    // stale `ch.player` mapping, otherwise later logins can incorrectly think the character is
+    // already active and kick the new connection.
+    if player_id != 0 {
+        if reason != enums::LogoutReason::Unknown && reason != enums::LogoutReason::Usurp {
+            let mut buffer: [u8; 16] = [0; 16];
+            buffer[0] = core::constants::SV_EXIT;
+            buffer[1] = reason as u8;
 
-        let player_state = Server::with_players(|players| players[player_id].state);
+            let player_state = Server::with_players(|players| players[player_id].state);
 
-        if player_state == core::constants::ST_NORMAL {
-            NetworkManager::with(|network| {
-                network.xsend(player_id, &buffer, 2);
-            });
-        } else {
-            NetworkManager::with(|network| {
-                network.csend(player_id, &buffer, 2);
-            });
+            if player_state == core::constants::ST_NORMAL {
+                NetworkManager::with(|network| {
+                    network.xsend(player_id, &buffer, 2);
+                });
+            } else {
+                NetworkManager::with(|network| {
+                    network.csend(player_id, &buffer, 2);
+                });
+            }
         }
 
         player_exit(player_id);
@@ -3294,7 +3297,22 @@ fn plr_login(nr: usize) {
         log::warn!("Login as {} who is already active", cn);
         let active_player =
             Repository::with_characters(|characters| characters[cn].player as usize);
-        plr_logout(cn, active_player, enums::LogoutReason::IdleTooLong);
+        // Only kick the *other* active player if they still have a live socket.
+        // A stale `ch.player` binding can happen after disconnects; never kick ourselves.
+        let should_kick = active_player != 0
+            && active_player != nr
+            && active_player < core::constants::MAXPLAYER
+            && Server::with_players(|players| players[active_player].sock.is_some());
+        if should_kick {
+            plr_logout(cn, active_player, enums::LogoutReason::IdleTooLong);
+        } else {
+            log::warn!(
+                "Already-active character {} has stale/invalid active_player={} (current_player={}); continuing",
+                cn,
+                active_player,
+                nr
+            );
+        }
     }
 
     // Kicked
@@ -3323,6 +3341,10 @@ fn plr_login(nr: usize) {
     // attach player to character
     Repository::with_characters_mut(|characters| {
         characters[cn].player = nr as i32;
+        // Ensure the logged-in entity is treated as a player character.
+        // API-created characters are spawned from templates and may not carry the Player flag,
+        // which would break `/who` visibility and command processing.
+        characters[cn].flags |= CharacterFlags::Player.bits();
         // If not CCP and is god, mark invisible
         if (characters[cn].flags & CharacterFlags::ComputerControlledPlayer.bits()) == 0
             && (characters[cn].flags & CharacterFlags::God.bits()) != 0
@@ -5449,11 +5471,7 @@ fn plr_challenge_api_login(nr: usize) {
         network.csend(nr, &buf, 16);
     });
 
-    log::info!(
-        "Player {} api login challenge issued (ticket={})",
-        nr,
-        ticket
-    );
+    log::info!("Player {} api login challenge issued", nr);
 
     send_mod(nr);
 }
