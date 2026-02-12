@@ -265,6 +265,61 @@ sequenceDiagram
 # Future Improvements
 ## Security Improvements
 
+When this API is exposed outside a single host, these are the high-impact improvements to reduce risk.
+
+### Transport security (TLS)
+
+- **HTTPS for client → API**: serve the API behind TLS (e.g. Caddy/Nginx/Traefik) so JWTs and
+    credentials never traverse the network in plaintext.
+
+### Password handling
+
+- **Hash passwords on the server**: the API currently stores and compares the password credential
+    as provided by the client. Prefer accepting a plaintext password over TLS and hashing it on the
+    server using Argon2id (or similar), with per-user random salt.
+- **Constant-time verification**: use a password verification function that avoids timing leaks.
+- **Password policy**: enforce minimum length and reject common/breached passwords (if the game
+    targets internet-facing registration).
+
+### JWT hardening
+
+- **Rotate secrets**: support JWT secret rotation (multiple active secrets, `kid` header, phased
+    rollout) so a leaked secret can be retired safely.
+- **Issuer/audience**: include and validate `iss`/`aud` to prevent tokens minted for another
+    environment from being accepted.
+- **Short-lived access + refresh tokens**: consider shortening access token TTL and using refresh
+    tokens stored server-side (or in a secure store) for better revocation control.
+- **Validate algorithm & claims strictly**: explicitly require the expected signing algorithm and
+    validate `exp` and other claims defensively.
+
+### KeyDB / Redis security
+
+- **Bind + firewall**: keep KeyDB bound to localhost only (or private network) and block public
+    access at the OS/firewall level.
+- **Require authentication**: enable KeyDB auth (ACLs / password) even on private networks.
+- **Least privilege**: if using ACLs, restrict the API/game server to only the commands and key
+    patterns they need.
+- **Data retention**: consider TTLs for ephemeral keys (tickets already use TTL) and clarify what
+    data must persist.
+
+### Abuse / brute-force resistance
+
+- **Temporary lockouts / backoff**: add progressive delays or temporary lockouts after repeated
+    failed login attempts.
+- **Audit events**: log authentication events (success/failure) with care not to leak secrets.
+
+### Operational / secret management
+
+- **Don’t log secrets**: ensure request logging never includes passwords, tokens, or ticket values.
+- **Secret storage**: load `API_JWT_SECRET` from a secrets manager or OS keychain/secure store in
+    production (not checked into files or shell history).
+- **Secure defaults**: fail fast if required env vars are missing (already done for JWT secret).
+
+### Optional: API surface hardening
+
+- **Structured error responses**: return consistent JSON error payloads and avoid leaking internal
+    details to clients.
+
 ## Feature Improvements
 - Account management: password reset, email verification, account deletion.
 - When a character is deleted - we need to actually remove the character's data from the server; but until we unify the data model and remove the .dat files, we can at least mark the character as deleted in the database and hide it from the character list.
