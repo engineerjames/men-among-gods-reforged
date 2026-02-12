@@ -9,3 +9,4 @@ bitflags = "2.10.0"
 flate2 = "1.1.5"
 log = "0.4.29"
 log4rs = "1.4.0"
+serde = { version = "1.0.228", features = ["derive"] }

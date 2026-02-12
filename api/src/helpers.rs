@@ -50,20 +50,14 @@ pub async fn get_token_from_headers(headers: &axum::http::HeaderMap) -> Option<S
     let token = headers
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
-        .map(|s| s.trim().to_string());
+        .map(|s| s.trim());
 
-    let token = match token {
-        Some(value) => value
-            .strip_prefix("Bearer ")
-            .unwrap_or(&value)
-            .trim()
-            .to_string(),
-        _ => {
-            return None;
-        }
-    };
+    let token = token?.strip_prefix("Bearer ")?.trim();
+    if token.is_empty() {
+        return None;
+    }
 
-    Some(token)
+    Some(token.to_string())
 }
 
 /// Validates email format using a regex pattern. This is a basic check and may not cover
@@ -166,7 +160,7 @@ mod tests {
     }
 
     #[test]
-    fn token_from_headers_accepts_raw_token() {
+    fn token_from_headers_does_not_accept_raw_token() {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -180,7 +174,7 @@ mod tests {
             );
 
             let token = get_token_from_headers(&headers).await;
-            assert_eq!(Some("raw.token".to_string()), token);
+            assert_eq!(None, token);
         });
     }
 

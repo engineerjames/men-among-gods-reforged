@@ -9,6 +9,7 @@ use bevy_egui::{
     EguiContexts,
 };
 use egui_file_dialog::FileDialog;
+use mag_core::traits::{self, Class};
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::helpers::open_dir_in_file_manager;
@@ -41,21 +42,6 @@ fn write_ascii_into_fixed(dst: &mut [u8], s: &str) {
         dst[i] = if (32..=126).contains(&b) { b } else { b' ' };
         i += 1;
     }
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-
-pub enum Class {
-    Mercenary,
-    Templar,
-    Harakim,
-
-    // Achieved through gameplay:
-    Sorceror,
-    Warrior,
-    ArchHarakim,
-    ArchTemplar,
-    SeyanDu,
 }
 
 #[derive(Resource, Debug)]
@@ -158,7 +144,7 @@ fn apply_settings_to_login_ui(
     login_info.password.clear();
     login_info.description = mag_files::fixed_ascii_to_string(&settings.player_data.desc);
 
-    let (is_male, class) = class_from_race(settings.save_file.race);
+    let (is_male, class) = traits::get_sex_and_class(settings.save_file.race);
     login_info.is_male = is_male;
     login_info.class = class;
 
@@ -283,7 +269,7 @@ pub fn run_logging_in(
                     ui.vertical(|ui| {
                         ui.add_enabled_ui(false, |ui| {
                             ui.label("Achieved through gameplay:");
-                            ui.radio_value(&mut login_info.class, Class::Sorceror, "Sorceror");
+                            ui.radio_value(&mut login_info.class, Class::Sorcerer, "Sorcerer");
                             ui.radio_value(&mut login_info.class, Class::Warrior, "Warrior");
                             ui.radio_value(
                                 &mut login_info.class,
@@ -369,7 +355,7 @@ pub fn run_logging_in(
                                 write_ascii_into_fixed(&mut save_file.name, &username);
                                 login_info.description =
                                     mag_files::fixed_ascii_to_string(&player_data.desc);
-                                let (is_male, class) = class_from_race(save_file.race);
+                                let (is_male, class) = traits::get_sex_and_class(save_file.race);
                                 login_info.is_male = is_male;
                                 login_info.class = class;
 
@@ -394,7 +380,8 @@ pub fn run_logging_in(
                         {
                             let save_file = player_state.save_file_mut();
                             write_ascii_into_fixed(&mut save_file.name, &login_info.username);
-                            save_file.race = get_race_integer(login_info.is_male, login_info.class);
+                            save_file.race =
+                                traits::get_race_integer(login_info.is_male, login_info.class);
                         }
                         {
                             let pdata = player_state.player_data_mut();
@@ -447,7 +434,8 @@ pub fn run_logging_in(
                         {
                             let save_file = player_state.save_file_mut();
                             write_ascii_into_fixed(&mut save_file.name, &login_info.username);
-                            save_file.race = get_race_integer(login_info.is_male, login_info.class);
+                            save_file.race =
+                                traits::get_race_integer(login_info.is_male, login_info.class);
                         }
 
                         // Ensure user-entered character name/description are pushed to pdata
@@ -479,11 +467,13 @@ pub fn run_logging_in(
                                 .unwrap_or(DEFAULT_SERVER_PORT),
                             username: login_info.username.clone(),
                             password: login_info.password.clone(),
-                            race: get_race_integer(login_info.is_male, login_info.class),
+                            race: traits::get_race_integer(login_info.is_male, login_info.class),
 
                             user_id: save_file.usnr,
                             pass1: save_file.pass1,
                             pass2: save_file.pass2,
+
+                            login_ticket: None,
                         });
                     }
                 });
@@ -546,58 +536,6 @@ fn ensure_mag_extension(mut path: PathBuf) -> PathBuf {
         _ => {
             path.set_extension("mag");
             path
-        }
-    }
-}
-
-/// Decodes the legacy race integer into `(is_male, class)`.
-fn class_from_race(race: i32) -> (bool, Class) {
-    match race {
-        3 => (true, Class::Templar),
-        2 => (true, Class::Mercenary),
-        4 => (true, Class::Harakim),
-        13 => (true, Class::SeyanDu),
-        544 => (true, Class::ArchTemplar),
-        545 => (true, Class::ArchHarakim),
-        546 => (true, Class::Sorceror),
-        547 => (true, Class::Warrior),
-
-        77 => (false, Class::Templar),
-        76 => (false, Class::Mercenary),
-        78 => (false, Class::Harakim),
-        79 => (false, Class::SeyanDu),
-        549 => (false, Class::ArchTemplar),
-        550 => (false, Class::ArchHarakim),
-        551 => (false, Class::Sorceror),
-        552 => (false, Class::Warrior),
-
-        _ => (true, Class::Mercenary),
-    }
-}
-
-/// Encodes `(is_male, class)` into the legacy race integer.
-fn get_race_integer(is_male: bool, class: Class) -> i32 {
-    if is_male {
-        match class {
-            Class::Templar => 3,
-            Class::Mercenary => 2,
-            Class::Harakim => 4,
-            Class::SeyanDu => 13,
-            Class::ArchTemplar => 544,
-            Class::ArchHarakim => 545,
-            Class::Sorceror => 546,
-            Class::Warrior => 547,
-        }
-    } else {
-        match class {
-            Class::Templar => 77,
-            Class::Mercenary => 76,
-            Class::Harakim => 78,
-            Class::SeyanDu => 79,
-            Class::ArchTemplar => 549,
-            Class::ArchHarakim => 550,
-            Class::Sorceror => 551,
-            Class::Warrior => 552,
         }
     }
 }

@@ -19,6 +19,7 @@ pub mod encrypt;
 pub mod ranks;
 pub mod stat_buffer;
 pub mod string_operations;
+pub mod traits;
 pub mod types;
 
 #[derive(Debug)]

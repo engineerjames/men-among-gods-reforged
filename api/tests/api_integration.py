@@ -358,7 +358,7 @@ def test_create_character_requires_auth(base_url: str) -> None:
         "name": f"hero{unique_suffix()}",
         "description": "Brave",
         "sex": "Male",
-        "race": "Mercenary",
+        "class": "Mercenary",
     }
     status, _ = request_json("POST", f"{base_url}/characters", payload=payload)
     assert_status(401, status, "create character auth status")
@@ -395,7 +395,7 @@ def test_create_character_ok_and_get(base_url: str) -> None:
         "name": f"hero{unique_suffix()}",
         "description": "First hero",
         "sex": "Male",
-        "race": "Mercenary",
+        "class": "Mercenary",
     }
     status, body = request_json(
         "POST",
@@ -422,7 +422,7 @@ def test_create_character_ok_and_get(base_url: str) -> None:
 
 
 def test_create_character_invalid_race(base_url: str) -> None:
-    """Test that creating a character rejects restricted races.
+    """Test that creating a character rejects restricted classes.
 
     :param base_url: Base URL for the API.
     :raises AssertionError: If the response status is not 400.
@@ -433,7 +433,7 @@ def test_create_character_invalid_race(base_url: str) -> None:
         "name": f"hero{unique_suffix()}",
         "description": "Forbidden",
         "sex": "Female",
-        "race": "SeyanDu",
+        "class": "SeyanDu",
     }
     status, _ = request_json(
         "POST",
@@ -456,7 +456,7 @@ def test_update_character_ok(base_url: str) -> None:
         "name": f"hero{unique_suffix()}",
         "description": "Original",
         "sex": "Male",
-        "race": "Mercenary",
+        "class": "Mercenary",
     }
     status, body = request_json(
         "POST",
@@ -505,7 +505,7 @@ def test_update_character_missing_fields(base_url: str) -> None:
         "name": f"hero{unique_suffix()}",
         "description": "Original",
         "sex": "Male",
-        "race": "Mercenary",
+        "class": "Mercenary",
     }
     status, body = request_json(
         "POST",
@@ -541,7 +541,7 @@ def test_update_character_wrong_user(base_url: str) -> None:
         "name": f"hero{unique_suffix()}",
         "description": "Original",
         "sex": "Male",
-        "race": "Mercenary",
+        "class": "Mercenary",
     }
     status, body = request_json(
         "POST",
@@ -576,7 +576,7 @@ def test_delete_character_ok(base_url: str) -> None:
         "name": f"hero{unique_suffix()}",
         "description": "To delete",
         "sex": "Female",
-        "race": "Templar",
+        "class": "Templar",
     }
     status, body = request_json(
         "POST",
@@ -621,7 +621,7 @@ def test_delete_character_wrong_user(base_url: str) -> None:
         "name": f"hero{unique_suffix()}",
         "description": "To delete",
         "sex": "Female",
-        "race": "Templar",
+        "class": "Templar",
     }
     status, body = request_json(
         "POST",
@@ -640,6 +640,100 @@ def test_delete_character_wrong_user(base_url: str) -> None:
         headers={"Authorization": f"Bearer {token_b}"},
     )
     assert_status(401, status, "delete character wrong user status")
+
+
+def test_create_game_login_ticket_requires_auth(base_url: str) -> None:
+    """Test that ``POST /game/login_ticket`` requires an Authorization header.
+
+    :param base_url: Base URL for the API.
+    :raises AssertionError: If the response status is not 401.
+    :returns: None.
+    """
+    status, _ = request_json(
+        "POST",
+        f"{base_url}/game/login_ticket",
+        payload={"character_id": 1},
+    )
+    assert_status(401, status, "create game login ticket auth status")
+
+
+def test_create_game_login_ticket_ok(base_url: str) -> None:
+    """Test minting a one-time game login ticket for an owned character.
+
+    :param base_url: Base URL for the API.
+    :raises AssertionError: If ticket creation fails or the ticket is missing.
+    :returns: None.
+    """
+    token, _ = create_account_and_token(base_url, f"ticket{unique_suffix()}")
+    payload = {
+        "name": f"hero{unique_suffix()}",
+        "description": "Ticket hero",
+        "sex": "Male",
+        "class": "Mercenary",
+    }
+    status, body = request_json(
+        "POST",
+        f"{base_url}/characters",
+        payload=payload,
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert_status(200, status, "create character for ticket status")
+    character_id = json.loads(body or "{}").get("id")
+    if not isinstance(character_id, int) or character_id <= 0:
+        raise AssertionError("create character response missing id")
+
+    status, body = request_json(
+        "POST",
+        f"{base_url}/game/login_ticket",
+        payload={"character_id": character_id},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert_status(200, status, "create game login ticket status")
+    data = json.loads(body or "{}")
+    ticket = data.get("ticket")
+    if not isinstance(ticket, int) or ticket <= 0:
+        raise AssertionError("create ticket response missing/invalid ticket")
+    if data.get("error") is not None:
+        raise AssertionError(f"create ticket response error not null: {data.get('error')}")
+
+
+def test_create_game_login_ticket_wrong_owner(base_url: str) -> None:
+    """Test that a user cannot mint a ticket for another user's character.
+
+    :param base_url: Base URL for the API.
+    :raises AssertionError: If the API does not return 401.
+    :returns: None.
+    """
+    token_a, _ = create_account_and_token(base_url, f"ticka{unique_suffix()}")
+    token_b, _ = create_account_and_token(base_url, f"tickb{unique_suffix()}")
+
+    payload = {
+        "name": f"hero{unique_suffix()}",
+        "description": "Owned by A",
+        "sex": "Female",
+        "class": "Templar",
+    }
+    status, body = request_json(
+        "POST",
+        f"{base_url}/characters",
+        payload=payload,
+        headers={"Authorization": f"Bearer {token_a}"},
+    )
+    assert_status(200, status, "create character for ticket wrong owner status")
+    character_id = json.loads(body or "{}").get("id")
+    if not isinstance(character_id, int) or character_id <= 0:
+        raise AssertionError("create character response missing id")
+
+    status, body = request_json(
+        "POST",
+        f"{base_url}/game/login_ticket",
+        payload={"character_id": character_id},
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert_status(401, status, "create game login ticket wrong owner status")
+    data = json.loads(body or "{}")
+    if data.get("ticket") is not None:
+        raise AssertionError("expected null ticket for unauthorized request")
 
 
 def test_malformed_json(base_url: str) -> None:
@@ -734,6 +828,9 @@ def main() -> None:
         test_update_character_wrong_user,
         test_delete_character_ok,
         test_delete_character_wrong_user,
+        test_create_game_login_ticket_requires_auth,
+        test_create_game_login_ticket_ok,
+        test_create_game_login_ticket_wrong_owner,
     ]
 
     failed = 0

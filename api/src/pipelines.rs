@@ -1,3 +1,5 @@
+use core::traits::{self, Class, Sex};
+
 use crate::types;
 use log::info;
 use redis::AsyncCommands;
@@ -257,7 +259,7 @@ pub(crate) async fn get_account_password_hash(
 /// * `name` - Character name.
 /// * `description` - Optional character description.
 /// * `sex` - Sex enum to store.
-/// * `race` - Race enum to store.
+/// * `class` - Class enum to store.
 ///
 /// # Returns
 /// * `Ok(character_id)` on success.
@@ -267,8 +269,8 @@ pub(crate) async fn insert_new_character(
     account_id: u64,
     name: &str,
     description: Option<&str>,
-    sex: types::Sex,
-    race: types::Race,
+    sex: traits::Sex,
+    class: traits::Class,
 ) -> Result<u64, redis::RedisError> {
     let character_id: u64 = con.incr("character:next_id", 1).await?;
     let character_key = format!("character:{}", character_id);
@@ -284,8 +286,8 @@ pub(crate) async fn insert_new_character(
         .arg(description.unwrap_or(""))
         .arg("sex")
         .arg(sex as u32)
-        .arg("race")
-        .arg(race as u32)
+        .arg("class")
+        .arg(class as u32)
         .query_async::<()>(&mut *con)
         .await?;
 
@@ -342,6 +344,24 @@ pub(crate) async fn update_character(
     }
 
     cmd.query_async::<()>(&mut *con).await
+}
+
+/// Sets the `server_id` field for a character hash.
+///
+/// This is written by the game server once it assigns an internal character index.
+#[allow(dead_code)]
+pub(crate) async fn set_character_server_id(
+    con: &mut redis::aio::MultiplexedConnection,
+    character_id: u64,
+    server_id: u32,
+) -> Result<(), redis::RedisError> {
+    let character_key = format!("character:{}", character_id);
+    redis::cmd("HSET")
+        .arg(&character_key)
+        .arg("server_id")
+        .arg(server_id)
+        .query_async::<()>(&mut *con)
+        .await
 }
 
 /// Deletes a character hash from KeyDB.
@@ -428,30 +448,34 @@ pub(crate) async fn list_characters_for_account_scan(
             Some(value) => value,
             None => continue,
         };
-        let sex = match types::sex_from_u32(sex_value) {
+        let sex = match Sex::from_u32(sex_value) {
             Some(value) => value,
             None => continue,
         };
 
-        let race_value: u32 = match character_map
-            .get("race")
+        let class_value: u32 = match character_map
+            .get("class")
             .and_then(|value| value.parse().ok())
         {
             Some(value) => value,
             None => continue,
         };
-        let race = match types::race_from_u32(race_value) {
+        let class = match Class::from_u32(class_value) {
             Some(value) => value,
             None => continue,
         };
+
+        let server_id = character_map
+            .get("server_id")
+            .and_then(|value| value.parse::<u32>().ok());
 
         characters.push(types::CharacterSummary {
             id: character_id,
             name,
             description,
             sex,
-            race,
-            server_id: None,
+            class: class,
+            server_id,
         });
     }
 

@@ -81,6 +81,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/login", post(routes::login))
         .route("/accounts", post(routes::create_account))
         // Token required routes
+        .route("/game/login_ticket", post(routes::create_game_login_ticket))
         .route("/characters", get(routes::get_characters))
         .route("/characters", post(routes::create_new_character))
         .route("/characters/{id}", put(routes::update_character))

@@ -940,6 +940,9 @@ impl God {
             *character =
                 Repository::with_character_templates(|char_templates| char_templates[template_id]);
 
+            // Templates can carry runtime fields like `player`; never inherit a player binding.
+            character.player = 0;
+
             character.pass1 = crate::helpers::random_mod(0x3fffffff);
             character.pass2 = crate::helpers::random_mod(0x3fffffff);
             character.temp = template_id as u16;

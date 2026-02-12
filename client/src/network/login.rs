@@ -123,9 +123,13 @@ fn connect_stream(req: &LoginRequested) -> Result<TcpStream, String> {
 /// but some (notably `SV_EXIT` and `SV_TICK`) are only 2 bytes.
 fn get_server_response(stream: &mut TcpStream) -> Result<server_commands::ServerCommand, String> {
     let mut header = [0u8; 1];
-    stream
-        .read_exact(&mut header)
-        .map_err(|e| format!("Read failed: {e}"))?;
+    stream.read_exact(&mut header).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::WouldBlock {
+            "Timed out waiting for server response (check game server IP/port)".to_string()
+        } else {
+            format!("Read failed: {e}")
+        }
+    })?;
 
     let opcode = header[0];
     let remaining = match opcode {
@@ -140,9 +144,13 @@ fn get_server_response(stream: &mut TcpStream) -> Result<server_commands::Server
 
     if remaining > 0 {
         let mut rest = vec![0u8; remaining];
-        stream
-            .read_exact(&mut rest)
-            .map_err(|e| format!("Read failed: {e}"))?;
+        stream.read_exact(&mut rest).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::WouldBlock {
+                "Timed out waiting for server response (check game server IP/port)".to_string()
+            } else {
+                format!("Read failed: {e}")
+            }
+        })?;
         buf.extend_from_slice(&rest);
     }
 
@@ -159,34 +167,47 @@ fn login_handshake(
     req: &LoginRequested,
     event_tx: &mpsc::Sender<NetworkEvent>,
 ) -> Result<(), String> {
-    // Mirror `socket.c`:
-    // 1) if a password was provided, send CL_PASSWD
-    // 2) if we have stored credentials (user_id != 0), send CL_LOGIN; else send CL_NEWLOGIN
-
-    if !req.password.is_empty() {
-        log::info!("Sending password command");
-        let pw = client_commands::ClientCommand::new_password(req.password.as_bytes());
+    // Custom API ticket login path (account-managed characters).
+    if let Some(ticket) = req.login_ticket {
+        log::info!("Sending api login command (CL_API_LOGIN)");
+        let cmd = client_commands::ClientCommand::new_api_login(ticket);
         stream
-            .write_all(&pw.to_bytes())
+            .write_all(&cmd.to_bytes())
+            .map_err(|e| format!("Send failed: {e}"))?;
+    } else {
+        // Mirror `socket.c`:
+        // 1) if a password was provided, send CL_PASSWD
+        // 2) if we have stored credentials (user_id != 0), send CL_LOGIN; else send CL_NEWLOGIN
+
+        if !req.password.is_empty() {
+            log::info!("Sending password command");
+            let pw = client_commands::ClientCommand::new_password(req.password.as_bytes());
+            stream
+                .write_all(&pw.to_bytes())
+                .map_err(|e| format!("Send failed: {e}"))?;
+        }
+
+        let (login_pass1, login_pass2) = if req.password.is_empty() {
+            (req.pass1, req.pass2)
+        } else {
+            pass_hash_from_password(&req.password)
+        };
+
+        let login_command = if req.user_id != 0 {
+            log::info!("Sending existing login command (CL_LOGIN)");
+            client_commands::ClientCommand::new_existing_login(
+                req.user_id,
+                login_pass1,
+                login_pass2,
+            )
+        } else {
+            log::info!("Sending newplayer login command (CL_NEWLOGIN)");
+            client_commands::ClientCommand::new_newplayer_login()
+        };
+        stream
+            .write_all(&login_command.to_bytes())
             .map_err(|e| format!("Send failed: {e}"))?;
     }
-
-    let (login_pass1, login_pass2) = if req.password.is_empty() {
-        (req.pass1, req.pass2)
-    } else {
-        pass_hash_from_password(&req.password)
-    };
-
-    let login_command = if req.user_id != 0 {
-        log::info!("Sending existing login command (CL_LOGIN)");
-        client_commands::ClientCommand::new_existing_login(req.user_id, login_pass1, login_pass2)
-    } else {
-        log::info!("Sending newplayer login command (CL_NEWLOGIN)");
-        client_commands::ClientCommand::new_newplayer_login()
-    };
-    stream
-        .write_all(&login_command.to_bytes())
-        .map_err(|e| format!("Send failed: {e}"))?;
 
     log::info!("Waiting for server response to login command");
     let login_response = get_server_response(stream).map_err(|e| {

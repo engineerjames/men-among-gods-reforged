@@ -72,7 +72,7 @@ pub fn setup_loading_ui(
 /// Advances graphics/sound cache initialization while keeping the UI responsive.
 ///
 /// This system processes initialization work for a small time budget per frame and updates the
-/// progress bar. Once both caches are initialized, it transitions to `GameState::LoggingIn`.
+/// progress bar. Once both caches are initialized, it transitions to `GameState::AccountLogin`.
 pub fn run_loading(
     mut gfx: ResMut<GraphicsCache>,
     mut sfx: ResMut<SoundCache>,
@@ -155,7 +155,7 @@ pub fn run_loading(
         return;
     }
 
-    next_state.set(GameState::LoggingIn);
+    next_state.set(GameState::AccountLogin);
 }
 
 /// Despawns the loading UI tree.
