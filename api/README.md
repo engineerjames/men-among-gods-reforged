@@ -261,3 +261,10 @@ sequenceDiagram
     Note over GS: If character has a valid server_id, reuse that slot
     GS-->>C: SV_LOGIN_OK + SV_TICK
 ```
+
+# Future Improvements
+## Security Improvements
+
+## Feature Improvements
+- Account management: password reset, email verification, account deletion.
+- When a character is deleted - we need to actually remove the character's data from the server; but until we unify the data model and remove the .dat files, we can at least mark the character as deleted in the database and hide it from the character list.

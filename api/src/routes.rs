@@ -15,6 +15,8 @@ use rand::rngs::OsRng;
 use rand::RngCore;
 use redis::AsyncCommands;
 
+const MAX_CHARACTERS_PER_ACCOUNT: usize = 10;
+
 /// Creates a new character for the authenticated account.
 /// Validates the JWT from the `Authorization` header, validates the request payload, and then
 /// writes the character data to KeyDB.
@@ -84,6 +86,33 @@ pub(crate) async fn create_new_character(
             );
         }
     };
+
+    let character_count = match pipelines::count_characters_for_account_scan_up_to(
+        &mut con,
+        user_id,
+        MAX_CHARACTERS_PER_ACCOUNT,
+    )
+    .await
+    {
+        Ok(value) => value,
+        Err(err) => {
+            error!("Redis read failed: {}", err);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(types::CharacterSummary::default()),
+            );
+        }
+    };
+    if character_count >= MAX_CHARACTERS_PER_ACCOUNT {
+        warn!(
+            "Create character rejected: account {} already has {} characters",
+            user_id, character_count
+        );
+        return (
+            StatusCode::CONFLICT,
+            Json(types::CharacterSummary::default()),
+        );
+    }
 
     let result = pipelines::insert_new_character(
         &mut con,

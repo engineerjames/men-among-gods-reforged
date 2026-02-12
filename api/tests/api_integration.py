@@ -421,6 +421,46 @@ def test_create_character_ok_and_get(base_url: str) -> None:
         raise AssertionError("created character missing from list")
 
 
+def test_create_character_limit_10(base_url: str) -> None:
+    """Test that an account cannot create more than 10 characters.
+
+    :param base_url: Base URL for the API.
+    :raises AssertionError: If the 11th character is accepted.
+    :returns: None.
+    """
+    token, _ = create_account_and_token(base_url, f"limit{unique_suffix()}")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    for i in range(10):
+        payload = {
+            "name": f"hero{i}_{unique_suffix()}",
+            "description": "Limit test",
+            "sex": "Male" if i % 2 == 0 else "Female",
+            "class": "Mercenary",
+        }
+        status, _ = request_json(
+            "POST",
+            f"{base_url}/characters",
+            payload=payload,
+            headers=headers,
+        )
+        assert_status(200, status, f"create character {i + 1} status")
+
+    payload = {
+        "name": f"hero_over_{unique_suffix()}",
+        "description": "Should be rejected",
+        "sex": "Male",
+        "class": "Mercenary",
+    }
+    status, _ = request_json(
+        "POST",
+        f"{base_url}/characters",
+        payload=payload,
+        headers=headers,
+    )
+    assert_status(409, status, "create character over limit status")
+
+
 def test_create_character_invalid_race(base_url: str) -> None:
     """Test that creating a character rejects restricted classes.
 
@@ -822,6 +862,7 @@ def main() -> None:
         test_create_character_requires_auth,
         test_get_characters_empty,
         test_create_character_ok_and_get,
+        test_create_character_limit_10,
         test_create_character_invalid_race,
         test_update_character_ok,
         test_update_character_missing_fields,
