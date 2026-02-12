@@ -3556,21 +3556,26 @@ fn resolve_api_login_character(
 
     let is_brand_new_character = character.server_id.is_none();
 
-    let mut cn = None;
-    if let Some(server_id) = character.server_id {
-        let candidate = server_id as usize;
-        if candidate > 0
-            && candidate < core::constants::MAXCHARS
-            && Repository::with_characters(|characters| {
-                characters[candidate].used != core::constants::USE_EMPTY
-            })
-        {
-            cn = Some(candidate);
-        }
-    }
+    let cn = match character.server_id {
+        Some(server_id) => {
+            let candidate = server_id as usize;
+            let candidate_is_valid = candidate > 0
+                && candidate < core::constants::MAXCHARS
+                && Repository::with_characters(|characters| {
+                    characters[candidate].used != core::constants::USE_EMPTY
+                });
 
-    let cn = match cn {
-        Some(value) => value,
+            if !candidate_is_valid {
+                log::error!(
+                    "API character {} has invalid/stale server_id={} (slot missing or empty)",
+                    character_id,
+                    server_id
+                );
+                return Err(enums::LogoutReason::Failure);
+            }
+
+            candidate
+        }
         None => {
             let template_id = get_race_integer(character.sex == Sex::Male, character.class);
             let maybe_cn = God::create_char(template_id as usize, true);
@@ -3616,12 +3621,14 @@ fn resolve_api_login_character(
         }
     };
 
-    if let Err(err) = keydb::set_character_server_id(character_id, cn as u32) {
-        log::warn!(
-            "Failed to persist server_id for API character {}: {}",
-            character_id,
-            err
-        );
+    if is_brand_new_character {
+        if let Err(err) = keydb::set_character_server_id(character_id, cn as u32) {
+            log::warn!(
+                "Failed to persist server_id for API character {}: {}",
+                character_id,
+                err
+            );
+        }
     }
 
     Ok(cn)
