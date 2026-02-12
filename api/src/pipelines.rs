@@ -312,6 +312,14 @@ pub(crate) async fn get_character_account_id(
     con.hget(&character_key, "account_id").await
 }
 
+pub(crate) async fn get_character_name(
+    con: &mut redis::aio::MultiplexedConnection,
+    character_id: u64,
+) -> Result<Option<String>, redis::RedisError> {
+    let character_key = format!("character:{}", character_id);
+    con.hget(&character_key, "name").await
+}
+
 /// Updates a character hash by setting any provided fields.
 ///
 /// This issues a single `HSET` containing only the fields that are `Some`.

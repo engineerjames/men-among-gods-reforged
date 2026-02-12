@@ -13,6 +13,7 @@ use crate::gfx_cache::GraphicsCache;
 use crate::network::account_api::{self, ApiSession, CharacterSummary};
 use crate::network::{LoginRequested, LoginStatus, NetworkRuntime};
 use crate::settings::UserSettingsState;
+use crate::settings::DEFAULT_SERVER_PORT;
 use crate::states::helpers::texture_id_for_character;
 use crate::GameState;
 
@@ -159,8 +160,8 @@ pub fn run_character_selection(
                         };
 
                         login_ev.write(LoginRequested {
-                            host: user_settings.settings.default_server_ip.clone(),
-                            port: user_settings.settings.default_server_port,
+                            host: user_settings.settings.default_server_ip.trim().to_string(),
+                            port: DEFAULT_SERVER_PORT,
                             username: String::new(),
                             password: String::new(),
                             race: race_int,

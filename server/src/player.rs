@@ -3621,6 +3621,21 @@ fn resolve_api_login_character(
         }
     };
 
+    // Always sync the most recent API-side name/description into the live character slot.
+    // This fixes older characters that were created before description persistence and ensures
+    // updates made via the API are reflected on the server.
+    Repository::with_characters_mut(|characters| {
+        write_ascii_into_fixed(&mut characters[cn].name, &character.name);
+        characters[cn].reference = characters[cn].name;
+
+        let desc = if character.description.trim().is_empty() {
+            characters[cn].get_default_description()
+        } else {
+            character.description.clone()
+        };
+        write_ascii_into_fixed(&mut characters[cn].description, &desc);
+    });
+
     if is_brand_new_character {
         if let Err(err) = keydb::set_character_server_id(character_id, cn as u32) {
             log::warn!(
