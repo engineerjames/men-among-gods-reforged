@@ -9,9 +9,11 @@ use bevy_egui::{
 use mag_core::traits;
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
+use crate::gfx_cache::GraphicsCache;
 use crate::network::account_api::{self, ApiSession, CharacterSummary};
 use crate::network::{LoginRequested, LoginStatus, NetworkRuntime};
 use crate::settings::UserSettingsState;
+use crate::states::helpers::texture_id_for_character;
 use crate::GameState;
 
 #[derive(Resource, Debug, Default)]
@@ -55,12 +57,9 @@ pub fn run_character_selection(
     net: Res<NetworkRuntime>,
     status: Res<LoginStatus>,
     user_settings: Res<UserSettingsState>,
+    gfx: Res<GraphicsCache>,
     mut login_ev: MessageWriter<LoginRequested>,
 ) {
-    let Ok(ctx) = contexts.ctx_mut() else {
-        return;
-    };
-
     if let Some(notice) = api_session.pending_notice.take() {
         ui_state.success_notice = Some(notice);
         ui_state.last_error = None;
@@ -282,6 +281,20 @@ pub fn run_character_selection(
         .and_then(|id| ui_state.characters.iter().find(|c| c.id == id))
         .map(|c| c.name.clone());
 
+    // Precompute egui texture IDs for each character before borrowing the egui context.
+    // (Borrowing the egui context prevents us from mutably borrowing `contexts` to register images.)
+    let character_textures: Vec<Option<egui::TextureId>> = ui_state
+        .characters
+        .iter()
+        .map(|character| {
+            texture_id_for_character(&mut contexts, &gfx, character.class, character.sex)
+        })
+        .collect();
+
+    let Ok(ctx) = contexts.ctx_mut() else {
+        return;
+    };
+
     egui::Window::new("Character Selection")
         .default_height(TARGET_HEIGHT)
         .default_width(TARGET_WIDTH)
@@ -321,18 +334,31 @@ pub fn run_character_selection(
                     .max_height(180.0)
                     .show(ui, |ui| {
                         let mut next_selection = ui_state.selected_character_id;
-                        for character in &ui_state.characters {
+                        for (index, character) in ui_state.characters.iter().enumerate() {
+                            let texture_id = character_textures.get(index).copied().flatten();
                             let label = format!(
-                                "{} ({}, {}) (id={})",
+                                "{} ({}, {})",
                                 character.name,
                                 character.class.to_string(),
                                 character.sex.to_string(),
-                                character.id
                             );
                             let selected = next_selection == Some(character.id);
-                            if ui.selectable_label(selected, label).clicked() {
-                                next_selection = Some(character.id);
-                            }
+
+                            ui.horizontal(|ui| {
+                                if let Some(texture_id) = texture_id {
+                                    let size = egui::vec2(48.0, 48.0);
+                                    let textured = egui::load::SizedTexture::new(texture_id, size);
+                                    let img_resp = ui.add(egui::Image::new(textured));
+                                    if img_resp.clicked() {
+                                        next_selection = Some(character.id);
+                                    }
+                                }
+
+                                let resp = ui.selectable_label(selected, label);
+                                if resp.clicked() {
+                                    next_selection = Some(character.id);
+                                }
+                            });
                         }
                         ui_state.selected_character_id = next_selection;
                     });

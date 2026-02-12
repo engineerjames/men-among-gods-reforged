@@ -78,6 +78,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // build our application with a route
     let app = Router::new()
+        // Public routes
         .route("/login", post(routes::login))
         .route("/accounts", post(routes::create_account))
         // Token required routes
