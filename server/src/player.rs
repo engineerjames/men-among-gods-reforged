@@ -6,7 +6,7 @@ use core::{
         UWATER,
     },
     encrypt::xcrypt,
-    string_operations::c_string_to_str,
+    string_operations::{c_string_to_str, write_ascii_into_fixed},
     traits::{get_race_integer, Sex},
 };
 
@@ -3507,23 +3507,6 @@ fn plr_login(nr: usize) {
     State::with(|state| {
         state.do_announce(cn, 0, &format!("{} entered the game.\n", name));
     });
-}
-
-fn write_ascii_into_fixed(dst: &mut [u8], s: &str) {
-    dst.fill(0);
-    if dst.is_empty() {
-        return;
-    }
-
-    let mut i = 0usize;
-    for &b in s.as_bytes() {
-        if i >= dst.len().saturating_sub(1) {
-            break;
-        }
-
-        dst[i] = if (32..=126).contains(&b) { b } else { b' ' };
-        i += 1;
-    }
 }
 
 fn resolve_api_login_character(
