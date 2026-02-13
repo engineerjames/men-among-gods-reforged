@@ -1,0 +1,54 @@
+services:
+  keydb:
+    image: eqalpha/keydb:latest
+    command:
+      - keydb-server
+      - --port
+      - "5556"
+      - --requirepass
+      - ${KEYDB_PASSWORD:?KEYDB_PASSWORD is required}
+      - --appendonly
+      - "yes"
+    restart: unless-stopped
+    volumes:
+      - keydb-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "keydb-cli -p 5556 -a \"$${KEYDB_PASSWORD}\" ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    environment:
+      KEYDB_PASSWORD: ${KEYDB_PASSWORD:?KEYDB_PASSWORD is required}
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    depends_on:
+      keydb:
+        condition: service_healthy
+    environment:
+      API_JWT_SECRET: ${API_JWT_SECRET:?API_JWT_SECRET is required}
+      API_BIND_ADDR: 0.0.0.0
+      API_PORT: 5554
+      MAG_KEYDB_URL: redis://:${KEYDB_PASSWORD:?KEYDB_PASSWORD is required}@keydb:5556/
+    ports:
+      - "5554:5554"
+    restart: unless-stopped
+
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    depends_on:
+      keydb:
+        condition: service_healthy
+    environment:
+      MAG_KEYDB_URL: redis://:${KEYDB_PASSWORD:?KEYDB_PASSWORD is required}@keydb:5556/
+    ports:
+      - "5555:5555"
+    restart: unless-stopped
+
+volumes:
+  keydb-data:

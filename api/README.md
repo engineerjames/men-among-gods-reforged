@@ -3,16 +3,60 @@
 This project is an authentication service implemented in Rust. It provides functionalities for user authentication, including user registration and token generation.
 
 # KeyDB setup
-The authentication service relies on KeyDB (a high-performance fork of Redis) for storing user data and session information. To set up KeyDB, follow these steps:
-1. Install KeyDB: You can download and install KeyDB from the official website: https://keydb.dev/.
-2. Start KeyDB: Once installed, start the KeyDB server using the command: `keydb-server --port 5556`.
+The authentication service relies on KeyDB (a high-performance fork of Redis) for storing user data and session information.
 
-Eventually we'll have a customized configuration file that is known to work well with the server, but for now the default configuration should work fine.
+Recommended local/prod-like setup is Docker Compose with KeyDB auth enabled.
+
+## Docker Compose quick start
+
+From the repository root:
+
+1. Create an environment file:
+
+```bash
+cp .env.example .env
+```
+
+2. Set secure values in `.env`:
+
+```bash
+API_JWT_SECRET=<long-random-secret>
+KEYDB_PASSWORD=<long-random-password>
+```
+
+3. Start services:
+
+```bash
+docker compose up -d --build
+```
+
+This starts:
+- API on `localhost:5554`
+- Game server on `localhost:5555`
+- KeyDB with password auth on a private compose network
+
+4. Check logs:
+
+```bash
+docker compose logs -f api server keydb
+```
+
+5. Stop services:
+
+```bash
+docker compose down
+```
+
+To remove KeyDB persisted data as well:
+
+```bash
+docker compose down -v
+```
 
 # Server token generation
 The server generates authentication tokens using the `jsonwebtoken` crate. When a user successfully logs in, the server creates a JWT (JSON Web Token) that contains the user's information and an expiration time. The token is signed using a secret key, which is stored securely on the server. The generated token is then sent back to the client, which can use it for subsequent authenticated requests to the server.
 
-The server must have an environment variable defined for the secret key used in token generation. You can set this environment variable in your terminal before running the server:
+The API server must have an environment variable defined for the secret key used in token generation. You can set this environment variable in your terminal before running the server:
 
 ```bash
 export API_JWT_SECRET="your_secret_key_here"
@@ -172,6 +216,13 @@ flowchart LR
     Client[Client Application] <--> API
     Client[Client Application] <--> GameServer
 ```
+
+### Container deployment notes
+
+- The compose stack uses `MAG_KEYDB_URL` for both API and game server.
+- KeyDB auth is enabled via `--requirepass` and injected from `KEYDB_PASSWORD`.
+- KeyDB is not published to host ports by default, reducing external exposure.
+- API bind/port are controlled by `API_BIND_ADDR` and `API_PORT`.
 
 ## Communication flow - Account Creation
 1. The client application sends a registration request to the authentication service with the desired username, email, and password.
