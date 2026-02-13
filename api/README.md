@@ -313,7 +313,6 @@ When this API is exposed outside a single host, these are the high-impact improv
 - **Don’t log secrets**: ensure request logging never includes passwords, tokens, or ticket values.
 - **Secret storage**: load `API_JWT_SECRET` from a secrets manager or OS keychain/secure store in
     production (not checked into files or shell history).
-- **Secure defaults**: fail fast if required env vars are missing (already done for JWT secret).
 
 ### Optional: API surface hardening
 
