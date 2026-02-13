@@ -17,8 +17,3 @@ pub struct UpdateCharacterRequest {
     pub name: Option<String>,
     pub description: Option<String>,
 }
-
-#[derive(Deserialize)]
-pub struct DeleteCharacterRequest {
-    pub id: u64,
-}

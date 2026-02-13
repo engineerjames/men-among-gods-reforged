@@ -81,8 +81,6 @@ pub struct UserSettings {
 
     /// Default server address shown on the login screen.
     pub default_server_ip: String,
-    /// Default server port shown on the login screen.
-    pub default_server_port: u16,
 
     /// Persisted character/key data (replaces legacy mag.dat).
     pub save_file: SaveFile,
@@ -104,7 +102,6 @@ impl Default for UserSettings {
             video_mode: VideoModeSetting::Windowed,
 
             default_server_ip: DEFAULT_SERVER_IP.to_string(),
-            default_server_port: DEFAULT_SERVER_PORT,
 
             save_file: SaveFile::default(),
             player_data: PlayerData::default(),

@@ -4,13 +4,14 @@ use bevy::prelude::*;
 use bevy::tasks::{IoTaskPool, Task};
 use bevy_egui::{
     egui::{self, Pos2},
-    EguiContexts, EguiTextureHandle,
+    EguiContexts,
 };
 use mag_core::traits::{Class, Sex};
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::gfx_cache::GraphicsCache;
 use crate::network::account_api::{self, ApiSession};
+use crate::states::helpers::texture_id_for_character;
 use crate::GameState;
 
 #[derive(Resource, Debug)]
@@ -57,10 +58,12 @@ pub fn run_character_creation(
     mut next_state: ResMut<NextState<GameState>>,
 ) {
     let selected_sex = ui_state.selected_sex;
-    let harakim_texture = texture_id_for_race(&mut contexts, &gfx, Class::Harakim, selected_sex);
-    let templar_texture = texture_id_for_race(&mut contexts, &gfx, Class::Templar, selected_sex);
+    let harakim_texture =
+        texture_id_for_character(&mut contexts, &gfx, Class::Harakim, selected_sex);
+    let templar_texture =
+        texture_id_for_character(&mut contexts, &gfx, Class::Templar, selected_sex);
     let mercenary_texture =
-        texture_id_for_race(&mut contexts, &gfx, Class::Mercenary, selected_sex);
+        texture_id_for_character(&mut contexts, &gfx, Class::Mercenary, selected_sex);
 
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
@@ -127,7 +130,7 @@ pub fn run_character_creation(
         .collapsible(false)
         .resizable(false)
         .show(ctx, |ui| {
-            ui.heading("Create character (placeholder)");
+            ui.heading("Create character");
 
             if let Some(username) = api_session.username.as_deref() {
                 ui.label(format!("Logged in as: {username}"));
@@ -206,7 +209,7 @@ pub fn run_character_creation(
             let back_clicked = ui
                 .add_enabled(
                     !ui_state.is_busy,
-                    egui::Button::new("Back").min_size([120.0, 32.0].into()),
+                    egui::Button::new("Back").min_size([180.0, 32.0].into()),
                 )
                 .clicked();
 
@@ -280,33 +283,4 @@ fn race_option_ui(
             ui.label("Image missing");
         }
     });
-}
-
-fn texture_id_for_race(
-    contexts: &mut EguiContexts,
-    gfx: &GraphicsCache,
-    class: Class,
-    sex: Sex,
-) -> Option<egui::TextureId> {
-    let sprite_id = sprite_id_for_selection(class, sex);
-    let image = gfx
-        .get_sprite(sprite_id)
-        .map(|sprite| sprite.image.clone())?;
-    let asset_id = image.id();
-    let texture_id = contexts
-        .image_id(asset_id)
-        .unwrap_or_else(|| contexts.add_image(EguiTextureHandle::Weak(asset_id)));
-    Some(texture_id)
-}
-
-fn sprite_id_for_selection(class: Class, sex: Sex) -> usize {
-    match (class, sex) {
-        (Class::Harakim, Sex::Male) => 4048,
-        (Class::Templar, Sex::Male) => 2000,
-        (Class::Mercenary, Sex::Male) => 5072,
-        (Class::Harakim, Sex::Female) => 6096,
-        (Class::Templar, Sex::Female) => 8144,
-        (Class::Mercenary, Sex::Female) => 7120,
-        _ => 5072,
-    }
 }

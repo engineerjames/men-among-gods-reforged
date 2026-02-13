@@ -15,6 +15,8 @@ use rand::rngs::OsRng;
 use rand::RngCore;
 use redis::AsyncCommands;
 
+const MAX_CHARACTERS_PER_ACCOUNT: usize = 10;
+
 /// Creates a new character for the authenticated account.
 /// Validates the JWT from the `Authorization` header, validates the request payload, and then
 /// writes the character data to KeyDB.
@@ -63,6 +65,47 @@ pub(crate) async fn create_new_character(
         );
     }
 
+    let types::CreateCharacterRequest {
+        name,
+        description,
+        sex,
+        class,
+    } = payload;
+
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        warn!("Create character rejected: empty name");
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(types::CharacterSummary::default()),
+        );
+    }
+
+    let description = match description.as_deref().map(str::trim) {
+        Some(value) if !value.is_empty() => {
+            if let Err(err) = helpers::validate_character_description(&name, value) {
+                warn!("Create character rejected: invalid description: {err}");
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(types::CharacterSummary::default()),
+                );
+            }
+            value.to_string()
+        }
+        _ => {
+            let fallback = helpers::default_character_description(&name);
+            // Should always be valid, but keep the check in case we change the template later.
+            if let Err(err) = helpers::validate_character_description(&name, &fallback) {
+                error!("Default description template invalid: {err}");
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(types::CharacterSummary::default()),
+                );
+            }
+            fallback
+        }
+    };
+
     let username_lc = token_data.claims.sub.trim().to_lowercase();
     let user_id = match pipelines::get_account_id_by_username(&mut con, &username_lc).await {
         Ok(Some(value)) => value,
@@ -85,30 +128,51 @@ pub(crate) async fn create_new_character(
         }
     };
 
-    let result = pipelines::insert_new_character(
+    let character_count = match pipelines::count_characters_for_account_scan_up_to(
         &mut con,
         user_id,
-        &payload.name,
-        payload.description.as_deref(),
-        payload.sex,
-        payload.class,
+        MAX_CHARACTERS_PER_ACCOUNT,
     )
-    .await;
+    .await
+    {
+        Ok(value) => value,
+        Err(err) => {
+            error!("Redis read failed: {}", err);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(types::CharacterSummary::default()),
+            );
+        }
+    };
+    if character_count >= MAX_CHARACTERS_PER_ACCOUNT {
+        warn!(
+            "Create character rejected: account {} already has {} characters",
+            user_id, character_count
+        );
+        return (
+            StatusCode::CONFLICT,
+            Json(types::CharacterSummary::default()),
+        );
+    }
+
+    let result =
+        pipelines::insert_new_character(&mut con, user_id, &name, Some(&description), sex, class)
+            .await;
 
     match result {
         Ok(character_id) => {
             info!(
                 "Character created for account {}: id={}, name={}, sex={:?}, class={:?}",
-                token_data.claims.sub, character_id, payload.name, payload.sex, payload.class
+                token_data.claims.sub, character_id, name, sex, class
             );
             (
                 StatusCode::OK,
                 Json(types::CharacterSummary {
                     id: character_id,
-                    name: payload.name,
-                    description: payload.description.unwrap_or_default(),
-                    sex: payload.sex,
-                    class: payload.class,
+                    name,
+                    description,
+                    sex,
+                    class,
                     server_id: None,
                 }),
             )
@@ -582,6 +646,45 @@ pub(crate) async fn update_character(
             character_id
         );
         return StatusCode::BAD_REQUEST;
+    }
+
+    if let Some(name) = payload.name.as_deref() {
+        if name.trim().is_empty() {
+            warn!(
+                "Update character rejected: empty name for character {}",
+                character_id
+            );
+            return StatusCode::BAD_REQUEST;
+        }
+    }
+
+    if let Some(description) = payload.description.as_deref() {
+        let name_for_validation = match payload.name.as_deref() {
+            Some(value) => value.trim().to_string(),
+            None => match pipelines::get_character_name(&mut con, character_id).await {
+                Ok(Some(value)) => value.trim().to_string(),
+                Ok(None) => {
+                    warn!(
+                        "Update character rejected: missing stored name for character {}",
+                        character_id
+                    );
+                    return StatusCode::BAD_REQUEST;
+                }
+                Err(err) => {
+                    error!("Redis read failed: {}", err);
+                    return StatusCode::INTERNAL_SERVER_ERROR;
+                }
+            },
+        };
+
+        if let Err(err) = helpers::validate_character_description(&name_for_validation, description)
+        {
+            warn!(
+                "Update character rejected: invalid description for character {}: {}",
+                character_id, err
+            );
+            return StatusCode::BAD_REQUEST;
+        }
     }
 
     match pipelines::update_character(

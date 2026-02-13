@@ -114,7 +114,6 @@ pub fn run_account_creation(
         .resizable(false)
         .show(ctx, |ui| {
             ui.heading("Create a new account");
-            ui.label(format!("API: {}", api_session.base_url));
 
             if let Some(err) = ui_state.last_error.as_deref() {
                 ui.colored_label(egui::Color32::LIGHT_RED, err);
@@ -146,19 +145,25 @@ pub fn run_account_creation(
 
             ui.add_space(12.0);
 
-            let submit_clicked = ui
-                .add_enabled(
-                    !ui_state.is_busy,
-                    egui::Button::new("Create account").min_size([160.0, 32.0].into()),
-                )
-                .clicked();
+            let (submit_clicked, cancel_clicked) = ui
+                .horizontal(|ui| {
+                    let submit_clicked = ui
+                        .add_enabled(
+                            !ui_state.is_busy,
+                            egui::Button::new("Submit").min_size([160.0, 32.0].into()),
+                        )
+                        .clicked();
 
-            let cancel_clicked = ui
-                .add_enabled(
-                    !ui_state.is_busy,
-                    egui::Button::new("Back").min_size([120.0, 32.0].into()),
-                )
-                .clicked();
+                    let cancel_clicked = ui
+                        .add_enabled(
+                            !ui_state.is_busy,
+                            egui::Button::new("Back").min_size([160.0, 32.0].into()),
+                        )
+                        .clicked();
+
+                    (submit_clicked, cancel_clicked)
+                })
+                .inner;
 
             if submit_clicked {
                 let username = ui_state.username.trim().to_string();

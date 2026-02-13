@@ -4,6 +4,6 @@ pub mod character_creation;
 pub mod character_selection;
 pub mod exited;
 pub mod gameplay;
+pub mod helpers;
 pub mod loading;
-pub mod logging_in;
 pub mod menu;

@@ -7,11 +7,13 @@ use axum::routing::{delete, get, post, put};
 use axum::Router;
 use axum_governor::GovernorLayer;
 use lazy_limit::{init_rate_limiter, Duration, RuleConfig};
-use log::{error, info, LevelFilter};
+use log::{error, info, warn, LevelFilter};
 use real::RealIpLayer;
 use redis;
 use std::env;
 use std::net::SocketAddr;
+use std::time::Duration as StdDuration;
+use tokio::time::sleep;
 
 fn parse_log_level(value: &str) -> Option<LevelFilter> {
     match value.to_lowercase().as_str() {
@@ -47,6 +49,72 @@ fn resolve_log_file() -> Option<String> {
     }
 }
 
+fn resolve_keydb_url() -> String {
+    env::var("MAG_KEYDB_URL").unwrap_or_else(|_| "redis://127.0.0.1:5556/".to_string())
+}
+
+fn resolve_api_bind_addr() -> String {
+    env::var("API_BIND_ADDR").unwrap_or_else(|_| "0.0.0.0".to_string())
+}
+
+fn resolve_api_port() -> u16 {
+    env::var("API_PORT")
+        .ok()
+        .and_then(|value| value.parse::<u16>().ok())
+        .unwrap_or(5554)
+}
+
+async fn connect_keydb_with_retry(
+    keydb_url: &str,
+) -> Result<redis::aio::MultiplexedConnection, Box<dyn std::error::Error>> {
+    const MAX_RETRIES: u32 = 5;
+    const RETRY_DELAY_SECS: u64 = 6;
+
+    let mut last_error: Option<Box<dyn std::error::Error>> = None;
+
+    for attempt in 0..=MAX_RETRIES {
+        let client = match redis::Client::open(keydb_url) {
+            Ok(client) => client,
+            Err(err) => {
+                last_error = Some(Box::new(err));
+                if attempt < MAX_RETRIES {
+                    warn!(
+                        "Failed to create KeyDB client (attempt {}/{}), retrying in {}s",
+                        attempt + 1,
+                        MAX_RETRIES + 1,
+                        RETRY_DELAY_SECS
+                    );
+                    sleep(StdDuration::from_secs(RETRY_DELAY_SECS)).await;
+                }
+                continue;
+            }
+        };
+
+        match client.get_multiplexed_async_connection().await {
+            Ok(con) => return Ok(con),
+            Err(err) => {
+                last_error = Some(Box::new(err));
+                if attempt < MAX_RETRIES {
+                    warn!(
+                        "Failed to connect to KeyDB (attempt {}/{}), retrying in {}s",
+                        attempt + 1,
+                        MAX_RETRIES + 1,
+                        RETRY_DELAY_SECS
+                    );
+                    sleep(StdDuration::from_secs(RETRY_DELAY_SECS)).await;
+                }
+            }
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| {
+        Box::new(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Failed to connect to KeyDB",
+        ))
+    }))
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let log_level = resolve_log_level();
@@ -72,12 +140,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     }
 
-    let client = redis::Client::open("redis://127.0.0.1:5556/")?;
-    let con = client.get_multiplexed_async_connection().await?;
+    let keydb_url = resolve_keydb_url();
+    let con = connect_keydb_with_retry(&keydb_url).await?;
     info!("Connected to KeyDB");
 
     // build our application with a route
     let app = Router::new()
+        // Public routes
         .route("/login", post(routes::login))
         .route("/accounts", post(routes::create_account))
         // Token required routes
@@ -90,8 +159,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(RealIpLayer::default())
         .with_state(con);
 
-    info!("Listening on 0.0.0.0:5554");
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:5554").await.unwrap();
+    let bind_address = format!("{}:{}", resolve_api_bind_addr(), resolve_api_port());
+    info!("Listening on {}", bind_address);
+    let listener = tokio::net::TcpListener::bind(&bind_address).await?;
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),

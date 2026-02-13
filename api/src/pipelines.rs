@@ -312,6 +312,14 @@ pub(crate) async fn get_character_account_id(
     con.hget(&character_key, "account_id").await
 }
 
+pub(crate) async fn get_character_name(
+    con: &mut redis::aio::MultiplexedConnection,
+    character_id: u64,
+) -> Result<Option<String>, redis::RedisError> {
+    let character_key = format!("character:{}", character_id);
+    con.hget(&character_key, "name").await
+}
+
 /// Updates a character hash by setting any provided fields.
 ///
 /// This issues a single `HSET` containing only the fields that are `Some`.
@@ -379,6 +387,65 @@ pub(crate) async fn delete_character(
 ) -> Result<(), redis::RedisError> {
     let character_key = format!("character:{}", character_id);
     con.del(character_key).await
+}
+
+/// Counts characters belonging to an account by scanning character hashes.
+///
+/// This is a lightweight helper for enforcing per-account limits without building additional
+/// per-account indexes. It scans `character:*` keys, reads only `account_id` via `HGET`, and
+/// stops early once `max` matches are found.
+///
+/// # Arguments
+/// * `con` - Multiplexed KeyDB connection.
+/// * `account_id` - Account ID to count characters for.
+/// * `max` - Early-stop threshold (returns once count >= max).
+///
+/// # Returns
+/// * `Ok(count)` where `count` is in `0..=max`.
+/// * `Err(redis::RedisError)` on KeyDB failure.
+pub(crate) async fn count_characters_for_account_scan_up_to(
+    con: &mut redis::aio::MultiplexedConnection,
+    account_id: u64,
+    max: usize,
+) -> Result<usize, redis::RedisError> {
+    if max == 0 {
+        return Ok(0);
+    }
+
+    let mut cursor: u64 = 0;
+    let mut count: usize = 0;
+
+    loop {
+        let (next_cursor, keys): (u64, Vec<String>) = redis::cmd("SCAN")
+            .arg(cursor)
+            .arg("MATCH")
+            .arg("character:*")
+            .arg("COUNT")
+            .arg(400)
+            .query_async(&mut *con)
+            .await?;
+
+        for key in keys {
+            if key == "character:next_id" {
+                continue;
+            }
+
+            let owner: Option<u64> = con.hget(&key, "account_id").await?;
+            if owner == Some(account_id) {
+                count += 1;
+                if count >= max {
+                    return Ok(count);
+                }
+            }
+        }
+
+        cursor = next_cursor;
+        if cursor == 0 {
+            break;
+        }
+    }
+
+    Ok(count)
 }
 
 /// Lists all characters belonging to an account by scanning character hashes.

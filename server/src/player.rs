@@ -6,7 +6,7 @@ use core::{
         UWATER,
     },
     encrypt::xcrypt,
-    string_operations::c_string_to_str,
+    string_operations::{c_string_to_str, write_ascii_into_fixed},
     traits::{get_race_integer, Sex},
 };
 
@@ -3509,23 +3509,6 @@ fn plr_login(nr: usize) {
     });
 }
 
-fn write_ascii_into_fixed(dst: &mut [u8], s: &str) {
-    dst.fill(0);
-    if dst.is_empty() {
-        return;
-    }
-
-    let mut i = 0usize;
-    for &b in s.as_bytes() {
-        if i >= dst.len().saturating_sub(1) {
-            break;
-        }
-
-        dst[i] = if (32..=126).contains(&b) { b } else { b' ' };
-        i += 1;
-    }
-}
-
 fn resolve_api_login_character(
     _nr: usize,
     login_ticket: u64,
@@ -3620,6 +3603,21 @@ fn resolve_api_login_character(
             cn
         }
     };
+
+    // Always sync the most recent API-side name/description into the live character slot.
+    // This fixes older characters that were created before description persistence and ensures
+    // updates made via the API are reflected on the server.
+    Repository::with_characters_mut(|characters| {
+        write_ascii_into_fixed(&mut characters[cn].name, &character.name);
+        characters[cn].reference = characters[cn].name;
+
+        let desc = if character.description.trim().is_empty() {
+            characters[cn].get_default_description()
+        } else {
+            character.description.clone()
+        };
+        write_ascii_into_fixed(&mut characters[cn].description, &desc);
+    });
 
     if is_brand_new_character {
         if let Err(err) = keydb::set_character_server_id(character_id, cn as u32) {

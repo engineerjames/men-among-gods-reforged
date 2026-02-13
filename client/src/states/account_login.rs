@@ -10,6 +10,7 @@ use bevy_egui::{
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::network::account_api;
 use crate::network::account_api::ApiSession;
+use crate::settings::{UserSettingsState, DEFAULT_SERVER_IP};
 use crate::GameState;
 
 #[derive(Resource, Debug)]
@@ -37,8 +38,18 @@ impl Default for AccountLoginUiState {
     }
 }
 
-pub fn setup_account_login(mut commands: Commands, mut api_session: ResMut<ApiSession>) {
+pub fn setup_account_login(
+    mut commands: Commands,
+    mut api_session: ResMut<ApiSession>,
+    mut user_settings: ResMut<UserSettingsState>,
+) {
     api_session.ensure_defaults();
+
+    if user_settings.settings.default_server_ip.trim().is_empty() {
+        user_settings.settings.default_server_ip = DEFAULT_SERVER_IP.to_string();
+        user_settings.request_save();
+    }
+
     let mut ui = AccountLoginUiState::default();
 
     if let Some(notice) = api_session.pending_notice.take() {
@@ -56,6 +67,7 @@ pub fn run_account_login(
     mut contexts: EguiContexts,
     mut ui_state: ResMut<AccountLoginUiState>,
     mut api_session: ResMut<ApiSession>,
+    mut user_settings: ResMut<UserSettingsState>,
     mut next_state: ResMut<NextState<GameState>>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
@@ -124,7 +136,17 @@ pub fn run_account_login(
         .resizable(false)
         .show(ctx, |ui| {
             ui.heading("Men Among Gods Reforged");
-            ui.label(format!("API: {}", api_session.base_url));
+            ui.add_space(10.0);
+
+            ui.label("Game server IP address");
+            let ip_resp = ui.add_enabled(
+                !ui_state.is_busy,
+                egui::TextEdit::singleline(&mut user_settings.settings.default_server_ip)
+                    .desired_width(260.0),
+            );
+            if ip_resp.changed() {
+                user_settings.request_save();
+            }
 
             if let Some(msg) = ui_state.last_notice.as_deref() {
                 ui.colored_label(egui::Color32::LIGHT_GREEN, msg);
@@ -152,19 +174,25 @@ pub fn run_account_login(
 
             ui.add_space(12.0);
 
-            let login_clicked = ui
-                .add_enabled(
-                    !ui_state.is_busy,
-                    egui::Button::new("Login").min_size([120.0, 32.0].into()),
-                )
-                .clicked();
+            let (login_clicked, create_clicked) = ui
+                .horizontal(|ui| {
+                    let login_clicked = ui
+                        .add_enabled(
+                            !ui_state.is_busy,
+                            egui::Button::new("Login").min_size([180.0, 32.0].into()),
+                        )
+                        .clicked();
 
-            let create_clicked = ui
-                .add_enabled(
-                    !ui_state.is_busy,
-                    egui::Button::new("Create new account").min_size([180.0, 32.0].into()),
-                )
-                .clicked();
+                    let create_clicked = ui
+                        .add_enabled(
+                            !ui_state.is_busy,
+                            egui::Button::new("Create new account").min_size([180.0, 32.0].into()),
+                        )
+                        .clicked();
+
+                    (login_clicked, create_clicked)
+                })
+                .inner;
 
             if login_clicked {
                 let username = ui_state.username.trim().to_string();

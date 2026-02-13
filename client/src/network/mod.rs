@@ -13,7 +13,6 @@ use bevy::tasks::Task;
 
 use crate::player_state::PlayerState;
 use crate::settings::UserSettingsState;
-use crate::states::logging_in::LoginUIState;
 use crate::systems::sound::SoundEventQueue;
 use crate::GameState;
 use server_commands::ServerCommand;
@@ -331,7 +330,6 @@ fn process_network_events(
     mut player_state: ResMut<PlayerState>,
     mut sound_queue: ResMut<SoundEventQueue>,
     mut user_settings: ResMut<UserSettingsState>,
-    mut login_ui: Option<ResMut<LoginUIState>>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
 ) {
     let window_focused = windows
@@ -363,9 +361,6 @@ fn process_network_events(
                 // prevents new attempts.
                 if !net.logged_in {
                     net.stop();
-                    if let Some(login_ui) = login_ui.as_mut() {
-                        login_ui.on_login_failed(e.clone());
-                    }
                 }
 
                 status.message = format!("Error: {e}");

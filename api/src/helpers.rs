@@ -111,10 +111,60 @@ pub(crate) fn is_valid_password(password: &str) -> bool {
     ARGON2_RE.is_match(password)
 }
 
+pub(crate) const MAX_DESCRIPTION_LEN: usize = 200;
+
+pub(crate) fn default_character_description(name: &str) -> String {
+    let name = name.trim();
+    // Keep it printable ASCII (server will sanitize to printable ASCII anyway).
+    // Must contain the player's name and be > 12 characters.
+    format!(
+        "{} is a new adventurer. {} looks somewhat nondescript.",
+        name, name
+    )
+}
+
+pub(crate) fn validate_character_description(name: &str, description: &str) -> Result<(), String> {
+    let name = name.trim();
+    let description = description.trim();
+
+    if name.is_empty() {
+        return Err("Character name is required".to_string());
+    }
+
+    if description.len() <= 12 {
+        return Err("Description must be longer than 12 characters".to_string());
+    }
+
+    if description.len() > MAX_DESCRIPTION_LEN {
+        return Err(format!(
+            "Description must be at most {} characters",
+            MAX_DESCRIPTION_LEN
+        ));
+    }
+
+    if !description
+        .as_bytes()
+        .iter()
+        .copied()
+        .all(|b| (32..=126).contains(&b))
+    {
+        return Err("Description must be ASCII-only (printable characters)".to_string());
+    }
+
+    let desc_lc = description.to_lowercase();
+    let name_lc = name.to_lowercase();
+    if !desc_lc.contains(&name_lc) {
+        return Err("Description must contain the character name".to_string());
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        get_token_from_headers, is_valid_email_regex, is_valid_password, is_valid_username,
+        default_character_description, get_token_from_headers, is_valid_email_regex,
+        is_valid_password, is_valid_username, validate_character_description,
     };
     use crate::types;
     use jsonwebtoken::{EncodingKey, Header};
@@ -325,5 +375,33 @@ mod tests {
         for password in samples {
             assert!(!is_valid_password(password), "expected invalid: {password}");
         }
+    }
+
+    #[test]
+    fn description_validation_accepts_valid() {
+        let name = "TestHero";
+        let desc = "TestHero is a brave warrior.";
+        assert!(validate_character_description(name, desc).is_ok());
+    }
+
+    #[test]
+    fn description_validation_rejects_non_ascii() {
+        let name = "TestHero";
+        let desc = "TestHero is brave ☃";
+        assert!(validate_character_description(name, desc).is_err());
+    }
+
+    #[test]
+    fn description_validation_rejects_missing_name() {
+        let name = "TestHero";
+        let desc = "A brave warrior who travels.";
+        assert!(validate_character_description(name, desc).is_err());
+    }
+
+    #[test]
+    fn default_description_is_valid() {
+        let name = "TestHero";
+        let desc = default_character_description(name);
+        assert!(validate_character_description(name, &desc).is_ok());
     }
 }

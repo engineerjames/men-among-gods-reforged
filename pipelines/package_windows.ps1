@@ -19,6 +19,7 @@ Copy-Item -Recurse -Force "server/assets/.dat/*" "dist/$serverDir/.dat/"
 Copy-Item -Force "target/release/server.exe" "dist/$serverDir/server.exe"
 Copy-Item -Force "target/release/map_viewer.exe" "dist/$serverDir/map_viewer.exe"
 Copy-Item -Force "target/release/template_viewer.exe" "dist/$serverDir/template_viewer.exe"
+Copy-Item -Force "target/release/api.exe" "dist/$serverDir/api.exe"
 
 Copy-Item -Recurse -Force "client/assets/*" "dist/$clientDir/assets/"
 Copy-Item -Force "target/release/men-among-gods-client.exe" "dist/$clientDir/men-among-gods-client.exe"

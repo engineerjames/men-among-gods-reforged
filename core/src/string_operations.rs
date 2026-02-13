@@ -1,9 +1,46 @@
+/// Converts a C-style (NUL-terminated) byte buffer into a Rust `&str`.
+///
+/// This scans `c_string` for the first `\0` byte and interprets everything before it as UTF-8.
+/// If the buffer contains invalid UTF-8, this returns the sentinel string `"*UNKNOWN*"`.
+///
+/// # Arguments
+/// * `c_string` - Byte buffer that may contain a NUL terminator.
+///
+/// # Returns
+/// * A `&str` slice into `c_string` up to the first NUL (or the full buffer if none).
+/// * `"*UNKNOWN*"` if the slice is not valid UTF-8.
 pub fn c_string_to_str(c_string: &[u8]) -> &str {
     let end = c_string
         .iter()
         .position(|&c| c == 0)
         .unwrap_or(c_string.len());
     std::str::from_utf8(&c_string[..end]).unwrap_or("*UNKNOWN*")
+}
+
+/// Writes a string into a fixed-size byte buffer as printable ASCII.
+///
+/// This is commonly used to populate fields that mimic C `char[N]` arrays.
+/// The destination is always zero-filled first, then up to `dst.len() - 1` bytes are written.
+/// Any non-printable / non-ASCII bytes are replaced with a space (`' '`).
+///
+/// # Arguments
+/// * `dst` - Destination fixed-size buffer.
+/// * `s` - Source string to write.
+pub fn write_ascii_into_fixed(dst: &mut [u8], s: &str) {
+    dst.fill(0);
+    if dst.is_empty() {
+        return;
+    }
+
+    let mut i = 0usize;
+    for &b in s.as_bytes() {
+        if i >= dst.len().saturating_sub(1) {
+            break;
+        }
+
+        dst[i] = if (32..=126).contains(&b) { b } else { b' ' };
+        i += 1;
+    }
 }
 
 #[cfg(test)]
