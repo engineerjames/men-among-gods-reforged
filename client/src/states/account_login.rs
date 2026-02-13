@@ -136,11 +136,9 @@ pub fn run_account_login(
         .resizable(false)
         .show(ctx, |ui| {
             ui.heading("Men Among Gods Reforged");
-            ui.label(format!("API: {}", api_session.base_url));
-
             ui.add_space(10.0);
 
-            ui.label("Game server IP");
+            ui.label("Game server IP address");
             let ip_resp = ui.add_enabled(
                 !ui_state.is_busy,
                 egui::TextEdit::singleline(&mut user_settings.settings.default_server_ip)
@@ -176,19 +174,25 @@ pub fn run_account_login(
 
             ui.add_space(12.0);
 
-            let login_clicked = ui
-                .add_enabled(
-                    !ui_state.is_busy,
-                    egui::Button::new("Login").min_size([120.0, 32.0].into()),
-                )
-                .clicked();
+            let (login_clicked, create_clicked) = ui
+                .horizontal(|ui| {
+                    let login_clicked = ui
+                        .add_enabled(
+                            !ui_state.is_busy,
+                            egui::Button::new("Login").min_size([180.0, 32.0].into()),
+                        )
+                        .clicked();
 
-            let create_clicked = ui
-                .add_enabled(
-                    !ui_state.is_busy,
-                    egui::Button::new("Create new account").min_size([180.0, 32.0].into()),
-                )
-                .clicked();
+                    let create_clicked = ui
+                        .add_enabled(
+                            !ui_state.is_busy,
+                            egui::Button::new("Create new account").min_size([180.0, 32.0].into()),
+                        )
+                        .clicked();
+
+                    (login_clicked, create_clicked)
+                })
+                .inner;
 
             if login_clicked {
                 let username = ui_state.username.trim().to_string();

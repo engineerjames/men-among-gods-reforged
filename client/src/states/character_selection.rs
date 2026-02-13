@@ -437,7 +437,7 @@ pub fn run_character_selection(
             }
 
             if ui
-                .add(egui::Button::new("Log out").min_size([120.0, 32.0].into()))
+                .add(egui::Button::new("Log out").min_size([200.0, 32.0].into()))
                 .clicked()
             {
                 api_session.token = None;

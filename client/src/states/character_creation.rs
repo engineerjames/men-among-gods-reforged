@@ -209,7 +209,7 @@ pub fn run_character_creation(
             let back_clicked = ui
                 .add_enabled(
                     !ui_state.is_busy,
-                    egui::Button::new("Back").min_size([120.0, 32.0].into()),
+                    egui::Button::new("Back").min_size([180.0, 32.0].into()),
                 )
                 .clicked();
 
