@@ -725,6 +725,18 @@ pub(crate) fn update_world_overlays(
             continue;
         };
 
+        // Match legacy engine.c pass-2 behavior: effect overlays are not rendered
+        // on tiles flagged INVIS (player cannot currently see this tile).
+        if (tile.flags & INVIS) != 0 {
+            if 0 != last.sprite_id {
+                last.sprite_id = 0;
+            }
+            if *visibility != Visibility::Hidden {
+                *visibility = Visibility::Hidden;
+            }
+            continue;
+        }
+
         let x = ovl.index % TILEX;
         let y = ovl.index / TILEX;
 
