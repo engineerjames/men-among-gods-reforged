@@ -101,6 +101,33 @@ impl SoundCache {
                 }
             }
 
+            // Background music lives under assets/music, while this cache is
+            // primarily initialized from assets/sfx.
+            if let Some(assets_root) = self.assets_directory.parent() {
+                let music_dir = assets_root.join("music");
+                if let Ok(dir) = std::fs::read_dir(&music_dir) {
+                    for entry in dir.flatten() {
+                        let path = entry.path();
+                        if !path.is_file() {
+                            continue;
+                        }
+
+                        let is_mp3 = path
+                            .extension()
+                            .and_then(|ext| ext.to_str())
+                            .map(|ext| ext.eq_ignore_ascii_case("mp3"))
+                            .unwrap_or(false);
+
+                        if !is_mp3 {
+                            continue;
+                        }
+
+                        let abs_path = std::fs::canonicalize(&path).unwrap_or(path);
+                        entries.push(abs_path);
+                    }
+                }
+            }
+
             log::info!(
                 "SoundCache found {} audio files in {:?}",
                 entries.len(),
