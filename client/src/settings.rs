@@ -12,7 +12,11 @@ use crate::systems::magic_postprocess::MagicPostProcessSettings;
 use crate::systems::sound::SoundSettings;
 use crate::types::{player_data::PlayerData, save_file::SaveFile};
 
-pub const DEFAULT_SERVER_IP: &str = "menamonggods.ddns.net";
+pub const DEFAULT_SERVER_IP: &str = if cfg!(debug_assertions) {
+    "127.0.0.1"
+} else {
+    "menamonggods.ddns.net"
+};
 pub const DEFAULT_SERVER_PORT: u16 = 5555;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -64,6 +68,7 @@ impl VideoModeSetting {
 pub struct UserSettings {
     pub render_shadows: bool,
     pub play_sounds: bool,
+    pub play_login_music: bool,
     pub master_volume: f32,
     pub show_cursor_action_text: bool,
     pub magic_effects_enabled: bool,
@@ -77,8 +82,6 @@ pub struct UserSettings {
 
     /// Default server address shown on the login screen.
     pub default_server_ip: String,
-    /// Default server port shown on the login screen.
-    pub default_server_port: u16,
 
     /// Persisted character/key data (replaces legacy mag.dat).
     pub save_file: SaveFile,
@@ -90,6 +93,7 @@ impl Default for UserSettings {
         Self {
             render_shadows: true,
             play_sounds: true,
+            play_login_music: true,
             master_volume: 1.0,
             show_cursor_action_text: true,
             magic_effects_enabled: true,
@@ -100,7 +104,6 @@ impl Default for UserSettings {
             video_mode: VideoModeSetting::Windowed,
 
             default_server_ip: DEFAULT_SERVER_IP.to_string(),
-            default_server_port: DEFAULT_SERVER_PORT,
 
             save_file: SaveFile::default(),
             player_data: PlayerData::default(),

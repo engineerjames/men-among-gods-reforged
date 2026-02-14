@@ -3,6 +3,7 @@ mod driver;
 mod effect;
 mod enums;
 mod god;
+mod keydb;
 mod types;
 
 #[macro_use]

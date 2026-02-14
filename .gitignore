@@ -30,3 +30,9 @@ profile.json.gz
 
 **/orig/**
 dist/**
+
+.env
+*.mag
+*.rdb
+
+**/__pycache__/**

@@ -42,6 +42,8 @@ pub struct ServerPlayer {
     pub usnr: usize, // character number this player controls
     pub pass1: u32,
     pub pass2: u32,
+    /// One-time API login ticket used for account-managed character login.
+    pub login_ticket: u64,
     pub ltick: u32,
     pub rtick: u32,
 
@@ -105,6 +107,7 @@ impl ServerPlayer {
             usnr: 0,
             pass1: 0,
             pass2: 0,
+            login_ticket: 0,
             ltick: 0,
             rtick: 0,
             prio: 0,

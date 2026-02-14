@@ -6,12 +6,13 @@ use core::{
         UWATER,
     },
     encrypt::xcrypt,
-    string_operations::c_string_to_str,
+    string_operations::{c_string_to_str, write_ascii_into_fixed},
+    traits::{get_race_integer, Sex},
 };
 
 use crate::{
-    driver, enums, god::God, helpers, network_manager::NetworkManager, repository::Repository,
-    server::Server, state::State, types::cmap::CMap,
+    driver, enums, god::God, helpers, keydb, network_manager::NetworkManager,
+    repository::Repository, server::Server, state::State, types::cmap::CMap,
 };
 
 /// Port of `plr_logout(int cn, int player_id, LogoutReason reason)` from `svr_tick.cpp`
@@ -312,25 +313,28 @@ pub fn plr_logout(character_id: usize, player_id: usize, reason: enums::LogoutRe
         }
     }
 
-    // Send exit message to player
-    if player_id != 0
-        && reason != enums::LogoutReason::Unknown
-        && reason != enums::LogoutReason::Usurp
-    {
-        let mut buffer: [u8; 16] = [0; 16];
-        buffer[0] = core::constants::SV_EXIT;
-        buffer[1] = reason as u8;
+    // Send exit message to player (when applicable), and always finalize/clear the player slot.
+    //
+    // Important: for disconnects (`Unknown`) we still need to run `player_exit` to clear any
+    // stale `ch.player` mapping, otherwise later logins can incorrectly think the character is
+    // already active and kick the new connection.
+    if player_id != 0 {
+        if reason != enums::LogoutReason::Unknown && reason != enums::LogoutReason::Usurp {
+            let mut buffer: [u8; 16] = [0; 16];
+            buffer[0] = core::constants::SV_EXIT;
+            buffer[1] = reason as u8;
 
-        let player_state = Server::with_players(|players| players[player_id].state);
+            let player_state = Server::with_players(|players| players[player_id].state);
 
-        if player_state == core::constants::ST_NORMAL {
-            NetworkManager::with(|network| {
-                network.xsend(player_id, &buffer, 2);
-            });
-        } else {
-            NetworkManager::with(|network| {
-                network.csend(player_id, &buffer, 2);
-            });
+            if player_state == core::constants::ST_NORMAL {
+                NetworkManager::with(|network| {
+                    network.xsend(player_id, &buffer, 2);
+                });
+            } else {
+                NetworkManager::with(|network| {
+                    network.csend(player_id, &buffer, 2);
+                });
+            }
         }
 
         player_exit(player_id);
@@ -3201,6 +3205,30 @@ fn plr_login(nr: usize) {
         return;
     }
 
+    let login_ticket = Server::with_players(|players| players[nr].login_ticket);
+    let mut is_api_login = false;
+    if login_ticket != 0 {
+        is_api_login = true;
+        let cn = match resolve_api_login_character(nr, login_ticket) {
+            Ok(cn) => cn,
+            Err(reason) => {
+                log::warn!("API login denied: {:?}", reason);
+                plr_logout(0, nr, reason);
+                return;
+            }
+        };
+
+        let (pass1, pass2) =
+            Repository::with_characters(|characters| (characters[cn].pass1, characters[cn].pass2));
+
+        Server::with_players_mut(|players| {
+            players[nr].usnr = cn;
+            players[nr].pass1 = pass1;
+            players[nr].pass2 = pass2;
+            players[nr].login_ticket = 0;
+        });
+    }
+
     // get character number requested by player
     let cn = Server::with_players(|players| players[nr].usnr);
 
@@ -3210,38 +3238,40 @@ fn plr_login(nr: usize) {
         return;
     }
 
-    // password/pass1/pass2 check
-    let pass_ok = Repository::with_characters(|characters| {
-        let ch = &characters[cn];
-        let p1 = ch.pass1;
-        let p2 = ch.pass2;
-        let player_p1 = Server::with_players(|players| players[nr].pass1);
-        let player_p2 = Server::with_players(|players| players[nr].pass2);
-        p1 == player_p1 && p2 == player_p2
-    });
+    if !is_api_login {
+        // password/pass1/pass2 check
+        let pass_ok = Repository::with_characters(|characters| {
+            let ch = &characters[cn];
+            let p1 = ch.pass1;
+            let p2 = ch.pass2;
+            let player_p1 = Server::with_players(|players| players[nr].pass1);
+            let player_p2 = Server::with_players(|players| players[nr].pass2);
+            p1 == player_p1 && p2 == player_p2
+        });
 
-    if !pass_ok {
-        log::warn!("Login as {} denied (pass1/pass2)", cn);
-        plr_logout(0, nr, enums::LogoutReason::PasswordIncorrect);
-        return;
-    }
-
-    // If character has explicit password flag, compare stored passwd
-    let has_passwd_mismatch = Repository::with_characters(|characters| {
-        let ch = &characters[cn];
-        if (ch.flags & CharacterFlags::Passwd.bits()) != 0 {
-            let stored = ch.passwd;
-            let client = Server::with_players(|players| players[nr].passwd);
-            stored != client
-        } else {
-            false
+        if !pass_ok {
+            log::warn!("Login as {} denied (pass1/pass2)", cn);
+            plr_logout(0, nr, enums::LogoutReason::PasswordIncorrect);
+            return;
         }
-    });
 
-    if has_passwd_mismatch {
-        log::warn!("Login as {} denied (password)", cn);
-        plr_logout(0, nr, enums::LogoutReason::PasswordIncorrect);
-        return;
+        // If character has explicit password flag, compare stored passwd
+        let has_passwd_mismatch = Repository::with_characters(|characters| {
+            let ch = &characters[cn];
+            if (ch.flags & CharacterFlags::Passwd.bits()) != 0 {
+                let stored = ch.passwd;
+                let client = Server::with_players(|players| players[nr].passwd);
+                stored != client
+            } else {
+                false
+            }
+        });
+
+        if has_passwd_mismatch {
+            log::warn!("Login as {} denied (password)", cn);
+            plr_logout(0, nr, enums::LogoutReason::PasswordIncorrect);
+            return;
+        }
     }
 
     // Deleted account
@@ -3267,7 +3297,22 @@ fn plr_login(nr: usize) {
         log::warn!("Login as {} who is already active", cn);
         let active_player =
             Repository::with_characters(|characters| characters[cn].player as usize);
-        plr_logout(cn, active_player, enums::LogoutReason::IdleTooLong);
+        // Only kick the *other* active player if they still have a live socket.
+        // A stale `ch.player` binding can happen after disconnects; never kick ourselves.
+        let should_kick = active_player != 0
+            && active_player != nr
+            && active_player < core::constants::MAXPLAYER
+            && Server::with_players(|players| players[active_player].sock.is_some());
+        if should_kick {
+            plr_logout(cn, active_player, enums::LogoutReason::IdleTooLong);
+        } else {
+            log::warn!(
+                "Already-active character {} has stale/invalid active_player={} (current_player={}); continuing",
+                cn,
+                active_player,
+                nr
+            );
+        }
     }
 
     // Kicked
@@ -3296,6 +3341,10 @@ fn plr_login(nr: usize) {
     // attach player to character
     Repository::with_characters_mut(|characters| {
         characters[cn].player = nr as i32;
+        // Ensure the logged-in entity is treated as a player character.
+        // API-created characters are spawned from templates and may not carry the Player flag,
+        // which would break `/who` visibility and command processing.
+        characters[cn].flags |= CharacterFlags::Player.bits();
         // If not CCP and is god, mark invisible
         if (characters[cn].flags & CharacterFlags::ComputerControlledPlayer.bits()) == 0
             && (characters[cn].flags & CharacterFlags::God.bits()) != 0
@@ -3411,7 +3460,7 @@ fn plr_login(nr: usize) {
     // intro messages
     let intro1 = "Welcome to Men Among Gods, my friend!\n";
     let intro2 = "May your visit here be... interesting.\n";
-    let intro3 = " \n";
+    let intro3 = "\n";
     let intro4 = "Use #help (or /help) to get a listing of the text commands.\n";
 
     State::with(|state| {
@@ -3423,17 +3472,19 @@ fn plr_login(nr: usize) {
         state.do_character_log(cn, core::types::FontColor::Yellow, intro3);
     });
 
-    // do password change if provided
-    let needs_pass = Server::with_players(|players| players[nr].passwd[0] != 0);
-    if needs_pass {
-        Repository::with_characters(|characters| {
-            if (characters[cn].flags & CharacterFlags::Passwd.bits()) == 0 {
-                let pass = Server::with_players(|players| {
-                    c_string_to_str(&players[nr].passwd).to_string()
-                });
-                God::change_pass(cn, cn, &pass);
-            }
-        });
+    if !is_api_login {
+        // do password change if provided
+        let needs_pass = Server::with_players(|players| players[nr].passwd[0] != 0);
+        if needs_pass {
+            Repository::with_characters(|characters| {
+                if (characters[cn].flags & CharacterFlags::Passwd.bits()) == 0 {
+                    let pass = Server::with_players(|players| {
+                        c_string_to_str(&players[nr].passwd).to_string()
+                    });
+                    God::change_pass(cn, cn, &pass);
+                }
+            });
+        }
     }
 
     // If god, remind invisibility
@@ -3456,6 +3507,129 @@ fn plr_login(nr: usize) {
     State::with(|state| {
         state.do_announce(cn, 0, &format!("{} entered the game.\n", name));
     });
+}
+
+fn resolve_api_login_character(
+    _nr: usize,
+    login_ticket: u64,
+) -> Result<usize, enums::LogoutReason> {
+    let character_id = match keydb::consume_login_ticket(login_ticket) {
+        Ok(Some(value)) => value,
+        Ok(None) => {
+            log::warn!("API login ticket not found or expired");
+            return Err(enums::LogoutReason::PasswordIncorrect);
+        }
+        Err(err) => {
+            log::error!("KeyDB ticket consume failed: {}", err);
+            return Err(enums::LogoutReason::Failure);
+        }
+    };
+
+    let character = match keydb::load_character(character_id) {
+        Ok(Some(value)) => value,
+        Ok(None) => {
+            log::warn!("API character {} not found", character_id);
+            return Err(enums::LogoutReason::PasswordIncorrect);
+        }
+        Err(err) => {
+            log::error!("KeyDB character load failed: {}", err);
+            return Err(enums::LogoutReason::Failure);
+        }
+    };
+
+    let is_brand_new_character = character.server_id.is_none();
+
+    let cn = match character.server_id {
+        Some(server_id) => {
+            let candidate = server_id as usize;
+            let candidate_is_valid = candidate > 0
+                && candidate < core::constants::MAXCHARS
+                && Repository::with_characters(|characters| {
+                    characters[candidate].used != core::constants::USE_EMPTY
+                });
+
+            if !candidate_is_valid {
+                log::error!(
+                    "API character {} has invalid/stale server_id={} (slot missing or empty)",
+                    character_id,
+                    server_id
+                );
+                return Err(enums::LogoutReason::Failure);
+            }
+
+            candidate
+        }
+        None => {
+            let template_id = get_race_integer(character.sex == Sex::Male, character.class);
+            let maybe_cn = God::create_char(template_id as usize, true);
+            let cn = match maybe_cn {
+                Some(value) => value as usize,
+                None => {
+                    log::error!("Failed to create character for API id {}", character_id);
+                    return Err(enums::LogoutReason::Failure);
+                }
+            };
+
+            Repository::with_characters_mut(|characters| {
+                write_ascii_into_fixed(&mut characters[cn].name, &character.name);
+                characters[cn].reference = characters[cn].name;
+                write_ascii_into_fixed(&mut characters[cn].description, &character.description);
+
+                // Characters created from templates start out "in use" (often `USE_ACTIVE`) because
+                // templates represent live world entities. For API-created player characters, we
+                // want them to begin offline so the normal login path can attach and activate them.
+                characters[cn].used = core::constants::USE_NONACTIVE;
+                characters[cn].player = 0;
+
+                if is_brand_new_character {
+                    // API login does NOT go through `plr_newlogin`, so first-time characters
+                    // need the same baseline initialization (home temple/tavern, base stats).
+                    // Without this, `plr_login` can try to drop at (0,0).
+                    characters[cn].temple_x = core::constants::HOME_MERCENARY_X as u16;
+                    characters[cn].temple_y = core::constants::HOME_MERCENARY_Y as u16;
+                    characters[cn].tavern_x = core::constants::HOME_MERCENARY_X as u16;
+                    characters[cn].tavern_y = core::constants::HOME_MERCENARY_Y as u16;
+                    characters[cn].points = 0;
+                    characters[cn].points_tot = 0;
+                    characters[cn].luck = 205;
+                    characters[cn].mode = 1;
+
+                    // Mark as a player/new user in the same way as `plr_newlogin`.
+                    characters[cn].flags |=
+                        CharacterFlags::NewUser.bits() | CharacterFlags::Player.bits();
+                }
+            });
+
+            cn
+        }
+    };
+
+    // Always sync the most recent API-side name/description into the live character slot.
+    // This fixes older characters that were created before description persistence and ensures
+    // updates made via the API are reflected on the server.
+    Repository::with_characters_mut(|characters| {
+        write_ascii_into_fixed(&mut characters[cn].name, &character.name);
+        characters[cn].reference = characters[cn].name;
+
+        let desc = if character.description.trim().is_empty() {
+            characters[cn].get_default_description()
+        } else {
+            character.description.clone()
+        };
+        write_ascii_into_fixed(&mut characters[cn].description, &desc);
+    });
+
+    if is_brand_new_character {
+        if let Err(err) = keydb::set_character_server_id(character_id, cn as u32) {
+            log::warn!(
+                "Failed to persist server_id for API character {}: {}",
+                character_id,
+                err
+            );
+        }
+    }
+
+    Ok(cn)
 }
 
 /// Port of `plr_change` from `svr_tick.cpp`
@@ -4828,6 +5002,9 @@ pub fn plr_cmd(nr: usize) {
         core::constants::CL_LOGIN => {
             plr_challenge_login(nr);
         }
+        core::constants::CL_API_LOGIN => {
+            plr_challenge_api_login(nr);
+        }
         core::constants::CL_CMD_UNIQUE => {
             plr_unique(nr);
             return;
@@ -5276,6 +5453,58 @@ fn plr_challenge_login(nr: usize) {
         cn,
         nr
     );
+
+    send_mod(nr);
+}
+
+/// Handle API ticket based login challenge.
+///
+/// The client sends `CL_API_LOGIN` with a u64 one-time ticket in the payload.
+/// We store the ticket on the player slot and then proceed with the normal
+/// `SV_CHALLENGE` / `CL_CHALLENGE` handshake.
+fn plr_challenge_api_login(nr: usize) {
+    log::debug!("Player {} challenge_api_login", nr);
+
+    // Generate random challenge value (0x3fffffff max, ensure non-zero)
+    let mut tmp = helpers::random_mod(0x3fffffff_u32 - 1) + 1;
+    if tmp == 0 {
+        tmp = 42;
+    }
+
+    let ticket = Server::with_players(|players| {
+        u64::from_le_bytes([
+            players[nr].inbuf[1],
+            players[nr].inbuf[2],
+            players[nr].inbuf[3],
+            players[nr].inbuf[4],
+            players[nr].inbuf[5],
+            players[nr].inbuf[6],
+            players[nr].inbuf[7],
+            players[nr].inbuf[8],
+        ])
+    });
+
+    let ticker = Repository::with_globals(|globals| globals.ticker as u32);
+    Server::with_players_mut(|players| {
+        players[nr].challenge = tmp;
+        players[nr].state = core::constants::ST_LOGIN_CHALLENGE;
+        players[nr].lasttick = ticker;
+        players[nr].login_ticket = ticket;
+        // Clear legacy credential fragments.
+        players[nr].usnr = 0;
+        players[nr].pass1 = 0;
+        players[nr].pass2 = 0;
+    });
+
+    // Send challenge to client
+    let mut buf: [u8; 16] = [0; 16];
+    buf[0] = core::constants::SV_CHALLENGE;
+    buf[1..5].copy_from_slice(&tmp.to_le_bytes());
+    NetworkManager::with(|network| {
+        network.csend(nr, &buf, 16);
+    });
+
+    log::info!("Player {} api login challenge issued", nr);
 
     send_mod(nr);
 }

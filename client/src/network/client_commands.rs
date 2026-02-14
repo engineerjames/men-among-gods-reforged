@@ -36,6 +36,7 @@ pub enum ClientCommandType {
     CmdUnique = 32,
     Passwd = 33,
     Ping = 34,
+    ApiLogin = 35,
     CmdCTick = 255,
 }
 
@@ -151,6 +152,14 @@ impl ClientCommand {
     pub fn new_newplayer_login() -> Self {
         log::info!("Building new-player login packet");
         Self::new(ClientCommandType::NewLogin, Vec::new())
+    }
+
+    /// Sends an API-issued one-time login ticket to the game server.
+    pub fn new_api_login(ticket: u64) -> Self {
+        let mut payload = Vec::with_capacity(8);
+        payload.extend_from_slice(&ticket.to_le_bytes());
+        log::info!("Building api-login packet: ticket={}", ticket);
+        Self::new(ClientCommandType::ApiLogin, payload)
     }
 
     /// Mirrors `socket.c` password packet: 15 raw bytes copied to payload.

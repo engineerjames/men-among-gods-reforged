@@ -1,3 +1,4 @@
+pub mod account_api;
 pub mod client_commands;
 pub mod login;
 pub mod server_commands;
@@ -12,7 +13,6 @@ use bevy::tasks::Task;
 
 use crate::player_state::PlayerState;
 use crate::settings::UserSettingsState;
-use crate::states::logging_in::LoginUIState;
 use crate::systems::sound::SoundEventQueue;
 use crate::GameState;
 use server_commands::ServerCommand;
@@ -39,6 +39,10 @@ pub struct LoginRequested {
     pub pass1: u32,
     /// Mirrors `okey.pass2` from the original client.
     pub pass2: u32,
+
+    /// When set, the client will use the custom API ticket login flow instead of
+    /// legacy per-character credentials.
+    pub login_ticket: Option<u64>,
 }
 
 #[derive(Resource, Debug, Clone)]
@@ -125,6 +129,11 @@ impl Default for NetworkRuntime {
 }
 
 impl NetworkRuntime {
+    /// Returns whether the background network task is running.
+    pub fn is_started(&self) -> bool {
+        self.started
+    }
+
     /// Returns the client-side tick counter (used for `CL_CMD_CTICK`).
     pub fn client_ticker(&self) -> u32 {
         self.client_ticker
@@ -189,11 +198,14 @@ impl Plugin for NetworkPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<LoginStatus>()
             .init_resource::<NetworkRuntime>()
+            .init_resource::<account_api::ApiSession>()
             .add_message::<LoginRequested>()
             .configure_sets(Update, (NetworkSet::Receive, NetworkSet::Send).chain())
             .add_systems(
                 Update,
-                login::start_login.run_if(in_state(GameState::LoggingIn)),
+                login::start_login.run_if(
+                    in_state(GameState::LoggingIn).or(in_state(GameState::CharacterSelection)),
+                ),
             )
             // Only process network events while we're in active network-driven states.
             // When the "Exited" UI is showing, we intentionally stop draining the queue so
@@ -203,6 +215,7 @@ impl Plugin for NetworkPlugin {
                 process_network_events
                     .run_if(
                         in_state(GameState::LoggingIn)
+                            .or(in_state(GameState::CharacterSelection))
                             .or(in_state(GameState::Gameplay))
                             .or(in_state(GameState::Menu)),
                     )
@@ -317,7 +330,6 @@ fn process_network_events(
     mut player_state: ResMut<PlayerState>,
     mut sound_queue: ResMut<SoundEventQueue>,
     mut user_settings: ResMut<UserSettingsState>,
-    mut login_ui: Option<ResMut<LoginUIState>>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
 ) {
     let window_focused = windows
@@ -349,9 +361,6 @@ fn process_network_events(
                 // prevents new attempts.
                 if !net.logged_in {
                     net.stop();
-                    if let Some(login_ui) = login_ui.as_mut() {
-                        login_ui.on_login_failed(e.clone());
-                    }
                 }
 
                 status.message = format!("Error: {e}");

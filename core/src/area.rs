@@ -1023,3 +1023,52 @@ pub fn get_area_m(x: i32, y: i32) -> Option<String> {
         Some(names.join(", "))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{get_area_m, Area};
+
+    #[test]
+    fn contains_includes_edges() {
+        let area = Area {
+            x1: 10,
+            y1: 20,
+            x2: 30,
+            y2: 40,
+            name: "Test",
+            flag: 0,
+        };
+
+        assert!(area.contains(10, 20));
+        assert!(area.contains(30, 40));
+        assert!(area.contains(10, 40));
+        assert!(area.contains(30, 20));
+
+        assert!(!area.contains(9, 20));
+        assert!(!area.contains(10, 19));
+        assert!(!area.contains(31, 40));
+        assert!(!area.contains(30, 41));
+    }
+
+    #[test]
+    fn get_area_m_returns_none_when_outside_all_areas() {
+        assert_eq!(get_area_m(-1, -1), None);
+        assert_eq!(get_area_m(10_000, 10_000), None);
+    }
+
+    #[test]
+    fn get_area_m_returns_single_name_when_in_one_area() {
+        // Inside the large "Aston" bounding box (481..=633, 407..=596) and not
+        // inside the narrower street/POI boxes.
+        assert_eq!(get_area_m(500, 500), Some("Aston".to_string()));
+    }
+
+    #[test]
+    fn get_area_m_returns_multiple_names_in_declaration_order() {
+        // (533, 450) is within "Aston" and also within "Temple Street".
+        assert_eq!(
+            get_area_m(533, 450),
+            Some("Aston, Temple Street".to_string())
+        );
+    }
+}

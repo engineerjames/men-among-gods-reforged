@@ -1,5 +1,6 @@
 //! Data types module - contains all game data structures ported from the original C++ headers
 
+pub mod api;
 mod ban;
 mod character;
 mod client_player;
@@ -12,6 +13,7 @@ mod see_map;
 pub mod skilltab;
 
 // Re-export all types
+pub use api::*;
 pub use ban::Ban;
 pub use character::Character;
 pub use client_player::ClientPlayer;
