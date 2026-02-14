@@ -459,9 +459,10 @@ def test_create_character_limit_10(base_url: str) -> None:
         )
         assert_status(200, status, f"create character {i + 1} status")
 
+    over_limit_name = f"hero_over_{unique_suffix()}"
     payload = {
-        "name": f"hero_over_{unique_suffix()}",
-        "description": "Should be rejected",
+        "name": over_limit_name,
+        "description": valid_character_description(over_limit_name),
         "sex": "Male",
         "class": "Mercenary",
     }
@@ -564,7 +565,7 @@ def test_update_character_ok(base_url: str) -> None:
     if not isinstance(character_id, int) or character_id <= 0:
         raise AssertionError("create character response missing id")
 
-    updated_name = "Updated"
+    updated_name = f"Updated{str(unique_suffix())[-8:]}"
     update_payload = {
         "name": updated_name,
         "description": valid_character_description(updated_name),
@@ -588,7 +589,10 @@ def test_update_character_ok(base_url: str) -> None:
     updated = next((c for c in characters if c.get("id") == character_id), None)
     if not updated:
         raise AssertionError("updated character missing from list")
-    if updated.get("name") != "Updated" or updated.get("description") != "Changed":
+    if (
+        updated.get("name") != updated_name
+        or updated.get("description") != valid_character_description(updated_name)
+    ):
         raise AssertionError("character update did not persist")
 
 
