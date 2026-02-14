@@ -1,5 +1,6 @@
 use std::sync::{mpsc, Arc, Mutex};
 
+use bevy::audio::{AudioPlayer, PlaybackSettings, Volume};
 use bevy::prelude::*;
 use bevy::tasks::{IoTaskPool, Task};
 use bevy_egui::{
@@ -11,7 +12,38 @@ use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::network::account_api;
 use crate::network::account_api::ApiSession;
 use crate::settings::{UserSettingsState, DEFAULT_SERVER_IP};
+use crate::sfx_cache::SoundCache;
 use crate::GameState;
+
+#[derive(Component)]
+pub(crate) struct AccountLoginMusic;
+
+fn sync_login_music_entity(
+    commands: &mut Commands,
+    sfx: &SoundCache,
+    enabled: bool,
+    existing_music: Option<Entity>,
+) {
+    if enabled {
+        if existing_music.is_none() {
+            if let Some(handle) = sfx.login_music() {
+                commands.spawn((
+                    Name::new("AccountLoginMusic"),
+                    AccountLoginMusic,
+                    AudioPlayer::new(handle.clone()),
+                    PlaybackSettings::LOOP.with_volume(Volume::Linear(0.5)),
+                ));
+            } else {
+                log::warn!("Login music requested but login.mp3 was not found in SFX assets");
+            }
+        }
+        return;
+    }
+
+    if let Some(entity) = existing_music {
+        commands.entity(entity).despawn();
+    }
+}
 
 #[derive(Resource, Debug)]
 pub struct AccountLoginUiState {
@@ -42,6 +74,8 @@ pub fn setup_account_login(
     mut commands: Commands,
     mut api_session: ResMut<ApiSession>,
     mut user_settings: ResMut<UserSettingsState>,
+    sfx: Res<SoundCache>,
+    music_q: Query<Entity, With<AccountLoginMusic>>,
 ) {
     api_session.ensure_defaults();
 
@@ -56,6 +90,13 @@ pub fn setup_account_login(
         ui.last_notice = Some(notice);
     }
 
+    sync_login_music_entity(
+        &mut commands,
+        &sfx,
+        user_settings.settings.play_login_music,
+        music_q.iter().next(),
+    );
+
     commands.insert_resource(ui);
 }
 
@@ -63,11 +104,23 @@ pub fn teardown_account_login() {
     log::debug!("teardown_account_login - end");
 }
 
+pub fn stop_account_login_music(
+    mut commands: Commands,
+    music_q: Query<Entity, With<AccountLoginMusic>>,
+) {
+    for entity in &music_q {
+        commands.entity(entity).despawn();
+    }
+}
+
 pub fn run_account_login(
+    mut commands: Commands,
     mut contexts: EguiContexts,
     mut ui_state: ResMut<AccountLoginUiState>,
     mut api_session: ResMut<ApiSession>,
     mut user_settings: ResMut<UserSettingsState>,
+    sfx: Res<SoundCache>,
+    music_q: Query<Entity, With<AccountLoginMusic>>,
     mut next_state: ResMut<NextState<GameState>>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
@@ -128,6 +181,9 @@ pub fn run_account_login(
         }
     }
 
+    let existing_music = music_q.iter().next();
+    let mut music_pref_changed = false;
+
     egui::Window::new("Account Login")
         .default_height(TARGET_HEIGHT)
         .default_width(TARGET_WIDTH)
@@ -171,6 +227,19 @@ pub fn run_account_login(
                     .password(true)
                     .desired_width(260.0),
             );
+
+            ui.add_space(8.0);
+            let play_login_music_resp = ui.add_enabled(
+                !ui_state.is_busy,
+                egui::Checkbox::new(
+                    &mut user_settings.settings.play_login_music,
+                    "Play login music",
+                ),
+            );
+            if play_login_music_resp.changed() {
+                user_settings.request_save();
+                music_pref_changed = true;
+            }
 
             ui.add_space(12.0);
 
@@ -224,4 +293,13 @@ pub fn run_account_login(
                 next_state.set(GameState::AccountCreation);
             }
         });
+
+    if music_pref_changed {
+        sync_login_music_entity(
+            &mut commands,
+            &sfx,
+            user_settings.settings.play_login_music,
+            existing_music,
+        );
+    }
 }

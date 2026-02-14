@@ -19,6 +19,7 @@ pub struct SoundCache {
     assets_directory: PathBuf,
     sfx_by_number: Vec<Option<Handle<AudioSource>>>,
     click: Option<Handle<AudioSource>>,
+    login_music: Option<Handle<AudioSource>>,
     initialized: bool,
     init_state: Option<InitState>,
     init_error: Option<String>,
@@ -30,6 +31,7 @@ impl SoundCache {
             assets_directory: PathBuf::from(assets_directory),
             sfx_by_number: Vec::new(),
             click: None,
+            login_music: None,
             initialized: false,
             init_state: None,
             init_error: None,
@@ -39,6 +41,7 @@ impl SoundCache {
     pub fn reset_loading(&mut self) {
         self.sfx_by_number.clear();
         self.click = None;
+        self.login_music = None;
         self.initialized = false;
         self.init_state = None;
         self.init_error = None;
@@ -54,6 +57,10 @@ impl SoundCache {
 
     pub fn click(&self) -> Option<&Handle<AudioSource>> {
         self.click.as_ref()
+    }
+
+    pub fn login_music(&self) -> Option<&Handle<AudioSource>> {
+        self.login_music.as_ref()
     }
 
     /// Incrementally initializes the cache by walking a directory.
@@ -147,6 +154,8 @@ impl SoundCache {
 
         if stem == "click" {
             self.click = Some(handle);
+        } else if stem == "login" {
+            self.login_music = Some(handle);
         } else if let Ok(nr) = stem.parse::<u32>() {
             let idx = nr as usize;
             if self.sfx_by_number.len() <= idx {
