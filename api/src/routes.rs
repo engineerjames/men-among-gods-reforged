@@ -81,6 +81,24 @@ pub(crate) async fn create_new_character(
         );
     }
 
+    match pipelines::character_name_exists_scan(&mut con, &name).await {
+        Ok(true) => {
+            warn!("Create character rejected: name already taken: {}", name);
+            return (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(types::CharacterSummary::default()),
+            );
+        }
+        Ok(false) => {}
+        Err(err) => {
+            error!("Redis read failed: {}", err);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(types::CharacterSummary::default()),
+            );
+        }
+    }
+
     let description = match description.as_deref().map(str::trim) {
         Some(value) if !value.is_empty() => {
             if let Err(err) = helpers::validate_character_description(&name, value) {
@@ -649,12 +667,34 @@ pub(crate) async fn update_character(
     }
 
     if let Some(name) = payload.name.as_deref() {
-        if name.trim().is_empty() {
+        let trimmed_name = name.trim();
+        if trimmed_name.is_empty() {
             warn!(
                 "Update character rejected: empty name for character {}",
                 character_id
             );
             return StatusCode::BAD_REQUEST;
+        }
+
+        match pipelines::character_name_exists_scan_excluding(
+            &mut con,
+            trimmed_name,
+            Some(character_id),
+        )
+        .await
+        {
+            Ok(true) => {
+                warn!(
+                    "Update character rejected: name already taken for character {}: {}",
+                    character_id, trimmed_name
+                );
+                return StatusCode::UNPROCESSABLE_ENTITY;
+            }
+            Ok(false) => {}
+            Err(err) => {
+                error!("Redis read failed: {}", err);
+                return StatusCode::INTERNAL_SERVER_ERROR;
+            }
         }
     }
 

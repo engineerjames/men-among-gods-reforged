@@ -33,6 +33,17 @@ def unique_suffix() -> str:
     return f"{time.time_ns()}{_SUFFIX_COUNTER}"
 
 
+def valid_character_description(name: str) -> str:
+    """Return a description that satisfies API validation rules.
+
+    Rules enforced by API currently require:
+    - length > 12
+    - description contains the character name
+    - printable ASCII
+    """
+    return f"{name} is a reliable integration-test adventurer."
+
+
 def request_json(
     method: str,
     url: str,
@@ -391,9 +402,10 @@ def test_create_character_ok_and_get(base_url: str) -> None:
     :returns: None.
     """
     token, _ = create_account_and_token(base_url, f"char{unique_suffix()}")
+    name = f"hero{unique_suffix()}"
     payload = {
-        "name": f"hero{unique_suffix()}",
-        "description": "First hero",
+        "name": name,
+        "description": valid_character_description(name),
         "sex": "Male",
         "class": "Mercenary",
     }
@@ -432,9 +444,10 @@ def test_create_character_limit_10(base_url: str) -> None:
     headers = {"Authorization": f"Bearer {token}"}
 
     for i in range(10):
+        name = f"hero{i}_{unique_suffix()}"
         payload = {
-            "name": f"hero{i}_{unique_suffix()}",
-            "description": "Limit test",
+            "name": name,
+            "description": valid_character_description(name),
             "sex": "Male" if i % 2 == 0 else "Female",
             "class": "Mercenary",
         }
@@ -459,6 +472,47 @@ def test_create_character_limit_10(base_url: str) -> None:
         headers=headers,
     )
     assert_status(409, status, "create character over limit status")
+
+
+def test_create_character_duplicate_name(base_url: str) -> None:
+    """Test that character names are globally unique (case-insensitive).
+
+    :param base_url: Base URL for the API.
+    :raises AssertionError: If duplicate name creation is accepted.
+    :returns: None.
+    """
+    shared_name = f"Hero{str(unique_suffix())[-10:]}"
+
+    token_a, _ = create_account_and_token(base_url, f"dupchara{unique_suffix()}")
+    token_b, _ = create_account_and_token(base_url, f"dupcharb{unique_suffix()}")
+
+    payload_a = {
+        "name": shared_name,
+        "description": f"{shared_name} is the first unique hero.",
+        "sex": "Male",
+        "class": "Mercenary",
+    }
+    status, _ = request_json(
+        "POST",
+        f"{base_url}/characters",
+        payload=payload_a,
+        headers={"Authorization": f"Bearer {token_a}"},
+    )
+    assert_status(200, status, "create first duplicate-name character status")
+
+    payload_b = {
+        "name": shared_name.lower(),
+        "description": f"{shared_name.lower()} should be rejected as duplicate.",
+        "sex": "Female",
+        "class": "Templar",
+    }
+    status, _ = request_json(
+        "POST",
+        f"{base_url}/characters",
+        payload=payload_b,
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert_status(422, status, "create character duplicate name status")
 
 
 def test_create_character_invalid_race(base_url: str) -> None:
@@ -492,9 +546,10 @@ def test_update_character_ok(base_url: str) -> None:
     :returns: None.
     """
     token, _ = create_account_and_token(base_url, f"up{unique_suffix()}")
+    name = f"hero{unique_suffix()}"
     payload = {
-        "name": f"hero{unique_suffix()}",
-        "description": "Original",
+        "name": name,
+        "description": valid_character_description(name),
         "sex": "Male",
         "class": "Mercenary",
     }
@@ -509,7 +564,11 @@ def test_update_character_ok(base_url: str) -> None:
     if not isinstance(character_id, int) or character_id <= 0:
         raise AssertionError("create character response missing id")
 
-    update_payload = {"name": "Updated", "description": "Changed"}
+    updated_name = "Updated"
+    update_payload = {
+        "name": updated_name,
+        "description": valid_character_description(updated_name),
+    }
     status, _ = request_json(
         "PUT",
         f"{base_url}/characters/{character_id}",
@@ -541,9 +600,10 @@ def test_update_character_missing_fields(base_url: str) -> None:
     :returns: None.
     """
     token, _ = create_account_and_token(base_url, f"upbad{unique_suffix()}")
+    name = f"hero{unique_suffix()}"
     payload = {
-        "name": f"hero{unique_suffix()}",
-        "description": "Original",
+        "name": name,
+        "description": valid_character_description(name),
         "sex": "Male",
         "class": "Mercenary",
     }
@@ -577,9 +637,10 @@ def test_update_character_wrong_user(base_url: str) -> None:
     """
     token_a, _ = create_account_and_token(base_url, f"upa{unique_suffix()}")
     token_b, _ = create_account_and_token(base_url, f"upb{unique_suffix()}")
+    name = f"hero{unique_suffix()}"
     payload = {
-        "name": f"hero{unique_suffix()}",
-        "description": "Original",
+        "name": name,
+        "description": valid_character_description(name),
         "sex": "Male",
         "class": "Mercenary",
     }
@@ -604,6 +665,57 @@ def test_update_character_wrong_user(base_url: str) -> None:
     assert_status(401, status, "update character wrong user status")
 
 
+def test_update_character_duplicate_name(base_url: str) -> None:
+    """Test that update rejects renaming to an already-used character name.
+
+    :param base_url: Base URL for the API.
+    :raises AssertionError: If duplicate rename is accepted.
+    :returns: None.
+    """
+    token_a, _ = create_account_and_token(base_url, f"upddup-a{unique_suffix()}")
+    token_b, _ = create_account_and_token(base_url, f"upddup-b{unique_suffix()}")
+
+    first_name = f"Hero{str(unique_suffix())[-10:]}"
+    second_name = f"Hero{str(unique_suffix())[-10:]}"
+
+    status, body = request_json(
+        "POST",
+        f"{base_url}/characters",
+        payload={
+            "name": first_name,
+            "description": f"{first_name} is the first hero.",
+            "sex": "Male",
+            "class": "Mercenary",
+        },
+        headers={"Authorization": f"Bearer {token_a}"},
+    )
+    assert_status(200, status, "create first character for duplicate rename status")
+
+    status, body = request_json(
+        "POST",
+        f"{base_url}/characters",
+        payload={
+            "name": second_name,
+            "description": f"{second_name} is the second hero.",
+            "sex": "Female",
+            "class": "Templar",
+        },
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert_status(200, status, "create second character for duplicate rename status")
+    second_character_id = json.loads(body or "{}").get("id")
+    if not isinstance(second_character_id, int) or second_character_id <= 0:
+        raise AssertionError("create character response missing id")
+
+    status, _ = request_json(
+        "PUT",
+        f"{base_url}/characters/{second_character_id}",
+        payload={"name": first_name.lower()},
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert_status(422, status, "update character duplicate name status")
+
+
 def test_delete_character_ok(base_url: str) -> None:
     """Test deleting a character that is owned by the authenticated user.
 
@@ -612,9 +724,10 @@ def test_delete_character_ok(base_url: str) -> None:
     :returns: None.
     """
     token, _ = create_account_and_token(base_url, f"del{unique_suffix()}")
+    name = f"hero{unique_suffix()}"
     payload = {
-        "name": f"hero{unique_suffix()}",
-        "description": "To delete",
+        "name": name,
+        "description": valid_character_description(name),
         "sex": "Female",
         "class": "Templar",
     }
@@ -657,9 +770,10 @@ def test_delete_character_wrong_user(base_url: str) -> None:
     """
     token_a, _ = create_account_and_token(base_url, f"dela{unique_suffix()}")
     token_b, _ = create_account_and_token(base_url, f"delb{unique_suffix()}")
+    name = f"hero{unique_suffix()}"
     payload = {
-        "name": f"hero{unique_suffix()}",
-        "description": "To delete",
+        "name": name,
+        "description": valid_character_description(name),
         "sex": "Female",
         "class": "Templar",
     }
@@ -705,9 +819,10 @@ def test_create_game_login_ticket_ok(base_url: str) -> None:
     :returns: None.
     """
     token, _ = create_account_and_token(base_url, f"ticket{unique_suffix()}")
+    name = f"hero{unique_suffix()}"
     payload = {
-        "name": f"hero{unique_suffix()}",
-        "description": "Ticket hero",
+        "name": name,
+        "description": valid_character_description(name),
         "sex": "Male",
         "class": "Mercenary",
     }
@@ -747,9 +862,10 @@ def test_create_game_login_ticket_wrong_owner(base_url: str) -> None:
     token_a, _ = create_account_and_token(base_url, f"ticka{unique_suffix()}")
     token_b, _ = create_account_and_token(base_url, f"tickb{unique_suffix()}")
 
+    name = f"hero{unique_suffix()}"
     payload = {
-        "name": f"hero{unique_suffix()}",
-        "description": "Owned by A",
+        "name": name,
+        "description": valid_character_description(name),
         "sex": "Female",
         "class": "Templar",
     }
@@ -863,10 +979,12 @@ def main() -> None:
         test_get_characters_empty,
         test_create_character_ok_and_get,
         test_create_character_limit_10,
+        test_create_character_duplicate_name,
         test_create_character_invalid_race,
         test_update_character_ok,
         test_update_character_missing_fields,
         test_update_character_wrong_user,
+        test_update_character_duplicate_name,
         test_delete_character_ok,
         test_delete_character_wrong_user,
         test_create_game_login_ticket_requires_auth,
