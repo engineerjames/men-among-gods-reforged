@@ -2871,7 +2871,7 @@ impl God {
                 let spr: i16 = match temp {
                     57 => 840,    // Bronze Helmet
                     59 => 845,    // Bronze Armor
-                    63 => 830,    // Steel Helmt
+                    63 => 830,    // Steel Helmet
                     65 => 835,    // Steel Armor
                     69 => 870,    // Golden Helmet
                     71 => 875,    // Golden Armor
@@ -2879,8 +2879,8 @@ impl God {
                     76 => 855,    // Crystal Armor
                     94 => 860,    // Titanium Helmet
                     95 => 865,    // Titanium Armor
-                    981 => 16775, // Emerald Helmet
-                    982 => 16780, // Emerald Armor
+                    981 => 16860, // Emerald Helmet
+                    982 => 16865, // Emerald Armor
                     _ => item.sprite[0],
                 };
                 item.sprite[0] = spr;
