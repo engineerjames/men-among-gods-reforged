@@ -1,6 +1,5 @@
-use bevy::ecs::message::MessageWriter;
 use bevy::ecs::system::ResMut;
-use bevy::{app::AppExit, ecs::system::Commands, prelude::Resource};
+use bevy::{ecs::system::Commands, prelude::Resource};
 use bevy_egui::{
     egui::{self, Align2, Vec2},
     EguiContexts,
@@ -32,13 +31,9 @@ pub fn teardown_exited() {
 
 /// Applies any "Exit" requests made by the UI.
 ///
-/// We emit `AppExit` from the `Update` schedule (not the egui pass) because the default Bevy
-/// runner checks for `AppExit` after running `Update`.
-pub fn apply_exit_request(
-    mut ui_state: ResMut<ExitedUiState>,
-    mut exit_events: MessageWriter<AppExit>,
-    mut net: ResMut<NetworkRuntime>,
-) {
+/// We hard-exit the process from `Update` after signaling network shutdown. This avoids rare
+/// cases where app-level shutdown can stall while background tasks are unwinding.
+pub fn apply_exit_request(mut ui_state: ResMut<ExitedUiState>, mut net: ResMut<NetworkRuntime>) {
     if ui_state.request_exit {
         log::info!("Exit requested from Exited UI state.");
         ui_state.request_exit = false;
@@ -47,8 +42,8 @@ pub fn apply_exit_request(
         // shutting down systems/task pools.
         net.shutdown();
         net.stop();
-        exit_events.write(AppExit::Success);
-        log::info!("AppExit event emitted.");
+        log::info!("Forcing immediate process exit.");
+        std::process::exit(0);
     }
 }
 

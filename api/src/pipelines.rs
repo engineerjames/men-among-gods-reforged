@@ -448,6 +448,53 @@ pub(crate) async fn count_characters_for_account_scan_up_to(
     Ok(count)
 }
 
+/// Checks whether any existing character already uses `name` (case-insensitive).
+///
+/// Scans `character:*` keys and compares normalized names using ASCII-insensitive
+/// matching. Used by create-character flows to enforce global character-name
+/// uniqueness.
+pub(crate) async fn character_name_exists_scan(
+    con: &mut redis::aio::MultiplexedConnection,
+    name: &str,
+) -> Result<bool, redis::RedisError> {
+    character_name_exists_scan_excluding(con, name, None).await
+}
+
+/// Checks whether any existing character (other than `exclude_character_id`) already
+/// uses `name` (case-insensitive).
+pub(crate) async fn character_name_exists_scan_excluding(
+    con: &mut redis::aio::MultiplexedConnection,
+    name: &str,
+    exclude_character_id: Option<u64>,
+) -> Result<bool, redis::RedisError> {
+    let target_name = name.trim();
+    if target_name.is_empty() {
+        return Ok(false);
+    }
+
+    let keys = scan_keys_matching(con, "character:*", 400).await?;
+    for key in keys {
+        if key == "character:next_id" {
+            continue;
+        }
+
+        if let Some(excluded_id) = exclude_character_id {
+            if parse_numeric_id("character:", &key) == Some(excluded_id) {
+                continue;
+            }
+        }
+
+        let existing_name: Option<String> = con.hget(&key, "name").await?;
+        if let Some(existing_name) = existing_name {
+            if existing_name.trim().eq_ignore_ascii_case(target_name) {
+                return Ok(true);
+            }
+        }
+    }
+
+    Ok(false)
+}
+
 /// Lists all characters belonging to an account by scanning character hashes.
 ///
 /// This is intentionally simple (no per-account character sets). It scans `character:*`

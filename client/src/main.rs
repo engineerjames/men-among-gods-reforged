@@ -315,6 +315,10 @@ fn main() {
             states::gameplay::setup_gameplay,
         )
         .add_systems(
+            OnEnter(GameState::Gameplay),
+            states::account_login::stop_account_login_music,
+        )
+        .add_systems(
             Update,
             states::gameplay::run_gameplay
                 .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu)))

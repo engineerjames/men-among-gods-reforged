@@ -68,6 +68,7 @@ impl VideoModeSetting {
 pub struct UserSettings {
     pub render_shadows: bool,
     pub play_sounds: bool,
+    pub play_login_music: bool,
     pub master_volume: f32,
     pub show_cursor_action_text: bool,
     pub magic_effects_enabled: bool,
@@ -92,6 +93,7 @@ impl Default for UserSettings {
         Self {
             render_shadows: true,
             play_sounds: true,
+            play_login_music: true,
             master_volume: 1.0,
             show_cursor_action_text: true,
             magic_effects_enabled: true,
