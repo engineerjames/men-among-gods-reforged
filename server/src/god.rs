@@ -949,7 +949,7 @@ impl God {
 
             loop {
                 log::info!("Generating random name for new character...");
-                let potential_new_name = Self::randomly_generate_name();
+                let potential_new_name = core::names::randomly_generate_name();
 
                 let name_exists = Repository::with_characters(|characters| {
                     for existing_char in characters.iter() {
@@ -1189,47 +1189,6 @@ impl God {
 
             character.set_do_update_flags();
         });
-    }
-
-    /// Generate a pseudo-random name from syllable tables.
-    ///
-    /// Used for NPCs and temporary characters created by the server.
-    pub fn randomly_generate_name() -> String {
-        let syl1 = [
-            "thi", "ar", "an", "un", "iss", "ish", "urs", "ur", "ent", "esh", "ash", "jey", "jay",
-            "dur", "lon", "lan", "len", "lun", "so", "lur", "gar", "cry", "au", "dau", "dei",
-            "zir", "zil", "sol", "luc", "ni", "bus", "mid", "err", "doo", "do", "al", "ea", "jac",
-            "ta", "bi", "vae", "rif", "tol", "nim", "ru", "li", "fro", "sam", "beut", "bil", "ga",
-            "nee", "ara", "rho", "dan", "va", "lan", "cec", "cic", "cac", "cuc", "ix", "vea",
-            "cya", "hie", "bo", "ni", "do", "sar", "phe", "ho", "cos", "sin", "tan", "mul", "har",
-            "gur", "tar", "a", "e", "i", "o", "u", "je", "ho", "if", "jai", "coy", "ya", "pa",
-            "pul", "pil", "rez", "rel", "rar", "dom", "rom", "tom", "ar", "ur", "ir", "er", "yr",
-            "li", "la", "lu", "lo",
-        ];
-        let syl2 = [
-            "tar", "tur", "kar", "kur", "kan", "tan", "gar", "gur", "run",
-        ];
-        let syl3 = ["a", "e", "i", "o", "u"];
-
-        let mut name = String::new();
-
-        let n = helpers::random_mod_usize(syl1.len());
-        name.push_str(syl1[n]);
-        if let Some(first_char) = name.chars().next() {
-            name.replace_range(0..1, &first_char.to_uppercase().to_string());
-        }
-
-        let n = helpers::random_mod_usize(syl2.len());
-        name.push_str(syl2[n]);
-
-        if helpers::random_mod_i32(2) == 0 {
-            return name;
-        }
-
-        let n = helpers::random_mod_usize(syl3.len());
-        name.push_str(syl3[n]);
-
-        name
     }
 
     /// Remove `item_id` from character `cn` and drop it onto their map tile.

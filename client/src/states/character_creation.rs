@@ -6,6 +6,7 @@ use bevy_egui::{
     egui::{self, Pos2},
     EguiContexts,
 };
+use mag_core::names;
 use mag_core::traits::{Class, Sex};
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
@@ -148,6 +149,13 @@ pub fn run_character_creation(
                 !ui_state.is_busy,
                 egui::TextEdit::singleline(&mut ui_state.name).desired_width(260.0),
             );
+
+            if ui
+                .add_enabled(!ui_state.is_busy, egui::Button::new("Random name"))
+                .clicked()
+            {
+                ui_state.name = names::randomly_generate_name();
+            }
 
             ui.add_space(8.0);
             ui.label("Description");

@@ -3551,7 +3551,7 @@ pub fn skill_ghost(cn: usize) {
     let random_name = {
         let mut candidate = None;
         for _ in 0..100 {
-            let name = God::randomly_generate_name();
+            let name = core::names::randomly_generate_name();
             let name_exists = Repository::with_characters(|ch| {
                 ch.iter().enumerate().any(|(idx, other)| {
                     idx != cc
@@ -3564,7 +3564,7 @@ pub fn skill_ghost(cn: usize) {
                 break;
             }
         }
-        candidate.unwrap_or_else(God::randomly_generate_name)
+        candidate.unwrap_or_else(core::names::randomly_generate_name)
     };
 
     Repository::with_characters_mut(|ch| {
