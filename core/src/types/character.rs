@@ -4,9 +4,10 @@ use crate::{
     constants::{CharacterFlags, USE_EMPTY},
     string_operations::c_string_to_str,
 };
+use bincode::{Decode, Encode};
 
 /// Character structure - represents both players and NPCs
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode)]
 pub struct Character {
     pub used: u8, // 1
 
@@ -176,69 +177,6 @@ pub struct Character {
     pub text: [[u8; 160]; 10],
 }
 
-const WIRE_SIZE: usize = std::mem::size_of::<u8>() // used 
-    + std::mem::size_of::<[u8; 40]>() // name
-    + std::mem::size_of::<[u8; 40]>() // reference
-    + std::mem::size_of::<[u8; 200]>() // description
-    + std::mem::size_of::<i32>() // kindred
-    + std::mem::size_of::<i32>() // player
-    + std::mem::size_of::<u32>() // pass1
-    + std::mem::size_of::<u32>() // pass2
-    + std::mem::size_of::<u16>() // sprite
-    + std::mem::size_of::<u16>() // sound
-    + std::mem::size_of::<u64>() // flags
-    + std::mem::size_of::<i16>() // alignment
-    + std::mem::size_of::<u16>() // temple_x
-    + std::mem::size_of::<u16>() // temple_y
-    + std::mem::size_of::<u16>() // tavern_x
-    + std::mem::size_of::<u16>() // tavern_y
-    + std::mem::size_of::<u16>() // temp
-    + std::mem::size_of::<[[u8; 6]; 5]>() // attrib
-    + std::mem::size_of::<u16>() * 6 * 3 // hp, end, mana
-    + std::mem::size_of::<[[u8; 6]; 50]>() // skill
-    + std::mem::size_of::<u8>() // weapon_bonus
-    + std::mem::size_of::<u8>() // armor_bonus
-    + std::mem::size_of::<i32>() * 3 // a_hp, a_end, a_mana
-    + std::mem::size_of::<u8>() // light
-    + std::mem::size_of::<u8>() // mode
-    + std::mem::size_of::<i16>() // speed
-    + std::mem::size_of::<i32>() * 3 // points, points_tot, depot_cost
-    + std::mem::size_of::<i16>() * 2 // armor, weapon
-    + std::mem::size_of::<i16>() * 6 // x, y, tox, toy, frx, fry
-    + std::mem::size_of::<i16>() * 2 // status, status2
-    + std::mem::size_of::<u8>() // dir
-    + std::mem::size_of::<i32>() // gold
-    + std::mem::size_of::<[u32; 40]>() // item
-    + std::mem::size_of::<[u32; 20]>() // worn
-    + std::mem::size_of::<[u32; 20]>() // spell
-    + std::mem::size_of::<u32>() * 3 // citem, creation_date, login_date
-    + std::mem::size_of::<u32>() * 3 // addr, current_online_time, total_online_time
-    + std::mem::size_of::<u32>() * 2 // comp_volume, raw_volume
-    + std::mem::size_of::<u32>() // idle
-    + std::mem::size_of::<u16>() // attack_cn
-    + std::mem::size_of::<u16>() // skill_nr
-    + std::mem::size_of::<u16>() * 5 // skill_target1, skill_target2, goto_x, goto_y, use_nr
-    + std::mem::size_of::<u16>() * 3 // misc_action, misc_target1, misc_target2
-    + std::mem::size_of::<u16>() * 3 // cerrno, escape_timer, current_enemy
-    + std::mem::size_of::<u16>() * 4 // enemy[4]
-    + std::mem::size_of::<u16>() * 2 // retry, stunned
-    + std::mem::size_of::<i8>() * 6 // speed_mod, last_action, unused, depot_sold, gethit_dam, gethit_bonus
-    + std::mem::size_of::<u8>() // light_bonus
-    + std::mem::size_of::<[u8; 16]>() // passwd[16]
-    + std::mem::size_of::<i8>() // lastattack
-    + std::mem::size_of::<[i8; 25]>() // future1[25]
-    + std::mem::size_of::<i16>() // sprite_override
-    + std::mem::size_of::<[i16; 49]>() // future2[49]
-    + std::mem::size_of::<[u32; 62]>() // depot[62]
-    + std::mem::size_of::<i32>() // depot_cost
-    + std::mem::size_of::<i32>() // luck
-    + std::mem::size_of::<i32>() * 3 // unreach, unreachx, unreachy
-    + std::mem::size_of::<i32>() // monster_class
-    + std::mem::size_of::<[i32; 12]>() // future3[12]
-    + std::mem::size_of::<u32>() // logout_date
-    + std::mem::size_of::<[i32; 100]>() // data[100]
-    + std::mem::size_of::<[[u8; 160]; 10]>(); // text[10][160] as u8
-
 impl Default for Character {
     fn default() -> Self {
         Self {
@@ -358,393 +296,18 @@ impl Character {
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(std::mem::size_of::<Character>());
-
-        bytes.extend_from_slice(&self.used.to_le_bytes());
-        bytes.extend_from_slice(&self.name);
-        bytes.extend_from_slice(&self.reference);
-        bytes.extend_from_slice(&self.description);
-        bytes.extend_from_slice(&self.kindred.to_le_bytes());
-        bytes.extend_from_slice(&self.player.to_le_bytes());
-        bytes.extend_from_slice(&self.pass1.to_le_bytes());
-        bytes.extend_from_slice(&self.pass2.to_le_bytes());
-        bytes.extend_from_slice(&self.sprite.to_le_bytes());
-        bytes.extend_from_slice(&self.sound.to_le_bytes());
-        bytes.extend_from_slice(&self.flags.to_le_bytes());
-        bytes.extend_from_slice(&self.alignment.to_le_bytes());
-        bytes.extend_from_slice(&self.temple_x.to_le_bytes());
-        bytes.extend_from_slice(&self.temple_y.to_le_bytes());
-        bytes.extend_from_slice(&self.tavern_x.to_le_bytes());
-        bytes.extend_from_slice(&self.tavern_y.to_le_bytes());
-        bytes.extend_from_slice(&self.temp.to_le_bytes());
-
-        for attrib in &self.attrib {
-            for &value in attrib {
-                bytes.push(value);
-            }
-        }
-
-        let hp_copy = self.hp;
-        for &value in &hp_copy {
-            bytes.extend_from_slice(&value.to_le_bytes());
-        }
-
-        let end_copy = self.end;
-        for &value in &end_copy {
-            bytes.extend_from_slice(&value.to_le_bytes());
-        }
-
-        let mana_copy = self.mana;
-        for &value in &mana_copy {
-            bytes.extend_from_slice(&value.to_le_bytes());
-        }
-
-        for skill in &self.skill {
-            for &value in skill {
-                bytes.push(value);
-            }
-        }
-
-        bytes.push(self.weapon_bonus);
-        bytes.push(self.armor_bonus);
-        bytes.extend_from_slice(&self.a_hp.to_le_bytes());
-        bytes.extend_from_slice(&self.a_end.to_le_bytes());
-        bytes.extend_from_slice(&self.a_mana.to_le_bytes());
-        bytes.push(self.light);
-        bytes.push(self.mode);
-        bytes.extend_from_slice(&self.speed.to_le_bytes());
-        bytes.extend_from_slice(&self.points.to_le_bytes());
-        bytes.extend_from_slice(&self.points_tot.to_le_bytes());
-        bytes.extend_from_slice(&self.armor.to_le_bytes());
-        bytes.extend_from_slice(&self.weapon.to_le_bytes());
-        bytes.extend_from_slice(&self.x.to_le_bytes());
-        bytes.extend_from_slice(&self.y.to_le_bytes());
-        bytes.extend_from_slice(&self.tox.to_le_bytes());
-        bytes.extend_from_slice(&self.toy.to_le_bytes());
-        bytes.extend_from_slice(&self.frx.to_le_bytes());
-        bytes.extend_from_slice(&self.fry.to_le_bytes());
-        bytes.extend_from_slice(&self.status.to_le_bytes());
-        bytes.extend_from_slice(&self.status2.to_le_bytes());
-        bytes.push(self.dir);
-        bytes.extend_from_slice(&self.gold.to_le_bytes());
-
-        for &item_id in &self.item {
-            bytes.extend_from_slice(&item_id.to_le_bytes());
-        }
-
-        for &worn_id in &self.worn {
-            bytes.extend_from_slice(&worn_id.to_le_bytes());
-        }
-
-        for &spell_id in &self.spell {
-            bytes.extend_from_slice(&spell_id.to_le_bytes());
-        }
-        bytes.extend_from_slice(&self.citem.to_le_bytes());
-        bytes.extend_from_slice(&self.creation_date.to_le_bytes());
-        bytes.extend_from_slice(&self.login_date.to_le_bytes());
-        bytes.extend_from_slice(&self.addr.to_le_bytes());
-        bytes.extend_from_slice(&self.current_online_time.to_le_bytes());
-        bytes.extend_from_slice(&self.total_online_time.to_le_bytes());
-        bytes.extend_from_slice(&self.comp_volume.to_le_bytes());
-        bytes.extend_from_slice(&self.raw_volume.to_le_bytes());
-        bytes.extend_from_slice(&self.idle.to_le_bytes());
-        bytes.extend_from_slice(&self.attack_cn.to_le_bytes());
-        bytes.extend_from_slice(&self.skill_nr.to_le_bytes());
-        bytes.extend_from_slice(&self.skill_target1.to_le_bytes());
-        bytes.extend_from_slice(&self.skill_target2.to_le_bytes());
-        bytes.extend_from_slice(&self.goto_x.to_le_bytes());
-        bytes.extend_from_slice(&self.goto_y.to_le_bytes());
-        bytes.extend_from_slice(&self.use_nr.to_le_bytes());
-        bytes.extend_from_slice(&self.misc_action.to_le_bytes());
-        bytes.extend_from_slice(&self.misc_target1.to_le_bytes());
-        bytes.extend_from_slice(&self.misc_target2.to_le_bytes());
-        bytes.extend_from_slice(&self.cerrno.to_le_bytes());
-        bytes.extend_from_slice(&self.escape_timer.to_le_bytes());
-
-        for &enemy_id in &self.enemy {
-            bytes.extend_from_slice(&enemy_id.to_le_bytes());
-        }
-        bytes.extend_from_slice(&self.current_enemy.to_le_bytes());
-        bytes.extend_from_slice(&self.retry.to_le_bytes());
-        bytes.extend_from_slice(&self.stunned.to_le_bytes());
-        bytes.push(self.speed_mod as u8);
-        bytes.push(self.last_action as u8);
-        bytes.push(self.unused as u8);
-        bytes.push(self.depot_sold as u8);
-        bytes.push(self.gethit_dam as u8);
-        bytes.push(self.gethit_bonus as u8);
-        bytes.push(self.light_bonus);
-        bytes.extend_from_slice(&self.passwd);
-        bytes.push(self.lastattack as u8);
-        for &value in &self.future1 {
-            bytes.push(value as u8);
-        }
-        bytes.extend_from_slice(&self.sprite_override.to_le_bytes());
-
-        for &value in &self.future2 {
-            bytes.extend_from_slice(&value.to_le_bytes());
-        }
-
-        for &item_id in &self.depot {
-            bytes.extend_from_slice(&item_id.to_le_bytes());
-        }
-        bytes.extend_from_slice(&self.depot_cost.to_le_bytes());
-        bytes.extend_from_slice(&self.luck.to_le_bytes());
-        bytes.extend_from_slice(&self.unreach.to_le_bytes());
-        bytes.extend_from_slice(&self.unreachx.to_le_bytes());
-        bytes.extend_from_slice(&self.unreachy.to_le_bytes());
-        bytes.extend_from_slice(&self.monster_class.to_le_bytes());
-
-        for &value in &self.future3 {
-            bytes.extend_from_slice(&value.to_le_bytes());
-        }
-        bytes.extend_from_slice(&self.logout_date.to_le_bytes());
-
-        for &value in &self.data {
-            bytes.extend_from_slice(&value.to_le_bytes());
-        }
-
-        for text_entry in &self.text {
-            for &char_byte in text_entry {
-                bytes.push(char_byte);
-            }
-        }
-
-        if bytes.len() != WIRE_SIZE {
-            log::warn!(
-                "Character::to_bytes: expected size {}, got {}",
-                WIRE_SIZE,
-                bytes.len()
-            );
-        }
-
-        bytes
+        bincode::encode_to_vec(self, bincode::config::standard())
+            .expect("Character::to_bytes failed")
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        if bytes.len() < WIRE_SIZE {
-            return None;
+        let (value, consumed): (Self, usize) =
+            bincode::decode_from_slice(bytes, bincode::config::standard()).ok()?;
+        if consumed == bytes.len() {
+            Some(value)
+        } else {
+            None
         }
-
-        let mut offset: usize = 0;
-
-        Some(Self {
-            used: read_u8!(bytes, offset),
-            name: {
-                let mut arr = [0u8; 40];
-                for i in 0..40 {
-                    arr[i] = read_u8!(bytes, offset);
-                }
-                arr
-            },
-            reference: {
-                let mut arr = [0u8; 40];
-                for i in 0..40 {
-                    arr[i] = read_u8!(bytes, offset);
-                }
-                arr
-            },
-            description: {
-                let mut arr = [0u8; 200];
-                for i in 0..200 {
-                    arr[i] = read_u8!(bytes, offset);
-                }
-                arr
-            },
-            kindred: read_i32!(bytes, offset),
-            player: read_i32!(bytes, offset),
-            pass1: read_u32!(bytes, offset),
-            pass2: read_u32!(bytes, offset),
-            sprite: read_u16!(bytes, offset),
-            sound: read_u16!(bytes, offset),
-            flags: read_u64!(bytes, offset),
-            alignment: read_i16!(bytes, offset),
-            temple_x: read_u16!(bytes, offset),
-            temple_y: read_u16!(bytes, offset),
-            tavern_x: read_u16!(bytes, offset),
-            tavern_y: read_u16!(bytes, offset),
-            temp: read_u16!(bytes, offset),
-            attrib: {
-                let mut arr = [[0u8; 6]; 5];
-                for i in 0..5 {
-                    for j in 0..6 {
-                        arr[i][j] = read_u8!(bytes, offset);
-                    }
-                }
-                arr
-            },
-            hp: {
-                let mut arr = [0u16; 6];
-                for i in 0..6 {
-                    arr[i] = read_u16!(bytes, offset);
-                }
-                arr
-            },
-            end: {
-                let mut arr = [0u16; 6];
-                for i in 0..6 {
-                    arr[i] = read_u16!(bytes, offset);
-                }
-                arr
-            },
-            mana: {
-                let mut arr = [0u16; 6];
-                for i in 0..6 {
-                    arr[i] = read_u16!(bytes, offset);
-                }
-                arr
-            },
-            skill: {
-                let mut arr = [[0u8; 6]; 50];
-                for i in 0..50 {
-                    for j in 0..6 {
-                        arr[i][j] = read_u8!(bytes, offset);
-                    }
-                }
-                arr
-            },
-            weapon_bonus: read_u8!(bytes, offset),
-            armor_bonus: read_u8!(bytes, offset),
-            a_hp: read_i32!(bytes, offset),
-            a_end: read_i32!(bytes, offset),
-            a_mana: read_i32!(bytes, offset),
-            light: read_u8!(bytes, offset),
-            mode: read_u8!(bytes, offset),
-            speed: read_i16!(bytes, offset),
-            points: read_i32!(bytes, offset),
-            points_tot: read_i32!(bytes, offset),
-            armor: read_i16!(bytes, offset),
-            weapon: read_i16!(bytes, offset),
-            x: read_i16!(bytes, offset),
-            y: read_i16!(bytes, offset),
-            tox: read_i16!(bytes, offset),
-            toy: read_i16!(bytes, offset),
-            frx: read_i16!(bytes, offset),
-            fry: read_i16!(bytes, offset),
-            status: read_i16!(bytes, offset),
-            status2: read_i16!(bytes, offset),
-            dir: read_u8!(bytes, offset),
-            gold: read_i32!(bytes, offset),
-            item: {
-                let mut arr = [0u32; 40];
-                for i in 0..40 {
-                    arr[i] = read_u32!(bytes, offset);
-                }
-                arr
-            },
-            worn: {
-                let mut arr = [0u32; 20];
-                for i in 0..20 {
-                    arr[i] = read_u32!(bytes, offset);
-                }
-                arr
-            },
-            spell: {
-                let mut arr = [0u32; 20];
-                for i in 0..20 {
-                    arr[i] = read_u32!(bytes, offset);
-                }
-                arr
-            },
-            citem: read_u32!(bytes, offset),
-            creation_date: read_u32!(bytes, offset),
-            login_date: read_u32!(bytes, offset),
-            addr: read_u32!(bytes, offset),
-            current_online_time: read_u32!(bytes, offset),
-            total_online_time: read_u32!(bytes, offset),
-            comp_volume: read_u32!(bytes, offset),
-            raw_volume: read_u32!(bytes, offset),
-            idle: read_u32!(bytes, offset),
-            attack_cn: read_u16!(bytes, offset),
-            skill_nr: read_u16!(bytes, offset),
-            skill_target1: read_u16!(bytes, offset),
-            skill_target2: read_u16!(bytes, offset),
-            goto_x: read_u16!(bytes, offset),
-            goto_y: read_u16!(bytes, offset),
-            use_nr: read_u16!(bytes, offset),
-            misc_action: read_u16!(bytes, offset),
-            misc_target1: read_u16!(bytes, offset),
-            misc_target2: read_u16!(bytes, offset),
-            cerrno: read_u16!(bytes, offset),
-            escape_timer: read_u16!(bytes, offset),
-            enemy: {
-                let mut arr = [0u16; 4];
-                for i in 0..4 {
-                    arr[i] = read_u16!(bytes, offset);
-                }
-                arr
-            },
-            current_enemy: read_u16!(bytes, offset),
-            retry: read_u16!(bytes, offset),
-            stunned: read_u16!(bytes, offset),
-            speed_mod: read_i8!(bytes, offset),
-            last_action: read_i8!(bytes, offset),
-            unused: read_i8!(bytes, offset),
-            depot_sold: read_i8!(bytes, offset),
-            gethit_dam: read_i8!(bytes, offset),
-            gethit_bonus: read_i8!(bytes, offset),
-            light_bonus: read_u8!(bytes, offset),
-            passwd: {
-                let mut arr = [0u8; 16];
-                for i in 0..16 {
-                    arr[i] = read_u8!(bytes, offset);
-                }
-                arr
-            },
-            lastattack: read_i8!(bytes, offset),
-            future1: {
-                let mut arr = [0i8; 25];
-                for i in 0..25 {
-                    arr[i] = read_i8!(bytes, offset);
-                }
-                arr
-            },
-            sprite_override: read_i16!(bytes, offset),
-            future2: {
-                let mut arr = [0i16; 49];
-                for i in 0..49 {
-                    arr[i] = read_i16!(bytes, offset);
-                }
-                arr
-            },
-            depot: {
-                let mut arr = [0u32; 62];
-                for i in 0..62 {
-                    arr[i] = read_u32!(bytes, offset);
-                }
-                arr
-            },
-            depot_cost: read_i32!(bytes, offset),
-            luck: read_i32!(bytes, offset),
-            unreach: read_i32!(bytes, offset),
-            unreachx: read_i32!(bytes, offset),
-            unreachy: read_i32!(bytes, offset),
-            monster_class: read_i32!(bytes, offset),
-            future3: {
-                let mut arr = [0i32; 12];
-                for i in 0..12 {
-                    arr[i] = read_i32!(bytes, offset);
-                }
-                arr
-            },
-            logout_date: read_u32!(bytes, offset),
-            data: {
-                let mut arr = [0i32; 100];
-                for i in 0..100 {
-                    arr[i] = read_i32!(bytes, offset);
-                }
-                arr
-            },
-            text: {
-                let mut arr = [[0u8; 160]; 10];
-                for i in 0..10 {
-                    for j in 0..160 {
-                        arr[i][j] = read_u8!(bytes, offset);
-                    }
-                }
-                arr
-            },
-        })
     }
 
     pub fn is_close_to_temple(&self) -> bool {
@@ -932,10 +495,9 @@ mod tests {
     fn test_character_to_bytes_size() {
         let character = Character::default();
         let bytes = character.to_bytes();
-        assert_eq!(
-            bytes.len(),
-            std::mem::size_of::<Character>(),
-            "Serialized Character size should match struct size"
+        assert!(
+            !bytes.is_empty(),
+            "Serialized Character should not be empty"
         );
     }
 
@@ -967,87 +529,13 @@ mod tests {
 
         let bytes = original.to_bytes();
         let deserialized = Character::from_bytes(&bytes).expect("Failed to deserialize Character");
-
-        assert_eq!(original.used, deserialized.used);
-        assert_eq!(original.name, deserialized.name);
-        assert_eq!(original.reference, deserialized.reference);
-
-        let original_kindred = original.kindred;
-        let deserialized_kindred = deserialized.kindred;
-        assert_eq!(original_kindred, deserialized_kindred);
-
-        let original_player = original.player;
-        let deserialized_player = deserialized.player;
-        assert_eq!(original_player, deserialized_player);
-
-        let original_sprite = original.sprite;
-        let deserialized_sprite = deserialized.sprite;
-        assert_eq!(original_sprite, deserialized_sprite);
-
-        let original_sound = original.sound;
-        let deserialized_sound = deserialized.sound;
-        assert_eq!(original_sound, deserialized_sound);
-
-        let original_flags = original.flags;
-        let deserialized_flags = deserialized.flags;
-        assert_eq!(original_flags, deserialized_flags);
-
-        let original_alignment = original.alignment;
-        let deserialized_alignment = deserialized.alignment;
-        assert_eq!(original_alignment, deserialized_alignment);
-
-        let original_temple_x = original.temple_x;
-        let deserialized_temple_x = deserialized.temple_x;
-        assert_eq!(original_temple_x, deserialized_temple_x);
-
-        let original_temple_y = original.temple_y;
-        let deserialized_temple_y = deserialized.temple_y;
-        assert_eq!(original_temple_y, deserialized_temple_y);
-
-        let original_hp = original.hp;
-        let deserialized_hp = deserialized.hp;
-        assert_eq!(original_hp, deserialized_hp);
-
-        let original_attrib = original.attrib;
-        let deserialized_attrib = deserialized.attrib;
-        assert_eq!(original_attrib, deserialized_attrib);
-
-        let original_skill = original.skill;
-        let deserialized_skill = deserialized.skill;
-        assert_eq!(original_skill, deserialized_skill);
-
-        let original_x = original.x;
-        let deserialized_x = deserialized.x;
-        assert_eq!(original_x, deserialized_x);
-
-        let original_y = original.y;
-        let deserialized_y = deserialized.y;
-        assert_eq!(original_y, deserialized_y);
-
-        let original_gold = original.gold;
-        let deserialized_gold = deserialized.gold;
-        assert_eq!(original_gold, deserialized_gold);
-
-        let original_item = original.item;
-        let deserialized_item = deserialized.item;
-        assert_eq!(original_item, deserialized_item);
-
-        let original_worn = original.worn;
-        let deserialized_worn = deserialized.worn;
-        assert_eq!(original_worn, deserialized_worn);
-
-        let original_depot = original.depot;
-        let deserialized_depot = deserialized.depot;
-        assert_eq!(original_depot, deserialized_depot);
-
-        let original_data = original.data;
-        let deserialized_data = deserialized.data;
-        assert_eq!(original_data, deserialized_data);
+        assert_eq!(original, deserialized);
     }
 
     #[test]
     fn test_character_from_bytes_insufficient_data() {
-        let bytes = vec![0u8; std::mem::size_of::<Character>() - 1];
+        let mut bytes = Character::default().to_bytes();
+        bytes.pop();
         assert!(
             Character::from_bytes(&bytes).is_none(),
             "Should fail with insufficient data"

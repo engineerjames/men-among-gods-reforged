@@ -1,3 +1,5 @@
+#![allow(unused_macros)]
+
 // Helper macros for reading different types
 macro_rules! read_u8 {
     ($bytes:expr, $offset:expr) => {{

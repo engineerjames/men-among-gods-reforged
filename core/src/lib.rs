@@ -10,6 +10,10 @@ use log4rs::{
 };
 use std::{backtrace, env};
 
+pub mod result {
+    pub use std::result::*;
+}
+
 #[macro_use]
 pub mod byte_operations;
 pub mod area;

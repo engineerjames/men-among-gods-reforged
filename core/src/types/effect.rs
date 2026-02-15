@@ -1,5 +1,7 @@
+use bincode::{Decode, Encode};
+
 /// Effect structure
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Encode, Decode)]
 pub struct Effect {
     pub used: u8,
     pub flags: u8,
@@ -11,56 +13,19 @@ pub struct Effect {
     pub data: [u32; 10], // some data
 }
 
-const WIRE_SIZE: usize = std::mem::size_of::<u8>() // used
-    + std::mem::size_of::<u8>() // flags
-    + std::mem::size_of::<u8>() // effect_type
-    + std::mem::size_of::<u32>() // duration
-    + 10 * std::mem::size_of::<u32>(); // data
-
 impl Effect {
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(WIRE_SIZE);
-
-        bytes.push(self.used);
-        bytes.push(self.flags);
-        bytes.push(self.effect_type);
-        bytes.extend_from_slice(&self.duration.to_le_bytes());
-
-        for &value in &self.data {
-            bytes.extend_from_slice(&value.to_le_bytes());
-        }
-
-        if bytes.len() != WIRE_SIZE {
-            log::error!(
-                "Effect::to_bytes: expected size {}, got {}",
-                WIRE_SIZE,
-                bytes.len()
-            );
-        }
-
-        bytes
+        bincode::encode_to_vec(self, bincode::config::standard()).expect("Effect::to_bytes failed")
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        if bytes.len() < WIRE_SIZE {
-            return None;
+        let (value, consumed): (Self, usize) =
+            bincode::decode_from_slice(bytes, bincode::config::standard()).ok()?;
+        if consumed == bytes.len() {
+            Some(value)
+        } else {
+            None
         }
-
-        let mut offset: usize = 0;
-
-        Some(Self {
-            used: read_u8!(bytes, offset),
-            flags: read_u8!(bytes, offset),
-            effect_type: read_u8!(bytes, offset),
-            duration: read_u32!(bytes, offset),
-            data: {
-                let mut arr = [0u32; 10];
-                for i in 0..10 {
-                    arr[i] = read_u32!(bytes, offset);
-                }
-                arr
-            },
-        })
     }
 }
 
@@ -72,11 +37,7 @@ mod tests {
     fn test_effect_to_bytes_size() {
         let effect = Effect::default();
         let bytes = effect.to_bytes();
-        assert_eq!(
-            bytes.len(),
-            WIRE_SIZE,
-            "Serialized Effect size should match struct size"
-        );
+        assert!(!bytes.is_empty(), "Serialized Effect should not be empty");
     }
 
     #[test]
@@ -91,23 +52,13 @@ mod tests {
 
         let bytes = original.to_bytes();
         let deserialized = Effect::from_bytes(&bytes).expect("Failed to deserialize Effect");
-
-        assert_eq!(original.used, deserialized.used);
-        assert_eq!(original.flags, deserialized.flags);
-        assert_eq!(original.effect_type, deserialized.effect_type);
-
-        let original_duration = original.duration;
-        let de_duration_copy = deserialized.duration;
-        assert_eq!(original_duration, de_duration_copy);
-
-        let original_data = original.data;
-        let deserialized_data = deserialized.data;
-        assert_eq!(original_data, deserialized_data);
+        assert_eq!(original, deserialized);
     }
 
     #[test]
     fn test_effect_from_bytes_insufficient_data() {
-        let bytes = vec![0u8; WIRE_SIZE - 1];
+        let mut bytes = Effect::default().to_bytes();
+        bytes.pop();
         assert!(
             Effect::from_bytes(&bytes).is_none(),
             "Should fail with insufficient data"
