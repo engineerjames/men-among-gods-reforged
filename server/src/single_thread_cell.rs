@@ -16,7 +16,7 @@ impl<T> SingleThreadCell<T> {
 
     #[inline]
     fn assert_owner_thread(&self) {
-        assert_eq!(
+        debug_assert_eq!(
             self.owner_thread,
             thread::current().id(),
             "SingleThreadCell accessed from a non-owner thread"
