@@ -14,8 +14,6 @@ pub mod result {
     pub use std::result::*;
 }
 
-#[macro_use]
-pub mod byte_operations;
 pub mod area;
 pub mod circular_buffer;
 pub mod constants;
