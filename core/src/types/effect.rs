@@ -1,6 +1,5 @@
 /// Effect structure
 #[derive(Debug, Clone, Copy, Default)]
-#[repr(C, packed)]
 pub struct Effect {
     pub used: u8,
     pub flags: u8,
@@ -12,24 +11,29 @@ pub struct Effect {
     pub data: [u32; 10], // some data
 }
 
+const WIRE_SIZE: usize = std::mem::size_of::<u8>() // used
+    + std::mem::size_of::<u8>() // flags
+    + std::mem::size_of::<u8>() // effect_type
+    + std::mem::size_of::<u32>() // duration
+    + 10 * std::mem::size_of::<u32>(); // data
+
 impl Effect {
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(std::mem::size_of::<Effect>());
+        let mut bytes = Vec::with_capacity(WIRE_SIZE);
 
         bytes.push(self.used);
         bytes.push(self.flags);
         bytes.push(self.effect_type);
         bytes.extend_from_slice(&self.duration.to_le_bytes());
 
-        let data_copy = self.data;
-        for &value in &data_copy {
+        for &value in &self.data {
             bytes.extend_from_slice(&value.to_le_bytes());
         }
 
-        if bytes.len() != std::mem::size_of::<Effect>() {
+        if bytes.len() != WIRE_SIZE {
             log::error!(
                 "Effect::to_bytes: expected size {}, got {}",
-                std::mem::size_of::<Effect>(),
+                WIRE_SIZE,
                 bytes.len()
             );
         }
@@ -38,7 +42,7 @@ impl Effect {
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        if bytes.len() < std::mem::size_of::<Effect>() {
+        if bytes.len() < WIRE_SIZE {
             return None;
         }
 
@@ -70,7 +74,7 @@ mod tests {
         let bytes = effect.to_bytes();
         assert_eq!(
             bytes.len(),
-            std::mem::size_of::<Effect>(),
+            WIRE_SIZE,
             "Serialized Effect size should match struct size"
         );
     }
@@ -103,7 +107,7 @@ mod tests {
 
     #[test]
     fn test_effect_from_bytes_insufficient_data() {
-        let bytes = vec![0u8; std::mem::size_of::<Effect>() - 1];
+        let bytes = vec![0u8; WIRE_SIZE - 1];
         assert!(
             Effect::from_bytes(&bytes).is_none(),
             "Should fail with insufficient data"

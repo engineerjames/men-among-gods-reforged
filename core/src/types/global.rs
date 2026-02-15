@@ -1,10 +1,7 @@
-use std::mem::offset_of;
-
 use crate::constants;
 
 /// Global server state structure
 #[derive(Debug, Default)]
-#[repr(C)]
 pub struct Global {
     pub mdtime: i32,
     pub mdday: i32,
@@ -71,8 +68,6 @@ impl Global {
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(std::mem::size_of::<Global>());
 
-        // TODO: Just update the data files to not need to be packed anymore
-
         bytes.extend_from_slice(&self.mdtime.to_le_bytes());
         bytes.extend_from_slice(&self.mdday.to_le_bytes());
         bytes.extend_from_slice(&self.mdyear.to_le_bytes());
@@ -107,8 +102,6 @@ impl Global {
         }
 
         bytes.extend_from_slice(&self.flags.to_le_bytes());
-        // Add 4 bytes of padding for alignment before i64
-        bytes.extend_from_slice(&[0u8; 4]);
 
         bytes.extend_from_slice(&self.uptime.to_le_bytes());
         for &value in &self.uptime_per_hour {
@@ -136,16 +129,9 @@ impl Global {
 
         bytes.push(self.fullmoon as u8);
         bytes.push(self.newmoon as u8);
-        // Add 2 bytes of padding for alignment before u64 (not 6!)
-        bytes.extend_from_slice(&[0u8; 2]);
 
         bytes.extend_from_slice(&self.unique.to_le_bytes());
         bytes.extend_from_slice(&self.cap.to_le_bytes());
-
-        const OFFSET_CAP: usize = offset_of!(Global, cap);
-        const TOTAL_SIZE: usize = std::mem::size_of::<Global>();
-        const END_PADDING_SIZE: usize = TOTAL_SIZE - (OFFSET_CAP + std::mem::size_of::<i32>());
-        bytes.extend_from_slice(&[0u8; END_PADDING_SIZE]);
 
         if bytes.len() != std::mem::size_of::<Global>() {
             log::error!(
@@ -195,11 +181,7 @@ impl Global {
                 arr
             },
             flags: read_i32!(bytes, offset),
-            uptime: {
-                // Skip 4 bytes of padding for alignment before i64
-                offset += 4;
-                read_i64!(bytes, offset)
-            },
+            uptime: { read_i64!(bytes, offset) },
             uptime_per_hour: {
                 let mut arr = [0i64; 24];
                 for i in 0..24 {
@@ -226,11 +208,7 @@ impl Global {
             },
             fullmoon: read_i8!(bytes, offset),
             newmoon: read_i8!(bytes, offset),
-            unique: {
-                // Skip 2 bytes of padding for alignment before u64
-                offset += 2;
-                read_u64!(bytes, offset)
-            },
+            unique: { read_u64!(bytes, offset) },
             #[allow(unused_assignments)]
             cap: read_i32!(bytes, offset),
         })

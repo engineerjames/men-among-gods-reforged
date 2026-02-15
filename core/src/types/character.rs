@@ -7,7 +7,6 @@ use crate::{
 
 /// Character structure - represents both players and NPCs
 #[derive(Clone, Copy)]
-#[repr(C, packed)]
 pub struct Character {
     pub used: u8, // 1
 
@@ -176,6 +175,69 @@ pub struct Character {
     pub data: [i32; 100],
     pub text: [[u8; 160]; 10],
 }
+
+const WIRE_SIZE: usize = std::mem::size_of::<u8>() // used 
+    + std::mem::size_of::<[u8; 40]>() // name
+    + std::mem::size_of::<[u8; 40]>() // reference
+    + std::mem::size_of::<[u8; 200]>() // description
+    + std::mem::size_of::<i32>() // kindred
+    + std::mem::size_of::<i32>() // player
+    + std::mem::size_of::<u32>() // pass1
+    + std::mem::size_of::<u32>() // pass2
+    + std::mem::size_of::<u16>() // sprite
+    + std::mem::size_of::<u16>() // sound
+    + std::mem::size_of::<u64>() // flags
+    + std::mem::size_of::<i16>() // alignment
+    + std::mem::size_of::<u16>() // temple_x
+    + std::mem::size_of::<u16>() // temple_y
+    + std::mem::size_of::<u16>() // tavern_x
+    + std::mem::size_of::<u16>() // tavern_y
+    + std::mem::size_of::<u16>() // temp
+    + std::mem::size_of::<[[u8; 6]; 5]>() // attrib
+    + std::mem::size_of::<u16>() * 6 * 3 // hp, end, mana
+    + std::mem::size_of::<[[u8; 6]; 50]>() // skill
+    + std::mem::size_of::<u8>() // weapon_bonus
+    + std::mem::size_of::<u8>() // armor_bonus
+    + std::mem::size_of::<i32>() * 3 // a_hp, a_end, a_mana
+    + std::mem::size_of::<u8>() // light
+    + std::mem::size_of::<u8>() // mode
+    + std::mem::size_of::<i16>() // speed
+    + std::mem::size_of::<i32>() * 3 // points, points_tot, depot_cost
+    + std::mem::size_of::<i16>() * 2 // armor, weapon
+    + std::mem::size_of::<i16>() * 6 // x, y, tox, toy, frx, fry
+    + std::mem::size_of::<i16>() * 2 // status, status2
+    + std::mem::size_of::<u8>() // dir
+    + std::mem::size_of::<i32>() // gold
+    + std::mem::size_of::<[u32; 40]>() // item
+    + std::mem::size_of::<[u32; 20]>() // worn
+    + std::mem::size_of::<[u32; 20]>() // spell
+    + std::mem::size_of::<u32>() * 3 // citem, creation_date, login_date
+    + std::mem::size_of::<u32>() * 3 // addr, current_online_time, total_online_time
+    + std::mem::size_of::<u32>() * 2 // comp_volume, raw_volume
+    + std::mem::size_of::<u32>() // idle
+    + std::mem::size_of::<u16>() // attack_cn
+    + std::mem::size_of::<u16>() // skill_nr
+    + std::mem::size_of::<u16>() * 5 // skill_target1, skill_target2, goto_x, goto_y, use_nr
+    + std::mem::size_of::<u16>() * 3 // misc_action, misc_target1, misc_target2
+    + std::mem::size_of::<u16>() * 3 // cerrno, escape_timer, current_enemy
+    + std::mem::size_of::<u16>() * 4 // enemy[4]
+    + std::mem::size_of::<u16>() * 2 // retry, stunned
+    + std::mem::size_of::<i8>() * 6 // speed_mod, last_action, unused, depot_sold, gethit_dam, gethit_bonus
+    + std::mem::size_of::<u8>() // light_bonus
+    + std::mem::size_of::<[u8; 16]>() // passwd[16]
+    + std::mem::size_of::<i8>() // lastattack
+    + std::mem::size_of::<[i8; 25]>() // future1[25]
+    + std::mem::size_of::<i16>() // sprite_override
+    + std::mem::size_of::<[i16; 49]>() // future2[49]
+    + std::mem::size_of::<[u32; 62]>() // depot[62]
+    + std::mem::size_of::<i32>() // depot_cost
+    + std::mem::size_of::<i32>() // luck
+    + std::mem::size_of::<i32>() * 3 // unreach, unreachx, unreachy
+    + std::mem::size_of::<i32>() // monster_class
+    + std::mem::size_of::<[i32; 12]>() // future3[12]
+    + std::mem::size_of::<u32>() // logout_date
+    + std::mem::size_of::<[i32; 100]>() // data[100]
+    + std::mem::size_of::<[[u8; 160]; 10]>(); // text[10][160] as u8
 
 impl Default for Character {
     fn default() -> Self {
@@ -366,18 +428,15 @@ impl Character {
         bytes.push(self.dir);
         bytes.extend_from_slice(&self.gold.to_le_bytes());
 
-        let item_copy = self.item;
-        for &item_id in &item_copy {
+        for &item_id in &self.item {
             bytes.extend_from_slice(&item_id.to_le_bytes());
         }
 
-        let worn_copy = self.worn;
-        for &worn_id in &worn_copy {
+        for &worn_id in &self.worn {
             bytes.extend_from_slice(&worn_id.to_le_bytes());
         }
 
-        let spell_copy = self.spell;
-        for &spell_id in &spell_copy {
+        for &spell_id in &self.spell {
             bytes.extend_from_slice(&spell_id.to_le_bytes());
         }
         bytes.extend_from_slice(&self.citem.to_le_bytes());
@@ -402,8 +461,7 @@ impl Character {
         bytes.extend_from_slice(&self.cerrno.to_le_bytes());
         bytes.extend_from_slice(&self.escape_timer.to_le_bytes());
 
-        let enemy_copy = self.enemy;
-        for &enemy_id in &enemy_copy {
+        for &enemy_id in &self.enemy {
             bytes.extend_from_slice(&enemy_id.to_le_bytes());
         }
         bytes.extend_from_slice(&self.current_enemy.to_le_bytes());
@@ -423,13 +481,11 @@ impl Character {
         }
         bytes.extend_from_slice(&self.sprite_override.to_le_bytes());
 
-        let future2_copy = self.future2;
-        for &value in &future2_copy {
+        for &value in &self.future2 {
             bytes.extend_from_slice(&value.to_le_bytes());
         }
 
-        let depot_copy = self.depot;
-        for &item_id in &depot_copy {
+        for &item_id in &self.depot {
             bytes.extend_from_slice(&item_id.to_le_bytes());
         }
         bytes.extend_from_slice(&self.depot_cost.to_le_bytes());
@@ -439,14 +495,12 @@ impl Character {
         bytes.extend_from_slice(&self.unreachy.to_le_bytes());
         bytes.extend_from_slice(&self.monster_class.to_le_bytes());
 
-        let future3_copy = self.future3;
-        for &value in &future3_copy {
+        for &value in &self.future3 {
             bytes.extend_from_slice(&value.to_le_bytes());
         }
         bytes.extend_from_slice(&self.logout_date.to_le_bytes());
 
-        let data_copy = self.data;
-        for &value in &data_copy {
+        for &value in &self.data {
             bytes.extend_from_slice(&value.to_le_bytes());
         }
 
@@ -456,10 +510,10 @@ impl Character {
             }
         }
 
-        if bytes.len() != std::mem::size_of::<Character>() {
+        if bytes.len() != WIRE_SIZE {
             log::warn!(
                 "Character::to_bytes: expected size {}, got {}",
-                std::mem::size_of::<Character>(),
+                WIRE_SIZE,
                 bytes.len()
             );
         }
@@ -468,7 +522,7 @@ impl Character {
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        if bytes.len() < std::mem::size_of::<Character>() {
+        if bytes.len() < WIRE_SIZE {
             return None;
         }
 

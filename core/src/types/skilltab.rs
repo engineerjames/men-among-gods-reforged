@@ -4,7 +4,6 @@
 pub const MAX_SKILLS: usize = 50;
 
 #[derive(Copy, Clone)]
-#[allow(dead_code)]
 pub struct SkillTab {
     nr: usize,
     cat: char,

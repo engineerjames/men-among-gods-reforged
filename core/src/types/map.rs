@@ -1,6 +1,5 @@
 /// Map tile structure
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-#[repr(C, packed)]
 pub struct Map {
     /// background image
     pub sprite: u16,

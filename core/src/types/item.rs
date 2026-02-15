@@ -4,7 +4,6 @@ use crate::{constants::ItemFlags, string_operations::c_string_to_str};
 
 /// Item structure
 #[derive(Clone, Copy)]
-#[repr(C, packed)]
 pub struct Item {
     pub used: u8,               // 1
     pub name: [u8; 40],         // 41
