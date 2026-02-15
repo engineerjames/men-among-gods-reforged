@@ -1,14 +1,10 @@
-use parking_lot::ReentrantMutex;
-use std::cell::UnsafeCell;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::{env, fs};
 
-// TODO: Currently this only reads data files into memory.
-// So if you close down the server and restart, any changes made during runtime will be lost.
-// In the future, we will want to implement saving changes back to the data files.
+use crate::single_thread_cell::SingleThreadCell;
 
-static REPOSITORY: OnceLock<ReentrantMutex<UnsafeCell<Repository>>> = OnceLock::new();
+static REPOSITORY: OnceLock<SingleThreadCell<Repository>> = OnceLock::new();
 
 /// The in-memory data repository used by the server.
 ///
@@ -46,7 +42,6 @@ impl Repository {
     /// `.dat` directory via `get_dat_file_path`.
     fn new() -> Self {
         Self {
-            // TODO: Evaluate how we can prevent accidental copying of any of these types...
             map: vec![
                 core::types::Map::default();
                 core::constants::SERVER_MAPX as usize * core::constants::SERVER_MAPY as usize
@@ -650,7 +645,7 @@ impl Repository {
         let mut repo = Repository::new();
         repo.load()?;
         REPOSITORY
-            .set(ReentrantMutex::new(UnsafeCell::new(repo)))
+            .set(SingleThreadCell::new(repo))
             .map_err(|_| "Repository already initialized".to_string())?;
         Ok(())
     }
@@ -661,17 +656,12 @@ impl Repository {
     /// Locks the global `REPOSITORY` reentrant mutex and passes a shared
     /// reference to the provided closure `f`. This guarantees safe concurrent
     /// read access through the closure while the lock is held.
-    fn with_repo<F, R>(f: F) -> R
+    pub fn with_repo<F, R>(f: F) -> R
     where
         F: FnOnce(&Repository) -> R,
     {
-        let lock = REPOSITORY.get().expect("Repository not initialized");
-        let guard = lock.lock();
-        let inner: &UnsafeCell<Repository> = &guard;
-        // SAFETY: We only create a shared reference here while holding the mutex; there are no
-        // concurrent &mut aliases when the mutex is locked.
-        let repo_ref: &Repository = unsafe { &*inner.get() };
-        f(repo_ref)
+        let repo = REPOSITORY.get().expect("Repository not initialized");
+        repo.with(f)
     }
 
     /// Internal helper: acquire the global repository for mutable access.
@@ -679,19 +669,12 @@ impl Repository {
     /// Locks the global `REPOSITORY` reentrant mutex and passes a unique
     /// mutable reference to the provided closure `f`. Reentrancy allows nested
     /// calls from the same thread.
-    fn with_repo_mut<F, R>(f: F) -> R
+    pub fn with_repo_mut<F, R>(f: F) -> R
     where
         F: FnOnce(&mut Repository) -> R,
     {
-        let lock = REPOSITORY.get().expect("Repository not initialized");
-        let guard = lock.lock();
-        let inner: &UnsafeCell<Repository> = &guard;
-        // SAFETY: We create a unique mutable reference from the raw pointer held inside UnsafeCell.
-        // This is safe because the ReentrantMutex provides mutual exclusion across threads and we
-        // only call this function while holding the mutex. Reentrancy ensures nested calls succeed
-        // on the same thread.
-        let repo_mut: &mut Repository = unsafe { &mut *inner.get() };
-        f(repo_mut)
+        let repo = REPOSITORY.get().expect("Repository not initialized");
+        repo.with_mut(f)
     }
 
     // Static accessor methods for read-only access
@@ -758,8 +741,6 @@ impl Repository {
         Self::with_repo(|repo| f(&repo.globals))
     }
 
-    // TODO: Not sure if we need this yet...
-    #[allow(dead_code)]
     /// Execute `f` with a read-only slice of `SeeMap` data used for visibility
     /// calculations. This function is currently unused but kept for completeness.
     pub fn with_see_map<F, R>(f: F) -> R

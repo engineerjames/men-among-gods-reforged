@@ -7,15 +7,14 @@
 use std::cmp::Ordering;
 use std::cmp::{max, min};
 use std::collections::BinaryHeap;
+use std::sync::OnceLock;
 
 use core::constants::*;
 
 use crate::repository::Repository;
-use parking_lot::ReentrantMutex;
-use std::cell::UnsafeCell;
-use std::sync::OnceLock;
+use crate::single_thread_cell::SingleThreadCell;
 
-static PATHFINDER: OnceLock<ReentrantMutex<UnsafeCell<PathFinder>>> = OnceLock::new();
+static PATHFINDER: OnceLock<SingleThreadCell<PathFinder>> = OnceLock::new();
 
 const MAX_NODES: usize = 4096;
 
@@ -656,7 +655,7 @@ impl PathFinder {
     pub fn initialize() -> Result<(), String> {
         let pf = PathFinder::new();
         PATHFINDER
-            .set(ReentrantMutex::new(UnsafeCell::new(pf)))
+            .set(SingleThreadCell::new(pf))
             .map_err(|_| "PathFinder already initialized".to_string())?;
         Ok(())
     }
@@ -667,14 +666,8 @@ impl PathFinder {
     where
         F: FnOnce(&PathFinder) -> R,
     {
-        let lock = PATHFINDER.get().expect("PathFinder not initialized");
-        let guard = lock.lock();
-        let inner: &UnsafeCell<PathFinder> = &guard;
-        // SAFETY: We are holding the ReentrantMutex, providing exclusive
-        // access for mutation or shared access for read-only usages from a
-        // single thread. Returning a shared reference is safe here.
-        let pf_ref: &PathFinder = unsafe { &*inner.get() };
-        f(pf_ref)
+        let pf = PATHFINDER.get().expect("PathFinder not initialized");
+        pf.with(f)
     }
 
     /// Execute `f` with a mutable reference to the global PathFinder.
@@ -682,13 +675,8 @@ impl PathFinder {
     where
         F: FnOnce(&mut PathFinder) -> R,
     {
-        let lock = PATHFINDER.get().expect("PathFinder not initialized");
-        let guard = lock.lock();
-        let inner: &UnsafeCell<PathFinder> = &guard;
-        // SAFETY: We have exclusive access to the PathFinder under the
-        // ReentrantMutex; returning a mutable reference is safe.
-        let pf_mut: &mut PathFinder = unsafe { &mut *inner.get() };
-        f(pf_mut)
+        let pf = PATHFINDER.get().expect("PathFinder not initialized");
+        pf.with_mut(f)
     }
 }
 
