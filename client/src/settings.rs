@@ -13,7 +13,7 @@ use crate::systems::sound::SoundSettings;
 use crate::types::{player_data::PlayerData, save_file::SaveFile};
 
 pub const DEFAULT_SERVER_IP: &str = if cfg!(debug_assertions) {
-    "127.0.0.1"
+    "menamonggods.ddns.net"
 } else {
     "menamonggods.ddns.net"
 };
@@ -63,6 +63,32 @@ impl VideoModeSetting {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SpriteAntiAliasingSetting {
+    Off,
+    Low,
+    Medium,
+    High,
+}
+
+impl Default for SpriteAntiAliasingSetting {
+    fn default() -> Self {
+        Self::Off
+    }
+}
+
+impl SpriteAntiAliasingSetting {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Off => "Off (nearest)",
+            Self::Low => "Low",
+            Self::Medium => "Medium",
+            Self::High => "High",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct UserSettings {
@@ -73,6 +99,7 @@ pub struct UserSettings {
     pub show_cursor_action_text: bool,
     pub magic_effects_enabled: bool,
     pub gamma: f32,
+    pub sprite_anti_aliasing: SpriteAntiAliasingSetting,
 
     /// When enabled, continuously logs per-frame performance metrics to the client log.
     /// Default is off because this can generate a lot of log output.
@@ -98,6 +125,7 @@ impl Default for UserSettings {
             show_cursor_action_text: true,
             magic_effects_enabled: true,
             gamma: 1.0,
+            sprite_anti_aliasing: SpriteAntiAliasingSetting::Off,
 
             log_performance_metrics: false,
 

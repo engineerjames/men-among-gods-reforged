@@ -483,6 +483,7 @@ fn main() {
         //
         .add_systems(StateTransition, debug::run_on_any_transition)
         .add_systems(Update, display::enforce_aspect_and_pixel_coords)
+        .add_systems(Update, display::apply_sprite_anti_aliasing_setting)
         .add_systems(Startup, settings::load_user_settings_startup)
         .add_systems(Update, settings::save_user_settings_if_pending);
 

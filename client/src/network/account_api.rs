@@ -46,7 +46,7 @@ pub fn default_api_base_url() -> String {
     }
 
     if cfg!(debug_assertions) {
-        "http://127.0.0.1:5554".to_string()
+        "http://menamonggods.ddns.net:5554".to_string()
     } else {
         "http://menamonggods.ddns.net:5554".to_string()
     }

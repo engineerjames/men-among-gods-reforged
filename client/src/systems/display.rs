@@ -1,10 +1,49 @@
 use bevy::camera::Viewport;
+use bevy::image::{Image, ImageFilterMode, ImageSampler, ImageSamplerDescriptor};
 use bevy::prelude::*;
 
 use bevy::window::{PrimaryWindow, WindowResized};
 
 use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
+use crate::gfx_cache::GraphicsCache;
+use crate::settings::{SpriteAntiAliasingSetting, UserSettingsState};
 use crate::systems::magic_postprocess::MagicScreenCamera;
+
+fn sprite_sampler_for_setting(setting: SpriteAntiAliasingSetting) -> ImageSampler {
+    match setting {
+        SpriteAntiAliasingSetting::Off => ImageSampler::nearest(),
+        SpriteAntiAliasingSetting::Low => {
+            let mut descriptor = ImageSamplerDescriptor::nearest();
+            descriptor.mag_filter = ImageFilterMode::Linear;
+            ImageSampler::Descriptor(descriptor)
+        }
+        SpriteAntiAliasingSetting::Medium => {
+            let mut descriptor = ImageSamplerDescriptor::linear();
+            descriptor.mipmap_filter = ImageFilterMode::Nearest;
+            ImageSampler::Descriptor(descriptor)
+        }
+        SpriteAntiAliasingSetting::High => ImageSampler::linear(),
+    }
+}
+
+pub fn apply_sprite_anti_aliasing_setting(
+    user_settings: Option<Res<UserSettingsState>>,
+    mut gfx_cache: ResMut<GraphicsCache>,
+    mut images_assets: ResMut<Assets<Image>>,
+    mut applied: Local<Option<SpriteAntiAliasingSetting>>,
+) {
+    let Some(user_settings) = user_settings else {
+        return;
+    };
+
+    let desired = user_settings.settings.sprite_anti_aliasing;
+    if applied.as_ref().is_some_and(|current| *current == desired) {
+        return;
+    }
+
+    gfx_cache.set_sprite_sampler(&mut images_assets, sprite_sampler_for_setting(desired));
+    *applied = Some(desired);
+}
 
 /// Enforce 4:3 viewport letterboxing and fixed 800x600 pixel coordinates.
 pub fn enforce_aspect_and_pixel_coords(

@@ -30,6 +30,7 @@ struct InitState {
 pub struct GraphicsCache {
     assets_zip: PathBuf,
     gfx: Vec<Option<Sprite>>,
+    sprite_sampler: ImageSampler,
     sprite_tiles: Vec<Option<(i32, i32)>>,
     sprite_avg_rgb565: Vec<Option<u16>>,
     sprite_avg_rgba8: Vec<Option<[u8; 4]>>,
@@ -44,6 +45,7 @@ impl GraphicsCache {
         Self {
             assets_zip: PathBuf::from(assets_zip),
             gfx: Vec::new(),
+            sprite_sampler: ImageSampler::nearest(),
             sprite_tiles: Vec::new(),
             sprite_avg_rgb565: Vec::new(),
             sprite_avg_rgba8: Vec::new(),
@@ -85,6 +87,16 @@ impl GraphicsCache {
             .get(index)
             .and_then(|v| v.as_ref())
             .copied()
+    }
+
+    pub fn set_sprite_sampler(&mut self, images_assets: &mut Assets<Image>, sampler: ImageSampler) {
+        self.sprite_sampler = sampler.clone();
+
+        for sprite in self.gfx.iter().flatten() {
+            if let Some(image) = images_assets.get_mut(&sprite.image) {
+                image.sampler = sampler.clone();
+            }
+        }
     }
 
     pub fn initialize(&mut self, images_assets: &mut Assets<Image>) -> CacheInitStatus {
@@ -234,12 +246,12 @@ impl GraphicsCache {
             .unwrap_or("png")
             .to_ascii_lowercase();
 
-        let image = match Image::from_buffer(
+        let mut image = match Image::from_buffer(
             &file_bytes,
             ImageType::Extension(ext.as_str()),
             CompressedImageFormats::default(),
             true,
-            ImageSampler::nearest(),
+            self.sprite_sampler.clone(),
             RenderAssetUsages::default(),
         ) {
             Ok(img) => img,
@@ -253,6 +265,8 @@ impl GraphicsCache {
                 return CacheInitStatus::Error(err);
             }
         };
+
+        defringe_transparent_pixels(&mut image);
 
         let avg_rgba8 = avg_color_rgba8_from_image(&image);
         let avg_rgb565 = rgba8_to_rgb565(avg_rgba8[0], avg_rgba8[1], avg_rgba8[2]);
@@ -335,5 +349,78 @@ fn avg_color_rgba8_from_image(image: &Image) -> [u8; 4] {
             [r, g, b, 255]
         }
         _ => [0, 0, 0, 255],
+    }
+}
+
+fn defringe_transparent_pixels(image: &mut Image) {
+    let format = image.texture_descriptor.format;
+    let size = image.size();
+    let width = size.x as usize;
+    let height = size.y as usize;
+    if width == 0 || height == 0 {
+        return;
+    }
+
+    let Some(data) = image.data.as_mut() else {
+        return;
+    };
+
+    // Only operate on 4-byte formats where we can edit RGB/alpha channels directly.
+    let (r_idx, g_idx, b_idx, a_idx) = match format {
+        TextureFormat::Rgba8Unorm | TextureFormat::Rgba8UnormSrgb => {
+            (0usize, 1usize, 2usize, 3usize)
+        }
+        TextureFormat::Bgra8Unorm | TextureFormat::Bgra8UnormSrgb => {
+            (2usize, 1usize, 0usize, 3usize)
+        }
+        _ => return,
+    };
+
+    let bytes_per_px = 4usize;
+    if data.len() < width.saturating_mul(height).saturating_mul(bytes_per_px) {
+        return;
+    }
+
+    let src = data.clone();
+
+    for y in 0..height {
+        for x in 0..width {
+            let i = (y * width + x) * bytes_per_px;
+            if src[i + a_idx] != 0 {
+                continue;
+            }
+
+            let mut sum_r: u32 = 0;
+            let mut sum_g: u32 = 0;
+            let mut sum_b: u32 = 0;
+            let mut count: u32 = 0;
+
+            for ny in y.saturating_sub(1)..=(y + 1).min(height - 1) {
+                for nx in x.saturating_sub(1)..=(x + 1).min(width - 1) {
+                    if nx == x && ny == y {
+                        continue;
+                    }
+                    let ni = (ny * width + nx) * bytes_per_px;
+                    if src[ni + a_idx] == 0 {
+                        continue;
+                    }
+
+                    sum_r += src[ni + r_idx] as u32;
+                    sum_g += src[ni + g_idx] as u32;
+                    sum_b += src[ni + b_idx] as u32;
+                    count += 1;
+                }
+            }
+
+            if count > 0 {
+                data[i + r_idx] = (sum_r / count) as u8;
+                data[i + g_idx] = (sum_g / count) as u8;
+                data[i + b_idx] = (sum_b / count) as u8;
+            } else {
+                data[i + r_idx] = 0;
+                data[i + g_idx] = 0;
+                data[i + b_idx] = 0;
+            }
+        }
     }
 }

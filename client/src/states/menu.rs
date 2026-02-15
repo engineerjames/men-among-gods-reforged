@@ -9,7 +9,7 @@ use crate::constants::{TARGET_HEIGHT, TARGET_WIDTH};
 use crate::helpers::open_dir_in_file_manager;
 use crate::network::NetworkRuntime;
 use crate::player_state::PlayerState;
-use crate::settings::{UserSettingsState, VideoModeSetting};
+use crate::settings::{SpriteAntiAliasingSetting, UserSettingsState, VideoModeSetting};
 use crate::states::gameplay::CursorActionTextSettings;
 use crate::systems::magic_postprocess::MagicPostProcessSettings;
 use crate::systems::sound::SoundSettings;
@@ -214,6 +214,51 @@ pub fn run_menu(
                     }
                 });
             }
+
+            ui.horizontal(|ui| {
+                ui.label("Sprite anti-aliasing");
+
+                let mut selected = user_settings.settings.sprite_anti_aliasing;
+                let mut changed = false;
+
+                egui::ComboBox::from_id_salt("sprite_aa_combo")
+                    .selected_text(selected.label())
+                    .show_ui(ui, |ui| {
+                        changed |= ui
+                            .selectable_value(
+                                &mut selected,
+                                SpriteAntiAliasingSetting::Off,
+                                SpriteAntiAliasingSetting::Off.label(),
+                            )
+                            .changed();
+                        changed |= ui
+                            .selectable_value(
+                                &mut selected,
+                                SpriteAntiAliasingSetting::Low,
+                                SpriteAntiAliasingSetting::Low.label(),
+                            )
+                            .changed();
+                        changed |= ui
+                            .selectable_value(
+                                &mut selected,
+                                SpriteAntiAliasingSetting::Medium,
+                                SpriteAntiAliasingSetting::Medium.label(),
+                            )
+                            .changed();
+                        changed |= ui
+                            .selectable_value(
+                                &mut selected,
+                                SpriteAntiAliasingSetting::High,
+                                SpriteAntiAliasingSetting::High.label(),
+                            )
+                            .changed();
+                    });
+
+                if changed && selected != user_settings.settings.sprite_anti_aliasing {
+                    user_settings.settings.sprite_anti_aliasing = selected;
+                    user_settings.request_save();
+                }
+            });
 
             if ui
                 .checkbox(&mut magic_settings.enabled, "Enable magic screen effects")
