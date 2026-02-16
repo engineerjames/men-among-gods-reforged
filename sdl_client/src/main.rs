@@ -4,6 +4,91 @@ use egui_sdl2::egui::{self, Pos2};
 use sdl2::event::Event;
 use sdl2::image::InitFlag;
 use sdl2::keyboard::Keycode;
+use sdl2::video::Window;
+
+fn hidpi_scale(window: &Window) -> (f32, f32) {
+    let (window_w, window_h) = window.size();
+    let (drawable_w, drawable_h) = window.drawable_size();
+    let scale_x = if window_w > 0 {
+        drawable_w as f32 / window_w as f32
+    } else {
+        1.0
+    };
+    let scale_y = if window_h > 0 {
+        drawable_h as f32 / window_h as f32
+    } else {
+        1.0
+    };
+    (scale_x, scale_y)
+}
+
+fn scale_coord(value: i32, scale: f32) -> i32 {
+    ((value as f32) * scale).round() as i32
+}
+
+fn adjust_mouse_event_for_hidpi(event: Event, window: &Window) -> Event {
+    let (scale_x, scale_y) = hidpi_scale(window);
+    if (scale_x - 1.0).abs() < f32::EPSILON && (scale_y - 1.0).abs() < f32::EPSILON {
+        return event;
+    }
+
+    match event {
+        Event::MouseMotion {
+            timestamp,
+            window_id,
+            which,
+            mousestate,
+            x,
+            y,
+            xrel,
+            yrel,
+        } => Event::MouseMotion {
+            timestamp,
+            window_id,
+            which,
+            mousestate,
+            x: scale_coord(x, scale_x),
+            y: scale_coord(y, scale_y),
+            xrel: scale_coord(xrel, scale_x),
+            yrel: scale_coord(yrel, scale_y),
+        },
+        Event::MouseButtonDown {
+            timestamp,
+            window_id,
+            which,
+            mouse_btn,
+            clicks,
+            x,
+            y,
+        } => Event::MouseButtonDown {
+            timestamp,
+            window_id,
+            which,
+            mouse_btn,
+            clicks,
+            x: scale_coord(x, scale_x),
+            y: scale_coord(y, scale_y),
+        },
+        Event::MouseButtonUp {
+            timestamp,
+            window_id,
+            which,
+            mouse_btn,
+            clicks,
+            x,
+            y,
+        } => Event::MouseButtonUp {
+            timestamp,
+            window_id,
+            which,
+            mouse_btn,
+            clicks,
+            x: scale_coord(x, scale_x),
+            y: scale_coord(y, scale_y),
+        },
+        other => other,
+    }
+}
 
 fn main() -> Result<(), String> {
     let sdl_context = sdl2::init()?;
@@ -13,7 +98,7 @@ fn main() -> Result<(), String> {
     let window = video
         .window("Rust SDL2 Starter", 800, 600)
         .position_centered()
-        // .allow_highdpi()
+        .allow_highdpi()
         .resizable()
         .build()
         .map_err(|e| e.to_string())?;
@@ -33,6 +118,7 @@ fn main() -> Result<(), String> {
             {
                 break 'running;
             }
+            let event = adjust_mouse_event_for_hidpi(event, egui.painter.canvas.window());
             egui.on_event(&event);
         }
         // Clear the egui-backed canvas
