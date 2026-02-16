@@ -11,13 +11,13 @@ brew install sdl2
 ## Build
 
 ```bash
-cargo build -p sdl_starter
+cargo build -p sdl_client
 ```
 
 ## Run
 
 ```bash
-cargo run -p sdl_starter
+cargo run -p sdl_client
 ```
 
 Controls:
