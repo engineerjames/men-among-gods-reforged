@@ -1,10 +1,10 @@
 //! Item structure
 
 use crate::{constants::ItemFlags, string_operations::c_string_to_str};
+use bincode::{Decode, Encode};
 
 /// Item structure
-#[derive(Clone, Copy)]
-#[repr(C, packed)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode)]
 pub struct Item {
     pub used: u8,               // 1
     pub name: [u8; 40],         // 41
@@ -139,203 +139,17 @@ impl Item {
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(std::mem::size_of::<Item>());
-
-        bytes.extend_from_slice(&self.used.to_le_bytes());
-        bytes.extend_from_slice(&self.name);
-        bytes.extend_from_slice(&self.reference);
-        bytes.extend_from_slice(&self.description);
-        bytes.extend_from_slice(&self.flags.to_le_bytes());
-        bytes.extend_from_slice(&self.value.to_le_bytes());
-        bytes.extend_from_slice(&self.placement.to_le_bytes());
-        bytes.extend_from_slice(&self.temp.to_le_bytes());
-        bytes.push(self.damage_state);
-        for i in 0..2 {
-            bytes.extend_from_slice(&self.max_age[i].to_le_bytes());
-        }
-        for i in 0..2 {
-            bytes.extend_from_slice(&self.current_age[i].to_le_bytes());
-        }
-        bytes.extend_from_slice(&self.max_damage.to_le_bytes());
-        bytes.extend_from_slice(&self.current_damage.to_le_bytes());
-        for i in 0..5 {
-            for j in 0..3 {
-                bytes.push(self.attrib[i][j] as u8);
-            }
-        }
-        for i in 0..3 {
-            bytes.extend_from_slice(&self.hp[i].to_le_bytes());
-        }
-        for i in 0..3 {
-            bytes.extend_from_slice(&self.end[i].to_le_bytes());
-        }
-        for i in 0..3 {
-            bytes.extend_from_slice(&self.mana[i].to_le_bytes());
-        }
-        for i in 0..50 {
-            for j in 0..3 {
-                bytes.push(self.skill[i][j] as u8);
-            }
-        }
-        bytes.extend_from_slice(&self.armor[0].to_le_bytes());
-        bytes.extend_from_slice(&self.armor[1].to_le_bytes());
-        bytes.extend_from_slice(&self.weapon[0].to_le_bytes());
-        bytes.extend_from_slice(&self.weapon[1].to_le_bytes());
-        for i in 0..2 {
-            bytes.extend_from_slice(&self.light[i].to_le_bytes());
-        }
-        bytes.extend_from_slice(&self.duration.to_le_bytes());
-        bytes.extend_from_slice(&self.cost.to_le_bytes());
-        bytes.extend_from_slice(&self.power.to_le_bytes());
-        bytes.extend_from_slice(&self.active.to_le_bytes());
-        bytes.extend_from_slice(&self.x.to_le_bytes());
-        bytes.extend_from_slice(&self.y.to_le_bytes());
-        bytes.extend_from_slice(&self.carried.to_le_bytes());
-        bytes.extend_from_slice(&self.sprite_override.to_le_bytes());
-        for i in 0..2 {
-            bytes.extend_from_slice(&self.sprite[i].to_le_bytes());
-        }
-        for i in 0..2 {
-            bytes.push(self.status[i]);
-        }
-        for i in 0..2 {
-            bytes.push(self.gethit_dam[i] as u8);
-        }
-        bytes.push(self.min_rank as u8);
-        for i in 0..3 {
-            bytes.push(self.future[i] as u8);
-        }
-        for i in 0..9 {
-            bytes.extend_from_slice(&self.future3[i].to_le_bytes());
-        }
-        bytes.extend_from_slice(&self.t_bought.to_le_bytes());
-        bytes.extend_from_slice(&self.t_sold.to_le_bytes());
-        bytes.push(self.driver);
-        for i in 0..10 {
-            bytes.extend_from_slice(&self.data[i].to_le_bytes());
-        }
-
-        if bytes.len() != std::mem::size_of::<Item>() {
-            log::error!(
-                "Item::to_bytes: expected size {}, got {}",
-                std::mem::size_of::<Item>(),
-                bytes.len()
-            );
-        }
-
-        bytes
+        bincode::encode_to_vec(self, bincode::config::standard()).expect("Item::to_bytes failed")
     }
 
     pub fn from_bytes(data: &[u8]) -> Option<Self> {
-        if data.len() < std::mem::size_of::<Item>() {
-            return None;
+        let (value, consumed): (Self, usize) =
+            bincode::decode_from_slice(data, bincode::config::standard()).ok()?;
+        if consumed == data.len() {
+            Some(value)
+        } else {
+            None
         }
-
-        let mut offset: usize = 0;
-
-        Some(Self {
-            used: read_u8!(data, offset),
-            name: {
-                let mut arr = [0u8; 40];
-                for i in 0..40 {
-                    arr[i] = read_u8!(data, offset);
-                }
-                arr
-            },
-            reference: {
-                let mut arr = [0u8; 40];
-                for i in 0..40 {
-                    arr[i] = read_u8!(data, offset);
-                }
-                arr
-            },
-            description: {
-                let mut arr = [0u8; 200];
-                for i in 0..200 {
-                    arr[i] = read_u8!(data, offset);
-                }
-                arr
-            },
-            flags: read_u64!(data, offset),
-            value: read_u32!(data, offset),
-            placement: read_u16!(data, offset),
-            temp: read_u16!(data, offset),
-            damage_state: read_u8!(data, offset),
-            max_age: [read_u32!(data, offset), read_u32!(data, offset)],
-            current_age: [read_u32!(data, offset), read_u32!(data, offset)],
-            max_damage: read_u32!(data, offset),
-            current_damage: read_u32!(data, offset),
-            attrib: {
-                let mut arr = [[0i8; 3]; 5];
-                for i in 0..5 {
-                    for j in 0..3 {
-                        arr[i][j] = read_i8!(data, offset);
-                    }
-                }
-                arr
-            },
-            hp: [
-                read_i16!(data, offset),
-                read_i16!(data, offset),
-                read_i16!(data, offset),
-            ],
-            end: [
-                read_i16!(data, offset),
-                read_i16!(data, offset),
-                read_i16!(data, offset),
-            ],
-            mana: [
-                read_i16!(data, offset),
-                read_i16!(data, offset),
-                read_i16!(data, offset),
-            ],
-            skill: {
-                let mut arr = [[0i8; 3]; 50];
-                for i in 0..50 {
-                    for j in 0..3 {
-                        arr[i][j] = read_i8!(data, offset);
-                    }
-                }
-                arr
-            },
-            armor: [read_i8!(data, offset), read_i8!(data, offset)],
-            weapon: [read_i8!(data, offset), read_i8!(data, offset)],
-            light: [read_i16!(data, offset), read_i16!(data, offset)],
-            duration: read_u32!(data, offset),
-            cost: read_u32!(data, offset),
-            power: read_u32!(data, offset),
-            active: read_u32!(data, offset),
-            x: read_u16!(data, offset),
-            y: read_u16!(data, offset),
-            carried: read_u16!(data, offset),
-            sprite_override: read_u16!(data, offset),
-            sprite: [read_i16!(data, offset), read_i16!(data, offset)],
-            status: [read_u8!(data, offset), read_u8!(data, offset)],
-            gethit_dam: [read_i8!(data, offset), read_i8!(data, offset)],
-            min_rank: read_i8!(data, offset),
-            future: [
-                read_i8!(data, offset),
-                read_i8!(data, offset),
-                read_i8!(data, offset),
-            ],
-            future3: {
-                let mut arr = [0i32; 9];
-                for i in 0..9 {
-                    arr[i] = read_i32!(data, offset);
-                }
-                arr
-            },
-            t_bought: read_i32!(data, offset),
-            t_sold: read_i32!(data, offset),
-            driver: read_u8!(data, offset),
-            data: {
-                let mut arr = [0u32; 10];
-                for i in 0..10 {
-                    arr[i] = read_u32!(data, offset);
-                }
-                arr
-            },
-        })
     }
 
     pub fn is_sane_item_template(template_id: usize) -> bool {
@@ -359,11 +173,7 @@ mod tests {
     fn test_item_to_bytes_size() {
         let item = Item::default();
         let bytes = item.to_bytes();
-        assert_eq!(
-            bytes.len(),
-            std::mem::size_of::<Item>(),
-            "Serialized Item size should match struct size"
-        );
+        assert!(!bytes.is_empty(), "Serialized Item should not be empty");
     }
 
     #[test]
@@ -391,56 +201,13 @@ mod tests {
 
         let bytes = original.to_bytes();
         let deserialized = Item::from_bytes(&bytes).expect("Failed to deserialize Item");
-
-        assert_eq!(original.used, deserialized.used);
-        assert_eq!(original.name, deserialized.name);
-
-        let original_flags = original.flags;
-        let de_flags_copy = deserialized.flags;
-        assert_eq!(original_flags, de_flags_copy);
-
-        let original_value = original.value;
-        let de_value_copy = deserialized.value;
-        assert_eq!(original_value, de_value_copy);
-
-        let original_placement = original.placement;
-        let de_placement_copy = deserialized.placement;
-        assert_eq!(original_placement, de_placement_copy);
-
-        let original_temp = original.temp;
-        let de_temp_copy = deserialized.temp;
-        assert_eq!(original_temp, de_temp_copy);
-
-        assert_eq!(original.damage_state, deserialized.damage_state);
-        assert_eq!(original.attrib, deserialized.attrib);
-
-        let original_hp = original.hp;
-        let de_hp_copy = deserialized.hp;
-        assert_eq!(original_hp, de_hp_copy);
-
-        assert_eq!(original.armor, deserialized.armor);
-        assert_eq!(original.weapon, deserialized.weapon);
-
-        let original_x = original.x;
-        let de_x_copy = deserialized.x;
-        assert_eq!(original_x, de_x_copy);
-
-        let original_y = original.y;
-        let de_y_copy = deserialized.y;
-        assert_eq!(original_y, de_y_copy);
-
-        let original_driver = original.driver;
-        let de_driver_copy = deserialized.driver;
-        assert_eq!(original_driver, de_driver_copy);
-
-        let original_data = original.data;
-        let de_data_copy = deserialized.data;
-        assert_eq!(original_data, de_data_copy);
+        assert_eq!(original, deserialized);
     }
 
     #[test]
     fn test_item_from_bytes_insufficient_data() {
-        let bytes = vec![0u8; std::mem::size_of::<Item>() - 1];
+        let mut bytes = Item::default().to_bytes();
+        bytes.pop();
         assert!(
             Item::from_bytes(&bytes).is_none(),
             "Should fail with insufficient data"

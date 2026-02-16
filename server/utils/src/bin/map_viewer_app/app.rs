@@ -6,7 +6,21 @@ use mag_core::constants::{
 };
 use mag_core::types::{Item, Map};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+use bincode::{Decode, Encode};
+
+const NORMALIZED_MAGIC: [u8; 4] = *b"MAG2";
+const NORMALIZED_VERSION: u32 = 1;
+
+#[derive(Debug, Encode, Decode)]
+struct NormalizedDataSet<T> {
+    magic: [u8; 4],
+    version: u32,
+    source_file: String,
+    source_record_size: usize,
+    records: Vec<T>,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PaletteEntryKind {
@@ -269,13 +283,12 @@ impl MapViewerApp {
             return Err("No map loaded".to_string());
         }
 
-        let tile_size = std::mem::size_of::<Map>();
-        let mut bytes = Vec::with_capacity(self.map_tiles.len() * tile_size);
-        for tile in &self.map_tiles {
-            bytes.extend_from_slice(&tile.to_bytes());
-        }
-
-        fs::write(path, bytes).map_err(|e| e.to_string())
+        save_normalized_records(
+            path,
+            "map.dat",
+            std::mem::size_of::<Map>(),
+            self.map_tiles.clone(),
+        )
     }
 
     fn revert_unsaved_changes(&mut self) {
@@ -473,32 +486,71 @@ impl MapViewerApp {
     }
 }
 
-fn load_item_dat(path: &PathBuf) -> Result<Vec<Item>, String> {
+fn load_normalized_records<T: Decode<()>>(
+    path: &Path,
+    expected_record_count: usize,
+) -> Result<Vec<T>, String> {
     let data = fs::read(path).map_err(|e| format!("Failed to read {:?}: {e}", path))?;
+    let (payload, consumed): (NormalizedDataSet<T>, usize) =
+        bincode::decode_from_slice(&data, bincode::config::standard())
+            .map_err(|e| format!("Failed to decode {:?}: {e}", path))?;
 
-    let item_size = std::mem::size_of::<Item>();
-    let expected_bytes = MAXITEM * item_size;
-
-    if data.len() != expected_bytes {
+    if payload.magic != NORMALIZED_MAGIC {
         return Err(format!(
-            "item.dat size mismatch: expected {} bytes ({} items), got {}",
-            expected_bytes,
-            MAXITEM,
-            data.len()
+            "Invalid normalized magic in {:?}: {:?}",
+            path, payload.magic
         ));
     }
 
-    let mut items = Vec::with_capacity(MAXITEM);
-    for i in 0..MAXITEM {
-        let offset = i * item_size;
-        let end = offset + item_size;
-        let Some(item) = Item::from_bytes(&data[offset..end]) else {
-            return Err(format!("Failed to parse item at index {i}"));
-        };
-        items.push(item);
+    if payload.version != NORMALIZED_VERSION {
+        return Err(format!(
+            "Unsupported normalized version in {:?}: {}",
+            path, payload.version
+        ));
     }
 
-    Ok(items)
+    if payload.records.len() != expected_record_count {
+        return Err(format!(
+            "Record count mismatch in {:?}: expected {}, got {}",
+            path,
+            expected_record_count,
+            payload.records.len()
+        ));
+    }
+
+    if consumed != data.len() {
+        log::warn!(
+            "Trailing bytes in normalized dataset {:?}: {}",
+            path,
+            data.len() - consumed
+        );
+    }
+
+    Ok(payload.records)
+}
+
+fn save_normalized_records<T: Encode>(
+    path: &Path,
+    source_file: &str,
+    source_record_size: usize,
+    records: Vec<T>,
+) -> Result<(), String> {
+    let payload = NormalizedDataSet {
+        magic: NORMALIZED_MAGIC,
+        version: NORMALIZED_VERSION,
+        source_file: source_file.to_string(),
+        source_record_size,
+        records,
+    };
+
+    let bytes = bincode::encode_to_vec(payload, bincode::config::standard())
+        .map_err(|e| format!("Failed to encode {:?}: {e}", path))?;
+
+    fs::write(path, bytes).map_err(|e| format!("Failed to write {:?}: {e}", path))
+}
+
+fn load_item_dat(path: &PathBuf) -> Result<Vec<Item>, String> {
+    load_normalized_records(path, MAXITEM)
 }
 
 #[inline]
@@ -523,41 +575,8 @@ fn item_map_sprite(item: Item) -> Option<i16> {
 }
 
 fn load_map_dat(path: &PathBuf) -> Result<Vec<Map>, String> {
-    let data = fs::read(path).map_err(|e| format!("Failed to read {:?}: {e}", path))?;
-
     let expected_tiles = (SERVER_MAPX as usize) * (SERVER_MAPY as usize);
-    let tile_size = std::mem::size_of::<Map>();
-    let expected_bytes = expected_tiles * tile_size;
-
-    if data.len() < expected_bytes {
-        return Err(format!(
-            "map.dat too small: expected {} bytes ({} tiles), got {}",
-            expected_bytes,
-            expected_tiles,
-            data.len()
-        ));
-    }
-
-    if data.len() != expected_bytes {
-        log::warn!(
-            "map.dat size mismatch: expected {} bytes, got {} (will parse first {} tiles)",
-            expected_bytes,
-            data.len(),
-            expected_tiles
-        );
-    }
-
-    let mut tiles = Vec::with_capacity(expected_tiles);
-    for i in 0..expected_tiles {
-        let offset = i * tile_size;
-        let end = offset + tile_size;
-        let Some(tile) = Map::from_bytes(&data[offset..end]) else {
-            return Err(format!("Failed to parse map tile at index {i}"));
-        };
-        tiles.push(tile);
-    }
-
-    Ok(tiles)
+    load_normalized_records(path, expected_tiles)
 }
 
 #[inline]
@@ -1293,31 +1312,7 @@ impl eframe::App for MapViewerApp {
 }
 
 fn load_item_templates_dat(path: &PathBuf) -> Result<Vec<Item>, String> {
-    let data = fs::read(path).map_err(|e| format!("Failed to read {:?}: {e}", path))?;
-
-    let item_size = std::mem::size_of::<Item>();
-    let expected_bytes = MAXTITEM * item_size;
-
-    if data.len() != expected_bytes {
-        return Err(format!(
-            "titem.dat size mismatch: expected {} bytes ({} templates), got {}",
-            expected_bytes,
-            MAXTITEM,
-            data.len()
-        ));
-    }
-
-    let mut templates = Vec::with_capacity(MAXTITEM);
-    for i in 0..MAXTITEM {
-        let offset = i * item_size;
-        let end = offset + item_size;
-        let Some(item) = Item::from_bytes(&data[offset..end]) else {
-            return Err(format!("Failed to parse item template at index {i}"));
-        };
-        templates.push(item);
-    }
-
-    Ok(templates)
+    load_normalized_records(path, MAXTITEM)
 }
 
 fn paint_sprite_dd(

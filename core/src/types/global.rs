@@ -1,10 +1,8 @@
-use std::mem::offset_of;
-
 use crate::constants;
+use bincode::{Decode, Encode};
 
 /// Global server state structure
-#[derive(Debug, Default)]
-#[repr(C)]
+#[derive(Debug, Default, PartialEq, Eq, Encode, Decode)]
 pub struct Global {
     pub mdtime: i32,
     pub mdday: i32,
@@ -69,171 +67,17 @@ pub struct Global {
 
 impl Global {
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(std::mem::size_of::<Global>());
-
-        // TODO: Just update the data files to not need to be packed anymore
-
-        bytes.extend_from_slice(&self.mdtime.to_le_bytes());
-        bytes.extend_from_slice(&self.mdday.to_le_bytes());
-        bytes.extend_from_slice(&self.mdyear.to_le_bytes());
-        bytes.extend_from_slice(&self.dlight.to_le_bytes());
-
-        bytes.extend_from_slice(&self.players_created.to_le_bytes());
-        bytes.extend_from_slice(&self.npcs_created.to_le_bytes());
-        bytes.extend_from_slice(&self.players_died.to_le_bytes());
-        bytes.extend_from_slice(&self.npcs_died.to_le_bytes());
-
-        bytes.extend_from_slice(&self.character_cnt.to_le_bytes());
-        bytes.extend_from_slice(&self.item_cnt.to_le_bytes());
-        bytes.extend_from_slice(&self.effect_cnt.to_le_bytes());
-
-        bytes.extend_from_slice(&self.expire_cnt.to_le_bytes());
-        bytes.extend_from_slice(&self.expire_run.to_le_bytes());
-
-        bytes.extend_from_slice(&self.gc_cnt.to_le_bytes());
-        bytes.extend_from_slice(&self.gc_run.to_le_bytes());
-
-        bytes.extend_from_slice(&self.lost_cnt.to_le_bytes());
-        bytes.extend_from_slice(&self.lost_run.to_le_bytes());
-
-        bytes.extend_from_slice(&self.reset_char.to_le_bytes());
-        bytes.extend_from_slice(&self.reset_item.to_le_bytes());
-
-        bytes.extend_from_slice(&self.ticker.to_le_bytes());
-
-        bytes.extend_from_slice(&self.total_online_time.to_le_bytes());
-        for &value in &self.online_per_hour {
-            bytes.extend_from_slice(&value.to_le_bytes());
-        }
-
-        bytes.extend_from_slice(&self.flags.to_le_bytes());
-        // Add 4 bytes of padding for alignment before i64
-        bytes.extend_from_slice(&[0u8; 4]);
-
-        bytes.extend_from_slice(&self.uptime.to_le_bytes());
-        for &value in &self.uptime_per_hour {
-            bytes.extend_from_slice(&value.to_le_bytes());
-        }
-
-        bytes.extend_from_slice(&self.awake.to_le_bytes());
-        bytes.extend_from_slice(&self.body.to_le_bytes());
-
-        bytes.extend_from_slice(&self.players_online.to_le_bytes());
-        bytes.extend_from_slice(&self.queuesize.to_le_bytes());
-
-        bytes.extend_from_slice(&self.recv.to_le_bytes());
-        bytes.extend_from_slice(&self.send.to_le_bytes());
-
-        bytes.extend_from_slice(&self.transfer_reset_time.to_le_bytes());
-        bytes.extend_from_slice(&self.load_avg.to_le_bytes());
-
-        bytes.extend_from_slice(&self.load.to_le_bytes());
-
-        bytes.extend_from_slice(&self.max_online.to_le_bytes());
-        for &value in &self.max_online_per_hour {
-            bytes.extend_from_slice(&value.to_le_bytes());
-        }
-
-        bytes.push(self.fullmoon as u8);
-        bytes.push(self.newmoon as u8);
-        // Add 2 bytes of padding for alignment before u64 (not 6!)
-        bytes.extend_from_slice(&[0u8; 2]);
-
-        bytes.extend_from_slice(&self.unique.to_le_bytes());
-        bytes.extend_from_slice(&self.cap.to_le_bytes());
-
-        const OFFSET_CAP: usize = offset_of!(Global, cap);
-        const TOTAL_SIZE: usize = std::mem::size_of::<Global>();
-        const END_PADDING_SIZE: usize = TOTAL_SIZE - (OFFSET_CAP + std::mem::size_of::<i32>());
-        bytes.extend_from_slice(&[0u8; END_PADDING_SIZE]);
-
-        if bytes.len() != std::mem::size_of::<Global>() {
-            log::error!(
-                "Global::to_bytes: expected size {}, got {}",
-                std::mem::size_of::<Global>(),
-                bytes.len()
-            );
-        }
-
-        bytes
+        bincode::encode_to_vec(self, bincode::config::standard()).expect("Global::to_bytes failed")
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        if bytes.len() < std::mem::size_of::<Global>() {
-            return None;
+        let (value, consumed): (Self, usize) =
+            bincode::decode_from_slice(bytes, bincode::config::standard()).ok()?;
+        if consumed == bytes.len() {
+            Some(value)
+        } else {
+            None
         }
-
-        let mut offset: usize = 0;
-
-        Some(Self {
-            mdtime: read_i32!(bytes, offset),
-            mdday: read_i32!(bytes, offset),
-            mdyear: read_i32!(bytes, offset),
-            dlight: read_i32!(bytes, offset),
-            players_created: read_i32!(bytes, offset),
-            npcs_created: read_i32!(bytes, offset),
-            players_died: read_i32!(bytes, offset),
-            npcs_died: read_i32!(bytes, offset),
-            character_cnt: read_i32!(bytes, offset),
-            item_cnt: read_i32!(bytes, offset),
-            effect_cnt: read_i32!(bytes, offset),
-            expire_cnt: read_i32!(bytes, offset),
-            expire_run: read_i32!(bytes, offset),
-            gc_cnt: read_i32!(bytes, offset),
-            gc_run: read_i32!(bytes, offset),
-            lost_cnt: read_i32!(bytes, offset),
-            lost_run: read_i32!(bytes, offset),
-            reset_char: read_i32!(bytes, offset),
-            reset_item: read_i32!(bytes, offset),
-            ticker: read_i32!(bytes, offset),
-            total_online_time: read_i64!(bytes, offset),
-            online_per_hour: {
-                let mut arr = [0i64; 24];
-                for i in 0..24 {
-                    arr[i] = read_i64!(bytes, offset);
-                }
-                arr
-            },
-            flags: read_i32!(bytes, offset),
-            uptime: {
-                // Skip 4 bytes of padding for alignment before i64
-                offset += 4;
-                read_i64!(bytes, offset)
-            },
-            uptime_per_hour: {
-                let mut arr = [0i64; 24];
-                for i in 0..24 {
-                    arr[i] = read_i64!(bytes, offset);
-                }
-                arr
-            },
-            awake: read_i32!(bytes, offset),
-            body: read_i32!(bytes, offset),
-            players_online: read_i32!(bytes, offset),
-            queuesize: read_i32!(bytes, offset),
-            recv: read_i64!(bytes, offset),
-            send: read_i64!(bytes, offset),
-            transfer_reset_time: read_i32!(bytes, offset),
-            load_avg: read_i32!(bytes, offset),
-            load: read_i64!(bytes, offset),
-            max_online: read_i32!(bytes, offset),
-            max_online_per_hour: {
-                let mut arr = [0i32; 24];
-                for i in 0..24 {
-                    arr[i] = read_i32!(bytes, offset);
-                }
-                arr
-            },
-            fullmoon: read_i8!(bytes, offset),
-            newmoon: read_i8!(bytes, offset),
-            unique: {
-                // Skip 2 bytes of padding for alignment before u64
-                offset += 2;
-                read_u64!(bytes, offset)
-            },
-            #[allow(unused_assignments)]
-            cap: read_i32!(bytes, offset),
-        })
     }
 
     pub fn is_dirty(&self) -> bool {
@@ -257,11 +101,7 @@ mod tests {
     fn test_global_to_bytes_size() {
         let global = Global::default();
         let bytes = global.to_bytes();
-        assert_eq!(
-            bytes.len(),
-            std::mem::size_of::<Global>(),
-            "Serialized Global size should match struct size"
-        );
+        assert!(!bytes.is_empty(), "Serialized Global should not be empty");
     }
 
     #[test]
@@ -287,22 +127,13 @@ mod tests {
 
         let bytes = original.to_bytes();
         let deserialized = Global::from_bytes(&bytes).expect("Failed to deserialize Global");
-
-        assert_eq!(original.mdtime, deserialized.mdtime);
-        assert_eq!(original.mdday, deserialized.mdday);
-        assert_eq!(original.mdyear, deserialized.mdyear);
-        assert_eq!(original.players_created, deserialized.players_created);
-        assert_eq!(original.ticker, deserialized.ticker);
-        assert_eq!(original.total_online_time, deserialized.total_online_time);
-        assert_eq!(original.online_per_hour, deserialized.online_per_hour);
-        assert_eq!(original.uptime, deserialized.uptime);
-        assert_eq!(original.unique, deserialized.unique);
-        assert_eq!(original.cap, deserialized.cap);
+        assert_eq!(original, deserialized);
     }
 
     #[test]
     fn test_global_from_bytes_insufficient_data() {
-        let bytes = vec![0u8; std::mem::size_of::<Global>() - 1];
+        let mut bytes = Global::default().to_bytes();
+        bytes.pop();
         assert!(
             Global::from_bytes(&bytes).is_none(),
             "Should fail with insufficient data"
@@ -433,14 +264,21 @@ mod tests {
         // Already checked newmoon -> unique padding
         let newmoon_end = offset_of!(Global, newmoon) + size_of::<i8>();
         let unique_start = offset_of!(Global, unique);
-        println!(
-            "Padding after newmoon: {} bytes",
-            unique_start - newmoon_end
-        );
+        if unique_start > newmoon_end {
+            println!(
+                "Padding after newmoon: {} bytes",
+                unique_start - newmoon_end
+            );
+        } else {
+            println!("No trailing padding after newmoon (or field reordering under repr(Rust))");
+        }
 
         // Already checked cap -> end padding
         let cap_end = offset_of!(Global, cap) + size_of::<i32>();
         let struct_size = size_of::<Global>();
-        println!("Padding after cap: {} bytes", struct_size - cap_end);
+        println!(
+            "Padding after cap: {} bytes",
+            struct_size.saturating_sub(cap_end)
+        );
     }
 }
