@@ -4,4 +4,7 @@
     "editor.formatOnSave": true
 },
     "rust-analyzer.check.command": "clippy",
+    "rust-analyzer.cargo.extraEnv": {
+        "CMAKE_POLICY_VERSION_MINIMUM": "3.5"
+    }
 }
