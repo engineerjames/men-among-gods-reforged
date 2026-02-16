@@ -7,6 +7,7 @@ members = [
     "server",
     "server/utils",
     "api",
+    "sdl_starter",
 ]
 
 # Build with: `cargo build --profile profiling`
