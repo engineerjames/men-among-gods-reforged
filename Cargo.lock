@@ -6440,9 +6440,11 @@ version = "0.1.0"
 dependencies = [
  "core",
  "egui-sdl2",
+ "flate2",
  "log",
  "log4rs",
  "sdl2",
+ "zip",
 ]
 
 [[package]]

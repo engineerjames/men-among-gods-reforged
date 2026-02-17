@@ -6,11 +6,12 @@ use egui_sdl2::egui;
 use sdl2::event::Event;
 use sdl2::image::InitFlag;
 use sdl2::keyboard::Keycode;
-use sdl2::video::Window;
 
 use crate::gfx_cache::GraphicsCache;
 use crate::sfx_cache::SoundCache;
 
+mod dpi_scaling;
+mod filepaths;
 mod gfx_cache;
 mod scenes;
 mod sfx_cache;
@@ -58,90 +59,6 @@ pub fn get_mag_base_dir() -> Option<PathBuf> {
     None
 }
 
-fn hidpi_scale(window: &Window) -> (f32, f32) {
-    let (window_w, window_h) = window.size();
-    let (drawable_w, drawable_h) = window.drawable_size();
-    let scale_x = if window_w > 0 {
-        drawable_w as f32 / window_w as f32
-    } else {
-        1.0
-    };
-    let scale_y = if window_h > 0 {
-        drawable_h as f32 / window_h as f32
-    } else {
-        1.0
-    };
-    (scale_x, scale_y)
-}
-
-fn scale_coord(value: i32, scale: f32) -> i32 {
-    ((value as f32) * scale).round() as i32
-}
-
-fn adjust_mouse_event_for_hidpi(event: Event, window: &Window) -> Event {
-    let (scale_x, scale_y) = hidpi_scale(window);
-    if (scale_x - 1.0).abs() < f32::EPSILON && (scale_y - 1.0).abs() < f32::EPSILON {
-        return event;
-    }
-
-    match event {
-        Event::MouseMotion {
-            timestamp,
-            window_id,
-            which,
-            mousestate,
-            x,
-            y,
-            xrel,
-            yrel,
-        } => Event::MouseMotion {
-            timestamp,
-            window_id,
-            which,
-            mousestate,
-            x: scale_coord(x, scale_x),
-            y: scale_coord(y, scale_y),
-            xrel: scale_coord(xrel, scale_x),
-            yrel: scale_coord(yrel, scale_y),
-        },
-        Event::MouseButtonDown {
-            timestamp,
-            window_id,
-            which,
-            mouse_btn,
-            clicks,
-            x,
-            y,
-        } => Event::MouseButtonDown {
-            timestamp,
-            window_id,
-            which,
-            mouse_btn,
-            clicks,
-            x: scale_coord(x, scale_x),
-            y: scale_coord(y, scale_y),
-        },
-        Event::MouseButtonUp {
-            timestamp,
-            window_id,
-            which,
-            mouse_btn,
-            clicks,
-            x,
-            y,
-        } => Event::MouseButtonUp {
-            timestamp,
-            window_id,
-            which,
-            mouse_btn,
-            clicks,
-            x: scale_coord(x, scale_x),
-            y: scale_coord(y, scale_y),
-        },
-        other => other,
-    }
-}
-
 fn main() -> Result<(), String> {
     mag_core::initialize_logger(log::LevelFilter::Info, Some("sdl_client.log")).unwrap_or_else(
         |e| {
@@ -170,7 +87,10 @@ fn main() -> Result<(), String> {
     let mut egui = egui_sdl2::EguiCanvas::new(window);
 
     log::info!("Initializing graphics and sound caches...");
-    let gfx_cache = GraphicsCache::new(egui.painter.canvas.texture_creator());
+    let gfx_cache = GraphicsCache::new(
+        filepaths::get_gfx_zipfile(),
+        egui.painter.canvas.texture_creator(),
+    );
     let _sfx_cache = SoundCache::new();
     let mut scene_manager = scenes::scene::SceneManager::new(gfx_cache);
     let mut last_frame = Instant::now();
@@ -224,7 +144,8 @@ fn main() -> Result<(), String> {
             {
                 break 'running;
             }
-            let event = adjust_mouse_event_for_hidpi(event, egui.painter.canvas.window());
+            let event =
+                dpi_scaling::adjust_mouse_event_for_hidpi(event, egui.painter.canvas.window());
             egui.on_event(&event);
             if next_scene.is_none() {
                 next_scene = scene_manager.active_scene().handle_event(&event);
