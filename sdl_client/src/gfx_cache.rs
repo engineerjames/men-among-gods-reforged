@@ -1,9 +1,10 @@
 use std::{collections::HashMap, fs::File, io::Read, path::PathBuf};
 
-use image::GenericImageView;
 use sdl2::{
-    image::LoadTexture,
+    image::{ImageRWops, LoadTexture},
+    pixels::PixelFormatEnum,
     render::{Texture, TextureCreator},
+    rwops::RWops,
     video::WindowContext,
 };
 use zip::ZipArchive;
@@ -95,8 +96,19 @@ impl GraphicsCache {
     }
 
     fn calculate_avg_color(image_bytes: &[u8]) -> (u8, u8, u8) {
-        let decoded = match image::load_from_memory(image_bytes) {
-            Ok(image) => image.to_rgba8(),
+        let rwops = match RWops::from_bytes(image_bytes) {
+            Ok(rwops) => rwops,
+            Err(error) => {
+                log::warn!(
+                    "Failed to create RWops for average color calculation: {}",
+                    error
+                );
+                return (0, 0, 0);
+            }
+        };
+
+        let surface = match rwops.load() {
+            Ok(surface) => surface,
             Err(error) => {
                 log::warn!(
                     "Failed to decode image for average color calculation: {}",
@@ -106,24 +118,53 @@ impl GraphicsCache {
             }
         };
 
-        let (width, height) = decoded.dimensions();
-        let pixel_count = (width as u64) * (height as u64);
-        if pixel_count == 0 {
+        let surface = match surface.convert_format(PixelFormatEnum::RGBA32) {
+            Ok(surface) => surface,
+            Err(error) => {
+                log::warn!(
+                    "Failed to convert image format for average color calculation: {}",
+                    error
+                );
+                return (0, 0, 0);
+            }
+        };
+
+        let width = surface.width() as usize;
+        let height = surface.height() as usize;
+        if width == 0 || height == 0 {
             return (0, 0, 0);
         }
+
+        let pitch = surface.pitch() as usize;
+        let pixels = match surface.without_lock() {
+            Some(pixels) => pixels,
+            None => {
+                log::warn!("Failed to access pixel buffer for average color calculation");
+                return (0, 0, 0);
+            }
+        };
 
         let mut total_r: u64 = 0;
         let mut total_g: u64 = 0;
         let mut total_b: u64 = 0;
+        let mut alpha_sum: u64 = 0;
 
-        for pixel in decoded.pixels() {
-            let [r, g, b, a] = pixel.0;
-            total_r += (r as u64) * (a as u64);
-            total_g += (g as u64) * (a as u64);
-            total_b += (b as u64) * (a as u64);
+        for y in 0..height {
+            let row_start = y * pitch;
+            for x in 0..width {
+                let offset = row_start + (x * 4);
+                let r = pixels[offset] as u64;
+                let g = pixels[offset + 1] as u64;
+                let b = pixels[offset + 2] as u64;
+                let a = pixels[offset + 3] as u64;
+
+                total_r += r * a;
+                total_g += g * a;
+                total_b += b * a;
+                alpha_sum += a;
+            }
         }
 
-        let alpha_sum: u64 = decoded.pixels().map(|pixel| pixel.0[3] as u64).sum();
         if alpha_sum == 0 {
             return (0, 0, 0);
         }
