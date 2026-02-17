@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+use std::process;
 use std::time::{Duration, Instant};
 
 use egui_sdl2::egui::{self, Pos2};
@@ -8,6 +10,49 @@ use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::render::Canvas;
 use sdl2::video::Window;
+
+/// Attempts to determine the base directory for Men Among Gods data files.
+/// This is where we place the settings.json file, and logs.
+pub fn get_mag_base_dir() -> Option<PathBuf> {
+    let suffix = PathBuf::from(".men-among-gods");
+
+    let debug_or_release = if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "release"
+    };
+
+    let is_windows = cfg!(target_os = "windows");
+
+    // First, check if we are running in a development environment
+    // This should give us a directory in target/{debug|release}
+    let cargo_directory = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    if cargo_directory.exists() {
+        return Some(
+            cargo_directory
+                .join("..")
+                .join("target")
+                .join(debug_or_release),
+        );
+    }
+
+    // Next, check standard user directories for Unix/Mac OS/Linux
+    if !is_windows {
+        let environment_vars = ["HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME"];
+        for var in environment_vars.iter() {
+            if let Ok(home) = std::env::var(var) {
+                return Some(PathBuf::from(home).join(suffix));
+            }
+        }
+    } else {
+        // Finally, check APPDATA on Windows
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            return Some(PathBuf::from(appdata).join(suffix));
+        }
+    }
+
+    None
+}
 
 fn hidpi_scale(window: &Window) -> (f32, f32) {
     let (window_w, window_h) = window.size();
@@ -93,16 +138,16 @@ fn adjust_mouse_event_for_hidpi(event: Event, window: &Window) -> Event {
     }
 }
 
-enum SceneSwitch {
-    ToLogin,
-    ToGame,
+enum Scenes {
+    Login,
+    Game,
 }
 
 trait Scene {
-    fn handle_event(&mut self, event: &Event) -> Option<SceneSwitch>;
-    fn update(&mut self, dt: Duration) -> Option<SceneSwitch>;
+    fn handle_event(&mut self, event: &Event) -> Option<Scenes>;
+    fn update(&mut self, dt: Duration) -> Option<Scenes>;
     fn render_world(&mut self, canvas: &mut Canvas<Window>) -> Result<(), String>;
-    fn render_ui(&mut self, ctx: &egui::Context) -> Option<SceneSwitch>;
+    fn render_ui(&mut self, ctx: &egui::Context) -> Option<Scenes>;
 }
 
 struct LoginScene {
@@ -122,11 +167,11 @@ impl LoginScene {
 }
 
 impl Scene for LoginScene {
-    fn handle_event(&mut self, _event: &Event) -> Option<SceneSwitch> {
+    fn handle_event(&mut self, _event: &Event) -> Option<Scenes> {
         None
     }
 
-    fn update(&mut self, _dt: Duration) -> Option<SceneSwitch> {
+    fn update(&mut self, _dt: Duration) -> Option<Scenes> {
         None
     }
 
@@ -136,7 +181,7 @@ impl Scene for LoginScene {
         Ok(())
     }
 
-    fn render_ui(&mut self, ctx: &egui::Context) -> Option<SceneSwitch> {
+    fn render_ui(&mut self, ctx: &egui::Context) -> Option<Scenes> {
         let mut next = None;
 
         egui::Window::new("Account Login")
@@ -187,7 +232,7 @@ impl Scene for LoginScene {
                         "Login clicked: ip={}, username={}",
                         self.server_ip, self.username
                     );
-                    next = Some(SceneSwitch::ToGame);
+                    next = Some(Scenes::Game);
                 }
 
                 if create_clicked {
@@ -216,18 +261,18 @@ impl GameScene {
 }
 
 impl Scene for GameScene {
-    fn handle_event(&mut self, event: &Event) -> Option<SceneSwitch> {
+    fn handle_event(&mut self, event: &Event) -> Option<Scenes> {
         if let Event::KeyDown {
             keycode: Some(Keycode::Backspace),
             ..
         } = event
         {
-            return Some(SceneSwitch::ToLogin);
+            return Some(Scenes::Login);
         }
         None
     }
 
-    fn update(&mut self, dt: Duration) -> Option<SceneSwitch> {
+    fn update(&mut self, dt: Duration) -> Option<Scenes> {
         self.x += self.velocity_px_per_sec * dt.as_secs_f32();
         if self.x > 760.0 {
             self.x = -48.0;
@@ -246,7 +291,7 @@ impl Scene for GameScene {
         Ok(())
     }
 
-    fn render_ui(&mut self, ctx: &egui::Context) -> Option<SceneSwitch> {
+    fn render_ui(&mut self, ctx: &egui::Context) -> Option<Scenes> {
         egui::TopBottomPanel::top("hud").show(ctx, |ui| {
             ui.label("Game Scene (SDL world + egui overlay)");
             ui.label("Press Backspace to return to LoginScene");
@@ -255,18 +300,27 @@ impl Scene for GameScene {
     }
 }
 
-fn make_scene(switch: SceneSwitch) -> Box<dyn Scene> {
+fn make_scene(switch: Scenes) -> Box<dyn Scene> {
     match switch {
-        SceneSwitch::ToLogin => Box::new(LoginScene::new()),
-        SceneSwitch::ToGame => Box::new(GameScene::new()),
+        Scenes::Login => Box::new(LoginScene::new()),
+        Scenes::Game => Box::new(GameScene::new()),
     }
 }
 
 fn main() -> Result<(), String> {
+    mag_core::initialize_logger(log::LevelFilter::Info, Some("sdl_client.log")).unwrap_or_else(
+        |e| {
+            eprintln!("Failed to initialize logger: {}. Exiting.", e);
+            process::exit(1);
+        },
+    );
+
+    log::info!("Initializing SDL2 contexts...");
     let sdl_context = sdl2::init()?;
     let _image_context = sdl2::image::init(InitFlag::PNG)?;
-    let video = sdl_context.video()?;
 
+    log::info!("Creating window and event pump...");
+    let video = sdl_context.video()?;
     let window = video
         .window("Rust SDL2 Starter", 800, 600)
         .position_centered()
@@ -277,9 +331,42 @@ fn main() -> Result<(), String> {
 
     let mut event_pump = sdl_context.event_pump()?;
 
+    log::info!("Initializing canvas...");
     let mut egui = egui_sdl2::EguiCanvas::new(window);
     let mut scene: Box<dyn Scene> = Box::new(LoginScene::new());
     let mut last_frame = Instant::now();
+
+    // Log info about the monitor, graphics card, etc.
+    if let Ok(video_subsystem) = sdl_context.video() {
+        for i in 0..video_subsystem.num_video_displays().unwrap_or(0) {
+            if let Ok(display_mode) = video_subsystem.desktop_display_mode(i) {
+                log::info!(
+                    "Display mode: {}x{} @ {}Hz",
+                    display_mode.w,
+                    display_mode.h,
+                    display_mode.refresh_rate
+                );
+
+                let dpi = video_subsystem.display_dpi(i).unwrap_or((0.0, 0.0, 0.0));
+                log::info!(
+                    "Display DPI: {:.2} (horizontal), {:.2} (vertical), {:.2} (diagonal)",
+                    dpi.0,
+                    dpi.1,
+                    dpi.2
+                );
+            } else {
+                log::warn!("Failed to get display mode information for display {}", i);
+            }
+        }
+
+        log::info!(
+            "Current video driver: {}",
+            video_subsystem.current_video_driver()
+        );
+    } else {
+        log::error!("Failed to get video subsystem");
+        process::exit(1);
+    }
 
     'running: loop {
         let now = Instant::now();

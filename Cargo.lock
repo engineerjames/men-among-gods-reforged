@@ -6438,7 +6438,10 @@ dependencies = [
 name = "sdl_client"
 version = "0.1.0"
 dependencies = [
+ "core",
  "egui-sdl2",
+ "log",
+ "log4rs",
  "sdl2",
 ]
 
