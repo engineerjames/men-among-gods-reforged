@@ -68,6 +68,16 @@ impl GraphicsCache {
         }
     }
 
+    pub fn get_avg_color(&mut self, id: usize) -> (u8, u8, u8) {
+        if let Some(color) = self.avg_color_cache.get(&id) {
+            return *color;
+        }
+
+        // If the average color isn't cached, load the texture to calculate it (this will cache it for next time)
+        self.get_texture(id);
+        *self.avg_color_cache.get(&id).unwrap_or(&(0, 0, 0))
+    }
+
     pub fn get_texture(&mut self, id: usize) -> &Texture {
         if self.sprite_cache.contains_key(&id) {
             return &self.sprite_cache[&id];
