@@ -7,7 +7,6 @@ use sdl2::{
 };
 
 pub struct GraphicsCache {
-    // Placeholder for future caching of textures, fonts, etc.
     cache: HashMap<usize, Texture>,
     creator: TextureCreator<WindowContext>,
 }
@@ -25,7 +24,9 @@ impl GraphicsCache {
             return &self.cache[&id];
         }
 
-        let filename = PathBuf::from(".");
+        let filename = PathBuf::from(
+            "/Users/jarmes/git/men-among-gods-reforged/sdl_client/assets/gfx/00001.png",
+        );
         let texture = self.creator.load_texture(filename);
         self.cache.insert(id, texture.unwrap());
 
