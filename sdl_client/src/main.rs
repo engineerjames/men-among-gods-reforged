@@ -11,6 +11,12 @@ use sdl2::rect::Rect;
 use sdl2::render::Canvas;
 use sdl2::video::Window;
 
+use crate::gfx_cache::GraphicsCache;
+use crate::sfx_cache::SoundCache;
+
+mod gfx_cache;
+mod sfx_cache;
+
 /// Attempts to determine the base directory for Men Among Gods data files.
 /// This is where we place the settings.json file, and logs.
 pub fn get_mag_base_dir() -> Option<PathBuf> {
@@ -335,6 +341,10 @@ fn main() -> Result<(), String> {
     let mut egui = egui_sdl2::EguiCanvas::new(window);
     let mut scene: Box<dyn Scene> = Box::new(LoginScene::new());
     let mut last_frame = Instant::now();
+
+    log::info!("Initializing graphics and sound caches...");
+    let _gfx_cache = GraphicsCache::new(egui.painter.canvas.texture_creator());
+    let _sfx_cache = SoundCache::new();
 
     // Log info about the monitor, graphics card, etc.
     if let Ok(video_subsystem) = sdl_context.video() {
