@@ -38,7 +38,8 @@ jobs:
         function Resolve-LibDir {
           param(
             [string]$Root,
-            [string]$RequiredLib
+            [string]$RequiredLib,
+            [string]$StaticFallbackLib
           )
 
           if ([string]::IsNullOrWhiteSpace($Root)) {
@@ -57,6 +58,32 @@ jobs:
               if (Test-Path $libPath) {
                 return $dir
               }
+
+              if (-not [string]::IsNullOrWhiteSpace($StaticFallbackLib)) {
+                $staticPath = Join-Path $dir $StaticFallbackLib
+                if (Test-Path $staticPath) {
+                  Copy-Item -Path $staticPath -Destination $libPath -Force
+                  return $dir
+                }
+              }
+            }
+          }
+
+          $found = Get-ChildItem -Path $Root -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -eq $RequiredLib } |
+            Select-Object -First 1
+          if ($found) {
+            return $found.DirectoryName
+          }
+
+          if (-not [string]::IsNullOrWhiteSpace($StaticFallbackLib)) {
+            $foundStatic = Get-ChildItem -Path $Root -Recurse -File -ErrorAction SilentlyContinue |
+              Where-Object { $_.Name -eq $StaticFallbackLib } |
+              Select-Object -First 1
+            if ($foundStatic) {
+              $target = Join-Path $foundStatic.DirectoryName $RequiredLib
+              Copy-Item -Path $foundStatic.FullName -Destination $target -Force
+              return $foundStatic.DirectoryName
             }
           }
 
@@ -68,10 +95,10 @@ jobs:
         $mixerRoot = if ($env:SDL2_mixer_ROOT) { $env:SDL2_mixer_ROOT } else { $sdl2Root }
         $gfxRoot = if ($env:SDL2_gfx_ROOT) { $env:SDL2_gfx_ROOT } else { $sdl2Root }
 
-        $sdl2LibDir = Resolve-LibDir -Root $sdl2Root -RequiredLib 'SDL2.lib'
-        $imageLibDir = Resolve-LibDir -Root $imageRoot -RequiredLib 'SDL2_image.lib'
-        $mixerLibDir = Resolve-LibDir -Root $mixerRoot -RequiredLib 'SDL2_mixer.lib'
-        $gfxLibDir = Resolve-LibDir -Root $gfxRoot -RequiredLib 'SDL2_gfx.lib'
+        $sdl2LibDir = Resolve-LibDir -Root $sdl2Root -RequiredLib 'SDL2.lib' -StaticFallbackLib ''
+        $imageLibDir = Resolve-LibDir -Root $imageRoot -RequiredLib 'SDL2_image.lib' -StaticFallbackLib 'SDL2_image-static.lib'
+        $mixerLibDir = Resolve-LibDir -Root $mixerRoot -RequiredLib 'SDL2_mixer.lib' -StaticFallbackLib 'SDL2_mixer-static.lib'
+        $gfxLibDir = Resolve-LibDir -Root $gfxRoot -RequiredLib 'SDL2_gfx.lib' -StaticFallbackLib 'SDL2_gfx-static.lib'
 
         if (-not $sdl2LibDir) { Write-Error "Could not resolve SDL2.lib under SDL2_ROOT=$sdl2Root" }
         if (-not $imageLibDir) { Write-Error "Could not resolve SDL2_image.lib under SDL2_image_ROOT=$imageRoot" }

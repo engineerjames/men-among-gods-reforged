@@ -15,8 +15,8 @@ pub trait Scene {
 #[derive(Hash, Eq, PartialEq, Debug, Copy, Clone)]
 pub enum SceneType {
     Login,
-    //CharacterCreation,
-    //CharacterSelection,
+    CharacterCreation,
+    CharacterSelection,
     Game,
     NewAccount,
     Exit,
@@ -44,6 +44,16 @@ impl SceneManager {
         scene_map.insert(
             SceneType::NewAccount,
             Box::new(crate::scenes::new_account::NewAccountScene::new()),
+        );
+
+        scene_map.insert(
+            SceneType::CharacterCreation,
+            Box::new(crate::scenes::character_creation::CharacterCreationScene {}),
+        );
+
+        scene_map.insert(
+            SceneType::CharacterSelection,
+            Box::new(crate::scenes::character_selection::CharacterSelectionScene {}),
         );
 
         SceneManager {
