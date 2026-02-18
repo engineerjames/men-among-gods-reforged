@@ -15,6 +15,8 @@ pub trait Scene {
 #[derive(Hash, Eq, PartialEq, Debug, Copy, Clone)]
 pub enum SceneType {
     Login,
+    //CharacterCreation,
+    //CharacterSelection,
     Game,
     NewAccount,
     Exit,
