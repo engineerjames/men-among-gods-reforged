@@ -28,8 +28,34 @@ jobs:
         version: 2-latest
         version-sdl-image: 2-latest
         version-sdl-mixer: 2-latest
-        version-sdl-gfx: 2-latest
+        build-type: Release
         add-to-environment: true
+
+    - name: Build SDL2_gfx from source (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: pwsh
+      run: |
+        $sdl2Root = $env:SDL2_ROOT
+        $gfxInstall = "C:/setupsdl/sdl2_gfx"
+
+        git clone --depth 1 https://github.com/SDL-mirror/SDL2_gfx.git C:/sdl2_gfx_src
+        cmake -S C:/sdl2_gfx_src -B C:/sdl2_gfx_build `
+          -DSDL2_DIR="$sdl2Root/lib/cmake/SDL2" `
+          -DCMAKE_PREFIX_PATH="$sdl2Root" `
+          -DCMAKE_INSTALL_PREFIX="$gfxInstall" `
+          -DCMAKE_BUILD_TYPE=Release
+        cmake --build C:/sdl2_gfx_build --config Release
+        cmake --install C:/sdl2_gfx_build --config Release
+
+        # Ensure an import lib named SDL2_gfx.lib exists
+        $libCandidates = Get-ChildItem "$gfxInstall" -Recurse -File |
+          Where-Object { $_.Name -like 'SDL2_gfx*.lib' } |
+          Select-Object -First 1
+        if ($libCandidates -and $libCandidates.Name -ne 'SDL2_gfx.lib') {
+          Copy-Item $libCandidates.FullName (Join-Path $libCandidates.DirectoryName 'SDL2_gfx.lib') -Force
+        }
+
+        "SDL2_gfx_ROOT=$gfxInstall" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
     - name: Configure Windows SDL paths for Rust
       if: matrix.os == 'windows-latest'
@@ -49,7 +75,8 @@ jobs:
           $candidates = @(
             (Join-Path $Root 'lib'),
             (Join-Path $Root 'lib/x64'),
-            (Join-Path $Root 'lib64')
+            (Join-Path $Root 'lib64'),
+            $Root
           )
 
           foreach ($dir in $candidates) {
@@ -93,54 +120,42 @@ jobs:
         $sdl2Root = $env:SDL2_ROOT
         $imageRoot = if ($env:SDL2_image_ROOT) { $env:SDL2_image_ROOT } else { $sdl2Root }
         $mixerRoot = if ($env:SDL2_mixer_ROOT) { $env:SDL2_mixer_ROOT } else { $sdl2Root }
-        $gfxRoot = if ($env:SDL2_gfx_ROOT) { $env:SDL2_gfx_ROOT } else { $sdl2Root }
+        $gfxRoot   = if ($env:SDL2_gfx_ROOT)   { $env:SDL2_gfx_ROOT }   else { $sdl2Root }
 
-        $sdl2LibDir = Resolve-LibDir -Root $sdl2Root -RequiredLib 'SDL2.lib' -StaticFallbackLib ''
-        $imageLibDir = Resolve-LibDir -Root $imageRoot -RequiredLib 'SDL2_image.lib' -StaticFallbackLib 'SDL2_image-static.lib'
-        $mixerLibDir = Resolve-LibDir -Root $mixerRoot -RequiredLib 'SDL2_mixer.lib' -StaticFallbackLib 'SDL2_mixer-static.lib'
-        $gfxLibDir = Resolve-LibDir -Root $gfxRoot -RequiredLib 'SDL2_gfx.lib' -StaticFallbackLib 'SDL2_gfx-static.lib'
+        Write-Host "SDL2_ROOT:       $sdl2Root"
+        Write-Host "SDL2_image_ROOT: $imageRoot"
+        Write-Host "SDL2_mixer_ROOT: $mixerRoot"
+        Write-Host "SDL2_gfx_ROOT:   $gfxRoot"
 
-        if (-not $sdl2LibDir) { Write-Error "Could not resolve SDL2.lib under SDL2_ROOT=$sdl2Root" }
+        # Dump all SDL-related libs found to aid future debugging
+        foreach ($root in @($sdl2Root, $imageRoot, $mixerRoot, $gfxRoot) | Select-Object -Unique) {
+          Write-Host "--- libs under $root ---"
+          Get-ChildItem $root -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like 'SDL2*.lib' -or $_.Name -like 'SDL2*.dll' } |
+            Select-Object -ExpandProperty FullName
+        }
+
+        $sdl2LibDir  = Resolve-LibDir -Root $sdl2Root  -RequiredLib 'SDL2.lib'       -StaticFallbackLib ''
+        $imageLibDir = Resolve-LibDir -Root $imageRoot -RequiredLib 'SDL2_image.lib'  -StaticFallbackLib 'SDL2_image-static.lib'
+        $mixerLibDir = Resolve-LibDir -Root $mixerRoot -RequiredLib 'SDL2_mixer.lib'  -StaticFallbackLib 'SDL2_mixer-static.lib'
+        $gfxLibDir   = Resolve-LibDir -Root $gfxRoot   -RequiredLib 'SDL2_gfx.lib'   -StaticFallbackLib 'SDL2_gfx-static.lib'
+
+        if (-not $sdl2LibDir)  { Write-Error "Could not resolve SDL2.lib under SDL2_ROOT=$sdl2Root" }
         if (-not $imageLibDir) { Write-Error "Could not resolve SDL2_image.lib under SDL2_image_ROOT=$imageRoot" }
         if (-not $mixerLibDir) { Write-Error "Could not resolve SDL2_mixer.lib under SDL2_mixer_ROOT=$mixerRoot" }
-        if (-not $gfxLibDir) { Write-Error "Could not resolve SDL2_gfx.lib under SDL2_gfx_ROOT=$gfxRoot" }
+        if (-not $gfxLibDir)   { Write-Error "Could not resolve SDL2_gfx.lib under SDL2_gfx_ROOT=$gfxRoot" }
 
-        "SDL2_DIR=$sdl2Root" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        "SDL2_LIB_DIR=$sdl2LibDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        "SDL2_INCLUDE_DIR=$sdl2Root/include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        "SDL2_IMAGE_LIB_DIR=$imageLibDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        "SDL2_MIXER_LIB_DIR=$mixerLibDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        "SDL2_GFX_LIB_DIR=$gfxLibDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        "SDL2_DIR=$sdl2Root"                   | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        "SDL2_LIB_DIR=$sdl2LibDir"             | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        "SDL2_INCLUDE_DIR=$sdl2Root/include"   | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        "SDL2_IMAGE_LIB_DIR=$imageLibDir"      | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        "SDL2_MIXER_LIB_DIR=$mixerLibDir"      | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        "SDL2_GFX_LIB_DIR=$gfxLibDir"         | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
         $allLibDirs = @($sdl2LibDir, $imageLibDir, $mixerLibDir, $gfxLibDir) |
           Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
           Select-Object -Unique
         "LIB=$($allLibDirs -join ';');$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
-    - name: Diagnose Windows SDL linking
-      if: matrix.os == 'windows-latest'
-      shell: pwsh
-      run: |
-        "SDL2_ROOT: $env:SDL2_ROOT"
-        "SDL2_image_ROOT: $env:SDL2_image_ROOT"
-        "SDL2_mixer_ROOT: $env:SDL2_mixer_ROOT"
-        "SDL2_gfx_ROOT: $env:SDL2_gfx_ROOT"
-        "SDL2_LIB_DIR: $env:SDL2_LIB_DIR"
-        "SDL2_IMAGE_LIB_DIR: $env:SDL2_IMAGE_LIB_DIR"
-        "SDL2_MIXER_LIB_DIR: $env:SDL2_MIXER_LIB_DIR"
-        "SDL2_GFX_LIB_DIR: $env:SDL2_GFX_LIB_DIR"
-        "LIB: $env:LIB"
-
-        $roots = @($env:SDL2_ROOT, $env:SDL2_image_ROOT, $env:SDL2_mixer_ROOT, $env:SDL2_gfx_ROOT) |
-          Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
-          Select-Object -Unique
-
-        foreach ($root in $roots) {
-          "Listing SDL files under: $root"
-          Get-ChildItem $root -Recurse -File |
-          Where-Object { $_.Name -like 'SDL2*.lib' -or $_.Name -like 'SDL2*.dll' } |
-            Select-Object -ExpandProperty FullName
-        }
 
     - name: Install Linux build dependencies (Bevy & SDL)
       if: matrix.os == 'ubuntu-latest'
