@@ -35,17 +35,48 @@ jobs:
       if: matrix.os == 'windows-latest'
       shell: pwsh
       run: |
-        "SDL2_DIR=${{ steps.sdl.outputs.prefix }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        "SDL2_LIB_DIR=${{ steps.sdl.outputs.prefix }}/lib" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        "SDL2_INCLUDE_DIR=${{ steps.sdl.outputs.prefix }}/include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        "LIB=${{ steps.sdl.outputs.prefix }}/lib;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        $prefix = "${{ steps.sdl.outputs.prefix }}"
+        $candidateLibDirs = @(
+          (Join-Path $prefix 'lib'),
+          (Join-Path $prefix 'lib/x64'),
+          (Join-Path $prefix 'lib64')
+        )
+
+        $resolvedLibDir = $null
+        foreach ($dir in $candidateLibDirs) {
+          if (Test-Path $dir) {
+            $coreLib = Join-Path $dir 'SDL2.lib'
+            $imageLib = Join-Path $dir 'SDL2_image.lib'
+            $mixerLib = Join-Path $dir 'SDL2_mixer.lib'
+            $gfxLib = Join-Path $dir 'SDL2_gfx.lib'
+            if ((Test-Path $coreLib) -and (Test-Path $imageLib) -and (Test-Path $mixerLib) -and (Test-Path $gfxLib)) {
+              $resolvedLibDir = $dir
+              break
+            }
+          }
+        }
+
+        if (-not $resolvedLibDir) {
+          Write-Error "Could not resolve SDL import library directory under $prefix"
+        }
+
+        "SDL2_DIR=$prefix" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        "SDL2_LIB_DIR=$resolvedLibDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        "SDL2_INCLUDE_DIR=$prefix/include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        "SDL2_IMAGE_LIB_DIR=$resolvedLibDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        "SDL2_MIXER_LIB_DIR=$resolvedLibDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        "SDL2_GFX_LIB_DIR=$resolvedLibDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        "LIB=$resolvedLibDir;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
     - name: Diagnose Windows SDL linking
       if: matrix.os == 'windows-latest'
       shell: pwsh
       run: |
         "SDL prefix: ${{ steps.sdl.outputs.prefix }}"
-        Get-ChildItem "${{ steps.sdl.outputs.prefix }}/lib" | Where-Object { $_.Name -like 'SDL2*.lib' } | Select-Object -ExpandProperty Name
+        "SDL2_LIB_DIR: $env:SDL2_LIB_DIR"
+        Get-ChildItem "${{ steps.sdl.outputs.prefix }}" -Recurse -File |
+          Where-Object { $_.Name -like 'SDL2*.lib' -or $_.Name -like 'SDL2*.dll' } |
+          Select-Object -ExpandProperty FullName
 
     - name: Install Linux build dependencies (Bevy & SDL)
       if: matrix.os == 'ubuntu-latest'
