@@ -35,7 +35,7 @@ jobs:
           libxi-dev \
           libxrandr-dev \
           libxcursor-dev \
-          libxinerama-dev \ 
+          libxinerama-dev \
           libsdl2-dev \
           libsdl2-image-dev \
           libsdl2-ttf-dev \
