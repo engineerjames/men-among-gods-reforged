@@ -146,7 +146,7 @@ fn main() -> Result<(), String> {
             }
             let event =
                 dpi_scaling::adjust_mouse_event_for_hidpi(event, egui.painter.canvas.window());
-            egui.on_event(&event);
+            let _ = egui.on_event(&event);
             if next_scene.is_none() {
                 next_scene = scene_manager.active_scene().handle_event(&event);
             }

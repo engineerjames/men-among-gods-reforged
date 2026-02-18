@@ -68,6 +68,8 @@ impl GraphicsCache {
         }
     }
 
+    // TODO: The minimap will use this but we haven't implemented that yet
+    #[allow(dead_code)]
     pub fn get_avg_color(&mut self, id: usize) -> (u8, u8, u8) {
         if let Some(color) = self.avg_color_cache.get(&id) {
             return *color;
