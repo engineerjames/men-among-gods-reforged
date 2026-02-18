@@ -51,6 +51,8 @@ impl NewAccountScene {
             return Err("Password is required".to_string());
         }
 
+        // TODO: Base URL should be configurable in the client settings? At the very lease
+        // define this in one place...
         let base_url = std::env::var("MAG_API_BASE_URL")
             .ok()
             .map(|value| value.trim().to_string())

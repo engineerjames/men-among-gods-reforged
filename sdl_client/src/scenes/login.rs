@@ -1,6 +1,9 @@
-use std::time::Duration;
+use std::{sync::mpsc::TryRecvError, time::Duration};
 
-use crate::scenes::scene::{Scene, SceneType};
+use crate::{
+    account_api,
+    scenes::scene::{Scene, SceneType},
+};
 use egui_sdl2::egui::{self, Align2, Vec2};
 use sdl2::{event::Event, pixels::Color, render::Canvas, video::Window};
 
@@ -8,6 +11,9 @@ pub struct LoginScene {
     server_ip: String,
     username: String,
     password: String,
+    is_submitting: bool,
+    api_result_rx: Option<std::sync::mpsc::Receiver<Result<(), String>>>,
+    error_message: Option<String>,
 }
 
 impl LoginScene {
@@ -16,7 +22,22 @@ impl LoginScene {
             server_ip: "127.0.0.1".to_owned(),
             username: String::new(),
             password: String::new(),
+            is_submitting: false,
+            api_result_rx: None,
+            error_message: None,
         }
+    }
+
+    fn login(username: &str, password: &str) -> Result<(), String> {
+        let base_url = if cfg!(debug_assertions) {
+            "http://127.0.0.1:5554"
+        } else {
+            "http://menamonggods.ddns.net:5554"
+        };
+
+        account_api::login(base_url, username, password)?;
+
+        Ok(())
     }
 }
 
@@ -26,6 +47,29 @@ impl Scene for LoginScene {
     }
 
     fn update(&mut self, _dt: Duration) -> Option<SceneType> {
+        if self.is_submitting {
+            let result = if let Some(receiver) = &self.api_result_rx {
+                match receiver.try_recv() {
+                    Ok(result) => Some(result),
+                    Err(TryRecvError::Empty) => None,
+                    Err(TryRecvError::Disconnected) => {
+                        Some(Err("Account creation task failed unexpectedly".to_string()))
+                    }
+                }
+            } else {
+                None
+            };
+
+            if let Some(result) = result {
+                self.is_submitting = false;
+                self.api_result_rx = None;
+
+                match result {
+                    Ok(()) => return Some(SceneType::Login),
+                    Err(error) => self.error_message = Some(error),
+                }
+            }
+        }
         None
     }
 
