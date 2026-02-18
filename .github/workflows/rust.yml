@@ -52,8 +52,23 @@ jobs:
     - name: Install MacOS build dependencies (SDL)
       if: matrix.os == 'macos-latest'
       run: |
+        brew install pkg-config
         brew install sdl2 sdl2_image sdl2_ttf sdl2_mixer sdl2_gfx
-        export LIBRARY_PATH="$LIBRARY_PATH:$(brew --prefix)/lib"
+        BREW_PREFIX="$(brew --prefix)"
+        echo "LIBRARY_PATH=${BREW_PREFIX}/lib:${LIBRARY_PATH}" >> "$GITHUB_ENV"
+        echo "DYLD_FALLBACK_LIBRARY_PATH=${BREW_PREFIX}/lib:${DYLD_FALLBACK_LIBRARY_PATH}" >> "$GITHUB_ENV"
+        echo "PKG_CONFIG_PATH=${BREW_PREFIX}/lib/pkgconfig:${BREW_PREFIX}/share/pkgconfig:${PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
+        echo "CPATH=${BREW_PREFIX}/include:${CPATH}" >> "$GITHUB_ENV"
+        echo "${BREW_PREFIX}/bin" >> "$GITHUB_PATH"
+
+    - name: Diagnose macOS SDL linking
+      if: matrix.os == 'macos-latest'
+      run: |
+        echo "brew prefix: $(brew --prefix)"
+        echo "pkg-config version: $(pkg-config --version)"
+        pkg-config --modversion sdl2 sdl2_image sdl2_mixer sdl2_ttf sdl2_gfx
+        pkg-config --libs sdl2 sdl2_image sdl2_mixer sdl2_ttf sdl2_gfx
+        ls -l "$(brew --prefix)/lib"/libSDL2*.dylib
 
     - name: Build
       run: cargo build
