@@ -14,12 +14,19 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
 
     steps:
     - uses: actions/checkout@v4
+
+    - uses: libsdl-org/setup-sdl@main
+      if: matrix.os == 'windows-latest'
+      id: sdl
+      with:
+        version: 2-latest
+        version-sdl-image: 2-latest
 
     - name: Install Linux build dependencies (Bevy & SDL)
       if: matrix.os == 'ubuntu-latest'
