@@ -28,6 +28,7 @@ impl LoginScene {
         }
     }
 
+    #[allow(dead_code)]
     fn login(username: &str, password: &str) -> Result<(), String> {
         let base_url = if cfg!(debug_assertions) {
             "http://127.0.0.1:5554"
