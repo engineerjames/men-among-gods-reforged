@@ -7,15 +7,14 @@
 use std::cmp::Ordering;
 use std::cmp::{max, min};
 use std::collections::BinaryHeap;
+use std::sync::OnceLock;
 
 use core::constants::*;
 
 use crate::repository::Repository;
-use parking_lot::ReentrantMutex;
-use std::cell::UnsafeCell;
-use std::sync::OnceLock;
+use crate::single_thread_cell::SingleThreadCell;
 
-static PATHFINDER: OnceLock<ReentrantMutex<UnsafeCell<PathFinder>>> = OnceLock::new();
+static PATHFINDER: OnceLock<SingleThreadCell<PathFinder>> = OnceLock::new();
 
 const MAX_NODES: usize = 4096;
 
@@ -69,12 +68,16 @@ struct BadTarget {
 pub struct PathFinder {
     /// Map of coordinates to node indices (using flat array indexed by x + y * SERVER_MAPX)
     node_map: Vec<Option<usize>>,
+    /// Node map slots touched by the current/previous search.
+    touched_node_map: Vec<usize>,
     /// All nodes allocated for the current search
     nodes: Vec<Node>,
     /// Priority queue of nodes to visit
     open_set: BinaryHeap<Node>,
     /// Tracks which nodes have been visited
     visited: Vec<bool>,
+    /// Visited indices touched by the current/previous search.
+    touched_visited: Vec<usize>,
     /// Bad target tracking
     bad_targets: Vec<BadTarget>,
     /// Set when exceeding maxstep allocations.
@@ -87,9 +90,11 @@ impl PathFinder {
         let map_size = (SERVER_MAPX * SERVER_MAPY) as usize;
         Self {
             node_map: vec![None; map_size],
+            touched_node_map: Vec::with_capacity(MAX_NODES),
             nodes: Vec::with_capacity(MAX_NODES),
             open_set: BinaryHeap::with_capacity(MAX_NODES),
             visited: vec![false; MAX_NODES],
+            touched_visited: Vec::with_capacity(MAX_NODES),
             bad_targets: vec![BadTarget { tick: 0 }; map_size],
             failed: false,
         }
@@ -100,15 +105,18 @@ impl PathFinder {
     /// Clears node allocations, the open set, and visited flags so the
     /// PathFinder can be reused for a subsequent search.
     fn reset(&mut self) {
-        // Clear node map
-        for slot in &mut self.node_map {
-            *slot = None;
+        for &idx in &self.touched_node_map {
+            self.node_map[idx] = None;
         }
+        self.touched_node_map.clear();
+
+        for &idx in &self.touched_visited {
+            self.visited[idx] = false;
+        }
+        self.touched_visited.clear();
+
         self.nodes.clear();
         self.open_set.clear();
-        for v in &mut self.visited {
-            *v = false;
-        }
         self.failed = false;
     }
 
@@ -166,38 +174,30 @@ impl PathFinder {
     }
 
     /// Check if a map tile is passable
-    fn is_passable(&self, m: usize, mapblock: u64) -> bool {
-        Repository::with_map(|map| {
-            // Check map flags
-            if (map[m].flags & mapblock) != 0 {
-                return false;
-            }
+    fn is_passable(
+        map: &[core::types::Map],
+        items: &[core::types::Item],
+        m: usize,
+        mapblock: u64,
+    ) -> bool {
+        if (map[m].flags & mapblock) != 0 {
+            return false;
+        }
 
-            // Check for characters blocking
-            if map[m].ch != 0 || map[m].to_ch != 0 {
-                return false;
-            }
+        if map[m].ch != 0 || map[m].to_ch != 0 {
+            return false;
+        }
 
-            // Check for blocking items
-            let item_idx = map[m].it as usize;
-            if item_idx != 0 && item_idx < core::constants::MAXITEM {
-                let should_return_false = Repository::with_items(|it| {
-                    if (it[item_idx].flags & ItemFlags::IF_MOVEBLOCK.bits()) != 0
-                        && it[item_idx].driver != 2
-                    {
-                        return true;
-                    }
+        let item_idx = map[m].it as usize;
+        if item_idx != 0
+            && item_idx < core::constants::MAXITEM
+            && (items[item_idx].flags & ItemFlags::IF_MOVEBLOCK.bits()) != 0
+            && items[item_idx].driver != 2
+        {
+            return false;
+        }
 
-                    false
-                });
-
-                if should_return_false {
-                    return false;
-                }
-            }
-
-            true
-        })
+        true
     }
 
     /// Add a node to the search
@@ -216,7 +216,11 @@ impl PathFinder {
         max_step: usize,
     ) -> bool {
         if x < 1 || x >= SERVER_MAPX as i16 || y < 1 || y >= SERVER_MAPY as i16 {
-            log::warn!("add_node: out of bounds x={}, y={}", x, y);
+            debug_assert!(
+                false,
+                "add_node out of bounds x={}, y={} (expected this to be filtered earlier)",
+                x, y
+            );
             return false;
         }
 
@@ -268,6 +272,7 @@ impl PathFinder {
 
         self.nodes.push(node);
         self.node_map[m] = Some(index);
+        self.touched_node_map.push(m);
         self.open_set.push(node);
 
         true
@@ -277,6 +282,8 @@ impl PathFinder {
     fn add_successors(
         &mut self,
         node: &Node,
+        map: &[core::types::Map],
+        items: &[core::types::Item],
         mapblock: u64,
         mode: u8,
         tx1: i16,
@@ -294,10 +301,10 @@ impl PathFinder {
         let down_m = (base_x + (base_y + 1) * SERVER_MAPX) as usize;
         let up_m = (base_x + (base_y - 1) * SERVER_MAPX) as usize;
 
-        let can_right = self.is_passable(right_m, mapblock);
-        let can_left = self.is_passable(left_m, mapblock);
-        let can_down = self.is_passable(down_m, mapblock);
-        let can_up = self.is_passable(up_m, mapblock);
+        let can_right = Self::is_passable(map, items, right_m, mapblock);
+        let can_left = Self::is_passable(map, items, left_m, mapblock);
+        let can_down = Self::is_passable(map, items, down_m, mapblock);
+        let can_up = Self::is_passable(map, items, up_m, mapblock);
 
         // Right
         if can_right {
@@ -376,7 +383,7 @@ impl PathFinder {
         // Right-Down
         if can_right && can_down {
             let rd_m = (base_x + 1 + (base_y + 1) * SERVER_MAPX) as usize;
-            if self.is_passable(rd_m, mapblock) {
+            if Self::is_passable(map, items, rd_m, mapblock) {
                 let cost = node.cost + 3 + turn_count(node.cdir, DX_RIGHTDOWN);
                 self.add_node(
                     node.x + 1,
@@ -401,7 +408,7 @@ impl PathFinder {
         // Right-Up
         if can_right && can_up {
             let ru_m = (base_x + 1 + (base_y - 1) * SERVER_MAPX) as usize;
-            if self.is_passable(ru_m, mapblock) {
+            if Self::is_passable(map, items, ru_m, mapblock) {
                 let cost = node.cost + 3 + turn_count(node.cdir, DX_RIGHTUP);
                 self.add_node(
                     node.x + 1,
@@ -422,7 +429,7 @@ impl PathFinder {
         // Left-Down
         if can_left && can_down {
             let ld_m = (base_x - 1 + (base_y + 1) * SERVER_MAPX) as usize;
-            if self.is_passable(ld_m, mapblock) {
+            if Self::is_passable(map, items, ld_m, mapblock) {
                 let cost = node.cost + 3 + turn_count(node.cdir, DX_LEFTDOWN);
                 self.add_node(
                     node.x - 1,
@@ -443,7 +450,7 @@ impl PathFinder {
         // Left-Up
         if can_left && can_up {
             let lu_m = (base_x - 1 + (base_y - 1) * SERVER_MAPX) as usize;
-            if self.is_passable(lu_m, mapblock) {
+            if Self::is_passable(map, items, lu_m, mapblock) {
                 let cost = node.cost + 3 + turn_count(node.cdir, DX_LEFTUP);
                 self.add_node(
                     node.x - 1,
@@ -468,6 +475,8 @@ impl PathFinder {
         fx: i16,
         fy: i16,
         cdir: u8,
+        map: &[core::types::Map],
+        items: &[core::types::Item],
         mapblock: u64,
         mode: u8,
         tx1: i16,
@@ -504,6 +513,7 @@ impl PathFinder {
 
             // Mark as visited
             self.visited[current.index] = true;
+            self.touched_visited.push(current.index);
 
             // Check if we reached the goal
             if mode == 0 && current.x == tx1 && current.y == ty1 {
@@ -527,7 +537,9 @@ impl PathFinder {
             }
 
             // Add successors
-            self.add_successors(&current, mapblock, mode, tx1, ty1, tx2, ty2, max_step);
+            self.add_successors(
+                &current, map, items, mapblock, mode, tx1, ty1, tx2, ty2, max_step,
+            );
 
             if self.failed {
                 break;
@@ -606,7 +618,12 @@ impl PathFinder {
             // Check if target is passable (for exact target mode)
             if flag == 0 {
                 let target_m = (x1 as i32 + y1 as i32 * SERVER_MAPX) as usize;
-                if !self.is_passable(target_m, mapblock) {
+                let passable = Repository::with_map(|map| {
+                    Repository::with_items(|items| {
+                        Self::is_passable(map, items, target_m, mapblock)
+                    })
+                });
+                if !passable {
                     return None;
                 }
             }
@@ -636,9 +653,14 @@ impl PathFinder {
             self.reset();
 
             // Run A* search
-            let result = self.astar(
-                ch[cn].x, ch[cn].y, ch[cn].dir, mapblock, flag, x1, y1, x2, y2, max_step,
-            );
+            let result = Repository::with_map(|map| {
+                Repository::with_items(|items| {
+                    self.astar(
+                        ch[cn].x, ch[cn].y, ch[cn].dir, map, items, mapblock, flag, x1, y1, x2, y2,
+                        max_step,
+                    )
+                })
+            });
 
             // Mark as bad target if failed
             if result.is_none() {
@@ -656,7 +678,7 @@ impl PathFinder {
     pub fn initialize() -> Result<(), String> {
         let pf = PathFinder::new();
         PATHFINDER
-            .set(ReentrantMutex::new(UnsafeCell::new(pf)))
+            .set(SingleThreadCell::new(pf))
             .map_err(|_| "PathFinder already initialized".to_string())?;
         Ok(())
     }
@@ -667,14 +689,8 @@ impl PathFinder {
     where
         F: FnOnce(&PathFinder) -> R,
     {
-        let lock = PATHFINDER.get().expect("PathFinder not initialized");
-        let guard = lock.lock();
-        let inner: &UnsafeCell<PathFinder> = &guard;
-        // SAFETY: We are holding the ReentrantMutex, providing exclusive
-        // access for mutation or shared access for read-only usages from a
-        // single thread. Returning a shared reference is safe here.
-        let pf_ref: &PathFinder = unsafe { &*inner.get() };
-        f(pf_ref)
+        let pf = PATHFINDER.get().expect("PathFinder not initialized");
+        pf.with(f)
     }
 
     /// Execute `f` with a mutable reference to the global PathFinder.
@@ -682,13 +698,8 @@ impl PathFinder {
     where
         F: FnOnce(&mut PathFinder) -> R,
     {
-        let lock = PATHFINDER.get().expect("PathFinder not initialized");
-        let guard = lock.lock();
-        let inner: &UnsafeCell<PathFinder> = &guard;
-        // SAFETY: We have exclusive access to the PathFinder under the
-        // ReentrantMutex; returning a mutable reference is safe.
-        let pf_mut: &mut PathFinder = unsafe { &mut *inner.get() };
-        f(pf_mut)
+        let pf = PATHFINDER.get().expect("PathFinder not initialized");
+        pf.with_mut(f)
     }
 }
 
@@ -748,111 +759,29 @@ fn turn_count(dir1: u8, dir2: u8) -> i32 {
         return 0;
     }
 
-    if dir1 == DX_UP {
-        if dir2 == DX_DOWN {
-            return 4;
-        }
-        if dir2 == DX_RIGHTUP || dir2 == DX_LEFTUP {
-            return 1;
-        }
-        if dir2 == DX_RIGHT || dir2 == DX_LEFT {
-            return 2;
-        }
-        return 3;
-    }
+    let slot1 = direction_slot(dir1);
+    let slot2 = direction_slot(dir2);
 
-    if dir1 == DX_DOWN {
-        if dir2 == DX_UP {
-            return 4;
-        }
-        if dir2 == DX_RIGHTDOWN || dir2 == DX_LEFTDOWN {
-            return 1;
-        }
-        if dir2 == DX_RIGHT || dir2 == DX_LEFT {
-            return 2;
-        }
-        return 3;
-    }
+    let (Some(slot1), Some(slot2)) = (slot1, slot2) else {
+        return 99;
+    };
 
-    if dir1 == DX_LEFT {
-        if dir2 == DX_RIGHT {
-            return 4;
-        }
-        if dir2 == DX_LEFTUP || dir2 == DX_LEFTDOWN {
-            return 1;
-        }
-        if dir2 == DX_UP || dir2 == DX_DOWN {
-            return 2;
-        }
-        return 3;
-    }
+    let diff = (slot1 - slot2).abs();
+    min(diff, 8 - diff)
+}
 
-    if dir1 == DX_RIGHT {
-        if dir2 == DX_LEFT {
-            return 4;
-        }
-        if dir2 == DX_RIGHTUP || dir2 == DX_RIGHTDOWN {
-            return 1;
-        }
-        if dir2 == DX_UP || dir2 == DX_DOWN {
-            return 2;
-        }
-        return 3;
+fn direction_slot(dir: u8) -> Option<i32> {
+    match dir {
+        DX_UP => Some(0),
+        DX_RIGHTUP => Some(1),
+        DX_RIGHT => Some(2),
+        DX_RIGHTDOWN => Some(3),
+        DX_DOWN => Some(4),
+        DX_LEFTDOWN => Some(5),
+        DX_LEFT => Some(6),
+        DX_LEFTUP => Some(7),
+        _ => None,
     }
-
-    if dir1 == DX_LEFTUP {
-        if dir2 == DX_RIGHTDOWN {
-            return 4;
-        }
-        if dir2 == DX_UP || dir2 == DX_LEFT {
-            return 1;
-        }
-        if dir2 == DX_RIGHTUP || dir2 == DX_LEFTDOWN {
-            return 2;
-        }
-        return 3;
-    }
-
-    if dir1 == DX_LEFTDOWN {
-        if dir2 == DX_RIGHTUP {
-            return 4;
-        }
-        if dir2 == DX_DOWN || dir2 == DX_LEFT {
-            return 1;
-        }
-        if dir2 == DX_RIGHTDOWN || dir2 == DX_LEFTUP {
-            return 2;
-        }
-        return 3;
-    }
-
-    if dir1 == DX_RIGHTUP {
-        if dir2 == DX_LEFTDOWN {
-            return 4;
-        }
-        if dir2 == DX_UP || dir2 == DX_RIGHT {
-            return 1;
-        }
-        if dir2 == DX_RIGHTDOWN || dir2 == DX_LEFTUP {
-            return 2;
-        }
-        return 3;
-    }
-
-    if dir1 == DX_RIGHTDOWN {
-        if dir2 == DX_LEFTUP {
-            return 4;
-        }
-        if dir2 == DX_DOWN || dir2 == DX_RIGHT {
-            return 1;
-        }
-        if dir2 == DX_RIGHTUP || dir2 == DX_LEFTDOWN {
-            return 2;
-        }
-        return 3;
-    }
-
-    99 // Invalid direction
 }
 
 #[cfg(test)]

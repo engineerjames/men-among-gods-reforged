@@ -4,7 +4,21 @@ use egui::Vec2;
 use mag_core::string_operations::c_string_to_str;
 use mag_core::types::skilltab::get_skill_name;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+use bincode::{Decode, Encode};
+
+const NORMALIZED_MAGIC: [u8; 4] = *b"MAG2";
+const NORMALIZED_VERSION: u32 = 1;
+
+#[derive(Debug, Encode, Decode)]
+struct NormalizedDataSet<T> {
+    magic: [u8; 4],
+    version: u32,
+    source_file: String,
+    source_record_size: usize,
+    records: Vec<T>,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ItemDetailsSource {
@@ -51,6 +65,71 @@ enum ViewMode {
     CharacterTemplates,
     Items,
     Characters,
+}
+
+fn load_normalized_records<T: Decode<()>>(
+    path: &Path,
+    expected_record_count: usize,
+) -> Result<Vec<T>, String> {
+    let data = fs::read(path).map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
+    let (payload, consumed): (NormalizedDataSet<T>, usize) =
+        bincode::decode_from_slice(&data, bincode::config::standard())
+            .map_err(|e| format!("Failed to decode {}: {e}", path.display()))?;
+
+    if payload.magic != NORMALIZED_MAGIC {
+        return Err(format!(
+            "Invalid normalized magic in {}: {:?}",
+            path.display(),
+            payload.magic
+        ));
+    }
+
+    if payload.version != NORMALIZED_VERSION {
+        return Err(format!(
+            "Unsupported normalized version in {}: {}",
+            path.display(),
+            payload.version
+        ));
+    }
+
+    if payload.records.len() != expected_record_count {
+        return Err(format!(
+            "Record count mismatch in {}: expected {}, got {}",
+            path.display(),
+            expected_record_count,
+            payload.records.len()
+        ));
+    }
+
+    if consumed != data.len() {
+        log::warn!(
+            "Trailing bytes in normalized dataset {}: {}",
+            path.display(),
+            data.len() - consumed
+        );
+    }
+
+    Ok(payload.records)
+}
+
+fn save_normalized_records<T: Encode>(
+    path: &Path,
+    source_file: &str,
+    source_record_size: usize,
+    records: Vec<T>,
+) -> Result<(), String> {
+    let payload = NormalizedDataSet {
+        magic: NORMALIZED_MAGIC,
+        version: NORMALIZED_VERSION,
+        source_file: source_file.to_string(),
+        source_record_size,
+        records,
+    };
+
+    let bytes = bincode::encode_to_vec(payload, bincode::config::standard())
+        .map_err(|e| format!("Failed to encode {}: {e}", path.display()))?;
+
+    fs::write(path, bytes).map_err(|e| format!("Failed to write {}: {e}", path.display()))
 }
 
 impl Default for TemplateViewerApp {
@@ -133,32 +212,32 @@ impl TemplateViewerApp {
     }
 
     fn save_current_view_to_path(&self, path: &PathBuf) -> Result<(), String> {
-        let mut bytes: Vec<u8> = Vec::new();
-
         match self.view_mode {
-            ViewMode::ItemTemplates => {
-                for item in &self.item_templates {
-                    bytes.extend_from_slice(&item.to_bytes());
-                }
-            }
-            ViewMode::CharacterTemplates => {
-                for character in &self.character_templates {
-                    bytes.extend_from_slice(&character.to_bytes());
-                }
-            }
-            ViewMode::Items => {
-                for item in &self.items {
-                    bytes.extend_from_slice(&item.to_bytes());
-                }
-            }
-            ViewMode::Characters => {
-                for character in &self.characters {
-                    bytes.extend_from_slice(&character.to_bytes());
-                }
-            }
+            ViewMode::ItemTemplates => save_normalized_records(
+                path,
+                "titem.dat",
+                std::mem::size_of::<mag_core::types::Item>(),
+                self.item_templates.clone(),
+            ),
+            ViewMode::CharacterTemplates => save_normalized_records(
+                path,
+                "tchar.dat",
+                std::mem::size_of::<mag_core::types::Character>(),
+                self.character_templates.clone(),
+            ),
+            ViewMode::Items => save_normalized_records(
+                path,
+                "item.dat",
+                std::mem::size_of::<mag_core::types::Item>(),
+                self.items.clone(),
+            ),
+            ViewMode::Characters => save_normalized_records(
+                path,
+                "char.dat",
+                std::mem::size_of::<mag_core::types::Character>(),
+                self.characters.clone(),
+            ),
         }
-
-        fs::write(path, bytes).map_err(|e| format!("Failed to write {}: {e}", path.display()))
     }
 
     fn revert_unsaved_changes(&mut self) {
@@ -529,154 +608,28 @@ impl TemplateViewerApp {
     }
 
     fn load_item_templates(&self, path: &PathBuf) -> Result<Vec<mag_core::types::Item>, String> {
-        let data = fs::read(&path).map_err(|e| e.to_string())?;
-        let expected_size =
-            mag_core::constants::MAXTITEM * std::mem::size_of::<mag_core::types::Item>();
-
-        if data.len() != expected_size {
-            return Err(format!(
-                "Item templates size mismatch: expected {}, got {}",
-                expected_size,
-                data.len()
-            ));
-        }
-
-        let mut templates = Vec::new();
-        let item_size = std::mem::size_of::<mag_core::types::Item>();
-
-        for i in 0..mag_core::constants::MAXTITEM {
-            let offset = i * item_size;
-            if let Some(item) = mag_core::types::Item::from_bytes(&data[offset..offset + item_size])
-            {
-                templates.push(item);
-            } else {
-                return Err(format!("Failed to parse item template at index {}", i));
-            }
-        }
-
-        Ok(templates)
+        load_normalized_records(path, mag_core::constants::MAXTITEM)
     }
 
     fn load_items(&self, path: &PathBuf) -> Result<Vec<mag_core::types::Item>, String> {
-        let data = fs::read(&path).map_err(|e| e.to_string())?;
-        let expected_size =
-            mag_core::constants::MAXITEM * std::mem::size_of::<mag_core::types::Item>();
-
-        if data.len() != expected_size {
-            return Err(format!(
-                "Items size mismatch: expected {}, got {}",
-                expected_size,
-                data.len()
-            ));
-        }
-
-        let mut items = Vec::new();
-        let item_size = std::mem::size_of::<mag_core::types::Item>();
-
-        for i in 0..mag_core::constants::MAXITEM {
-            let offset = i * item_size;
-            if let Some(item) = mag_core::types::Item::from_bytes(&data[offset..offset + item_size])
-            {
-                items.push(item);
-            } else {
-                return Err(format!("Failed to parse item at index {}", i));
-            }
-        }
-
-        Ok(items)
+        load_normalized_records(path, mag_core::constants::MAXITEM)
     }
 
     fn load_character_templates(
         &self,
         path: &PathBuf,
     ) -> Result<Vec<mag_core::types::Character>, String> {
-        let data = fs::read(&path).map_err(|e| e.to_string())?;
-        let expected_size =
-            mag_core::constants::MAXTCHARS * std::mem::size_of::<mag_core::types::Character>();
-
-        if data.len() != expected_size {
-            return Err(format!(
-                "Character templates size mismatch: expected {}, got {}",
-                expected_size,
-                data.len()
-            ));
-        }
-
-        let mut templates = Vec::new();
-        let char_size = std::mem::size_of::<mag_core::types::Character>();
-
-        for i in 0..mag_core::constants::MAXTCHARS {
-            let offset = i * char_size;
-            if let Some(character) =
-                mag_core::types::Character::from_bytes(&data[offset..offset + char_size])
-            {
-                templates.push(character);
-            } else {
-                return Err(format!("Failed to parse character template at index {}", i));
-            }
-        }
-
-        Ok(templates)
+        load_normalized_records(path, mag_core::constants::MAXTCHARS)
     }
 
     fn load_characters(&self, path: &PathBuf) -> Result<Vec<mag_core::types::Character>, String> {
-        let data = fs::read(&path).map_err(|e| e.to_string())?;
-        let expected_size =
-            mag_core::constants::MAXCHARS * std::mem::size_of::<mag_core::types::Character>();
-
-        if data.len() != expected_size {
-            return Err(format!(
-                "Characters size mismatch: expected {}, got {}",
-                expected_size,
-                data.len()
-            ));
-        }
-
-        let mut chars = Vec::new();
-        let char_size = std::mem::size_of::<mag_core::types::Character>();
-
-        for i in 0..mag_core::constants::MAXCHARS {
-            let offset = i * char_size;
-            if let Some(character) =
-                mag_core::types::Character::from_bytes(&data[offset..offset + char_size])
-            {
-                chars.push(character);
-            } else {
-                return Err(format!("Failed to parse character at index {}", i));
-            }
-        }
-
-        Ok(chars)
+        load_normalized_records(path, mag_core::constants::MAXCHARS)
     }
 
     fn load_map(&self, path: &PathBuf) -> Result<Vec<mag_core::types::Map>, String> {
-        let data = fs::read(&path).map_err(|e| e.to_string())?;
         let tile_count = (mag_core::constants::SERVER_MAPX as usize)
             * (mag_core::constants::SERVER_MAPY as usize);
-        let expected_size = tile_count * std::mem::size_of::<mag_core::types::Map>();
-
-        if data.len() != expected_size {
-            return Err(format!(
-                "Map size mismatch: expected {}, got {}",
-                expected_size,
-                data.len()
-            ));
-        }
-
-        let mut map_tiles = Vec::with_capacity(tile_count);
-        let tile_size = std::mem::size_of::<mag_core::types::Map>();
-
-        for i in 0..tile_count {
-            let offset = i * tile_size;
-            if let Some(tile) = mag_core::types::Map::from_bytes(&data[offset..offset + tile_size])
-            {
-                map_tiles.push(tile);
-            } else {
-                return Err(format!("Failed to parse map tile at index {}", i));
-            }
-        }
-
-        Ok(map_tiles)
+        load_normalized_records(path, tile_count)
     }
 
     fn render_item_list(&mut self, ui: &mut egui::Ui) {

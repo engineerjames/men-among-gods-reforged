@@ -1,6 +1,7 @@
+use bincode::{Decode, Encode};
+
 /// Map tile structure
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-#[repr(C, packed)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Encode, Decode)]
 pub struct Map {
     /// background image
     pub sprite: u16,
@@ -23,48 +24,17 @@ pub struct Map {
 
 impl Map {
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(std::mem::size_of::<Map>());
-
-        // We want to maintain the little-endian byte ordering since
-        // the original data files are in little-endian format.
-        bytes.extend_from_slice(&self.sprite.to_le_bytes());
-        bytes.extend_from_slice(&self.fsprite.to_le_bytes());
-        bytes.extend_from_slice(&self.ch.to_le_bytes());
-        bytes.extend_from_slice(&self.to_ch.to_le_bytes());
-        bytes.extend_from_slice(&self.it.to_le_bytes());
-        bytes.extend_from_slice(&self.dlight.to_le_bytes());
-        bytes.extend_from_slice(&self.light.to_le_bytes());
-        bytes.extend_from_slice(&self.flags.to_le_bytes());
-
-        if bytes.len() != std::mem::size_of::<Map>() {
-            log::error!(
-                "Map::to_bytes: expected size {}, got {}",
-                std::mem::size_of::<Map>(),
-                bytes.len()
-            );
-        }
-
-        bytes
+        bincode::encode_to_vec(self, bincode::config::standard()).expect("Map::to_bytes failed")
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        if bytes.len() < std::mem::size_of::<Map>() {
-            return None;
+        let (value, consumed): (Self, usize) =
+            bincode::decode_from_slice(bytes, bincode::config::standard()).ok()?;
+        if consumed == bytes.len() {
+            Some(value)
+        } else {
+            None
         }
-
-        let mut offset: usize = 0;
-
-        Some(Self {
-            sprite: read_u16!(bytes, offset),
-            fsprite: read_u16!(bytes, offset),
-            ch: read_u32!(bytes, offset),
-            to_ch: read_u32!(bytes, offset),
-            it: read_u32!(bytes, offset),
-            dlight: read_u16!(bytes, offset),
-            light: read_i16!(bytes, offset),
-            #[allow(unused_assignments)]
-            flags: read_u64!(bytes, offset),
-        })
     }
 
     pub fn add_light(&mut self, amount: i32) {
@@ -85,11 +55,7 @@ mod tests {
     fn test_map_to_bytes_size() {
         let map = Map::default();
         let bytes = map.to_bytes();
-        assert_eq!(
-            bytes.len(),
-            std::mem::size_of::<Map>(),
-            "Serialized Map size should match struct size"
-        );
+        assert!(!bytes.is_empty(), "Serialized Map should not be empty");
     }
 
     #[test]
@@ -113,7 +79,8 @@ mod tests {
 
     #[test]
     fn test_map_from_bytes_insufficient_data() {
-        let bytes = vec![0u8; std::mem::size_of::<Map>() - 1];
+        let mut bytes = Map::default().to_bytes();
+        bytes.pop();
         assert!(
             Map::from_bytes(&bytes).is_none(),
             "Should fail with insufficient data"

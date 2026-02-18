@@ -15,6 +15,8 @@ log = "0.4"
 env_logger = "0.11"
 zip = "0.6.6"
 image = { version = "0.25", default-features = false, features = ["png"] }
+bincode = { version = "2.0", features = ["derive"] }
+anyhow = "1.0"
 
 [[bin]]
 name = "template_viewer"
@@ -23,3 +25,7 @@ path = "src/bin/template_viewer.rs"
 [[bin]]
 name = "map_viewer"
 path = "src/bin/map_viewer.rs"
+
+[[bin]]
+name = "dat_normalizer"
+path = "src/bin/dat_normalizer.rs"

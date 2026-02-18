@@ -1,14 +1,24 @@
-use parking_lot::ReentrantMutex;
-use std::cell::UnsafeCell;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::{env, fs};
 
-// TODO: Currently this only reads data files into memory.
-// So if you close down the server and restart, any changes made during runtime will be lost.
-// In the future, we will want to implement saving changes back to the data files.
+use bincode::{Decode, Encode};
 
-static REPOSITORY: OnceLock<ReentrantMutex<UnsafeCell<Repository>>> = OnceLock::new();
+use crate::single_thread_cell::SingleThreadCell;
+
+static REPOSITORY: OnceLock<SingleThreadCell<Repository>> = OnceLock::new();
+
+const NORMALIZED_MAGIC: [u8; 4] = *b"MAG2";
+const NORMALIZED_VERSION: u32 = 1;
+
+#[derive(Debug, Encode, Decode)]
+struct NormalizedDataSet<T> {
+    magic: [u8; 4],
+    version: u32,
+    source_file: String,
+    source_record_size: usize,
+    records: Vec<T>,
+}
 
 /// The in-memory data repository used by the server.
 ///
@@ -46,7 +56,6 @@ impl Repository {
     /// `.dat` directory via `get_dat_file_path`.
     fn new() -> Self {
         Self {
-            // TODO: Evaluate how we can prevent accidental copying of any of these types...
             map: vec![
                 core::types::Map::default();
                 core::constants::SERVER_MAPX as usize * core::constants::SERVER_MAPY as usize
@@ -148,42 +157,98 @@ impl Repository {
         full_path
     }
 
+    fn load_normalized_records<T: Decode<()>>(
+        &self,
+        file_name: &str,
+        expected_record_count: usize,
+    ) -> Result<Vec<T>, String> {
+        let path = self.get_dat_file_path(file_name);
+        let bytes = fs::read(&path).map_err(|e| e.to_string())?;
+
+        let (payload, consumed): (NormalizedDataSet<T>, usize) =
+            bincode::decode_from_slice(&bytes, bincode::config::standard())
+                .map_err(|e| format!("Failed to decode {}: {}", path.display(), e))?;
+
+        if consumed != bytes.len() {
+            log::warn!(
+                "Normalized payload {} has {} trailing bytes",
+                path.display(),
+                bytes.len() - consumed
+            );
+        }
+
+        if payload.magic != NORMALIZED_MAGIC {
+            return Err(format!(
+                "Invalid normalized magic in {}: {:?}",
+                path.display(),
+                payload.magic
+            ));
+        }
+
+        if payload.version != NORMALIZED_VERSION {
+            return Err(format!(
+                "Unsupported normalized version in {}: {}",
+                path.display(),
+                payload.version
+            ));
+        }
+
+        if payload.source_file != file_name {
+            return Err(format!(
+                "source_file mismatch in {}: expected {}, got {}",
+                path.display(),
+                file_name,
+                payload.source_file
+            ));
+        }
+
+        if payload.records.len() != expected_record_count {
+            return Err(format!(
+                "Record count mismatch in {}: expected {}, got {}",
+                path.display(),
+                expected_record_count,
+                payload.records.len()
+            ));
+        }
+
+        Ok(payload.records)
+    }
+
+    fn save_normalized_records<T: Encode>(
+        &self,
+        file_name: &str,
+        source_record_size: usize,
+        records: Vec<T>,
+    ) -> Result<(), String> {
+        let path = self.get_dat_file_path(file_name);
+        let payload = NormalizedDataSet {
+            magic: NORMALIZED_MAGIC,
+            version: NORMALIZED_VERSION,
+            source_file: file_name.to_string(),
+            source_record_size,
+            records,
+        };
+
+        let bytes = bincode::encode_to_vec(payload, bincode::config::standard())
+            .map_err(|e| format!("Failed to encode {}: {}", path.display(), e))?;
+
+        fs::write(&path, bytes).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     /// Load `map.dat` and populate the `map` vector.
     ///
     /// Validates the file size against the expected tile count and parses each
     /// `Map` entry via `core::types::Map::from_bytes`. Returns an error if the
     /// file cannot be read or its size doesn't match expectations.
     fn load_map(&mut self) -> Result<(), String> {
-        let map_path = self.get_dat_file_path("map.dat");
-        log::info!("Loading map data from {:?}", map_path);
-        let map_data = fs::read(&map_path).map_err(|e| e.to_string())?;
-
-        let expected_map_size = core::constants::SERVER_MAPX as usize
-            * core::constants::SERVER_MAPY as usize
-            * std::mem::size_of::<core::types::Map>();
-
-        let actual_map_size = map_data.len();
-        if actual_map_size != expected_map_size {
-            return Err(format!(
-                "Map data size mismatch: expected {}, got {}",
-                expected_map_size, actual_map_size
-            ));
-        }
-
-        let num_map_tiles = actual_map_size / std::mem::size_of::<core::types::Map>();
-
-        for i in 0..num_map_tiles {
-            let offset = i * std::mem::size_of::<core::types::Map>();
-            let map_tile = core::types::Map::from_bytes(
-                &map_data[offset..offset + std::mem::size_of::<core::types::Map>()],
-            )
-            .ok_or_else(|| format!("Failed to parse map tile at index {}", i))?;
-            self.map[i] = map_tile;
-        }
+        let expected_tiles =
+            (core::constants::SERVER_MAPX as usize) * (core::constants::SERVER_MAPY as usize);
+        self.map = self.load_normalized_records::<core::types::Map>("map.dat", expected_tiles)?;
 
         log::info!(
             "Map data loaded successfully. Loaded {} tiles.",
-            num_map_tiles
+            expected_tiles
         );
 
         Ok(())
@@ -193,21 +258,11 @@ impl Repository {
     fn save_map(&self) -> Result<(), String> {
         let map_path = self.get_dat_file_path("map.dat");
         log::info!("Saving map data to {:?}", map_path);
-
-        // We could definitely be more efficient here by writing directly to the file
-        // from the map tiles without allocating a large buffer first.
-        let mut map_data: Vec<u8> = Vec::with_capacity(
-            core::constants::SERVER_MAPX as usize
-                * core::constants::SERVER_MAPY as usize
-                * std::mem::size_of::<core::types::Map>(),
-        );
-
-        for map_tile in &self.map {
-            let tile_bytes = map_tile.to_bytes();
-            map_data.extend_from_slice(&tile_bytes);
-        }
-
-        fs::write(&map_path, &map_data).map_err(|e| e.to_string())?;
+        self.save_normalized_records(
+            "map.dat",
+            std::mem::size_of::<core::types::Map>(),
+            self.map.clone(),
+        )?;
         log::info!("Map data saved successfully.");
         Ok(())
     }
@@ -218,35 +273,12 @@ impl Repository {
     /// each `Item` via `core::types::Item::from_bytes`. Returns an error on
     /// read or parse failures.
     fn load_items(&mut self) -> Result<(), String> {
-        let items_path = self.get_dat_file_path("item.dat");
-        log::info!("Loading items data from {:?}", items_path);
-        let items_data = fs::read(&items_path).map_err(|e| e.to_string())?;
-
-        let expected_items_size =
-            core::constants::MAXITEM * std::mem::size_of::<core::types::Item>();
-
-        let actual_items_size = items_data.len();
-        if actual_items_size != expected_items_size {
-            return Err(format!(
-                "Items data size mismatch: expected {}, got {}",
-                expected_items_size, actual_items_size
-            ));
-        }
-
-        let num_items = actual_items_size / std::mem::size_of::<core::types::Item>();
-
-        for i in 0..num_items {
-            let offset = i * std::mem::size_of::<core::types::Item>();
-            let item = core::types::Item::from_bytes(
-                &items_data[offset..offset + std::mem::size_of::<core::types::Item>()],
-            )
-            .ok_or_else(|| format!("Failed to parse item at index {}", i))?;
-            self.items[i] = item;
-        }
+        self.items = self
+            .load_normalized_records::<core::types::Item>("item.dat", core::constants::MAXITEM)?;
 
         log::info!(
             "Items data loaded successfully. Loaded {} items.",
-            num_items
+            self.items.len()
         );
 
         Ok(())
@@ -256,16 +288,11 @@ impl Repository {
         let items_path = self.get_dat_file_path("item.dat");
 
         log::info!("Saving items data to {:?}", items_path);
-
-        let mut items_data: Vec<u8> =
-            Vec::with_capacity(core::constants::MAXITEM * std::mem::size_of::<core::types::Item>());
-
-        for item in &self.items {
-            let item_bytes = item.to_bytes();
-            items_data.extend_from_slice(&item_bytes);
-        }
-
-        fs::write(&items_path, &items_data).map_err(|e| e.to_string())?;
+        self.save_normalized_records(
+            "item.dat",
+            std::mem::size_of::<core::types::Item>(),
+            self.items.clone(),
+        )?;
 
         log::info!("Items data saved successfully.");
         Ok(())
@@ -276,36 +303,12 @@ impl Repository {
     /// Validates length and parses each template entry. This is used when
     /// resetting or creating items from templates at runtime.
     fn load_item_templates(&mut self) -> Result<(), String> {
-        let item_templates_path = self.get_dat_file_path("titem.dat");
-        log::info!("Loading item templates data from {:?}", item_templates_path);
-        let item_templates_data = fs::read(&item_templates_path).map_err(|e| e.to_string())?;
-
-        let expected_item_templates_size =
-            core::constants::MAXTITEM * std::mem::size_of::<core::types::Item>();
-
-        let actual_item_templates_size = item_templates_data.len();
-
-        if actual_item_templates_size != expected_item_templates_size {
-            return Err(format!(
-                "Item templates data size mismatch: expected {}, got {}",
-                expected_item_templates_size, actual_item_templates_size
-            ));
-        }
-        let num_item_templates =
-            actual_item_templates_size / std::mem::size_of::<core::types::Item>();
-
-        for i in 0..num_item_templates {
-            let offset = i * std::mem::size_of::<core::types::Item>();
-            let item_template = core::types::Item::from_bytes(
-                &item_templates_data[offset..offset + std::mem::size_of::<core::types::Item>()],
-            )
-            .ok_or_else(|| format!("Failed to parse item template at index {}", i))?;
-            self.item_templates[i] = item_template;
-        }
+        self.item_templates = self
+            .load_normalized_records::<core::types::Item>("titem.dat", core::constants::MAXTITEM)?;
 
         log::info!(
             "Item templates data loaded successfully. Loaded {} templates.",
-            num_item_templates
+            self.item_templates.len()
         );
 
         Ok(())
@@ -315,14 +318,11 @@ impl Repository {
         let item_templates_path = self.get_dat_file_path("titem.dat");
 
         log::info!("Saving item templates data to {:?}", item_templates_path);
-        let mut item_templates_data: Vec<u8> = Vec::with_capacity(
-            core::constants::MAXTITEM * std::mem::size_of::<core::types::Item>(),
-        );
-        for item_template in &self.item_templates {
-            let item_template_bytes = item_template.to_bytes();
-            item_templates_data.extend_from_slice(&item_template_bytes);
-        }
-        fs::write(&item_templates_path, &item_templates_data).map_err(|e| e.to_string())?;
+        self.save_normalized_records(
+            "titem.dat",
+            std::mem::size_of::<core::types::Item>(),
+            self.item_templates.clone(),
+        )?;
         log::info!("Item templates data saved successfully.");
         Ok(())
     }
@@ -332,31 +332,10 @@ impl Repository {
     /// Validates the file size equals `MAXCHARS * size_of::<Character>()` and
     /// parses each `Character` via `core::types::Character::from_bytes`.
     fn load_characters(&mut self) -> Result<(), String> {
-        let characters_path = self.get_dat_file_path("char.dat");
-        log::info!("Loading characters data from {:?}", characters_path);
-        let characters_data = fs::read(&characters_path).map_err(|e| e.to_string())?;
-
-        let expected_characters_size =
-            core::constants::MAXCHARS * std::mem::size_of::<core::types::Character>();
-        let actual_characters_size = characters_data.len();
-
-        if actual_characters_size != expected_characters_size {
-            return Err(format!(
-                "Characters data size mismatch: expected {}, got {}",
-                expected_characters_size, actual_characters_size
-            ));
-        }
-
-        let num_characters = actual_characters_size / std::mem::size_of::<core::types::Character>();
-
-        for i in 0..num_characters {
-            let offset = i * std::mem::size_of::<core::types::Character>();
-            let character = core::types::Character::from_bytes(
-                &characters_data[offset..offset + std::mem::size_of::<core::types::Character>()],
-            )
-            .ok_or_else(|| format!("Failed to parse character at index {}", i))?;
-            self.characters[i] = character;
-        }
+        self.characters = self.load_normalized_records::<core::types::Character>(
+            "char.dat",
+            core::constants::MAXCHARS,
+        )?;
 
         Ok(())
     }
@@ -365,17 +344,11 @@ impl Repository {
         let characters_path = self.get_dat_file_path("char.dat");
 
         log::info!("Saving characters data to {:?}", characters_path);
-
-        let mut characters_data: Vec<u8> = Vec::with_capacity(
-            core::constants::MAXCHARS * std::mem::size_of::<core::types::Character>(),
-        );
-
-        for character in &self.characters {
-            let character_bytes = character.to_bytes();
-            characters_data.extend_from_slice(&character_bytes);
-        }
-
-        fs::write(&characters_path, &characters_data).map_err(|e| e.to_string())?;
+        self.save_normalized_records(
+            "char.dat",
+            std::mem::size_of::<core::types::Character>(),
+            self.characters.clone(),
+        )?;
 
         log::info!("Characters data saved successfully.");
         Ok(())
@@ -386,35 +359,10 @@ impl Repository {
     /// Validates file size and parses each template entry used for NPC spawning
     /// and template-based resets.
     fn load_character_templates(&mut self) -> Result<(), String> {
-        let character_templates_path = self.get_dat_file_path("tchar.dat");
-        log::info!(
-            "Loading character templates data from {:?}",
-            character_templates_path
-        );
-        let character_templates_data =
-            fs::read(&character_templates_path).map_err(|e| e.to_string())?;
-        let expected_character_templates_size =
-            core::constants::MAXTCHARS * std::mem::size_of::<core::types::Character>();
-        let actual_character_templates_size = character_templates_data.len();
-        if actual_character_templates_size != expected_character_templates_size {
-            return Err(format!(
-                "Character templates data size mismatch: expected {}, got {}",
-                expected_character_templates_size, actual_character_templates_size
-            ));
-        }
-
-        let num_character_templates =
-            actual_character_templates_size / std::mem::size_of::<core::types::Character>();
-
-        for i in 0..num_character_templates {
-            let offset = i * std::mem::size_of::<core::types::Character>();
-            let character_template = core::types::Character::from_bytes(
-                &character_templates_data
-                    [offset..offset + std::mem::size_of::<core::types::Character>()],
-            )
-            .ok_or_else(|| format!("Failed to parse character template at index {}", i))?;
-            self.character_templates[i] = character_template;
-        }
+        self.character_templates = self.load_normalized_records::<core::types::Character>(
+            "tchar.dat",
+            core::constants::MAXTCHARS,
+        )?;
 
         Ok(())
     }
@@ -427,17 +375,11 @@ impl Repository {
             character_templates_path
         );
 
-        let mut character_templates_data: Vec<u8> = Vec::with_capacity(
-            core::constants::MAXTCHARS * std::mem::size_of::<core::types::Character>(),
-        );
-
-        for character_template in &self.character_templates {
-            let character_template_bytes = character_template.to_bytes();
-            character_templates_data.extend_from_slice(&character_template_bytes);
-        }
-
-        fs::write(&character_templates_path, &character_templates_data)
-            .map_err(|e| e.to_string())?;
+        self.save_normalized_records(
+            "tchar.dat",
+            std::mem::size_of::<core::types::Character>(),
+            self.character_templates.clone(),
+        )?;
 
         log::info!("Character templates data saved successfully.");
         Ok(())
@@ -448,35 +390,14 @@ impl Repository {
     /// Validates file size and parses each `Effect` entry. Effects represent
     /// transient or persistent world effects used by the server.
     fn load_effects(&mut self) -> Result<(), String> {
-        let effects_path = self.get_dat_file_path("effect.dat");
-        log::info!("Loading effects data from {:?}", effects_path);
-        let effects_data = fs::read(&effects_path).map_err(|e| e.to_string())?;
-
-        let expected_effects_size =
-            core::constants::MAXEFFECT * std::mem::size_of::<core::types::Effect>();
-        let actual_effects_size = effects_data.len();
-
-        if actual_effects_size != expected_effects_size {
-            return Err(format!(
-                "Effects data size mismatch: expected {}, got {}",
-                expected_effects_size, actual_effects_size
-            ));
-        }
-
-        let num_effects = actual_effects_size / std::mem::size_of::<core::types::Effect>();
-
-        for i in 0..num_effects {
-            let offset = i * std::mem::size_of::<core::types::Effect>();
-            let effect = core::types::Effect::from_bytes(
-                &effects_data[offset..offset + std::mem::size_of::<core::types::Effect>()],
-            )
-            .ok_or_else(|| format!("Failed to parse effect at index {}", i))?;
-            self.effects[i] = effect;
-        }
+        self.effects = self.load_normalized_records::<core::types::Effect>(
+            "effect.dat",
+            core::constants::MAXEFFECT,
+        )?;
 
         log::info!(
             "Effects data loaded successfully. Loaded {} effects.",
-            num_effects
+            self.effects.len()
         );
 
         Ok(())
@@ -486,17 +407,11 @@ impl Repository {
         let effects_path = self.get_dat_file_path("effect.dat");
 
         log::info!("Saving effects data to {:?}", effects_path);
-
-        let mut effects_data: Vec<u8> = Vec::with_capacity(
-            core::constants::MAXEFFECT * std::mem::size_of::<core::types::Effect>(),
-        );
-
-        for effect in &self.effects {
-            let effect_bytes = effect.to_bytes();
-            effects_data.extend_from_slice(&effect_bytes);
-        }
-
-        fs::write(&effects_path, &effects_data).map_err(|e| e.to_string())?;
+        self.save_normalized_records(
+            "effect.dat",
+            std::mem::size_of::<core::types::Effect>(),
+            self.effects.clone(),
+        )?;
 
         log::info!("Effects data saved successfully.");
         Ok(())
@@ -508,22 +423,11 @@ impl Repository {
     /// The first bytes are parsed into `core::types::Global` using
     /// `from_bytes` and stored in `self.globals`.
     fn load_globals(&mut self) -> Result<(), String> {
-        let globals_path = self.get_dat_file_path("global.dat");
-        log::info!("Loading globals data from {:?}", globals_path);
-        let globals_data = fs::read(&globals_path).map_err(|e| e.to_string())?;
-
-        let expected_size = std::mem::size_of::<core::types::Global>();
-        if globals_data.len() < expected_size {
-            return Err(format!(
-                "Globals data size mismatch: expected at least {}, got {}",
-                expected_size,
-                globals_data.len()
-            ));
-        }
-
-        let slice = &globals_data[..expected_size];
-        self.globals = core::types::Global::from_bytes(slice)
-            .ok_or_else(|| "Failed to parse globals data".to_string())?;
+        let mut records = self.load_normalized_records::<core::types::Global>("global.dat", 1)?;
+        self.globals = records
+            .drain(..)
+            .next()
+            .ok_or_else(|| "global.dat normalized payload is empty".to_string())?;
 
         log::info!("Globals data loaded successfully.");
 
@@ -545,10 +449,14 @@ impl Repository {
         let globals_path = self.get_dat_file_path("global.dat");
 
         log::info!("Saving globals data to {:?}", globals_path);
+        let globals_copy = core::types::Global::from_bytes(&self.globals.to_bytes())
+            .ok_or_else(|| "Failed to clone globals for serialization".to_string())?;
 
-        let globals_data = self.globals.to_bytes();
-
-        fs::write(&globals_path, &globals_data).map_err(|e| e.to_string())?;
+        self.save_normalized_records(
+            "global.dat",
+            std::mem::size_of::<core::types::Global>(),
+            vec![globals_copy],
+        )?;
 
         log::info!("Globals data saved successfully.");
         Ok(())
@@ -650,7 +558,7 @@ impl Repository {
         let mut repo = Repository::new();
         repo.load()?;
         REPOSITORY
-            .set(ReentrantMutex::new(UnsafeCell::new(repo)))
+            .set(SingleThreadCell::new(repo))
             .map_err(|_| "Repository already initialized".to_string())?;
         Ok(())
     }
@@ -661,17 +569,12 @@ impl Repository {
     /// Locks the global `REPOSITORY` reentrant mutex and passes a shared
     /// reference to the provided closure `f`. This guarantees safe concurrent
     /// read access through the closure while the lock is held.
-    fn with_repo<F, R>(f: F) -> R
+    pub fn with_repo<F, R>(f: F) -> R
     where
         F: FnOnce(&Repository) -> R,
     {
-        let lock = REPOSITORY.get().expect("Repository not initialized");
-        let guard = lock.lock();
-        let inner: &UnsafeCell<Repository> = &guard;
-        // SAFETY: We only create a shared reference here while holding the mutex; there are no
-        // concurrent &mut aliases when the mutex is locked.
-        let repo_ref: &Repository = unsafe { &*inner.get() };
-        f(repo_ref)
+        let repo = REPOSITORY.get().expect("Repository not initialized");
+        repo.with(f)
     }
 
     /// Internal helper: acquire the global repository for mutable access.
@@ -679,19 +582,12 @@ impl Repository {
     /// Locks the global `REPOSITORY` reentrant mutex and passes a unique
     /// mutable reference to the provided closure `f`. Reentrancy allows nested
     /// calls from the same thread.
-    fn with_repo_mut<F, R>(f: F) -> R
+    pub fn with_repo_mut<F, R>(f: F) -> R
     where
         F: FnOnce(&mut Repository) -> R,
     {
-        let lock = REPOSITORY.get().expect("Repository not initialized");
-        let guard = lock.lock();
-        let inner: &UnsafeCell<Repository> = &guard;
-        // SAFETY: We create a unique mutable reference from the raw pointer held inside UnsafeCell.
-        // This is safe because the ReentrantMutex provides mutual exclusion across threads and we
-        // only call this function while holding the mutex. Reentrancy ensures nested calls succeed
-        // on the same thread.
-        let repo_mut: &mut Repository = unsafe { &mut *inner.get() };
-        f(repo_mut)
+        let repo = REPOSITORY.get().expect("Repository not initialized");
+        repo.with_mut(f)
     }
 
     // Static accessor methods for read-only access
@@ -758,8 +654,6 @@ impl Repository {
         Self::with_repo(|repo| f(&repo.globals))
     }
 
-    // TODO: Not sure if we need this yet...
-    #[allow(dead_code)]
     /// Execute `f` with a read-only slice of `SeeMap` data used for visibility
     /// calculations. This function is currently unused but kept for completeness.
     pub fn with_see_map<F, R>(f: F) -> R

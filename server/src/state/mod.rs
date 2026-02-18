@@ -1,6 +1,6 @@
-use parking_lot::ReentrantMutex;
-use std::cell::UnsafeCell;
 use std::sync::OnceLock;
+
+use crate::single_thread_cell::SingleThreadCell;
 
 mod admin;
 mod combat;
@@ -15,7 +15,7 @@ mod player_actions;
 mod stats;
 mod visibility;
 
-static STATE: OnceLock<ReentrantMutex<UnsafeCell<State>>> = OnceLock::new();
+static STATE: OnceLock<SingleThreadCell<State>> = OnceLock::new();
 
 pub struct State {
     _visi: [i8; 40 * 40],
@@ -47,7 +47,7 @@ impl State {
     pub fn initialize() -> Result<(), String> {
         let state = State::new();
         STATE
-            .set(ReentrantMutex::new(UnsafeCell::new(state)))
+            .set(SingleThreadCell::new(state))
             .map_err(|_| "State already initialized".to_string())?;
         Ok(())
     }
@@ -57,24 +57,16 @@ impl State {
     where
         F: FnOnce(&State) -> R,
     {
-        let lock = STATE.get().expect("State not initialized");
-        let guard = lock.lock();
-        let inner: &UnsafeCell<State> = &guard;
-        // SAFETY: We are holding the mutex so no other thread can create mutable aliases.
-        let state_ref: &State = unsafe { &*inner.get() };
-        f(state_ref)
+        let state = STATE.get().expect("State not initialized");
+        state.with(f)
     }
 
     fn with_state_mut<F, R>(f: F) -> R
     where
         F: FnOnce(&mut State) -> R,
     {
-        let lock = STATE.get().expect("State not initialized");
-        let guard = lock.lock();
-        let inner: &UnsafeCell<State> = &guard;
-        // SAFETY: We are holding the mutex so we can create a unique mutable reference.
-        let state_mut: &mut State = unsafe { &mut *inner.get() };
-        f(state_mut)
+        let state = STATE.get().expect("State not initialized");
+        state.with_mut(f)
     }
 
     pub fn with<F, R>(f: F) -> R

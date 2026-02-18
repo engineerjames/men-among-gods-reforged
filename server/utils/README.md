@@ -58,6 +58,38 @@ cargo run --package server-utils --bin map_viewer
 - `W/A/S/D`: pan
 - Drag with mouse: pan
 
+### DAT Normalizer
+
+A CLI migration tool that converts legacy packed `.dat` files into a normalized, non-packed Rust representation and writes them using `bincode`.
+
+**Usage:**
+```bash
+cargo run --package server-utils --bin dat_normalizer -- --dat-dir server/assets/.dat
+```
+
+**Options:**
+- `--dat-dir <path>`: directory containing server `.dat` files
+- `--in-place`: replace each `.dat` file with normalized data and create a `.legacy` backup
+- `--reverse`: convert normalized output back into legacy packed `.dat` format
+
+**Output behavior:**
+- Default mode writes side-by-side files with `.normalized` suffix (e.g. `map.dat.normalized`)
+- `--in-place` mode writes normalized data into the original `.dat` paths after creating backups
+
+**Reverse mode behavior:**
+- Reads normalized payloads and writes legacy packed bytes back to `.dat`
+- Side-by-side reverse mode reads `*.dat.normalized` and writes `*.dat.restored`
+- `--reverse --in-place` restores directly to `*.dat` and creates `*.normalized.bak` backups
+
+**Files converted:**
+- `map.dat`
+- `item.dat`
+- `titem.dat`
+- `char.dat`
+- `tchar.dat`
+- `effect.dat`
+- `global.dat`
+
 ## Adding New Utilities
 
 To add a new utility binary:

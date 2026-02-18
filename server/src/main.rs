@@ -15,6 +15,7 @@ mod player;
 mod populate;
 mod repository;
 mod server;
+mod single_thread_cell;
 mod state;
 mod talk;
 

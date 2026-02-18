@@ -2,8 +2,6 @@ use chrono::Timelike;
 use core::constants::{CharacterFlags, MAXPLAYER, TILEX, TILEY};
 use core::stat_buffer::StatisticsBuffer;
 use core::types::Map;
-use parking_lot::ReentrantMutex;
-use std::cell::UnsafeCell;
 use std::io::ErrorKind;
 use std::io::{Read, Write};
 use std::net::TcpListener;
@@ -15,6 +13,7 @@ use crate::god::God;
 use crate::lab9::Labyrinth9;
 use crate::network_manager::NetworkManager;
 use crate::repository::Repository;
+use crate::single_thread_cell::SingleThreadCell;
 use crate::state::State;
 use crate::types::cmap::CMap;
 use crate::types::server_player::ServerPlayer;
@@ -27,8 +26,7 @@ use flate2::Compression;
 /// Stored in a `OnceLock` and containing `MAXPLAYER` `ServerPlayer` entries.
 /// Accessors `Server::with_players` and `Server::with_players_mut` provide
 /// thread-safe read or mutable access via closures.
-static PLAYERS: OnceLock<ReentrantMutex<UnsafeCell<Box<[ServerPlayer; MAXPLAYER]>>>> =
-    OnceLock::new();
+static PLAYERS: OnceLock<SingleThreadCell<Box<[ServerPlayer; MAXPLAYER]>>> = OnceLock::new();
 
 /// Per-character scheduling hints used by `game_tick`.
 ///
@@ -91,7 +89,7 @@ impl Server {
             .map_err(|_| "Failed to convert Vec to Box<[ServerPlayer; MAXPLAYER]>")?;
 
         PLAYERS
-            .set(ReentrantMutex::new(UnsafeCell::new(players)))
+            .set(SingleThreadCell::new(players))
             .map_err(|_| "Players already initialized".to_string())?;
         Ok(())
     }
@@ -105,12 +103,8 @@ impl Server {
     where
         F: FnOnce(&[ServerPlayer]) -> R,
     {
-        let lock = PLAYERS.get().expect("Players not initialized");
-        let guard = lock.lock();
-        let inner: &UnsafeCell<Box<[ServerPlayer; MAXPLAYER]>> = &guard;
-        // SAFETY: We are holding the mutex so creating a shared reference is safe.
-        let boxed: &Box<[ServerPlayer; MAXPLAYER]> = unsafe { &*inner.get() };
-        f(&boxed[..])
+        let players = PLAYERS.get().expect("Players not initialized");
+        players.with(|boxed| f(&boxed[..]))
     }
 
     /// Execute `f` with a mutable view of the player slots.
@@ -122,12 +116,8 @@ impl Server {
     where
         F: FnOnce(&mut [ServerPlayer]) -> R,
     {
-        let lock = PLAYERS.get().expect("Players not initialized");
-        let guard = lock.lock();
-        let inner: &UnsafeCell<Box<[ServerPlayer; MAXPLAYER]>> = &guard;
-        // SAFETY: We are holding the mutex so creating a unique mutable reference is safe.
-        let boxed_mut: &mut Box<[ServerPlayer; MAXPLAYER]> = unsafe { &mut *inner.get() };
-        f(&mut boxed_mut[..])
+        let players = PLAYERS.get().expect("Players not initialized");
+        players.with_mut(|boxed| f(&mut boxed[..]))
     }
 
     /// Check whether an item carried by a player is a 'labyrinth' item and
