@@ -27,6 +27,25 @@ jobs:
       with:
         version: 2-latest
         version-sdl-image: 2-latest
+        version-sdl-mixer: 2-latest
+        version-sdl-gfx: 2-latest
+        add-to-environment: true
+
+    - name: Configure Windows SDL paths for Rust
+      if: matrix.os == 'windows-latest'
+      shell: pwsh
+      run: |
+        "SDL2_DIR=${{ steps.sdl.outputs.prefix }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        "SDL2_LIB_DIR=${{ steps.sdl.outputs.prefix }}/lib" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        "SDL2_INCLUDE_DIR=${{ steps.sdl.outputs.prefix }}/include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        "LIB=${{ steps.sdl.outputs.prefix }}/lib;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+    - name: Diagnose Windows SDL linking
+      if: matrix.os == 'windows-latest'
+      shell: pwsh
+      run: |
+        "SDL prefix: ${{ steps.sdl.outputs.prefix }}"
+        Get-ChildItem "${{ steps.sdl.outputs.prefix }}/lib" | Where-Object { $_.Name -like 'SDL2*.lib' } | Select-Object -ExpandProperty Name
 
     - name: Install Linux build dependencies (Bevy & SDL)
       if: matrix.os == 'ubuntu-latest'

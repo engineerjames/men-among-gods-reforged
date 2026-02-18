@@ -9,6 +9,7 @@ use crate::gfx_cache::GraphicsCache;
 use crate::scenes::scene::SceneType;
 use crate::sfx_cache::SoundCache;
 
+mod account_api;
 mod dpi_scaling;
 mod filepaths;
 mod gfx_cache;
