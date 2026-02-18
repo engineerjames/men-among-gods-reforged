@@ -1,9 +1,9 @@
-use std::path::PathBuf;
 use std::process;
 use std::time::{Duration, Instant};
 
 use egui_sdl2::egui;
 use sdl2::image::InitFlag;
+use sdl2::mixer::{AUDIO_S16LSB, DEFAULT_CHANNELS};
 
 use crate::gfx_cache::GraphicsCache;
 use crate::scenes::scene::SceneType;
@@ -14,49 +14,6 @@ mod filepaths;
 mod gfx_cache;
 mod scenes;
 mod sfx_cache;
-
-/// Attempts to determine the base directory for Men Among Gods data files.
-/// This is where we place the settings.json file, and logs.
-pub fn get_mag_base_dir() -> Option<PathBuf> {
-    let suffix = PathBuf::from(".men-among-gods");
-
-    let debug_or_release = if cfg!(debug_assertions) {
-        "debug"
-    } else {
-        "release"
-    };
-
-    let is_windows = cfg!(target_os = "windows");
-
-    // First, check if we are running in a development environment
-    // This should give us a directory in target/{debug|release}
-    let cargo_directory = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    if cargo_directory.exists() {
-        return Some(
-            cargo_directory
-                .join("..")
-                .join("target")
-                .join(debug_or_release),
-        );
-    }
-
-    // Next, check standard user directories for Unix/Mac OS/Linux
-    if !is_windows {
-        let environment_vars = ["HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME"];
-        for var in environment_vars.iter() {
-            if let Ok(home) = std::env::var(var) {
-                return Some(PathBuf::from(home).join(suffix));
-            }
-        }
-    } else {
-        // Finally, check APPDATA on Windows
-        if let Ok(appdata) = std::env::var("APPDATA") {
-            return Some(PathBuf::from(appdata).join(suffix));
-        }
-    }
-
-    None
-}
 
 fn main() -> Result<(), String> {
     mag_core::initialize_logger(log::LevelFilter::Info, Some("sdl_client.log")).unwrap_or_else(
@@ -69,16 +26,28 @@ fn main() -> Result<(), String> {
     log::info!("Initializing SDL2 contexts...");
     let sdl_context = sdl2::init()?;
     let _image_context = sdl2::image::init(InitFlag::PNG)?;
+    let _audio_subsystem = sdl_context.audio()?;
+
+    let frequency = 44_100;
+    let format = AUDIO_S16LSB;
+    let channels = DEFAULT_CHANNELS; // Stereo
+    let chunk_size = 1_024;
+    sdl2::mixer::open_audio(frequency, format, channels, chunk_size)?;
+
+    // Initialize the mixer with desired frequency, format, channels, and chunk size
+    sdl2::mixer::init(sdl2::mixer::InitFlag::MP3)?;
 
     log::info!("Creating window and event pump...");
     let video = sdl_context.video()?;
-    let window = video
-        .window("Rust SDL2 Starter", 800, 600)
+    let mut window = video
+        .window("Men Among Gods - Reforged v1.3.0", 800, 600)
         .position_centered()
         .allow_highdpi()
         .resizable()
         .build()
         .map_err(|e| e.to_string())?;
+
+    let _ = window.set_minimum_size(800, 600);
 
     let mut event_pump = sdl_context.event_pump()?;
 
@@ -90,7 +59,11 @@ fn main() -> Result<(), String> {
         filepaths::get_gfx_zipfile(),
         egui.painter.canvas.texture_creator(),
     );
-    let _sfx_cache = SoundCache::new();
+    let _sfx_cache = SoundCache::new(
+        filepaths::get_sfx_directory(),
+        filepaths::get_music_directory(),
+    );
+
     let mut scene_manager = scenes::scene::SceneManager::new(gfx_cache);
     let mut last_frame = Instant::now();
 
