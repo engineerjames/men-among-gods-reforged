@@ -3,11 +3,10 @@ use std::process;
 use std::time::{Duration, Instant};
 
 use egui_sdl2::egui;
-use sdl2::event::Event;
 use sdl2::image::InitFlag;
-use sdl2::keyboard::Keycode;
 
 use crate::gfx_cache::GraphicsCache;
+use crate::scenes::scene::SceneType;
 use crate::sfx_cache::SoundCache;
 
 mod dpi_scaling;
@@ -136,19 +135,22 @@ fn main() -> Result<(), String> {
 
         // Poll events once, handle quit and forward to egui
         for event in event_pump.poll_iter() {
-            if let Event::Quit { .. }
-            | Event::KeyDown {
-                keycode: Some(Keycode::Escape),
-                ..
-            } = event
-            {
-                break 'running;
+            if let sdl2::event::Event::Quit { .. } = event {
+                next_scene = Some(SceneType::Exit);
             }
+
             let event =
                 dpi_scaling::adjust_mouse_event_for_hidpi(event, egui.painter.canvas.window());
+
             let _ = egui.on_event(&event);
+
             if next_scene.is_none() {
                 next_scene = scene_manager.active_scene().handle_event(&event);
+            }
+
+            // After each event, check if we need to switch scenes (e.g. quit event)
+            if next_scene.is_some_and(|s| s == SceneType::Exit) {
+                break 'running;
             }
         }
 
@@ -169,8 +171,9 @@ fn main() -> Result<(), String> {
         egui.paint();
         egui.present();
 
-        if let Some(change) = next_scene {
-            scene_manager.set_scene(change);
+        if let Some(scene) = next_scene {
+            log::info!("Scene change requested: {:?}", scene);
+            scene_manager.set_scene(scene);
         }
 
         std::thread::sleep(Duration::from_millis(16));

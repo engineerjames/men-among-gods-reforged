@@ -1,26 +1,27 @@
 use std::time::Duration;
 
-use crate::scenes::scene::{Scene, SceneType};
 use egui_sdl2::egui::{self, Align2, Vec2};
 use sdl2::{event::Event, pixels::Color, render::Canvas, video::Window};
 
-pub struct LoginScene {
-    server_ip: String,
+use crate::scenes::scene::{Scene, SceneType};
+
+pub struct NewAccountScene {
+    email: String,
     username: String,
     password: String,
 }
 
-impl LoginScene {
+impl NewAccountScene {
     pub fn new() -> Self {
-        Self {
-            server_ip: "127.0.0.1".to_owned(),
+        NewAccountScene {
+            email: String::new(),
             username: String::new(),
             password: String::new(),
         }
     }
 }
 
-impl Scene for LoginScene {
+impl Scene for NewAccountScene {
     fn handle_event(&mut self, _event: &Event) -> Option<SceneType> {
         None
     }
@@ -46,12 +47,12 @@ impl Scene for LoginScene {
             .resizable(false)
             .show(ctx, |ui| {
                 ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-                    ui.heading("Account Login");
+                    ui.heading("Create Account");
                 });
                 ui.add_space(10.0);
 
-                ui.label("IP Address (IPv4)");
-                ui.add(egui::TextEdit::singleline(&mut self.server_ip).desired_width(260.0));
+                ui.label("E-mail");
+                ui.add(egui::TextEdit::singleline(&mut self.email).desired_width(260.0));
                 ui.add_space(10.0);
 
                 ui.label("Username");
@@ -66,35 +67,31 @@ impl Scene for LoginScene {
                 );
                 ui.add_space(12.0);
 
-                let (login_clicked, create_clicked) = ui
+                let (create_clicked, cancel_clicked) = ui
                     .horizontal(|ui| {
-                        let login_clicked = ui
-                            .add(egui::Button::new("Login").min_size([180.0, 32.0].into()))
-                            .clicked();
-
                         let create_clicked = ui
-                            .add(
-                                egui::Button::new("Create new account")
-                                    .min_size([180.0, 32.0].into()),
-                            )
+                            .add(egui::Button::new("Create").min_size([180.0, 32.0].into()))
                             .clicked();
 
-                        (login_clicked, create_clicked)
+                        let cancel_clicked = ui
+                            .add(egui::Button::new("Cancel").min_size([180.0, 32.0].into()))
+                            .clicked();
+
+                        (create_clicked, cancel_clicked)
                     })
                     .inner;
 
-                if login_clicked {
-                    log::info!(
-                        "Login clicked: ip={}, username={}",
-                        self.server_ip,
-                        self.username
-                    );
-                    next = Some(SceneType::Game);
+                if cancel_clicked {
+                    log::info!("Cancel clicked");
+                    next = Some(SceneType::Login);
                 }
 
                 if create_clicked {
-                    log::info!("Create new account clicked");
-                    next = Some(SceneType::NewAccount);
+                    log::info!(
+                        "Create new account clicked with email={}, username={}",
+                        self.email,
+                        self.username
+                    );
                 }
             });
 

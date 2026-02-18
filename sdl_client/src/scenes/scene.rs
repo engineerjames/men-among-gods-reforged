@@ -12,10 +12,12 @@ pub trait Scene {
     fn render_ui(&mut self, ctx: &egui::Context) -> Option<SceneType>;
 }
 
-#[derive(Hash, Eq, PartialEq)]
+#[derive(Hash, Eq, PartialEq, Debug, Copy, Clone)]
 pub enum SceneType {
     Login,
     Game,
+    NewAccount,
+    Exit,
 }
 
 pub struct SceneManager {
@@ -37,6 +39,11 @@ impl SceneManager {
             Box::new(crate::scenes::game::GameScene::new(graphics_cache)),
         );
 
+        scene_map.insert(
+            SceneType::NewAccount,
+            Box::new(crate::scenes::new_account::NewAccountScene::new()),
+        );
+
         SceneManager {
             active_scene: SceneType::Login,
             scenes: scene_map,
@@ -48,6 +55,11 @@ impl SceneManager {
     }
 
     pub fn set_scene(&mut self, scene_type: SceneType) {
+        if self.scenes.contains_key(&scene_type) {
+            log::info!("Switching to scene: {:?}", scene_type);
+        } else {
+            log::error!("Attempted to switch to unknown scene: {:?}", scene_type);
+        }
         self.active_scene = scene_type;
     }
 }
