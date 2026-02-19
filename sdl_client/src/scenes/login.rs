@@ -106,43 +106,62 @@ impl Scene for LoginScene {
             .collapsible(false)
             .resizable(false)
             .show(ctx, |ui| {
-                ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-                    ui.heading("Account Login");
-                });
-                ui.add_space(10.0);
-
-                ui.label("IP Address (IPv4)");
-                ui.add(egui::TextEdit::singleline(&mut self.server_ip).desired_width(260.0));
-                ui.add_space(10.0);
-
-                ui.label("Username");
-                ui.add(egui::TextEdit::singleline(&mut self.username).desired_width(260.0));
-                ui.add_space(8.0);
-
-                ui.label("Password");
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.password)
-                        .password(true)
-                        .desired_width(260.0),
-                );
-                ui.add_space(12.0);
-
                 let (login_clicked, create_clicked) = ui
-                    .horizontal(|ui| {
-                        let login_clicked = ui
-                            .add(egui::Button::new("Login").min_size([180.0, 32.0].into()))
-                            .clicked();
+                    .add_enabled_ui(!self.is_submitting, |ui| {
+                        ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+                            ui.heading("Account Login");
+                        });
+                        ui.add_space(10.0);
 
-                        let create_clicked = ui
-                            .add(
-                                egui::Button::new("Create new account")
-                                    .min_size([180.0, 32.0].into()),
-                            )
-                            .clicked();
+                        ui.label("IP Address (IPv4)");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.server_ip).desired_width(260.0),
+                        );
+                        ui.add_space(10.0);
 
-                        (login_clicked, create_clicked)
+                        ui.label("Username");
+                        ui.add(egui::TextEdit::singleline(&mut self.username).desired_width(260.0));
+                        ui.add_space(8.0);
+
+                        ui.label("Password");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.password)
+                                .password(true)
+                                .desired_width(260.0),
+                        );
+                        ui.add_space(12.0);
+
+                        ui.horizontal(|ui| {
+                            let login_clicked = ui
+                                .add(egui::Button::new("Login").min_size([180.0, 32.0].into()))
+                                .clicked();
+
+                            let create_clicked = ui
+                                .add(
+                                    egui::Button::new("Create new account")
+                                        .min_size([180.0, 32.0].into()),
+                                )
+                                .clicked();
+
+                            (login_clicked, create_clicked)
+                        })
+                        .inner
                     })
                     .inner;
+
+                if self.is_submitting {
+                    ui.add_space(8.0);
+                    ui.label("Logging in...");
+
+                    if self.error_message.is_some() {
+                        self.error_message = None;
+                    }
+                }
+
+                if let Some(error_message) = &self.error_message {
+                    ui.add_space(8.0);
+                    ui.colored_label(egui::Color32::RED, error_message);
+                }
 
                 if login_clicked {
                     log::info!(
