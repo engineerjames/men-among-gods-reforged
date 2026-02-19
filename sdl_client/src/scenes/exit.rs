@@ -12,6 +12,12 @@ pub struct ExitScene {
     // No state needed for the exit scene, but we can add fields here if we want to display any information or perform any cleanup actions.
 }
 
+impl ExitScene {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
 impl Scene for ExitScene {
     fn handle_event(&mut self, _app_state: &mut AppState, _event: &Event) -> Option<SceneType> {
         None
