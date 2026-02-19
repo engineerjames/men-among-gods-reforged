@@ -20,11 +20,19 @@ fn get_server_url() -> String {
         .ok()
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| format!("http://{}", get_server_ip()))
+}
+
+pub fn get_server_ip() -> String {
+    std::env::var("MAG_SERVER_IP")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
         .unwrap_or_else(|| {
             if cfg!(debug_assertions) {
-                "http://127.0.0.1".to_string()
+                "127.0.0.1".to_string()
             } else {
-                "http://menamonggods.ddns.net".to_string()
+                "menamonggods.ddns.net".to_string()
             }
         })
 }

@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    account_api,
+    account_api, hosts,
     scenes::scene::{Scene, SceneType},
     state::AppState,
 };
@@ -24,7 +24,7 @@ pub struct LoginScene {
 impl LoginScene {
     pub fn new() -> Self {
         Self {
-            server_ip: "127.0.0.1".to_owned(),
+            server_ip: hosts::get_server_ip(),
             username: String::new(),
             password: String::new(),
             is_submitting: false,
@@ -35,13 +35,7 @@ impl LoginScene {
     }
 
     fn login(username: &str, password: &str) -> Result<String, String> {
-        let base_url = if cfg!(debug_assertions) {
-            "http://127.0.0.1:5554"
-        } else {
-            "http://menamonggods.ddns.net:5554"
-        };
-
-        account_api::login(base_url, username, password)
+        account_api::login(&hosts::get_api_base_url(), username, password)
     }
 }
 
