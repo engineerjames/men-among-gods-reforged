@@ -1,6 +1,7 @@
 pub mod character_creation;
 pub mod character_selection;
 pub mod game;
+pub mod helpers;
 pub mod login;
 pub mod new_account;
 pub mod scene;

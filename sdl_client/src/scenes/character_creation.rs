@@ -12,7 +12,10 @@ use sdl2::{event::Event, render::Canvas, video::Window};
 
 use crate::{
     account_api,
-    scenes::scene::{Scene, SceneType},
+    scenes::{
+        helpers::texture_id_for_character,
+        scene::{Scene, SceneType},
+    },
 };
 
 pub struct CharacterCreationScene {
@@ -57,6 +60,12 @@ impl Scene for CharacterCreationScene {
 
     fn render_ui(&mut self, ctx: &egui::Context) -> Option<SceneType> {
         let mut next = None;
+
+        let selected_sex = self.selected_sex;
+        let harakim_texture = texture_id_for_character(ctx, &mut gfx, Class::Harakim, selected_sex);
+        let templar_texture = texture_id_for_character(ctx, &mut gfx, Class::Templar, selected_sex);
+        let mercenary_texture =
+            texture_id_for_character(ctx, &mut gfx, Class::Mercenary, selected_sex);
 
         egui::Window::new("Create Character")
             .default_height(800.0)

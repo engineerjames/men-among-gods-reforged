@@ -48,12 +48,12 @@ impl SceneManager {
 
         scene_map.insert(
             SceneType::CharacterCreation,
-            Box::new(crate::scenes::character_creation::CharacterCreationScene {}),
+            Box::new(crate::scenes::character_creation::CharacterCreationScene::new()),
         );
 
         scene_map.insert(
             SceneType::CharacterSelection,
-            Box::new(crate::scenes::character_selection::CharacterSelectionScene {}),
+            Box::new(crate::scenes::character_selection::CharacterSelectionScene::new()),
         );
 
         SceneManager {
