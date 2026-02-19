@@ -8,6 +8,7 @@ use sdl2::mixer::{AUDIO_S16LSB, DEFAULT_CHANNELS};
 use crate::gfx_cache::GraphicsCache;
 use crate::scenes::scene::SceneType;
 use crate::sfx_cache::SoundCache;
+use crate::state::{ApiTokenState, AppState};
 
 mod account_api;
 mod dpi_scaling;
@@ -15,6 +16,7 @@ mod filepaths;
 mod gfx_cache;
 mod scenes;
 mod sfx_cache;
+mod state;
 
 fn main() -> Result<(), String> {
     mag_core::initialize_logger(log::LevelFilter::Info, Some("sdl_client.log")).unwrap_or_else(
@@ -60,12 +62,14 @@ fn main() -> Result<(), String> {
         filepaths::get_gfx_zipfile(),
         egui.painter.canvas.texture_creator(),
     );
-    let _sfx_cache = SoundCache::new(
+    let sfx_cache = SoundCache::new(
         filepaths::get_sfx_directory(),
         filepaths::get_music_directory(),
     );
+    let api_state = ApiTokenState::new(state::default_api_base_url());
+    let app_state = AppState::new(gfx_cache, sfx_cache, api_state);
 
-    let mut scene_manager = scenes::scene::SceneManager::new(gfx_cache);
+    let mut scene_manager = scenes::scene::SceneManager::new(app_state);
     let mut last_frame = Instant::now();
 
     // Log info about the monitor, graphics card, etc.
@@ -119,7 +123,7 @@ fn main() -> Result<(), String> {
             let _ = egui.on_event(&event);
 
             if next_scene.is_none() {
-                next_scene = scene_manager.active_scene().handle_event(&event);
+                next_scene = scene_manager.handle_event(&event);
             }
 
             // After each event, check if we need to switch scenes (e.g. quit event)
@@ -129,16 +133,14 @@ fn main() -> Result<(), String> {
         }
 
         if next_scene.is_none() {
-            next_scene = scene_manager.active_scene().update(dt);
+            next_scene = scene_manager.update(dt);
         }
 
-        scene_manager
-            .active_scene()
-            .render_world(&mut egui.painter.canvas)?;
+        scene_manager.render_world(&mut egui.painter.canvas)?;
 
         egui.run(|ctx: &egui::Context| {
             if next_scene.is_none() {
-                next_scene = scene_manager.active_scene().render_ui(ctx);
+                next_scene = scene_manager.render_ui(ctx);
             }
         });
 

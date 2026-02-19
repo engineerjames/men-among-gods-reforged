@@ -1,7 +1,4 @@
-use std::{
-    sync::{mpsc, Arc, Mutex},
-    time::Duration,
-};
+use std::{sync::mpsc, time::Duration};
 
 use egui_sdl2::egui::{self, Pos2};
 use mag_core::{
@@ -16,6 +13,7 @@ use crate::{
         helpers::texture_id_for_character,
         scene::{Scene, SceneType},
     },
+    state::AppState,
 };
 
 pub struct CharacterCreationScene {
@@ -43,29 +41,42 @@ impl CharacterCreationScene {
 }
 
 impl Scene for CharacterCreationScene {
-    fn handle_event(&mut self, _event: &Event) -> Option<SceneType> {
+    fn handle_event(&mut self, _app_state: &mut AppState, _event: &Event) -> Option<SceneType> {
         // Handle input events for character creation
         None
     }
 
-    fn update(&mut self, _dt: Duration) -> Option<SceneType> {
+    fn update(&mut self, _app_state: &mut AppState, _dt: Duration) -> Option<SceneType> {
         // Update any character creation logic
         None
     }
 
-    fn render_world(&mut self, _canvas: &mut Canvas<Window>) -> Result<(), String> {
+    fn render_world(
+        &mut self,
+        _app_state: &mut AppState,
+        _canvas: &mut Canvas<Window>,
+    ) -> Result<(), String> {
         // Render any character creation background or world elements
         Ok(())
     }
 
-    fn render_ui(&mut self, ctx: &egui::Context) -> Option<SceneType> {
+    fn render_ui(&mut self, app_state: &mut AppState, ctx: &egui::Context) -> Option<SceneType> {
         let mut next = None;
 
         let selected_sex = self.selected_sex;
-        let harakim_texture = texture_id_for_character(ctx, &mut gfx, Class::Harakim, selected_sex);
-        let templar_texture = texture_id_for_character(ctx, &mut gfx, Class::Templar, selected_sex);
-        let mercenary_texture =
-            texture_id_for_character(ctx, &mut gfx, Class::Mercenary, selected_sex);
+        let harakim_texture =
+            texture_id_for_character(ctx, &mut app_state.gfx_cache, Class::Harakim, selected_sex);
+        let templar_texture =
+            texture_id_for_character(ctx, &mut app_state.gfx_cache, Class::Templar, selected_sex);
+        let mercenary_texture = texture_id_for_character(
+            ctx,
+            &mut app_state.gfx_cache,
+            Class::Mercenary,
+            selected_sex,
+        );
+        let username = app_state.api.username.clone();
+        let token = app_state.api.token.clone();
+        let base_url = app_state.api.base_url.clone();
 
         egui::Window::new("Create Character")
             .default_height(800.0)
@@ -76,7 +87,7 @@ impl Scene for CharacterCreationScene {
             .show(ctx, |ui| {
                 ui.heading("Create character");
 
-                if let Some(username) = api_session.username.as_deref() {
+                if let Some(username) = username.as_deref() {
                     ui.label(format!("Logged in as: {username}"));
                 } else {
                     ui.label("No account session available");
@@ -168,7 +179,7 @@ impl Scene for CharacterCreationScene {
                     let name = self.name.trim().to_string();
                     let description = self.description.trim().to_string();
 
-                    let Some(token) = api_session.token.as_deref() else {
+                    let Some(token) = token.as_deref() else {
                         self.error = Some("Missing account session token".to_string());
                         return;
                     };
@@ -181,7 +192,7 @@ impl Scene for CharacterCreationScene {
                     self.is_busy = true;
                     self.error = None;
 
-                    let base_url = api_session.base_url.clone();
+                    let base_url = base_url.clone();
                     let token = token.to_string();
                     let race = self.selected_class;
                     let sex = self.selected_sex;
@@ -191,8 +202,7 @@ impl Scene for CharacterCreationScene {
                         Some(description)
                     };
 
-                    let (tx, rx) = mpsc::channel();
-                    let rx = Arc::new(Mutex::new(rx));
+                    let (tx, _rx) = mpsc::channel();
                     self.account_thread = Some(std::thread::spawn(move || {
                         let result = account_api::create_character(
                             &base_url,

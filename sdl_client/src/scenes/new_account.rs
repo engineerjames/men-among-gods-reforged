@@ -9,6 +9,7 @@ use sdl2::{event::Event, pixels::Color, render::Canvas, video::Window};
 use crate::{
     account_api,
     scenes::scene::{Scene, SceneType},
+    state::AppState,
 };
 
 pub struct NewAccountScene {
@@ -34,7 +35,12 @@ impl NewAccountScene {
         }
     }
 
-    fn create_account(email: &str, username: &str, password: &str) -> Result<(), String> {
+    fn create_account(
+        base_url: &str,
+        email: &str,
+        username: &str,
+        password: &str,
+    ) -> Result<(), String> {
         let email = email.trim();
         let username = username.trim();
         let password = password.trim();
@@ -51,30 +57,16 @@ impl NewAccountScene {
             return Err("Password is required".to_string());
         }
 
-        // TODO: Base URL should be configurable in the client settings? At the very lease
-        // define this in one place...
-        let base_url = std::env::var("MAG_API_BASE_URL")
-            .ok()
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty())
-            .unwrap_or_else(|| {
-                if cfg!(debug_assertions) {
-                    "http://127.0.0.1:5554".to_string()
-                } else {
-                    "http://menamonggods.ddns.net:5554".to_string()
-                }
-            });
-
-        account_api::create_account(&base_url, email, username, password).map(|_| ())
+        account_api::create_account(base_url, email, username, password).map(|_| ())
     }
 }
 
 impl Scene for NewAccountScene {
-    fn handle_event(&mut self, _event: &Event) -> Option<SceneType> {
+    fn handle_event(&mut self, _app_state: &mut AppState, _event: &Event) -> Option<SceneType> {
         None
     }
 
-    fn update(&mut self, _dt: Duration) -> Option<SceneType> {
+    fn update(&mut self, _app_state: &mut AppState, _dt: Duration) -> Option<SceneType> {
         if self.is_submitting {
             let result = if let Some(receiver) = &self.api_result_rx {
                 match receiver.try_recv() {
@@ -102,13 +94,17 @@ impl Scene for NewAccountScene {
         None
     }
 
-    fn render_world(&mut self, canvas: &mut Canvas<Window>) -> Result<(), String> {
+    fn render_world(
+        &mut self,
+        _app_state: &mut AppState,
+        canvas: &mut Canvas<Window>,
+    ) -> Result<(), String> {
         canvas.set_draw_color(Color::RGB(20, 20, 28));
         canvas.clear();
         Ok(())
     }
 
-    fn render_ui(&mut self, ctx: &egui::Context) -> Option<SceneType> {
+    fn render_ui(&mut self, app_state: &mut AppState, ctx: &egui::Context) -> Option<SceneType> {
         let mut next = None;
 
         egui::Window::new("Men Among Gods - Reforged")
@@ -183,12 +179,13 @@ impl Scene for NewAccountScene {
                     self.is_submitting = true;
                     self.api_result_rx = Some(receiver);
 
+                    let base_url = app_state.api.base_url.clone();
                     let email = self.email.clone();
                     let username = self.username.clone();
                     let password = self.password.clone();
 
                     self.account_thread = Some(std::thread::spawn(move || {
-                        let result = Self::create_account(&email, &username, &password);
+                        let result = Self::create_account(&base_url, &email, &username, &password);
                         if let Err(error) = sender.send(result) {
                             log::error!("Failed to send account creation result: {}", error);
                         }

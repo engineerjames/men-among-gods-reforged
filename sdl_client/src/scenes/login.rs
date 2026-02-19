@@ -3,6 +3,7 @@ use std::{sync::mpsc::TryRecvError, time::Duration};
 use crate::{
     account_api,
     scenes::scene::{Scene, SceneType},
+    state::AppState,
 };
 use egui_sdl2::egui::{self, Align2, Vec2};
 use sdl2::{event::Event, pixels::Color, render::Canvas, video::Window};
@@ -43,11 +44,11 @@ impl LoginScene {
 }
 
 impl Scene for LoginScene {
-    fn handle_event(&mut self, _event: &Event) -> Option<SceneType> {
+    fn handle_event(&mut self, _app_state: &mut AppState, _event: &Event) -> Option<SceneType> {
         None
     }
 
-    fn update(&mut self, _dt: Duration) -> Option<SceneType> {
+    fn update(&mut self, _app_state: &mut AppState, _dt: Duration) -> Option<SceneType> {
         if self.is_submitting {
             let result = if let Some(receiver) = &self.api_result_rx {
                 match receiver.try_recv() {
@@ -74,13 +75,17 @@ impl Scene for LoginScene {
         None
     }
 
-    fn render_world(&mut self, canvas: &mut Canvas<Window>) -> Result<(), String> {
+    fn render_world(
+        &mut self,
+        _app_state: &mut AppState,
+        canvas: &mut Canvas<Window>,
+    ) -> Result<(), String> {
         canvas.set_draw_color(Color::RGB(20, 20, 28));
         canvas.clear();
         Ok(())
     }
 
-    fn render_ui(&mut self, ctx: &egui::Context) -> Option<SceneType> {
+    fn render_ui(&mut self, app_state: &mut AppState, ctx: &egui::Context) -> Option<SceneType> {
         let mut next = None;
 
         egui::Window::new("Men Among Gods - Reforged")
@@ -129,6 +134,7 @@ impl Scene for LoginScene {
                     .inner;
 
                 if login_clicked {
+                    app_state.api.username = Some(self.username.clone());
                     log::info!(
                         "Login clicked: ip={}, username={}",
                         self.server_ip,
