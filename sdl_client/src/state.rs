@@ -34,17 +34,3 @@ impl AppState {
         }
     }
 }
-
-pub fn default_api_base_url() -> String {
-    std::env::var("MAG_API_BASE_URL")
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| {
-            if cfg!(debug_assertions) {
-                "http://127.0.0.1:5554".to_string()
-            } else {
-                "http://menamonggods.ddns.net:5554".to_string()
-            }
-        })
-}

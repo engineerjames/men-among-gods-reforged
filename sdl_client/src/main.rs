@@ -14,6 +14,7 @@ mod account_api;
 mod dpi_scaling;
 mod filepaths;
 mod gfx_cache;
+mod hosts;
 mod scenes;
 mod sfx_cache;
 mod state;
@@ -66,7 +67,7 @@ fn main() -> Result<(), String> {
         filepaths::get_sfx_directory(),
         filepaths::get_music_directory(),
     );
-    let api_state = ApiTokenState::new(state::default_api_base_url());
+    let api_state = ApiTokenState::new(hosts::get_api_base_url());
     let mut app_state = AppState::new(gfx_cache, sfx_cache, api_state);
 
     let mut scene_manager = scenes::scene::SceneManager::new();
