@@ -63,6 +63,8 @@ impl SceneManager {
             Box::new(crate::scenes::character_selection::CharacterSelectionScene::new()),
         );
 
+        scene_map.insert(SceneType::Exit, Box::new(crate::scenes::exit::ExitScene {}));
+
         SceneManager {
             active_scene: SceneType::Login,
             scenes: scene_map,
