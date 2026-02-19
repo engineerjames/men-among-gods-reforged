@@ -5,6 +5,7 @@ pub struct ApiTokenState {
     pub base_url: String,
     pub username: Option<String>,
     pub token: Option<String>,
+    pub login_target: Option<(u64, i32)>,
 }
 
 impl ApiTokenState {
@@ -13,13 +14,8 @@ impl ApiTokenState {
             base_url,
             username: None,
             token: None,
+            login_target: None,
         }
-    }
-
-    pub fn is_authenticated(&self) -> bool {
-        self.token
-            .as_deref()
-            .is_some_and(|token| !token.trim().is_empty())
     }
 }
 
