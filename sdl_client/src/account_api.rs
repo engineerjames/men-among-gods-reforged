@@ -22,7 +22,6 @@ use mag_core::types::api::{
 /// # Returns
 /// * `Ok(hash)` containing the PHC string.
 /// * `Err(String)` when hashing fails.
-#[allow(dead_code)]
 fn hash_password(username: &str, password: &str) -> Result<String, String> {
     let username_lc = username.trim().to_lowercase();
     let salt_seed = format!("mag:{}", username_lc);
@@ -45,7 +44,6 @@ fn hash_password(username: &str, password: &str) -> Result<String, String> {
 /// # Returns
 /// * `Ok(token)` containing the JWT.
 /// * `Err(String)` when the request or authentication fails.
-#[allow(dead_code)]
 pub fn login(base_url: &str, username: &str, password: &str) -> Result<String, String> {
     let password_hash = hash_password(username, password)?;
     let client = Client::builder()
@@ -95,7 +93,6 @@ pub fn login(base_url: &str, username: &str, password: &str) -> Result<String, S
 /// # Returns
 /// * `Ok(message)` on success.
 /// * `Err(String)` when validation or the request fails.
-#[allow(dead_code)]
 pub fn create_account(
     base_url: &str,
     email: &str,
@@ -151,7 +148,6 @@ pub fn create_account(
 /// # Returns
 /// * `Ok(CharacterSummary)` on success.
 /// * `Err(String)` when validation or the request fails.
-#[allow(dead_code)]
 pub fn create_character(
     base_url: &str,
     token: &str,
@@ -302,7 +298,6 @@ pub fn delete_character(base_url: &str, token: &str, character_id: u64) -> Resul
 /// Creates a short-lived, one-time login ticket for the game server.
 ///
 /// The returned ticket is meant to be sent over the TCP login handshake using `CL_API_LOGIN`.
-#[allow(dead_code)]
 pub fn create_game_login_ticket(
     base_url: &str,
     token: &str,

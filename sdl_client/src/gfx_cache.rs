@@ -9,9 +9,16 @@ use sdl2::{
 };
 use zip::ZipArchive;
 
+pub struct CachedRgbaImage {
+    pub width: usize,
+    pub height: usize,
+    pub pixels: Vec<u8>,
+}
+
 pub struct GraphicsCache {
     sprite_cache: HashMap<usize, Texture>,
     avg_color_cache: HashMap<usize, (u8, u8, u8)>,
+    rgba_image_cache: HashMap<usize, CachedRgbaImage>,
     creator: TextureCreator<WindowContext>,
     archive: ZipArchive<File>,
     index_to_filename: HashMap<usize, String>,
@@ -62,6 +69,7 @@ impl GraphicsCache {
         GraphicsCache {
             sprite_cache: HashMap::new(),
             avg_color_cache: HashMap::new(),
+            rgba_image_cache: HashMap::new(),
             creator,
             archive,
             index_to_filename,
@@ -91,6 +99,21 @@ impl GraphicsCache {
         &self.sprite_cache[&id]
     }
 
+    pub fn get_rgba_image(&mut self, id: usize) -> Option<&CachedRgbaImage> {
+        if self.rgba_image_cache.contains_key(&id) {
+            return self.rgba_image_cache.get(&id);
+        }
+
+        let filename = self.index_to_filename.get(&id)?.to_string();
+        let mut file = self.archive.by_name(&filename).ok()?;
+        let mut buffer = Vec::new();
+        file.read_to_end(&mut buffer).ok()?;
+
+        let rgba_image = Self::decode_rgba_image(&buffer)?;
+        self.rgba_image_cache.insert(id, rgba_image);
+        self.rgba_image_cache.get(&id)
+    }
+
     fn load_texture_from_zip(&mut self, id: usize) -> Option<Texture> {
         if let Some(filename) = self.index_to_filename.get(&id) {
             if let Ok(mut file) = self.archive.by_name(filename) {
@@ -99,6 +122,9 @@ impl GraphicsCache {
                 if let Ok(texture) = self.creator.load_texture_bytes(&buffer) {
                     self.avg_color_cache
                         .insert(id, Self::calculate_avg_color(&buffer));
+                    if let Some(rgba_image) = Self::decode_rgba_image(&buffer) {
+                        self.rgba_image_cache.insert(id, rgba_image);
+                    }
                     return Some(texture);
                 }
             }
@@ -108,73 +134,32 @@ impl GraphicsCache {
     }
 
     fn calculate_avg_color(image_bytes: &[u8]) -> (u8, u8, u8) {
-        let rwops = match RWops::from_bytes(image_bytes) {
-            Ok(rwops) => rwops,
-            Err(error) => {
-                log::warn!(
-                    "Failed to create RWops for average color calculation: {}",
-                    error
-                );
-                return (0, 0, 0);
-            }
+        let rgba_image = match Self::decode_rgba_image(image_bytes) {
+            Some(image) => image,
+            None => return (0, 0, 0),
         };
 
-        let surface = match rwops.load() {
-            Ok(surface) => surface,
-            Err(error) => {
-                log::warn!(
-                    "Failed to decode image for average color calculation: {}",
-                    error
-                );
-                return (0, 0, 0);
-            }
-        };
-
-        let surface = match surface.convert_format(PixelFormatEnum::RGBA32) {
-            Ok(surface) => surface,
-            Err(error) => {
-                log::warn!(
-                    "Failed to convert image format for average color calculation: {}",
-                    error
-                );
-                return (0, 0, 0);
-            }
-        };
-
-        let width = surface.width() as usize;
-        let height = surface.height() as usize;
-        if width == 0 || height == 0 {
+        if rgba_image.width == 0 || rgba_image.height == 0 {
             return (0, 0, 0);
         }
 
-        let pitch = surface.pitch() as usize;
-        let pixels = match surface.without_lock() {
-            Some(pixels) => pixels,
-            None => {
-                log::warn!("Failed to access pixel buffer for average color calculation");
-                return (0, 0, 0);
-            }
-        };
+        let pixels = &rgba_image.pixels;
 
         let mut total_r: u64 = 0;
         let mut total_g: u64 = 0;
         let mut total_b: u64 = 0;
         let mut alpha_sum: u64 = 0;
 
-        for y in 0..height {
-            let row_start = y * pitch;
-            for x in 0..width {
-                let offset = row_start + (x * 4);
-                let r = pixels[offset] as u64;
-                let g = pixels[offset + 1] as u64;
-                let b = pixels[offset + 2] as u64;
-                let a = pixels[offset + 3] as u64;
+        for pixel in pixels.chunks_exact(4) {
+            let r = pixel[0] as u64;
+            let g = pixel[1] as u64;
+            let b = pixel[2] as u64;
+            let a = pixel[3] as u64;
 
-                total_r += r * a;
-                total_g += g * a;
-                total_b += b * a;
-                alpha_sum += a;
-            }
+            total_r += r * a;
+            total_g += g * a;
+            total_b += b * a;
+            alpha_sum += a;
         }
 
         if alpha_sum == 0 {
@@ -186,5 +171,61 @@ impl GraphicsCache {
             (total_g / alpha_sum) as u8,
             (total_b / alpha_sum) as u8,
         )
+    }
+
+    fn decode_rgba_image(image_bytes: &[u8]) -> Option<CachedRgbaImage> {
+        let rwops = match RWops::from_bytes(image_bytes) {
+            Ok(rwops) => rwops,
+            Err(error) => {
+                log::warn!("Failed to create RWops for image decode: {}", error);
+                return None;
+            }
+        };
+
+        let surface = match rwops.load() {
+            Ok(surface) => surface,
+            Err(error) => {
+                log::warn!("Failed to decode image: {}", error);
+                return None;
+            }
+        };
+
+        let surface = match surface.convert_format(PixelFormatEnum::RGBA32) {
+            Ok(surface) => surface,
+            Err(error) => {
+                log::warn!("Failed to convert image format to RGBA32: {}", error);
+                return None;
+            }
+        };
+
+        let width = surface.width() as usize;
+        let height = surface.height() as usize;
+        if width == 0 || height == 0 {
+            return None;
+        }
+
+        let pixels = match surface.without_lock() {
+            Some(pixels) => pixels,
+            None => {
+                log::warn!("Failed to access pixel buffer for image decode");
+                return None;
+            }
+        };
+
+        let pitch = surface.pitch() as usize;
+        let row_size = width * 4;
+        let mut contiguous = Vec::with_capacity(height * row_size);
+
+        for y in 0..height {
+            let row_start = y * pitch;
+            let row_end = row_start + row_size;
+            contiguous.extend_from_slice(&pixels[row_start..row_end]);
+        }
+
+        Some(CachedRgbaImage {
+            width,
+            height,
+            pixels: contiguous,
+        })
     }
 }

@@ -8,13 +8,16 @@ use sdl2::mixer::{AUDIO_S16LSB, DEFAULT_CHANNELS};
 use crate::gfx_cache::GraphicsCache;
 use crate::scenes::scene::SceneType;
 use crate::sfx_cache::SoundCache;
+use crate::state::{ApiTokenState, AppState};
 
 mod account_api;
 mod dpi_scaling;
 mod filepaths;
 mod gfx_cache;
+mod hosts;
 mod scenes;
 mod sfx_cache;
+mod state;
 
 fn main() -> Result<(), String> {
     mag_core::initialize_logger(log::LevelFilter::Info, Some("sdl_client.log")).unwrap_or_else(
@@ -60,12 +63,14 @@ fn main() -> Result<(), String> {
         filepaths::get_gfx_zipfile(),
         egui.painter.canvas.texture_creator(),
     );
-    let _sfx_cache = SoundCache::new(
+    let sfx_cache = SoundCache::new(
         filepaths::get_sfx_directory(),
         filepaths::get_music_directory(),
     );
+    let api_state = ApiTokenState::new(hosts::get_api_base_url());
+    let mut app_state = AppState::new(gfx_cache, sfx_cache, api_state);
 
-    let mut scene_manager = scenes::scene::SceneManager::new(gfx_cache);
+    let mut scene_manager = scenes::scene::SceneManager::new();
     let mut last_frame = Instant::now();
 
     // Log info about the monitor, graphics card, etc.
@@ -105,12 +110,10 @@ fn main() -> Result<(), String> {
         let dt = now.duration_since(last_frame);
         last_frame = now;
 
-        let mut next_scene = None;
-
         // Poll events once, handle quit and forward to egui
         for event in event_pump.poll_iter() {
             if let sdl2::event::Event::Quit { .. } = event {
-                next_scene = Some(SceneType::Exit);
+                scene_manager.request_scene_change(SceneType::Exit);
             }
 
             let event =
@@ -118,37 +121,26 @@ fn main() -> Result<(), String> {
 
             let _ = egui.on_event(&event);
 
-            if next_scene.is_none() {
-                next_scene = scene_manager.active_scene().handle_event(&event);
-            }
+            scene_manager.handle_event(&mut app_state, &event);
 
-            // After each event, check if we need to switch scenes (e.g. quit event)
-            if next_scene.is_some_and(|s| s == SceneType::Exit) {
+            if scene_manager.get_scene() == SceneType::Exit {
                 break 'running;
             }
         }
 
-        if next_scene.is_none() {
-            next_scene = scene_manager.active_scene().update(dt);
-        }
-
-        scene_manager
-            .active_scene()
-            .render_world(&mut egui.painter.canvas)?;
+        scene_manager.update(&mut app_state, dt);
+        scene_manager.render_world(&mut app_state, &mut egui.painter.canvas);
 
         egui.run(|ctx: &egui::Context| {
-            if next_scene.is_none() {
-                next_scene = scene_manager.active_scene().render_ui(ctx);
-            }
+            scene_manager.render_ui(&mut app_state, ctx);
         });
+
+        if scene_manager.get_scene() == SceneType::Exit {
+            break 'running;
+        }
 
         egui.paint();
         egui.present();
-
-        if let Some(scene) = next_scene {
-            log::info!("Scene change requested: {:?}", scene);
-            scene_manager.set_scene(scene);
-        }
 
         std::thread::sleep(Duration::from_millis(16));
     }
