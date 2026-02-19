@@ -1,4 +1,7 @@
-use std::{sync::mpsc::TryRecvError, time::Duration};
+use std::{
+    sync::mpsc::{self, TryRecvError},
+    time::Duration,
+};
 
 use crate::{
     account_api,
@@ -13,8 +16,9 @@ pub struct LoginScene {
     username: String,
     password: String,
     is_submitting: bool,
-    api_result_rx: Option<std::sync::mpsc::Receiver<Result<(), String>>>,
+    api_result_rx: Option<std::sync::mpsc::Receiver<Result<String, String>>>,
     error_message: Option<String>,
+    login_thread: Option<std::thread::JoinHandle<()>>,
 }
 
 impl LoginScene {
@@ -26,20 +30,18 @@ impl LoginScene {
             is_submitting: false,
             api_result_rx: None,
             error_message: None,
+            login_thread: None,
         }
     }
 
-    #[allow(dead_code)]
-    fn login(username: &str, password: &str) -> Result<(), String> {
+    fn login(username: &str, password: &str) -> Result<String, String> {
         let base_url = if cfg!(debug_assertions) {
             "http://127.0.0.1:5554"
         } else {
             "http://menamonggods.ddns.net:5554"
         };
 
-        account_api::login(base_url, username, password)?;
-
-        Ok(())
+        account_api::login(base_url, username, password)
     }
 }
 
@@ -48,14 +50,15 @@ impl Scene for LoginScene {
         None
     }
 
-    fn update(&mut self, _app_state: &mut AppState, _dt: Duration) -> Option<SceneType> {
+    fn update(&mut self, app_state: &mut AppState, _dt: Duration) -> Option<SceneType> {
         if self.is_submitting {
             let result = if let Some(receiver) = &self.api_result_rx {
                 match receiver.try_recv() {
                     Ok(result) => Some(result),
                     Err(TryRecvError::Empty) => None,
                     Err(TryRecvError::Disconnected) => {
-                        Some(Err("Account creation task failed unexpectedly".to_string()))
+                        app_state.api.token = None;
+                        Some(Err("Login task failed unexpectedly".to_string()))
                     }
                 }
             } else {
@@ -67,8 +70,16 @@ impl Scene for LoginScene {
                 self.api_result_rx = None;
 
                 match result {
-                    Ok(()) => return Some(SceneType::Login),
-                    Err(error) => self.error_message = Some(error),
+                    Ok(token) => {
+                        log::info!("Login successful!");
+                        app_state.api.token = Some(token);
+                        return Some(SceneType::CharacterSelection);
+                    }
+                    Err(error) => {
+                        log::error!("Login failed: {}", error);
+                        app_state.api.token = None;
+                        self.error_message = Some(error);
+                    }
                 }
             }
         }
@@ -134,13 +145,29 @@ impl Scene for LoginScene {
                     .inner;
 
                 if login_clicked {
-                    app_state.api.username = Some(self.username.clone());
                     log::info!(
                         "Login clicked: ip={}, username={}",
                         self.server_ip,
                         self.username
                     );
-                    next = Some(SceneType::Game);
+
+                    let (sender, receiver) = mpsc::channel::<Result<String, String>>();
+
+                    self.error_message = None;
+                    self.is_submitting = true;
+                    self.api_result_rx = Some(receiver);
+
+                    let username = self.username.clone();
+                    let password = self.password.clone();
+
+                    app_state.api.username = Some(username.clone());
+
+                    self.login_thread = Some(std::thread::spawn(move || {
+                        let result = Self::login(&username, &password);
+                        if let Err(error) = sender.send(result) {
+                            log::error!("Failed to send login result: {}", error);
+                        }
+                    }));
                 }
 
                 if create_clicked {

@@ -7,12 +7,15 @@ use crate::state::AppState;
 
 pub trait Scene {
     fn handle_event(&mut self, app_state: &mut AppState, event: &Event) -> Option<SceneType>;
+
     fn update(&mut self, app_state: &mut AppState, dt: Duration) -> Option<SceneType>;
+
     fn render_world(
         &mut self,
         app_state: &mut AppState,
         canvas: &mut Canvas<Window>,
     ) -> Result<(), String>;
+
     fn render_ui(&mut self, app_state: &mut AppState, ctx: &egui::Context) -> Option<SceneType>;
 }
 
@@ -28,12 +31,11 @@ pub enum SceneType {
 
 pub struct SceneManager {
     active_scene: SceneType,
-    app_state: AppState,
     scenes: HashMap<SceneType, Box<dyn Scene>>,
 }
 
 impl SceneManager {
-    pub fn new(app_state: AppState) -> Self {
+    pub fn new() -> Self {
         let mut scene_map: HashMap<SceneType, Box<dyn Scene>> = HashMap::new();
 
         scene_map.insert(
@@ -63,37 +65,70 @@ impl SceneManager {
 
         SceneManager {
             active_scene: SceneType::Login,
-            app_state,
             scenes: scene_map,
         }
     }
 
-    pub fn handle_event(&mut self, event: &Event) -> Option<SceneType> {
-        self.scenes
-            .get_mut(&self.active_scene)
-            .unwrap()
-            .handle_event(&mut self.app_state, event)
+    pub fn get_scene(&self) -> SceneType {
+        self.active_scene
     }
 
-    pub fn update(&mut self, dt: Duration) -> Option<SceneType> {
-        self.scenes
+    pub fn handle_event(&mut self, app_state: &mut AppState, event: &Event) {
+        if self.active_scene == SceneType::Exit {
+            return;
+        }
+
+        let possible_next_scene = self
+            .scenes
             .get_mut(&self.active_scene)
             .unwrap()
-            .update(&mut self.app_state, dt)
+            .handle_event(app_state, event);
+
+        self.apply_scene_change(possible_next_scene);
     }
 
-    pub fn render_world(&mut self, canvas: &mut Canvas<Window>) -> Result<(), String> {
-        self.scenes
+    pub fn update(&mut self, app_state: &mut AppState, dt: Duration) {
+        if self.active_scene == SceneType::Exit {
+            return;
+        }
+
+        let possible_next_scene = self
+            .scenes
             .get_mut(&self.active_scene)
             .unwrap()
-            .render_world(&mut self.app_state, canvas)
+            .update(app_state, dt);
+
+        self.apply_scene_change(possible_next_scene);
     }
 
-    pub fn render_ui(&mut self, ctx: &egui::Context) -> Option<SceneType> {
+    pub fn render_world(&mut self, app_state: &mut AppState, canvas: &mut Canvas<Window>) {
+        if self.active_scene == SceneType::Exit {
+            return;
+        }
+
         self.scenes
             .get_mut(&self.active_scene)
             .unwrap()
-            .render_ui(&mut self.app_state, ctx)
+            .render_world(app_state, canvas)
+            .unwrap_or_else(|err| log::error!("Error rendering world: {}", err));
+    }
+
+    pub fn render_ui(&mut self, app_state: &mut AppState, ctx: &egui::Context) {
+        if self.active_scene == SceneType::Exit {
+            return;
+        }
+
+        let possible_next_scene = self
+            .scenes
+            .get_mut(&self.active_scene)
+            .unwrap()
+            .render_ui(app_state, ctx);
+
+        self.apply_scene_change(possible_next_scene);
+    }
+
+    pub fn request_scene_change(&mut self, scene_type: SceneType) {
+        self.apply_scene_change(Some(scene_type));
     }
 
     pub fn set_scene(&mut self, scene_type: SceneType) {
@@ -103,5 +138,14 @@ impl SceneManager {
             log::error!("Attempted to switch to unknown scene: {:?}", scene_type);
         }
         self.active_scene = scene_type;
+    }
+
+    fn apply_scene_change(&mut self, next_scene: Option<SceneType>) {
+        let Some(scene) = next_scene else {
+            return;
+        };
+
+        log::info!("Scene change requested: {:?}", scene);
+        self.set_scene(scene);
     }
 }

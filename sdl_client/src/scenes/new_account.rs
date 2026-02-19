@@ -173,6 +173,12 @@ impl Scene for NewAccountScene {
                 }
 
                 if create_clicked {
+                    log::info!(
+                        "Create new account clicked with email={}, username={}",
+                        self.email,
+                        self.username
+                    );
+
                     let (sender, receiver) = mpsc::channel::<Result<(), String>>();
 
                     self.error_message = None;
@@ -190,12 +196,6 @@ impl Scene for NewAccountScene {
                             log::error!("Failed to send account creation result: {}", error);
                         }
                     }));
-
-                    log::info!(
-                        "Create new account clicked with email={}, username={}",
-                        self.email,
-                        self.username
-                    );
                 }
             });
 

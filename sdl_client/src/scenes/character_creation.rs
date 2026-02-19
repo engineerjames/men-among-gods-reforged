@@ -74,6 +74,7 @@ impl Scene for CharacterCreationScene {
             Class::Mercenary,
             selected_sex,
         );
+
         let username = app_state.api.username.clone();
         let token = app_state.api.token.clone();
         let base_url = app_state.api.base_url.clone();
