@@ -231,6 +231,11 @@ impl GraphicsCache {
 
     pub fn get_bytes(&mut self, id: usize) -> Option<Vec<u8>> {
         let filename = self.index_to_filename.get(&id)?.to_string();
+        log::info!(
+            "Loading raw bytes for sprite ID {} from file {}",
+            id,
+            filename
+        );
         let mut file = self.archive.by_name(&filename).ok()?;
         let mut buffer = Vec::new();
         file.read_to_end(&mut buffer).ok()?;

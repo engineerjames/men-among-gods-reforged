@@ -1,14 +1,14 @@
-use std::{collections::HashMap, sync::mpsc, time::Duration};
+use std::{sync::mpsc, time::Duration};
 
 use egui_sdl2::egui::{self, Pos2};
 use mag_core::{
     names,
     types::{Class, Sex},
 };
-use sdl2::{event::Event, pixels::Color, render::Canvas, video::Window};
+use sdl2::{event::Event, pixels::Color, rect::Rect, render::Canvas, video::Window};
 
 use crate::{
-    account_api, gfx_cache,
+    account_api,
     scenes::{
         helpers,
         scene::{Scene, SceneType},
@@ -16,18 +16,17 @@ use crate::{
     state::AppState,
 };
 
-pub struct CharacterCreationScene<'a> {
+pub struct CharacterCreationScene {
     error: Option<String>,
     name: String,
     description: String,
     selected_class: Class,
     selected_sex: Sex,
-    portrait_textures: HashMap<usize, egui::Image<'a>>,
     is_busy: bool,
     account_thread: Option<std::thread::JoinHandle<()>>,
 }
 
-impl<'a> CharacterCreationScene<'a> {
+impl CharacterCreationScene {
     pub fn new() -> Self {
         Self {
             error: None,
@@ -35,14 +34,13 @@ impl<'a> CharacterCreationScene<'a> {
             description: String::new(),
             selected_class: Class::Mercenary,
             selected_sex: Sex::Male,
-            portrait_textures: HashMap::new(),
             is_busy: false,
             account_thread: None,
         }
     }
 }
 
-impl Scene for CharacterCreationScene<'_> {
+impl Scene for CharacterCreationScene {
     fn handle_event(&mut self, _app_state: &mut AppState, _event: &Event) -> Option<SceneType> {
         // Handle input events for character creation
         None
@@ -53,39 +51,42 @@ impl Scene for CharacterCreationScene<'_> {
         None
     }
 
-    fn on_enter(&mut self, app_state: &mut AppState) {
-        log::info!("Loading character portrait textures...");
-        for class in &[Class::Harakim, Class::Templar, Class::Mercenary] {
-            for sex in &[Sex::Male, Sex::Female] {
-                let sprite_id = helpers::get_sprite_id_for_class_and_sex(*class, *sex);
-                log::info!(
-                    "Loading portrait for class {:?}, sex {:?} (sprite ID {})",
-                    class,
-                    sex,
-                    sprite_id
-                );
-
-                self.portrait_textures.insert(
-                    sprite_id,
-                    egui::Image::from_bytes(
-                        format!("bytes://{}", sprite_id),
-                        app_state.gfx_cache.get_bytes(sprite_id).unwrap_or_else(|| {
-                            log::error!("Failed to load image bytes for sprite ID {}", sprite_id);
-                            vec![]
-                        }),
-                    ),
-                );
-            }
-        }
-    }
+    fn on_enter(&mut self, _app_state: &mut AppState) {}
 
     fn render_world(
         &mut self,
-        _app_state: &mut AppState,
+        app_state: &mut AppState,
         canvas: &mut Canvas<Window>,
     ) -> Result<(), String> {
         canvas.set_draw_color(Color::RGB(20, 20, 28));
         canvas.clear();
+
+        let portrait_slots = [
+            (Class::Harakim, Rect::new(560, 130, 160, 160)),
+            (Class::Templar, Rect::new(560, 300, 160, 160)),
+            (Class::Mercenary, Rect::new(560, 470, 160, 160)),
+        ];
+
+        for (class, target_rect) in portrait_slots {
+            let sprite_id = helpers::get_sprite_id_for_class_and_sex(class, self.selected_sex);
+            let texture = app_state.gfx_cache.get_texture(sprite_id);
+            if let Err(error) = canvas.copy(texture, None, target_rect) {
+                log::error!(
+                    "Failed to render portrait for class {:?}, sex {:?} (sprite ID {}): {}",
+                    class,
+                    self.selected_sex,
+                    sprite_id,
+                    error
+                );
+            }
+
+            if class == self.selected_class {
+                canvas.set_draw_color(Color::RGB(200, 200, 220));
+                if let Err(error) = canvas.draw_rect(target_rect) {
+                    log::error!("Failed to draw selected portrait outline: {}", error);
+                }
+            }
+        }
 
         Ok(())
     }
@@ -99,7 +100,7 @@ impl Scene for CharacterCreationScene<'_> {
 
         egui::Window::new("Create Character")
             .default_height(800.0)
-            .default_width(600.0)
+            .default_width(500.0)
             .fixed_pos(Pos2::new(0.0, 0.0))
             .collapsible(false)
             .resizable(false)
@@ -144,30 +145,9 @@ impl Scene for CharacterCreationScene<'_> {
 
                 ui.group(|ui| {
                     ui.vertical(|ui| {
-                        race_option_ui(
-                            ui,
-                            &mut self.selected_class,
-                            &self.portrait_textures,
-                            Class::Harakim,
-                            self.selected_sex,
-                            "Harakim",
-                        );
-                        race_option_ui(
-                            ui,
-                            &mut self.selected_class,
-                            &self.portrait_textures,
-                            Class::Templar,
-                            self.selected_sex,
-                            "Templar",
-                        );
-                        race_option_ui(
-                            ui,
-                            &mut self.selected_class,
-                            &self.portrait_textures,
-                            Class::Mercenary,
-                            self.selected_sex,
-                            "Mercenary",
-                        );
+                        race_option_ui(ui, &mut self.selected_class, Class::Harakim, "Harakim");
+                        race_option_ui(ui, &mut self.selected_class, Class::Templar, "Templar");
+                        race_option_ui(ui, &mut self.selected_class, Class::Mercenary, "Mercenary");
                     });
                 });
 
@@ -248,26 +228,6 @@ impl Scene for CharacterCreationScene<'_> {
     }
 }
 
-fn race_option_ui(
-    ui: &mut egui::Ui,
-    selected_class: &mut Class,
-    portraits: &HashMap<usize, egui::Image>,
-    class: Class,
-    sex: Sex,
-    label: &str,
-) {
-    ui.horizontal(|ui| {
-        ui.radio_value(selected_class, class, label);
-
-        let sprite_id = helpers::get_sprite_id_for_class_and_sex(*selected_class, sex);
-        if let Some(portrait) = portraits.get(&sprite_id) {
-            ui.add(portrait.clone());
-        } else {
-            log::error!(
-                "Failed to load portrait for class {:?} and sex {:?}",
-                class,
-                sex
-            );
-        }
-    });
+fn race_option_ui(ui: &mut egui::Ui, selected_class: &mut Class, class: Class, label: &str) {
+    ui.radio_value(selected_class, class, label);
 }
