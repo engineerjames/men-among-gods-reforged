@@ -8,26 +8,26 @@ use mag_core::{
 use sdl2::{event::Event, pixels::Color, render::Canvas, video::Window};
 
 use crate::{
-    account_api,
+    account_api, gfx_cache,
     scenes::{
-        helpers::get_sprite_id_for_class_and_sex,
+        helpers,
         scene::{Scene, SceneType},
     },
     state::AppState,
 };
 
-pub struct CharacterCreationScene {
+pub struct CharacterCreationScene<'a> {
     error: Option<String>,
     name: String,
     description: String,
     selected_class: Class,
     selected_sex: Sex,
-    portrait_textures: HashMap<usize, egui::TextureHandle>,
+    portrait_textures: HashMap<usize, egui::Image<'a>>,
     is_busy: bool,
     account_thread: Option<std::thread::JoinHandle<()>>,
 }
 
-impl CharacterCreationScene {
+impl<'a> CharacterCreationScene<'a> {
     pub fn new() -> Self {
         Self {
             error: None,
@@ -40,37 +40,9 @@ impl CharacterCreationScene {
             account_thread: None,
         }
     }
-
-    fn texture_id_for_character(
-        &mut self,
-        ctx: &egui::Context,
-        app_state: &mut AppState,
-        class: Class,
-        sex: Sex,
-    ) -> Option<egui::TextureId> {
-        let sprite_id = get_sprite_id_for_class_and_sex(class, sex);
-
-        if let Some(handle) = self.portrait_textures.get(&sprite_id) {
-            return Some(handle.id());
-        }
-
-        let image = app_state.gfx_cache.get_rgba_image(sprite_id)?;
-        let color_image =
-            egui::ColorImage::from_rgba_unmultiplied([image.width, image.height], &image.pixels);
-
-        let handle = ctx.load_texture(
-            format!("character_portrait_{sprite_id}"),
-            color_image,
-            egui::TextureOptions::NEAREST,
-        );
-        let texture_id = handle.id();
-        self.portrait_textures.insert(sprite_id, handle);
-
-        Some(texture_id)
-    }
 }
 
-impl Scene for CharacterCreationScene {
+impl Scene for CharacterCreationScene<'_> {
     fn handle_event(&mut self, _app_state: &mut AppState, _event: &Event) -> Option<SceneType> {
         // Handle input events for character creation
         None
@@ -79,6 +51,32 @@ impl Scene for CharacterCreationScene {
     fn update(&mut self, _app_state: &mut AppState, _dt: Duration) -> Option<SceneType> {
         // Update any character creation logic
         None
+    }
+
+    fn on_enter(&mut self, app_state: &mut AppState) {
+        log::info!("Loading character portrait textures...");
+        for class in &[Class::Harakim, Class::Templar, Class::Mercenary] {
+            for sex in &[Sex::Male, Sex::Female] {
+                let sprite_id = helpers::get_sprite_id_for_class_and_sex(*class, *sex);
+                log::info!(
+                    "Loading portrait for class {:?}, sex {:?} (sprite ID {})",
+                    class,
+                    sex,
+                    sprite_id
+                );
+
+                self.portrait_textures.insert(
+                    sprite_id,
+                    egui::Image::from_bytes(
+                        format!("bytes://{}", sprite_id),
+                        app_state.gfx_cache.get_bytes(sprite_id).unwrap_or_else(|| {
+                            log::error!("Failed to load image bytes for sprite ID {}", sprite_id);
+                            vec![]
+                        }),
+                    ),
+                );
+            }
+        }
     }
 
     fn render_world(
@@ -94,14 +92,6 @@ impl Scene for CharacterCreationScene {
 
     fn render_ui(&mut self, app_state: &mut AppState, ctx: &egui::Context) -> Option<SceneType> {
         let mut next = None;
-
-        let selected_sex = self.selected_sex;
-        let harakim_texture =
-            self.texture_id_for_character(ctx, app_state, Class::Harakim, selected_sex);
-        let templar_texture =
-            self.texture_id_for_character(ctx, app_state, Class::Templar, selected_sex);
-        let mercenary_texture =
-            self.texture_id_for_character(ctx, app_state, Class::Mercenary, selected_sex);
 
         let username = app_state.api.username.clone();
         let token = app_state.api.token.clone();
@@ -157,23 +147,26 @@ impl Scene for CharacterCreationScene {
                         race_option_ui(
                             ui,
                             &mut self.selected_class,
+                            &self.portrait_textures,
                             Class::Harakim,
+                            self.selected_sex,
                             "Harakim",
-                            harakim_texture,
                         );
                         race_option_ui(
                             ui,
                             &mut self.selected_class,
+                            &self.portrait_textures,
                             Class::Templar,
+                            self.selected_sex,
                             "Templar",
-                            templar_texture,
                         );
                         race_option_ui(
                             ui,
                             &mut self.selected_class,
+                            &self.portrait_textures,
                             Class::Mercenary,
+                            self.selected_sex,
                             "Mercenary",
-                            mercenary_texture,
                         );
                     });
                 });
@@ -258,19 +251,23 @@ impl Scene for CharacterCreationScene {
 fn race_option_ui(
     ui: &mut egui::Ui,
     selected_class: &mut Class,
+    portraits: &HashMap<usize, egui::Image>,
     class: Class,
+    sex: Sex,
     label: &str,
-    texture_id: Option<egui::TextureId>,
 ) {
     ui.horizontal(|ui| {
         ui.radio_value(selected_class, class, label);
 
-        if let Some(texture_id) = texture_id {
-            let size = egui::vec2(64.0, 64.0);
-            let textured = egui::load::SizedTexture::new(texture_id, size);
-            ui.add(egui::Image::new(textured));
+        let sprite_id = helpers::get_sprite_id_for_class_and_sex(*selected_class, sex);
+        if let Some(portrait) = portraits.get(&sprite_id) {
+            ui.add(portrait.clone());
         } else {
-            ui.label("Image missing");
+            log::error!(
+                "Failed to load portrait for class {:?} and sex {:?}",
+                class,
+                sex
+            );
         }
     });
 }

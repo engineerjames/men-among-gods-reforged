@@ -228,4 +228,12 @@ impl GraphicsCache {
             pixels: contiguous,
         })
     }
+
+    pub fn get_bytes(&mut self, id: usize) -> Option<Vec<u8>> {
+        let filename = self.index_to_filename.get(&id)?.to_string();
+        let mut file = self.archive.by_name(&filename).ok()?;
+        let mut buffer = Vec::new();
+        file.read_to_end(&mut buffer).ok()?;
+        Some(buffer)
+    }
 }
