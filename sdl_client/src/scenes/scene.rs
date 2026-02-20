@@ -6,6 +6,10 @@ use sdl2::{event::Event, render::Canvas, video::Window};
 use crate::state::AppState;
 
 pub trait Scene {
+    fn on_enter(&mut self, _app_state: &mut AppState) {}
+
+    fn on_exit(&mut self, _app_state: &mut AppState) {}
+
     fn handle_event(&mut self, app_state: &mut AppState, event: &Event) -> Option<SceneType>;
 
     fn update(&mut self, app_state: &mut AppState, dt: Duration) -> Option<SceneType>;
@@ -89,7 +93,7 @@ impl SceneManager {
             .unwrap()
             .handle_event(app_state, event);
 
-        self.apply_scene_change(possible_next_scene);
+        self.apply_scene_change(possible_next_scene, app_state);
     }
 
     pub fn update(&mut self, app_state: &mut AppState, dt: Duration) {
@@ -103,7 +107,7 @@ impl SceneManager {
             .unwrap()
             .update(app_state, dt);
 
-        self.apply_scene_change(possible_next_scene);
+        self.apply_scene_change(possible_next_scene, app_state);
     }
 
     pub fn render_world(&mut self, app_state: &mut AppState, canvas: &mut Canvas<Window>) {
@@ -129,28 +133,44 @@ impl SceneManager {
             .unwrap()
             .render_ui(app_state, ctx);
 
-        self.apply_scene_change(possible_next_scene);
+        self.apply_scene_change(possible_next_scene, app_state);
     }
 
-    pub fn request_scene_change(&mut self, scene_type: SceneType) {
-        self.apply_scene_change(Some(scene_type));
+    pub fn request_scene_change(&mut self, scene_type: SceneType, app_state: &mut AppState) {
+        self.apply_scene_change(Some(scene_type), app_state);
     }
 
-    pub fn set_scene(&mut self, scene_type: SceneType) {
+    pub fn set_scene(&mut self, scene_type: SceneType, app_state: &mut AppState) {
+        if scene_type == self.active_scene {
+            return;
+        }
+
         if self.scenes.contains_key(&scene_type) {
             log::info!("Switching to scene: {:?}", scene_type);
         } else {
             log::error!("Attempted to switch to unknown scene: {:?}", scene_type);
+            return;
         }
+
+        if let Some(current_scene) = self.scenes.get_mut(&self.active_scene) {
+            log::info!("Calling on_exit for scene: {:?}", self.active_scene);
+            current_scene.on_exit(app_state);
+        }
+
         self.active_scene = scene_type;
+
+        if let Some(next_scene) = self.scenes.get_mut(&self.active_scene) {
+            log::info!("Calling on_enter for scene: {:?}", self.active_scene);
+            next_scene.on_enter(app_state);
+        }
     }
 
-    fn apply_scene_change(&mut self, next_scene: Option<SceneType>) {
+    fn apply_scene_change(&mut self, next_scene: Option<SceneType>, app_state: &mut AppState) {
         let Some(scene) = next_scene else {
             return;
         };
 
         log::info!("Scene change requested: {:?}", scene);
-        self.set_scene(scene);
+        self.set_scene(scene, app_state);
     }
 }

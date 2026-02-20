@@ -1,16 +1,19 @@
-use std::{sync::mpsc, time::Duration};
+use std::{
+    sync::mpsc::{self, TryRecvError},
+    time::Duration,
+};
 
 use egui_sdl2::egui::{self, Pos2};
 use mag_core::{
     names,
     types::{Class, Sex},
 };
-use sdl2::{event::Event, render::Canvas, video::Window};
+use sdl2::{event::Event, pixels::Color, rect::Rect, render::Canvas, video::Window};
 
 use crate::{
     account_api,
     scenes::{
-        helpers::texture_id_for_character,
+        helpers,
         scene::{Scene, SceneType},
     },
     state::AppState,
@@ -23,6 +26,7 @@ pub struct CharacterCreationScene {
     selected_class: Class,
     selected_sex: Sex,
     is_busy: bool,
+    account_rx: Option<mpsc::Receiver<Result<account_api::CharacterSummary, String>>>,
     account_thread: Option<std::thread::JoinHandle<()>>,
 }
 
@@ -35,6 +39,7 @@ impl CharacterCreationScene {
             selected_class: Class::Mercenary,
             selected_sex: Sex::Male,
             is_busy: false,
+            account_rx: None,
             account_thread: None,
         }
     }
@@ -47,33 +52,90 @@ impl Scene for CharacterCreationScene {
     }
 
     fn update(&mut self, _app_state: &mut AppState, _dt: Duration) -> Option<SceneType> {
-        // Update any character creation logic
-        None
+        if !self.is_busy {
+            return None;
+        }
+
+        let result = if let Some(receiver) = &self.account_rx {
+            match receiver.try_recv() {
+                Ok(result) => Some(result),
+                Err(TryRecvError::Empty) => None,
+                Err(TryRecvError::Disconnected) => {
+                    Some(Err("Character creation failed: channel closed".to_string()))
+                }
+            }
+        } else {
+            None
+        };
+
+        let Some(result) = result else {
+            return None;
+        };
+
+        self.is_busy = false;
+        self.account_rx = None;
+
+        if let Some(thread) = self.account_thread.take() {
+            if thread.join().is_err() {
+                log::error!("Character creation thread panicked");
+            }
+        }
+
+        match result {
+            Ok(summary) => {
+                self.error = None;
+                log::info!("Character creation successful: {}", summary.name);
+                Some(SceneType::CharacterSelection)
+            }
+            Err(err) => {
+                self.error = Some(err);
+                None
+            }
+        }
     }
+
+    fn on_enter(&mut self, _app_state: &mut AppState) {}
 
     fn render_world(
         &mut self,
-        _app_state: &mut AppState,
-        _canvas: &mut Canvas<Window>,
+        app_state: &mut AppState,
+        canvas: &mut Canvas<Window>,
     ) -> Result<(), String> {
-        // Render any character creation background or world elements
+        canvas.set_draw_color(Color::RGB(20, 20, 28));
+        canvas.clear();
+
+        let portrait_slots = [
+            (Class::Harakim, Rect::new(600, 150, 160, 160)),
+            (Class::Templar, Rect::new(600, 320, 160, 160)),
+            (Class::Mercenary, Rect::new(600, 490, 160, 160)),
+        ];
+
+        for (class, target_rect) in portrait_slots {
+            let sprite_id = helpers::get_sprite_id_for_class_and_sex(class, self.selected_sex);
+            let texture = app_state.gfx_cache.get_texture(sprite_id);
+            if let Err(error) = canvas.copy(texture, None, target_rect) {
+                log::error!(
+                    "Failed to render portrait for class {:?}, sex {:?} (sprite ID {}): {}",
+                    class,
+                    self.selected_sex,
+                    sprite_id,
+                    error
+                );
+            }
+
+            if class == self.selected_class {
+                canvas.set_draw_color(Color::RGB(200, 200, 220));
+                if let Err(error) = canvas.draw_rect(target_rect) {
+                    log::error!("Failed to draw selected portrait outline: {}", error);
+                }
+            }
+        }
+
         Ok(())
     }
 
     fn render_ui(&mut self, app_state: &mut AppState, ctx: &egui::Context) -> Option<SceneType> {
         let mut next = None;
-
-        let selected_sex = self.selected_sex;
-        let harakim_texture =
-            texture_id_for_character(ctx, &mut app_state.gfx_cache, Class::Harakim, selected_sex);
-        let templar_texture =
-            texture_id_for_character(ctx, &mut app_state.gfx_cache, Class::Templar, selected_sex);
-        let mercenary_texture = texture_id_for_character(
-            ctx,
-            &mut app_state.gfx_cache,
-            Class::Mercenary,
-            selected_sex,
-        );
 
         let username = app_state.api.username.clone();
         let token = app_state.api.token.clone();
@@ -81,7 +143,7 @@ impl Scene for CharacterCreationScene {
 
         egui::Window::new("Create Character")
             .default_height(800.0)
-            .default_width(600.0)
+            .default_width(500.0)
             .fixed_pos(Pos2::new(0.0, 0.0))
             .collapsible(false)
             .resizable(false)
@@ -126,27 +188,9 @@ impl Scene for CharacterCreationScene {
 
                 ui.group(|ui| {
                     ui.vertical(|ui| {
-                        race_option_ui(
-                            ui,
-                            &mut self.selected_class,
-                            Class::Harakim,
-                            "Harakim",
-                            harakim_texture,
-                        );
-                        race_option_ui(
-                            ui,
-                            &mut self.selected_class,
-                            Class::Templar,
-                            "Templar",
-                            templar_texture,
-                        );
-                        race_option_ui(
-                            ui,
-                            &mut self.selected_class,
-                            Class::Mercenary,
-                            "Mercenary",
-                            mercenary_texture,
-                        );
+                        race_option_ui(ui, &mut self.selected_class, Class::Harakim, "Harakim");
+                        race_option_ui(ui, &mut self.selected_class, Class::Templar, "Templar");
+                        race_option_ui(ui, &mut self.selected_class, Class::Mercenary, "Mercenary");
                     });
                 });
 
@@ -203,7 +247,7 @@ impl Scene for CharacterCreationScene {
                         Some(description)
                     };
 
-                    let (tx, _rx) = mpsc::channel();
+                    let (tx, rx) = mpsc::channel();
                     self.account_thread = Some(std::thread::spawn(move || {
                         let result = account_api::create_character(
                             &base_url,
@@ -215,6 +259,7 @@ impl Scene for CharacterCreationScene {
                         );
                         let _ = tx.send(result);
                     }));
+                    self.account_rx = Some(rx);
                 }
 
                 if back_clicked {
@@ -227,22 +272,6 @@ impl Scene for CharacterCreationScene {
     }
 }
 
-fn race_option_ui(
-    ui: &mut egui::Ui,
-    selected_class: &mut Class,
-    class: Class,
-    label: &str,
-    texture_id: Option<egui::TextureId>,
-) {
-    ui.horizontal(|ui| {
-        ui.radio_value(selected_class, class, label);
-
-        if let Some(texture_id) = texture_id {
-            let size = egui::vec2(64.0, 64.0);
-            let textured = egui::load::SizedTexture::new(texture_id, size);
-            ui.add(egui::Image::new(textured));
-        } else {
-            ui.label("Image missing");
-        }
-    });
+fn race_option_ui(ui: &mut egui::Ui, selected_class: &mut Class, class: Class, label: &str) {
+    ui.radio_value(selected_class, class, label);
 }

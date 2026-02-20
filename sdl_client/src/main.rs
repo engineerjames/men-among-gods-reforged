@@ -1,4 +1,5 @@
 use std::process;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use egui_sdl2::egui;
@@ -18,6 +19,26 @@ mod hosts;
 mod scenes;
 mod sfx_cache;
 mod state;
+
+static EGUI_GLYPH_WARMED: AtomicBool = AtomicBool::new(false);
+
+// This is really stupid, but it seems to prevent the odd text warping observed
+fn warm_egui_glyph_cache(ctx: &egui::Context) {
+    if EGUI_GLYPH_WARMED.swap(true, Ordering::Relaxed) {
+        return;
+    }
+
+    let warmup_text = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 \
+!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
+
+    egui::Area::new("glyph_warmup_area".into())
+        .fixed_pos(egui::Pos2::new(-10_000.0, -10_000.0))
+        .show(ctx, |ui| {
+            ui.label(warmup_text);
+            ui.heading(warmup_text);
+            ui.monospace(warmup_text);
+        });
+}
 
 fn main() -> Result<(), String> {
     mag_core::initialize_logger(log::LevelFilter::Info, Some("sdl_client.log")).unwrap_or_else(
@@ -113,7 +134,7 @@ fn main() -> Result<(), String> {
         // Poll events once, handle quit and forward to egui
         for event in event_pump.poll_iter() {
             if let sdl2::event::Event::Quit { .. } = event {
-                scene_manager.request_scene_change(SceneType::Exit);
+                scene_manager.request_scene_change(SceneType::Exit, &mut app_state);
             }
 
             let event =
@@ -132,6 +153,7 @@ fn main() -> Result<(), String> {
         scene_manager.render_world(&mut app_state, &mut egui.painter.canvas);
 
         egui.run(|ctx: &egui::Context| {
+            warm_egui_glyph_cache(ctx);
             scene_manager.render_ui(&mut app_state, ctx);
         });
 

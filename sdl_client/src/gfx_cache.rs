@@ -99,21 +99,6 @@ impl GraphicsCache {
         &self.sprite_cache[&id]
     }
 
-    pub fn get_rgba_image(&mut self, id: usize) -> Option<&CachedRgbaImage> {
-        if self.rgba_image_cache.contains_key(&id) {
-            return self.rgba_image_cache.get(&id);
-        }
-
-        let filename = self.index_to_filename.get(&id)?.to_string();
-        let mut file = self.archive.by_name(&filename).ok()?;
-        let mut buffer = Vec::new();
-        file.read_to_end(&mut buffer).ok()?;
-
-        let rgba_image = Self::decode_rgba_image(&buffer)?;
-        self.rgba_image_cache.insert(id, rgba_image);
-        self.rgba_image_cache.get(&id)
-    }
-
     fn load_texture_from_zip(&mut self, id: usize) -> Option<Texture> {
         if let Some(filename) = self.index_to_filename.get(&id) {
             if let Ok(mut file) = self.archive.by_name(filename) {
