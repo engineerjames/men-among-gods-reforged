@@ -253,16 +253,15 @@ impl Scene for CharacterSelectionScene {
                     egui::ScrollArea::vertical()
                         .max_height(180.0)
                         .show(ui, |ui| {
+                            let mut character_selected_this_frame = self.selected_character_id;
+
                             for (index, character) in self.characters.iter().enumerate() {
                                 let texture_id =
                                     self.character_textures.get(index).copied().flatten();
 
-                                let _label = format!(
-                                    "{} ({}, {})",
-                                    character.name,
-                                    character.class.to_string(),
-                                    character.sex.to_string(),
-                                );
+                                let label =
+                                    format!("{} ({})", character.name, character.class.to_string());
+                                let selected = character_selected_this_frame == Some(character.id);
 
                                 ui.horizontal(|ui| {
                                     if let Some(texture_id) = texture_id {
@@ -272,11 +271,19 @@ impl Scene for CharacterSelectionScene {
                                         let img_resp = ui.add(egui::Image::new(textured));
                                         if img_resp.clicked() {
                                             log::info!("Selected character: {}", character.name);
-                                            self.selected_character_id = Some(character.id);
+                                            character_selected_this_frame = Some(character.id);
                                         }
+                                    }
+
+                                    let resp = ui.selectable_label(selected, &label);
+                                    if resp.clicked() {
+                                        log::info!("Selected character: {}", character.name);
+                                        character_selected_this_frame = Some(character.id);
                                     }
                                 });
                             }
+
+                            self.selected_character_id = character_selected_this_frame;
                         });
                 }
 
