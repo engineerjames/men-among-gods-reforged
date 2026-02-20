@@ -113,7 +113,7 @@ fn main() -> Result<(), String> {
         // Poll events once, handle quit and forward to egui
         for event in event_pump.poll_iter() {
             if let sdl2::event::Event::Quit { .. } = event {
-                scene_manager.request_scene_change(SceneType::Exit);
+                scene_manager.request_scene_change(SceneType::Exit, &mut app_state);
             }
 
             let event =

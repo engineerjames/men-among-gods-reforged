@@ -2,6 +2,7 @@ use std::{sync::mpsc, time::Duration};
 
 use egui_sdl2::egui;
 use mag_core::{traits, types::CharacterSummary};
+use sdl2::pixels::Color;
 use sdl2::{event::Event, render::Canvas, video::Window};
 
 use crate::{
@@ -53,9 +54,11 @@ impl Scene for CharacterSelectionScene {
     fn render_world(
         &mut self,
         _app_state: &mut AppState,
-        _canvas: &mut Canvas<Window>,
+        canvas: &mut Canvas<Window>,
     ) -> Result<(), String> {
-        // Render any character selection background or world elements
+        canvas.set_draw_color(Color::RGB(20, 20, 28));
+        canvas.clear();
+
         Ok(())
     }
 

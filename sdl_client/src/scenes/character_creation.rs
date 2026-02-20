@@ -1,16 +1,16 @@
-use std::{sync::mpsc, time::Duration};
+use std::{collections::HashMap, sync::mpsc, time::Duration};
 
 use egui_sdl2::egui::{self, Pos2};
 use mag_core::{
     names,
     types::{Class, Sex},
 };
-use sdl2::{event::Event, render::Canvas, video::Window};
+use sdl2::{event::Event, pixels::Color, render::Canvas, video::Window};
 
 use crate::{
     account_api,
     scenes::{
-        helpers::texture_id_for_character,
+        helpers::get_sprite_id_for_class_and_sex,
         scene::{Scene, SceneType},
     },
     state::AppState,
@@ -22,6 +22,7 @@ pub struct CharacterCreationScene {
     description: String,
     selected_class: Class,
     selected_sex: Sex,
+    portrait_textures: HashMap<usize, egui::TextureHandle>,
     is_busy: bool,
     account_thread: Option<std::thread::JoinHandle<()>>,
 }
@@ -34,9 +35,38 @@ impl CharacterCreationScene {
             description: String::new(),
             selected_class: Class::Mercenary,
             selected_sex: Sex::Male,
+            portrait_textures: HashMap::new(),
             is_busy: false,
             account_thread: None,
         }
+    }
+
+    fn texture_id_for_character(
+        &mut self,
+        ctx: &egui::Context,
+        app_state: &mut AppState,
+        class: Class,
+        sex: Sex,
+    ) -> Option<egui::TextureId> {
+        let sprite_id = get_sprite_id_for_class_and_sex(class, sex);
+
+        if let Some(handle) = self.portrait_textures.get(&sprite_id) {
+            return Some(handle.id());
+        }
+
+        let image = app_state.gfx_cache.get_rgba_image(sprite_id)?;
+        let color_image =
+            egui::ColorImage::from_rgba_unmultiplied([image.width, image.height], &image.pixels);
+
+        let handle = ctx.load_texture(
+            format!("character_portrait_{sprite_id}"),
+            color_image,
+            egui::TextureOptions::NEAREST,
+        );
+        let texture_id = handle.id();
+        self.portrait_textures.insert(sprite_id, handle);
+
+        Some(texture_id)
     }
 }
 
@@ -54,9 +84,11 @@ impl Scene for CharacterCreationScene {
     fn render_world(
         &mut self,
         _app_state: &mut AppState,
-        _canvas: &mut Canvas<Window>,
+        canvas: &mut Canvas<Window>,
     ) -> Result<(), String> {
-        // Render any character creation background or world elements
+        canvas.set_draw_color(Color::RGB(20, 20, 28));
+        canvas.clear();
+
         Ok(())
     }
 
@@ -65,15 +97,11 @@ impl Scene for CharacterCreationScene {
 
         let selected_sex = self.selected_sex;
         let harakim_texture =
-            texture_id_for_character(ctx, &mut app_state.gfx_cache, Class::Harakim, selected_sex);
+            self.texture_id_for_character(ctx, app_state, Class::Harakim, selected_sex);
         let templar_texture =
-            texture_id_for_character(ctx, &mut app_state.gfx_cache, Class::Templar, selected_sex);
-        let mercenary_texture = texture_id_for_character(
-            ctx,
-            &mut app_state.gfx_cache,
-            Class::Mercenary,
-            selected_sex,
-        );
+            self.texture_id_for_character(ctx, app_state, Class::Templar, selected_sex);
+        let mercenary_texture =
+            self.texture_id_for_character(ctx, app_state, Class::Mercenary, selected_sex);
 
         let username = app_state.api.username.clone();
         let token = app_state.api.token.clone();
