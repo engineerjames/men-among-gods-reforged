@@ -6,11 +6,14 @@ use std::{
 use egui_sdl2::egui;
 use mag_core::{traits, types::CharacterSummary};
 use sdl2::pixels::Color;
-use sdl2::{event::Event, render::Canvas, video::Window};
+use sdl2::{event::Event, rect::Rect, render::Canvas, video::Window};
 
 use crate::{
     account_api,
-    scenes::scene::{Scene, SceneType},
+    scenes::{
+        helpers,
+        scene::{Scene, SceneType},
+    },
     state::AppState,
 };
 
@@ -212,11 +215,40 @@ impl Scene for CharacterSelectionScene {
 
     fn render_world(
         &mut self,
-        _app_state: &mut AppState,
+        app_state: &mut AppState,
         canvas: &mut Canvas<Window>,
     ) -> Result<(), String> {
         canvas.set_draw_color(Color::RGB(20, 20, 28));
         canvas.clear();
+
+        let Some(selected_character_id) = self.selected_character_id else {
+            return Ok(());
+        };
+
+        let Some(selected_character) = self
+            .characters
+            .iter()
+            .find(|character| character.id == selected_character_id)
+        else {
+            return Ok(());
+        };
+
+        let sprite_id = helpers::get_sprite_id_for_class_and_sex(
+            selected_character.class,
+            selected_character.sex,
+        );
+        let texture = app_state.gfx_cache.get_texture(sprite_id);
+        let target_rect = Rect::new(600, 260, 160, 160);
+
+        if let Err(error) = canvas.copy(texture, None, target_rect) {
+            log::error!(
+                "Failed to render selected portrait for class {:?}, sex {:?} (sprite ID {}): {}",
+                selected_character.class,
+                selected_character.sex,
+                sprite_id,
+                error
+            );
+        }
 
         Ok(())
     }

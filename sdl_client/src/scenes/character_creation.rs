@@ -1,4 +1,7 @@
-use std::{sync::mpsc, time::Duration};
+use std::{
+    sync::mpsc::{self, TryRecvError},
+    time::Duration,
+};
 
 use egui_sdl2::egui::{self, Pos2};
 use mag_core::{
@@ -23,6 +26,7 @@ pub struct CharacterCreationScene {
     selected_class: Class,
     selected_sex: Sex,
     is_busy: bool,
+    account_rx: Option<mpsc::Receiver<Result<account_api::CharacterSummary, String>>>,
     account_thread: Option<std::thread::JoinHandle<()>>,
 }
 
@@ -35,6 +39,7 @@ impl CharacterCreationScene {
             selected_class: Class::Mercenary,
             selected_sex: Sex::Male,
             is_busy: false,
+            account_rx: None,
             account_thread: None,
         }
     }
@@ -47,8 +52,46 @@ impl Scene for CharacterCreationScene {
     }
 
     fn update(&mut self, _app_state: &mut AppState, _dt: Duration) -> Option<SceneType> {
-        // Update any character creation logic
-        None
+        if !self.is_busy {
+            return None;
+        }
+
+        let result = if let Some(receiver) = &self.account_rx {
+            match receiver.try_recv() {
+                Ok(result) => Some(result),
+                Err(TryRecvError::Empty) => None,
+                Err(TryRecvError::Disconnected) => {
+                    Some(Err("Character creation failed: channel closed".to_string()))
+                }
+            }
+        } else {
+            None
+        };
+
+        let Some(result) = result else {
+            return None;
+        };
+
+        self.is_busy = false;
+        self.account_rx = None;
+
+        if let Some(thread) = self.account_thread.take() {
+            if thread.join().is_err() {
+                log::error!("Character creation thread panicked");
+            }
+        }
+
+        match result {
+            Ok(summary) => {
+                self.error = None;
+                log::info!("Character creation successful: {}", summary.name);
+                Some(SceneType::CharacterSelection)
+            }
+            Err(err) => {
+                self.error = Some(err);
+                None
+            }
+        }
     }
 
     fn on_enter(&mut self, _app_state: &mut AppState) {}
@@ -204,7 +247,7 @@ impl Scene for CharacterCreationScene {
                         Some(description)
                     };
 
-                    let (tx, _rx) = mpsc::channel();
+                    let (tx, rx) = mpsc::channel();
                     self.account_thread = Some(std::thread::spawn(move || {
                         let result = account_api::create_character(
                             &base_url,
@@ -216,6 +259,7 @@ impl Scene for CharacterCreationScene {
                         );
                         let _ = tx.send(result);
                     }));
+                    self.account_rx = Some(rx);
                 }
 
                 if back_clicked {
