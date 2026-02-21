@@ -9,7 +9,6 @@ use crate::{
     helpers::exit_reason_string,
     map::GameMap,
     network::server_commands::{ServerCommand, ServerCommandData},
-    types::save_file::SaveFile,
 };
 use crate::{
     network::server_commands::ServerCommandType,
@@ -39,7 +38,6 @@ pub struct PlayerState {
     // Mirrors engine.c's `looks[]` name cache (nr -> {id,name}). Used for show_names/show_proz.
     look_names: Vec<Option<LookNameEntry>>,
     pending_log: String,
-    moa_file_data: SaveFile,
     server_version: u32,
     load_percentage: u32,
     unique1: u32,
@@ -86,7 +84,6 @@ impl Default for PlayerState {
 
             pending_log: String::new(),
 
-            moa_file_data: SaveFile::default(),
             server_version: 0,
             load_percentage: 0,
             unique1: 0,
@@ -186,20 +183,6 @@ impl PlayerState {
 
     pub fn player_data_mut(&mut self) -> &mut PlayerData {
         &mut self.player_info
-    }
-
-    pub fn save_file(&self) -> &SaveFile {
-        &self.moa_file_data
-    }
-
-    pub fn save_file_mut(&mut self) -> &mut SaveFile {
-        &mut self.moa_file_data
-    }
-
-    pub fn set_character_from_file(&mut self, save_file: SaveFile, player_data: PlayerData) {
-        self.moa_file_data = save_file;
-        self.player_info = player_data;
-        self.mark_dirty();
     }
 
     pub fn lookup_name(&self, nr: u16, id: u16) -> Option<&str> {
@@ -349,16 +332,11 @@ impl PlayerState {
     }
 
     fn write_name_chunk(&mut self, offset: usize, max_len: usize, chunk: &str) {
-        if offset >= self.moa_file_data.name.len() {
-            return;
-        }
-        let end = std::cmp::min(offset + max_len, self.moa_file_data.name.len());
-        self.moa_file_data.name[offset..end].fill(0);
+        let end = std::cmp::min(offset + max_len, self.character_info.name.len());
         self.character_info.name[offset..end].fill(0);
 
         let bytes = chunk.as_bytes();
         let n = std::cmp::min(bytes.len(), end - offset);
-        self.moa_file_data.name[offset..offset + n].copy_from_slice(&bytes[..n]);
         self.character_info.name[offset..offset + n].copy_from_slice(&bytes[..n]);
     }
 
@@ -430,9 +408,7 @@ impl PlayerState {
                 server_version,
             } => {
                 log::info!("Received NewPlayer command: player_id={:?}, pass1={:?}, pass2={:?}, server_version={:?}", player_id, pass1, pass2, server_version);
-                self.moa_file_data.usnr = *player_id;
-                self.moa_file_data.pass1 = *pass1;
-                self.moa_file_data.pass2 = *pass2;
+                log::warn!("Currently not using player_id/pass for anything.");
                 self.server_version = *server_version;
             }
             ServerCommandData::LoginOk { server_version } => {
@@ -453,7 +429,7 @@ impl PlayerState {
             ServerCommandData::SetCharName3 { chunk, race } => {
                 log::info!("SetCharName3 chunk: {:?}, race: {:?}", chunk, race);
                 self.write_name_chunk(30, 10, chunk);
-                self.moa_file_data.race = (*race).try_into().unwrap_or(0);
+                log::warn!("Currently not using race for anything.");
             }
             ServerCommandData::SetCharMode { mode } => {
                 log::info!("SetCharMode: {:?}", mode);
