@@ -12,10 +12,7 @@ use sdl2::{event::Event, pixels::Color, rect::Rect, render::Canvas, video::Windo
 
 use crate::{
     account_api,
-    scenes::{
-        helpers,
-        scene::{Scene, SceneType},
-    },
+    scenes::scene::{Scene, SceneType},
     state::AppState,
 };
 
@@ -111,7 +108,8 @@ impl Scene for CharacterCreationScene {
         ];
 
         for (class, target_rect) in portrait_slots {
-            let sprite_id = helpers::get_sprite_id_for_class_and_sex(class, self.selected_sex);
+            let sprite_id =
+                mag_core::traits::get_sprite_id_for_class_and_sex(class, self.selected_sex);
             let texture = app_state.gfx_cache.get_texture(sprite_id);
             if let Err(error) = canvas.copy(texture, None, target_rect) {
                 log::error!(

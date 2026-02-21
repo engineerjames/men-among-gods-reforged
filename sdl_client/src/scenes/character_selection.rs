@@ -10,10 +10,7 @@ use sdl2::{event::Event, rect::Rect, render::Canvas, video::Window};
 
 use crate::{
     account_api,
-    scenes::{
-        helpers,
-        scene::{Scene, SceneType},
-    },
+    scenes::scene::{Scene, SceneType},
     state::{AppState, GameLoginTarget},
 };
 
@@ -254,7 +251,7 @@ impl Scene for CharacterSelectionScene {
             return Ok(());
         };
 
-        let sprite_id = helpers::get_sprite_id_for_class_and_sex(
+        let sprite_id = mag_core::traits::get_sprite_id_for_class_and_sex(
             selected_character.class,
             selected_character.sex,
         );

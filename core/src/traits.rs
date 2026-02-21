@@ -26,6 +26,22 @@ pub enum Class {
     SeyanDu = KIN_SEYAN_DU,
 }
 
+/// Maps a character class/sex pair to the sprite ID used in the character selection list.
+///
+/// This is a UI-only mapping (it does not affect server-side appearance). For any unsupported
+/// combination, it falls back to the mercenary male sprite.
+pub fn get_sprite_id_for_class_and_sex(class: Class, sex: Sex) -> usize {
+    match (class, sex) {
+        (Class::Harakim, Sex::Male) => 4048,
+        (Class::Templar, Sex::Male) => 2000,
+        (Class::Mercenary, Sex::Male) => 5072,
+        (Class::Harakim, Sex::Female) => 6096,
+        (Class::Templar, Sex::Female) => 8144,
+        (Class::Mercenary, Sex::Female) => 7120,
+        _ => 5072,
+    }
+}
+
 /// Maps a `(sex, class)` pair to the client/server "race" integer used by the protocol.
 ///
 /// # Arguments
