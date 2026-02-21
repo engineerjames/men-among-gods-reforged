@@ -23,6 +23,7 @@ mod hosts;
 mod legacy_engine;
 mod network;
 mod player_state;
+mod preferences;
 mod scenes;
 mod sfx_cache;
 mod state;

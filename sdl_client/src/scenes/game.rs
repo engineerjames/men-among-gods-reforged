@@ -23,6 +23,7 @@ use crate::{
     font_cache,
     gfx_cache::GraphicsCache,
     network::{client_commands::ClientCommand, NetworkEvent, NetworkRuntime},
+    preferences::{self, CharacterIdentity, RuntimeProfile},
     player_state::PlayerState,
     scenes::scene::{Scene, SceneType},
     state::AppState,
@@ -153,6 +154,7 @@ pub struct GameScene {
     /// When set, the player has right-clicked a skill and is choosing a spell-bar slot.
     /// Value is the skilltab index of the skill being assigned.
     pending_skill_assignment: Option<usize>,
+    active_profile_character: Option<CharacterIdentity>,
 }
 
 impl GameScene {
@@ -179,6 +181,55 @@ impl GameScene {
             are_spell_effects_enabled: true,
             master_volume: 1.0,
             pending_skill_assignment: None,
+            active_profile_character: None,
+        }
+    }
+
+    fn apply_loaded_profile(&mut self, app_state: &mut AppState, identity: &CharacterIdentity) {
+        if let Some(profile) = preferences::load_profile(identity) {
+            if let Some(ps) = app_state.player_state.as_mut() {
+                ps.player_data_mut().skill_buttons = profile.skill_buttons;
+                ps.player_data_mut().are_shadows_enabled = if profile.shadows_enabled { 1 } else { 0 };
+                ps.player_data_mut().hide = profile.hide;
+                ps.player_data_mut().show_names = profile.show_names;
+                ps.player_data_mut().show_proz = profile.show_proz;
+            }
+            self.are_spell_effects_enabled = profile.spell_effects_enabled;
+            self.master_volume = profile.master_volume;
+            app_state.master_volume = profile.master_volume;
+            log::info!(
+                "Loaded persisted SDL profile for character '{}' (id={})",
+                identity.name,
+                identity.id
+            );
+        }
+    }
+
+    fn build_runtime_profile(&self, app_state: &AppState) -> Option<RuntimeProfile> {
+        let ps = app_state.player_state.as_ref()?;
+        let pdata = ps.player_data();
+
+        Some(RuntimeProfile {
+            skill_buttons: pdata.skill_buttons,
+            shadows_enabled: pdata.are_shadows_enabled != 0,
+            spell_effects_enabled: self.are_spell_effects_enabled,
+            master_volume: self.master_volume,
+            hide: pdata.hide,
+            show_names: pdata.show_names,
+            show_proz: pdata.show_proz,
+        })
+    }
+
+    fn save_active_profile(&self, app_state: &AppState) {
+        let Some(identity) = self.active_profile_character.as_ref() else {
+            return;
+        };
+        let Some(runtime) = self.build_runtime_profile(app_state) else {
+            return;
+        };
+
+        if let Err(err) = preferences::save_profile(identity, &runtime) {
+            log::warn!("Failed to persist SDL profile for '{}': {}", identity.name, err);
         }
     }
 
@@ -2084,6 +2135,8 @@ impl GameScene {
         x: i32,
         y: i32,
     ) -> bool {
+        let mut profile_changed = false;
+
         // --- Right-click on skill button slot: assign or clear ---
         if mouse_btn == MouseButton::Right && (610..=798).contains(&x) && (504..=548).contains(&y) {
             let col = ((x - 610) / 49) as usize;
@@ -2098,6 +2151,7 @@ impl GameScene {
                         ps.player_data_mut().skill_buttons[idx]
                             .set_skill_nr(get_skill_nr(skill_id) as u32);
                         ps.tlog(1, &format!("Assigned {} to slot {}.", name, idx + 1));
+                        profile_changed = true;
                     }
                 } else {
                     // No pending assignment — clear the slot.
@@ -2105,8 +2159,12 @@ impl GameScene {
                         if !ps.player_data().skill_buttons[idx].is_unassigned() {
                             ps.player_data_mut().skill_buttons[idx].set_unassigned();
                             ps.tlog(1, &format!("Cleared slot {}.", idx + 1));
+                            profile_changed = true;
                         }
                     }
+                }
+                if profile_changed {
+                    self.save_active_profile(app_state);
                 }
                 return true;
             }
@@ -2152,6 +2210,7 @@ impl GameScene {
                             if let Some(ps) = app_state.player_state.as_mut() {
                                 let cur = ps.player_data().show_proz;
                                 ps.player_data_mut().show_proz = 1 - cur;
+                                profile_changed = true;
                             }
                         }
                         _ => {}
@@ -2162,17 +2221,22 @@ impl GameScene {
                             if let Some(ps) = app_state.player_state.as_mut() {
                                 let cur = ps.player_data().hide;
                                 ps.player_data_mut().hide = 1 - cur;
+                                profile_changed = true;
                             }
                         }
                         2 => {
                             if let Some(ps) = app_state.player_state.as_mut() {
                                 let cur = ps.player_data().show_names;
                                 ps.player_data_mut().show_names = 1 - cur;
+                                profile_changed = true;
                             }
                         }
                         _ => {}
                     }
                 }
+            }
+            if profile_changed {
+                self.save_active_profile(app_state);
             }
             return true;
         }
@@ -2662,8 +2726,13 @@ impl Scene for GameScene {
         self.last_look_tick = 0;
         self.escape_menu_open = false;
         self.pending_skill_assignment = None;
+        self.active_profile_character = None;
 
-        let (ticket, race) = match app_state.api.login_target {
+        self.are_spell_effects_enabled = true;
+        self.master_volume = 1.0;
+        app_state.master_volume = self.master_volume;
+
+        let login_target = match app_state.api.login_target.clone() {
             Some(t) => t,
             None => {
                 log::error!("GameScene on_enter: no login_target set");
@@ -2672,18 +2741,39 @@ impl Scene for GameScene {
             }
         };
 
+        log::info!(
+            "Using profile JSON at {} (next to log file: {})",
+            preferences::profile_file_path().display(),
+            preferences::log_file_path().display()
+        );
+
         let host = crate::hosts::get_server_ip();
         log::info!(
             "GameScene: connecting to {}:5555 with ticket={}",
             host,
-            ticket
+            login_target.ticket
         );
 
-        app_state.network = Some(NetworkRuntime::new(host, 5555, ticket, race));
+        app_state.network = Some(NetworkRuntime::new(
+            host,
+            5555,
+            login_target.ticket,
+            login_target.race,
+        ));
         app_state.player_state = Some(PlayerState::default());
+
+        let identity = CharacterIdentity {
+            id: login_target.character_id,
+            name: login_target.character_name,
+            account_username: app_state.api.username.clone(),
+        };
+        self.apply_loaded_profile(app_state, &identity);
+        self.active_profile_character = Some(identity);
     }
 
     fn on_exit(&mut self, app_state: &mut AppState) {
+        self.save_active_profile(app_state);
+
         if let Some(mut net) = app_state.network.take() {
             net.shutdown();
         }
@@ -2836,18 +2926,21 @@ impl Scene for GameScene {
                     if let Some(ps) = app_state.player_state.as_mut() {
                         let current = ps.player_data().show_proz;
                         ps.player_data_mut().show_proz = 1 - current;
+                        self.save_active_profile(app_state);
                     }
                 }
                 Keycode::F6 => {
                     if let Some(ps) = app_state.player_state.as_mut() {
                         let current = ps.player_data().hide;
                         ps.player_data_mut().hide = 1 - current;
+                        self.save_active_profile(app_state);
                     }
                 }
                 Keycode::F7 => {
                     if let Some(ps) = app_state.player_state.as_mut() {
                         let current = ps.player_data().show_names;
                         ps.player_data_mut().show_names = 1 - current;
+                        self.save_active_profile(app_state);
                     }
                 }
                 Keycode::F12 => {
@@ -3113,6 +3206,7 @@ impl Scene for GameScene {
         }
 
         let mut scene_change: Option<SceneType> = None;
+        let mut profile_changed = false;
 
         egui::Window::new("Options")
             .collapsible(false)
@@ -3131,20 +3225,31 @@ impl Scene for GameScene {
                 if ui.checkbox(&mut shadows, "Enable Shadows").changed() {
                     if let Some(ps) = app_state.player_state.as_mut() {
                         ps.player_data_mut().are_shadows_enabled = if shadows { 1 } else { 0 };
+                        profile_changed = true;
                     }
                 }
 
                 // Spell effects toggle
-                ui.checkbox(&mut self.are_spell_effects_enabled, "Enable Spell Effects");
+                if ui
+                    .checkbox(&mut self.are_spell_effects_enabled, "Enable Spell Effects")
+                    .changed()
+                {
+                    profile_changed = true;
+                }
 
                 ui.separator();
 
                 // Volume slider
-                ui.add(
+                if ui
+                    .add(
                     egui::Slider::new(&mut self.master_volume, 0.0..=1.0)
                         .text("Volume")
                         .show_value(true),
-                );
+                )
+                .changed()
+                {
+                    profile_changed = true;
+                }
                 // Sync to AppState so SFX playback uses it.
                 app_state.master_volume = self.master_volume;
 
@@ -3157,6 +3262,10 @@ impl Scene for GameScene {
                     scene_change = Some(SceneType::Exit);
                 }
             });
+
+        if profile_changed {
+            self.save_active_profile(app_state);
+        }
 
         scene_change
     }
