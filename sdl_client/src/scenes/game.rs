@@ -69,6 +69,7 @@ const BAR_BG_COLOR: Color = Color::RGB(9, 4, 58);
 const BAR_FILL_COLOR: Color = Color::RGB(8, 77, 23);
 const BAR_FILL_LOOK_COLOR: Color = Color::RGB(140, 20, 20);
 const MODE_INDICATOR_COLOR: Color = Color::RGB(200, 96, 24);
+const SCROLL_KNOB_COLOR: Color = Color::RGB(8, 77, 23);
 
 // Stat text positions
 const STAT_HP_X: i32 = 5;
@@ -107,10 +108,22 @@ const MINIMAP_Y: i32 = 471;
 const MINIMAP_VIEW_SIZE: u32 = 128;
 const MINIMAP_WORLD_SIZE: usize = 1024;
 
+const SCROLL_KNOB_W: u32 = 11;
+const SCROLL_KNOB_H: u32 = 11;
+const SKILL_SCROLL_X: i32 = 207;
+const SKILL_SCROLL_Y_BASE: i32 = 149;
+const SKILL_SCROLL_RANGE: i32 = 58;
+const SKILL_SCROLL_MAX: i32 = 40;
+const INV_SCROLL_X: i32 = 290;
+const INV_SCROLL_Y_BASE: i32 = 36;
+const INV_SCROLL_RANGE: i32 = 94;
+const INV_SCROLL_MAX: i32 = 30;
+
 pub struct GameScene {
     input_buf: String,
     pending_exit: Option<String>,
     log_scroll: usize,
+    last_log_len: usize,
     ctrl_held: bool,
     shift_held: bool,
     alt_held: bool,
@@ -136,6 +149,7 @@ impl GameScene {
             input_buf: String::new(),
             pending_exit: None,
             log_scroll: 0,
+            last_log_len: 0,
             ctrl_held: false,
             shift_held: false,
             alt_held: false,
@@ -947,26 +961,40 @@ impl GameScene {
 
     /// Draw the chat log and input line using bitmap fonts.
     fn draw_chat(
-        &self,
+        &mut self,
         canvas: &mut Canvas<Window>,
         gfx: &mut GraphicsCache,
         ps: &PlayerState,
     ) -> Result<(), String> {
         let total = ps.log_len();
 
-        // Determine visible window: newest messages at the bottom, scroll moves the window up.
-        let end = total.saturating_sub(self.log_scroll);
-        let start = end.saturating_sub(LOG_LINES);
+        // Follow-tail behavior unless manually scrolled: when new messages arrive while scrolled
+        // up, keep the current viewport stable by moving the offset with the growth.
+        if total > self.last_log_len && self.log_scroll > 0 {
+            let delta = total - self.last_log_len;
+            self.log_scroll = self.log_scroll.saturating_add(delta);
+        }
+        self.last_log_len = total;
 
-        for (i, log_idx) in (start..end).rev().enumerate() {
-            if let Some(msg) = ps.log_message(log_idx) {
+        // Clamp to valid history range. 0 means newest-at-bottom.
+        let max_scroll = total.saturating_sub(LOG_LINES);
+        self.log_scroll = self.log_scroll.min(max_scroll);
+
+        // Render fixed lines top->bottom, where bottom is always the newest message at current
+        // scroll offset (matches original C client behavior).
+        for line in 0..LOG_LINES {
+            let idx_from_most_recent = self
+                .log_scroll
+                .saturating_add(LOG_LINES.saturating_sub(1).saturating_sub(line));
+
+            if let Some(msg) = ps.log_message(idx_from_most_recent) {
                 let font = match msg.color {
                     LogMessageColor::Red => 0,
                     LogMessageColor::Yellow => 1,
                     LogMessageColor::Green => 2,
                     LogMessageColor::Blue => 3,
                 };
-                let y = LOG_Y + (i as i32) * LOG_LINE_H;
+                let y = LOG_Y + (line as i32) * LOG_LINE_H;
                 font_cache::draw_text(canvas, gfx, font, &msg.message, LOG_X, y)?;
             }
         }
@@ -1078,6 +1106,17 @@ impl GameScene {
                 )),
             )?;
         }
+
+        // C-style inventory scrollbar knob (engine.c: dd_showbar(290,36+(inv_pos*94)/30,11,11,GREEN)).
+        let inv_pos = (self.inv_scroll as i32).clamp(0, INV_SCROLL_MAX);
+        let inv_y = INV_SCROLL_Y_BASE + (inv_pos * INV_SCROLL_RANGE) / INV_SCROLL_MAX;
+        canvas.set_draw_color(SCROLL_KNOB_COLOR);
+        canvas.fill_rect(sdl2::rect::Rect::new(
+            INV_SCROLL_X,
+            inv_y,
+            SCROLL_KNOB_W,
+            SCROLL_KNOB_H,
+        ))?;
 
         Ok(())
     }
@@ -1607,6 +1646,17 @@ impl GameScene {
         font_cache::draw_text(canvas, gfx, UI_FONT, "Update", 117, 256)?;
         font_cache::draw_text(canvas, gfx, UI_FONT, &pts, 162, 256)?;
 
+        // C-style skill scrollbar knob (engine.c: dd_showbar(207,149+(skill_pos*58)/40,11,11,GREEN)).
+        let skill_pos = (self.skill_scroll as i32).clamp(0, SKILL_SCROLL_MAX);
+        let skill_y = SKILL_SCROLL_Y_BASE + (skill_pos * SKILL_SCROLL_RANGE) / SKILL_SCROLL_MAX;
+        canvas.set_draw_color(SCROLL_KNOB_COLOR);
+        canvas.fill_rect(sdl2::rect::Rect::new(
+            SKILL_SCROLL_X,
+            skill_y,
+            SCROLL_KNOB_W,
+            SCROLL_KNOB_H,
+        ))?;
+
         Ok(())
     }
 
@@ -1756,6 +1806,57 @@ impl GameScene {
             }
             self.stat_raised = [0; 108];
             self.stat_points_used = 0;
+            return true;
+        }
+
+        // --- Scroll arrow buttons (orig/inter.c::button_command cases 12-15) ---
+        // Inventory up/down arrows.
+        if mouse_btn == MouseButton::Left && x > 290 && y > 1 && x < 300 && y < 34 {
+            if self.inv_scroll > 1 {
+                self.inv_scroll = self.inv_scroll.saturating_sub(2);
+            }
+            return true;
+        }
+        if mouse_btn == MouseButton::Left && x > 290 && y > 141 && x < 300 && y < 174 {
+            if self.inv_scroll < 30 {
+                self.inv_scroll = (self.inv_scroll + 2).min(30);
+            }
+            return true;
+        }
+
+        // Skill list up/down arrows.
+        if mouse_btn == MouseButton::Left && x > 206 && x < 218 && y > 113 && y < 148 {
+            if self.skill_scroll > 1 {
+                self.skill_scroll = self.skill_scroll.saturating_sub(2);
+            }
+            return true;
+        }
+        if mouse_btn == MouseButton::Left && x > 206 && x < 218 && y > 218 && y < 252 {
+            if self.skill_scroll < 40 {
+                self.skill_scroll = (self.skill_scroll + 2).min(40);
+            }
+            return true;
+        }
+
+        // --- Skill row click: x=2..108, y=114..251 (10 visible rows) ---
+        // Matches orig/inter.c::mouse_statbox2 (left click sends CL_CMD_SKILL for clicked row).
+        if mouse_btn == MouseButton::Left && (2..=108).contains(&x) && (114..=251).contains(&y) {
+            let row = ((y - 114) / 14) as usize;
+            if row < 10 {
+                let sorted = Self::sorted_skills(&ci);
+                let skilltab_index = self.skill_scroll + row;
+                if let Some(&skill_id) = sorted.get(skilltab_index) {
+                    if !get_skill_name(skill_id).is_empty() && ci.skill[skill_id][0] != 0 {
+                        if let Some(net) = app_state.network.as_ref() {
+                            net.send(ClientCommand::new_skill(
+                                get_skill_nr(skill_id) as u32,
+                                selected_char,
+                                1,
+                            ));
+                        }
+                    }
+                }
+            }
             return true;
         }
 
@@ -2080,6 +2181,7 @@ impl Scene for GameScene {
         self.input_buf.clear();
         self.pending_exit = None;
         self.log_scroll = 0;
+        self.last_log_len = 0;
         self.ctrl_held = false;
         self.shift_held = false;
         self.alt_held = false;
