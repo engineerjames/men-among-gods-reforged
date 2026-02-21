@@ -85,6 +85,14 @@ fn main() -> Result<(), String> {
     log::info!("Initializing canvas...");
     let mut egui = egui_sdl2::EguiCanvas::new(window);
 
+    // Set a fixed 800x600 logical render size so that all SDL canvas.copy() /
+    // fill_rect() calls in every scene use logical pixel coordinates regardless
+    // of the physical drawable size (e.g. Retina 2x displays).
+    // egui's painter pre-multiplies vertices by pixels_per_point itself, so we
+    // temporarily disable the logical size before egui.paint() each frame.
+    const LOGICAL_W: u32 = 800;
+    const LOGICAL_H: u32 = 600;
+
     log::info!("Initializing graphics and sound caches...");
     let gfx_cache = GraphicsCache::new(
         filepaths::get_gfx_zipfile(),
@@ -156,7 +164,12 @@ fn main() -> Result<(), String> {
         }
 
         scene_manager.update(&mut app_state, dt);
+
+        // Logical size on  → scene SDL drawing uses 800×600 coords.
+        let _ = egui.painter.canvas.set_logical_size(LOGICAL_W, LOGICAL_H);
         scene_manager.render_world(&mut app_state, &mut egui.painter.canvas);
+        // Logical size off → egui painter uses raw physical pixels.
+        let _ = egui.painter.canvas.set_logical_size(0, 0);
 
         egui.run(|ctx: &egui::Context| {
             warm_egui_glyph_cache(ctx);

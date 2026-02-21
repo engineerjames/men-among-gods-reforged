@@ -203,8 +203,7 @@ impl Scene for CharacterSelectionScene {
                 match result {
                     Ok(ticket) => {
                         log::info!("Created game login ticket {}", ticket);
-                        app_state.api.login_target =
-                            Some((ticket, self.pending_race.unwrap_or(0)));
+                        app_state.api.login_target = Some((ticket, self.pending_race.unwrap_or(0)));
                         self.pending_race = None;
                         return Some(SceneType::Game);
                     }
@@ -244,7 +243,7 @@ impl Scene for CharacterSelectionScene {
             selected_character.sex,
         );
         let texture = app_state.gfx_cache.get_texture(sprite_id);
-        let target_rect = Rect::new(600, 260, 160, 160);
+        let target_rect = Rect::new(400, 160, 160, 160);
 
         if let Err(error) = canvas.copy(texture, None, target_rect) {
             log::error!(
