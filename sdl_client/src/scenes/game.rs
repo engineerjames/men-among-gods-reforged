@@ -14,7 +14,7 @@ use sdl2::{
 use mag_core::constants::{
     DEATH, DR_DROP, DR_GIVE, DR_PICKUP, DR_USE, INJURED, INJURED1, INJURED2, INVIS, ISCHAR, ISITEM,
     ISUSABLE, MF_ARENA, MF_BANK, MF_DEATHTRAP, MF_INDOORS, MF_MOVEBLOCK, MF_NOEXPIRE, MF_NOLAG,
-    MF_NOMAGIC, MF_NOMONST, MF_SIGHTBLOCK, MF_TAVERN, MF_UWATER, SPR_EMPTY, TILEX, TILEY, TOMB,
+    MF_NOMAGIC, MF_NOMONST, MF_SIGHTBLOCK, MF_TAVERN, MF_UWATER, TILEX, TILEY, TOMB,
     XPOS, YPOS,
 };
 use mag_core::types::skilltab::{get_skill_name, get_skill_nr, get_skill_sortkey, MAX_SKILLS};
@@ -176,7 +176,7 @@ impl GameScene {
         yoff: i32,
         light: u8,
     ) -> Result<(), String> {
-        if sprite_id <= 0 || sprite_id as u16 == SPR_EMPTY {
+        if sprite_id <= 0 {
             return Ok(());
         }
 
@@ -388,7 +388,7 @@ impl GameScene {
                 } else {
                     tile.ba_sprite
                 };
-                if ba <= 0 || ba as u16 == SPR_EMPTY {
+                if ba <= 0 {
                     continue;
                 }
 

@@ -75,7 +75,7 @@ fn main() -> Result<(), String> {
         process::exit(1);
     });
 
-    log::info!("Starting Men Among Gods: Reforged Server v0.0.1");
+    log::info!("Starting Men Among Gods: Reforged Server v1.1.0");
     log::info!("Process PID: {}", process::id());
 
     let quit_flag = Arc::new(AtomicBool::new(false));

@@ -76,6 +76,7 @@ pub enum ServerCommandData {
     Empty,
     Pong {
         seq: u32,
+        #[allow(dead_code)]
         client_time_ms: u32,
     },
     SetMap {
