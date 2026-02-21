@@ -14,11 +14,17 @@ use crate::state::{ApiTokenState, AppState};
 mod account_api;
 mod dpi_scaling;
 mod filepaths;
+mod font_cache;
+mod game_map;
 mod gfx_cache;
+mod helpers;
 mod hosts;
+mod network;
+mod player_state;
 mod scenes;
 mod sfx_cache;
 mod state;
+mod types;
 
 static EGUI_GLYPH_WARMED: AtomicBool = AtomicBool::new(false);
 
