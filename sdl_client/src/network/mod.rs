@@ -127,7 +127,7 @@ impl NetworkRuntime {
                 Some(prev) => prev * 0.8 + (rtt_ms as f32) * 0.2,
                 None => rtt_ms as f32,
             });
-            log::info!("Ping RTT: {} ms (seq={})", rtt_ms, seq);
+            log::debug!("Ping RTT: {} ms (seq={})", rtt_ms, seq);
         }
     }
 

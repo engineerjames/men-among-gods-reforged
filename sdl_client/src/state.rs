@@ -4,11 +4,19 @@ use crate::{
 };
 
 #[derive(Clone, Debug)]
+pub struct GameLoginTarget {
+    pub ticket: u64,
+    pub race: i32,
+    pub character_id: u64,
+    pub character_name: String,
+}
+
+#[derive(Clone, Debug)]
 pub struct ApiTokenState {
     pub base_url: String,
     pub username: Option<String>,
     pub token: Option<String>,
-    pub login_target: Option<(u64, i32)>,
+    pub login_target: Option<GameLoginTarget>,
 }
 
 impl ApiTokenState {
@@ -28,6 +36,8 @@ pub struct AppState {
     pub api: ApiTokenState,
     pub network: Option<NetworkRuntime>,
     pub player_state: Option<PlayerState>,
+    /// Master volume multiplier (0.0 = muted, 1.0 = full). Set by the escape menu slider.
+    pub master_volume: f32,
 }
 
 impl AppState {
@@ -38,6 +48,7 @@ impl AppState {
             api,
             network: None,
             player_state: None,
+            master_volume: 1.0,
         }
     }
 }

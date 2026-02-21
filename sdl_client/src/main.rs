@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use egui_sdl2::egui;
+use sdl2::gfx::framerate::FPSManager;
 use sdl2::image::InitFlag;
 use sdl2::mixer::{AUDIO_S16LSB, DEFAULT_CHANNELS};
 
@@ -22,6 +23,7 @@ mod hosts;
 mod legacy_engine;
 mod network;
 mod player_state;
+mod preferences;
 mod scenes;
 mod sfx_cache;
 mod state;
@@ -56,6 +58,8 @@ fn main() -> Result<(), String> {
     );
 
     log::info!("Initializing SDL2 contexts...");
+    let mut fps_manager = FPSManager::new();
+    fps_manager.set_framerate(60)?;
     let sdl_context = sdl2::init()?;
     let _image_context = sdl2::image::init(InitFlag::PNG)?;
     let _audio_subsystem = sdl_context.audio()?;
@@ -186,6 +190,8 @@ fn main() -> Result<(), String> {
 
         egui.paint();
         egui.present();
+
+        fps_manager.delay();
     }
 
     Ok(())

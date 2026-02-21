@@ -14,7 +14,7 @@ use crate::{
         helpers,
         scene::{Scene, SceneType},
     },
-    state::AppState,
+    state::{AppState, GameLoginTarget},
 };
 
 pub struct CharacterSelectionScene {
@@ -203,7 +203,23 @@ impl Scene for CharacterSelectionScene {
                 match result {
                     Ok(ticket) => {
                         log::info!("Created game login ticket {}", ticket);
-                        app_state.api.login_target = Some((ticket, self.pending_race.unwrap_or(0)));
+                        let Some(character_id) = self.selected_character_id else {
+                            self.last_error = Some("Select a character first".to_string());
+                            return None;
+                        };
+
+                        let Some(selected) = self.characters.iter().find(|c| c.id == character_id)
+                        else {
+                            self.last_error = Some("Selected character not found".to_string());
+                            return None;
+                        };
+
+                        app_state.api.login_target = Some(GameLoginTarget {
+                            ticket,
+                            race: self.pending_race.unwrap_or(0),
+                            character_id,
+                            character_name: selected.name.clone(),
+                        });
                         self.pending_race = None;
                         return Some(SceneType::Game);
                     }

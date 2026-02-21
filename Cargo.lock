@@ -6490,6 +6490,8 @@ dependencies = [
  "log4rs",
  "reqwest",
  "sdl2",
+ "serde",
+ "serde_json",
  "zip",
 ]
 
