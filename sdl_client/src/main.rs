@@ -151,11 +151,14 @@ fn main() -> Result<(), String> {
             if let sdl2::event::Event::Quit { .. } = event {
                 scene_manager.request_scene_change(SceneType::Exit, &mut app_state);
             }
+            let egui_event = dpi_scaling::adjust_mouse_event_for_egui_hidpi(
+                &event,
+                egui.painter.canvas.window(),
+            );
+            let _ = egui.on_event(&egui_event);
 
             let event =
                 dpi_scaling::adjust_mouse_event_for_hidpi(event, egui.painter.canvas.window());
-
-            let _ = egui.on_event(&event);
 
             scene_manager.handle_event(&mut app_state, &event);
 
