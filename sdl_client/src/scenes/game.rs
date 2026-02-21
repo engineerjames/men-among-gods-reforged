@@ -38,6 +38,7 @@ const MAX_INPUT_LEN: usize = 120;
 /// followed by its terminating `NetworkEvent::Tick`. We only stop processing at
 /// tick boundaries so map state is never rendered from a partially applied group.
 const MAX_TICK_GROUPS_PER_FRAME: usize = 32;
+const QSIZE: u32 = 8;
 
 // ---- Layout constants (ported from engine.c / layout.rs) ---- //
 
@@ -141,6 +142,8 @@ pub struct GameScene {
     /// This matches the C xmap column-major storage: `xmap[map[m].y + map[m].x*1024]`.
     minimap_xmap: Vec<u8>,
     minimap_last_xy: Option<(u16, u16)>,
+    look_step: u32,
+    last_look_tick: u32,
 }
 
 impl GameScene {
@@ -161,7 +164,53 @@ impl GameScene {
             stat_points_used: 0,
             minimap_xmap: vec![0u8; MINIMAP_WORLD_SIZE * MINIMAP_WORLD_SIZE * 4],
             minimap_last_xy: None,
+            look_step: 0,
+            last_look_tick: 0,
         }
+    }
+
+    fn find_unknown_look_target(ps: &PlayerState) -> Option<u32> {
+        let pdata = ps.player_data();
+        if pdata.show_names == 0 && pdata.show_proz == 0 {
+            return None;
+        }
+
+        let map = ps.map();
+        for idx in 0..map.len() {
+            let Some(tile) = map.tile_at_index(idx) else {
+                continue;
+            };
+
+            if tile.ch_nr == 0 {
+                continue;
+            }
+
+            // Mirror C lookup() behavior: unknown if we don't have a known name for this nr/id.
+            if ps.lookup_name(tile.ch_nr, tile.ch_id).is_none() {
+                return Some(tile.ch_nr as u32);
+            }
+        }
+
+        None
+    }
+
+    fn maybe_send_autolook_and_shop_refresh(&mut self, app_state: &mut AppState) {
+        let (Some(net), Some(ps)) = (app_state.network.as_ref(), app_state.player_state.as_ref())
+        else {
+            return;
+        };
+
+        self.look_step = self.look_step.saturating_add(1);
+
+        // C engine.c: if (lookat && lookstep>QSIZE*3) cmd1s(CL_CMD_AUTOLOOK,lookat);
+        if self.look_step > QSIZE * 3 {
+            if let Some(lookat) = Self::find_unknown_look_target(ps) {
+                net.send(ClientCommand::new_autolook(lookat));
+            }
+            self.look_step = 0;
+            return;
+        }
+
     }
 
     fn autohide(x: usize, y: usize) -> bool {
@@ -288,6 +337,42 @@ impl GameScene {
         texture.set_alpha_mod(255);
         texture.set_blend_mode(sdl2::render::BlendMode::Blend);
         result
+    }
+
+    fn draw_ui_item_with_hover(
+        canvas: &mut Canvas<Window>,
+        gfx: &mut GraphicsCache,
+        sprite_id: i32,
+        x: i32,
+        y: i32,
+        hovered: bool,
+    ) -> Result<(), String> {
+        if sprite_id <= 0 {
+            return Ok(());
+        }
+
+        let texture = gfx.get_texture(sprite_id as usize);
+        let q = texture.query();
+        canvas.copy(
+            texture,
+            None,
+            Some(sdl2::rect::Rect::new(x, y, q.width, q.height)),
+        )?;
+
+        if hovered {
+            texture.set_blend_mode(sdl2::render::BlendMode::Add);
+            texture.set_alpha_mod(96);
+            let result = canvas.copy(
+                texture,
+                None,
+                Some(sdl2::rect::Rect::new(x, y, q.width, q.height)),
+            );
+            texture.set_alpha_mod(255);
+            texture.set_blend_mode(sdl2::render::BlendMode::Blend);
+            result?;
+        }
+
+        Ok(())
     }
 
     fn process_network_events(&mut self, app_state: &mut AppState) -> Option<SceneType> {
@@ -908,6 +993,7 @@ impl GameScene {
         ps: &PlayerState,
     ) -> Result<(), String> {
         let show_shop = ps.should_show_shop();
+        let show_look = ps.should_show_look() && !show_shop;
 
         let (sprite, points, name) = if show_shop {
             let shop = ps.shop_target();
@@ -915,6 +1001,13 @@ impl GameScene {
                 shop.sprite() as i32,
                 shop.points(),
                 shop.name().unwrap_or("Unknown").to_string(),
+            )
+        } else if show_look {
+            let look = ps.look_target();
+            (
+                look.sprite() as i32,
+                look.points(),
+                look.name().unwrap_or("Unknown").to_string(),
             )
         } else {
             let ci = ps.character_info();
@@ -1038,6 +1131,65 @@ impl GameScene {
         ps: &PlayerState,
     ) -> Result<(), String> {
         let ci = ps.character_info();
+        let show_shop = ps.should_show_shop();
+        let show_look = ps.should_show_look() && !show_shop;
+
+        if show_look {
+            let look = ps.look_target();
+            for n in 0..12usize {
+                let worn_index = EQUIP_WNTAB[n];
+                let sprite = look.worn(worn_index) as i32;
+                if sprite <= 0 {
+                    continue;
+                }
+                let x = 303 + ((n % 2) as i32) * 35;
+                let y = 2 + ((n / 2) as i32) * 35;
+                Self::draw_ui_item_with_hover(canvas, gfx, sprite, x, y, false)?;
+            }
+
+            if ci.citem > 0 {
+                let tex = gfx.get_texture(ci.citem as usize);
+                let q = tex.query();
+                canvas.copy(
+                    tex,
+                    None,
+                    Some(sdl2::rect::Rect::new(
+                        self.mouse_x - 8,
+                        self.mouse_y - 8,
+                        q.width,
+                        q.height,
+                    )),
+                )?;
+            }
+
+            return Ok(());
+        }
+
+        let hovered_inv_slot =
+            if (220..=290).contains(&self.mouse_x) && (2..=177).contains(&self.mouse_y) {
+                let col = ((self.mouse_x - 220) / 35) as usize;
+                let row = ((self.mouse_y - 2) / 35) as usize;
+                if col < 2 && row < 5 {
+                    Some(self.inv_scroll + row * 2 + col)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+        let hovered_equip_index =
+            if (303..=373).contains(&self.mouse_x) && (2..=212).contains(&self.mouse_y) {
+                let col = ((self.mouse_x - 303) / 35) as usize;
+                let row = ((self.mouse_y - 2) / 35) as usize;
+                if col < 2 && row < 6 {
+                    Some(row * 2 + col)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
 
         for n in 0..10usize {
             let idx = self.inv_scroll + n;
@@ -1050,13 +1202,8 @@ impl GameScene {
             }
             let x = 220 + ((n % 2) as i32) * 35;
             let y = 2 + ((n / 2) as i32) * 35;
-            let tex = gfx.get_texture(sprite as usize);
-            let q = tex.query();
-            canvas.copy(
-                tex,
-                None,
-                Some(sdl2::rect::Rect::new(x, y, q.width, q.height)),
-            )?;
+            let hovered = hovered_inv_slot == Some(idx);
+            Self::draw_ui_item_with_hover(canvas, gfx, sprite, x, y, hovered)?;
         }
 
         for n in 0..12usize {
@@ -1067,13 +1214,8 @@ impl GameScene {
             }
             let x = 303 + ((n % 2) as i32) * 35;
             let y = 2 + ((n / 2) as i32) * 35;
-            let tex = gfx.get_texture(sprite as usize);
-            let q = tex.query();
-            canvas.copy(
-                tex,
-                None,
-                Some(sdl2::rect::Rect::new(x, y, q.width, q.height)),
-            )?;
+            let hovered = hovered_equip_index == Some(n);
+            Self::draw_ui_item_with_hover(canvas, gfx, sprite, x, y, hovered)?;
         }
 
         for n in 0..20usize {
@@ -1121,33 +1263,6 @@ impl GameScene {
         Ok(())
     }
 
-    fn draw_look_overlay(
-        canvas: &mut Canvas<Window>,
-        gfx: &mut GraphicsCache,
-        ps: &PlayerState,
-    ) -> Result<(), String> {
-        if ps.should_show_shop() {
-            return Ok(());
-        }
-        if !ps.should_show_look() {
-            return Ok(());
-        }
-        let look = ps.look_target();
-        let name = look.name().unwrap_or("Unknown");
-
-        font_cache::draw_text(canvas, gfx, UI_FONT, "Look:", 500, 236)?;
-        font_cache::draw_text(canvas, gfx, UI_FONT, name, 542, 236)?;
-
-        let hp_line = format!("HP {:>3}/{:>3}", look.a_hp(), look.hp());
-        let end_line = format!("End {:>3}/{:>3}", look.a_end(), look.end());
-        let mana_line = format!("Mana {:>3}/{:>3}", look.a_mana(), look.mana());
-        font_cache::draw_text(canvas, gfx, UI_FONT, &hp_line, 500, 250)?;
-        font_cache::draw_text(canvas, gfx, UI_FONT, &end_line, 500, 264)?;
-        font_cache::draw_text(canvas, gfx, UI_FONT, &mana_line, 500, 278)?;
-
-        Ok(())
-    }
-
     fn draw_shop_overlay(
         &self,
         canvas: &mut Canvas<Window>,
@@ -1167,6 +1282,20 @@ impl GameScene {
             Some(sdl2::rect::Rect::new(220, 260, bq.width, bq.height)),
         )?;
 
+        let hovered_shop_slot =
+            if (220..=500).contains(&self.mouse_x) && (261..=552).contains(&self.mouse_y) {
+                let tx = ((self.mouse_x - 220) / 35) as usize;
+                let ty = ((self.mouse_y - 261) / 35) as usize;
+                let nr = tx + ty * 8;
+                if tx < 8 && nr < 62 {
+                    Some(nr)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
         for i in 0..62usize {
             let item = shop.item(i);
             if item == 0 {
@@ -1174,13 +1303,8 @@ impl GameScene {
             }
             let x = 222 + ((i % 8) as i32) * 35;
             let y = 262 + ((i / 8) as i32) * 35;
-            let tex = gfx.get_texture(item as usize);
-            let q = tex.query();
-            canvas.copy(
-                tex,
-                None,
-                Some(sdl2::rect::Rect::new(x, y, q.width, q.height)),
-            )?;
+            let hovered = hovered_shop_slot == Some(i);
+            Self::draw_ui_item_with_hover(canvas, gfx, item as i32, x, y, hovered)?;
         }
 
         if (222..=501).contains(&self.mouse_x) && (262..=541).contains(&self.mouse_y) {
@@ -1214,31 +1338,15 @@ impl GameScene {
         gfx: &mut GraphicsCache,
         ps: &PlayerState,
     ) -> Result<(), String> {
+        if ps.should_show_shop() {
+            return Ok(());
+        }
+
+        if !Self::cursor_in_map_interaction_area(self.mouse_x, self.mouse_y) {
+            return Ok(());
+        }
+
         canvas.set_draw_color(Color::RGB(255, 170, 80));
-
-        // Hover highlight: skill labels grid
-        if (610..=798).contains(&self.mouse_x) && (504..=548).contains(&self.mouse_y) {
-            let col = (self.mouse_x - 610) / 49;
-            let row = (self.mouse_y - 504) / 15;
-            if (0..4).contains(&col) && (0..3).contains(&row) {
-                let rx = 604 + col * 49;
-                let ry = 504 + row * 15;
-                canvas.draw_rect(sdl2::rect::Rect::new(rx, ry, 41, 14))?;
-                return Ok(());
-            }
-        }
-
-        // Hover highlight: mode/toggle buttons
-        if (604..=798).contains(&self.mouse_x) && (552..=582).contains(&self.mouse_y) {
-            let col = (self.mouse_x - 604) / 49;
-            let row = (self.mouse_y - 552) / 16;
-            if (0..4).contains(&col) && (0..2).contains(&row) {
-                let rx = 604 + col * 49;
-                let ry = 552 + row * 16;
-                canvas.draw_rect(sdl2::rect::Rect::new(rx, ry, 41, 14))?;
-                return Ok(());
-            }
-        }
 
         // Hover highlight on world tiles: brighten the underlying sprite(s)
         // instead of drawing an overlay shape.
@@ -1246,9 +1354,45 @@ impl GameScene {
         if let Some((mx, my)) =
             Self::screen_to_map_tile(self.mouse_x, self.mouse_y, cam_xoff, cam_yoff)
         {
-            if self.shift_held {
+            if !(3..=TILEX - 7).contains(&mx) || !(7..=TILEY - 3).contains(&my) {
+                return Ok(());
+            }
+
+            if self.ctrl_held || self.alt_held {
+                // Ctrl/Alt targeting: highlight nearest character sprite (C mouse_mapbox behavior).
+                if let Some((sx, sy)) = Self::nearest_tile_with_flag(ps, mx, my, ISCHAR) {
+                    if !(3..=TILEX - 7).contains(&sx) || !(7..=TILEY - 3).contains(&sy) {
+                        return Ok(());
+                    }
+
+                    if let Some(tile) = ps.map().tile_at_xy(sx, sy) {
+                        if (tile.flags & INVIS) != 0 {
+                            return Ok(());
+                        }
+
+                        if tile.obj2 > 0 {
+                            Self::draw_world_sprite_highlight(
+                                canvas,
+                                gfx,
+                                tile.obj2,
+                                sx,
+                                sy,
+                                cam_xoff,
+                                cam_yoff,
+                                tile.obj_xoff,
+                                tile.obj_yoff,
+                                140,
+                            )?;
+                        }
+                    }
+                }
+            } else if self.shift_held {
                 // Shift held: only highlight nearby ISITEM tiles (use/pickup targeting).
                 if let Some((sx, sy)) = Self::nearest_tile_with_flag(ps, mx, my, ISITEM) {
+                    if !(3..=TILEX - 7).contains(&sx) || !(7..=TILEY - 3).contains(&sy) {
+                        return Ok(());
+                    }
+
                     if let Some(tile) = ps.map().tile_at_xy(sx, sy) {
                         if (tile.flags & INVIS) != 0 {
                             return Ok(());
@@ -2105,34 +2249,53 @@ impl GameScene {
             }
         }
 
-        // --- Shop overlay click: item rows at y=310..(310+16*12) when shop is visible ---
-        let shop_cmd: Option<(i16, i32)> = {
-            let Some(ps) = app_state.player_state.as_ref() else {
-                return false;
-            };
-            if mouse_btn == MouseButton::Left && ps.should_show_shop() {
-                let shop = ps.shop_target();
-                if (222..=501).contains(&x) && (262..=541).contains(&y) {
-                    let col = ((x - 222) / 35) as usize;
-                    let row = ((y - 262) / 35) as usize;
-                    let i = row * 8 + col;
-                    if i < 62 && shop.item(i) != 0 {
-                        Some(((i as i16) + 1, shop.nr() as i32))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
+        // --- Shop / depot / grave overlay clicks (orig/inter.c::mouse_shop) ---
+        let Some(ps) = app_state.player_state.as_ref() else {
+            return false;
         };
-        if let Some((shop_idx, shop_nr_val)) = shop_cmd {
-            if let Some(net) = app_state.network.as_ref() {
-                net.send(ClientCommand::new_shop(shop_idx, shop_nr_val));
+        if ps.should_show_shop() {
+            let in_shop_window = x > 220 && x < 516 && y > 260 && y < 485 + 32 + 35;
+
+            // Close button: x 499..516, y 260..274 (LMB closes).
+            if x > 499 && x < 516 && y > 260 && y < 274 {
+                if mouse_btn == MouseButton::Left {
+                    if let Some(ps_mut) = app_state.player_state.as_mut() {
+                        ps_mut.close_shop();
+                    }
+                }
+                return true;
             }
-            return true;
+
+            // Clicking outside the shop window always closes it.
+            if !in_shop_window {
+                if let Some(ps_mut) = app_state.player_state.as_mut() {
+                    ps_mut.close_shop();
+                }
+                return true;
+            }
+
+            // Grid: x 220..500, y 261..552; send CmdShop(shop_nr, nr) / CmdShop(shop_nr, nr+62).
+            if x > 220 && x < 500 && y > 261 && y < 485 + 32 + 35 {
+                let tx = ((x - 220) / 35) as usize;
+                let ty = ((y - 261) / 35) as usize;
+                let nr = tx + ty * 8;
+
+                if nr < 62 {
+                    if let Some(net) = app_state.network.as_ref() {
+                        let shop_nr = ps.shop_target().nr() as i16;
+                        match mouse_btn {
+                            MouseButton::Left => {
+                                net.send(ClientCommand::new_shop(shop_nr, nr as i32));
+                            }
+                            MouseButton::Right => {
+                                net.send(ClientCommand::new_shop(shop_nr, (nr + 62) as i32));
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                return true;
+            }
         }
 
         false
@@ -2168,6 +2331,20 @@ impl GameScene {
 
         best.map(|(mx, my, _)| (mx, my))
     }
+
+    fn cursor_in_map_interaction_area(screen_x: i32, screen_y: i32) -> bool {
+        // Matches original inter.c::mouse_mapbox coordinate transform and bounds check.
+        let x = screen_x + 176 - 16;
+        let y = screen_y + 8;
+
+        let mx = 2 * y + x - (YPOS * 2) - XPOS + (((TILEX as i32) - 34) / 2 * 32);
+        let my = x - 2 * y + (YPOS * 2) - XPOS + (((TILEX as i32) - 34) / 2 * 32);
+
+        !(mx < 3 * 32 + 12
+            || mx > ((TILEX as i32) - 7) * 32 + 20
+            || my < 7 * 32 + 12
+            || my > ((TILEY as i32) - 3) * 32 + 20)
+    }
 }
 
 impl Default for GameScene {
@@ -2193,6 +2370,8 @@ impl Scene for GameScene {
         self.stat_points_used = 0;
         self.minimap_xmap.fill(0);
         self.minimap_last_xy = None;
+        self.look_step = 0;
+        self.last_look_tick = 0;
 
         let (ticket, race) = match app_state.api.login_target {
             Some(t) => t,
@@ -2522,7 +2701,19 @@ impl Scene for GameScene {
     }
 
     fn update(&mut self, app_state: &mut AppState, _dt: Duration) -> Option<SceneType> {
-        self.process_network_events(app_state)
+        let scene = self.process_network_events(app_state);
+        if scene.is_none() {
+            let tick_now = app_state
+                .network
+                .as_ref()
+                .map(|net| net.client_ticker)
+                .unwrap_or(0);
+            if tick_now != self.last_look_tick {
+                self.last_look_tick = tick_now;
+                self.maybe_send_autolook_and_shop_refresh(app_state);
+            }
+        }
+        scene
     }
 
     fn render_world(
@@ -2570,7 +2761,6 @@ impl Scene for GameScene {
 
         // 9. Portrait/shop overlays
         Self::draw_portrait_panel(canvas, gfx_cache, ps)?;
-        Self::draw_look_overlay(canvas, gfx_cache, ps)?;
         self.draw_shop_overlay(canvas, gfx_cache, ps)?;
 
         // 10. Hover highlights

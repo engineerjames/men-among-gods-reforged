@@ -72,18 +72,6 @@ impl Look {
         self.points
     }
 
-    pub fn hp(&self) -> u32 {
-        self.hp
-    }
-
-    pub fn end(&self) -> u32 {
-        self.end
-    }
-
-    pub fn mana(&self) -> u32 {
-        self.mana
-    }
-
     pub fn a_hp(&self) -> u32 {
         self.a_hp
     }
@@ -104,7 +92,6 @@ impl Look {
         self.price.get(index).copied().unwrap_or(0)
     }
 
-    #[allow(dead_code)]
     pub fn pl_price(&self) -> u32 {
         self.pl_price
     }
