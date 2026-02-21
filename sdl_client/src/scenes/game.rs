@@ -12,10 +12,10 @@ use sdl2::{
 };
 
 use mag_core::constants::{
-    DEATH, DR_DROP, DR_GIVE, DR_PICKUP, DR_USE, INJURED, INJURED1, INJURED2, INVIS, ISCHAR, ISITEM,
-    ISUSABLE, MF_ARENA, MF_BANK, MF_DEATHTRAP, MF_INDOORS, MF_MOVEBLOCK, MF_NOEXPIRE, MF_NOLAG,
-    MF_NOMAGIC, MF_NOMONST, MF_SIGHTBLOCK, MF_TAVERN, MF_UWATER, SPR_EMPTY, TILEX, TILEY, TOMB,
-    XPOS, YPOS,
+    CMAGIC, DEATH, DR_DROP, DR_GIVE, DR_PICKUP, DR_USE, EMAGIC, GMAGIC, INJURED, INJURED1,
+    INJURED2, INVIS, ISCHAR, ISITEM, ISUSABLE, MF_ARENA, MF_BANK, MF_DEATHTRAP, MF_INDOORS,
+    MF_MOVEBLOCK, MF_NOEXPIRE, MF_NOLAG, MF_NOMAGIC, MF_NOMONST, MF_SIGHTBLOCK, MF_TAVERN,
+    MF_UWATER, SPR_EMPTY, TILEX, TILEY, TOMB, XPOS, YPOS,
 };
 use mag_core::types::skilltab::{get_skill_name, get_skill_nr, get_skill_sortkey, MAX_SKILLS};
 
@@ -144,6 +144,15 @@ pub struct GameScene {
     minimap_last_xy: Option<(u16, u16)>,
     look_step: u32,
     last_look_tick: u32,
+    /// Whether the escape/options menu overlay is currently visible.
+    escape_menu_open: bool,
+    /// Whether spell visual effects (EMAGIC/GMAGIC/CMAGIC glows) are rendered.
+    are_spell_effects_enabled: bool,
+    /// Master volume multiplier (0.0 = muted, 1.0 = full).
+    master_volume: f32,
+    /// When set, the player has right-clicked a skill and is choosing a spell-bar slot.
+    /// Value is the skilltab index of the skill being assigned.
+    pending_skill_assignment: Option<usize>,
 }
 
 impl GameScene {
@@ -166,6 +175,10 @@ impl GameScene {
             minimap_last_xy: None,
             look_step: 0,
             last_look_tick: 0,
+            escape_menu_open: false,
+            are_spell_effects_enabled: true,
+            master_volume: 1.0,
+            pending_skill_assignment: None,
         }
     }
 
@@ -208,7 +221,6 @@ impl GameScene {
                 net.send(ClientCommand::new_autolook(lookat));
             }
             self.look_step = 0;
-            return;
         }
     }
 
@@ -338,6 +350,151 @@ impl GameScene {
         result
     }
 
+    /// Draw a darkened, vertically-flattened shadow beneath a character sprite.
+    /// Ported from dd_shadow() in the original dd.c.
+    fn draw_shadow(
+        canvas: &mut Canvas<Window>,
+        gfx: &mut GraphicsCache,
+        sprite_id: i32,
+        tile_x: usize,
+        tile_y: usize,
+        cam_xoff: i32,
+        cam_yoff: i32,
+        xoff: i32,
+        yoff: i32,
+    ) -> Result<(), String> {
+        if sprite_id <= 0 {
+            return Ok(());
+        }
+
+        // Original dd_shadow only renders shadows for character sprites in these ranges.
+        let nr = sprite_id as u32;
+        if !((2000..16336).contains(&nr) || nr > 17360) {
+            return Ok(());
+        }
+
+        let texture = gfx.get_texture(sprite_id as usize);
+        let q = texture.query();
+        let xs = q.width as i32 / 32;
+        let ys = q.height as i32 / 32;
+
+        let xpos = (tile_x as i32) * 32;
+        let ypos = (tile_y as i32) * 32;
+
+        let rx = xpos / 2 + ypos / 2 - xs * 16 + 32 + XPOS + MAP_X_SHIFT + cam_xoff + xoff;
+        let ry = xpos / 4 - ypos / 4 + YPOS - ys * 32 + cam_yoff + yoff;
+
+        // Shadow is placed at character's feet, flattened to 1/4 height.
+        // disp=14 matches the original C code.
+        let shadow_ry = ry + ys * 32 - 14;
+        let shadow_h = (q.height / 4).max(1);
+
+        // Darken: black tint with partial alpha to simulate the v >>= 1 pixel halving.
+        texture.set_color_mod(0, 0, 0);
+        texture.set_alpha_mod(80);
+        texture.set_blend_mode(sdl2::render::BlendMode::Blend);
+
+        let result = canvas.copy(
+            texture,
+            None,
+            Some(sdl2::rect::Rect::new(rx, shadow_ry, q.width, shadow_h)),
+        );
+
+        // Reset texture state.
+        texture.set_color_mod(255, 255, 255);
+        texture.set_alpha_mod(255);
+
+        result
+    }
+
+    /// Draw a diamond-shaped magic glow effect over a tile.
+    /// Ported from dd_alphaeffect_magic_0() in the original dd.c.
+    ///
+    /// `alpha_mask`: bitmask of active channels (bit0=R/electric, bit1=G/green, bit2=B/cold).
+    /// `strength`: intensity divider (higher = weaker glow), extracted from flag bits.
+    fn draw_magic_effect(
+        canvas: &mut Canvas<Window>,
+        alpha_mask: u32,
+        strength: u32,
+        tile_x: usize,
+        tile_y: usize,
+        cam_xoff: i32,
+        cam_yoff: i32,
+        xoff: i32,
+        yoff: i32,
+    ) -> Result<(), String> {
+        // Isometric projection for a 2×2 tile area (64×64 pixels), matching dd_alphaeffect_magic.
+        let xpos = (tile_x as i32) * 32;
+        let ypos = (tile_y as i32) * 32;
+        let rx = xpos / 2 + ypos / 2 - 2 * 16 + 32 + XPOS + MAP_X_SHIFT + cam_xoff + xoff;
+        let ry = xpos / 4 - ypos / 4 + YPOS - 2 * 32 + cam_yoff + yoff;
+
+        let str_div = strength.max(1) as i32;
+
+        // Draw the diamond glow as a series of horizontal lines using additive blending.
+        // This avoids needing a streaming texture while closely matching the original effect.
+        canvas.set_blend_mode(sdl2::render::BlendMode::Add);
+
+        for y in 0..64i32 {
+            let py = ry + y;
+            if !(0..600).contains(&py) {
+                continue;
+            }
+
+            for x in 0..64i32 {
+                let px = rx + x;
+                if !(0..800).contains(&px) {
+                    continue;
+                }
+
+                // Diamond envelope — same formula as the original C code.
+                let mut e: i32 = 32;
+                if x < 32 {
+                    e -= 32 - x;
+                }
+                if x > 31 {
+                    e -= x - 31;
+                }
+                if y < 16 {
+                    e -= 16 - y;
+                }
+                if y > 55 {
+                    e -= (y - 55) * 2;
+                }
+                if e <= 0 {
+                    continue;
+                }
+                e /= str_div;
+                if e <= 0 {
+                    continue;
+                }
+
+                // Scale to 0–255 range (original works with 0–31 in RGB565, ×8 ≈ 0–255).
+                let r = if (alpha_mask & 1) != 0 {
+                    (e * 8).min(255) as u8
+                } else {
+                    0u8
+                };
+                let g = if (alpha_mask & 2) != 0 {
+                    (e * 8).min(255) as u8
+                } else {
+                    0u8
+                };
+                let b = if (alpha_mask & 4) != 0 {
+                    (e * 8).min(255) as u8
+                } else {
+                    0u8
+                };
+
+                canvas.set_draw_color(Color::RGBA(r, g, b, 255));
+                let _ = canvas.draw_point(sdl2::rect::Point::new(px, py));
+            }
+        }
+
+        canvas.set_blend_mode(sdl2::render::BlendMode::None);
+        Ok(())
+    }
+
     fn draw_ui_item_with_hover(
         canvas: &mut Canvas<Window>,
         gfx: &mut GraphicsCache,
@@ -431,7 +588,12 @@ impl GameScene {
                             }
                             ServerCommandData::PlaySound { nr, vol, pan } => {
                                 log::info!("PlaySound: nr={} vol={} pan={}", nr, vol, pan);
-                                app_state.sfx_cache.play_sfx(*nr as usize, *vol, *pan);
+                                app_state.sfx_cache.play_sfx(
+                                    *nr as usize,
+                                    *vol,
+                                    *pan,
+                                    app_state.master_volume,
+                                );
                             }
                             _ => {
                                 if let Some(ps) = app_state.player_state.as_mut() {
@@ -474,6 +636,8 @@ impl GameScene {
         canvas: &mut Canvas<Window>,
         gfx: &mut GraphicsCache,
         ps: &PlayerState,
+        shadows_enabled: bool,
+        spell_effects_enabled: bool,
     ) -> Result<(), String> {
         let map = ps.map();
         let ci = ps.character_info();
@@ -580,6 +744,21 @@ impl GameScene {
 
                     Self::draw_world_sprite(
                         canvas, gfx, obj, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                    )?;
+                }
+
+                // Shadow (before character sprite, matching engine.c line 789).
+                if shadows_enabled {
+                    Self::draw_shadow(
+                        canvas,
+                        gfx,
+                        tile.obj2,
+                        x,
+                        y,
+                        cam_xoff,
+                        cam_yoff,
+                        ch_xoff,
+                        ch_yoff + 4,
                     )?;
                 }
 
@@ -792,6 +971,31 @@ impl GameScene {
                         let sprite = 240 + tomb_variant - 1;
                         Self::draw_world_sprite(
                             canvas, gfx, sprite, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                        )?;
+                    }
+                }
+
+                // Magic spell effects (EMAGIC/GMAGIC/CMAGIC diamond glows).
+                // Matches engine.c lines 846–860.
+                if spell_effects_enabled {
+                    let mut alpha_mask = 0u32;
+                    let mut alphastr = 0u32;
+                    if (tile.flags & EMAGIC) != 0 {
+                        alpha_mask |= 1;
+                        alphastr = alphastr.max((tile.flags & EMAGIC) >> 22);
+                    }
+                    if (tile.flags & GMAGIC) != 0 {
+                        alpha_mask |= 2;
+                        alphastr = alphastr.max((tile.flags & GMAGIC) >> 25);
+                    }
+                    if (tile.flags & CMAGIC) != 0 {
+                        alpha_mask |= 4;
+                        alphastr = alphastr.max((tile.flags & CMAGIC) >> 28);
+                    }
+                    if alpha_mask != 0 {
+                        Self::draw_magic_effect(
+                            canvas, alpha_mask, alphastr, x, y, cam_xoff, cam_yoff, ch_xoff,
+                            ch_yoff,
                         )?;
                     }
                 }
@@ -1457,6 +1661,40 @@ impl GameScene {
         Ok(())
     }
 
+    /// Render the 4×3 spell-button label grid (lower-right, 610..798 × 504..548).
+    fn draw_skill_button_labels(
+        &self,
+        canvas: &mut Canvas<Window>,
+        gfx: &mut GraphicsCache,
+        ps: &PlayerState,
+    ) -> Result<(), String> {
+        let pdata = ps.player_data();
+        let pending = self.pending_skill_assignment.is_some();
+
+        for row in 0..3usize {
+            for col in 0..4usize {
+                let idx = row * 4 + col;
+                let btn = &pdata.skill_buttons[idx];
+                let bx = 612 + (col as i32) * 49;
+                let by = 506 + (row as i32) * 15;
+
+                if pending {
+                    // Draw subtle highlight to indicate "pick a slot" mode.
+                    canvas.set_draw_color(Color::RGBA(255, 200, 80, 60));
+                    canvas.set_blend_mode(sdl2::render::BlendMode::Blend);
+                    let _ = canvas.fill_rect(sdl2::rect::Rect::new(bx - 1, by - 1, 47, 13));
+                    canvas.set_blend_mode(sdl2::render::BlendMode::None);
+                }
+
+                if !btn.is_unassigned() {
+                    let name = btn.name_str();
+                    font_cache::draw_text(canvas, gfx, UI_FONT, &name, bx, by)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Update the persistent world minimap buffer from the current map state, then
     /// blit the 128×128 viewport centred on the player to the minimap area (x=3, y=471).
     fn draw_minimap(
@@ -1836,12 +2074,40 @@ impl GameScene {
     }
 
     fn click_mode_or_skill_button(
-        &self,
+        &mut self,
         app_state: &mut AppState,
         mouse_btn: MouseButton,
         x: i32,
         y: i32,
     ) -> bool {
+        // --- Right-click on skill button slot: assign or clear ---
+        if mouse_btn == MouseButton::Right && (610..=798).contains(&x) && (504..=548).contains(&y) {
+            let col = ((x - 610) / 49) as usize;
+            let row = ((y - 504) / 15) as usize;
+            if col < 4 && row < 3 {
+                let idx = row * 4 + col;
+                if let Some(skill_id) = self.pending_skill_assignment.take() {
+                    // Complete the assignment.
+                    if let Some(ps) = app_state.player_state.as_mut() {
+                        let name = get_skill_name(skill_id);
+                        ps.player_data_mut().skill_buttons[idx].set_name(name);
+                        ps.player_data_mut().skill_buttons[idx]
+                            .set_skill_nr(get_skill_nr(skill_id) as u32);
+                        ps.tlog(1, &format!("Assigned {} to slot {}.", name, idx + 1));
+                    }
+                } else {
+                    // No pending assignment — clear the slot.
+                    if let Some(ps) = app_state.player_state.as_mut() {
+                        if !ps.player_data().skill_buttons[idx].is_unassigned() {
+                            ps.player_data_mut().skill_buttons[idx].set_unassigned();
+                            ps.tlog(1, &format!("Cleared slot {}.", idx + 1));
+                        }
+                    }
+                }
+                return true;
+            }
+        }
+
         if mouse_btn != MouseButton::Left {
             return false;
         }
@@ -1996,6 +2262,25 @@ impl GameScene {
                                 selected_char,
                                 1,
                             ));
+                        }
+                    }
+                }
+            }
+            return true;
+        }
+
+        // --- Right-click skill row: begin spell-bar assignment ---
+        if mouse_btn == MouseButton::Right && (2..=108).contains(&x) && (114..=251).contains(&y) {
+            let row = ((y - 114) / 14) as usize;
+            if row < 10 {
+                let sorted = Self::sorted_skills(&ci);
+                let skilltab_index = self.skill_scroll + row;
+                if let Some(&skill_id) = sorted.get(skilltab_index) {
+                    let name = get_skill_name(skill_id);
+                    if !name.is_empty() && ci.skill[skill_id][0] != 0 {
+                        self.pending_skill_assignment = Some(skill_id);
+                        if let Some(ps) = app_state.player_state.as_mut() {
+                            ps.tlog(1, &format!("Right-click a spell slot to assign {}.", name));
                         }
                     }
                 }
@@ -2371,6 +2656,8 @@ impl Scene for GameScene {
         self.minimap_last_xy = None;
         self.look_step = 0;
         self.last_look_tick = 0;
+        self.escape_menu_open = false;
+        self.pending_skill_assignment = None;
 
         let (ticket, race) = match app_state.api.login_target {
             Some(t) => t,
@@ -2400,6 +2687,73 @@ impl Scene for GameScene {
     }
 
     fn handle_event(&mut self, app_state: &mut AppState, event: &Event) -> Option<SceneType> {
+        // --- Escape key: always processed regardless of menu state ---
+        if let Event::KeyDown {
+            keycode: Some(Keycode::Escape),
+            ..
+        } = event
+        {
+            // Always send CmdReset (preserving legacy behavior).
+            if let Some(net) = app_state.network.as_ref() {
+                net.send(ClientCommand::new_reset());
+            }
+            self.escape_menu_open = !self.escape_menu_open;
+            // Clear pending skill assignment when toggling menu.
+            if self.escape_menu_open {
+                self.pending_skill_assignment = None;
+            }
+            return None;
+        }
+
+        // --- Modifier key tracking: always processed so state stays correct ---
+        match event {
+            Event::KeyDown {
+                keycode: Some(kc), ..
+            } => match *kc {
+                Keycode::LCtrl | Keycode::RCtrl => {
+                    self.ctrl_held = true;
+                    return None;
+                }
+                Keycode::LShift | Keycode::RShift => {
+                    self.shift_held = true;
+                    return None;
+                }
+                Keycode::LAlt | Keycode::RAlt => {
+                    self.alt_held = true;
+                    return None;
+                }
+                _ => {}
+            },
+            Event::KeyUp {
+                keycode: Some(kc), ..
+            } => match *kc {
+                Keycode::LCtrl | Keycode::RCtrl => {
+                    self.ctrl_held = false;
+                    return None;
+                }
+                Keycode::LShift | Keycode::RShift => {
+                    self.shift_held = false;
+                    return None;
+                }
+                Keycode::LAlt | Keycode::RAlt => {
+                    self.alt_held = false;
+                    return None;
+                }
+                _ => {}
+            },
+            Event::MouseMotion { x, y, .. } => {
+                self.mouse_x = *x;
+                self.mouse_y = *y;
+                return None;
+            }
+            _ => {}
+        }
+
+        // --- When escape menu is open, block all other game input ---
+        if self.escape_menu_open {
+            return None;
+        }
+
         match event {
             Event::KeyDown {
                 keycode: Some(kc),
@@ -2419,20 +2773,6 @@ impl Scene for GameScene {
                 }
                 Keycode::Backspace => {
                     self.input_buf.pop();
-                }
-                Keycode::LCtrl | Keycode::RCtrl => {
-                    self.ctrl_held = true;
-                }
-                Keycode::LShift | Keycode::RShift => {
-                    self.shift_held = true;
-                }
-                Keycode::LAlt | Keycode::RAlt => {
-                    self.alt_held = true;
-                }
-                Keycode::Escape => {
-                    if let Some(net) = app_state.network.as_ref() {
-                        net.send(ClientCommand::new_reset());
-                    }
                 }
                 Keycode::F1 => {
                     if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) {
@@ -2538,28 +2878,13 @@ impl Scene for GameScene {
                 }
                 _ => {}
             },
-            Event::KeyUp {
-                keycode: Some(kc), ..
-            } => match *kc {
-                Keycode::LCtrl | Keycode::RCtrl => {
-                    self.ctrl_held = false;
-                }
-                Keycode::LShift | Keycode::RShift => {
-                    self.shift_held = false;
-                }
-                Keycode::LAlt | Keycode::RAlt => {
-                    self.alt_held = false;
-                }
-                _ => {}
-            },
+            Event::KeyUp { .. } => {
+                // Modifier keys handled above the menu gate; nothing else needed.
+            }
             Event::TextInput { text, .. } => {
                 if self.input_buf.len() + text.len() <= MAX_INPUT_LEN {
                     self.input_buf.push_str(text);
                 }
-            }
-            Event::MouseMotion { x, y, .. } => {
-                self.mouse_x = *x;
-                self.mouse_y = *y;
             }
             Event::MouseButtonUp {
                 mouse_btn, x, y, ..
@@ -2735,7 +3060,9 @@ impl Scene for GameScene {
         };
 
         // 1. World tiles (two-pass painter order)
-        Self::draw_world(canvas, gfx_cache, ps)?;
+        let shadows_on = ps.player_data().are_shadows_enabled != 0;
+        let effects_on = self.are_spell_effects_enabled;
+        Self::draw_world(canvas, gfx_cache, ps, shadows_on, effects_on)?;
 
         // 2. Static UI frame (sprite 1) overlays the world
         Self::draw_ui_frame(canvas, gfx_cache)?;
@@ -2762,18 +3089,71 @@ impl Scene for GameScene {
         Self::draw_portrait_panel(canvas, gfx_cache, ps)?;
         self.draw_shop_overlay(canvas, gfx_cache, ps)?;
 
-        // 10. Hover highlights
-        self.draw_hover_effects(canvas, gfx_cache, ps)?;
+        // 10. Hover highlights (suppressed while escape menu is open)
+        if !self.escape_menu_open {
+            self.draw_hover_effects(canvas, gfx_cache, ps)?;
+        }
 
         // 11. Minimap (bottom-left, 128×128, persistent world buffer)
         self.draw_minimap(canvas, gfx_cache, ps)?;
 
+        // 12. Skill button labels (4×3 grid in lower-right)
+        self.draw_skill_button_labels(canvas, gfx_cache, ps)?;
+
         Ok(())
     }
 
-    fn render_ui(&mut self, _app_state: &mut AppState, _ctx: &egui::Context) -> Option<SceneType> {
-        // All UI is drawn via sprites and bitmap fonts in render_world.
-        // egui is not used for the gameplay scene.
-        None
+    fn render_ui(&mut self, app_state: &mut AppState, ctx: &egui::Context) -> Option<SceneType> {
+        if !self.escape_menu_open {
+            return None;
+        }
+
+        let mut scene_change: Option<SceneType> = None;
+
+        egui::Window::new("Options")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.heading("Settings");
+                ui.separator();
+
+                // Shadows toggle
+                let mut shadows = if let Some(ps) = app_state.player_state.as_ref() {
+                    ps.player_data().are_shadows_enabled != 0
+                } else {
+                    false
+                };
+                if ui.checkbox(&mut shadows, "Enable Shadows").changed() {
+                    if let Some(ps) = app_state.player_state.as_mut() {
+                        ps.player_data_mut().are_shadows_enabled = if shadows { 1 } else { 0 };
+                    }
+                }
+
+                // Spell effects toggle
+                ui.checkbox(&mut self.are_spell_effects_enabled, "Enable Spell Effects");
+
+                ui.separator();
+
+                // Volume slider
+                ui.add(
+                    egui::Slider::new(&mut self.master_volume, 0.0..=1.0)
+                        .text("Volume")
+                        .show_value(true),
+                );
+                // Sync to AppState so SFX playback uses it.
+                app_state.master_volume = self.master_volume;
+
+                ui.separator();
+
+                if ui.button("Disconnect").clicked() {
+                    scene_change = Some(SceneType::CharacterSelection);
+                }
+                if ui.button("Quit").clicked() {
+                    scene_change = Some(SceneType::Exit);
+                }
+            });
+
+        scene_change
     }
 }

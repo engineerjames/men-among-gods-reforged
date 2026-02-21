@@ -28,6 +28,8 @@ pub struct AppState {
     pub api: ApiTokenState,
     pub network: Option<NetworkRuntime>,
     pub player_state: Option<PlayerState>,
+    /// Master volume multiplier (0.0 = muted, 1.0 = full). Set by the escape menu slider.
+    pub master_volume: f32,
 }
 
 impl AppState {
@@ -38,6 +40,7 @@ impl AppState {
             api,
             network: None,
             player_state: None,
+            master_volume: 1.0,
         }
     }
 }
