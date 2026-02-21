@@ -32,8 +32,12 @@ use crate::{
 /// Maximum characters allowed in the chat input buffer.
 const MAX_INPUT_LEN: usize = 120;
 
-/// Maximum network events processed per frame.
-const MAX_EVENTS_PER_FRAME: usize = 128;
+/// Maximum complete network tick groups processed per frame.
+///
+/// A tick group is all `NetworkEvent::Bytes` emitted for one server tick packet,
+/// followed by its terminating `NetworkEvent::Tick`. We only stop processing at
+/// tick boundaries so map state is never rendered from a partially applied group.
+const MAX_TICK_GROUPS_PER_FRAME: usize = 32;
 
 // ---- Layout constants (ported from engine.c / layout.rs) ---- //
 
@@ -45,6 +49,10 @@ const UI_FRAME_SPRITE: usize = 1;
 
 /// Default bitmap font index (yellow, sprite 701).
 const UI_FONT: usize = 1;
+
+// Matches original engine.c worn-slot draw order (wntab[]), and the Bevy client's
+// EQUIP_WNTAB mapping.
+const EQUIP_WNTAB: [usize; 12] = [0, 9, 2, 3, 1, 4, 8, 7, 10, 11, 5, 6];
 
 // HP / Endurance / Mana bars
 const BAR_X: i32 = 373;
@@ -261,7 +269,13 @@ impl GameScene {
     }
 
     fn process_network_events(&mut self, app_state: &mut AppState) -> Option<SceneType> {
-        for _ in 0..MAX_EVENTS_PER_FRAME {
+        let mut tick_groups_processed = 0usize;
+
+        loop {
+            if tick_groups_processed >= MAX_TICK_GROUPS_PER_FRAME {
+                break;
+            }
+
             let Some(net) = app_state.network.as_mut() else {
                 break;
             };
@@ -332,6 +346,7 @@ impl GameScene {
                         net.maybe_send_ctick();
                         net.maybe_send_ping();
                     }
+                    tick_groups_processed += 1;
                 }
             }
         }
@@ -906,7 +921,8 @@ impl GameScene {
         }
 
         for n in 0..12usize {
-            let sprite = ci.worn[n];
+            let worn_index = EQUIP_WNTAB[n];
+            let sprite = ci.worn[worn_index];
             if sprite <= 0 {
                 continue;
             }
@@ -1293,39 +1309,77 @@ impl GameScene {
         const ATTR_NAMES: [&str; 5] = ["Bravery", "Willpower", "Intuition", "Agility", "Strength"];
 
         let ci = ps.character_info();
+        let available_points = (ci.points - self.stat_points_used).max(0);
+
         for (n, name) in ATTR_NAMES.iter().enumerate() {
             let y = 4 + (n as i32) * 14;
-            let value = ci.attrib[n][0] as i32;
-            let cost = Self::attrib_needed(ci, n, value);
-            let line = format!("{:<16}{:>3}", name, value);
+            let raised = self.stat_raised[n];
+            let value_total = ci.attrib[n][5] as i32 + raised;
+            let value_bare = ci.attrib[n][0] as i32 + raised;
+            let cost = Self::attrib_needed(ci, n, value_bare);
+            let line = format!("{:<16}  {:3}", name, value_total);
             font_cache::draw_text(canvas, gfx, UI_FONT, &line, 5, y)?;
-            font_cache::draw_text(canvas, gfx, UI_FONT, "+", 136, y)?;
-            font_cache::draw_text(canvas, gfx, UI_FONT, "-", 150, y)?;
-            let cost_text = if cost == i32::MAX {
-                "-".to_string()
+            let plus = if cost != i32::MAX && cost <= available_points {
+                "+"
             } else {
-                format!("{:>4}", cost)
+                ""
+            };
+            let minus = if raised > 0 { "-" } else { "" };
+            font_cache::draw_text(canvas, gfx, UI_FONT, plus, 136, y)?;
+            font_cache::draw_text(canvas, gfx, UI_FONT, minus, 150, y)?;
+            let cost_text = if cost == i32::MAX {
+                String::new()
+            } else {
+                format!("{:7}", cost)
             };
             font_cache::draw_text(canvas, gfx, UI_FONT, &cost_text, 162, y)?;
         }
 
-        let hp_cost = Self::hp_needed(ci, ci.hp[0] as i32);
-        let end_cost = Self::end_needed(ci, ci.end[0] as i32);
-        let mana_cost = Self::mana_needed(ci, ci.mana[0] as i32);
+        let hp_raised = self.stat_raised[5];
+        let end_raised = self.stat_raised[6];
+        let mana_raised = self.stat_raised[7];
 
-        for (name, value, y, cost) in [
-            ("Hitpoints", ci.hp[0] as i32, 74, hp_cost),
-            ("Endurance", ci.end[0] as i32, 88, end_cost),
-            ("Mana", ci.mana[0] as i32, 102, mana_cost),
+        let hp_cost = Self::hp_needed(ci, ci.hp[0] as i32 + hp_raised);
+        let end_cost = Self::end_needed(ci, ci.end[0] as i32 + end_raised);
+        let mana_cost = Self::mana_needed(ci, ci.mana[0] as i32 + mana_raised);
+
+        for (name, value, y, cost, raised) in [
+            (
+                "Hitpoints",
+                ci.hp[5] as i32 + hp_raised,
+                74,
+                hp_cost,
+                hp_raised,
+            ),
+            (
+                "Endurance",
+                ci.end[5] as i32 + end_raised,
+                88,
+                end_cost,
+                end_raised,
+            ),
+            (
+                "Mana",
+                ci.mana[5] as i32 + mana_raised,
+                102,
+                mana_cost,
+                mana_raised,
+            ),
         ] {
-            let line = format!("{:<16}{:>3}", name, value);
+            let line = format!("{:<16}  {:3}", name, value);
             font_cache::draw_text(canvas, gfx, UI_FONT, &line, 5, y)?;
-            font_cache::draw_text(canvas, gfx, UI_FONT, "+", 136, y)?;
-            font_cache::draw_text(canvas, gfx, UI_FONT, "-", 150, y)?;
-            let cost_text = if cost == i32::MAX {
-                "-".to_string()
+            let plus = if cost != i32::MAX && cost <= available_points {
+                "+"
             } else {
-                format!("{:>4}", cost)
+                ""
+            };
+            let minus = if raised > 0 { "-" } else { "" };
+            font_cache::draw_text(canvas, gfx, UI_FONT, plus, 136, y)?;
+            font_cache::draw_text(canvas, gfx, UI_FONT, minus, 150, y)?;
+            let cost_text = if cost == i32::MAX {
+                String::new()
+            } else {
+                format!("{:7}", cost)
             };
             font_cache::draw_text(canvas, gfx, UI_FONT, &cost_text, 162, y)?;
         }
@@ -1336,25 +1390,38 @@ impl GameScene {
             let idx = self.skill_scroll + row;
             if let Some(skill_id) = sorted.get(idx).copied() {
                 let name = get_skill_name(skill_id);
-                if name.is_empty() {
+                if name.is_empty() || ci.skill[skill_id][0] == 0 {
                     continue;
                 }
-                let value = ci.skill[skill_id][0] as i32;
-                let cost = Self::skill_needed(ci, skill_id, value);
-                let line = format!("{:<13}{:>3}", name, value);
+
+                let raised_idx = 8 + idx;
+                if raised_idx >= self.stat_raised.len() {
+                    continue;
+                }
+                let raised = self.stat_raised[raised_idx];
+                let value_total = ci.skill[skill_id][5] as i32 + raised;
+                let value_bare = ci.skill[skill_id][0] as i32 + raised;
+                let cost = Self::skill_needed(ci, skill_id, value_bare);
+                let line = format!("{:<16}  {:3}", name, value_total);
                 font_cache::draw_text(canvas, gfx, UI_FONT, &line, 5, y)?;
-                font_cache::draw_text(canvas, gfx, UI_FONT, "+", 136, y)?;
-                font_cache::draw_text(canvas, gfx, UI_FONT, "-", 150, y)?;
-                let cost_text = if cost == i32::MAX {
-                    "-".to_string()
+                let plus = if cost != i32::MAX && cost <= available_points {
+                    "+"
                 } else {
-                    format!("{:>4}", cost)
+                    ""
+                };
+                let minus = if raised > 0 { "-" } else { "" };
+                font_cache::draw_text(canvas, gfx, UI_FONT, plus, 136, y)?;
+                font_cache::draw_text(canvas, gfx, UI_FONT, minus, 150, y)?;
+                let cost_text = if cost == i32::MAX {
+                    String::new()
+                } else {
+                    format!("{:7}", cost)
                 };
                 font_cache::draw_text(canvas, gfx, UI_FONT, &cost_text, 162, y)?;
             }
         }
 
-        let pts = format!("{:>5}", (ci.points - self.stat_points_used).max(0));
+        let pts = format!("{:7}", (ci.points - self.stat_points_used).max(0));
         font_cache::draw_text(canvas, gfx, UI_FONT, "Update", 117, 256)?;
         font_cache::draw_text(canvas, gfx, UI_FONT, &pts, 162, 256)?;
 
@@ -1515,7 +1582,7 @@ impl GameScene {
         // Row n = (y-2)/14.  Rows 0-4 = attrib, 5=HP, 6=End, 7=Mana, 8+ = skills
         if (133..=157).contains(&x)
             && (2..=251).contains(&y)
-            && matches!(mouse_btn, MouseButton::Left | MouseButton::Right)
+            && matches!(mouse_btn, MouseButton::Left)
         {
             let n = ((y - 2) / 14) as usize;
             let raising = x < 145;
@@ -1527,6 +1594,63 @@ impl GameScene {
                 1
             };
             let sorted = Self::sorted_skills(&ci);
+
+            let avail_now = ci.points - self.stat_points_used;
+            let button_visible = if raising {
+                match n {
+                    0..=4 => {
+                        let cur = ci.attrib[n][0] as i32 + self.stat_raised[n];
+                        let need = Self::attrib_needed(&ci, n, cur);
+                        need != i32::MAX && need <= avail_now
+                    }
+                    5 => {
+                        let cur = ci.hp[0] as i32 + self.stat_raised[5];
+                        let need = Self::hp_needed(&ci, cur);
+                        need != i32::MAX && need <= avail_now
+                    }
+                    6 => {
+                        let cur = ci.end[0] as i32 + self.stat_raised[6];
+                        let need = Self::end_needed(&ci, cur);
+                        need != i32::MAX && need <= avail_now
+                    }
+                    7 => {
+                        let cur = ci.mana[0] as i32 + self.stat_raised[7];
+                        let need = Self::mana_needed(&ci, cur);
+                        need != i32::MAX && need <= avail_now
+                    }
+                    _ => {
+                        let skilltab_index = (self.skill_scroll + n.saturating_sub(8)).min(99);
+                        let raised_idx = 8 + skilltab_index;
+                        if raised_idx >= 108 {
+                            false
+                        } else if let Some(&skill_id) = sorted.get(skilltab_index) {
+                            if ci.skill[skill_id][0] == 0 {
+                                false
+                            } else {
+                                let cur =
+                                    ci.skill[skill_id][0] as i32 + self.stat_raised[raised_idx];
+                                let need = Self::skill_needed(&ci, skill_id, cur);
+                                need != i32::MAX && need <= avail_now
+                            }
+                        } else {
+                            false
+                        }
+                    }
+                }
+            } else {
+                match n {
+                    0..=7 => self.stat_raised[n] > 0,
+                    _ => {
+                        let skilltab_index = (self.skill_scroll + n.saturating_sub(8)).min(99);
+                        let raised_idx = 8 + skilltab_index;
+                        raised_idx < 108 && self.stat_raised[raised_idx] > 0
+                    }
+                }
+            };
+
+            if !button_visible {
+                return true;
+            }
 
             for _ in 0..repeat {
                 let avail = ci.points - self.stat_points_used;
