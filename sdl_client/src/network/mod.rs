@@ -8,7 +8,8 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use client_commands::ClientCommand;
-pub use server_commands::{ServerCommand, ServerCommandData};
+
+use crate::network::client_commands::ClientCommandType;
 
 pub enum NetworkCommand {
     Send(Vec<u8>),
@@ -81,7 +82,11 @@ impl NetworkRuntime {
     /// Serialises `cmd`, logs it at DEBUG level, and queues the bytes for the network thread.
     pub fn send(&self, cmd: ClientCommand) {
         if let Some(tx) = &self.command_tx {
-            log::info!("Sending command: {:?}", cmd);
+            if cmd.header == ClientCommandType::CmdCTick || cmd.header == ClientCommandType::Ping {
+                log::trace!("Sending command: {:?}", cmd);
+            } else {
+                log::info!("Sending command: {:?}", cmd);
+            }
             let _ = tx.send(NetworkCommand::Send(cmd.to_bytes()));
         }
     }

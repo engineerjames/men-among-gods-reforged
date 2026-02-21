@@ -57,14 +57,17 @@ impl Look {
         self.id
     }
 
+    #[allow(dead_code)]
     pub fn sprite(&self) -> u16 {
         self.sprite
     }
 
+    #[allow(dead_code)]
     pub fn worn(&self, index: usize) -> u16 {
         self.worn.get(index).copied().unwrap_or(0)
     }
 
+    #[allow(dead_code)]
     pub fn points(&self) -> u32 {
         self.points
     }
@@ -101,6 +104,7 @@ impl Look {
         self.price.get(index).copied().unwrap_or(0)
     }
 
+    #[allow(dead_code)]
     pub fn pl_price(&self) -> u32 {
         self.pl_price
     }

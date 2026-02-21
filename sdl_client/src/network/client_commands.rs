@@ -1,4 +1,4 @@
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum ClientCommandType {
     _Empty = 0,
@@ -42,7 +42,7 @@ pub enum ClientCommandType {
 
 #[derive(Debug)]
 pub struct ClientCommand {
-    header: ClientCommandType,
+    pub header: ClientCommandType,
     payload: Vec<u8>,
 }
 

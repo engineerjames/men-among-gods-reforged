@@ -568,19 +568,19 @@ impl GameScene {
         canvas.set_draw_color(MODE_INDICATOR_COLOR);
 
         match ci.mode {
-            2 => canvas.fill_rect(sdl2::rect::Rect::new(608, 554, 45, 12))?,
-            1 => canvas.fill_rect(sdl2::rect::Rect::new(656, 554, 45, 12))?,
-            _ => canvas.fill_rect(sdl2::rect::Rect::new(704, 554, 45, 12))?,
+            2 => canvas.draw_rect(sdl2::rect::Rect::new(608, 554, 45, 12))?,
+            1 => canvas.draw_rect(sdl2::rect::Rect::new(656, 554, 45, 12))?,
+            _ => canvas.draw_rect(sdl2::rect::Rect::new(704, 554, 45, 12))?,
         }
 
         if pdata.show_proz != 0 {
-            canvas.fill_rect(sdl2::rect::Rect::new(753, 554, 45, 12))?;
+            canvas.draw_rect(sdl2::rect::Rect::new(753, 554, 45, 12))?;
         }
         if pdata.show_names != 0 {
-            canvas.fill_rect(sdl2::rect::Rect::new(704, 569, 45, 12))?;
+            canvas.draw_rect(sdl2::rect::Rect::new(704, 569, 45, 12))?;
         }
         if pdata.hide != 0 {
-            canvas.fill_rect(sdl2::rect::Rect::new(656, 569, 45, 12))?;
+            canvas.draw_rect(sdl2::rect::Rect::new(656, 569, 45, 12))?;
         }
 
         Ok(())
@@ -747,13 +747,22 @@ impl GameScene {
             }
         }
 
-        // Hover highlight: map tile marker
+        // Hover highlight: map tile marker — semi-transparent white tint over the
+        // isometric floor diamond.  The ground plane of tile (mx,my) is the 32×16 region
+        // starting at (cx-16, cy) where cx/cy are derived from the tile's view-space coords.
         if let Some((mx, my)) = Self::screen_to_map_tile(self.mouse_x, self.mouse_y) {
             let xpos = (mx as i32) * 32;
             let ypos = (my as i32) * 32;
+            // cx = horizontal centre of the tile's isometric diamond
             let cx = xpos / 2 + ypos / 2 + 32 + XPOS + MAP_X_SHIFT;
+            // cy = top edge of the floor diamond  (ground line = cy + 16)
             let cy = xpos / 4 - ypos / 4 + YPOS - 16;
-            canvas.draw_rect(sdl2::rect::Rect::new(cx - 8, cy - 8, 16, 16))?;
+            canvas.set_blend_mode(sdl2::render::BlendMode::Blend);
+            canvas.set_draw_color(Color::RGBA(255, 255, 255, 80));
+            canvas.fill_rect(sdl2::rect::Rect::new(cx - 16, cy, 32, 16))?;
+            // Restore state for the rest of the frame.
+            canvas.set_blend_mode(sdl2::render::BlendMode::None);
+            canvas.set_draw_color(Color::RGB(255, 170, 80));
         }
 
         Ok(())
@@ -1677,6 +1686,7 @@ impl Scene for GameScene {
                 let tile = ps.map().tile_at_xy(sx, sy);
                 let target_cn = tile.map(|t| t.ch_nr as u32).unwrap_or(0);
                 let target_id = tile.map(|t| t.ch_id).unwrap_or(0);
+                let (world_x, world_y) = tile.map(|t| (t.x as i16, t.y as i32)).unwrap_or((0, 0));
                 let citem = ps.character_info().citem;
                 let selected_char = ps.selected_char();
 
@@ -1717,19 +1727,19 @@ impl Scene for GameScene {
                     }
                     MouseButton::Left if has_shift => {
                         if citem != 0 {
-                            net.send(ClientCommand::new_drop(sx as i16, sy as i32));
+                            net.send(ClientCommand::new_drop(world_x, world_y));
                         } else {
-                            net.send(ClientCommand::new_pickup(sx as i16, sy as i32));
+                            net.send(ClientCommand::new_pickup(world_x, world_y));
                         }
                     }
                     MouseButton::Right if has_shift => {
-                        net.send(ClientCommand::new_look_item(sx as i16, sy as i32));
+                        net.send(ClientCommand::new_look_item(world_x, world_y));
                     }
                     MouseButton::Left => {
-                        net.send(ClientCommand::new_move(mx as i16, my as i32));
+                        net.send(ClientCommand::new_move(world_x, world_y));
                     }
                     MouseButton::Right => {
-                        net.send(ClientCommand::new_turn(mx as i16, my as i32));
+                        net.send(ClientCommand::new_turn(world_x, world_y));
                     }
                     _ => {}
                 }

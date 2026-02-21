@@ -10,9 +10,6 @@ pub const BITMAP_GLYPH_W: u32 = 6;
 /// Height in pixels of the rendered portion of each glyph.
 pub const BITMAP_GLYPH_H: u32 = 10;
 
-/// Number of printable glyphs (ASCII 32–127 inclusive).
-pub const BITMAP_GLYPH_COUNT: i32 = 96;
-
 /// Y-offset within the font sprite sheet where glyphs start.
 pub const BITMAP_GLYPH_Y_OFFSET: i32 = 1;
 
@@ -29,37 +26,6 @@ pub fn glyph_index(ch: char) -> i32 {
         return -1;
     }
     code - 32
-}
-
-/// Draws a single character onto `canvas` using the bitmap font.
-///
-/// - `font`: 0–3, selects sprite 700–703.
-/// - `x`, `y`: top-left screen position.
-pub fn draw_char(
-    canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
-    gfx_cache: &mut crate::gfx_cache::GraphicsCache,
-    font: usize,
-    ch: char,
-    x: i32,
-    y: i32,
-) -> Result<(), String> {
-    let glyph = glyph_index(ch);
-    if glyph < 0 {
-        return Ok(());
-    }
-
-    let sprite_id = BITMAP_FONT_FIRST_SPRITE_ID + (font % BITMAP_FONT_COUNT);
-    let texture = gfx_cache.get_texture(sprite_id);
-
-    let src = sdl2::rect::Rect::new(
-        glyph * BITMAP_GLYPH_W as i32,
-        BITMAP_GLYPH_Y_OFFSET,
-        BITMAP_GLYPH_W - 1, // 5px wide rendered glyph
-        BITMAP_GLYPH_H,
-    );
-    let dst = sdl2::rect::Rect::new(x, y, BITMAP_GLYPH_W - 1, BITMAP_GLYPH_H);
-
-    canvas.copy(texture, Some(src), Some(dst))
 }
 
 /// Draws a text string onto `canvas` using the bitmap font.

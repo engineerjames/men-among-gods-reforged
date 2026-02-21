@@ -17,7 +17,6 @@ pub struct PlayerState {
     shop_target: Look,
     player_info: PlayerData,
     message_log: CircularBuffer<LogMessage>,
-    log_revision: u64,
     should_show_look: bool,
     should_show_shop: bool,
     shop_refresh_requested: bool,
@@ -58,7 +57,6 @@ impl Default for PlayerState {
             shop_target: Look::default(),
             player_info: PlayerData::default(),
             message_log: CircularBuffer::new(300),
-            log_revision: 0,
             should_show_look: false,
             should_show_shop: false,
             shop_refresh_requested: false,
@@ -90,10 +88,6 @@ impl Default for PlayerState {
 }
 
 impl PlayerState {
-    pub fn log_revision(&self) -> u64 {
-        self.log_revision
-    }
-
     pub fn log_len(&self) -> usize {
         self.message_log.len()
     }
@@ -266,7 +260,6 @@ impl PlayerState {
             color: Self::log_color_from_font(font),
         };
         self.message_log.push(msg);
-        self.log_revision = self.log_revision.wrapping_add(1);
     }
 
     pub fn wrap_log_text(text: &str, max_cols: usize) -> String {
