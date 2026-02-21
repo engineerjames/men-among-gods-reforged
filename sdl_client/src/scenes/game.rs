@@ -14,7 +14,7 @@ use sdl2::{
 use mag_core::constants::{
     DEATH, DR_DROP, DR_GIVE, DR_PICKUP, DR_USE, INJURED, INJURED1, INJURED2, INVIS, ISCHAR, ISITEM,
     ISUSABLE, MF_ARENA, MF_BANK, MF_DEATHTRAP, MF_INDOORS, MF_MOVEBLOCK, MF_NOEXPIRE, MF_NOLAG,
-    MF_NOMAGIC, MF_NOMONST, MF_SIGHTBLOCK, MF_TAVERN, MF_UWATER, TILEX, TILEY, TOMB,
+    MF_NOMAGIC, MF_NOMONST, MF_SIGHTBLOCK, MF_TAVERN, MF_UWATER, SPR_EMPTY, TILEX, TILEY, TOMB,
     XPOS, YPOS,
 };
 use mag_core::types::skilltab::{get_skill_name, get_skill_nr, get_skill_sortkey, MAX_SKILLS};
@@ -237,35 +237,43 @@ impl GameScene {
         }
     }
 
-    fn draw_hover_tile_diamond(
+    fn draw_world_sprite_highlight(
         canvas: &mut Canvas<Window>,
-        cx: i32,
-        cy: i32,
-        color: Color,
+        gfx: &mut GraphicsCache,
+        sprite_id: i32,
+        tile_x: usize,
+        tile_y: usize,
+        cam_xoff: i32,
+        cam_yoff: i32,
+        xoff: i32,
+        yoff: i32,
+        alpha: u8,
     ) -> Result<(), String> {
-        canvas.set_blend_mode(sdl2::render::BlendMode::Blend);
-        canvas.set_draw_color(color);
-
-        // Fill diamond with horizontal scanlines:
-        // top=(cx,cy), right=(cx+16,cy+8), bottom=(cx,cy+16), left=(cx-16,cy+8)
-        for y in cy..=cy + 16 {
-            let (x1, x2) = if y <= cy + 8 {
-                let t = (y - cy) as f32 / 8.0;
-                let left = (cx as f32 - 16.0 * t).round() as i32;
-                let right = (cx as f32 + 16.0 * t).round() as i32;
-                (left, right)
-            } else {
-                let t = (y - (cy + 8)) as f32 / 8.0;
-                let left = ((cx - 16) as f32 + 16.0 * t).round() as i32;
-                let right = ((cx + 16) as f32 - 16.0 * t).round() as i32;
-                (left, right)
-            };
-
-            canvas.draw_line(sdl2::rect::Point::new(x1, y), sdl2::rect::Point::new(x2, y))?;
+        if sprite_id <= 0 {
+            return Ok(());
         }
 
-        canvas.set_blend_mode(sdl2::render::BlendMode::None);
-        Ok(())
+        let texture = gfx.get_texture(sprite_id as usize);
+        let q = texture.query();
+        let xs = q.width as i32 / 32;
+        let ys = q.height as i32 / 32;
+
+        let xpos = (tile_x as i32) * 32;
+        let ypos = (tile_y as i32) * 32;
+
+        let rx = xpos / 2 + ypos / 2 - xs * 16 + 32 + XPOS + MAP_X_SHIFT + cam_xoff + xoff;
+        let ry = xpos / 4 - ypos / 4 + YPOS - ys * 32 + cam_yoff + yoff;
+
+        texture.set_blend_mode(sdl2::render::BlendMode::Add);
+        texture.set_alpha_mod(alpha);
+        let result = canvas.copy(
+            texture,
+            None,
+            Some(sdl2::rect::Rect::new(rx, ry, q.width, q.height)),
+        );
+        texture.set_alpha_mod(255);
+        texture.set_blend_mode(sdl2::render::BlendMode::None);
+        result
     }
 
     fn process_network_events(&mut self, app_state: &mut AppState) -> Option<SceneType> {
@@ -388,6 +396,13 @@ impl GameScene {
                 } else {
                     tile.ba_sprite
                 };
+
+                let ba = if (tile.flags & INVIS) != 0 {
+                    SPR_EMPTY as i16
+                } else {
+                    ba
+                };
+
                 if ba <= 0 {
                     continue;
                 }
@@ -815,21 +830,117 @@ impl GameScene {
             let name_w = font_cache::text_width(name) as i32;
             let name_x = NAME_AREA_X + (NAME_AREA_W - name_w) / 2;
             font_cache::draw_text(canvas, gfx, UI_FONT, name, name_x, NAME_Y)?;
+        }
 
-            // Portrait name + rank (below portrait area)
-            let center_x = NAME_AREA_X + NAME_AREA_W / 2;
-            font_cache::draw_text_centered(canvas, gfx, UI_FONT, name, center_x, PORTRAIT_NAME_Y)?;
+        Ok(())
+    }
 
-            let rank_name = mag_core::ranks::rank_name(ci.points_tot as u32);
-            font_cache::draw_text_centered(
-                canvas,
-                gfx,
-                UI_FONT,
-                rank_name,
-                center_x,
-                PORTRAIT_RANK_Y,
+    fn points_to_rank_index(points: u32) -> usize {
+        let v = points as i64;
+        if v < 50 {
+            0
+        } else if v < 850 {
+            1
+        } else if v < 4900 {
+            2
+        } else if v < 17700 {
+            3
+        } else if v < 48950 {
+            4
+        } else if v < 113750 {
+            5
+        } else if v < 233800 {
+            6
+        } else if v < 438600 {
+            7
+        } else if v < 766650 {
+            8
+        } else if v < 1266650 {
+            9
+        } else if v < 1998700 {
+            10
+        } else if v < 3035500 {
+            11
+        } else if v < 4463550 {
+            12
+        } else if v < 6384350 {
+            13
+        } else if v < 8915600 {
+            14
+        } else if v < 12192400 {
+            15
+        } else if v < 16368450 {
+            16
+        } else if v < 21617250 {
+            17
+        } else if v < 28133300 {
+            18
+        } else if v < 36133300 {
+            19
+        } else if v < 49014500 {
+            20
+        } else if v < 63000600 {
+            21
+        } else if v < 80977100 {
+            22
+        } else {
+            23
+        }
+    }
+
+    fn draw_portrait_panel(
+        canvas: &mut Canvas<Window>,
+        gfx: &mut GraphicsCache,
+        ps: &PlayerState,
+    ) -> Result<(), String> {
+        let show_shop = ps.should_show_shop();
+
+        let (sprite, points, name) = if show_shop {
+            let shop = ps.shop_target();
+            (
+                shop.sprite() as i32,
+                shop.points(),
+                shop.name().unwrap_or("Unknown").to_string(),
+            )
+        } else {
+            let ci = ps.character_info();
+            let center_sprite = ps
+                .map()
+                .tile_at_xy(TILEX / 2, TILEY / 2)
+                .map(|t| t.obj2)
+                .unwrap_or(0);
+            (
+                center_sprite,
+                ci.points_tot as u32,
+                mag_core::string_operations::c_string_to_str(&ci.name).to_string(),
+            )
+        };
+
+        let rank_index = Self::points_to_rank_index(points);
+        let rank_sprite = 10 + rank_index.min(20) as i32;
+
+        let rank_tex = gfx.get_texture(rank_sprite as usize);
+        let rq = rank_tex.query();
+        canvas.copy(
+            rank_tex,
+            None,
+            Some(sdl2::rect::Rect::new(463, 38, rq.width, rq.height)),
+        )?;
+
+        if sprite > 0 {
+            let tex = gfx.get_texture(sprite as usize);
+            let q = tex.query();
+            canvas.copy(
+                tex,
+                None,
+                Some(sdl2::rect::Rect::new(402, 32, q.width, q.height)),
             )?;
         }
+
+        let center_x = NAME_AREA_X + NAME_AREA_W / 2;
+        font_cache::draw_text_centered(canvas, gfx, UI_FONT, &name, center_x, PORTRAIT_NAME_Y)?;
+        let rank_name = mag_core::ranks::rank_name(points);
+        font_cache::draw_text_centered(canvas, gfx, UI_FONT, rank_name, center_x, PORTRAIT_RANK_Y)?;
 
         Ok(())
     }
@@ -976,6 +1087,9 @@ impl GameScene {
         gfx: &mut GraphicsCache,
         ps: &PlayerState,
     ) -> Result<(), String> {
+        if ps.should_show_shop() {
+            return Ok(());
+        }
         if !ps.should_show_look() {
             return Ok(());
         }
@@ -996,6 +1110,7 @@ impl GameScene {
     }
 
     fn draw_shop_overlay(
+        &self,
         canvas: &mut Canvas<Window>,
         gfx: &mut GraphicsCache,
         ps: &PlayerState,
@@ -1005,23 +1120,50 @@ impl GameScene {
         }
         let shop = ps.shop_target();
 
-        font_cache::draw_text(canvas, gfx, UI_FONT, "Shop", 500, 296)?;
-        for i in 0..16usize {
+        let bg = gfx.get_texture(92);
+        let bq = bg.query();
+        canvas.copy(
+            bg,
+            None,
+            Some(sdl2::rect::Rect::new(220, 260, bq.width, bq.height)),
+        )?;
+
+        for i in 0..62usize {
             let item = shop.item(i);
-            let price = shop.price(i);
             if item == 0 {
                 continue;
             }
-            let y = 310 + (i as i32) * 12;
+            let x = 222 + ((i % 8) as i32) * 35;
+            let y = 262 + ((i / 8) as i32) * 35;
             let tex = gfx.get_texture(item as usize);
             let q = tex.query();
             canvas.copy(
                 tex,
                 None,
-                Some(sdl2::rect::Rect::new(500, y, q.width, q.height)),
+                Some(sdl2::rect::Rect::new(x, y, q.width, q.height)),
             )?;
-            let price_text = format!("{:>8}G", price / 100);
-            font_cache::draw_text(canvas, gfx, UI_FONT, &price_text, 524, y)?;
+        }
+
+        if (222..=501).contains(&self.mouse_x) && (262..=541).contains(&self.mouse_y) {
+            let col = ((self.mouse_x - 222) / 35) as usize;
+            let row = ((self.mouse_y - 262) / 35) as usize;
+            let idx = row * 8 + col;
+            if idx < 62 {
+                let price = shop.price(idx);
+                if price != 0 {
+                    let sell_text = format!("Sell: {}G {}S", price / 100, price % 100);
+                    font_cache::draw_text(canvas, gfx, UI_FONT, &sell_text, 225, 549)?;
+                }
+            }
+        }
+
+        if ps.character_info().citem > 0 && shop.pl_price() > 0 {
+            let buy_text = format!(
+                "Buy:  {}G {}S",
+                shop.pl_price() / 100,
+                shop.pl_price() % 100
+            );
+            font_cache::draw_text(canvas, gfx, UI_FONT, &buy_text, 225, 559)?;
         }
 
         Ok(())
@@ -1030,6 +1172,7 @@ impl GameScene {
     fn draw_hover_effects(
         &self,
         canvas: &mut Canvas<Window>,
+        gfx: &mut GraphicsCache,
         ps: &PlayerState,
     ) -> Result<(), String> {
         canvas.set_draw_color(Color::RGB(255, 170, 80));
@@ -1058,34 +1201,67 @@ impl GameScene {
             }
         }
 
-        // Hover highlight: map tile marker — semi-transparent white tint over the
-        // isometric floor diamond.  The ground plane of tile (mx,my) is the 32×16 region
-        // starting at (cx-16, cy) where cx/cy are derived from the tile's view-space coords.
-        //
-        // When shift is held (C inter.c behavior):
-        //  - Snap hover to the nearest ISITEM tile via spiral search
-        //  - Only draw the diamond if an item tile was found
-        //  - Color: green if ISUSABLE, yellow otherwise
+        // Hover highlight on world tiles: brighten the underlying sprite(s)
+        // instead of drawing an overlay shape.
         let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
         if let Some((mx, my)) =
             Self::screen_to_map_tile(self.mouse_x, self.mouse_y, cam_xoff, cam_yoff)
         {
             if self.shift_held {
-                // Shift held: only highlight nearby ISITEM tiles.
+                // Shift held: only highlight nearby ISITEM tiles (use/pickup targeting).
                 if let Some((sx, sy)) = Self::nearest_tile_with_flag(ps, mx, my, ISITEM) {
-                    let (cx, cy) = Self::tile_ground_diamond_origin(sx, sy, cam_xoff, cam_yoff);
-                    let tile = ps.map().tile_at_xy(sx, sy);
-                    let is_usable = tile.map(|t| (t.flags & ISUSABLE) != 0).unwrap_or(false);
-                    let color = if is_usable {
-                        Color::RGBA(0, 255, 0, 100) // green = usable
-                    } else {
-                        Color::RGBA(255, 255, 0, 100) // yellow = pickup
-                    };
-                    Self::draw_hover_tile_diamond(canvas, cx, cy, color)?;
+                    if let Some(tile) = ps.map().tile_at_xy(sx, sy) {
+                        let highlight_obj = if tile.obj1 > 0 {
+                            tile.obj1
+                        } else if tile.it_sprite > 0 {
+                            tile.it_sprite as i32
+                        } else if tile.back > 0 {
+                            tile.back
+                        } else {
+                            tile.ba_sprite as i32
+                        };
+                        let strength = if (tile.flags & ISUSABLE) != 0 {
+                            150
+                        } else {
+                            120
+                        };
+                        Self::draw_world_sprite_highlight(
+                            canvas,
+                            gfx,
+                            highlight_obj,
+                            sx,
+                            sy,
+                            cam_xoff,
+                            cam_yoff,
+                            0,
+                            0,
+                            strength,
+                        )?;
+                    }
                 }
             } else {
-                let (cx, cy) = Self::tile_ground_diamond_origin(mx, my, cam_xoff, cam_yoff);
-                Self::draw_hover_tile_diamond(canvas, cx, cy, Color::RGBA(255, 255, 255, 80))?;
+                // Normal movement hover: brighten the floor tile being targeted.
+                if let Some(tile) = ps.map().tile_at_xy(mx, my) {
+                    let floor_sprite = if (tile.flags & INVIS) != 0 {
+                        SPR_EMPTY as i32
+                    } else if tile.back > 0 {
+                        tile.back
+                    } else {
+                        tile.ba_sprite as i32
+                    };
+                    Self::draw_world_sprite_highlight(
+                        canvas,
+                        gfx,
+                        floor_sprite,
+                        mx,
+                        my,
+                        cam_xoff,
+                        cam_yoff,
+                        0,
+                        0,
+                        96,
+                    )?;
+                }
             }
             canvas.set_draw_color(Color::RGB(255, 170, 80));
         }
@@ -1829,9 +2005,11 @@ impl GameScene {
             };
             if mouse_btn == MouseButton::Left && ps.should_show_shop() {
                 let shop = ps.shop_target();
-                if (500..=620).contains(&x) && (310..=502).contains(&y) {
-                    let i = ((y - 310) / 12) as usize;
-                    if i < 16 && shop.item(i) != 0 {
+                if (222..=501).contains(&x) && (262..=541).contains(&y) {
+                    let col = ((x - 222) / 35) as usize;
+                    let row = ((y - 262) / 35) as usize;
+                    let i = row * 8 + col;
+                    if i < 62 && shop.item(i) != 0 {
                         Some(((i as i16) + 1, shop.nr() as i32))
                     } else {
                         None
@@ -2282,12 +2460,13 @@ impl Scene for GameScene {
         // 8. Inventory, worn items, spells, carried item
         self.draw_inventory_equipment_spells(canvas, gfx_cache, ps)?;
 
-        // 9. Look/shop overlays
+        // 9. Portrait/shop overlays
+        Self::draw_portrait_panel(canvas, gfx_cache, ps)?;
         Self::draw_look_overlay(canvas, gfx_cache, ps)?;
-        Self::draw_shop_overlay(canvas, gfx_cache, ps)?;
+        self.draw_shop_overlay(canvas, gfx_cache, ps)?;
 
         // 10. Hover highlights
-        self.draw_hover_effects(canvas, ps)?;
+        self.draw_hover_effects(canvas, gfx_cache, ps)?;
 
         // 11. Minimap (bottom-left, 128×128, persistent world buffer)
         self.draw_minimap(canvas, gfx_cache, ps)?;
