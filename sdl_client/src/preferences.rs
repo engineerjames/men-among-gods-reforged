@@ -29,6 +29,19 @@ pub struct RuntimeProfile {
     pub show_proz: i32,
 }
 
+#[derive(Clone, Debug)]
+pub struct GlobalSettings {
+    pub music_enabled: bool,
+}
+
+impl Default for GlobalSettings {
+    fn default() -> Self {
+        Self {
+            music_enabled: true,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct SpellButtonEntry {
     name: String,
@@ -52,15 +65,42 @@ struct CharacterProfile {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct AppProfileStorage {
     version: u32,
+    global: GlobalSettingsStorage,
     characters: BTreeMap<String, CharacterProfile>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct GlobalSettingsStorage {
+    music_enabled: bool,
+}
+
+impl Default for GlobalSettingsStorage {
+    fn default() -> Self {
+        Self {
+            music_enabled: true,
+        }
+    }
 }
 
 impl Default for AppProfileStorage {
     fn default() -> Self {
         Self {
             version: 1,
+            global: GlobalSettingsStorage::default(),
             characters: BTreeMap::new(),
         }
+    }
+}
+
+fn to_global_settings(storage: &GlobalSettingsStorage) -> GlobalSettings {
+    GlobalSettings {
+        music_enabled: storage.music_enabled,
+    }
+}
+
+fn from_global_settings(settings: &GlobalSettings) -> GlobalSettingsStorage {
+    GlobalSettingsStorage {
+        music_enabled: settings.music_enabled,
     }
 }
 
@@ -182,6 +222,19 @@ pub fn load_profile(identity: &CharacterIdentity) -> Option<RuntimeProfile> {
     let storage = read_storage(&path);
     let key = profile_key(identity);
     storage.characters.get(&key).map(to_runtime_profile)
+}
+
+pub fn load_global_settings() -> GlobalSettings {
+    let path = profile_file_path();
+    let storage = read_storage(&path);
+    to_global_settings(&storage.global)
+}
+
+pub fn save_global_settings(settings: &GlobalSettings) -> Result<(), String> {
+    let path = profile_file_path();
+    let mut storage = read_storage(&path);
+    storage.global = from_global_settings(settings);
+    write_storage(&path, &storage)
 }
 
 pub fn save_profile(identity: &CharacterIdentity, runtime: &RuntimeProfile) -> Result<(), String> {

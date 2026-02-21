@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use egui_sdl2::egui::ahash::{HashMap, HashMapExt};
 use sdl2::mixer::{Channel, Chunk};
 
+const LOGIN_MUSIC_CHANNEL: i32 = 0;
+
 pub struct SoundCache {
     sfx_cache: HashMap<usize, Chunk>,
     music_cache: HashMap<MusicTrack, Chunk>,
@@ -99,9 +101,13 @@ impl SoundCache {
     #[allow(dead_code)]
     pub fn play_music(&self, track: MusicTrack) {
         if let Some(chunk) = self.music_cache.get(&track) {
-            if let Err(e) = Channel::all().play(chunk, -1) {
+            if let Err(e) = Channel(LOGIN_MUSIC_CHANNEL).play(chunk, -1) {
                 log::warn!("Failed to play music: {}", e);
             }
         }
+    }
+
+    pub fn stop_music(&self) {
+        Channel(LOGIN_MUSIC_CHANNEL).halt();
     }
 }

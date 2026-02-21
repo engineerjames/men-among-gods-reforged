@@ -5,7 +5,9 @@ use std::{
 
 use crate::{
     account_api, hosts,
+    preferences::{self, GlobalSettings},
     scenes::scene::{Scene, SceneType},
+    sfx_cache::MusicTrack,
     state::AppState,
 };
 use egui_sdl2::egui::{self, Align2, Vec2};
@@ -19,6 +21,7 @@ pub struct LoginScene {
     api_result_rx: Option<std::sync::mpsc::Receiver<Result<String, String>>>,
     error_message: Option<String>,
     login_thread: Option<std::thread::JoinHandle<()>>,
+    music_initialized: bool,
 }
 
 impl LoginScene {
@@ -31,20 +34,58 @@ impl LoginScene {
             api_result_rx: None,
             error_message: None,
             login_thread: None,
+            music_initialized: false,
         }
     }
 
     fn login(username: &str, password: &str) -> Result<String, String> {
         account_api::login(&hosts::get_api_base_url(), username, password)
     }
+
+    fn ensure_music_initialized(&mut self, app_state: &mut AppState) {
+        if self.music_initialized {
+            return;
+        }
+
+        let settings = preferences::load_global_settings();
+        app_state.music_enabled = settings.music_enabled;
+
+        if app_state.music_enabled {
+            app_state.sfx_cache.play_music(MusicTrack::LoginTheme);
+        } else {
+            app_state.sfx_cache.stop_music();
+        }
+
+        self.music_initialized = true;
+    }
+
+    fn save_music_setting(&self, enabled: bool) {
+        let settings = GlobalSettings {
+            music_enabled: enabled,
+        };
+
+        if let Err(err) = preferences::save_global_settings(&settings) {
+            log::warn!("Failed to save login music setting: {}", err);
+        }
+    }
 }
 
 impl Scene for LoginScene {
+    fn on_enter(&mut self, app_state: &mut AppState) {
+        self.ensure_music_initialized(app_state);
+    }
+
+    fn on_exit(&mut self, app_state: &mut AppState) {
+        app_state.sfx_cache.stop_music();
+    }
+
     fn handle_event(&mut self, _app_state: &mut AppState, _event: &Event) -> Option<SceneType> {
         None
     }
 
     fn update(&mut self, app_state: &mut AppState, _dt: Duration) -> Option<SceneType> {
+        self.ensure_music_initialized(app_state);
+
         if self.is_submitting {
             let result = if let Some(receiver) = &self.api_result_rx {
                 match receiver.try_recv() {
@@ -91,6 +132,7 @@ impl Scene for LoginScene {
     }
 
     fn render_ui(&mut self, app_state: &mut AppState, ctx: &egui::Context) -> Option<SceneType> {
+        self.ensure_music_initialized(app_state);
         let mut next = None;
 
         egui::Window::new("Men Among Gods - Reforged")
@@ -123,6 +165,20 @@ impl Scene for LoginScene {
                                 .password(true)
                                 .desired_width(260.0),
                         );
+                        ui.add_space(8.0);
+
+                        if ui
+                            .checkbox(&mut app_state.music_enabled, "Enable Login Music")
+                            .changed()
+                        {
+                            if app_state.music_enabled {
+                                app_state.sfx_cache.play_music(MusicTrack::LoginTheme);
+                            } else {
+                                app_state.sfx_cache.stop_music();
+                            }
+                            self.save_music_setting(app_state.music_enabled);
+                        }
+
                         ui.add_space(12.0);
 
                         ui.horizontal(|ui| {

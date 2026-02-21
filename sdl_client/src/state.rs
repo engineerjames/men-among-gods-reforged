@@ -38,6 +38,7 @@ pub struct AppState {
     pub player_state: Option<PlayerState>,
     /// Master volume multiplier (0.0 = muted, 1.0 = full). Set by the escape menu slider.
     pub master_volume: f32,
+    pub music_enabled: bool,
 }
 
 impl AppState {
@@ -49,6 +50,7 @@ impl AppState {
             network: None,
             player_state: None,
             master_volume: 1.0,
+            music_enabled: true,
         }
     }
 }
