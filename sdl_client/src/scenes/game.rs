@@ -249,7 +249,7 @@ impl GameScene {
         yoff: i32,
         alpha: u8,
     ) -> Result<(), String> {
-        if sprite_id <= 0 {
+        if sprite_id <= 0 || sprite_id as u16 == SPR_EMPTY {
             return Ok(());
         }
 
@@ -272,7 +272,7 @@ impl GameScene {
             Some(sdl2::rect::Rect::new(rx, ry, q.width, q.height)),
         );
         texture.set_alpha_mod(255);
-        texture.set_blend_mode(sdl2::render::BlendMode::None);
+        texture.set_blend_mode(sdl2::render::BlendMode::Blend);
         result
     }
 
@@ -1211,6 +1211,10 @@ impl GameScene {
                 // Shift held: only highlight nearby ISITEM tiles (use/pickup targeting).
                 if let Some((sx, sy)) = Self::nearest_tile_with_flag(ps, mx, my, ISITEM) {
                     if let Some(tile) = ps.map().tile_at_xy(sx, sy) {
+                        if (tile.flags & INVIS) != 0 {
+                            return Ok(());
+                        }
+
                         let highlight_obj = if tile.obj1 > 0 {
                             tile.obj1
                         } else if tile.it_sprite > 0 {
@@ -1242,9 +1246,11 @@ impl GameScene {
             } else {
                 // Normal movement hover: brighten the floor tile being targeted.
                 if let Some(tile) = ps.map().tile_at_xy(mx, my) {
-                    let floor_sprite = if (tile.flags & INVIS) != 0 {
-                        SPR_EMPTY as i32
-                    } else if tile.back > 0 {
+                    if (tile.flags & INVIS) != 0 {
+                        return Ok(());
+                    }
+
+                    let floor_sprite = if tile.back > 0 {
                         tile.back
                     } else {
                         tile.ba_sprite as i32

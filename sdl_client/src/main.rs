@@ -1,6 +1,6 @@
 use std::process;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use egui_sdl2::egui;
 use sdl2::image::InitFlag;
