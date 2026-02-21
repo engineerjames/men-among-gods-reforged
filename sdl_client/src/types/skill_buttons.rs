@@ -69,3 +69,60 @@ impl SkillButtons {
         self.set_name("-");
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_is_unassigned() {
+        let btn = SkillButtons::default();
+        assert!(btn.is_unassigned());
+        assert_eq!(btn.skill_nr(), 0);
+        assert_eq!(btn.name_str(), "");
+    }
+
+    #[test]
+    fn set_name_and_skill_nr() {
+        let mut btn = SkillButtons::default();
+        btn.set_name("Fire");
+        btn.set_skill_nr(5);
+        assert_eq!(btn.name_str(), "Fire");
+        assert_eq!(btn.skill_nr(), 5);
+        assert!(!btn.is_unassigned());
+    }
+
+    #[test]
+    fn name_truncated_to_7_chars() {
+        let mut btn = SkillButtons::default();
+        btn.set_name("LongSpellName");
+        assert_eq!(btn.name_str(), "LongSpe");
+    }
+
+    #[test]
+    fn is_unassigned_with_dash_name() {
+        let mut btn = SkillButtons::default();
+        btn.set_name("-");
+        btn.set_skill_nr(42);
+        assert!(btn.is_unassigned());
+    }
+
+    #[test]
+    fn is_unassigned_with_sentinel_nr() {
+        let mut btn = SkillButtons::default();
+        btn.set_name("Fire");
+        btn.set_skill_nr(SkillButtons::UNASSIGNED_SKILL_NR);
+        assert!(btn.is_unassigned());
+    }
+
+    #[test]
+    fn set_unassigned_clears() {
+        let mut btn = SkillButtons::default();
+        btn.set_name("Fire");
+        btn.set_skill_nr(5);
+        btn.set_unassigned();
+        assert!(btn.is_unassigned());
+        assert_eq!(btn.skill_nr(), SkillButtons::UNASSIGNED_SKILL_NR);
+        assert_eq!(btn.name_str(), "-");
+    }
+}

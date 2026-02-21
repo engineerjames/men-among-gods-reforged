@@ -354,3 +354,137 @@ impl GameMap {
         self.tiles.copy_within(shift..len, 0);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_map_len() {
+        let map = GameMap::new();
+        assert_eq!(map.len(), TILEX * TILEY);
+    }
+
+    #[test]
+    fn tile_index_in_bounds() {
+        assert_eq!(GameMap::tile_index(0, 0), Some(0));
+        assert_eq!(GameMap::tile_index(33, 33), Some(TILEX * TILEY - 1));
+        assert_eq!(GameMap::tile_index(1, 0), Some(1));
+        assert_eq!(GameMap::tile_index(0, 1), Some(TILEX));
+    }
+
+    #[test]
+    fn tile_index_out_of_bounds() {
+        assert_eq!(GameMap::tile_index(34, 0), None);
+        assert_eq!(GameMap::tile_index(0, 34), None);
+        assert_eq!(GameMap::tile_index(100, 100), None);
+    }
+
+    #[test]
+    fn tile_at_xy_initial_coords() {
+        let map = GameMap::new();
+        let tile = map.tile_at_xy(5, 3).unwrap();
+        assert_eq!(tile.x, 5);
+        assert_eq!(tile.y, 3);
+    }
+
+    #[test]
+    fn tile_at_xy_out_of_bounds() {
+        let map = GameMap::new();
+        assert!(map.tile_at_xy(34, 0).is_none());
+    }
+
+    #[test]
+    fn set_origin_shifts_world_coords() {
+        let mut map = GameMap::new();
+        map.set_origin(100, 200);
+        let tile = map.tile_at_xy(0, 0).unwrap();
+        assert_eq!(tile.x, 100);
+        assert_eq!(tile.y, 200);
+        let tile2 = map.tile_at_xy(5, 3).unwrap();
+        assert_eq!(tile2.x, 105);
+        assert_eq!(tile2.y, 203);
+    }
+
+    #[test]
+    fn apply_set_map_absolute() {
+        let mut map = GameMap::new();
+        map.apply_set_map(
+            0,
+            Some(10),
+            Some(42),   // ba_sprite
+            Some(0xFF), // flags1
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        let tile = map.tile_at_index(10).unwrap();
+        assert_eq!(tile.ba_sprite, 42);
+        assert_eq!(tile.flags, 0xFF);
+    }
+
+    #[test]
+    fn apply_set_map_delta() {
+        let mut map = GameMap::new();
+        // First: absolute at index 10
+        map.apply_set_map(
+            0,
+            Some(10),
+            Some(1),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        // Second: delta +5 → index 15
+        map.apply_set_map(
+            5,
+            None,
+            Some(99),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        let tile = map.tile_at_index(15).unwrap();
+        assert_eq!(tile.ba_sprite, 99);
+    }
+
+    #[test]
+    fn apply_set_map3_lighting() {
+        let mut map = GameMap::new();
+        // base_light=7 at index 0, then packed [0xAB] → hi=0xA at 1, lo=0xB at 2
+        map.apply_set_map3(0, 7, &[0xAB]);
+        assert_eq!(map.tile_at_index(0).unwrap().light, 7);
+        assert_eq!(map.tile_at_index(1).unwrap().light, 0xA);
+        assert_eq!(map.tile_at_index(2).unwrap().light, 0xB);
+    }
+
+    #[test]
+    fn default_equals_new() {
+        let d = GameMap::default();
+        let n = GameMap::new();
+        assert_eq!(d.len(), n.len());
+    }
+}

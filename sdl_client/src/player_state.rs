@@ -794,4 +794,25 @@ mod tests {
         let msg = ps.log_message(0).expect("expected first log message");
         assert_eq!(msg.message, "hello world");
     }
+
+    #[test]
+    fn take_exit_requested_reason() {
+        let mut ps = PlayerState::default();
+        assert_eq!(ps.take_exit_requested_reason(), None);
+        // Directly set the private field (inline test module has access)
+        ps.exit_requested_reason = Some(42);
+        assert_eq!(ps.take_exit_requested_reason(), Some(42));
+        // Second take should return None
+        assert_eq!(ps.take_exit_requested_reason(), None);
+    }
+
+    #[test]
+    fn selected_char_roundtrip() {
+        let mut ps = PlayerState::default();
+        assert_eq!(ps.selected_char(), 0);
+        ps.set_selected_char_with_id(5, 10);
+        assert_eq!(ps.selected_char(), 5);
+        ps.clear_selected_char();
+        assert_eq!(ps.selected_char(), 0);
+    }
 }

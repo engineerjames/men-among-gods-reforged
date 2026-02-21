@@ -267,3 +267,34 @@ pub fn adjust_mouse_event_for_hidpi(event: Event, window: &Window) -> Event {
         other => other,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scale_coord_identity() {
+        assert_eq!(scale_coord(100, 1.0), 100);
+    }
+
+    #[test]
+    fn scale_coord_double() {
+        assert_eq!(scale_coord(100, 2.0), 200);
+    }
+
+    #[test]
+    fn scale_coord_half_rounds() {
+        // 3 * 0.5 = 1.5, rounds to 2
+        assert_eq!(scale_coord(3, 0.5), 2);
+    }
+
+    #[test]
+    fn scale_coord_zero() {
+        assert_eq!(scale_coord(0, 5.0), 0);
+    }
+
+    #[test]
+    fn scale_coord_negative() {
+        assert_eq!(scale_coord(-10, 2.0), -20);
+    }
+}

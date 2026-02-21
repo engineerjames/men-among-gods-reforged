@@ -314,3 +314,222 @@ impl GameScene {
         out
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mag_core::types::ClientPlayer;
+
+    // -- autohide --
+
+    #[test]
+    fn autohide_hidden_tile() {
+        // x < TILEX/2 (17) AND y > TILEX/2 (17)
+        assert!(GameScene::autohide(10, 18));
+        assert!(GameScene::autohide(0, 33));
+        assert!(GameScene::autohide(16, 18));
+    }
+
+    #[test]
+    fn autohide_visible_tile() {
+        // x >= TILEX/2 => visible
+        assert!(!GameScene::autohide(17, 18));
+        assert!(!GameScene::autohide(33, 33));
+        // y <= TILEX/2 => visible
+        assert!(!GameScene::autohide(10, 17));
+        assert!(!GameScene::autohide(10, 0));
+    }
+
+    // -- facing --
+
+    #[test]
+    fn facing_east() {
+        assert!(GameScene::facing(TILEX / 2 + 1, TILEY / 2, 1));
+    }
+
+    #[test]
+    fn facing_west() {
+        assert!(GameScene::facing(TILEX / 2 - 1, TILEY / 2, 2));
+    }
+
+    #[test]
+    fn facing_north() {
+        assert!(GameScene::facing(TILEX / 2, TILEY / 2 - 1, 3));
+    }
+
+    #[test]
+    fn facing_south() {
+        assert!(GameScene::facing(TILEX / 2, TILEY / 2 + 1, 4));
+    }
+
+    #[test]
+    fn facing_wrong_tile() {
+        assert!(!GameScene::facing(0, 0, 1));
+        assert!(!GameScene::facing(TILEX / 2, TILEY / 2, 1)); // center, not east
+    }
+
+    // -- tile_ground_diamond_origin --
+
+    #[test]
+    fn diamond_origin_at_zero() {
+        let (cx, cy) = GameScene::tile_ground_diamond_origin(0, 0, 0, 0);
+        // cx = 0/2 + 0/2 + 32 + XPOS + MAP_X_SHIFT + 0
+        assert_eq!(cx, 32 + XPOS + MAP_X_SHIFT);
+        // cy = 0/4 - 0/4 + YPOS - 16 + 0
+        assert_eq!(cy, YPOS - 16);
+    }
+
+    #[test]
+    fn diamond_origin_with_camera_offset() {
+        let (cx, cy) = GameScene::tile_ground_diamond_origin(0, 0, 10, -5);
+        assert_eq!(cx, 32 + XPOS + MAP_X_SHIFT + 10);
+        assert_eq!(cy, YPOS - 16 - 5);
+    }
+
+    // -- cursor_in_map_interaction_area --
+
+    #[test]
+    fn cursor_at_origin_outside() {
+        assert!(!GameScene::cursor_in_map_interaction_area(0, 0));
+    }
+
+    #[test]
+    fn cursor_center_inside() {
+        // Center of 800×600 should be inside the map area
+        assert!(GameScene::cursor_in_map_interaction_area(400, 300));
+    }
+
+    // -- points_to_rank_index --
+
+    #[test]
+    fn rank_boundaries() {
+        assert_eq!(GameScene::points_to_rank_index(0), 0);
+        assert_eq!(GameScene::points_to_rank_index(49), 0);
+        assert_eq!(GameScene::points_to_rank_index(50), 1);
+        assert_eq!(GameScene::points_to_rank_index(849), 1);
+        assert_eq!(GameScene::points_to_rank_index(850), 2);
+        assert_eq!(GameScene::points_to_rank_index(4899), 2);
+        assert_eq!(GameScene::points_to_rank_index(4900), 3);
+        assert_eq!(GameScene::points_to_rank_index(17700), 4);
+        assert_eq!(GameScene::points_to_rank_index(80977100), 23);
+        assert_eq!(GameScene::points_to_rank_index(u32::MAX), 23);
+    }
+
+    // -- attrib_needed --
+
+    #[test]
+    fn attrib_needed_below_max() {
+        let mut ci = ClientPlayer::default();
+        ci.attrib[0][2] = 100; // max
+        ci.attrib[0][3] = 20; // diff
+                              // cost = v^3 * diff / 20 = 10^3 * 20 / 20 = 1000
+        assert_eq!(GameScene::attrib_needed(&ci, 0, 10), 1000);
+    }
+
+    #[test]
+    fn attrib_needed_at_max() {
+        let mut ci = ClientPlayer::default();
+        ci.attrib[0][2] = 100;
+        ci.attrib[0][3] = 20;
+        assert_eq!(GameScene::attrib_needed(&ci, 0, 100), i32::MAX);
+    }
+
+    #[test]
+    fn attrib_needed_at_zero() {
+        let mut ci = ClientPlayer::default();
+        ci.attrib[0][2] = 100;
+        ci.attrib[0][3] = 20;
+        assert_eq!(GameScene::attrib_needed(&ci, 0, 0), 0);
+    }
+
+    // -- skill_needed --
+
+    #[test]
+    fn skill_needed_below_max() {
+        let mut ci = ClientPlayer::default();
+        ci.skill[0][2] = 100; // max
+        ci.skill[0][3] = 40; // diff
+                             // cubic = 10^3 * 40 / 40 = 1000; max(10, 1000) = 1000
+        assert_eq!(GameScene::skill_needed(&ci, 0, 10), 1000);
+    }
+
+    #[test]
+    fn skill_needed_floor_is_v() {
+        let mut ci = ClientPlayer::default();
+        ci.skill[0][2] = 100;
+        ci.skill[0][3] = 1; // low diff
+                            // cubic = 2^3 * 1 / 40 = 0; max(2, 0) = 2
+        assert_eq!(GameScene::skill_needed(&ci, 0, 2), 2);
+    }
+
+    #[test]
+    fn skill_needed_at_max() {
+        let mut ci = ClientPlayer::default();
+        ci.skill[0][2] = 50;
+        ci.skill[0][3] = 10;
+        assert_eq!(GameScene::skill_needed(&ci, 0, 50), i32::MAX);
+    }
+
+    // -- hp_needed / end_needed / mana_needed --
+
+    #[test]
+    fn hp_needed_below_max() {
+        let mut ci = ClientPlayer::default();
+        ci.hp[2] = 200; // max
+        ci.hp[3] = 3; // diff
+                      // cost = v * diff = 50 * 3 = 150
+        assert_eq!(GameScene::hp_needed(&ci, 50), 150);
+    }
+
+    #[test]
+    fn hp_needed_at_max() {
+        let mut ci = ClientPlayer::default();
+        ci.hp[2] = 200;
+        ci.hp[3] = 3;
+        assert_eq!(GameScene::hp_needed(&ci, 200), i32::MAX);
+    }
+
+    #[test]
+    fn end_needed_below_max() {
+        let mut ci = ClientPlayer::default();
+        ci.end[2] = 200;
+        ci.end[3] = 6;
+        // cost = v * diff / 2 = 50 * 6 / 2 = 150
+        assert_eq!(GameScene::end_needed(&ci, 50), 150);
+    }
+
+    #[test]
+    fn mana_needed_below_max() {
+        let mut ci = ClientPlayer::default();
+        ci.mana[2] = 200;
+        ci.mana[3] = 4;
+        // cost = v * diff = 50 * 4 = 200
+        assert_eq!(GameScene::mana_needed(&ci, 50), 200);
+    }
+
+    // -- screen_to_map_tile --
+
+    #[test]
+    fn screen_to_map_tile_known_origin() {
+        // Feed in the screen position of tile (17, 17) center with cam=(0,0)
+        let (cx, cy) = GameScene::tile_ground_diamond_origin(17, 17, 0, 0);
+        // The center of the diamond is at (cx, cy+8)
+        let result = GameScene::screen_to_map_tile(cx, cy + 8, 0, 0);
+        assert_eq!(result, Some((17, 17)));
+    }
+
+    #[test]
+    fn screen_to_map_tile_far_offscreen() {
+        // Way off screen: should return None
+        assert_eq!(GameScene::screen_to_map_tile(-10000, -10000, 0, 0), None);
+    }
+
+    // -- sorted_skills --
+
+    #[test]
+    fn sorted_skills_length() {
+        let ci = ClientPlayer::default();
+        let sorted = GameScene::sorted_skills(&ci);
+        assert_eq!(sorted.len(), MAX_SKILLS);
+    }
+}

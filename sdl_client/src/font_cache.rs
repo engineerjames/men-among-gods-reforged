@@ -84,3 +84,57 @@ pub fn draw_text_centered(
 pub fn text_width(text: &str) -> u32 {
     (text.len() as u32) * BITMAP_GLYPH_ADVANCE
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn glyph_index_space() {
+        assert_eq!(glyph_index(' '), 0);
+    }
+
+    #[test]
+    fn glyph_index_uppercase_a() {
+        // 'A' = 65, 65 - 32 = 33
+        assert_eq!(glyph_index('A'), 33);
+    }
+
+    #[test]
+    fn glyph_index_tilde() {
+        // '~' = 126, 126 - 32 = 94
+        assert_eq!(glyph_index('~'), 94);
+    }
+
+    #[test]
+    fn glyph_index_del_char() {
+        // DEL = 127, 127 - 32 = 95
+        assert_eq!(glyph_index('\x7F'), 95);
+    }
+
+    #[test]
+    fn glyph_index_non_printable() {
+        assert_eq!(glyph_index('\t'), -1);
+        assert_eq!(glyph_index('\n'), -1);
+    }
+
+    #[test]
+    fn glyph_index_high_unicode() {
+        assert_eq!(glyph_index('€'), -1);
+    }
+
+    #[test]
+    fn text_width_empty() {
+        assert_eq!(text_width(""), 0);
+    }
+
+    #[test]
+    fn text_width_hello() {
+        assert_eq!(text_width("Hello"), 30); // 5 * 6
+    }
+
+    #[test]
+    fn text_width_single_char() {
+        assert_eq!(text_width("X"), 6);
+    }
+}
