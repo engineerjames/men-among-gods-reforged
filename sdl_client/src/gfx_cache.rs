@@ -22,6 +22,8 @@ pub struct GraphicsCache {
     creator: TextureCreator<WindowContext>,
     archive: ZipArchive<File>,
     index_to_filename: HashMap<usize, String>,
+    /// Streaming texture used for minimap rendering (128x128 RGBA).
+    pub minimap_texture: Option<Texture>,
 }
 
 impl GraphicsCache {
@@ -73,11 +75,10 @@ impl GraphicsCache {
             creator,
             archive,
             index_to_filename,
+            minimap_texture: None,
         }
     }
 
-    // TODO: The minimap will use this but we haven't implemented that yet
-    #[allow(dead_code)]
     pub fn get_avg_color(&mut self, id: usize) -> (u8, u8, u8) {
         if let Some(color) = self.avg_color_cache.get(&id) {
             return *color;
@@ -86,6 +87,23 @@ impl GraphicsCache {
         // If the average color isn't cached, load the texture to calculate it (this will cache it for next time)
         self.get_texture(id);
         *self.avg_color_cache.get(&id).unwrap_or(&(0, 0, 0))
+    }
+
+    /// Ensure the minimap streaming texture exists (128×128, RGBA8888).
+    pub fn ensure_minimap_texture(&mut self) {
+        if self.minimap_texture.is_none() {
+            match self
+                .creator
+                .create_texture_streaming(Some(PixelFormatEnum::RGBA8888), 128, 128)
+            {
+                Ok(tex) => {
+                    self.minimap_texture = Some(tex);
+                }
+                Err(e) => {
+                    log::error!("Failed to create minimap texture: {}", e);
+                }
+            }
+        }
     }
 
     pub fn get_texture(&mut self, id: usize) -> &Texture {

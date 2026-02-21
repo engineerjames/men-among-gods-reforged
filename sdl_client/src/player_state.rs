@@ -245,6 +245,8 @@ impl PlayerState {
         } else {
             self.local_ctick = (self.local_ctick + 1) % (MAX_SPEEDTAB_INDEX as u8 + 1);
         }
+
+        crate::legacy_engine::engine_tick(self, client_ticker, self.local_ctick as usize);
     }
 
     fn log_color_from_font(font: u8) -> crate::types::log_message::LogMessageColor {

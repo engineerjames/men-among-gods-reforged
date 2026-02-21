@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
+use client_commands::ClientCommand;
 pub use server_commands::{ServerCommand, ServerCommandData};
 
 pub enum NetworkCommand {
@@ -77,10 +78,11 @@ impl NetworkRuntime {
         }
     }
 
-    /// Queues raw bytes to be written to the server.
-    pub fn send(&self, bytes: Vec<u8>) {
+    /// Serialises `cmd`, logs it at DEBUG level, and queues the bytes for the network thread.
+    pub fn send(&self, cmd: ClientCommand) {
         if let Some(tx) = &self.command_tx {
-            let _ = tx.send(NetworkCommand::Send(bytes));
+            log::info!("Sending command: {:?}", cmd);
+            let _ = tx.send(NetworkCommand::Send(cmd.to_bytes()));
         }
     }
 
@@ -156,7 +158,7 @@ impl NetworkRuntime {
         self.pings_in_flight.insert(seq, now);
 
         let cmd = client_commands::ClientCommand::new_ping(seq, client_time_ms);
-        self.send(cmd.to_bytes());
+        self.send(cmd);
     }
 
     /// Sends `CL_CMD_CTICK` every 16 processed server ticks if we're logged in.
@@ -175,7 +177,7 @@ impl NetworkRuntime {
             return;
         }
         let tick_cmd = client_commands::ClientCommand::new_tick(t);
-        self.send(tick_cmd.to_bytes());
+        self.send(tick_cmd);
         self.last_ctick_sent = t;
     }
 }

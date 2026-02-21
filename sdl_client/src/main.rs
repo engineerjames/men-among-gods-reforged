@@ -19,6 +19,7 @@ mod game_map;
 mod gfx_cache;
 mod helpers;
 mod hosts;
+mod legacy_engine;
 mod network;
 mod player_state;
 mod scenes;
