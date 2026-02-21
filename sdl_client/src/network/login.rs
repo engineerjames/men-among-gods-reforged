@@ -9,15 +9,13 @@ use flate2::Decompress;
 use mag_core::constants::LO_PASSWORD;
 use mag_core::encrypt::xcrypt;
 
-use crate::helpers::exit_reason_string;
-
 use super::{client_commands, server_commands, tick_stream, NetworkCommand, NetworkEvent};
 
 fn login_exit_reason_message(reason: u32) -> String {
     if (reason as u8) == LO_PASSWORD {
         "Invalid password".to_string()
     } else {
-        exit_reason_string(reason).to_string()
+        mag_core::constants::get_exit_reason(reason).to_string()
     }
 }
 

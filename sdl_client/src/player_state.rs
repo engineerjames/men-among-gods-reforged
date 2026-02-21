@@ -6,7 +6,6 @@ use mag_core::{
 
 use crate::{
     game_map::GameMap,
-    helpers::exit_reason_string,
     network::server_commands::{ServerCommand, ServerCommandData, ServerCommandType},
     types::{log_message::LogMessage, look::Look, player_data::PlayerData, save_file::SaveFile},
 };
@@ -661,7 +660,7 @@ impl PlayerState {
                     3,
                     format!(
                         "Server requested exit (reason={})",
-                        exit_reason_string(*reason)
+                        mag_core::constants::get_exit_reason(*reason)
                     ),
                 );
                 self.exit_requested_reason = Some(*reason);

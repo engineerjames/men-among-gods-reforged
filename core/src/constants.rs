@@ -763,6 +763,26 @@ pub const LO_EXIT: u8 = 12;
 pub const LO_USURP: u8 = 13;
 pub const LO_KICKED: u8 = 14;
 
+pub fn get_exit_reason(code: u32) -> &'static str {
+    match code as u8 {
+        LO_CHALLENGE => "[LO_CHALLENGE] Challenge failure",
+        LO_IDLE => "[LO_IDLE] Player idle too long",
+        LO_NOROOM => "[LO_NOROOM] No room left on server",
+        LO_PARAMS => "[LO_PARAMS] Invalid parameters",
+        LO_NONACTIVE => "[LO_NONACTIVE] Player not active",
+        LO_PASSWORD => "[LO_PASSWORD] Invalid password",
+        LO_SLOW => "[LO_SLOW] Connection too slow",
+        LO_FAILURE => "[LO_FAILURE] Login failure",
+        LO_SHUTDOWN => "[LO_SHUTDOWN] Server shutting down",
+        LO_TAVERN => "[LO_TAVERN] Returned to tavern",
+        LO_VERSION => "[LO_VERSION] Version mismatch",
+        LO_EXIT => "[LO_EXIT] Client exit",
+        LO_USURP => "[LO_USURP] Logged in elsewhere",
+        LO_KICKED => "[LO_KICKED] Kicked from server",
+        _ => "[UNKNOWN] Unrecognized reason code",
+    }
+}
+
 // =============================================================================
 // Player States (from client.h)
 // =============================================================================
