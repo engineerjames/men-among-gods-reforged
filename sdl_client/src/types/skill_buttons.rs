@@ -26,10 +26,12 @@ impl SkillButtons {
         self.skill_nr
     }
 
+    #[allow(dead_code)]
     pub fn set_skill_nr(&mut self, skill_nr: u32) {
         self.skill_nr = skill_nr;
     }
 
+    #[allow(dead_code)]
     pub fn name_str(&self) -> String {
         let end = self
             .name
@@ -39,6 +41,7 @@ impl SkillButtons {
         String::from_utf8_lossy(&self.name[..end]).to_string()
     }
 
+    #[allow(dead_code)]
     pub fn set_name(&mut self, name: &str) {
         self.name = [0; 8];
         for (i, &b) in name.as_bytes().iter().take(7).enumerate() {
@@ -54,6 +57,7 @@ impl SkillButtons {
         s.is_empty() || s == "-"
     }
 
+    #[allow(dead_code)]
     pub fn set_unassigned(&mut self) {
         self.skill_nr = Self::UNASSIGNED_SKILL_NR;
         self.set_name("-");

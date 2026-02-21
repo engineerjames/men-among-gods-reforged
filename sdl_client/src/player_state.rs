@@ -38,8 +38,6 @@ pub struct PlayerState {
     server_ctick_pending: bool,
     local_ctick: u8,
 
-    state_revision: u64,
-
     exit_requested_reason: Option<u32>,
 }
 
@@ -80,8 +78,6 @@ impl Default for PlayerState {
             server_ctick_pending: false,
             local_ctick: 0,
 
-            state_revision: 0,
-
             exit_requested_reason: None,
         }
     }
@@ -94,14 +90,6 @@ impl PlayerState {
 
     pub fn take_exit_requested_reason(&mut self) -> Option<u32> {
         self.exit_requested_reason.take()
-    }
-
-    pub fn state_revision(&self) -> u64 {
-        self.state_revision
-    }
-
-    pub fn mark_dirty(&mut self) {
-        self.state_revision = self.state_revision.wrapping_add(1);
     }
 
     pub fn map(&self) -> &GameMap {
@@ -120,18 +108,20 @@ impl PlayerState {
         self.should_show_shop
     }
 
+    #[allow(dead_code)]
     pub fn close_shop(&mut self) {
         if self.should_show_shop {
             self.should_show_shop = false;
             self.shop_refresh_requested = false;
-            self.mark_dirty();
         }
     }
 
+    #[allow(dead_code)]
     pub fn request_shop_refresh(&mut self) {
         self.shop_refresh_requested = true;
     }
 
+    #[allow(dead_code)]
     pub fn take_shop_refresh_requested(&mut self) -> bool {
         let was = self.shop_refresh_requested;
         self.shop_refresh_requested = false;
@@ -146,7 +136,6 @@ impl PlayerState {
         if self.should_show_look {
             self.should_show_look = false;
             self.look_timer = 0.0;
-            self.mark_dirty();
         }
     }
 
@@ -166,6 +155,7 @@ impl PlayerState {
         &mut self.player_info
     }
 
+    #[allow(dead_code)]
     pub fn save_file(&self) -> &SaveFile {
         &self.moa_file_data
     }
@@ -174,10 +164,10 @@ impl PlayerState {
         &mut self.moa_file_data
     }
 
+    #[allow(dead_code)]
     pub fn set_character_from_file(&mut self, save_file: SaveFile, player_data: PlayerData) {
         self.moa_file_data = save_file;
         self.player_info = player_data;
-        self.mark_dirty();
     }
 
     pub fn lookup_name(&self, nr: u16, id: u16) -> Option<&str> {
@@ -192,6 +182,7 @@ impl PlayerState {
         self.selected_char
     }
 
+    #[allow(dead_code)]
     pub fn selected_char_id(&self) -> u16 {
         self.selected_char_id
     }
@@ -217,6 +208,7 @@ impl PlayerState {
         });
     }
 
+    #[allow(dead_code)]
     pub fn local_ctick(&self) -> u8 {
         self.local_ctick
     }
@@ -689,8 +681,6 @@ impl PlayerState {
                 log::debug!("PlayerState ignoring server command: {:?}", command.header);
             }
         }
-
-        self.state_revision = self.state_revision.wrapping_add(1);
     }
 }
 

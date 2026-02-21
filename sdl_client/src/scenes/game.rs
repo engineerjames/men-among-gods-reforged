@@ -1,5 +1,5 @@
+use std::cmp::Ordering;
 use std::time::Duration;
-use std::{cmp::Ordering, i32};
 
 use egui_sdl2::egui;
 use sdl2::{
@@ -13,8 +13,9 @@ use sdl2::{
 
 use mag_core::constants::{
     DEATH, DR_DROP, DR_GIVE, DR_PICKUP, DR_USE, INJURED, INJURED1, INJURED2, INVIS, ISCHAR, ISITEM,
-    MF_ARENA, MF_BANK, MF_DEATHTRAP, MF_INDOORS, MF_MOVEBLOCK, MF_NOEXPIRE, MF_NOLAG, MF_NOMAGIC,
-    MF_NOMONST, MF_SIGHTBLOCK, MF_TAVERN, MF_UWATER, SPR_EMPTY, TILEX, TILEY, TOMB, XPOS, YPOS,
+    ISUSABLE, MF_ARENA, MF_BANK, MF_DEATHTRAP, MF_INDOORS, MF_MOVEBLOCK, MF_NOEXPIRE, MF_NOLAG,
+    MF_NOMAGIC, MF_NOMONST, MF_SIGHTBLOCK, MF_TAVERN, MF_UWATER, SPR_EMPTY, TILEX, TILEY, TOMB,
+    XPOS, YPOS,
 };
 use mag_core::types::skilltab::{get_skill_name, get_skill_nr, get_skill_sortkey, MAX_SKILLS};
 
@@ -115,7 +116,8 @@ pub struct GameScene {
     /// Points already spent on pending raises (sum of costs for each stat_raised[n]).
     stat_points_used: i32,
     /// Persistent 1024×1024 world map for minimap rendering.
-    /// Layout: 4 bytes per cell (RGBA), cell index = (gy + gx * 1024) * 4.
+    /// Layout: 4 bytes per cell [R,G,B,A], cell index = (gy + gx * 1024) * 4.
+    /// This matches the C xmap column-major storage: `xmap[map[m].y + map[m].x*1024]`.
     minimap_xmap: Vec<u8>,
     minimap_last_xy: Option<(u16, u16)>,
 }
@@ -151,6 +153,9 @@ impl GameScene {
             || (dir == 3 && x == TILEX / 2 && y == TILEY / 2 - 1)
     }
 
+    /// Default gamma-based LEFFECT value matching C client: gamma=5000, LEFFECT=gamma-4880=120.
+    const LEFFECT: i32 = 120;
+
     fn draw_world_sprite(
         canvas: &mut Canvas<Window>,
         gfx: &mut GraphicsCache,
@@ -161,6 +166,7 @@ impl GameScene {
         cam_yoff: i32,
         xoff: i32,
         yoff: i32,
+        light: u8,
     ) -> Result<(), String> {
         if sprite_id <= 0 || sprite_id as u16 == SPR_EMPTY {
             return Ok(());
@@ -177,11 +183,28 @@ impl GameScene {
         let rx = xpos / 2 + ypos / 2 - xs * 16 + 32 + XPOS + MAP_X_SHIFT + cam_xoff + xoff;
         let ry = xpos / 4 - ypos / 4 + YPOS - ys * 32 + cam_yoff + yoff;
 
-        canvas.copy(
+        // Apply darkness modulation from tile light value.
+        // C formula: channel = channel * LEFFECT / (darkness² + LEFFECT)
+        // Bits 0-3 of light = darkness level, higher bits are special effects (TODO).
+        let darkness = (light & 0x0F) as i32;
+        if darkness > 0 {
+            let factor = (255 * Self::LEFFECT / (darkness * darkness + Self::LEFFECT)) as u8;
+            texture.set_color_mod(factor, factor, factor);
+        }
+
+        let result = canvas.copy(
             texture,
             None,
             Some(sdl2::rect::Rect::new(rx, ry, q.width, q.height)),
-        )
+        );
+
+        // Reset color modulation so next draw of this sprite is unaffected.
+        if darkness > 0 {
+            let texture = gfx.get_texture(sprite_id as usize);
+            texture.set_color_mod(255, 255, 255);
+        }
+
+        result
     }
 
     fn tile_ground_diamond_origin(
@@ -288,11 +311,7 @@ impl GameScene {
                             }
                             ServerCommandData::PlaySound { nr, vol, pan } => {
                                 log::info!("PlaySound: nr={} vol={} pan={}", nr, vol, pan);
-                                app_state.sfx_cache.play_sfx(
-                                    *nr as usize,
-                                    *vol as i32,
-                                    *pan as i32,
-                                );
+                                app_state.sfx_cache.play_sfx(*nr as usize, *vol, *pan);
                             }
                             _ => {
                                 if let Some(ps) = app_state.player_state.as_mut() {
@@ -358,10 +377,14 @@ impl GameScene {
                     continue;
                 }
 
-                Self::draw_world_sprite(canvas, gfx, ba as i32, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                Self::draw_world_sprite(
+                    canvas, gfx, ba as i32, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                )?;
 
                 if ci.goto_x == tile.x as i32 && ci.goto_y == tile.y as i32 {
-                    Self::draw_world_sprite(canvas, gfx, 31, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                    Self::draw_world_sprite(
+                        canvas, gfx, 31, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                    )?;
                 }
             }
         }
@@ -427,7 +450,9 @@ impl GameScene {
                         }
                     }
 
-                    Self::draw_world_sprite(canvas, gfx, obj, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                    Self::draw_world_sprite(
+                        canvas, gfx, obj, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                    )?;
                 }
 
                 let ch = if tile.obj2 > 0 {
@@ -436,18 +461,18 @@ impl GameScene {
                     tile.ch_sprite as i32
                 };
                 Self::draw_world_sprite(
-                    canvas, gfx, ch, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff,
+                    canvas, gfx, ch, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff, tile.light,
                 )?;
 
                 if ci.attack_cn != 0 && ci.attack_cn == tile.ch_nr as i32 {
                     Self::draw_world_sprite(
-                        canvas, gfx, 34, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff,
+                        canvas, gfx, 34, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff, tile.light,
                     )?;
                 }
 
                 if ci.misc_action == DR_GIVE as i32 && ci.misc_target1 == tile.ch_id as i32 {
                     Self::draw_world_sprite(
-                        canvas, gfx, 45, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff,
+                        canvas, gfx, 45, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff, tile.light,
                     )?;
                 }
 
@@ -507,80 +532,112 @@ impl GameScene {
                     && ci.misc_target1 == tile.x as i32
                     && ci.misc_target2 == tile.y as i32
                 {
-                    Self::draw_world_sprite(canvas, gfx, 32, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                    Self::draw_world_sprite(
+                        canvas, gfx, 32, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                    )?;
                 }
                 if ci.misc_action == DR_PICKUP as i32
                     && ci.misc_target1 == tile.x as i32
                     && ci.misc_target2 == tile.y as i32
                 {
-                    Self::draw_world_sprite(canvas, gfx, 33, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                    Self::draw_world_sprite(
+                        canvas, gfx, 33, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                    )?;
                 }
                 if ci.misc_action == DR_USE as i32
                     && ci.misc_target1 == tile.x as i32
                     && ci.misc_target2 == tile.y as i32
                 {
-                    Self::draw_world_sprite(canvas, gfx, 45, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                    Self::draw_world_sprite(
+                        canvas, gfx, 45, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                    )?;
                 }
 
                 if (tile.flags2 & MF_MOVEBLOCK) != 0 {
-                    Self::draw_world_sprite(canvas, gfx, 55, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                    Self::draw_world_sprite(
+                        canvas, gfx, 55, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                    )?;
                 }
                 if (tile.flags2 & MF_SIGHTBLOCK) != 0 {
-                    Self::draw_world_sprite(canvas, gfx, 84, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                    Self::draw_world_sprite(
+                        canvas, gfx, 84, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                    )?;
                 }
                 if (tile.flags2 & MF_INDOORS) != 0 {
-                    Self::draw_world_sprite(canvas, gfx, 56, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                    Self::draw_world_sprite(
+                        canvas, gfx, 56, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                    )?;
                 }
                 if (tile.flags2 & MF_UWATER) != 0 {
-                    Self::draw_world_sprite(canvas, gfx, 75, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                    Self::draw_world_sprite(
+                        canvas, gfx, 75, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                    )?;
                 }
                 if (tile.flags2 & MF_NOMONST) != 0 {
-                    Self::draw_world_sprite(canvas, gfx, 59, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                    Self::draw_world_sprite(
+                        canvas, gfx, 59, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                    )?;
                 }
                 if (tile.flags2 & MF_BANK) != 0 {
-                    Self::draw_world_sprite(canvas, gfx, 60, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                    Self::draw_world_sprite(
+                        canvas, gfx, 60, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                    )?;
                 }
                 if (tile.flags2 & MF_TAVERN) != 0 {
-                    Self::draw_world_sprite(canvas, gfx, 61, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                    Self::draw_world_sprite(
+                        canvas, gfx, 61, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                    )?;
                 }
                 if (tile.flags2 & MF_NOMAGIC) != 0 {
-                    Self::draw_world_sprite(canvas, gfx, 62, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                    Self::draw_world_sprite(
+                        canvas, gfx, 62, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                    )?;
                 }
                 if (tile.flags2 & MF_DEATHTRAP) != 0 {
-                    Self::draw_world_sprite(canvas, gfx, 73, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                    Self::draw_world_sprite(
+                        canvas, gfx, 73, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                    )?;
                 }
                 if (tile.flags2 & MF_NOLAG) != 0 {
-                    Self::draw_world_sprite(canvas, gfx, 57, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                    Self::draw_world_sprite(
+                        canvas, gfx, 57, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                    )?;
                 }
                 if (tile.flags2 & MF_ARENA) != 0 {
-                    Self::draw_world_sprite(canvas, gfx, 76, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                    Self::draw_world_sprite(
+                        canvas, gfx, 76, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                    )?;
                 }
                 if (tile.flags2 & MF_NOEXPIRE) != 0 {
-                    Self::draw_world_sprite(canvas, gfx, 82, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                    Self::draw_world_sprite(
+                        canvas, gfx, 82, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                    )?;
                 }
                 if (tile.flags2 & 0x8000_0000) != 0 {
-                    Self::draw_world_sprite(canvas, gfx, 72, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                    Self::draw_world_sprite(
+                        canvas, gfx, 72, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                    )?;
                 }
 
                 let injured_mask = tile.flags & (INJURED | INJURED1 | INJURED2);
                 if injured_mask == INJURED {
                     Self::draw_world_sprite(
-                        canvas, gfx, 1079, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff,
+                        canvas, gfx, 1079, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff, tile.light,
                     )?;
                 }
                 if injured_mask == (INJURED | INJURED1) {
                     Self::draw_world_sprite(
-                        canvas, gfx, 1080, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff,
+                        canvas, gfx, 1080, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff, tile.light,
                     )?;
                 }
                 if injured_mask == (INJURED | INJURED2) {
                     Self::draw_world_sprite(
-                        canvas, gfx, 1081, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff,
+                        canvas, gfx, 1081, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff, tile.light,
                     )?;
                 }
                 if injured_mask == (INJURED | INJURED1 | INJURED2) {
                     Self::draw_world_sprite(
-                        canvas, gfx, 1082, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff,
+                        canvas, gfx, 1082, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff, tile.light,
                     )?;
                 }
 
@@ -591,10 +648,11 @@ impl GameScene {
                         if tile.obj2 != 0 {
                             Self::draw_world_sprite(
                                 canvas, gfx, sprite, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff,
+                                tile.light,
                             )?;
                         } else {
                             Self::draw_world_sprite(
-                                canvas, gfx, sprite, x, y, cam_xoff, cam_yoff, 0, 0,
+                                canvas, gfx, sprite, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
                             )?;
                         }
                     }
@@ -605,7 +663,7 @@ impl GameScene {
                     if tomb_variant > 0 {
                         let sprite = 240 + tomb_variant - 1;
                         Self::draw_world_sprite(
-                            canvas, gfx, sprite, x, y, cam_xoff, cam_yoff, 0, 0,
+                            canvas, gfx, sprite, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
                         )?;
                     }
                 }
@@ -987,12 +1045,32 @@ impl GameScene {
         // Hover highlight: map tile marker — semi-transparent white tint over the
         // isometric floor diamond.  The ground plane of tile (mx,my) is the 32×16 region
         // starting at (cx-16, cy) where cx/cy are derived from the tile's view-space coords.
+        //
+        // When shift is held (C inter.c behavior):
+        //  - Snap hover to the nearest ISITEM tile via spiral search
+        //  - Only draw the diamond if an item tile was found
+        //  - Color: green if ISUSABLE, yellow otherwise
         let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
         if let Some((mx, my)) =
             Self::screen_to_map_tile(self.mouse_x, self.mouse_y, cam_xoff, cam_yoff)
         {
-            let (cx, cy) = Self::tile_ground_diamond_origin(mx, my, cam_xoff, cam_yoff);
-            Self::draw_hover_tile_diamond(canvas, cx, cy, Color::RGBA(255, 255, 255, 80))?;
+            if self.shift_held {
+                // Shift held: only highlight nearby ISITEM tiles.
+                if let Some((sx, sy)) = Self::nearest_tile_with_flag(ps, mx, my, ISITEM) {
+                    let (cx, cy) = Self::tile_ground_diamond_origin(sx, sy, cam_xoff, cam_yoff);
+                    let tile = ps.map().tile_at_xy(sx, sy);
+                    let is_usable = tile.map(|t| (t.flags & ISUSABLE) != 0).unwrap_or(false);
+                    let color = if is_usable {
+                        Color::RGBA(0, 255, 0, 100) // green = usable
+                    } else {
+                        Color::RGBA(255, 255, 0, 100) // yellow = pickup
+                    };
+                    Self::draw_hover_tile_diamond(canvas, cx, cy, color)?;
+                }
+            } else {
+                let (cx, cy) = Self::tile_ground_diamond_origin(mx, my, cam_xoff, cam_yoff);
+                Self::draw_hover_tile_diamond(canvas, cx, cy, Color::RGBA(255, 255, 255, 80))?;
+            }
             canvas.set_draw_color(Color::RGB(255, 170, 80));
         }
 
@@ -1080,26 +1158,28 @@ impl GameScene {
         let mapy = ((center.y as i32) - half)
             .clamp(0, MINIMAP_WORLD_SIZE as i32 - MINIMAP_VIEW_SIZE as i32);
 
-        // The original C call was dd_show_map(xmap, mapy, mapx) — axes are swapped.
-        let xo = mapy as usize;
-        let yo = mapx as usize;
+        // C call: dd_show_map(xmap, mapy, mapx)  →  xo=mapy, yo=mapx
+        // C blit index: s = (y + yo)*1024 + xo  =  (row + mapx)*1024 + (col + mapy)
+        let xo = mapy as usize; // column offset (global Y)
+        let yo = mapx as usize; // row offset (global X)
 
         let view_size = MINIMAP_VIEW_SIZE as usize;
         let mut pixels: Vec<u8> = vec![0u8; view_size * view_size * 4];
         for row in 0..view_size {
             for col in 0..view_size {
-                let src_x = xo + col;
-                let src_y = yo + row;
-                if src_x >= MINIMAP_WORLD_SIZE || src_y >= MINIMAP_WORLD_SIZE {
+                let src_row = yo + row;
+                let src_col = xo + col;
+                if src_row >= MINIMAP_WORLD_SIZE || src_col >= MINIMAP_WORLD_SIZE {
                     continue;
                 }
-                let src = (src_y + src_x * MINIMAP_WORLD_SIZE) * 4;
+                // Match C: s = (y+yo)*1024 + xo;  s++ per column
+                let src = (src_row * MINIMAP_WORLD_SIZE + src_col) * 4;
                 let dst = (row * view_size + col) * 4;
-                // RGBA8888 order that SDL2 expects from PixelFormatEnum::RGBA8888: [R,G,B,A]
-                pixels[dst] = self.minimap_xmap[src + 3]; // A in RGBA8888 (big-endian bytes → A)
-                pixels[dst + 1] = self.minimap_xmap[src]; // R
-                pixels[dst + 2] = self.minimap_xmap[src + 1]; // G
-                pixels[dst + 3] = self.minimap_xmap[src + 2]; // B
+                // ABGR8888 on little-endian: memory bytes are [R,G,B,A] — matches xmap layout directly.
+                pixels[dst] = self.minimap_xmap[src];
+                pixels[dst + 1] = self.minimap_xmap[src + 1];
+                pixels[dst + 2] = self.minimap_xmap[src + 2];
+                pixels[dst + 3] = self.minimap_xmap[src + 3];
             }
         }
 
@@ -1303,7 +1383,7 @@ impl GameScene {
                 if (tile.flags & flag) == 0 {
                     continue;
                 }
-                let dist = (dx * dx + dy * dy);
+                let dist = dx * dx + dy * dy;
                 match best {
                     Some((_, _, cur_dist)) if dist >= cur_dist => {}
                     _ => best = Some((ux, uy, dist)),
@@ -1348,8 +1428,8 @@ impl GameScene {
 
         // Mode/toggle buttons area: two rows, 4 cols, trans_button geometry.
         if (604..=798).contains(&x) && (552..=582).contains(&y) {
-            let col = ((x - 604) / 49);
-            let row = ((y - 552) / 16);
+            let col = (x - 604) / 49;
+            let row = (y - 552) / 16;
             if let Some(net) = app_state.network.as_ref() {
                 if row == 0 {
                     match col {
@@ -1893,7 +1973,7 @@ impl Scene for GameScene {
                 self.mouse_x = *x;
                 self.mouse_y = *y;
             }
-            Event::MouseButtonDown {
+            Event::MouseButtonUp {
                 mouse_btn, x, y, ..
             } => {
                 if self.click_stat_or_inv(app_state, *mouse_btn, *x, *y) {
@@ -1912,6 +1992,12 @@ impl Scene for GameScene {
                 let Some((mx, my)) = Self::screen_to_map_tile(*x, *y, cam_xoff, cam_yoff) else {
                     return None;
                 };
+
+                // C client edge-tile clipping (inter.c:872):
+                // Reject clicks on the outer edge tiles where the map data is unreliable.
+                if !(3..=TILEX - 7).contains(&mx) || !(7..=TILEY - 3).contains(&my) {
+                    return None;
+                }
 
                 let has_ctrl = self.ctrl_held;
                 let has_shift = self.shift_held;
@@ -1969,9 +2055,17 @@ impl Scene for GameScene {
                         }
                     }
                     MouseButton::Left if has_shift => {
-                        if citem != 0 {
+                        let tile_flags = tile.map(|t| t.flags).unwrap_or(0);
+                        let is_item = (tile_flags & ISITEM) != 0;
+                        let is_usable = (tile_flags & ISUSABLE) != 0;
+                        if citem != 0 && !is_item {
+                            // Holding item, clicked non-item tile → drop
                             net.send(ClientCommand::new_drop(world_x, world_y));
-                        } else {
+                        } else if is_item && is_usable {
+                            // Item is usable → use
+                            net.send(ClientCommand::new_use(world_x, world_y));
+                        } else if is_item {
+                            // Item not usable → pickup
                             net.send(ClientCommand::new_pickup(world_x, world_y));
                         }
                     }

@@ -80,7 +80,7 @@ impl SoundCache {
         match Channel::all().play(chunk, 0) {
             Ok(ch) => {
                 // SDL_mixer volume is 0-128.
-                let sdl_vol = (vol.clamp(0, 127) * 128 / 127) as i32;
+                let sdl_vol = vol.clamp(0, 127) * 128 / 127;
                 ch.set_volume(sdl_vol);
                 // Panning: left + right must sum to ~255.
                 let pan = pan.clamp(0, 255) as u8;

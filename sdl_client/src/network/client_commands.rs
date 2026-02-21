@@ -1,5 +1,6 @@
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u8)]
+#[allow(dead_code)]
 pub enum ClientCommandType {
     _Empty = 0,
     NewLogin = 1,
@@ -128,6 +129,7 @@ impl ClientCommand {
         cmd
     }
 
+    #[allow(dead_code)]
     pub fn new_existing_login(user_id: u32, pass1: u32, pass2: u32) -> Self {
         let mut payload = Vec::with_capacity(12);
         payload.extend_from_slice(&user_id.to_le_bytes());
@@ -138,8 +140,9 @@ impl ClientCommand {
         cmd
     }
 
+    #[allow(dead_code)]
     pub fn new_newplayer_login() -> Self {
-        let mut cmd = Self::new(ClientCommandType::NewLogin, Vec::new());
+        let cmd = Self::new(ClientCommandType::NewLogin, Vec::new());
         cmd
     }
 
@@ -151,6 +154,7 @@ impl ClientCommand {
         cmd
     }
 
+    #[allow(dead_code)]
     pub fn new_password(password: &[u8]) -> Self {
         let mut payload = vec![0u8; 15];
         let n = password.len().min(15);
@@ -159,6 +163,7 @@ impl ClientCommand {
         cmd
     }
 
+    #[allow(dead_code)]
     pub fn new_setuser(group: u8, offset: u8, data: &[u8]) -> Self {
         let mut payload = vec![0u8; 15];
         payload[0] = group;
@@ -236,6 +241,7 @@ impl ClientCommand {
         cmd
     }
 
+    #[allow(dead_code)]
     pub fn new_use(x: i16, y: i32) -> Self {
         let mut cmd = Self::cmd_xy_i16_i32(ClientCommandType::CmdUse, x, y);
         cmd.context = Some(format!("x={} y={}", x, y));
@@ -294,6 +300,7 @@ impl ClientCommand {
         cmd
     }
 
+    #[allow(dead_code)]
     pub fn new_autolook(lookat: u32) -> Self {
         let cmd = Self::cmd_u32(ClientCommandType::CmdAutoLook, lookat);
         cmd
