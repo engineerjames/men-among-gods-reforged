@@ -7,6 +7,7 @@ use mag_core::constants::{SPR_EMPTY, TILEX, TILEY, XPOS, YPOS};
 
 use crate::{
     font_cache,
+    gfx_cache::GraphicsCache,
     network::{client_commands::ClientCommand, NetworkEvent, NetworkRuntime},
     player_state::PlayerState,
     scenes::scene::{Scene, SceneType},
@@ -19,6 +20,62 @@ const MAX_INPUT_LEN: usize = 120;
 
 /// Maximum network events processed per frame.
 const MAX_EVENTS_PER_FRAME: usize = 128;
+
+// ---- Layout constants (ported from engine.c / layout.rs) ---- //
+
+/// Camera X shift to account for the left-hand UI panel.
+const MAP_X_SHIFT: i32 = -176;
+
+/// Sprite ID of the static 800x600 UI background frame.
+const UI_FRAME_SPRITE: usize = 1;
+
+/// Default bitmap font index (yellow, sprite 701).
+const UI_FONT: usize = 1;
+
+// HP / Endurance / Mana bars
+const BAR_X: i32 = 373;
+const BAR_HP_Y: i32 = 127;
+const BAR_END_Y: i32 = 134;
+const BAR_MANA_Y: i32 = 141;
+const BAR_H: u32 = 6;
+const BAR_SCALE_NUM: i32 = 62;
+const BAR_W_MAX: i32 = 124;
+
+/// Bar background (capacity).
+const BAR_BG_COLOR: Color = Color::RGB(9, 4, 58);
+/// Bar fill (own character).
+const BAR_FILL_COLOR: Color = Color::RGB(8, 77, 23);
+
+// Stat text positions
+const STAT_HP_X: i32 = 5;
+const STAT_HP_Y: i32 = 270;
+const STAT_END_X: i32 = 5;
+const STAT_END_Y: i32 = 284;
+const STAT_MANA_X: i32 = 5;
+const STAT_MANA_Y: i32 = 298;
+const STAT_MONEY_X: i32 = 375;
+const STAT_MONEY_Y: i32 = 190;
+const STAT_WEAPON_X: i32 = 646;
+const STAT_WEAPON_Y: i32 = 243;
+const STAT_ARMOR_X: i32 = 646;
+const STAT_ARMOR_Y: i32 = 257;
+const STAT_EXP_X: i32 = 646;
+const STAT_EXP_Y: i32 = 271;
+
+// Name text (centered in 125px wide area)
+const NAME_AREA_X: i32 = 374;
+const NAME_AREA_W: i32 = 125;
+const NAME_Y: i32 = 28;
+const PORTRAIT_NAME_Y: i32 = 152;
+const PORTRAIT_RANK_Y: i32 = 172;
+
+// Chat log area
+const LOG_X: i32 = 500;
+const LOG_Y: i32 = 4;
+const LOG_LINE_H: i32 = 10;
+const LOG_LINES: usize = 22;
+const INPUT_X: i32 = 500;
+const INPUT_Y: i32 = 9 + LOG_LINE_H * (LOG_LINES as i32);
 
 pub struct GameScene {
     input_buf: String,
@@ -126,7 +183,7 @@ impl GameScene {
 
     fn draw_world(
         canvas: &mut Canvas<Window>,
-        gfx: &mut crate::gfx_cache::GraphicsCache,
+        gfx: &mut GraphicsCache,
         ps: &PlayerState,
     ) -> Result<(), String> {
         let map = ps.map();
@@ -150,7 +207,7 @@ impl GameScene {
 
                 let xpos = (x as i32) * 32;
                 let ypos = (y as i32) * 32;
-                let rx = xpos / 2 + ypos / 2 - xs * 16 + 32 + XPOS;
+                let rx = xpos / 2 + ypos / 2 - xs * 16 + 32 + XPOS + MAP_X_SHIFT;
                 let ry = xpos / 4 - ypos / 4 + YPOS - ys * 32;
 
                 canvas.copy(
@@ -180,7 +237,7 @@ impl GameScene {
                     let xs = q.width as i32 / 32;
                     let ys = q.height as i32 / 32;
 
-                    let rx = xpos / 2 + ypos / 2 - xs * 16 + 32 + XPOS + xoff;
+                    let rx = xpos / 2 + ypos / 2 - xs * 16 + 32 + XPOS + MAP_X_SHIFT + xoff;
                     let ry = xpos / 4 - ypos / 4 + YPOS - ys * 32 + yoff;
 
                     canvas.copy(
@@ -197,7 +254,7 @@ impl GameScene {
                     let xs = q.width as i32 / 32;
                     let ys = q.height as i32 / 32;
 
-                    let rx = xpos / 2 + ypos / 2 - xs * 16 + 32 + XPOS + xoff;
+                    let rx = xpos / 2 + ypos / 2 - xs * 16 + 32 + XPOS + MAP_X_SHIFT + xoff;
                     let ry = xpos / 4 - ypos / 4 + YPOS - ys * 32 + yoff;
 
                     canvas.copy(
@@ -208,6 +265,154 @@ impl GameScene {
                 }
             }
         }
+
+        Ok(())
+    }
+
+    /// Draw the static UI frame (sprite 1) at (0,0), covering the full 800x600 window.
+    fn draw_ui_frame(canvas: &mut Canvas<Window>, gfx: &mut GraphicsCache) -> Result<(), String> {
+        let texture = gfx.get_texture(UI_FRAME_SPRITE);
+        let q = texture.query();
+        canvas.copy(
+            texture,
+            None,
+            Some(sdl2::rect::Rect::new(0, 0, q.width, q.height)),
+        )
+    }
+
+    /// Draw HP/End/Mana bars at the classic engine.c positions.
+    fn draw_bars(canvas: &mut Canvas<Window>, ps: &PlayerState) -> Result<(), String> {
+        let ci = ps.character_info();
+
+        let hp = ci.hp[0] as i32;
+        let a_hp = ci.a_hp;
+        let end_val = ci.end[0] as i32;
+        let a_end = ci.a_end;
+        let mana = ci.mana[0] as i32;
+        let a_mana = ci.a_mana;
+
+        // dd_showbar(373, y, n, 6, color) — bar_width = (cur * 62) / max, clamped [0,124]
+        let draw_bar =
+            |canvas: &mut Canvas<Window>, y: i32, cur: i32, max: i32| -> Result<(), String> {
+                if max <= 0 {
+                    return Ok(());
+                }
+                let filled = ((cur * BAR_SCALE_NUM) / max).clamp(0, BAR_W_MAX);
+                // Background (full capacity)
+                canvas.set_draw_color(BAR_BG_COLOR);
+                canvas.fill_rect(sdl2::rect::Rect::new(BAR_X, y, BAR_W_MAX as u32, BAR_H))?;
+                // Foreground (current)
+                if filled > 0 {
+                    canvas.set_draw_color(BAR_FILL_COLOR);
+                    canvas.fill_rect(sdl2::rect::Rect::new(BAR_X, y, filled as u32, BAR_H))?;
+                }
+                Ok(())
+            };
+
+        draw_bar(canvas, BAR_HP_Y, hp, a_hp)?;
+        draw_bar(canvas, BAR_END_Y, end_val, a_end)?;
+        draw_bar(canvas, BAR_MANA_Y, mana, a_mana)?;
+
+        Ok(())
+    }
+
+    /// Draw stat text labels (HP, End, Mana, Gold, Weapon, Armor, Exp, name).
+    fn draw_stat_text(
+        canvas: &mut Canvas<Window>,
+        gfx: &mut GraphicsCache,
+        ps: &PlayerState,
+    ) -> Result<(), String> {
+        let ci = ps.character_info();
+
+        // Hitpoints / Endurance / Mana text
+        let hp_text = format!("Hitpoints: {}/{}", ci.hp[0], ci.a_hp);
+        font_cache::draw_text(canvas, gfx, UI_FONT, &hp_text, STAT_HP_X, STAT_HP_Y)?;
+
+        let end_text = format!("Endurance: {}/{}", ci.end[0], ci.a_end);
+        font_cache::draw_text(canvas, gfx, UI_FONT, &end_text, STAT_END_X, STAT_END_Y)?;
+
+        let mana_text = format!("Mana: {}/{}", ci.mana[0], ci.a_mana);
+        font_cache::draw_text(canvas, gfx, UI_FONT, &mana_text, STAT_MANA_X, STAT_MANA_Y)?;
+
+        // Gold (money display: G and S)
+        if ci.gold > 0 {
+            let gold = ci.gold / 100;
+            let silver = ci.gold % 100;
+            let money_text = format!("Money  {}G {}S", gold, silver);
+            font_cache::draw_text(
+                canvas,
+                gfx,
+                UI_FONT,
+                &money_text,
+                STAT_MONEY_X,
+                STAT_MONEY_Y,
+            )?;
+        }
+
+        // Weapon / Armor / Experience in bottom-right area
+        let wv_text = format!("WV: {}", ci.weapon);
+        font_cache::draw_text(canvas, gfx, UI_FONT, &wv_text, STAT_WEAPON_X, STAT_WEAPON_Y)?;
+
+        let av_text = format!("AV: {}", ci.armor);
+        font_cache::draw_text(canvas, gfx, UI_FONT, &av_text, STAT_ARMOR_X, STAT_ARMOR_Y)?;
+
+        let exp_text = format!("Exp: {}", ci.points_tot);
+        font_cache::draw_text(canvas, gfx, UI_FONT, &exp_text, STAT_EXP_X, STAT_EXP_Y)?;
+
+        // Character name (centered in 125px area at top)
+        let name = mag_core::string_operations::c_string_to_str(&ci.name);
+        if !name.is_empty() {
+            let name_w = font_cache::text_width(name) as i32;
+            let name_x = NAME_AREA_X + (NAME_AREA_W - name_w) / 2;
+            font_cache::draw_text(canvas, gfx, UI_FONT, name, name_x, NAME_Y)?;
+
+            // Portrait name + rank (below portrait area)
+            let center_x = NAME_AREA_X + NAME_AREA_W / 2;
+            font_cache::draw_text_centered(canvas, gfx, UI_FONT, name, center_x, PORTRAIT_NAME_Y)?;
+
+            let rank_name = mag_core::ranks::rank_name(ci.points_tot as u32);
+            font_cache::draw_text_centered(
+                canvas,
+                gfx,
+                UI_FONT,
+                rank_name,
+                center_x,
+                PORTRAIT_RANK_Y,
+            )?;
+        }
+
+        Ok(())
+    }
+
+    /// Draw the chat log and input line using bitmap fonts.
+    fn draw_chat(
+        &self,
+        canvas: &mut Canvas<Window>,
+        gfx: &mut GraphicsCache,
+        ps: &PlayerState,
+    ) -> Result<(), String> {
+        let total = ps.log_len();
+
+        // Determine visible window: newest messages at the bottom, scroll moves the window up.
+        let end = total.saturating_sub(self.log_scroll);
+        let start = end.saturating_sub(LOG_LINES);
+
+        for (i, log_idx) in (start..end).enumerate() {
+            if let Some(msg) = ps.log_message(log_idx) {
+                let font = match msg.color {
+                    LogMessageColor::Red => 0,
+                    LogMessageColor::Yellow => 1,
+                    LogMessageColor::Green => 2,
+                    LogMessageColor::Blue => 3,
+                };
+                let y = LOG_Y + (i as i32) * LOG_LINE_H;
+                font_cache::draw_text(canvas, gfx, font, &msg.message, LOG_X, y)?;
+            }
+        }
+
+        // Input line: draw "> " prefix then the current input buffer.
+        let input_display = format!("> {}", self.input_buf);
+        font_cache::draw_text(canvas, gfx, UI_FONT, &input_display, INPUT_X, INPUT_Y)?;
 
         Ok(())
     }
@@ -318,198 +523,27 @@ impl Scene for GameScene {
             return Ok(());
         };
 
+        // 1. World tiles (two-pass painter order)
         Self::draw_world(canvas, gfx_cache, ps)?;
 
-        // Draw HUD bars directly on the SDL canvas.
-        let ci = ps.character_info();
-        let hp = ci.hp.first().copied().unwrap_or(0) as i32;
-        let a_hp = ci.a_hp;
-        let end_val = ci.end.first().copied().unwrap_or(0) as i32;
-        let a_end = ci.a_end;
-        let mana = ci.mana.first().copied().unwrap_or(0) as i32;
-        let a_mana = ci.a_mana;
+        // 2. Static UI frame (sprite 1) overlays the world
+        Self::draw_ui_frame(canvas, gfx_cache)?;
 
-        const BAR_X: i32 = 8;
-        const BAR_Y: i32 = 562;
-        const BAR_W: u32 = 100;
+        // 3. HP / End / Mana bars
+        Self::draw_bars(canvas, ps)?;
 
-        let draw_bar = |canvas: &mut Canvas<Window>, y: i32, cur: i32, max: i32, color: Color| {
-            let filled = if max > 0 {
-                (BAR_W as i32 * cur / max).clamp(0, BAR_W as i32) as u32
-            } else {
-                0
-            };
-            canvas.set_draw_color(Color::RGB(40, 40, 40));
-            let _ = canvas.fill_rect(sdl2::rect::Rect::new(BAR_X, y, BAR_W, 8));
-            if filled > 0 {
-                canvas.set_draw_color(color);
-                let _ = canvas.fill_rect(sdl2::rect::Rect::new(BAR_X, y, filled, 8));
-            }
-        };
+        // 4. Stat text labels
+        Self::draw_stat_text(canvas, gfx_cache, ps)?;
 
-        if a_hp > 0 {
-            draw_bar(canvas, BAR_Y, hp, a_hp, Color::RGB(200, 50, 50));
-        }
-        if a_end > 0 {
-            draw_bar(canvas, BAR_Y + 10, end_val, a_end, Color::RGB(50, 200, 50));
-        }
-        if a_mana > 0 {
-            draw_bar(canvas, BAR_Y + 20, mana, a_mana, Color::RGB(50, 100, 220));
-        }
-
-        // Re-borrow for font rendering.
-        let AppState {
-            ref mut gfx_cache, ..
-        } = *app_state;
-        font_cache::draw_text(canvas, gfx_cache, 1, "HP", BAR_X + BAR_W as i32 + 4, BAR_Y)?;
-        font_cache::draw_text(
-            canvas,
-            gfx_cache,
-            2,
-            "End",
-            BAR_X + BAR_W as i32 + 4,
-            BAR_Y + 10,
-        )?;
-        font_cache::draw_text(
-            canvas,
-            gfx_cache,
-            3,
-            "Mana",
-            BAR_X + BAR_W as i32 + 4,
-            BAR_Y + 20,
-        )?;
+        // 5. Chat log + input line
+        self.draw_chat(canvas, gfx_cache, ps)?;
 
         Ok(())
     }
 
-    fn render_ui(&mut self, app_state: &mut AppState, ctx: &egui::Context) -> Option<SceneType> {
-        // ---- Character stats panel (right) ---- //
-        egui::SidePanel::right("stats_panel")
-            .resizable(false)
-            .min_width(150.0)
-            .max_width(150.0)
-            .show(ctx, |ui| {
-                ui.heading("Character");
-                ui.separator();
-
-                if let Some(ps) = app_state.player_state.as_ref() {
-                    let ci = ps.character_info();
-
-                    let name = mag_core::string_operations::c_string_to_str(&ci.name);
-                    if !name.is_empty() {
-                        ui.label(name);
-                        ui.add_space(2.0);
-                    }
-
-                    let hp = ci.hp.first().copied().unwrap_or(0) as i32;
-                    let a_hp = ci.a_hp;
-                    let end_val = ci.end.first().copied().unwrap_or(0) as i32;
-                    let a_end = ci.a_end;
-                    let mana = ci.mana.first().copied().unwrap_or(0) as i32;
-                    let a_mana = ci.a_mana;
-
-                    if a_hp > 0 {
-                        ui.label(format!("HP: {}/{}", hp, a_hp));
-                        ui.add(
-                            egui::ProgressBar::new((hp as f32 / a_hp as f32).clamp(0.0, 1.0))
-                                .fill(egui::Color32::from_rgb(200, 50, 50))
-                                .desired_width(130.0),
-                        );
-                    }
-                    if a_end > 0 {
-                        ui.label(format!("End: {}/{}", end_val, a_end));
-                        ui.add(
-                            egui::ProgressBar::new((end_val as f32 / a_end as f32).clamp(0.0, 1.0))
-                                .fill(egui::Color32::from_rgb(50, 200, 50))
-                                .desired_width(130.0),
-                        );
-                    }
-                    if a_mana > 0 {
-                        ui.label(format!("Mana: {}/{}", mana, a_mana));
-                        ui.add(
-                            egui::ProgressBar::new((mana as f32 / a_mana as f32).clamp(0.0, 1.0))
-                                .fill(egui::Color32::from_rgb(50, 100, 220))
-                                .desired_width(130.0),
-                        );
-                    }
-
-                    ui.add_space(4.0);
-                    ui.separator();
-
-                    if ci.gold > 0 {
-                        ui.label(format!("Gold: {}", ci.gold));
-                    }
-                    if ci.points > 0 {
-                        ui.label(format!("Points: {}", ci.points));
-                    }
-                    if ci.kindred > 0 {
-                        ui.label(format!("Kindred: {}", ci.kindred));
-                    }
-                } else {
-                    ui.label("Connecting...");
-                }
-
-                if let Some(net) = app_state.network.as_ref() {
-                    ui.add_space(4.0);
-                    ui.separator();
-                    ui.label(format!("Tick: {}", net.client_ticker));
-                    if let Some(rtt) = net.last_rtt_ms {
-                        ui.label(format!("RTT: {}ms", rtt));
-                    }
-                }
-            });
-
-        // ---- Chat log panel (bottom) ---- //
-        egui::TopBottomPanel::bottom("chat_panel")
-            .resizable(false)
-            .min_height(130.0)
-            .max_height(130.0)
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(">");
-                    let resp = ui.add(
-                        egui::TextEdit::singleline(&mut self.input_buf)
-                            .desired_width(f32::INFINITY)
-                            .hint_text("Type to chat, Enter to send"),
-                    );
-
-                    if resp.lost_focus() && ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
-                        if !self.input_buf.is_empty() {
-                            let text = self.input_buf.clone();
-                            self.input_buf.clear();
-                            if let Some(net) = app_state.network.as_ref() {
-                                for pkt in ClientCommand::new_say_packets(text.as_bytes()) {
-                                    net.send(pkt.to_bytes());
-                                }
-                            }
-                        }
-                    }
-                });
-
-                ui.separator();
-
-                egui::ScrollArea::vertical()
-                    .auto_shrink([false; 2])
-                    .stick_to_bottom(true)
-                    .show(ui, |ui| {
-                        if let Some(ps) = app_state.player_state.as_ref() {
-                            for i in 0..ps.log_len() {
-                                if let Some(msg) = ps.log_message(i) {
-                                    let color = match msg.color {
-                                        LogMessageColor::Yellow => egui::Color32::YELLOW,
-                                        LogMessageColor::Green => egui::Color32::GREEN,
-                                        LogMessageColor::Blue => {
-                                            egui::Color32::from_rgb(100, 150, 255)
-                                        }
-                                        LogMessageColor::Red => egui::Color32::RED,
-                                    };
-                                    ui.colored_label(color, &msg.message);
-                                }
-                            }
-                        }
-                    });
-            });
-
+    fn render_ui(&mut self, _app_state: &mut AppState, _ctx: &egui::Context) -> Option<SceneType> {
+        // All UI is drawn via sprites and bitmap fonts in render_world.
+        // egui is not used for the gameplay scene.
         None
     }
 }
