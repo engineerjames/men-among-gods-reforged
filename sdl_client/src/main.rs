@@ -1,6 +1,6 @@
 use std::process;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use egui_sdl2::egui;
 use sdl2::image::InitFlag;
@@ -14,11 +14,18 @@ use crate::state::{ApiTokenState, AppState};
 mod account_api;
 mod dpi_scaling;
 mod filepaths;
+mod font_cache;
+mod game_map;
 mod gfx_cache;
+mod helpers;
 mod hosts;
+mod legacy_engine;
+mod network;
+mod player_state;
 mod scenes;
 mod sfx_cache;
 mod state;
+mod types;
 
 static EGUI_GLYPH_WARMED: AtomicBool = AtomicBool::new(false);
 
@@ -79,6 +86,14 @@ fn main() -> Result<(), String> {
     log::info!("Initializing canvas...");
     let mut egui = egui_sdl2::EguiCanvas::new(window);
 
+    // Set a fixed 800x600 logical render size so that all SDL canvas.copy() /
+    // fill_rect() calls in every scene use logical pixel coordinates regardless
+    // of the physical drawable size (e.g. Retina 2x displays).
+    // egui's painter pre-multiplies vertices by pixels_per_point itself, so we
+    // temporarily disable the logical size before egui.paint() each frame.
+    const LOGICAL_W: u32 = 800;
+    const LOGICAL_H: u32 = 600;
+
     log::info!("Initializing graphics and sound caches...");
     let gfx_cache = GraphicsCache::new(
         filepaths::get_gfx_zipfile(),
@@ -136,11 +151,14 @@ fn main() -> Result<(), String> {
             if let sdl2::event::Event::Quit { .. } = event {
                 scene_manager.request_scene_change(SceneType::Exit, &mut app_state);
             }
+            let egui_event = dpi_scaling::adjust_mouse_event_for_egui_hidpi(
+                &event,
+                egui.painter.canvas.window(),
+            );
+            let _ = egui.on_event(&egui_event);
 
             let event =
                 dpi_scaling::adjust_mouse_event_for_hidpi(event, egui.painter.canvas.window());
-
-            let _ = egui.on_event(&event);
 
             scene_manager.handle_event(&mut app_state, &event);
 
@@ -150,7 +168,12 @@ fn main() -> Result<(), String> {
         }
 
         scene_manager.update(&mut app_state, dt);
+
+        // Logical size on  → scene SDL drawing uses 800×600 coords.
+        let _ = egui.painter.canvas.set_logical_size(LOGICAL_W, LOGICAL_H);
         scene_manager.render_world(&mut app_state, &mut egui.painter.canvas);
+        // Logical size off → egui painter uses raw physical pixels.
+        let _ = egui.painter.canvas.set_logical_size(0, 0);
 
         egui.run(|ctx: &egui::Context| {
             warm_egui_glyph_cache(ctx);
@@ -163,8 +186,6 @@ fn main() -> Result<(), String> {
 
         egui.paint();
         egui.present();
-
-        std::thread::sleep(Duration::from_millis(16));
     }
 
     Ok(())

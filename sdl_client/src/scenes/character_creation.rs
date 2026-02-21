@@ -105,9 +105,9 @@ impl Scene for CharacterCreationScene {
         canvas.clear();
 
         let portrait_slots = [
-            (Class::Harakim, Rect::new(600, 150, 160, 160)),
-            (Class::Templar, Rect::new(600, 320, 160, 160)),
-            (Class::Mercenary, Rect::new(600, 490, 160, 160)),
+            (Class::Harakim, Rect::new(400, 50, 160, 160)),
+            (Class::Templar, Rect::new(400, 220, 160, 160)),
+            (Class::Mercenary, Rect::new(400, 390, 160, 160)),
         ];
 
         for (class, target_rect) in portrait_slots {

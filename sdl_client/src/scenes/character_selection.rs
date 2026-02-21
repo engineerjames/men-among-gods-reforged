@@ -30,6 +30,7 @@ pub struct CharacterSelectionScene {
     login_rx: Option<std::sync::mpsc::Receiver<Result<u64, String>>>,
     login_thread: Option<std::thread::JoinHandle<()>>,
     logging_in: bool,
+    pending_race: Option<i32>,
 }
 
 impl CharacterSelectionScene {
@@ -47,6 +48,7 @@ impl CharacterSelectionScene {
             login_rx: None,
             login_thread: None,
             logging_in: false,
+            pending_race: None,
         }
     }
 
@@ -130,6 +132,7 @@ impl Scene for CharacterSelectionScene {
         self.login_rx = None;
         self.is_loading_characters = false;
         self.logging_in = false;
+        self.pending_race = None;
 
         Self::drop_or_join_thread(&mut self.characters_thread, "character loading");
         Self::drop_or_join_thread(&mut self.login_thread, "game login");
@@ -140,7 +143,7 @@ impl Scene for CharacterSelectionScene {
         None
     }
 
-    fn update(&mut self, _app_state: &mut AppState, _dt: Duration) -> Option<SceneType> {
+    fn update(&mut self, app_state: &mut AppState, _dt: Duration) -> Option<SceneType> {
         Self::cleanup_finished_thread(&mut self.characters_thread, "character loading");
         Self::cleanup_finished_thread(&mut self.login_thread, "game login");
 
@@ -200,6 +203,8 @@ impl Scene for CharacterSelectionScene {
                 match result {
                     Ok(ticket) => {
                         log::info!("Created game login ticket {}", ticket);
+                        app_state.api.login_target = Some((ticket, self.pending_race.unwrap_or(0)));
+                        self.pending_race = None;
                         return Some(SceneType::Game);
                     }
                     Err(error) => {
@@ -238,7 +243,7 @@ impl Scene for CharacterSelectionScene {
             selected_character.sex,
         );
         let texture = app_state.gfx_cache.get_texture(sprite_id);
-        let target_rect = Rect::new(600, 260, 160, 160);
+        let target_rect = Rect::new(400, 160, 160, 160);
 
         if let Err(error) = canvas.copy(texture, None, target_rect) {
             log::error!(
@@ -358,7 +363,7 @@ impl Scene for CharacterSelectionScene {
                             selected.class,
                         );
 
-                        app_state.api.login_target = Some((character_id, race_int));
+                        self.pending_race = Some(race_int);
 
                         self.last_error = None;
 

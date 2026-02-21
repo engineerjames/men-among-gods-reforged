@@ -22,6 +22,8 @@ pub struct GraphicsCache {
     creator: TextureCreator<WindowContext>,
     archive: ZipArchive<File>,
     index_to_filename: HashMap<usize, String>,
+    /// Streaming texture used for minimap rendering (128x128 RGBA).
+    pub minimap_texture: Option<Texture>,
 }
 
 impl GraphicsCache {
@@ -73,11 +75,10 @@ impl GraphicsCache {
             creator,
             archive,
             index_to_filename,
+            minimap_texture: None,
         }
     }
 
-    // TODO: The minimap will use this but we haven't implemented that yet
-    #[allow(dead_code)]
     pub fn get_avg_color(&mut self, id: usize) -> (u8, u8, u8) {
         if let Some(color) = self.avg_color_cache.get(&id) {
             return *color;
@@ -88,15 +89,48 @@ impl GraphicsCache {
         *self.avg_color_cache.get(&id).unwrap_or(&(0, 0, 0))
     }
 
-    pub fn get_texture(&mut self, id: usize) -> &Texture {
-        if self.sprite_cache.contains_key(&id) {
-            return &self.sprite_cache[&id];
+    /// Ensure the minimap streaming texture exists (128×128, ABGR8888).
+    /// ABGR8888 stores bytes in memory as [R,G,B,A] on little-endian, which
+    /// matches the xmap buffer layout directly.
+    pub fn ensure_minimap_texture(&mut self) {
+        if self.minimap_texture.is_none() {
+            match self
+                .creator
+                .create_texture_streaming(Some(PixelFormatEnum::ABGR8888), 128, 128)
+            {
+                Ok(tex) => {
+                    self.minimap_texture = Some(tex);
+                }
+                Err(e) => {
+                    log::error!("Failed to create minimap texture: {}", e);
+                }
+            }
+        }
+    }
+
+    pub fn get_texture(&mut self, id: usize) -> &mut Texture {
+        const ERROR_SPRITE_ID: usize = 128;
+        if !self.sprite_cache.contains_key(&id) {
+            let texture = self.load_texture_from_zip(id);
+            let final_texture = if let Some(tex) = texture {
+                tex
+            } else {
+                log::warn!(
+                    "Failed to load texture for sprite ID {}. Using error texture.",
+                    id
+                );
+                self.load_texture_from_zip(ERROR_SPRITE_ID)
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "Failed to load error texture with ID {}. gfx.zip may be corrupted.",
+                            ERROR_SPRITE_ID
+                        );
+                    })
+            };
+            self.sprite_cache.insert(id, final_texture);
         }
 
-        let texture = self.load_texture_from_zip(id);
-        self.sprite_cache.insert(id, texture.unwrap());
-
-        &self.sprite_cache[&id]
+        self.sprite_cache.get_mut(&id).unwrap()
     }
 
     fn load_texture_from_zip(&mut self, id: usize) -> Option<Texture> {

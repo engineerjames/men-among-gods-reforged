@@ -1,4 +1,7 @@
-use crate::{gfx_cache::GraphicsCache, sfx_cache::SoundCache};
+use crate::{
+    gfx_cache::GraphicsCache, network::NetworkRuntime, player_state::PlayerState,
+    sfx_cache::SoundCache,
+};
 
 #[derive(Clone, Debug)]
 pub struct ApiTokenState {
@@ -21,16 +24,20 @@ impl ApiTokenState {
 
 pub struct AppState {
     pub gfx_cache: GraphicsCache,
-    pub _sfx_cache: SoundCache,
+    pub sfx_cache: SoundCache,
     pub api: ApiTokenState,
+    pub network: Option<NetworkRuntime>,
+    pub player_state: Option<PlayerState>,
 }
 
 impl AppState {
     pub fn new(gfx_cache: GraphicsCache, sfx_cache: SoundCache, api: ApiTokenState) -> Self {
         Self {
             gfx_cache,
-            _sfx_cache: sfx_cache,
+            sfx_cache: sfx_cache,
             api,
+            network: None,
+            player_state: None,
         }
     }
 }

@@ -500,6 +500,7 @@ impl PathFinder {
         let start_m = (fx as i32 + fy as i32 * SERVER_MAPX) as usize;
         self.nodes.push(start_node);
         self.node_map[start_m] = Some(0);
+        self.touched_node_map.push(start_m);
         self.open_set.push(start_node);
 
         while let Some(current) = self.open_set.pop() {
