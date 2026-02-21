@@ -210,7 +210,6 @@ impl GameScene {
             self.look_step = 0;
             return;
         }
-
     }
 
     fn autohide(x: usize, y: usize) -> bool {
