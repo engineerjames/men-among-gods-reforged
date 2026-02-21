@@ -394,10 +394,14 @@ impl GameScene {
         texture.set_alpha_mod(80);
         texture.set_blend_mode(sdl2::render::BlendMode::Blend);
 
-        let result = canvas.copy(
+        let result = canvas.copy_ex(
             texture,
             None,
             Some(sdl2::rect::Rect::new(rx, shadow_ry, q.width, shadow_h)),
+            0.0,
+            None,
+            false,
+            true,
         );
 
         // Reset texture state.
@@ -1682,7 +1686,7 @@ impl GameScene {
                     // Draw subtle highlight to indicate "pick a slot" mode.
                     canvas.set_draw_color(Color::RGBA(255, 200, 80, 60));
                     canvas.set_blend_mode(sdl2::render::BlendMode::Blend);
-                    let _ = canvas.fill_rect(sdl2::rect::Rect::new(bx - 1, by - 1, 47, 13));
+                    let _ = canvas.fill_rect(sdl2::rect::Rect::new(bx - 2, by - 1, 47, 13));
                     canvas.set_blend_mode(sdl2::render::BlendMode::None);
                 }
 
