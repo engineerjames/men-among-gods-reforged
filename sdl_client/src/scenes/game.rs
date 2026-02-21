@@ -11,7 +11,11 @@ use sdl2::{
     video::Window,
 };
 
-use mag_core::constants::{INVIS, ISCHAR, ISITEM, SPR_EMPTY, TILEX, TILEY, XPOS, YPOS};
+use mag_core::constants::{
+    DEATH, DR_DROP, DR_GIVE, DR_PICKUP, DR_USE, INJURED, INJURED1, INJURED2, INVIS, ISCHAR, ISITEM,
+    MF_ARENA, MF_BANK, MF_DEATHTRAP, MF_INDOORS, MF_MOVEBLOCK, MF_NOEXPIRE, MF_NOLAG, MF_NOMAGIC,
+    MF_NOMONST, MF_SIGHTBLOCK, MF_TAVERN, MF_UWATER, SPR_EMPTY, TILEX, TILEY, TOMB, XPOS, YPOS,
+};
 use mag_core::types::skilltab::{get_skill_name, get_skill_nr, get_skill_sortkey, MAX_SKILLS};
 
 use crate::{
@@ -136,6 +140,103 @@ impl GameScene {
         }
     }
 
+    fn autohide(x: usize, y: usize) -> bool {
+        !(x >= (TILEX / 2) || y <= (TILEX / 2))
+    }
+
+    fn facing(x: usize, y: usize, dir: i32) -> bool {
+        (dir == 1 && x == TILEX / 2 + 1 && y == TILEY / 2)
+            || (dir == 2 && x == TILEX / 2 - 1 && y == TILEY / 2)
+            || (dir == 4 && x == TILEX / 2 && y == TILEY / 2 + 1)
+            || (dir == 3 && x == TILEX / 2 && y == TILEY / 2 - 1)
+    }
+
+    fn draw_world_sprite(
+        canvas: &mut Canvas<Window>,
+        gfx: &mut GraphicsCache,
+        sprite_id: i32,
+        tile_x: usize,
+        tile_y: usize,
+        cam_xoff: i32,
+        cam_yoff: i32,
+        xoff: i32,
+        yoff: i32,
+    ) -> Result<(), String> {
+        if sprite_id <= 0 || sprite_id as u16 == SPR_EMPTY {
+            return Ok(());
+        }
+
+        let texture = gfx.get_texture(sprite_id as usize);
+        let q = texture.query();
+        let xs = q.width as i32 / 32;
+        let ys = q.height as i32 / 32;
+
+        let xpos = (tile_x as i32) * 32;
+        let ypos = (tile_y as i32) * 32;
+
+        let rx = xpos / 2 + ypos / 2 - xs * 16 + 32 + XPOS + MAP_X_SHIFT + cam_xoff + xoff;
+        let ry = xpos / 4 - ypos / 4 + YPOS - ys * 32 + cam_yoff + yoff;
+
+        canvas.copy(
+            texture,
+            None,
+            Some(sdl2::rect::Rect::new(rx, ry, q.width, q.height)),
+        )
+    }
+
+    fn tile_ground_diamond_origin(
+        tile_x: usize,
+        tile_y: usize,
+        cam_xoff: i32,
+        cam_yoff: i32,
+    ) -> (i32, i32) {
+        let xpos = (tile_x as i32) * 32;
+        let ypos = (tile_y as i32) * 32;
+        let cx = xpos / 2 + ypos / 2 + 32 + XPOS + MAP_X_SHIFT + cam_xoff;
+        let cy = xpos / 4 - ypos / 4 + YPOS - 16 + cam_yoff;
+        (cx, cy)
+    }
+
+    fn camera_offsets(ps: &PlayerState) -> (i32, i32) {
+        let map = ps.map();
+        if let Some(center) = map.tile_at_xy(TILEX / 2, TILEY / 2) {
+            (-center.obj_xoff, -center.obj_yoff)
+        } else {
+            (0, 0)
+        }
+    }
+
+    fn draw_hover_tile_diamond(
+        canvas: &mut Canvas<Window>,
+        cx: i32,
+        cy: i32,
+        color: Color,
+    ) -> Result<(), String> {
+        canvas.set_blend_mode(sdl2::render::BlendMode::Blend);
+        canvas.set_draw_color(color);
+
+        // Fill diamond with horizontal scanlines:
+        // top=(cx,cy), right=(cx+16,cy+8), bottom=(cx,cy+16), left=(cx-16,cy+8)
+        for y in cy..=cy + 16 {
+            let (x1, x2) = if y <= cy + 8 {
+                let t = (y - cy) as f32 / 8.0;
+                let left = (cx as f32 - 16.0 * t).round() as i32;
+                let right = (cx as f32 + 16.0 * t).round() as i32;
+                (left, right)
+            } else {
+                let t = (y - (cy + 8)) as f32 / 8.0;
+                let left = ((cx - 16) as f32 + 16.0 * t).round() as i32;
+                let right = ((cx + 16) as f32 - 16.0 * t).round() as i32;
+                (left, right)
+            };
+
+            canvas.draw_line(sdl2::rect::Point::new(x1, y), sdl2::rect::Point::new(x2, y))?;
+        }
+
+        canvas.set_blend_mode(sdl2::render::BlendMode::None);
+        Ok(())
+    }
+
     fn process_network_events(&mut self, app_state: &mut AppState) -> Option<SceneType> {
         for _ in 0..MAX_EVENTS_PER_FRAME {
             let Some(net) = app_state.network.as_mut() else {
@@ -186,7 +287,7 @@ impl GameScene {
                                 }
                             }
                             ServerCommandData::PlaySound { nr, vol, pan } => {
-                                log::debug!("PlaySound: nr={} vol={} pan={}", nr, vol, pan);
+                                log::info!("PlaySound: nr={} vol={} pan={}", nr, vol, pan);
                                 app_state.sfx_cache.play_sfx(
                                     *nr as usize,
                                     *vol as i32,
@@ -235,9 +336,14 @@ impl GameScene {
         ps: &PlayerState,
     ) -> Result<(), String> {
         let map = ps.map();
+        let ci = ps.character_info();
+        let pdata = ps.player_data();
+        let show_names = pdata.show_names != 0;
+        let show_proz = pdata.show_proz != 0;
+        let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
 
-        // Pass 1: Background / terrain sprites.
-        for y in 0..TILEY {
+        // Pass 1: Background / terrain sprites (legacy eng_display order: y descending).
+        for y in (0..TILEY).rev() {
             for x in 0..TILEX {
                 let Some(tile) = map.tile_at_xy(x, y) else {
                     continue;
@@ -252,81 +358,100 @@ impl GameScene {
                     continue;
                 }
 
-                let texture = gfx.get_texture(ba as usize);
-                let q = texture.query();
-                let xs = q.width as i32 / 32;
-                let ys = q.height as i32 / 32;
+                Self::draw_world_sprite(canvas, gfx, ba as i32, x, y, cam_xoff, cam_yoff, 0, 0)?;
 
-                let xpos = (x as i32) * 32;
-                let ypos = (y as i32) * 32;
-                let rx = xpos / 2 + ypos / 2 - xs * 16 + 32 + XPOS + MAP_X_SHIFT;
-                let ry = xpos / 4 - ypos / 4 + YPOS - ys * 32;
-
-                canvas.copy(
-                    texture,
-                    None,
-                    Some(sdl2::rect::Rect::new(rx, ry, q.width, q.height)),
-                )?;
+                if ci.goto_x == tile.x as i32 && ci.goto_y == tile.y as i32 {
+                    Self::draw_world_sprite(canvas, gfx, 31, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                }
             }
         }
 
-        // Pass 2: Items and characters (same scan order for correct z-layering).
-        for y in 0..TILEY {
+        // Pass 2: Objects/characters/markers/effects (legacy eng_display order: y descending).
+        for y in (0..TILEY).rev() {
             for x in 0..TILEX {
                 let Some(tile) = map.tile_at_xy(x, y) else {
                     continue;
                 };
 
+                if (tile.flags & INVIS) != 0 {
+                    continue;
+                }
+
                 let xpos = (x as i32) * 32;
                 let ypos = (y as i32) * 32;
-                let xoff = tile.obj_xoff;
-                let yoff = tile.obj_yoff;
+                let ch_xoff = tile.obj_xoff;
+                let ch_yoff = tile.obj_yoff;
 
-                let it = if tile.obj1 > 0 {
-                    tile.obj1 as u16
-                } else {
-                    tile.it_sprite
-                };
-                if it > 0 && it != SPR_EMPTY {
-                    let texture = gfx.get_texture(it as usize);
-                    let q = texture.query();
-                    let xs = q.width as i32 / 32;
-                    let ys = q.height as i32 / 32;
+                let mut obj = tile.obj1;
+                if obj > 0 {
+                    let hide_enabled = pdata.hide != 0;
+                    let is_item = (tile.flags & ISITEM) != 0;
 
-                    let rx = xpos / 2 + ypos / 2 - xs * 16 + 32 + XPOS + MAP_X_SHIFT + xoff;
-                    let ry = xpos / 4 - ypos / 4 + YPOS - ys * 32 + yoff;
+                    if hide_enabled && !is_item && !Self::autohide(x, y) {
+                        let is_mine_wall = obj > 16335
+                            && obj < 16422
+                            && !matches!(
+                                obj,
+                                16357
+                                    | 16365
+                                    | 16373
+                                    | 16381
+                                    | 16389
+                                    | 16397
+                                    | 16405
+                                    | 16413
+                                    | 16421
+                            )
+                            && !Self::facing(x, y, ci.dir);
 
-                    canvas.copy(
-                        texture,
-                        None,
-                        Some(sdl2::rect::Rect::new(rx, ry, q.width, q.height)),
-                    )?;
+                        if is_mine_wall {
+                            obj = if obj < 16358 {
+                                457
+                            } else if obj < 16366 {
+                                456
+                            } else if obj < 16374 {
+                                455
+                            } else if obj < 16382 {
+                                466
+                            } else if obj < 16390 {
+                                459
+                            } else if obj < 16398 {
+                                458
+                            } else if obj < 16406 {
+                                468
+                            } else {
+                                467
+                            };
+                        } else {
+                            obj += 1;
+                        }
+                    }
+
+                    Self::draw_world_sprite(canvas, gfx, obj, x, y, cam_xoff, cam_yoff, 0, 0)?;
                 }
 
                 let ch = if tile.obj2 > 0 {
-                    tile.obj2 as u16
+                    tile.obj2
                 } else {
-                    tile.ch_sprite
+                    tile.ch_sprite as i32
                 };
-                if ch > 0 && ch != SPR_EMPTY {
-                    let texture = gfx.get_texture(ch as usize);
-                    let q = texture.query();
-                    let xs = q.width as i32 / 32;
-                    let ys = q.height as i32 / 32;
+                Self::draw_world_sprite(
+                    canvas, gfx, ch, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff,
+                )?;
 
-                    let rx = xpos / 2 + ypos / 2 - xs * 16 + 32 + XPOS + MAP_X_SHIFT + xoff;
-                    let ry = xpos / 4 - ypos / 4 + YPOS - ys * 32 + yoff;
-
-                    canvas.copy(
-                        texture,
-                        None,
-                        Some(sdl2::rect::Rect::new(rx, ry, q.width, q.height)),
+                if ci.attack_cn != 0 && ci.attack_cn == tile.ch_nr as i32 {
+                    Self::draw_world_sprite(
+                        canvas, gfx, 34, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff,
                     )?;
                 }
 
-                // Pass 2b: nameplate (name and/or hp%) drawn above the character sprite.
-                let show_names = ps.player_data().show_names != 0;
-                let show_proz = ps.player_data().show_proz != 0;
+                if ci.misc_action == DR_GIVE as i32 && ci.misc_target1 == tile.ch_id as i32 {
+                    Self::draw_world_sprite(
+                        canvas, gfx, 45, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff,
+                    )?;
+                }
+
+                // Nameplate (same pass as character sprites in engine.c).
                 if tile.ch_nr != 0 && (show_names || show_proz) {
                     let is_center = x == TILEX / 2 && y == TILEY / 2;
 
@@ -371,9 +496,117 @@ impl GameScene {
                         let np_rx = xpos / 2 + ypos / 2 + 32 - (text_len * 5 / 2)
                             + XPOS
                             + MAP_X_SHIFT
-                            + xoff;
-                        let np_ry = xpos / 4 - ypos / 4 + YPOS - 64 + yoff;
+                            + cam_xoff
+                            + ch_xoff;
+                        let np_ry = xpos / 4 - ypos / 4 + YPOS - 64 + cam_yoff + ch_yoff;
                         font_cache::draw_text(canvas, gfx, 1, &text, np_rx, np_ry)?;
+                    }
+                }
+
+                if ci.misc_action == DR_DROP as i32
+                    && ci.misc_target1 == tile.x as i32
+                    && ci.misc_target2 == tile.y as i32
+                {
+                    Self::draw_world_sprite(canvas, gfx, 32, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                }
+                if ci.misc_action == DR_PICKUP as i32
+                    && ci.misc_target1 == tile.x as i32
+                    && ci.misc_target2 == tile.y as i32
+                {
+                    Self::draw_world_sprite(canvas, gfx, 33, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                }
+                if ci.misc_action == DR_USE as i32
+                    && ci.misc_target1 == tile.x as i32
+                    && ci.misc_target2 == tile.y as i32
+                {
+                    Self::draw_world_sprite(canvas, gfx, 45, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                }
+
+                if (tile.flags2 & MF_MOVEBLOCK) != 0 {
+                    Self::draw_world_sprite(canvas, gfx, 55, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                }
+                if (tile.flags2 & MF_SIGHTBLOCK) != 0 {
+                    Self::draw_world_sprite(canvas, gfx, 84, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                }
+                if (tile.flags2 & MF_INDOORS) != 0 {
+                    Self::draw_world_sprite(canvas, gfx, 56, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                }
+                if (tile.flags2 & MF_UWATER) != 0 {
+                    Self::draw_world_sprite(canvas, gfx, 75, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                }
+                if (tile.flags2 & MF_NOMONST) != 0 {
+                    Self::draw_world_sprite(canvas, gfx, 59, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                }
+                if (tile.flags2 & MF_BANK) != 0 {
+                    Self::draw_world_sprite(canvas, gfx, 60, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                }
+                if (tile.flags2 & MF_TAVERN) != 0 {
+                    Self::draw_world_sprite(canvas, gfx, 61, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                }
+                if (tile.flags2 & MF_NOMAGIC) != 0 {
+                    Self::draw_world_sprite(canvas, gfx, 62, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                }
+                if (tile.flags2 & MF_DEATHTRAP) != 0 {
+                    Self::draw_world_sprite(canvas, gfx, 73, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                }
+                if (tile.flags2 & MF_NOLAG) != 0 {
+                    Self::draw_world_sprite(canvas, gfx, 57, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                }
+                if (tile.flags2 & MF_ARENA) != 0 {
+                    Self::draw_world_sprite(canvas, gfx, 76, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                }
+                if (tile.flags2 & MF_NOEXPIRE) != 0 {
+                    Self::draw_world_sprite(canvas, gfx, 82, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                }
+                if (tile.flags2 & 0x8000_0000) != 0 {
+                    Self::draw_world_sprite(canvas, gfx, 72, x, y, cam_xoff, cam_yoff, 0, 0)?;
+                }
+
+                let injured_mask = tile.flags & (INJURED | INJURED1 | INJURED2);
+                if injured_mask == INJURED {
+                    Self::draw_world_sprite(
+                        canvas, gfx, 1079, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff,
+                    )?;
+                }
+                if injured_mask == (INJURED | INJURED1) {
+                    Self::draw_world_sprite(
+                        canvas, gfx, 1080, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff,
+                    )?;
+                }
+                if injured_mask == (INJURED | INJURED2) {
+                    Self::draw_world_sprite(
+                        canvas, gfx, 1081, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff,
+                    )?;
+                }
+                if injured_mask == (INJURED | INJURED1 | INJURED2) {
+                    Self::draw_world_sprite(
+                        canvas, gfx, 1082, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff,
+                    )?;
+                }
+
+                if (tile.flags & DEATH) != 0 {
+                    let death_variant = ((tile.flags & DEATH) >> 17) as i32;
+                    if death_variant > 0 {
+                        let sprite = 280 + death_variant - 1;
+                        if tile.obj2 != 0 {
+                            Self::draw_world_sprite(
+                                canvas, gfx, sprite, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff,
+                            )?;
+                        } else {
+                            Self::draw_world_sprite(
+                                canvas, gfx, sprite, x, y, cam_xoff, cam_yoff, 0, 0,
+                            )?;
+                        }
+                    }
+                }
+
+                if (tile.flags & TOMB) != 0 {
+                    let tomb_variant = ((tile.flags & TOMB) >> 12) as i32;
+                    if tomb_variant > 0 {
+                        let sprite = 240 + tomb_variant - 1;
+                        Self::draw_world_sprite(
+                            canvas, gfx, sprite, x, y, cam_xoff, cam_yoff, 0, 0,
+                        )?;
                     }
                 }
             }
@@ -720,7 +953,11 @@ impl GameScene {
         Ok(())
     }
 
-    fn draw_hover_effects(&self, canvas: &mut Canvas<Window>) -> Result<(), String> {
+    fn draw_hover_effects(
+        &self,
+        canvas: &mut Canvas<Window>,
+        ps: &PlayerState,
+    ) -> Result<(), String> {
         canvas.set_draw_color(Color::RGB(255, 170, 80));
 
         // Hover highlight: skill labels grid
@@ -750,18 +987,12 @@ impl GameScene {
         // Hover highlight: map tile marker — semi-transparent white tint over the
         // isometric floor diamond.  The ground plane of tile (mx,my) is the 32×16 region
         // starting at (cx-16, cy) where cx/cy are derived from the tile's view-space coords.
-        if let Some((mx, my)) = Self::screen_to_map_tile(self.mouse_x, self.mouse_y) {
-            let xpos = (mx as i32) * 32;
-            let ypos = (my as i32) * 32;
-            // cx = horizontal centre of the tile's isometric diamond
-            let cx = xpos / 2 + ypos / 2 + 32 + XPOS + MAP_X_SHIFT;
-            // cy = top edge of the floor diamond  (ground line = cy + 16)
-            let cy = xpos / 4 - ypos / 4 + YPOS - 16;
-            canvas.set_blend_mode(sdl2::render::BlendMode::Blend);
-            canvas.set_draw_color(Color::RGBA(255, 255, 255, 80));
-            canvas.fill_rect(sdl2::rect::Rect::new(cx - 16, cy, 32, 16))?;
-            // Restore state for the rest of the frame.
-            canvas.set_blend_mode(sdl2::render::BlendMode::None);
+        let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
+        if let Some((mx, my)) =
+            Self::screen_to_map_tile(self.mouse_x, self.mouse_y, cam_xoff, cam_yoff)
+        {
+            let (cx, cy) = Self::tile_ground_diamond_origin(mx, my, cam_xoff, cam_yoff);
+            Self::draw_hover_tile_diamond(canvas, cx, cy, Color::RGBA(255, 255, 255, 80))?;
             canvas.set_draw_color(Color::RGB(255, 170, 80));
         }
 
@@ -1418,25 +1649,35 @@ impl GameScene {
         false
     }
 
-    fn screen_to_map_tile(screen_x: i32, screen_y: i32) -> Option<(usize, usize)> {
-        let x = screen_x + 160;
-        let y = screen_y + 8;
+    fn screen_to_map_tile(
+        screen_x: i32,
+        screen_y: i32,
+        cam_xoff: i32,
+        cam_yoff: i32,
+    ) -> Option<(usize, usize)> {
+        // Use the same projected ground diamond geometry as rendering so hover/click
+        // always align with visible tiles.
+        let mut best: Option<(usize, usize, i32)> = None;
 
-        let mx = (2 * y + x - 880) / 32;
-        let my = (x - 2 * y + 880) / 32;
+        for my in 0..TILEY {
+            for mx in 0..TILEX {
+                let (cx, cy_top) = Self::tile_ground_diamond_origin(mx, my, cam_xoff, cam_yoff);
+                let dx = (screen_x - cx).abs();
+                let dy = (screen_y - (cy_top + 8)).abs();
 
-        if mx < 0 || my < 0 {
-            return None;
+                // Inside 32x16 isometric floor diamond:
+                // |dx|/16 + |dy|/8 <= 1  =>  dx*8 + dy*16 <= 128
+                let metric = dx * 8 + dy * 16;
+                if metric <= 128 {
+                    match best {
+                        Some((_, _, cur_metric)) if metric >= cur_metric => {}
+                        _ => best = Some((mx, my, metric)),
+                    }
+                }
+            }
         }
 
-        let mx = mx as usize;
-        let my = my as usize;
-
-        if mx >= TILEX || my >= TILEY {
-            return None;
-        }
-
-        Some((mx, my))
+        best.map(|(mx, my, _)| (mx, my))
     }
 }
 
@@ -1662,11 +1903,13 @@ impl Scene for GameScene {
                     return None;
                 }
 
-                let Some((mx, my)) = Self::screen_to_map_tile(*x, *y) else {
+                let Some(ps) = app_state.player_state.as_ref() else {
                     return None;
                 };
 
-                let Some(ps) = app_state.player_state.as_ref() else {
+                let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
+
+                let Some((mx, my)) = Self::screen_to_map_tile(*x, *y, cam_xoff, cam_yoff) else {
                     return None;
                 };
 
@@ -1826,7 +2069,7 @@ impl Scene for GameScene {
         Self::draw_shop_overlay(canvas, gfx_cache, ps)?;
 
         // 10. Hover highlights
-        self.draw_hover_effects(canvas)?;
+        self.draw_hover_effects(canvas, ps)?;
 
         // 11. Minimap (bottom-left, 128×128, persistent world buffer)
         self.draw_minimap(canvas, gfx_cache, ps)?;

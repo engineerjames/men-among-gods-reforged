@@ -85,7 +85,7 @@ impl NetworkRuntime {
             if cmd.header == ClientCommandType::CmdCTick || cmd.header == ClientCommandType::Ping {
                 log::trace!("Sending command: {:?}", cmd);
             } else {
-                log::info!("Sending command: {:?}", cmd);
+                log::info!("Sending command: {}", cmd.get_description());
             }
             let _ = tx.send(NetworkCommand::Send(cmd.to_bytes()));
         }
