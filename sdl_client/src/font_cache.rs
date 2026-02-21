@@ -25,7 +25,7 @@ pub const BITMAP_GLYPH_ADVANCE: u32 = BITMAP_GLYPH_W;
 #[inline]
 pub fn glyph_index(ch: char) -> i32 {
     let code = ch as i32;
-    if code < 32 || code > 127 {
+    if !(32..=127).contains(&code) {
         return -1;
     }
     code - 32
