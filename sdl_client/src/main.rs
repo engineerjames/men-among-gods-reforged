@@ -21,6 +21,7 @@ mod gfx_cache;
 mod hosts;
 mod legacy_engine;
 mod network;
+mod platform;
 mod player_state;
 mod preferences;
 mod scenes;
@@ -28,9 +29,14 @@ mod sfx_cache;
 mod state;
 mod types;
 
+/// Global flag ensuring the egui glyph warm-up runs exactly once.
 static EGUI_GLYPH_WARMED: AtomicBool = AtomicBool::new(false);
 
-// This is really stupid, but it seems to prevent the odd text warping observed
+/// Pre-renders a wide set of ASCII glyphs into egui's internal texture atlas
+/// to avoid visible text warping on the very first frame.
+///
+/// # Arguments
+/// * `ctx` – the egui context whose font atlas will be primed.
 fn warm_egui_glyph_cache(ctx: &egui::Context) {
     if EGUI_GLYPH_WARMED.swap(true, Ordering::Relaxed) {
         return;
@@ -48,6 +54,12 @@ fn warm_egui_glyph_cache(ctx: &egui::Context) {
         });
 }
 
+/// Application entry point.
+///
+/// Initialises logging, SDL2 subsystems (video, audio, mixer), creates the
+/// window and canvas, builds the scene manager, and enters the main loop.
+/// The loop polls events, updates the active scene, renders world + UI layers,
+/// and caps at 60 FPS via `FPSManager`.
 fn main() -> Result<(), String> {
     mag_core::initialize_logger(log::LevelFilter::Info, Some("sdl_client.log")).unwrap_or_else(
         |e| {

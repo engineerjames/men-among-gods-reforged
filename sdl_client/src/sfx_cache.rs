@@ -5,17 +5,32 @@ use sdl2::mixer::{Channel, Chunk};
 
 const LOGIN_MUSIC_CHANNEL: i32 = 0;
 
+/// Manages pre-loaded sound effects and background music tracks.
+///
+/// Sound effects are identified by numeric sprite IDs; music tracks by the
+/// [`MusicTrack`] enum. All audio data is loaded eagerly at construction
+/// and played through SDL2_mixer channels.
 pub struct SoundCache {
     sfx_cache: HashMap<usize, Chunk>,
     music_cache: HashMap<MusicTrack, Chunk>,
 }
 
+/// Named background-music tracks that can be played or stopped.
 #[derive(Hash, Eq, PartialEq, Clone, Copy)]
 pub enum MusicTrack {
     LoginTheme,
 }
 
 impl SoundCache {
+    /// Loads all `.wav` files from `sfx_directory` and music files from
+    /// `music_directory` into memory.
+    ///
+    /// # Arguments
+    /// * `sfx_directory` - Path to the directory containing numbered `.wav` files.
+    /// * `music_directory` - Path to the directory containing music tracks.
+    ///
+    /// # Returns
+    /// * A new `SoundCache`. Panics if the sfx directory cannot be read.
     pub fn new(sfx_directory: PathBuf, music_directory: PathBuf) -> Self {
         let mut sfx_cache: HashMap<usize, Chunk> = HashMap::new();
 
@@ -98,6 +113,10 @@ impl SoundCache {
         }
     }
 
+    /// Plays a music track on a dedicated channel, looping indefinitely.
+    ///
+    /// # Arguments
+    /// * `track` - The [`MusicTrack`] to play.
     #[allow(dead_code)]
     pub fn play_music(&self, track: MusicTrack) {
         if let Some(chunk) = self.music_cache.get(&track) {
@@ -107,6 +126,7 @@ impl SoundCache {
         }
     }
 
+    /// Stops any currently playing music on the dedicated music channel.
     pub fn stop_music(&self) {
         Channel(LOGIN_MUSIC_CHANNEL).halt();
     }

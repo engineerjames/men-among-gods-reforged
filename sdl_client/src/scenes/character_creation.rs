@@ -16,6 +16,11 @@ use crate::{
     state::AppState,
 };
 
+/// Scene for creating a new in-game character.
+///
+/// Lets the player choose a name, description, class (race) and sex.
+/// The creation request runs on a background thread; on success the
+/// scene transitions to `CharacterSelection`.
 pub struct CharacterCreationScene {
     error: Option<String>,
     name: String,
@@ -28,6 +33,7 @@ pub struct CharacterCreationScene {
 }
 
 impl CharacterCreationScene {
+    /// Creates a new `CharacterCreationScene` with default selections.
     pub fn new() -> Self {
         Self {
             error: None,
@@ -270,6 +276,13 @@ impl Scene for CharacterCreationScene {
     }
 }
 
+/// Renders a single radio-button option for a character class.
+///
+/// # Arguments
+/// * `ui` – the egui `Ui` context.
+/// * `selected_class` – mutable reference to the currently selected class.
+/// * `class` – the `Class` value this radio button represents.
+/// * `label` – display text for the radio button.
 fn race_option_ui(ui: &mut egui::Ui, selected_class: &mut Class, class: Class, label: &str) {
     ui.radio_value(selected_class, class, label);
 }

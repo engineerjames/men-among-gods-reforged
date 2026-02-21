@@ -14,6 +14,12 @@ use crate::{
     state::{AppState, GameLoginTarget},
 };
 
+/// Scene that lists the player's characters and lets them pick one to enter the game.
+///
+/// On enter, character summaries are loaded from the API on a background thread.
+/// After the player selects a character and clicks "Continue", a game-login
+/// ticket is created (also on a background thread) and the scene transitions
+/// to `SceneType::Game`.
 pub struct CharacterSelectionScene {
     last_error: Option<String>,
     is_loading_characters: bool,
@@ -31,6 +37,7 @@ pub struct CharacterSelectionScene {
 }
 
 impl CharacterSelectionScene {
+    /// Creates a new `CharacterSelectionScene` with empty state.
     pub fn new() -> Self {
         Self {
             last_error: None,
@@ -49,6 +56,7 @@ impl CharacterSelectionScene {
         }
     }
 
+    /// Returns `true` if the given thread handle exists and has not yet finished.
     fn is_thread_running(handle: &Option<std::thread::JoinHandle<()>>) -> bool {
         match handle {
             Some(thread) => !thread.is_finished(),
@@ -56,6 +64,8 @@ impl CharacterSelectionScene {
         }
     }
 
+    /// Joins a finished thread and clears its handle, logging on panic.
+    /// If the thread is still running, the handle is left in place.
     fn cleanup_finished_thread(handle: &mut Option<std::thread::JoinHandle<()>>, name: &str) {
         let Some(thread) = handle.take() else {
             return;
@@ -71,6 +81,7 @@ impl CharacterSelectionScene {
         *handle = Some(thread);
     }
 
+    /// Joins a finished thread or detaches a still-running one on scene exit.
     fn drop_or_join_thread(handle: &mut Option<std::thread::JoinHandle<()>>, name: &str) {
         let Some(thread) = handle.take() else {
             return;

@@ -11,11 +11,16 @@ use client_commands::ClientCommand;
 
 use crate::network::client_commands::ClientCommandType;
 
+/// Commands sent from the main thread to the background network thread.
 pub enum NetworkCommand {
+    /// Raw bytes to write to the TCP stream.
     Send(Vec<u8>),
+    /// Request a graceful disconnect.
     Shutdown,
 }
 
+/// Events produced by the background network thread for consumption by the
+/// main loop.
 pub enum NetworkEvent {
     Status(String),
     Bytes {
@@ -131,7 +136,8 @@ impl NetworkRuntime {
         }
     }
 
-    /// Sends a `CL_PING` if the interval has elapsed and we're not over the in-flight limit.
+    /// Sends a `CL_PING` if the interval has elapsed and we're not over the
+    /// in-flight limit. Handles its own timing and sequence numbering.
     pub fn maybe_send_ping(&mut self) {
         const PING_INTERVAL: Duration = Duration::from_secs(5);
         const PING_TIMEOUT: Duration = Duration::from_secs(30);

@@ -13,6 +13,11 @@ use crate::{
 use egui_sdl2::egui::{self, Align2, Vec2};
 use sdl2::{event::Event, pixels::Color, render::Canvas, video::Window};
 
+/// Scene that presents the account login form.
+///
+/// Displays IP, username and password fields plus an optional music toggle.
+/// Login is performed on a background thread; the result is polled in `update`.
+/// On success the scene transitions to `CharacterSelection`.
 pub struct LoginScene {
     server_ip: String,
     username: String,
@@ -25,6 +30,7 @@ pub struct LoginScene {
 }
 
 impl LoginScene {
+    /// Creates a new `LoginScene` with default field values and the configured server IP.
     pub fn new() -> Self {
         Self {
             server_ip: hosts::get_server_ip(),
@@ -38,10 +44,19 @@ impl LoginScene {
         }
     }
 
+    /// Performs a blocking login API call.
+    ///
+    /// # Arguments
+    /// * `username` – account username.
+    /// * `password` – account password (plaintext; hashed client-side before transmission).
+    ///
+    /// # Returns
+    /// `Ok(token)` on success, `Err(message)` on failure.
     fn login(username: &str, password: &str) -> Result<String, String> {
         account_api::login(&hosts::get_api_base_url(), username, password)
     }
 
+    /// Lazily starts the login-screen music track if it hasn't been started yet.
     fn ensure_music_initialized(&mut self, app_state: &mut AppState) {
         if self.music_initialized {
             return;
@@ -59,6 +74,7 @@ impl LoginScene {
         self.music_initialized = true;
     }
 
+    /// Persists the music-enabled preference to disk.
     fn save_music_setting(&self, enabled: bool) {
         let settings = GlobalSettings {
             music_enabled: enabled,

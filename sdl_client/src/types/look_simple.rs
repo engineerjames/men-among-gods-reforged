@@ -1,3 +1,5 @@
+/// Compact "look" data for auto-look overlays (name + health percentage),
+/// matching the original C `look_simple` struct (26 bytes).
 #[repr(C)]
 pub struct LookSimple {
     known: u8,

@@ -11,6 +11,7 @@ use crate::types::skill_buttons::SkillButtons;
 const LOG_FILE_NAME: &str = "sdl_client.log";
 const PROFILE_FILE_NAME: &str = "sdl_client_profile.json";
 
+/// Identifies a specific character for profile look-up.
 #[derive(Clone, Debug)]
 pub struct CharacterIdentity {
     pub id: u64,
@@ -18,6 +19,10 @@ pub struct CharacterIdentity {
     pub account_username: Option<String>,
 }
 
+/// In-memory representation of a character's saved preferences.
+///
+/// Loaded from / saved to the JSON profile file. Contains spell-bar
+/// bindings, toggle states, and the volume level.
 #[derive(Clone, Debug)]
 pub struct RuntimeProfile {
     pub skill_buttons: [SkillButtons; 12],
@@ -29,6 +34,7 @@ pub struct RuntimeProfile {
     pub show_proz: i32,
 }
 
+/// Global (non-character-specific) settings persisted across sessions.
 #[derive(Clone, Debug)]
 pub struct GlobalSettings {
     pub music_enabled: bool,
@@ -104,6 +110,13 @@ fn from_global_settings(settings: &GlobalSettings) -> GlobalSettingsStorage {
     }
 }
 
+/// Builds the BTreeMap key used to store a character's profile.
+///
+/// # Arguments
+/// * `identity` - The character to key.
+///
+/// # Returns
+/// * A string in the form `"<username>:<character_id>"`.
 fn profile_key(identity: &CharacterIdentity) -> String {
     let username = identity
         .account_username
@@ -112,14 +125,19 @@ fn profile_key(identity: &CharacterIdentity) -> String {
     format!("{username}:{}", identity.id)
 }
 
+/// Returns the current working directory, falling back to `"."` on error.
 fn working_directory() -> PathBuf {
     std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
+/// Returns the path to the JSON profile file (`sdl_client_profile.json`)
+/// in the working directory.
 pub fn profile_file_path() -> PathBuf {
     working_directory().join(PROFILE_FILE_NAME)
 }
 
+/// Returns the path to the log file (`sdl_client.log`) in the working
+/// directory.
 pub fn log_file_path() -> PathBuf {
     working_directory().join(LOG_FILE_NAME)
 }
@@ -158,6 +176,8 @@ fn write_storage(path: &Path, storage: &AppProfileStorage) -> Result<(), String>
     Ok(())
 }
 
+/// Converts internal serialised profile data to the public
+/// [`RuntimeProfile`] struct.
 fn to_runtime_profile(profile: &CharacterProfile) -> RuntimeProfile {
     let mut buttons = [SkillButtons::default(); 12];
 
@@ -184,6 +204,8 @@ fn to_runtime_profile(profile: &CharacterProfile) -> RuntimeProfile {
     }
 }
 
+/// Converts a [`RuntimeProfile`] and [`CharacterIdentity`] into the
+/// serialisable `CharacterProfile` storage format.
 fn from_runtime_profile(
     identity: &CharacterIdentity,
     runtime: &RuntimeProfile,
@@ -217,6 +239,13 @@ fn from_runtime_profile(
     }
 }
 
+/// Loads a character's saved profile from disk.
+///
+/// # Arguments
+/// * `identity` - The character to look up.
+///
+/// # Returns
+/// * `Some(RuntimeProfile)` if found, `None` otherwise.
 pub fn load_profile(identity: &CharacterIdentity) -> Option<RuntimeProfile> {
     let path = profile_file_path();
     let storage = read_storage(&path);
@@ -224,12 +253,21 @@ pub fn load_profile(identity: &CharacterIdentity) -> Option<RuntimeProfile> {
     storage.characters.get(&key).map(to_runtime_profile)
 }
 
+/// Loads the global (non-character) settings from disk, returning
+/// defaults if the file is missing or corrupt.
 pub fn load_global_settings() -> GlobalSettings {
     let path = profile_file_path();
     let storage = read_storage(&path);
     to_global_settings(&storage.global)
 }
 
+/// Persists the global settings to the profile file.
+///
+/// # Arguments
+/// * `settings` - The settings to save.
+///
+/// # Returns
+/// * `Ok(())` on success, `Err(String)` with a description on I/O failure.
 pub fn save_global_settings(settings: &GlobalSettings) -> Result<(), String> {
     let path = profile_file_path();
     let mut storage = read_storage(&path);
@@ -237,6 +275,14 @@ pub fn save_global_settings(settings: &GlobalSettings) -> Result<(), String> {
     write_storage(&path, &storage)
 }
 
+/// Persists a character's runtime profile to the profile file.
+///
+/// # Arguments
+/// * `identity` - The character whose profile to save.
+/// * `runtime` - The profile data to persist.
+///
+/// # Returns
+/// * `Ok(())` on success, `Err(String)` with a description on I/O failure.
 pub fn save_profile(identity: &CharacterIdentity, runtime: &RuntimeProfile) -> Result<(), String> {
     let path = profile_file_path();
     let mut storage = read_storage(&path);

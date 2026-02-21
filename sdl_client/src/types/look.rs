@@ -1,3 +1,7 @@
+/// Detailed "look-at" data for a character or shop, matching the original C
+/// client's `look` struct (496 bytes).
+///
+/// Populated incrementally from `SV_LOOK1`–`SV_LOOK6` server commands.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct Look {

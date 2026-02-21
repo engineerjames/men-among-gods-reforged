@@ -55,6 +55,17 @@ pub fn inflate_chunk(z: &mut Decompress, input: &[u8]) -> Result<Vec<u8>, String
     Ok(out)
 }
 
+/// Computes the total byte length of a variable-length `SV_SETMAP` command
+/// given its flags byte and delta offset.
+///
+/// # Arguments
+/// * `bytes` - The raw command bytes (starting at the opcode).
+/// * `off` - The delta offset from the opcode (0 = absolute index follows).
+/// * `lastn` - Mutable tracker for the last absolute tile index.
+///
+/// # Returns
+/// * `Ok(length)` — the number of bytes this command occupies.
+/// * `Err(msg)` on truncated input.
 fn sv_setmap_len(bytes: &[u8], off: u8, lastn: &mut i32) -> Result<usize, String> {
     if bytes.len() < 2 {
         return Err("SV_SETMAP truncated (need at least 2 bytes)".to_string());
@@ -108,10 +119,22 @@ fn sv_setmap_len(bytes: &[u8], off: u8, lastn: &mut i32) -> Result<usize, String
     Ok(p)
 }
 
+/// Returns the byte length of a `SV_SETMAP3`-style lighting command with the
+/// given tile count.
 fn sv_setmap3_len(cnt: usize) -> usize {
     3 + (cnt / 2)
 }
 
+/// Returns the total byte length of the server command starting at
+/// `bytes[0]`, advancing `last_setmap_n` for SV_SETMAP delta tracking.
+///
+/// # Arguments
+/// * `bytes` - Slice starting at the command opcode.
+/// * `last_setmap_n` - Running delta index for SV_SETMAP commands.
+///
+/// # Returns
+/// * `Ok(length)` on success.
+/// * `Err(msg)` on truncated or malformed input.
 fn sv_cmd_len(bytes: &[u8], last_setmap_n: &mut i32) -> Result<usize, String> {
     if bytes.is_empty() {
         return Err("sv_cmd_len called with empty buffer".to_string());

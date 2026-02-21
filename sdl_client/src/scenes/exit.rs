@@ -8,11 +8,16 @@ use crate::{
     state::AppState,
 };
 
+/// Sentinel scene that signals the application should shut down.
+///
+/// All `Scene` trait methods are no-ops; the main loop checks for
+/// `SceneType::Exit` and breaks out of the event loop.
 pub struct ExitScene {
     // No state needed for the exit scene, but we can add fields here if we want to display any information or perform any cleanup actions.
 }
 
 impl ExitScene {
+    /// Creates a new `ExitScene`.
     pub fn new() -> Self {
         Self {}
     }

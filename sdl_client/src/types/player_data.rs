@@ -1,5 +1,7 @@
 use crate::types::skill_buttons::SkillButtons;
 
+/// HUD toggle flags and spell-bar bindings, matching the original C `pdata`
+/// struct (484 bytes).
 // pdata from original C headers
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]

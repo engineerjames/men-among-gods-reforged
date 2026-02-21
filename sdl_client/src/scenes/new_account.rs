@@ -12,6 +12,11 @@ use crate::{
     state::AppState,
 };
 
+/// Scene that presents the new-account registration form.
+///
+/// Collects e-mail, username and password, then creates the account
+/// on a background thread via the REST API. On success, transitions
+/// back to `SceneType::Login`.
 pub struct NewAccountScene {
     email: String,
     username: String,
@@ -23,6 +28,7 @@ pub struct NewAccountScene {
 }
 
 impl NewAccountScene {
+    /// Creates a new `NewAccountScene` with empty form fields.
     pub fn new() -> Self {
         NewAccountScene {
             email: String::new(),
@@ -35,6 +41,16 @@ impl NewAccountScene {
         }
     }
 
+    /// Validates inputs and calls the account-creation API endpoint.
+    ///
+    /// # Arguments
+    /// * `base_url` – API base URL.
+    /// * `email` – user-supplied e-mail address.
+    /// * `username` – desired account name.
+    /// * `password` – desired password.
+    ///
+    /// # Returns
+    /// `Ok(())` on success, `Err(message)` on validation or API failure.
     fn create_account(
         base_url: &str,
         email: &str,

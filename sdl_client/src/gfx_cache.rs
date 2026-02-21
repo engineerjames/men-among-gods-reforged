@@ -9,12 +9,21 @@ use sdl2::{
 };
 use zip::ZipArchive;
 
+/// Pre-decoded RGBA pixel data for a single sprite image.
+///
+/// Used for CPU-side operations (e.g. average-color calculation) that do not
+/// require a GPU texture.
 pub struct CachedRgbaImage {
     pub width: usize,
     pub height: usize,
     pub pixels: Vec<u8>,
 }
 
+/// Lazy-loading sprite and texture cache backed by a ZIP archive.
+///
+/// Textures are loaded from `images.zip` on first access and kept in memory
+/// for the lifetime of the cache. Average per-sprite colours and raw RGBA
+/// pixel data are also cached for minimap and hit-test use.
 pub struct GraphicsCache {
     sprite_cache: HashMap<usize, Texture>,
     avg_color_cache: HashMap<usize, (u8, u8, u8)>,
@@ -27,6 +36,15 @@ pub struct GraphicsCache {
 }
 
 impl GraphicsCache {
+    /// Opens `images.zip` at the given path and builds a sprite-ID-to-filename
+    /// index for lazy texture loading.
+    ///
+    /// # Arguments
+    /// * `path_to_zip` - Filesystem path to the `images.zip` archive.
+    /// * `creator` - SDL2 texture creator bound to the window.
+    ///
+    /// # Returns
+    /// * A new `GraphicsCache`. Panics if the archive cannot be opened.
     pub fn new(path_to_zip: PathBuf, creator: TextureCreator<WindowContext>) -> Self {
         let file = match File::open(path_to_zip) {
             Ok(f) => f,
@@ -79,6 +97,17 @@ impl GraphicsCache {
         }
     }
 
+    /// Returns the alpha-weighted average colour of a sprite.
+    ///
+    /// If the colour has not been calculated yet, the sprite is loaded from
+    /// the ZIP archive as a side-effect.
+    ///
+    /// # Arguments
+    /// * `id` - Numeric sprite ID.
+    ///
+    /// # Returns
+    /// * `(r, g, b)` tuple. Returns `(0, 0, 0)` for fully-transparent or
+    ///   missing sprites.
     pub fn get_avg_color(&mut self, id: usize) -> (u8, u8, u8) {
         if let Some(color) = self.avg_color_cache.get(&id) {
             return *color;
@@ -108,6 +137,18 @@ impl GraphicsCache {
         }
     }
 
+    /// Returns a mutable reference to the GPU texture for the given sprite ID.
+    ///
+    /// The texture is loaded from `images.zip` on first access and cached.
+    /// If the sprite cannot be loaded, a fallback error texture (ID 128) is
+    /// used instead.
+    ///
+    /// # Arguments
+    /// * `id` - Numeric sprite ID.
+    ///
+    /// # Returns
+    /// * `&mut Texture` — the caller may set blend/colour/alpha modulation
+    ///   but must reset it before yielding control.
     pub fn get_texture(&mut self, id: usize) -> &mut Texture {
         const ERROR_SPRITE_ID: usize = 128;
         if !self.sprite_cache.contains_key(&id) {
@@ -133,6 +174,15 @@ impl GraphicsCache {
         self.sprite_cache.get_mut(&id).unwrap()
     }
 
+    /// Loads and decodes a single sprite from the ZIP archive, caching its
+    /// average colour and RGBA pixels as a side-effect.
+    ///
+    /// # Arguments
+    /// * `id` - Numeric sprite ID.
+    ///
+    /// # Returns
+    /// * `Some(Texture)` on success, `None` if the sprite is not in the archive
+    ///   or decoding fails.
     fn load_texture_from_zip(&mut self, id: usize) -> Option<Texture> {
         if let Some(filename) = self.index_to_filename.get(&id) {
             if let Ok(mut file) = self.archive.by_name(filename) {
@@ -152,6 +202,14 @@ impl GraphicsCache {
         None
     }
 
+    /// Computes the alpha-weighted average RGB colour of raw PNG/image bytes.
+    ///
+    /// # Arguments
+    /// * `image_bytes` - Raw image file bytes (e.g. PNG).
+    ///
+    /// # Returns
+    /// * `(r, g, b)` average colour. Returns `(0, 0, 0)` on decode failure
+    ///   or if all pixels are fully transparent.
     fn calculate_avg_color(image_bytes: &[u8]) -> (u8, u8, u8) {
         let rgba_image = match Self::decode_rgba_image(image_bytes) {
             Some(image) => image,
@@ -192,6 +250,13 @@ impl GraphicsCache {
         )
     }
 
+    /// Decodes raw image bytes into a contiguous RGBA pixel buffer.
+    ///
+    /// # Arguments
+    /// * `image_bytes` - Raw image file bytes (e.g. PNG).
+    ///
+    /// # Returns
+    /// * `Some(CachedRgbaImage)` on success, `None` on decode failure.
     fn decode_rgba_image(image_bytes: &[u8]) -> Option<CachedRgbaImage> {
         let rwops = match RWops::from_bytes(image_bytes) {
             Ok(rwops) => rwops,

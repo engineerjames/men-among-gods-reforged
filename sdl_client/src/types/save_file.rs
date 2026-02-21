@@ -1,3 +1,6 @@
+/// Client-side save-file header, matching the original C `key` struct
+/// (56 bytes). Holds the player number, password hashes, character name,
+/// and race.
 // key from original C headers
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]

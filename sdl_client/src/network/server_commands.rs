@@ -1,5 +1,6 @@
 use mag_core::string_operations::c_string_to_str;
 
+/// Opcode values for incoming server commands.
 #[derive(Copy, Clone, Debug)]
 #[repr(u8)]
 pub enum ServerCommandType {
@@ -71,6 +72,7 @@ pub enum ServerCommandType {
     SetMap = 128,
 }
 
+/// Parsed payload variants for each [`ServerCommandType`].
 #[derive(Debug)]
 pub enum ServerCommandData {
     Empty,

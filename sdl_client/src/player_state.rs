@@ -10,6 +10,12 @@ use crate::{
     types::{log_message::LogMessage, look::Look, player_data::PlayerData, save_file::SaveFile},
 };
 
+/// Central per-character gameplay state on the client side.
+///
+/// Owns the visible tile map, look/shop panels, character stats, the chat log,
+/// and all incremental state streamed from the server via `ServerCommand`s.
+/// A new instance is created each time the player enters the game and is
+/// dropped when they disconnect.
 pub struct PlayerState {
     map: GameMap,
     look_target: Look,
@@ -40,6 +46,7 @@ pub struct PlayerState {
     exit_requested_reason: Option<u32>,
 }
 
+/// A cached (nr → name) entry used by the auto-look name overlay.
 #[derive(Clone, Debug)]
 struct LookNameEntry {
     id: u16,
@@ -83,30 +90,40 @@ impl Default for PlayerState {
 }
 
 impl PlayerState {
+    /// Returns the number of messages currently stored in the chat log.
     pub fn log_len(&self) -> usize {
         self.message_log.len()
     }
 
+    /// Takes and returns the pending server-requested exit reason, if any.
+    ///
+    /// # Returns
+    /// * `Some(reason_code)` the first time, `None` thereafter.
     pub fn take_exit_requested_reason(&mut self) -> Option<u32> {
         self.exit_requested_reason.take()
     }
 
+    /// Returns a shared reference to the visible tile map.
     pub fn map(&self) -> &GameMap {
         &self.map
     }
 
+    /// Returns a mutable reference to the visible tile map.
     pub fn map_mut(&mut self) -> &mut GameMap {
         &mut self.map
     }
 
+    /// Returns a shared reference to the player's own character stats.
     pub fn character_info(&self) -> &ClientPlayer {
         &self.character_info
     }
 
+    /// Returns `true` when the shop overlay should be displayed.
     pub fn should_show_shop(&self) -> bool {
         self.should_show_shop
     }
 
+    /// Closes the shop overlay if it is open.
     #[allow(dead_code)]
     pub fn close_shop(&mut self) {
         if self.should_show_shop {
@@ -115,11 +132,13 @@ impl PlayerState {
         }
     }
 
+    /// Marks the shop as needing a refresh on the next tick.
     #[allow(dead_code)]
     pub fn request_shop_refresh(&mut self) {
         self.shop_refresh_requested = true;
     }
 
+    /// Returns `true` once if a shop refresh was requested, then resets the flag.
     #[allow(dead_code)]
     pub fn take_shop_refresh_requested(&mut self) -> bool {
         let was = self.shop_refresh_requested;
@@ -127,10 +146,12 @@ impl PlayerState {
         was
     }
 
+    /// Returns `true` when the "look at" info panel should be displayed.
     pub fn should_show_look(&self) -> bool {
         self.should_show_look
     }
 
+    /// Closes the look panel and resets its display timer.
     pub fn close_look(&mut self) {
         if self.should_show_look {
             self.should_show_look = false;
@@ -138,26 +159,39 @@ impl PlayerState {
         }
     }
 
+    /// Returns a shared reference to the current "look at" target data.
     pub fn look_target(&self) -> &Look {
         &self.look_target
     }
 
+    /// Returns a shared reference to the current shop target data.
     pub fn shop_target(&self) -> &Look {
         &self.shop_target
     }
 
+    /// Returns a shared reference to the player data (HUD toggle flags, etc.).
     pub fn player_data(&self) -> &PlayerData {
         &self.player_info
     }
 
+    /// Returns a mutable reference to the player data.
     pub fn player_data_mut(&mut self) -> &mut PlayerData {
         &mut self.player_info
     }
 
+    /// Returns a mutable reference to the save-file header data.
     pub fn save_file_mut(&mut self) -> &mut SaveFile {
         &mut self.moa_file_data
     }
 
+    /// Looks up a cached character name by tile `nr` and optional `id`.
+    ///
+    /// # Arguments
+    /// * `nr` - Tile character number.
+    /// * `id` - Character ID (0 matches any).
+    ///
+    /// # Returns
+    /// * `Some(&str)` if a matching name is cached, `None` otherwise.
     pub fn lookup_name(&self, nr: u16, id: u16) -> Option<&str> {
         self.look_names
             .get(nr as usize)
@@ -166,20 +200,24 @@ impl PlayerState {
             .map(|e| e.name.as_str())
     }
 
+    /// Returns the `ch_nr` of the currently selected (clicked) character tile.
     pub fn selected_char(&self) -> u16 {
         self.selected_char
     }
 
+    /// Returns the `ch_id` of the currently selected character tile.
     #[allow(dead_code)]
     pub fn selected_char_id(&self) -> u16 {
         self.selected_char_id
     }
 
+    /// Sets both the selected character `nr` and `id`.
     pub fn set_selected_char_with_id(&mut self, selected_char: u16, selected_char_id: u16) {
         self.selected_char = selected_char;
         self.selected_char_id = selected_char_id;
     }
 
+    /// Clears the character selection.
     pub fn clear_selected_char(&mut self) {
         self.selected_char = 0;
         self.selected_char_id = 0;
@@ -196,11 +234,14 @@ impl PlayerState {
         });
     }
 
+    /// Returns the local animation ctick counter.
     #[allow(dead_code)]
     pub fn local_ctick(&self) -> u8 {
         self.local_ctick
     }
 
+    /// Advances per-tick timers, syncs the animation ctick with the server,
+    /// and runs the legacy engine tick.
     pub fn on_tick_packet(&mut self, client_ticker: u32) {
         let _ = client_ticker;
 
@@ -223,6 +264,7 @@ impl PlayerState {
         crate::legacy_engine::engine_tick(self, client_ticker, self.local_ctick as usize);
     }
 
+    /// Maps a network font index to a [`LogMessageColor`](crate::types::log_message::LogMessageColor).
     fn log_color_from_font(font: u8) -> crate::types::log_message::LogMessageColor {
         use crate::types::log_message::LogMessageColor;
         match font {
@@ -242,6 +284,17 @@ impl PlayerState {
         self.message_log.push(msg);
     }
 
+    /// Word-wraps `text` to fit within `max_cols` columns.
+    ///
+    /// Breaks on spaces when possible; hard-cuts words longer than the limit.
+    /// Embedded newlines are honoured.
+    ///
+    /// # Arguments
+    /// * `text` - The raw text to wrap.
+    /// * `max_cols` - Maximum characters per line.
+    ///
+    /// # Returns
+    /// * A new `String` with `\n` inserted at wrap points.
     pub fn wrap_log_text(text: &str, max_cols: usize) -> String {
         let max_cols = max_cols.max(2);
         let wrap_at = max_cols.saturating_sub(1);
@@ -285,10 +338,16 @@ impl PlayerState {
         out
     }
 
+    /// Returns the log message at `index`, or `None` if out of range.
     pub fn log_message(&self, index: usize) -> Option<&LogMessage> {
         self.message_log.get(index)
     }
 
+    /// Appends a message to the chat log, word-wrapping it first.
+    ///
+    /// # Arguments
+    /// * `font` - Network font index (0=red, 1=yellow, 2=green, 3=blue).
+    /// * `text` - The message text.
     pub fn tlog(&mut self, font: u8, text: impl AsRef<str>) {
         const XS: usize = 49;
 
@@ -329,6 +388,12 @@ impl PlayerState {
         }
     }
 
+    /// Applies a single parsed server command to this player state,
+    /// updating the map, stats, look panel, chat log, and other fields
+    /// as appropriate.
+    ///
+    /// # Arguments
+    /// * `command` - The parsed [`ServerCommand`] to apply.
     pub fn update_from_server_command(&mut self, command: &ServerCommand) {
         match command.header {
             ServerCommandType::ScrollDown => {
