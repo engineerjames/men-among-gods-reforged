@@ -1,6 +1,9 @@
 use sdl2::{pixels::Color, render::Canvas, video::Window};
 
-use mag_core::constants::{TILEX, TILEY};
+use mag_core::constants::{
+    PL_ARMS, PL_BELT, PL_BODY, PL_CLOAK, PL_FEET, PL_HEAD, PL_LEGS, PL_NECK, PL_RING, PL_SHIELD,
+    PL_TWOHAND, PL_WEAPON, TILEX, TILEY, WN_LHAND, WN_RHAND,
+};
 use mag_core::types::skilltab::get_skill_name;
 
 use crate::{font_cache, gfx_cache::GraphicsCache, player_state::PlayerState};
@@ -304,9 +307,8 @@ impl GameScene {
             }
         }
 
-        // Input line: draw "> " prefix then the current input buffer.
-        let input_display = format!("> {}", self.input_buf);
-        font_cache::draw_text(canvas, gfx, UI_FONT, &input_display, INPUT_X, INPUT_Y)?;
+        // Input line at original position (engine.c: dd_puttext(500, ...)).
+        font_cache::draw_text(canvas, gfx, UI_FONT, &self.input_buf, INPUT_X, INPUT_Y)?;
 
         Ok(())
     }
@@ -434,6 +436,55 @@ impl GameScene {
             let y = 2 + ((n / 2) as i32) * 35;
             let hovered = hovered_equip_index == Some(n);
             Self::draw_ui_item_with_hover(canvas, gfx, sprite, x, y, hovered)?;
+        }
+
+        // C-equivalent of inter.c::reset_block + engine.c overlay draw:
+        // when carrying an item, draw sprite 4 over worn slots where placement is invalid.
+        if !show_shop && ci.citem > 0 {
+            let citem_p = ci.citem_p as u16;
+            let mut blocked = [false; 20];
+
+            let slot_accepts = |slot: usize| -> bool {
+                match slot {
+                    mag_core::constants::WN_HEAD => (citem_p & PL_HEAD) != 0,
+                    mag_core::constants::WN_NECK => (citem_p & PL_NECK) != 0,
+                    mag_core::constants::WN_BODY => (citem_p & PL_BODY) != 0,
+                    mag_core::constants::WN_ARMS => (citem_p & PL_ARMS) != 0,
+                    mag_core::constants::WN_BELT => (citem_p & PL_BELT) != 0,
+                    mag_core::constants::WN_LEGS => (citem_p & PL_LEGS) != 0,
+                    mag_core::constants::WN_FEET => (citem_p & PL_FEET) != 0,
+                    WN_RHAND => (citem_p & PL_WEAPON) != 0,
+                    WN_LHAND => (citem_p & PL_SHIELD) != 0,
+                    mag_core::constants::WN_CLOAK => (citem_p & PL_CLOAK) != 0,
+                    mag_core::constants::WN_LRING | mag_core::constants::WN_RRING => {
+                        (citem_p & PL_RING) != 0
+                    }
+                    _ => true,
+                }
+            };
+
+            for slot in 0..20usize {
+                blocked[slot] = !slot_accepts(slot);
+            }
+
+            if (ci.worn_p[WN_RHAND] as u16 & PL_TWOHAND) != 0 {
+                blocked[WN_LHAND] = true;
+            }
+
+            for n in 0..12usize {
+                let worn_index = EQUIP_WNTAB[n];
+                if blocked[worn_index] {
+                    let x = 303 + ((n % 2) as i32) * 35;
+                    let y = 2 + ((n / 2) as i32) * 35;
+                    let tex = gfx.get_texture(4);
+                    let q = tex.query();
+                    canvas.copy(
+                        tex,
+                        None,
+                        Some(sdl2::rect::Rect::new(x, y, q.width, q.height)),
+                    )?;
+                }
+            }
         }
 
         for n in 0..20usize {

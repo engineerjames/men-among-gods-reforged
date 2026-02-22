@@ -146,6 +146,9 @@ pub(super) const INV_SCROLL_MAX: i32 = 30;
 /// menu state. Created fresh each time the player enters the game world.
 pub struct GameScene {
     pub(super) input_buf: String,
+    pub(super) sent_chat_history: Vec<String>,
+    pub(super) chat_history_index: Option<usize>,
+    pub(super) chat_history_draft: Option<String>,
     pub(super) pending_exit: Option<String>,
     pub(super) log_scroll: usize,
     pub(super) last_log_len: usize,
@@ -189,6 +192,9 @@ impl GameScene {
     pub fn new() -> Self {
         Self {
             input_buf: String::new(),
+            sent_chat_history: Vec::new(),
+            chat_history_index: None,
+            chat_history_draft: None,
             pending_exit: None,
             log_scroll: 0,
             last_log_len: 0,
@@ -211,6 +217,21 @@ impl GameScene {
             pending_skill_assignment: None,
             active_profile_character: None,
         }
+    }
+
+    /// Resolve the default skill target.
+    ///
+    /// Priority matches expected gameplay behavior:
+    /// 1) Explicitly selected character (Alt+click)
+    /// 2) Current attack target (`attack_cn`)
+    /// 3) No target (0)
+    pub(super) fn default_skill_target(ps: &PlayerState) -> u32 {
+        let selected = ps.selected_char() as u32;
+        if selected != 0 {
+            return selected;
+        }
+
+        ps.character_info().attack_cn.max(0) as u32
     }
 }
 
@@ -397,6 +418,12 @@ impl Scene for GameScene {
                     if !self.input_buf.is_empty() {
                         let text = self.input_buf.clone();
                         self.input_buf.clear();
+                        self.sent_chat_history.push(text.clone());
+                        if self.sent_chat_history.len() > 100 {
+                            self.sent_chat_history.remove(0);
+                        }
+                        self.chat_history_index = None;
+                        self.chat_history_draft = None;
                         if let Some(net) = app_state.network.as_ref() {
                             for pkt in ClientCommand::new_say_packets(text.as_bytes()) {
                                 net.send(pkt);
@@ -416,7 +443,7 @@ impl Scene for GameScene {
                             if !btn.is_unassigned() {
                                 net.send(ClientCommand::new_skill(
                                     btn.skill_nr(),
-                                    ps.selected_char() as u32,
+                                    Self::default_skill_target(ps),
                                     ps.character_info().attrib[0][0] as u32,
                                 ));
                             }
@@ -434,7 +461,7 @@ impl Scene for GameScene {
                             if !btn.is_unassigned() {
                                 net.send(ClientCommand::new_skill(
                                     btn.skill_nr(),
-                                    ps.selected_char() as u32,
+                                    Self::default_skill_target(ps),
                                     ps.character_info().attrib[0][0] as u32,
                                 ));
                             }
@@ -452,7 +479,7 @@ impl Scene for GameScene {
                             if !btn.is_unassigned() {
                                 net.send(ClientCommand::new_skill(
                                     btn.skill_nr(),
-                                    ps.selected_char() as u32,
+                                    Self::default_skill_target(ps),
                                     ps.character_info().attrib[0][0] as u32,
                                 ));
                             }
@@ -491,7 +518,7 @@ impl Scene for GameScene {
                             if !btn.is_unassigned() {
                                 net.send(ClientCommand::new_skill(
                                     btn.skill_nr(),
-                                    ps.selected_char() as u32,
+                                    Self::default_skill_target(ps),
                                     ps.character_info().attrib[0][0] as u32,
                                 ));
                             }
@@ -507,10 +534,33 @@ impl Scene for GameScene {
                     self.log_scroll = self.log_scroll.saturating_sub(3);
                 }
                 Keycode::Up => {
-                    self.skill_scroll = self.skill_scroll.saturating_sub(1);
+                    if !self.sent_chat_history.is_empty() {
+                        let next_index = match self.chat_history_index {
+                            Some(index) => index.saturating_sub(1),
+                            None => {
+                                self.chat_history_draft = Some(self.input_buf.clone());
+                                self.sent_chat_history.len() - 1
+                            }
+                        };
+                        self.chat_history_index = Some(next_index);
+                        if let Some(message) = self.sent_chat_history.get(next_index) {
+                            self.input_buf = message.clone();
+                        }
+                    }
                 }
                 Keycode::Down => {
-                    self.skill_scroll = (self.skill_scroll + 1).min(90);
+                    if let Some(index) = self.chat_history_index {
+                        if index + 1 < self.sent_chat_history.len() {
+                            let next_index = index + 1;
+                            self.chat_history_index = Some(next_index);
+                            if let Some(message) = self.sent_chat_history.get(next_index) {
+                                self.input_buf = message.clone();
+                            }
+                        } else {
+                            self.chat_history_index = None;
+                            self.input_buf = self.chat_history_draft.take().unwrap_or_default();
+                        }
+                    }
                 }
                 _ => {}
             },
@@ -641,11 +691,14 @@ impl Scene for GameScene {
                     }
                 } else if self.mouse_x < 300 {
                     // Inventory panel
+                    let step = (dy.unsigned_abs() as usize) * 2;
                     if dy > 0 {
-                        self.inv_scroll = self.inv_scroll.saturating_sub(dy as usize);
+                        self.inv_scroll = self.inv_scroll.saturating_sub(step);
                     } else if dy < 0 {
-                        self.inv_scroll = (self.inv_scroll + (-dy) as usize).min(30);
+                        self.inv_scroll = (self.inv_scroll + step).min(30);
                     }
+                    // Keep inventory index aligned to the left column (C client uses inv_pos +=/-= 2).
+                    self.inv_scroll &= !1usize;
                 } else {
                     // Chat / default: scroll log
                     if dy > 0 {

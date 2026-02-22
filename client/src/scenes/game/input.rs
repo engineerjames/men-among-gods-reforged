@@ -86,7 +86,7 @@ impl GameScene {
                     if !btn.is_unassigned() {
                         net.send(ClientCommand::new_skill(
                             btn.skill_nr(),
-                            ps.selected_char() as u32,
+                            Self::default_skill_target(ps),
                             ps.character_info().attrib[0][0] as u32,
                         ));
                     }
@@ -174,6 +174,11 @@ impl GameScene {
             };
             (ps.character_info().clone(), ps.selected_char() as u32)
         };
+        let skill_target = if selected_char != 0 {
+            selected_char
+        } else {
+            ci.attack_cn.max(0) as u32
+        };
 
         // --- Stat/skill commit ("Update") button: x=109..158, y=254..266 (LMB only) ---
         if mouse_btn == MouseButton::Left && (109..=158).contains(&x) && (254..=266).contains(&y) {
@@ -241,7 +246,7 @@ impl GameScene {
                         if let Some(net) = app_state.network.as_ref() {
                             net.send(ClientCommand::new_skill(
                                 get_skill_nr(skill_id) as u32,
-                                selected_char,
+                                skill_target,
                                 1,
                             ));
                         }
