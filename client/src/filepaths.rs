@@ -3,20 +3,17 @@ use std::path::PathBuf;
 /// Returns the base asset directory for the client.
 ///
 /// When `CARGO_MANIFEST_DIR` is set (i.e. during a `cargo run`), the path is
-/// resolved relative to the workspace. Otherwise it falls back to a path
+/// resolved relative to the crate root. Otherwise it falls back to a path
 /// relative to the current working directory.
 ///
 /// # Returns
-/// * `PathBuf` pointing to `client/assets/`.
+/// * `PathBuf` pointing to `assets/`.
 fn get_asset_directory() -> PathBuf {
     let directory: PathBuf;
     if std::env::var("CARGO_MANIFEST_DIR").is_ok() {
-        directory = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("client")
-            .join("assets");
+        directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets");
     } else {
-        directory = PathBuf::from(".").join("..").join("client").join("assets");
+        directory = PathBuf::from(".").join("assets");
     }
     directory
 }

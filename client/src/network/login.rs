@@ -5,83 +5,40 @@ use std::{
     time::{Duration, Instant},
 };
 
-use bevy::prelude::*;
-use bevy::tasks::IoTaskPool;
 use flate2::Decompress;
 use mag_core::constants::LO_PASSWORD;
 use mag_core::encrypt::xcrypt;
 
-use crate::helpers::exit_reason_string;
-
-use super::{
-    client_commands, server_commands, tick_stream, LoginRequested, LoginStatus, NetworkCommand,
-    NetworkEvent, NetworkRuntime,
-};
+use super::{client_commands, server_commands, tick_stream, NetworkCommand, NetworkEvent};
 
 fn login_exit_reason_message(reason: u32) -> String {
     if (reason as u8) == LO_PASSWORD {
         "Invalid password".to_string()
     } else {
-        exit_reason_string(reason).to_string()
+        mag_core::constants::get_exit_reason(reason).to_string()
     }
 }
 
-/// Starts the async network task for a login attempt.
+/// Runs the network task: connect, handshake, then main loop.
 ///
-/// Reads the most recent `LoginRequested` message, allocates the command/event channels, and
-/// spawns a background task that performs the TCP connect + login handshake + main loop.
-pub(super) fn start_login(
-    mut ev: MessageReader<LoginRequested>,
-    mut net: ResMut<NetworkRuntime>,
-    mut status: ResMut<LoginStatus>,
-) {
-    log::debug!("start_login - start");
-    let Some(req) = ev.read().last().cloned() else {
-        return;
-    };
-
-    if net.started {
-        status.message = "Already connected/connecting".to_string();
-        log::warn!("start_login called but login already started");
-        return;
-    }
-
-    status.message = "Connecting...".to_string();
-
-    let (command_tx, command_rx) = mpsc::channel::<NetworkCommand>();
-    let (event_tx, event_rx) = mpsc::channel::<NetworkEvent>();
-
-    net.command_tx = Some(command_tx);
-    net.event_rx = Some(std::sync::Arc::new(std::sync::Mutex::new(event_rx)));
-    net.started = true;
-
-    // Keep the task stored in the resource so it isn't dropped/canceled.
-    net.task = Some(IoTaskPool::get().spawn(async move {
-        log::debug!("Network task started");
-        run_network_task(req, command_rx, event_tx);
-    }));
-
-    log::debug!("start_login - end");
-}
-
-/// Runs the connection and login sequence, then enters the main network loop.
-///
-/// All user-facing state updates are emitted back to the main thread via `NetworkEvent`s.
-fn run_network_task(
-    req: LoginRequested,
+/// Intended to be called from `std::thread::spawn`.
+pub(crate) fn run_network_task(
+    host: String,
+    port: u16,
+    ticket: u64,
+    race: i32,
     command_rx: mpsc::Receiver<NetworkCommand>,
     event_tx: mpsc::Sender<NetworkEvent>,
 ) {
     let _ = event_tx.send(NetworkEvent::Status(format!(
-        "Connecting to {}:{}...",
-        req.host, req.port
+        "Connecting to {host}:{port}..."
     )));
 
-    let mut stream = match connect_stream(&req) {
+    let addr = format!("{host}:{port}");
+    let mut stream = match TcpStream::connect(&addr) {
         Ok(s) => s,
         Err(e) => {
-            log::error!("connect_stream failed: {e}");
-            let _ = event_tx.send(NetworkEvent::Error(e));
+            let _ = event_tx.send(NetworkEvent::Error(format!("Connect failed: {e}")));
             return;
         }
     };
@@ -92,35 +49,19 @@ fn run_network_task(
 
     let _ = event_tx.send(NetworkEvent::Status("Connected. Logging in...".to_string()));
 
-    if let Err(e) = login_handshake(&mut stream, &req, &event_tx) {
+    if let Err(e) = login_handshake(&mut stream, ticket, race, &event_tx) {
         log::error!("login_handshake failed: {e}");
         let _ = event_tx.send(NetworkEvent::Error(e));
         return;
     }
 
-    // `Sender` is cheap to clone; keep one copy so we can report failures.
-    let event_tx_loop = event_tx.clone();
-    if let Err(e) = run_network_loop(stream, command_rx, event_tx_loop) {
+    if let Err(e) = run_network_loop(stream, command_rx, event_tx.clone()) {
         log::error!("network loop exited with error: {e}");
         let _ = event_tx.send(NetworkEvent::Error(e));
     }
 }
 
-/// Connects a TCP stream to the requested host/port.
-///
-/// Returns a user-displayable error string on failure.
-fn connect_stream(req: &LoginRequested) -> Result<TcpStream, String> {
-    let addr = format!("{}:{}", req.host, req.port);
-    TcpStream::connect(&addr).map_err(|e| {
-        log::error!("Connect failed to {addr}: {e}");
-        format!("Connect failed: {e}")
-    })
-}
-
-/// Reads one login-phase server command and decodes it.
-///
-/// Most login-phase packets are 16 bytes (challenge/login ok/new player/mod data),
-/// but some (notably `SV_EXIT` and `SV_TICK`) are only 2 bytes.
+/// Reads one login-phase server command (16 bytes, or 2 bytes for tick/exit).
 fn get_server_response(stream: &mut TcpStream) -> Result<server_commands::ServerCommand, String> {
     let mut header = [0u8; 1];
     stream.read_exact(&mut header).map_err(|e| {
@@ -133,9 +74,7 @@ fn get_server_response(stream: &mut TcpStream) -> Result<server_commands::Server
 
     let opcode = header[0];
     let remaining = match opcode {
-        // SV_TICK (27) and SV_EXIT (48) are sent as 2 bytes by the server.
         27 | 48 => 1usize,
-        // Everything else we care about during login is 16 bytes.
         _ => 15usize,
     };
 
@@ -158,63 +97,25 @@ fn get_server_response(stream: &mut TcpStream) -> Result<server_commands::Server
         .ok_or_else(|| "Failed to parse server response".to_string())
 }
 
-/// Performs the login handshake, mirroring the original client's `socket.c` flow.
+/// Performs the API-ticket login handshake.
 ///
-/// This sends either a new-player login or an existing login depending on whether stored
-/// credentials are present (`user_id != 0`). On success, emits `NetworkEvent::LoggedIn`.
+/// Flow: `CL_API_LOGIN(ticket)` → `SV_CHALLENGE` → `xcrypt()` → `CL_CHALLENGE` + `CL_UNIQUE`
+/// → loop until `SV_LOGIN_OK` (or `SV_NEW_PLAYER` for new accounts).
 fn login_handshake(
     stream: &mut TcpStream,
-    req: &LoginRequested,
+    ticket: u64,
+    race: i32,
     event_tx: &mpsc::Sender<NetworkEvent>,
 ) -> Result<(), String> {
-    // Custom API ticket login path (account-managed characters).
-    if let Some(ticket) = req.login_ticket {
-        log::info!("Sending api login command (CL_API_LOGIN)");
-        let cmd = client_commands::ClientCommand::new_api_login(ticket);
-        stream
-            .write_all(&cmd.to_bytes())
-            .map_err(|e| format!("Send failed: {e}"))?;
-    } else {
-        // Mirror `socket.c`:
-        // 1) if a password was provided, send CL_PASSWD
-        // 2) if we have stored credentials (user_id != 0), send CL_LOGIN; else send CL_NEWLOGIN
-
-        if !req.password.is_empty() {
-            log::info!("Sending password command");
-            let pw = client_commands::ClientCommand::new_password(req.password.as_bytes());
-            stream
-                .write_all(&pw.to_bytes())
-                .map_err(|e| format!("Send failed: {e}"))?;
-        }
-
-        let (login_pass1, login_pass2) = if req.password.is_empty() {
-            (req.pass1, req.pass2)
-        } else {
-            pass_hash_from_password(&req.password)
-        };
-
-        let login_command = if req.user_id != 0 {
-            log::info!("Sending existing login command (CL_LOGIN)");
-            client_commands::ClientCommand::new_existing_login(
-                req.user_id,
-                login_pass1,
-                login_pass2,
-            )
-        } else {
-            log::info!("Sending newplayer login command (CL_NEWLOGIN)");
-            client_commands::ClientCommand::new_newplayer_login()
-        };
-        stream
-            .write_all(&login_command.to_bytes())
-            .map_err(|e| format!("Send failed: {e}"))?;
-    }
+    log::info!("Sending api login command (CL_API_LOGIN)");
+    let cmd = client_commands::ClientCommand::new_api_login(ticket);
+    stream
+        .write_all(&cmd.to_bytes())
+        .map_err(|e| format!("Send failed: {e}"))?;
 
     log::info!("Waiting for server response to login command");
-    let login_response = get_server_response(stream).map_err(|e| {
-        log::error!("Failed to read login response command: {e}");
-        e
-    })?;
-    log::info!("Received login response command: {:?}", login_response);
+    let login_response = get_server_response(stream)?;
+    log::info!("Received login response: {:?}", login_response);
     let _ = event_tx.send(NetworkEvent::Status(
         "Initial command successful.".to_string(),
     ));
@@ -225,7 +126,7 @@ fn login_handshake(
             let challenge_response = client_commands::ClientCommand::new_challenge(
                 encrypted_challenge,
                 0xFFFFFF, // client version 3.0.0
-                req.race,
+                race,
             );
             stream
                 .write_all(&challenge_response.to_bytes())
@@ -234,17 +135,12 @@ fn login_handshake(
         server_commands::ServerCommandData::Exit { reason } => {
             return Err(login_exit_reason_message(reason));
         }
-        server_commands::ServerCommandData::Empty
-        | server_commands::ServerCommandData::Ignore { .. } => {
-            log::warn!("Server did not send Challenge; got {:?}", login_response);
-            return Err("Server did not respond with a login challenge".to_string());
-        }
         _ => {
             log::error!(
                 "Unexpected server response during login (expected Challenge): {:?}",
                 login_response
             );
-            return Err("Unexpected server response during login".to_string());
+            return Err("Server did not respond with a login challenge".to_string());
         }
     }
 
@@ -255,39 +151,12 @@ fn login_handshake(
         .map_err(|e| format!("Send failed: {e}"))?;
 
     loop {
-        let is_logged_in = get_server_response(stream).map_err(|e| {
-            log::error!("Failed to read login completion response: {e}");
-            e
-        })?;
+        let response = get_server_response(stream)?;
 
-        match is_logged_in.structured_data {
-            // For an existing player
+        match response.structured_data {
             server_commands::ServerCommandData::LoginOk { server_version } => {
                 let _ = event_tx.send(NetworkEvent::Status("Login successful.".to_string()));
                 log::info!("Logged in with server version: {}", server_version);
-                let _ = event_tx.send(NetworkEvent::LoggedIn);
-                return Ok(());
-            }
-            // For a new player
-            server_commands::ServerCommandData::NewPlayer {
-                player_id,
-                pass1,
-                pass2,
-                server_version,
-            } => {
-                let _ = event_tx.send(NetworkEvent::NewPlayerCredentials {
-                    user_id: player_id,
-                    pass1,
-                    pass2,
-                });
-                let _ = event_tx.send(NetworkEvent::Status("Login successful.".to_string()));
-                log::info!(
-                    "New player created with ID: {}, server version: {}, pass1: {}, pass2: {}",
-                    player_id,
-                    server_version,
-                    pass1,
-                    pass2
-                );
                 let _ = event_tx.send(NetworkEvent::LoggedIn);
                 return Ok(());
             }
@@ -299,7 +168,7 @@ fn login_handshake(
             | server_commands::ServerCommandData::Mod6 { .. }
             | server_commands::ServerCommandData::Mod7 { .. }
             | server_commands::ServerCommandData::Mod8 { .. } => {
-                log::info!("Received mod data during login, ignoring for now");
+                log::info!("Received mod data during login, ignoring");
             }
             server_commands::ServerCommandData::Exit { reason } => {
                 log::warn!("Server demanded exit during login, reason={reason}");
@@ -308,54 +177,28 @@ fn login_handshake(
             _ => {
                 log::error!(
                     "Unexpected server response during login completion: {:?}",
-                    is_logged_in
+                    response
                 );
                 return Err(format!(
                     "Unexpected server response during login {:?}",
-                    is_logged_in
+                    response
                 ));
             }
         }
     }
 }
 
-/// Match the server's password hashing for `pass1`/`pass2` derived from user input.
-fn pass_hash_from_password(password: &str) -> (u32, u32) {
-    let bytes = password.as_bytes();
-    let pass1 = bytes
-        .iter()
-        .take(4)
-        .fold(0u32, |acc, &b| (acc << 8) | (b as u32));
-    let pass2 = bytes
-        .iter()
-        .skip(4)
-        .take(4)
-        .fold(0u32, |acc, &b| (acc << 8) | (b as u32));
-    (pass1, pass2)
-}
-
-/// Main network loop: interleaves outgoing writes with incoming tick packet parsing.
-///
-/// The server sends framed tick packets with a 2-byte length/flags header. Payloads may be
-/// uncompressed (raw tick bytes) or a chunk of a streaming zlib stream.
-fn run_network_loop(
+/// Main network loop: reads framed tick packets from the server, sends outgoing commands.
+pub(super) fn run_network_loop(
     mut stream: TcpStream,
     command_rx: mpsc::Receiver<NetworkCommand>,
     event_tx: mpsc::Sender<NetworkEvent>,
 ) -> Result<(), String> {
-    // Network loop: read and forward bytes; accept outgoing commands.
     log::info!("Entering network loop");
 
-    // The server sends framed tick packets:
-    // - 2-byte header: (len_with_header | 0x8000 if compressed)
-    // - payload: either raw tick bytes or a zlib chunk (streaming)
-    //
-    // Use non-blocking reads + a small accumulator buffer so we can interleave outgoing writes
-    // with incoming packet assembly.
-    stream.set_nonblocking(true).map_err(|e| {
-        log::error!("Failed to set stream to nonblocking mode: {e}");
-        "Failed to set stream to nonblocking mode".to_string()
-    })?;
+    stream
+        .set_nonblocking(true)
+        .map_err(|e| format!("Failed to set stream to nonblocking mode: {e}"))?;
 
     let mut recv_buf: Vec<u8> = Vec::with_capacity(16 * 1024);
     let mut tick_buffer = [0u8; 4096];
@@ -374,31 +217,19 @@ fn run_network_loop(
                             stream
                                 .write_all(&bytes)
                                 .map_err(|e| format!("Send failed: {e}"))?;
-                            log::debug!("Sent {} bytes to server: {:?}", bytes.len(), bytes);
                         }
                         NetworkCommand::Shutdown => {
-                            if event_tx
-                                .send(NetworkEvent::Status("Disconnected".to_string()))
-                                .is_err()
-                            {
-                                log::warn!(
-                                    "Network task: event receiver dropped, should shut down"
-                                );
-                            }
+                            let _ = event_tx.send(NetworkEvent::Status("Disconnected".to_string()));
                             return Ok(());
                         }
                     }
                 }
                 Err(mpsc::TryRecvError::Empty) => break,
-                Err(mpsc::TryRecvError::Disconnected) => {
-                    // The main thread dropped the sender (e.g. app shutdown). Exit so the
-                    // task can't keep the app alive / block shutdown.
-                    return Ok(());
-                }
+                Err(mpsc::TryRecvError::Disconnected) => return Ok(()),
             }
         }
 
-        // Read any available bytes from the socket into our accumulator.
+        // Read available bytes.
         match stream.read(&mut tick_buffer) {
             Ok(0) => {
                 log::warn!("Server closed connection");
@@ -408,16 +239,11 @@ fn run_network_loop(
                 did_work = true;
                 recv_buf.extend_from_slice(&tick_buffer[..n]);
             }
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                // nothing to read right now
-            }
-            Err(e) => {
-                log::error!("Read failed in network loop: {e}");
-                return Err(format!("Read failed: {e}"));
-            }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+            Err(e) => return Err(format!("Read failed: {e}")),
         }
 
-        // Parse as many complete framed packets as we can.
+        // Parse complete framed packets.
         loop {
             if recv_buf.len() < 2 {
                 break;
@@ -436,13 +262,10 @@ fn run_network_loop(
                 break;
             }
 
-            // Extract payload bytes (excluding the 2-byte header).
             let payload = recv_buf[2..total_len].to_vec();
             recv_buf.drain(..total_len);
             did_work = true;
 
-            // A tick packet may legitimately contain no payload (len==2). The original client
-            // still counts this as a tick.
             if payload.is_empty() {
                 let _ = event_tx.send(NetworkEvent::Tick);
                 continue;
@@ -484,7 +307,6 @@ fn run_network_loop(
             }
         }
 
-        // Avoid pegging a core when idle.
         if !did_work {
             std::thread::sleep(Duration::from_millis(1));
         }

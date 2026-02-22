@@ -1,490 +1,209 @@
-#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+use std::process;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Instant;
 
-mod constants;
-mod font_cache;
-mod gfx_cache;
-mod helpers;
-mod map;
-mod network;
-mod player_state;
-mod settings;
-mod sfx_cache;
-mod states;
-mod systems;
-mod types;
-
-use bevy::app::TaskPoolThreadAssignmentPolicy;
-use bevy::tasks::available_parallelism;
-use bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
-use std::path::PathBuf;
-use tracing_appender::{non_blocking::WorkerGuard, rolling};
-
-use bevy::log::{tracing_subscriber::Layer, BoxedLayer, LogPlugin};
-use bevy::prelude::*;
-use bevy::window::WindowResolution;
-use bevy::winit::{UpdateMode, WinitSettings};
+use egui_sdl2::egui;
+use sdl2::gfx::framerate::FPSManager;
+use sdl2::image::InitFlag;
+use sdl2::mixer::{AUDIO_S16LSB, DEFAULT_CHANNELS};
 
 use crate::gfx_cache::GraphicsCache;
+use crate::scenes::scene::SceneType;
 use crate::sfx_cache::SoundCache;
-use crate::systems::debug::{self, GameplayDebugSettings};
-use crate::systems::display;
-use crate::systems::magic_postprocess::MagicPostProcessPlugin;
-use crate::systems::map_hover;
-use crate::systems::nameplates;
-use crate::systems::sound;
+use crate::state::{ApiTokenState, AppState};
 
-fn install_crash_handler() {
-    std::panic::set_hook(Box::new(|info| {
-        // Best-effort: write a crash report to the same directory we use for logs.
-        let log_dir = resolve_log_dir();
-        let _ = std::fs::create_dir_all(&log_dir);
+mod account_api;
+mod dpi_scaling;
+mod filepaths;
+mod font_cache;
+mod game_map;
+mod gfx_cache;
+mod hosts;
+mod legacy_engine;
+mod network;
+mod platform;
+mod player_state;
+mod preferences;
+mod scenes;
+mod sfx_cache;
+mod state;
+mod types;
 
-        let crash_path = log_dir.join("client.crash.log");
-        let backtrace = std::backtrace::Backtrace::force_capture();
+/// Global flag ensuring the egui glyph warm-up runs exactly once.
+static EGUI_GLYPH_WARMED: AtomicBool = AtomicBool::new(false);
 
-        let payload =
-            format!("Men Among Gods client panic\n\n{info}\n\nBacktrace:\n{backtrace:?}\n");
+/// Pre-renders a wide set of ASCII glyphs into egui's internal texture atlas
+/// to avoid visible text warping on the very first frame.
+///
+/// # Arguments
+/// * `ctx` – the egui context whose font atlas will be primed.
+fn warm_egui_glyph_cache(ctx: &egui::Context) {
+    if EGUI_GLYPH_WARMED.swap(true, Ordering::Relaxed) {
+        return;
+    }
 
-        // Avoid panicking inside the panic hook.
-        let _ = std::fs::write(&crash_path, payload);
-    }));
+    let warmup_text = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 \
+!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
+
+    egui::Area::new("glyph_warmup_area".into())
+        .fixed_pos(egui::Pos2::new(-10_000.0, -10_000.0))
+        .show(ctx, |ui| {
+            ui.label(warmup_text);
+            ui.heading(warmup_text);
+            ui.monospace(warmup_text);
+        });
 }
 
-#[derive(Resource)]
-struct LogGuard(#[allow(dead_code)] WorkerGuard);
+/// Application entry point.
+///
+/// Initialises logging, SDL2 subsystems (video, audio, mixer), creates the
+/// window and canvas, builds the scene manager, and enters the main loop.
+/// The loop polls events, updates the active scene, renders world + UI layers,
+/// and caps at 60 FPS via `FPSManager`.
+fn main() -> Result<(), String> {
+    mag_core::initialize_logger(log::LevelFilter::Info, Some("mag_client.log")).unwrap_or_else(
+        |e| {
+            eprintln!("Failed to initialize logger: {}. Exiting.", e);
+            process::exit(1);
+        },
+    );
 
-#[derive(Resource, Clone, Debug)]
-struct ClientAssetsDir(#[allow(dead_code)] PathBuf);
+    log::info!("Initializing SDL2 contexts...");
+    let mut fps_manager = FPSManager::new();
+    fps_manager.set_framerate(60)?;
+    let sdl_context = sdl2::init()?;
+    let _image_context = sdl2::image::init(InitFlag::PNG)?;
+    let _audio_subsystem = sdl_context.audio()?;
 
-#[derive(States, Clone, Copy, PartialEq, Eq, Hash, Debug)]
-enum GameState {
-    Loading,
-    AccountLogin,
-    AccountCreation,
-    CharacterSelection,
-    CharacterCreation,
-    LoggingIn,
-    Gameplay,
-    Menu,
-    Exited,
-}
+    let frequency = 44_100;
+    let format = AUDIO_S16LSB;
+    let channels = DEFAULT_CHANNELS; // Stereo
+    let chunk_size = 1_024;
+    sdl2::mixer::open_audio(frequency, format, channels, chunk_size)?;
 
-pub fn initialize_framepace_settings(
-    mut framepace_settings: ResMut<bevy_framepace::FramepaceSettings>,
-) {
-    framepace_settings.limiter = bevy_framepace::Limiter::from_framerate(100.0);
-}
+    // Initialize the mixer with desired frequency, format, channels, and chunk size
+    sdl2::mixer::init(sdl2::mixer::InitFlag::MP3)?;
 
-pub(crate) fn resolve_log_dir() -> PathBuf {
-    if let Ok(dir) = std::env::var("MAG_LOG_DIR") {
-        if !dir.is_empty() {
-            return PathBuf::from(dir);
+    log::info!("Creating window and event pump...");
+    let video = sdl_context.video()?;
+    let mut window = video
+        .window("Men Among Gods - Reforged v1.3.0", 800, 600)
+        .position_centered()
+        .allow_highdpi()
+        .resizable()
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let _ = window.set_minimum_size(800, 600);
+
+    let mut event_pump = sdl_context.event_pump()?;
+
+    log::info!("Initializing canvas...");
+    let mut egui = egui_sdl2::EguiCanvas::new(window);
+
+    // Set a fixed 800x600 logical render size so that all SDL canvas.copy() /
+    // fill_rect() calls in every scene use logical pixel coordinates regardless
+    // of the physical drawable size (e.g. Retina 2x displays).
+    // egui's painter pre-multiplies vertices by pixels_per_point itself, so we
+    // temporarily disable the logical size before egui.paint() each frame.
+    const LOGICAL_W: u32 = 800;
+    const LOGICAL_H: u32 = 600;
+
+    log::info!("Initializing graphics and sound caches...");
+    let gfx_cache = GraphicsCache::new(
+        filepaths::get_gfx_zipfile(),
+        egui.painter.canvas.texture_creator(),
+    );
+    let sfx_cache = SoundCache::new(
+        filepaths::get_sfx_directory(),
+        filepaths::get_music_directory(),
+    );
+    let api_state = ApiTokenState::new(hosts::get_api_base_url());
+    let mut app_state = AppState::new(gfx_cache, sfx_cache, api_state);
+
+    let mut scene_manager = scenes::scene::SceneManager::new();
+    let mut last_frame = Instant::now();
+
+    // Log info about the monitor, graphics card, etc.
+    if let Ok(video_subsystem) = sdl_context.video() {
+        for i in 0..video_subsystem.num_video_displays().unwrap_or(0) {
+            if let Ok(display_mode) = video_subsystem.desktop_display_mode(i) {
+                log::info!(
+                    "Display mode: {}x{} @ {}Hz",
+                    display_mode.w,
+                    display_mode.h,
+                    display_mode.refresh_rate
+                );
+
+                let dpi = video_subsystem.display_dpi(i).unwrap_or((0.0, 0.0, 0.0));
+                log::info!(
+                    "Display DPI: {:.2} (horizontal), {:.2} (vertical), {:.2} (diagonal)",
+                    dpi.0,
+                    dpi.1,
+                    dpi.2
+                );
+            } else {
+                log::warn!("Failed to get display mode information for display {}", i);
+            }
         }
-    }
 
-    if let Some(base) = helpers::get_mag_base_dir() {
-        return base;
-    }
-
-    std::env::temp_dir().join(".men-among-gods")
-}
-
-fn custom_layer(app: &mut App) -> Option<BoxedLayer> {
-    let log_dir = resolve_log_dir();
-    // Avoid panicking on startup if the log directory cannot be created.
-    if std::fs::create_dir_all(&log_dir).is_err() {
-        return None;
-    }
-
-    let file_appender = rolling::daily(log_dir, "client.log");
-    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
-    app.insert_resource(LogGuard(guard));
-    Some(
-        bevy::log::tracing_subscriber::fmt::layer()
-            .with_ansi(false)
-            .with_writer(non_blocking)
-            .with_file(true)
-            .with_line_number(true)
-            .boxed(),
-    )
-}
-
-fn resolve_log_filter() -> String {
-    // Respect an explicit user override.
-    if let Ok(filter) = std::env::var("RUST_LOG") {
-        if !filter.trim().is_empty() {
-            return filter;
-        }
-    }
-
-    // The Vulkan loader can emit very loud "ERROR" messages on Windows when there are stale
-    // (uninstalled/moved) implicit layer registrations. These are often non-fatal and can be
-    // confusing to users.
-    //
-    // If you need to debug Vulkan instance creation, set `RUST_LOG` explicitly.
-    if cfg!(target_os = "windows") {
-        "info,wgpu_hal::vulkan::instance=off".to_string()
+        log::info!(
+            "Current video driver: {}",
+            video_subsystem.current_video_driver()
+        );
     } else {
-        "info".to_string()
+        log::error!("Failed to get video subsystem");
+        process::exit(1);
     }
-}
 
-fn resolve_assets_base_dir() -> PathBuf {
-    if let Ok(dir) = std::env::var("MAG_ASSETS_DIR") {
-        if !dir.is_empty() {
-            return PathBuf::from(dir);
+    'running: loop {
+        let now = Instant::now();
+        let dt = now.duration_since(last_frame);
+        last_frame = now;
+
+        // Poll events once, handle quit and forward to egui
+        for event in event_pump.poll_iter() {
+            if let sdl2::event::Event::Quit { .. } = event {
+                scene_manager.request_scene_change(SceneType::Exit, &mut app_state);
+            }
+            let egui_event = dpi_scaling::adjust_mouse_event_for_egui_hidpi(
+                &event,
+                egui.painter.canvas.window(),
+            );
+            let _ = egui.on_event(&egui_event);
+
+            let event =
+                dpi_scaling::adjust_mouse_event_for_hidpi(event, egui.painter.canvas.window());
+
+            scene_manager.handle_event(&mut app_state, &event);
+
+            if scene_manager.get_scene() == SceneType::Exit {
+                break 'running;
+            }
         }
+
+        scene_manager.update(&mut app_state, dt);
+
+        // Logical size on  → scene SDL drawing uses 800×600 coords.
+        let _ = egui.painter.canvas.set_logical_size(LOGICAL_W, LOGICAL_H);
+        scene_manager.render_world(&mut app_state, &mut egui.painter.canvas);
+        // Logical size off → egui painter uses raw physical pixels.
+        let _ = egui.painter.canvas.set_logical_size(0, 0);
+
+        egui.run(|ctx: &egui::Context| {
+            warm_egui_glyph_cache(ctx);
+            scene_manager.render_ui(&mut app_state, ctx);
+        });
+
+        if scene_manager.get_scene() == SceneType::Exit {
+            break 'running;
+        }
+
+        egui.paint();
+        egui.present();
+
+        fps_manager.delay();
     }
 
-    // Prefer workspace-relative assets when running from source.
-    let dev_assets = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets");
-    if dev_assets.exists() {
-        return dev_assets;
-    }
-
-    // Fall back to assets next to the built executable for packaged releases.
-    std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|p| p.join("assets")))
-        .unwrap_or_else(|| dev_assets)
-}
-
-fn main() {
-    install_crash_handler();
-
-    let assets_dir = resolve_assets_base_dir();
-    let gfx_zip = assets_dir.join("gfx").join("images.zip");
-    let sfx_dir = assets_dir.join("sfx");
-
-    log::info!("Using assets directory: {:?}", assets_dir);
-    log::info!("Using graphics zip: {:?}", gfx_zip);
-    log::info!("Using sound effects directory: {:?}", sfx_dir);
-    log::info!("Base directory: {:?}", helpers::get_mag_base_dir());
-    log::info!("Log directory: {:?}", resolve_log_dir());
-
-    let mut app = App::new();
-    let log_filter = resolve_log_filter();
-    app
-        // Setup resources
-        .insert_resource(GraphicsCache::new(gfx_zip.to_string_lossy().as_ref()))
-        .insert_resource(SoundCache::new(sfx_dir.to_string_lossy().as_ref()))
-        .insert_resource(ClientAssetsDir(assets_dir))
-        // Keep the game simulation running even when the window is unfocused/minimized.
-        .insert_resource(WinitSettings {
-            focused_mode: UpdateMode::Continuous,
-            unfocused_mode: UpdateMode::Continuous,
-            ..default()
-        })
-        .init_resource::<font_cache::FontCache>()
-        .init_resource::<sound::SoundEventQueue>()
-        .init_resource::<sound::SoundSettings>()
-        .init_resource::<states::gameplay::CursorActionTextSettings>()
-        .init_resource::<GameplayDebugSettings>()
-        .init_resource::<states::gameplay::MiniMapState>()
-        .init_resource::<player_state::PlayerState>()
-        .add_plugins(
-            DefaultPlugins
-                .build()
-                .set(ImagePlugin::default_nearest())
-                .set(LogPlugin {
-                    custom_layer,
-                    filter: log_filter,
-                    ..default()
-                })
-                .set(WindowPlugin {
-                    primary_window: Some(Window {
-                        title: "Men Among Gods (Client)".to_string(),
-                        resolution: WindowResolution::new(800, 600),
-                        resizable: true,
-                        ..default()
-                    }),
-                    ..default()
-                })
-                .set(TaskPoolPlugin {
-                    task_pool_options: TaskPoolOptions {
-                        min_total_threads: 1,
-                        max_total_threads: available_parallelism(),
-                        io: TaskPoolThreadAssignmentPolicy {
-                            min_threads: 1,
-                            max_threads: 1,
-                            percent: 0.0,
-                            on_thread_destroy: None,
-                            on_thread_spawn: None,
-                        },
-                        ..default()
-                    },
-                }),
-        )
-        .add_plugins(EguiPlugin::default())
-        .add_plugins(MagicPostProcessPlugin)
-        .add_plugins(network::NetworkPlugin)
-        .add_plugins(bevy_framepace::FramepacePlugin)
-        // Initialize the state to loading
-        .insert_state(GameState::Loading)
-        .insert_resource(ClearColor(Color::BLACK))
-        //
-        // Setup systems for each state
-        //
-        // Initial setup
-        //
-        .add_systems(Startup, initialize_framepace_settings)
-        // Cameras are set up by MagicPostProcessPlugin (world -> texture -> postprocess -> UI).
-        //
-        // Loading state
-        //
-        .add_systems(
-            OnEnter(GameState::Loading),
-            states::loading::setup_loading_ui,
-        )
-        .add_systems(
-            Update,
-            states::loading::run_loading.run_if(in_state(GameState::Loading)),
-        )
-        .add_systems(
-            OnExit(GameState::Loading),
-            states::loading::teardown_loading_ui,
-        )
-        //
-        // Account login state
-        //
-        .add_systems(
-            OnEnter(GameState::AccountLogin),
-            states::account_login::setup_account_login,
-        )
-        .add_systems(
-            EguiPrimaryContextPass,
-            states::account_login::run_account_login.run_if(in_state(GameState::AccountLogin)),
-        )
-        .add_systems(
-            OnExit(GameState::AccountLogin),
-            states::account_login::teardown_account_login,
-        )
-        //
-        // Account creation state
-        //
-        .add_systems(
-            OnEnter(GameState::AccountCreation),
-            states::account_creation::setup_account_creation,
-        )
-        .add_systems(
-            EguiPrimaryContextPass,
-            states::account_creation::run_account_creation
-                .run_if(in_state(GameState::AccountCreation)),
-        )
-        .add_systems(
-            OnExit(GameState::AccountCreation),
-            states::account_creation::teardown_account_creation,
-        )
-        //
-        // Character selection state
-        //
-        .add_systems(
-            OnEnter(GameState::CharacterSelection),
-            states::character_selection::setup_character_selection,
-        )
-        .add_systems(
-            EguiPrimaryContextPass,
-            states::character_selection::run_character_selection
-                .run_if(in_state(GameState::CharacterSelection)),
-        )
-        .add_systems(
-            OnExit(GameState::CharacterSelection),
-            states::character_selection::teardown_character_selection,
-        )
-        //
-        // Character creation state
-        //
-        .add_systems(
-            OnEnter(GameState::CharacterCreation),
-            states::character_creation::setup_character_creation,
-        )
-        .add_systems(
-            EguiPrimaryContextPass,
-            states::character_creation::run_character_creation
-                .run_if(in_state(GameState::CharacterCreation)),
-        )
-        .add_systems(
-            OnExit(GameState::CharacterCreation),
-            states::character_creation::teardown_character_creation,
-        )
-        //
-        // Gameplay state
-        //
-        .add_systems(
-            OnEnter(GameState::Gameplay),
-            states::gameplay::setup_gameplay,
-        )
-        .add_systems(
-            OnEnter(GameState::Gameplay),
-            states::account_login::stop_account_login_music,
-        )
-        .add_systems(
-            Update,
-            states::gameplay::run_gameplay
-                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu)))
-                .after(network::NetworkSet::Receive),
-        )
-        .add_systems(
-            Update,
-            sound::play_queued_sounds.run_if(in_state(GameState::Gameplay)),
-        )
-        .add_systems(
-            Update,
-            sound::play_queued_sounds.run_if(in_state(GameState::Menu)),
-        )
-        .add_systems(
-            Update,
-            states::gameplay::ui::hud::run_gameplay_buttonbox_toggles
-                .run_if(in_state(GameState::Gameplay)),
-        )
-        .add_systems(
-            Update,
-            states::gameplay::ui::statbox::run_gameplay_statbox_input
-                .run_if(in_state(GameState::Gameplay)),
-        )
-        .add_systems(
-            Update,
-            states::gameplay::ui::inventory::run_gameplay_inventory_input
-                .run_if(in_state(GameState::Gameplay)),
-        )
-        .add_systems(
-            Update,
-            states::gameplay::ui::shop::run_gameplay_shop_input
-                .run_if(in_state(GameState::Gameplay)),
-        )
-        .add_systems(
-            Update,
-            states::gameplay::ui::inventory::run_gameplay_update_equipment_blocks
-                .run_if(in_state(GameState::Gameplay)),
-        )
-        .add_systems(
-            Update,
-            map_hover::run_gameplay_map_hover_and_click.run_if(in_state(GameState::Gameplay)),
-        )
-        .add_systems(
-            Update,
-            states::gameplay::ui::cursor::run_gameplay_update_cursor_and_carried_item
-                .run_if(in_state(GameState::Gameplay))
-                .after(map_hover::run_gameplay_map_hover_and_click),
-        )
-        .add_systems(
-            Update,
-            states::gameplay::ui::cursor::run_gameplay_update_cursor_action_text
-                .run_if(in_state(GameState::Gameplay))
-                .after(map_hover::run_gameplay_map_hover_and_click)
-                .before(states::gameplay::run_gameplay_bitmap_text_renderer),
-        )
-        .add_systems(
-            Update,
-            map_hover::run_gameplay_move_target_marker
-                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu)))
-                .after(states::gameplay::run_gameplay),
-        )
-        .add_systems(
-            Update,
-            map_hover::run_gameplay_attack_target_marker
-                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu)))
-                .after(states::gameplay::run_gameplay),
-        )
-        .add_systems(
-            Update,
-            map_hover::run_gameplay_misc_action_marker
-                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu)))
-                .after(states::gameplay::run_gameplay),
-        )
-        .add_systems(
-            Update,
-            map_hover::run_gameplay_sprite_highlight
-                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu)))
-                .after(states::gameplay::run_gameplay),
-        )
-        .add_systems(
-            Update,
-            nameplates::run_gameplay_nameplates
-                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu)))
-                .after(states::gameplay::run_gameplay),
-        )
-        .add_systems(
-            Update,
-            states::gameplay::run_gameplay_text_ui
-                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu))),
-        )
-        .add_systems(
-            Update,
-            states::gameplay::ui::hud::run_gameplay_update_hud_labels
-                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu))),
-        )
-        .add_systems(
-            Update,
-            states::gameplay::ui::extra::run_gameplay_update_extra_ui
-                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu))),
-        )
-        .add_systems(
-            Update,
-            states::gameplay::ui::hud::run_gameplay_update_stat_bars
-                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu))),
-        )
-        .add_systems(
-            Update,
-            states::gameplay::ui::statbox::run_gameplay_update_scroll_knobs
-                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu))),
-        )
-        .add_systems(
-            Update,
-            states::gameplay::ui::portrait::run_gameplay_update_top_selected_name
-                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu))),
-        )
-        .add_systems(
-            Update,
-            states::gameplay::ui::portrait::run_gameplay_update_portrait_name_and_rank
-                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu))),
-        )
-        .add_systems(
-            Update,
-            states::gameplay::ui::shop::run_gameplay_update_shop_price_labels
-                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu)))
-                .after(states::gameplay::ui::shop::run_gameplay_shop_input),
-        )
-        .add_systems(
-            Update,
-            states::gameplay::run_gameplay_bitmap_text_renderer
-                .run_if(in_state(GameState::Gameplay).or(in_state(GameState::Menu)))
-                .after(states::gameplay::ui::extra::run_gameplay_update_extra_ui)
-                .after(states::gameplay::ui::hud::run_gameplay_update_stat_bars)
-                .after(states::gameplay::ui::portrait::run_gameplay_update_top_selected_name)
-                .after(states::gameplay::ui::portrait::run_gameplay_update_portrait_name_and_rank)
-                .after(states::gameplay::ui::shop::run_gameplay_update_shop_price_labels)
-                .after(nameplates::run_gameplay_nameplates),
-        )
-        //
-        // Menu state
-        //
-        .add_systems(OnEnter(GameState::Menu), states::menu::setup_menu)
-        .add_systems(
-            EguiPrimaryContextPass,
-            states::menu::run_menu.run_if(in_state(GameState::Menu)),
-        )
-        .add_systems(OnExit(GameState::Menu), states::menu::teardown_menu)
-        //
-        // Exited state
-        //
-        .add_systems(OnEnter(GameState::Exited), states::exited::setup_exited)
-        .add_systems(
-            Update,
-            states::exited::apply_exit_request.run_if(in_state(GameState::Exited)),
-        )
-        .add_systems(
-            EguiPrimaryContextPass,
-            states::exited::run_exited.run_if(in_state(GameState::Exited)),
-        )
-        .add_systems(OnExit(GameState::Exited), states::exited::teardown_exited)
-        //
-        // Global (utility) systems
-        //
-        .add_systems(StateTransition, debug::run_on_any_transition)
-        .add_systems(Update, display::enforce_aspect_and_pixel_coords)
-        .add_systems(Startup, settings::load_user_settings_startup)
-        .add_systems(Update, settings::save_user_settings_if_pending);
-
-    app.run();
+    Ok(())
 }

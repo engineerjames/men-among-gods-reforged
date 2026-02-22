@@ -482,7 +482,7 @@ impl GameScene {
         }
 
         // --- Worn equipment click: x=303..373, y=2..212 (2 cols × 35px, 6 rows × 35px) ---
-        // Slot remapping from orig/inter.c::mouse_inventory (matches Bevy inventory.rs).
+        // Slot remapping from orig/inter.c::mouse_inventory.
         if (303..=373).contains(&x) && (2..=212).contains(&y) {
             let tx = (x - 303) / 35;
             let ty = (y - 2) / 35;

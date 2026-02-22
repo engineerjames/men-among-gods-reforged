@@ -1,339 +1,315 @@
-use std::{fs::File, io::Read, path::PathBuf};
+use std::{collections::HashMap, fs::File, io::Read, path::PathBuf};
 
-use bevy::{
-    asset::RenderAssetUsages,
-    ecs::resource::Resource,
-    image::{CompressedImageFormats, Image, ImageSampler, ImageType},
-    prelude::Assets,
-    render::render_resource::TextureFormat,
-    sprite::Sprite,
+use sdl2::{
+    image::{ImageRWops, LoadTexture},
+    pixels::PixelFormatEnum,
+    render::{Texture, TextureCreator},
+    rwops::RWops,
+    video::WindowContext,
 };
 use zip::ZipArchive;
 
-#[derive(Debug, Clone)]
-pub enum CacheInitStatus {
-    InProgress { progress: f32 },
-    Done,
-    Error(String),
+/// Pre-decoded RGBA pixel data for a single sprite image.
+///
+/// Used for CPU-side operations (e.g. average-color calculation) that do not
+/// require a GPU texture.
+pub struct CachedRgbaImage {
+    pub width: usize,
+    pub height: usize,
+    pub pixels: Vec<u8>,
 }
 
-#[derive(Debug, Default)]
-struct InitState {
-    entries: Vec<(usize, String)>,
-    index: usize,
-}
-
-/// A cache for graphical assets loaded from a zip file. Currently
-/// we do the very slow operation of extracting the zip file contents
-/// every time the game starts. This is a placeholder implementation.
-#[derive(Resource, Default)]
+/// Lazy-loading sprite and texture cache backed by a ZIP archive.
+///
+/// Textures are loaded from `images.zip` on first access and kept in memory
+/// for the lifetime of the cache. Average per-sprite colours and raw RGBA
+/// pixel data are also cached for minimap and hit-test use.
 pub struct GraphicsCache {
-    assets_zip: PathBuf,
-    gfx: Vec<Option<Sprite>>,
-    sprite_tiles: Vec<Option<(i32, i32)>>,
-    sprite_avg_rgb565: Vec<Option<u16>>,
-    sprite_avg_rgba8: Vec<Option<[u8; 4]>>,
-    initialized: bool,
-    init_state: Option<InitState>,
-    init_error: Option<String>,
-    archive: Option<ZipArchive<File>>,
+    sprite_cache: HashMap<usize, Texture>,
+    avg_color_cache: HashMap<usize, (u8, u8, u8)>,
+    rgba_image_cache: HashMap<usize, CachedRgbaImage>,
+    creator: TextureCreator<WindowContext>,
+    archive: ZipArchive<File>,
+    index_to_filename: HashMap<usize, String>,
+    /// Streaming texture used for minimap rendering (128x128 RGBA).
+    pub minimap_texture: Option<Texture>,
 }
 
 impl GraphicsCache {
-    pub fn new(assets_zip: &str) -> Self {
-        Self {
-            assets_zip: PathBuf::from(assets_zip),
-            gfx: Vec::new(),
-            sprite_tiles: Vec::new(),
-            sprite_avg_rgb565: Vec::new(),
-            sprite_avg_rgba8: Vec::new(),
-            initialized: false,
-            init_state: None,
-            init_error: None,
-            archive: None,
-        }
-    }
-
-    pub fn reset_loading(&mut self) {
-        self.gfx.clear();
-        self.sprite_tiles.clear();
-        self.sprite_avg_rgb565.clear();
-        self.sprite_avg_rgba8.clear();
-        self.initialized = false;
-        self.init_state = None;
-        self.init_error = None;
-        self.archive = None;
-    }
-
-    pub fn is_initialized(&self) -> bool {
-        self.initialized
-    }
-
-    pub fn get_sprite(&self, index: usize) -> Option<&Sprite> {
-        self.gfx.get(index).and_then(|s| s.as_ref())
-    }
-
-    pub fn get_sprite_tiles_xy(&self, index: usize) -> Option<(i32, i32)> {
-        self.sprite_tiles
-            .get(index)
-            .and_then(|v| v.as_ref())
-            .copied()
-    }
-
-    pub fn get_sprite_avg_rgb565(&self, index: usize) -> Option<u16> {
-        self.sprite_avg_rgb565
-            .get(index)
-            .and_then(|v| v.as_ref())
-            .copied()
-    }
-
-    pub fn initialize(&mut self, images_assets: &mut Assets<Image>) -> CacheInitStatus {
-        if self.initialized {
-            return CacheInitStatus::Done;
-        }
-
-        if let Some(err) = self.init_error.clone() {
-            log::error!(
-                "GraphicsCache::initialize encountered previous error: {}",
-                err
-            );
-            return CacheInitStatus::Error(err);
-        }
-
-        if self.init_state.is_none() {
-            let file = match File::open(&self.assets_zip) {
-                Ok(f) => f,
-                Err(e) => {
-                    let err = format!("Failed to open graphics zip {:?}: {e}", self.assets_zip);
-                    self.init_error = Some(err.clone());
-
-                    log::error!("GraphicsCache::initialize failed to open zip file: {}", err);
-                    return CacheInitStatus::Error(err);
-                }
-            };
-
-            log::info!(
-                "GraphicsCache::initialize opened graphics zip {:?}",
-                self.assets_zip
-            );
-
-            self.archive = match ZipArchive::new(file) {
-                Ok(a) => Some(a),
-                Err(e) => {
-                    let err = format!("Failed to read graphics zip {:?}: {e}", self.assets_zip);
-                    self.init_error = Some(err.clone());
-
-                    log::error!(
-                        "GraphicsCache::initialize failed to read zip archive: {}",
-                        err
-                    );
-                    return CacheInitStatus::Error(err);
-                }
-            };
-
-            let mut entries = Vec::new();
-            for i in 0..self.archive.as_ref().unwrap().len() {
-                if let Ok(file) = self.archive.as_mut().unwrap().by_index(i) {
-                    let name = file.name().to_string();
-                    // Skip directory entries
-                    if !name.ends_with('/') {
-                        // Our sprite IDs are numeric filenames (e.g. 00031.png). Some zip builds
-                        // include a directory prefix (e.g. images/00031.png), so parse only the
-                        // final path component.
-                        let file_name = std::path::Path::new(&name)
-                            .file_name()
-                            .and_then(|s| s.to_str())
-                            .unwrap_or("");
-                        let stem = file_name.split('.').next().unwrap_or("");
-                        if let Ok(id) = stem.parse::<usize>() {
-                            entries.push((id, name));
-                        }
-                    }
-                }
-            }
-
-            entries.sort_by_key(|(id, _)| *id);
-
-            // Allocate a sparse vector where `gfx[id]` exists.
-            if let Some((max_id, _)) = entries.last() {
-                self.gfx.resize(max_id.saturating_add(1), None);
-                self.sprite_tiles.resize(max_id.saturating_add(1), None);
-                self.sprite_avg_rgb565
-                    .resize(max_id.saturating_add(1), None);
-                self.sprite_avg_rgba8.resize(max_id.saturating_add(1), None);
-            }
-
-            log::info!(
-                "GraphicsCache::initialize found {} entries in zip file",
-                entries.len()
-            );
-            self.init_state = Some(InitState { entries, index: 0 });
-        }
-
-        let state = self.init_state.as_mut().unwrap();
-
-        if state.entries.is_empty() {
-            self.initialized = true;
-            self.init_state = None;
-
-            log::error!("GraphicsCache::initialize completed with no entries");
-            return CacheInitStatus::Done;
-        }
-
-        if state.index >= state.entries.len() {
-            self.initialized = true;
-            self.init_state = None;
-
-            log::info!("GraphicsCache::initialize completed successfully");
-            return CacheInitStatus::Done;
-        }
-
-        let (sprite_id, entry_name) = &state.entries[state.index];
-        log::debug!(
-            "GraphicsCache::initialize loading entry {}/{}: {}",
-            state.index + 1,
-            state.entries.len(),
-            entry_name
-        );
-
-        let mut file = match self.archive.as_mut().unwrap().by_name(entry_name) {
+    /// Opens `images.zip` at the given path and builds a sprite-ID-to-filename
+    /// index for lazy texture loading.
+    ///
+    /// # Arguments
+    /// * `path_to_zip` - Filesystem path to the `images.zip` archive.
+    /// * `creator` - SDL2 texture creator bound to the window.
+    ///
+    /// # Returns
+    /// * A new `GraphicsCache`. Panics if the archive cannot be opened.
+    pub fn new(path_to_zip: PathBuf, creator: TextureCreator<WindowContext>) -> Self {
+        let file = match File::open(path_to_zip) {
             Ok(f) => f,
             Err(e) => {
-                let err = format!(
-                    "Failed to read graphics entry {:?} from zip: {e}",
-                    entry_name
-                );
-                self.init_error = Some(err.clone());
-
-                log::error!(
-                    "GraphicsCache::initialize failed to read entry from zip: {}",
-                    err
-                );
-                return CacheInitStatus::Error(err);
+                log::error!("Failed to open gfx.zip: {}", e);
+                panic!("Failed to open gfx.zip: {}", e);
             }
         };
 
-        let file_bytes = {
-            let mut buf = Vec::new();
-            if let Err(e) = file.read_to_end(&mut buf) {
-                let err = format!("Failed to read graphics entry {:?} data: {e}", entry_name);
-                self.init_error = Some(err.clone());
-
-                log::error!(
-                    "GraphicsCache::initialize failed to read entry data: {}",
-                    err
-                );
-                return CacheInitStatus::Error(err);
-            }
-            buf
-        };
-
-        let ext = entry_name
-            .rsplit('.')
-            .next()
-            .unwrap_or("png")
-            .to_ascii_lowercase();
-
-        let image = match Image::from_buffer(
-            &file_bytes,
-            ImageType::Extension(ext.as_str()),
-            CompressedImageFormats::default(),
-            true,
-            ImageSampler::nearest(),
-            RenderAssetUsages::default(),
-        ) {
-            Ok(img) => img,
+        let mut archive = match ZipArchive::new(file) {
+            Ok(archive) => archive,
             Err(e) => {
-                let err = format!(
-                    "Failed to decode image entry {:?} (ext={}) from zip: {e}",
-                    entry_name, ext
-                );
-                self.init_error = Some(err.clone());
-                log::error!("GraphicsCache::initialize decode failed: {}", err);
-                return CacheInitStatus::Error(err);
+                log::error!("Failed to read gfx.zip: {}", e);
+                panic!("Failed to read gfx.zip: {}", e);
             }
         };
 
-        let avg_rgba8 = avg_color_rgba8_from_image(&image);
-        let avg_rgb565 = rgba8_to_rgb565(avg_rgba8[0], avg_rgba8[1], avg_rgba8[2]);
-
-        // Cache dd.c tile dimensions (in 32x32 blocks). This avoids per-frame image-size queries.
-        let size = image.size();
-        let w = (size.x.max(1) as i32).max(1);
-        let h = (size.y.max(1) as i32).max(1);
-        let xs = ((w + 31) / 32).max(1);
-        let ys = ((h + 31) / 32).max(1);
-
-        let image_handle = images_assets.add(image);
-        if *sprite_id >= self.gfx.len() {
-            self.gfx.resize(sprite_id.saturating_add(1), None);
-            self.sprite_tiles.resize(sprite_id.saturating_add(1), None);
-            self.sprite_avg_rgb565
-                .resize(sprite_id.saturating_add(1), None);
-            self.sprite_avg_rgba8
-                .resize(sprite_id.saturating_add(1), None);
-        }
-        self.gfx[*sprite_id] = Some(Sprite::from_image(image_handle));
-        self.sprite_tiles[*sprite_id] = Some((xs, ys));
-        self.sprite_avg_rgb565[*sprite_id] = Some(avg_rgb565);
-        self.sprite_avg_rgba8[*sprite_id] = Some(avg_rgba8);
-        state.index += 1;
-
-        let progress = state.index as f32 / state.entries.len() as f32;
-        CacheInitStatus::InProgress { progress }
-    }
-}
-
-fn rgba8_to_rgb565(r: u8, g: u8, b: u8) -> u16 {
-    let r5 = ((r as u32 * 31 + 127) / 255) as u16;
-    let g6 = ((g as u32 * 63 + 127) / 255) as u16;
-    let b5 = ((b as u32 * 31 + 127) / 255) as u16;
-    (r5 << 11) | (g6 << 5) | b5
-}
-
-fn avg_color_rgba8_from_image(image: &Image) -> [u8; 4] {
-    let format = image.texture_descriptor.format;
-    let Some(data) = image.data.as_deref() else {
-        return [0, 0, 0, 255];
-    };
-
-    match format {
-        TextureFormat::Rgba8Unorm
-        | TextureFormat::Rgba8UnormSrgb
-        | TextureFormat::Bgra8Unorm
-        | TextureFormat::Bgra8UnormSrgb => {
-            let mut sum_r: u64 = 0;
-            let mut sum_g: u64 = 0;
-            let mut sum_b: u64 = 0;
-            let mut count: u64 = 0;
-
-            for px in data.chunks_exact(4) {
-                let (r, g, b, a) = match format {
-                    TextureFormat::Bgra8Unorm | TextureFormat::Bgra8UnormSrgb => {
-                        (px[2], px[1], px[0], px[3])
+        log::info!("Building index of gfx.zip contents...");
+        let mut index_to_filename = HashMap::new();
+        for i in 0..archive.len() {
+            if let Ok(file) = archive.by_index(i) {
+                let name = file.name().to_string();
+                // Skip directory entries
+                if !name.ends_with('/') {
+                    // Our sprite IDs are numeric filenames (e.g. 00031.png). Some zip builds
+                    // include a directory prefix (e.g. images/00031.png), so parse only the
+                    // final path component.
+                    let file_name = std::path::Path::new(&name)
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("");
+                    let stem = file_name.split('.').next().unwrap_or("");
+                    if let Ok(id) = stem.parse::<usize>() {
+                        index_to_filename.insert(id, name);
                     }
-                    _ => (px[0], px[1], px[2], px[3]),
-                };
-
-                if a == 0 {
-                    continue;
                 }
-
-                sum_r += r as u64;
-                sum_g += g as u64;
-                sum_b += b as u64;
-                count += 1;
             }
-
-            if count == 0 {
-                return [0, 0, 0, 255];
-            }
-
-            let r = (sum_r / count) as u8;
-            let g = (sum_g / count) as u8;
-            let b = (sum_b / count) as u8;
-            [r, g, b, 255]
         }
-        _ => [0, 0, 0, 255],
+
+        log::info!("Successfully loaded gfx.zip with {} files", archive.len());
+
+        GraphicsCache {
+            sprite_cache: HashMap::new(),
+            avg_color_cache: HashMap::new(),
+            rgba_image_cache: HashMap::new(),
+            creator,
+            archive,
+            index_to_filename,
+            minimap_texture: None,
+        }
+    }
+
+    /// Returns the alpha-weighted average colour of a sprite.
+    ///
+    /// If the colour has not been calculated yet, the sprite is loaded from
+    /// the ZIP archive as a side-effect.
+    ///
+    /// # Arguments
+    /// * `id` - Numeric sprite ID.
+    ///
+    /// # Returns
+    /// * `(r, g, b)` tuple. Returns `(0, 0, 0)` for fully-transparent or
+    ///   missing sprites.
+    pub fn get_avg_color(&mut self, id: usize) -> (u8, u8, u8) {
+        if let Some(color) = self.avg_color_cache.get(&id) {
+            return *color;
+        }
+
+        // If the average color isn't cached, load the texture to calculate it (this will cache it for next time)
+        self.get_texture(id);
+        *self.avg_color_cache.get(&id).unwrap_or(&(0, 0, 0))
+    }
+
+    /// Ensure the minimap streaming texture exists (128×128, ABGR8888).
+    /// ABGR8888 stores bytes in memory as [R,G,B,A] on little-endian, which
+    /// matches the xmap buffer layout directly.
+    pub fn ensure_minimap_texture(&mut self) {
+        if self.minimap_texture.is_none() {
+            match self
+                .creator
+                .create_texture_streaming(Some(PixelFormatEnum::ABGR8888), 128, 128)
+            {
+                Ok(tex) => {
+                    self.minimap_texture = Some(tex);
+                }
+                Err(e) => {
+                    log::error!("Failed to create minimap texture: {}", e);
+                }
+            }
+        }
+    }
+
+    /// Returns a mutable reference to the GPU texture for the given sprite ID.
+    ///
+    /// The texture is loaded from `images.zip` on first access and cached.
+    /// If the sprite cannot be loaded, a fallback error texture (ID 128) is
+    /// used instead.
+    ///
+    /// # Arguments
+    /// * `id` - Numeric sprite ID.
+    ///
+    /// # Returns
+    /// * `&mut Texture` — the caller may set blend/colour/alpha modulation
+    ///   but must reset it before yielding control.
+    pub fn get_texture(&mut self, id: usize) -> &mut Texture {
+        const ERROR_SPRITE_ID: usize = 128;
+        if !self.sprite_cache.contains_key(&id) {
+            let texture = self.load_texture_from_zip(id);
+            let final_texture = if let Some(tex) = texture {
+                tex
+            } else {
+                log::warn!(
+                    "Failed to load texture for sprite ID {}. Using error texture.",
+                    id
+                );
+                self.load_texture_from_zip(ERROR_SPRITE_ID)
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "Failed to load error texture with ID {}. gfx.zip may be corrupted.",
+                            ERROR_SPRITE_ID
+                        );
+                    })
+            };
+            self.sprite_cache.insert(id, final_texture);
+        }
+
+        self.sprite_cache.get_mut(&id).unwrap()
+    }
+
+    /// Loads and decodes a single sprite from the ZIP archive, caching its
+    /// average colour and RGBA pixels as a side-effect.
+    ///
+    /// # Arguments
+    /// * `id` - Numeric sprite ID.
+    ///
+    /// # Returns
+    /// * `Some(Texture)` on success, `None` if the sprite is not in the archive
+    ///   or decoding fails.
+    fn load_texture_from_zip(&mut self, id: usize) -> Option<Texture> {
+        if let Some(filename) = self.index_to_filename.get(&id) {
+            if let Ok(mut file) = self.archive.by_name(filename) {
+                let mut buffer = Vec::new();
+                file.read_to_end(&mut buffer).ok()?;
+                if let Ok(texture) = self.creator.load_texture_bytes(&buffer) {
+                    self.avg_color_cache
+                        .insert(id, Self::calculate_avg_color(&buffer));
+                    if let Some(rgba_image) = Self::decode_rgba_image(&buffer) {
+                        self.rgba_image_cache.insert(id, rgba_image);
+                    }
+                    return Some(texture);
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Computes the alpha-weighted average RGB colour of raw PNG/image bytes.
+    ///
+    /// # Arguments
+    /// * `image_bytes` - Raw image file bytes (e.g. PNG).
+    ///
+    /// # Returns
+    /// * `(r, g, b)` average colour. Returns `(0, 0, 0)` on decode failure
+    ///   or if all pixels are fully transparent.
+    fn calculate_avg_color(image_bytes: &[u8]) -> (u8, u8, u8) {
+        let rgba_image = match Self::decode_rgba_image(image_bytes) {
+            Some(image) => image,
+            None => return (0, 0, 0),
+        };
+
+        if rgba_image.width == 0 || rgba_image.height == 0 {
+            return (0, 0, 0);
+        }
+
+        let pixels = &rgba_image.pixels;
+
+        let mut total_r: u64 = 0;
+        let mut total_g: u64 = 0;
+        let mut total_b: u64 = 0;
+        let mut alpha_sum: u64 = 0;
+
+        for pixel in pixels.chunks_exact(4) {
+            let r = pixel[0] as u64;
+            let g = pixel[1] as u64;
+            let b = pixel[2] as u64;
+            let a = pixel[3] as u64;
+
+            total_r += r * a;
+            total_g += g * a;
+            total_b += b * a;
+            alpha_sum += a;
+        }
+
+        if alpha_sum == 0 {
+            return (0, 0, 0);
+        }
+
+        (
+            (total_r / alpha_sum) as u8,
+            (total_g / alpha_sum) as u8,
+            (total_b / alpha_sum) as u8,
+        )
+    }
+
+    /// Decodes raw image bytes into a contiguous RGBA pixel buffer.
+    ///
+    /// # Arguments
+    /// * `image_bytes` - Raw image file bytes (e.g. PNG).
+    ///
+    /// # Returns
+    /// * `Some(CachedRgbaImage)` on success, `None` on decode failure.
+    fn decode_rgba_image(image_bytes: &[u8]) -> Option<CachedRgbaImage> {
+        let rwops = match RWops::from_bytes(image_bytes) {
+            Ok(rwops) => rwops,
+            Err(error) => {
+                log::warn!("Failed to create RWops for image decode: {}", error);
+                return None;
+            }
+        };
+
+        let surface = match rwops.load() {
+            Ok(surface) => surface,
+            Err(error) => {
+                log::warn!("Failed to decode image: {}", error);
+                return None;
+            }
+        };
+
+        let surface = match surface.convert_format(PixelFormatEnum::RGBA32) {
+            Ok(surface) => surface,
+            Err(error) => {
+                log::warn!("Failed to convert image format to RGBA32: {}", error);
+                return None;
+            }
+        };
+
+        let width = surface.width() as usize;
+        let height = surface.height() as usize;
+        if width == 0 || height == 0 {
+            return None;
+        }
+
+        let pixels = match surface.without_lock() {
+            Some(pixels) => pixels,
+            None => {
+                log::warn!("Failed to access pixel buffer for image decode");
+                return None;
+            }
+        };
+
+        let pitch = surface.pitch() as usize;
+        let row_size = width * 4;
+        let mut contiguous = Vec::with_capacity(height * row_size);
+
+        for y in 0..height {
+            let row_start = y * pitch;
+            let row_end = row_start + row_size;
+            contiguous.extend_from_slice(&pixels[row_start..row_end]);
+        }
+
+        Some(CachedRgbaImage {
+            width,
+            height,
+            pixels: contiguous,
+        })
     }
 }

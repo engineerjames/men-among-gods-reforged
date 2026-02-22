@@ -35,18 +35,24 @@ samply record cargo run --bin server
 This will generate a flamegraph that you can use to analyze the performance of the server.
 
 # Client
-The client uses [Bevy](https://bevyengine.org/) for its rendering and input handling. It is still in ALPHA stage and is not yet fully functional. Many features from the original Mercenaries of Astonia (v2) game are missing, and there are likely to be bugs. However, you should be able to connect to a server and explore the world to some extent.
+The client uses [SDL2](https://www.libsdl.org/) via the [Rust SDL2 bindings](https://github.com/Rust-SDL2/rust-sdl2) for rendering, input handling, and audio.
 
-## Windows Vulkan Loader Messages
-On some Windows setups you may see Vulkan loader messages like:
+The client is still in ALPHA stage and is not yet fully functional. Many features from the original Mercenaries of Astonia (v2) game are missing, and there are likely to be bugs. However, you should be able to connect to a server and explore the world to some extent.
 
-`Failed to open JSON file ... VkLayer_*.json`
+## Building on Windows, macOS, and Linux
 
-This is usually caused by stale Vulkan layer registrations from uninstalled/moved software (e.g. old Vulkan SDKs, overlays). It’s often non-fatal.
+SDL2 is managed via [cargo-vcpkg](https://crates.io/crates/cargo-vcpkg) on all platforms and linked statically — no system SDL2 installation required:
 
-- The client suppresses these messages by default on Windows.
-- To see full graphics backend logs, set `RUST_LOG` explicitly.
-- If you want to avoid Vulkan entirely, try running with `WGPU_BACKEND=dx12`.
+```bash
+cargo install cargo-vcpkg
+cargo vcpkg build --manifest-path client/Cargo.toml
+cargo build
+```
+
+Linux builds additionally need system headers:
+```bash
+bash pipelines/install_linux_deps.sh
+```
 
 # Server
 The server is a command-line application that listens for incoming connections from clients. It is still in ALPHA stage and is not yet fully functional. You should be able to connect to it using any Merceneries of Astonia (v2) client, but expect bugs.

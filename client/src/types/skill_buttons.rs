@@ -1,9 +1,8 @@
+/// A single spell-bar button binding, matching the original C `xbutton`
+/// struct (12 bytes). Stores an 8-byte display name and the `skilltab`
+/// index of the bound skill.
 // xbutton from original C headers
-use serde::{Deserialize, Serialize};
-
-// xbutton from original C headers
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
-#[repr(C)]
+#[derive(Copy, Clone, Debug)]
 pub struct SkillButtons {
     name: [u8; 8],
     skill_nr: u32,
@@ -14,7 +13,6 @@ const _: () = {
 };
 
 impl Default for SkillButtons {
-    /// Create a default (unassigned) skill button entry.
     fn default() -> Self {
         Self {
             name: [0; 8],
@@ -24,21 +22,20 @@ impl Default for SkillButtons {
 }
 
 impl SkillButtons {
-    /// Legacy client used `-1` (signed) as the sentinel for an unassigned hotbar slot.
-    /// Stored as `u32` here; treat `0xFFFF_FFFF` as the equivalent.
+    /// Sentinel value indicating no skill is assigned to this button.
     pub const UNASSIGNED_SKILL_NR: u32 = u32::MAX;
 
-    /// Return the stored skill number.
+    /// Returns the `skilltab` index of the bound skill.
     pub fn skill_nr(&self) -> u32 {
         self.skill_nr
     }
 
-    /// Set the stored skill number.
+    /// Sets the bound skill index.
     pub fn set_skill_nr(&mut self, skill_nr: u32) {
         self.skill_nr = skill_nr;
     }
 
-    /// Return the button name as a UTF-8 string.
+    /// Returns the display name as a `String`, stopping at the first null byte.
     pub fn name_str(&self) -> String {
         let end = self
             .name
@@ -48,7 +45,7 @@ impl SkillButtons {
         String::from_utf8_lossy(&self.name[..end]).to_string()
     }
 
-    /// Set the button name, truncating to 7 bytes.
+    /// Sets the display name, truncating to 7 characters.
     pub fn set_name(&mut self, name: &str) {
         self.name = [0; 8];
         for (i, &b) in name.as_bytes().iter().take(7).enumerate() {
@@ -56,7 +53,7 @@ impl SkillButtons {
         }
     }
 
-    /// Return true if the slot is unassigned.
+    /// Returns `true` if no skill is assigned to this button.
     pub fn is_unassigned(&self) -> bool {
         if self.skill_nr == Self::UNASSIGNED_SKILL_NR {
             return true;
@@ -65,7 +62,7 @@ impl SkillButtons {
         s.is_empty() || s == "-"
     }
 
-    /// Mark the slot as unassigned using the legacy sentinel values.
+    /// Marks this button as unassigned (sets sentinel skill_nr and "-" name).
     pub fn set_unassigned(&mut self) {
         self.skill_nr = Self::UNASSIGNED_SKILL_NR;
         self.set_name("-");
@@ -77,31 +74,54 @@ mod tests {
     use super::*;
 
     #[test]
-    /// Ensure the default button is treated as unassigned.
-    fn default_is_considered_unassigned() {
-        let b = SkillButtons::default();
-        assert!(b.is_unassigned());
+    fn default_is_unassigned() {
+        let btn = SkillButtons::default();
+        assert!(btn.is_unassigned());
+        assert_eq!(btn.skill_nr(), 0);
+        assert_eq!(btn.name_str(), "");
     }
 
     #[test]
-    /// Verify `set_unassigned` sets both sentinel fields.
-    fn set_unassigned_sets_sentinel_and_dash_name() {
-        let mut b = SkillButtons::default();
-        b.set_skill_nr(123);
-        b.set_name("Fire");
-        assert!(!b.is_unassigned());
-
-        b.set_unassigned();
-        assert!(b.is_unassigned());
-        assert_eq!(b.skill_nr(), SkillButtons::UNASSIGNED_SKILL_NR);
-        assert_eq!(b.name_str(), "-");
+    fn set_name_and_skill_nr() {
+        let mut btn = SkillButtons::default();
+        btn.set_name("Fire");
+        btn.set_skill_nr(5);
+        assert_eq!(btn.name_str(), "Fire");
+        assert_eq!(btn.skill_nr(), 5);
+        assert!(!btn.is_unassigned());
     }
 
     #[test]
-    /// Confirm name truncation to 7 bytes plus NUL.
-    fn set_name_truncates_to_7_bytes_plus_nul() {
-        let mut b = SkillButtons::default();
-        b.set_name("123456789");
-        assert_eq!(b.name_str(), "1234567");
+    fn name_truncated_to_7_chars() {
+        let mut btn = SkillButtons::default();
+        btn.set_name("LongSpellName");
+        assert_eq!(btn.name_str(), "LongSpe");
+    }
+
+    #[test]
+    fn is_unassigned_with_dash_name() {
+        let mut btn = SkillButtons::default();
+        btn.set_name("-");
+        btn.set_skill_nr(42);
+        assert!(btn.is_unassigned());
+    }
+
+    #[test]
+    fn is_unassigned_with_sentinel_nr() {
+        let mut btn = SkillButtons::default();
+        btn.set_name("Fire");
+        btn.set_skill_nr(SkillButtons::UNASSIGNED_SKILL_NR);
+        assert!(btn.is_unassigned());
+    }
+
+    #[test]
+    fn set_unassigned_clears() {
+        let mut btn = SkillButtons::default();
+        btn.set_name("Fire");
+        btn.set_skill_nr(5);
+        btn.set_unassigned();
+        assert!(btn.is_unassigned());
+        assert_eq!(btn.skill_nr(), SkillButtons::UNASSIGNED_SKILL_NR);
+        assert_eq!(btn.name_str(), "-");
     }
 }

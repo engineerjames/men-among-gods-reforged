@@ -1,104 +1,185 @@
-use bevy::prelude::*;
-
-use crate::gfx_cache::GraphicsCache;
-
-pub const BITMAP_GLYPH_W: f32 = 6.0;
-pub const BITMAP_GLYPH_H: f32 = 10.0;
-pub const BITMAP_GLYPH_COUNT: usize = 96; // ASCII 32..=127 inclusive
-pub const BITMAP_GLYPH_Y_OFFSET: f32 = 1.0; // dd.c uses +576 (one row) before glyph pixels
+/// Sprite ID of the first bitmap font sheet (yellow/default).
 pub const BITMAP_FONT_FIRST_SPRITE_ID: usize = 700;
+
+/// Number of bitmap font sprite sheets (fonts 0–3 maps to sprites 700–703).
 pub const BITMAP_FONT_COUNT: usize = 4;
 
-#[derive(Resource, Default)]
-pub struct FontCache {
-    bitmap_layout: Option<Handle<TextureAtlasLayout>>,
-    bitmap_fonts: Vec<Option<Handle<Image>>>,
-    bitmap_initialized: bool,
+/// Width in pixels of each glyph cell in the font sprite sheet.
+pub const BITMAP_GLYPH_W: u32 = 6;
+
+/// Height in pixels of the rendered portion of each glyph.
+pub const BITMAP_GLYPH_H: u32 = 10;
+
+/// Y-offset within the font sprite sheet where glyphs start.
+pub const BITMAP_GLYPH_Y_OFFSET: i32 = 1;
+
+/// Returns the advance width of a single glyph (rendered width is 5px, advance is 6px).
+pub const BITMAP_GLYPH_ADVANCE: u32 = BITMAP_GLYPH_W;
+
+/// Returns the 0-based glyph index for the given ASCII character.
+///
+/// Returns -1 for characters outside the printable range.
+#[inline]
+pub fn glyph_index(ch: char) -> i32 {
+    let code = ch as i32;
+    if !(32..=127).contains(&code) {
+        return -1;
+    }
+    code - 32
 }
 
-impl FontCache {
-    pub fn bitmap_layout(&self) -> Option<Handle<TextureAtlasLayout>> {
-        self.bitmap_layout.clone()
+/// Draws a text string onto `canvas` using the bitmap font.
+///
+/// Each character advances `BITMAP_GLYPH_ADVANCE` pixels horizontally.
+pub fn draw_text(
+    canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
+    gfx_cache: &mut crate::gfx_cache::GraphicsCache,
+    font: usize,
+    text: &str,
+    x: i32,
+    y: i32,
+) -> Result<(), String> {
+    draw_text_impl(canvas, gfx_cache, font, text, x, y, None)
+}
+
+/// Draws a text string using `font`, tinted to `color`.
+///
+/// This uses SDL texture color modulation and restores the texture state before returning.
+pub fn draw_text_tinted(
+    canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
+    gfx_cache: &mut crate::gfx_cache::GraphicsCache,
+    font: usize,
+    text: &str,
+    x: i32,
+    y: i32,
+    color: sdl2::pixels::Color,
+) -> Result<(), String> {
+    draw_text_impl(canvas, gfx_cache, font, text, x, y, Some(color))
+}
+
+fn draw_text_impl(
+    canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
+    gfx_cache: &mut crate::gfx_cache::GraphicsCache,
+    font: usize,
+    text: &str,
+    x: i32,
+    y: i32,
+    tint: Option<sdl2::pixels::Color>,
+) -> Result<(), String> {
+    let sprite_id = BITMAP_FONT_FIRST_SPRITE_ID + (font % BITMAP_FONT_COUNT);
+
+    if let Some(color) = tint {
+        let texture = gfx_cache.get_texture(sprite_id);
+        texture.set_color_mod(color.r, color.g, color.b);
     }
 
-    pub fn bitmap_font_image(&self, font: usize) -> Option<Handle<Image>> {
-        self.bitmap_fonts
-            .get(font)
-            .and_then(|h| h.as_ref())
-            .cloned()
+    let mut cx = x;
+    let mut first_error: Option<String> = None;
+    for ch in text.chars() {
+        let glyph = glyph_index(ch);
+        if glyph < 0 {
+            cx += BITMAP_GLYPH_ADVANCE as i32;
+            continue;
+        }
+
+        // Re-fetch each iteration to avoid holding a reference across the `copy` call.
+        let texture = gfx_cache.get_texture(sprite_id);
+        let src = sdl2::rect::Rect::new(
+            glyph * BITMAP_GLYPH_W as i32,
+            BITMAP_GLYPH_Y_OFFSET,
+            BITMAP_GLYPH_W - 1,
+            BITMAP_GLYPH_H,
+        );
+        let dst = sdl2::rect::Rect::new(cx, y, BITMAP_GLYPH_W - 1, BITMAP_GLYPH_H);
+        if let Err(err) = canvas.copy(texture, Some(src), Some(dst)) {
+            first_error = Some(err);
+            break;
+        }
+
+        cx += BITMAP_GLYPH_ADVANCE as i32;
     }
 
-    pub fn bitmap_glyph_index(ch: char) -> usize {
-        let code = ch as u32;
-        if !(32..=127).contains(&code) {
-            return 0;
-        }
-        let idx = (code - 32) as usize;
-        if idx >= BITMAP_GLYPH_COUNT {
-            0
-        } else {
-            idx
-        }
+    if tint.is_some() {
+        let texture = gfx_cache.get_texture(sprite_id);
+        texture.set_color_mod(255, 255, 255);
     }
 
-    pub fn ensure_bitmap_initialized(
-        &mut self,
-        gfx: &GraphicsCache,
-        atlas_layouts: &mut Assets<TextureAtlasLayout>,
-    ) {
-        if self.bitmap_initialized {
-            return;
-        }
+    if let Some(err) = first_error {
+        return Err(err);
+    }
 
-        // Create the shared 96-column atlas layout for all 4 fonts.
-        //
-        // Important: `TextureAtlasLayout::from_grid` does NOT include `offset` in `layout.size`.
-        // Because we use a Y offset (the glyph row starts at y=1), that would produce UVs with
-        // `v > 1.0` and cause subtle edge artifacts.
-        //
-        // Additionally, the original font sheet uses 6px cells but effectively 5px glyphs with a
-        // 1px spacer column; sampling the full 6px width can show "next glyph" bleed on the
-        // right edge depending on exact screen placement. We therefore crop the atlas rect width
-        // to 5px while keeping the 6px advance.
-        if self.bitmap_layout.is_none() {
-            let cell_w = BITMAP_GLYPH_W as u32;
-            let cell_h = BITMAP_GLYPH_H as u32;
-            let offset_y = BITMAP_GLYPH_Y_OFFSET as u32;
+    Ok(())
+}
 
-            let mut layout = TextureAtlasLayout::new_empty(UVec2::new(
-                cell_w * BITMAP_GLYPH_COUNT as u32,
-                offset_y + cell_h,
-            ));
+/// Draws `text` centered horizontally around `center_x`.
+pub fn draw_text_centered(
+    canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
+    gfx_cache: &mut crate::gfx_cache::GraphicsCache,
+    font: usize,
+    text: &str,
+    center_x: i32,
+    y: i32,
+) -> Result<(), String> {
+    let width = text.len() as i32 * BITMAP_GLYPH_ADVANCE as i32;
+    draw_text(canvas, gfx_cache, font, text, center_x - width / 2, y)
+}
 
-            for i in 0..BITMAP_GLYPH_COUNT as u32 {
-                let x = i * cell_w;
-                let min = UVec2::new(x, offset_y);
-                let max = UVec2::new(
-                    x + cell_w.saturating_sub(1),
-                    offset_y + cell_h.saturating_sub(1),
-                );
-                layout.add_texture(URect { min, max });
-            }
+/// Returns the pixel width of the given text string when rendered with the bitmap font.
+#[inline]
+pub fn text_width(text: &str) -> u32 {
+    (text.len() as u32) * BITMAP_GLYPH_ADVANCE
+}
 
-            self.bitmap_layout = Some(atlas_layouts.add(layout));
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-        if self.bitmap_fonts.is_empty() {
-            self.bitmap_fonts.resize(BITMAP_FONT_COUNT, None);
-        }
+    #[test]
+    fn glyph_index_space() {
+        assert_eq!(glyph_index(' '), 0);
+    }
 
-        // Pull the atlas images from the already-loaded GraphicsCache.
-        let mut any_loaded = false;
-        for font in 0..BITMAP_FONT_COUNT {
-            let sprite_id = BITMAP_FONT_FIRST_SPRITE_ID + font;
-            if let Some(sprite) = gfx.get_sprite(sprite_id) {
-                self.bitmap_fonts[font] = Some(sprite.image.clone());
-                any_loaded = true;
-            }
-        }
+    #[test]
+    fn glyph_index_uppercase_a() {
+        // 'A' = 65, 65 - 32 = 33
+        assert_eq!(glyph_index('A'), 33);
+    }
 
-        // Mark initialized even if some are missing; callers can probe per-font handle.
-        // We only require at least one to exist to avoid spamming repeated attempts.
-        self.bitmap_initialized = any_loaded;
+    #[test]
+    fn glyph_index_tilde() {
+        // '~' = 126, 126 - 32 = 94
+        assert_eq!(glyph_index('~'), 94);
+    }
+
+    #[test]
+    fn glyph_index_del_char() {
+        // DEL = 127, 127 - 32 = 95
+        assert_eq!(glyph_index('\x7F'), 95);
+    }
+
+    #[test]
+    fn glyph_index_non_printable() {
+        assert_eq!(glyph_index('\t'), -1);
+        assert_eq!(glyph_index('\n'), -1);
+    }
+
+    #[test]
+    fn glyph_index_high_unicode() {
+        assert_eq!(glyph_index('€'), -1);
+    }
+
+    #[test]
+    fn text_width_empty() {
+        assert_eq!(text_width(""), 0);
+    }
+
+    #[test]
+    fn text_width_hello() {
+        assert_eq!(text_width("Hello"), 30); // 5 * 6
+    }
+
+    #[test]
+    fn text_width_single_char() {
+        assert_eq!(text_width("X"), 6);
     }
 }

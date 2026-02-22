@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::skill_buttons::SkillButtons;
 
-const LOG_FILE_NAME: &str = "sdl_client.log";
-const PROFILE_FILE_NAME: &str = "sdl_client_profile.json";
+const LOG_FILE_NAME: &str = "mag_client.log";
+const PROFILE_FILE_NAME: &str = "mag_profile.json";
 
 /// Identifies a specific character for profile look-up.
 #[derive(Clone, Debug)]
@@ -130,13 +130,13 @@ fn working_directory() -> PathBuf {
     std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
-/// Returns the path to the JSON profile file (`sdl_client_profile.json`)
+/// Returns the path to the JSON profile file (`mag_profile.json`)
 /// in the working directory.
 pub fn profile_file_path() -> PathBuf {
     working_directory().join(PROFILE_FILE_NAME)
 }
 
-/// Returns the path to the log file (`sdl_client.log`) in the working
+/// Returns the path to the log file (`mag_client.log`) in the working
 /// directory.
 pub fn log_file_path() -> PathBuf {
     working_directory().join(LOG_FILE_NAME)

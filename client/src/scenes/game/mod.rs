@@ -67,8 +67,7 @@ pub(super) const UI_FRAME_SPRITE: usize = 1;
 /// Default bitmap font index (yellow, sprite 701).
 pub(super) const UI_FONT: usize = 1;
 
-// Matches original engine.c worn-slot draw order (wntab[]), and the Bevy client's
-// EQUIP_WNTAB mapping.
+// Matches original engine.c worn-slot draw order (wntab[]).
 pub(super) const EQUIP_WNTAB: [usize; 12] = [0, 9, 2, 3, 1, 4, 8, 7, 10, 11, 5, 6];
 
 // HP / Endurance / Mana bars
@@ -158,7 +157,7 @@ pub struct GameScene {
     pub(super) mouse_x: i32,
     pub(super) mouse_y: i32,
     /// Pending stat raises not yet committed to the server (indices 0-7 = attrib/HP/End/Mana,
-    /// 8-107 = sorted skill positions). Mirrors statbox.stat_raised in the Bevy client.
+    /// 8-107 = sorted skill positions).
     pub(super) stat_raised: [i32; 108],
     /// Points already spent on pending raises (sum of costs for each `stat_raised[n]`).
     pub(super) stat_points_used: i32,
