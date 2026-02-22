@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Linux build dependencies (Bevy + SDL2).
+# Linux build dependencies for Bevy and the vcpkg bootstrap toolchain.
+# SDL2 is sourced via cargo-vcpkg (statically linked) and does not need
+# system SDL2 packages.
 # Safe to run in CI; intended for ubuntu-latest.
 
 sudo apt-get update
@@ -16,7 +18,5 @@ sudo apt-get install -y \
   libxrandr-dev \
   libxcursor-dev \
   libxinerama-dev \
-  libsdl2-dev \
-  libsdl2-image-dev \
-  libsdl2-mixer-dev \
-  libsdl2-gfx-dev
+  cmake \
+  ninja-build

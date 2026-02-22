@@ -39,24 +39,19 @@ The client uses [SDL2](https://www.libsdl.org/) via the [Rust SDL2 bindings](htt
 
 The client is still in ALPHA stage and is not yet fully functional. Many features from the original Mercenaries of Astonia (v2) game are missing, and there are likely to be bugs. However, you should be able to connect to a server and explore the world to some extent.
 
-## Building on Windows
-The SDL client uses [cargo-vcpkg](https://crates.io/crates/cargo-vcpkg) to manage SDL2 dependencies on Windows:
+## Building on Windows, macOS, and Linux
+
+SDL2 is managed via [cargo-vcpkg](https://crates.io/crates/cargo-vcpkg) on all platforms and linked statically — no system SDL2 installation required:
+
 ```bash
 cargo install cargo-vcpkg
 cargo vcpkg build --manifest-path sdl_client/Cargo.toml
 cargo build
 ```
 
-## Building on macOS
-```bash
-brew install sdl2 sdl2_image sdl2_ttf sdl2_mixer sdl2_gfx
-cargo build
-```
-
-## Building on Linux
+Linux builds additionally need Bevy system headers:
 ```bash
 bash pipelines/install_linux_deps.sh
-cargo build
 ```
 
 # Server

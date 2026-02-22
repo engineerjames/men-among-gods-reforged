@@ -4,32 +4,19 @@ The primary game client for Men Among Gods: Reforged, built with [SDL2](https://
 
 ## Prerequisites
 
-### macOS
-
-```bash
-brew install sdl2 sdl2_image sdl2_ttf sdl2_mixer sdl2_gfx
-```
-
-### Linux (Ubuntu / Debian)
-
-```bash
-sudo apt-get install -y \
-  libsdl2-dev \
-  libsdl2-image-dev \
-  libsdl2-mixer-dev \
-  libsdl2-gfx-dev
-```
-
-### Windows
-
-SDL2 dependencies are managed automatically via [cargo-vcpkg](https://crates.io/crates/cargo-vcpkg) with static linking — no DLLs to ship.
+SDL2 is managed via [cargo-vcpkg](https://crates.io/crates/cargo-vcpkg) on all platforms — no system SDL2 installation required.
 
 ```bash
 cargo install cargo-vcpkg
 cargo vcpkg build --manifest-path sdl_client/Cargo.toml
 ```
 
-This downloads and builds the SDL2 libraries the first time; subsequent builds reuse the cache.
+This downloads and compiles SDL2 from source and links it statically. Linux builds also need some Bevy/system headers for the rest of the workspace:
+
+```bash
+# Ubuntu / Debian
+sudo apt-get install -y pkg-config libasound2-dev libudev-dev cmake ninja-build
+```
 
 ## Build
 

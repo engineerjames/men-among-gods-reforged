@@ -11,7 +11,9 @@ path = "src/main.rs"
 [dependencies]
 mag_core = { path = "../core", package = "core" }
 egui-sdl2 = "0.2.5"
-sdl2 = { version = "0.38.0", default-features = false, features = ["gfx", "image", "mixer"] }
+# SDL2 is sourced via cargo-vcpkg and statically linked on all platforms –
+# no system SDL2 installation required.
+sdl2 = { version = "0.38.0", default-features = false, features = ["gfx", "image", "mixer", "use-vcpkg", "static-link"] }
 log = "0.4.29"
 log4rs = "1.4.0"
 zip = "0.6.6"
@@ -21,11 +23,6 @@ argon2 = "0.5.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
-# On Windows, use vcpkg to provide SDL2 libraries and statically link them
-# so the release .exe is self-contained (no SDL2 DLLs to ship).
-[target.'cfg(windows)'.dependencies]
-sdl2 = { version = "0.38.0", default-features = false, features = ["gfx", "image", "mixer", "use-vcpkg", "static-link"] }
-
 [build-dependencies]
 embed-resource = "2"
 
@@ -34,4 +31,8 @@ git = "https://github.com/microsoft/vcpkg"
 rev = "2026.01.16"
 
 [package.metadata.vcpkg.target]
-x86_64-pc-windows-msvc = { triplet = "x64-windows-static-md", dependencies = ["sdl2", "sdl2-image", "sdl2-mixer", "sdl2-gfx"] }
+x86_64-pc-windows-msvc    = { triplet = "x64-windows-static-md", dependencies = ["sdl2", "sdl2-image", "sdl2-mixer", "sdl2-gfx"] }
+x86_64-unknown-linux-gnu  = { triplet = "x64-linux-release",      dependencies = ["sdl2", "sdl2-image", "sdl2-mixer", "sdl2-gfx"] }
+aarch64-unknown-linux-gnu = { triplet = "arm64-linux",            dependencies = ["sdl2", "sdl2-image", "sdl2-mixer", "sdl2-gfx"] }
+x86_64-apple-darwin       = { triplet = "x64-osx-release",        dependencies = ["sdl2", "sdl2-image", "sdl2-mixer", "sdl2-gfx"] }
+aarch64-apple-darwin      = { triplet = "arm64-osx-release",      dependencies = ["sdl2", "sdl2-image", "sdl2-mixer", "sdl2-gfx"] }

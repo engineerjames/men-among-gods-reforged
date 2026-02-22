@@ -27,15 +27,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install cargo-vcpkg (Windows)
-      if: matrix.os == 'windows-latest'
-      run: cargo install cargo-vcpkg
-
-    - name: Build SDL2 dependencies via vcpkg (Windows)
-      if: matrix.os == 'windows-latest'
-      run: cargo vcpkg build --manifest-path sdl_client/Cargo.toml
-
-    - name: Install Linux build dependencies (Bevy & SDL)
+    - name: Install Linux build dependencies (Bevy)
       if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
@@ -50,32 +42,14 @@ jobs:
           libxrandr-dev \
           libxcursor-dev \
           libxinerama-dev \
-          libsdl2-dev \
-          libsdl2-image-dev \
-          libsdl2-ttf-dev \
-          libsdl2-mixer-dev \
-          libsdl2-gfx-dev
+          cmake \
+          ninja-build
 
-    - name: Install MacOS build dependencies (SDL)
-      if: matrix.os == 'macos-latest'
-      run: |
-        brew install pkg-config
-        brew install sdl2 sdl2_image sdl2_ttf sdl2_mixer sdl2_gfx
-        BREW_PREFIX="$(brew --prefix)"
-        echo "LIBRARY_PATH=${BREW_PREFIX}/lib:${LIBRARY_PATH}" >> "$GITHUB_ENV"
-        echo "DYLD_FALLBACK_LIBRARY_PATH=${BREW_PREFIX}/lib:${DYLD_FALLBACK_LIBRARY_PATH}" >> "$GITHUB_ENV"
-        echo "PKG_CONFIG_PATH=${BREW_PREFIX}/lib/pkgconfig:${BREW_PREFIX}/share/pkgconfig:${PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
-        echo "CPATH=${BREW_PREFIX}/include:${CPATH}" >> "$GITHUB_ENV"
-        echo "${BREW_PREFIX}/bin" >> "$GITHUB_PATH"
+    - name: Install cargo-vcpkg (all platforms)
+      run: cargo install cargo-vcpkg
 
-    - name: Diagnose macOS SDL linking
-      if: matrix.os == 'macos-latest'
-      run: |
-        echo "brew prefix: $(brew --prefix)"
-        echo "pkg-config version: $(pkg-config --version)"
-        pkg-config --modversion sdl2 sdl2_image sdl2_mixer sdl2_ttf sdl2_gfx
-        pkg-config --libs sdl2 sdl2_image sdl2_mixer sdl2_ttf sdl2_gfx
-        ls -l "$(brew --prefix)/lib"/libSDL2*.dylib
+    - name: Build SDL2 dependencies via vcpkg
+      run: cargo vcpkg build --manifest-path sdl_client/Cargo.toml
 
     - name: Build
       run: cargo build ${{ matrix.cargo-flags }}

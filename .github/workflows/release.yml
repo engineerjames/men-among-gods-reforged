@@ -30,31 +30,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Linux build dependencies (Bevy & SDL)
+      - name: Install Linux build dependencies (Bevy)
         if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: bash pipelines/install_linux_deps.sh
 
-      - name: Install macOS build dependencies (SDL)
-        if: matrix.os == 'macos-latest'
-        shell: bash
-        run: |
-          brew install pkg-config
-          brew install sdl2 sdl2_image sdl2_ttf sdl2_mixer sdl2_gfx
-          BREW_PREFIX="$(brew --prefix)"
-          echo "LIBRARY_PATH=${BREW_PREFIX}/lib:${LIBRARY_PATH}" >> "$GITHUB_ENV"
-          echo "DYLD_FALLBACK_LIBRARY_PATH=${BREW_PREFIX}/lib:${DYLD_FALLBACK_LIBRARY_PATH}" >> "$GITHUB_ENV"
-          echo "PKG_CONFIG_PATH=${BREW_PREFIX}/lib/pkgconfig:${BREW_PREFIX}/share/pkgconfig:${PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
-          echo "CPATH=${BREW_PREFIX}/include:${CPATH}" >> "$GITHUB_ENV"
-          echo "${BREW_PREFIX}/bin" >> "$GITHUB_PATH"
-
-      - name: Install cargo-vcpkg (Windows)
-        if: matrix.os == 'windows-latest'
+      - name: Install cargo-vcpkg (all platforms)
         shell: bash
         run: cargo install cargo-vcpkg
 
-      - name: Build SDL2 dependencies via vcpkg (Windows)
-        if: matrix.os == 'windows-latest'
+      - name: Build SDL2 dependencies via vcpkg
         shell: bash
         run: cargo vcpkg build --manifest-path sdl_client/Cargo.toml
 

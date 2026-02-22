@@ -19,22 +19,14 @@ This folder contains small scripts used by GitHub Actions workflows (and runnabl
 
 ## Prerequisites
 
-### Windows
-
-The SDL client uses [cargo-vcpkg](https://crates.io/crates/cargo-vcpkg) to manage SDL2 dependencies on Windows. Before building:
+SDL2 is managed automatically via [cargo-vcpkg](https://crates.io/crates/cargo-vcpkg) on all platforms (Windows, Linux, macOS). No system SDL2 installation is required.
 
 ```bash
 cargo install cargo-vcpkg
 cargo vcpkg build --manifest-path sdl_client/Cargo.toml
 ```
 
-### macOS
-
-```bash
-brew install sdl2 sdl2_image sdl2_ttf sdl2_mixer sdl2_gfx
-```
-
-### Linux
+This downloads and builds the SDL2 libraries once and caches them; subsequent builds reuse the cache. Linux builds also need Bevy dependencies for the legacy client:
 
 ```bash
 bash pipelines/install_linux_deps.sh
