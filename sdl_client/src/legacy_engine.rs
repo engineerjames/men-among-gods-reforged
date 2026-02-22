@@ -3,8 +3,19 @@ use mag_core::constants::{MAX_SPEEDTAB_SPEED_INDEX, SPEEDTAB, STUNNED};
 use crate::player_state::PlayerState;
 use crate::types::map::CMapTile;
 
+/// Look-up table mapping `ch_stat_off` to a sprite-row offset used by
+/// attack/emote animation frames (status range 160–191).
 const STATTAB: [i32; 11] = [0, 1, 1, 6, 6, 2, 3, 4, 5, 7, 4];
 
+/// Returns `true` if the given `ch_speed` index says the character should
+/// advance its animation frame on `ctick`.
+///
+/// # Arguments
+/// * `ch_speed` - Speed table row (0 = every tick, higher = slower).
+/// * `ctick` - The current local animation tick counter.
+///
+/// # Returns
+/// * `true` when the speed table entry is non-zero.
 #[inline]
 fn speedo(ch_speed: u8, ctick: usize) -> bool {
     let speed = (ch_speed as usize).min(MAX_SPEEDTAB_SPEED_INDEX);
@@ -12,6 +23,22 @@ fn speedo(ch_speed: u8, ctick: usize) -> bool {
     SPEEDTAB[speed][tick] != 0
 }
 
+/// Computes the smooth sub-tile pixel offset for a moving character.
+///
+/// Implements the C client's `speedstep()` which interpolates between discrete
+/// tile positions based on the speed table, producing smooth 32-pixel-range
+/// offsets for in-between frames.
+///
+/// # Arguments
+/// * `ch_speed` - Speed table row.
+/// * `ch_status` - Current animation status.
+/// * `d` - Base status value for this direction.
+/// * `s` - Number of frames in one movement cycle.
+/// * `update` - `false` when the character is stunned (hard step only).
+/// * `ctick` - Current animation tick.
+///
+/// # Returns
+/// * A pixel offset in the range `[0, 32)` for smooth interpolation.
 fn speedstep(ch_speed: u8, ch_status: u8, d: i32, s: i32, update: bool, ctick: usize) -> i32 {
     let speed = (ch_speed as usize).min(MAX_SPEEDTAB_SPEED_INDEX);
     let max_tick = (SPEEDTAB[0].len() - 1) as i32;
@@ -71,6 +98,14 @@ fn speedstep(ch_speed: u8, ch_status: u8, d: i32, s: i32, update: bool, ctick: u
     32 * total_step_start / (total_step + 1)
 }
 
+/// Returns a small frame offset for the idle animation of specific sprites.
+///
+/// # Arguments
+/// * `idle_ani` - The current idle animation counter (0–7).
+/// * `sprite` - The base character sprite ID.
+///
+/// # Returns
+/// * `idle_ani` for sprite 22480, `0` for all others.
 #[inline]
 fn do_idle(idle_ani: i32, sprite: u16) -> i32 {
     if sprite == 22480 {
@@ -80,6 +115,16 @@ fn do_idle(idle_ani: i32, sprite: u16) -> i32 {
     }
 }
 
+/// Advances an item's animation state machine and returns the display sprite.
+///
+/// # Arguments
+/// * `it_sprite` - Base item sprite ID.
+/// * `it_status` - Current animation status (mutated to advance the state).
+/// * `ctick` - Current animation tick.
+/// * `ticker` - Global frame counter (used for continuous-scroll items).
+///
+/// # Returns
+/// * The sprite ID to render this frame.
 fn eng_item(it_sprite: u16, it_status: &mut u8, ctick: usize, ticker: u32) -> i32 {
     let base = it_sprite as i32;
     let tick = ctick.min(SPEEDTAB[0].len() - 1);
@@ -205,6 +250,16 @@ fn eng_item(it_sprite: u16, it_status: &mut u8, ctick: usize, ticker: u32) -> i3
     }
 }
 
+/// Advances a character's animation state machine and returns the display
+/// sprite, also computing sub-tile offsets (`obj_xoff`, `obj_yoff`) for
+/// smooth movement interpolation.
+///
+/// # Arguments
+/// * `tile` - The map tile containing the character (mutated in place).
+/// * `ctick` - Current animation tick.
+///
+/// # Returns
+/// * The sprite ID to render this frame.
 fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
     let update = (tile.flags & STUNNED) == 0;
 
@@ -411,6 +466,14 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
     }
 }
 
+/// Runs one engine tick over the entire visible map, updating animation
+/// frames and sub-tile offsets for every tile's background, item, and
+/// character layers.
+///
+/// # Arguments
+/// * `player_state` - The player state whose map will be updated.
+/// * `ticker` - Global frame counter.
+/// * `ctick` - Current animation tick.
 pub fn engine_tick(player_state: &mut PlayerState, ticker: u32, ctick: usize) {
     let map = player_state.map_mut();
     let len = map.len();

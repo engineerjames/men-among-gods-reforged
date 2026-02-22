@@ -1,8 +1,18 @@
 use sdl2::{event::Event, video::Window};
 
+/// Logical width of the game viewport (the original resolution).
 const LOGICAL_W: f32 = 800.0;
+/// Logical height of the game viewport.
 const LOGICAL_H: f32 = 600.0;
 
+/// Computes the letterboxed viewport rectangle that fits the 800×600 logical
+/// area into the current window dimensions while preserving aspect ratio.
+///
+/// # Arguments
+/// * `window` - The SDL2 window to measure.
+///
+/// # Returns
+/// * `(view_x, view_y, view_w, view_h)` in physical window pixels.
 fn logical_viewport(window: &Window) -> (f32, f32, f32, f32) {
     let (window_w, window_h) = window.size();
     let ww = window_w as f32;
@@ -28,6 +38,16 @@ fn logical_viewport(window: &Window) -> (f32, f32, f32, f32) {
     }
 }
 
+/// Converts a physical screen coordinate pair to logical (800×600) coordinates,
+/// accounting for letterboxing.
+///
+/// # Arguments
+/// * `x` - Physical X coordinate.
+/// * `y` - Physical Y coordinate.
+/// * `window` - The SDL2 window for viewport calculation.
+///
+/// # Returns
+/// * `(logical_x, logical_y)` in the 800×600 coordinate space.
 fn to_logical_coords(x: i32, y: i32, window: &Window) -> (i32, i32) {
     let (view_x, view_y, view_w, view_h) = logical_viewport(window);
     if view_w <= 0.0 || view_h <= 0.0 {
@@ -39,6 +59,15 @@ fn to_logical_coords(x: i32, y: i32, window: &Window) -> (i32, i32) {
     (lx, ly)
 }
 
+/// Converts a relative (delta) motion from physical to logical coordinates.
+///
+/// # Arguments
+/// * `dx` - Physical X delta.
+/// * `dy` - Physical Y delta.
+/// * `window` - The SDL2 window for viewport calculation.
+///
+/// # Returns
+/// * `(logical_dx, logical_dy)`.
 fn to_logical_rel(dx: i32, dy: i32, window: &Window) -> (i32, i32) {
     let (_, _, view_w, view_h) = logical_viewport(window);
     if view_w <= 0.0 || view_h <= 0.0 {
@@ -50,6 +79,16 @@ fn to_logical_rel(dx: i32, dy: i32, window: &Window) -> (i32, i32) {
     (ldx, ldy)
 }
 
+/// Returns the ratio of drawable size to window size on each axis.
+///
+/// On Retina / HiDPI displays this is typically `(2.0, 2.0)`; on standard
+/// displays it is `(1.0, 1.0)`.
+///
+/// # Arguments
+/// * `window` - The SDL2 window to query.
+///
+/// # Returns
+/// * `(scale_x, scale_y)`.
 fn hidpi_scale(window: &Window) -> (f32, f32) {
     let (window_w, window_h) = window.size();
     let (drawable_w, drawable_h) = window.drawable_size();
@@ -66,10 +105,30 @@ fn hidpi_scale(window: &Window) -> (f32, f32) {
     (scale_x, scale_y)
 }
 
+/// Scales an integer coordinate by a floating-point factor, rounding to the
+/// nearest integer.
+///
+/// # Arguments
+/// * `value` - The coordinate value to scale.
+/// * `scale` - The multiplier.
+///
+/// # Returns
+/// * The scaled value as `i32`.
 fn scale_coord(value: i32, scale: f32) -> i32 {
     ((value as f32) * scale).round() as i32
 }
 
+/// Re-maps mouse event coordinates for egui on HiDPI displays.
+///
+/// egui expects coordinates in physical (drawable) pixels, so this multiplies
+/// the SDL2 window-space coordinates by the HiDPI scale factor.
+///
+/// # Arguments
+/// * `event` - The original SDL2 mouse event.
+/// * `window` - The SDL2 window for scale calculation.
+///
+/// # Returns
+/// * A new `Event` with scaled coordinates.
 pub fn adjust_mouse_event_for_egui_hidpi(event: &Event, window: &Window) -> Event {
     let (scale_x, scale_y) = hidpi_scale(window);
 
@@ -131,6 +190,15 @@ pub fn adjust_mouse_event_for_egui_hidpi(event: &Event, window: &Window) -> Even
     }
 }
 
+/// Re-maps mouse event coordinates from physical window space to the 800×600
+/// logical coordinate space used by the game renderer.
+///
+/// # Arguments
+/// * `event` - The original SDL2 mouse event (consumed).
+/// * `window` - The SDL2 window for viewport calculation.
+///
+/// # Returns
+/// * A new `Event` with coordinates in logical space.
 pub fn adjust_mouse_event_for_hidpi(event: Event, window: &Window) -> Event {
     match event {
         Event::MouseMotion {
@@ -197,5 +265,36 @@ pub fn adjust_mouse_event_for_hidpi(event: Event, window: &Window) -> Event {
             }
         }
         other => other,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scale_coord_identity() {
+        assert_eq!(scale_coord(100, 1.0), 100);
+    }
+
+    #[test]
+    fn scale_coord_double() {
+        assert_eq!(scale_coord(100, 2.0), 200);
+    }
+
+    #[test]
+    fn scale_coord_half_rounds() {
+        // 3 * 0.5 = 1.5, rounds to 2
+        assert_eq!(scale_coord(3, 0.5), 2);
+    }
+
+    #[test]
+    fn scale_coord_zero() {
+        assert_eq!(scale_coord(0, 5.0), 0);
+    }
+
+    #[test]
+    fn scale_coord_negative() {
+        assert_eq!(scale_coord(-10, 2.0), -20);
     }
 }

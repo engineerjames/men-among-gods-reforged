@@ -1,11 +1,15 @@
+/// Opcode byte for outgoing client commands (first byte of the 16-byte wire
+/// packet).
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u8)]
-#[allow(dead_code)]
 pub enum ClientCommandType {
     _Empty = 0,
+    #[allow(dead_code)]
     NewLogin = 1,
+    #[allow(dead_code)]
     Login = 2,
     Challenge = 3,
+    #[allow(dead_code)]
     PerfReport = 4,
     CmdMove = 5,
     CmdPickup = 6,
@@ -21,6 +25,7 @@ pub enum ClientCommandType {
     CmdInvLook = 16,
     CmdLookItem = 17,
     CmdUse = 18,
+    #[allow(dead_code)]
     CmdSetUser = 19,
     CmdTurn = 20,
     CmdAutoLook = 21,
@@ -35,12 +40,16 @@ pub enum ClientCommandType {
     CmdInput8 = 30,
     CmdExit = 31,
     CmdUnique = 32,
+    #[allow(dead_code)]
     Passwd = 33,
     Ping = 34,
     ApiLogin = 35,
     CmdCTick = 255,
 }
 
+/// A single outgoing command to the game server.
+///
+/// Serialised to a fixed 16-byte packet by [`to_bytes`](Self::to_bytes).
 #[derive(Debug)]
 pub struct ClientCommand {
     pub header: ClientCommandType,
@@ -57,6 +66,7 @@ impl ClientCommand {
         }
     }
 
+    /// Returns a human-readable description of this command for logging.
     pub fn get_description(&self) -> String {
         if let Some(ctx) = &self.context {
             format!("{:?} ({})", self.header, ctx)
@@ -104,6 +114,7 @@ impl ClientCommand {
         Self::new(cmd, payload)
     }
 
+    /// Creates the challenge-response packet sent during login.
     pub fn new_challenge(server_challenge: u32, client_version: u32, race: i32) -> Self {
         let mut payload = Vec::with_capacity(12);
         payload.extend_from_slice(&server_challenge.to_le_bytes());
@@ -118,6 +129,7 @@ impl ClientCommand {
         cmd
     }
 
+    /// Creates a `CL_UNIQUE` packet with two client-chosen values.
     pub fn new_unique(unique_value_1: i32, unique_value_2: i32) -> Self {
         let mut payload = Vec::with_capacity(8);
         payload.extend_from_slice(&unique_value_1.to_le_bytes());
@@ -129,23 +141,7 @@ impl ClientCommand {
         cmd
     }
 
-    #[allow(dead_code)]
-    pub fn new_existing_login(user_id: u32, pass1: u32, pass2: u32) -> Self {
-        let mut payload = Vec::with_capacity(12);
-        payload.extend_from_slice(&user_id.to_le_bytes());
-        payload.extend_from_slice(&pass1.to_le_bytes());
-        payload.extend_from_slice(&pass2.to_le_bytes());
-        let mut cmd = Self::new(ClientCommandType::Login, payload);
-        cmd.context = Some(format!("user_id={user_id} pass1={pass1} pass2={pass2}"));
-        cmd
-    }
-
-    #[allow(dead_code)]
-    pub fn new_newplayer_login() -> Self {
-        let cmd = Self::new(ClientCommandType::NewLogin, Vec::new());
-        cmd
-    }
-
+    /// Creates an API-ticket login packet.
     pub fn new_api_login(ticket: u64) -> Self {
         let mut payload = Vec::with_capacity(8);
         payload.extend_from_slice(&ticket.to_le_bytes());
@@ -154,27 +150,7 @@ impl ClientCommand {
         cmd
     }
 
-    #[allow(dead_code)]
-    pub fn new_password(password: &[u8]) -> Self {
-        let mut payload = vec![0u8; 15];
-        let n = password.len().min(15);
-        payload[..n].copy_from_slice(&password[..n]);
-        let cmd = Self::new(ClientCommandType::Passwd, payload);
-        cmd
-    }
-
-    #[allow(dead_code)]
-    pub fn new_setuser(group: u8, offset: u8, data: &[u8]) -> Self {
-        let mut payload = vec![0u8; 15];
-        payload[0] = group;
-        payload[1] = offset;
-        let n = data.len().min(13);
-        payload[2..2 + n].copy_from_slice(&data[..n]);
-        let cmd = Self::new(ClientCommandType::CmdSetUser, payload);
-
-        cmd
-    }
-
+    /// Creates a chat input chunk packet.
     pub fn new_input_chunk(kind: ClientCommandType, chunk: &[u8]) -> Self {
         let mut payload = vec![0u8; 15];
         let n = chunk.len().min(15);
@@ -209,103 +185,119 @@ impl ClientCommand {
         out
     }
 
+    /// Creates a `CL_CTICK` synchronisation packet.
     pub fn new_tick(rtick: u32) -> Self {
         Self::cmd_u32(ClientCommandType::CmdCTick, rtick)
     }
 
+    /// Creates a `CL_PING` packet for latency measurement.
     pub fn new_ping(seq: u32, client_time_ms: u32) -> Self {
         Self::cmd_u32_u32(ClientCommandType::Ping, seq, client_time_ms)
     }
 
+    /// Creates a movement command toward the given map coordinates.
     pub fn new_move(x: i16, y: i32) -> Self {
         let mut cmd = Self::cmd_xy_i16_i32(ClientCommandType::CmdMove, x, y);
         cmd.context = Some(format!("x={} y={}", x, y));
         cmd
     }
 
+    /// Creates a pick-up-item command at the given map coordinates.
     pub fn new_pickup(x: i16, y: i32) -> Self {
         let mut cmd = Self::cmd_xy_i16_i32(ClientCommandType::CmdPickup, x, y);
         cmd.context = Some(format!("x={} y={}", x, y));
         cmd
     }
 
+    /// Creates a drop-item command at the given map coordinates.
     pub fn new_drop(x: i16, y: i32) -> Self {
         let mut cmd = Self::cmd_xy_i16_i32(ClientCommandType::CmdDrop, x, y);
         cmd.context = Some(format!("x={} y={}", x, y));
         cmd
     }
 
+    /// Creates a turn-toward command at the given map coordinates.
     pub fn new_turn(x: i16, y: i32) -> Self {
         let mut cmd = Self::cmd_xy_i16_i32(ClientCommandType::CmdTurn, x, y);
         cmd.context = Some(format!("x={} y={}", x, y));
         cmd
     }
 
-    #[allow(dead_code)]
+    /// Creates a use-item command at the given map coordinates.
     pub fn new_use(x: i16, y: i32) -> Self {
         let mut cmd = Self::cmd_xy_i16_i32(ClientCommandType::CmdUse, x, y);
         cmd.context = Some(format!("x={} y={}", x, y));
         cmd
     }
 
+    /// Creates a look-at-item command at the given map coordinates.
     pub fn new_look_item(x: i16, y: i32) -> Self {
         let mut cmd = Self::cmd_xy_i16_i32(ClientCommandType::CmdLookItem, x, y);
         cmd.context = Some(format!("x={} y={}", x, y));
         cmd
     }
 
+    /// Creates a mode-change command (e.g. fight/protect/normal).
     pub fn new_mode(mode: i16) -> Self {
         let mut cmd = Self::cmd_xy_i16_i32(ClientCommandType::CmdMode, mode, 0);
         cmd.context = Some(format!("mode={}", mode));
         cmd
     }
 
+    /// Creates a reset command to clear the server-side movement target.
     pub fn new_reset() -> Self {
         let cmd = Self::cmd_xy_i16_i32(ClientCommandType::CmdReset, 0, 0);
         cmd
     }
 
+    /// Creates a shop interaction command (buy/sell).
     pub fn new_shop(shop_nr: i16, action: i32) -> Self {
         let mut cmd = Self::cmd_xy_i16_i32(ClientCommandType::CmdShop, shop_nr, action);
         cmd.context = Some(format!("shop_nr={} action={}", shop_nr, action));
         cmd
     }
 
+    /// Creates a stat-raise command for attributes, HP, endurance, or mana.
     pub fn new_stat(which: i16, value: i32) -> Self {
         let mut cmd = Self::cmd_xy_i16_i32(ClientCommandType::CmdStat, which, value);
         cmd.context = Some(format!("which={} value={}", which, value));
         cmd
     }
 
+    /// Creates an attack command targeting a character by number.
     pub fn new_attack(target: u32) -> Self {
         let mut cmd = Self::cmd_u32(ClientCommandType::CmdAttack, target);
         cmd.context = Some(format!("target={}", target));
         cmd
     }
 
+    /// Creates a give-to-character command.
     pub fn new_give(target: u32) -> Self {
         let mut cmd = Self::cmd_u32(ClientCommandType::CmdGive, target);
         cmd.context = Some(format!("target={}", target));
         cmd
     }
 
+    /// Creates a look-at command for a character by number.
     pub fn new_look(target: u32) -> Self {
         let mut cmd = Self::cmd_u32(ClientCommandType::CmdLook, target);
         cmd.context = Some(format!("target={}", target));
         cmd
     }
 
+    /// Creates a graceful disconnect command.
     pub fn new_exit() -> Self {
         let cmd = Self::cmd_u32(ClientCommandType::CmdExit, 0);
         cmd
     }
 
-    #[allow(dead_code)]
+    /// Creates an auto-look request for a specific target.
     pub fn new_autolook(lookat: u32) -> Self {
         let cmd = Self::cmd_u32(ClientCommandType::CmdAutoLook, lookat);
         cmd
     }
 
+    /// Creates an inventory interaction command.
     pub fn new_inv(a: u32, b: u32, selected_char: u32) -> Self {
         let mut cmd = Self::cmd_u32_u32_u32(ClientCommandType::CmdInv, a, b, selected_char);
         cmd.context = Some(format!("a={} b={} selected_char={}", a, b, selected_char));
@@ -313,12 +305,14 @@ impl ClientCommand {
         cmd
     }
 
+    /// Creates an inventory-look command to inspect an item.
     pub fn new_inv_look(a: u32, b: u32, c: u32) -> Self {
         let mut cmd = Self::cmd_u32_u32_u32(ClientCommandType::CmdInvLook, a, b, c);
         cmd.context = Some(format!("a={} b={} c={}", a, b, c));
         cmd
     }
 
+    /// Creates a skill-use command.
     pub fn new_skill(skill: u32, selected_char: u32, attrib0: u32) -> Self {
         let mut cmd =
             Self::cmd_u32_u32_u32(ClientCommandType::CmdSkill, skill, selected_char, attrib0);
@@ -327,5 +321,148 @@ impl ClientCommand {
             skill, selected_char, attrib0
         ));
         cmd
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn to_bytes_always_16() {
+        let cmd = ClientCommand::new_exit();
+        assert_eq!(cmd.to_bytes().len(), 16);
+    }
+
+    #[test]
+    fn tick_opcode_and_payload() {
+        let cmd = ClientCommand::new_tick(42);
+        let bytes = cmd.to_bytes();
+        assert_eq!(bytes[0], ClientCommandType::CmdCTick as u8);
+        assert_eq!(
+            u32::from_le_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]),
+            42
+        );
+    }
+
+    #[test]
+    fn ping_opcode_and_payload() {
+        let cmd = ClientCommand::new_ping(1, 12345);
+        let bytes = cmd.to_bytes();
+        assert_eq!(bytes[0], ClientCommandType::Ping as u8);
+        assert_eq!(
+            u32::from_le_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]),
+            1
+        );
+        assert_eq!(
+            u32::from_le_bytes([bytes[5], bytes[6], bytes[7], bytes[8]]),
+            12345
+        );
+    }
+
+    #[test]
+    fn move_opcode_and_payload() {
+        let cmd = ClientCommand::new_move(100, 200);
+        let bytes = cmd.to_bytes();
+        assert_eq!(bytes[0], ClientCommandType::CmdMove as u8);
+        assert_eq!(i16::from_le_bytes([bytes[1], bytes[2]]), 100);
+        assert_eq!(
+            i32::from_le_bytes([bytes[3], bytes[4], bytes[5], bytes[6]]),
+            200
+        );
+    }
+
+    #[test]
+    fn challenge_opcode_and_payload() {
+        let cmd = ClientCommand::new_challenge(111, 222, -1);
+        let bytes = cmd.to_bytes();
+        assert_eq!(bytes[0], ClientCommandType::Challenge as u8);
+        assert_eq!(
+            u32::from_le_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]),
+            111
+        );
+        assert_eq!(
+            u32::from_le_bytes([bytes[5], bytes[6], bytes[7], bytes[8]]),
+            222
+        );
+        assert_eq!(
+            i32::from_le_bytes([bytes[9], bytes[10], bytes[11], bytes[12]]),
+            -1
+        );
+    }
+
+    #[test]
+    fn api_login_opcode_and_payload() {
+        let cmd = ClientCommand::new_api_login(0xDEAD_BEEF_CAFE_BABE);
+        let bytes = cmd.to_bytes();
+        assert_eq!(bytes[0], ClientCommandType::ApiLogin as u8);
+        assert_eq!(
+            u64::from_le_bytes([
+                bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], bytes[8],
+            ]),
+            0xDEAD_BEEF_CAFE_BABE
+        );
+    }
+
+    #[test]
+    fn say_packets_always_eight() {
+        let pkts = ClientCommand::new_say_packets(b"Hello");
+        assert_eq!(pkts.len(), 8);
+        // First packet has CmdInput1 opcode
+        assert_eq!(pkts[0].to_bytes()[0], ClientCommandType::CmdInput1 as u8);
+        // Last packet has CmdInput8 opcode
+        assert_eq!(pkts[7].to_bytes()[0], ClientCommandType::CmdInput8 as u8);
+    }
+
+    #[test]
+    fn say_packets_first_chunk_content() {
+        let pkts = ClientCommand::new_say_packets(b"Hi");
+        let bytes = pkts[0].to_bytes();
+        assert_eq!(bytes[1], b'H');
+        assert_eq!(bytes[2], b'i');
+    }
+
+    #[test]
+    fn exit_opcode() {
+        let bytes = ClientCommand::new_exit().to_bytes();
+        assert_eq!(bytes[0], ClientCommandType::CmdExit as u8);
+    }
+
+    #[test]
+    fn attack_opcode_and_target() {
+        let cmd = ClientCommand::new_attack(999);
+        let bytes = cmd.to_bytes();
+        assert_eq!(bytes[0], ClientCommandType::CmdAttack as u8);
+        assert_eq!(
+            u32::from_le_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]),
+            999
+        );
+    }
+
+    #[test]
+    fn shop_opcode_and_payload() {
+        let cmd = ClientCommand::new_shop(5, 10);
+        let bytes = cmd.to_bytes();
+        assert_eq!(bytes[0], ClientCommandType::CmdShop as u8);
+        assert_eq!(i16::from_le_bytes([bytes[1], bytes[2]]), 5);
+        assert_eq!(
+            i32::from_le_bytes([bytes[3], bytes[4], bytes[5], bytes[6]]),
+            10
+        );
+    }
+
+    #[test]
+    fn get_description_with_context() {
+        let cmd = ClientCommand::new_move(10, 20);
+        let desc = cmd.get_description();
+        assert!(desc.contains("CmdMove"));
+        assert!(desc.contains("x=10"));
+    }
+
+    #[test]
+    fn get_description_without_context() {
+        let cmd = ClientCommand::new_exit();
+        let desc = cmd.get_description();
+        assert!(desc.contains("CmdExit"));
     }
 }

@@ -166,7 +166,7 @@ impl UserSettingsState {
     }
 
     pub fn sync_character_from_player_state(&mut self, player_state: &PlayerState) {
-        self.settings.save_file = *player_state.save_file();
+        //self.settings.save_file = *player_state.save_file();
         self.settings.player_data = *player_state.player_data();
     }
 
@@ -239,7 +239,7 @@ pub fn load_user_settings_startup(
     let settings = load_settings_from_disk(&path);
 
     // Restore persisted character/key data (replaces mag.dat).
-    player_state.set_character_from_file(settings.save_file, settings.player_data);
+    //player_state.set_character_from_file(settings.save_file, settings.player_data);
 
     let state = UserSettingsState::new(path, settings);
     state.apply_to_resources(

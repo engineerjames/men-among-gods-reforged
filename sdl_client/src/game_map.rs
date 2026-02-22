@@ -2,6 +2,13 @@ use mag_core::constants::{TILEX, TILEY};
 
 use crate::types::map::CMapTile;
 
+/// Fixed-size tile grid representing the player's visible map window.
+///
+/// The map is `TILEX × TILEY` tiles. Each tile stores background / item /
+/// character sprite IDs, flags, lighting, and world coordinates. The server
+/// streams incremental updates via `SV_SETMAP` commands; the client applies
+/// them through [`apply_set_map`](Self::apply_set_map) and scrolls the grid
+/// when the player moves.
 #[derive(Debug)]
 pub struct GameMap {
     tiles: Vec<CMapTile>,
@@ -15,6 +22,11 @@ impl Default for GameMap {
 }
 
 impl GameMap {
+    /// Creates a new map with all tiles zero-initialized and local
+    /// coordinates set to their grid position.
+    ///
+    /// # Returns
+    /// * A `GameMap` of `TILEX × TILEY` default tiles.
     pub fn new() -> Self {
         let count = TILEX * TILEY;
         let mut tiles = vec![CMapTile::default(); count];
@@ -33,16 +45,27 @@ impl GameMap {
         }
     }
 
+    /// Returns the total number of tiles in the grid (`TILEX * TILEY`).
     #[inline]
     pub fn len(&self) -> usize {
         self.tiles.len()
     }
 
+    /// Resets the delta-index tracker used by [`apply_set_map`](Self::apply_set_map)
+    /// so the next update must carry an absolute tile index.
     #[inline]
     pub fn reset_last_setmap_index(&mut self) {
         self.last_setmap_index = None;
     }
 
+    /// Converts (x, y) grid coordinates to a flat index.
+    ///
+    /// # Arguments
+    /// * `x` - Column (must be < `TILEX`).
+    /// * `y` - Row (must be < `TILEY`).
+    ///
+    /// # Returns
+    /// * `Some(index)` if in bounds, `None` otherwise.
     #[inline]
     pub fn tile_index(x: usize, y: usize) -> Option<usize> {
         if x < TILEX && y < TILEY {
@@ -52,20 +75,53 @@ impl GameMap {
         }
     }
 
+    /// Returns a shared reference to the tile at the given flat index.
+    ///
+    /// # Arguments
+    /// * `index` - Flat index into the tile array.
+    ///
+    /// # Returns
+    /// * `Some(&CMapTile)` if in bounds, `None` otherwise.
     #[inline]
     pub fn tile_at_index(&self, index: usize) -> Option<&CMapTile> {
         self.tiles.get(index)
     }
 
+    /// Returns a mutable reference to the tile at the given flat index.
+    ///
+    /// # Arguments
+    /// * `index` - Flat index into the tile array.
+    ///
+    /// # Returns
+    /// * `Some(&mut CMapTile)` if in bounds, `None` otherwise.
     #[inline]
     pub fn tile_at_index_mut(&mut self, index: usize) -> Option<&mut CMapTile> {
         self.tiles.get_mut(index)
     }
 
+    /// Returns a shared reference to the tile at grid coordinates `(x, y)`.
+    ///
+    /// # Arguments
+    /// * `x` - Column.
+    /// * `y` - Row.
+    ///
+    /// # Returns
+    /// * `Some(&CMapTile)` if in bounds, `None` otherwise.
     pub fn tile_at_xy(&self, x: usize, y: usize) -> Option<&CMapTile> {
         Self::tile_index(x, y).and_then(|idx| self.tiles.get(idx))
     }
 
+    /// Applies an incremental `SV_SETMAP` update to a single tile.
+    ///
+    /// The target tile is identified either absolutely (when `off == 0`,
+    /// using `absolute_tile_index`) or as a delta from the last update.
+    /// Only fields wrapped in `Some(…)` are overwritten; `None` fields are
+    /// left unchanged.
+    ///
+    /// # Arguments
+    /// * `off` - Delta offset from the previous `SV_SETMAP` target (0 = absolute).
+    /// * `absolute_tile_index` - Flat tile index used when `off` is 0.
+    /// * `ba_sprite` .. `ch_proz` - Optional field updates for the target tile.
     pub fn apply_set_map(
         &mut self,
         off: u8,
@@ -147,6 +203,16 @@ impl GameMap {
         }
     }
 
+    /// Applies a `SV_SETMAP3` lighting update.
+    ///
+    /// Starting at `start_index`, the base light value is written directly,
+    /// then subsequent tiles are updated two at a time from the nibble-packed
+    /// `packed` slice (high nibble first).
+    ///
+    /// # Arguments
+    /// * `start_index` - Flat tile index to begin writing light data.
+    /// * `base_light` - Light value for the first tile (only low 4 bits used).
+    /// * `packed` - Nibble-packed light data for subsequent tiles.
     pub fn apply_set_map3(&mut self, start_index: u16, base_light: u8, packed: &[u8]) {
         let mut idx = start_index as usize;
 
@@ -177,6 +243,14 @@ impl GameMap {
         }
     }
 
+    /// Sets the world-coordinate origin of every tile in the grid.
+    ///
+    /// After this call, tile at grid position `(gx, gy)` will have
+    /// `tile.x = gx + xp` and `tile.y = gy + yp`.
+    ///
+    /// # Arguments
+    /// * `xp` - World X offset to add to each tile's grid column.
+    /// * `yp` - World Y offset to add to each tile's grid row.
     pub fn set_origin(&mut self, xp: i16, yp: i16) {
         if TILEX == 0 || TILEY == 0 {
             return;
@@ -197,6 +271,7 @@ impl GameMap {
         }
     }
 
+    /// Scrolls all tiles one position to the right (drops the leftmost column).
     pub fn scroll_right(&mut self) {
         let len = self.tiles.len();
         if len < 2 {
@@ -205,6 +280,7 @@ impl GameMap {
         self.tiles.copy_within(1..len, 0);
     }
 
+    /// Scrolls all tiles one position to the left (drops the rightmost column).
     pub fn scroll_left(&mut self) {
         let len = self.tiles.len();
         if len < 2 {
@@ -213,6 +289,7 @@ impl GameMap {
         self.tiles.copy_within(0..len - 1, 1);
     }
 
+    /// Scrolls all tiles one row downward (drops the top row).
     pub fn scroll_down(&mut self) {
         let len = self.tiles.len();
         if TILEX == 0 || len <= TILEX {
@@ -221,6 +298,7 @@ impl GameMap {
         self.tiles.copy_within(TILEX..len, 0);
     }
 
+    /// Scrolls all tiles one row upward (drops the bottom row).
     pub fn scroll_up(&mut self) {
         let len = self.tiles.len();
         if TILEX == 0 || len <= TILEX {
@@ -229,6 +307,7 @@ impl GameMap {
         self.tiles.copy_within(0..len - TILEX, TILEX);
     }
 
+    /// Scrolls tiles diagonally: one position left and one row up.
     pub fn scroll_left_up(&mut self) {
         let len = self.tiles.len();
         let shift = TILEX + 1;
@@ -238,6 +317,7 @@ impl GameMap {
         self.tiles.copy_within(0..len - shift, shift);
     }
 
+    /// Scrolls tiles diagonally: one position left and one row down.
     pub fn scroll_left_down(&mut self) {
         let len = self.tiles.len();
         if TILEX == 0 {
@@ -250,6 +330,7 @@ impl GameMap {
         self.tiles.copy_within(shift..len, 0);
     }
 
+    /// Scrolls tiles diagonally: one position right and one row up.
     pub fn scroll_right_up(&mut self) {
         let len = self.tiles.len();
         if TILEX == 0 {
@@ -263,6 +344,7 @@ impl GameMap {
         self.tiles.copy_within(0..count, shift);
     }
 
+    /// Scrolls tiles diagonally: one position right and one row down.
     pub fn scroll_right_down(&mut self) {
         let len = self.tiles.len();
         let shift = TILEX + 1;
@@ -270,5 +352,139 @@ impl GameMap {
             return;
         }
         self.tiles.copy_within(shift..len, 0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_map_len() {
+        let map = GameMap::new();
+        assert_eq!(map.len(), TILEX * TILEY);
+    }
+
+    #[test]
+    fn tile_index_in_bounds() {
+        assert_eq!(GameMap::tile_index(0, 0), Some(0));
+        assert_eq!(GameMap::tile_index(33, 33), Some(TILEX * TILEY - 1));
+        assert_eq!(GameMap::tile_index(1, 0), Some(1));
+        assert_eq!(GameMap::tile_index(0, 1), Some(TILEX));
+    }
+
+    #[test]
+    fn tile_index_out_of_bounds() {
+        assert_eq!(GameMap::tile_index(34, 0), None);
+        assert_eq!(GameMap::tile_index(0, 34), None);
+        assert_eq!(GameMap::tile_index(100, 100), None);
+    }
+
+    #[test]
+    fn tile_at_xy_initial_coords() {
+        let map = GameMap::new();
+        let tile = map.tile_at_xy(5, 3).unwrap();
+        assert_eq!(tile.x, 5);
+        assert_eq!(tile.y, 3);
+    }
+
+    #[test]
+    fn tile_at_xy_out_of_bounds() {
+        let map = GameMap::new();
+        assert!(map.tile_at_xy(34, 0).is_none());
+    }
+
+    #[test]
+    fn set_origin_shifts_world_coords() {
+        let mut map = GameMap::new();
+        map.set_origin(100, 200);
+        let tile = map.tile_at_xy(0, 0).unwrap();
+        assert_eq!(tile.x, 100);
+        assert_eq!(tile.y, 200);
+        let tile2 = map.tile_at_xy(5, 3).unwrap();
+        assert_eq!(tile2.x, 105);
+        assert_eq!(tile2.y, 203);
+    }
+
+    #[test]
+    fn apply_set_map_absolute() {
+        let mut map = GameMap::new();
+        map.apply_set_map(
+            0,
+            Some(10),
+            Some(42),   // ba_sprite
+            Some(0xFF), // flags1
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        let tile = map.tile_at_index(10).unwrap();
+        assert_eq!(tile.ba_sprite, 42);
+        assert_eq!(tile.flags, 0xFF);
+    }
+
+    #[test]
+    fn apply_set_map_delta() {
+        let mut map = GameMap::new();
+        // First: absolute at index 10
+        map.apply_set_map(
+            0,
+            Some(10),
+            Some(1),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        // Second: delta +5 → index 15
+        map.apply_set_map(
+            5,
+            None,
+            Some(99),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        let tile = map.tile_at_index(15).unwrap();
+        assert_eq!(tile.ba_sprite, 99);
+    }
+
+    #[test]
+    fn apply_set_map3_lighting() {
+        let mut map = GameMap::new();
+        // base_light=7 at index 0, then packed [0xAB] → hi=0xA at 1, lo=0xB at 2
+        map.apply_set_map3(0, 7, &[0xAB]);
+        assert_eq!(map.tile_at_index(0).unwrap().light, 7);
+        assert_eq!(map.tile_at_index(1).unwrap().light, 0xA);
+        assert_eq!(map.tile_at_index(2).unwrap().light, 0xB);
+    }
+
+    #[test]
+    fn default_equals_new() {
+        let d = GameMap::default();
+        let n = GameMap::new();
+        assert_eq!(d.len(), n.len());
     }
 }

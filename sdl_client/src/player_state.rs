@@ -6,11 +6,16 @@ use mag_core::{
 
 use crate::{
     game_map::GameMap,
-    helpers::exit_reason_string,
     network::server_commands::{ServerCommand, ServerCommandData, ServerCommandType},
-    types::{log_message::LogMessage, look::Look, player_data::PlayerData, save_file::SaveFile},
+    types::{log_message::LogMessage, look::Look, player_data::PlayerData},
 };
 
+/// Central per-character gameplay state on the client side.
+///
+/// Owns the visible tile map, look/shop panels, character stats, the chat log,
+/// and all incremental state streamed from the server via `ServerCommand`s.
+/// A new instance is created each time the player enters the game and is
+/// dropped when they disconnect.
 pub struct PlayerState {
     map: GameMap,
     look_target: Look,
@@ -28,7 +33,6 @@ pub struct PlayerState {
 
     look_names: Vec<Option<LookNameEntry>>,
     pending_log: String,
-    moa_file_data: SaveFile,
     server_version: u32,
     load_percentage: u32,
     unique1: u32,
@@ -41,6 +45,7 @@ pub struct PlayerState {
     exit_requested_reason: Option<u32>,
 }
 
+/// A cached (nr → name) entry used by the auto-look name overlay.
 #[derive(Clone, Debug)]
 struct LookNameEntry {
     id: u16,
@@ -68,7 +73,6 @@ impl Default for PlayerState {
 
             pending_log: String::new(),
 
-            moa_file_data: SaveFile::default(),
             server_version: 0,
             load_percentage: 0,
             unique1: 0,
@@ -84,31 +88,40 @@ impl Default for PlayerState {
 }
 
 impl PlayerState {
+    /// Returns the number of messages currently stored in the chat log.
     pub fn log_len(&self) -> usize {
         self.message_log.len()
     }
 
+    /// Takes and returns the pending server-requested exit reason, if any.
+    ///
+    /// # Returns
+    /// * `Some(reason_code)` the first time, `None` thereafter.
     pub fn take_exit_requested_reason(&mut self) -> Option<u32> {
         self.exit_requested_reason.take()
     }
 
+    /// Returns a shared reference to the visible tile map.
     pub fn map(&self) -> &GameMap {
         &self.map
     }
 
+    /// Returns a mutable reference to the visible tile map.
     pub fn map_mut(&mut self) -> &mut GameMap {
         &mut self.map
     }
 
+    /// Returns a shared reference to the player's own character stats.
     pub fn character_info(&self) -> &ClientPlayer {
         &self.character_info
     }
 
+    /// Returns `true` when the shop overlay should be displayed.
     pub fn should_show_shop(&self) -> bool {
         self.should_show_shop
     }
 
-    #[allow(dead_code)]
+    /// Closes the shop overlay if it is open.
     pub fn close_shop(&mut self) {
         if self.should_show_shop {
             self.should_show_shop = false;
@@ -116,22 +129,12 @@ impl PlayerState {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn request_shop_refresh(&mut self) {
-        self.shop_refresh_requested = true;
-    }
-
-    #[allow(dead_code)]
-    pub fn take_shop_refresh_requested(&mut self) -> bool {
-        let was = self.shop_refresh_requested;
-        self.shop_refresh_requested = false;
-        was
-    }
-
+    /// Returns `true` when the "look at" info panel should be displayed.
     pub fn should_show_look(&self) -> bool {
         self.should_show_look
     }
 
+    /// Closes the look panel and resets its display timer.
     pub fn close_look(&mut self) {
         if self.should_show_look {
             self.should_show_look = false;
@@ -139,37 +142,34 @@ impl PlayerState {
         }
     }
 
+    /// Returns a shared reference to the current "look at" target data.
     pub fn look_target(&self) -> &Look {
         &self.look_target
     }
 
+    /// Returns a shared reference to the current shop target data.
     pub fn shop_target(&self) -> &Look {
         &self.shop_target
     }
 
+    /// Returns a shared reference to the player data (HUD toggle flags, etc.).
     pub fn player_data(&self) -> &PlayerData {
         &self.player_info
     }
 
+    /// Returns a mutable reference to the player data.
     pub fn player_data_mut(&mut self) -> &mut PlayerData {
         &mut self.player_info
     }
 
-    #[allow(dead_code)]
-    pub fn save_file(&self) -> &SaveFile {
-        &self.moa_file_data
-    }
-
-    pub fn save_file_mut(&mut self) -> &mut SaveFile {
-        &mut self.moa_file_data
-    }
-
-    #[allow(dead_code)]
-    pub fn set_character_from_file(&mut self, save_file: SaveFile, player_data: PlayerData) {
-        self.moa_file_data = save_file;
-        self.player_info = player_data;
-    }
-
+    /// Looks up a cached character name by tile `nr` and optional `id`.
+    ///
+    /// # Arguments
+    /// * `nr` - Tile character number.
+    /// * `id` - Character ID (0 matches any).
+    ///
+    /// # Returns
+    /// * `Some(&str)` if a matching name is cached, `None` otherwise.
     pub fn lookup_name(&self, nr: u16, id: u16) -> Option<&str> {
         self.look_names
             .get(nr as usize)
@@ -178,20 +178,18 @@ impl PlayerState {
             .map(|e| e.name.as_str())
     }
 
+    /// Returns the `ch_nr` of the currently selected (clicked) character tile.
     pub fn selected_char(&self) -> u16 {
         self.selected_char
     }
 
-    #[allow(dead_code)]
-    pub fn selected_char_id(&self) -> u16 {
-        self.selected_char_id
-    }
-
+    /// Sets both the selected character `nr` and `id`.
     pub fn set_selected_char_with_id(&mut self, selected_char: u16, selected_char_id: u16) {
         self.selected_char = selected_char;
         self.selected_char_id = selected_char_id;
     }
 
+    /// Clears the character selection.
     pub fn clear_selected_char(&mut self) {
         self.selected_char = 0;
         self.selected_char_id = 0;
@@ -208,11 +206,8 @@ impl PlayerState {
         });
     }
 
-    #[allow(dead_code)]
-    pub fn local_ctick(&self) -> u8 {
-        self.local_ctick
-    }
-
+    /// Advances per-tick timers, syncs the animation ctick with the server,
+    /// and runs the legacy engine tick.
     pub fn on_tick_packet(&mut self, client_ticker: u32) {
         let _ = client_ticker;
 
@@ -235,6 +230,7 @@ impl PlayerState {
         crate::legacy_engine::engine_tick(self, client_ticker, self.local_ctick as usize);
     }
 
+    /// Maps a network font index to a [`LogMessageColor`](crate::types::log_message::LogMessageColor).
     fn log_color_from_font(font: u8) -> crate::types::log_message::LogMessageColor {
         use crate::types::log_message::LogMessageColor;
         match font {
@@ -254,6 +250,17 @@ impl PlayerState {
         self.message_log.push(msg);
     }
 
+    /// Word-wraps `text` to fit within `max_cols` columns.
+    ///
+    /// Breaks on spaces when possible; hard-cuts words longer than the limit.
+    /// Embedded newlines are honoured.
+    ///
+    /// # Arguments
+    /// * `text` - The raw text to wrap.
+    /// * `max_cols` - Maximum characters per line.
+    ///
+    /// # Returns
+    /// * A new `String` with `\n` inserted at wrap points.
     pub fn wrap_log_text(text: &str, max_cols: usize) -> String {
         let max_cols = max_cols.max(2);
         let wrap_at = max_cols.saturating_sub(1);
@@ -297,10 +304,16 @@ impl PlayerState {
         out
     }
 
+    /// Returns the log message at `index`, or `None` if out of range.
     pub fn log_message(&self, index: usize) -> Option<&LogMessage> {
         self.message_log.get(index)
     }
 
+    /// Appends a message to the chat log, word-wrapping it first.
+    ///
+    /// # Arguments
+    /// * `font` - Network font index (0=red, 1=yellow, 2=green, 3=blue).
+    /// * `text` - The message text.
     pub fn tlog(&mut self, font: u8, text: impl AsRef<str>) {
         const XS: usize = 49;
 
@@ -314,16 +327,11 @@ impl PlayerState {
     }
 
     fn write_name_chunk(&mut self, offset: usize, max_len: usize, chunk: &str) {
-        if offset >= self.moa_file_data.name.len() {
-            return;
-        }
-        let end = std::cmp::min(offset + max_len, self.moa_file_data.name.len());
-        self.moa_file_data.name[offset..end].fill(0);
+        let end = std::cmp::min(offset + max_len, self.character_info.name.len());
         self.character_info.name[offset..end].fill(0);
 
         let bytes = chunk.as_bytes();
         let n = std::cmp::min(bytes.len(), end - offset);
-        self.moa_file_data.name[offset..offset + n].copy_from_slice(&bytes[..n]);
         self.character_info.name[offset..offset + n].copy_from_slice(&bytes[..n]);
     }
 
@@ -341,6 +349,12 @@ impl PlayerState {
         }
     }
 
+    /// Applies a single parsed server command to this player state,
+    /// updating the map, stats, look panel, chat log, and other fields
+    /// as appropriate.
+    ///
+    /// # Arguments
+    /// * `command` - The parsed [`ServerCommand`] to apply.
     pub fn update_from_server_command(&mut self, command: &ServerCommand) {
         match command.header {
             ServerCommandType::ScrollDown => {
@@ -380,14 +394,12 @@ impl PlayerState {
 
         match &command.structured_data {
             ServerCommandData::NewPlayer {
-                player_id,
-                pass1,
-                pass2,
+                _player_id: _,
+                _pass1: _,
+                _pass2: _,
                 server_version,
             } => {
-                self.moa_file_data.usnr = *player_id;
-                self.moa_file_data.pass1 = *pass1;
-                self.moa_file_data.pass2 = *pass2;
+                // TODO: player_id, pass1 and pass2 are only needed for the legacy login flow
                 self.server_version = *server_version;
             }
             ServerCommandData::LoginOk { server_version } => {
@@ -399,9 +411,9 @@ impl PlayerState {
             ServerCommandData::SetCharName2 { chunk } => {
                 self.write_name_chunk(15, 15, chunk);
             }
-            ServerCommandData::SetCharName3 { chunk, race } => {
+            ServerCommandData::SetCharName3 { chunk, race: _ } => {
                 self.write_name_chunk(30, 10, chunk);
-                self.moa_file_data.race = (*race).try_into().unwrap_or(0);
+                // TODO: Race here is only needed for the legacy login flow; we should remove it eventually
             }
             ServerCommandData::SetCharMode { mode } => {
                 self.character_info.mode = *mode as i32;
@@ -672,7 +684,7 @@ impl PlayerState {
                     3,
                     format!(
                         "Server requested exit (reason={})",
-                        exit_reason_string(*reason)
+                        mag_core::constants::get_exit_reason(*reason)
                     ),
                 );
                 self.exit_requested_reason = Some(*reason);
@@ -740,5 +752,26 @@ mod tests {
         ps.tlog(0, "hello world");
         let msg = ps.log_message(0).expect("expected first log message");
         assert_eq!(msg.message, "hello world");
+    }
+
+    #[test]
+    fn take_exit_requested_reason() {
+        let mut ps = PlayerState::default();
+        assert_eq!(ps.take_exit_requested_reason(), None);
+        // Directly set the private field (inline test module has access)
+        ps.exit_requested_reason = Some(42);
+        assert_eq!(ps.take_exit_requested_reason(), Some(42));
+        // Second take should return None
+        assert_eq!(ps.take_exit_requested_reason(), None);
+    }
+
+    #[test]
+    fn selected_char_roundtrip() {
+        let mut ps = PlayerState::default();
+        assert_eq!(ps.selected_char(), 0);
+        ps.set_selected_char_with_id(5, 10);
+        assert_eq!(ps.selected_char(), 5);
+        ps.clear_selected_char();
+        assert_eq!(ps.selected_char(), 0);
     }
 }

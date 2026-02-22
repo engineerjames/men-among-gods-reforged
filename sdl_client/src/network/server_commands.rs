@@ -1,5 +1,6 @@
 use mag_core::string_operations::c_string_to_str;
 
+/// Opcode values for incoming server commands.
 #[derive(Copy, Clone, Debug)]
 #[repr(u8)]
 pub enum ServerCommandType {
@@ -71,6 +72,7 @@ pub enum ServerCommandType {
     SetMap = 128,
 }
 
+/// Parsed payload variants for each [`ServerCommandType`].
 #[derive(Debug)]
 pub enum ServerCommandData {
     Empty,
@@ -105,9 +107,9 @@ pub enum ServerCommandData {
         server_challenge: u32,
     },
     NewPlayer {
-        player_id: u32,
-        pass1: u32,
-        pass2: u32,
+        _player_id: u32,
+        _pass1: u32,
+        _pass2: u32,
         server_version: u32,
     },
     SetCharName1 {
@@ -118,6 +120,7 @@ pub enum ServerCommandData {
     },
     SetCharName3 {
         chunk: String,
+        #[allow(dead_code)]
         race: u32,
     },
     SetCharMode {
@@ -422,9 +425,13 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
         2 => Some((
             ServerCommandType::NewPlayer,
             ServerCommandData::NewPlayer {
-                player_id: u32::from_le_bytes(bytes.get(1..5)?.try_into().ok()?),
-                pass1: u32::from_le_bytes(bytes.get(5..9)?.try_into().ok()?),
-                pass2: u32::from_le_bytes(bytes.get(9..13)?.try_into().ok()?),
+                _pass1: 0,
+                _pass2: 0,
+                _player_id: 0,
+                // TODO: Evaluate if we need this...
+                // player_id: u32::from_le_bytes(bytes.get(1..5)?.try_into().ok()?),
+                // pass1: u32::from_le_bytes(bytes.get(5..9)?.try_into().ok()?),
+                // pass2: u32::from_le_bytes(bytes.get(9..13)?.try_into().ok()?),
                 server_version: (u32::from(*bytes.get(13)?)
                     | (u32::from(*bytes.get(14)?) << 8)
                     | (u32::from(*bytes.get(15)?) << 16)),
@@ -881,5 +888,102 @@ impl ServerCommand {
             structured_data: header.1,
             _payload,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_packet(opcode: u8, payload: &[u8]) -> Vec<u8> {
+        let mut bytes = vec![0u8; 16];
+        bytes[0] = opcode;
+        for (i, &b) in payload.iter().enumerate() {
+            if i + 1 < 16 {
+                bytes[i + 1] = b;
+            }
+        }
+        bytes
+    }
+
+    #[test]
+    fn parse_empty_opcode() {
+        let pkt = make_packet(0, &[]);
+        let cmd = ServerCommand::from_bytes(&pkt).unwrap();
+        assert!(matches!(cmd.structured_data, ServerCommandData::Empty));
+    }
+
+    #[test]
+    fn parse_challenge() {
+        let mut pkt = vec![0u8; 16];
+        pkt[0] = 1; // Challenge opcode
+        let sc: u32 = 12345;
+        pkt[1..5].copy_from_slice(&sc.to_le_bytes());
+        let cmd = ServerCommand::from_bytes(&pkt).unwrap();
+        match cmd.structured_data {
+            ServerCommandData::Challenge { server_challenge } => {
+                assert_eq!(server_challenge, 12345);
+            }
+            _ => panic!("Expected Challenge variant"),
+        }
+    }
+
+    #[test]
+    fn parse_tick() {
+        let mut pkt = vec![0u8; 16];
+        pkt[0] = 27; // Tick opcode
+        pkt[1] = 42; // ctick value
+        let cmd = ServerCommand::from_bytes(&pkt).unwrap();
+        match cmd.structured_data {
+            ServerCommandData::Tick { ctick } => assert_eq!(ctick, 42),
+            _ => panic!("Expected Tick variant"),
+        }
+    }
+
+    #[test]
+    fn parse_set_char_mode() {
+        let pkt = make_packet(6, &[3]); // Mode=3
+        let cmd = ServerCommand::from_bytes(&pkt).unwrap();
+        match cmd.structured_data {
+            ServerCommandData::SetCharMode { mode } => assert_eq!(mode, 3),
+            _ => panic!("Expected SetCharMode variant"),
+        }
+    }
+
+    #[test]
+    fn parse_scroll_right() {
+        let pkt = make_packet(30, &[]);
+        let cmd = ServerCommand::from_bytes(&pkt).unwrap();
+        assert!(matches!(cmd.header, ServerCommandType::ScrollRight));
+    }
+
+    #[test]
+    fn parse_set_origin() {
+        let mut pkt = vec![0u8; 16];
+        pkt[0] = 44; // SetOrigin
+        let x: i16 = 100;
+        let y: i16 = 200;
+        pkt[1..3].copy_from_slice(&x.to_le_bytes());
+        pkt[3..5].copy_from_slice(&y.to_le_bytes());
+        let cmd = ServerCommand::from_bytes(&pkt).unwrap();
+        match cmd.structured_data {
+            ServerCommandData::SetOrigin { x: ox, y: oy } => {
+                assert_eq!(ox, 100);
+                assert_eq!(oy, 200);
+            }
+            _ => panic!("Expected SetOrigin variant"),
+        }
+    }
+
+    #[test]
+    fn parse_empty_bytes_returns_none() {
+        assert!(ServerCommand::from_bytes(&[]).is_none());
+    }
+
+    #[test]
+    fn parse_login_ok() {
+        let pkt = make_packet(34, &[]);
+        let cmd = ServerCommand::from_bytes(&pkt).unwrap();
+        assert!(matches!(cmd.header, ServerCommandType::LoginOk));
     }
 }

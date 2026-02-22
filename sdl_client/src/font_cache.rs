@@ -39,9 +39,42 @@ pub fn draw_text(
     x: i32,
     y: i32,
 ) -> Result<(), String> {
+    draw_text_impl(canvas, gfx_cache, font, text, x, y, None)
+}
+
+/// Draws a text string using `font`, tinted to `color`.
+///
+/// This uses SDL texture color modulation and restores the texture state before returning.
+pub fn draw_text_tinted(
+    canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
+    gfx_cache: &mut crate::gfx_cache::GraphicsCache,
+    font: usize,
+    text: &str,
+    x: i32,
+    y: i32,
+    color: sdl2::pixels::Color,
+) -> Result<(), String> {
+    draw_text_impl(canvas, gfx_cache, font, text, x, y, Some(color))
+}
+
+fn draw_text_impl(
+    canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
+    gfx_cache: &mut crate::gfx_cache::GraphicsCache,
+    font: usize,
+    text: &str,
+    x: i32,
+    y: i32,
+    tint: Option<sdl2::pixels::Color>,
+) -> Result<(), String> {
     let sprite_id = BITMAP_FONT_FIRST_SPRITE_ID + (font % BITMAP_FONT_COUNT);
 
+    if let Some(color) = tint {
+        let texture = gfx_cache.get_texture(sprite_id);
+        texture.set_color_mod(color.r, color.g, color.b);
+    }
+
     let mut cx = x;
+    let mut first_error: Option<String> = None;
     for ch in text.chars() {
         let glyph = glyph_index(ch);
         if glyph < 0 {
@@ -58,9 +91,21 @@ pub fn draw_text(
             BITMAP_GLYPH_H,
         );
         let dst = sdl2::rect::Rect::new(cx, y, BITMAP_GLYPH_W - 1, BITMAP_GLYPH_H);
-        canvas.copy(texture, Some(src), Some(dst))?;
+        if let Err(err) = canvas.copy(texture, Some(src), Some(dst)) {
+            first_error = Some(err);
+            break;
+        }
 
         cx += BITMAP_GLYPH_ADVANCE as i32;
+    }
+
+    if tint.is_some() {
+        let texture = gfx_cache.get_texture(sprite_id);
+        texture.set_color_mod(255, 255, 255);
+    }
+
+    if let Some(err) = first_error {
+        return Err(err);
     }
 
     Ok(())
@@ -83,4 +128,58 @@ pub fn draw_text_centered(
 #[inline]
 pub fn text_width(text: &str) -> u32 {
     (text.len() as u32) * BITMAP_GLYPH_ADVANCE
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn glyph_index_space() {
+        assert_eq!(glyph_index(' '), 0);
+    }
+
+    #[test]
+    fn glyph_index_uppercase_a() {
+        // 'A' = 65, 65 - 32 = 33
+        assert_eq!(glyph_index('A'), 33);
+    }
+
+    #[test]
+    fn glyph_index_tilde() {
+        // '~' = 126, 126 - 32 = 94
+        assert_eq!(glyph_index('~'), 94);
+    }
+
+    #[test]
+    fn glyph_index_del_char() {
+        // DEL = 127, 127 - 32 = 95
+        assert_eq!(glyph_index('\x7F'), 95);
+    }
+
+    #[test]
+    fn glyph_index_non_printable() {
+        assert_eq!(glyph_index('\t'), -1);
+        assert_eq!(glyph_index('\n'), -1);
+    }
+
+    #[test]
+    fn glyph_index_high_unicode() {
+        assert_eq!(glyph_index('€'), -1);
+    }
+
+    #[test]
+    fn text_width_empty() {
+        assert_eq!(text_width(""), 0);
+    }
+
+    #[test]
+    fn text_width_hello() {
+        assert_eq!(text_width("Hello"), 30); // 5 * 6
+    }
+
+    #[test]
+    fn text_width_single_char() {
+        assert_eq!(text_width("X"), 6);
+    }
 }

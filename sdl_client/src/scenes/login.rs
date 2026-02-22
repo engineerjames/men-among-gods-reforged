@@ -5,12 +5,19 @@ use std::{
 
 use crate::{
     account_api, hosts,
+    preferences::{self, GlobalSettings},
     scenes::scene::{Scene, SceneType},
+    sfx_cache::MusicTrack,
     state::AppState,
 };
 use egui_sdl2::egui::{self, Align2, Vec2};
 use sdl2::{event::Event, pixels::Color, render::Canvas, video::Window};
 
+/// Scene that presents the account login form.
+///
+/// Displays IP, username and password fields plus an optional music toggle.
+/// Login is performed on a background thread; the result is polled in `update`.
+/// On success the scene transitions to `CharacterSelection`.
 pub struct LoginScene {
     server_ip: String,
     username: String,
@@ -19,9 +26,11 @@ pub struct LoginScene {
     api_result_rx: Option<std::sync::mpsc::Receiver<Result<String, String>>>,
     error_message: Option<String>,
     login_thread: Option<std::thread::JoinHandle<()>>,
+    music_initialized: bool,
 }
 
 impl LoginScene {
+    /// Creates a new `LoginScene` with default field values and the configured server IP.
     pub fn new() -> Self {
         Self {
             server_ip: hosts::get_server_ip(),
@@ -31,20 +40,56 @@ impl LoginScene {
             api_result_rx: None,
             error_message: None,
             login_thread: None,
+            music_initialized: false,
         }
     }
 
-    fn login(username: &str, password: &str) -> Result<String, String> {
-        account_api::login(&hosts::get_api_base_url(), username, password)
+    /// Lazily starts the login-screen music track if it hasn't been started yet.
+    fn ensure_music_initialized(&mut self, app_state: &mut AppState) {
+        if self.music_initialized {
+            return;
+        }
+
+        let settings = preferences::load_global_settings();
+        app_state.music_enabled = settings.music_enabled;
+
+        if app_state.music_enabled {
+            app_state.sfx_cache.play_music(MusicTrack::LoginTheme);
+        } else {
+            app_state.sfx_cache.stop_music();
+        }
+
+        self.music_initialized = true;
+    }
+
+    /// Persists the music-enabled preference to disk.
+    fn save_music_setting(&self, enabled: bool) {
+        let settings = GlobalSettings {
+            music_enabled: enabled,
+        };
+
+        if let Err(err) = preferences::save_global_settings(&settings) {
+            log::warn!("Failed to save login music setting: {}", err);
+        }
     }
 }
 
 impl Scene for LoginScene {
+    fn on_enter(&mut self, app_state: &mut AppState) {
+        self.ensure_music_initialized(app_state);
+    }
+
+    fn on_exit(&mut self, app_state: &mut AppState) {
+        app_state.sfx_cache.stop_music();
+    }
+
     fn handle_event(&mut self, _app_state: &mut AppState, _event: &Event) -> Option<SceneType> {
         None
     }
 
     fn update(&mut self, app_state: &mut AppState, _dt: Duration) -> Option<SceneType> {
+        self.ensure_music_initialized(app_state);
+
         if self.is_submitting {
             let result = if let Some(receiver) = &self.api_result_rx {
                 match receiver.try_recv() {
@@ -91,6 +136,7 @@ impl Scene for LoginScene {
     }
 
     fn render_ui(&mut self, app_state: &mut AppState, ctx: &egui::Context) -> Option<SceneType> {
+        self.ensure_music_initialized(app_state);
         let mut next = None;
 
         egui::Window::new("Men Among Gods - Reforged")
@@ -100,7 +146,7 @@ impl Scene for LoginScene {
             .collapsible(false)
             .resizable(false)
             .show(ctx, |ui| {
-                let (login_clicked, create_clicked) = ui
+                let (login_clicked, create_clicked, quit_clicked) = ui
                     .add_enabled_ui(!self.is_submitting, |ui| {
                         ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
                             ui.heading("Account Login");
@@ -123,6 +169,20 @@ impl Scene for LoginScene {
                                 .password(true)
                                 .desired_width(260.0),
                         );
+                        ui.add_space(8.0);
+
+                        if ui
+                            .checkbox(&mut app_state.music_enabled, "Enable Login Music")
+                            .changed()
+                        {
+                            if app_state.music_enabled {
+                                app_state.sfx_cache.play_music(MusicTrack::LoginTheme);
+                            } else {
+                                app_state.sfx_cache.stop_music();
+                            }
+                            self.save_music_setting(app_state.music_enabled);
+                        }
+
                         ui.add_space(12.0);
 
                         ui.horizontal(|ui| {
@@ -137,7 +197,11 @@ impl Scene for LoginScene {
                                 )
                                 .clicked();
 
-                            (login_clicked, create_clicked)
+                            let quit_clicked = ui
+                                .add(egui::Button::new("Quit").min_size([120.0, 32.0].into()))
+                                .clicked();
+
+                            (login_clicked, create_clicked, quit_clicked)
                         })
                         .inner
                     })
@@ -176,7 +240,8 @@ impl Scene for LoginScene {
                     app_state.api.username = Some(username.clone());
 
                     self.login_thread = Some(std::thread::spawn(move || {
-                        let result = Self::login(&username, &password);
+                        let result =
+                            account_api::login(&hosts::get_api_base_url(), &username, &password);
                         if let Err(error) = sender.send(result) {
                             log::error!("Failed to send login result: {}", error);
                         }
@@ -186,6 +251,10 @@ impl Scene for LoginScene {
                 if create_clicked {
                     log::info!("Create new account clicked");
                     next = Some(SceneType::NewAccount);
+                }
+
+                if quit_clicked {
+                    next = Some(SceneType::Exit);
                 }
             });
 

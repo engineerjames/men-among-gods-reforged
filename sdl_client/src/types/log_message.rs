@@ -1,3 +1,4 @@
+/// Colour used to render a chat log message.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LogMessageColor {
     Yellow,
@@ -6,6 +7,7 @@ pub enum LogMessageColor {
     Red,
 }
 
+/// A single entry in the chat log buffer.
 pub struct LogMessage {
     pub message: String,
     pub color: LogMessageColor,

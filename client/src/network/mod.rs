@@ -455,10 +455,10 @@ fn process_network_events(
                 );
 
                 {
-                    let save = player_state.save_file_mut();
-                    save.usnr = user_id;
-                    save.pass1 = pass1;
-                    save.pass2 = pass2;
+                    // let save = player_state.save_file_mut();
+                    // save.usnr = user_id;
+                    // save.pass1 = pass1;
+                    // save.pass2 = pass2;
                 }
 
                 user_settings.sync_character_from_player_state(&player_state);

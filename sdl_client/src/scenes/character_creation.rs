@@ -12,13 +12,15 @@ use sdl2::{event::Event, pixels::Color, rect::Rect, render::Canvas, video::Windo
 
 use crate::{
     account_api,
-    scenes::{
-        helpers,
-        scene::{Scene, SceneType},
-    },
+    scenes::scene::{Scene, SceneType},
     state::AppState,
 };
 
+/// Scene for creating a new in-game character.
+///
+/// Lets the player choose a name, description, class (race) and sex.
+/// The creation request runs on a background thread; on success the
+/// scene transitions to `CharacterSelection`.
 pub struct CharacterCreationScene {
     error: Option<String>,
     name: String,
@@ -31,6 +33,7 @@ pub struct CharacterCreationScene {
 }
 
 impl CharacterCreationScene {
+    /// Creates a new `CharacterCreationScene` with default selections.
     pub fn new() -> Self {
         Self {
             error: None,
@@ -111,7 +114,8 @@ impl Scene for CharacterCreationScene {
         ];
 
         for (class, target_rect) in portrait_slots {
-            let sprite_id = helpers::get_sprite_id_for_class_and_sex(class, self.selected_sex);
+            let sprite_id =
+                mag_core::traits::get_sprite_id_for_class_and_sex(class, self.selected_sex);
             let texture = app_state.gfx_cache.get_texture(sprite_id);
             if let Err(error) = canvas.copy(texture, None, target_rect) {
                 log::error!(
@@ -272,6 +276,13 @@ impl Scene for CharacterCreationScene {
     }
 }
 
+/// Renders a single radio-button option for a character class.
+///
+/// # Arguments
+/// * `ui` – the egui `Ui` context.
+/// * `selected_class` – mutable reference to the currently selected class.
+/// * `class` – the `Class` value this radio button represents.
+/// * `label` – display text for the radio button.
 fn race_option_ui(ui: &mut egui::Ui, selected_class: &mut Class, class: Class, label: &str) {
     ui.radio_value(selected_class, class, label);
 }

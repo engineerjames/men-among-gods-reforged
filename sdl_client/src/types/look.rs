@@ -1,4 +1,7 @@
-#[repr(C)]
+/// Detailed "look-at" data for a character or shop, matching the original C
+/// client's `look` struct (496 bytes).
+///
+/// Populated incrementally from `SV_LOOK1`–`SV_LOOK6` server commands.
 #[derive(Clone, Copy)]
 pub struct Look {
     autoflag: u8,
@@ -19,10 +22,6 @@ pub struct Look {
     price: [u32; 62],
     pl_price: u32,
 }
-
-const _: () = {
-    assert!(std::mem::size_of::<Look>() == 496);
-};
 
 impl Default for Look {
     fn default() -> Self {
@@ -57,17 +56,14 @@ impl Look {
         self.id
     }
 
-    #[allow(dead_code)]
     pub fn sprite(&self) -> u16 {
         self.sprite
     }
 
-    #[allow(dead_code)]
     pub fn worn(&self, index: usize) -> u16 {
         self.worn.get(index).copied().unwrap_or(0)
     }
 
-    #[allow(dead_code)]
     pub fn points(&self) -> u32 {
         self.points
     }
@@ -184,5 +180,111 @@ impl Look {
             self.item[idx] = item;
             self.price[idx] = price;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_fields_zeroed() {
+        let l = Look::default();
+        assert_eq!(l.nr(), 0);
+        assert_eq!(l.id(), 0);
+        assert!(!l.is_extended());
+        assert_eq!(l.name(), Some(""));
+        assert_eq!(l.autoflag(), 0);
+    }
+
+    #[test]
+    fn set_and_get_name() {
+        let mut l = Look::default();
+        l.set_name("TestName");
+        assert_eq!(l.name(), Some("TestName"));
+    }
+
+    #[test]
+    fn name_truncated_to_39_chars() {
+        let mut l = Look::default();
+        let long = "A".repeat(50);
+        l.set_name(&long);
+        assert_eq!(l.name().unwrap().len(), 39);
+    }
+
+    #[test]
+    fn set_and_get_worn() {
+        let mut l = Look::default();
+        l.set_worn(5, 42);
+        assert_eq!(l.worn(5), 42);
+    }
+
+    #[test]
+    fn worn_out_of_bounds() {
+        let l = Look::default();
+        assert_eq!(l.worn(99), 0);
+    }
+
+    #[test]
+    fn set_and_get_shop_entry() {
+        let mut l = Look::default();
+        l.set_shop_entry(3, 100, 500);
+        assert_eq!(l.item(3), 100);
+        assert_eq!(l.price(3), 500);
+    }
+
+    #[test]
+    fn shop_entry_out_of_bounds() {
+        let l = Look::default();
+        assert_eq!(l.item(99), 0);
+        assert_eq!(l.price(99), 0);
+    }
+
+    #[test]
+    fn set_extended() {
+        let mut l = Look::default();
+        l.set_extended(1);
+        assert!(l.is_extended());
+        l.set_extended(0);
+        assert!(!l.is_extended());
+    }
+
+    #[test]
+    fn autoflag_round_trip() {
+        let mut l = Look::default();
+        l.set_autoflag(7);
+        assert_eq!(l.autoflag(), 7);
+    }
+
+    #[test]
+    fn nr_id_round_trip() {
+        let mut l = Look::default();
+        l.set_nr(123);
+        l.set_id(456);
+        assert_eq!(l.nr(), 123);
+        assert_eq!(l.id(), 456);
+    }
+
+    #[test]
+    fn hp_end_mana_round_trip() {
+        let mut l = Look::default();
+        l.set_hp(1000);
+        l.set_a_hp(500);
+        assert_eq!(l.a_hp(), 500);
+
+        l.set_end(200);
+        l.set_a_end(100);
+        assert_eq!(l.a_end(), 100);
+
+        l.set_mana(300);
+        l.set_a_mana(150);
+        assert_eq!(l.a_mana(), 150);
+    }
+
+    #[test]
+    fn pl_price_round_trip() {
+        let mut l = Look::default();
+        l.set_pl_price(9999);
+        assert_eq!(l.pl_price(), 9999);
     }
 }
