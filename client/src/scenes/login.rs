@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    account_api, hosts,
+    account_api,
     preferences::{self, GlobalSettings},
     scenes::scene::{Scene, SceneType},
     sfx_cache::MusicTrack,
@@ -33,7 +33,7 @@ impl LoginScene {
     /// Creates a new `LoginScene` with default field values and the configured server IP.
     pub fn new() -> Self {
         Self {
-            server_ip: hosts::get_server_ip(),
+            server_ip: crate::hosts::get_server_ip(),
             username: String::new(),
             password: String::new(),
             is_submitting: false,
@@ -228,6 +228,23 @@ impl Scene for LoginScene {
                         self.username
                     );
 
+                    let entered_host = self.server_ip.trim();
+                    if entered_host.is_empty() {
+                        self.error_message =
+                            Some("Please enter an IP address or hostname".to_string());
+                        return;
+                    }
+
+                    let api_base_url = if entered_host.starts_with("http://")
+                        || entered_host.starts_with("https://")
+                    {
+                        entered_host.trim_end_matches('/').to_string()
+                    } else {
+                        format!("http://{}:5554", entered_host)
+                    };
+
+                    app_state.api.base_url = api_base_url.clone();
+
                     let (sender, receiver) = mpsc::channel::<Result<String, String>>();
 
                     self.error_message = None;
@@ -236,12 +253,12 @@ impl Scene for LoginScene {
 
                     let username = self.username.clone();
                     let password = self.password.clone();
+                    let base_url = api_base_url;
 
                     app_state.api.username = Some(username.clone());
 
                     self.login_thread = Some(std::thread::spawn(move || {
-                        let result =
-                            account_api::login(&hosts::get_api_base_url(), &username, &password);
+                        let result = account_api::login(&base_url, &username, &password);
                         if let Err(error) = sender.send(result) {
                             log::error!("Failed to send login result: {}", error);
                         }

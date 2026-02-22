@@ -1,6 +1,8 @@
 extern crate embed_resource;
 
 fn main() {
+    println!("cargo:rustc-link-lib=mpg123");
+
     // Embed the Windows app icon into the final .exe at build time.
     // This is required for the correct icon to show in Explorer/taskbar shortcuts.
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();

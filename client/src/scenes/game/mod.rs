@@ -269,11 +269,13 @@ impl Scene for GameScene {
             preferences::log_file_path().display()
         );
 
-        let host = crate::hosts::get_server_ip();
+        let host = crate::hosts::get_host_from_api_base_url(&app_state.api.base_url)
+            .unwrap_or_else(crate::hosts::get_server_ip);
         log::info!(
-            "GameScene: connecting to {}:5555 with ticket={}",
+            "GameScene: connecting to {}:5555 with ticket={} (api_base_url={})",
             host,
-            login_target.ticket
+            login_target.ticket,
+            app_state.api.base_url
         );
 
         app_state.network = Some(NetworkRuntime::new(
