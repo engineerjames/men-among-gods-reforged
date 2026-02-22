@@ -53,6 +53,7 @@ jobs:
           automake \
           libtool \
           cmake \
+          libltdl-dev \
           ninja-build
 
     - name: Install cargo-vcpkg and build SDL2 dependencies
