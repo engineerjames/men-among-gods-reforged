@@ -48,7 +48,7 @@ jobs:
     - name: Install cargo-vcpkg and build SDL2 dependencies
       run: |
         cargo install cargo-vcpkg
-        cargo vcpkg build --manifest-path client/Cargo.toml
+        cargo vcpkg -v build --manifest-path client/Cargo.toml
 
     - name: Build
       run: cargo build
