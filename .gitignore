@@ -36,3 +36,4 @@ dist/**
 *.rdb
 
 **/__pycache__/**
+sdl_client_profile.json

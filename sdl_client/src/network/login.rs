@@ -160,26 +160,6 @@ fn login_handshake(
                 let _ = event_tx.send(NetworkEvent::LoggedIn);
                 return Ok(());
             }
-            server_commands::ServerCommandData::NewPlayer {
-                player_id,
-                pass1,
-                pass2,
-                server_version,
-            } => {
-                let _ = event_tx.send(NetworkEvent::NewPlayerCredentials {
-                    user_id: player_id,
-                    pass1,
-                    pass2,
-                });
-                let _ = event_tx.send(NetworkEvent::Status("Login successful.".to_string()));
-                log::info!(
-                    "New player created with ID: {}, server version: {}",
-                    player_id,
-                    server_version,
-                );
-                let _ = event_tx.send(NetworkEvent::LoggedIn);
-                return Ok(());
-            }
             server_commands::ServerCommandData::Mod1 { .. }
             | server_commands::ServerCommandData::Mod2 { .. }
             | server_commands::ServerCommandData::Mod3 { .. }

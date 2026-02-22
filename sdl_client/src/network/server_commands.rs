@@ -107,9 +107,9 @@ pub enum ServerCommandData {
         server_challenge: u32,
     },
     NewPlayer {
-        player_id: u32,
-        pass1: u32,
-        pass2: u32,
+        _player_id: u32,
+        _pass1: u32,
+        _pass2: u32,
         server_version: u32,
     },
     SetCharName1 {
@@ -120,6 +120,7 @@ pub enum ServerCommandData {
     },
     SetCharName3 {
         chunk: String,
+        #[allow(dead_code)]
         race: u32,
     },
     SetCharMode {
@@ -424,9 +425,13 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
         2 => Some((
             ServerCommandType::NewPlayer,
             ServerCommandData::NewPlayer {
-                player_id: u32::from_le_bytes(bytes.get(1..5)?.try_into().ok()?),
-                pass1: u32::from_le_bytes(bytes.get(5..9)?.try_into().ok()?),
-                pass2: u32::from_le_bytes(bytes.get(9..13)?.try_into().ok()?),
+                _pass1: 0,
+                _pass2: 0,
+                _player_id: 0,
+                // TODO: Evaluate if we need this...
+                // player_id: u32::from_le_bytes(bytes.get(1..5)?.try_into().ok()?),
+                // pass1: u32::from_le_bytes(bytes.get(5..9)?.try_into().ok()?),
+                // pass2: u32::from_le_bytes(bytes.get(9..13)?.try_into().ok()?),
                 server_version: (u32::from(*bytes.get(13)?)
                     | (u32::from(*bytes.get(14)?) << 8)
                     | (u32::from(*bytes.get(15)?) << 16)),

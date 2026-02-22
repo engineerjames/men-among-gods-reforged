@@ -46,17 +46,10 @@ impl GameScene {
                     log::info!("Logged in to game server");
                 }
                 NetworkEvent::NewPlayerCredentials {
-                    user_id,
-                    pass1,
-                    pass2,
-                } => {
-                    if let Some(ps) = app_state.player_state.as_mut() {
-                        let save = ps.save_file_mut();
-                        save.usnr = user_id;
-                        save.pass1 = pass1;
-                        save.pass2 = pass2;
-                    }
-                }
+                    _user_id,
+                    _pass1,
+                    _pass2,
+                } => {}
                 NetworkEvent::Bytes { bytes, received_at } => {
                     if bytes.is_empty() {
                         continue;
