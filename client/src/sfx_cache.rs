@@ -78,7 +78,11 @@ impl SoundCache {
                                 click_sfx = Some(chunk);
                             }
                             Err(e) => {
-                                log::warn!("Failed to load click sfx from {}: {}", path.display(), e);
+                                log::warn!(
+                                    "Failed to load click sfx from {}: {}",
+                                    path.display(),
+                                    e
+                                );
                             }
                         }
                     }
