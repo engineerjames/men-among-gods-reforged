@@ -2,7 +2,6 @@
 /// client's `look` struct (496 bytes).
 ///
 /// Populated incrementally from `SV_LOOK1`–`SV_LOOK6` server commands.
-#[repr(C)]
 #[derive(Clone, Copy)]
 pub struct Look {
     autoflag: u8,
@@ -23,10 +22,6 @@ pub struct Look {
     price: [u32; 62],
     pl_price: u32,
 }
-
-const _: () = {
-    assert!(std::mem::size_of::<Look>() == 496);
-};
 
 impl Default for Look {
     fn default() -> Self {

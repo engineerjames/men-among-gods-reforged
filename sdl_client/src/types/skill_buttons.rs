@@ -3,7 +3,6 @@
 /// index of the bound skill.
 // xbutton from original C headers
 #[derive(Copy, Clone, Debug)]
-#[repr(C)]
 pub struct SkillButtons {
     name: [u8; 8],
     skill_nr: u32,
