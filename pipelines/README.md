@@ -6,6 +6,8 @@ This folder contains small scripts used by GitHub Actions workflows (and runnabl
 
 - `install_linux_deps.sh`
   - Installs Linux build dependencies for SDL2 (intended for `ubuntu-latest`).
+- `install_macos_deps.sh`
+  - Installs macOS build dependencies for SDL2 (intended for `macos-latest`).
 - `build_release.sh`
   - Builds release binaries for `server` and `client`.
 - `package.sh`
@@ -23,7 +25,7 @@ SDL2 is managed automatically via [cargo-vcpkg](https://crates.io/crates/cargo-v
 
 ```bash
 cargo install cargo-vcpkg
-cargo vcpkg build --manifest-path client/Cargo.toml
+cargo vcpkg -v build --manifest-path client/Cargo.toml
 ```
 
 This downloads and builds the SDL2 libraries once and caches them; subsequent builds reuse the cache. Linux builds also need system headers:

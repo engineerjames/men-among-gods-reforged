@@ -4,8 +4,6 @@ set -euo pipefail
 # Linux build dependencies for SDL2 and the vcpkg bootstrap toolchain.
 # SDL2 is sourced via cargo-vcpkg (statically linked) and does not need
 # system SDL2 packages.
-# Safe to run in CI; intended for ubuntu-latest.
-
 sudo apt-get update
 sudo apt-get install -y \
   pkg-config \
@@ -18,5 +16,10 @@ sudo apt-get install -y \
   libxrandr-dev \
   libxcursor-dev \
   libxinerama-dev \
+  autoconf \
+  autoconf-archive \
+  automake \
+  libtool \
   cmake \
+  libltdl-dev \
   ninja-build
