@@ -23,6 +23,9 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        # Fetch all history for vcpkg to work correctly with versioning
+        fetch-depth: 0 
 
     - name: Install Linux build dependencies
       if: matrix.os == 'ubuntu-latest'
@@ -42,15 +45,9 @@ jobs:
           cmake \
           ninja-build
 
-    - name: Setup Rust
-      uses: dtolnay/rust-toolchain@stable
-    
-    # Use a vcpkg setup action to handle caching
-    - name: Setup vcpkg
-      uses: friendlyanon/setup-vcpkg@v2
-
     - name: Install cargo-vcpkg and build SDL2 dependencies
       run: |
+        cargo install cargo-vcpkg
         cargo vcpkg build --manifest-path client/Cargo.toml
 
     - name: Build
