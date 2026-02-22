@@ -82,7 +82,7 @@ impl GameScene {
         let mana = ci.a_mana;
         let max_mana = ci.mana[5] as i32;
 
-        // dd_showbar(373, y, n, 6, color) — bar_width = (cur * 62) / max, clamped [0,124]
+        // dd_showbar(373, y, n, 6, color) — bar_width = (cur * 62) / max, clamped [0,62]
         let draw_bar = |canvas: &mut Canvas<Window>,
                         y: i32,
                         cur: i32,
@@ -181,12 +181,18 @@ impl GameScene {
         let exp_text = format!("Experience     {:>10}", ci.points_tot);
         font_cache::draw_text(canvas, gfx, UI_FONT, &exp_text, STAT_EXP_X, STAT_EXP_Y)?;
 
-        // Character name (centered in 125px area at top)
-        let name = mag_core::string_operations::c_string_to_str(&ci.name);
-        if !name.is_empty() {
-            let name_w = font_cache::text_width(name) as i32;
+        // Character/selection name (centered in 125px area at top).
+        // Matches original behavior: show selected target name when available.
+        let own_name = mag_core::string_operations::c_string_to_str(&ci.name);
+        let top_name = if ps.selected_char() != 0 {
+            ps.lookup_name(ps.selected_char(), 0).unwrap_or(own_name)
+        } else {
+            own_name
+        };
+        if !top_name.is_empty() {
+            let name_w = font_cache::text_width(top_name) as i32;
             let name_x = NAME_AREA_X + (NAME_AREA_W - name_w) / 2;
-            font_cache::draw_text(canvas, gfx, UI_FONT, name, name_x, NAME_Y)?;
+            font_cache::draw_text(canvas, gfx, UI_FONT, top_name, name_x, NAME_Y)?;
         }
 
         Ok(())

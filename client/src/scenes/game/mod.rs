@@ -77,7 +77,7 @@ pub(super) const BAR_END_Y: i32 = 134;
 pub(super) const BAR_MANA_Y: i32 = 141;
 pub(super) const BAR_H: u32 = 6;
 pub(super) const BAR_SCALE_NUM: i32 = 62;
-pub(super) const BAR_W_MAX: i32 = 124;
+pub(super) const BAR_W_MAX: i32 = 62;
 
 /// Bar background (capacity).
 pub(super) const BAR_BG_COLOR: Color = Color::RGB(9, 4, 58);
@@ -788,6 +788,14 @@ impl Scene for GameScene {
                 }
 
                 ui.separator();
+
+                let latest_rtt = app_state
+                    .network
+                    .as_ref()
+                    .and_then(|net| net.last_rtt_ms)
+                    .map(|value| format!("{} ms", value))
+                    .unwrap_or_else(|| "N/A".to_string());
+                ui.label(format!("Latest RTT: {}", latest_rtt));
 
                 // Volume slider
                 if ui

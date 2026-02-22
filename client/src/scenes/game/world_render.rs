@@ -108,6 +108,49 @@ impl GameScene {
         result
     }
 
+    /// Draw a sprite highlight with a custom additive tint color.
+    pub(super) fn draw_world_sprite_tinted_highlight(
+        canvas: &mut Canvas<Window>,
+        gfx: &mut GraphicsCache,
+        sprite_id: i32,
+        tile_x: usize,
+        tile_y: usize,
+        cam_xoff: i32,
+        cam_yoff: i32,
+        xoff: i32,
+        yoff: i32,
+        alpha: u8,
+        tint: Color,
+    ) -> Result<(), String> {
+        if sprite_id <= 0 || sprite_id as u16 == SPR_EMPTY {
+            return Ok(());
+        }
+
+        let texture = gfx.get_texture(sprite_id as usize);
+        let q = texture.query();
+        let xs = q.width as i32 / 32;
+        let ys = q.height as i32 / 32;
+
+        let xpos = (tile_x as i32) * 32;
+        let ypos = (tile_y as i32) * 32;
+
+        let rx = xpos / 2 + ypos / 2 - xs * 16 + 32 + XPOS + MAP_X_SHIFT + cam_xoff + xoff;
+        let ry = xpos / 4 - ypos / 4 + YPOS - ys * 32 + cam_yoff + yoff;
+
+        texture.set_blend_mode(sdl2::render::BlendMode::Add);
+        texture.set_alpha_mod(alpha);
+        texture.set_color_mod(tint.r, tint.g, tint.b);
+        let result = canvas.copy(
+            texture,
+            None,
+            Some(sdl2::rect::Rect::new(rx, ry, q.width, q.height)),
+        );
+        texture.set_color_mod(255, 255, 255);
+        texture.set_alpha_mod(255);
+        texture.set_blend_mode(sdl2::render::BlendMode::Blend);
+        result
+    }
+
     /// Draw a darkened, vertically-flattened shadow beneath a character sprite.
     /// Ported from dd_shadow() in the original dd.c.
     pub(super) fn draw_shadow(
@@ -192,6 +235,8 @@ impl GameScene {
         let ry = xpos / 4 - ypos / 4 + YPOS - 2 * 32 + cam_yoff + yoff;
 
         let str_div = strength.max(1) as i32;
+        let strength_clamped = strength.clamp(1, 7) as i32;
+        let age_alpha = (((8 - strength_clamped) * 255) / 7) as u8;
 
         // Draw the diamond glow as a series of horizontal lines using additive blending.
         // This avoids needing a streaming texture while closely matching the original effect.
@@ -248,7 +293,7 @@ impl GameScene {
                     0u8
                 };
 
-                canvas.set_draw_color(Color::RGBA(r, g, b, 255));
+                canvas.set_draw_color(Color::RGBA(r, g, b, age_alpha));
                 let _ = canvas.draw_point(sdl2::rect::Point::new(px, py));
             }
         }
@@ -397,6 +442,22 @@ impl GameScene {
                 Self::draw_world_sprite(
                     canvas, gfx, ch, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff, tile.light,
                 )?;
+
+                if ps.selected_char() != 0 && ps.selected_char() == tile.ch_nr {
+                    Self::draw_world_sprite_tinted_highlight(
+                        canvas,
+                        gfx,
+                        ch,
+                        x,
+                        y,
+                        cam_xoff,
+                        cam_yoff,
+                        ch_xoff,
+                        ch_yoff,
+                        176,
+                        Color::RGB(48, 255, 96),
+                    )?;
+                }
 
                 if ci.attack_cn != 0 && ci.attack_cn == tile.ch_nr as i32 {
                     Self::draw_world_sprite(
