@@ -13,6 +13,7 @@ const LOGIN_MUSIC_CHANNEL: i32 = 0;
 pub struct SoundCache {
     sfx_cache: HashMap<usize, Chunk>,
     music_cache: HashMap<MusicTrack, Chunk>,
+    click_sfx: Option<Chunk>,
 }
 
 /// Named background-music tracks that can be played or stopped.
@@ -61,6 +62,7 @@ impl SoundCache {
     /// * A new `SoundCache`. Panics if the sfx directory cannot be read.
     pub fn new(sfx_directory: PathBuf, music_directory: PathBuf) -> Self {
         let mut sfx_cache: HashMap<usize, Chunk> = HashMap::new();
+        let mut click_sfx: Option<Chunk> = None;
 
         for file in std::fs::read_dir(&sfx_directory).unwrap_or_else(|e| {
             log::error!("Failed to read sound directory: {}", e);
@@ -69,10 +71,21 @@ impl SoundCache {
             if let Ok(entry) = file {
                 let path = entry.path();
                 if path.is_file() {
+                    let file_name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+                    if file_name.eq_ignore_ascii_case("click.wav") {
+                        match Chunk::from_file(&path) {
+                            Ok(chunk) => {
+                                click_sfx = Some(chunk);
+                            }
+                            Err(e) => {
+                                log::warn!("Failed to load click sfx from {}: {}", path.display(), e);
+                            }
+                        }
+                    }
+
                     // Our SFX IDs are numeric filenames (e.g. 00031.wav). Some zip builds
                     // include a directory prefix (e.g. sounds/00031.wav), so parse only the
                     // final path component.
-                    let file_name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
                     let stem = file_name.split('.').next().unwrap_or("");
                     if let Ok(id) = stem.parse::<usize>() {
                         match Chunk::from_file(&path) {
@@ -112,6 +125,7 @@ impl SoundCache {
         SoundCache {
             sfx_cache,
             music_cache,
+            click_sfx,
         }
     }
 
@@ -136,6 +150,27 @@ impl SoundCache {
             }
             Err(e) => {
                 log::warn!("Failed to play sfx {}: {}", nr, e);
+            }
+        }
+    }
+
+    /// Plays the classic UI click sound (`click.wav`) if present in the asset pack.
+    pub fn play_click(&self, master_volume: f32) {
+        let Some(chunk) = self.click_sfx.as_ref() else {
+            return;
+        };
+
+        match Channel::all().play(chunk, 0) {
+            Ok(ch) => {
+                let scaled = Self::convert_server_volume(-1000, master_volume);
+                let sdl_vol = scaled * 128 / 127;
+                ch.set_volume(sdl_vol.clamp(0, 128));
+                let right = Self::convert_server_pan(0);
+                let left = 255 - right;
+                let _ = ch.set_panning(left, right);
+            }
+            Err(e) => {
+                log::warn!("Failed to play click sfx: {}", e);
             }
         }
     }
