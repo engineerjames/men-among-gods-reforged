@@ -22,10 +22,18 @@ jobs:
           - os: macos-latest
             cargo-flags: ""
           - os: windows-latest
-            cargo-flags: "--workspace --exclude sdl_client"
+            cargo-flags: ""
 
     steps:
     - uses: actions/checkout@v4
+
+    - name: Install cargo-vcpkg (Windows)
+      if: matrix.os == 'windows-latest'
+      run: cargo install cargo-vcpkg
+
+    - name: Build SDL2 dependencies via vcpkg (Windows)
+      if: matrix.os == 'windows-latest'
+      run: cargo vcpkg build --manifest-path sdl_client/Cargo.toml
 
     - name: Install Linux build dependencies (Bevy & SDL)
       if: matrix.os == 'ubuntu-latest'

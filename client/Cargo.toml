@@ -5,7 +5,7 @@ edition = "2021"
 build = "build.rs"
 
 [[bin]]
-name = "men-among-gods-client"
+name = "men-among-gods-client-legacy"
 path = "src/main.rs"
 
 [dependencies]

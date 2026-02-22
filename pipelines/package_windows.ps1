@@ -21,6 +21,8 @@ Copy-Item -Force "target/release/map_viewer.exe" "dist/$serverDir/map_viewer.exe
 Copy-Item -Force "target/release/template_viewer.exe" "dist/$serverDir/template_viewer.exe"
 Copy-Item -Force "target/release/api.exe" "dist/$serverDir/api.exe"
 
+# SDL client shares assets from client/assets/; copy into sdl_client packaging path.
+# TODO: remove this copy once client/ is deleted and assets live directly in sdl_client/assets/
 Copy-Item -Recurse -Force "client/assets/*" "dist/$clientDir/assets/"
 Copy-Item -Force "target/release/men-among-gods-client.exe" "dist/$clientDir/men-among-gods-client.exe"
 

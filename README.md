@@ -35,18 +35,29 @@ samply record cargo run --bin server
 This will generate a flamegraph that you can use to analyze the performance of the server.
 
 # Client
-The client uses [Bevy](https://bevyengine.org/) for its rendering and input handling. It is still in ALPHA stage and is not yet fully functional. Many features from the original Mercenaries of Astonia (v2) game are missing, and there are likely to be bugs. However, you should be able to connect to a server and explore the world to some extent.
+The client uses [SDL2](https://www.libsdl.org/) via the [Rust SDL2 bindings](https://github.com/Rust-SDL2/rust-sdl2) for rendering, input handling, and audio. An earlier iteration of the client was built with [Bevy](https://bevyengine.org/), but we found that a full ECS game engine was not the right fit for a 2D tile-based game of this nature — SDL2 gives us the low-level control we need with far less overhead.
 
-## Windows Vulkan Loader Messages
-On some Windows setups you may see Vulkan loader messages like:
+The client is still in ALPHA stage and is not yet fully functional. Many features from the original Mercenaries of Astonia (v2) game are missing, and there are likely to be bugs. However, you should be able to connect to a server and explore the world to some extent.
 
-`Failed to open JSON file ... VkLayer_*.json`
+## Building on Windows
+The SDL client uses [cargo-vcpkg](https://crates.io/crates/cargo-vcpkg) to manage SDL2 dependencies on Windows:
+```bash
+cargo install cargo-vcpkg
+cargo vcpkg build --manifest-path sdl_client/Cargo.toml
+cargo build
+```
 
-This is usually caused by stale Vulkan layer registrations from uninstalled/moved software (e.g. old Vulkan SDKs, overlays). It’s often non-fatal.
+## Building on macOS
+```bash
+brew install sdl2 sdl2_image sdl2_ttf sdl2_mixer sdl2_gfx
+cargo build
+```
 
-- The client suppresses these messages by default on Windows.
-- To see full graphics backend logs, set `RUST_LOG` explicitly.
-- If you want to avoid Vulkan entirely, try running with `WGPU_BACKEND=dx12`.
+## Building on Linux
+```bash
+bash pipelines/install_linux_deps.sh
+cargo build
+```
 
 # Server
 The server is a command-line application that listens for incoming connections from clients. It is still in ALPHA stage and is not yet fully functional. You should be able to connect to it using any Merceneries of Astonia (v2) client, but expect bugs.

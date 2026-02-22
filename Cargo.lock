@@ -6475,6 +6475,7 @@ checksum = "3ff61407fc75d4b0bbc93dc7e4d6c196439965fbef8e4a4f003a36095823eac0"
 dependencies = [
  "cfg-if",
  "libc",
+ "vcpkg",
  "version-compare",
 ]
 
@@ -6485,6 +6486,7 @@ dependencies = [
  "argon2 0.5.3",
  "core",
  "egui-sdl2",
+ "embed-resource",
  "flate2",
  "log",
  "log4rs",
@@ -7723,6 +7725,12 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "vcpkg"
+version = "0.2.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
 name = "vec_map"

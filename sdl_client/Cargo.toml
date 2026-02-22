@@ -2,6 +2,11 @@
 name = "sdl_client"
 version = "0.1.0"
 edition = "2021"
+build = "build.rs"
+
+[[bin]]
+name = "men-among-gods-client"
+path = "src/main.rs"
 
 [dependencies]
 mag_core = { path = "../core", package = "core" }
@@ -15,3 +20,18 @@ reqwest = { version = "0.12", default-features = false, features = ["blocking", 
 argon2 = "0.5.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+
+# On Windows, use vcpkg to provide SDL2 libraries and statically link them
+# so the release .exe is self-contained (no SDL2 DLLs to ship).
+[target.'cfg(windows)'.dependencies]
+sdl2 = { version = "0.38.0", default-features = false, features = ["gfx", "image", "mixer", "use-vcpkg", "static-link"] }
+
+[build-dependencies]
+embed-resource = "2"
+
+[package.metadata.vcpkg]
+git = "https://github.com/microsoft/vcpkg"
+rev = "2026.01.16"
+
+[package.metadata.vcpkg.target]
+x86_64-pc-windows-msvc = { triplet = "x64-windows-static-md", dependencies = ["sdl2", "sdl2-image", "sdl2-mixer", "sdl2-gfx"] }
