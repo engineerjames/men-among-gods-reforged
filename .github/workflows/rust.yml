@@ -18,11 +18,8 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            cargo-flags: ""
           - os: macos-latest
-            cargo-flags: ""
           - os: windows-latest
-            cargo-flags: ""
 
     steps:
     - uses: actions/checkout@v4
@@ -52,8 +49,8 @@ jobs:
       run: cargo vcpkg build --manifest-path client/Cargo.toml
 
     - name: Build
-      run: cargo build ${{ matrix.cargo-flags }}
+      run: cargo build
     - name: Run tests
-      run: cargo test ${{ matrix.cargo-flags }}
+      run: cargo test
     - name: Run clippy
-      run: cargo clippy ${{ matrix.cargo-flags }} -- -D warnings
+      run: cargo clippy -- -D warnings
