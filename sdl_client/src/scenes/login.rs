@@ -44,18 +44,6 @@ impl LoginScene {
         }
     }
 
-    /// Performs a blocking login API call.
-    ///
-    /// # Arguments
-    /// * `username` – account username.
-    /// * `password` – account password (plaintext; hashed client-side before transmission).
-    ///
-    /// # Returns
-    /// `Ok(token)` on success, `Err(message)` on failure.
-    fn login(username: &str, password: &str) -> Result<String, String> {
-        account_api::login(&hosts::get_api_base_url(), username, password)
-    }
-
     /// Lazily starts the login-screen music track if it hasn't been started yet.
     fn ensure_music_initialized(&mut self, app_state: &mut AppState) {
         if self.music_initialized {
@@ -248,7 +236,8 @@ impl Scene for LoginScene {
                     app_state.api.username = Some(username.clone());
 
                     self.login_thread = Some(std::thread::spawn(move || {
-                        let result = Self::login(&username, &password);
+                        let result =
+                            account_api::login(&hosts::get_api_base_url(), &username, &password);
                         if let Err(error) = sender.send(result) {
                             log::error!("Failed to send login result: {}", error);
                         }

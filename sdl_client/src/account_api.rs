@@ -45,6 +45,11 @@ fn hash_password(username: &str, password: &str) -> Result<String, String> {
 /// * `Ok(token)` containing the JWT.
 /// * `Err(String)` when the request or authentication fails.
 pub fn login(base_url: &str, username: &str, password: &str) -> Result<String, String> {
+    log::info!(
+        "Logging in using API at {} with username '{}'",
+        base_url,
+        username
+    );
     let password_hash = hash_password(username, password)?;
     let client = Client::builder()
         .timeout(Duration::from_secs(10))
@@ -99,6 +104,12 @@ pub fn create_account(
     username: &str,
     password: &str,
 ) -> Result<String, String> {
+    log::info!(
+        "Creating account using API at {} with username '{}' and email '{}'",
+        base_url,
+        username,
+        email
+    );
     let password_hash = hash_password(username, password)?;
     let client = Client::builder()
         .timeout(Duration::from_secs(10))
@@ -156,6 +167,14 @@ pub fn create_character(
     sex: Sex,
     class: Class,
 ) -> Result<CharacterSummary, String> {
+    log::info!(
+        "Creating character using API at {} with name '{}', sex {:?}, and class {:?}'",
+        base_url,
+        name,
+        sex,
+        class
+    );
+
     let client = Client::builder()
         .timeout(Duration::from_secs(10))
         .build()
@@ -203,8 +222,9 @@ pub fn create_character(
 /// # Returns
 /// * `Ok(Vec<CharacterSummary>)` on success.
 /// * `Err(String)` when the request fails.
-#[allow(dead_code)]
 pub fn get_characters(base_url: &str, token: &str) -> Result<Vec<CharacterSummary>, String> {
+    log::info!("Retrieving characters using API at {}", base_url,);
+
     let client = Client::builder()
         .timeout(Duration::from_secs(10))
         .build()
@@ -303,6 +323,11 @@ pub fn create_game_login_ticket(
     token: &str,
     character_id: u64,
 ) -> Result<u64, String> {
+    log::info!(
+        "Creating game login ticket using API at {} for character id {}",
+        base_url,
+        character_id
+    );
     let client = Client::builder()
         .timeout(Duration::from_secs(10))
         .build()

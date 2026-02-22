@@ -122,26 +122,11 @@ impl PlayerState {
     }
 
     /// Closes the shop overlay if it is open.
-    #[allow(dead_code)]
     pub fn close_shop(&mut self) {
         if self.should_show_shop {
             self.should_show_shop = false;
             self.shop_refresh_requested = false;
         }
-    }
-
-    /// Marks the shop as needing a refresh on the next tick.
-    #[allow(dead_code)]
-    pub fn request_shop_refresh(&mut self) {
-        self.shop_refresh_requested = true;
-    }
-
-    /// Returns `true` once if a shop refresh was requested, then resets the flag.
-    #[allow(dead_code)]
-    pub fn take_shop_refresh_requested(&mut self) -> bool {
-        let was = self.shop_refresh_requested;
-        self.shop_refresh_requested = false;
-        was
     }
 
     /// Returns `true` when the "look at" info panel should be displayed.
@@ -198,12 +183,6 @@ impl PlayerState {
         self.selected_char
     }
 
-    /// Returns the `ch_id` of the currently selected character tile.
-    #[allow(dead_code)]
-    pub fn selected_char_id(&self) -> u16 {
-        self.selected_char_id
-    }
-
     /// Sets both the selected character `nr` and `id`.
     pub fn set_selected_char_with_id(&mut self, selected_char: u16, selected_char_id: u16) {
         self.selected_char = selected_char;
@@ -225,12 +204,6 @@ impl PlayerState {
             id,
             name: name.to_string(),
         });
-    }
-
-    /// Returns the local animation ctick counter.
-    #[allow(dead_code)]
-    pub fn local_ctick(&self) -> u8 {
-        self.local_ctick
     }
 
     /// Advances per-tick timers, syncs the animation ctick with the server,

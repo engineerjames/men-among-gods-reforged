@@ -13,22 +13,6 @@ pub fn get_api_base_url() -> String {
         .unwrap_or_else(|| get_server_url() + ":5554")
 }
 
-/// Returns the URL for the game (TCP) server.
-///
-/// Reads the `MAG_GAME_SERVER_URL` environment variable. If unset or empty,
-/// falls back to `<server_url>:5555`.
-///
-/// # Returns
-/// * A `String` such as `"http://127.0.0.1:5555"`.
-#[allow(dead_code)]
-pub fn get_gameserver_url() -> String {
-    std::env::var("MAG_GAME_SERVER_URL")
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| get_server_url() + ":5555")
-}
-
 /// Builds the server base URL from `MAG_BASE_URL`, falling back to
 /// `http://<server_ip>` when the variable is unset.
 ///

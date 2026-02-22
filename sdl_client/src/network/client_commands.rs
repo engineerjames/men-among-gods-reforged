@@ -2,12 +2,14 @@
 /// packet).
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u8)]
-#[allow(dead_code)]
 pub enum ClientCommandType {
     _Empty = 0,
+    #[allow(dead_code)]
     NewLogin = 1,
+    #[allow(dead_code)]
     Login = 2,
     Challenge = 3,
+    #[allow(dead_code)]
     PerfReport = 4,
     CmdMove = 5,
     CmdPickup = 6,
@@ -23,6 +25,7 @@ pub enum ClientCommandType {
     CmdInvLook = 16,
     CmdLookItem = 17,
     CmdUse = 18,
+    #[allow(dead_code)]
     CmdSetUser = 19,
     CmdTurn = 20,
     CmdAutoLook = 21,
@@ -37,6 +40,7 @@ pub enum ClientCommandType {
     CmdInput8 = 30,
     CmdExit = 31,
     CmdUnique = 32,
+    #[allow(dead_code)]
     Passwd = 33,
     Ping = 34,
     ApiLogin = 35,
@@ -137,54 +141,12 @@ impl ClientCommand {
         cmd
     }
 
-    /// Creates a legacy login packet with stored credentials.
-    #[allow(dead_code)]
-    pub fn new_existing_login(user_id: u32, pass1: u32, pass2: u32) -> Self {
-        let mut payload = Vec::with_capacity(12);
-        payload.extend_from_slice(&user_id.to_le_bytes());
-        payload.extend_from_slice(&pass1.to_le_bytes());
-        payload.extend_from_slice(&pass2.to_le_bytes());
-        let mut cmd = Self::new(ClientCommandType::Login, payload);
-        cmd.context = Some(format!("user_id={user_id} pass1={pass1} pass2={pass2}"));
-        cmd
-    }
-
-    /// Creates a new-player login request (no credentials).
-    #[allow(dead_code)]
-    pub fn new_newplayer_login() -> Self {
-        let cmd = Self::new(ClientCommandType::NewLogin, Vec::new());
-        cmd
-    }
-
     /// Creates an API-ticket login packet.
     pub fn new_api_login(ticket: u64) -> Self {
         let mut payload = Vec::with_capacity(8);
         payload.extend_from_slice(&ticket.to_le_bytes());
         let mut cmd = Self::new(ClientCommandType::ApiLogin, payload);
         cmd.context = Some(format!("ticket={ticket}"));
-        cmd
-    }
-
-    /// Creates a password-change packet.
-    #[allow(dead_code)]
-    pub fn new_password(password: &[u8]) -> Self {
-        let mut payload = vec![0u8; 15];
-        let n = password.len().min(15);
-        payload[..n].copy_from_slice(&password[..n]);
-        let cmd = Self::new(ClientCommandType::Passwd, payload);
-        cmd
-    }
-
-    /// Creates a `CL_SETUSER` packet for writing to a pdata group.
-    #[allow(dead_code)]
-    pub fn new_setuser(group: u8, offset: u8, data: &[u8]) -> Self {
-        let mut payload = vec![0u8; 15];
-        payload[0] = group;
-        payload[1] = offset;
-        let n = data.len().min(13);
-        payload[2..2 + n].copy_from_slice(&data[..n]);
-        let cmd = Self::new(ClientCommandType::CmdSetUser, payload);
-
         cmd
     }
 
@@ -262,7 +224,6 @@ impl ClientCommand {
     }
 
     /// Creates a use-item command at the given map coordinates.
-    #[allow(dead_code)]
     pub fn new_use(x: i16, y: i32) -> Self {
         let mut cmd = Self::cmd_xy_i16_i32(ClientCommandType::CmdUse, x, y);
         cmd.context = Some(format!("x={} y={}", x, y));
@@ -331,7 +292,6 @@ impl ClientCommand {
     }
 
     /// Creates an auto-look request for a specific target.
-    #[allow(dead_code)]
     pub fn new_autolook(lookat: u32) -> Self {
         let cmd = Self::cmd_u32(ClientCommandType::CmdAutoLook, lookat);
         cmd
@@ -489,14 +449,6 @@ mod tests {
             i32::from_le_bytes([bytes[3], bytes[4], bytes[5], bytes[6]]),
             10
         );
-    }
-
-    #[test]
-    fn password_opcode_and_content() {
-        let cmd = ClientCommand::new_password(b"secret");
-        let bytes = cmd.to_bytes();
-        assert_eq!(bytes[0], ClientCommandType::Passwd as u8);
-        assert_eq!(&bytes[1..7], b"secret");
     }
 
     #[test]

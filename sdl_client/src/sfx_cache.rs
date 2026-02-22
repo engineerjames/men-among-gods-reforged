@@ -117,7 +117,6 @@ impl SoundCache {
     ///
     /// # Arguments
     /// * `track` - The [`MusicTrack`] to play.
-    #[allow(dead_code)]
     pub fn play_music(&self, track: MusicTrack) {
         if let Some(chunk) = self.music_cache.get(&track) {
             if let Err(e) = Channel(LOGIN_MUSIC_CHANNEL).play(chunk, -1) {
