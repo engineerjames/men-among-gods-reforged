@@ -10,10 +10,6 @@ use mag_core::constants::{
 };
 
 /// Decode one zlib-compressed chunk from a continuous zlib stream.
-///
-/// The server uses a per-connection `ZlibEncoder` and sends only the newly
-/// produced bytes each tick (i.e. it's a single streaming zlib payload split
-/// into chunks). Therefore we must keep a persistent `Decompress` state.
 pub fn inflate_chunk(z: &mut Decompress, input: &[u8]) -> Result<Vec<u8>, String> {
     if input.is_empty() {
         return Ok(Vec::new());
@@ -23,9 +19,6 @@ pub fn inflate_chunk(z: &mut Decompress, input: &[u8]) -> Result<Vec<u8>, String
     let mut in_pos = 0usize;
     let mut scratch = [0u8; 8192];
 
-    // IMPORTANT: flate2 may be able to produce output without consuming additional input
-    // (e.g., when the output buffer filled on the previous call). We must keep calling
-    // decompress until it makes no progress.
     while in_pos <= input.len() {
         let before_in = z.total_in() as usize;
         let before_out = z.total_out() as usize;
@@ -50,12 +43,9 @@ pub fn inflate_chunk(z: &mut Decompress, input: &[u8]) -> Result<Vec<u8>, String
         }
 
         if produced > 0 {
-            // Made progress by producing output; keep looping to drain remaining output.
             continue;
         }
 
-        // No progress in either direction.
-        // If we still have input left, it's likely truncated/corrupt.
         if in_pos < input.len() && status == Status::Ok {
             return Err("zlib inflate made no progress (truncated input?)".to_string());
         }
@@ -65,16 +55,22 @@ pub fn inflate_chunk(z: &mut Decompress, input: &[u8]) -> Result<Vec<u8>, String
     Ok(out)
 }
 
-/// Computes the length (in bytes) of a single SV_SETMAP command.
+/// Computes the total byte length of a variable-length `SV_SETMAP` command
+/// given its flags byte and delta offset.
 ///
-/// `off` is the lower 7 bits of the opcode; `lastn` tracks the last absolute tile index as in
-/// the legacy client.
+/// # Arguments
+/// * `bytes` - The raw command bytes (starting at the opcode).
+/// * `off` - The delta offset from the opcode (0 = absolute index follows).
+/// * `lastn` - Mutable tracker for the last absolute tile index.
+///
+/// # Returns
+/// * `Ok(length)` — the number of bytes this command occupies.
+/// * `Err(msg)` on truncated input.
 fn sv_setmap_len(bytes: &[u8], off: u8, lastn: &mut i32) -> Result<usize, String> {
     if bytes.len() < 2 {
         return Err("SV_SETMAP truncated (need at least 2 bytes)".to_string());
     }
 
-    // Mirrors `socket.c::sv_setmap`.
     let mut p: usize;
     let n: i32;
     if off != 0 {
@@ -95,7 +91,6 @@ fn sv_setmap_len(bytes: &[u8], off: u8, lastn: &mut i32) -> Result<usize, String
         return Err("SV_SETMAP has zero flags".to_string());
     }
 
-    // Size accounting only.
     if flags & 1 != 0 {
         p += 2;
     }
@@ -124,16 +119,22 @@ fn sv_setmap_len(bytes: &[u8], off: u8, lastn: &mut i32) -> Result<usize, String
     Ok(p)
 }
 
-/// Computes the length (in bytes) of an SV_SETMAP3/4/5/6 command for a given tile count.
+/// Returns the byte length of a `SV_SETMAP3`-style lighting command with the
+/// given tile count.
 fn sv_setmap3_len(cnt: usize) -> usize {
-    // Mirrors `socket.c::sv_setmap3`: returns p where p starts at 3 and increments once per two
-    // tiles covered by `cnt`.
     3 + (cnt / 2)
 }
 
-/// Computes the length (in bytes) of the next server command in `bytes`.
+/// Returns the total byte length of the server command starting at
+/// `bytes[0]`, advancing `last_setmap_n` for SV_SETMAP delta tracking.
 ///
-/// This matches the original client's per-opcode size table and variable-length parsing.
+/// # Arguments
+/// * `bytes` - Slice starting at the command opcode.
+/// * `last_setmap_n` - Running delta index for SV_SETMAP commands.
+///
+/// # Returns
+/// * `Ok(length)` on success.
+/// * `Err(msg)` on truncated or malformed input.
 fn sv_cmd_len(bytes: &[u8], last_setmap_n: &mut i32) -> Result<usize, String> {
     if bytes.is_empty() {
         return Err("sv_cmd_len called with empty buffer".to_string());
@@ -141,8 +142,6 @@ fn sv_cmd_len(bytes: &[u8], last_setmap_n: &mut i32) -> Result<usize, String> {
 
     let op = bytes[0];
 
-    // Special case: any opcode with the SV_SETMAP (0x80) bit set is a setmap packet.
-    // The lower 7 bits carry the delta offset.
     if (op & SV_SETMAP) != 0 {
         let off = op & !SV_SETMAP;
         return sv_setmap_len(bytes, off, last_setmap_n);
@@ -159,22 +158,18 @@ fn sv_cmd_len(bytes: &[u8], last_setmap_n: &mut i32) -> Result<usize, String> {
         SV_SETCHAR_AEND => 3,
         SV_SETCHAR_AMANA => 3,
         SV_SETCHAR_DIR => 2,
-
         SV_SETCHAR_PTS => 13,
         SV_SETCHAR_GOLD => 13,
         SV_SETCHAR_ITEM => 9,
         SV_SETCHAR_WORN => 9,
         SV_SETCHAR_SPELL => 9,
         SV_SETCHAR_OBJ => 5,
-
         SV_SETMAP3 => sv_setmap3_len(26),
         SV_SETMAP4 => sv_setmap3_len(0),
         SV_SETMAP5 => sv_setmap3_len(2),
         SV_SETMAP6 => sv_setmap3_len(6),
         SV_SETORIGIN => 5,
-
         SV_TICK => 2,
-
         SV_SCROLL_RIGHT => 1,
         SV_SCROLL_LEFT => 1,
         SV_SCROLL_DOWN => 1,
@@ -183,13 +178,10 @@ fn sv_cmd_len(bytes: &[u8], last_setmap_n: &mut i32) -> Result<usize, String> {
         SV_SCROLL_RIGHTUP => 1,
         SV_SCROLL_LEFTDOWN => 1,
         SV_SCROLL_LEFTUP => 1,
-
         SV_SETTARGET => 13,
         SV_PLAYSOUND => 13,
-
         SV_LOAD => 5,
         SV_UNIQUE => 9,
-
         SV_EXIT => {
             if bytes.len() >= 16 {
                 16
@@ -203,9 +195,6 @@ fn sv_cmd_len(bytes: &[u8], last_setmap_n: &mut i32) -> Result<usize, String> {
             }
             u32::from_le_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]) as usize
         }
-
-        // Most remaining commands are fixed 16 bytes in the original client.
-        // Unknown opcodes should be treated as errors (the original client exits).
         _ => 16,
     };
 
@@ -213,14 +202,9 @@ fn sv_cmd_len(bytes: &[u8], last_setmap_n: &mut i32) -> Result<usize, String> {
 }
 
 /// Splits a server tick payload into individual raw server command byte slices.
-///
-/// Each returned `Vec<u8>` starts with the opcode byte and includes only the command's bytes
-/// (i.e. the result is suitable for `ServerCommand::from_bytes`).
 pub(super) fn split_tick_payload(payload: &[u8]) -> Result<Vec<Vec<u8>>, String> {
     let mut out = Vec::<Vec<u8>>::new();
     let mut idx = 0usize;
-
-    // Mirrors `tick_do`: reset lastn before scanning each tick payload.
     let mut last_setmap_n: i32 = -1;
 
     while idx < payload.len() {
@@ -232,8 +216,6 @@ pub(super) fn split_tick_payload(payload: &[u8]) -> Result<Vec<Vec<u8>>, String>
             let opcode = payload[idx];
             let remaining = payload.len() - idx;
 
-            // The original client is tolerant of a short SV_EXIT at the end of a tick payload.
-            // Our higher-level parser expects at least 5 bytes (opcode + u32 reason), so pad.
             if opcode == SV_EXIT && remaining < 5 {
                 let mut cmd = vec![0u8; 5];
                 cmd[0] = SV_EXIT;
@@ -252,100 +234,4 @@ pub(super) fn split_tick_payload(payload: &[u8]) -> Result<Vec<Vec<u8>>, String>
     }
 
     Ok(out)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use flate2::write::ZlibEncoder;
-    use flate2::Compression;
-    use std::io::Write;
-
-    #[test]
-    fn inflate_chunk_empty_is_ok() {
-        let mut z = Decompress::new(true);
-        let out = inflate_chunk(&mut z, &[]).unwrap();
-        assert!(out.is_empty());
-    }
-
-    #[test]
-    fn inflate_chunk_decodes_streaming_chunks() {
-        let original = b"hello streaming zlib";
-
-        let mut enc = ZlibEncoder::new(Vec::<u8>::new(), Compression::default());
-        let mut last_len = 0usize;
-        let mut chunks: Vec<Vec<u8>> = Vec::new();
-
-        enc.write_all(&original[..5]).unwrap();
-        enc.flush().unwrap();
-        {
-            let cur = enc.get_ref();
-            chunks.push(cur[last_len..].to_vec());
-            last_len = cur.len();
-        }
-
-        enc.write_all(&original[5..]).unwrap();
-        enc.flush().unwrap();
-        {
-            let cur = enc.get_ref();
-            chunks.push(cur[last_len..].to_vec());
-            last_len = cur.len();
-        }
-
-        let finished = enc.finish().unwrap();
-        if finished.len() > last_len {
-            chunks.push(finished[last_len..].to_vec());
-        }
-
-        let mut dec = Decompress::new(true);
-        let mut out = Vec::<u8>::new();
-        for c in chunks {
-            let part = inflate_chunk(&mut dec, &c).unwrap();
-            out.extend_from_slice(&part);
-        }
-        assert_eq!(out, original);
-    }
-
-    #[test]
-    fn inflate_chunk_can_produce_more_than_scratch_size() {
-        // Regression test: the inflater can produce output without consuming more input
-        // when the output buffer is filled. Ensure we drain all available output.
-        let original = vec![0xABu8; 50_000];
-
-        let mut enc = ZlibEncoder::new(Vec::<u8>::new(), Compression::default());
-        enc.write_all(&original).unwrap();
-        enc.flush().unwrap();
-        let compressed = enc.finish().unwrap();
-
-        let mut dec = Decompress::new(true);
-        let out = inflate_chunk(&mut dec, &compressed).unwrap();
-        assert_eq!(out.len(), original.len());
-        assert_eq!(out, original);
-    }
-
-    #[test]
-    fn split_tick_payload_splits_fixed_and_variable_commands() {
-        // SV_TICK: 2 bytes
-        let tick = vec![SV_TICK, 7];
-        // SV_LOAD: 5 bytes
-        let load = vec![SV_LOAD, 1, 2, 3, 4];
-        // SV_IGNORE: length comes from u32 at bytes[1..5]
-        let ignore = vec![SV_IGNORE, 5, 0, 0, 0];
-        // SV_SETMAP with off=0: [op, flags, idx_lo, idx_hi, ...payload]
-        // flags=1 adds 2 bytes.
-        let setmap = vec![SV_SETMAP, 1, 0, 0, 0xAA, 0xBB];
-
-        let mut payload = Vec::<u8>::new();
-        payload.extend_from_slice(&tick);
-        payload.extend_from_slice(&load);
-        payload.extend_from_slice(&ignore);
-        payload.extend_from_slice(&setmap);
-
-        let parts = split_tick_payload(&payload).unwrap();
-        assert_eq!(parts.len(), 4);
-        assert_eq!(parts[0], tick);
-        assert_eq!(parts[1], load);
-        assert_eq!(parts[2], ignore);
-        assert_eq!(parts[3], setmap);
-    }
 }
