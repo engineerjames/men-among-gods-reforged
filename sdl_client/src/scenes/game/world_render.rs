@@ -458,6 +458,15 @@ impl GameScene {
                             + cam_xoff
                             + ch_xoff;
                         let np_ry = xpos / 4 - ypos / 4 + YPOS - 64 + cam_yoff + ch_yoff;
+                        font_cache::draw_text_tinted(
+                            canvas,
+                            gfx,
+                            1,
+                            &text,
+                            np_rx + 1,
+                            np_ry + 1,
+                            Color::RGB(0, 0, 0),
+                        )?;
                         font_cache::draw_text(canvas, gfx, 1, &text, np_rx, np_ry)?;
                     }
                 }

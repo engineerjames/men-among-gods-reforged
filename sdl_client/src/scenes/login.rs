@@ -146,7 +146,7 @@ impl Scene for LoginScene {
             .collapsible(false)
             .resizable(false)
             .show(ctx, |ui| {
-                let (login_clicked, create_clicked) = ui
+                let (login_clicked, create_clicked, quit_clicked) = ui
                     .add_enabled_ui(!self.is_submitting, |ui| {
                         ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
                             ui.heading("Account Login");
@@ -197,7 +197,11 @@ impl Scene for LoginScene {
                                 )
                                 .clicked();
 
-                            (login_clicked, create_clicked)
+                            let quit_clicked = ui
+                                .add(egui::Button::new("Quit").min_size([120.0, 32.0].into()))
+                                .clicked();
+
+                            (login_clicked, create_clicked, quit_clicked)
                         })
                         .inner
                     })
@@ -247,6 +251,10 @@ impl Scene for LoginScene {
                 if create_clicked {
                     log::info!("Create new account clicked");
                     next = Some(SceneType::NewAccount);
+                }
+
+                if quit_clicked {
+                    next = Some(SceneType::Exit);
                 }
             });
 

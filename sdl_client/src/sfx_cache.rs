@@ -22,6 +22,34 @@ pub enum MusicTrack {
 }
 
 impl SoundCache {
+    fn convert_server_volume(vol: i32, master_volume: f32) -> i32 {
+        let master = master_volume.clamp(0.0, 1.0);
+
+        let base = if vol <= 0 {
+            // Server commonly sends attenuation values in the range [-5000, 0].
+            // 0 means full volume; -5000 is effectively silent.
+            let attenuated = (5000 + vol.clamp(-5000, 0)) as f32 / 5000.0;
+            (attenuated * 127.0).round() as i32
+        } else {
+            // Preserve compatibility with callers that already pass SDL-like 0..127 values.
+            vol.clamp(0, 127)
+        };
+
+        (base as f32 * master).round() as i32
+    }
+
+    fn convert_server_pan(pan: i32) -> u8 {
+        if (-500..=500).contains(&pan) {
+            // Server pan convention: -500 = hard left, 0 = center, 500 = hard right.
+            (((pan + 500) as f32 / 1000.0) * 255.0)
+                .round()
+                .clamp(0.0, 255.0) as u8
+        } else {
+            // Preserve compatibility with callers already using SDL's 0..255 convention.
+            pan.clamp(0, 255) as u8
+        }
+    }
+
     /// Loads all `.wav` files from `sfx_directory` and music files from
     /// `music_directory` into memory.
     ///
@@ -98,13 +126,12 @@ impl SoundCache {
         match Channel::all().play(chunk, 0) {
             Ok(ch) => {
                 // SDL_mixer volume is 0-128.
-                let scaled = (vol.clamp(0, 127) as f32 * master_volume.clamp(0.0, 1.0)) as i32;
+                let scaled = Self::convert_server_volume(vol, master_volume);
                 let sdl_vol = scaled * 128 / 127;
-                ch.set_volume(sdl_vol);
+                ch.set_volume(sdl_vol.clamp(0, 128));
                 // Panning: left + right must sum to ~255.
-                let pan = pan.clamp(0, 255) as u8;
-                let left = 255 - pan;
-                let right = pan;
+                let right = Self::convert_server_pan(pan);
+                let left = 255 - right;
                 let _ = ch.set_panning(left, right);
             }
             Err(e) => {
