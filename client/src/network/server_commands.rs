@@ -1,5 +1,6 @@
 use mag_core::string_operations::c_string_to_str;
 
+/// Opcode values for incoming server commands.
 #[derive(Copy, Clone, Debug)]
 #[repr(u8)]
 pub enum ServerCommandType {
@@ -68,22 +69,21 @@ pub enum ServerCommandType {
     Unique = 72,
     Ignore = 73,
     Pong = 74,
-    SetMap = 128, // 128-255 are used !!!
+    SetMap = 128,
 }
 
+/// Parsed payload variants for each [`ServerCommandType`].
 #[derive(Debug)]
 pub enum ServerCommandData {
     Empty,
     Pong {
         seq: u32,
+        #[allow(dead_code)]
         client_time_ms: u32,
     },
     SetMap {
-        /// For SV_SETMAP opcodes, the lower 7 bits encode an offset (0 means absolute index is present).
         off: u8,
-        /// When `off == 0`, the packet carries an absolute tile index at bytes 2..4.
         absolute_tile_index: Option<u16>,
-        /// Flag bits describing which optional fields are present.
         flags: u8,
         ba_sprite: Option<u16>,
         flags1: Option<u32>,
@@ -99,20 +99,17 @@ pub enum ServerCommandData {
         ch_proz: Option<u8>,
     },
     SetMap3 {
-        /// Start tile index (0..2047) from packed word.
         start_index: u16,
-        /// Base light value (upper 4 bits of packed word).
         base_light: u8,
-        /// Packed light nibbles, as sent by the server.
         packed: Vec<u8>,
     },
     Challenge {
         server_challenge: u32,
     },
     NewPlayer {
-        player_id: u32,
-        pass1: u32,
-        pass2: u32,
+        _player_id: u32,
+        _pass1: u32,
+        _pass2: u32,
         server_version: u32,
     },
     SetCharName1 {
@@ -123,6 +120,7 @@ pub enum ServerCommandData {
     },
     SetCharName3 {
         chunk: String,
+        #[allow(dead_code)]
         race: u32,
     },
     SetCharMode {
@@ -301,59 +299,39 @@ pub struct Look6Entry {
     pub price: u32,
 }
 
-/// Reads a little-endian `u16` from `bytes` at `offset`.
-///
-/// Returns `None` if the slice is too short.
 fn read_u16(bytes: &[u8], offset: usize) -> Option<u16> {
     Some(u16::from_le_bytes(
         bytes.get(offset..offset + 2)?.try_into().ok()?,
     ))
 }
 
-/// Reads a little-endian `i16` from `bytes` at `offset`.
-///
-/// Returns `None` if the slice is too short.
 fn read_i16(bytes: &[u8], offset: usize) -> Option<i16> {
     Some(i16::from_le_bytes(
         bytes.get(offset..offset + 2)?.try_into().ok()?,
     ))
 }
 
-/// Reads a little-endian `u32` from `bytes` at `offset`.
-///
-/// Returns `None` if the slice is too short.
 fn read_u32(bytes: &[u8], offset: usize) -> Option<u32> {
     Some(u32::from_le_bytes(
         bytes.get(offset..offset + 4)?.try_into().ok()?,
     ))
 }
 
-/// Reads a little-endian `i32` from `bytes` at `offset`.
-///
-/// Returns `None` if the slice is too short.
 fn read_i32(bytes: &[u8], offset: usize) -> Option<i32> {
     Some(i32::from_le_bytes(
         bytes.get(offset..offset + 4)?.try_into().ok()?,
     ))
 }
 
-/// Attempts to decode a raw server command into its typed representation.
-///
-/// Returns `(header, structured_data)` on success, or `None` if the opcode is unknown or the
-/// payload is too short for the expected format.
 fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
     if bytes.is_empty() {
         return None;
     }
 
-    // Any opcode with the SV_SETMAP bit set (0x80) is a SetMap packet.
-    // The original client treats *all* 0x80..0xFF as SetMap, where the lower
-    // 7 bits represent a delta offset from the previous tile index.
     if (bytes[0] & 128) != 0 {
         let off = bytes[0] & 127;
         let flags = *bytes.get(1)?;
 
-        // Mirrors `sv_setmap`: when off==0 the tile index is included.
         let mut p = if off == 0 { 4 } else { 2 };
         let absolute_tile_index = if off == 0 {
             Some(read_u16(bytes, 2)?)
@@ -447,9 +425,13 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
         2 => Some((
             ServerCommandType::NewPlayer,
             ServerCommandData::NewPlayer {
-                player_id: u32::from_le_bytes(bytes.get(1..5)?.try_into().ok()?),
-                pass1: u32::from_le_bytes(bytes.get(5..9)?.try_into().ok()?),
-                pass2: u32::from_le_bytes(bytes.get(9..13)?.try_into().ok()?),
+                _pass1: 0,
+                _pass2: 0,
+                _player_id: 0,
+                // TODO: Evaluate if we need this...
+                // player_id: u32::from_le_bytes(bytes.get(1..5)?.try_into().ok()?),
+                // pass1: u32::from_le_bytes(bytes.get(5..9)?.try_into().ok()?),
+                // pass2: u32::from_le_bytes(bytes.get(9..13)?.try_into().ok()?),
                 server_version: (u32::from(*bytes.get(13)?)
                     | (u32::from(*bytes.get(14)?) << 8)
                     | (u32::from(*bytes.get(15)?) << 16)),
@@ -696,8 +678,6 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
         48 => Some((
             ServerCommandType::Exit,
             ServerCommandData::Exit {
-                // Server commonly sends SV_EXIT as 2 bytes: [opcode, reason_u8].
-                // Some variants may send a u32 reason.
                 reason: if bytes.len() >= 5 {
                     u32::from_le_bytes(bytes.get(1..5)?.try_into().ok()?)
                 } else {
@@ -715,7 +695,6 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
         51 => {
             let start = *bytes.get(1)?;
             let mut entries = Vec::new();
-            // Mirrors `sv_look6`: sends up to 2 entries of 6 bytes each.
             let max = std::cmp::min(62u8, start.saturating_add(2));
             for (i, idx) in (start..max).enumerate() {
                 let base = 2 + i * 6;
@@ -727,7 +706,6 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
                     price,
                 });
             }
-
             Some((
                 ServerCommandType::Look6,
                 ServerCommandData::Look6 { start, entries },
@@ -818,39 +796,33 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
         )),
         66 => {
             let packed = read_u16(bytes, 1)?;
-            let start_index = packed & 2047;
-            let base_light = ((packed >> 12) & 15) as u8;
             Some((
                 ServerCommandType::SetMap4,
                 ServerCommandData::SetMap3 {
-                    start_index,
-                    base_light,
+                    start_index: packed & 2047,
+                    base_light: ((packed >> 12) & 15) as u8,
                     packed: bytes.get(3..)?.to_vec(),
                 },
             ))
         }
         67 => {
             let packed = read_u16(bytes, 1)?;
-            let start_index = packed & 2047;
-            let base_light = ((packed >> 12) & 15) as u8;
             Some((
                 ServerCommandType::SetMap5,
                 ServerCommandData::SetMap3 {
-                    start_index,
-                    base_light,
+                    start_index: packed & 2047,
+                    base_light: ((packed >> 12) & 15) as u8,
                     packed: bytes.get(3..)?.to_vec(),
                 },
             ))
         }
         68 => {
             let packed = read_u16(bytes, 1)?;
-            let start_index = packed & 2047;
-            let base_light = ((packed >> 12) & 15) as u8;
             Some((
                 ServerCommandType::SetMap6,
                 ServerCommandData::SetMap3 {
-                    start_index,
-                    base_light,
+                    start_index: packed & 2047,
+                    base_light: ((packed >> 12) & 15) as u8,
                     packed: bytes.get(3..)?.to_vec(),
                 },
             ))
@@ -893,7 +865,6 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
                 client_time_ms: read_u32(bytes, 5)?,
             },
         )),
-        // NOTE: Any opcode with 0x80 set is handled by the early-return SetMap branch above.
         _ => None,
     }
 }
@@ -906,21 +877,113 @@ pub struct ServerCommand {
 }
 
 impl ServerCommand {
-    /// Parses a complete server command packet.
-    ///
-    /// Most commands are 16 bytes, but tick payload parsing can yield variable-length commands.
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         if bytes.is_empty() {
             return None;
         }
-
         let header = from_bytes(bytes)?;
         let _payload = bytes[1..].to_vec();
-
         Some(ServerCommand {
             header: header.0,
             structured_data: header.1,
             _payload,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_packet(opcode: u8, payload: &[u8]) -> Vec<u8> {
+        let mut bytes = vec![0u8; 16];
+        bytes[0] = opcode;
+        for (i, &b) in payload.iter().enumerate() {
+            if i + 1 < 16 {
+                bytes[i + 1] = b;
+            }
+        }
+        bytes
+    }
+
+    #[test]
+    fn parse_empty_opcode() {
+        let pkt = make_packet(0, &[]);
+        let cmd = ServerCommand::from_bytes(&pkt).unwrap();
+        assert!(matches!(cmd.structured_data, ServerCommandData::Empty));
+    }
+
+    #[test]
+    fn parse_challenge() {
+        let mut pkt = vec![0u8; 16];
+        pkt[0] = 1; // Challenge opcode
+        let sc: u32 = 12345;
+        pkt[1..5].copy_from_slice(&sc.to_le_bytes());
+        let cmd = ServerCommand::from_bytes(&pkt).unwrap();
+        match cmd.structured_data {
+            ServerCommandData::Challenge { server_challenge } => {
+                assert_eq!(server_challenge, 12345);
+            }
+            _ => panic!("Expected Challenge variant"),
+        }
+    }
+
+    #[test]
+    fn parse_tick() {
+        let mut pkt = vec![0u8; 16];
+        pkt[0] = 27; // Tick opcode
+        pkt[1] = 42; // ctick value
+        let cmd = ServerCommand::from_bytes(&pkt).unwrap();
+        match cmd.structured_data {
+            ServerCommandData::Tick { ctick } => assert_eq!(ctick, 42),
+            _ => panic!("Expected Tick variant"),
+        }
+    }
+
+    #[test]
+    fn parse_set_char_mode() {
+        let pkt = make_packet(6, &[3]); // Mode=3
+        let cmd = ServerCommand::from_bytes(&pkt).unwrap();
+        match cmd.structured_data {
+            ServerCommandData::SetCharMode { mode } => assert_eq!(mode, 3),
+            _ => panic!("Expected SetCharMode variant"),
+        }
+    }
+
+    #[test]
+    fn parse_scroll_right() {
+        let pkt = make_packet(30, &[]);
+        let cmd = ServerCommand::from_bytes(&pkt).unwrap();
+        assert!(matches!(cmd.header, ServerCommandType::ScrollRight));
+    }
+
+    #[test]
+    fn parse_set_origin() {
+        let mut pkt = vec![0u8; 16];
+        pkt[0] = 44; // SetOrigin
+        let x: i16 = 100;
+        let y: i16 = 200;
+        pkt[1..3].copy_from_slice(&x.to_le_bytes());
+        pkt[3..5].copy_from_slice(&y.to_le_bytes());
+        let cmd = ServerCommand::from_bytes(&pkt).unwrap();
+        match cmd.structured_data {
+            ServerCommandData::SetOrigin { x: ox, y: oy } => {
+                assert_eq!(ox, 100);
+                assert_eq!(oy, 200);
+            }
+            _ => panic!("Expected SetOrigin variant"),
+        }
+    }
+
+    #[test]
+    fn parse_empty_bytes_returns_none() {
+        assert!(ServerCommand::from_bytes(&[]).is_none());
+    }
+
+    #[test]
+    fn parse_login_ok() {
+        let pkt = make_packet(34, &[]);
+        let cmd = ServerCommand::from_bytes(&pkt).unwrap();
+        assert!(matches!(cmd.header, ServerCommandType::LoginOk));
     }
 }

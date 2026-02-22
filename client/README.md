@@ -1,4 +1,4 @@
-# Men Among Gods — SDL2 Client
+# Men Among Gods — Client
 
 The primary game client for Men Among Gods: Reforged, built with [SDL2](https://www.libsdl.org/) via the [Rust SDL2 bindings](https://github.com/Rust-SDL2/rust-sdl2).
 
@@ -8,10 +8,10 @@ SDL2 is managed via [cargo-vcpkg](https://crates.io/crates/cargo-vcpkg) on all p
 
 ```bash
 cargo install cargo-vcpkg
-cargo vcpkg build --manifest-path sdl_client/Cargo.toml
+cargo vcpkg build --manifest-path client/Cargo.toml
 ```
 
-This downloads and compiles SDL2 from source and links it statically. Linux builds also need some Bevy/system headers for the rest of the workspace:
+This downloads and compiles SDL2 from source and links it statically. Linux builds also need some system headers:
 
 ```bash
 # Ubuntu / Debian
@@ -21,13 +21,13 @@ sudo apt-get install -y pkg-config libasound2-dev libudev-dev cmake ninja-build
 ## Build
 
 ```bash
-cargo build -p sdl_client
+cargo build -p client
 ```
 
 ## Run
 
 ```bash
-cargo run -p sdl_client
+cargo run -p client
 ```
 
 Controls:

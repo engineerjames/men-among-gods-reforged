@@ -1,4 +1,3 @@
-use bevy::ecs::resource::Resource;
 use mag_core::{
     circular_buffer::CircularBuffer,
     constants::{MAX_SPEEDTAB_INDEX, TICKS},
@@ -6,36 +5,32 @@ use mag_core::{
 };
 
 use crate::{
-    helpers::exit_reason_string,
-    map::GameMap,
-    network::server_commands::{ServerCommand, ServerCommandData},
-};
-use crate::{
-    network::server_commands::ServerCommandType,
+    game_map::GameMap,
+    network::server_commands::{ServerCommand, ServerCommandData, ServerCommandType},
     types::{log_message::LogMessage, look::Look, player_data::PlayerData},
 };
 
-#[derive(Resource)]
+/// Central per-character gameplay state on the client side.
+///
+/// Owns the visible tile map, look/shop panels, character stats, the chat log,
+/// and all incremental state streamed from the server via `ServerCommand`s.
+/// A new instance is created each time the player enters the game and is
+/// dropped when they disconnect.
 pub struct PlayerState {
     map: GameMap,
     look_target: Look,
     shop_target: Look,
     player_info: PlayerData,
     message_log: CircularBuffer<LogMessage>,
-    log_revision: u64,
     should_show_look: bool,
     should_show_shop: bool,
-    // When true, request a fresh LOOK on the shop target on the next tick.
-    // This keeps depot/shop UI in sync after actions (deposit/withdraw/buy/sell).
     shop_refresh_requested: bool,
     look_timer: f32,
     character_info: ClientPlayer,
 
-    // Mirrors engine.c's `selected_char` (0 = none). Used by UI and certain commands.
     selected_char: u16,
     selected_char_id: u16,
 
-    // Mirrors engine.c's `looks[]` name cache (nr -> {id,name}). Used for show_names/show_proz.
     look_names: Vec<Option<LookNameEntry>>,
     pending_log: String,
     server_version: u32,
@@ -43,19 +38,14 @@ pub struct PlayerState {
     unique1: u32,
     unique2: u32,
 
-    // Server-provided ctick (0..MAX_SPEEDTAB_INDEX), sent in ServerCommandData::Tick.
-    // Using this keeps SPEEDTAB-based animations perfectly in-phase with the server.
     server_ctick: u8,
     server_ctick_pending: bool,
     local_ctick: u8,
 
-    // Monotonically increasing revision for "state changed" checks (UI throttling, etc).
-    state_revision: u64,
-
-    // Set when the server sends SV_EXIT. A system will transition to GameState::Exited.
     exit_requested_reason: Option<u32>,
 }
 
+/// A cached (nr → name) entry used by the auto-look name overlay.
 #[derive(Clone, Debug)]
 struct LookNameEntry {
     id: u16,
@@ -69,8 +59,7 @@ impl Default for PlayerState {
             look_target: Look::default(),
             shop_target: Look::default(),
             player_info: PlayerData::default(),
-            message_log: CircularBuffer::new(300), // TODO: Customize this?
-            log_revision: 0,
+            message_log: CircularBuffer::new(300),
             should_show_look: false,
             should_show_shop: false,
             shop_refresh_requested: false,
@@ -93,98 +82,94 @@ impl Default for PlayerState {
             server_ctick_pending: false,
             local_ctick: 0,
 
-            state_revision: 0,
-
             exit_requested_reason: None,
         }
     }
 }
 
 impl PlayerState {
-    pub fn log_revision(&self) -> u64 {
-        self.log_revision
-    }
-
+    /// Returns the number of messages currently stored in the chat log.
     pub fn log_len(&self) -> usize {
         self.message_log.len()
     }
 
+    /// Takes and returns the pending server-requested exit reason, if any.
+    ///
+    /// # Returns
+    /// * `Some(reason_code)` the first time, `None` thereafter.
     pub fn take_exit_requested_reason(&mut self) -> Option<u32> {
         self.exit_requested_reason.take()
     }
 
-    pub fn state_revision(&self) -> u64 {
-        self.state_revision
-    }
-
-    pub fn mark_dirty(&mut self) {
-        self.state_revision = self.state_revision.wrapping_add(1);
-    }
-
+    /// Returns a shared reference to the visible tile map.
     pub fn map(&self) -> &GameMap {
         &self.map
     }
 
+    /// Returns a mutable reference to the visible tile map.
     pub fn map_mut(&mut self) -> &mut GameMap {
         &mut self.map
     }
 
+    /// Returns a shared reference to the player's own character stats.
     pub fn character_info(&self) -> &ClientPlayer {
         &self.character_info
     }
 
+    /// Returns `true` when the shop overlay should be displayed.
     pub fn should_show_shop(&self) -> bool {
         self.should_show_shop
     }
 
+    /// Closes the shop overlay if it is open.
     pub fn close_shop(&mut self) {
         if self.should_show_shop {
             self.should_show_shop = false;
             self.shop_refresh_requested = false;
-            self.mark_dirty();
         }
     }
 
-    /// Request a shop/depot refresh on the next processed tick.
-    pub fn request_shop_refresh(&mut self) {
-        self.shop_refresh_requested = true;
-    }
-
-    /// Returns whether a refresh was requested and clears the flag.
-    pub fn take_shop_refresh_requested(&mut self) -> bool {
-        let was = self.shop_refresh_requested;
-        self.shop_refresh_requested = false;
-        was
-    }
-
+    /// Returns `true` when the "look at" info panel should be displayed.
     pub fn should_show_look(&self) -> bool {
         self.should_show_look
     }
 
+    /// Closes the look panel and resets its display timer.
     pub fn close_look(&mut self) {
         if self.should_show_look {
             self.should_show_look = false;
             self.look_timer = 0.0;
-            self.mark_dirty();
         }
     }
 
+    /// Returns a shared reference to the current "look at" target data.
     pub fn look_target(&self) -> &Look {
         &self.look_target
     }
 
+    /// Returns a shared reference to the current shop target data.
     pub fn shop_target(&self) -> &Look {
         &self.shop_target
     }
 
+    /// Returns a shared reference to the player data (HUD toggle flags, etc.).
     pub fn player_data(&self) -> &PlayerData {
         &self.player_info
     }
 
+    /// Returns a mutable reference to the player data.
     pub fn player_data_mut(&mut self) -> &mut PlayerData {
         &mut self.player_info
     }
 
+    /// Looks up a cached character name by tile `nr` and optional `id`.
+    ///
+    /// # Arguments
+    /// * `nr` - Tile character number.
+    /// * `id` - Character ID (0 matches any).
+    ///
+    /// # Returns
+    /// * `Some(&str)` if a matching name is cached, `None` otherwise.
     pub fn lookup_name(&self, nr: u16, id: u16) -> Option<&str> {
         self.look_names
             .get(nr as usize)
@@ -193,19 +178,18 @@ impl PlayerState {
             .map(|e| e.name.as_str())
     }
 
+    /// Returns the `ch_nr` of the currently selected (clicked) character tile.
     pub fn selected_char(&self) -> u16 {
         self.selected_char
     }
 
-    pub fn selected_char_id(&self) -> u16 {
-        self.selected_char_id
-    }
-
+    /// Sets both the selected character `nr` and `id`.
     pub fn set_selected_char_with_id(&mut self, selected_char: u16, selected_char_id: u16) {
         self.selected_char = selected_char;
         self.selected_char_id = selected_char_id;
     }
 
+    /// Clears the character selection.
     pub fn clear_selected_char(&mut self) {
         self.selected_char = 0;
         self.selected_char_id = 0;
@@ -222,15 +206,11 @@ impl PlayerState {
         });
     }
 
-    pub fn local_ctick(&self) -> u8 {
-        self.local_ctick
-    }
-
+    /// Advances per-tick timers, syncs the animation ctick with the server,
+    /// and runs the legacy engine tick.
     pub fn on_tick_packet(&mut self, client_ticker: u32) {
         let _ = client_ticker;
 
-        // Match original client behavior: show_look is temporary.
-        // Our Look5 handler sets look_timer to (10*TICKS); decrement once per tick packet.
         if self.should_show_look {
             if self.look_timer > 0.0 {
                 self.look_timer -= 1.0;
@@ -246,8 +226,11 @@ impl PlayerState {
         } else {
             self.local_ctick = (self.local_ctick + 1) % (MAX_SPEEDTAB_INDEX as u8 + 1);
         }
+
+        crate::legacy_engine::engine_tick(self, client_ticker, self.local_ctick as usize);
     }
 
+    /// Maps a network font index to a [`LogMessageColor`](crate::types::log_message::LogMessageColor).
     fn log_color_from_font(font: u8) -> crate::types::log_message::LogMessageColor {
         use crate::types::log_message::LogMessageColor;
         match font {
@@ -265,13 +248,19 @@ impl PlayerState {
             color: Self::log_color_from_font(font),
         };
         self.message_log.push(msg);
-        self.log_revision = self.log_revision.wrapping_add(1);
     }
 
-    /// Inserts extra `\n` so log text won't run off the end of the screen.
+    /// Word-wraps `text` to fit within `max_cols` columns.
     ///
-    /// This matches the original client's behavior (wrap width `XS=49`) by preferring
-    /// breaking on spaces, and falling back to a hard cut when needed.
+    /// Breaks on spaces when possible; hard-cuts words longer than the limit.
+    /// Embedded newlines are honoured.
+    ///
+    /// # Arguments
+    /// * `text` - The raw text to wrap.
+    /// * `max_cols` - Maximum characters per line.
+    ///
+    /// # Returns
+    /// * A new `String` with `\n` inserted at wrap points.
     pub fn wrap_log_text(text: &str, max_cols: usize) -> String {
         let max_cols = max_cols.max(2);
         let wrap_at = max_cols.saturating_sub(1);
@@ -315,12 +304,18 @@ impl PlayerState {
         out
     }
 
+    /// Returns the log message at `index`, or `None` if out of range.
     pub fn log_message(&self, index: usize) -> Option<&LogMessage> {
         self.message_log.get(index)
     }
 
+    /// Appends a message to the chat log, word-wrapping it first.
+    ///
+    /// # Arguments
+    /// * `font` - Network font index (0=red, 1=yellow, 2=green, 3=blue).
+    /// * `text` - The message text.
     pub fn tlog(&mut self, font: u8, text: impl AsRef<str>) {
-        const XS: usize = 49; // matches orig engine.c "XS" (line wrap width)
+        const XS: usize = 49;
 
         let wrapped = Self::wrap_log_text(text.as_ref(), XS);
         for line in wrapped.split('\n') {
@@ -354,46 +349,43 @@ impl PlayerState {
         }
     }
 
+    /// Applies a single parsed server command to this player state,
+    /// updating the map, stats, look panel, chat log, and other fields
+    /// as appropriate.
+    ///
+    /// # Arguments
+    /// * `command` - The parsed [`ServerCommand`] to apply.
     pub fn update_from_server_command(&mut self, command: &ServerCommand) {
-        // Check for command specific processing, then update state based on structured data.
         match command.header {
             ServerCommandType::ScrollDown => {
-                log::debug!("Processing ScrollDown command");
                 self.map.scroll_down();
                 return;
             }
             ServerCommandType::ScrollUp => {
-                log::debug!("Processing ScrollUp command");
                 self.map.scroll_up();
                 return;
             }
             ServerCommandType::ScrollLeft => {
-                log::debug!("Processing ScrollLeft command");
                 self.map.scroll_left();
                 return;
             }
             ServerCommandType::ScrollRight => {
-                log::debug!("Processing ScrollRight command");
                 self.map.scroll_right();
                 return;
             }
             ServerCommandType::ScrollLeftDown => {
-                log::debug!("Processing ScrollLeftDown command");
                 self.map.scroll_left_down();
                 return;
             }
             ServerCommandType::ScrollLeftUp => {
-                log::debug!("Processing ScrollLeftUp command");
                 self.map.scroll_left_up();
                 return;
             }
             ServerCommandType::ScrollRightDown => {
-                log::debug!("Processing ScrollRightDown command");
                 self.map.scroll_right_down();
                 return;
             }
             ServerCommandType::ScrollRightUp => {
-                log::debug!("Processing ScrollRightUp command");
                 self.map.scroll_right_up();
                 return;
             }
@@ -402,79 +394,61 @@ impl PlayerState {
 
         match &command.structured_data {
             ServerCommandData::NewPlayer {
-                player_id,
-                pass1,
-                pass2,
+                _player_id: _,
+                _pass1: _,
+                _pass2: _,
                 server_version,
             } => {
-                log::info!("Received NewPlayer command: player_id={:?}, pass1={:?}, pass2={:?}, server_version={:?}", player_id, pass1, pass2, server_version);
-                log::warn!("Currently not using player_id/pass for anything.");
+                // TODO: player_id, pass1 and pass2 are only needed for the legacy login flow
                 self.server_version = *server_version;
             }
             ServerCommandData::LoginOk { server_version } => {
-                log::info!(
-                    "Received LoginOk command: server_version={:?}",
-                    server_version
-                );
                 self.server_version = *server_version;
             }
             ServerCommandData::SetCharName1 { chunk } => {
-                log::info!("SetCharName1 chunk: {:?}", chunk);
                 self.write_name_chunk(0, 15, chunk);
             }
             ServerCommandData::SetCharName2 { chunk } => {
-                log::info!("SetCharName2 chunk: {:?}", chunk);
                 self.write_name_chunk(15, 15, chunk);
             }
-            ServerCommandData::SetCharName3 { chunk, race } => {
-                log::info!("SetCharName3 chunk: {:?}, race: {:?}", chunk, race);
+            ServerCommandData::SetCharName3 { chunk, race: _ } => {
                 self.write_name_chunk(30, 10, chunk);
-                log::warn!("Currently not using race for anything.");
+                // TODO: Race here is only needed for the legacy login flow; we should remove it eventually
             }
             ServerCommandData::SetCharMode { mode } => {
-                log::info!("SetCharMode: {:?}", mode);
                 self.character_info.mode = *mode as i32;
             }
             ServerCommandData::SetCharAttrib { index, values } => {
-                log::info!("SetCharAttrib: index={:?}, values={:?}", index, values);
                 let idx = *index as usize;
                 if idx < self.character_info.attrib.len() {
                     self.character_info.attrib[idx] = *values;
                 }
             }
             ServerCommandData::SetCharSkill { index, values } => {
-                log::info!("SetCharSkill: index={:?}, values={:?}", index, values);
                 let idx = *index as usize;
                 if idx < self.character_info.skill.len() {
                     self.character_info.skill[idx] = *values;
                 }
             }
             ServerCommandData::SetCharHp { values } => {
-                log::info!("SetCharHp: values={:?}", values);
                 self.character_info.hp = *values;
             }
             ServerCommandData::SetCharEndur { values } => {
-                log::info!("SetCharEndur: values={:?}", values);
                 self.character_info.end = (*values).map(|v| v.max(0) as u16);
             }
             ServerCommandData::SetCharMana { values } => {
-                log::info!("SetCharMana: values={:?}", values);
                 self.character_info.mana = (*values).map(|v| v.max(0) as u16);
             }
             ServerCommandData::SetCharAHP { value } => {
-                log::info!("SetCharAHP: value={:?}", value);
                 self.character_info.a_hp = *value as i32;
             }
             ServerCommandData::SetCharAEnd { value } => {
-                log::info!("SetCharAEnd: value={:?}", value);
                 self.character_info.a_end = *value as i32;
             }
             ServerCommandData::SetCharAMana { value } => {
-                log::info!("SetCharAMana: value={:?}", value);
                 self.character_info.a_mana = *value as i32;
             }
             ServerCommandData::SetCharDir { dir } => {
-                log::info!("SetCharDir: dir={:?}", dir);
                 self.character_info.dir = *dir as i32;
             }
             ServerCommandData::SetCharPts {
@@ -482,12 +456,6 @@ impl PlayerState {
                 points_total,
                 kindred,
             } => {
-                log::info!(
-                    "SetCharPts: points={:?}, points_total={:?}, kindred={:?}",
-                    points,
-                    points_total,
-                    kindred
-                );
                 self.character_info.points = *points as i32;
                 self.character_info.points_tot = *points_total as i32;
                 self.character_info.kindred = *kindred as i32;
@@ -497,12 +465,6 @@ impl PlayerState {
                 armor,
                 weapon,
             } => {
-                log::info!(
-                    "SetCharGold: gold={:?}, armor={:?}, weapon={:?}",
-                    gold,
-                    armor,
-                    weapon
-                );
                 self.character_info.gold = *gold as i32;
                 self.character_info.armor = *armor as i32;
                 self.character_info.weapon = *weapon as i32;
@@ -512,12 +474,6 @@ impl PlayerState {
                 item,
                 item_p,
             } => {
-                log::info!(
-                    "SetCharItem: index={:?}, item={:?}, item_p={:?}",
-                    index,
-                    item,
-                    item_p
-                );
                 let idx = *index as usize;
                 if idx < self.character_info.item.len() {
                     self.character_info.item[idx] = *item as i32;
@@ -529,12 +485,6 @@ impl PlayerState {
                 worn,
                 worn_p,
             } => {
-                log::info!(
-                    "SetCharWorn: index={:?}, worn={:?}, worn_p={:?}",
-                    index,
-                    worn,
-                    worn_p
-                );
                 let idx = *index as usize;
                 if idx < self.character_info.worn.len() {
                     self.character_info.worn[idx] = *worn as i32;
@@ -546,12 +496,6 @@ impl PlayerState {
                 spell,
                 active,
             } => {
-                log::info!(
-                    "SetCharSpell: index={:?}, spell={:?}, active={:?}",
-                    index,
-                    spell,
-                    active
-                );
                 let idx = *index as usize;
                 if idx < self.character_info.spell.len() {
                     self.character_info.spell[idx] = *spell as i32;
@@ -559,17 +503,14 @@ impl PlayerState {
                 }
             }
             ServerCommandData::SetCharObj { citem, citem_p } => {
-                log::info!("SetCharObj: citem={:?}, citem_p={:?}", citem, citem_p);
                 self.character_info.citem = *citem as i32;
                 self.character_info.citem_p = *citem_p as i32;
             }
             ServerCommandData::Tick { ctick } => {
-                log::debug!("Tick: ctick={:?}", ctick);
                 self.server_ctick = *ctick;
                 self.server_ctick_pending = true;
             }
             ServerCommandData::SetOrigin { x, y } => {
-                log::debug!("SetOrigin: x={:?}, y={:?}", x, y);
                 self.map.set_origin(*x, *y);
             }
             ServerCommandData::SetTarget {
@@ -580,15 +521,6 @@ impl PlayerState {
                 misc_target1,
                 misc_target2,
             } => {
-                log::info!(
-                    "SetTarget: attack_cn={:?}, goto_x={:?}, goto_y={:?}, misc_action={:?}, misc_target1={:?}, misc_target2={:?}",
-                    attack_cn,
-                    goto_x,
-                    goto_y,
-                    misc_action,
-                    misc_target1,
-                    misc_target2
-                );
                 self.character_info.attack_cn = *attack_cn as i32;
                 self.character_info.goto_x = *goto_x as i32;
                 self.character_info.goto_y = *goto_y as i32;
@@ -597,16 +529,13 @@ impl PlayerState {
                 self.character_info.misc_target2 = *misc_target2 as i32;
             }
             ServerCommandData::Load { load } => {
-                log::debug!("Load: load={:?}", load);
                 self.load_percentage = *load;
             }
             ServerCommandData::Unique { unique1, unique2 } => {
-                log::info!("Unique: unique1={:?}, unique2={:?}", unique1, unique2);
                 self.unique1 = *unique1;
                 self.unique2 = *unique2;
             }
             ServerCommandData::Log { font, chunk } => {
-                log::info!("Log: font={:?}, chunk={:?}", font, chunk);
                 self.handle_log_chunk(*font, chunk);
             }
             ServerCommandData::Mod1 { text }
@@ -617,8 +546,6 @@ impl PlayerState {
             | ServerCommandData::Mod6 { text }
             | ServerCommandData::Mod7 { text }
             | ServerCommandData::Mod8 { text } => {
-                // MOTD chunks (15 bytes each in original client)
-                log::info!("Mod: text={:?}", text);
                 self.handle_log_chunk(0, text);
             }
             ServerCommandData::Look1 {
@@ -631,17 +558,6 @@ impl PlayerState {
                 worn8,
                 autoflag,
             } => {
-                log::info!(
-                    "Look1: worn0={:?}, worn2={:?}, worn3={:?}, worn5={:?}, worn6={:?}, worn7={:?}, worn8={:?}, autoflag={:?}",
-                    worn0,
-                    worn2,
-                    worn3,
-                    worn5,
-                    worn6,
-                    worn7,
-                    worn8,
-                    autoflag
-                );
                 self.look_target.set_worn(0, *worn0);
                 self.look_target.set_worn(2, *worn2);
                 self.look_target.set_worn(3, *worn3);
@@ -658,14 +574,6 @@ impl PlayerState {
                 hp,
                 worn10,
             } => {
-                log::info!(
-                    "Look2: worn9={:?}, sprite={:?}, points={:?}, hp={:?}, worn10={:?}",
-                    worn9,
-                    sprite,
-                    points,
-                    hp,
-                    worn10
-                );
                 self.look_target.set_worn(9, *worn9);
                 self.look_target.set_sprite(*sprite);
                 self.look_target.set_points(*points);
@@ -681,16 +589,6 @@ impl PlayerState {
                 mana,
                 a_mana,
             } => {
-                log::info!(
-                    "Look3: end={:?}, a_hp={:?}, a_end={:?}, nr={:?}, id={:?}, mana={:?}, a_mana={:?}",
-                    end,
-                    a_hp,
-                    a_end,
-                    nr,
-                    id,
-                    mana,
-                    a_mana
-                );
                 self.look_target.set_end(*end);
                 self.look_target.set_a_hp(*a_hp);
                 self.look_target.set_a_end(*a_end);
@@ -708,16 +606,6 @@ impl PlayerState {
                 worn12,
                 worn13,
             } => {
-                log::info!(
-                    "Look4: worn1={:?}, worn4={:?}, extended={:?}, pl_price={:?}, worn11={:?}, worn12={:?}, worn13={:?}",
-                    worn1,
-                    worn4,
-                    extended,
-                    pl_price,
-                    worn11,
-                    worn12,
-                    worn13
-                );
                 self.look_target.set_worn(1, *worn1);
                 self.look_target.set_worn(4, *worn4);
                 self.look_target.set_extended(*extended);
@@ -727,11 +615,8 @@ impl PlayerState {
                 self.look_target.set_worn(13, *worn13);
             }
             ServerCommandData::Look5 { name } => {
-                log::info!("Look5: name={:?}", name);
                 self.look_target.set_name(name);
 
-                // engine.c: add_look(tmplook.nr, tmplook.name, tmplook.id)
-                // Our Look3 packet sets nr/id; Look5 provides the name.
                 let nr = self.look_target.nr();
                 let id = self.look_target.id();
                 if !name.is_empty() {
@@ -744,12 +629,10 @@ impl PlayerState {
                 }
             }
             ServerCommandData::Look6 { start, entries } => {
-                log::info!("Look6: start={:?}, entries={:?}", start, entries);
                 for e in entries {
                     self.look_target.set_shop_entry(e.index, e.item, e.price);
                 }
 
-                // In the original client this triggers once the final chunk (start==60) arrives.
                 if start.saturating_add(2) >= 62 {
                     self.should_show_shop = true;
                     self.shop_target = self.look_target;
@@ -772,23 +655,6 @@ impl PlayerState {
                 ch_speed,
                 ch_proz,
             } => {
-                log::debug!(
-                    "SetMap: off={:?}, absolute_tile_index={:?}, ba_sprite={:?}, flags1={:?}, flags2={:?}, it_sprite={:?}, it_status={:?}, ch_sprite={:?}, ch_status={:?}, ch_stat_off={:?}, ch_nr={:?}, ch_id={:?}, ch_speed={:?}, ch_proz={:?}",
-                    off,
-                    absolute_tile_index,
-                    ba_sprite,
-                    flags1,
-                    flags2,
-                    it_sprite,
-                    it_status,
-                    ch_sprite,
-                    ch_status,
-                    ch_stat_off,
-                    ch_nr,
-                    ch_id,
-                    ch_speed,
-                    ch_proz
-                );
                 self.map.apply_set_map(
                     *off,
                     *absolute_tile_index,
@@ -806,41 +672,27 @@ impl PlayerState {
                     *ch_proz,
                 );
             }
-
             ServerCommandData::SetMap3 {
                 start_index,
                 base_light,
                 packed,
             } => {
-                log::debug!(
-                    "SetMap3: start_index={:?}, base_light={:?}, packed_len={:?}",
-                    start_index,
-                    base_light,
-                    packed.len()
-                );
                 self.map.apply_set_map3(*start_index, *base_light, packed);
             }
-
             ServerCommandData::Exit { reason } => {
-                log::info!("Exit: reason={:?}", exit_reason_string(*reason));
                 self.tlog(
                     3,
                     format!(
                         "Server requested exit (reason={})",
-                        exit_reason_string(*reason)
+                        mag_core::constants::get_exit_reason(*reason)
                     ),
                 );
-
-                // Defer the actual state transition to a system (we don't have access to NextState here).
                 self.exit_requested_reason = Some(*reason);
             }
             _ => {
-                log::error!("PlayerState ignoring server command: {:?}", command.header);
+                log::debug!("PlayerState ignoring server command: {:?}", command.header);
             }
         }
-
-        // Any server command may affect what the UI should show.
-        self.state_revision = self.state_revision.wrapping_add(1);
     }
 }
 
@@ -900,5 +752,26 @@ mod tests {
         ps.tlog(0, "hello world");
         let msg = ps.log_message(0).expect("expected first log message");
         assert_eq!(msg.message, "hello world");
+    }
+
+    #[test]
+    fn take_exit_requested_reason() {
+        let mut ps = PlayerState::default();
+        assert_eq!(ps.take_exit_requested_reason(), None);
+        // Directly set the private field (inline test module has access)
+        ps.exit_requested_reason = Some(42);
+        assert_eq!(ps.take_exit_requested_reason(), Some(42));
+        // Second take should return None
+        assert_eq!(ps.take_exit_requested_reason(), None);
+    }
+
+    #[test]
+    fn selected_char_roundtrip() {
+        let mut ps = PlayerState::default();
+        assert_eq!(ps.selected_char(), 0);
+        ps.set_selected_char_with_id(5, 10);
+        assert_eq!(ps.selected_char(), 5);
+        ps.clear_selected_char();
+        assert_eq!(ps.selected_char(), 0);
     }
 }

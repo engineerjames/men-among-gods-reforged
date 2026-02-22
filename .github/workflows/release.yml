@@ -30,7 +30,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Linux build dependencies (Bevy)
+      - name: Install Linux build dependencies
         if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: bash pipelines/install_linux_deps.sh
@@ -41,7 +41,7 @@ jobs:
 
       - name: Build SDL2 dependencies via vcpkg
         shell: bash
-        run: cargo vcpkg build --manifest-path sdl_client/Cargo.toml
+        run: cargo vcpkg build --manifest-path client/Cargo.toml
 
       - name: Build (release)
         shell: bash

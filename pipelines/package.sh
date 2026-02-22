@@ -57,7 +57,6 @@ if [[ "$PLATFORM" == "macos" ]]; then
   mkdir -p "${RESOURCES_DIR}"
 
   # The client expects assets next to the executable (current_exe()/assets).
-  # TODO: remove client/assets copy once client/ is deleted and assets live directly in sdl_client/assets/
   cp -R client/assets/. "${MACOS_DIR}/assets/"
 
   cp "target/release/men-among-gods-client" "${MACOS_DIR}/men-among-gods-client"
@@ -122,7 +121,6 @@ if [[ "$PLATFORM" == "macos" ]]; then
 EOF
 else
   mkdir -p "dist/${CLIENT_DIR}/assets"
-  # TODO: remove client/assets copy once client/ is deleted and assets live directly in sdl_client/assets/
   cp -R client/assets/. "dist/${CLIENT_DIR}/assets/"
   cp "target/release/men-among-gods-client" "dist/${CLIENT_DIR}/men-among-gods-client"
 fi

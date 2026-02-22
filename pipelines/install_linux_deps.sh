@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Linux build dependencies for Bevy and the vcpkg bootstrap toolchain.
+# Linux build dependencies for SDL2 and the vcpkg bootstrap toolchain.
 # SDL2 is sourced via cargo-vcpkg (statically linked) and does not need
 # system SDL2 packages.
 # Safe to run in CI; intended for ubuntu-latest.

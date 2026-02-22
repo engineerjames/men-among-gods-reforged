@@ -36,4 +36,5 @@ dist/**
 *.rdb
 
 **/__pycache__/**
-sdl_client_profile.json
+mag_profile.json
+mag_client.log

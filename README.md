@@ -35,7 +35,7 @@ samply record cargo run --bin server
 This will generate a flamegraph that you can use to analyze the performance of the server.
 
 # Client
-The client uses [SDL2](https://www.libsdl.org/) via the [Rust SDL2 bindings](https://github.com/Rust-SDL2/rust-sdl2) for rendering, input handling, and audio. An earlier iteration of the client was built with [Bevy](https://bevyengine.org/), but we found that a full ECS game engine was not the right fit for a 2D tile-based game of this nature — SDL2 gives us the low-level control we need with far less overhead.
+The client uses [SDL2](https://www.libsdl.org/) via the [Rust SDL2 bindings](https://github.com/Rust-SDL2/rust-sdl2) for rendering, input handling, and audio.
 
 The client is still in ALPHA stage and is not yet fully functional. Many features from the original Mercenaries of Astonia (v2) game are missing, and there are likely to be bugs. However, you should be able to connect to a server and explore the world to some extent.
 
@@ -45,11 +45,11 @@ SDL2 is managed via [cargo-vcpkg](https://crates.io/crates/cargo-vcpkg) on all p
 
 ```bash
 cargo install cargo-vcpkg
-cargo vcpkg build --manifest-path sdl_client/Cargo.toml
+cargo vcpkg build --manifest-path client/Cargo.toml
 cargo build
 ```
 
-Linux builds additionally need Bevy system headers:
+Linux builds additionally need system headers:
 ```bash
 bash pipelines/install_linux_deps.sh
 ```

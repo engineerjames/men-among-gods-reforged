@@ -1,36 +1,38 @@
 [package]
 name = "client"
-version = "1.1.0"
+version = "0.1.0"
 edition = "2021"
 build = "build.rs"
 
 [[bin]]
-name = "men-among-gods-client-legacy"
+name = "men-among-gods-client"
 path = "src/main.rs"
 
 [dependencies]
 mag_core = { path = "../core", package = "core" }
-argon2 = "0.4"
-bevy = { version = "0.18", default-features = false, features = ["2d", "wav", "mp3"] }
+egui-sdl2 = "0.2.5"
+# SDL2 is sourced via cargo-vcpkg and statically linked on all platforms –
+# no system SDL2 installation required.
+sdl2 = { version = "0.38.0", default-features = false, features = ["gfx", "image", "mixer", "use-vcpkg", "static-link"] }
 log = "0.4.29"
-tracing-appender = "0.2.4"
+log4rs = "1.4.0"
 zip = "0.6.6"
-bevy_egui = "0.39"
-egui-file-dialog = "0.12.0"
 flate2 = "1.1.5"
-tracing = "0.1.44"
-image = { version = "0.25", default-features = false, features = ["ico", "png"] }
-winit = "0.30"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+argon2 = "0.5.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-serde-big-array = "0.5"
-bevy_framepace = { git = "https://github.com/aevyrie/bevy_framepace", version = "0.21.0" }
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
-
-[target.'cfg(target_os = "macos")'.dependencies]
-objc2 = "0.6"
-objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSDockTile", "NSImage"] }
-objc2-foundation = { version = "0.3" }
 
 [build-dependencies]
 embed-resource = "2"
+
+[package.metadata.vcpkg]
+git = "https://github.com/microsoft/vcpkg"
+rev = "2026.01.16"
+
+[package.metadata.vcpkg.target]
+x86_64-pc-windows-msvc    = { triplet = "x64-windows-static-md", dependencies = ["sdl2", "sdl2-image", "sdl2-mixer", "sdl2-gfx"] }
+x86_64-unknown-linux-gnu  = { triplet = "x64-linux-release",      dependencies = ["sdl2", "sdl2-image", "sdl2-mixer", "sdl2-gfx"] }
+aarch64-unknown-linux-gnu = { triplet = "arm64-linux",            dependencies = ["sdl2", "sdl2-image", "sdl2-mixer", "sdl2-gfx"] }
+x86_64-apple-darwin       = { triplet = "x64-osx-release",        dependencies = ["sdl2", "sdl2-image", "sdl2-mixer", "sdl2-gfx"] }
+aarch64-apple-darwin      = { triplet = "arm64-osx-release",      dependencies = ["sdl2", "sdl2-image", "sdl2-mixer", "sdl2-gfx"] }

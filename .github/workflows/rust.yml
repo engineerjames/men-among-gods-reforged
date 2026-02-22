@@ -27,7 +27,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install Linux build dependencies (Bevy)
+    - name: Install Linux build dependencies
       if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
@@ -49,7 +49,7 @@ jobs:
       run: cargo install cargo-vcpkg
 
     - name: Build SDL2 dependencies via vcpkg
-      run: cargo vcpkg build --manifest-path sdl_client/Cargo.toml
+      run: cargo vcpkg build --manifest-path client/Cargo.toml
 
     - name: Build
       run: cargo build ${{ matrix.cargo-flags }}

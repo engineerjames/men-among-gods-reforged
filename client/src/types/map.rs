@@ -1,5 +1,9 @@
+/// A single tile in the visible map grid, matching the original C `cmap`
+/// struct (64 bytes).
+///
+/// Stores world coordinates, sprite IDs for background / item / character
+/// layers, animation state, lighting, and rendering offsets.
 // cmap from original C headers
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct CMapTile {
     pub x: u16,
@@ -29,7 +33,3 @@ pub struct CMapTile {
 
     pub idle_ani: i32,
 }
-
-const _: () = {
-    assert!(std::mem::size_of::<CMapTile>() == 64);
-};

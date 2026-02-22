@@ -5,9 +5,9 @@ This folder contains small scripts used by GitHub Actions workflows (and runnabl
 ## Scripts
 
 - `install_linux_deps.sh`
-  - Installs Linux build dependencies for Bevy and SDL2 (intended for `ubuntu-latest`).
+  - Installs Linux build dependencies for SDL2 (intended for `ubuntu-latest`).
 - `build_release.sh`
-  - Builds release binaries for `server` and `sdl_client`.
+  - Builds release binaries for `server` and `client`.
 - `package.sh`
   - Creates release `.zip` packages on Linux/macOS.
   - Produces `dist/men-among-gods-{server,client}-<version>-<platform>.zip`.
@@ -23,10 +23,10 @@ SDL2 is managed automatically via [cargo-vcpkg](https://crates.io/crates/cargo-v
 
 ```bash
 cargo install cargo-vcpkg
-cargo vcpkg build --manifest-path sdl_client/Cargo.toml
+cargo vcpkg build --manifest-path client/Cargo.toml
 ```
 
-This downloads and builds the SDL2 libraries once and caches them; subsequent builds reuse the cache. Linux builds also need Bevy dependencies for the legacy client:
+This downloads and builds the SDL2 libraries once and caches them; subsequent builds reuse the cache. Linux builds also need system headers:
 
 ```bash
 bash pipelines/install_linux_deps.sh
