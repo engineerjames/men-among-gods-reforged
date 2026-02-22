@@ -496,11 +496,22 @@ impl GameScene {
             let y = 4 + ((n / 5) as i32) * 24;
             let tex = gfx.get_texture(sprite as usize);
             let q = tex.query();
+
+            // Match original engine.c spell-slot rendering:
+            // copyspritex(pl.spell[n], ..., 15-min(15,pl.active[n]))
+            // The effect parameter darkens RGB only (do_rgb8_effect / LEFFECT curve);
+            // the sprite's own alpha channel is left untouched — no alpha-mod.
+            let active = (ci.active[n] as i32).clamp(0, 15);
+            let effect = 15 - active;
+            let atten = (255 * 120 / (effect * effect + 120)) as u8;
+
+            tex.set_color_mod(atten, atten, atten);
             canvas.copy(
                 tex,
                 None,
                 Some(sdl2::rect::Rect::new(x, y, q.width, q.height)),
             )?;
+            tex.set_color_mod(255, 255, 255);
         }
 
         if ci.citem > 0 {
@@ -672,10 +683,13 @@ impl GameScene {
 
                 let back_id = tile.back.max(0) as usize;
                 if back_id != 0 {
-                    let is_blank = self.minimap_xmap[cell] == 0
-                        && self.minimap_xmap[cell + 1] == 0
-                        && self.minimap_xmap[cell + 2] == 0;
-                    // 0xFF marks the player position — always overwrite it.
+                    // Use the alpha byte as the "never visited" sentinel: the buffer is
+                    // zero-initialised, so alpha==0 means this cell has never been painted.
+                    // RGB-only checks incorrectly treated legitimately-black backgrounds as
+                    // blank, causing them to be re-queried on every step.
+                    let is_blank = self.minimap_xmap[cell + 3] == 0;
+                    // 0xFF marks the player position — always overwrite it so the old
+                    // white dot is replaced with the real tile colour when the player moves.
                     let is_player_marker = self.minimap_xmap[cell] == 0xFF
                         && self.minimap_xmap[cell + 1] == 0xFF
                         && self.minimap_xmap[cell + 2] == 0xFF;
@@ -688,13 +702,21 @@ impl GameScene {
                     }
                 }
 
-                // Objects override background.
+                // Objects override background — but only when the sprite has a
+                // non-zero average colour.  Transparent / invisible obj sprites
+                // return (0,0,0) from get_avg_color; writing that value would paint
+                // an opaque black pixel over the valid background colour.  In the
+                // original C engine, setting xmap[..]=0 implicitly marked the cell
+                // as "unvisited" so the background reclaimed it next pass; our RGBA
+                // buffer has no such equivalence, so we guard the write instead.
                 if tile.obj1 > 0 {
                     let (r, g, b) = gfx.get_avg_color(tile.obj1 as usize);
-                    self.minimap_xmap[cell] = r;
-                    self.minimap_xmap[cell + 1] = g;
-                    self.minimap_xmap[cell + 2] = b;
-                    self.minimap_xmap[cell + 3] = 255;
+                    if (r | g | b) != 0 {
+                        self.minimap_xmap[cell] = r;
+                        self.minimap_xmap[cell + 1] = g;
+                        self.minimap_xmap[cell + 2] = b;
+                        self.minimap_xmap[cell + 3] = 255;
+                    }
                 }
             }
 
