@@ -459,6 +459,7 @@ impl GameScene {
                             + ch_xoff;
                         let np_ry = xpos / 4 - ypos / 4 + YPOS - 64 + cam_yoff + ch_yoff;
                         font_cache::draw_text_tinted(
+                            // TODO: Refactor this to a new function in the font_cache
                             canvas,
                             gfx,
                             1,
