@@ -31,8 +31,8 @@ git = "https://github.com/microsoft/vcpkg"
 rev = "2025.12.12"
 
 [package.metadata.vcpkg.target]
-x86_64-pc-windows-msvc    = { triplet = "x64-windows-static-md", dependencies = ["sdl2", "sdl2-image", "sdl2-mixer", "sdl2-gfx"] }
-x86_64-unknown-linux-gnu  = { triplet = "x64-linux",              dependencies = ["sdl2", "sdl2-image", "sdl2-mixer", "sdl2-gfx"] }
-aarch64-unknown-linux-gnu = { triplet = "arm64-linux",            dependencies = ["sdl2", "sdl2-image", "sdl2-mixer", "sdl2-gfx"] }
-x86_64-apple-darwin       = { triplet = "x64-osx",                dependencies = ["sdl2", "sdl2-image", "sdl2-mixer", "sdl2-gfx"] }
-aarch64-apple-darwin      = { triplet = "arm64-osx",              dependencies = ["sdl2", "sdl2-image", "sdl2-mixer", "sdl2-gfx"] }
+x86_64-pc-windows-msvc    = { triplet = "x64-windows-static-md",  dependencies = ["sdl2", "sdl2-image", "sdl2-mixer", "sdl2-gfx"] }
+x86_64-unknown-linux-gnu  = { triplet = "x64-linux-release",      dependencies = ["sdl2", "sdl2-image", "sdl2-mixer", "sdl2-gfx"] }
+aarch64-unknown-linux-gnu = { triplet = "arm64-linux-release",    dependencies = ["sdl2", "sdl2-image", "sdl2-mixer", "sdl2-gfx"] }
+x86_64-apple-darwin       = { triplet = "x64-osx-release",        dependencies = ["sdl2", "sdl2-image", "sdl2-mixer", "sdl2-gfx"] }
+aarch64-apple-darwin      = { triplet = "arm64-osx-release",      dependencies = ["sdl2", "sdl2-image", "sdl2-mixer", "sdl2-gfx"] }
