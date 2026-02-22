@@ -27,6 +27,12 @@ jobs:
         # Fetch all history for vcpkg to work correctly with versioning
         fetch-depth: 0 
 
+    - name: Install MacOS build dependencies
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew update
+        brew install autoconf autoconf-archive automake libtool cmake ninja
+
     - name: Install Linux build dependencies
       if: matrix.os == 'ubuntu-latest'
       run: |
@@ -42,6 +48,10 @@ jobs:
           libxrandr-dev \
           libxcursor-dev \
           libxinerama-dev \
+          autoconf \
+          autoconf-archive \
+          automake \
+          libtool \
           cmake \
           ninja-build
 
