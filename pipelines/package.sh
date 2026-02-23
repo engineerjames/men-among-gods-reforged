@@ -119,6 +119,20 @@ if [[ "$PLATFORM" == "macos" ]]; then
 </dict>
 </plist>
 EOF
+
+  # PkgInfo is required by the app bundle spec.
+  printf 'APPL????' > "${APP_DIR}/Contents/PkgInfo"
+
+  # The linker attaches a weak 'linker-signed' ad-hoc signature to the binary.
+  # macOS rejects that when running from an app bundle context because it does
+  # not cover the bundle resources. Replace it with a proper ad-hoc signature
+  # (using '-' as identity requires no Apple Developer account).
+  if command -v codesign >/dev/null 2>&1; then
+    echo "Applying ad-hoc code signature to ${APP_DIR}..."
+    codesign --force --deep --sign - "${APP_DIR}"
+  else
+    echo "Warning: codesign not available; bundle may be rejected by macOS" >&2
+  fi
 else
   mkdir -p "dist/${CLIENT_DIR}/assets"
   cp -R client/assets/. "dist/${CLIENT_DIR}/assets/"
@@ -126,4 +140,12 @@ else
 fi
 
 (cd dist && zip -r "${SERVER_DIR}.zip" "${SERVER_DIR}")
-(cd dist && zip -r "${CLIENT_DIR}.zip" "${CLIENT_DIR}")
+
+# macOS app bundles must be archived with ditto (not plain zip) to preserve
+# extended attributes, resource forks, and the code signature applied above.
+# Plain zip silently drops these, causing macOS to report the app as damaged.
+if [[ "$PLATFORM" == "macos" ]]; then
+  (cd dist && ditto -c -k --sequesterRsrc --keepParent "${CLIENT_DIR}" "${CLIENT_DIR}.zip")
+else
+  (cd dist && zip -r "${CLIENT_DIR}.zip" "${CLIENT_DIR}")
+fi
