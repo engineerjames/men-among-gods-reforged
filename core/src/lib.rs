@@ -75,39 +75,51 @@ pub fn initialize_logger(
 ) -> Result<(), SetLoggerError> {
     const LOGGING_PATTERN: &'static str = "{d} {l} {f}:{L} - {m}\n";
 
-    // Build a stderr logger - always for now.
+    // Build a stderr logger - always on.
     let stderr = ConsoleAppender::builder()
         .target(Target::Stderr)
         .encoder(Box::new(BacktracePatternEncoder::new(LOGGING_PATTERN)))
         .build();
 
     let mut config_builder = Config::builder();
+    let mut file_appender_added = false;
 
-    if file_path.is_some() {
-        let logfile = FileAppender::builder()
+    if let Some(path) = file_path {
+        match FileAppender::builder()
             // Pattern: https://docs.rs/log4rs/*/log4rs/encode/pattern/index.html
             .encoder(Box::new(BacktracePatternEncoder::new(LOGGING_PATTERN)))
-            .build(file_path.unwrap())
-            .unwrap();
-
-        config_builder =
-            config_builder.appender(Appender::builder().build("logfile", Box::new(logfile)));
+            .build(path)
+        {
+            Ok(logfile) => {
+                config_builder = config_builder
+                    .appender(Appender::builder().build("logfile", Box::new(logfile)));
+                file_appender_added = true;
+            }
+            Err(e) => {
+                // Cannot write to the requested log file (e.g. permission denied
+                // when CWD is "/" inside a macOS .app bundle). Fall back to
+                // stderr-only logging rather than panicking.
+                eprintln!(
+                    "Warning: could not open log file '{}': {}. Logging to stderr only.",
+                    path, e
+                );
+            }
+        }
     }
 
     // Log Trace level output to file where trace is the default level
     // and the programmatically specified level to stderr.
+    let mut root_builder = Root::builder();
+    if file_appender_added {
+        root_builder = root_builder.appender("logfile");
+    }
     let config = config_builder
         .appender(
             Appender::builder()
                 .filter(Box::new(ThresholdFilter::new(log_level)))
                 .build("stderr", Box::new(stderr)),
         )
-        .build(
-            Root::builder()
-                .appender("logfile")
-                .appender("stderr")
-                .build(log_level),
-        )
+        .build(root_builder.appender("stderr").build(log_level))
         .unwrap();
 
     // Use this to change log levels at runtime.

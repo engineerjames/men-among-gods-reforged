@@ -179,21 +179,60 @@ fn profile_key(identity: &CharacterIdentity) -> String {
     format!("{username}:{}", identity.id)
 }
 
-/// Returns the current working directory, falling back to `"."` on error.
-fn working_directory() -> PathBuf {
-    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+/// Returns the directory used for all writable runtime files
+/// (profile JSON, log file, etc.) and ensures it exists.
+///
+/// **macOS / Linux** — files are stored in `~/.men-among-gods/` so that:
+///   * macOS `.app` bundles are not broken (Apple prohibits writing inside the
+///     bundle, and the OS sets CWD to `/` on launch, making relative paths
+///     fail with "permission denied").
+///   * Linux follows the convention of a dotfolder in `$HOME`.
+///
+/// **Windows** — files are stored next to the executable, matching the
+/// existing behaviour and expectations for a portable Windows install.
+fn data_directory() -> PathBuf {
+    #[cfg(unix)]
+    {
+        // Prefer $HOME; fall back to the exe directory on the rare chance
+        // $HOME is unset (e.g. stripped environments / CI containers).
+        let dir = std::env::var("HOME")
+            .map(|home| PathBuf::from(home).join(".men-among-gods"))
+            .unwrap_or_else(|_| {
+                std::env::current_exe()
+                    .ok()
+                    .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+                    .unwrap_or_else(|| PathBuf::from("."))
+            });
+
+        if let Err(e) = fs::create_dir_all(&dir) {
+            eprintln!(
+                "Warning: could not create data directory '{}': {}",
+                dir.display(),
+                e
+            );
+        }
+
+        dir
+    }
+
+    #[cfg(not(unix))]
+    {
+        // Windows: keep files next to the executable (portable install).
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+    }
 }
 
-/// Returns the path to the JSON profile file (`mag_profile.json`)
-/// in the working directory.
+/// Returns the path to the JSON profile file (`mag_profile.json`).
 pub fn profile_file_path() -> PathBuf {
-    working_directory().join(PROFILE_FILE_NAME)
+    data_directory().join(PROFILE_FILE_NAME)
 }
 
-/// Returns the path to the log file (`mag_client.log`) in the working
-/// directory.
+/// Returns the path to the log file (`mag_client.log`).
 pub fn log_file_path() -> PathBuf {
-    working_directory().join(LOG_FILE_NAME)
+    data_directory().join(LOG_FILE_NAME)
 }
 
 fn read_storage(path: &Path) -> AppProfileStorage {
