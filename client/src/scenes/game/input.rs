@@ -84,9 +84,10 @@ impl GameScene {
                 {
                     let btn = ps.player_data().skill_buttons[idx];
                     if !btn.is_unassigned() {
+                        self.play_click_sound(app_state);
                         net.send(ClientCommand::new_skill(
                             btn.skill_nr(),
-                            ps.selected_char() as u32,
+                            Self::default_skill_target(ps),
                             ps.character_info().attrib[0][0] as u32,
                         ));
                     }
@@ -102,9 +103,18 @@ impl GameScene {
             if let Some(net) = app_state.network.as_ref() {
                 if row == 0 {
                     match col {
-                        0 => net.send(ClientCommand::new_mode(2)),
-                        1 => net.send(ClientCommand::new_mode(1)),
-                        2 => net.send(ClientCommand::new_mode(0)),
+                        0 => {
+                            self.play_click_sound(app_state);
+                            net.send(ClientCommand::new_mode(2));
+                        }
+                        1 => {
+                            self.play_click_sound(app_state);
+                            net.send(ClientCommand::new_mode(1));
+                        }
+                        2 => {
+                            self.play_click_sound(app_state);
+                            net.send(ClientCommand::new_mode(0));
+                        }
                         3 => {
                             if let Some(ps) = app_state.player_state.as_mut() {
                                 let cur = ps.player_data().show_proz;
@@ -174,9 +184,15 @@ impl GameScene {
             };
             (ps.character_info().clone(), ps.selected_char() as u32)
         };
+        let skill_target = if selected_char != 0 {
+            selected_char
+        } else {
+            ci.attack_cn.max(0) as u32
+        };
 
         // --- Stat/skill commit ("Update") button: x=109..158, y=254..266 (LMB only) ---
         if mouse_btn == MouseButton::Left && (109..=158).contains(&x) && (254..=266).contains(&y) {
+            let mut sent_any = false;
             let sorted = Self::sorted_skills(&ci);
             for n in 0usize..108 {
                 let v = self.stat_raised[n];
@@ -193,7 +209,11 @@ impl GameScene {
                 };
                 if let Some(net) = app_state.network.as_ref() {
                     net.send(ClientCommand::new_stat(which, v));
+                    sent_any = true;
                 }
+            }
+            if sent_any {
+                self.play_click_sound(app_state);
             }
             self.stat_raised = [0; 108];
             self.stat_points_used = 0;
@@ -239,9 +259,10 @@ impl GameScene {
                 if let Some(&skill_id) = sorted.get(skilltab_index) {
                     if !get_skill_name(skill_id).is_empty() && ci.skill[skill_id][0] != 0 {
                         if let Some(net) = app_state.network.as_ref() {
+                            self.play_click_sound(app_state);
                             net.send(ClientCommand::new_skill(
                                 get_skill_nr(skill_id) as u32,
-                                selected_char,
+                                skill_target,
                                 1,
                             ));
                         }
@@ -471,9 +492,11 @@ impl GameScene {
                 let idx = (self.inv_scroll + (row * 2 + col) as usize) as u32;
                 if let Some(net) = app_state.network.as_ref() {
                     if mouse_btn == MouseButton::Right {
+                        self.play_click_sound(app_state);
                         net.send(ClientCommand::new_inv_look(idx, 0, selected_char));
                     } else {
                         let a = if self.shift_held { 0u32 } else { 6u32 };
+                        self.play_click_sound(app_state);
                         net.send(ClientCommand::new_inv(a, idx, selected_char));
                     }
                 }
@@ -509,6 +532,7 @@ impl GameScene {
                         MouseButton::Left if self.shift_held => 1u32,
                         _ => 5u32,
                     };
+                    self.play_click_sound(app_state);
                     net.send(ClientCommand::new_inv(a, slot_nr, selected_char));
                 }
                 return true;
@@ -551,9 +575,11 @@ impl GameScene {
                         let shop_nr = ps.shop_target().nr() as i16;
                         match mouse_btn {
                             MouseButton::Left => {
+                                self.play_click_sound(app_state);
                                 net.send(ClientCommand::new_shop(shop_nr, nr as i32));
                             }
                             MouseButton::Right => {
+                                self.play_click_sound(app_state);
                                 net.send(ClientCommand::new_shop(shop_nr, (nr + 62) as i32));
                             }
                             _ => {}

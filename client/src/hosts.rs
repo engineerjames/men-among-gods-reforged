@@ -13,6 +13,20 @@ pub fn get_api_base_url() -> String {
         .unwrap_or_else(|| get_server_url() + ":5554")
 }
 
+/// Extracts the hostname from an API base URL.
+///
+/// # Arguments
+/// * `base_url` - API base URL such as `http://127.0.0.1:5554`.
+///
+/// # Returns
+/// * `Some(host)` when parsing succeeds.
+/// * `None` when the URL cannot be parsed or has no host.
+pub fn get_host_from_api_base_url(base_url: &str) -> Option<String> {
+    reqwest::Url::parse(base_url)
+        .ok()
+        .and_then(|url| url.host_str().map(ToString::to_string))
+}
+
 /// Builds the server base URL from `MAG_BASE_URL`, falling back to
 /// `http://<server_ip>` when the variable is unset.
 ///

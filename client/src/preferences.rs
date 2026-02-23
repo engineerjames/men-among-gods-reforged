@@ -1,12 +1,45 @@
 use std::{
     collections::BTreeMap,
-    fs,
+    fmt, fs,
     path::{Path, PathBuf},
 };
 
 use serde::{Deserialize, Serialize};
 
 use crate::types::skill_buttons::SkillButtons;
+
+/// Window display mode.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DisplayMode {
+    Windowed,
+    Fullscreen,
+    BorderlessFullscreen,
+}
+
+impl Default for DisplayMode {
+    fn default() -> Self {
+        Self::Windowed
+    }
+}
+
+impl fmt::Display for DisplayMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Windowed => write!(f, "Windowed"),
+            Self::Fullscreen => write!(f, "Fullscreen"),
+            Self::BorderlessFullscreen => write!(f, "Borderless Fullscreen"),
+        }
+    }
+}
+
+impl DisplayMode {
+    /// All variants in UI display order.
+    pub const ALL: [DisplayMode; 3] = [
+        DisplayMode::Windowed,
+        DisplayMode::Fullscreen,
+        DisplayMode::BorderlessFullscreen,
+    ];
+}
 
 const LOG_FILE_NAME: &str = "mag_client.log";
 const PROFILE_FILE_NAME: &str = "mag_profile.json";
@@ -38,12 +71,18 @@ pub struct RuntimeProfile {
 #[derive(Clone, Debug)]
 pub struct GlobalSettings {
     pub music_enabled: bool,
+    pub display_mode: DisplayMode,
+    pub pixel_perfect_scaling: bool,
+    pub vsync_enabled: bool,
 }
 
 impl Default for GlobalSettings {
     fn default() -> Self {
         Self {
             music_enabled: true,
+            display_mode: DisplayMode::default(),
+            pixel_perfect_scaling: false,
+            vsync_enabled: false,
         }
     }
 }
@@ -78,12 +117,21 @@ struct AppProfileStorage {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct GlobalSettingsStorage {
     music_enabled: bool,
+    #[serde(default)]
+    display_mode: DisplayMode,
+    #[serde(default)]
+    pixel_perfect_scaling: bool,
+    #[serde(default)]
+    vsync_enabled: bool,
 }
 
 impl Default for GlobalSettingsStorage {
     fn default() -> Self {
         Self {
             music_enabled: true,
+            display_mode: DisplayMode::default(),
+            pixel_perfect_scaling: false,
+            vsync_enabled: false,
         }
     }
 }
@@ -101,12 +149,18 @@ impl Default for AppProfileStorage {
 fn to_global_settings(storage: &GlobalSettingsStorage) -> GlobalSettings {
     GlobalSettings {
         music_enabled: storage.music_enabled,
+        display_mode: storage.display_mode,
+        pixel_perfect_scaling: storage.pixel_perfect_scaling,
+        vsync_enabled: storage.vsync_enabled,
     }
 }
 
 fn from_global_settings(settings: &GlobalSettings) -> GlobalSettingsStorage {
     GlobalSettingsStorage {
         music_enabled: settings.music_enabled,
+        display_mode: settings.display_mode,
+        pixel_perfect_scaling: settings.pixel_perfect_scaling,
+        vsync_enabled: settings.vsync_enabled,
     }
 }
 

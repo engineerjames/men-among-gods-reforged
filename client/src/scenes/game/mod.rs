@@ -36,9 +36,9 @@ use mag_core::constants::{ISCHAR, ISITEM, ISUSABLE, TILEX, TILEY};
 use crate::{
     network::{client_commands::ClientCommand, NetworkRuntime},
     player_state::PlayerState,
-    preferences::{self, CharacterIdentity},
+    preferences::{self, CharacterIdentity, DisplayMode},
     scenes::scene::{Scene, SceneType},
-    state::AppState,
+    state::{AppState, DisplayCommand},
 };
 
 // ---------------------------------------------------------------------------
@@ -77,7 +77,7 @@ pub(super) const BAR_END_Y: i32 = 134;
 pub(super) const BAR_MANA_Y: i32 = 141;
 pub(super) const BAR_H: u32 = 6;
 pub(super) const BAR_SCALE_NUM: i32 = 62;
-pub(super) const BAR_W_MAX: i32 = 124;
+pub(super) const BAR_W_MAX: i32 = 62;
 
 /// Bar background (capacity).
 pub(super) const BAR_BG_COLOR: Color = Color::RGB(9, 4, 58);
@@ -146,6 +146,9 @@ pub(super) const INV_SCROLL_MAX: i32 = 30;
 /// menu state. Created fresh each time the player enters the game world.
 pub struct GameScene {
     pub(super) input_buf: String,
+    pub(super) sent_chat_history: Vec<String>,
+    pub(super) chat_history_index: Option<usize>,
+    pub(super) chat_history_draft: Option<String>,
     pub(super) pending_exit: Option<String>,
     pub(super) log_scroll: usize,
     pub(super) last_log_len: usize,
@@ -189,6 +192,9 @@ impl GameScene {
     pub fn new() -> Self {
         Self {
             input_buf: String::new(),
+            sent_chat_history: Vec::new(),
+            chat_history_index: None,
+            chat_history_draft: None,
             pending_exit: None,
             log_scroll: 0,
             last_log_len: 0,
@@ -211,6 +217,44 @@ impl GameScene {
             pending_skill_assignment: None,
             active_profile_character: None,
         }
+    }
+
+    /// Resolve the default skill target.
+    ///
+    /// Priority matches expected gameplay behavior:
+    /// 1) Explicitly selected character (Alt+click)
+    /// 2) Current attack target (`attack_cn`)
+    /// 3) No target (0)
+    pub(super) fn default_skill_target(ps: &PlayerState) -> u32 {
+        let selected = ps.selected_char() as u32;
+        if selected != 0 {
+            return selected;
+        }
+
+        ps.character_info().attack_cn.max(0) as u32
+    }
+
+    pub(super) fn play_click_sound(&self, app_state: &AppState) {
+        app_state.sfx_cache.play_click(self.master_volume);
+    }
+
+    fn is_selected_visible(ps: &PlayerState) -> bool {
+        let selected = ps.selected_char();
+        if selected == 0 {
+            return true;
+        }
+
+        for y in 0..TILEY {
+            for x in 0..TILEX {
+                if let Some(tile) = ps.map().tile_at_xy(x, y) {
+                    if tile.ch_nr == selected {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        false
     }
 }
 
@@ -269,11 +313,13 @@ impl Scene for GameScene {
             preferences::log_file_path().display()
         );
 
-        let host = crate::hosts::get_server_ip();
+        let host = crate::hosts::get_host_from_api_base_url(&app_state.api.base_url)
+            .unwrap_or_else(crate::hosts::get_server_ip);
         log::info!(
-            "GameScene: connecting to {}:5555 with ticket={}",
+            "GameScene: connecting to {}:5555 with ticket={} (api_base_url={})",
             host,
-            login_target.ticket
+            login_target.ticket,
+            app_state.api.base_url
         );
 
         app_state.network = Some(NetworkRuntime::new(
@@ -326,6 +372,7 @@ impl Scene for GameScene {
         {
             // Always send CmdReset (preserving legacy behavior).
             if let Some(net) = app_state.network.as_ref() {
+                self.play_click_sound(app_state);
                 net.send(ClientCommand::new_reset());
             }
             self.escape_menu_open = !self.escape_menu_open;
@@ -395,6 +442,12 @@ impl Scene for GameScene {
                     if !self.input_buf.is_empty() {
                         let text = self.input_buf.clone();
                         self.input_buf.clear();
+                        self.sent_chat_history.push(text.clone());
+                        if self.sent_chat_history.len() > 100 {
+                            self.sent_chat_history.remove(0);
+                        }
+                        self.chat_history_index = None;
+                        self.chat_history_draft = None;
                         if let Some(net) = app_state.network.as_ref() {
                             for pkt in ClientCommand::new_say_packets(text.as_bytes()) {
                                 net.send(pkt);
@@ -412,14 +465,16 @@ impl Scene for GameScene {
                         {
                             let btn = ps.player_data().skill_buttons[0];
                             if !btn.is_unassigned() {
+                                self.play_click_sound(app_state);
                                 net.send(ClientCommand::new_skill(
                                     btn.skill_nr(),
-                                    ps.selected_char() as u32,
+                                    Self::default_skill_target(ps),
                                     ps.character_info().attrib[0][0] as u32,
                                 ));
                             }
                         }
                     } else if let Some(net) = app_state.network.as_ref() {
+                        self.play_click_sound(app_state);
                         net.send(ClientCommand::new_mode(2));
                     }
                 }
@@ -430,14 +485,16 @@ impl Scene for GameScene {
                         {
                             let btn = ps.player_data().skill_buttons[1];
                             if !btn.is_unassigned() {
+                                self.play_click_sound(app_state);
                                 net.send(ClientCommand::new_skill(
                                     btn.skill_nr(),
-                                    ps.selected_char() as u32,
+                                    Self::default_skill_target(ps),
                                     ps.character_info().attrib[0][0] as u32,
                                 ));
                             }
                         }
                     } else if let Some(net) = app_state.network.as_ref() {
+                        self.play_click_sound(app_state);
                         net.send(ClientCommand::new_mode(1));
                     }
                 }
@@ -448,14 +505,16 @@ impl Scene for GameScene {
                         {
                             let btn = ps.player_data().skill_buttons[2];
                             if !btn.is_unassigned() {
+                                self.play_click_sound(app_state);
                                 net.send(ClientCommand::new_skill(
                                     btn.skill_nr(),
-                                    ps.selected_char() as u32,
+                                    Self::default_skill_target(ps),
                                     ps.character_info().attrib[0][0] as u32,
                                 ));
                             }
                         }
                     } else if let Some(net) = app_state.network.as_ref() {
+                        self.play_click_sound(app_state);
                         net.send(ClientCommand::new_mode(0));
                     }
                 }
@@ -487,14 +546,16 @@ impl Scene for GameScene {
                         {
                             let btn = ps.player_data().skill_buttons[11];
                             if !btn.is_unassigned() {
+                                self.play_click_sound(app_state);
                                 net.send(ClientCommand::new_skill(
                                     btn.skill_nr(),
-                                    ps.selected_char() as u32,
+                                    Self::default_skill_target(ps),
                                     ps.character_info().attrib[0][0] as u32,
                                 ));
                             }
                         }
                     } else if let Some(net) = app_state.network.as_ref() {
+                        self.play_click_sound(app_state);
                         net.send(ClientCommand::new_exit());
                     }
                 }
@@ -505,10 +566,33 @@ impl Scene for GameScene {
                     self.log_scroll = self.log_scroll.saturating_sub(3);
                 }
                 Keycode::Up => {
-                    self.skill_scroll = self.skill_scroll.saturating_sub(1);
+                    if !self.sent_chat_history.is_empty() {
+                        let next_index = match self.chat_history_index {
+                            Some(index) => index.saturating_sub(1),
+                            None => {
+                                self.chat_history_draft = Some(self.input_buf.clone());
+                                self.sent_chat_history.len() - 1
+                            }
+                        };
+                        self.chat_history_index = Some(next_index);
+                        if let Some(message) = self.sent_chat_history.get(next_index) {
+                            self.input_buf = message.clone();
+                        }
+                    }
                 }
                 Keycode::Down => {
-                    self.skill_scroll = (self.skill_scroll + 1).min(90);
+                    if let Some(index) = self.chat_history_index {
+                        if index + 1 < self.sent_chat_history.len() {
+                            let next_index = index + 1;
+                            self.chat_history_index = Some(next_index);
+                            if let Some(message) = self.sent_chat_history.get(next_index) {
+                                self.input_buf = message.clone();
+                            }
+                        } else {
+                            self.chat_history_index = None;
+                            self.input_buf = self.chat_history_draft.take().unwrap_or_default();
+                        }
+                    }
                 }
                 _ => {}
             },
@@ -579,16 +663,20 @@ impl Scene for GameScene {
                                 } else {
                                     ps_mut.set_selected_char_with_id(target_cn as u16, target_id);
                                 }
+                            } else {
+                                ps_mut.clear_selected_char();
                             }
                         }
                     }
                     MouseButton::Right if has_alt => {
                         if target_cn != 0 {
+                            self.play_click_sound(app_state);
                             net.send(ClientCommand::new_look(target_cn));
                         }
                     }
                     MouseButton::Left if has_ctrl => {
                         if target_cn != 0 {
+                            self.play_click_sound(app_state);
                             if citem != 0 {
                                 net.send(ClientCommand::new_give(target_cn));
                             } else {
@@ -598,6 +686,7 @@ impl Scene for GameScene {
                     }
                     MouseButton::Right if has_ctrl => {
                         if target_cn != 0 {
+                            self.play_click_sound(app_state);
                             net.send(ClientCommand::new_look(target_cn));
                         }
                     }
@@ -607,22 +696,28 @@ impl Scene for GameScene {
                         let is_usable = (tile_flags & ISUSABLE) != 0;
                         if citem != 0 && !is_item {
                             // Holding item, clicked non-item tile → drop
+                            self.play_click_sound(app_state);
                             net.send(ClientCommand::new_drop(world_x, world_y));
                         } else if is_item && is_usable {
                             // Item is usable → use
+                            self.play_click_sound(app_state);
                             net.send(ClientCommand::new_use(world_x, world_y));
                         } else if is_item {
                             // Item not usable → pickup
+                            self.play_click_sound(app_state);
                             net.send(ClientCommand::new_pickup(world_x, world_y));
                         }
                     }
                     MouseButton::Right if has_shift => {
+                        self.play_click_sound(app_state);
                         net.send(ClientCommand::new_look_item(world_x, world_y));
                     }
                     MouseButton::Left => {
+                        self.play_click_sound(app_state);
                         net.send(ClientCommand::new_move(world_x, world_y));
                     }
                     MouseButton::Right => {
+                        self.play_click_sound(app_state);
                         net.send(ClientCommand::new_turn(world_x, world_y));
                     }
                     _ => {}
@@ -639,11 +734,14 @@ impl Scene for GameScene {
                     }
                 } else if self.mouse_x < 300 {
                     // Inventory panel
+                    let step = (dy.unsigned_abs() as usize) * 2;
                     if dy > 0 {
-                        self.inv_scroll = self.inv_scroll.saturating_sub(dy as usize);
+                        self.inv_scroll = self.inv_scroll.saturating_sub(step);
                     } else if dy < 0 {
-                        self.inv_scroll = (self.inv_scroll + (-dy) as usize).min(30);
+                        self.inv_scroll = (self.inv_scroll + step).min(30);
                     }
+                    // Keep inventory index aligned to the left column (C client uses inv_pos +=/-= 2).
+                    self.inv_scroll &= !1usize;
                 } else {
                     // Chat / default: scroll log
                     if dy > 0 {
@@ -666,6 +764,12 @@ impl Scene for GameScene {
     fn update(&mut self, app_state: &mut AppState, _dt: Duration) -> Option<SceneType> {
         let scene = self.process_network_events(app_state);
         if scene.is_none() {
+            if let Some(ps) = app_state.player_state.as_mut() {
+                if !Self::is_selected_visible(ps) {
+                    ps.clear_selected_char();
+                }
+            }
+
             let tick_now = app_state
                 .network
                 .as_ref()
@@ -702,7 +806,7 @@ impl Scene for GameScene {
         // 1. World tiles (two-pass painter order)
         let shadows_on = ps.player_data().are_shadows_enabled != 0;
         let effects_on = self.are_spell_effects_enabled;
-        Self::draw_world(canvas, gfx_cache, ps, shadows_on, effects_on)?;
+        self.draw_world(canvas, gfx_cache, ps, shadows_on, effects_on)?;
 
         // 2. Static UI frame (sprite 1) overlays the world
         Self::draw_ui_frame(canvas, gfx_cache)?;
@@ -728,11 +832,6 @@ impl Scene for GameScene {
         // 9. Portrait/shop overlays
         Self::draw_portrait_panel(canvas, gfx_cache, ps)?;
         self.draw_shop_overlay(canvas, gfx_cache, ps)?;
-
-        // 10. Hover highlights (suppressed while escape menu is open)
-        if !self.escape_menu_open {
-            self.draw_hover_effects(canvas, gfx_cache, ps)?;
-        }
 
         // 11. Minimap (bottom-left, 128×128, persistent world buffer)
         self.draw_minimap(canvas, gfx_cache, ps)?;
@@ -787,6 +886,14 @@ impl Scene for GameScene {
 
                 ui.separator();
 
+                let latest_rtt = app_state
+                    .network
+                    .as_ref()
+                    .and_then(|net| net.last_rtt_ms)
+                    .map(|value| format!("{} ms", value))
+                    .unwrap_or_else(|| "N/A".to_string());
+                ui.label(format!("Latest RTT: {}", latest_rtt));
+
                 // Volume slider
                 if ui
                     .add(
@@ -800,6 +907,41 @@ impl Scene for GameScene {
                 }
                 // Sync to AppState so SFX playback uses it.
                 app_state.master_volume = self.master_volume;
+
+                ui.separator();
+
+                // --- Display settings ------------------------------------
+                ui.heading("Display");
+
+                // Display mode combo box
+                let mut selected_mode = app_state.display_mode;
+                egui::ComboBox::from_label("Display Mode")
+                    .selected_text(selected_mode.to_string())
+                    .show_ui(ui, |ui| {
+                        for mode in DisplayMode::ALL {
+                            ui.selectable_value(&mut selected_mode, mode, mode.to_string());
+                        }
+                    });
+                if selected_mode != app_state.display_mode {
+                    app_state.display_command = Some(DisplayCommand::SetDisplayMode(selected_mode));
+                }
+
+                // Pixel-perfect scaling checkbox
+                let mut pixel_perfect = app_state.pixel_perfect_scaling;
+                if ui
+                    .checkbox(&mut pixel_perfect, "Pixel-Perfect Scaling")
+                    .changed()
+                {
+                    app_state.display_command =
+                        Some(DisplayCommand::SetPixelPerfectScaling(pixel_perfect));
+                }
+
+                // VSync checkbox
+                let mut vsync = app_state.vsync_enabled;
+                if ui.checkbox(&mut vsync, "VSync").changed() {
+                    app_state.display_command = Some(DisplayCommand::SetVSync(vsync));
+                }
+                // ---------------------------------------------------------
 
                 ui.separator();
 

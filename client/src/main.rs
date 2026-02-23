@@ -6,11 +6,13 @@ use egui_sdl2::egui;
 use sdl2::gfx::framerate::FPSManager;
 use sdl2::image::InitFlag;
 use sdl2::mixer::{AUDIO_S16LSB, DEFAULT_CHANNELS};
+use sdl2::video::FullscreenType;
 
 use crate::gfx_cache::GraphicsCache;
+use crate::preferences::DisplayMode;
 use crate::scenes::scene::SceneType;
 use crate::sfx_cache::SoundCache;
-use crate::state::{ApiTokenState, AppState};
+use crate::state::{ApiTokenState, AppState, DisplayCommand};
 
 mod account_api;
 mod dpi_scaling;
@@ -121,6 +123,24 @@ fn main() -> Result<(), String> {
     let api_state = ApiTokenState::new(hosts::get_api_base_url());
     let mut app_state = AppState::new(gfx_cache, sfx_cache, api_state);
 
+    // --- Apply persisted display settings ---------------------------------
+    let global_settings = preferences::load_global_settings();
+    app_state.music_enabled = global_settings.music_enabled;
+    app_state.display_mode = global_settings.display_mode;
+    app_state.pixel_perfect_scaling = global_settings.pixel_perfect_scaling;
+    app_state.vsync_enabled = global_settings.vsync_enabled;
+
+    // Display mode
+    let applied_startup_mode = apply_display_mode(&mut egui.painter.canvas, app_state.display_mode);
+    app_state.display_mode = applied_startup_mode;
+    if applied_startup_mode != global_settings.display_mode {
+        save_global_display_settings(&app_state);
+    }
+
+    // VSync (runtime toggle via raw SDL2 FFI)
+    apply_vsync(&egui.painter.canvas, app_state.vsync_enabled);
+    // ----------------------------------------------------------------------
+
     let mut scene_manager = scenes::scene::SceneManager::new();
     let mut last_frame = Instant::now();
 
@@ -172,8 +192,11 @@ fn main() -> Result<(), String> {
             );
             let _ = egui.on_event(&egui_event);
 
-            let event =
-                dpi_scaling::adjust_mouse_event_for_hidpi(event, egui.painter.canvas.window());
+            let event = dpi_scaling::adjust_mouse_event_for_hidpi(
+                event,
+                egui.painter.canvas.window(),
+                app_state.pixel_perfect_scaling,
+            );
 
             scene_manager.handle_event(&mut app_state, &event);
 
@@ -184,10 +207,44 @@ fn main() -> Result<(), String> {
 
         scene_manager.update(&mut app_state, dt);
 
+        // --- Apply any pending display commands from the UI ---------------
+        if let Some(cmd) = app_state.display_command.take() {
+            match cmd {
+                DisplayCommand::SetDisplayMode(mode) => {
+                    let applied_mode = apply_display_mode(&mut egui.painter.canvas, mode);
+                    if applied_mode != mode {
+                        log::warn!(
+                            "Requested display mode {} adjusted to {}",
+                            mode,
+                            applied_mode
+                        );
+                    }
+                    app_state.display_mode = applied_mode;
+                    save_global_display_settings(&app_state);
+                }
+                DisplayCommand::SetPixelPerfectScaling(enabled) => {
+                    app_state.pixel_perfect_scaling = enabled;
+                    save_global_display_settings(&app_state);
+                }
+                DisplayCommand::SetVSync(enabled) => {
+                    apply_vsync(&egui.painter.canvas, enabled);
+                    app_state.vsync_enabled = enabled;
+                    save_global_display_settings(&app_state);
+                }
+            }
+        }
+        // ------------------------------------------------------------------
+
         // Logical size on  → scene SDL drawing uses 800×600 coords.
         let _ = egui.painter.canvas.set_logical_size(LOGICAL_W, LOGICAL_H);
+        // Integer scale → pixel-perfect (nearest integer multiplier) when on.
+        let _ = egui
+            .painter
+            .canvas
+            .set_integer_scale(app_state.pixel_perfect_scaling);
         scene_manager.render_world(&mut app_state, &mut egui.painter.canvas);
         // Logical size off → egui painter uses raw physical pixels.
+        let _ = egui.painter.canvas.set_integer_scale(false);
         let _ = egui.painter.canvas.set_logical_size(0, 0);
 
         egui.run(|ctx: &egui::Context| {
@@ -206,4 +263,69 @@ fn main() -> Result<(), String> {
     }
 
     Ok(())
+}
+
+/// Maps [`DisplayMode`] to the SDL2 fullscreen type and applies it.
+fn apply_display_mode(
+    canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
+    mode: DisplayMode,
+) -> DisplayMode {
+    let mut applied_mode = mode;
+    let ft = match mode {
+        DisplayMode::Windowed => FullscreenType::Off,
+        DisplayMode::Fullscreen => {
+            #[cfg(target_os = "macos")]
+            {
+                log::warn!(
+                    "Exclusive fullscreen is unstable on macOS; using borderless fullscreen instead"
+                );
+                applied_mode = DisplayMode::BorderlessFullscreen;
+                FullscreenType::Desktop
+            }
+
+            #[cfg(not(target_os = "macos"))]
+            {
+                FullscreenType::True
+            }
+        }
+        DisplayMode::BorderlessFullscreen => FullscreenType::Desktop,
+    };
+
+    if let Err(e) = canvas.window_mut().set_fullscreen(ft) {
+        log::error!("Failed to set fullscreen mode to {mode}: {e}");
+        if mode != DisplayMode::Windowed {
+            if let Err(fallback_err) = canvas.window_mut().set_fullscreen(FullscreenType::Off) {
+                log::error!(
+                    "Failed to restore windowed mode after fullscreen failure: {fallback_err}"
+                );
+            }
+            applied_mode = DisplayMode::Windowed;
+        }
+    }
+
+    applied_mode
+}
+
+/// Toggles VSync on the renderer at runtime via raw SDL2 FFI.
+fn apply_vsync(canvas: &sdl2::render::Canvas<sdl2::video::Window>, enabled: bool) {
+    let raw = canvas.raw();
+    let flag: std::os::raw::c_int = if enabled { 1 } else { 0 };
+    let result = unsafe { sdl2::sys::SDL_RenderSetVSync(raw, flag) };
+    if result != 0 {
+        log::error!("SDL_RenderSetVSync failed: {}", sdl2::get_error());
+    }
+}
+
+/// Persists current display-related settings from [`AppState`] into the
+/// global profile.
+fn save_global_display_settings(app_state: &AppState) {
+    let settings = preferences::GlobalSettings {
+        music_enabled: app_state.music_enabled,
+        display_mode: app_state.display_mode,
+        pixel_perfect_scaling: app_state.pixel_perfect_scaling,
+        vsync_enabled: app_state.vsync_enabled,
+    };
+    if let Err(e) = preferences::save_global_settings(&settings) {
+        log::error!("Failed to persist display settings: {e}");
+    }
 }

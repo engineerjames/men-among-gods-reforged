@@ -1,6 +1,9 @@
 use sdl2::{pixels::Color, render::Canvas, video::Window};
 
-use mag_core::constants::{TILEX, TILEY};
+use mag_core::constants::{
+    PL_ARMS, PL_BELT, PL_BODY, PL_CLOAK, PL_FEET, PL_HEAD, PL_LEGS, PL_NECK, PL_RING, PL_SHIELD,
+    PL_TWOHAND, PL_WEAPON, TILEX, TILEY, WN_LHAND, WN_RHAND,
+};
 use mag_core::types::skilltab::get_skill_name;
 
 use crate::{font_cache, gfx_cache::GraphicsCache, player_state::PlayerState};
@@ -82,7 +85,7 @@ impl GameScene {
         let mana = ci.a_mana;
         let max_mana = ci.mana[5] as i32;
 
-        // dd_showbar(373, y, n, 6, color) — bar_width = (cur * 62) / max, clamped [0,124]
+        // dd_showbar(373, y, n, 6, color) — bar_width = (cur * 62) / max, clamped [0,62]
         let draw_bar = |canvas: &mut Canvas<Window>,
                         y: i32,
                         cur: i32,
@@ -181,12 +184,18 @@ impl GameScene {
         let exp_text = format!("Experience     {:>10}", ci.points_tot);
         font_cache::draw_text(canvas, gfx, UI_FONT, &exp_text, STAT_EXP_X, STAT_EXP_Y)?;
 
-        // Character name (centered in 125px area at top)
-        let name = mag_core::string_operations::c_string_to_str(&ci.name);
-        if !name.is_empty() {
-            let name_w = font_cache::text_width(name) as i32;
+        // Character/selection name (centered in 125px area at top).
+        // Matches original behavior: show selected target name when available.
+        let own_name = mag_core::string_operations::c_string_to_str(&ci.name);
+        let top_name = if ps.selected_char() != 0 {
+            ps.lookup_name(ps.selected_char(), 0).unwrap_or(own_name)
+        } else {
+            own_name
+        };
+        if !top_name.is_empty() {
+            let name_w = font_cache::text_width(top_name) as i32;
             let name_x = NAME_AREA_X + (NAME_AREA_W - name_w) / 2;
-            font_cache::draw_text(canvas, gfx, UI_FONT, name, name_x, NAME_Y)?;
+            font_cache::draw_text(canvas, gfx, UI_FONT, top_name, name_x, NAME_Y)?;
         }
 
         Ok(())
@@ -298,9 +307,8 @@ impl GameScene {
             }
         }
 
-        // Input line: draw "> " prefix then the current input buffer.
-        let input_display = format!("> {}", self.input_buf);
-        font_cache::draw_text(canvas, gfx, UI_FONT, &input_display, INPUT_X, INPUT_Y)?;
+        // Input line at original position (engine.c: dd_puttext(500, ...)).
+        font_cache::draw_text(canvas, gfx, UI_FONT, &self.input_buf, INPUT_X, INPUT_Y)?;
 
         Ok(())
     }
@@ -430,6 +438,55 @@ impl GameScene {
             Self::draw_ui_item_with_hover(canvas, gfx, sprite, x, y, hovered)?;
         }
 
+        // C-equivalent of inter.c::reset_block + engine.c overlay draw:
+        // when carrying an item, draw sprite 4 over worn slots where placement is invalid.
+        if !show_shop && ci.citem > 0 {
+            let citem_p = ci.citem_p as u16;
+            let mut blocked = [false; 20];
+
+            let slot_accepts = |slot: usize| -> bool {
+                match slot {
+                    mag_core::constants::WN_HEAD => (citem_p & PL_HEAD) != 0,
+                    mag_core::constants::WN_NECK => (citem_p & PL_NECK) != 0,
+                    mag_core::constants::WN_BODY => (citem_p & PL_BODY) != 0,
+                    mag_core::constants::WN_ARMS => (citem_p & PL_ARMS) != 0,
+                    mag_core::constants::WN_BELT => (citem_p & PL_BELT) != 0,
+                    mag_core::constants::WN_LEGS => (citem_p & PL_LEGS) != 0,
+                    mag_core::constants::WN_FEET => (citem_p & PL_FEET) != 0,
+                    WN_RHAND => (citem_p & PL_WEAPON) != 0,
+                    WN_LHAND => (citem_p & PL_SHIELD) != 0,
+                    mag_core::constants::WN_CLOAK => (citem_p & PL_CLOAK) != 0,
+                    mag_core::constants::WN_LRING | mag_core::constants::WN_RRING => {
+                        (citem_p & PL_RING) != 0
+                    }
+                    _ => true,
+                }
+            };
+
+            for slot in 0..20usize {
+                blocked[slot] = !slot_accepts(slot);
+            }
+
+            if (ci.worn_p[WN_RHAND] as u16 & PL_TWOHAND) != 0 {
+                blocked[WN_LHAND] = true;
+            }
+
+            for n in 0..12usize {
+                let worn_index = EQUIP_WNTAB[n];
+                if blocked[worn_index] {
+                    let x = 303 + ((n % 2) as i32) * 35;
+                    let y = 2 + ((n / 2) as i32) * 35;
+                    let tex = gfx.get_texture(4);
+                    let q = tex.query();
+                    canvas.copy(
+                        tex,
+                        None,
+                        Some(sdl2::rect::Rect::new(x, y, q.width, q.height)),
+                    )?;
+                }
+            }
+        }
+
         for n in 0..20usize {
             let sprite = ci.spell[n];
             if sprite <= 0 {
@@ -439,11 +496,22 @@ impl GameScene {
             let y = 4 + ((n / 5) as i32) * 24;
             let tex = gfx.get_texture(sprite as usize);
             let q = tex.query();
+
+            // Match original engine.c spell-slot rendering:
+            // copyspritex(pl.spell[n], ..., 15-min(15,pl.active[n]))
+            // The effect parameter darkens RGB only (do_rgb8_effect / LEFFECT curve);
+            // the sprite's own alpha channel is left untouched — no alpha-mod.
+            let active = (ci.active[n] as i32).clamp(0, 15);
+            let effect = 15 - active;
+            let atten = (255 * 120 / (effect * effect + 120)) as u8;
+
+            tex.set_color_mod(atten, atten, atten);
             canvas.copy(
                 tex,
                 None,
                 Some(sdl2::rect::Rect::new(x, y, q.width, q.height)),
             )?;
+            tex.set_color_mod(255, 255, 255);
         }
 
         if ci.citem > 0 {
@@ -615,10 +683,13 @@ impl GameScene {
 
                 let back_id = tile.back.max(0) as usize;
                 if back_id != 0 {
-                    let is_blank = self.minimap_xmap[cell] == 0
-                        && self.minimap_xmap[cell + 1] == 0
-                        && self.minimap_xmap[cell + 2] == 0;
-                    // 0xFF marks the player position — always overwrite it.
+                    // Use the alpha byte as the "never visited" sentinel: the buffer is
+                    // zero-initialised, so alpha==0 means this cell has never been painted.
+                    // RGB-only checks incorrectly treated legitimately-black backgrounds as
+                    // blank, causing them to be re-queried on every step.
+                    let is_blank = self.minimap_xmap[cell + 3] == 0;
+                    // 0xFF marks the player position — always overwrite it so the old
+                    // white dot is replaced with the real tile colour when the player moves.
                     let is_player_marker = self.minimap_xmap[cell] == 0xFF
                         && self.minimap_xmap[cell + 1] == 0xFF
                         && self.minimap_xmap[cell + 2] == 0xFF;
@@ -631,13 +702,21 @@ impl GameScene {
                     }
                 }
 
-                // Objects override background.
+                // Objects override background — but only when the sprite has a
+                // non-zero average colour.  Transparent / invisible obj sprites
+                // return (0,0,0) from get_avg_color; writing that value would paint
+                // an opaque black pixel over the valid background colour.  In the
+                // original C engine, setting xmap[..]=0 implicitly marked the cell
+                // as "unvisited" so the background reclaimed it next pass; our RGBA
+                // buffer has no such equivalence, so we guard the write instead.
                 if tile.obj1 > 0 {
                     let (r, g, b) = gfx.get_avg_color(tile.obj1 as usize);
-                    self.minimap_xmap[cell] = r;
-                    self.minimap_xmap[cell + 1] = g;
-                    self.minimap_xmap[cell + 2] = b;
-                    self.minimap_xmap[cell + 3] = 255;
+                    if (r | g | b) != 0 {
+                        self.minimap_xmap[cell] = r;
+                        self.minimap_xmap[cell + 1] = g;
+                        self.minimap_xmap[cell + 2] = b;
+                        self.minimap_xmap[cell + 3] = 255;
+                    }
                 }
             }
 
