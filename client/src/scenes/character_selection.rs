@@ -296,7 +296,8 @@ impl Scene for CharacterSelectionScene {
                             .unwrap_or_else(|| "<unknown>".to_string());
 
                         if let Some(character_id) = deleted_character_id {
-                            if let Some(index) = self.characters.iter().position(|c| c.id == character_id)
+                            if let Some(index) =
+                                self.characters.iter().position(|c| c.id == character_id)
                             {
                                 self.characters.remove(index);
                                 if index < self.character_textures.len() {
