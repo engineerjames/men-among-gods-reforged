@@ -892,7 +892,7 @@ impl Scene for GameScene {
                     .and_then(|net| net.last_rtt_ms)
                     .map(|value| format!("{} ms", value))
                     .unwrap_or_else(|| "N/A".to_string());
-                ui.label(format!("Latest RTT: {}", latest_rtt));
+                ui.label(format!("Latest Ping (Round-Trip Time): {}", latest_rtt));
 
                 // Volume slider
                 if ui

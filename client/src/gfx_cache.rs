@@ -115,7 +115,13 @@ impl GraphicsCache {
 
         // If the average color isn't cached, load the texture to calculate it (this will cache it for next time)
         self.get_texture(id);
-        *self.avg_color_cache.get(&id).unwrap_or(&(0, 0, 0))
+        *self.avg_color_cache.get(&id).unwrap_or_else(|| {
+            log::warn!(
+                "Average color not found for sprite ID {}. Returning (0, 0, 0).",
+                id
+            );
+            &(0, 0, 0)
+        })
     }
 
     /// Ensure the minimap streaming texture exists (128×128, ABGR8888).
@@ -213,7 +219,12 @@ impl GraphicsCache {
     fn calculate_avg_color(image_bytes: &[u8]) -> (u8, u8, u8) {
         let rgba_image = match Self::decode_rgba_image(image_bytes) {
             Some(image) => image,
-            None => return (0, 0, 0),
+            None => {
+                log::warn!(
+                    "Failed to decode image for average color calculation. Returning (0, 0, 0)."
+                );
+                return (0, 0, 0);
+            }
         };
 
         if rgba_image.width == 0 || rgba_image.height == 0 {
@@ -225,28 +236,34 @@ impl GraphicsCache {
         let mut total_r: u64 = 0;
         let mut total_g: u64 = 0;
         let mut total_b: u64 = 0;
-        let mut alpha_sum: u64 = 0;
 
+        let mut pixels_counted: u64 = 0;
         for pixel in pixels.chunks_exact(4) {
+            if pixel[3] == 0 {
+                continue; // Skip fully transparent pixels
+            }
+
             let r = pixel[0] as u64;
             let g = pixel[1] as u64;
             let b = pixel[2] as u64;
-            let a = pixel[3] as u64;
 
-            total_r += r * a;
-            total_g += g * a;
-            total_b += b * a;
-            alpha_sum += a;
+            total_r += r;
+            total_g += g;
+            total_b += b;
+            pixels_counted += 1;
         }
 
-        if alpha_sum == 0 {
-            return (0, 0, 0);
+        if pixels_counted == 0 {
+            log::warn!(
+                "All pixels are fully transparent for average color calculation. Returning (0, 0, 0)."
+            );
+            return (0, 0, 0); // Avoid division by zero if all pixels are transparent
         }
 
         (
-            (total_r / alpha_sum) as u8,
-            (total_g / alpha_sum) as u8,
-            (total_b / alpha_sum) as u8,
+            (total_r / pixels_counted) as u8,
+            (total_g / pixels_counted) as u8,
+            (total_b / pixels_counted) as u8,
         )
     }
 
