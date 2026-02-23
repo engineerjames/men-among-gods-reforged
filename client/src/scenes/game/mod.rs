@@ -806,16 +806,7 @@ impl Scene for GameScene {
         // 1. World tiles (two-pass painter order)
         let shadows_on = ps.player_data().are_shadows_enabled != 0;
         let effects_on = self.are_spell_effects_enabled;
-        Self::draw_world(canvas, gfx_cache, ps, shadows_on, effects_on)?;
-
-        // 1b. Hover highlights drawn immediately after world, before the UI frame.
-        // In the original C engine, highlights were applied inline inside copysprite
-        // (effect|16), so the UI frame naturally covered any edge overflow.  Rendering
-        // them here preserves that layering: the UI frame drawn next will cover any
-        // highlight pixels that fall outside the visible map window.
-        if !self.escape_menu_open {
-            self.draw_hover_effects(canvas, gfx_cache, ps)?;
-        }
+        self.draw_world(canvas, gfx_cache, ps, shadows_on, effects_on)?;
 
         // 2. Static UI frame (sprite 1) overlays the world
         Self::draw_ui_frame(canvas, gfx_cache)?;
@@ -928,16 +919,11 @@ impl Scene for GameScene {
                     .selected_text(selected_mode.to_string())
                     .show_ui(ui, |ui| {
                         for mode in DisplayMode::ALL {
-                            ui.selectable_value(
-                                &mut selected_mode,
-                                mode,
-                                mode.to_string(),
-                            );
+                            ui.selectable_value(&mut selected_mode, mode, mode.to_string());
                         }
                     });
                 if selected_mode != app_state.display_mode {
-                    app_state.display_command =
-                        Some(DisplayCommand::SetDisplayMode(selected_mode));
+                    app_state.display_command = Some(DisplayCommand::SetDisplayMode(selected_mode));
                 }
 
                 // Pixel-perfect scaling checkbox
@@ -953,8 +939,7 @@ impl Scene for GameScene {
                 // VSync checkbox
                 let mut vsync = app_state.vsync_enabled;
                 if ui.checkbox(&mut vsync, "VSync").changed() {
-                    app_state.display_command =
-                        Some(DisplayCommand::SetVSync(vsync));
+                    app_state.display_command = Some(DisplayCommand::SetVSync(vsync));
                 }
                 // ---------------------------------------------------------
 

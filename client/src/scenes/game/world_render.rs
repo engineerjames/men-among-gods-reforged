@@ -11,6 +11,27 @@ use crate::{font_cache, gfx_cache::GraphicsCache, player_state::PlayerState};
 
 use super::{GameScene, MAP_X_SHIFT};
 
+#[derive(Copy, Clone)]
+enum HoverHighlight {
+    Character {
+        x: usize,
+        y: usize,
+        alpha: u8,
+    },
+    Item {
+        x: usize,
+        y: usize,
+        sprite_id: i32,
+        alpha: u8,
+    },
+    Floor {
+        x: usize,
+        y: usize,
+        sprite_id: i32,
+        alpha: u8,
+    },
+}
+
 impl GameScene {
     /// Default gamma-based LEFFECT value matching C client: gamma=5000, LEFFECT=gamma-4880=120.
     const LEFFECT: i32 = 120;
@@ -302,9 +323,95 @@ impl GameScene {
         Ok(())
     }
 
+    fn resolve_hover_highlight(&self, ps: &PlayerState) -> Option<HoverHighlight> {
+        if ps.should_show_shop() {
+            return None;
+        }
+
+        if !Self::cursor_in_map_interaction_area(self.mouse_x, self.mouse_y) {
+            return None;
+        }
+
+        let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
+        let (mx, my) = Self::screen_to_map_tile(self.mouse_x, self.mouse_y, cam_xoff, cam_yoff)?;
+
+        if !(3..=TILEX - 7).contains(&mx) || !(7..=TILEY - 3).contains(&my) {
+            return None;
+        }
+
+        if self.ctrl_held || self.alt_held {
+            let (sx, sy) = Self::nearest_tile_with_flag(ps, mx, my, ISCHAR)?;
+            if !(3..=TILEX - 7).contains(&sx) || !(7..=TILEY - 3).contains(&sy) {
+                return None;
+            }
+
+            let tile = ps.map().tile_at_xy(sx, sy)?;
+            if (tile.flags & INVIS) != 0 || tile.obj2 <= 0 {
+                return None;
+            }
+
+            Some(HoverHighlight::Character {
+                x: sx,
+                y: sy,
+                alpha: 140,
+            })
+        } else if self.shift_held {
+            let (sx, sy) = Self::nearest_tile_with_flag(ps, mx, my, ISITEM)?;
+            if !(3..=TILEX - 7).contains(&sx) || !(7..=TILEY - 3).contains(&sy) {
+                return None;
+            }
+
+            let tile = ps.map().tile_at_xy(sx, sy)?;
+            if (tile.flags & INVIS) != 0 {
+                return None;
+            }
+
+            let sprite_id = if tile.obj1 > 0 {
+                tile.obj1
+            } else if tile.it_sprite > 0 {
+                tile.it_sprite as i32
+            } else if tile.back > 0 {
+                tile.back
+            } else {
+                tile.ba_sprite as i32
+            };
+            let alpha = if (tile.flags & ISUSABLE) != 0 {
+                150
+            } else {
+                120
+            };
+
+            Some(HoverHighlight::Item {
+                x: sx,
+                y: sy,
+                sprite_id,
+                alpha,
+            })
+        } else {
+            let tile = ps.map().tile_at_xy(mx, my)?;
+            if (tile.flags & INVIS) != 0 {
+                return None;
+            }
+
+            let sprite_id = if tile.back > 0 {
+                tile.back
+            } else {
+                tile.ba_sprite as i32
+            };
+
+            Some(HoverHighlight::Floor {
+                x: mx,
+                y: my,
+                sprite_id,
+                alpha: 96,
+            })
+        }
+    }
+
     /// Render all world tiles in two painter-order passes (backgrounds, then
     /// objects/characters/effects). This is the main world-drawing entry point.
     pub(super) fn draw_world(
+        &self,
         canvas: &mut Canvas<Window>,
         gfx: &mut GraphicsCache,
         ps: &PlayerState,
@@ -317,6 +424,7 @@ impl GameScene {
         let show_names = pdata.show_names != 0;
         let show_proz = pdata.show_proz != 0;
         let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
+        let hover_highlight = self.resolve_hover_highlight(ps);
 
         // Pass 1: Background / terrain sprites (legacy eng_display order: y descending).
         for y in (0..TILEY).rev() {
@@ -344,6 +452,20 @@ impl GameScene {
                 Self::draw_world_sprite(
                     canvas, gfx, ba as i32, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
                 )?;
+
+                if let Some(HoverHighlight::Floor {
+                    x: hx,
+                    y: hy,
+                    sprite_id,
+                    alpha,
+                }) = hover_highlight
+                {
+                    if hx == x && hy == y {
+                        Self::draw_world_sprite_highlight(
+                            canvas, gfx, sprite_id, x, y, cam_xoff, cam_yoff, 0, 0, alpha,
+                        )?;
+                    }
+                }
 
                 if ci.goto_x == tile.x as i32 && ci.goto_y == tile.y as i32 {
                     Self::draw_world_sprite(
@@ -417,6 +539,20 @@ impl GameScene {
                     Self::draw_world_sprite(
                         canvas, gfx, obj, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
                     )?;
+
+                    if let Some(HoverHighlight::Item {
+                        x: hx,
+                        y: hy,
+                        sprite_id,
+                        alpha,
+                    }) = hover_highlight
+                    {
+                        if hx == x && hy == y {
+                            Self::draw_world_sprite_highlight(
+                                canvas, gfx, sprite_id, x, y, cam_xoff, cam_yoff, 0, 0, alpha,
+                            )?;
+                        }
+                    }
                 }
 
                 // Shadow (before character sprite, matching engine.c line 789).
@@ -442,6 +578,19 @@ impl GameScene {
                 Self::draw_world_sprite(
                     canvas, gfx, ch, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff, tile.light,
                 )?;
+
+                if let Some(HoverHighlight::Character {
+                    x: hx,
+                    y: hy,
+                    alpha,
+                }) = hover_highlight
+                {
+                    if hx == x && hy == y {
+                        Self::draw_world_sprite_highlight(
+                            canvas, gfx, ch, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff, alpha,
+                        )?;
+                    }
+                }
 
                 if ps.selected_char() != 0 && ps.selected_char() == tile.ch_nr {
                     Self::draw_world_sprite_tinted_highlight(
@@ -698,134 +847,6 @@ impl GameScene {
                     }
                 }
             }
-        }
-
-        Ok(())
-    }
-
-    /// Draw hover highlights on world tiles when the cursor is over the map area.
-    /// Ctrl/Alt = character targeting, Shift = item targeting, default = floor tile.
-    pub(super) fn draw_hover_effects(
-        &self,
-        canvas: &mut Canvas<Window>,
-        gfx: &mut GraphicsCache,
-        ps: &PlayerState,
-    ) -> Result<(), String> {
-        if ps.should_show_shop() {
-            return Ok(());
-        }
-
-        if !Self::cursor_in_map_interaction_area(self.mouse_x, self.mouse_y) {
-            return Ok(());
-        }
-
-        canvas.set_draw_color(Color::RGB(255, 170, 80));
-
-        // Hover highlight on world tiles: brighten the underlying sprite(s)
-        // instead of drawing an overlay shape.
-        let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
-        if let Some((mx, my)) =
-            Self::screen_to_map_tile(self.mouse_x, self.mouse_y, cam_xoff, cam_yoff)
-        {
-            if !(3..=TILEX - 7).contains(&mx) || !(7..=TILEY - 3).contains(&my) {
-                return Ok(());
-            }
-
-            if self.ctrl_held || self.alt_held {
-                // Ctrl/Alt targeting: highlight nearest character sprite (C mouse_mapbox behavior).
-                if let Some((sx, sy)) = Self::nearest_tile_with_flag(ps, mx, my, ISCHAR) {
-                    if !(3..=TILEX - 7).contains(&sx) || !(7..=TILEY - 3).contains(&sy) {
-                        return Ok(());
-                    }
-
-                    if let Some(tile) = ps.map().tile_at_xy(sx, sy) {
-                        if (tile.flags & INVIS) != 0 {
-                            return Ok(());
-                        }
-
-                        if tile.obj2 > 0 {
-                            Self::draw_world_sprite_highlight(
-                                canvas,
-                                gfx,
-                                tile.obj2,
-                                sx,
-                                sy,
-                                cam_xoff,
-                                cam_yoff,
-                                tile.obj_xoff,
-                                tile.obj_yoff,
-                                140,
-                            )?;
-                        }
-                    }
-                }
-            } else if self.shift_held {
-                // Shift held: only highlight nearby ISITEM tiles (use/pickup targeting).
-                if let Some((sx, sy)) = Self::nearest_tile_with_flag(ps, mx, my, ISITEM) {
-                    if !(3..=TILEX - 7).contains(&sx) || !(7..=TILEY - 3).contains(&sy) {
-                        return Ok(());
-                    }
-
-                    if let Some(tile) = ps.map().tile_at_xy(sx, sy) {
-                        if (tile.flags & INVIS) != 0 {
-                            return Ok(());
-                        }
-
-                        let highlight_obj = if tile.obj1 > 0 {
-                            tile.obj1
-                        } else if tile.it_sprite > 0 {
-                            tile.it_sprite as i32
-                        } else if tile.back > 0 {
-                            tile.back
-                        } else {
-                            tile.ba_sprite as i32
-                        };
-                        let strength = if (tile.flags & ISUSABLE) != 0 {
-                            150
-                        } else {
-                            120
-                        };
-                        Self::draw_world_sprite_highlight(
-                            canvas,
-                            gfx,
-                            highlight_obj,
-                            sx,
-                            sy,
-                            cam_xoff,
-                            cam_yoff,
-                            0,
-                            0,
-                            strength,
-                        )?;
-                    }
-                }
-            } else {
-                // Normal movement hover: brighten the floor tile being targeted.
-                if let Some(tile) = ps.map().tile_at_xy(mx, my) {
-                    if (tile.flags & INVIS) != 0 {
-                        return Ok(());
-                    }
-
-                    let floor_sprite = if tile.back > 0 {
-                        tile.back
-                    } else {
-                        tile.ba_sprite as i32
-                    };
-                    Self::draw_world_sprite_highlight(
-                        canvas,
-                        gfx,
-                        floor_sprite,
-                        mx,
-                        my,
-                        cam_xoff,
-                        cam_yoff,
-                        0,
-                        0,
-                        96,
-                    )?;
-                }
-            }
-            canvas.set_draw_color(Color::RGB(255, 170, 80));
         }
 
         Ok(())
