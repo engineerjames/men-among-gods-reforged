@@ -19,7 +19,6 @@ cargo build --release
 This will build both the client and server in release mode. The binaries will then be located in the `target/release` directory. You can also run an application via:
 
 ```bash
-# Only the server exists currently
 cargo run --release --bin <men-among-gods-client|server>
 ```
 
