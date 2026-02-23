@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 axum = "0.8.8"
 axum-governor = "1.0.3"
+axum-server = { version = "0.7", features = ["tls-rustls"] }
 core = { path = "../core" }
 jsonwebtoken = "9.3.1"
 lazy-limit = "1.0.3"

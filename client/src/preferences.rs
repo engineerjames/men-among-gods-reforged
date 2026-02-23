@@ -180,7 +180,7 @@ fn profile_key(identity: &CharacterIdentity) -> String {
 }
 
 /// Returns the current working directory, falling back to `"."` on error.
-fn working_directory() -> PathBuf {
+pub(crate) fn working_directory() -> PathBuf {
     std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 

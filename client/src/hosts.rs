@@ -28,16 +28,16 @@ pub fn get_host_from_api_base_url(base_url: &str) -> Option<String> {
 }
 
 /// Builds the server base URL from `MAG_BASE_URL`, falling back to
-/// `http://<server_ip>` when the variable is unset.
+/// `https://<server_ip>` when the variable is unset.
 ///
 /// # Returns
-/// * A `String` like `"http://127.0.0.1"`.
+/// * A `String` like `"https://127.0.0.1"`.
 fn get_server_url() -> String {
     std::env::var("MAG_BASE_URL")
         .ok()
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| format!("http://{}", get_server_ip()))
+        .unwrap_or_else(|| format!("https://{}", get_server_ip()))
 }
 
 /// Returns the raw server IP address or hostname.

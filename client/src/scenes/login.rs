@@ -151,6 +151,21 @@ impl Scene for LoginScene {
                         });
                         ui.add_space(10.0);
 
+                        // Show a warning banner when the API URL is not HTTPS
+                        if !self.server_ip.trim().starts_with("https://") {
+                            egui::Frame::new()
+                                .fill(egui::Color32::from_rgba_premultiplied(60, 50, 0, 220))
+                                .inner_margin(6.0)
+                                .corner_radius(4.0)
+                                .show(ui, |ui| {
+                                    ui.colored_label(
+                                        egui::Color32::YELLOW,
+                                        "\u{26A0} Connection is not encrypted. Traffic may be intercepted.",
+                                    );
+                                });
+                            ui.add_space(6.0);
+                        }
+
                         ui.label("IP Address (IPv4)");
                         ui.add(
                             egui::TextEdit::singleline(&mut self.server_ip).desired_width(260.0),
@@ -238,7 +253,7 @@ impl Scene for LoginScene {
                     {
                         entered_host.trim_end_matches('/').to_string()
                     } else {
-                        format!("http://{}:5554", entered_host)
+                        format!("https://{}:5554", entered_host)
                     };
 
                     app_state.api.base_url = api_base_url.clone();

@@ -2,19 +2,19 @@ use core::{
     constants::MAXPLAYER,
     types::{ClientPlayer, Map},
 };
-use std::net::TcpStream;
 
 use flate2::write::ZlibEncoder;
 
 use crate::{
     core::constants::{OBUFSIZE, SPR_EMPTY, TBUFSIZE, TILEX, TILEY},
+    tls::GameStream,
     types::cmap::CMap,
 };
 
 // Server side player data
 #[allow(dead_code)]
 pub struct ServerPlayer {
-    pub sock: Option<TcpStream>,
+    pub sock: Option<GameStream>,
     pub addr: u32,
     pub version: i32,
     pub race: i32,

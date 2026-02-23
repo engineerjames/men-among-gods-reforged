@@ -33,6 +33,10 @@ services:
       API_BIND_ADDR: 0.0.0.0
       API_PORT: 5554
       MAG_KEYDB_URL: redis://:${KEYDB_PASSWORD:?KEYDB_PASSWORD is required}@keydb:5556/
+      API_TLS_CERT: ${API_TLS_CERT:-}
+      API_TLS_KEY: ${API_TLS_KEY:-}
+    volumes:
+      - ${TLS_CERT_DIR:-./certs}:/certs:ro
     ports:
       - "5554:5554"
     restart: unless-stopped
@@ -46,6 +50,10 @@ services:
         condition: service_healthy
     environment:
       MAG_KEYDB_URL: redis://:${KEYDB_PASSWORD:?KEYDB_PASSWORD is required}@keydb:5556/
+      SERVER_TLS_CERT: ${SERVER_TLS_CERT:-}
+      SERVER_TLS_KEY: ${SERVER_TLS_KEY:-}
+    volumes:
+      - ${TLS_CERT_DIR:-./certs}:/certs:ro
     ports:
       - "5555:5555"
     restart: unless-stopped

@@ -315,10 +315,12 @@ impl Scene for GameScene {
 
         let host = crate::hosts::get_host_from_api_base_url(&app_state.api.base_url)
             .unwrap_or_else(crate::hosts::get_server_ip);
+        let use_tls = app_state.api.base_url.starts_with("https://");
         log::info!(
-            "GameScene: connecting to {}:5555 with ticket={} (api_base_url={})",
+            "GameScene: connecting to {}:5555 with ticket={} tls={} (api_base_url={})",
             host,
             login_target.ticket,
+            use_tls,
             app_state.api.base_url
         );
 
@@ -327,6 +329,7 @@ impl Scene for GameScene {
             5555,
             login_target.ticket,
             login_target.race,
+            use_tls,
         ));
         app_state.player_state = Some(PlayerState::default());
 
@@ -848,6 +851,27 @@ impl Scene for GameScene {
     ///
     /// `Some(SceneType)` if the player chose to disconnect or quit, otherwise `None`.
     fn render_ui(&mut self, app_state: &mut AppState, ctx: &egui::Context) -> Option<SceneType> {
+        // Always show an unencrypted-connection warning banner, even outside
+        // the escape menu, so players are aware traffic is not protected.
+        let is_unencrypted = app_state.network.as_ref().map_or(false, |n| !n.tls_active);
+        if is_unencrypted {
+            egui::Area::new(egui::Id::new("tls_warning_banner"))
+                .anchor(egui::Align2::CENTER_TOP, [0.0, 4.0])
+                .interactable(false)
+                .show(ctx, |ui| {
+                    egui::Frame::new()
+                        .fill(egui::Color32::from_rgba_premultiplied(40, 30, 0, 200))
+                        .inner_margin(egui::Margin::symmetric(12, 4))
+                        .corner_radius(4.0)
+                        .show(ui, |ui| {
+                            ui.colored_label(
+                                egui::Color32::YELLOW,
+                                "\u{26A0} UNENCRYPTED \u{2014} Game traffic is not protected",
+                            );
+                        });
+                });
+        }
+
         if !self.escape_menu_open {
             return None;
         }
