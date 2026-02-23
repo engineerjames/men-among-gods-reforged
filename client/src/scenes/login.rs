@@ -4,8 +4,7 @@ use std::{
 };
 
 use crate::{
-    account_api,
-    preferences,
+    account_api, preferences,
     scenes::scene::{Scene, SceneType},
     sfx_cache::MusicTrack,
     state::AppState,

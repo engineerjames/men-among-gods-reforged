@@ -131,10 +131,11 @@ fn main() -> Result<(), String> {
     app_state.vsync_enabled = global_settings.vsync_enabled;
 
     // Display mode
-    apply_display_mode(
-        &mut egui.painter.canvas,
-        app_state.display_mode,
-    );
+    let applied_startup_mode = apply_display_mode(&mut egui.painter.canvas, app_state.display_mode);
+    app_state.display_mode = applied_startup_mode;
+    if applied_startup_mode != global_settings.display_mode {
+        save_global_display_settings(&app_state);
+    }
 
     // VSync (runtime toggle via raw SDL2 FFI)
     apply_vsync(&egui.painter.canvas, app_state.vsync_enabled);
@@ -191,8 +192,11 @@ fn main() -> Result<(), String> {
             );
             let _ = egui.on_event(&egui_event);
 
-            let event =
-                dpi_scaling::adjust_mouse_event_for_hidpi(event, egui.painter.canvas.window());
+            let event = dpi_scaling::adjust_mouse_event_for_hidpi(
+                event,
+                egui.painter.canvas.window(),
+                app_state.pixel_perfect_scaling,
+            );
 
             scene_manager.handle_event(&mut app_state, &event);
 
@@ -207,8 +211,15 @@ fn main() -> Result<(), String> {
         if let Some(cmd) = app_state.display_command.take() {
             match cmd {
                 DisplayCommand::SetDisplayMode(mode) => {
-                    apply_display_mode(&mut egui.painter.canvas, mode);
-                    app_state.display_mode = mode;
+                    let applied_mode = apply_display_mode(&mut egui.painter.canvas, mode);
+                    if applied_mode != mode {
+                        log::warn!(
+                            "Requested display mode {} adjusted to {}",
+                            mode,
+                            applied_mode
+                        );
+                    }
+                    app_state.display_mode = applied_mode;
                     save_global_display_settings(&app_state);
                 }
                 DisplayCommand::SetPixelPerfectScaling(enabled) => {
@@ -258,30 +269,50 @@ fn main() -> Result<(), String> {
 fn apply_display_mode(
     canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
     mode: DisplayMode,
-) {
+) -> DisplayMode {
+    let mut applied_mode = mode;
     let ft = match mode {
         DisplayMode::Windowed => FullscreenType::Off,
-        DisplayMode::Fullscreen => FullscreenType::True,
+        DisplayMode::Fullscreen => {
+            #[cfg(target_os = "macos")]
+            {
+                log::warn!(
+                    "Exclusive fullscreen is unstable on macOS; using borderless fullscreen instead"
+                );
+                applied_mode = DisplayMode::BorderlessFullscreen;
+                FullscreenType::Desktop
+            }
+
+            #[cfg(not(target_os = "macos"))]
+            {
+                FullscreenType::True
+            }
+        }
         DisplayMode::BorderlessFullscreen => FullscreenType::Desktop,
     };
+
     if let Err(e) = canvas.window_mut().set_fullscreen(ft) {
         log::error!("Failed to set fullscreen mode to {mode}: {e}");
+        if mode != DisplayMode::Windowed {
+            if let Err(fallback_err) = canvas.window_mut().set_fullscreen(FullscreenType::Off) {
+                log::error!(
+                    "Failed to restore windowed mode after fullscreen failure: {fallback_err}"
+                );
+            }
+            applied_mode = DisplayMode::Windowed;
+        }
     }
+
+    applied_mode
 }
 
 /// Toggles VSync on the renderer at runtime via raw SDL2 FFI.
-fn apply_vsync(
-    canvas: &sdl2::render::Canvas<sdl2::video::Window>,
-    enabled: bool,
-) {
+fn apply_vsync(canvas: &sdl2::render::Canvas<sdl2::video::Window>, enabled: bool) {
     let raw = canvas.raw();
     let flag: std::os::raw::c_int = if enabled { 1 } else { 0 };
     let result = unsafe { sdl2::sys::SDL_RenderSetVSync(raw, flag) };
     if result != 0 {
-        log::error!(
-            "SDL_RenderSetVSync failed: {}",
-            sdl2::get_error()
-        );
+        log::error!("SDL_RenderSetVSync failed: {}", sdl2::get_error());
     }
 }
 
