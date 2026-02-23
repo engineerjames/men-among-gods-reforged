@@ -36,9 +36,9 @@ use mag_core::constants::{ISCHAR, ISITEM, ISUSABLE, TILEX, TILEY};
 use crate::{
     network::{client_commands::ClientCommand, NetworkRuntime},
     player_state::PlayerState,
-    preferences::{self, CharacterIdentity},
+    preferences::{self, CharacterIdentity, DisplayMode},
     scenes::scene::{Scene, SceneType},
-    state::AppState,
+    state::{AppState, DisplayCommand},
 };
 
 // ---------------------------------------------------------------------------
@@ -808,6 +808,15 @@ impl Scene for GameScene {
         let effects_on = self.are_spell_effects_enabled;
         Self::draw_world(canvas, gfx_cache, ps, shadows_on, effects_on)?;
 
+        // 1b. Hover highlights drawn immediately after world, before the UI frame.
+        // In the original C engine, highlights were applied inline inside copysprite
+        // (effect|16), so the UI frame naturally covered any edge overflow.  Rendering
+        // them here preserves that layering: the UI frame drawn next will cover any
+        // highlight pixels that fall outside the visible map window.
+        if !self.escape_menu_open {
+            self.draw_hover_effects(canvas, gfx_cache, ps)?;
+        }
+
         // 2. Static UI frame (sprite 1) overlays the world
         Self::draw_ui_frame(canvas, gfx_cache)?;
 
@@ -832,11 +841,6 @@ impl Scene for GameScene {
         // 9. Portrait/shop overlays
         Self::draw_portrait_panel(canvas, gfx_cache, ps)?;
         self.draw_shop_overlay(canvas, gfx_cache, ps)?;
-
-        // 10. Hover highlights (suppressed while escape menu is open)
-        if !self.escape_menu_open {
-            self.draw_hover_effects(canvas, gfx_cache, ps)?;
-        }
 
         // 11. Minimap (bottom-left, 128×128, persistent world buffer)
         self.draw_minimap(canvas, gfx_cache, ps)?;
@@ -912,6 +916,47 @@ impl Scene for GameScene {
                 }
                 // Sync to AppState so SFX playback uses it.
                 app_state.master_volume = self.master_volume;
+
+                ui.separator();
+
+                // --- Display settings ------------------------------------
+                ui.heading("Display");
+
+                // Display mode combo box
+                let mut selected_mode = app_state.display_mode;
+                egui::ComboBox::from_label("Display Mode")
+                    .selected_text(selected_mode.to_string())
+                    .show_ui(ui, |ui| {
+                        for mode in DisplayMode::ALL {
+                            ui.selectable_value(
+                                &mut selected_mode,
+                                mode,
+                                mode.to_string(),
+                            );
+                        }
+                    });
+                if selected_mode != app_state.display_mode {
+                    app_state.display_command =
+                        Some(DisplayCommand::SetDisplayMode(selected_mode));
+                }
+
+                // Pixel-perfect scaling checkbox
+                let mut pixel_perfect = app_state.pixel_perfect_scaling;
+                if ui
+                    .checkbox(&mut pixel_perfect, "Pixel-Perfect Scaling")
+                    .changed()
+                {
+                    app_state.display_command =
+                        Some(DisplayCommand::SetPixelPerfectScaling(pixel_perfect));
+                }
+
+                // VSync checkbox
+                let mut vsync = app_state.vsync_enabled;
+                if ui.checkbox(&mut vsync, "VSync").changed() {
+                    app_state.display_command =
+                        Some(DisplayCommand::SetVSync(vsync));
+                }
+                // ---------------------------------------------------------
 
                 ui.separator();
 

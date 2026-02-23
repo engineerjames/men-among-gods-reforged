@@ -1,7 +1,16 @@
 use crate::{
     gfx_cache::GraphicsCache, network::NetworkRuntime, player_state::PlayerState,
-    sfx_cache::SoundCache,
+    preferences::DisplayMode, sfx_cache::SoundCache,
 };
+
+/// A display-related change requested by a scene, to be applied by the main
+/// loop which owns the SDL2 window and renderer.
+#[derive(Clone, Debug)]
+pub enum DisplayCommand {
+    SetDisplayMode(DisplayMode),
+    SetPixelPerfectScaling(bool),
+    SetVSync(bool),
+}
 
 /// Holds the data needed to connect a character to the game server after
 /// obtaining a login ticket from the API.
@@ -56,6 +65,14 @@ pub struct AppState {
     /// Master volume multiplier (0.0 = muted, 1.0 = full). Set by the escape menu slider.
     pub master_volume: f32,
     pub music_enabled: bool,
+    /// Current display mode (windowed, fullscreen, borderless).
+    pub display_mode: DisplayMode,
+    /// Whether pixel-perfect (integer-only) scaling is active.
+    pub pixel_perfect_scaling: bool,
+    /// Whether VSync is enabled.
+    pub vsync_enabled: bool,
+    /// Pending display change to be applied by the main loop.
+    pub display_command: Option<DisplayCommand>,
 }
 
 impl AppState {
@@ -80,6 +97,10 @@ impl AppState {
             player_state: None,
             master_volume: 1.0,
             music_enabled: true,
+            display_mode: DisplayMode::default(),
+            pixel_perfect_scaling: false,
+            vsync_enabled: false,
+            display_command: None,
         }
     }
 }

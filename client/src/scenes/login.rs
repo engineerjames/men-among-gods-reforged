@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     account_api,
-    preferences::{self, GlobalSettings},
+    preferences,
     scenes::scene::{Scene, SceneType},
     sfx_cache::MusicTrack,
     state::AppState,
@@ -64,9 +64,8 @@ impl LoginScene {
 
     /// Persists the music-enabled preference to disk.
     fn save_music_setting(&self, enabled: bool) {
-        let settings = GlobalSettings {
-            music_enabled: enabled,
-        };
+        let mut settings = preferences::load_global_settings();
+        settings.music_enabled = enabled;
 
         if let Err(err) = preferences::save_global_settings(&settings) {
             log::warn!("Failed to save login music setting: {}", err);
