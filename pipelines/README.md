@@ -10,6 +10,9 @@ This folder contains small scripts used by GitHub Actions workflows (and runnabl
   - Installs macOS build dependencies for SDL2 (intended for `macos-latest`).
 - `build_release.sh`
   - Builds release binaries for `server` and `client`.
+- `build_steam_deck_client.sh`
+  - Builds the `client` for Steam Deck (`x86_64-unknown-linux-gnu`) in Docker.
+  - Produces `dist/men-among-gods-client-steamdeck/` and `.tar.gz`.
 - `package.sh`
   - Creates release `.zip` packages on Linux/macOS.
   - Produces `dist/men-among-gods-{server,client}-<version>-<platform>.zip`.
@@ -40,6 +43,18 @@ bash pipelines/install_linux_deps.sh
 
 ```bash
 bash pipelines/build_release.sh
+```
+
+### Build Steam Deck client via Docker
+
+```bash
+bash pipelines/build_steam_deck_client.sh
+```
+
+Optional:
+
+```bash
+bash pipelines/build_steam_deck_client.sh --profile debug
 ```
 
 ### Package on macOS/Linux
