@@ -17,6 +17,8 @@ use crate::{
     repository::Repository, state::State,
 };
 
+use core::constants::LEGACY_TICKS;
+
 // Static skill table (taken from server/original_source/SkillTab.cpp)
 const SKILL_NAMES: [&str; 50] = [
     "Hand to Hand",
@@ -179,6 +181,7 @@ pub fn chance(cn: usize, d20: i32) -> i32 {
 }
 pub fn spell_immunity(power: i32, immun: i32) -> i32 {
     // Ported from C++ spell_immunity(int power, int immun)
+    let immun = immun / 2;
     if power <= immun {
         1
     } else {
@@ -211,10 +214,10 @@ pub fn spell_race_mod(power: i32, kindred: i32) -> i32 {
 
     Repository::with_globals(|globs| {
         if globs.newmoon != 0 {
-            modf *= 0.9;
+            modf -= 0.15;
         }
         if globs.fullmoon != 0 {
-            modf *= 1.1;
+            modf += 0.15;
         }
     });
 
@@ -435,8 +438,8 @@ pub fn spell_light(cn: usize, co: usize, power: i32) -> i32 {
         it[in_.unwrap()].flags |= ItemFlags::IF_SPELL.bits();
         it[in_.unwrap()].light[1] = std::cmp::min(250, power * 4) as i16;
         it[in_.unwrap()].sprite[1] = 85;
-        it[in_.unwrap()].duration = 18 * 60 * 30;
-        it[in_.unwrap()].active = 18 * 60 * 30;
+        it[in_.unwrap()].duration = (TICKS * 60 * 30) as u32;
+        it[in_.unwrap()].active = (TICKS * 60 * 30) as u32;
         it[in_.unwrap()].temp = core::constants::SK_LIGHT as u16;
         it[in_.unwrap()].power = power as u32;
     });
@@ -646,8 +649,8 @@ pub fn spell_protect(cn: usize, co: usize, power: i32) -> i32 {
         it[in_].flags |= ItemFlags::IF_SPELL.bits();
         it[in_].armor[1] = (power / 4 + 4) as i8;
         it[in_].sprite[1] = 86;
-        it[in_].duration = 18 * 60 * 10;
-        it[in_].active = 18 * 60 * 10;
+        it[in_].duration = (TICKS * 60 * 10) as u32;
+        it[in_].active = (TICKS * 60 * 10) as u32;
         it[in_].temp = SK_PROTECT as u16;
         it[in_].power = power as u32;
     });
@@ -846,8 +849,8 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
         it[in_].flags |= ItemFlags::IF_SPELL.bits();
         it[in_].weapon[1] = (power / 4 + 4) as i8;
         it[in_].sprite[1] = 87;
-        it[in_].duration = 18 * 60 * 10;
-        it[in_].active = 18 * 60 * 10;
+        it[in_].duration = (TICKS * 60 * 10) as u32;
+        it[in_].active = (TICKS * 60 * 10) as u32;
         it[in_].temp = SK_ENHANCE as u16;
         it[in_].power = power as u32;
     });
@@ -1081,8 +1084,8 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
             it[in_].attrib[n][1] = (power / 5 + 3) as i8;
         }
         it[in_].sprite[1] = 88;
-        it[in_].duration = 18 * 60 * 10;
-        it[in_].active = 18 * 60 * 10;
+        it[in_].duration = (TICKS * 60 * 10) as u32;
+        it[in_].active = (TICKS * 60 * 10) as u32;
         it[in_].temp = SK_BLESS as u16;
         it[in_].power = power as u32;
     });
@@ -1338,8 +1341,8 @@ pub fn skill_wimp(cn: usize) {
         it[in_idx].end[0] = -1;
         it[in_idx].mana[0] = -1;
         it[in_idx].sprite[1] = 94;
-        it[in_idx].duration = 18 * 60 * 60 * 2;
-        it[in_idx].active = 18 * 60 * 60 * 2;
+        it[in_idx].duration = (TICKS * 60 * 60 * 2) as u32;
+        it[in_idx].active = (TICKS * 60 * 60 * 2) as u32;
         it[in_idx].temp = SK_WIMPY as u16;
         it[in_idx].power = Repository::with_characters(|ch| ch[cn].skill[SK_WIMPY][5]) as u32;
     });
@@ -1738,8 +1741,8 @@ pub fn spell_curse(cn: usize, co: usize, power: i32) -> i32 {
             it[in_idx].attrib[n][1] = -((power / 3) as i8);
         }
         it[in_idx].sprite[1] = 89;
-        it[in_idx].duration = 18 * 60 * 2;
-        it[in_idx].active = 18 * 60 * 2;
+        it[in_idx].duration = (TICKS * 60 * 2) as u32;
+        it[in_idx].active = (TICKS * 60 * 2) as u32;
         it[in_idx].temp = SK_CURSE as u16;
         it[in_idx].power = power as u32;
     });
@@ -2044,8 +2047,8 @@ pub fn warcry(cn: usize, co: usize, power: i32) -> i32 {
             it[in2].attrib[n][1] = -15;
         }
         it[in2].sprite[1] = 89;
-        it[in2].duration = 18 * 60;
-        it[in2].active = 18 * 60;
+        it[in2].duration = (TICKS * 60) as u32;
+        it[in2].active = (TICKS * 60) as u32;
         it[in2].temp = core::constants::SK_WARCRY as u16;
         it[in2].power = (power / 2) as u32;
     });
@@ -2869,10 +2872,9 @@ pub fn skill_recall(cn: usize) {
         it[in_idx].name = name_bytes;
         it[in_idx].flags |= ItemFlags::IF_SPELL.bits();
         it[in_idx].sprite[1] = 90;
-        let dur = std::cmp::max(
-            TICKS / 2,
-            60 - (Repository::with_characters(|ch| ch[cn].skill[SK_RECALL][5] / 4) as i32),
-        );
+        let base_dur =
+            60 - (Repository::with_characters(|ch| ch[cn].skill[SK_RECALL][5] / 4) as i32);
+        let dur = std::cmp::max(TICKS / 2, base_dur * TICKS / LEGACY_TICKS);
         it[in_idx].duration = dur as u32;
         it[in_idx].active = it[in_idx].duration;
         it[in_idx].temp = SK_RECALL as u16;

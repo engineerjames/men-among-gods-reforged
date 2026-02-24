@@ -782,8 +782,9 @@ pub fn npc_cityattack_high(cn: usize) -> i32 {
         let ticker = Repository::with_globals(|g| g.ticker);
         let data_75 = Repository::with_characters(|ch| ch[cn].data[75]);
         if ticker > data_75 && driver::npc_try_spell(cn, co as usize, SK_STUN) {
-            let new_data_75 =
-                Repository::with_characters(|ch| ticker + ch[cn].skill[SK_STUN][5] as i32 + 18 * 8);
+            let new_data_75 = Repository::with_characters(|ch| {
+                ticker + ch[cn].skill[SK_STUN][5] as i32 + TICKS * 8
+            });
             Repository::with_characters_mut(|ch| ch[cn].data[75] = new_data_75);
             return 1;
         }
