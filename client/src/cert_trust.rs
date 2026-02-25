@@ -25,6 +25,25 @@ use sha2::{Digest, Sha256};
 /// File name for the TOFU fingerprint store (lives next to `mag_profile.json`).
 const KNOWN_HOSTS_FILE: &str = "mag_known_hosts.json";
 
+fn ensure_crypto_provider_installed() -> Result<(), String> {
+    if rustls::crypto::CryptoProvider::get_default().is_some() {
+        return Ok(());
+    }
+
+    if rustls::crypto::ring::default_provider()
+        .install_default()
+        .is_ok()
+    {
+        return Ok(());
+    }
+
+    if rustls::crypto::CryptoProvider::get_default().is_some() {
+        return Ok(());
+    }
+
+    Err("Failed to initialize rustls crypto provider".to_string())
+}
+
 // ---------------------------------------------------------------------------
 // Fingerprint store
 // ---------------------------------------------------------------------------
@@ -176,6 +195,10 @@ impl ServerCertVerifier for TofuVerifier {
 
 /// Build a `rustls::ClientConfig` that uses the shared TOFU verifier.
 pub fn build_rustls_client_config() -> ClientConfig {
+    if let Err(err) = ensure_crypto_provider_installed() {
+        panic!("{err}");
+    }
+
     let verifier = Arc::new(TofuVerifier::new());
     ClientConfig::builder()
         .dangerous()
@@ -194,12 +217,118 @@ pub fn build_reqwest_client() -> Result<reqwest::blocking::Client, String> {
 }
 
 /// Build a `rustls::ClientConnection` for wrapping a game-server TCP stream.
-pub fn build_game_tls_connector(
-    host: &str,
-) -> Result<rustls::ClientConnection, String> {
+pub fn build_game_tls_connector(host: &str) -> Result<rustls::ClientConnection, String> {
     let config = Arc::new(build_rustls_client_config());
     let server_name = rustls::pki_types::ServerName::try_from(host.to_string())
         .map_err(|e| format!("Invalid server name '{host}': {e}"))?;
     rustls::ClientConnection::new(config, server_name)
         .map_err(|e| format!("TLS ClientConnection::new failed: {e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::{Path, PathBuf};
+    use std::sync::{Mutex, OnceLock};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    fn cwd_test_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn unique_test_dir(prefix: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or(Duration::from_secs(0))
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "mag-reforged-{prefix}-{}-{nanos}",
+            std::process::id()
+        ))
+    }
+
+    fn with_temp_cwd<F>(prefix: &str, f: F)
+    where
+        F: FnOnce(&Path),
+    {
+        let _guard = cwd_test_lock().lock().unwrap();
+        let original_cwd = std::env::current_dir().unwrap();
+        let test_dir = unique_test_dir(prefix);
+        std::fs::create_dir_all(&test_dir).unwrap();
+        std::env::set_current_dir(&test_dir).unwrap();
+
+        f(&test_dir);
+
+        std::env::set_current_dir(original_cwd).unwrap();
+        let _ = std::fs::remove_dir_all(&test_dir);
+    }
+
+    #[test]
+    fn installs_crypto_provider_idempotently() {
+        ensure_crypto_provider_installed().unwrap();
+        ensure_crypto_provider_installed().unwrap();
+        assert!(rustls::crypto::CryptoProvider::get_default().is_some());
+    }
+
+    #[test]
+    fn hex_encode_outputs_lowercase_hex() {
+        assert_eq!(hex_encode(&[0x00, 0x0f, 0xab, 0xff]), "000fabff");
+    }
+
+    #[test]
+    fn tofu_verifier_accepts_first_seen_and_matching_cert() {
+        with_temp_cwd("tofu-match", |_| {
+            let verifier = TofuVerifier::new();
+            let cert = CertificateDer::from(vec![1, 2, 3, 4, 5]);
+            let server_name = ServerName::try_from("localhost").unwrap();
+
+            let first = verifier.verify_server_cert(
+                &cert,
+                &[],
+                &server_name,
+                &[],
+                UnixTime::since_unix_epoch(Duration::from_secs(0)),
+            );
+            assert!(first.is_ok());
+
+            let second = verifier.verify_server_cert(
+                &cert,
+                &[],
+                &server_name,
+                &[],
+                UnixTime::since_unix_epoch(Duration::from_secs(1)),
+            );
+            assert!(second.is_ok());
+        });
+    }
+
+    #[test]
+    fn tofu_verifier_rejects_changed_cert_for_same_host() {
+        with_temp_cwd("tofu-mismatch", |_| {
+            let verifier = TofuVerifier::new();
+            let cert_a = CertificateDer::from(vec![10, 20, 30]);
+            let cert_b = CertificateDer::from(vec![40, 50, 60]);
+            let server_name = ServerName::try_from("localhost").unwrap();
+
+            verifier
+                .verify_server_cert(
+                    &cert_a,
+                    &[],
+                    &server_name,
+                    &[],
+                    UnixTime::since_unix_epoch(Duration::from_secs(0)),
+                )
+                .unwrap();
+
+            let changed = verifier.verify_server_cert(
+                &cert_b,
+                &[],
+                &server_name,
+                &[],
+                UnixTime::since_unix_epoch(Duration::from_secs(1)),
+            );
+            assert!(changed.is_err());
+        });
+    }
 }

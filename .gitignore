@@ -44,3 +44,5 @@ certs/
 *.pem
 *.crt
 *.csr
+
+mag_known_hosts.json
