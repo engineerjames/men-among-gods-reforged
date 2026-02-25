@@ -21,6 +21,7 @@ pub struct LoginScene {
     server_ip: String,
     username: String,
     password: String,
+    attempted_unencrypted_login: bool,
     is_submitting: bool,
     api_result_rx: Option<std::sync::mpsc::Receiver<Result<String, String>>>,
     error_message: Option<String>,
@@ -35,6 +36,7 @@ impl LoginScene {
             server_ip: crate::hosts::get_server_ip(),
             username: String::new(),
             password: String::new(),
+            attempted_unencrypted_login: false,
             is_submitting: false,
             api_result_rx: None,
             error_message: None,
@@ -151,8 +153,9 @@ impl Scene for LoginScene {
                         });
                         ui.add_space(10.0);
 
-                        // Show a warning banner when the API URL is not HTTPS
-                        if !self.server_ip.trim().starts_with("https://") {
+                        // Show a warning banner only after a login attempt that explicitly
+                        // used an unencrypted HTTP URL.
+                        if self.attempted_unencrypted_login {
                             egui::Frame::new()
                                 .fill(egui::Color32::from_rgba_premultiplied(60, 50, 0, 220))
                                 .inner_margin(6.0)
@@ -255,6 +258,10 @@ impl Scene for LoginScene {
                     } else {
                         format!("https://{}:5554", entered_host)
                     };
+
+                    self.attempted_unencrypted_login = api_base_url
+                        .to_ascii_lowercase()
+                        .starts_with("http://");
 
                     app_state.api.base_url = api_base_url.clone();
 

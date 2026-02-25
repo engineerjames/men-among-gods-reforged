@@ -851,9 +851,12 @@ impl Scene for GameScene {
     ///
     /// `Some(SceneType)` if the player chose to disconnect or quit, otherwise `None`.
     fn render_ui(&mut self, app_state: &mut AppState, ctx: &egui::Context) -> Option<SceneType> {
-        // Always show an unencrypted-connection warning banner, even outside
-        // the escape menu, so players are aware traffic is not protected.
-        let is_unencrypted = app_state.network.as_ref().map_or(false, |n| !n.tls_active);
+        // Show an unencrypted-connection warning banner only after the game
+        // session is actually logged in.
+        let is_unencrypted = app_state
+            .network
+            .as_ref()
+            .map_or(false, |n| n.logged_in && !n.tls_active);
         if is_unencrypted {
             egui::Area::new(egui::Id::new("tls_warning_banner"))
                 .anchor(egui::Align2::CENTER_TOP, [0.0, 4.0])
