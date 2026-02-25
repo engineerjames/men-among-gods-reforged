@@ -22,6 +22,7 @@
 #   SERVER_TLS_CERT=./certs/server.crt  SERVER_TLS_KEY=./certs/server.key
 
 set -euo pipefail
+umask 077
 
 OUT_DIR="./certs"
 EXTRA_SAN=""
@@ -36,7 +37,10 @@ done
 
 mkdir -p "$OUT_DIR"
 
-# Default Subject Alternative Names
+# Default Subject Alternative Names:
+# - DNS:localhost + IP:127.0.0.1 for local testing
+# - DNS:menamonggods.ddns.net for hosted access via domain name
+# If clients connect by raw public IP, add it via --san "IP:x.x.x.x".
 BASE_SAN="DNS:localhost,DNS:menamonggods.ddns.net,IP:127.0.0.1"
 if [[ -n "$EXTRA_SAN" ]]; then
     SAN="${BASE_SAN},${EXTRA_SAN}"
@@ -50,12 +54,14 @@ openssl req -x509 -newkey rsa:4096 -nodes \
     -out "$OUT_DIR/ca.crt" \
     -days 3650 \
     -subj "/CN=MenAmongGods Self-Signed CA"
+chmod 600 "$OUT_DIR/ca.key"
 
 echo "==> Generating server key + CSR..."
 openssl req -newkey rsa:2048 -nodes \
     -keyout "$OUT_DIR/server.key" \
     -out "$OUT_DIR/server.csr" \
     -subj "/CN=MenAmongGods Server"
+chmod 600 "$OUT_DIR/server.key"
 
 echo "==> Signing server certificate with CA (SAN: $SAN)..."
 openssl x509 -req \
