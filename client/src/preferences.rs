@@ -43,6 +43,7 @@ impl DisplayMode {
 
 const LOG_FILE_NAME: &str = "mag_client.log";
 const PROFILE_FILE_NAME: &str = "mag_profile.json";
+const KNOWN_HOSTS_FILE: &str = "mag_known_hosts.json";
 
 /// Identifies a specific character for profile look-up.
 #[derive(Clone, Debug)]
@@ -233,6 +234,11 @@ pub fn profile_file_path() -> PathBuf {
 /// Returns the path to the log file (`mag_client.log`).
 pub fn log_file_path() -> PathBuf {
     data_directory().join(LOG_FILE_NAME)
+}
+
+/// Returns the path to the trusted hosts file (`known_hosts.json`).
+pub fn known_hosts_file_path() -> PathBuf {
+    data_directory().join(KNOWN_HOSTS_FILE)
 }
 
 fn read_storage(path: &Path) -> AppProfileStorage {

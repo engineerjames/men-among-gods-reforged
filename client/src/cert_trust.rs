@@ -22,8 +22,7 @@ use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 use rustls::{ClientConfig, DigitallySignedStruct, Error, SignatureScheme};
 use sha2::{Digest, Sha256};
 
-/// File name for the TOFU fingerprint store (lives next to `mag_profile.json`).
-const KNOWN_HOSTS_FILE: &str = "mag_known_hosts.json";
+use crate::preferences;
 
 fn ensure_crypto_provider_installed() -> Result<(), String> {
     if rustls::crypto::CryptoProvider::get_default().is_some() {
@@ -56,7 +55,7 @@ struct KnownHostsStore {
 
 impl KnownHostsStore {
     fn path() -> PathBuf {
-        crate::preferences::working_directory().join(KNOWN_HOSTS_FILE)
+        crate::preferences::known_hosts_file_path()
     }
 
     fn load() -> Self {
@@ -141,7 +140,8 @@ impl ServerCertVerifier for TofuVerifier {
                  Received fingerprint: {fp}\n\
                  This may indicate a man-in-the-middle attack.\n\
                  If the server certificate was intentionally rotated, \
-                 delete '{KNOWN_HOSTS_FILE}' and reconnect."
+                 delete '{}' and reconnect.",
+                preferences::known_hosts_file_path().display()
             )));
         }
 
