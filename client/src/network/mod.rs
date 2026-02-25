@@ -60,7 +60,6 @@ pub struct NetworkRuntime {
     pub rtt_ewma_ms: Option<f32>,
 
     /// Whether the game-server TCP connection is protected by TLS.
-    /// Currently always `false` — will be set to `true` once TLS is implemented.
     pub tls_active: bool,
 }
 
