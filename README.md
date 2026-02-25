@@ -19,7 +19,6 @@ cargo build --release
 This will build both the client and server in release mode. The binaries will then be located in the `target/release` directory. You can also run an application via:
 
 ```bash
-# Only the server exists currently
 cargo run --release --bin <men-among-gods-client|server>
 ```
 
@@ -49,13 +48,16 @@ cargo vcpkg build --manifest-path client/Cargo.toml
 cargo build
 ```
 
-Linux builds additionally need system headers:
+There are dependencies that are needed in order to use vcpkg. For Windows you are on your own, but for Linux and macOS you can run the following script to install them:
 ```bash
-bash pipelines/install_linux_deps.sh
+bash pipelines/install_linux_deps.sh # Linux
+bash pipelines/install_macos_deps.sh # macOS
 ```
 
+For Windows you can likely use Chocolatey or Winget to install the dependencies, but I have not tested this myself.
+
 # Server
-The server is a command-line application that listens for incoming connections from clients. It is still in ALPHA stage and is not yet fully functional. You should be able to connect to it using any Merceneries of Astonia (v2) client, but expect bugs.
+The original Mercenaries of Astonia (v2) server was written in C and used a custom network protocol built on top of TCP. Originally, players were mostly responsible for saving off their character files (*.moa), and the server held its persistence layer in memory. The server was single-threaded and had no database or external storage layer.  This project has iterated on this experience -- for full design details, see the docs folder.
 
 # Original Work
 The original C code, graphics, and sound effects that were ported are based on the Mercenaries of Astonia (v2) engine by Daniel Brockhaus. Website: http://www.brockhaus.org/merc2.html

@@ -1643,7 +1643,7 @@ pub fn npc_driver_high(cn: usize) -> i32 {
                         characters[cn].data[75] = Repository::with_globals(|g| g.ticker)
                             + Repository::with_characters(|chars| chars[cn].skill[SK_STUN][5])
                                 as i32
-                            + 18 * 8
+                            + TICKS * 8
                     });
                     return 1;
                 }

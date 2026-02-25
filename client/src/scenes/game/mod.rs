@@ -15,9 +15,12 @@
 mod game_math;
 mod input;
 mod net_events;
+mod perf_profiler;
 mod profile;
 mod ui_render;
 mod world_render;
+
+use perf_profiler::{PerfLabel, PerfProfiler};
 
 use std::time::Duration;
 
@@ -181,6 +184,8 @@ pub struct GameScene {
     /// Value is the skilltab index of the skill being assigned.
     pub(super) pending_skill_assignment: Option<usize>,
     pub(super) active_profile_character: Option<CharacterIdentity>,
+    /// Wall-clock profiler for rendering functions (activated from escape menu).
+    perf_profiler: PerfProfiler,
 }
 
 impl GameScene {
@@ -216,6 +221,7 @@ impl GameScene {
             master_volume: 1.0,
             pending_skill_assignment: None,
             active_profile_character: None,
+            perf_profiler: PerfProfiler::new(),
         }
     }
 
@@ -765,6 +771,7 @@ impl Scene for GameScene {
     ///
     /// `Some(SceneType)` if a disconnect or exit was signalled, otherwise `None`.
     fn update(&mut self, app_state: &mut AppState, _dt: Duration) -> Option<SceneType> {
+        self.perf_profiler.check_expired();
         let scene = self.process_network_events(app_state);
         if scene.is_none() {
             if let Some(ps) = app_state.player_state.as_mut() {
@@ -795,6 +802,8 @@ impl Scene for GameScene {
         canvas.set_draw_color(Color::RGB(0, 0, 0));
         canvas.clear();
 
+        self.perf_profiler.begin_frame();
+
         // Split borrow: gfx_cache (mut) and player_state (ref) are separate fields.
         let AppState {
             ref mut gfx_cache,
@@ -803,45 +812,78 @@ impl Scene for GameScene {
         } = *app_state;
 
         let Some(ps) = player_state.as_ref() else {
+            self.perf_profiler.end_frame();
             return Ok(());
         };
 
         // 1. World tiles (two-pass painter order)
         let shadows_on = ps.player_data().are_shadows_enabled != 0;
         let effects_on = self.are_spell_effects_enabled;
+        self.perf_profiler.begin_sample(PerfLabel::DrawWorld);
         self.draw_world(canvas, gfx_cache, ps, shadows_on, effects_on)?;
+        self.perf_profiler.end_sample(PerfLabel::DrawWorld);
 
         // 2. Static UI frame (sprite 1) overlays the world
+        self.perf_profiler.begin_sample(PerfLabel::DrawUiFrame);
         Self::draw_ui_frame(canvas, gfx_cache)?;
+        self.perf_profiler.end_sample(PerfLabel::DrawUiFrame);
 
         // 3. HP / End / Mana bars
+        self.perf_profiler.begin_sample(PerfLabel::DrawBars);
         Self::draw_bars(canvas, ps)?;
+        self.perf_profiler.end_sample(PerfLabel::DrawBars);
 
         // 4. Stat text labels
+        self.perf_profiler.begin_sample(PerfLabel::DrawStatText);
         Self::draw_stat_text(canvas, gfx_cache, ps)?;
+        self.perf_profiler.end_sample(PerfLabel::DrawStatText);
 
         // 5. Chat log + input line
+        self.perf_profiler.begin_sample(PerfLabel::DrawChat);
         self.draw_chat(canvas, gfx_cache, ps)?;
+        self.perf_profiler.end_sample(PerfLabel::DrawChat);
 
         // 6. Lower-right mode/status indicators
+        self.perf_profiler
+            .begin_sample(PerfLabel::DrawModeIndicators);
         Self::draw_mode_indicators(canvas, ps)?;
+        self.perf_profiler.end_sample(PerfLabel::DrawModeIndicators);
 
         // 7. Left panel attributes and skills
+        self.perf_profiler
+            .begin_sample(PerfLabel::DrawAttributesSkills);
         self.draw_attributes_skills(canvas, gfx_cache, ps)?;
+        self.perf_profiler
+            .end_sample(PerfLabel::DrawAttributesSkills);
 
         // 8. Inventory, worn items, spells, carried item
+        self.perf_profiler
+            .begin_sample(PerfLabel::DrawInventoryEquipmentSpells);
         self.draw_inventory_equipment_spells(canvas, gfx_cache, ps)?;
+        self.perf_profiler
+            .end_sample(PerfLabel::DrawInventoryEquipmentSpells);
 
         // 9. Portrait/shop overlays
+        self.perf_profiler
+            .begin_sample(PerfLabel::DrawPortraitAndShop);
         Self::draw_portrait_panel(canvas, gfx_cache, ps)?;
         self.draw_shop_overlay(canvas, gfx_cache, ps)?;
+        self.perf_profiler
+            .end_sample(PerfLabel::DrawPortraitAndShop);
 
         // 11. Minimap (bottom-left, 128×128, persistent world buffer)
+        self.perf_profiler.begin_sample(PerfLabel::DrawMinimap);
         self.draw_minimap(canvas, gfx_cache, ps)?;
+        self.perf_profiler.end_sample(PerfLabel::DrawMinimap);
 
         // 12. Skill button labels (4×3 grid in lower-right)
+        self.perf_profiler
+            .begin_sample(PerfLabel::DrawSkillButtonLabels);
         self.draw_skill_button_labels(canvas, gfx_cache, ps)?;
+        self.perf_profiler
+            .end_sample(PerfLabel::DrawSkillButtonLabels);
 
+        self.perf_profiler.end_frame();
         Ok(())
     }
 
@@ -874,8 +916,10 @@ impl Scene for GameScene {
                         });
                 });
         }
+        self.perf_profiler.begin_sample(PerfLabel::RenderUi);
 
         if !self.escape_menu_open {
+            self.perf_profiler.end_sample(PerfLabel::RenderUi);
             return None;
         }
 
@@ -919,7 +963,7 @@ impl Scene for GameScene {
                     .and_then(|net| net.last_rtt_ms)
                     .map(|value| format!("{} ms", value))
                     .unwrap_or_else(|| "N/A".to_string());
-                ui.label(format!("Latest RTT: {}", latest_rtt));
+                ui.label(format!("Latest Ping (Round-Trip Time): {}", latest_rtt));
 
                 // Volume slider
                 if ui
@@ -972,6 +1016,20 @@ impl Scene for GameScene {
 
                 ui.separator();
 
+                // --- Performance profiling ---------------------------------
+                let profiler_label = if self.perf_profiler.is_active() {
+                    format!(
+                        "Profiling… {}s remaining",
+                        self.perf_profiler.remaining_secs()
+                    )
+                } else {
+                    "Profile Performance".to_string()
+                };
+                if ui.button(&profiler_label).clicked() {
+                    self.perf_profiler.start();
+                }
+                // ---------------------------------------------------------
+
                 if ui.button("Open Log Directory").clicked() {
                     let log_dir = preferences::log_file_path()
                         .parent()
@@ -993,6 +1051,8 @@ impl Scene for GameScene {
         if profile_changed {
             self.save_active_profile(app_state);
         }
+
+        self.perf_profiler.end_sample(PerfLabel::RenderUi);
 
         scene_change
     }

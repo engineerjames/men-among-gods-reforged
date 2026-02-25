@@ -64,12 +64,16 @@ fn warm_egui_glyph_cache(ctx: &egui::Context) {
 /// The loop polls events, updates the active scene, renders world + UI layers,
 /// and caps at 60 FPS via `FPSManager`.
 fn main() -> Result<(), String> {
-    mag_core::initialize_logger(log::LevelFilter::Info, Some("mag_client.log")).unwrap_or_else(
-        |e| {
+    // Build the log-file path relative to the executable so that the logger
+    // resolves correctly inside a macOS .app bundle (where the OS sets CWD to
+    // "/" rather than the MacOS/ directory).
+    let log_path = preferences::log_file_path();
+    let log_path_str = log_path.to_string_lossy();
+    mag_core::initialize_logger(log::LevelFilter::Info, Some(log_path_str.as_ref()))
+        .unwrap_or_else(|e| {
             eprintln!("Failed to initialize logger: {}. Exiting.", e);
             process::exit(1);
-        },
-    );
+        });
 
     log::info!("Initializing SDL2 contexts...");
     let mut fps_manager = FPSManager::new();

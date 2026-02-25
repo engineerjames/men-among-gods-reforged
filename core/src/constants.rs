@@ -16,6 +16,13 @@ pub const MINVERSION: u32 = 0x020E06;
 /// Ticks per second
 pub const TICKS: i32 = 36;
 
+/// Legacy tick rate (18 TPS) that the original C server constants were designed for.
+/// Used to scale per-tick values so they produce the same wall-clock rates at
+/// any `TICKS` value.  Durations should be expressed as `TICKS * seconds`;
+/// per-tick increments ported from C should be scaled by `LEGACY_TICKS / TICKS`
+/// (multiply first, then divide, to preserve integer precision).
+pub const LEGACY_TICKS: i32 = 18;
+
 /// Microseconds per tick
 pub const TICK: i64 = 1_000_000 / TICKS as i64;
 

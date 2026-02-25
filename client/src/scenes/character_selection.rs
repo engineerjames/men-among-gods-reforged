@@ -26,14 +26,23 @@ pub struct CharacterSelectionScene {
     characters: Vec<CharacterSummary>,
     character_textures: Vec<Option<egui::TextureId>>,
     selected_character_id: Option<u64>,
+    show_delete_dialog: bool,
+    delete_input_name: String,
+    deleting_character: bool,
 
     characters_rx: Option<std::sync::mpsc::Receiver<Result<Vec<CharacterSummary>, String>>>,
     characters_thread: Option<std::thread::JoinHandle<()>>,
 
     login_rx: Option<std::sync::mpsc::Receiver<Result<u64, String>>>,
     login_thread: Option<std::thread::JoinHandle<()>>,
+
+    delete_rx: Option<std::sync::mpsc::Receiver<Result<(), String>>>,
+    delete_thread: Option<std::thread::JoinHandle<()>>,
+
     logging_in: bool,
     pending_race: Option<i32>,
+    pending_delete_character_id: Option<u64>,
+    pending_delete_character_name: Option<String>,
 }
 
 impl CharacterSelectionScene {
@@ -47,12 +56,19 @@ impl CharacterSelectionScene {
             character_textures: Vec::new(),
 
             selected_character_id: None,
+            show_delete_dialog: false,
+            delete_input_name: String::new(),
+            deleting_character: false,
             characters_rx: None,
             characters_thread: None,
             login_rx: None,
             login_thread: None,
+            delete_rx: None,
+            delete_thread: None,
             logging_in: false,
             pending_race: None,
+            pending_delete_character_id: None,
+            pending_delete_character_name: None,
         }
     }
 
@@ -104,6 +120,7 @@ impl Scene for CharacterSelectionScene {
     fn on_enter(&mut self, app_state: &mut AppState) {
         Self::cleanup_finished_thread(&mut self.characters_thread, "character loading");
         Self::cleanup_finished_thread(&mut self.login_thread, "game login");
+        Self::cleanup_finished_thread(&mut self.delete_thread, "character delete");
 
         if Self::is_thread_running(&self.characters_thread) {
             self.last_error = Some("Character loading already in progress".to_string());
@@ -115,7 +132,13 @@ impl Scene for CharacterSelectionScene {
         self.characters.clear();
         self.character_textures.clear();
         self.selected_character_id = None;
+        self.show_delete_dialog = false;
+        self.delete_input_name.clear();
+        self.deleting_character = false;
         self.characters_rx = None;
+        self.delete_rx = None;
+        self.pending_delete_character_id = None;
+        self.pending_delete_character_name = None;
 
         let Some(token) = app_state.api.token.as_deref() else {
             self.is_loading_characters = false;
@@ -138,12 +161,19 @@ impl Scene for CharacterSelectionScene {
     fn on_exit(&mut self, _app_state: &mut AppState) {
         self.characters_rx = None;
         self.login_rx = None;
+        self.delete_rx = None;
         self.is_loading_characters = false;
         self.logging_in = false;
+        self.deleting_character = false;
         self.pending_race = None;
+        self.pending_delete_character_id = None;
+        self.pending_delete_character_name = None;
+        self.show_delete_dialog = false;
+        self.delete_input_name.clear();
 
         Self::drop_or_join_thread(&mut self.characters_thread, "character loading");
         Self::drop_or_join_thread(&mut self.login_thread, "game login");
+        Self::drop_or_join_thread(&mut self.delete_thread, "character delete");
     }
 
     fn handle_event(&mut self, _app_state: &mut AppState, _event: &Event) -> Option<SceneType> {
@@ -154,6 +184,7 @@ impl Scene for CharacterSelectionScene {
     fn update(&mut self, app_state: &mut AppState, _dt: Duration) -> Option<SceneType> {
         Self::cleanup_finished_thread(&mut self.characters_thread, "character loading");
         Self::cleanup_finished_thread(&mut self.login_thread, "game login");
+        Self::cleanup_finished_thread(&mut self.delete_thread, "character delete");
 
         if self.is_loading_characters {
             let result = if let Some(receiver) = &self.characters_rx {
@@ -239,6 +270,58 @@ impl Scene for CharacterSelectionScene {
             }
         }
 
+        if self.deleting_character {
+            let result = if let Some(receiver) = &self.delete_rx {
+                match receiver.try_recv() {
+                    Ok(result) => Some(result),
+                    Err(TryRecvError::Empty) => None,
+                    Err(TryRecvError::Disconnected) => {
+                        Some(Err("Character delete task failed unexpectedly".to_string()))
+                    }
+                }
+            } else {
+                None
+            };
+
+            if let Some(result) = result {
+                self.deleting_character = false;
+                self.delete_rx = None;
+
+                match result {
+                    Ok(()) => {
+                        let deleted_character_id = self.pending_delete_character_id;
+                        let deleted_character_name = self
+                            .pending_delete_character_name
+                            .clone()
+                            .unwrap_or_else(|| "<unknown>".to_string());
+
+                        if let Some(character_id) = deleted_character_id {
+                            if let Some(index) =
+                                self.characters.iter().position(|c| c.id == character_id)
+                            {
+                                self.characters.remove(index);
+                                if index < self.character_textures.len() {
+                                    self.character_textures.remove(index);
+                                }
+                            }
+                        }
+
+                        self.selected_character_id = self.characters.first().map(|c| c.id);
+                        self.last_error = None;
+                        self.show_delete_dialog = false;
+                        self.delete_input_name.clear();
+                        self.pending_delete_character_id = None;
+                        self.pending_delete_character_name = None;
+                        log::info!("Deleted character {}", deleted_character_name);
+                    }
+                    Err(error) => {
+                        log::error!("Failed to delete character: {}", error);
+                        self.last_error = Some(error);
+                    }
+                }
+            }
+        }
+
         None
     }
 
@@ -284,6 +367,7 @@ impl Scene for CharacterSelectionScene {
 
     fn render_ui(&mut self, app_state: &mut AppState, ctx: &egui::Context) -> Option<SceneType> {
         let mut next_scene: Option<SceneType> = None;
+        let actions_disabled = self.show_delete_dialog;
 
         egui::Window::new("Character Selection")
             .default_height(800.0)
@@ -329,14 +413,20 @@ impl Scene for CharacterSelectionScene {
                                         let size = egui::vec2(48.0, 48.0);
                                         let textured =
                                             egui::load::SizedTexture::new(texture_id, size);
-                                        let img_resp = ui.add(egui::Image::new(textured));
+                                        let img_resp = ui.add_enabled(
+                                            !actions_disabled,
+                                            egui::Image::new(textured),
+                                        );
                                         if img_resp.clicked() {
                                             log::info!("Selected character: {}", character.name);
                                             character_selected_this_frame = Some(character.id);
                                         }
                                     }
 
-                                    let resp = ui.selectable_label(selected, &label);
+                                    let resp = ui.add_enabled(
+                                        !actions_disabled,
+                                        egui::Button::selectable(selected, &label),
+                                    );
                                     if resp.clicked() {
                                         log::info!("Selected character: {}", character.name);
                                         character_selected_this_frame = Some(character.id);
@@ -351,7 +441,10 @@ impl Scene for CharacterSelectionScene {
                 ui.add_space(12.0);
 
                 if ui
-                    .add(egui::Button::new("Create new character").min_size([200.0, 32.0].into()))
+                    .add_enabled(
+                        !actions_disabled,
+                        egui::Button::new("Create new character").min_size([200.0, 32.0].into()),
+                    )
                     .clicked()
                 {
                     self.last_error = None;
@@ -360,7 +453,10 @@ impl Scene for CharacterSelectionScene {
                 }
 
                 if ui
-                    .add(egui::Button::new("Continue to game login").min_size([200.0, 32.0].into()))
+                    .add_enabled(
+                        !actions_disabled,
+                        egui::Button::new("Continue to game login").min_size([200.0, 32.0].into()),
+                    )
                     .clicked()
                 {
                     if self.logging_in || Self::is_thread_running(&self.login_thread) {
@@ -410,8 +506,42 @@ impl Scene for CharacterSelectionScene {
                     }
                 }
 
+                let can_delete_character = self.selected_character_id.is_some();
+                let delete_button = egui::Button::new(
+                    egui::RichText::new("Delete character").color(egui::Color32::LIGHT_RED),
+                )
+                .min_size([200.0, 32.0].into());
+
                 if ui
-                    .add(egui::Button::new("Log out").min_size([200.0, 32.0].into()))
+                    .add_enabled(
+                        !actions_disabled && can_delete_character && !self.deleting_character,
+                        delete_button,
+                    )
+                    .clicked()
+                {
+                    let Some(character_id) = self.selected_character_id else {
+                        self.last_error = Some("Select a character first".to_string());
+                        return;
+                    };
+
+                    let Some(selected) = self.characters.iter().find(|c| c.id == character_id)
+                    else {
+                        self.last_error = Some("Selected character not found".to_string());
+                        return;
+                    };
+
+                    self.pending_delete_character_id = Some(character_id);
+                    self.pending_delete_character_name = Some(selected.name.clone());
+                    self.delete_input_name.clear();
+                    self.show_delete_dialog = true;
+                    self.last_error = None;
+                }
+
+                if ui
+                    .add_enabled(
+                        !actions_disabled,
+                        egui::Button::new("Log out").min_size([200.0, 32.0].into()),
+                    )
                     .clicked()
                 {
                     app_state.api.token = None;
@@ -420,6 +550,90 @@ impl Scene for CharacterSelectionScene {
                     next_scene = Some(SceneType::Login);
                 }
             });
+
+        if self.show_delete_dialog {
+            egui::Window::new("Delete character")
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    let expected_name = self
+                        .pending_delete_character_name
+                        .as_deref()
+                        .unwrap_or_default();
+
+                    ui.label("Type the character name to confirm deletion:");
+                    ui.colored_label(egui::Color32::LIGHT_RED, expected_name);
+                    ui.add_space(8.0);
+                    ui.text_edit_singleline(&mut self.delete_input_name);
+
+                    let matches_name = self.delete_input_name == expected_name;
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        let confirm_clicked = ui
+                            .add_enabled(
+                                !self.deleting_character && matches_name,
+                                egui::Button::new(
+                                    egui::RichText::new("Confirm delete")
+                                        .color(egui::Color32::LIGHT_RED),
+                                ),
+                            )
+                            .clicked();
+
+                        if confirm_clicked {
+                            if Self::is_thread_running(&self.delete_thread) {
+                                self.last_error =
+                                    Some("Character delete already in progress".to_string());
+                                return;
+                            }
+
+                            let Some(token) = app_state.api.token.as_deref() else {
+                                self.last_error = Some("Missing account session token".to_string());
+                                return;
+                            };
+
+                            let Some(character_id) = self.pending_delete_character_id else {
+                                self.last_error =
+                                    Some("No character selected for deletion".to_string());
+                                return;
+                            };
+
+                            let base_url = app_state.api.base_url.clone();
+                            let token = token.to_string();
+                            let (tx, rx) = mpsc::channel();
+                            self.delete_thread = Some(std::thread::spawn(move || {
+                                let result =
+                                    account_api::delete_character(&base_url, &token, character_id);
+                                if let Err(err) = tx.send(result) {
+                                    log::error!("Failed to send delete result: {}", err);
+                                }
+                            }));
+
+                            self.delete_rx = Some(rx);
+                            self.deleting_character = true;
+                            self.last_error = None;
+                        }
+
+                        if ui
+                            .add_enabled(!self.deleting_character, egui::Button::new("Cancel"))
+                            .clicked()
+                        {
+                            self.show_delete_dialog = false;
+                            self.delete_input_name.clear();
+                            self.pending_delete_character_id = None;
+                            self.pending_delete_character_name = None;
+                        }
+                    });
+
+                    if !matches_name {
+                        ui.small("Name must match exactly to enable deletion.");
+                    }
+
+                    if self.deleting_character {
+                        ui.small("Deleting character...");
+                    }
+                });
+        }
 
         next_scene
     }

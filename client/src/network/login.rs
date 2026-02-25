@@ -87,7 +87,8 @@ pub(crate) fn run_network_task(
         let _ = event_tx.send(NetworkEvent::Status("TLS handshake...".to_string()));
         match crate::cert_trust::build_game_tls_connector(&host) {
             Ok(tls_conn) => {
-                let tls_stream = rustls::StreamOwned::new(tls_conn, tcp_stream.try_clone().unwrap());
+                let tls_stream =
+                    rustls::StreamOwned::new(tls_conn, tcp_stream.try_clone().unwrap());
                 GameConnection {
                     stream: Box::new(tls_stream),
                     raw_tcp: tcp_stream,
@@ -121,7 +122,9 @@ pub(crate) fn run_network_task(
 }
 
 /// Reads one login-phase server command (16 bytes, or 2 bytes for tick/exit).
-fn get_server_response(stream: &mut GameConnection) -> Result<server_commands::ServerCommand, String> {
+fn get_server_response(
+    stream: &mut GameConnection,
+) -> Result<server_commands::ServerCommand, String> {
     let mut header = [0u8; 1];
     stream.read_exact(&mut header).map_err(|e| {
         if e.kind() == std::io::ErrorKind::WouldBlock {

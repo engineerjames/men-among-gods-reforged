@@ -115,8 +115,7 @@ pub fn accept_tls(
         .set_read_timeout(Some(std::time::Duration::from_secs(10)))
         .map_err(|e| format!("set_read_timeout: {e}"))?;
 
-    let conn = ServerConnection::new(config)
-        .map_err(|e| format!("ServerConnection::new: {e}"))?;
+    let conn = ServerConnection::new(config).map_err(|e| format!("ServerConnection::new: {e}"))?;
     let mut tls_stream = rustls::StreamOwned::new(conn, stream);
 
     // Drive the handshake to completion by doing a zero-byte read.
