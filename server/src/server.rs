@@ -5,7 +5,7 @@ use core::types::Map;
 use std::io::ErrorKind;
 use std::io::{Read, Write};
 use std::net::TcpListener;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::effect::EffectManager;
@@ -15,6 +15,7 @@ use crate::network_manager::NetworkManager;
 use crate::repository::Repository;
 use crate::single_thread_cell::SingleThreadCell;
 use crate::state::State;
+use crate::tls::{self, GameStream};
 use crate::types::cmap::CMap;
 use crate::types::server_player::ServerPlayer;
 use crate::{driver, player, populate};
@@ -53,6 +54,9 @@ pub struct Server {
     sock: Option<TcpListener>,
     last_tick_time: Option<Instant>,
 
+    /// TLS configuration, if `SERVER_TLS_CERT` and `SERVER_TLS_KEY` are set.
+    tls_config: Option<Arc<rustls::ServerConfig>>,
+
     /// Tick rate performance statistics buffer.
     tick_perf_stats: StatisticsBuffer<f32>,
 
@@ -70,6 +74,7 @@ impl Server {
         Server {
             sock: None,
             last_tick_time: None,
+            tls_config: None,
             tick_perf_stats: StatisticsBuffer::new(100),
             net_io_perf_stats: StatisticsBuffer::new(100),
             measurement_interval: 20,
@@ -171,6 +176,24 @@ impl Server {
 
         self.sock = Some(listener);
         log::info!("Socket bound to port 5555");
+
+        // Load TLS configuration if cert/key env vars are set
+        match tls::load_tls_config() {
+            Ok(Some(config)) => {
+                log::info!("TLS enabled — accepting encrypted connections on port 5555");
+                self.tls_config = Some(config);
+            }
+            Ok(None) => {
+                log::warn!("╔══════════════════════════════════════════════════════════════╗");
+                log::warn!("║  WARNING: Server is running WITHOUT TLS encryption!         ║");
+                log::warn!("║  All game traffic is transmitted in plaintext.               ║");
+                log::warn!("║  Set SERVER_TLS_CERT and SERVER_TLS_KEY to enable TLS.       ║");
+                log::warn!("╚══════════════════════════════════════════════════════════════╝");
+            }
+            Err(e) => {
+                return Err(format!("TLS initialization failed: {e}"));
+            }
+        }
 
         // Repository is already initialized at this point (currently)
         Server::initialize_players()?;
@@ -1239,7 +1262,21 @@ impl Server {
             match listener.accept() {
                 Ok((stream, addr)) => {
                     log::info!("New connection from {}", addr);
-                    self.new_player(stream, addr.ip());
+                    // Wrap with TLS if configured
+                    if let Some(ref config) = self.tls_config {
+                        match tls::accept_tls(stream, config.clone()) {
+                            Ok(tls_stream) => {
+                                log::info!("TLS handshake completed for {}", addr);
+                                self.new_player(tls_stream, addr.ip());
+                            }
+                            Err(e) => {
+                                log::warn!("TLS handshake failed for {}: {}", addr, e);
+                            }
+                        }
+                    } else {
+                        let _ = stream.set_nonblocking(true);
+                        self.new_player(GameStream::Plain(stream), addr.ip());
+                    }
                 }
                 Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
                     // No pending connections, this is normal in non-blocking mode
@@ -1269,7 +1306,7 @@ impl Server {
     /// Converts the peer address into a u32 (IPv4) and initializes a fresh
     /// `ServerPlayer` including zlib compression state. If no free slot is
     /// available, the connection is closed.
-    fn new_player(&mut self, stream: std::net::TcpStream, addr: std::net::IpAddr) {
+    fn new_player(&mut self, stream: GameStream, addr: std::net::IpAddr) {
         // Accept and initialize a new player slot. Mirrors server.cpp::new_player
 
         // Set non-blocking mode on the socket

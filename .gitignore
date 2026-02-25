@@ -38,3 +38,11 @@ dist/**
 **/__pycache__/**
 mag_profile.json
 mag_client.log
+
+# TLS certificates — generated, never committed
+certs/
+*.pem
+*.crt
+*.csr
+
+mag_known_hosts.json

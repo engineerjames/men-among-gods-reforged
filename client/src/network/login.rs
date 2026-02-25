@@ -11,6 +11,40 @@ use mag_core::encrypt::xcrypt;
 
 use super::{client_commands, server_commands, tick_stream, NetworkCommand, NetworkEvent};
 
+/// A combined `Read + Write` trait for use as a trait object.
+trait ReadWrite: Read + Write + Send {}
+impl<T: Read + Write + Send> ReadWrite for T {}
+
+/// A boxed stream that is `Read + Write` and optionally backed by TLS.
+/// We also keep a handle to the raw `TcpStream` so we can call
+/// `set_nonblocking` on the underlying socket.
+struct GameConnection {
+    stream: Box<dyn ReadWrite>,
+    raw_tcp: std::net::TcpStream,
+}
+
+impl GameConnection {
+    fn set_nonblocking(&self, nonblocking: bool) -> std::io::Result<()> {
+        self.raw_tcp.set_nonblocking(nonblocking)
+    }
+}
+
+impl Read for GameConnection {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.stream.read(buf)
+    }
+}
+
+impl Write for GameConnection {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.stream.write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.stream.flush()
+    }
+}
+
 fn login_exit_reason_message(reason: u32) -> String {
     if (reason as u8) == LO_PASSWORD {
         "Invalid password".to_string()
@@ -19,7 +53,7 @@ fn login_exit_reason_message(reason: u32) -> String {
     }
 }
 
-/// Runs the network task: connect, handshake, then main loop.
+/// Runs the network task: connect, optionally wrap in TLS, handshake, then main loop.
 ///
 /// Intended to be called from `std::thread::spawn`.
 pub(crate) fn run_network_task(
@@ -27,15 +61,17 @@ pub(crate) fn run_network_task(
     port: u16,
     ticket: u64,
     race: i32,
+    use_tls: bool,
     command_rx: mpsc::Receiver<NetworkCommand>,
     event_tx: mpsc::Sender<NetworkEvent>,
 ) {
     let _ = event_tx.send(NetworkEvent::Status(format!(
-        "Connecting to {host}:{port}..."
+        "Connecting to {host}:{port}{}...",
+        if use_tls { " (TLS)" } else { "" }
     )));
 
     let addr = format!("{host}:{port}");
-    let mut stream = match TcpStream::connect(&addr) {
+    let tcp_stream = match TcpStream::connect(&addr) {
         Ok(s) => s,
         Err(e) => {
             let _ = event_tx.send(NetworkEvent::Error(format!("Connect failed: {e}")));
@@ -43,26 +79,52 @@ pub(crate) fn run_network_task(
         }
     };
 
-    if let Err(e) = stream.set_read_timeout(Some(Duration::from_millis(5000))) {
+    if let Err(e) = tcp_stream.set_read_timeout(Some(Duration::from_millis(5000))) {
         log::warn!("Failed to set read timeout: {e}");
     }
 
+    let mut conn = if use_tls {
+        let _ = event_tx.send(NetworkEvent::Status("TLS handshake...".to_string()));
+        match crate::cert_trust::build_game_tls_connector(&host) {
+            Ok(tls_conn) => {
+                let tls_stream =
+                    rustls::StreamOwned::new(tls_conn, tcp_stream.try_clone().unwrap());
+                GameConnection {
+                    stream: Box::new(tls_stream),
+                    raw_tcp: tcp_stream,
+                }
+            }
+            Err(e) => {
+                let _ = event_tx.send(NetworkEvent::Error(format!("TLS setup failed: {e}")));
+                return;
+            }
+        }
+    } else {
+        let raw_clone = tcp_stream.try_clone().unwrap();
+        GameConnection {
+            stream: Box::new(tcp_stream),
+            raw_tcp: raw_clone,
+        }
+    };
+
     let _ = event_tx.send(NetworkEvent::Status("Connected. Logging in...".to_string()));
 
-    if let Err(e) = login_handshake(&mut stream, ticket, race, &event_tx) {
+    if let Err(e) = login_handshake(&mut conn, ticket, race, &event_tx) {
         log::error!("login_handshake failed: {e}");
         let _ = event_tx.send(NetworkEvent::Error(e));
         return;
     }
 
-    if let Err(e) = run_network_loop(stream, command_rx, event_tx.clone()) {
+    if let Err(e) = run_network_loop(conn, command_rx, event_tx.clone()) {
         log::error!("network loop exited with error: {e}");
         let _ = event_tx.send(NetworkEvent::Error(e));
     }
 }
 
 /// Reads one login-phase server command (16 bytes, or 2 bytes for tick/exit).
-fn get_server_response(stream: &mut TcpStream) -> Result<server_commands::ServerCommand, String> {
+fn get_server_response(
+    stream: &mut GameConnection,
+) -> Result<server_commands::ServerCommand, String> {
     let mut header = [0u8; 1];
     stream.read_exact(&mut header).map_err(|e| {
         if e.kind() == std::io::ErrorKind::WouldBlock {
@@ -102,7 +164,7 @@ fn get_server_response(stream: &mut TcpStream) -> Result<server_commands::Server
 /// Flow: `CL_API_LOGIN(ticket)` → `SV_CHALLENGE` → `xcrypt()` → `CL_CHALLENGE` + `CL_UNIQUE`
 /// → loop until `SV_LOGIN_OK` (or `SV_NEW_PLAYER` for new accounts).
 fn login_handshake(
-    stream: &mut TcpStream,
+    stream: &mut GameConnection,
     ticket: u64,
     race: i32,
     event_tx: &mpsc::Sender<NetworkEvent>,
@@ -189,8 +251,8 @@ fn login_handshake(
 }
 
 /// Main network loop: reads framed tick packets from the server, sends outgoing commands.
-pub(super) fn run_network_loop(
-    mut stream: TcpStream,
+fn run_network_loop(
+    mut stream: GameConnection,
     command_rx: mpsc::Receiver<NetworkCommand>,
     event_tx: mpsc::Sender<NetworkEvent>,
 ) -> Result<(), String> {

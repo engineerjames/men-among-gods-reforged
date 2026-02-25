@@ -58,16 +58,24 @@ pub struct NetworkRuntime {
     pings_in_flight: HashMap<u32, Instant>,
     pub last_rtt_ms: Option<u32>,
     pub rtt_ewma_ms: Option<f32>,
+
+    /// Whether the game-server TCP connection is protected by TLS.
+    pub tls_active: bool,
 }
 
 impl NetworkRuntime {
     /// Creates and starts the network runtime, spawning the background thread.
-    pub fn new(host: String, port: u16, ticket: u64, race: i32) -> Self {
+    ///
+    /// When `use_tls` is `true`, the background thread wraps the TCP connection
+    /// in a TLS layer using the TOFU certificate verifier before starting the
+    /// login handshake.
+    pub fn new(host: String, port: u16, ticket: u64, race: i32, use_tls: bool) -> Self {
         let (command_tx, command_rx) = mpsc::channel::<NetworkCommand>();
         let (event_tx, event_rx) = mpsc::channel::<NetworkEvent>();
 
+        let tls_host = host.clone();
         let handle = std::thread::spawn(move || {
-            login::run_network_task(host, port, ticket, race, command_rx, event_tx);
+            login::run_network_task(tls_host, port, ticket, race, use_tls, command_rx, event_tx);
         });
 
         Self {
@@ -83,6 +91,7 @@ impl NetworkRuntime {
             pings_in_flight: HashMap::new(),
             last_rtt_ms: None,
             rtt_ewma_ms: None,
+            tls_active: use_tls,
         }
     }
 

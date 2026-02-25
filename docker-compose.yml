@@ -1,4 +1,18 @@
 services:
+  certgen:
+    image: bash:5.2
+    command:
+      - /bin/sh
+      - -lc
+      - apk add --no-cache openssl >/dev/null && ./scripts/generate_certs.sh --out /certs $${TLS_EXTRA_SAN:+--san "$${TLS_EXTRA_SAN}"}
+    environment:
+      TLS_EXTRA_SAN: ${TLS_EXTRA_SAN:-}
+    volumes:
+      - ./:/workspace:ro
+      - tls-certs:/certs
+    working_dir: /workspace
+    restart: "no"
+
   keydb:
     image: eqalpha/keydb:latest
     command:
@@ -26,6 +40,8 @@ services:
       context: .
       dockerfile: api/Dockerfile
     depends_on:
+      certgen:
+        condition: service_completed_successfully
       keydb:
         condition: service_healthy
     environment:
@@ -33,6 +49,10 @@ services:
       API_BIND_ADDR: 0.0.0.0
       API_PORT: 5554
       MAG_KEYDB_URL: redis://:${KEYDB_PASSWORD:?KEYDB_PASSWORD is required}@keydb:5556/
+      API_TLS_CERT: /certs/server.crt
+      API_TLS_KEY: /certs/server.key
+    volumes:
+      - tls-certs:/certs:ro
     ports:
       - "5554:5554"
     restart: unless-stopped
@@ -42,13 +62,20 @@ services:
       context: .
       dockerfile: server/Dockerfile
     depends_on:
+      certgen:
+        condition: service_completed_successfully
       keydb:
         condition: service_healthy
     environment:
       MAG_KEYDB_URL: redis://:${KEYDB_PASSWORD:?KEYDB_PASSWORD is required}@keydb:5556/
+      SERVER_TLS_CERT: /certs/server.crt
+      SERVER_TLS_KEY: /certs/server.key
+    volumes:
+      - tls-certs:/certs:ro
     ports:
       - "5555:5555"
     restart: unless-stopped
 
 volumes:
   keydb-data:
+  tls-certs:

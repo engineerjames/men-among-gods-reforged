@@ -15,6 +15,7 @@ use crate::sfx_cache::SoundCache;
 use crate::state::{ApiTokenState, AppState, DisplayCommand};
 
 mod account_api;
+mod cert_trust;
 mod dpi_scaling;
 mod filepaths;
 mod font_cache;

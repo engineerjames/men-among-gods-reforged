@@ -30,6 +30,16 @@ KEYDB_PASSWORD=<long-random-password>
 docker compose up -d --build
 ```
 
+On first startup, Compose runs `scripts/generate_certs.sh` in a one-shot `certgen`
+service and stores certs in an internal Docker volume. API and game server both
+use `/certs/server.crt` + `/certs/server.key` from that volume (mounted read-only).
+
+If you need additional SAN entries (for example, a raw public IP), set:
+
+```bash
+TLS_EXTRA_SAN="IP:203.0.113.10" docker compose up -d --build
+```
+
 This starts:
 - API on `localhost:5554`
 - Game server on `localhost:5555`

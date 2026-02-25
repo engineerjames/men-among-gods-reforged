@@ -161,12 +161,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let bind_address = format!("{}:{}", resolve_api_bind_addr(), resolve_api_port());
     info!("Listening on {}", bind_address);
-    let listener = tokio::net::TcpListener::bind(&bind_address).await?;
-    axum::serve(
-        listener,
-        app.into_make_service_with_connect_info::<SocketAddr>(),
-    )
-    .await?;
+
+    let tls_cert = std::env::var("API_TLS_CERT").ok();
+    let tls_key = std::env::var("API_TLS_KEY").ok();
+
+    match (tls_cert, tls_key) {
+        (Some(cert_path), Some(key_path)) => {
+            info!("HTTPS enabled (cert={}, key={})", cert_path, key_path);
+            let tls_config =
+                axum_server::tls_rustls::RustlsConfig::from_pem_file(&cert_path, &key_path)
+                    .await
+                    .map_err(|e| format!("Failed to load TLS cert/key: {e}"))?;
+            let addr: SocketAddr = bind_address
+                .parse()
+                .map_err(|e| format!("Invalid bind address: {e}"))?;
+            axum_server::bind_rustls(addr, tls_config)
+                .serve(app.into_make_service_with_connect_info::<SocketAddr>())
+                .await?;
+        }
+        _ => {
+            warn!("╔══════════════════════════════════════════════════════════════╗");
+            warn!("║  WARNING: API is running WITHOUT TLS encryption!            ║");
+            warn!("║  All HTTP traffic is transmitted in plaintext.              ║");
+            warn!("║  Set API_TLS_CERT and API_TLS_KEY to enable HTTPS.          ║");
+            warn!("╚══════════════════════════════════════════════════════════════╝");
+            let listener = tokio::net::TcpListener::bind(&bind_address).await?;
+            axum::serve(
+                listener,
+                app.into_make_service_with_connect_info::<SocketAddr>(),
+            )
+            .await?;
+        }
+    }
 
     info!("Server shutdown");
     Ok(())
