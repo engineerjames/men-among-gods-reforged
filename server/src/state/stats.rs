@@ -510,6 +510,10 @@ impl State {
         let mut mana_regen = false;
         let mut gothp = 0i32;
 
+        // Scale factor: convert per-tick values designed for the legacy 18 TPS
+        // tick rate to the current tick rate, preserving wall-clock rates.
+        let scale = |v: i32| -> i32 { v * core::constants::LEGACY_TICKS / core::constants::TICKS };
+
         // Process regeneration based on character status (if not stunned)
         let stunned = Repository::with_characters(|ch| ch[cn].stunned != 0);
 
@@ -522,13 +526,14 @@ impl State {
                 0..=7 => {
                     if !noend {
                         Repository::with_characters_mut(|ch| {
-                            ch[cn].a_end += moonmult * 4;
+                            ch[cn].a_end += scale(moonmult * 4);
 
                             // Add bonus from Rest skill
                             if ch[cn].skill[core::constants::SK_REST][0] != 0 {
-                                ch[cn].a_end += ch[cn].skill[core::constants::SK_REST][5] as i32
-                                    * moonmult
-                                    / 30;
+                                ch[cn].a_end += scale(
+                                    ch[cn].skill[core::constants::SK_REST][5] as i32 * moonmult
+                                        / 30,
+                                );
                             }
                         });
                     }
@@ -536,14 +541,16 @@ impl State {
                     if !nohp {
                         hp_regen = true;
                         Repository::with_characters_mut(|ch| {
-                            ch[cn].a_hp += moonmult * 2;
-                            gothp += moonmult * 2;
+                            ch[cn].a_hp += scale(moonmult * 2);
+                            // C original: gothp += moonmult (tracks half the HP regen increment)
+                            gothp += scale(moonmult);
 
                             // Add bonus from Regen skill
                             if ch[cn].skill[core::constants::SK_REGEN][0] != 0 {
-                                let regen_bonus = ch[cn].skill[core::constants::SK_REGEN][5] as i32
-                                    * moonmult
-                                    / 30;
+                                let regen_bonus = scale(
+                                    ch[cn].skill[core::constants::SK_REGEN][5] as i32 * moonmult
+                                        / 30,
+                                );
                                 ch[cn].a_hp += regen_bonus;
                                 gothp += regen_bonus;
                             }
@@ -558,10 +565,11 @@ impl State {
                         if has_medit {
                             mana_regen = true;
                             Repository::with_characters_mut(|ch| {
-                                ch[cn].a_mana += moonmult;
-                                ch[cn].a_mana += ch[cn].skill[core::constants::SK_MEDIT][5] as i32
-                                    * moonmult
-                                    / 30;
+                                ch[cn].a_mana += scale(moonmult);
+                                ch[cn].a_mana += scale(
+                                    ch[cn].skill[core::constants::SK_MEDIT][5] as i32 * moonmult
+                                        / 30,
+                                );
                             });
                         }
                     }
@@ -575,13 +583,13 @@ impl State {
                     if mode == 2 {
                         // Fast mode drains endurance
                         Repository::with_characters_mut(|ch| {
-                            ch[cn].a_end -= 25;
+                            ch[cn].a_end -= scale(25);
                         });
                     } else if mode == 0 {
                         // Sneak mode regenerates endurance
                         if !noend {
                             Repository::with_characters_mut(|ch| {
-                                ch[cn].a_end += 25;
+                                ch[cn].a_end += scale(25);
                             });
                         }
                     }
@@ -596,23 +604,23 @@ impl State {
                         // Attack action
                         if mode == 1 {
                             Repository::with_characters_mut(|ch| {
-                                ch[cn].a_end -= 12;
+                                ch[cn].a_end -= scale(12);
                             });
                         } else if mode == 2 {
                             Repository::with_characters_mut(|ch| {
-                                ch[cn].a_end -= 50;
+                                ch[cn].a_end -= scale(50);
                             });
                         }
                     } else {
                         // Misc action
                         if mode == 2 {
                             Repository::with_characters_mut(|ch| {
-                                ch[cn].a_end -= 25;
+                                ch[cn].a_end -= scale(25);
                             });
                         } else if mode == 0 {
                             if !noend {
                                 Repository::with_characters_mut(|ch| {
-                                    ch[cn].a_end += 25;
+                                    ch[cn].a_end += scale(25);
                                 });
                             }
                         }
@@ -632,9 +640,9 @@ impl State {
         if is_undead {
             hp_regen = true;
             Repository::with_characters_mut(|ch| {
-                ch[cn].a_hp += 650;
+                ch[cn].a_hp += scale(650);
             });
-            gothp += 650;
+            gothp += scale(650);
         }
 
         // Amulet of Ankh (item 768) provides additional regeneration
@@ -653,16 +661,18 @@ impl State {
 
                 Repository::with_characters_mut(|ch| {
                     if has_regen {
-                        ch[cn].a_hp +=
-                            ch[cn].skill[core::constants::SK_REGEN][5] as i32 * moonmult / 60;
+                        ch[cn].a_hp += scale(
+                            ch[cn].skill[core::constants::SK_REGEN][5] as i32 * moonmult / 60,
+                        );
                     }
                     if has_rest {
                         ch[cn].a_end +=
-                            ch[cn].skill[core::constants::SK_REST][5] as i32 * moonmult / 60;
+                            scale(ch[cn].skill[core::constants::SK_REST][5] as i32 * moonmult / 60);
                     }
                     if has_medit {
-                        ch[cn].a_mana +=
-                            ch[cn].skill[core::constants::SK_MEDIT][5] as i32 * moonmult / 60;
+                        ch[cn].a_mana += scale(
+                            ch[cn].skill[core::constants::SK_MEDIT][5] as i32 * moonmult / 60,
+                        );
                     }
                 });
             }

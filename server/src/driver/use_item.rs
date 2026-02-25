@@ -2041,7 +2041,7 @@ pub fn use_crystal_sub(_cn: usize, item_idx: usize) -> i32 {
         let ch = &mut characters[cc];
         ch.goto_x = (m % core::constants::SERVER_MAPX as usize) as u16;
         ch.goto_y = (m / core::constants::SERVER_MAPX as usize) as u16;
-        ch.data[60] = 18 * 20;
+        ch.data[60] = TICKS * 20;
         ch.data[62] = 1;
 
         // texts (format strings)
