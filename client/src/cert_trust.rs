@@ -248,6 +248,14 @@ mod tests {
         ))
     }
 
+    fn unique_test_host(prefix: &str) -> String {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or(Duration::from_secs(0))
+            .as_nanos();
+        format!("{prefix}-{}-{nanos}.local", std::process::id())
+    }
+
     fn with_temp_cwd<F>(prefix: &str, f: F)
     where
         F: FnOnce(&Path),
@@ -281,7 +289,7 @@ mod tests {
         with_temp_cwd("tofu-match", |_| {
             let verifier = TofuVerifier::new();
             let cert = CertificateDer::from(vec![1, 2, 3, 4, 5]);
-            let server_name = ServerName::try_from("localhost").unwrap();
+            let server_name = ServerName::try_from(unique_test_host("tofu-accept")).unwrap();
 
             let first = verifier.verify_server_cert(
                 &cert,
@@ -309,7 +317,7 @@ mod tests {
             let verifier = TofuVerifier::new();
             let cert_a = CertificateDer::from(vec![10, 20, 30]);
             let cert_b = CertificateDer::from(vec![40, 50, 60]);
-            let server_name = ServerName::try_from("localhost").unwrap();
+            let server_name = ServerName::try_from(unique_test_host("tofu-mismatch")).unwrap();
 
             verifier
                 .verify_server_cert(
