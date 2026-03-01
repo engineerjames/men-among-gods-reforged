@@ -8,6 +8,9 @@ members = [
     "server/utils",
     "api",
 ]
+exclude = [
+    "server/sqlite-bench",
+]
 
 # Build with: `cargo build --profile profiling`
 # Goal: mostly-release-like performance while keeping symbols/line info for profilers.
