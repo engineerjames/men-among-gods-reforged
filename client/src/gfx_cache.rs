@@ -228,6 +228,9 @@ impl GraphicsCache {
         };
 
         if rgba_image.width == 0 || rgba_image.height == 0 {
+            log::warn!(
+                "Image has zero width or height for average color calculation. Returning (0, 0, 0)."
+            );
             return (0, 0, 0);
         }
 
