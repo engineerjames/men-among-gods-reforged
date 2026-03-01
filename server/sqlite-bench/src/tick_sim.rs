@@ -22,6 +22,7 @@ use anyhow::Result;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use rusqlite::Connection;
+use std::time::{Duration, Instant};
 
 /// Run a single simulated tick against the database using the given schema.
 ///
@@ -38,14 +39,19 @@ pub fn simulate_tick(
     let mapx = mag_core::constants::SERVER_MAPX as u16;
 
     // ── Phase 1: Global counter update ──────────────────────────────
+    let phase_start = Instant::now();
     schema.update_globals_tick(conn, tick_number as i32, tick_number as i64 * 27778)?;
     stats.writes += 1;
+    stats.phase_durations[0] += phase_start.elapsed();
 
     // ── Phase 2: Character triage ───────────────────────────────────
+    let phase_start = Instant::now();
     let active_chars = schema.character_triage(conn)?;
     stats.reads += active_chars.len();
+    stats.phase_durations[1] += phase_start.elapsed();
 
     // ── Phase 3: Viewport reads (one per player) ───────────────────
+    let phase_start = Instant::now();
     let num_players = params.active_players.min(active_chars.len());
     for i in 0..num_players {
         let (char_id, _, _) = active_chars[i];
@@ -83,8 +89,10 @@ pub fn simulate_tick(
             stats.reads += visible_items.len();
         }
     }
+    stats.phase_durations[2] += phase_start.elapsed();
 
     // ── Phase 4: Player delta sync ─────────────────────────────────
+    let phase_start = Instant::now();
     for i in 0..num_players {
         let (char_id, _, _) = active_chars[i];
 
@@ -107,8 +115,10 @@ pub fn simulate_tick(
             stats.reads += worn_ids.len();
         }
     }
+    stats.phase_durations[3] += phase_start.elapsed();
 
     // ── Phase 5: Active character stat updates (do_regenerate) ─────
+    let phase_start = Instant::now();
     let total_active = active_chars.len();
     for i in 0..total_active {
         let (char_id, _, _) = active_chars[i];
@@ -143,8 +153,10 @@ pub fn simulate_tick(
         )?;
         stats.writes += 1;
     }
+    stats.phase_durations[4] += phase_start.elapsed();
 
     // ── Phase 6: Movement (subset of active chars move each tick) ──
+    let phase_start = Instant::now();
     let movers = total_active / 8; // ~1/8 of chars move per tick (speed-gated)
     for i in 0..movers {
         let idx = (i * 8) % total_active;
@@ -181,8 +193,10 @@ pub fn simulate_tick(
             stats.writes += 441; // approximate tiles hit
         }
     }
+    stats.phase_durations[5] += phase_start.elapsed();
 
     // ── Phase 7: NPC AI reads ──────────────────────────────────────
+    let phase_start = Instant::now();
     let npc_start = num_players;
     let npc_count = params
         .active_npcs
@@ -216,8 +230,10 @@ pub fn simulate_tick(
             }
         }
     }
+    stats.phase_durations[6] += phase_start.elapsed();
 
     // ── Phase 8: really_update_char (~75 per tick) ─────────────────
+    let phase_start = Instant::now();
     let update_count = (total_active / 8).min(100);
     for _ in 0..update_count {
         let idx = rng.gen_range(0..total_active);
@@ -263,8 +279,10 @@ pub fn simulate_tick(
         )?;
         stats.writes += 1;
     }
+    stats.phase_durations[7] += phase_start.elapsed();
 
     // ── Phase 9: Effect triage + update ────────────────────────────
+    let phase_start = Instant::now();
     let active_effects = schema.effect_triage(conn)?;
     stats.reads += active_effects.len();
 
@@ -274,8 +292,10 @@ pub fn simulate_tick(
             stats.writes += 1;
         }
     }
+    stats.phase_durations[8] += phase_start.elapsed();
 
     // ── Phase 10: Item tick expire (4 map rows) ────────────────────
+    let phase_start = Instant::now();
     let expire_row = (tick_number % mag_core::constants::SERVER_MAPY as u32) as u16;
     for row_offset in 0..4 {
         let row_y = (expire_row + row_offset) % mag_core::constants::SERVER_MAPY as u16;
@@ -294,10 +314,14 @@ pub fn simulate_tick(
         }
     }
 
+    stats.phase_durations[9] += phase_start.elapsed();
+
     // ── Phase 11: Item tick GC (256 items in a round-robin window) ─
+    let phase_start = Instant::now();
     let gc_start = (tick_number * 256) % params.max_items as u32;
     let _ = schema.read_items_range(conn, gc_start, 256)?;
     stats.reads += 256;
+    stats.phase_durations[10] += phase_start.elapsed();
 
     Ok(stats)
 }
@@ -309,11 +333,41 @@ fn extract_u32_ids(blob: &[u8]) -> Vec<u32> {
         .collect()
 }
 
+/// Phase names in order, matching `phase_durations` indices.
+pub const PHASE_NAMES: [&str; 11] = [
+    "Global update",
+    "Character triage",
+    "Viewport reads",
+    "Player delta sync",
+    "Regeneration",
+    "Movement + light",
+    "NPC AI reads",
+    "really_update_char",
+    "Effect triage",
+    "Item expire",
+    "Item GC",
+];
+
+/// Number of tick phases tracked.
+pub const NUM_PHASES: usize = PHASE_NAMES.len();
+
 /// Statistics from a single tick simulation.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct TickStats {
     pub reads: usize,
     pub writes: usize,
+    /// Per-phase wall-clock duration.
+    pub phase_durations: [Duration; NUM_PHASES],
+}
+
+impl Default for TickStats {
+    fn default() -> Self {
+        Self {
+            reads: 0,
+            writes: 0,
+            phase_durations: [Duration::ZERO; NUM_PHASES],
+        }
+    }
 }
 
 impl TickStats {

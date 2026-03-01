@@ -54,8 +54,8 @@ fn bench_schema_with_data(
     let mut result = SchemaResult::new(schema_name, pop_label);
     for t in WARMUP_TICKS..(WARMUP_TICKS + SAMPLE_TICKS) {
         let start = Instant::now();
-        simulate_tick(&conn, schema, params, t).expect("sample tick");
-        result.add_sample(start.elapsed());
+        let tick_stats = simulate_tick(&conn, schema, params, t).expect("sample tick");
+        result.add_sample_with_stats(start.elapsed(), &tick_stats);
     }
 
     result
