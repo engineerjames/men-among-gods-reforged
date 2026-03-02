@@ -210,10 +210,15 @@ impl Server {
         State::initialize()?;
         NetworkManager::initialize()?;
 
-        // Mark data as dirty (in use)
-        Repository::with_globals_mut(|globals| {
-            globals.set_dirty(true);
-        });
+        // Mark data as dirty (in use) only for legacy `.dat` mode.
+        //
+        // In KeyDB mode we persist regularly and should not hard-fail future
+        // startups when a container is terminated before clean shutdown.
+        if Repository::storage_backend() == crate::repository::StorageBackend::DatFiles {
+            Repository::with_globals_mut(|globals| {
+                globals.set_dirty(true);
+            });
+        }
 
         // Log out all active characters (cleanup from previous run)
         for i in 0..core::constants::MAXCHARS {
@@ -262,7 +267,7 @@ impl Server {
         });
 
         log::info!("Validating character template positions...");
-        Repository::with_character_templates_mut(|ch_temp| {
+        Repository::with_character_templates(|ch_temp| {
             for n in 1..core::constants::MAXTCHARS {
                 if ch_temp[n].used == core::constants::USE_EMPTY {
                     continue;
@@ -279,7 +284,7 @@ impl Server {
                 let ch_y = ch_temp[n].y as i32;
 
                 if (x - ch_x).abs() + (y - ch_y).abs() > 200 {
-                    log::warn!(
+                    log::error!(
                         "RESET {} ({}): {} {} -> {} {}",
                         n,
                         ch_temp[n].get_name(),
@@ -288,11 +293,14 @@ impl Server {
                         x,
                         y
                     );
-                    ch_temp[n].data[29] =
-                        ch_temp[n].x as i32 + ch_temp[n].y as i32 * core::constants::SERVER_MAPX;
+                    return Result::Err("Character template has invalid resting position.");
+                    // ch_temp[n].data[29] =
+                    //     ch_temp[n].x as i32 + ch_temp[n].y as i32 * core::constants::SERVER_MAPX;
                 }
             }
-        });
+
+            Ok(())
+        })?;
 
         // Spawn background saver if using KeyDB backend
         if Repository::storage_backend() == StorageBackend::KeyDb {
@@ -1154,10 +1162,8 @@ impl Server {
                 // Small data: effects, globals, char templates, item templates
                 let effects = Repository::with_effects(|fx| fx.to_vec());
                 let globals = Repository::with_globals(|g| g.clone());
-                let char_templates =
-                    Repository::with_character_templates(|ct| ct.to_vec());
-                let item_templates =
-                    Repository::with_item_templates(|it| it.to_vec());
+                let char_templates = Repository::with_character_templates(|ct| ct.to_vec());
+                let item_templates = Repository::with_item_templates(|it| it.to_vec());
                 saver.send(SaveJob::SmallData {
                     effects,
                     globals,

@@ -87,8 +87,7 @@ pub fn trust_fingerprint(host: &str, fingerprint: &str) -> Result<(), String> {
 
     let mut store = KnownHostsStore::load();
     store.hosts.insert(host.to_string(), fingerprint);
-    store.save();
-    Ok(())
+    store.save()
 }
 
 fn ensure_crypto_provider_installed() -> Result<(), String> {
@@ -133,14 +132,16 @@ impl KnownHostsStore {
         }
     }
 
-    fn save(&self) {
+    fn save(&self) -> Result<(), String> {
         let path = Self::path();
-        if let Ok(data) = serde_json::to_string_pretty(self) {
-            let tmp = path.with_extension("json.tmp");
-            if fs::write(&tmp, &data).is_ok() {
-                let _ = fs::rename(&tmp, &path);
-            }
-        }
+        let data = serde_json::to_string_pretty(self)
+            .map_err(|e| format!("Failed to serialise known-hosts: {e}"))?;
+        let tmp = path.with_extension("json.tmp");
+        fs::write(&tmp, &data)
+            .map_err(|e| format!("Failed to write known-hosts tmp file '{}': {e}", tmp.display()))?;
+        fs::rename(&tmp, &path)
+            .map_err(|e| format!("Failed to update known-hosts file '{}': {e}", path.display()))?;
+        Ok(())
     }
 }
 
@@ -223,7 +224,9 @@ impl ServerCertVerifier for TofuVerifier {
         // First connection — trust and save
         log::info!("TOFU: first connection to {key}, saving fingerprint {fp}");
         store.hosts.insert(key, fp);
-        store.save();
+        if let Err(e) = store.save() {
+            log::error!("TOFU: failed to persist known-hosts: {e}");
+        }
         clear_fingerprint_mismatch();
 
         Ok(ServerCertVerified::assertion())

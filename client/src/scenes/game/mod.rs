@@ -1006,7 +1006,7 @@ impl Scene for GameScene {
                         .show(ui, |ui| {
                             ui.colored_label(
                                 egui::Color32::YELLOW,
-                                "\u{26A0} UNENCRYPTED \u{2014} Game traffic is not protected",
+                                "UNENCRYPTED - Game traffic is not protected",
                             );
                         });
                 });
@@ -1114,7 +1114,7 @@ impl Scene for GameScene {
                 // --- Performance profiling ---------------------------------
                 let profiler_label = if self.perf_profiler.is_active() {
                     format!(
-                        "Profiling… {}s remaining",
+                        "Profiling... {}s remaining",
                         self.perf_profiler.remaining_secs()
                     )
                 } else {

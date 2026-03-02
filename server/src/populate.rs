@@ -973,9 +973,10 @@ pub fn reset_char(n: usize) {
         }
     });
 
-    Repository::with_character_templates_mut(|templates| {
-        templates[n].points_tot = pts;
-    });
+    // TODO: Ensure that points_tot are updated when we set template skills
+    // Repository::with_character_templates_mut(|templates| {
+    //     templates[n].points_tot = pts;
+    // });
 
     // Destroy all instances of this template (they will be respawned)
     for cn in 1..MAXCHARS {

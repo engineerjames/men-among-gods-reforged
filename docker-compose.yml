@@ -99,6 +99,8 @@ services:
       - tls-certs:/certs:ro
     ports:
       - "5555:5555"
+    stop_signal: SIGINT
+    stop_grace_period: 2m
     restart: unless-stopped
 
 volumes:

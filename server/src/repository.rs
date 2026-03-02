@@ -792,16 +792,6 @@ impl Repository {
         Self::with_repo_mut(|repo| f(&mut repo.items[..]))
     }
 
-    /// Execute `f` with a mutable slice of item templates.
-    ///
-    /// Allows modifying or resetting item templates in a synchronized way.
-    pub fn with_item_templates_mut<F, R>(f: F) -> R
-    where
-        F: FnOnce(&mut [core::types::Item]) -> R,
-    {
-        Self::with_repo_mut(|repo| f(&mut repo.item_templates[..]))
-    }
-
     /// Execute `f` with a read-only slice of character templates.
     ///
     /// Character templates are used to spawn NPCs and to reset template
@@ -811,16 +801,6 @@ impl Repository {
         F: FnOnce(&[core::types::Character]) -> R,
     {
         Self::with_repo(|repo| f(&repo.character_templates[..]))
-    }
-
-    /// Execute `f` with a mutable slice of character templates.
-    ///
-    /// Use this to change templates and mark respawns in a synchronized way.
-    pub fn with_character_templates_mut<F, R>(f: F) -> R
-    where
-        F: FnOnce(&mut [core::types::Character]) -> R,
-    {
-        Self::with_repo_mut(|repo| f(&mut repo.character_templates[..]))
     }
 
     /// Execute `f` with a mutable slice of character instances.
