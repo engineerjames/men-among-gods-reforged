@@ -36,7 +36,7 @@ This will generate a flamegraph that you can use to analyze the performance of t
 # Client
 The client uses [SDL2](https://www.libsdl.org/) via the [Rust SDL2 bindings](https://github.com/Rust-SDL2/rust-sdl2) for rendering, input handling, and audio.
 
-The client is still in ALPHA stage and is not yet fully functional. Many features from the original Mercenaries of Astonia (v2) game are missing, and there are likely to be bugs. However, you should be able to connect to a server and explore the world to some extent.
+The client is fully functional at this point, but there are likely to be some remaining bugs to work out.
 
 ## Building on Windows, macOS, and Linux
 
