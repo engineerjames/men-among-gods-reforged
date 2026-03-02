@@ -27,6 +27,7 @@ use core::types::Character;
 /// # Returns
 ///
 /// * The computed total experience points.
+#[allow(dead_code)]
 pub fn calculate_points_tot(character: &Character) -> i32 {
     let mut pts: i32 = 0;
 
