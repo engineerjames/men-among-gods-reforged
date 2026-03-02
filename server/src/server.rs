@@ -1159,17 +1159,10 @@ impl Server {
                 saver.send(SaveJob::Items(data, half));
             }
             3 => {
-                // Small data: effects, globals, char templates, item templates
+                // Small data: effects + globals
                 let effects = Repository::with_effects(|fx| fx.to_vec());
                 let globals = Repository::with_globals(|g| g.clone());
-                let char_templates = Repository::with_character_templates(|ct| ct.to_vec());
-                let item_templates = Repository::with_item_templates(|it| it.to_vec());
-                saver.send(SaveJob::SmallData {
-                    effects,
-                    globals,
-                    character_templates: char_templates,
-                    item_templates,
-                });
+                saver.send(SaveJob::SmallData { effects, globals });
             }
             4 => {
                 // Map first half

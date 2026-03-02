@@ -194,9 +194,7 @@ impl Repository {
     fn save_to_dat_files(&self) -> Result<(), String> {
         self.save_map()?;
         self.save_items()?;
-        self.save_item_templates()?;
         self.save_characters()?;
-        self.save_character_templates()?;
         self.save_effects()?;
         self.save_globals()?;
         Ok(())
@@ -205,13 +203,11 @@ impl Repository {
     /// Save all data to KeyDB.
     fn save_to_keydb(&self) -> Result<(), String> {
         let mut con = keydb::connect()?;
-        keydb_store::save_all(
+        keydb_store::save_runtime_data(
             &mut con,
             &self.map,
             &self.items,
-            &self.item_templates,
             &self.characters,
-            &self.character_templates,
             &self.effects,
             &self.globals,
             &self.bad_names,
@@ -418,19 +414,6 @@ impl Repository {
         Ok(())
     }
 
-    fn save_item_templates(&self) -> Result<(), String> {
-        let item_templates_path = self.get_dat_file_path("titem.dat");
-
-        log::info!("Saving item templates data to {:?}", item_templates_path);
-        self.save_normalized_records(
-            "titem.dat",
-            std::mem::size_of::<core::types::Item>(),
-            self.item_templates.clone(),
-        )?;
-        log::info!("Item templates data saved successfully.");
-        Ok(())
-    }
-
     /// Load `char.dat` and populate the `characters` array.
     ///
     /// Validates the file size equals `MAXCHARS * size_of::<Character>()` and
@@ -468,24 +451,6 @@ impl Repository {
             core::constants::MAXTCHARS,
         )?;
 
-        Ok(())
-    }
-
-    fn save_character_templates(&self) -> Result<(), String> {
-        let character_templates_path = self.get_dat_file_path("tchar.dat");
-
-        log::info!(
-            "Saving character templates data to {:?}",
-            character_templates_path
-        );
-
-        self.save_normalized_records(
-            "tchar.dat",
-            std::mem::size_of::<core::types::Character>(),
-            self.character_templates.clone(),
-        )?;
-
-        log::info!("Character templates data saved successfully.");
         Ok(())
     }
 

@@ -14,7 +14,7 @@
 /// | 0     | Characters (all 8,192)                                    |
 /// | 1     | Items first half (0 .. MAXITEM/2)                         |
 /// | 2     | Items second half (MAXITEM/2 .. MAXITEM)                  |
-/// | 3     | Effects + Globals + Character templates + Item templates   |
+/// | 3     | Effects + Globals                                          |
 /// | 4     | Map first half (linear 0 .. total/2)                      |
 /// | 5     | Map second half (linear total/2 .. total)                 |
 ///
@@ -55,17 +55,13 @@ pub enum SaveJob {
     ///
     /// The `usize` is the absolute starting linear index.
     MapTiles(Vec<core::types::Map>, usize),
-    /// Persist the smaller/combined data sets in one batch:
-    /// effects, globals, character templates, and item templates.
+    /// Persist the smaller/combined mutable data sets in one batch:
+    /// effects and globals.
     SmallData {
         /// All effect slots (`game:effect:*`).
         effects: Vec<core::types::Effect>,
         /// The single global state value (`game:global`).
         globals: core::types::Global,
-        /// All character templates (`game:tchar:*`).
-        character_templates: Vec<core::types::Character>,
-        /// All item templates (`game:titem:*`).
-        item_templates: Vec<core::types::Item>,
     },
     /// Request a synchronous flush — the saver thread will ack via the
     /// provided one-shot channel once the write completes.
@@ -257,12 +253,7 @@ fn saver_thread_main(rx: mpsc::Receiver<SaveJob>) {
                     );
                 }
             }
-            SaveJob::SmallData {
-                effects,
-                globals,
-                character_templates,
-                item_templates,
-            } => {
+            SaveJob::SmallData { effects, globals } => {
                 let t = std::time::Instant::now();
                 let mut ok = true;
                 if let Err(e) = keydb_store::save_effects(&mut con, &effects) {
@@ -271,16 +262,6 @@ fn saver_thread_main(rx: mpsc::Receiver<SaveJob>) {
                 }
                 if let Err(e) = keydb_store::save_globals(&mut con, &globals) {
                     log::error!("Background save globals failed: {e}");
-                    ok = false;
-                }
-                if let Err(e) =
-                    keydb_store::save_character_templates(&mut con, &character_templates)
-                {
-                    log::error!("Background save char templates failed: {e}");
-                    ok = false;
-                }
-                if let Err(e) = keydb_store::save_item_templates(&mut con, &item_templates) {
-                    log::error!("Background save item templates failed: {e}");
                     ok = false;
                 }
                 if !ok {
@@ -343,14 +324,12 @@ mod tests {
         let _job = SaveJob::MapTiles(vec![core::types::Map::default()], 100);
     }
 
-    /// `SaveJob::SmallData` can bundle all four data types.
+    /// `SaveJob::SmallData` can bundle effects and globals.
     #[test]
     fn save_job_small_data_construction() {
         let _job = SaveJob::SmallData {
             effects: vec![core::types::Effect::default()],
             globals: core::types::Global::default(),
-            character_templates: vec![core::types::Character::default()],
-            item_templates: vec![core::types::Item::default()],
         };
     }
 

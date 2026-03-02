@@ -387,58 +387,52 @@ pub fn load_all(con: &mut Connection) -> Result<GameData, String> {
     })
 }
 
-/// Save ALL game data to KeyDB.
+/// Save mutable runtime game data to KeyDB, excluding templates.
 ///
-/// Writes every entity type and finishes by setting `game:meta:version`.
-/// Used by the migration tool and the clean-shutdown path in
-/// [`Repository::save_to_keydb`].
+/// This variant is intended for normal server operation/shutdown where
+/// character and item templates are treated as immutable content and are not
+/// rewritten by the live game server.
 ///
 /// # Arguments
 ///
-/// * `con`                  - An open Redis/KeyDB connection.
-/// * `map`                  - All map tiles in row-major order.
-/// * `items`                - All item slots.
-/// * `item_templates`       - All item templates.
-/// * `characters`           - All character slots.
-/// * `character_templates`  - All character templates.
-/// * `effects`              - All effect slots.
-/// * `globals`              - The single global state value.
-/// * `bad_names`            - List of banned player names.
-/// * `bad_words`            - List of banned words.
-/// * `message_of_the_day`   - Server MOTD shown at login.
+/// * `con`                - An open Redis/KeyDB connection.
+/// * `map`                - All map tiles in row-major order.
+/// * `items`              - All item slots.
+/// * `characters`         - All character slots.
+/// * `effects`            - All effect slots.
+/// * `globals`            - The single global state value.
+/// * `bad_names`          - List of banned player names.
+/// * `bad_words`          - List of banned words.
+/// * `message_of_the_day` - Server MOTD shown at login.
 ///
 /// # Returns
 ///
 /// * `Ok(())` on success, or an `Err` describing any pipeline/encode failure.
-pub fn save_all(
+pub fn save_runtime_data(
     con: &mut Connection,
     map: &[core::types::Map],
     items: &[core::types::Item],
-    item_templates: &[core::types::Item],
     characters: &[core::types::Character],
-    character_templates: &[core::types::Character],
     effects: &[core::types::Effect],
     globals: &core::types::Global,
     bad_names: &[String],
     bad_words: &[String],
     message_of_the_day: &str,
 ) -> Result<(), String> {
-    log::info!("Saving all game data to KeyDB...");
+    log::info!("Saving runtime game data to KeyDB (templates excluded)...");
 
     save_map(con, map)?;
     save_items(con, items)?;
-    save_item_templates(con, item_templates)?;
     save_characters(con, characters)?;
-    save_character_templates(con, character_templates)?;
     save_effects(con, effects)?;
     save_globals(con, globals)?;
     save_text_data(con, bad_names, bad_words, message_of_the_day)?;
 
-    // Write schema version marker
+    // Keep schema marker present for startup/migration checks.
     con.set::<_, _, ()>("game:meta:version", SCHEMA_VERSION)
         .map_err(|e| format!("KeyDB SET game:meta:version: {e}"))?;
 
-    log::info!("All game data saved to KeyDB successfully.");
+    log::info!("Runtime game data saved to KeyDB successfully.");
     Ok(())
 }
 
@@ -535,26 +529,6 @@ pub fn save_items(con: &mut Connection, items: &[core::types::Item]) -> Result<(
     Ok(())
 }
 
-/// Save all item templates to KeyDB under `game:titem:{idx}` keys.
-///
-/// # Arguments
-///
-/// * `con`            - An open Redis/KeyDB connection.
-/// * `item_templates` - All item templates to persist.
-///
-/// # Returns
-///
-/// * `Ok(())` on success, or an `Err` describing the failure.
-pub fn save_item_templates(
-    con: &mut Connection,
-    item_templates: &[core::types::Item],
-) -> Result<(), String> {
-    log::info!("  Saving {} item templates...", item_templates.len());
-    save_indexed_entities(con, "game:titem:", item_templates)?;
-    log::info!("  Item templates saved.");
-    Ok(())
-}
-
 /// Save all character slots to KeyDB under `game:char:{idx}` keys.
 ///
 /// # Arguments
@@ -572,29 +546,6 @@ pub fn save_characters(
     log::info!("  Saving {} characters...", characters.len());
     save_indexed_entities(con, "game:char:", characters)?;
     log::info!("  Characters saved.");
-    Ok(())
-}
-
-/// Save all character templates to KeyDB under `game:tchar:{idx}` keys.
-///
-/// # Arguments
-///
-/// * `con`                  - An open Redis/KeyDB connection.
-/// * `character_templates`  - All character templates to persist.
-///
-/// # Returns
-///
-/// * `Ok(())` on success, or an `Err` describing the failure.
-pub fn save_character_templates(
-    con: &mut Connection,
-    character_templates: &[core::types::Character],
-) -> Result<(), String> {
-    log::info!(
-        "  Saving {} character templates...",
-        character_templates.len()
-    );
-    save_indexed_entities(con, "game:tchar:", character_templates)?;
-    log::info!("  Character templates saved.");
     Ok(())
 }
 
