@@ -4,12 +4,38 @@ use std::{env, fs};
 
 use bincode::{Decode, Encode};
 
+use crate::keydb;
+use crate::keydb_store;
 use crate::single_thread_cell::SingleThreadCell;
 
 static REPOSITORY: OnceLock<SingleThreadCell<Repository>> = OnceLock::new();
 
 const NORMALIZED_MAGIC: [u8; 4] = *b"MAG2";
 const NORMALIZED_VERSION: u32 = 1;
+
+/// Persistence backend used by the repository for loading and saving data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StorageBackend {
+    /// Load/save from `.dat` files on disk (legacy).
+    DatFiles,
+    /// Load/save from KeyDB.
+    KeyDb,
+}
+
+impl StorageBackend {
+    /// Determine the storage backend from the `MAG_STORAGE_BACKEND` env var.
+    /// Values: `keydb` → [`KeyDb`], anything else (or unset) → [`DatFiles`].
+    pub fn from_env() -> Self {
+        match env::var("MAG_STORAGE_BACKEND")
+            .unwrap_or_default()
+            .to_lowercase()
+            .as_str()
+        {
+            "keydb" | "redis" => StorageBackend::KeyDb,
+            _ => StorageBackend::DatFiles,
+        }
+    }
+}
 
 #[derive(Debug, Encode, Decode)]
 struct NormalizedDataSet<T> {
@@ -45,6 +71,11 @@ pub struct Repository {
     item_tick_gc_off: u32,
     item_tick_gc_count: u32,
     item_tick_expire_counter: u32,
+    /// Which storage backend this repository was loaded from.
+    storage_backend: StorageBackend,
+    /// Set to true once a clean save has been performed (avoids double-save
+    /// from both `shutdown()` and `Drop`).
+    saved_cleanly: bool,
 }
 
 impl Repository {
@@ -54,7 +85,7 @@ impl Repository {
     /// constants (for example `MAXITEM`, `MAXCHARS`, `SERVER_MAPX` × `SERVER_MAPY`)
     /// and attempts to discover the current executable path to resolve the
     /// `.dat` directory via `get_dat_file_path`.
-    fn new() -> Self {
+    fn new(backend: StorageBackend) -> Self {
         Self {
             map: vec![
                 core::types::Map::default();
@@ -86,6 +117,8 @@ impl Repository {
             item_tick_gc_off: 0,
             item_tick_gc_count: 0,
             item_tick_expire_counter: 0,
+            storage_backend: backend,
+            saved_cleanly: false,
         }
     }
     /// Load all game data from disk into memory.
@@ -94,6 +127,14 @@ impl Repository {
     /// error if any step fails. After a successful `load`, the repository
     /// contains populated `map`, `items`, `characters`, `globals`, etc.
     fn load(&mut self) -> Result<(), String> {
+        match self.storage_backend {
+            StorageBackend::DatFiles => self.load_from_dat_files(),
+            StorageBackend::KeyDb => self.load_from_keydb(),
+        }
+    }
+
+    /// Load all data from `.dat` files on disk (legacy path).
+    fn load_from_dat_files(&mut self) -> Result<(), String> {
         self.load_map()?;
         self.load_items()?;
         self.load_item_templates()?;
@@ -108,11 +149,49 @@ impl Repository {
         Ok(())
     }
 
+    /// Load all data from KeyDB.
+    fn load_from_keydb(&mut self) -> Result<(), String> {
+        let mut con = keydb::connect()?;
+        let data = keydb_store::load_all(&mut con)?;
+
+        self.map = data.map;
+        self.items = data.items;
+        self.item_templates = data.item_templates;
+        self.characters = data.characters;
+        self.character_templates = data.character_templates;
+        self.effects = data.effects;
+        self.globals = data.globals;
+        self.bad_names = data.bad_names;
+        self.bad_words = data.bad_words;
+        self.message_of_the_day = data.message_of_the_day;
+
+        log::info!(
+            "Globals data: dirty={}, character_cnt={}, ticker={}, fullmoon={}, newmoon={}, unique={}, cap={}",
+            self.globals.is_dirty(),
+            self.globals.character_cnt,
+            self.globals.ticker,
+            self.globals.fullmoon,
+            self.globals.newmoon,
+            self.globals.unique,
+            self.globals.cap
+        );
+
+        Ok(())
+    }
+
     /// Save all game data from memory back to disk.
     /// The bad names, words, and message of the day are not saved back as
     /// they are managed separately via text files, and are treated currently
     /// as read-only.
     fn save(&mut self) -> Result<(), String> {
+        match self.storage_backend {
+            StorageBackend::DatFiles => self.save_to_dat_files(),
+            StorageBackend::KeyDb => self.save_to_keydb(),
+        }
+    }
+
+    /// Save all data to `.dat` files on disk (legacy path).
+    fn save_to_dat_files(&self) -> Result<(), String> {
         self.save_map()?;
         self.save_items()?;
         self.save_item_templates()?;
@@ -123,7 +202,26 @@ impl Repository {
         Ok(())
     }
 
-    /// Perform a clean shutdown of the repository by saving all data back to disk.
+    /// Save all data to KeyDB.
+    fn save_to_keydb(&self) -> Result<(), String> {
+        let mut con = keydb::connect()?;
+        keydb_store::save_all(
+            &mut con,
+            &self.map,
+            &self.items,
+            &self.item_templates,
+            &self.characters,
+            &self.character_templates,
+            &self.effects,
+            &self.globals,
+            &self.bad_names,
+            &self.bad_words,
+            &self.message_of_the_day,
+        )
+    }
+
+    /// Perform a clean shutdown of the repository by saving all data to the
+    /// configured storage backend.
     pub fn shutdown() {
         if REPOSITORY.get().is_none() {
             log::warn!("Repository.shutdown called but repository not initialized.");
@@ -135,9 +233,15 @@ impl Repository {
             if let Err(e) = repo.save() {
                 log::error!("Failed to save repository during shutdown: {}", e);
             } else {
+                repo.saved_cleanly = true;
                 log::info!("Repository saved cleanly in shutdown()");
             }
         });
+    }
+
+    /// Return the storage backend in use.
+    pub fn storage_backend() -> StorageBackend {
+        Self::with_repo(|repo| repo.storage_backend)
     }
 
     /// Resolve the absolute path to a `.dat` file given its file name.
@@ -555,7 +659,10 @@ impl Repository {
     /// `REPOSITORY` OnceLock guarded by a `ReentrantMutex`. Returns an error if
     /// initialization or loading fails, or if the repository was already set.
     pub fn initialize() -> Result<(), String> {
-        let mut repo = Repository::new();
+        let backend = StorageBackend::from_env();
+        log::info!("Repository storage backend: {:?}", backend);
+
+        let mut repo = Repository::new(backend);
         repo.load()?;
         REPOSITORY
             .set(SingleThreadCell::new(repo))
@@ -847,14 +954,20 @@ impl Repository {
 impl Drop for Repository {
     /// Called when the `Repository` is dropped (on server shutdown).
     ///
-    /// Marks repository data as clean and performs any final logging; further
-    /// graceful shutdown steps may be added here in the future.
+    /// Acts as a safety net: if `shutdown()` already performed a clean save
+    /// (indicated by `saved_cleanly`), the drop is a no-op. Otherwise it
+    /// attempts a last-ditch save to avoid data loss.
     fn drop(&mut self) {
+        if self.saved_cleanly {
+            log::info!("Repository drop: already saved cleanly, skipping.");
+            return;
+        }
+
         self.globals.set_dirty(false);
         self.save().unwrap_or_else(|e| {
             log::error!("Failed to save repository cleanly on shutdown: {}", e);
         });
 
-        log::info!("Repository saved cleanly on shutdown.");
+        log::info!("Repository saved cleanly on shutdown (via Drop).");
     }
 }

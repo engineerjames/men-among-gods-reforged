@@ -5,11 +5,11 @@ use std::env;
 
 const DEFAULT_KEYDB_URL: &str = "redis://127.0.0.1:5556/";
 
-fn keydb_url() -> String {
+pub(crate) fn keydb_url() -> String {
     env::var("MAG_KEYDB_URL").unwrap_or_else(|_| DEFAULT_KEYDB_URL.to_string())
 }
 
-fn connect() -> Result<redis::Connection, String> {
+pub(crate) fn connect() -> Result<redis::Connection, String> {
     let url = keydb_url();
     let client = redis::Client::open(url.as_str())
         .map_err(|err| format!("Failed to open KeyDB client: {err}"))?;

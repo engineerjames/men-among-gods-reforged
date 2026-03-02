@@ -1,9 +1,11 @@
 mod area;
+mod background_saver;
 mod driver;
 mod effect;
 mod enums;
 mod god;
 mod keydb;
+mod keydb_store;
 mod types;
 
 #[macro_use]
@@ -134,6 +136,12 @@ fn main() -> Result<(), String> {
             player::plr_logout(players[n].usnr, n, enums::LogoutReason::Shutdown);
         }
     });
+
+    // Shut down background saver thread (flushes pending writes)
+    server.shutdown_background_saver();
+
+    // Perform a full synchronous save to the configured backend
+    Repository::shutdown();
 
     // TODO: Wait some amount of time and forceably close all sockets
 

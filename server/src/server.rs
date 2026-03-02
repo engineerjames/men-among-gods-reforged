@@ -8,11 +8,12 @@ use std::net::TcpListener;
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use crate::background_saver::{self, BackgroundSaver, SaveJob};
 use crate::effect::EffectManager;
 use crate::god::God;
 use crate::lab9::Labyrinth9;
 use crate::network_manager::NetworkManager;
-use crate::repository::Repository;
+use crate::repository::{Repository, StorageBackend};
 use crate::single_thread_cell::SingleThreadCell;
 use crate::state::State;
 use crate::tls::{self, GameStream};
@@ -65,6 +66,13 @@ pub struct Server {
 
     /// Measurement interval in ticks for performance statistics.
     measurement_interval: u32,
+
+    /// Background saver handle (only present when using KeyDB backend).
+    background_saver: Option<BackgroundSaver>,
+
+    /// Counter that drives the rotating save schedule (increments each tick
+    /// when using KeyDB backend).
+    save_tick_counter: u32,
 }
 
 impl Server {
@@ -78,6 +86,8 @@ impl Server {
             tick_perf_stats: StatisticsBuffer::new(100),
             net_io_perf_stats: StatisticsBuffer::new(100),
             measurement_interval: 20,
+            background_saver: None,
+            save_tick_counter: 0,
         }
     }
 
@@ -284,6 +294,12 @@ impl Server {
             }
         });
 
+        // Spawn background saver if using KeyDB backend
+        if Repository::storage_backend() == StorageBackend::KeyDb {
+            log::info!("Starting background KeyDB saver thread...");
+            self.background_saver = Some(background_saver::spawn());
+        }
+
         Ok(())
     }
 
@@ -408,6 +424,9 @@ impl Server {
         });
 
         let ticker = Repository::with_globals(|globals| globals.ticker);
+
+        // Background save scheduling (KeyDB only)
+        self.maybe_enqueue_background_save();
 
         // Send tick to players and count online
         let mut online = 0;
@@ -1086,6 +1105,93 @@ impl Server {
                     });
                 }
             }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    //  Background saver scheduling (KeyDB backend only)
+    // -----------------------------------------------------------------------
+
+    /// Check whether it is time to enqueue a background save job, and if so,
+    /// clone the next slice of data and send it to the background saver thread.
+    fn maybe_enqueue_background_save(&mut self) {
+        let saver = match &self.background_saver {
+            Some(s) => s,
+            None => return,
+        };
+
+        self.save_tick_counter += 1;
+        if self.save_tick_counter < background_saver::SAVE_INTERVAL_TICKS {
+            return;
+        }
+        self.save_tick_counter = 0;
+
+        // Determine which cycle we're on (wraps around)
+        let cycle = Repository::with_globals(|g| {
+            (g.ticker.unsigned_abs() / background_saver::SAVE_INTERVAL_TICKS)
+                % background_saver::SAVE_CYCLE_COUNT
+        });
+
+        match cycle {
+            0 => {
+                // Characters
+                let data = Repository::with_characters(|ch| ch.to_vec());
+                saver.send(SaveJob::Characters(data));
+            }
+            1 => {
+                // Items first half
+                let half = core::constants::MAXITEM / 2;
+                let data = Repository::with_items(|it| it[..half].to_vec());
+                saver.send(SaveJob::Items(data, 0));
+            }
+            2 => {
+                // Items second half
+                let half = core::constants::MAXITEM / 2;
+                let data = Repository::with_items(|it| it[half..].to_vec());
+                saver.send(SaveJob::Items(data, half));
+            }
+            3 => {
+                // Small data: effects, globals, char templates, item templates
+                let effects = Repository::with_effects(|fx| fx.to_vec());
+                let globals = Repository::with_globals(|g| g.clone());
+                let char_templates =
+                    Repository::with_character_templates(|ct| ct.to_vec());
+                let item_templates =
+                    Repository::with_item_templates(|it| it.to_vec());
+                saver.send(SaveJob::SmallData {
+                    effects,
+                    globals,
+                    character_templates: char_templates,
+                    item_templates,
+                });
+            }
+            4 => {
+                // Map first half
+                let total = (core::constants::SERVER_MAPX as usize)
+                    * (core::constants::SERVER_MAPY as usize);
+                let half = total / 2;
+                let data = Repository::with_map(|m| m[..half].to_vec());
+                saver.send(SaveJob::MapTiles(data, 0));
+            }
+            5 => {
+                // Map second half
+                let total = (core::constants::SERVER_MAPX as usize)
+                    * (core::constants::SERVER_MAPY as usize);
+                let half = total / 2;
+                let data = Repository::with_map(|m| m[half..].to_vec());
+                saver.send(SaveJob::MapTiles(data, half));
+            }
+            _ => {}
+        }
+    }
+
+    /// Shut down the background saver thread cleanly.
+    /// Call this during server shutdown, after the game loop has exited.
+    pub fn shutdown_background_saver(&mut self) {
+        if let Some(mut saver) = self.background_saver.take() {
+            log::info!("Shutting down background saver thread...");
+            saver.shutdown();
+            log::info!("Background saver thread stopped.");
         }
     }
 

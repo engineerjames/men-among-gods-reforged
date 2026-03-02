@@ -2,7 +2,7 @@ use crate::constants;
 use bincode::{Decode, Encode};
 
 /// Global server state structure
-#[derive(Debug, Default, PartialEq, Eq, Encode, Decode)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct Global {
     pub mdtime: i32,
     pub mdday: i32,
