@@ -15,7 +15,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
@@ -23,6 +23,72 @@ use rustls::{ClientConfig, DigitallySignedStruct, Error, SignatureScheme};
 use sha2::{Digest, Sha256};
 
 use crate::preferences;
+
+/// Captures details for a TLS fingerprint mismatch detected by TOFU.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FingerprintMismatch {
+    /// Host key used in `mag_known_hosts.json` (e.g. `127.0.0.1`).
+    pub host: String,
+    /// Previously trusted SHA-256 fingerprint (hex).
+    pub expected_fingerprint: String,
+    /// Newly presented SHA-256 fingerprint (hex).
+    pub received_fingerprint: String,
+}
+
+fn mismatch_slot() -> &'static Mutex<Option<FingerprintMismatch>> {
+    static SLOT: OnceLock<Mutex<Option<FingerprintMismatch>>> = OnceLock::new();
+    SLOT.get_or_init(|| Mutex::new(None))
+}
+
+fn store_fingerprint_mismatch(mismatch: FingerprintMismatch) {
+    if let Ok(mut slot) = mismatch_slot().lock() {
+        *slot = Some(mismatch);
+    }
+}
+
+fn clear_fingerprint_mismatch() {
+    if let Ok(mut slot) = mismatch_slot().lock() {
+        *slot = None;
+    }
+}
+
+/// Returns and clears the last captured TLS fingerprint mismatch.
+///
+/// # Returns
+///
+/// * `Some(FingerprintMismatch)` if a mismatch was captured on the most
+///   recent failed TLS handshake.
+/// * `None` when no mismatch is pending.
+pub fn take_last_fingerprint_mismatch() -> Option<FingerprintMismatch> {
+    mismatch_slot().lock().ok().and_then(|mut slot| slot.take())
+}
+
+/// Persists a trusted fingerprint for `host` in `mag_known_hosts.json`.
+///
+/// # Arguments
+///
+/// * `host` - Host key used by TOFU (e.g. `127.0.0.1`).
+/// * `fingerprint` - New SHA-256 fingerprint (hex) to trust.
+///
+/// # Returns
+///
+/// * `Ok(())` on success.
+/// * `Err(String)` if the known-hosts file cannot be updated.
+pub fn trust_fingerprint(host: &str, fingerprint: &str) -> Result<(), String> {
+    let host = host.trim();
+    let fingerprint = fingerprint.trim().to_ascii_lowercase();
+
+    if host.is_empty() {
+        return Err("Host is empty".to_string());
+    }
+    if fingerprint.is_empty() {
+        return Err("Fingerprint is empty".to_string());
+    }
+
+    let mut store = KnownHostsStore::load();
+    store.hosts.insert(host.to_string(), fingerprint);
+    store.save()
+}
 
 fn ensure_crypto_provider_installed() -> Result<(), String> {
     if rustls::crypto::CryptoProvider::get_default().is_some() {
@@ -66,14 +132,24 @@ impl KnownHostsStore {
         }
     }
 
-    fn save(&self) {
+    fn save(&self) -> Result<(), String> {
         let path = Self::path();
-        if let Ok(data) = serde_json::to_string_pretty(self) {
-            let tmp = path.with_extension("json.tmp");
-            if fs::write(&tmp, &data).is_ok() {
-                let _ = fs::rename(&tmp, &path);
-            }
-        }
+        let data = serde_json::to_string_pretty(self)
+            .map_err(|e| format!("Failed to serialise known-hosts: {e}"))?;
+        let tmp = path.with_extension("json.tmp");
+        fs::write(&tmp, &data).map_err(|e| {
+            format!(
+                "Failed to write known-hosts tmp file '{}': {e}",
+                tmp.display()
+            )
+        })?;
+        fs::rename(&tmp, &path).map_err(|e| {
+            format!(
+                "Failed to update known-hosts file '{}': {e}",
+                path.display()
+            )
+        })?;
+        Ok(())
     }
 }
 
@@ -127,9 +203,17 @@ impl ServerCertVerifier for TofuVerifier {
 
         if let Some(saved) = store.hosts.get(&key) {
             if *saved == fp {
+                clear_fingerprint_mismatch();
                 log::debug!("TOFU: fingerprint match for {key}");
                 return Ok(ServerCertVerified::assertion());
             }
+
+            store_fingerprint_mismatch(FingerprintMismatch {
+                host: key.clone(),
+                expected_fingerprint: saved.clone(),
+                received_fingerprint: fp.clone(),
+            });
+
             log::error!(
                 "TOFU: fingerprint MISMATCH for {key}! \
                  stored={saved}, received={fp}"
@@ -148,7 +232,10 @@ impl ServerCertVerifier for TofuVerifier {
         // First connection — trust and save
         log::info!("TOFU: first connection to {key}, saving fingerprint {fp}");
         store.hosts.insert(key, fp);
-        store.save();
+        if let Err(e) = store.save() {
+            log::error!("TOFU: failed to persist known-hosts: {e}");
+        }
+        clear_fingerprint_mismatch();
 
         Ok(ServerCertVerified::assertion())
     }

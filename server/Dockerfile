@@ -17,6 +17,7 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY --from=builder /workspace/target/release/server /app/server
+COPY --from=builder /workspace/target/release/dat-to-keydb /app/dat-to-keydb
 COPY --from=builder /workspace/server/assets/.dat /app/.dat
 
 EXPOSE 5555

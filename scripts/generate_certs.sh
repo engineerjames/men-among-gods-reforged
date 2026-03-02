@@ -37,6 +37,14 @@ done
 
 mkdir -p "$OUT_DIR"
 
+# Idempotency guard — skip generation if all cert files already exist.
+# This prevents certs from rotating on every `docker compose up`, which would
+# otherwise invalidate every client's TOFU-stored fingerprint.
+if [[ -f "$OUT_DIR/server.crt" && -f "$OUT_DIR/server.key" && -f "$OUT_DIR/ca.crt" ]]; then
+    echo "==> Certificates already exist in $OUT_DIR/ — skipping generation."
+    exit 0
+fi
+
 # Default Subject Alternative Names:
 # - DNS:localhost + IP:127.0.0.1 for local testing
 # - DNS:menamonggods.ddns.net for hosted access via domain name

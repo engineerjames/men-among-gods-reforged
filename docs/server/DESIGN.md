@@ -288,3 +288,95 @@ sequenceDiagram
 - Because `game_tick()` runs before `rec_player()` inside a scheduling iteration, input commonly incurs up to one tick of delay before affecting simulation.
 - `SV_TICK` is currently emitted during login flows; most other per-tick updates are sent as `xsend` messages batched into the tick payload.
 
+## Persistence: Storage Backends
+
+The server supports two storage backends, controlled by the `MAG_STORAGE_BACKEND` environment variable:
+
+| Value | Backend | Description |
+|-------|---------|-------------|
+| *(unset)* or `dat` | `.dat` files | Legacy binary files in `<exe_parent>/.dat/`. Default. |
+| `keydb` or `redis` | KeyDB | All game data stored as bincode-encoded blobs in KeyDB. |
+
+### KeyDB Backend
+
+When using the KeyDB backend, the server:
+
+1. **Loads** all game data from KeyDB on startup via pipelined `GET` commands.
+2. Operates on in-memory data identically to the `.dat` path — the game loop is unchanged.
+3. **Background saver thread** periodically clones slices of data from the main thread and writes them to KeyDB on a rotating schedule (~60 second full rotation, ~10 seconds between individual saves).
+4. **On shutdown**, performs a synchronous full save to KeyDB before exiting.
+
+#### Key Schema
+
+| Key pattern | Data type | Count |
+|---|---|---|
+| `game:map:{x}:{y}` | bincode `Map` | 1,048,576 |
+| `game:item:{idx}` | bincode `Item` | 98,304 |
+| `game:titem:{idx}` | bincode `Item` | 4,548 |
+| `game:char:{idx}` | bincode `Character` | 8,192 |
+| `game:tchar:{idx}` | bincode `Character` | 4,548 |
+| `game:effect:{idx}` | bincode `Effect` | 4,096 |
+| `game:global` | bincode `Global` | 1 |
+| `game:badnames` | bincode `Vec<String>` | 1 |
+| `game:badwords` | bincode `Vec<String>` | 1 |
+| `game:motd` | UTF-8 string | 1 |
+| `game:meta:version` | integer | 1 |
+
+#### Background Save Rotation
+
+| Cycle | Data | Approx timing |
+|-------|------|---------------|
+| 0 | Characters (all 8,192) | T+10s |
+| 1 | Items first half (0..49,152) | T+20s |
+| 2 | Items second half (49,152..98,304) | T+30s |
+| 3 | Effects + Globals + Templates | T+40s |
+| 4 | Map first half | T+50s |
+| 5 | Map second half | T+60s |
+
+Maximum data loss on server crash: ~60 seconds of gameplay.
+
+#### Migration Tool
+
+To migrate existing `.dat` files to KeyDB:
+
+```sh
+cargo run -p server --bin dat-to-keydb -- --dat-dir /path/to/.dat
+```
+
+Use `--force` to overwrite existing game data in KeyDB.
+
+Use `--skip-if-seeded` to exit successfully if `game:meta:version` already
+exists (useful for idempotent startup jobs).
+
+#### Docker Compose Bootstrap (KeyDB mode)
+
+The compose stack runs an idempotent seed step before the game server starts:
+
+1. `keydb` starts and becomes healthy.
+2. `server-seed` runs `dat-to-keydb --skip-if-seeded`.
+	- First run: imports `.dat` into KeyDB.
+	- Later runs: detects existing `game:meta:version` and exits success.
+3. `server` starts with `MAG_STORAGE_BACKEND=keydb` after `server-seed`
+	completes successfully.
+
+This ensures KeyDB is initialized exactly once per persistent KeyDB volume while
+keeping `docker compose up` deterministic.
+
+#### Recommended KeyDB Configuration
+
+```conf
+appendonly yes
+appendfsync everysec
+save 900 1
+maxmemory 512mb
+server-threads 2
+```
+
+In compose, the baseline durability options are set explicitly:
+
+```conf
+appendonly yes
+appendfsync everysec
+save 900 1
+```
+

@@ -1,6 +1,5 @@
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)] // TODO: Check usage and remove if unnecessary
 
 /// Mirrors the original `LogoutReason` values used in the server protocol
 /// and internal logic. These codes indicate why a client/character was
@@ -16,24 +15,22 @@ pub enum LogoutReason {
     NoRoom = 3,
     /// Invalid parameters in the connection request.
     ParamsInvalid = 4,
-    /// Non-active account disconnected.
-    NonActive = 5,
     /// Incorrect password supplied.
-    PasswordIncorrect = 6,
+    PasswordIncorrect = 5,
     /// Client is too slow / cannot keep up with server ticks.
-    ClientTooSlow = 7,
+    ClientTooSlow = 6,
     /// Generic failure / internal error caused logout.
-    Failure = 8,
+    Failure = 7,
     /// Server shutdown initiated.
-    Shutdown = 9,
+    Shutdown = 8,
     /// Logout requested due to tavern (special server mode).
-    Tavern = 10,
+    Tavern = 9,
     /// Client/server protocol version mismatch.
-    VersionMismatch = 11,
+    VersionMismatch = 10,
     /// Normal exit initiated by the client.
-    Exit = 12,
+    Exit = 11,
     /// Logout due to usurpation (another process took control).
-    Usurp = 13,
+    Usurp = 12,
     /// Player was kicked by an administrator.
-    Kicked = 14,
+    Kicked = 13,
 }

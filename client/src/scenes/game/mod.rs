@@ -37,6 +37,7 @@ use sdl2::{
 use mag_core::constants::{ISCHAR, ISITEM, ISUSABLE, TILEX, TILEY};
 
 use crate::{
+    cert_trust,
     network::{client_commands::ClientCommand, NetworkRuntime},
     player_state::PlayerState,
     preferences::{self, CharacterIdentity, DisplayMode},
@@ -153,6 +154,7 @@ pub struct GameScene {
     pub(super) chat_history_index: Option<usize>,
     pub(super) chat_history_draft: Option<String>,
     pub(super) pending_exit: Option<String>,
+    pub(super) certificate_mismatch: Option<cert_trust::FingerprintMismatch>,
     pub(super) log_scroll: usize,
     pub(super) last_log_len: usize,
     pub(super) ctrl_held: bool,
@@ -201,6 +203,7 @@ impl GameScene {
             chat_history_index: None,
             chat_history_draft: None,
             pending_exit: None,
+            certificate_mismatch: None,
             log_scroll: 0,
             last_log_len: 0,
             ctrl_held: false,
@@ -262,6 +265,53 @@ impl GameScene {
 
         false
     }
+
+    /// Starts (or restarts) the game network session from the current login target.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state with API login target and session.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if the network runtime is started.
+    /// * `Err(String)` when required login target data is missing.
+    fn start_game_network_session(&mut self, app_state: &mut AppState) -> Result<(), String> {
+        let login_target = app_state
+            .api
+            .login_target
+            .clone()
+            .ok_or_else(|| "No login target".to_string())?;
+
+        let host = crate::hosts::get_host_from_api_base_url(&app_state.api.base_url)
+            .unwrap_or_else(crate::hosts::get_server_ip);
+        let use_tls = app_state.api.base_url.starts_with("https://");
+
+        log::info!(
+            "GameScene: connecting to {}:5555 with ticket={} tls={} (api_base_url={})",
+            host,
+            login_target.ticket,
+            use_tls,
+            app_state.api.base_url
+        );
+
+        if let Some(mut net) = app_state.network.take() {
+            net.shutdown();
+        }
+
+        app_state.network = Some(NetworkRuntime::new(
+            host,
+            5555,
+            login_target.ticket,
+            login_target.race,
+            use_tls,
+        ));
+
+        app_state.player_state = Some(PlayerState::default());
+        self.pending_exit = None;
+        self.certificate_mismatch = None;
+        Ok(())
+    }
 }
 
 impl Default for GameScene {
@@ -281,6 +331,7 @@ impl Scene for GameScene {
     fn on_enter(&mut self, app_state: &mut AppState) {
         self.input_buf.clear();
         self.pending_exit = None;
+        self.certificate_mismatch = None;
         self.log_scroll = 0;
         self.last_log_len = 0;
         self.ctrl_held = false;
@@ -319,25 +370,14 @@ impl Scene for GameScene {
             preferences::log_file_path().display()
         );
 
-        let host = crate::hosts::get_host_from_api_base_url(&app_state.api.base_url)
-            .unwrap_or_else(crate::hosts::get_server_ip);
-        let use_tls = app_state.api.base_url.starts_with("https://");
-        log::info!(
-            "GameScene: connecting to {}:5555 with ticket={} tls={} (api_base_url={})",
-            host,
-            login_target.ticket,
-            use_tls,
-            app_state.api.base_url
-        );
-
-        app_state.network = Some(NetworkRuntime::new(
-            host,
-            5555,
-            login_target.ticket,
-            login_target.race,
-            use_tls,
-        ));
-        app_state.player_state = Some(PlayerState::default());
+        if let Err(err) = self.start_game_network_session(app_state) {
+            log::error!(
+                "GameScene on_enter: failed to start network session: {}",
+                err
+            );
+            self.pending_exit = Some(err);
+            return;
+        }
 
         let identity = CharacterIdentity {
             id: login_target.character_id,
@@ -893,6 +933,61 @@ impl Scene for GameScene {
     ///
     /// `Some(SceneType)` if the player chose to disconnect or quit, otherwise `None`.
     fn render_ui(&mut self, app_state: &mut AppState, ctx: &egui::Context) -> Option<SceneType> {
+        let mut cert_accept_clicked = false;
+        let mut cert_reject_clicked = false;
+
+        if let Some(mismatch) = self.certificate_mismatch.as_ref() {
+            egui::Window::new("Game Server Certificate Changed")
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    ui.label("The game server certificate fingerprint changed.");
+                    ui.colored_label(
+                        egui::Color32::YELLOW,
+                        "This may indicate a man-in-the-middle attack unless you intentionally rotated certificates.",
+                    );
+                    ui.add_space(8.0);
+                    ui.label(format!("Host: {}", mismatch.host));
+                    ui.label("Previously trusted fingerprint:");
+                    ui.monospace(&mismatch.expected_fingerprint);
+                    ui.add_space(4.0);
+                    ui.label("New fingerprint presented by server:");
+                    ui.monospace(&mismatch.received_fingerprint);
+                    ui.add_space(10.0);
+                    ui.horizontal(|ui| {
+                        if ui.button("Accept New Certificate").clicked() {
+                            cert_accept_clicked = true;
+                        }
+                        if ui.button("Reject").clicked() {
+                            cert_reject_clicked = true;
+                        }
+                    });
+                });
+        }
+
+        if cert_accept_clicked {
+            if let Some(mismatch) = self.certificate_mismatch.take() {
+                match cert_trust::trust_fingerprint(&mismatch.host, &mismatch.received_fingerprint)
+                {
+                    Ok(()) => {
+                        if let Err(err) = self.start_game_network_session(app_state) {
+                            self.pending_exit = Some(err);
+                            return Some(SceneType::CharacterSelection);
+                        }
+                        return None;
+                    }
+                    Err(err) => {
+                        self.pending_exit = Some(format!("Failed to update known hosts: {err}"));
+                        return Some(SceneType::CharacterSelection);
+                    }
+                }
+            }
+        } else if cert_reject_clicked {
+            self.certificate_mismatch = None;
+            return Some(SceneType::CharacterSelection);
+        }
+
         // Show an unencrypted-connection warning banner only after the game
         // session is actually logged in.
         let is_unencrypted = app_state
@@ -911,7 +1006,7 @@ impl Scene for GameScene {
                         .show(ui, |ui| {
                             ui.colored_label(
                                 egui::Color32::YELLOW,
-                                "\u{26A0} UNENCRYPTED \u{2014} Game traffic is not protected",
+                                "UNENCRYPTED - Game traffic is not protected",
                             );
                         });
                 });
@@ -1019,7 +1114,7 @@ impl Scene for GameScene {
                 // --- Performance profiling ---------------------------------
                 let profiler_label = if self.perf_profiler.is_active() {
                     format!(
-                        "Profiling… {}s remaining",
+                        "Profiling... {}s remaining",
                         self.perf_profiler.remaining_secs()
                     )
                 } else {
