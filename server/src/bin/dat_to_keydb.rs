@@ -391,7 +391,7 @@ fn main() {
     // -----------------------------------------------------------------------
     let keydb_url =
         env::var("MAG_KEYDB_URL").unwrap_or_else(|_| "redis://127.0.0.1:5556/".to_string());
-    println!("\nConnecting to KeyDB at {keydb_url}...");
+    println!("\nConnecting to KeyDB...");
 
     let client = redis::Client::open(keydb_url.as_str()).unwrap_or_else(|e| {
         eprintln!("Failed to create KeyDB client: {e}");
@@ -501,11 +501,11 @@ fn main() {
             std::process::exit(1);
         });
 
-    let _load_duration = write_start.elapsed() - write_start.elapsed(); // approx
+    let write_duration = write_start.elapsed();
+    let total_duration = total_start.elapsed();
     println!(
         "\nMigration complete! Total time: {:.2?} (write: {:.2?})",
-        total_start.elapsed(),
-        write_start.elapsed(),
+        total_duration, write_duration,
     );
     let total_keys = map.len()
         + items.len()

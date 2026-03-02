@@ -37,6 +37,11 @@ impl GameScene {
                 }
                 NetworkEvent::Error(e) => {
                     log::error!("Network error: {}", e);
+                    if let Some(mismatch) = crate::cert_trust::take_last_fingerprint_mismatch() {
+                        self.certificate_mismatch = Some(mismatch);
+                        self.pending_exit = None;
+                        continue;
+                    }
                     self.pending_exit = Some(e);
                 }
                 NetworkEvent::LoggedIn => {
