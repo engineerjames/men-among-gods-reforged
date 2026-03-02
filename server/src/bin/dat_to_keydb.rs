@@ -17,19 +17,34 @@ use redis::{pipe, Commands, Connection};
 const NORMALIZED_MAGIC: [u8; 4] = *b"MAG2";
 const NORMALIZED_VERSION: u32 = 1;
 
-/// KeyDB schema version written to `game:meta:version`.
+/// KeyDB schema version written to the `game:meta:version` key.
+///
+/// Must match the value in `keydb_store.rs` so the server accepts
+/// the migrated data.
 const SCHEMA_VERSION: u32 = 1;
 
-/// Pipeline batch size for Redis writes.
+/// Number of entity keys to batch in a single Redis pipeline.
+///
+/// Larger batches reduce round-trips at the cost of higher per-batch
+/// memory.  4 096 is a reasonable default.
 const PIPELINE_BATCH_SIZE: usize = 4096;
 
+/// On-disk container produced by the `normalize-dat` binary.
+///
+/// Wraps a `Vec<T>` of game entities together with a magic number,
+/// format version, and the source file name for validation.
 #[allow(dead_code)]
 #[derive(Debug, bincode::Decode)]
 struct NormalizedDataSet<T> {
+    /// Magic bytes — must equal `NORMALIZED_MAGIC` (`b"MAG2"`).
     magic: [u8; 4],
+    /// Format version — must equal `NORMALIZED_VERSION` (1).
     version: u32,
+    /// Original `.dat` filename this data was produced from.
     source_file: String,
+    /// Size (in bytes) of a single legacy C record.
     source_record_size: usize,
+    /// The decoded game entities.
     records: Vec<T>,
 }
 
@@ -37,10 +52,33 @@ struct NormalizedDataSet<T> {
 //  Inline KeyDB write helpers (mirrors keydb_store.rs)
 // ---------------------------------------------------------------------------
 
+/// Encode a value to bincode bytes using the standard configuration.
+///
+/// # Arguments
+///
+/// * `val` - The value to encode.  Must implement `bincode::Encode`.
+///
+/// # Returns
+///
+/// * The encoded byte vector, or an `Err` with a human-readable message.
 fn encode_bincode<T: Encode>(val: &T) -> Result<Vec<u8>, String> {
     bincode::encode_to_vec(val, bincode::config::standard()).map_err(|e| format!("Encode: {e}"))
 }
 
+/// Write a contiguous slice of entities to KeyDB under `{prefix}{idx}` keys.
+///
+/// Keys are written in pipelined batches of [`PIPELINE_BATCH_SIZE`].
+///
+/// # Arguments
+///
+/// * `con`      - An open Redis/KeyDB connection.
+/// * `prefix`   - Key prefix including trailing colon (e.g. `"game:item:"`).
+/// * `entities` - The entities to write.
+/// * `label`    - Human-readable label used in progress output.
+///
+/// # Returns
+///
+/// * `Ok(())` on success, or an `Err` describing the failure.
 fn save_indexed<T: Encode>(
     con: &mut Connection,
     prefix: &str,
@@ -66,6 +104,19 @@ fn save_indexed<T: Encode>(
     Ok(())
 }
 
+/// Write all map tiles to KeyDB under `game:map:{x}:{y}` keys.
+///
+/// Tiles are stored one-per-key in row-major order.  Writes are
+/// pipelined in batches of [`PIPELINE_BATCH_SIZE`].
+///
+/// # Arguments
+///
+/// * `con` - An open Redis/KeyDB connection.
+/// * `map` - All map tiles in row-major order.
+///
+/// # Returns
+///
+/// * `Ok(())` on success, or an `Err` describing the failure.
 fn save_map_tiles(con: &mut Connection, map: &[core::types::Map]) -> Result<(), String> {
     let map_x = core::constants::SERVER_MAPX as usize;
     let total = map.len();
@@ -93,6 +144,22 @@ fn save_map_tiles(con: &mut Connection, map: &[core::types::Map]) -> Result<(), 
     Ok(())
 }
 
+/// Load and validate a normalized `.dat` file into a `Vec<T>`.
+///
+/// Reads the file at `{dat_dir}/{file_name}`, decodes the
+/// [`NormalizedDataSet`] wrapper, and validates magic, version,
+/// source file name, and record count.
+///
+/// # Arguments
+///
+/// * `dat_dir`        - Directory containing the `.dat` files.
+/// * `file_name`      - Name of the file to load (e.g. `"item.dat"`).
+/// * `expected_count` - Expected number of records in the file.
+///
+/// # Returns
+///
+/// * A `Vec<T>` of exactly `expected_count` entities.
+/// * `Err` with a descriptive message on I/O, decode, or validation failure.
 fn load_normalized_records<T: Decode<()>>(
     dat_dir: &Path,
     file_name: &str,
@@ -172,9 +239,7 @@ fn main() {
     // Resolve .dat directory
     let dat_dir = dat_dir.unwrap_or_else(|| {
         let exe = env::current_exe().expect("Failed to determine executable path");
-        exe.parent()
-            .unwrap_or_else(|| Path::new("."))
-            .join(".dat")
+        exe.parent().unwrap_or_else(|| Path::new(".")).join(".dat")
     });
 
     if !dat_dir.is_dir() {
@@ -199,7 +264,11 @@ fn main() {
             eprintln!("Failed to load map.dat: {e}");
             std::process::exit(1);
         });
-    println!("  map.dat        — {} tiles    ({:.2?})", map.len(), t.elapsed());
+    println!(
+        "  map.dat        — {} tiles    ({:.2?})",
+        map.len(),
+        t.elapsed()
+    );
 
     let t = Instant::now();
     let items = load_normalized_records::<core::types::Item>(
@@ -211,7 +280,11 @@ fn main() {
         eprintln!("Failed to load item.dat: {e}");
         std::process::exit(1);
     });
-    println!("  item.dat       — {} items   ({:.2?})", items.len(), t.elapsed());
+    println!(
+        "  item.dat       — {} items   ({:.2?})",
+        items.len(),
+        t.elapsed()
+    );
 
     let t = Instant::now();
     let item_templates = load_normalized_records::<core::types::Item>(
@@ -278,12 +351,11 @@ fn main() {
     );
 
     let t = Instant::now();
-    let mut globals_vec =
-        load_normalized_records::<core::types::Global>(&dat_dir, "global.dat", 1)
-            .unwrap_or_else(|e| {
-                eprintln!("Failed to load global.dat: {e}");
-                std::process::exit(1);
-            });
+    let mut globals_vec = load_normalized_records::<core::types::Global>(&dat_dir, "global.dat", 1)
+        .unwrap_or_else(|e| {
+            eprintln!("Failed to load global.dat: {e}");
+            std::process::exit(1);
+        });
     let globals = globals_vec.drain(..).next().unwrap();
     println!("  global.dat     — loaded      ({:.2?})", t.elapsed());
 
@@ -307,10 +379,7 @@ fn main() {
         motd.len()
     );
 
-    println!(
-        "\nAll .dat files loaded in {:.2?}",
-        total_start.elapsed()
-    );
+    println!("\nAll .dat files loaded in {:.2?}", total_start.elapsed());
 
     // -----------------------------------------------------------------------
     //  Connect to KeyDB
@@ -364,11 +433,16 @@ fn main() {
         std::process::exit(1);
     });
 
-    save_indexed(&mut con, "game:tchar:", &character_templates, "character templates")
-        .unwrap_or_else(|e| {
-            eprintln!("Failed to save character templates: {e}");
-            std::process::exit(1);
-        });
+    save_indexed(
+        &mut con,
+        "game:tchar:",
+        &character_templates,
+        "character templates",
+    )
+    .unwrap_or_else(|e| {
+        eprintln!("Failed to save character templates: {e}");
+        std::process::exit(1);
+    });
 
     save_indexed(&mut con, "game:effect:", &effects, "effects").unwrap_or_else(|e| {
         eprintln!("Failed to save effects: {e}");
@@ -379,26 +453,29 @@ fn main() {
     {
         println!("  Writing globals...");
         let bytes = encode_bincode(&globals).unwrap();
-        con.set::<_, _, ()>("game:global", bytes).unwrap_or_else(|e| {
-            eprintln!("Failed to save globals: {e}");
-            std::process::exit(1);
-        });
+        con.set::<_, _, ()>("game:global", bytes)
+            .unwrap_or_else(|e| {
+                eprintln!("Failed to save globals: {e}");
+                std::process::exit(1);
+            });
     }
 
     // Text data
     {
         println!("  Writing text data...");
         let bn_bytes = encode_bincode(&bad_names).unwrap();
-        con.set::<_, _, ()>("game:badnames", bn_bytes).unwrap_or_else(|e| {
-            eprintln!("Failed to save badnames: {e}");
-            std::process::exit(1);
-        });
+        con.set::<_, _, ()>("game:badnames", bn_bytes)
+            .unwrap_or_else(|e| {
+                eprintln!("Failed to save badnames: {e}");
+                std::process::exit(1);
+            });
 
         let bw_bytes = encode_bincode(&bad_words).unwrap();
-        con.set::<_, _, ()>("game:badwords", bw_bytes).unwrap_or_else(|e| {
-            eprintln!("Failed to save badwords: {e}");
-            std::process::exit(1);
-        });
+        con.set::<_, _, ()>("game:badwords", bw_bytes)
+            .unwrap_or_else(|e| {
+                eprintln!("Failed to save badwords: {e}");
+                std::process::exit(1);
+            });
 
         con.set::<_, _, ()>("game:motd", &motd).unwrap_or_else(|e| {
             eprintln!("Failed to save motd: {e}");

@@ -18,10 +18,17 @@
 use bincode::{Decode, Encode};
 use redis::{pipe, Commands, Connection};
 
-/// Current schema version written to `game:meta:version`.
+/// Current schema version written to the `game:meta:version` key.
+///
+/// Increment this when the key layout or encoding format changes,
+/// and add a corresponding migration path in [`load_all`].
 const SCHEMA_VERSION: u32 = 1;
 
 /// Number of keys to batch in a single Redis pipeline round-trip.
+///
+/// Larger batches reduce network round-trips at the cost of higher
+/// per-batch memory usage.  4 096 is a reasonable default that keeps
+/// pipeline payloads well under typical TCP buffer limits.
 const PIPELINE_BATCH_SIZE: usize = 4096;
 
 // ---------------------------------------------------------------------------
@@ -29,6 +36,18 @@ const PIPELINE_BATCH_SIZE: usize = 4096;
 // ---------------------------------------------------------------------------
 
 /// Check whether game data has been seeded into KeyDB.
+///
+/// Looks for the `game:meta:version` key to determine whether a prior
+/// migration or server shutdown has written data.
+///
+/// # Arguments
+///
+/// * `con` - An open Redis/KeyDB connection.
+///
+/// # Returns
+///
+/// * `Ok(true)` if game data exists, `Ok(false)` otherwise.
+/// * `Err` with a human-readable message on connection failure.
 pub fn has_game_data(con: &mut Connection) -> Result<bool, String> {
     let exists: bool = con
         .exists("game:meta:version")
@@ -36,7 +55,16 @@ pub fn has_game_data(con: &mut Connection) -> Result<bool, String> {
     Ok(exists)
 }
 
-/// Load a single bincode-encoded entity from a key.
+/// Load a single bincode-encoded entity from a KeyDB key.
+///
+/// # Arguments
+///
+/// * `con` - An open Redis/KeyDB connection.
+/// * `key` - The exact key to GET (e.g. `"game:global"`).
+///
+/// # Returns
+///
+/// * The decoded value `T`, or an `Err` describing the GET or decode failure.
 fn load_entity<T: Decode<()>>(con: &mut Connection, key: &str) -> Result<T, String> {
     let bytes: Vec<u8> = con
         .get(key)
@@ -49,6 +77,20 @@ fn load_entity<T: Decode<()>>(con: &mut Connection, key: &str) -> Result<T, Stri
 
 /// Load a contiguous range of bincode-encoded entities from keys formatted
 /// with a single integer index: `{prefix}{0..count}`.
+///
+/// Keys are fetched in pipelined batches of [`PIPELINE_BATCH_SIZE`] to
+/// minimise network round-trips.
+///
+/// # Arguments
+///
+/// * `con`    - An open Redis/KeyDB connection.
+/// * `prefix` - Key prefix including trailing colon (e.g. `"game:item:"`).
+/// * `count`  - Number of entities to load (`0..count`).
+///
+/// # Returns
+///
+/// * A `Vec<T>` of length `count`, or an `Err` if any key is missing or
+///   cannot be decoded.
 fn load_indexed_entities<T: Decode<()>>(
     con: &mut Connection,
     prefix: &str,
@@ -81,6 +123,18 @@ fn load_indexed_entities<T: Decode<()>>(
 }
 
 /// Load all map tiles from `game:map:{x}:{y}` keys.
+///
+/// Tiles are stored one-per-key in row-major order (`x` varies fastest).
+/// The total number of tiles is `SERVER_MAPX * SERVER_MAPY` (1,048,576).
+///
+/// # Arguments
+///
+/// * `con` - An open Redis/KeyDB connection.
+///
+/// # Returns
+///
+/// * A flat `Vec<Map>` in row-major order, or an `Err` if any tile is
+///   missing or cannot be decoded.
 fn load_map(con: &mut Connection) -> Result<Vec<core::types::Map>, String> {
     let map_x = core::constants::SERVER_MAPX as usize;
     let map_y = core::constants::SERVER_MAPY as usize;
@@ -109,13 +163,7 @@ fn load_map(con: &mut Connection) -> Result<Vec<core::types::Map>, String> {
                 ));
             }
             let (val, _) = bincode::decode_from_slice(&bytes, bincode::config::standard())
-                .map_err(|e| {
-                    format!(
-                        "Decode game:map:{}:{}: {e}",
-                        abs % map_x,
-                        abs / map_x
-                    )
-                })?;
+                .map_err(|e| format!("Decode game:map:{}:{}: {e}", abs % map_x, abs / map_x))?;
             results.push(val);
         }
     }
@@ -127,12 +175,34 @@ fn load_map(con: &mut Connection) -> Result<Vec<core::types::Map>, String> {
 //  Save helpers
 // ---------------------------------------------------------------------------
 
-/// Encode a value via bincode and return the byte vec.
+/// Encode a value via bincode using the standard configuration.
+///
+/// # Arguments
+///
+/// * `val` - The value to encode.  Must implement `bincode::Encode`.
+///
+/// # Returns
+///
+/// * The encoded byte vector, or an `Err` with a human-readable message.
 fn encode<T: Encode>(val: &T) -> Result<Vec<u8>, String> {
     bincode::encode_to_vec(val, bincode::config::standard()).map_err(|e| format!("Encode: {e}"))
 }
 
 /// Save a contiguous slice of entities under `{prefix}{index}` keys.
+///
+/// Indices start at zero and increment sequentially.  Writes are batched
+/// in pipelines of [`PIPELINE_BATCH_SIZE`].
+///
+/// # Arguments
+///
+/// * `con`      - An open Redis/KeyDB connection.
+/// * `prefix`   - Key prefix including trailing colon (e.g. `"game:item:"`).
+/// * `entities` - The slice of entities to persist.  Each element is
+///                keyed as `{prefix}{slice_index}`.
+///
+/// # Returns
+///
+/// * `Ok(())` on success, or an `Err` describing the pipeline or encode failure.
 fn save_indexed_entities<T: Encode>(
     con: &mut Connection,
     prefix: &str,
@@ -153,6 +223,21 @@ fn save_indexed_entities<T: Encode>(
 }
 
 /// Save a sub-range of entities under `{prefix}{start_index + offset}` keys.
+///
+/// This is the partial-write counterpart of [`save_indexed_entities`],
+/// used by the background saver when persisting only a slice of items or
+/// map tiles per tick.
+///
+/// # Arguments
+///
+/// * `con`         - An open Redis/KeyDB connection.
+/// * `prefix`      - Key prefix including trailing colon (e.g. `"game:item:"`).
+/// * `entities`    - The slice of entities to persist.
+/// * `start_index` - The absolute index assigned to `entities[0]`.
+///
+/// # Returns
+///
+/// * `Ok(())` on success, or an `Err` describing the pipeline or encode failure.
 pub fn save_indexed_entities_range<T: Encode>(
     con: &mut Connection,
     prefix: &str,
@@ -178,7 +263,10 @@ pub fn save_indexed_entities_range<T: Encode>(
 //  Public load/save API
 // ---------------------------------------------------------------------------
 
-/// All game data loaded from KeyDB, ready to populate a `Repository`.
+/// All game data loaded from KeyDB, ready to populate a [`Repository`].
+///
+/// Returned by [`load_all`].  Each field corresponds to one of the
+/// repository's in-memory data arrays (map, items, characters, etc.).
 pub struct GameData {
     pub map: Vec<core::types::Map>,
     pub items: Vec<core::types::Item>,
@@ -192,17 +280,26 @@ pub struct GameData {
     pub message_of_the_day: String,
 }
 
-/// Load ALL game data from KeyDB.
+/// Load ALL game data from KeyDB into a [`GameData`] struct.
 ///
-/// Returns an error if `game:meta:version` is absent (no data has been
-/// migrated yet) or if any entity cannot be loaded/decoded.
+/// Validates the schema version before loading.  Returns an error if
+/// `game:meta:version` is absent (no data has been migrated yet) or if
+/// any entity cannot be loaded/decoded.
+///
+/// # Arguments
+///
+/// * `con` - An open Redis/KeyDB connection.
+///
+/// # Returns
+///
+/// * A fully populated [`GameData`] on success.
+/// * `Err` with a human-readable message if the data is missing,
+///   the schema version is unsupported, or a decode error occurs.
 pub fn load_all(con: &mut Connection) -> Result<GameData, String> {
     if !has_game_data(con)? {
-        return Err(
-            "No game data found in KeyDB (game:meta:version missing). \
+        return Err("No game data found in KeyDB (game:meta:version missing). \
              Run the dat-to-keydb migration tool first."
-                .to_string(),
-        );
+            .to_string());
     }
 
     let version: u32 = con
@@ -226,11 +323,8 @@ pub fn load_all(con: &mut Connection) -> Result<GameData, String> {
     log::info!("  Loaded {} items.", items.len());
 
     log::info!("  Loading item templates...");
-    let item_templates = load_indexed_entities::<core::types::Item>(
-        con,
-        "game:titem:",
-        core::constants::MAXTITEM,
-    )?;
+    let item_templates =
+        load_indexed_entities::<core::types::Item>(con, "game:titem:", core::constants::MAXTITEM)?;
     log::info!("  Loaded {} item templates.", item_templates.len());
 
     log::info!("  Loading characters...");
@@ -293,7 +387,29 @@ pub fn load_all(con: &mut Connection) -> Result<GameData, String> {
     })
 }
 
-/// Save ALL game data to KeyDB (used by migration tool and clean shutdown).
+/// Save ALL game data to KeyDB.
+///
+/// Writes every entity type and finishes by setting `game:meta:version`.
+/// Used by the migration tool and the clean-shutdown path in
+/// [`Repository::save_to_keydb`].
+///
+/// # Arguments
+///
+/// * `con`                  - An open Redis/KeyDB connection.
+/// * `map`                  - All map tiles in row-major order.
+/// * `items`                - All item slots.
+/// * `item_templates`       - All item templates.
+/// * `characters`           - All character slots.
+/// * `character_templates`  - All character templates.
+/// * `effects`              - All effect slots.
+/// * `globals`              - The single global state value.
+/// * `bad_names`            - List of banned player names.
+/// * `bad_words`            - List of banned words.
+/// * `message_of_the_day`   - Server MOTD shown at login.
+///
+/// # Returns
+///
+/// * `Ok(())` on success, or an `Err` describing any pipeline/encode failure.
 pub fn save_all(
     con: &mut Connection,
     map: &[core::types::Map],
@@ -326,7 +442,16 @@ pub fn save_all(
     Ok(())
 }
 
-/// Save map tiles to KeyDB.
+/// Save all map tiles to KeyDB under `game:map:{x}:{y}` keys.
+///
+/// # Arguments
+///
+/// * `con` - An open Redis/KeyDB connection.
+/// * `map` - All map tiles in row-major order.
+///
+/// # Returns
+///
+/// * `Ok(())` on success, or an `Err` describing the failure.
 pub fn save_map(con: &mut Connection, map: &[core::types::Map]) -> Result<(), String> {
     let map_x = core::constants::SERVER_MAPX as usize;
     let total = map.len();
@@ -339,7 +464,10 @@ pub fn save_map(con: &mut Connection, map: &[core::types::Map]) -> Result<(), St
             let x = linear % map_x;
             let y = linear / map_x;
             let bytes = encode(&map[linear])?;
-            pipeline.cmd("SET").arg(format!("game:map:{x}:{y}")).arg(bytes);
+            pipeline
+                .cmd("SET")
+                .arg(format!("game:map:{x}:{y}"))
+                .arg(bytes);
         }
         pipeline
             .query::<()>(con)
@@ -349,7 +477,19 @@ pub fn save_map(con: &mut Connection, map: &[core::types::Map]) -> Result<(), St
     Ok(())
 }
 
-/// Save a range of map tiles (by linear index) to KeyDB.
+/// Save a contiguous range of map tiles (by linear index) to KeyDB.
+///
+/// Used by the background saver to persist half the map per cycle.
+///
+/// # Arguments
+///
+/// * `con`          - An open Redis/KeyDB connection.
+/// * `map`          - The slice of map tiles to save.
+/// * `start_linear` - The absolute linear index of `map[0]`.
+///
+/// # Returns
+///
+/// * `Ok(())` on success, or an `Err` describing the failure.
 pub fn save_map_range(
     con: &mut Connection,
     map: &[core::types::Map],
@@ -366,7 +506,10 @@ pub fn save_map_range(
             let x = abs % map_x;
             let y = abs / map_x;
             let bytes = encode(&map[rel])?;
-            pipeline.cmd("SET").arg(format!("game:map:{x}:{y}")).arg(bytes);
+            pipeline
+                .cmd("SET")
+                .arg(format!("game:map:{x}:{y}"))
+                .arg(bytes);
         }
         pipeline
             .query::<()>(con)
@@ -375,7 +518,16 @@ pub fn save_map_range(
     Ok(())
 }
 
-/// Save items to KeyDB.
+/// Save all item slots to KeyDB under `game:item:{idx}` keys.
+///
+/// # Arguments
+///
+/// * `con`   - An open Redis/KeyDB connection.
+/// * `items` - All item slots to persist.
+///
+/// # Returns
+///
+/// * `Ok(())` on success, or an `Err` describing the failure.
 pub fn save_items(con: &mut Connection, items: &[core::types::Item]) -> Result<(), String> {
     log::info!("  Saving {} items...", items.len());
     save_indexed_entities(con, "game:item:", items)?;
@@ -383,7 +535,16 @@ pub fn save_items(con: &mut Connection, items: &[core::types::Item]) -> Result<(
     Ok(())
 }
 
-/// Save item templates to KeyDB.
+/// Save all item templates to KeyDB under `game:titem:{idx}` keys.
+///
+/// # Arguments
+///
+/// * `con`            - An open Redis/KeyDB connection.
+/// * `item_templates` - All item templates to persist.
+///
+/// # Returns
+///
+/// * `Ok(())` on success, or an `Err` describing the failure.
 pub fn save_item_templates(
     con: &mut Connection,
     item_templates: &[core::types::Item],
@@ -394,7 +555,16 @@ pub fn save_item_templates(
     Ok(())
 }
 
-/// Save characters to KeyDB.
+/// Save all character slots to KeyDB under `game:char:{idx}` keys.
+///
+/// # Arguments
+///
+/// * `con`        - An open Redis/KeyDB connection.
+/// * `characters` - All character slots to persist.
+///
+/// # Returns
+///
+/// * `Ok(())` on success, or an `Err` describing the failure.
 pub fn save_characters(
     con: &mut Connection,
     characters: &[core::types::Character],
@@ -405,7 +575,16 @@ pub fn save_characters(
     Ok(())
 }
 
-/// Save character templates to KeyDB.
+/// Save all character templates to KeyDB under `game:tchar:{idx}` keys.
+///
+/// # Arguments
+///
+/// * `con`                  - An open Redis/KeyDB connection.
+/// * `character_templates`  - All character templates to persist.
+///
+/// # Returns
+///
+/// * `Ok(())` on success, or an `Err` describing the failure.
 pub fn save_character_templates(
     con: &mut Connection,
     character_templates: &[core::types::Character],
@@ -419,18 +598,33 @@ pub fn save_character_templates(
     Ok(())
 }
 
-/// Save effects to KeyDB.
-pub fn save_effects(
-    con: &mut Connection,
-    effects: &[core::types::Effect],
-) -> Result<(), String> {
+/// Save all effect slots to KeyDB under `game:effect:{idx}` keys.
+///
+/// # Arguments
+///
+/// * `con`     - An open Redis/KeyDB connection.
+/// * `effects` - All effect slots to persist.
+///
+/// # Returns
+///
+/// * `Ok(())` on success, or an `Err` describing the failure.
+pub fn save_effects(con: &mut Connection, effects: &[core::types::Effect]) -> Result<(), String> {
     log::info!("  Saving {} effects...", effects.len());
     save_indexed_entities(con, "game:effect:", effects)?;
     log::info!("  Effects saved.");
     Ok(())
 }
 
-/// Save the global state to KeyDB.
+/// Save the single global state value to the `game:global` key.
+///
+/// # Arguments
+///
+/// * `con`     - An open Redis/KeyDB connection.
+/// * `globals` - The global state struct to persist.
+///
+/// # Returns
+///
+/// * `Ok(())` on success, or an `Err` describing the failure.
 pub fn save_globals(con: &mut Connection, globals: &core::types::Global) -> Result<(), String> {
     log::info!("  Saving globals...");
     let bytes = encode(globals)?;
@@ -441,6 +635,20 @@ pub fn save_globals(con: &mut Connection, globals: &core::types::Global) -> Resu
 }
 
 /// Save text data (bad names, bad words, MOTD) to KeyDB.
+///
+/// Bad-name and bad-word lists are bincode-encoded `Vec<String>` blobs.
+/// The MOTD is stored as a plain UTF-8 string.
+///
+/// # Arguments
+///
+/// * `con`                - An open Redis/KeyDB connection.
+/// * `bad_names`          - List of banned player names.
+/// * `bad_words`          - List of banned words.
+/// * `message_of_the_day` - Server MOTD shown at login.
+///
+/// # Returns
+///
+/// * `Ok(())` on success, or an `Err` describing the failure.
 pub fn save_text_data(
     con: &mut Connection,
     bad_names: &[String],
@@ -462,4 +670,104 @@ pub fn save_text_data(
 
     log::info!("  Text data saved.");
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+//  Unit Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Verify that `SCHEMA_VERSION` is the expected value (guards against
+    /// accidental bumps without a migration path).
+    #[test]
+    fn schema_version_is_one() {
+        assert_eq!(SCHEMA_VERSION, 1);
+    }
+
+    /// Verify that `PIPELINE_BATCH_SIZE` is a power of two and non-zero.
+    #[test]
+    fn pipeline_batch_size_is_reasonable() {
+        assert!(PIPELINE_BATCH_SIZE > 0);
+        assert!(PIPELINE_BATCH_SIZE.is_power_of_two());
+    }
+
+    /// Round-trip encode/decode for a default `Map` tile.
+    #[test]
+    fn encode_decode_roundtrip_map() {
+        let original = core::types::Map::default();
+        let bytes = encode(&original).expect("encode Map");
+        let (decoded, _): (core::types::Map, _) =
+            bincode::decode_from_slice(&bytes, bincode::config::standard()).expect("decode Map");
+        assert_eq!(original, decoded);
+    }
+
+    /// Round-trip encode/decode for a default `Item`.
+    #[test]
+    fn encode_decode_roundtrip_item() {
+        let original = core::types::Item::default();
+        let bytes = encode(&original).expect("encode Item");
+        let (decoded, _): (core::types::Item, _) =
+            bincode::decode_from_slice(&bytes, bincode::config::standard()).expect("decode Item");
+        assert_eq!(original, decoded);
+    }
+
+    /// Round-trip encode/decode for a default `Character`.
+    #[test]
+    fn encode_decode_roundtrip_character() {
+        let original = core::types::Character::default();
+        let bytes = encode(&original).expect("encode Character");
+        let (decoded, _): (core::types::Character, _) =
+            bincode::decode_from_slice(&bytes, bincode::config::standard())
+                .expect("decode Character");
+        assert_eq!(original, decoded);
+    }
+
+    /// Round-trip encode/decode for a default `Effect`.
+    #[test]
+    fn encode_decode_roundtrip_effect() {
+        let original = core::types::Effect::default();
+        let bytes = encode(&original).expect("encode Effect");
+        let (decoded, _): (core::types::Effect, _) =
+            bincode::decode_from_slice(&bytes, bincode::config::standard()).expect("decode Effect");
+        assert_eq!(original, decoded);
+    }
+
+    /// Round-trip encode/decode for a default `Global`.
+    #[test]
+    fn encode_decode_roundtrip_global() {
+        let original = core::types::Global::default();
+        let bytes = encode(&original).expect("encode Global");
+        let (decoded, _): (core::types::Global, _) =
+            bincode::decode_from_slice(&bytes, bincode::config::standard()).expect("decode Global");
+        assert_eq!(original, decoded);
+    }
+
+    /// Round-trip encode/decode for a `Vec<String>` (used for bad_names / bad_words).
+    #[test]
+    fn encode_decode_roundtrip_string_vec() {
+        let original = vec![
+            "alpha".to_string(),
+            "bravo".to_string(),
+            "charlie".to_string(),
+        ];
+        let bytes = encode(&original).expect("encode Vec<String>");
+        let (decoded, _): (Vec<String>, _) =
+            bincode::decode_from_slice(&bytes, bincode::config::standard())
+                .expect("decode Vec<String>");
+        assert_eq!(original, decoded);
+    }
+
+    /// Encoding an empty `Vec<String>` should succeed and round-trip.
+    #[test]
+    fn encode_decode_roundtrip_empty_string_vec() {
+        let original: Vec<String> = vec![];
+        let bytes = encode(&original).expect("encode empty Vec<String>");
+        let (decoded, _): (Vec<String>, _) =
+            bincode::decode_from_slice(&bytes, bincode::config::standard())
+                .expect("decode empty Vec<String>");
+        assert_eq!(original, decoded);
+    }
 }

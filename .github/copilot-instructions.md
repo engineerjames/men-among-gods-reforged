@@ -40,6 +40,43 @@
 - API request limits are strict (global 1 req/sec governor). Client-side code already handles 429 retries with ~1.1s backoff (`client/src/account_api.rs`); preserve this behavior.
 - Account passwords sent to API are Argon2 PHC strings produced client-side (deterministic salt from username), not plaintext (`client/src/account_api.rs`).
 
+## Code quality standards
+
+### Documentation strings
+Every public function, struct, enum, trait, and constant **must** have a `///` doc comment. Non-trivial private functions should also be documented. Follow this format:
+
+```rust
+/// One-line summary of what this item does.
+///
+/// Optional extended description providing context, invariants, or
+/// implementation notes.
+///
+/// # Arguments
+///
+/// * `param_name` - What this parameter represents.
+/// * `other_param` - What this parameter represents.
+///
+/// # Returns
+///
+/// * Description of the return value or `Result` semantics.
+///
+/// # Panics (if applicable)
+///
+/// * Conditions under which this function panics.
+```
+
+- Include `# Arguments` whenever the function takes parameters.
+- Include `# Returns` whenever the function returns a value (other than `()`).
+- Include `# Panics` when the function can panic (e.g. `.unwrap()`, `.expect()`).
+- Use backtick-wrapped parameter names in the arguments list: `` * `param` - ... ``.
+- Reference from `client/src/gfx_cache.rs` for a working example.
+
+### Unit tests
+- Every module that contains testable logic **must** include a `#[cfg(test)] mod tests` block.
+- Test encode/decode roundtrips, boundary conditions, default values, and error paths where possible.
+- Tests that require external services (KeyDB, network) should be skipped in the default `cargo test` run using `#[ignore]` or feature gates.
+- Prefer small, focused tests with descriptive names (e.g. `encode_decode_roundtrip_item`, `double_shutdown_does_not_panic`).
+
 ## High-value files by area
 - Tick loop and network batching: `server/src/server.rs`, `docs/server/DESIGN.md`
 - Persistence and dirty-flag lifecycle: `server/src/repository.rs`, `server/src/main.rs`
