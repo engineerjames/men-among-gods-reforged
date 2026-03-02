@@ -345,6 +345,23 @@ cargo run -p server --bin dat-to-keydb -- --dat-dir /path/to/.dat
 
 Use `--force` to overwrite existing game data in KeyDB.
 
+Use `--skip-if-seeded` to exit successfully if `game:meta:version` already
+exists (useful for idempotent startup jobs).
+
+#### Docker Compose Bootstrap (KeyDB mode)
+
+The compose stack runs an idempotent seed step before the game server starts:
+
+1. `keydb` starts and becomes healthy.
+2. `server-seed` runs `dat-to-keydb --skip-if-seeded`.
+	- First run: imports `.dat` into KeyDB.
+	- Later runs: detects existing `game:meta:version` and exits success.
+3. `server` starts with `MAG_STORAGE_BACKEND=keydb` after `server-seed`
+	completes successfully.
+
+This ensures KeyDB is initialized exactly once per persistent KeyDB volume while
+keeping `docker compose up` deterministic.
+
 #### Recommended KeyDB Configuration
 
 ```conf
@@ -353,5 +370,13 @@ appendfsync everysec
 save 900 1
 maxmemory 512mb
 server-threads 2
+```
+
+In compose, the baseline durability options are set explicitly:
+
+```conf
+appendonly yes
+appendfsync everysec
+save 900 1
 ```
 

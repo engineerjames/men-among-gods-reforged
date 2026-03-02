@@ -23,6 +23,13 @@ services:
       - ${KEYDB_PASSWORD:?KEYDB_PASSWORD is required}
       - --appendonly
       - "yes"
+      - --appendfsync
+      - everysec
+      - --save
+      - "900"
+      - "1"
+      - "--server-threads"
+      - "4"
     restart: unless-stopped
     volumes:
       - keydb-data:/data
@@ -34,6 +41,21 @@ services:
       start_period: 10s
     environment:
       KEYDB_PASSWORD: ${KEYDB_PASSWORD:?KEYDB_PASSWORD is required}
+
+  server-seed:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    depends_on:
+      keydb:
+        condition: service_healthy
+    environment:
+      MAG_KEYDB_URL: redis://:${KEYDB_PASSWORD:?KEYDB_PASSWORD is required}@keydb:5556/
+    command:
+      - /bin/sh
+      - -lc
+      - /app/dat-to-keydb --skip-if-seeded
+    restart: "no"
 
   api:
     build:
@@ -66,7 +88,10 @@ services:
         condition: service_completed_successfully
       keydb:
         condition: service_healthy
+      server-seed:
+        condition: service_completed_successfully
     environment:
+      MAG_STORAGE_BACKEND: keydb
       MAG_KEYDB_URL: redis://:${KEYDB_PASSWORD:?KEYDB_PASSWORD is required}@keydb:5556/
       SERVER_TLS_CERT: /certs/server.crt
       SERVER_TLS_KEY: /certs/server.key

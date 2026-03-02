@@ -1,10 +1,11 @@
 //! Migration tool: load `.dat` files and write them to KeyDB.
 //!
 //! Usage:
-//!   cargo run -p server --bin dat-to-keydb [-- [--dat-dir <path>] [--force]]
+//!   cargo run -p server --bin dat-to-keydb [-- [--dat-dir <path>] [--force] [--skip-if-seeded]]
 //!
 //! If `--dat-dir` is omitted, defaults to `<exe_parent>/.dat/`.
 //! If game data already exists in KeyDB, `--force` is required to overwrite.
+//! Use `--skip-if-seeded` to exit successfully when data is already present.
 
 use std::env;
 use std::fs;
@@ -213,6 +214,7 @@ fn main() {
     // Parse simple CLI flags
     let mut dat_dir: Option<PathBuf> = None;
     let mut force = false;
+    let mut skip_if_seeded = false;
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -227,9 +229,12 @@ fn main() {
             "--force" => {
                 force = true;
             }
+            "--skip-if-seeded" => {
+                skip_if_seeded = true;
+            }
             other => {
                 eprintln!("Unknown argument: {other}");
-                eprintln!("Usage: dat-to-keydb [--dat-dir <path>] [--force]");
+                eprintln!("Usage: dat-to-keydb [--dat-dir <path>] [--force] [--skip-if-seeded]");
                 std::process::exit(1);
             }
         }
@@ -400,6 +405,12 @@ fn main() {
     // Check for existing data
     let exists: bool = redis::Commands::exists(&mut con, "game:meta:version").unwrap_or(false);
     if exists && !force {
+        if skip_if_seeded {
+            println!(
+                "Game data already exists in KeyDB (game:meta:version found). Skipping migration."
+            );
+            return;
+        }
         eprintln!(
             "Error: Game data already exists in KeyDB (game:meta:version found).\n\
              Use --force to overwrite."
