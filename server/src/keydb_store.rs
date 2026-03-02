@@ -65,7 +65,7 @@ pub fn has_game_data(con: &mut Connection) -> Result<bool, String> {
 /// # Returns
 ///
 /// * The decoded value `T`, or an `Err` describing the GET or decode failure.
-fn load_entity<T: Decode<()>>(con: &mut Connection, key: &str) -> Result<T, String> {
+pub fn load_entity<T: Decode<()>>(con: &mut Connection, key: &str) -> Result<T, String> {
     let bytes: Vec<u8> = con
         .get(key)
         .map_err(|e| format!("KeyDB GET {key} failed: {e}"))?;
@@ -91,7 +91,7 @@ fn load_entity<T: Decode<()>>(con: &mut Connection, key: &str) -> Result<T, Stri
 ///
 /// * A `Vec<T>` of length `count`, or an `Err` if any key is missing or
 ///   cannot be decoded.
-fn load_indexed_entities<T: Decode<()>>(
+pub fn load_indexed_entities<T: Decode<()>>(
     con: &mut Connection,
     prefix: &str,
     count: usize,
@@ -135,7 +135,7 @@ fn load_indexed_entities<T: Decode<()>>(
 ///
 /// * A flat `Vec<Map>` in row-major order, or an `Err` if any tile is
 ///   missing or cannot be decoded.
-fn load_map(con: &mut Connection) -> Result<Vec<core::types::Map>, String> {
+pub fn load_map(con: &mut Connection) -> Result<Vec<core::types::Map>, String> {
     let map_x = core::constants::SERVER_MAPX as usize;
     let map_y = core::constants::SERVER_MAPY as usize;
     let total = map_x * map_y;
@@ -184,7 +184,7 @@ fn load_map(con: &mut Connection) -> Result<Vec<core::types::Map>, String> {
 /// # Returns
 ///
 /// * The encoded byte vector, or an `Err` with a human-readable message.
-fn encode<T: Encode>(val: &T) -> Result<Vec<u8>, String> {
+pub fn encode<T: Encode>(val: &T) -> Result<Vec<u8>, String> {
     bincode::encode_to_vec(val, bincode::config::standard()).map_err(|e| format!("Encode: {e}"))
 }
 
@@ -620,6 +620,51 @@ pub fn save_text_data(
         .map_err(|e| format!("KeyDB SET game:motd: {e}"))?;
 
     log::info!("  Text data saved.");
+    Ok(())
+}
+
+/// Save all character template slots to KeyDB under `game:tchar:{idx}` keys.
+///
+/// # Arguments
+///
+/// * `con`                 - An open Redis/KeyDB connection.
+/// * `character_templates` - All character template slots to persist.
+///
+/// # Returns
+///
+/// * `Ok(())` on success, or an `Err` describing the failure.
+#[allow(dead_code)] // Used by library consumers (server-utils crate).
+pub fn save_character_templates(
+    con: &mut Connection,
+    character_templates: &[core::types::Character],
+) -> Result<(), String> {
+    log::info!(
+        "  Saving {} character templates...",
+        character_templates.len()
+    );
+    save_indexed_entities(con, "game:tchar:", character_templates)?;
+    log::info!("  Character templates saved.");
+    Ok(())
+}
+
+/// Save all item template slots to KeyDB under `game:titem:{idx}` keys.
+///
+/// # Arguments
+///
+/// * `con`            - An open Redis/KeyDB connection.
+/// * `item_templates` - All item template slots to persist.
+///
+/// # Returns
+///
+/// * `Ok(())` on success, or an `Err` describing the failure.
+#[allow(dead_code)] // Used by library consumers (server-utils crate).
+pub fn save_item_templates(
+    con: &mut Connection,
+    item_templates: &[core::types::Item],
+) -> Result<(), String> {
+    log::info!("  Saving {} item templates...", item_templates.len());
+    save_indexed_entities(con, "game:titem:", item_templates)?;
+    log::info!("  Item templates saved.");
     Ok(())
 }
 

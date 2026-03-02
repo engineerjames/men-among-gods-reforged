@@ -4348,7 +4348,9 @@ dependencies = [
  "env_logger",
  "image 0.25.9",
  "log",
+ "redis",
  "rfd",
+ "server",
  "zip",
 ]
 

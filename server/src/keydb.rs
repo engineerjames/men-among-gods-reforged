@@ -5,11 +5,27 @@ use std::env;
 
 const DEFAULT_KEYDB_URL: &str = "redis://127.0.0.1:5556/";
 
-pub(crate) fn keydb_url() -> String {
+/// Return the KeyDB connection URL.
+///
+/// Reads `MAG_KEYDB_URL` from the environment.  Falls back to
+/// `redis://127.0.0.1:5556/` when the variable is unset.
+///
+/// # Returns
+///
+/// * The connection URL string.
+pub fn keydb_url() -> String {
     env::var("MAG_KEYDB_URL").unwrap_or_else(|_| DEFAULT_KEYDB_URL.to_string())
 }
 
-pub(crate) fn connect() -> Result<redis::Connection, String> {
+/// Open a synchronous Redis/KeyDB connection.
+///
+/// Uses the URL returned by [`keydb_url`].
+///
+/// # Returns
+///
+/// * `Ok(Connection)` on success.
+/// * `Err` with a human-readable message on failure.
+pub fn connect() -> Result<redis::Connection, String> {
     let url = keydb_url();
     let client = redis::Client::open(url.as_str())
         .map_err(|err| format!("Failed to open KeyDB client: {err}"))?;

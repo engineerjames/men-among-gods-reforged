@@ -137,10 +137,18 @@ impl KnownHostsStore {
         let data = serde_json::to_string_pretty(self)
             .map_err(|e| format!("Failed to serialise known-hosts: {e}"))?;
         let tmp = path.with_extension("json.tmp");
-        fs::write(&tmp, &data)
-            .map_err(|e| format!("Failed to write known-hosts tmp file '{}': {e}", tmp.display()))?;
-        fs::rename(&tmp, &path)
-            .map_err(|e| format!("Failed to update known-hosts file '{}': {e}", path.display()))?;
+        fs::write(&tmp, &data).map_err(|e| {
+            format!(
+                "Failed to write known-hosts tmp file '{}': {e}",
+                tmp.display()
+            )
+        })?;
+        fs::rename(&tmp, &path).map_err(|e| {
+            format!(
+                "Failed to update known-hosts file '{}': {e}",
+                path.display()
+            )
+        })?;
         Ok(())
     }
 }

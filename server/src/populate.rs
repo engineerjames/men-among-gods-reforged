@@ -941,42 +941,7 @@ pub fn reset_char(n: usize) {
     log::info!("Resetting char {} ({})", n, name);
 
     // Recalculate character template points
-    let mut pts = 0;
     let mut cnt = 0;
-
-    Repository::with_character_templates(|templates| {
-        // Count base attributes
-        for z in 0..5 {
-            pts += templates[n].attrib[z][0] as i32;
-        }
-
-        // Count HP
-        for m in 50..templates[n].hp[0] as i32 {
-            pts += m / 10 + 1;
-        }
-
-        // Count endurance
-        for m in 50..templates[n].end[0] as i32 {
-            pts += m / 10 + 1;
-        }
-
-        // Count mana
-        for m in 50..templates[n].mana[0] as i32 {
-            pts += m / 10 + 1;
-        }
-
-        // Count skills
-        for z in 0..50 {
-            for m in 0..templates[n].skill[z][0] as i32 {
-                pts += m / 10 + 1;
-            }
-        }
-    });
-
-    // TODO: Ensure that points_tot are updated when we set template skills
-    // Repository::with_character_templates_mut(|templates| {
-    //     templates[n].points_tot = pts;
-    // });
 
     // Destroy all instances of this template (they will be respawned)
     for cn in 1..MAXCHARS {
