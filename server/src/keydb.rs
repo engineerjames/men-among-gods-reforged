@@ -1,5 +1,6 @@
 use core::traits::{Class, Sex};
 use core::types::CharacterSummary;
+use redis::Commands;
 use std::collections::HashMap;
 use std::env;
 use std::sync::Once;
@@ -71,6 +72,20 @@ pub fn connect() -> Result<redis::Connection, String> {
     client
         .get_connection()
         .map_err(|err| format!("Failed to connect to KeyDB: {err}"))
+}
+
+/// Load the current game MOTD value from KeyDB.
+///
+/// Reads the `game:motd` key and returns its UTF-8 string payload.
+///
+/// # Returns
+///
+/// * `Ok(String)` with the current MOTD when the key exists.
+/// * `Err(String)` when connecting to KeyDB or reading the key fails.
+pub fn load_message_of_the_day() -> Result<String, String> {
+    let mut con = connect()?;
+    con.get("game:motd")
+        .map_err(|err| format!("Failed to load game MOTD from KeyDB: {err}"))
 }
 
 pub fn consume_login_ticket(ticket: u64) -> Result<Option<u64>, String> {

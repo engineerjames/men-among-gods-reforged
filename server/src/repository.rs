@@ -79,6 +79,31 @@ pub struct Repository {
 }
 
 impl Repository {
+    /// Normalize MOTD text for safe client display.
+    ///
+    /// Applies the historical maximum length constraint to avoid client
+    /// issues with oversized MOTD payloads.
+    fn normalize_message_of_the_day(mut message_of_the_day: String) -> String {
+        let char_count = message_of_the_day.chars().count();
+        if char_count > 130 {
+            log::warn!(
+                "Message of the day is too long ({} characters). Truncating to 130 characters.",
+                char_count
+            );
+            message_of_the_day = message_of_the_day.chars().take(130).collect();
+        }
+        message_of_the_day
+    }
+
+    /// Read MOTD from `motd.txt` and normalize it for display.
+    fn read_message_of_the_day_from_dat_file(&self) -> String {
+        let motd_path = self.get_dat_file_path("motd.txt");
+        log::info!("Loading message of the day from {:?}", motd_path);
+        let motd_data =
+            fs::read_to_string(&motd_path).unwrap_or("Live long and prosper!".to_string());
+        Self::normalize_message_of_the_day(motd_data)
+    }
+
     /// Create a new `Repository` initialized with default values.
     ///
     /// Allocates and initializes all in-memory collections with sizes based on
@@ -179,10 +204,10 @@ impl Repository {
         Ok(())
     }
 
-    /// Save all game data from memory back to disk.
-    /// The bad names, words, and message of the day are not saved back as
-    /// they are managed separately via text files, and are treated currently
-    /// as read-only.
+    /// Save mutable game runtime data back to the configured backend.
+    ///
+    /// Bad names, bad words, and MOTD are treated as externally-managed
+    /// read-only text data and are intentionally excluded from runtime saves.
     fn save(&mut self) -> Result<(), String> {
         match self.storage_backend {
             StorageBackend::DatFiles => self.save_to_dat_files(),
@@ -210,9 +235,6 @@ impl Repository {
             &self.characters,
             &self.effects,
             &self.globals,
-            &self.bad_names,
-            &self.bad_words,
-            &self.message_of_the_day,
         )
     }
 
@@ -238,6 +260,27 @@ impl Repository {
     /// Return the storage backend in use.
     pub fn storage_backend() -> StorageBackend {
         Self::with_repo(|repo| repo.storage_backend)
+    }
+
+    /// Fetch the latest MOTD from the active backend for login-time display.
+    ///
+    /// In `DatFiles` mode this reads `motd.txt` from disk each call.
+    /// In `KeyDb` mode this reads `game:motd` from KeyDB each call.
+    /// On transient read failures the in-memory boot-loaded MOTD is used.
+    pub fn latest_message_of_the_day() -> String {
+        Self::with_repo(|repo| match repo.storage_backend {
+            StorageBackend::DatFiles => repo.read_message_of_the_day_from_dat_file(),
+            StorageBackend::KeyDb => match keydb::load_message_of_the_day() {
+                Ok(motd) => Self::normalize_message_of_the_day(motd),
+                Err(error) => {
+                    log::warn!(
+                        "Falling back to cached MOTD after KeyDB read failure: {}",
+                        error
+                    );
+                    repo.message_of_the_day.clone()
+                }
+            },
+        })
     }
 
     /// Resolve the absolute path to a `.dat` file given its file name.
@@ -578,19 +621,7 @@ impl Repository {
     /// Falls back to a default string if the file is not present. The MOTD is
     /// truncated to 130 characters if it is too long to avoid client issues.
     fn load_message_of_the_day(&mut self) -> Result<(), String> {
-        let motd_path = self.get_dat_file_path("motd.txt");
-        log::info!("Loading message of the day from {:?}", motd_path);
-        let motd_data =
-            fs::read_to_string(&motd_path).unwrap_or("Live long and prosper!".to_string());
-        self.message_of_the_day = motd_data;
-
-        if self.message_of_the_day.len() > 130 {
-            log::warn!(
-                "Message of the day is too long ({} characters). Truncating to 130 characters.",
-                self.message_of_the_day.len()
-            );
-            self.message_of_the_day = self.message_of_the_day[..130].to_string();
-        }
+        self.message_of_the_day = self.read_message_of_the_day_from_dat_file();
 
         Ok(())
     }

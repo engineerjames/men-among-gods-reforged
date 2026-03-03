@@ -401,9 +401,6 @@ pub fn load_all(con: &mut Connection) -> Result<GameData, String> {
 /// * `characters`         - All character slots.
 /// * `effects`            - All effect slots.
 /// * `globals`            - The single global state value.
-/// * `bad_names`          - List of banned player names.
-/// * `bad_words`          - List of banned words.
-/// * `message_of_the_day` - Server MOTD shown at login.
 ///
 /// # Returns
 ///
@@ -415,9 +412,6 @@ pub fn save_runtime_data(
     characters: &[core::types::Character],
     effects: &[core::types::Effect],
     globals: &core::types::Global,
-    bad_names: &[String],
-    bad_words: &[String],
-    message_of_the_day: &str,
 ) -> Result<(), String> {
     log::info!("Saving runtime game data to KeyDB (templates excluded)...");
 
@@ -426,7 +420,6 @@ pub fn save_runtime_data(
     save_characters(con, characters)?;
     save_effects(con, effects)?;
     save_globals(con, globals)?;
-    save_text_data(con, bad_names, bad_words, message_of_the_day)?;
 
     // Keep schema marker present for startup/migration checks.
     con.set::<_, _, ()>("game:meta:version", SCHEMA_VERSION)
@@ -600,6 +593,7 @@ pub fn save_globals(con: &mut Connection, globals: &core::types::Global) -> Resu
 /// # Returns
 ///
 /// * `Ok(())` on success, or an `Err` describing the failure.
+#[allow(dead_code)] // Kept for maintenance/seeding utilities.
 pub fn save_text_data(
     con: &mut Connection,
     bad_names: &[String],

@@ -3462,6 +3462,10 @@ fn plr_login(nr: usize) {
     let intro2 = "May your visit here be... interesting.\n";
     let intro3 = "\n";
     let intro4 = "Use #help (or /help) to get a listing of the text commands.\n";
+    let mut message_of_the_day = Repository::latest_message_of_the_day();
+    if !message_of_the_day.is_empty() && !message_of_the_day.ends_with('\n') {
+        message_of_the_day.push('\n');
+    }
 
     State::with(|state| {
         state.do_character_log(cn, core::types::FontColor::Yellow, intro1);
@@ -3470,6 +3474,11 @@ fn plr_login(nr: usize) {
         state.do_character_log(cn, core::types::FontColor::Yellow, intro3);
         state.do_character_log(cn, core::types::FontColor::Yellow, intro4);
         state.do_character_log(cn, core::types::FontColor::Yellow, intro3);
+        if !message_of_the_day.trim().is_empty() {
+            state.do_character_log(cn, core::types::FontColor::Yellow, "Message of the Day:\n");
+            state.do_character_log(cn, core::types::FontColor::Yellow, &message_of_the_day);
+            state.do_character_log(cn, core::types::FontColor::Yellow, intro3);
+        }
     });
 
     if !is_api_login {
