@@ -1184,10 +1184,24 @@ impl Server {
         }
     }
 
-    /// Shut down the background saver thread cleanly.
+    /// Flush all pending background save jobs and then shut down the saver thread.
+    ///
+    /// `flush()` provides an explicit, observable synchronization point: it
+    /// sends a `Flush` sentinel through the FIFO channel and blocks until the
+    /// background thread acknowledges it, guaranteeing every queued write that
+    /// was enqueued before this call has completed.  Only then is `Shutdown`
+    /// sent and the thread joined.
+    ///
+    /// Safe to call multiple times — if the saver has already been taken
+    /// (e.g. called explicitly before `Drop`), subsequent calls are no-ops.
+    ///
     /// Call this during server shutdown, after the game loop has exited.
     pub fn shutdown_background_saver(&mut self) {
         if let Some(mut saver) = self.background_saver.take() {
+            log::info!("Flushing pending background save jobs...");
+            if let Err(e) = saver.flush() {
+                log::warn!("Background saver flush failed during shutdown: {e}");
+            }
             log::info!("Shutting down background saver thread...");
             saver.shutdown();
             log::info!("Background saver thread stopped.");
@@ -1610,7 +1624,17 @@ impl Server {
 }
 
 impl Drop for Server {
+    /// Ensure background writes drain before the repository is torn down.
+    ///
+    /// In the normal shutdown path `shutdown_background_saver()` will already
+    /// have been called explicitly (and will have taken the saver out of
+    /// `self.background_saver`), so this call is a no-op there.  In abnormal
+    /// exit / panic scenarios the saver may still hold queued jobs; calling
+    /// `shutdown_background_saver()` here ensures those writes complete and
+    /// that the KeyDB connection is cleanly closed before `Repository::shutdown`
+    /// tears down the storage layer.
     fn drop(&mut self) {
+        self.shutdown_background_saver();
         Repository::shutdown();
     }
 }

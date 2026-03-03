@@ -65,7 +65,6 @@ pub enum SaveJob {
     },
     /// Request a synchronous flush — the saver thread will ack via the
     /// provided one-shot channel once the write completes.
-    #[allow(dead_code)]
     Flush(mpsc::Sender<Result<(), String>>),
     /// Shut down the background thread cleanly.
     Shutdown,
@@ -105,7 +104,6 @@ impl BackgroundSaver {
     ///
     /// * `Ok(())` once the flush is acknowledged.
     /// * `Err` if the background thread has already exited.
-    #[allow(dead_code)]
     pub fn flush(&self) -> Result<(), String> {
         let (ack_tx, ack_rx) = mpsc::channel();
         self.send(SaveJob::Flush(ack_tx));
