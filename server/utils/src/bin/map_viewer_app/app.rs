@@ -1,4 +1,5 @@
 use super::graphics::GraphicsZipCache;
+use crate::DataSource;
 use eframe::egui;
 use egui::{Pos2, Rect, Vec2};
 use mag_core::constants::{
@@ -78,16 +79,19 @@ pub(crate) struct MapViewerApp {
     draft_sprite: u16,
     draft_item_instance_id: u32,
     palette_rect: Option<Rect>,
+
+    /// Active data backend (KeyDB or .dat files).
+    data_source: DataSource,
 }
 
 impl MapViewerApp {
-    pub(crate) fn new() -> Self {
-        let app = Self::default();
-
-        // Don't load map/graphics in constructor - it blocks window creation
-        // We'll load on first update instead
-
-        app
+    pub(crate) fn new(data_source: DataSource) -> Self {
+        // Don't load map/graphics in constructor — it blocks window creation.
+        // We load on first update instead, dispatching on data_source.
+        Self {
+            data_source,
+            ..Self::default()
+        }
     }
 
     fn ui_tile_preview_row(
@@ -255,25 +259,38 @@ impl MapViewerApp {
     fn save_map_dialog(&mut self) {
         self.save_status = None;
 
-        let mut dialog = rfd::FileDialog::new().add_filter("DAT", &["dat"]);
-        if let Some(dir) = self.dat_dir.as_ref() {
-            dialog = dialog.set_directory(dir);
-        }
-        dialog = dialog.set_file_name(self.default_save_filename());
+        match &self.data_source {
+            DataSource::KeyDb => match self.save_map_to_keydb() {
+                Ok(()) => {
+                    self.dirty = false;
+                    self.save_status = Some("Saved to KeyDB".to_string());
+                }
+                Err(e) => {
+                    self.save_status = Some(format!("Save failed: {e}"));
+                }
+            },
+            DataSource::DatFiles(_) => {
+                let mut dialog = rfd::FileDialog::new().add_filter("DAT", &["dat"]);
+                if let Some(dir) = self.dat_dir.as_ref() {
+                    dialog = dialog.set_directory(dir);
+                }
+                dialog = dialog.set_file_name(self.default_save_filename());
 
-        let Some(path) = dialog.save_file() else {
-            return;
-        };
+                let Some(path) = dialog.save_file() else {
+                    return;
+                };
 
-        match self.save_map_to_path(&path) {
-            Ok(()) => {
-                self.dirty = false;
-                self.dat_dir = path.parent().map(|p| p.to_path_buf());
-                self.map_path = Some(path.clone());
-                self.save_status = Some(format!("Saved: {}", path.display()));
-            }
-            Err(e) => {
-                self.save_status = Some(format!("Save failed: {e}"));
+                match self.save_map_to_path(&path) {
+                    Ok(()) => {
+                        self.dirty = false;
+                        self.dat_dir = path.parent().map(|p| p.to_path_buf());
+                        self.map_path = Some(path.clone());
+                        self.save_status = Some(format!("Saved: {}", path.display()));
+                    }
+                    Err(e) => {
+                        self.save_status = Some(format!("Save failed: {e}"));
+                    }
+                }
             }
         }
     }
@@ -291,15 +308,89 @@ impl MapViewerApp {
         )
     }
 
+    /// Load map tiles, items, and item templates from KeyDB.
+    fn load_from_keydb(&mut self) {
+        self.map_error = None;
+        self.items_error = None;
+        self.item_templates_error = None;
+        self.pan_initialized = false;
+        self.dirty = false;
+
+        match server::keydb::connect() {
+            Ok(mut con) => {
+                // Map tiles
+                match server::keydb_store::load_map(&mut con) {
+                    Ok(v) => {
+                        self.map_tiles = v;
+                        log::info!("Loaded map tiles from KeyDB: {}", self.map_tiles.len());
+                    }
+                    Err(e) => {
+                        self.map_tiles.clear();
+                        self.map_error = Some(format!("map: {e}"));
+                        return;
+                    }
+                }
+                // Item instances (for map overlays)
+                match server::keydb_store::load_indexed_entities::<Item>(
+                    &mut con,
+                    "game:item:",
+                    MAXITEM,
+                ) {
+                    Ok(v) => self.items = v,
+                    Err(e) => {
+                        self.items.clear();
+                        self.items_error = Some(format!("item: {e}"));
+                    }
+                }
+                // Item templates (for palette previews)
+                match server::keydb_store::load_indexed_entities::<Item>(
+                    &mut con,
+                    "game:titem:",
+                    MAXTITEM,
+                ) {
+                    Ok(v) => self.item_templates = v,
+                    Err(e) => {
+                        self.item_templates.clear();
+                        self.item_templates_error = Some(format!("titem: {e}"));
+                    }
+                }
+                self.save_status = Some("Loaded from KeyDB".to_string());
+            }
+            Err(e) => {
+                self.map_error = Some(format!("KeyDB connect: {e}"));
+            }
+        }
+    }
+
+    /// Save the current map data back to KeyDB.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` on success, or an `Err` describing the failure.
+    fn save_map_to_keydb(&self) -> Result<(), String> {
+        if self.map_tiles.is_empty() {
+            return Err("No map loaded".to_string());
+        }
+        let mut con = server::keydb::connect().map_err(|e| format!("KeyDB connect: {e}"))?;
+        server::keydb_store::save_map(&mut con, &self.map_tiles)
+    }
+
     fn revert_unsaved_changes(&mut self) {
-        if let Some(path) = self.map_path.clone() {
-            self.load_map_from_path(path);
-        } else {
-            let Some(dir) = self.dat_dir.clone() else {
-                self.save_status = Some("Revert failed: no map loaded".to_string());
-                return;
-            };
-            self.load_map_from_dir(dir);
+        match &self.data_source {
+            DataSource::KeyDb => {
+                self.load_from_keydb();
+            }
+            DataSource::DatFiles(_) => {
+                if let Some(path) = self.map_path.clone() {
+                    self.load_map_from_path(path);
+                } else {
+                    let Some(dir) = self.dat_dir.clone() else {
+                        self.save_status = Some("Revert failed: no map loaded".to_string());
+                        return;
+                    };
+                    self.load_map_from_dir(dir);
+                }
+            }
         }
         self.dirty = false;
         self.save_status = Some("Reverted (discarded unsaved changes)".to_string());
@@ -631,8 +722,13 @@ impl eframe::App for MapViewerApp {
         // Load map/graphics after a couple frames (window has appeared)
         if !self.initial_load_done && self.frame_count > 2 {
             self.initial_load_done = true;
-            if let Some(dir) = crate::dat_dir_from_args().or_else(crate::default_dat_dir) {
-                self.load_map_from_dir(dir);
+            match &self.data_source {
+                DataSource::KeyDb => {
+                    self.load_from_keydb();
+                }
+                DataSource::DatFiles(dir) => {
+                    self.load_map_from_dir(dir.clone());
+                }
             }
             if let Some(zip_path) =
                 crate::graphics_zip_from_args().or_else(crate::default_graphics_zip_path)
@@ -714,7 +810,9 @@ impl eframe::App for MapViewerApp {
                         self.save_map_dialog();
                     }
 
-                    let revert_enabled = self.dirty && self.dat_dir.is_some();
+                    let revert_enabled = self.dirty
+                        && (matches!(self.data_source, DataSource::KeyDb)
+                            || self.dat_dir.is_some());
                     if ui
                         .add_enabled(
                             revert_enabled,
@@ -725,6 +823,33 @@ impl eframe::App for MapViewerApp {
                         ui.close_menu();
                         self.revert_unsaved_changes();
                     }
+
+                    ui.separator();
+
+                    ui.menu_button("Data Source", |ui| {
+                        let is_keydb = matches!(self.data_source, DataSource::KeyDb);
+                        if ui
+                            .selectable_label(is_keydb, "KeyDB (127.0.0.1:5556)")
+                            .clicked()
+                        {
+                            self.data_source = DataSource::KeyDb;
+                            self.load_from_keydb();
+                            self.dirty = false;
+                            ui.close_menu();
+                        }
+                        let is_dat = matches!(self.data_source, DataSource::DatFiles(_));
+                        if ui.selectable_label(is_dat, ".dat Files").clicked() {
+                            if let Some(dir) = rfd::FileDialog::new()
+                                .set_can_create_directories(true)
+                                .pick_folder()
+                            {
+                                self.data_source = DataSource::DatFiles(dir.clone());
+                                self.load_map_from_dir(dir);
+                                self.dirty = false;
+                            }
+                            ui.close_menu();
+                        }
+                    });
                 });
 
                 ui.separator();

@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    account_api, preferences,
+    account_api, cert_trust, preferences,
     scenes::scene::{Scene, SceneType},
     sfx_cache::MusicTrack,
     state::AppState,
@@ -25,6 +25,7 @@ pub struct LoginScene {
     is_submitting: bool,
     api_result_rx: Option<std::sync::mpsc::Receiver<Result<String, String>>>,
     error_message: Option<String>,
+    certificate_mismatch: Option<cert_trust::FingerprintMismatch>,
     login_thread: Option<std::thread::JoinHandle<()>>,
     music_initialized: bool,
 }
@@ -40,6 +41,7 @@ impl LoginScene {
             is_submitting: false,
             api_result_rx: None,
             error_message: None,
+            certificate_mismatch: None,
             login_thread: None,
             music_initialized: false,
         }
@@ -71,6 +73,34 @@ impl LoginScene {
         if let Err(err) = preferences::save_global_settings(&settings) {
             log::warn!("Failed to save login music setting: {}", err);
         }
+    }
+
+    /// Starts an asynchronous login request using the current username/password.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state used to persist API session fields.
+    /// * `api_base_url` - Resolved API base URL for the request.
+    fn begin_login_request(&mut self, app_state: &mut AppState, api_base_url: String) {
+        let (sender, receiver) = mpsc::channel::<Result<String, String>>();
+
+        self.error_message = None;
+        self.is_submitting = true;
+        self.api_result_rx = Some(receiver);
+
+        let username = self.username.clone();
+        let password = self.password.clone();
+        let base_url = api_base_url;
+
+        app_state.api.base_url = base_url.clone();
+        app_state.api.username = Some(username.clone());
+
+        self.login_thread = Some(std::thread::spawn(move || {
+            let result = account_api::login(&base_url, &username, &password);
+            if let Err(error) = sender.send(result) {
+                log::error!("Failed to send login result: {}", error);
+            }
+        }));
     }
 }
 
@@ -117,6 +147,9 @@ impl Scene for LoginScene {
                     Err(error) => {
                         log::error!("Login failed: {}", error);
                         app_state.api.token = None;
+                        if let Some(mismatch) = cert_trust::take_last_fingerprint_mismatch() {
+                            self.certificate_mismatch = Some(mismatch);
+                        }
                         self.error_message = Some(error);
                     }
                 }
@@ -263,26 +296,7 @@ impl Scene for LoginScene {
                         .to_ascii_lowercase()
                         .starts_with("http://");
 
-                    app_state.api.base_url = api_base_url.clone();
-
-                    let (sender, receiver) = mpsc::channel::<Result<String, String>>();
-
-                    self.error_message = None;
-                    self.is_submitting = true;
-                    self.api_result_rx = Some(receiver);
-
-                    let username = self.username.clone();
-                    let password = self.password.clone();
-                    let base_url = api_base_url;
-
-                    app_state.api.username = Some(username.clone());
-
-                    self.login_thread = Some(std::thread::spawn(move || {
-                        let result = account_api::login(&base_url, &username, &password);
-                        if let Err(error) = sender.send(result) {
-                            log::error!("Failed to send login result: {}", error);
-                        }
-                    }));
+                    self.begin_login_request(app_state, api_base_url);
                 }
 
                 if create_clicked {
@@ -294,6 +308,63 @@ impl Scene for LoginScene {
                     next = Some(SceneType::Exit);
                 }
             });
+
+        let mut accept_new_cert = false;
+        let mut dismiss_cert_dialog = false;
+
+        if let Some(mismatch) = self.certificate_mismatch.as_ref() {
+            egui::Window::new("Server Certificate Changed")
+                .collapsible(false)
+                .resizable(false)
+                .anchor(Align2::CENTER_CENTER, Vec2::new(0.0, 0.0))
+                .show(ctx, |ui| {
+                    ui.label("The server certificate fingerprint changed.");
+                    ui.colored_label(
+                        egui::Color32::YELLOW,
+                        "This may indicate a man-in-the-middle attack unless you intentionally rotated certificates.",
+                    );
+                    ui.add_space(8.0);
+                    ui.label(format!("Host: {}", mismatch.host));
+                    ui.label("Previously trusted fingerprint:");
+                    ui.monospace(&mismatch.expected_fingerprint);
+                    ui.add_space(4.0);
+                    ui.label("New fingerprint presented by server:");
+                    ui.monospace(&mismatch.received_fingerprint);
+                    ui.add_space(10.0);
+                    ui.horizontal(|ui| {
+                        if ui.button("Accept New Certificate").clicked() {
+                            accept_new_cert = true;
+                        }
+                        if ui.button("Reject").clicked() {
+                            dismiss_cert_dialog = true;
+                        }
+                    });
+                });
+        }
+
+        if accept_new_cert {
+            if let Some(mismatch) = self.certificate_mismatch.take() {
+                match cert_trust::trust_fingerprint(&mismatch.host, &mismatch.received_fingerprint)
+                {
+                    Ok(()) => {
+                        let retry_base_url = app_state.api.base_url.clone();
+                        if retry_base_url.trim().is_empty() {
+                            self.error_message = Some(
+                                "Accepted new server certificate. Please click Login again."
+                                    .to_string(),
+                            );
+                        } else {
+                            self.begin_login_request(app_state, retry_base_url);
+                        }
+                    }
+                    Err(err) => {
+                        self.error_message = Some(format!("Failed to update known hosts: {err}"));
+                    }
+                }
+            }
+        } else if dismiss_cert_dialog {
+            self.certificate_mismatch = None;
+        }
 
         next
     }

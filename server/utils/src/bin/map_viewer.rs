@@ -5,6 +5,16 @@ use std::path::PathBuf;
 
 use map_viewer_app::MapViewerApp;
 
+/// The data backend the viewer reads from and writes to.
+#[derive(Clone, Debug, Default)]
+enum DataSource {
+    /// Read/write from `.dat` files in the given directory.
+    DatFiles(PathBuf),
+    /// Read/write via KeyDB at `redis://127.0.0.1:5556/`.
+    #[default]
+    KeyDb,
+}
+
 fn default_dat_dir() -> Option<PathBuf> {
     let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let candidate = crate_dir.join("../assets/.dat");
@@ -18,13 +28,14 @@ fn default_dat_dir() -> Option<PathBuf> {
 fn dat_dir_from_args() -> Option<PathBuf> {
     let mut args = std::env::args_os().skip(1);
     while let Some(arg) = args.next() {
-        if arg == "--dat-dir" || arg == "--data-dir" {
+        if arg == "--dat-dir" || arg == "--data-dir" || arg == "--dat" {
             if let Some(dir) = args.next().map(PathBuf::from) {
                 if dir.is_dir() {
                     return Some(dir);
                 }
             }
-            continue;
+            // --dat with no directory: fall back to default
+            return default_dat_dir();
         }
 
         let dir = PathBuf::from(arg);
@@ -33,6 +44,22 @@ fn dat_dir_from_args() -> Option<PathBuf> {
         }
     }
     None
+}
+
+/// Determine the data source from CLI arguments.
+///
+/// Defaults to [`DataSource::KeyDb`]. Pass `--dat [path]` to use `.dat` files
+/// instead.
+///
+/// # Returns
+///
+/// * The resolved [`DataSource`].
+fn data_source_from_args() -> DataSource {
+    if let Some(dir) = dat_dir_from_args() {
+        DataSource::DatFiles(dir)
+    } else {
+        DataSource::KeyDb
+    }
 }
 
 fn default_graphics_zip_path() -> Option<PathBuf> {
@@ -74,6 +101,9 @@ fn main() -> Result<(), eframe::Error> {
     eframe::run_native(
         "Map Viewer",
         options,
-        Box::new(|_cc| Ok(Box::new(MapViewerApp::new()))),
+        Box::new(|_cc| {
+            let data_source = data_source_from_args();
+            Ok(Box::new(MapViewerApp::new(data_source)))
+        }),
     )
 }

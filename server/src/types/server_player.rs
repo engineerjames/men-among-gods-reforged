@@ -12,7 +12,6 @@ use crate::{
 };
 
 // Server side player data
-#[allow(dead_code)]
 pub struct ServerPlayer {
     pub sock: Option<GameStream>,
     pub addr: u32,
@@ -71,9 +70,6 @@ pub struct ServerPlayer {
     pub unique: u64,
 
     pub passwd: [u8; 16],
-
-    /// IDs of changed fields
-    pub changed_field: [i32; TILEX * TILEY],
 }
 
 impl ServerPlayer {
@@ -123,7 +119,6 @@ impl ServerPlayer {
             ticker_started: 0,
             unique: 0,
             passwd: [0; 16],
-            changed_field: [0; TILEX * TILEY],
         }
     }
 

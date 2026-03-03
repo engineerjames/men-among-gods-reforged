@@ -23,9 +23,21 @@ services:
       - ${KEYDB_PASSWORD:?KEYDB_PASSWORD is required}
       - --appendonly
       - "yes"
+      - --appendfsync
+      - everysec
+      - --save
+      - "900"
+      - "1"
+      - "--server-threads"
+      - "4"
     restart: unless-stopped
     volumes:
       - keydb-data:/data
+    ports:
+      # Expose KeyDB to localhost only so local dev tools (map viewer,
+      # template viewer, dat-to-keydb, etc.) can reach it without
+      # publishing the port on all host interfaces.
+      - "127.0.0.1:5556:5556"
     healthcheck:
       test: ["CMD-SHELL", "keydb-cli -p 5556 -a \"$${KEYDB_PASSWORD}\" ping | grep PONG"]
       interval: 10s
@@ -34,6 +46,21 @@ services:
       start_period: 10s
     environment:
       KEYDB_PASSWORD: ${KEYDB_PASSWORD:?KEYDB_PASSWORD is required}
+
+  server-seed:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    depends_on:
+      keydb:
+        condition: service_healthy
+    environment:
+      MAG_KEYDB_URL: redis://:${KEYDB_PASSWORD:?KEYDB_PASSWORD is required}@keydb:5556/
+    command:
+      - /bin/sh
+      - -lc
+      - /app/dat-to-keydb --skip-if-seeded
+    restart: "no"
 
   api:
     build:
@@ -66,7 +93,10 @@ services:
         condition: service_completed_successfully
       keydb:
         condition: service_healthy
+      server-seed:
+        condition: service_completed_successfully
     environment:
+      MAG_STORAGE_BACKEND: keydb
       MAG_KEYDB_URL: redis://:${KEYDB_PASSWORD:?KEYDB_PASSWORD is required}@keydb:5556/
       SERVER_TLS_CERT: /certs/server.crt
       SERVER_TLS_KEY: /certs/server.key
@@ -74,6 +104,8 @@ services:
       - tls-certs:/certs:ro
     ports:
       - "5555:5555"
+    stop_signal: SIGINT
+    stop_grace_period: 2m
     restart: unless-stopped
 
 volumes:
