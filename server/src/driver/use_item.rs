@@ -3114,23 +3114,6 @@ pub fn mine_wall(cn: usize, item_idx: usize) -> i32 {
     Repository::with_items(|items| items[in_idx].data[2] as i32)
 }
 
-// Un-called in the original code
-#[allow(dead_code)]
-pub fn mine_state(_cn: usize, item_idx: usize) -> i32 {
-    if item_idx == 0 {
-        return 0;
-    }
-
-    // Check if item is a mine wall (driver 25)
-    let is_mine_wall = Repository::with_items(|items| items[item_idx].driver == 25);
-    if !is_mine_wall {
-        return 0;
-    }
-
-    // Return state from data[2]
-    Repository::with_items(|items| items[item_idx].data[2]) as i32
-}
-
 pub fn use_mine(cn: usize, item_idx: usize) -> i32 {
     use crate::repository::Repository;
     use crate::state::State;

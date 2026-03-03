@@ -1411,8 +1411,6 @@ impl God {
         })
     }
 
-    // This function is unused in the original implementation
-    #[allow(dead_code)]
     /// Remove an item from a character's inventory (unused helper).
     ///
     /// # Arguments
@@ -4640,28 +4638,6 @@ impl God {
 
             1
         })
-    }
-
-    // TODO: Implement actual mail logic
-    #[allow(dead_code)]
-    /// Placeholder for mail-related password operations.
-    pub fn mail_pass(cn: usize, co: usize) {
-        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
-            return;
-        }
-
-        Repository::with_characters(|characters| {
-            let character = &characters[co];
-
-            State::with(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Green,
-                    &format!("Mailing password for character {}\n", character.get_name()),
-                );
-                // TODO: Actual mail logic
-            });
-        });
     }
 
     /// Command to make `co` perform a slap animation (cosmetic/admin).

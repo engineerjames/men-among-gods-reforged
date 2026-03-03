@@ -14,13 +14,10 @@ pub(crate) struct GraphicsZipCache {
     decoded_cache: HashMap<usize, Vec<u8>>,
     decoded_dims: HashMap<usize, (u32, u32)>,
     // Track loading progress
-    #[allow(dead_code)]
     load_state: Option<LoadState>,
-    #[allow(dead_code)]
     pub(crate) loading_done: bool,
 }
 
-#[allow(dead_code)]
 struct LoadState {
     entries_to_load: Vec<(usize, String)>,
     index: usize,

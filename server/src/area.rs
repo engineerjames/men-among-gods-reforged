@@ -22,7 +22,6 @@ pub fn is_in_pentagram_quest(cn: usize) -> bool {
 }
 
 // Unused in original implementation as well
-#[allow(dead_code)]
 pub fn get_area(cn: usize, verbose: bool) -> String {
     if !(1..crate::core::constants::MAXCHARS).contains(&cn) {
         return String::new();

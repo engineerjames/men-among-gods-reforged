@@ -52,12 +52,8 @@ fn handle_command_line_args(args: &[String]) {
                 populate::pop_skill();
                 process::exit(0);
             }
-            "load" => {
-                populate::pop_load_all_chars();
-                process::exit(0);
-            }
-            "save" => {
-                populate::pop_save_all_chars();
+            "reset" => {
+                populate::pop_reset_all();
                 process::exit(0);
             }
             _ => {}

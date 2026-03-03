@@ -1,7 +1,5 @@
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)] // TODO: Check usage and remove if unnecessary
-
 /// Mirrors the original `LogoutReason` values used in the server protocol
 /// and internal logic. These codes indicate why a client/character was
 /// disconnected or removed.
@@ -17,6 +15,7 @@ pub enum LogoutReason {
     /// Invalid parameters in the connection request.
     ParamsInvalid = 4,
     /// Non-active account disconnected.
+    #[allow(dead_code)]
     NonActive = 5,
     /// Incorrect password supplied.
     PasswordIncorrect = 6,

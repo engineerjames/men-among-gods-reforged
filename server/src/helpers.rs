@@ -614,7 +614,6 @@ pub fn absrankdiff(cn: i32, co: i32) -> u32 {
 /// # Arguments
 /// * `cn` - First character index
 /// * `co` - Second character index
-#[allow(dead_code)]
 pub fn in_attackrange(cn: i32, co: i32) -> bool {
     absrankdiff(cn, co) <= core::constants::ATTACK_RANGE as u32
 }
@@ -624,7 +623,6 @@ pub fn in_attackrange(cn: i32, co: i32) -> bool {
 /// # Arguments
 /// * `cn` - First character index
 /// * `co` - Second character index
-#[allow(dead_code)]
 pub fn in_grouprange(cn: i32, co: i32) -> bool {
     absrankdiff(cn, co) <= core::constants::GROUP_RANGE as u32
 }

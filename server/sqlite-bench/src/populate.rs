@@ -232,13 +232,9 @@ pub fn try_load_dat_files(dat_path: &str) -> Option<GameData> {
 
     #[derive(Debug, Decode)]
     struct NormalizedDataSet<T> {
-        #[allow(dead_code)]
         magic: [u8; 4],
-        #[allow(dead_code)]
         version: u32,
-        #[allow(dead_code)]
         source_file: String,
-        #[allow(dead_code)]
         source_record_size: usize,
         records: Vec<T>,
     }

@@ -2520,17 +2520,6 @@ pub fn speedo(n: usize) -> i32 {
     SPEEDTAB[speed][ctick] as i32
 }
 
-/// Clear the saved small map for all players to force a full resend
-#[allow(dead_code)]
-pub fn plr_clear_map() {
-    Server::with_players_mut(|players| {
-        for n in 1..players.len() {
-            players[n].smap = std::array::from_fn(|_| CMap::default());
-            players[n].vx = 0; // force do_all in map generation
-        }
-    });
-}
-
 /// Choose and dispatch the appropriate map update implementation.
 ///
 /// Decides between the full (`plr_getmap_complete`) or fast (`plr_getmap_fast`)
