@@ -3,6 +3,18 @@ name = "server"
 version = "1.2.0"
 edition = "2021"
 
+[lib]
+name = "server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "server"
+path = "src/main.rs"
+
+[[bin]]
+name = "dat-to-keydb"
+path = "src/bin/dat_to_keydb.rs"
+
 [dependencies]
 core = { path = "../core" }
 flate2 = "1.0"
@@ -13,5 +25,6 @@ bincode = { version = "2.0", features = ["derive"] }
 rand = "0.8"
 ctrlc = "3.5.1"
 redis = "1.0.3"
+dotenvy = "0.15"
 rustls = "0.23"
 rustls-pemfile = "2"

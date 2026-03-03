@@ -216,9 +216,14 @@ impl State {
             // Update item template statistics
             let temp_id = Repository::with_items(|items| items[item_idx].temp as usize);
             if temp_id > 0 && temp_id < core::constants::MAXTITEM {
-                Repository::with_item_templates_mut(|templates| {
-                    templates[temp_id].t_sold += 1;
-                });
+                log::warn!(
+                    "TODO: Should update t_sold for template {} after selling item {}",
+                    temp_id,
+                    item_name
+                );
+                // Repository::with_item_templates_mut(|templates| {
+                //     templates[temp_id].t_sold += 1;
+                // });
             }
         } else {
             // Handle buying/taking/examining items
@@ -295,9 +300,10 @@ impl State {
                                 let temp_id =
                                     Repository::with_items(|items| items[item_idx].temp as usize);
                                 if temp_id > 0 && temp_id < core::constants::MAXTITEM {
-                                    Repository::with_item_templates_mut(|templates| {
-                                        templates[temp_id].t_bought += 1;
-                                    });
+                                    log::warn!("TODO: Should update t_bought for template {} after buying item {}", temp_id, item_name);
+                                    // Repository::with_item_templates_mut(|templates| {
+                                    //     templates[temp_id].t_bought += 1;
+                                    // });
                                 }
                             } else {
                                 let item_name = Repository::with_items(|items| {

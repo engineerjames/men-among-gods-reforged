@@ -1,4 +1,5 @@
 use super::graphics::GraphicsZipCache;
+use crate::DataSource;
 use eframe::egui;
 use egui::Vec2;
 use mag_core::string_operations::c_string_to_str;
@@ -57,6 +58,7 @@ pub(crate) struct TemplateViewerApp {
     dat_dir: Option<PathBuf>,
     dirty: bool,
     save_status: Option<String>,
+    data_source: DataSource,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -159,15 +161,25 @@ impl Default for TemplateViewerApp {
             dat_dir: None,
             dirty: false,
             save_status: None,
+            data_source: DataSource::default(),
         }
     }
 }
 
 impl TemplateViewerApp {
-    pub(crate) fn new() -> Self {
-        let mut app = Self::default();
-        if let Some(dir) = crate::dat_dir_from_args().or_else(crate::default_dat_dir) {
-            app.load_templates_from_dir(dir);
+    pub(crate) fn new(data_source: DataSource) -> Self {
+        let mut app = Self {
+            data_source: data_source.clone(),
+            ..Self::default()
+        };
+
+        match data_source {
+            DataSource::KeyDb => {
+                app.load_from_keydb();
+            }
+            DataSource::DatFiles(dir) => {
+                app.load_templates_from_dir(dir);
+            }
         }
 
         if let Some(zip_path) =
@@ -190,23 +202,36 @@ impl TemplateViewerApp {
     fn save_current_view_dialog(&mut self) {
         self.save_status = None;
 
-        let mut dialog = rfd::FileDialog::new().add_filter("DAT", &["dat"]);
-        if let Some(dir) = self.dat_dir.as_ref() {
-            dialog = dialog.set_directory(dir);
-        }
-        dialog = dialog.set_file_name(self.default_save_filename());
+        match &self.data_source {
+            DataSource::KeyDb => match self.save_current_view_to_keydb() {
+                Ok(()) => {
+                    self.dirty = false;
+                    self.save_status = Some("Saved to KeyDB".to_string());
+                }
+                Err(e) => {
+                    self.save_status = Some(format!("Save failed: {e}"));
+                }
+            },
+            DataSource::DatFiles(_) => {
+                let mut dialog = rfd::FileDialog::new().add_filter("DAT", &["dat"]);
+                if let Some(dir) = self.dat_dir.as_ref() {
+                    dialog = dialog.set_directory(dir);
+                }
+                dialog = dialog.set_file_name(self.default_save_filename());
 
-        let Some(path) = dialog.save_file() else {
-            return;
-        };
+                let Some(path) = dialog.save_file() else {
+                    return;
+                };
 
-        match self.save_current_view_to_path(&path) {
-            Ok(()) => {
-                self.dirty = false;
-                self.save_status = Some(format!("Saved to {}", path.display()));
-            }
-            Err(e) => {
-                self.save_status = Some(format!("Save failed: {e}"));
+                match self.save_current_view_to_path(&path) {
+                    Ok(()) => {
+                        self.dirty = false;
+                        self.save_status = Some(format!("Saved to {}", path.display()));
+                    }
+                    Err(e) => {
+                        self.save_status = Some(format!("Save failed: {e}"));
+                    }
+                }
             }
         }
     }
@@ -240,13 +265,106 @@ impl TemplateViewerApp {
         }
     }
 
+    /// Load all game data from KeyDB at `127.0.0.1:5556`.
+    ///
+    /// Populates item/character templates, instances, and map tiles
+    /// from the KeyDB store, replacing any previously-loaded data.
+    fn load_from_keydb(&mut self) {
+        self.load_error = None;
+        match server::keydb::connect() {
+            Ok(mut con) => {
+                // Item templates
+                match server::keydb_store::load_indexed_entities::<mag_core::types::Item>(
+                    &mut con,
+                    "game:titem:",
+                    mag_core::constants::MAXTITEM,
+                ) {
+                    Ok(v) => self.item_templates = v,
+                    Err(e) => {
+                        self.load_error = Some(format!("titem: {e}"));
+                        return;
+                    }
+                }
+                // Character templates
+                match server::keydb_store::load_indexed_entities::<mag_core::types::Character>(
+                    &mut con,
+                    "game:tchar:",
+                    mag_core::constants::MAXTCHARS,
+                ) {
+                    Ok(v) => self.character_templates = v,
+                    Err(e) => {
+                        self.load_error = Some(format!("tchar: {e}"));
+                        return;
+                    }
+                }
+                // Item instances
+                match server::keydb_store::load_indexed_entities::<mag_core::types::Item>(
+                    &mut con,
+                    "game:item:",
+                    mag_core::constants::MAXITEM,
+                ) {
+                    Ok(v) => self.items = v,
+                    Err(e) => {
+                        self.load_error = Some(format!("item: {e}"));
+                        return;
+                    }
+                }
+                // Character instances
+                match server::keydb_store::load_indexed_entities::<mag_core::types::Character>(
+                    &mut con,
+                    "game:char:",
+                    mag_core::constants::MAXCHARS,
+                ) {
+                    Ok(v) => self.characters = v,
+                    Err(e) => {
+                        self.load_error = Some(format!("char: {e}"));
+                        return;
+                    }
+                }
+                // Map tiles
+                match server::keydb_store::load_map(&mut con) {
+                    Ok(v) => self.map_tiles = v,
+                    Err(e) => {
+                        self.load_error = Some(format!("map: {e}"));
+                    }
+                }
+            }
+            Err(e) => {
+                self.load_error = Some(format!("KeyDB connect: {e}"));
+            }
+        }
+    }
+
+    /// Save the current view's data back to KeyDB.
+    ///
+    /// For character templates, `points_tot` is recalculated before saving.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` on success, or an `Err` describing the failure.
+    fn save_current_view_to_keydb(&mut self) -> Result<(), String> {
+        let mut con = server::keydb::connect().map_err(|e| format!("KeyDB connect: {e}"))?;
+
+        match self.view_mode {
+            ViewMode::ItemTemplates => {
+                server::keydb_store::save_item_templates(&mut con, &self.item_templates)
+            }
+            ViewMode::CharacterTemplates => {
+                // Recalculate points_tot for every template before saving.
+                for tpl in &mut self.character_templates {
+                    tpl.points_tot = server::points::calculate_points_tot(tpl);
+                }
+                server::keydb_store::save_character_templates(&mut con, &self.character_templates)
+            }
+            ViewMode::Items => server::keydb_store::save_items(&mut con, &self.items),
+            ViewMode::Characters => {
+                server::keydb_store::save_characters(&mut con, &self.characters)
+            }
+        }
+    }
+
     fn revert_unsaved_changes(&mut self) {
         self.save_status = None;
-
-        let Some(dir) = self.dat_dir.clone() else {
-            self.save_status = Some("Revert failed: no data directory selected".to_string());
-            return;
-        };
 
         let prev_view_mode = self.view_mode;
         let prev_selected_item_index = self.selected_item_index;
@@ -254,7 +372,19 @@ impl TemplateViewerApp {
         let prev_selected_item_instance_index = self.selected_item_instance_index;
         let prev_selected_character_instance_index = self.selected_character_instance_index;
 
-        self.load_templates_from_dir(dir);
+        match &self.data_source {
+            DataSource::KeyDb => {
+                self.load_from_keydb();
+            }
+            DataSource::DatFiles(_) => {
+                let Some(dir) = self.dat_dir.clone() else {
+                    self.save_status =
+                        Some("Revert failed: no data directory selected".to_string());
+                    return;
+                };
+                self.load_templates_from_dir(dir);
+            }
+        }
 
         // Restore view and selections where possible.
         self.view_mode = prev_view_mode;
@@ -1907,16 +2037,47 @@ impl eframe::App for TemplateViewerApp {
                         ui.close_menu();
                     }
 
-                    if ui
-                        .add_enabled(
-                            self.dirty && self.dat_dir.is_some(),
-                            egui::Button::new("Revert (discard changes)"),
+                    let can_revert = self.dirty
+                        && matches!(
+                            self.data_source,
+                            DataSource::KeyDb | DataSource::DatFiles(_)
                         )
+                        && (matches!(self.data_source, DataSource::KeyDb)
+                            || self.dat_dir.is_some());
+                    if ui
+                        .add_enabled(can_revert, egui::Button::new("Revert (discard changes)"))
                         .clicked()
                     {
                         self.revert_unsaved_changes();
                         ui.close_menu();
                     }
+
+                    ui.separator();
+
+                    ui.menu_button("Data Source", |ui| {
+                        let is_keydb = matches!(self.data_source, DataSource::KeyDb);
+                        if ui
+                            .selectable_label(is_keydb, "KeyDB (127.0.0.1:5556)")
+                            .clicked()
+                        {
+                            self.data_source = DataSource::KeyDb;
+                            self.load_from_keydb();
+                            self.dirty = false;
+                            ui.close_menu();
+                        }
+                        let is_dat = matches!(self.data_source, DataSource::DatFiles(_));
+                        if ui.selectable_label(is_dat, ".dat Files").clicked() {
+                            if let Some(dir) = rfd::FileDialog::new()
+                                .set_can_create_directories(true)
+                                .pick_folder()
+                            {
+                                self.data_source = DataSource::DatFiles(dir.clone());
+                                self.load_templates_from_dir(dir);
+                                self.dirty = false;
+                            }
+                            ui.close_menu();
+                        }
+                    });
 
                     ui.separator();
 

@@ -7,7 +7,7 @@ use egui_sdl2::egui::{self, Align2, Vec2};
 use sdl2::{event::Event, pixels::Color, render::Canvas, video::Window};
 
 use crate::{
-    account_api,
+    account_api, cert_trust,
     scenes::scene::{Scene, SceneType},
     state::AppState,
 };
@@ -24,6 +24,7 @@ pub struct NewAccountScene {
     is_submitting: bool,
     api_result_rx: Option<Receiver<Result<(), String>>>,
     error_message: Option<String>,
+    certificate_mismatch: Option<cert_trust::FingerprintMismatch>,
     account_thread: Option<std::thread::JoinHandle<()>>,
 }
 
@@ -37,6 +38,7 @@ impl NewAccountScene {
             is_submitting: false,
             api_result_rx: None,
             error_message: None,
+            certificate_mismatch: None,
             account_thread: None,
         }
     }
@@ -75,6 +77,31 @@ impl NewAccountScene {
 
         account_api::create_account(base_url, email, username, password).map(|_| ())
     }
+
+    /// Starts an asynchronous account-creation request using current form values.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state that provides the API base URL.
+    fn begin_account_creation_request(&mut self, app_state: &AppState) {
+        let (sender, receiver) = mpsc::channel::<Result<(), String>>();
+
+        self.error_message = None;
+        self.is_submitting = true;
+        self.api_result_rx = Some(receiver);
+
+        let base_url = app_state.api.base_url.clone();
+        let email = self.email.clone();
+        let username = self.username.clone();
+        let password = self.password.clone();
+
+        self.account_thread = Some(std::thread::spawn(move || {
+            let result = Self::create_account(&base_url, &email, &username, &password);
+            if let Err(error) = sender.send(result) {
+                log::error!("Failed to send account creation result: {}", error);
+            }
+        }));
+    }
 }
 
 impl Scene for NewAccountScene {
@@ -102,7 +129,12 @@ impl Scene for NewAccountScene {
 
                 match result {
                     Ok(()) => return Some(SceneType::Login),
-                    Err(error) => self.error_message = Some(error),
+                    Err(error) => {
+                        if let Some(mismatch) = cert_trust::take_last_fingerprint_mismatch() {
+                            self.certificate_mismatch = Some(mismatch);
+                        }
+                        self.error_message = Some(error);
+                    }
                 }
             }
         }
@@ -195,25 +227,58 @@ impl Scene for NewAccountScene {
                         self.username
                     );
 
-                    let (sender, receiver) = mpsc::channel::<Result<(), String>>();
-
-                    self.error_message = None;
-                    self.is_submitting = true;
-                    self.api_result_rx = Some(receiver);
-
-                    let base_url = app_state.api.base_url.clone();
-                    let email = self.email.clone();
-                    let username = self.username.clone();
-                    let password = self.password.clone();
-
-                    self.account_thread = Some(std::thread::spawn(move || {
-                        let result = Self::create_account(&base_url, &email, &username, &password);
-                        if let Err(error) = sender.send(result) {
-                            log::error!("Failed to send account creation result: {}", error);
-                        }
-                    }));
+                    self.begin_account_creation_request(app_state);
                 }
             });
+
+        let mut accept_new_cert = false;
+        let mut dismiss_cert_dialog = false;
+
+        if let Some(mismatch) = self.certificate_mismatch.as_ref() {
+            egui::Window::new("Server Certificate Changed")
+                .collapsible(false)
+                .resizable(false)
+                .anchor(Align2::CENTER_CENTER, Vec2::new(0.0, 0.0))
+                .show(ctx, |ui| {
+                    ui.label("The server certificate fingerprint changed.");
+                    ui.colored_label(
+                        egui::Color32::YELLOW,
+                        "This may indicate a man-in-the-middle attack unless you intentionally rotated certificates.",
+                    );
+                    ui.add_space(8.0);
+                    ui.label(format!("Host: {}", mismatch.host));
+                    ui.label("Previously trusted fingerprint:");
+                    ui.monospace(&mismatch.expected_fingerprint);
+                    ui.add_space(4.0);
+                    ui.label("New fingerprint presented by server:");
+                    ui.monospace(&mismatch.received_fingerprint);
+                    ui.add_space(10.0);
+                    ui.horizontal(|ui| {
+                        if ui.button("Accept New Certificate").clicked() {
+                            accept_new_cert = true;
+                        }
+                        if ui.button("Reject").clicked() {
+                            dismiss_cert_dialog = true;
+                        }
+                    });
+                });
+        }
+
+        if accept_new_cert {
+            if let Some(mismatch) = self.certificate_mismatch.take() {
+                match cert_trust::trust_fingerprint(&mismatch.host, &mismatch.received_fingerprint)
+                {
+                    Ok(()) => {
+                        self.begin_account_creation_request(app_state);
+                    }
+                    Err(err) => {
+                        self.error_message = Some(format!("Failed to update known hosts: {err}"));
+                    }
+                }
+            }
+        } else if dismiss_cert_dialog {
+            self.certificate_mismatch = None;
+        }
 
         next
     }

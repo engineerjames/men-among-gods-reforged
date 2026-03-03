@@ -35,8 +35,11 @@ mod types;
 /// Global flag ensuring the egui glyph warm-up runs exactly once.
 static EGUI_GLYPH_WARMED: AtomicBool = AtomicBool::new(false);
 
-/// Pre-renders a wide set of ASCII glyphs into egui's internal texture atlas
-/// to avoid visible text warping on the very first frame.
+/// Pre-renders glyphs and common text styles into egui's texture atlas.
+///
+/// This reduces the chance of mid-session atlas growth, which can trigger
+/// text corruption with some SDL2-based egui backends when texture sizes
+/// change at runtime.
 ///
 /// # Arguments
 /// * `ctx` – the egui context whose font atlas will be primed.
@@ -45,15 +48,28 @@ fn warm_egui_glyph_cache(ctx: &egui::Context) {
         return;
     }
 
-    let warmup_text = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 \
+    let ascii_glyphs = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 \
 !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
+    let cert_dialog_text = "Server Certificate Changed Host: 127.0.0.1 \
+Previously trusted fingerprint New fingerprint presented by server \
+Accept New Certificate Reject";
+    let fingerprint_sample = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    let status_text = "UNENCRYPTED - Game traffic is not protected Profiling... 60s remaining";
+    let combined =
+        format!("{ascii_glyphs}\n{cert_dialog_text}\n{fingerprint_sample}\n{status_text}");
 
     egui::Area::new("glyph_warmup_area".into())
         .fixed_pos(egui::Pos2::new(-10_000.0, -10_000.0))
         .show(ctx, |ui| {
-            ui.label(warmup_text);
-            ui.heading(warmup_text);
-            ui.monospace(warmup_text);
+            ui.label(&combined);
+            ui.heading(&combined);
+            ui.monospace(&combined);
+            ui.add(egui::Label::new(
+                egui::RichText::new(&combined).text_style(egui::TextStyle::Button),
+            ));
+            ui.add(egui::Label::new(
+                egui::RichText::new(&combined).text_style(egui::TextStyle::Small),
+            ));
         });
 }
 
