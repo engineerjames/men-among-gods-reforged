@@ -820,165 +820,141 @@ impl Server {
             || x > (core::constants::SERVER_MAPX as i16 - 2)
             || y > (core::constants::SERVER_MAPY as i16 - 2)
         {
+            let name = Repository::with_characters(|ch| ch[cn].get_name().to_string());
+            log::warn!("Killed character {} ({}) for invalid data", name, cn);
+
+            // Best-effort: destroy carried items and mark as unused.
+            God::destroy_items(cn);
             Repository::with_characters_mut(|ch| {
-                log::warn!(
-                    "Killed character {} ({}) for invalid data",
-                    ch[cn].get_name(),
-                    cn
-                );
-                // Best-effort: destroy carried items and mark as unused
-                God::destroy_items(cn);
                 ch[cn].used = core::constants::USE_EMPTY;
             });
             return false;
         }
 
-        // Map consistency check: map[n].ch should point to this character
-        let map_idx = (x as usize) + (y as usize) * core::constants::SERVER_MAPX as usize;
-        let map_ch = Repository::with_map(|map| map[map_idx].ch as usize);
-        if map_ch != cn {
-            Repository::with_characters(|ch| {
+        let mut drop_items_position: Option<(usize, usize)> = None;
+
+        Repository::with_data_mut(|data| {
+            let map = data.map;
+            let items = data.items;
+            let characters = data.characters;
+
+            // Map consistency check: map[n].ch should point to this character
+            let map_idx = (x as usize) + (y as usize) * core::constants::SERVER_MAPX as usize;
+            let map_ch = map[map_idx].ch as usize;
+            if map_ch != cn {
                 log::warn!(
                     "Not on map (map has {}), fixing char {} at {}",
                     map_ch,
                     cn,
-                    ch[cn].get_name()
+                    characters[cn].get_name()
                 );
-            });
 
-            if map_ch != 0 {
-                // Try to drop character items near their position as in original
-                let (cx, cy) =
-                    Repository::with_characters(|ch| (ch[cn].x as usize, ch[cn].y as usize));
-                if !God::drop_char_fuzzy_large(cn, cx, cy, cx, cy) {
-                    // couldn't drop items; leave as-is (original tried a few options)
-                }
-            } else {
-                // claim the map tile for this character
-                Repository::with_map_mut(|map| map[map_idx].ch = cn as u32);
-            }
-        }
-
-        // If character is in build mode accept validity
-        let is_building = Repository::with_characters(|ch| ch[cn].is_building());
-        if is_building {
-            return true;
-        }
-
-        // Validate carried items (inventory)
-        for slot in 0..40 {
-            let in_id = Repository::with_characters(|ch| ch[cn].item[slot] as usize);
-            if in_id != 0 {
-                let bad = Repository::with_items(|it| {
-                    it[in_id].carried as usize != cn
-                        || it[in_id].used != core::constants::USE_ACTIVE
-                });
-                if bad {
-                    Repository::with_characters_mut(|ch| {
-                        Repository::with_items(|it| {
-                            log::warn!(
-                                "Reset item {} ({},{}) from char {} ({})",
-                                in_id,
-                                it[in_id].get_name(),
-                                it[in_id].used,
-                                cn,
-                                ch[cn].get_name(),
-                            );
-                        });
-                        ch[cn].item[slot] = 0;
-                    });
-                }
-            }
-        }
-
-        // Validate depot items
-        for slot in 0..62 {
-            let in_id = Repository::with_characters(|ch| ch[cn].depot[slot] as usize);
-            if in_id != 0 {
-                let bad = Repository::with_items(|it| {
-                    it[in_id].carried as usize != cn
-                        || it[in_id].used != core::constants::USE_ACTIVE
-                });
-                if bad {
-                    Repository::with_characters_mut(|ch| {
-                        Repository::with_items(|it| {
-                            log::warn!(
-                                "Reset depot item {} ({},{}) from char {} ({})",
-                                in_id,
-                                it[in_id].get_name(),
-                                it[in_id].used,
-                                cn,
-                                ch[cn].get_name()
-                            );
-                        });
-                        ch[cn].depot[slot] = 0;
-                    });
-                }
-            }
-        }
-
-        // Validate worn and spell items
-        for slot in 0..20 {
-            let worn_id = Repository::with_characters(|ch| ch[cn].worn[slot] as usize);
-            if worn_id != 0 {
-                let bad = Repository::with_items(|it| {
-                    it[worn_id].carried as usize != cn
-                        || it[worn_id].used != core::constants::USE_ACTIVE
-                });
-                if bad {
-                    Repository::with_characters_mut(|ch| {
-                        Repository::with_items(|it| {
-                            log::warn!(
-                                "Reset worn item {} ({},{}) from char {} ({})",
-                                worn_id,
-                                it[worn_id].get_name(),
-                                it[worn_id].used,
-                                cn,
-                                ch[cn].get_name()
-                            );
-                        });
-                        ch[cn].worn[slot] = 0;
-                    });
+                if map_ch != 0 {
+                    // Try to drop character items near their position as in original.
+                    let cx = characters[cn].x as usize;
+                    let cy = characters[cn].y as usize;
+                    drop_items_position = Some((cx, cy));
+                } else {
+                    // claim the map tile for this character
+                    map[map_idx].ch = cn as u32;
                 }
             }
 
-            let spell_id = Repository::with_characters(|ch| ch[cn].spell[slot] as usize);
-            if spell_id != 0 {
-                let bad = Repository::with_items(|it| {
-                    it[spell_id].carried as usize != cn
-                        || it[spell_id].used != core::constants::USE_ACTIVE
-                });
-                if bad {
-                    Repository::with_characters_mut(|ch| {
-                        Repository::with_items(|it| {
-                            log::debug!(
-                                "Reset spell item {} from char {}.",
-                                it[spell_id].get_name(),
-                                ch[cn].get_name()
-                            );
-                        });
-                        ch[cn].spell[slot] = 0;
-                    });
+            // If character is in build mode accept validity.
+            if characters[cn].is_building() {
+                return;
+            }
+
+            // Validate carried items (inventory).
+            for slot in 0..40 {
+                let item_idx = characters[cn].item[slot] as usize;
+                if item_idx == 0 {
+                    continue;
+                }
+
+                if items[item_idx].carried as usize != cn
+                    || items[item_idx].used != core::constants::USE_ACTIVE
+                {
+                    log::warn!(
+                        "Reset item {} ({},{}) from char {} ({})",
+                        item_idx,
+                        items[item_idx].get_name(),
+                        items[item_idx].used,
+                        cn,
+                        characters[cn].get_name(),
+                    );
+                    characters[cn].item[slot] = 0;
                 }
             }
-        }
 
-        // If stoned and not a player, verify the stoned target is valid
-        let is_stoned_nonplayer = Repository::with_characters(|ch| {
-            (ch[cn].flags & CharacterFlags::Stoned.bits()) != 0
-                && (ch[cn].flags & CharacterFlags::Player.bits()) == 0
-        });
-        if is_stoned_nonplayer {
-            let co = Repository::with_characters(|ch| ch[cn].data[63] as usize);
-            let ok = Repository::with_characters(|ch| {
-                co != 0 && ch[co].used == core::constants::USE_ACTIVE
-            });
-            if !ok {
-                Repository::with_characters_mut(|ch| {
-                    ch[cn].flags &= !CharacterFlags::Stoned.bits();
+            // Validate depot items.
+            for slot in 0..62 {
+                let item_idx = characters[cn].depot[slot] as usize;
+                if item_idx == 0 {
+                    continue;
+                }
+
+                if items[item_idx].carried as usize != cn
+                    || items[item_idx].used != core::constants::USE_ACTIVE
+                {
+                    log::warn!(
+                        "Reset depot item {} ({},{}) from char {} ({})",
+                        item_idx,
+                        items[item_idx].get_name(),
+                        items[item_idx].used,
+                        cn,
+                        characters[cn].get_name(),
+                    );
+                    characters[cn].depot[slot] = 0;
+                }
+            }
+
+            // Validate worn and spell items.
+            for slot in 0..20 {
+                let worn_idx = characters[cn].worn[slot] as usize;
+                if worn_idx != 0
+                    && (items[worn_idx].carried as usize != cn
+                        || items[worn_idx].used != core::constants::USE_ACTIVE)
+                {
+                    log::warn!(
+                        "Reset worn item {} ({},{}) from char {} ({})",
+                        worn_idx,
+                        items[worn_idx].get_name(),
+                        items[worn_idx].used,
+                        cn,
+                        characters[cn].get_name(),
+                    );
+                    characters[cn].worn[slot] = 0;
+                }
+
+                let spell_idx = characters[cn].spell[slot] as usize;
+                if spell_idx != 0
+                    && (items[spell_idx].carried as usize != cn
+                        || items[spell_idx].used != core::constants::USE_ACTIVE)
+                {
+                    log::debug!(
+                        "Reset spell item {} from char {}.",
+                        items[spell_idx].get_name(),
+                        characters[cn].get_name(),
+                    );
+                    characters[cn].spell[slot] = 0;
+                }
+            }
+
+            // If stoned and not a player, verify the stoned target is valid.
+            let is_stoned_nonplayer = (characters[cn].flags & CharacterFlags::Stoned.bits()) != 0
+                && (characters[cn].flags & CharacterFlags::Player.bits()) == 0;
+            if is_stoned_nonplayer {
+                let co = characters[cn].data[63] as usize;
+                if co == 0 || characters[co].used != core::constants::USE_ACTIVE {
+                    characters[cn].flags &= !CharacterFlags::Stoned.bits();
                     log::info!("oops, stoned removed");
-                });
+                }
             }
+        });
+
+        if let Some((cx, cy)) = drop_items_position {
+            let _ = God::drop_char_fuzzy_large(cn, cx, cy, cx, cy);
         }
 
         true
@@ -1135,33 +1111,33 @@ impl Server {
         self.save_tick_counter = 0;
 
         // Determine which cycle we're on (wraps around)
-        let cycle = Repository::with_globals(|g| {
-            (g.ticker.unsigned_abs() / background_saver::SAVE_INTERVAL_TICKS)
+        let cycle = Repository::with_data(|data| {
+            (data.globals.ticker.unsigned_abs() / background_saver::SAVE_INTERVAL_TICKS)
                 % background_saver::SAVE_CYCLE_COUNT
         });
 
         match cycle {
             0 => {
                 // Characters
-                let data = Repository::with_characters(|ch| ch.to_vec());
+                let data = Repository::with_data(|repo| repo.characters.to_vec());
                 saver.send(SaveJob::Characters(data));
             }
             1 => {
                 // Items first half
                 let half = core::constants::MAXITEM / 2;
-                let data = Repository::with_items(|it| it[..half].to_vec());
+                let data = Repository::with_data(|repo| repo.items[..half].to_vec());
                 saver.send(SaveJob::Items(data, 0));
             }
             2 => {
                 // Items second half
                 let half = core::constants::MAXITEM / 2;
-                let data = Repository::with_items(|it| it[half..].to_vec());
+                let data = Repository::with_data(|repo| repo.items[half..].to_vec());
                 saver.send(SaveJob::Items(data, half));
             }
             3 => {
                 // Small data: effects + globals
-                let effects = Repository::with_effects(|fx| fx.to_vec());
-                let globals = Repository::with_globals(|g| g.clone());
+                let (effects, globals) =
+                    Repository::with_data(|repo| (repo.effects.to_vec(), repo.globals.clone()));
                 saver.send(SaveJob::SmallData { effects, globals });
             }
             4 => {
@@ -1169,7 +1145,7 @@ impl Server {
                 let total = (core::constants::SERVER_MAPX as usize)
                     * (core::constants::SERVER_MAPY as usize);
                 let half = total / 2;
-                let data = Repository::with_map(|m| m[..half].to_vec());
+                let data = Repository::with_data(|repo| repo.map[..half].to_vec());
                 saver.send(SaveJob::MapTiles(data, 0));
             }
             5 => {
@@ -1177,7 +1153,7 @@ impl Server {
                 let total = (core::constants::SERVER_MAPX as usize)
                     * (core::constants::SERVER_MAPY as usize);
                 let half = total / 2;
-                let data = Repository::with_map(|m| m[half..].to_vec());
+                let data = Repository::with_data(|repo| repo.map[half..].to_vec());
                 saver.send(SaveJob::MapTiles(data, half));
             }
             _ => {}

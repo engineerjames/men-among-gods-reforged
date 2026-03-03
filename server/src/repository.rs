@@ -78,6 +78,60 @@ pub struct Repository {
     saved_cleanly: bool,
 }
 
+/// Mutable split-borrow view over the repository's runtime data.
+///
+/// This is a migration helper for moving away from deeply nested
+/// `Repository::with_*` calls. It exposes direct mutable references to the
+/// major data domains so callers can work with multiple slices in one scope.
+#[allow(dead_code)]
+/// Read-only split-borrow view over the repository's runtime data.
+///
+/// This is a migration helper for moving away from deeply nested
+/// `Repository::with_*` calls by handing callers direct read-only references
+/// to the major data domains in a single scope.
+pub struct RepositoryData<'a> {
+    /// Read-only map tile storage.
+    pub map: &'a [core::types::Map],
+    /// Read-only runtime items storage.
+    pub items: &'a [core::types::Item],
+    /// Read-only item templates storage.
+    pub item_templates: &'a [core::types::Item],
+    /// Read-only runtime characters storage.
+    pub characters: &'a [core::types::Character],
+    /// Read-only character templates storage.
+    pub character_templates: &'a [core::types::Character],
+    /// Read-only active effects storage.
+    pub effects: &'a [core::types::Effect],
+    /// Read-only global state.
+    pub globals: &'a core::types::Global,
+    /// Read-only visibility cache map.
+    pub see_map: &'a [core::types::SeeMap],
+    /// Read-only ban list data.
+    pub ban_list: &'a Vec<core::types::Ban>,
+}
+
+#[allow(dead_code)]
+pub struct RepositoryDataMut<'a> {
+    /// Mutable map tile storage.
+    pub map: &'a mut [core::types::Map],
+    /// Mutable runtime items storage.
+    pub items: &'a mut [core::types::Item],
+    /// Mutable item templates storage.
+    pub item_templates: &'a mut [core::types::Item],
+    /// Mutable runtime characters storage.
+    pub characters: &'a mut [core::types::Character],
+    /// Mutable character templates storage.
+    pub character_templates: &'a mut [core::types::Character],
+    /// Mutable active effects storage.
+    pub effects: &'a mut [core::types::Effect],
+    /// Mutable global state.
+    pub globals: &'a mut core::types::Global,
+    /// Mutable visibility cache map.
+    pub see_map: &'a mut [core::types::SeeMap],
+    /// Mutable ban list data.
+    pub ban_list: &'a mut Vec<core::types::Ban>,
+}
+
 impl Repository {
     /// Normalize MOTD text for safe client display.
     ///
@@ -680,6 +734,34 @@ impl Repository {
         repo.with(f)
     }
 
+    /// Execute `f` with split read-only references to repository data domains.
+    ///
+    /// # Arguments
+    ///
+    /// * `f` - Closure that receives [`RepositoryData`] and returns `R`.
+    ///
+    /// # Returns
+    ///
+    /// * The return value produced by the closure.
+    pub fn with_data<F, R>(f: F) -> R
+    where
+        F: FnOnce(RepositoryData<'_>) -> R,
+    {
+        Self::with_repo(|repo| {
+            f(RepositoryData {
+                map: &repo.map,
+                items: &repo.items,
+                item_templates: &repo.item_templates,
+                characters: &repo.characters,
+                character_templates: &repo.character_templates,
+                effects: &repo.effects,
+                globals: &repo.globals,
+                see_map: &repo.see_map,
+                ban_list: &repo.ban_list,
+            })
+        })
+    }
+
     /// Internal helper: acquire the global repository for mutable access.
     ///
     /// Locks the global `REPOSITORY` reentrant mutex and passes a unique
@@ -691,6 +773,38 @@ impl Repository {
     {
         let repo = REPOSITORY.get().expect("Repository not initialized");
         repo.with_mut(f)
+    }
+
+    /// Execute `f` with split mutable references to repository data domains.
+    ///
+    /// This helper provides field-level mutable references in one closure so
+    /// callers can pass direct references through function boundaries and avoid
+    /// nested `with_*` access patterns.
+    ///
+    /// # Arguments
+    ///
+    /// * `f` - Closure that receives [`RepositoryDataMut`] and returns `R`.
+    ///
+    /// # Returns
+    ///
+    /// * The return value produced by the closure.
+    pub fn with_data_mut<F, R>(f: F) -> R
+    where
+        F: FnOnce(RepositoryDataMut<'_>) -> R,
+    {
+        Self::with_repo_mut(|repo| {
+            f(RepositoryDataMut {
+                map: &mut repo.map,
+                items: &mut repo.items,
+                item_templates: &mut repo.item_templates,
+                characters: &mut repo.characters,
+                character_templates: &mut repo.character_templates,
+                effects: &mut repo.effects,
+                globals: &mut repo.globals,
+                see_map: &mut repo.see_map,
+                ban_list: &mut repo.ban_list,
+            })
+        })
     }
 
     // Static accessor methods for read-only access
