@@ -10,10 +10,11 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::background_saver::{self, BackgroundSaver, SaveJob};
 use crate::effect::EffectManager;
+use crate::game_state::{GameState, StorageBackend};
 use crate::god::God;
 use crate::lab9::Labyrinth9;
 use crate::network_manager::NetworkManager;
-use crate::repository::{Repository, StorageBackend};
+use crate::repository::Repository;
 use crate::single_thread_cell::SingleThreadCell;
 use crate::state::State;
 use crate::tls::{self, GameStream};
@@ -140,29 +141,33 @@ impl Server {
     ///
     /// This mirrors the original `tmplabcheck` behavior and sets `used` to
     /// `USE_EMPTY` and transfers ownership back to God when appropriate.
-    fn tmplabcheck(item_idx: usize) {
-        Repository::with_characters(|ch| {
-            Repository::with_items_mut(|it| {
-                let cn = it[item_idx].carried as usize;
-                if cn == 0 || !ServerPlayer::is_sane_player(cn) {
-                    return;
-                }
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Mutable reference to the unified game state.
+    /// * `item_idx` - The item index to check.
+    fn tmplabcheck(gs: &mut GameState, item_idx: usize) {
+        let cn = gs.items[item_idx].carried as usize;
+        if cn == 0 || !ServerPlayer::is_sane_player(cn) {
+            return;
+        }
 
-                // player is inside a lab?
-                if ch[cn].temple_x != 512 && ch[cn].temple_x != 558 && ch[cn].temple_x != 813 {
-                    return;
-                }
+        // player is inside a lab?
+        if gs.characters[cn].temple_x != 512
+            && gs.characters[cn].temple_x != 558
+            && gs.characters[cn].temple_x != 813
+        {
+            return;
+        }
 
-                God::take_from_char(item_idx, cn);
-                it[item_idx].used = core::constants::USE_EMPTY;
+        God::take_from_char(item_idx, cn);
+        gs.items[item_idx].used = core::constants::USE_EMPTY;
 
-                log::warn!(
-                    "Removed Lab Item {} from player {}",
-                    it[item_idx].get_name(),
-                    cn
-                );
-            });
-        });
+        log::warn!(
+            "Removed Lab Item {} from player {}",
+            gs.items[item_idx].get_name(),
+            cn
+        );
     }
 
     /// Initialize the server: bind listening socket and initialize subsystems.
@@ -175,7 +180,16 @@ impl Server {
     ///   logout of active characters from prior runs)
     ///
     /// Returns an error if socket bind or subsystem initialization fails.
-    pub fn initialize(&mut self) -> Result<(), String> {
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Mutable reference to the unified game state.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` on success.
+    /// * `Err(String)` if socket bind or subsystem initialization fails.
+    pub fn initialize(&mut self, gs: &mut GameState) -> Result<(), String> {
         // Create and configure TCP socket (matching server.cpp socket setup)
         let listener = TcpListener::bind("0.0.0.0:5555")
             .map_err(|e| format!("Failed to bind socket: {}", e))?;
@@ -214,29 +228,23 @@ impl Server {
         //
         // In KeyDB mode we persist regularly and should not hard-fail future
         // startups when a container is terminated before clean shutdown.
-        if Repository::storage_backend() == crate::repository::StorageBackend::DatFiles {
-            Repository::with_globals_mut(|globals| {
-                globals.set_dirty(true);
-            });
+        if gs.storage_backend() == StorageBackend::DatFiles {
+            gs.globals.set_dirty(true);
         }
 
         // Log out all active characters (cleanup from previous run)
         for i in 0..core::constants::MAXCHARS {
-            let should_logout = Repository::with_characters(|characters| {
-                characters[i].used == core::constants::USE_ACTIVE
-                    && characters[i].flags & CharacterFlags::Player.bits() != 0
-            });
+            let should_logout = gs.characters[i].used == core::constants::USE_ACTIVE
+                && gs.characters[i].flags & CharacterFlags::Player.bits() != 0;
 
             if !should_logout {
                 continue;
             }
 
-            Repository::with_characters(|characters| {
-                log::info!(
-                    "Logging out character '{}' on server startup",
-                    characters[i].get_name(),
-                );
-            });
+            log::info!(
+                "Logging out character '{}' on server startup",
+                gs.characters[i].get_name(),
+            );
 
             player::plr_logout(i, 0, crate::enums::LogoutReason::Shutdown);
         }
@@ -246,64 +254,57 @@ impl Server {
         populate::reset_changed_items();
 
         log::info!("Checking for lab items on players...");
-        Repository::with_items_mut(|it| {
-            for n in 1..core::constants::MAXITEM {
-                if it[n].used == core::constants::USE_EMPTY {
-                    continue;
-                }
-                if it[n].has_laby_destroy() {
-                    Self::tmplabcheck(n);
-                }
-                if it[n].has_soulstone() {
-                    // Copy from packed struct to avoid unaligned reference
-                    let max_damage = { it[n].max_damage };
-                    if max_damage == 0 {
-                        it[n].max_damage = 60000;
-                        let name = it[n].get_name();
-                        log::info!("Set {} ({}) max_damage to 60000", name, n);
-                    }
+        for n in 1..core::constants::MAXITEM {
+            if gs.items[n].used == core::constants::USE_EMPTY {
+                continue;
+            }
+            if gs.items[n].has_laby_destroy() {
+                Self::tmplabcheck(gs, n);
+            }
+            if gs.items[n].has_soulstone() {
+                let max_damage = gs.items[n].max_damage;
+                if max_damage == 0 {
+                    gs.items[n].max_damage = 60000;
+                    let name = gs.items[n].get_name();
+                    log::info!("Set {} ({}) max_damage to 60000", name, n);
                 }
             }
-        });
+        }
 
         log::info!("Validating character template positions...");
-        Repository::with_character_templates(|ch_temp| {
-            for n in 1..core::constants::MAXTCHARS {
-                if ch_temp[n].used == core::constants::USE_EMPTY {
-                    continue;
-                }
-
-                let x = ch_temp[n].data[29] % core::constants::SERVER_MAPX;
-                let y = ch_temp[n].data[29] / core::constants::SERVER_MAPX;
-
-                if x == 0 && y == 0 {
-                    continue;
-                }
-
-                let ch_x = ch_temp[n].x as i32;
-                let ch_y = ch_temp[n].y as i32;
-
-                if (x - ch_x).abs() + (y - ch_y).abs() > 200 {
-                    log::error!(
-                        "RESET {} ({}): {} {} -> {} {}",
-                        n,
-                        ch_temp[n].get_name(),
-                        ch_x,
-                        ch_y,
-                        x,
-                        y
-                    );
-                    return Result::Err("Character template has invalid resting position.");
-                    // ch_temp[n].data[29] =
-                    //     ch_temp[n].x as i32 + ch_temp[n].y as i32 * core::constants::SERVER_MAPX;
-                }
+        for n in 1..core::constants::MAXTCHARS {
+            if gs.character_templates[n].used == core::constants::USE_EMPTY {
+                continue;
             }
 
-            Ok(())
-        })?;
+            let x = gs.character_templates[n].data[29] % core::constants::SERVER_MAPX;
+            let y = gs.character_templates[n].data[29] / core::constants::SERVER_MAPX;
+
+            if x == 0 && y == 0 {
+                continue;
+            }
+
+            let ch_x = gs.character_templates[n].x as i32;
+            let ch_y = gs.character_templates[n].y as i32;
+
+            if (x - ch_x).abs() + (y - ch_y).abs() > 200 {
+                log::error!(
+                    "RESET {} ({}): {} {} -> {} {}",
+                    n,
+                    gs.character_templates[n].get_name(),
+                    ch_x,
+                    ch_y,
+                    x,
+                    y
+                );
+                return Result::Err(
+                    "Character template has invalid resting position.".to_string(),
+                );
+            }
+        }
 
         // Spawn background saver if using KeyDB backend
-        if Repository::storage_backend() == StorageBackend::KeyDb {
+        if gs.storage_backend() == StorageBackend::KeyDb {
             log::info!("Starting background KeyDB saver thread...");
             self.background_saver = Some(background_saver::spawn());
         }
@@ -317,7 +318,11 @@ impl Server {
     /// compress and send tick updates to players, perform slower network I/O
     /// periodically (every 8 ticks), and finally sleep to maintain the target
     /// tick rate.
-    pub fn tick(&mut self) {
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Mutable reference to the unified game state.
+    pub fn tick(&mut self, gs: &mut GameState) {
         // Initialize last_tick_time if not set (equivalent to: if (ltime == 0) ltime = timel())
         if self.last_tick_time.is_none() {
             self.last_tick_time = Some(Instant::now());
@@ -334,10 +339,10 @@ impl Server {
                 Some(last_time + Duration::from_micros(core::constants::TICK as u64));
 
             // Call main game tick (equivalent to: tick() in C++)
-            self.game_tick();
+            self.game_tick(gs);
 
             // Compress and send tick data to clients
-            self.compress_ticks();
+            self.compress_ticks(gs);
 
             let new_now = Instant::now();
             let new_last = self.last_tick_time.unwrap();
@@ -351,31 +356,29 @@ impl Server {
 
             let post_tick_time = Instant::now();
 
-            if Repository::with_globals(|globs| {
-                globs
-                    .ticker
-                    .unsigned_abs()
-                    .is_multiple_of(self.measurement_interval)
-            }) {
+            if gs
+                .globals
+                .ticker
+                .unsigned_abs()
+                .is_multiple_of(self.measurement_interval)
+            {
                 let tick_duration =
                     post_tick_time.duration_since(pre_tick_time).as_secs_f32() * 1000.0;
                 self.tick_perf_stats.push(tick_duration);
 
                 const DESIRED_TICK_TIME_MS: f32 = core::constants::TICK as f32 / 1000.0; // 1000 microseconds per millisecond
 
-                Repository::with_globals_mut(|globs| {
-                    globs.load = ((tick_duration / DESIRED_TICK_TIME_MS) * 100.0) as i64;
+                gs.globals.load = ((tick_duration / DESIRED_TICK_TIME_MS) * 100.0) as i64;
 
-                    // TODO: Update this to be a proper moving average of the load
-                    // globs.load_avg = self.tick_perf_stats.stats().mean as i32;
+                // TODO: Update this to be a proper moving average of the load
+                // gs.globals.load_avg = self.tick_perf_stats.stats().mean as i32;
 
-                    log::debug!(
-                        "Tick time: {:.2} ms (max: {:.2} ms), Load: {:.2}%",
-                        tick_duration,
-                        self.tick_perf_stats.stats().max,
-                        globs.load,
-                    );
-                })
+                log::debug!(
+                    "Tick time: {:.2} ms (max: {:.2} ms), Load: {:.2}%",
+                    tick_duration,
+                    self.tick_perf_stats.stats().max,
+                    gs.globals.load,
+                );
             }
         }
 
@@ -383,14 +386,14 @@ impl Server {
         // Limiting this to every Nth game tick introduces noticeable input lag
         // and delayed map/tick packet delivery.
         let pre_io_time = Instant::now();
-        self.handle_network_io();
+        self.handle_network_io(gs);
 
-        if Repository::with_globals(|globs| {
-            globs
-                .ticker
-                .unsigned_abs()
-                .is_multiple_of(self.measurement_interval)
-        }) {
+        if gs
+            .globals
+            .ticker
+            .unsigned_abs()
+            .is_multiple_of(self.measurement_interval)
+        {
             let io_duration = Instant::now().duration_since(pre_io_time).as_secs_f32() * 1000.0;
             self.net_io_perf_stats.push(io_duration);
 
@@ -420,21 +423,23 @@ impl Server {
     /// - Running character and NPC actions, expiration checks, and body handling
     /// - Updating global statistics and letting subsystems tick (populate, effects,
     ///   item driver)
-    fn game_tick(&mut self) {
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Mutable reference to the unified game state.
+    fn game_tick(&mut self, gs: &mut GameState) {
         // Get current hour for statistics
         let hour = chrono::Local::now().hour() as usize;
 
         // Increment global tick counters
-        Repository::with_globals_mut(|globals| {
-            globals.ticker = globals.ticker.wrapping_add(1);
-            globals.uptime = globals.uptime.wrapping_add(1);
-            globals.uptime_per_hour[hour] = globals.uptime_per_hour[hour].wrapping_add(1);
-        });
+        gs.globals.ticker = gs.globals.ticker.wrapping_add(1);
+        gs.globals.uptime = gs.globals.uptime.wrapping_add(1);
+        gs.globals.uptime_per_hour[hour] = gs.globals.uptime_per_hour[hour].wrapping_add(1);
 
-        let ticker = Repository::with_globals(|globals| globals.ticker);
+        let ticker = gs.globals.ticker;
 
         // Background save scheduling (KeyDB only)
-        self.maybe_enqueue_background_save();
+        self.maybe_enqueue_background_save(gs);
 
         // Send tick to players and count online
         let mut online = 0;
@@ -465,14 +470,12 @@ impl Server {
         }
 
         // Update max online statistics
-        Repository::with_globals_mut(|globals| {
-            if online > globals.max_online {
-                globals.max_online = online;
-            }
-            if online > globals.max_online_per_hour[hour] {
-                globals.max_online_per_hour[hour] = online;
-            }
-        });
+        if online > gs.globals.max_online {
+            gs.globals.max_online = online;
+        }
+        if online > gs.globals.max_online_per_hour[hour] {
+            gs.globals.max_online_per_hour[hour] = online;
+        }
 
         // Check for player commands and translate to character commands
         for n in 1..MAXPLAYER {
@@ -541,31 +544,25 @@ impl Server {
 
         // Wakeup mechanism (every 64 ticks)
         if (ticker & 63) == 0 {
-            self.wakeup_character();
+            self.wakeup_character(gs);
         }
 
         for n in 1..core::constants::MAXCHARS {
-            let char_state = Repository::with_characters(|ch| {
-                if ch[n].used == core::constants::USE_EMPTY {
-                    return CharacterTickState::Empty;
-                }
-
-                if ch[n].flags & CharacterFlags::Update.bits() != 0 {
-                    return CharacterTickState::NeedsUpdate;
-                }
-
-                if ch[n].used == core::constants::USE_NONACTIVE
+            let char_state = {
+                if gs.characters[n].used == core::constants::USE_EMPTY {
+                    CharacterTickState::Empty
+                } else if gs.characters[n].flags & CharacterFlags::Update.bits() != 0 {
+                    CharacterTickState::NeedsUpdate
+                } else if gs.characters[n].used == core::constants::USE_NONACTIVE
                     && (n & 1023) == (ticker as usize & 1023)
                 {
-                    return CharacterTickState::CheckExpire;
+                    CharacterTickState::CheckExpire
+                } else if gs.characters[n].flags & CharacterFlags::Body.bits() != 0 {
+                    CharacterTickState::Body
+                } else {
+                    CharacterTickState::Active
                 }
-
-                if ch[n].flags & CharacterFlags::Body.bits() != 0 {
-                    return CharacterTickState::Body;
-                }
-
-                CharacterTickState::Active
-            });
+            };
 
             match char_state {
                 CharacterTickState::Empty => continue,
@@ -575,33 +572,22 @@ impl Server {
                         state.really_update_char(n);
                     });
 
-                    Repository::with_characters_mut(|ch| {
-                        ch[n].flags &= !CharacterFlags::Update.bits();
-                    });
+                    gs.characters[n].flags &= !CharacterFlags::Update.bits();
                 }
                 CharacterTickState::CheckExpire => {
                     cnt += 1;
-                    self.check_expire(n);
+                    self.check_expire(gs, n);
                 }
                 CharacterTickState::Body => {
                     cnt += 1;
-                    let should_remove = Repository::with_characters_mut(|ch| {
-                        if ch[n].flags & CharacterFlags::Player.bits() == 0 {
-                            ch[n].data[98] += 1;
-                            if ch[n].data[98] > (core::constants::TICKS * 60 * 30) {
-                                return true;
-                            }
+                    if gs.characters[n].flags & CharacterFlags::Player.bits() == 0 {
+                        gs.characters[n].data[98] += 1;
+                        if gs.characters[n].data[98] > (core::constants::TICKS * 60 * 30) {
+                            log::info!("Removing lost body for character {}", n);
+                            God::destroy_items(n);
+                            gs.characters[n].used = core::constants::USE_EMPTY;
+                            continue;
                         }
-                        false
-                    });
-
-                    if should_remove {
-                        log::info!("Removing lost body for character {}", n);
-                        God::destroy_items(n);
-                        Repository::with_characters_mut(|ch| {
-                            ch[n].used = core::constants::USE_EMPTY;
-                        });
-                        continue;
                     }
                     body += 1;
                     continue;
@@ -612,60 +598,44 @@ impl Server {
             }
 
             // Reduce single awake timer
-            Repository::with_characters_mut(|ch| {
-                if ch[n].data[92] > 0 {
-                    ch[n].data[92] -= 1;
-                }
-            });
+            if gs.characters[n].data[92] > 0 {
+                gs.characters[n].data[92] -= 1;
+            }
 
             // Check if character should be active
-            let should_continue =
-                Repository::with_characters(|ch| ch[n].status < 8 && !self.group_active(n));
-
-            if should_continue {
+            if gs.characters[n].status < 8 && !self.group_active(gs, n) {
                 continue;
             }
 
             awake += 1;
 
-            let is_active =
-                Repository::with_characters(|ch| ch[n].used == core::constants::USE_ACTIVE);
-
-            if is_active {
+            if gs.characters[n].used == core::constants::USE_ACTIVE {
                 // Periodic validation
-                if (n & 1023) == (ticker as usize & 1023) && !self.check_valid(n) {
+                if (n & 1023) == (ticker as usize & 1023) && !self.check_valid(gs, n) {
                     continue;
                 }
 
-                Repository::with_characters_mut(|ch| {
-                    ch[n].current_online_time += 1;
-                    ch[n].total_online_time += 1;
-                });
+                gs.characters[n].current_online_time += 1;
+                gs.characters[n].total_online_time += 1;
 
-                let (is_player_or_usurp, is_player, is_visible) =
-                    Repository::with_characters(|ch| {
-                        let is_player_or_usurp = (ch[n].flags & CharacterFlags::Player.bits() != 0)
-                            || (ch[n].flags & CharacterFlags::Usurp.bits() != 0);
-                        let is_player = ch[n].flags & CharacterFlags::Player.bits() != 0;
-                        let is_visible = ch[n].flags & CharacterFlags::Invisible.bits() == 0;
-                        (is_player_or_usurp, is_player, is_visible)
-                    });
+                let is_player_or_usurp = (gs.characters[n].flags
+                    & CharacterFlags::Player.bits()
+                    != 0)
+                    || (gs.characters[n].flags & CharacterFlags::Usurp.bits() != 0);
+                let is_player = gs.characters[n].flags & CharacterFlags::Player.bits() != 0;
+                let is_visible = gs.characters[n].flags & CharacterFlags::Invisible.bits() == 0;
 
                 if is_player_or_usurp {
-                    Repository::with_globals_mut(|globals| {
-                        globals.total_online_time += 1;
-                        globals.online_per_hour[hour] += 1;
-                    });
+                    gs.globals.total_online_time += 1;
+                    gs.globals.online_per_hour[hour] += 1;
 
                     if is_player {
-                        Repository::with_characters_mut(|ch| {
-                            if ch[n].data[71] > 0 {
-                                ch[n].data[71] -= 1;
-                            }
-                            if ch[n].data[72] > 0 {
-                                ch[n].data[72] -= 1;
-                            }
-                        });
+                        if gs.characters[n].data[71] > 0 {
+                            gs.characters[n].data[71] -= 1;
+                        }
+                        if gs.characters[n].data[72] > 0 {
+                            gs.characters[n].data[72] -= 1;
+                        }
 
                         if is_visible {
                             plon += 1;
@@ -682,19 +652,17 @@ impl Server {
         }
 
         // Update global stats
-        Repository::with_globals_mut(|globals| {
-            globals.character_cnt = cnt;
-            globals.awake = awake;
-            globals.body = body;
-            globals.players_online = plon;
-        });
+        gs.globals.character_cnt = cnt;
+        gs.globals.awake = awake;
+        gs.globals.body = body;
+        gs.globals.players_online = plon;
 
         // Run subsystem ticks
         populate::pop_tick();
         EffectManager::effect_tick();
         driver::item_tick();
 
-        self.global_tick();
+        self.global_tick(gs);
     }
 
     // Helper enum for character tick state
@@ -702,7 +670,11 @@ impl Server {
     ///
     /// This sets the single-character awake timer (`data[92]`) for one template
     /// index each call, cycling through `MAXCHARS` over time.
-    fn wakeup_character(&mut self) {
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Mutable reference to the unified game state.
+    fn wakeup_character(&mut self, gs: &mut GameState) {
         // Wakeup one character per 64 ticks
         static WAKEUP: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
 
@@ -711,9 +683,7 @@ impl Server {
             wakeup_idx = 1;
         }
 
-        Repository::with_characters_mut(|ch| {
-            ch[wakeup_idx].data[92] = core::constants::TICKS * 60;
-        });
+        gs.characters[wakeup_idx].data[92] = core::constants::TICKS * 60;
 
         WAKEUP.store(wakeup_idx + 1, std::sync::atomic::Ordering::Relaxed);
     }
@@ -723,20 +693,27 @@ impl Server {
     /// Characters are active if they are players/usurpers, flagged with
     /// `NoSleep`, currently `USE_ACTIVE`, or have a non-zero single-awake
     /// timer (`data[92]`).
-    fn group_active(&self, cn: usize) -> bool {
-        Repository::with_characters(|ch| {
-            if ((ch[cn].flags & CharacterFlags::Player.bits() != 0)
-                || (ch[cn].flags & CharacterFlags::Usurp.bits() != 0)
-                || (ch[cn].flags & CharacterFlags::NoSleep.bits() != 0))
-                && ch[cn].used == core::constants::USE_ACTIVE
-            {
-                return true;
-            }
-            if ch[cn].data[92] > 0 {
-                return true;
-            }
-            false
-        })
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Reference to the unified game state.
+    /// * `cn` - Character index to check.
+    ///
+    /// # Returns
+    ///
+    /// * `true` if the character should be considered active.
+    fn group_active(&self, gs: &GameState, cn: usize) -> bool {
+        if ((gs.characters[cn].flags & CharacterFlags::Player.bits() != 0)
+            || (gs.characters[cn].flags & CharacterFlags::Usurp.bits() != 0)
+            || (gs.characters[cn].flags & CharacterFlags::NoSleep.bits() != 0))
+            && gs.characters[cn].used == core::constants::USE_ACTIVE
+        {
+            return true;
+        }
+        if gs.characters[cn].data[92] > 0 {
+            return true;
+        }
+        false
     }
 
     /// Check whether a non-active character `cn` should be expired/erased.
@@ -745,7 +722,12 @@ impl Server {
     /// date (e.g., zero-point characters are removed after 3 days; higher
     /// ranks get longer grace periods). When expiration triggers, the
     /// character is marked `USE_EMPTY` and logged.
-    fn check_expire(&self, cn: usize) {
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Mutable reference to the unified game state.
+    /// * `cn` - Character index to check.
+    fn check_expire(&self, gs: &mut GameState, cn: usize) {
         // Check character expiration similar to the original C++ logic.
 
         let week: i64 = 60 * 60 * 24 * 7;
@@ -756,12 +738,8 @@ impl Server {
             .unwrap()
             .as_secs() as i64;
 
-        // Grab relevant fields for decision without holding a mutable lock
-        let (points_tot, login_date) = Repository::with_characters(|ch| {
-            let pts = ch[cn].points_tot;
-            let ld = ch[cn].login_date;
-            (pts, ld)
-        });
+        let points_tot = gs.characters[cn].points_tot;
+        let login_date = gs.characters[cn].login_date;
 
         let mut erase = false;
         let pts = points_tot as i64;
@@ -790,13 +768,13 @@ impl Server {
         }
 
         if erase {
-            // Log and mark the character as unused. Detailed item cleanup
-            // (god_destroy_items) should be implemented elsewhere if needed.
-            Repository::with_characters_mut(|ch| {
-                let total_exp = ch[cn].points_tot;
-                log::info!("erased player {}, {} exp", ch[cn].get_name(), total_exp,);
-                ch[cn].used = core::constants::USE_EMPTY;
-            });
+            let total_exp = gs.characters[cn].points_tot;
+            log::info!(
+                "erased player {}, {} exp",
+                gs.characters[cn].get_name(),
+                total_exp,
+            );
+            gs.characters[cn].used = core::constants::USE_EMPTY;
         }
     }
 
@@ -810,174 +788,150 @@ impl Server {
     ///
     /// Returns `true` if character passes validation; otherwise cleans up and
     /// returns `false`.
-    fn check_valid(&self, cn: usize) -> bool {
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Mutable reference to the unified game state.
+    /// * `cn` - Character index to validate.
+    ///
+    /// # Returns
+    ///
+    /// * `true` if the character passes validation.
+    fn check_valid(&self, gs: &mut GameState, cn: usize) -> bool {
         // Full validation ported from the original C++ check_valid
 
         // Bounds check
-        let (x, y) = Repository::with_characters(|ch| (ch[cn].x, ch[cn].y));
+        let (x, y) = (gs.characters[cn].x, gs.characters[cn].y);
         if x < 1
             || y < 1
             || x > (core::constants::SERVER_MAPX as i16 - 2)
             || y > (core::constants::SERVER_MAPY as i16 - 2)
         {
-            Repository::with_characters_mut(|ch| {
-                log::warn!(
-                    "Killed character {} ({}) for invalid data",
-                    ch[cn].get_name(),
-                    cn
-                );
-                // Best-effort: destroy carried items and mark as unused
-                God::destroy_items(cn);
-                ch[cn].used = core::constants::USE_EMPTY;
-            });
+            log::warn!(
+                "Killed character {} ({}) for invalid data",
+                gs.characters[cn].get_name(),
+                cn
+            );
+            // Best-effort: destroy carried items and mark as unused
+            God::destroy_items(cn);
+            gs.characters[cn].used = core::constants::USE_EMPTY;
             return false;
         }
 
         // Map consistency check: map[n].ch should point to this character
         let map_idx = (x as usize) + (y as usize) * core::constants::SERVER_MAPX as usize;
-        let map_ch = Repository::with_map(|map| map[map_idx].ch as usize);
+        let map_ch = gs.map[map_idx].ch as usize;
         if map_ch != cn {
-            Repository::with_characters(|ch| {
-                log::warn!(
-                    "Not on map (map has {}), fixing char {} at {}",
-                    map_ch,
-                    cn,
-                    ch[cn].get_name()
-                );
-            });
+            log::warn!(
+                "Not on map (map has {}), fixing char {} at {}",
+                map_ch,
+                cn,
+                gs.characters[cn].get_name()
+            );
 
             if map_ch != 0 {
                 // Try to drop character items near their position as in original
-                let (cx, cy) =
-                    Repository::with_characters(|ch| (ch[cn].x as usize, ch[cn].y as usize));
+                let (cx, cy) = (
+                    gs.characters[cn].x as usize,
+                    gs.characters[cn].y as usize,
+                );
                 if !God::drop_char_fuzzy_large(cn, cx, cy, cx, cy) {
                     // couldn't drop items; leave as-is (original tried a few options)
                 }
             } else {
                 // claim the map tile for this character
-                Repository::with_map_mut(|map| map[map_idx].ch = cn as u32);
+                gs.map[map_idx].ch = cn as u32;
             }
         }
 
         // If character is in build mode accept validity
-        let is_building = Repository::with_characters(|ch| ch[cn].is_building());
-        if is_building {
+        if gs.characters[cn].is_building() {
             return true;
         }
 
         // Validate carried items (inventory)
         for slot in 0..40 {
-            let in_id = Repository::with_characters(|ch| ch[cn].item[slot] as usize);
+            let in_id = gs.characters[cn].item[slot] as usize;
             if in_id != 0 {
-                let bad = Repository::with_items(|it| {
-                    it[in_id].carried as usize != cn
-                        || it[in_id].used != core::constants::USE_ACTIVE
-                });
+                let bad = gs.items[in_id].carried as usize != cn
+                    || gs.items[in_id].used != core::constants::USE_ACTIVE;
                 if bad {
-                    Repository::with_characters_mut(|ch| {
-                        Repository::with_items(|it| {
-                            log::warn!(
-                                "Reset item {} ({},{}) from char {} ({})",
-                                in_id,
-                                it[in_id].get_name(),
-                                it[in_id].used,
-                                cn,
-                                ch[cn].get_name(),
-                            );
-                        });
-                        ch[cn].item[slot] = 0;
-                    });
+                    log::warn!(
+                        "Reset item {} ({},{}) from char {} ({})",
+                        in_id,
+                        gs.items[in_id].get_name(),
+                        gs.items[in_id].used,
+                        cn,
+                        gs.characters[cn].get_name(),
+                    );
+                    gs.characters[cn].item[slot] = 0;
                 }
             }
         }
 
         // Validate depot items
         for slot in 0..62 {
-            let in_id = Repository::with_characters(|ch| ch[cn].depot[slot] as usize);
+            let in_id = gs.characters[cn].depot[slot] as usize;
             if in_id != 0 {
-                let bad = Repository::with_items(|it| {
-                    it[in_id].carried as usize != cn
-                        || it[in_id].used != core::constants::USE_ACTIVE
-                });
+                let bad = gs.items[in_id].carried as usize != cn
+                    || gs.items[in_id].used != core::constants::USE_ACTIVE;
                 if bad {
-                    Repository::with_characters_mut(|ch| {
-                        Repository::with_items(|it| {
-                            log::warn!(
-                                "Reset depot item {} ({},{}) from char {} ({})",
-                                in_id,
-                                it[in_id].get_name(),
-                                it[in_id].used,
-                                cn,
-                                ch[cn].get_name()
-                            );
-                        });
-                        ch[cn].depot[slot] = 0;
-                    });
+                    log::warn!(
+                        "Reset depot item {} ({},{}) from char {} ({})",
+                        in_id,
+                        gs.items[in_id].get_name(),
+                        gs.items[in_id].used,
+                        cn,
+                        gs.characters[cn].get_name()
+                    );
+                    gs.characters[cn].depot[slot] = 0;
                 }
             }
         }
 
         // Validate worn and spell items
         for slot in 0..20 {
-            let worn_id = Repository::with_characters(|ch| ch[cn].worn[slot] as usize);
+            let worn_id = gs.characters[cn].worn[slot] as usize;
             if worn_id != 0 {
-                let bad = Repository::with_items(|it| {
-                    it[worn_id].carried as usize != cn
-                        || it[worn_id].used != core::constants::USE_ACTIVE
-                });
+                let bad = gs.items[worn_id].carried as usize != cn
+                    || gs.items[worn_id].used != core::constants::USE_ACTIVE;
                 if bad {
-                    Repository::with_characters_mut(|ch| {
-                        Repository::with_items(|it| {
-                            log::warn!(
-                                "Reset worn item {} ({},{}) from char {} ({})",
-                                worn_id,
-                                it[worn_id].get_name(),
-                                it[worn_id].used,
-                                cn,
-                                ch[cn].get_name()
-                            );
-                        });
-                        ch[cn].worn[slot] = 0;
-                    });
+                    log::warn!(
+                        "Reset worn item {} ({},{}) from char {} ({})",
+                        worn_id,
+                        gs.items[worn_id].get_name(),
+                        gs.items[worn_id].used,
+                        cn,
+                        gs.characters[cn].get_name()
+                    );
+                    gs.characters[cn].worn[slot] = 0;
                 }
             }
 
-            let spell_id = Repository::with_characters(|ch| ch[cn].spell[slot] as usize);
+            let spell_id = gs.characters[cn].spell[slot] as usize;
             if spell_id != 0 {
-                let bad = Repository::with_items(|it| {
-                    it[spell_id].carried as usize != cn
-                        || it[spell_id].used != core::constants::USE_ACTIVE
-                });
+                let bad = gs.items[spell_id].carried as usize != cn
+                    || gs.items[spell_id].used != core::constants::USE_ACTIVE;
                 if bad {
-                    Repository::with_characters_mut(|ch| {
-                        Repository::with_items(|it| {
-                            log::debug!(
-                                "Reset spell item {} from char {}.",
-                                it[spell_id].get_name(),
-                                ch[cn].get_name()
-                            );
-                        });
-                        ch[cn].spell[slot] = 0;
-                    });
+                    log::debug!(
+                        "Reset spell item {} from char {}.",
+                        gs.items[spell_id].get_name(),
+                        gs.characters[cn].get_name()
+                    );
+                    gs.characters[cn].spell[slot] = 0;
                 }
             }
         }
 
         // If stoned and not a player, verify the stoned target is valid
-        let is_stoned_nonplayer = Repository::with_characters(|ch| {
-            (ch[cn].flags & CharacterFlags::Stoned.bits()) != 0
-                && (ch[cn].flags & CharacterFlags::Player.bits()) == 0
-        });
+        let is_stoned_nonplayer = (gs.characters[cn].flags & CharacterFlags::Stoned.bits()) != 0
+            && (gs.characters[cn].flags & CharacterFlags::Player.bits()) == 0;
         if is_stoned_nonplayer {
-            let co = Repository::with_characters(|ch| ch[cn].data[63] as usize);
-            let ok = Repository::with_characters(|ch| {
-                co != 0 && ch[co].used == core::constants::USE_ACTIVE
-            });
+            let co = gs.characters[cn].data[63] as usize;
+            let ok = co != 0 && gs.characters[co].used == core::constants::USE_ACTIVE;
             if !ok {
-                Repository::with_characters_mut(|ch| {
-                    ch[cn].flags &= !CharacterFlags::Stoned.bits();
-                    log::info!("oops, stoned removed");
-                });
+                gs.characters[cn].flags &= !CharacterFlags::Stoned.bits();
+                log::info!("oops, stoned removed");
             }
         }
 
@@ -989,80 +943,74 @@ impl Server {
     /// Advances `mdtime`, rolls day/year counters, updates daylight/moon phase
     /// and, when a new day begins, performs daily maintenance such as depot
     /// payments and miscellaneous per-player adjustments.
-    fn global_tick(&self) {
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Mutable reference to the unified game state.
+    fn global_tick(&self, gs: &mut GameState) {
         // Port of svr_glob.cpp::global_tick
         const MD_HOUR: i32 = 3600;
         const MD_DAY: i32 = MD_HOUR * 24;
         const MD_YEAR: i32 = 300;
 
         // Increment mdtime and compute day rollover + daylight/moon state
-        let (day_rolled, early_return) = Repository::with_globals_mut(|globals| {
-            globals.mdtime += 1;
+        gs.globals.mdtime += 1;
 
-            let mut rolled = false;
-            if globals.mdtime >= MD_DAY {
-                globals.mdday += 1;
-                globals.mdtime = 0;
-                rolled = true;
-                log::info!(
-                    "day {} of the year {} begins",
-                    globals.mdday,
-                    globals.mdyear
-                );
-            }
+        let mut day_rolled = false;
+        if gs.globals.mdtime >= MD_DAY {
+            gs.globals.mdday += 1;
+            gs.globals.mdtime = 0;
+            day_rolled = true;
+            log::info!(
+                "day {} of the year {} begins",
+                gs.globals.mdday,
+                gs.globals.mdyear
+            );
+        }
 
-            if globals.mdday >= MD_YEAR {
-                globals.mdyear += 1;
-                globals.mdday = 1;
-            }
+        if gs.globals.mdday >= MD_YEAR {
+            gs.globals.mdyear += 1;
+            gs.globals.mdday = 1;
+        }
 
-            if globals.mdtime < MD_HOUR * 6 {
-                globals.dlight = 0;
-            } else if globals.mdtime < MD_HOUR * 7 {
-                globals.dlight = (globals.mdtime - MD_HOUR * 6) * 255 / MD_HOUR;
-            } else if globals.mdtime < MD_HOUR * 22 {
-                globals.dlight = 255;
-            } else if globals.mdtime < MD_HOUR * 23 {
-                globals.dlight = (MD_HOUR * 23 - globals.mdtime) * 255 / MD_HOUR;
-            } else {
-                globals.dlight = 0;
-            }
+        if gs.globals.mdtime < MD_HOUR * 6 {
+            gs.globals.dlight = 0;
+        } else if gs.globals.mdtime < MD_HOUR * 7 {
+            gs.globals.dlight = (gs.globals.mdtime - MD_HOUR * 6) * 255 / MD_HOUR;
+        } else if gs.globals.mdtime < MD_HOUR * 22 {
+            gs.globals.dlight = 255;
+        } else if gs.globals.mdtime < MD_HOUR * 23 {
+            gs.globals.dlight = (MD_HOUR * 23 - gs.globals.mdtime) * 255 / MD_HOUR;
+        } else {
+            gs.globals.dlight = 0;
+        }
 
-            let mut tmp = globals.mdday % 28 + 1;
+        let mut tmp = gs.globals.mdday % 28 + 1;
 
-            globals.newmoon = 0;
-            globals.fullmoon = 0;
+        gs.globals.newmoon = 0;
+        gs.globals.fullmoon = 0;
 
-            if tmp == 1 {
-                globals.newmoon = 1;
-                return (rolled, true);
-            }
-            if tmp == 15 {
-                globals.fullmoon = 1;
-            }
-
-            if tmp > 14 {
-                tmp = 28 - tmp;
-            }
-            if tmp > globals.dlight {
-                globals.dlight = tmp;
-            }
-
-            (rolled, false)
-        });
-
-        if early_return {
+        if tmp == 1 {
+            gs.globals.newmoon = 1;
             return;
+        }
+        if tmp == 15 {
+            gs.globals.fullmoon = 1;
+        }
+
+        if tmp > 14 {
+            tmp = 28 - tmp;
+        }
+        if tmp > gs.globals.dlight {
+            gs.globals.dlight = tmp;
         }
 
         // If a new day began, run pay_rent() and do_misc()
         if day_rolled {
             // pay_rent: call depot payment routine for each player
             for cn in 1..core::constants::MAXCHARS {
-                let is_player = Repository::with_characters(|ch| {
-                    ch[cn].used != core::constants::USE_EMPTY
-                        && (ch[cn].flags & CharacterFlags::Player.bits()) != 0
-                });
+                let is_player = gs.characters[cn].used != core::constants::USE_EMPTY
+                    && (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0;
                 if !is_player {
                     continue;
                 }
@@ -1071,10 +1019,8 @@ impl Server {
 
             // do_misc: adjust luck and clear temporary flags for players
             for cn in 1..core::constants::MAXCHARS {
-                let is_player = Repository::with_characters(|ch| {
-                    ch[cn].used != core::constants::USE_EMPTY
-                        && (ch[cn].flags & CharacterFlags::Player.bits()) != 0
-                });
+                let is_player = gs.characters[cn].used != core::constants::USE_EMPTY
+                    && (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0;
                 if !is_player {
                     continue;
                 }
@@ -1083,34 +1029,27 @@ impl Server {
 
                 if uniques > 1 {
                     // reduce luck for multi-unique holders if active
-                    let is_active = Repository::with_characters(|ch| {
-                        ch[cn].used == core::constants::USE_ACTIVE
-                    });
-                    if is_active {
-                        Repository::with_characters_mut(|ch| {
-                            ch[cn].luck -= 5;
-                            let luck_to_log = ch[cn].luck;
-                            log::info!(
-                                "reduced luck by 5 to {} for having more than one unique",
-                                luck_to_log,
-                            );
-                        });
+                    if gs.characters[cn].used == core::constants::USE_ACTIVE {
+                        gs.characters[cn].luck -= 5;
+                        let luck_to_log = gs.characters[cn].luck;
+                        log::info!(
+                            "reduced luck by 5 to {} for having more than one unique",
+                            luck_to_log,
+                        );
                     }
                 } else {
                     // slowly recover luck towards 0
-                    Repository::with_characters_mut(|ch| {
-                        if ch[cn].luck < 0 {
-                            ch[cn].luck += 1;
-                        }
-                        if ch[cn].luck < 0 {
-                            ch[cn].luck += 1;
-                        }
-                        // clear temporary punishment flags
-                        let mask = CharacterFlags::ShutUp.bits()
-                            | CharacterFlags::NoDesc.bits()
-                            | CharacterFlags::Kicked.bits();
-                        ch[cn].flags &= !mask;
-                    });
+                    if gs.characters[cn].luck < 0 {
+                        gs.characters[cn].luck += 1;
+                    }
+                    if gs.characters[cn].luck < 0 {
+                        gs.characters[cn].luck += 1;
+                    }
+                    // clear temporary punishment flags
+                    let mask = CharacterFlags::ShutUp.bits()
+                        | CharacterFlags::NoDesc.bits()
+                        | CharacterFlags::Kicked.bits();
+                    gs.characters[cn].flags &= !mask;
                 }
             }
         }
@@ -1122,7 +1061,11 @@ impl Server {
 
     /// Check whether it is time to enqueue a background save job, and if so,
     /// clone the next slice of data and send it to the background saver thread.
-    fn maybe_enqueue_background_save(&mut self) {
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Reference to the unified game state (read-only cloning).
+    fn maybe_enqueue_background_save(&mut self, gs: &GameState) {
         let saver = match &self.background_saver {
             Some(s) => s,
             None => return,
@@ -1135,33 +1078,31 @@ impl Server {
         self.save_tick_counter = 0;
 
         // Determine which cycle we're on (wraps around)
-        let cycle = Repository::with_globals(|g| {
-            (g.ticker.unsigned_abs() / background_saver::SAVE_INTERVAL_TICKS)
-                % background_saver::SAVE_CYCLE_COUNT
-        });
+        let cycle = (gs.globals.ticker.unsigned_abs() / background_saver::SAVE_INTERVAL_TICKS)
+            % background_saver::SAVE_CYCLE_COUNT;
 
         match cycle {
             0 => {
                 // Characters
-                let data = Repository::with_characters(|ch| ch.to_vec());
+                let data = gs.characters.clone();
                 saver.send(SaveJob::Characters(data));
             }
             1 => {
                 // Items first half
                 let half = core::constants::MAXITEM / 2;
-                let data = Repository::with_items(|it| it[..half].to_vec());
+                let data = gs.items[..half].to_vec();
                 saver.send(SaveJob::Items(data, 0));
             }
             2 => {
                 // Items second half
                 let half = core::constants::MAXITEM / 2;
-                let data = Repository::with_items(|it| it[half..].to_vec());
+                let data = gs.items[half..].to_vec();
                 saver.send(SaveJob::Items(data, half));
             }
             3 => {
                 // Small data: effects + globals
-                let effects = Repository::with_effects(|fx| fx.to_vec());
-                let globals = Repository::with_globals(|g| g.clone());
+                let effects = gs.effects.clone();
+                let globals = gs.globals.clone();
                 saver.send(SaveJob::SmallData { effects, globals });
             }
             4 => {
@@ -1169,7 +1110,7 @@ impl Server {
                 let total = (core::constants::SERVER_MAPX as usize)
                     * (core::constants::SERVER_MAPY as usize);
                 let half = total / 2;
-                let data = Repository::with_map(|m| m[..half].to_vec());
+                let data = gs.map[..half].to_vec();
                 saver.send(SaveJob::MapTiles(data, 0));
             }
             5 => {
@@ -1177,7 +1118,7 @@ impl Server {
                 let total = (core::constants::SERVER_MAPX as usize)
                     * (core::constants::SERVER_MAPY as usize);
                 let half = total / 2;
-                let data = Repository::with_map(|m| m[half..].to_vec());
+                let data = gs.map[half..].to_vec();
                 saver.send(SaveJob::MapTiles(data, half));
             }
             _ => {}
@@ -1213,7 +1154,11 @@ impl Server {
     /// Iterates connected players and attempts to compress their `tbuf` data
     /// into each player's `zs` encoder. Updates buffer pointers and resets
     /// `tptr` after compressing.
-    fn compress_ticks(&mut self) {
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Mutable reference to the unified game state.
+    fn compress_ticks(&mut self, gs: &mut GameState) {
         // For each connected player, compress their tick buffer (`tbuf`) if worthwhile.
         // This is intended to match the original C++ `compress_ticks()` logic closely.
         Server::with_players_mut(|players| {
@@ -1357,12 +1302,12 @@ impl Server {
                 // Stats update (C++ does this unconditionally, with `olen` including 0x8000
                 // in the compressed case).
                 let usnr = p.usnr;
-                Repository::with_characters_mut(|ch| {
-                    if usnr < core::constants::MAXCHARS {
-                        ch[usnr].comp_volume = ch[usnr].comp_volume.wrapping_add(olen_i32 as u32);
-                        ch[usnr].raw_volume = ch[usnr].raw_volume.wrapping_add(ilen as u32);
-                    }
-                });
+                if usnr < core::constants::MAXCHARS {
+                    gs.characters[usnr].comp_volume =
+                        gs.characters[usnr].comp_volume.wrapping_add(olen_i32 as u32);
+                    gs.characters[usnr].raw_volume =
+                        gs.characters[usnr].raw_volume.wrapping_add(ilen as u32);
+                }
 
                 p.tptr = 0;
             }
@@ -1375,7 +1320,11 @@ impl Server {
     /// /// player slot via `new_player`. For existing connections, it calls
     /// `rec_player` and `send_player` as necessary to handle receive and send
     /// activity.
-    fn handle_network_io(&mut self) {
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Mutable reference to the unified game state.
+    fn handle_network_io(&mut self, gs: &mut GameState) {
         // Handle new connections
         if let Some(ref listener) = self.sock {
             match listener.accept() {
@@ -1386,7 +1335,7 @@ impl Server {
                         match tls::accept_tls(stream, config.clone()) {
                             Ok(tls_stream) => {
                                 log::info!("TLS handshake completed for {}", addr);
-                                self.new_player(tls_stream, addr.ip());
+                                self.new_player(gs, tls_stream, addr.ip());
                             }
                             Err(e) => {
                                 log::warn!("TLS handshake failed for {}: {}", addr, e);
@@ -1394,7 +1343,7 @@ impl Server {
                         }
                     } else {
                         let _ = stream.set_nonblocking(true);
-                        self.new_player(GameStream::Plain(stream), addr.ip());
+                        self.new_player(gs, GameStream::Plain(stream), addr.ip());
                     }
                 }
                 Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
@@ -1414,9 +1363,9 @@ impl Server {
                 continue;
             }
 
-            self.rec_player(player_idx);
+            self.rec_player(gs, player_idx);
 
-            self.send_player(player_idx);
+            self.send_player(gs, player_idx);
         }
     }
 
@@ -1425,7 +1374,13 @@ impl Server {
     /// Converts the peer address into a u32 (IPv4) and initializes a fresh
     /// `ServerPlayer` including zlib compression state. If no free slot is
     /// available, the connection is closed.
-    fn new_player(&mut self, stream: GameStream, addr: std::net::IpAddr) {
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Reference to the unified game state (for reading ticker).
+    /// * `stream` - The accepted game stream (plain or TLS).
+    /// * `addr` - The peer IP address.
+    fn new_player(&mut self, gs: &GameState, stream: GameStream, addr: std::net::IpAddr) {
         // Accept and initialize a new player slot. Mirrors server.cpp::new_player
 
         // Set non-blocking mode on the socket
@@ -1436,6 +1391,9 @@ impl Server {
             std::net::IpAddr::V4(a) => u32::from_be_bytes(a.octets()),
             _ => 0,
         };
+
+        // Read ticker before entering the PLAYERS closure
+        let ticker = gs.globals.ticker as u32;
 
         // Prepare a fresh ServerPlayer and find a free slot
         let mut slot: Option<usize> = None;
@@ -1462,8 +1420,8 @@ impl Server {
             // Initialize compression (deflateInit level 9 equivalent)
             players[n].zs = Some(ZlibEncoder::new(Vec::new(), Compression::best()));
             players[n].state = core::constants::ST_CONNECT;
-            players[n].lasttick = Repository::with_globals(|g| g.ticker as u32);
-            players[n].lasttick2 = players[n].lasttick;
+            players[n].lasttick = ticker;
+            players[n].lasttick2 = ticker;
             players[n].prio = 0;
             players[n].ticker_started = 0;
             players[n].inbuf[0] = 0;
@@ -1495,7 +1453,12 @@ impl Server {
     /// This method attempts a non-blocking read into `inbuf` and updates
     /// `in_len` accordingly. IO errors and disconnects are handled similarly
     /// to the original server behavior.
-    fn rec_player(&self, _player_idx: usize) {
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Mutable reference to the unified game state.
+    /// * `_player_idx` - The player slot index.
+    fn rec_player(&self, gs: &mut GameState, _player_idx: usize) {
         // Receive incoming bytes from a connected player's socket.
         let idx = _player_idx;
         Server::with_players_mut(|players| {
@@ -1531,9 +1494,7 @@ impl Server {
                     }
                     Ok(len) => {
                         players[idx].in_len += len;
-                        Repository::with_globals_mut(|g| {
-                            g.recv += len as i64;
-                        });
+                        gs.globals.recv += len as i64;
                     }
                     Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
                         // No data to read now
@@ -1556,7 +1517,12 @@ impl Server {
     ///
     /// Handles partial writes and advances the circular buffer pointers. On
     /// fatal socket errors the player slot may be disconnected.
-    fn send_player(&self, player_idx: usize) {
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Mutable reference to the unified game state.
+    /// * `player_idx` - The player slot index.
+    fn send_player(&self, gs: &mut GameState, player_idx: usize) {
         // Send pending data from player's output buffer to their socket.
         let idx = player_idx;
         Server::with_players_mut(|players| {
@@ -1599,7 +1565,7 @@ impl Server {
                         player::plr_logout(cn, idx, crate::enums::LogoutReason::Unknown);
                     }
                     Ok(ret) => {
-                        Repository::with_globals_mut(|g| g.send += ret as i64);
+                        gs.globals.send += ret as i64;
                         players[idx].optr += ret;
                         if players[idx].optr >= players[idx].obuf.len() {
                             players[idx].optr = 0;
