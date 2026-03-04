@@ -297,9 +297,7 @@ impl Server {
                     x,
                     y
                 );
-                return Result::Err(
-                    "Character template has invalid resting position.".to_string(),
-                );
+                return Result::Err("Character template has invalid resting position.".to_string());
             }
         }
 
@@ -618,8 +616,7 @@ impl Server {
                 gs.characters[n].current_online_time += 1;
                 gs.characters[n].total_online_time += 1;
 
-                let is_player_or_usurp = (gs.characters[n].flags
-                    & CharacterFlags::Player.bits()
+                let is_player_or_usurp = (gs.characters[n].flags & CharacterFlags::Player.bits()
                     != 0)
                     || (gs.characters[n].flags & CharacterFlags::Usurp.bits() != 0);
                 let is_player = gs.characters[n].flags & CharacterFlags::Player.bits() != 0;
@@ -831,10 +828,7 @@ impl Server {
 
             if map_ch != 0 {
                 // Try to drop character items near their position as in original
-                let (cx, cy) = (
-                    gs.characters[cn].x as usize,
-                    gs.characters[cn].y as usize,
-                );
+                let (cx, cy) = (gs.characters[cn].x as usize, gs.characters[cn].y as usize);
                 if !God::drop_char_fuzzy_large(cn, cx, cy, cx, cy) {
                     // couldn't drop items; leave as-is (original tried a few options)
                 }
@@ -1303,8 +1297,9 @@ impl Server {
                 // in the compressed case).
                 let usnr = p.usnr;
                 if usnr < core::constants::MAXCHARS {
-                    gs.characters[usnr].comp_volume =
-                        gs.characters[usnr].comp_volume.wrapping_add(olen_i32 as u32);
+                    gs.characters[usnr].comp_volume = gs.characters[usnr]
+                        .comp_volume
+                        .wrapping_add(olen_i32 as u32);
                     gs.characters[usnr].raw_volume =
                         gs.characters[usnr].raw_volume.wrapping_add(ilen as u32);
                 }
