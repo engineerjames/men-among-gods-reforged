@@ -129,61 +129,66 @@ impl EffectManager {
     /// Drives the death-mist animation and, at the appropriate tick, will
     /// either create a grave/tomb or destroy items when space is unavailable.
     fn handle_effect_type_3(n: usize) {
-        Repository::with_effects_mut(|effects| {
-            effects[n].duration += 1;
+        let (duration, map_index, co, killer) = {
+            let gs = Repository::global_mut();
+            gs.effects[n].duration += 1;
+            let duration = gs.effects[n].duration;
+            let map_index = gs.effects[n].data[0] as usize
+                + gs.effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
+            let co = gs.effects[n].data[2] as usize;
+            let killer = gs.effects[n].data[3] as i32;
+            (duration, map_index, co, killer)
+        };
 
-            let map_index = effects[n].data[0] as usize
-                + effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
+        if duration == Self::EFFECT_DEATH_MIST_DURATION {
+            let gs = Repository::global_mut();
+            gs.effects[n].used = core::constants::USE_EMPTY;
+            gs.map[map_index].flags &= !core::constants::MF_GFX_DEATH;
+        } else {
+            {
+                let gs = Repository::global_mut();
+                gs.map[map_index].flags &= !core::constants::MF_GFX_DEATH;
+                gs.map[map_index].flags |= ((duration / 2) as u64) << 40;
+            }
 
-            if effects[n].duration == Self::EFFECT_DEATH_MIST_DURATION {
-                effects[n].used = core::constants::USE_EMPTY;
+            if duration == Self::EFFECT_DEATH_MIST_MIDPOINT {
+                player::plr_map_remove(co);
 
-                Repository::with_map_mut(|map| {
-                    map[map_index].flags &= !core::constants::MF_GFX_DEATH;
-                });
-            } else {
-                Repository::with_map_mut(|map| {
-                    map[map_index].flags &= !core::constants::MF_GFX_DEATH;
-                    map[map_index].flags |= ((effects[n].duration / 2) as u64) << 40;
-                });
+                let m = Self::find_drop_position(map_index);
 
-                if effects[n].duration == Self::EFFECT_DEATH_MIST_MIDPOINT {
-                    let co = effects[n].data[2] as usize;
-                    player::plr_map_remove(co);
+                if m == 0 {
+                    let temp = Repository::global_mut().characters[co].temp as usize;
 
-                    let m = Self::find_drop_position(map_index);
+                    log::info!("Character {} could not drop grave", co);
 
-                    if m == 0 {
-                        let temp = Repository::global_mut().characters[co].temp as usize;
+                    God::destroy_items(co);
 
-                        log::info!("Character {} could not drop grave", co);
+                    Repository::global_mut().characters[co].used = core::constants::USE_EMPTY;
 
-                        God::destroy_items(co);
-
-                        Repository::with_characters_mut(|characters| {
-                            characters[co].used = core::constants::USE_EMPTY;
-
-                            if (characters[co].flags & CharacterFlags::Respawn.bits()) != 0 {
-                                Repository::with_character_templates(|char_templates| {
-                                    Self::fx_add_effect(
-                                        2,
-                                        (core::constants::TICKS as u32 * 60 * 5
-                                            + helpers::random_mod(
-                                                core::constants::TICKS as u32 * 60 * 10,
-                                            )) as i32,
-                                        char_templates[temp].x as i32,
-                                        char_templates[temp].y as i32,
-                                        temp as i32,
-                                    );
-                                });
-                            }
-                        });
-                    } else {
-                        Self::handle_grave_creation(m, co, effects[n].data[3] as i32);
+                    let flags = Repository::global_mut().characters[co].flags;
+                    if (flags & CharacterFlags::Respawn.bits()) != 0 {
+                        let (tx, ty) = {
+                            let gs = Repository::global_mut();
+                            (
+                                gs.character_templates[temp].x as i32,
+                                gs.character_templates[temp].y as i32,
+                            )
+                        };
+                        Self::fx_add_effect(
+                            2,
+                            (core::constants::TICKS as u32 * 60 * 5
+                                + helpers::random_mod(core::constants::TICKS as u32 * 60 * 10))
+                                as i32,
+                            tx,
+                            ty,
+                            temp as i32,
+                        );
                     }
+                } else {
+                    Self::handle_grave_creation(m, co, killer);
                 }
             }
-        });
+        }
     }
 
     /// Type 4: Tombstone
@@ -192,95 +197,89 @@ impl EffectManager {
     /// Finalizes a tombstone/effect sequence, creating the tombstone item
     /// and placing it on the map when its duration completes.
     fn handle_effect_type_4(n: usize) {
-        Repository::with_effects_mut(|effects| {
-            effects[n].duration += 1;
+        let (duration, map_index, co, killer, drop_x, drop_y) = {
+            let gs = Repository::global_mut();
+            gs.effects[n].duration += 1;
+            let duration = gs.effects[n].duration;
+            let ex = gs.effects[n].data[0] as usize;
+            let ey = gs.effects[n].data[1] as usize;
+            let co = gs.effects[n].data[2] as usize;
+            let killer = gs.effects[n].data[3] as usize;
+            let map_index = ex + ey * core::constants::SERVER_MAPX as usize;
+            (duration, map_index, co, killer, ex, ey)
+        };
 
-            let map_index = effects[n].data[0] as usize
-                + effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
-
-            if effects[n].duration == Self::EFFECT_TOMBSTONE_DURATION {
-                effects[n].used = core::constants::USE_EMPTY;
-                let co = effects[n].data[2] as usize;
-
-                Repository::with_map_mut(|map| {
-                    map[map_index].flags &= !core::constants::MF_GFX_TOMB;
-                    // NOTE: `!X as u64` parses as `(!X) as u64` in Rust (negation before cast),
-                    // which would truncate the mask to 32 bits and accidentally clear unrelated
-                    // high flag bits. We want to widen to u64 first, then negate.
-                    map[map_index].flags &= !(core::constants::MF_MOVEBLOCK as u64);
-                });
-
-                let in_id = God::create_item(170);
-                if let Some(in_id) = in_id {
-                    Repository::with_items_mut(|items| {
-                        items[in_id].data[0] = co as u32;
-
-                        if Repository::global_mut().characters[co].data[99] != 0 {
-                            items[in_id].max_age[0] *= 4;
-                        }
-
-                        Repository::with_globals(|globals| {
-                            let day_suffix = match globals.mdday {
-                                1 => "st",
-                                2 => "nd",
-                                3 => "rd",
-                                _ => "th",
-                            };
-
-                            let killer_name = if effects[n].data[3] != 0 {
-                                c_string_to_str(
-                                    &Repository::global_mut().characters
-                                        [effects[n].data[3] as usize]
-                                        .reference,
-                                )
-                            } else {
-                                "unknown causes"
-                            };
-
-                            let character_name =
-                                c_string_to_str(&Repository::global_mut().characters[co].reference);
-
-                            let description_string = format!(
-                                "Here rests {}, killed by {} on the {}{} day of the Year {}.",
-                                character_name,
-                                killer_name,
-                                globals.mdday,
-                                day_suffix,
-                                globals.mdyear
-                            );
-
-                            let mut desc_bytes = [0u8; 200];
-                            let bytes_to_copy = description_string.as_bytes().len().min(199);
-                            desc_bytes[..bytes_to_copy]
-                                .copy_from_slice(&description_string.as_bytes()[..bytes_to_copy]);
-                            items[in_id].description = desc_bytes;
-                        });
-
-                        God::drop_item(
-                            in_id,
-                            effects[n].data[0] as usize,
-                            effects[n].data[1] as usize,
-                        );
-
-                        Repository::with_items(|items| {
-                            Repository::with_characters_mut(|characters| {
-                                characters[co].x = items[in_id].x as i16;
-                                characters[co].y = items[in_id].y as i16;
-                            });
-                        });
-
-                        log::info!("Grave done for character {}", co);
-                    });
-                }
-            } else {
-                Repository::with_map_mut(|map| {
-                    map[map_index].flags &= !core::constants::MF_GFX_TOMB;
-                    map[map_index].flags |= ((effects[n].duration / 2) as u64) << 35;
-                });
+        if duration == Self::EFFECT_TOMBSTONE_DURATION {
+            {
+                let gs = Repository::global_mut();
+                gs.effects[n].used = core::constants::USE_EMPTY;
+                gs.map[map_index].flags &= !core::constants::MF_GFX_TOMB;
+                // NOTE: `!X as u64` parses as `(!X) as u64` in Rust (negation before cast),
+                // which would truncate the mask to 32 bits and accidentally clear unrelated
+                // high flag bits. We want to widen to u64 first, then negate.
+                gs.map[map_index].flags &= !(core::constants::MF_MOVEBLOCK as u64);
             }
-        });
-    }
 
+            let in_id = God::create_item(170);
+            if let Some(in_id) = in_id {
+                Repository::global_mut().items[in_id].data[0] = co as u32;
+
+                let char_data99 = Repository::global_mut().characters[co].data[99];
+                if char_data99 != 0 {
+                    Repository::global_mut().items[in_id].max_age[0] *= 4;
+                }
+
+                let description_string = {
+                    let gs = Repository::global_mut();
+                    let day_suffix = match gs.globals.mdday {
+                        1 => "st",
+                        2 => "nd",
+                        3 => "rd",
+                        _ => "th",
+                    };
+
+                    let killer_name = if killer != 0 {
+                        c_string_to_str(&gs.characters[killer].reference).to_owned()
+                    } else {
+                        "unknown causes".to_owned()
+                    };
+
+                    let character_name = c_string_to_str(&gs.characters[co].reference).to_owned();
+
+                    format!(
+                        "Here rests {}, killed by {} on the {}{} day of the Year {}.",
+                        character_name,
+                        killer_name,
+                        gs.globals.mdday,
+                        day_suffix,
+                        gs.globals.mdyear
+                    )
+                };
+
+                let mut desc_bytes = [0u8; 200];
+                let bytes_to_copy = description_string.as_bytes().len().min(199);
+                desc_bytes[..bytes_to_copy]
+                    .copy_from_slice(&description_string.as_bytes()[..bytes_to_copy]);
+                Repository::global_mut().items[in_id].description = desc_bytes;
+
+                God::drop_item(in_id, drop_x, drop_y);
+
+                let (item_x, item_y) = {
+                    let gs = Repository::global_mut();
+                    (gs.items[in_id].x, gs.items[in_id].y)
+                };
+                let gs = Repository::global_mut();
+                gs.characters[co].x = item_x as i16;
+                gs.characters[co].y = item_y as i16;
+
+                log::info!("Grave done for character {}", co);
+            }
+        } else {
+            let gs = Repository::global_mut();
+            gs.map[map_index].flags &= !core::constants::MF_GFX_TOMB;
+            gs.map[map_index].flags |= ((duration / 2) as u64) << 35;
+        }
+    }
     /// Type 5: Evil magic
     /// Handle effect type 5: evil magic animation
     ///
@@ -407,44 +406,40 @@ impl EffectManager {
     /// Animates an item and, when complete, optionally creates a monster
     /// at the item's location and removes the item.
     fn handle_effect_type_9(n: usize) {
-        Repository::with_effects_mut(|effects| {
-            effects[n].duration -= 1;
+        let (in_id, dur_even) = {
+            let gs = Repository::global_mut();
+            gs.effects[n].duration -= 1;
+            let in_id = gs.effects[n].data[0] as usize;
+            let dur_even = (gs.effects[n].duration & 1) == 0;
+            (in_id, dur_even)
+        };
 
-            let in_id = effects[n].data[0] as usize;
+        if dur_even {
+            Repository::global_mut().items[in_id].status[1] += 1;
+        }
 
-            if (effects[n].duration & 1) == 0 {
-                Repository::with_items_mut(|items| {
-                    items[in_id].status[1] += 1;
-                });
-            }
+        let duration_zero = Repository::global_mut().effects[n].duration == 0;
+        if duration_zero {
+            let (x, y) = {
+                let gs = Repository::global_mut();
+                (gs.items[in_id].x, gs.items[in_id].y)
+            };
 
-            if effects[n].duration == 0 {
-                let (x, y) = Repository::with_items(|items| (items[in_id].x, items[in_id].y));
+            let map_index = x as usize + y as usize * core::constants::SERVER_MAPX as usize;
+            Repository::global_mut().map[map_index].it = 0;
 
-                let map_index = x as usize + y as usize * core::constants::SERVER_MAPX as usize;
-
-                Repository::with_map_mut(|map| {
-                    map[map_index].it = 0;
-                });
-
-                if effects[n].data[1] != 0 {
-                    if let Some(cn) = populate::pop_create_char(effects[n].data[1] as usize, false)
-                    {
-                        God::drop_char(cn, x as usize, y as usize);
-                        Repository::with_characters_mut(|characters| {
-                            characters[cn].dir = core::constants::DX_RIGHTUP;
-                        });
-                        player::plr_reset_status(cn);
-                    }
+            let spawn_template = Repository::global_mut().effects[n].data[1];
+            if spawn_template != 0 {
+                if let Some(cn) = populate::pop_create_char(spawn_template as usize, false) {
+                    God::drop_char(cn, x as usize, y as usize);
+                    Repository::global_mut().characters[cn].dir = core::constants::DX_RIGHTUP;
+                    player::plr_reset_status(cn);
                 }
-
-                effects[n].used = core::constants::USE_EMPTY;
-
-                Repository::with_items_mut(|items| {
-                    items[in_id].used = core::constants::USE_EMPTY;
-                });
             }
-        });
+
+            Repository::global_mut().effects[n].used = core::constants::USE_EMPTY;
+            Repository::global_mut().items[in_id].used = core::constants::USE_EMPTY;
+        }
     }
 
     /// Type 10: Respawn object
@@ -453,55 +448,49 @@ impl EffectManager {
     /// Attempts to respawn a map object (item) after a delay. If the tile is
     /// blocked (e.g. beams present) the respawn is rescheduled.
     fn handle_effect_type_10(n: usize) {
-        Repository::with_effects_mut(|effects| {
-            if effects[n].duration > 0 {
-                effects[n].duration -= 1;
-            } else {
-                let map_index = effects[n].data[0] as usize
-                    + effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
+        let duration = Repository::global_mut().effects[n].duration;
+        if duration > 0 {
+            Repository::global_mut().effects[n].duration -= 1;
+        } else {
+            let (map_index, item_template, drop_x, drop_y) = {
+                let gs = Repository::global_mut();
+                let drop_x = gs.effects[n].data[0] as usize;
+                let drop_y = gs.effects[n].data[1] as usize;
+                let map_index = drop_x + drop_y * core::constants::SERVER_MAPX as usize;
+                let item_template = gs.effects[n].data[2] as usize;
+                (map_index, item_template, drop_x, drop_y)
+            };
 
-                // Check if object isn't allowed to respawn (supporting beams for mine)
-                if Self::check_surrounding_beams(map_index) {
-                    effects[n].duration = (core::constants::TICKS * 60 * 15) as u32;
-                    return;
-                }
+            // Check if object isn't allowed to respawn (supporting beams for mine)
+            if Self::check_surrounding_beams(map_index) {
+                Repository::global_mut().effects[n].duration =
+                    (core::constants::TICKS * 60 * 15) as u32;
+                return;
+            }
 
-                let in2 = Repository::with_map(|map| map[map_index].it);
+            let in2 = Repository::global_mut().map[map_index].it;
+            Repository::global_mut().map[map_index].it = 0;
 
-                Repository::with_map_mut(|map| {
-                    map[map_index].it = 0;
-                });
+            let in_id = God::create_item(item_template);
 
-                let in_id = God::create_item(effects[n].data[2] as usize);
+            if let Some(in_id) = in_id {
+                let drop_success = God::drop_item(in_id, drop_x, drop_y);
 
-                if let Some(in_id) = in_id {
-                    let drop_success = God::drop_item(
-                        in_id,
-                        effects[n].data[0] as usize,
-                        effects[n].data[1] as usize,
-                    );
-
-                    if !drop_success {
-                        effects[n].duration = (core::constants::TICKS * 60) as u32;
-                        Repository::with_items_mut(|items| {
-                            items[in_id].used = core::constants::USE_EMPTY;
-                        });
-                        Repository::with_map_mut(|map| {
-                            map[map_index].it = in2;
-                        });
-                    } else {
-                        effects[n].used = core::constants::USE_EMPTY;
-                        if in2 != 0 {
-                            Repository::with_items_mut(|items| {
-                                items[in2 as usize].used = core::constants::USE_EMPTY;
-                            });
-                        }
-                        Repository::global_mut()
-                            .reset_go(effects[n].data[0] as i32, effects[n].data[1] as i32);
+                if !drop_success {
+                    Repository::global_mut().effects[n].duration =
+                        (core::constants::TICKS * 60) as u32;
+                    Repository::global_mut().items[in_id].used = core::constants::USE_EMPTY;
+                    Repository::global_mut().map[map_index].it = in2;
+                } else {
+                    Repository::global_mut().effects[n].used = core::constants::USE_EMPTY;
+                    if in2 != 0 {
+                        Repository::global_mut().items[in2 as usize].used =
+                            core::constants::USE_EMPTY;
                     }
+                    Repository::global_mut().reset_go(drop_x as i32, drop_y as i32);
                 }
             }
-        });
+        }
     }
 
     /// Type 11: Remove queued spell flags
@@ -645,9 +634,7 @@ impl EffectManager {
         let has_gold = ch.gold != 0;
 
         if has_items || has_gold {
-            Repository::with_map_mut(|map| {
-                map[map_index].flags |= core::constants::MF_MOVEBLOCK as u64;
-            });
+            Repository::global_mut().map[map_index].flags |= core::constants::MF_MOVEBLOCK as u64;
 
             let fn_idx = Self::fx_add_effect(
                 4,
@@ -658,54 +645,58 @@ impl EffectManager {
             );
 
             if let Some(fn_idx) = fn_idx {
-                Repository::with_effects_mut(|effects| {
-                    effects[fn_idx].data[3] = killer_cn as u32;
-                });
+                Repository::global_mut().effects[fn_idx].data[3] = killer_cn as u32;
             }
         } else {
             let temp = Repository::global_mut().characters[co].temp as usize;
 
             God::destroy_items(co);
 
-            Repository::with_characters_mut(|characters| {
-                characters[co].used = core::constants::USE_EMPTY;
+            Repository::global_mut().characters[co].used = core::constants::USE_EMPTY;
 
-                if temp != 0 && (characters[co].flags & CharacterFlags::Respawn.bits()) != 0 {
-                    if temp == 189 || temp == 561 {
-                        Self::fx_add_effect(
-                            2,
-                            (core::constants::TICKS as u32 * 60 * 20
-                                + helpers::random_mod(core::constants::TICKS as u32 * 60 * 5))
-                                as i32,
-                            Repository::with_character_templates(|char_templates| {
-                                char_templates[temp].x as i32
-                            }),
-                            Repository::with_character_templates(|char_templates| {
-                                char_templates[temp].y as i32
-                            }),
-                            temp as i32,
-                        );
-                    } else {
-                        Self::fx_add_effect(
-                            2,
-                            (core::constants::TICKS as u32 * 60 * 4
-                                + helpers::random_mod(core::constants::TICKS as u32 * 60))
-                                as i32,
-                            Repository::with_character_templates(|char_templates| {
-                                char_templates[temp].x as i32
-                            }),
-                            Repository::with_character_templates(|char_templates| {
-                                char_templates[temp].y as i32
-                            }),
-                            temp as i32,
-                        );
-                    }
+            let (co_flags, co_name) = {
+                let gs = Repository::global_mut();
+                (
+                    gs.characters[co].flags,
+                    gs.characters[co].get_name().to_string(),
+                )
+            };
 
-                    log::info!("Respawn {} ({}): YES", co, &characters[co].get_name());
+            if temp != 0 && (co_flags & CharacterFlags::Respawn.bits()) != 0 {
+                let (tx, ty) = {
+                    let gs = Repository::global_mut();
+                    (
+                        gs.character_templates[temp].x as i32,
+                        gs.character_templates[temp].y as i32,
+                    )
+                };
+
+                if temp == 189 || temp == 561 {
+                    Self::fx_add_effect(
+                        2,
+                        (core::constants::TICKS as u32 * 60 * 20
+                            + helpers::random_mod(core::constants::TICKS as u32 * 60 * 5))
+                            as i32,
+                        tx,
+                        ty,
+                        temp as i32,
+                    );
                 } else {
-                    log::info!("Respawn {} ({}): NO", co, &characters[co].get_name());
+                    Self::fx_add_effect(
+                        2,
+                        (core::constants::TICKS as u32 * 60 * 4
+                            + helpers::random_mod(core::constants::TICKS as u32 * 60))
+                            as i32,
+                        tx,
+                        ty,
+                        temp as i32,
+                    );
                 }
-            });
+
+                log::info!("Respawn {} ({}): YES", co, co_name);
+            } else {
+                log::info!("Respawn {} ({}): NO", co, co_name);
+            }
         }
     }
 
