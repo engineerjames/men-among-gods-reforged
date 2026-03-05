@@ -1883,7 +1883,6 @@ static KNOW: [Know; 227] = [
 use crate::effect::EffectManager;
 use crate::game_state::GameState as Repository;
 use crate::god::God;
-use crate::state::State;
 use crate::{driver, helpers};
 
 /// Port of `obey(int cn, int co)` from `talk.cpp`
@@ -1944,17 +1943,14 @@ pub fn answer_spellinfo(cn: usize, co: usize) {
                     let seconds = (items[spell_idx].active / TICKS as u32) % 60;
                     let name = items[spell_idx].get_name();
 
-                    State::with(|state| {
-                        state.do_sayx(cn, &format!("{}, for {}m {}s.", name, minutes, seconds));
-                    });
+                    Repository::global_mut()
+                        .do_sayx(cn, &format!("{}, for {}m {}s.", name, minutes, seconds));
                     found = true;
                 }
             }
 
             if !found {
-                State::with(|state| {
-                    state.do_sayx(cn, "I have no spells on me at the moment.");
-                });
+                Repository::global_mut().do_sayx(cn, "I have no spells on me at the moment.");
             }
         });
     });
@@ -1986,20 +1982,16 @@ pub fn answer_transfer(cn: usize, co: usize) {
             )
         });
 
-    State::with(|state| {
-        state.do_sayx(
-            cn,
-            &format!(
-                "I'd prefer to die in battle, {}. But I shall obey my master.",
-                Repository::with_characters(|ch| ch[co].get_name().to_string())
-            ),
-        );
-    });
+    Repository::global_mut().do_sayx(
+        cn,
+        &format!(
+            "I'd prefer to die in battle, {}. But I shall obey my master.",
+            Repository::with_characters(|ch| ch[co].get_name().to_string())
+        ),
+    );
 
     // Give experience (do_give_exp equivalent - would need to be implemented)
-    State::with_mut(|state| {
-        state.do_give_exp(co, exp_to_give, 1, -1);
-    });
+    Repository::global_mut().do_give_exp(co, exp_to_give, 1, -1);
 
     // Add visual effects (fx_add_effect equivalent - would need to be implemented)
     EffectManager::fx_add_effect(6, 0, _co_x as i32, _co_y as i32, 0);
@@ -2049,9 +2041,7 @@ pub fn answer_follow(cn: usize, co: usize) {
         characters[cn].data[29] = 0; // Clear wait position
 
         let co_name = characters[co].get_name().to_string();
-        State::with(|state| {
-            state.do_sayx(cn, &format!("Yes, {}!", co_name));
-        });
+        Repository::global_mut().do_sayx(cn, &format!("Yes, {}!", co_name));
     });
 }
 
@@ -2091,9 +2081,7 @@ pub fn answer_wait(cn: usize, co: usize) {
         characters[cn].data[69] = 0; // Clear follow target
 
         let co_name = characters[co].get_name().to_string();
-        State::with(|state| {
-            state.do_sayx(cn, &format!("Yes, {}!", co_name));
-        });
+        Repository::global_mut().do_sayx(cn, &format!("Yes, {}!", co_name));
     });
 }
 
@@ -2128,9 +2116,7 @@ pub fn answer_stop(cn: usize, co: usize) {
         characters[cn].data[27] = ticker;
 
         let co_name = characters[co].get_name().to_string();
-        State::with(|state| {
-            state.do_sayx(cn, &format!("Yes master {}!", co_name));
-        });
+        Repository::global_mut().do_sayx(cn, &format!("Yes master {}!", co_name));
     });
 }
 
@@ -2161,9 +2147,7 @@ pub fn answer_move(cn: usize, co: usize) {
         characters[cn].misc_action = 0;
 
         let co_name = characters[co].get_name().to_string();
-        State::with(|state| {
-            state.do_sayx(cn, &format!("Yes master {}!", co_name));
-        });
+        Repository::global_mut().do_sayx(cn, &format!("Yes master {}!", co_name));
     });
 }
 
@@ -2249,34 +2233,28 @@ pub fn answer_attack(cn: usize, co: usize, text: &str) {
         Repository::with_characters(|characters| {
             // Prevent attacks on self
             if best_target == co {
-                State::with(|state| {
-                    state.do_sayx(
-                        cn,
-                        &format!(
-                            "But {}, I would never attack you!",
-                            characters[co].get_name()
-                        ),
-                    );
-                });
+                Repository::global_mut().do_sayx(
+                    cn,
+                    &format!(
+                        "But {}, I would never attack you!",
+                        characters[co].get_name()
+                    ),
+                );
                 return;
             }
             if best_target == cn {
-                State::with(|state| {
-                    state.do_sayx(
-                        cn,
-                        &format!(
-                            "You want me to attack myself? That's silly, {}!",
-                            characters[co].get_name()
-                        ),
-                    );
-                });
+                Repository::global_mut().do_sayx(
+                    cn,
+                    &format!(
+                        "You want me to attack myself? That's silly, {}!",
+                        characters[co].get_name()
+                    ),
+                );
                 return;
             }
 
-            if State::with(|state| state.may_attack_msg(co, best_target, false)) == 0 {
-                State::with(|state| {
-                    state.do_sayx(cn, &format!("The Gods would be angry if we did that, you didn't want to anger the Gods, {} did you?", characters[co].get_name()));
-                });
+            if Repository::global_mut().may_attack_msg(co, best_target, false) == 0 {
+                Repository::global_mut().do_sayx(cn, &format!("The Gods would be angry if we did that, you didn't want to anger the Gods, {} did you?", characters[co].get_name()));
                 return;
             }
 
@@ -2292,18 +2270,21 @@ pub fn answer_attack(cn: usize, co: usize, text: &str) {
                 characters_mut[cn].data[80] = idx as i32;
                 characters_mut[cn].data[80] = best_target as i32;
 
-                State::with(|state| {
-                    state.do_sayx(
-                        cn,
-                        &format!("Yes {}, I will kill {}!", co_name, target_name),
-                    );
-                });
+                Repository::global_mut().do_sayx(
+                    cn,
+                    &format!("Yes {}, I will kill {}!", co_name, target_name),
+                );
             });
 
             // Notify target
-            State::with(|state| {
-                state.do_notify_character(best_target as u32, NT_GOTMISS as i32, co as i32, 0, 0, 0)
-            });
+            Repository::global_mut().do_notify_character(
+                best_target as u32,
+                NT_GOTMISS as i32,
+                co as i32,
+                0,
+                0,
+                0,
+            );
         });
     }
 }
@@ -2331,22 +2312,18 @@ pub fn answer_quiet(cn: usize, co: usize) {
         Repository::with_characters_mut(|characters_mut| {
             if !is_talkative {
                 characters_mut[cn].data[core::constants::CHD_TALKATIVE] = template_talkative;
-                State::with(|state| {
-                    state.do_sayx(
-                        cn,
-                        &format!(
-                            "Thank you, {}, for letting me talk again!",
-                            characters[co].get_name()
-                        ),
-                    );
-                });
+                Repository::global_mut().do_sayx(
+                    cn,
+                    &format!(
+                        "Thank you, {}, for letting me talk again!",
+                        characters[co].get_name()
+                    ),
+                );
             } else {
-                State::with(|state| {
-                    state.do_sayx(
-                        cn,
-                        &format!("Yes {}, I will shut up now.", characters[co].get_name()),
-                    );
-                });
+                Repository::global_mut().do_sayx(
+                    cn,
+                    &format!("Yes {}, I will shut up now.", characters[co].get_name()),
+                );
                 characters_mut[cn].data[core::constants::CHD_TALKATIVE] = 0;
             }
         });
@@ -2367,15 +2344,13 @@ pub fn answer_health(cn: usize, co: usize) {
         let hp_max = characters[cn].hp[5] as i32 * 550;
         let co_name = characters[co].get_name().to_string();
 
-        State::with(|state| {
-            if a_hp > hp_max {
-                state.do_sayx(cn, &format!("I'm fine, {}.", co_name));
-            } else if a_hp > (characters[cn].hp[5] as i32 * 250) {
-                state.do_sayx(cn, &format!("I don't feel so good, {}.", co_name));
-            } else {
-                state.do_sayx(cn, "I'm dying!!");
-            }
-        });
+        if a_hp > hp_max {
+            Repository::global_mut().do_sayx(cn, &format!("I'm fine, {}.", co_name));
+        } else if a_hp > (characters[cn].hp[5] as i32 * 250) {
+            Repository::global_mut().do_sayx(cn, &format!("I don't feel so good, {}.", co_name));
+        } else {
+            Repository::global_mut().do_sayx(cn, "I'm dying!!");
+        }
     });
 }
 
@@ -2393,19 +2368,17 @@ pub fn answer_shop(cn: usize, co: usize) {
             characters[cn].flags & core::constants::CharacterFlags::Merchant.bits() != 0;
         let co_name = characters[co].get_name().to_string();
 
-        State::with(|state| {
-            if is_merchant {
-                state.do_sayx(
-                    cn,
-                    &format!(
-                        "Hold down ALT and right click on me to buy or sell, {}.",
-                        co_name
-                    ),
-                );
-            } else {
-                state.do_sayx(cn, &format!("I'm not a merchant, {}.", co_name));
-            }
-        });
+        if is_merchant {
+            Repository::global_mut().do_sayx(
+                cn,
+                &format!(
+                    "Hold down ALT and right click on me to buy or sell, {}.",
+                    co_name
+                ),
+            );
+        } else {
+            Repository::global_mut().do_sayx(cn, &format!("I'm not a merchant, {}.", co_name));
+        }
     });
 }
 
@@ -2427,16 +2400,13 @@ pub fn answer_greeting(cn: usize, co: usize) {
             if characters[cn].temp == 180
                 && (characters[co].kindred & (core::constants::KIN_PURPLE as i32)) != 0
             {
-                State::with(|state| {
-                    state.do_sayx(cn, &format!("Greetings, {}!", characters[co].get_name()));
-                });
+                Repository::global_mut()
+                    .do_sayx(cn, &format!("Greetings, {}!", characters[co].get_name()));
                 return;
             }
 
-            State::with(|state| {
-                let formatted = greeting_text.replace("%s", characters[co].get_name());
-                state.do_sayx(cn, &formatted);
-            });
+            let formatted = greeting_text.replace("%s", characters[co].get_name());
+            Repository::global_mut().do_sayx(cn, &formatted);
         }
     });
 }
@@ -2451,9 +2421,7 @@ pub fn answer_greeting(cn: usize, co: usize) {
 pub fn answer_whoami(cn: usize, _co: usize) {
     Repository::with_characters(|characters| {
         let name = characters[cn].get_name().to_string();
-        State::with(|state| {
-            state.do_sayx(cn, &format!("I am {}.", name));
-        });
+        Repository::global_mut().do_sayx(cn, &format!("I am {}.", name));
     });
 }
 
@@ -2468,9 +2436,7 @@ pub fn answer_whoami(cn: usize, _co: usize) {
 /// * `_co` - (unused) Player who asked
 pub fn answer_where(cn: usize, _co: usize) {
     // TODO: Implement get_area function
-    State::with(|state| {
-        state.do_sayx(cn, "I am here."); // Placeholder until get_area is implemented
-    });
+    Repository::global_mut().do_sayx(cn, "I am here."); // Placeholder until get_area is implemented
 }
 
 /// Port of `answer_time(int cn, int co)` from `talk.cpp`
@@ -2495,15 +2461,13 @@ pub fn answer_time(cn: usize, _co: usize) {
             _ => "th",
         };
 
-        State::with(|state| {
-            state.do_sayx(
-                cn,
-                &format!(
-                    "Today is the {}{} day of the Year {}. It is {}:{:02} Astonian Standard Time.\n",
-                    day, suffix, year, hour, minute
-                ),
-            );
-        });
+        Repository::global_mut().do_sayx(
+            cn,
+            &format!(
+                "Today is the {}{} day of the Year {}. It is {}:{:02} Astonian Standard Time.\n",
+                day, suffix, year, hour, minute
+            ),
+        );
     });
 }
 
@@ -2557,12 +2521,10 @@ pub fn answer_points(cn: usize, co: usize, _know_idx: usize) {
     let exp = stronghold_exp_per_pt(co);
     let pts = stronghold_points(co);
 
-    State::with(|state| {
-        state.do_sayx(cn, &format!(
+    Repository::global_mut().do_sayx(cn, &format!(
             "You have {} points. You can BUY GOLD at one coin per point, BUY HEALING potions for 6 points, BUY MANA potions for 9 points or BUY EXPerience at {} exp per point.",
             pts, exp
         ));
-    });
 }
 
 /// Port of `answer_buygold(int cn, int co)` from `talk.cpp`
@@ -2579,15 +2541,13 @@ pub fn answer_buygold(cn: usize, co: usize) {
 
     if pts < 1 {
         Repository::with_characters(|characters| {
-            State::with(|state| {
-                state.do_sayx(
-                    cn,
-                    &format!(
-                        "But you don't have any points to spend, {}!",
-                        characters[co].get_name()
-                    ),
-                );
-            });
+            Repository::global_mut().do_sayx(
+                cn,
+                &format!(
+                    "But you don't have any points to spend, {}!",
+                    characters[co].get_name()
+                ),
+            );
         });
         return;
     }
@@ -2597,15 +2557,13 @@ pub fn answer_buygold(cn: usize, co: usize) {
         characters[co].gold += pts * 100;
 
         let co_name = characters[co].get_name().to_string();
-        State::with(|state| {
-            state.do_sayx(
-                cn,
-                &format!(
-                    "There you are, {}. {} gold coins. Thank you for your help!",
-                    co_name, pts
-                ),
-            );
-        });
+        Repository::global_mut().do_sayx(
+            cn,
+            &format!(
+                "There you are, {}. {} gold coins. Thank you for your help!",
+                co_name, pts
+            ),
+        );
     });
 
     log::info!("Character {} bought gold from cityguard ({} pts)", co, pts);
@@ -2624,15 +2582,13 @@ pub fn answer_buyhealth(cn: usize, co: usize) {
 
     if pts < 6 {
         Repository::with_characters(|characters| {
-            State::with(|state| {
-                state.do_sayx(
-                    cn,
-                    &format!(
-                        "But you don't have enough points to spend, {}!",
-                        characters[co].get_name()
-                    ),
-                );
-            });
+            Repository::global_mut().do_sayx(
+                cn,
+                &format!(
+                    "But you don't have enough points to spend, {}!",
+                    characters[co].get_name()
+                ),
+            );
         });
         return;
     }
@@ -2645,15 +2601,13 @@ pub fn answer_buyhealth(cn: usize, co: usize) {
         God::give_character_item(co, item_id);
 
         Repository::with_characters(|characters| {
-            State::with(|state| {
-                state.do_sayx(
-                    cn,
-                    &format!(
-                        "There you are, {}. A healing potion. Thank you for your help!",
-                        characters[co].get_name()
-                    ),
-                );
-            });
+            Repository::global_mut().do_sayx(
+                cn,
+                &format!(
+                    "There you are, {}. A healing potion. Thank you for your help!",
+                    characters[co].get_name()
+                ),
+            );
         });
 
         log::info!("Character {} bought healing potion from cityguard", co);
@@ -2673,15 +2627,13 @@ pub fn answer_buymana(cn: usize, co: usize) {
 
     if pts < 9 {
         Repository::with_characters(|characters| {
-            State::with(|state| {
-                state.do_sayx(
-                    cn,
-                    &format!(
-                        "But you don't have enough points to spend, {}!",
-                        characters[co].get_name()
-                    ),
-                );
-            });
+            Repository::global_mut().do_sayx(
+                cn,
+                &format!(
+                    "But you don't have enough points to spend, {}!",
+                    characters[co].get_name()
+                ),
+            );
         });
         return;
     }
@@ -2694,15 +2646,13 @@ pub fn answer_buymana(cn: usize, co: usize) {
         God::give_character_item(co, item_id);
 
         Repository::with_characters(|characters| {
-            State::with(|state| {
-                state.do_sayx(
-                    cn,
-                    &format!(
-                        "There you are, {}. A mana potion. Thank you for your help!",
-                        characters[co].get_name()
-                    ),
-                );
-            });
+            Repository::global_mut().do_sayx(
+                cn,
+                &format!(
+                    "There you are, {}. A mana potion. Thank you for your help!",
+                    characters[co].get_name()
+                ),
+            );
         });
 
         log::info!("Character {} bought mana potion from cityguard", co);
@@ -2724,15 +2674,13 @@ pub fn answer_buyexp(cn: usize, co: usize) {
 
     if pts < 1 {
         Repository::with_characters(|characters| {
-            State::with(|state| {
-                state.do_sayx(
-                    cn,
-                    &format!(
-                        "But you don't have any points to spend, {}!",
-                        characters[co].get_name()
-                    ),
-                );
-            });
+            Repository::global_mut().do_sayx(
+                cn,
+                &format!(
+                    "But you don't have any points to spend, {}!",
+                    characters[co].get_name()
+                ),
+            );
         });
         return;
     }
@@ -2746,15 +2694,13 @@ pub fn answer_buyexp(cn: usize, co: usize) {
 
         let co_name = characters[co].get_name().to_string();
 
-        State::with(|state| {
-            state.do_check_new_level(co);
-            state.do_sayx(cn, &format!("Now I'll teach you a bit about life, the world and everything, {}. Thank you for your help!", co_name));
-            state.do_character_log(
-                co,
-                core::types::FontColor::Yellow,
-                &format!("You get {} experience points.", total_exp),
-            );
-        });
+        Repository::global_mut().do_check_new_level(co);
+        Repository::global_mut().do_sayx(cn, &format!("Now I'll teach you a bit about life, the world and everything, {}. Thank you for your help!", co_name));
+        Repository::global_mut().do_character_log(
+            co,
+            core::types::FontColor::Yellow,
+            &format!("You get {} experience points.", total_exp),
+        );
     });
 
     log::info!(
@@ -3099,7 +3045,9 @@ pub fn npc_hear(gs: &mut GameState, cn: usize, co: usize, text: &str) {
             let know_entry = &KNOW[nr];
 
             if know_entry.special == 0 {
-                let answer = know_entry.answer.replace("%s", gs.characters[co].get_name());
+                let answer = know_entry
+                    .answer
+                    .replace("%s", gs.characters[co].get_name());
                 gs.do_sayx(cn, &answer);
 
                 log::info!("Character {} answered \"{}\" with \"{}\"", cn, text, answer);

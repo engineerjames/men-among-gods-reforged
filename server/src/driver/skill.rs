@@ -124,13 +124,11 @@ pub fn spellcost(cn: usize, cost: i32) -> i32 {
     }
     let a_mana = GameState::with_characters(|ch| ch[cn].a_mana);
     if cost * 1000 > a_mana {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                "You don't have enough mana.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            "You don't have enough mana.\n",
+        );
         return -1;
     }
     GameState::with_characters_mut(|ch| ch[cn].a_mana = a_mana - cost * 1000);
@@ -151,9 +149,11 @@ pub fn chance_base(cn: usize, skill: i32, d20: i32, power: i32) -> i32 {
 
     let roll = crate::helpers::random_mod(20);
     if roll as i32 > chance || power > skill + (skill / 2) {
-        GameState::with_mut(|state| {
-            state.do_character_log(cn, core::types::FontColor::Red, "You lost your focus!\n");
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            "You lost your focus!\n",
+        );
         return -1;
     }
     0
@@ -172,9 +172,11 @@ pub fn chance(cn: usize, d20: i32) -> i32 {
 
     let roll = crate::helpers::random_mod(20);
     if roll as i32 > d20 {
-        GameState::with_mut(|state| {
-            state.do_character_log(cn, core::types::FontColor::Red, "You lost your focus!\n");
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            "You lost your focus!\n",
+        );
         return -1;
     }
     0
@@ -302,7 +304,7 @@ pub fn add_spell(cn: usize, in_: usize) -> i32 {
     // Assign spell
     GameState::with_characters_mut(|ch| ch[cn].spell[n] = in_ as u32);
     GameState::with_items_mut(|it| it[in_].carried = cn as u16);
-    GameState::with_mut(|state| state.do_update_char(cn));
+    GameState::global_mut().do_update_char(cn);
     1
 }
 
@@ -313,13 +315,11 @@ pub fn is_exhausted(cn: usize) -> i32 {
         if in_ != 0 {
             let temp = GameState::with_items(|it| it[in_].temp);
             if temp == core::constants::SK_BLAST as u16 {
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Red,
-                        "You are still exhausted from your last spell!\n",
-                    );
-                });
+                GameState::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    "You are still exhausted from your last spell!\n",
+                );
                 return 1;
             }
         }
@@ -355,13 +355,11 @@ pub fn spell_from_item(cn: usize, in2: usize) {
     // Ported from C++ spell_from_item(int cn, int in2)
     let flags = GameState::with_characters(|ch| ch[cn].flags);
     if (flags & CharacterFlags::NoMagic.bits()) != 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                "The magic didn't work! Must be external influences.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            "The magic didn't work! Must be external influences.\n",
+        );
         return;
     }
     let in_ = God::create_item(1);
@@ -405,20 +403,16 @@ pub fn spell_from_item(cn: usize, in2: usize) {
     });
     if add_spell(cn, in_) == 0 {
         let name = GameState::with_items(|it| it[in_].get_name().to_string());
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                &format!("Magical interference neutralised the {}'s effect.\n", name,),
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            &format!("Magical interference neutralised the {}'s effect.\n", name,),
+        );
         return;
     }
-    GameState::with_mut(|state| {
-        state.do_character_log(cn, core::types::FontColor::Green, "You feel changed.\n");
-        let sound = GameState::with_characters(|ch| ch[cn].sound);
-        GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
-    });
+    GameState::global_mut().do_character_log(cn, core::types::FontColor::Green, "You feel changed.\n");
+    let sound = GameState::with_characters(|ch| ch[cn].sound);
+    GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
 }
 
 pub fn spell_light(cn: usize, co: usize, power: i32) -> i32 {
@@ -446,46 +440,38 @@ pub fn spell_light(cn: usize, co: usize, power: i32) -> i32 {
     if cn != co {
         if add_spell(co, in_.unwrap()) == 0 {
             let name = GameState::with_items(|it| it[in_.unwrap()].get_name().to_string());
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Green,
-                    &format!("Magical interference neutralised the {}'s effect.\n", name),
-                );
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                &format!("Magical interference neutralised the {}'s effect.\n", name),
+            );
             return 0;
         }
         let sense = GameState::with_characters(|ch| ch[co].skill[core::constants::SK_SENSE][5]);
         if sense + 10 > power as u8 {
             let reference = GameState::with_characters(|ch| ch[cn].reference);
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    co,
-                    core::types::FontColor::Green,
-                    &format!("{} cast light on you.\n", c_string_to_str(&reference)),
-                )
-            });
+            GameState::global_mut().do_character_log(
+                co,
+                core::types::FontColor::Green,
+                &format!("{} cast light on you.\n", c_string_to_str(&reference)),
+            );
         } else {
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    co,
-                    core::types::FontColor::Green,
-                    "You start to emit light.\n",
-                )
-            });
+            GameState::global_mut().do_character_log(
+                co,
+                core::types::FontColor::Green,
+                "You start to emit light.\n",
+            );
         }
         let name = GameState::with_characters(|ch| ch[co].name);
         let (x, y) = GameState::with_characters(|ch| (ch[co].x, ch[co].y));
-        GameState::with_mut(|state| {
-            state.do_area_log(
-                co,
-                0,
-                x as i32,
-                y as i32,
-                core::types::FontColor::Green,
-                &format!("{} starts to emit light.\n", c_string_to_str(&name)),
-            )
-        });
+        GameState::global_mut().do_area_log(
+            co,
+            0,
+            x as i32,
+            y as i32,
+            core::types::FontColor::Green,
+            &format!("{} starts to emit light.\n", c_string_to_str(&name)),
+        );
         let sound = GameState::with_characters(|ch| ch[cn].sound);
         GameState::char_play_sound(co, sound as i32 + 1, -150, 0);
         GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
@@ -494,22 +480,18 @@ pub fn spell_light(cn: usize, co: usize, power: i32) -> i32 {
     } else {
         if add_spell(cn, in_.unwrap()) == 0 {
             let name = GameState::with_items(|it| it[in_.unwrap()].get_name().to_string());
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Green,
-                    &format!("Magical interference neutralised the {}'s effect.\n", name),
-                );
-            });
-            return 0;
-        }
-        GameState::with_mut(|state| {
-            state.do_character_log(
+            GameState::global_mut().do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                "You start to emit light.\n",
-            )
-        });
+                &format!("Magical interference neutralised the {}'s effect.\n", name),
+            );
+            return 0;
+        }
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "You start to emit light.\n",
+        );
         let sound = GameState::with_characters(|ch| ch[cn].sound);
         GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
         let flags = GameState::with_characters(|ch| ch[cn].flags);
@@ -534,9 +516,8 @@ pub fn skill_light(cn: usize) {
         });
         let over = GameState::with_characters(|ch| ch[cn].data[71] > MAXSAY);
         if over {
-            GameState::with_mut(|state| {
-                state.do_character_log(cn, FontColor::Red, "Oops, you're a bit too fast for me!\n")
-            });
+            GameState::global_mut()
+                .do_character_log(cn, FontColor::Red, "Oops, you're a bit too fast for me!\n");
             return;
         }
     }
@@ -549,10 +530,8 @@ pub fn skill_light(cn: usize) {
         }
     });
 
-    if GameState::with_mut(|state| state.do_char_can_see(cn, co)) == 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(cn, FontColor::Red, "You cannot see your target.\n")
-        });
+    if GameState::global_mut().do_char_can_see(cn, co) == 0 {
+        GameState::global_mut().do_character_log(cn, FontColor::Red, "You cannot see your target.\n");
         return;
     }
 
@@ -570,16 +549,14 @@ pub fn skill_light(cn: usize) {
             let light_skill = GameState::with_characters(|ch| ch[cn].skill[SK_LIGHT][5]);
             if sense > (light_skill + 5) {
                 let reference = GameState::with_characters(|ch| ch[cn].reference);
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        co,
-                        FontColor::Green,
-                        &format!(
-                            "{} tried to cast light on you but failed.\n",
-                            c_string_to_str(&reference)
-                        ),
-                    )
-                });
+                GameState::global_mut().do_character_log(
+                    co,
+                    FontColor::Green,
+                    &format!(
+                        "{} tried to cast light on you but failed.\n",
+                        c_string_to_str(&reference)
+                    ),
+                );
             }
         }
         return;
@@ -616,24 +593,20 @@ pub fn spell_protect(cn: usize, co: usize, power: i32) -> i32 {
     if power > target_spellpower {
         if cn != co {
             let reference = GameState::with_characters(|ch| ch[co].reference);
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    FontColor::Yellow,
-                    &format!(
-                        "Seeing that {} is not powerful enough for your spell, you reduced its strength.\n",
-                        c_string_to_str(&reference)
-                    ),
-                )
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                FontColor::Yellow,
+                &format!(
+                    "Seeing that {} is not powerful enough for your spell, you reduced its strength.\n",
+                    c_string_to_str(&reference)
+                ),
+            );
         } else {
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    FontColor::Green,
-                    "You are not powerful enough to use the full strength of this spell.\n",
-                )
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                FontColor::Green,
+                "You are not powerful enough to use the full strength of this spell.\n",
+            );
         }
         power = target_spellpower;
     }
@@ -658,40 +631,32 @@ pub fn spell_protect(cn: usize, co: usize, power: i32) -> i32 {
     if cn != co {
         if add_spell(co, in_) == 0 {
             let name = GameState::with_items(|it| it[in_].get_name().to_string());
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    FontColor::Green,
-                    &format!("Magical interference neutralised the {}'s effect.\n", name),
-                )
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                FontColor::Green,
+                &format!("Magical interference neutralised the {}'s effect.\n", name),
+            );
             return 0;
         }
 
         let sense = GameState::with_characters(|ch| ch[co].skill[SK_SENSE][5]);
         if sense as i32 + 10 > power {
             let reference = GameState::with_characters(|ch| ch[cn].reference);
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    co,
-                    FontColor::Green,
-                    &format!("{} cast protect on you.\n", c_string_to_str(&reference)),
-                )
-            });
+            GameState::global_mut().do_character_log(
+                co,
+                FontColor::Green,
+                &format!("{} cast protect on you.\n", c_string_to_str(&reference)),
+            );
         } else {
-            GameState::with_mut(|state| {
-                state.do_character_log(co, FontColor::Red, "You feel protected.\n")
-            });
+            GameState::global_mut().do_character_log(co, FontColor::Red, "You feel protected.\n");
         }
 
         let name = GameState::with_characters(|ch| ch[co].get_name().to_string());
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                FontColor::Yellow,
-                &format!("{} is now protected.\n", name),
-            )
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            FontColor::Yellow,
+            &format!("{} is now protected.\n", name),
+        );
         let sound = GameState::with_characters(|ch| ch[cn].sound);
         GameState::char_play_sound(co, sound as i32 + 1, -150, 0);
         GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
@@ -707,16 +672,14 @@ pub fn spell_protect(cn: usize, co: usize, power: i32) -> i32 {
     } else {
         if add_spell(cn, in_) == 0 {
             let name = GameState::with_items(|it| it[in_].get_name().to_string());
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    FontColor::Green,
-                    &format!("Magical interference neutralised the {}'s effect.\n", name),
-                )
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                FontColor::Green,
+                &format!("Magical interference neutralised the {}'s effect.\n", name),
+            );
             return 0;
         }
-        GameState::with_mut(|state| state.do_character_log(cn, FontColor::Green, "You feel protected.\n"));
+        GameState::global_mut().do_character_log(cn, FontColor::Green, "You feel protected.\n");
         let sound = GameState::with_characters(|ch| ch[cn].sound);
         GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
         let flags = GameState::with_characters(|ch| ch[cn].flags);
@@ -752,10 +715,8 @@ pub fn skill_protect(cn: usize) {
         }
     });
 
-    if GameState::with_mut(|state| state.do_char_can_see(cn, co)) == 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(cn, FontColor::Red, "You cannot see your target.\n")
-        });
+    if GameState::global_mut().do_char_can_see(cn, co) == 0 {
+        GameState::global_mut().do_character_log(cn, FontColor::Red, "You cannot see your target.\n");
         return;
     }
 
@@ -766,16 +727,11 @@ pub fn skill_protect(cn: usize) {
     if driver::player_or_ghost(cn, co) == 0 {
         let name_from = GameState::with_characters(|ch| ch[co].get_name().to_string());
         let name_to = GameState::with_characters(|ch| ch[cn].get_name().to_string());
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                FontColor::Red,
-                &format!(
-                    "Changed target of spell from {} to {}.\n",
-                    name_from, name_to
-                ),
-            )
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            FontColor::Red,
+            &format!("Changed target of spell from {} to {}.\n", name_from, name_to),
+        );
         co = cn;
     }
 
@@ -788,16 +744,14 @@ pub fn skill_protect(cn: usize) {
             let prot_skill = GameState::with_characters(|ch| ch[cn].skill[SK_PROTECT][5]);
             if sense > (prot_skill + 5) {
                 let reference = GameState::with_characters(|ch| ch[cn].reference);
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        co,
-                        FontColor::Green,
-                        &format!(
-                            "{} tried to cast protect on you but failed.\n",
-                            c_string_to_str(&reference)
-                        ),
-                    )
-                });
+                GameState::global_mut().do_character_log(
+                    co,
+                    FontColor::Green,
+                    &format!(
+                        "{} tried to cast protect on you but failed.\n",
+                        c_string_to_str(&reference)
+                    ),
+                );
             }
         }
         return;
@@ -823,17 +777,20 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
     if power > target_spellpower {
         if cn != co {
             let reference = GameState::with_characters(|ch| ch[co].reference);
-            GameState::with_mut(|state| {
-                state.do_character_log(cn, FontColor::Yellow, &format!("Seeing that {} is not powerful enough for your spell, you reduced its strength.\n", c_string_to_str(&reference)))
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                FontColor::Yellow,
+                &format!(
+                    "Seeing that {} is not powerful enough for your spell, you reduced its strength.\n",
+                    c_string_to_str(&reference)
+                ),
+            );
         } else {
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    FontColor::Yellow,
-                    "You are not powerful enough to use the full strength of this spell.\n",
-                )
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                FontColor::Yellow,
+                "You are not powerful enough to use the full strength of this spell.\n",
+            );
         }
         power = target_spellpower;
     }
@@ -858,43 +815,39 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
     if cn != co {
         if add_spell(co, in_) == 0 {
             let name = GameState::with_items(|it| it[in_].get_name().to_string());
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    FontColor::Yellow,
-                    &format!("Magical interference neutralised the {}'s effect.\n", name),
-                )
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                FontColor::Yellow,
+                &format!("Magical interference neutralised the {}'s effect.\n", name),
+            );
             return 0;
         }
         let sense = GameState::with_characters(|ch| ch[co].skill[SK_SENSE][5]);
         if sense as i32 + 10 > power {
             let reference = GameState::with_characters(|ch| ch[cn].reference);
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    co,
-                    FontColor::Yellow,
-                    &format!(
-                        "{} cast enhance weapon on you.\n",
-                        c_string_to_str(&reference)
-                    ),
-                )
-            });
-        } else {
-            GameState::with_mut(|state| {
-                state.do_character_log(co, FontColor::Red, "Your weapon feels stronger.\n")
-            });
-        }
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
+            GameState::global_mut().do_character_log(
+                co,
                 FontColor::Yellow,
                 &format!(
-                    "{}'s weapon is now stronger.\n",
-                    GameState::with_characters(|ch| ch[co].get_name().to_string())
+                    "{} cast enhance weapon on you.\n",
+                    c_string_to_str(&reference)
                 ),
-            )
-        });
+            );
+        } else {
+            GameState::global_mut().do_character_log(
+                co,
+                FontColor::Red,
+                "Your weapon feels stronger.\n",
+            );
+        }
+        GameState::global_mut().do_character_log(
+            cn,
+            FontColor::Yellow,
+            &format!(
+                "{}'s weapon is now stronger.\n",
+                GameState::with_characters(|ch| ch[co].get_name().to_string())
+            ),
+        );
         let sound = GameState::with_characters(|ch| ch[cn].sound);
         GameState::char_play_sound(co, sound as i32 + 1, -150, 0);
         GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
@@ -911,18 +864,14 @@ pub fn spell_enhance(cn: usize, co: usize, power: i32) -> i32 {
     } else {
         if add_spell(cn, in_) == 0 {
             let name = GameState::with_items(|it| it[in_].get_name().to_string());
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    FontColor::Yellow,
-                    &format!("Magical interference neutralised the {}'s effect.\n", name),
-                )
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                FontColor::Yellow,
+                &format!("Magical interference neutralised the {}'s effect.\n", name),
+            );
             return 0;
         }
-        GameState::with_mut(|state| {
-            state.do_character_log(cn, FontColor::Green, "Your weapon feels stronger.\n")
-        });
+        GameState::global_mut().do_character_log(cn, FontColor::Green, "Your weapon feels stronger.\n");
         let sound = GameState::with_characters(|ch| ch[cn].sound);
         GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
         let flags = GameState::with_characters(|ch| ch[cn].flags);
@@ -958,10 +907,8 @@ pub fn skill_enhance(cn: usize) {
         }
     });
 
-    if GameState::with_mut(|state| state.do_char_can_see(cn, co)) == 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(cn, FontColor::Red, "You cannot see your target.\n")
-        });
+    if GameState::global_mut().do_char_can_see(cn, co) == 0 {
+        GameState::global_mut().do_character_log(cn, FontColor::Red, "You cannot see your target.\n");
         return;
     }
 
@@ -972,16 +919,11 @@ pub fn skill_enhance(cn: usize) {
     if driver::player_or_ghost(cn, co) == 0 {
         let name_from = GameState::with_characters(|ch| ch[co].get_name().to_string());
         let name_to = GameState::with_characters(|ch| ch[cn].get_name().to_string());
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                FontColor::Red,
-                &format!(
-                    "Changed target of spell from {} to {}.\n",
-                    name_from, name_to
-                ),
-            )
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            FontColor::Red,
+            &format!("Changed target of spell from {} to {}.\n", name_from, name_to),
+        );
         // change target to self
         let co = cn;
         // continue with self
@@ -994,16 +936,14 @@ pub fn skill_enhance(cn: usize) {
                 let enh_skill = GameState::with_characters(|ch| ch[cn].skill[SK_ENHANCE][5]);
                 if sense > (enh_skill + 5) {
                     let reference = GameState::with_characters(|ch| ch[cn].reference);
-                    GameState::with_mut(|state| {
-                        state.do_character_log(
-                            co,
-                            FontColor::Yellow,
-                            &format!(
-                                "{} tried to cast enhance weapon on you but failed.\n",
-                                c_string_to_str(&reference)
-                            ),
-                        )
-                    });
+                    GameState::global_mut().do_character_log(
+                        co,
+                        FontColor::Yellow,
+                        &format!(
+                            "{} tried to cast enhance weapon on you but failed.\n",
+                            c_string_to_str(&reference)
+                        ),
+                    );
                 }
             }
             return;
@@ -1023,16 +963,14 @@ pub fn skill_enhance(cn: usize) {
             let enh_skill = GameState::with_characters(|ch| ch[cn].skill[SK_ENHANCE][5]);
             if sense > (enh_skill + 5) {
                 let reference = GameState::with_characters(|ch| ch[cn].reference);
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        co,
-                        FontColor::Yellow,
-                        &format!(
-                            "{} tried to cast enhance weapon on you but failed.\n",
-                            c_string_to_str(&reference)
-                        ),
-                    )
-                });
+                GameState::global_mut().do_character_log(
+                    co,
+                    FontColor::Yellow,
+                    &format!(
+                        "{} tried to cast enhance weapon on you but failed.\n",
+                        c_string_to_str(&reference)
+                    ),
+                );
             }
         }
         return;
@@ -1056,17 +994,20 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
     if power > tmp {
         if cn != co {
             let reference = GameState::with_characters(|ch| ch[co].reference);
-            GameState::with_mut(|state| {
-                state.do_character_log(cn, FontColor::Yellow, &format!("Seeing that {} is not powerful enough for your spell, you reduced its strength.\n", c_string_to_str(&reference)))
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                FontColor::Yellow,
+                &format!(
+                    "Seeing that {} is not powerful enough for your spell, you reduced its strength.\n",
+                    c_string_to_str(&reference)
+                ),
+            );
         } else {
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    FontColor::Yellow,
-                    "You are not powerful enough to use the full strength of this spell.\n",
-                )
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                FontColor::Yellow,
+                "You are not powerful enough to use the full strength of this spell.\n",
+            );
         }
         power = tmp;
     }
@@ -1093,40 +1034,32 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
     if cn != co {
         if add_spell(co, in_) == 0 {
             let name = GameState::with_items(|it| it[in_].get_name().to_string());
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    FontColor::Yellow,
-                    &format!("Magical interference neutralised the {}'s effect.\n", name),
-                )
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                FontColor::Yellow,
+                &format!("Magical interference neutralised the {}'s effect.\n", name),
+            );
             return 0;
         }
         let sense = GameState::with_characters(|ch| ch[co].skill[SK_SENSE][5]);
         if sense as i32 + 10 > power {
             let reference = GameState::with_characters(|ch| ch[cn].reference);
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    co,
-                    FontColor::Yellow,
-                    &format!("{} cast bless on you.\n", c_string_to_str(&reference)),
-                )
-            });
-        } else {
-            GameState::with_mut(|state| {
-                state.do_character_log(co, FontColor::Red, "You have been blessed.\n")
-            });
-        }
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
+            GameState::global_mut().do_character_log(
+                co,
                 FontColor::Yellow,
-                &format!(
-                    "{} was blessed.\n",
-                    GameState::with_characters(|ch| ch[co].get_name().to_string())
-                ),
-            )
-        });
+                &format!("{} cast bless on you.\n", c_string_to_str(&reference)),
+            );
+        } else {
+            GameState::global_mut().do_character_log(co, FontColor::Red, "You have been blessed.\n");
+        }
+        GameState::global_mut().do_character_log(
+            cn,
+            FontColor::Yellow,
+            &format!(
+                "{} was blessed.\n",
+                GameState::with_characters(|ch| ch[co].get_name().to_string())
+            ),
+        );
         let sound = GameState::with_characters(|ch| ch[cn].sound);
         GameState::char_play_sound(co, sound as i32 + 1, -150, 0);
         GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
@@ -1145,18 +1078,14 @@ pub fn spell_bless(cn: usize, co: usize, power: i32) -> i32 {
     } else {
         if add_spell(cn, in_) == 0 {
             let name = GameState::with_items(|it| it[in_].get_name().to_string());
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    FontColor::Yellow,
-                    &format!("Magical interference neutralised the {}'s effect.\n", name),
-                )
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                FontColor::Yellow,
+                &format!("Magical interference neutralised the {}'s effect.\n", name),
+            );
             return 0;
         }
-        GameState::with_mut(|state| {
-            state.do_character_log(cn, FontColor::Green, "You have been blessed.\n")
-        });
+        GameState::global_mut().do_character_log(cn, FontColor::Green, "You have been blessed.\n");
         let sound = GameState::with_characters(|ch| ch[cn].sound);
         GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
         let flags = GameState::with_characters(|ch| ch[cn].flags);
@@ -1192,10 +1121,8 @@ pub fn skill_bless(cn: usize) {
         }
     });
 
-    if GameState::with_mut(|state| state.do_char_can_see(cn, co)) == 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(cn, FontColor::Red, "You cannot see your target.\n")
-        });
+    if GameState::global_mut().do_char_can_see(cn, co) == 0 {
+        GameState::global_mut().do_character_log(cn, FontColor::Red, "You cannot see your target.\n");
         return;
     }
 
@@ -1206,16 +1133,11 @@ pub fn skill_bless(cn: usize) {
     if driver::player_or_ghost(cn, co) == 0 {
         let name_from = GameState::with_characters(|ch| ch[co].get_name().to_string());
         let name_to = GameState::with_characters(|ch| ch[cn].get_name().to_string());
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                FontColor::Red,
-                &format!(
-                    "Changed target of spell from {} to {}.\n",
-                    name_from, name_to
-                ),
-            )
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            FontColor::Red,
+            &format!("Changed target of spell from {} to {}.\n", name_from, name_to),
+        );
         // change target to self
         let co = cn;
         if spellcost(cn, 35) != 0 {
@@ -1227,16 +1149,14 @@ pub fn skill_bless(cn: usize) {
                 let bless_skill = GameState::with_characters(|ch| ch[cn].skill[SK_BLESS][5]);
                 if sense > (bless_skill + 5) {
                     let reference = GameState::with_characters(|ch| ch[cn].reference);
-                    GameState::with_mut(|state| {
-                        state.do_character_log(
-                            co,
-                            FontColor::Yellow,
-                            &format!(
-                                "{} tried to cast bless on you but failed.\n",
-                                c_string_to_str(&reference)
-                            ),
-                        )
-                    });
+                    GameState::global_mut().do_character_log(
+                        co,
+                        FontColor::Yellow,
+                        &format!(
+                            "{} tried to cast bless on you but failed.\n",
+                            c_string_to_str(&reference)
+                        ),
+                    );
                 }
             }
             return;
@@ -1259,16 +1179,14 @@ pub fn skill_bless(cn: usize) {
             let bless_skill = GameState::with_characters(|ch| ch[cn].skill[SK_BLESS][5]);
             if sense > (bless_skill + 5) {
                 let reference = GameState::with_characters(|ch| ch[cn].reference);
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        co,
-                        FontColor::Yellow,
-                        &format!(
-                            "{} tried to cast bless on you but failed.\n",
-                            c_string_to_str(&reference)
-                        ),
-                    )
-                });
+                GameState::global_mut().do_character_log(
+                    co,
+                    FontColor::Yellow,
+                    &format!(
+                        "{} tried to cast bless on you but failed.\n",
+                        c_string_to_str(&reference)
+                    ),
+                );
             }
         }
         return;
@@ -1289,20 +1207,18 @@ pub fn skill_wimp(cn: usize) {
         if in_idx != 0 {
             let temp = GameState::with_items(|it| it[in_idx as usize].temp);
             if temp == SK_WIMPY as u16 {
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Green,
-                        "Guardian Angel no longer active.\n",
-                    )
-                });
+                GameState::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    "Guardian Angel no longer active.\n",
+                );
                 GameState::with_items_mut(|it| {
                     it[in_idx as usize].used = core::constants::USE_EMPTY;
                 });
                 GameState::with_characters_mut(|ch| {
                     ch[cn].spell[n] = 0;
                 });
-                GameState::with_mut(|state| state.do_update_char(cn));
+                GameState::global_mut().do_update_char(cn);
                 chlog!(cn, "Dismissed Guardian Angel");
                 return;
             }
@@ -1311,13 +1227,11 @@ pub fn skill_wimp(cn: usize) {
 
     let a_end = GameState::with_characters(|ch| ch[cn].a_end);
     if a_end < 20000 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                "You're too exhausted to call on your Guardian Angel.\n",
-            )
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            "You're too exhausted to call on your Guardian Angel.\n",
+        );
         return;
     }
 
@@ -1348,25 +1262,21 @@ pub fn skill_wimp(cn: usize) {
     });
 
     if add_spell(cn, in_idx) == 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                &format!(
-                    "Magical interference neutralised the {}'s effect.\n",
-                    GameState::with_items(|it| it[in_idx].get_name().to_string())
-                ),
-            )
-        });
-        return;
-    }
-    GameState::with_mut(|state| {
-        state.do_character_log(
+        GameState::global_mut().do_character_log(
             cn,
             core::types::FontColor::Green,
-            "Guardian Angel active!\n",
-        )
-    });
+            &format!(
+                "Magical interference neutralised the {}'s effect.\n",
+                GameState::with_items(|it| it[in_idx].get_name().to_string())
+            ),
+        );
+        return;
+    }
+    GameState::global_mut().do_character_log(
+        cn,
+        core::types::FontColor::Green,
+        "Guardian Angel active!\n",
+    );
     let sound = GameState::with_characters(|ch| ch[cn].sound);
     GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
     chlog!(cn, "Cast Guardian Angel");
@@ -1416,43 +1326,35 @@ pub fn spell_mshield(cn: usize, co: usize, power: i32) -> i32 {
     if cn != co {
         if add_spell(co, in_) == 0 {
             let name = GameState::with_items(|it| it[in_].get_name().to_string());
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    FontColor::Green,
-                    &format!("Magical interference neutralised the {}'s effect.\n", name),
-                )
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                FontColor::Green,
+                &format!("Magical interference neutralised the {}'s effect.\n", name),
+            );
             return 0;
         }
         let sense = GameState::with_characters(|ch| ch[co].skill[SK_SENSE][5]);
         if sense as i32 + 10 > power {
             let reference = GameState::with_characters(|ch| ch[cn].reference);
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    co,
-                    FontColor::Green,
-                    &format!(
-                        "{} cast magic shield on you.\n",
-                        c_string_to_str(&reference)
-                    ),
-                )
-            });
-        } else {
-            GameState::with_mut(|state| {
-                state.do_character_log(co, FontColor::Red, "Magic Shield active!\n")
-            });
-        }
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
+            GameState::global_mut().do_character_log(
+                co,
                 FontColor::Green,
                 &format!(
-                    "{}'s Magic Shield activated.\n",
-                    GameState::with_characters(|ch| ch[co].get_name().to_string())
+                    "{} cast magic shield on you.\n",
+                    c_string_to_str(&reference)
                 ),
-            )
-        });
+            );
+        } else {
+            GameState::global_mut().do_character_log(co, FontColor::Red, "Magic Shield active!\n");
+        }
+        GameState::global_mut().do_character_log(
+            cn,
+            FontColor::Green,
+            &format!(
+                "{}'s Magic Shield activated.\n",
+                GameState::with_characters(|ch| ch[co].get_name().to_string())
+            ),
+        );
         let sound = GameState::with_characters(|ch| ch[cn].sound);
         GameState::char_play_sound(co, sound as i32 + 1, -150, 0);
         GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
@@ -1471,16 +1373,14 @@ pub fn spell_mshield(cn: usize, co: usize, power: i32) -> i32 {
     } else {
         if add_spell(cn, in_) == 0 {
             let name = GameState::with_items(|it| it[in_].get_name().to_string());
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    FontColor::Green,
-                    &format!("Magical interference neutralised the {}'s effect.\n", name),
-                )
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                FontColor::Green,
+                &format!("Magical interference neutralised the {}'s effect.\n", name),
+            );
             return 0;
         }
-        GameState::with_mut(|state| state.do_character_log(cn, FontColor::Green, "Magic Shield active!\n"));
+        GameState::global_mut().do_character_log(cn, FontColor::Green, "Magic Shield active!\n");
         let sound = GameState::with_characters(|ch| ch[cn].sound);
         GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
         let flags = GameState::with_characters(|ch| ch[cn].flags);
@@ -1538,28 +1438,22 @@ pub fn spell_heal(cn: usize, co: usize, power: i32) -> i32 {
         let sense = GameState::with_characters(|ch| ch[co].skill[core::constants::SK_SENSE][5]);
         if sense as i32 + 10 > power {
             let reference = GameState::with_characters(|ch| ch[cn].reference);
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    co,
-                    FontColor::Green,
-                    &format!("{} cast heal on you.\n", c_string_to_str(&reference)),
-                )
-            });
-        } else {
-            GameState::with_mut(|state| {
-                state.do_character_log(co, FontColor::Red, "You have been healed.\n")
-            });
-        }
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
+            GameState::global_mut().do_character_log(
+                co,
                 FontColor::Green,
-                &format!(
-                    "{} was healed.\n",
-                    GameState::with_characters(|ch| ch[co].get_name().to_string())
-                ),
-            )
-        });
+                &format!("{} cast heal on you.\n", c_string_to_str(&reference)),
+            );
+        } else {
+            GameState::global_mut().do_character_log(co, FontColor::Red, "You have been healed.\n");
+        }
+        GameState::global_mut().do_character_log(
+            cn,
+            FontColor::Green,
+            &format!(
+                "{} was healed.\n",
+                GameState::with_characters(|ch| ch[co].get_name().to_string())
+            ),
+        );
         let sound = GameState::with_characters(|ch| ch[cn].sound);
         GameState::char_play_sound(co, sound as i32 + 1, -150, 0);
         GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
@@ -1582,9 +1476,7 @@ pub fn spell_heal(cn: usize, co: usize, power: i32) -> i32 {
                 ch[cn].a_hp = (ch[cn].hp[5] as i32) * 1000;
             }
         });
-        GameState::with_mut(|state| {
-            state.do_character_log(cn, FontColor::Green, "You have been healed.\n")
-        });
+        GameState::global_mut().do_character_log(cn, FontColor::Green, "You have been healed.\n");
         let sound = GameState::with_characters(|ch| ch[cn].sound);
         GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
         let flags = GameState::with_characters(|ch| ch[cn].flags);
@@ -1620,10 +1512,8 @@ pub fn skill_heal(cn: usize) {
         }
     });
 
-    if GameState::with_mut(|state| state.do_char_can_see(cn, co)) == 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(cn, FontColor::Red, "You cannot see your target.\n")
-        });
+    if GameState::global_mut().do_char_can_see(cn, co) == 0 {
+        GameState::global_mut().do_character_log(cn, FontColor::Red, "You cannot see your target.\n");
         return;
     }
 
@@ -1634,16 +1524,11 @@ pub fn skill_heal(cn: usize) {
     if driver::player_or_ghost(cn, co) == 0 {
         let name_from = GameState::with_characters(|ch| ch[co].get_name().to_string());
         let name_to = GameState::with_characters(|ch| ch[cn].get_name().to_string());
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                FontColor::Red,
-                &format!(
-                    "Changed target of spell from {} to {}.\n",
-                    name_from, name_to
-                ),
-            )
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            FontColor::Red,
+            &format!("Changed target of spell from {} to {}.\n", name_from, name_to),
+        );
         co = cn;
         if spellcost(cn, 25) != 0 {
             return;
@@ -1654,16 +1539,14 @@ pub fn skill_heal(cn: usize) {
                 let heal_skill = GameState::with_characters(|ch| ch[cn].skill[SK_HEAL][5]);
                 if sense > (heal_skill + 5) {
                     let reference = GameState::with_characters(|ch| ch[cn].reference);
-                    GameState::with_mut(|state| {
-                        state.do_character_log(
-                            co,
-                            FontColor::Green,
-                            &format!(
-                                "{} tried to cast heal on you but failed.\n",
-                                c_string_to_str(&reference)
-                            ),
-                        )
-                    });
+                    GameState::global_mut().do_character_log(
+                        co,
+                        FontColor::Green,
+                        &format!(
+                            "{} tried to cast heal on you but failed.\n",
+                            c_string_to_str(&reference)
+                        ),
+                    );
                 }
             }
             return;
@@ -1686,16 +1569,14 @@ pub fn skill_heal(cn: usize) {
             let heal_skill = GameState::with_characters(|ch| ch[cn].skill[SK_HEAL][5]);
             if sense > (heal_skill + 5) {
                 let reference = GameState::with_characters(|ch| ch[cn].reference);
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        co,
-                        FontColor::Green,
-                        &format!(
-                            "{} tried to cast heal on you but failed.\n",
-                            c_string_to_str(&reference)
-                        ),
-                    )
-                });
+                GameState::global_mut().do_character_log(
+                    co,
+                    FontColor::Green,
+                    &format!(
+                        "{} tried to cast heal on you but failed.\n",
+                        c_string_to_str(&reference)
+                    ),
+                );
             }
         }
         return;
@@ -1748,47 +1629,37 @@ pub fn spell_curse(cn: usize, co: usize, power: i32) -> i32 {
     });
 
     if add_spell(co, in_idx) == 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                FontColor::Green,
-                &format!(
-                    "Magical interference neutralised the {}'s effect.\n",
-                    GameState::with_items(|it| it[in_idx].get_name().to_string())
-                ),
-            )
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            FontColor::Green,
+            &format!(
+                "Magical interference neutralised the {}'s effect.\n",
+                GameState::with_items(|it| it[in_idx].get_name().to_string())
+            ),
+        );
         return 0;
     }
 
     let sense = GameState::with_characters(|ch| ch[co].skill[SK_SENSE][5]);
     if (sense as i32 + 10) > power {
         let reference = GameState::with_characters(|ch| ch[cn].reference);
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                co,
-                FontColor::Green,
-                &format!("{} cast curse on you.\n", c_string_to_str(&reference)),
-            )
-        });
+        GameState::global_mut().do_character_log(
+            co,
+            FontColor::Green,
+            &format!("{} cast curse on you.\n", c_string_to_str(&reference)),
+        );
     } else {
-        GameState::with_mut(|state| {
-            state.do_character_log(co, FontColor::Green, "You have been cursed.\n")
-        });
+        GameState::global_mut().do_character_log(co, FontColor::Green, "You have been cursed.\n");
     }
 
     let name = GameState::with_characters(|ch| ch[co].get_name().to_string());
-    GameState::with_mut(|state| {
-        state.do_character_log(cn, FontColor::Green, &format!("{} was cursed.\n", name))
-    });
+    GameState::global_mut().do_character_log(cn, FontColor::Green, &format!("{} was cursed.\n", name));
 
     // Match C: don't generate spell-attack notifications when the target is ignoring spells.
     if GameState::with_characters(|ch| (ch[co].flags & CharacterFlags::SpellIgnore.bits()) == 0) {
-        GameState::with_mut(|state| {
-            state.do_notify_character(co as u32, NT_GOTHIT as i32, cn as i32, 0, 0, 0)
-        });
+        GameState::global_mut().do_notify_character(co as u32, NT_GOTHIT as i32, cn as i32, 0, 0, 0);
     }
-    GameState::with_mut(|state| state.do_notify_character(cn as u32, NT_DIDHIT as i32, co as i32, 0, 0, 0));
+    GameState::global_mut().do_notify_character(cn as u32, NT_DIDHIT as i32, co as i32, 0, 0, 0);
 
     let sound = GameState::with_characters(|ch| ch[cn].sound);
     GameState::char_play_sound(co, sound as i32 + 7, -150, 0);
@@ -1821,28 +1692,24 @@ pub fn skill_curse(cn: usize) {
     });
 
     if cn == co {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                "You cannot curse yourself.\n",
-            )
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            "You cannot curse yourself.\n",
+        );
         return;
     }
 
-    if GameState::with_mut(|state| state.do_char_can_see(cn, co)) == 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                "You cannot see your target.\n",
-            )
-        });
+    if GameState::global_mut().do_char_can_see(cn, co) == 0 {
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            "You cannot see your target.\n",
+        );
         return;
     }
 
-    GameState::with_mut(|s| s.remember_pvp(cn, co));
+    GameState::global_mut().remember_pvp(cn, co);
     if is_exhausted(cn) != 0 {
         return;
     }
@@ -1851,7 +1718,7 @@ pub fn skill_curse(cn: usize) {
         return;
     }
 
-    if GameState::with_mut(|state| state.may_attack_msg(cn, co, true)) == 0 {
+    if GameState::global_mut().may_attack_msg(cn, co, true) == 0 {
         chlog!(
             cn,
             "Prevented from attacking {}",
@@ -1872,38 +1739,32 @@ pub fn skill_curse(cn: usize) {
                 > (GameState::with_characters(|ch| ch[cn].skill[core::constants::SK_CURSE][5]) + 5)
         {
             let reference = GameState::with_characters(|ch| ch[cn].reference);
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    co,
-                    core::types::FontColor::Green,
-                    &format!(
-                        "{} tried to cast curse on you but failed.\n",
-                        c_string_to_str(&reference)
-                    ),
-                )
-            });
+            GameState::global_mut().do_character_log(
+                co,
+                core::types::FontColor::Green,
+                &format!(
+                    "{} tried to cast curse on you but failed.\n",
+                    c_string_to_str(&reference)
+                ),
+            );
             if GameState::with_characters(|ch| ch[co].flags & CharacterFlags::SpellIgnore.bits())
                 == 0
             {
-                GameState::with_mut(|state| {
-                    state.do_notify_character(
-                        co as u32,
-                        core::constants::NT_GOTMISS as i32,
-                        cn as i32,
-                        0,
-                        0,
-                        0,
-                    )
-                });
+                GameState::global_mut().do_notify_character(
+                    co as u32,
+                    core::constants::NT_GOTMISS as i32,
+                    cn as i32,
+                    0,
+                    0,
+                    0,
+                );
             }
         }
         return;
     }
 
     if (GameState::with_characters(|ch| ch[co].flags) & CharacterFlags::Immortal.bits()) != 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(cn, core::types::FontColor::Red, "You lost your focus.\n")
-        });
+        GameState::global_mut().do_character_log(cn, core::types::FontColor::Red, "You lost your focus.\n");
         return;
     }
 
@@ -1975,7 +1836,7 @@ pub fn warcry(cn: usize, co: usize, power: i32) -> i32 {
         return 0;
     }
 
-    if GameState::with_mut(|state| state.may_attack_msg(cn, co, false)) == 0 {
+    if GameState::global_mut().may_attack_msg(cn, co, false) == 0 {
         return 0;
     }
 
@@ -1995,16 +1856,14 @@ pub fn warcry(cn: usize, co: usize, power: i32) -> i32 {
     }
 
     if GameState::with_characters(|ch| ch[co].flags & CharacterFlags::SpellIgnore.bits()) == 0 {
-        GameState::with_mut(|state| {
-            state.do_notify_character(
-                co as u32,
-                core::constants::NT_GOTHIT as i32,
-                cn as i32,
-                0,
-                0,
-                0,
-            )
-        });
+        GameState::global_mut().do_notify_character(
+            co as u32,
+            core::constants::NT_GOTHIT as i32,
+            cn as i32,
+            0,
+            0,
+            0,
+        );
     }
 
     let in_opt = God::create_item(1);
@@ -2071,9 +1930,11 @@ pub fn warcry(cn: usize, co: usize, power: i32) -> i32 {
 
 pub fn skill_warcry(cn: usize) {
     if GameState::with_characters(|ch| ch[cn].a_end) < 150 * 1000 {
-        GameState::with_mut(|state| {
-            state.do_character_log(cn, core::types::FontColor::Red, "You're too exhausted!\n")
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            "You're too exhausted!\n",
+        );
         return;
     }
 
@@ -2101,44 +1962,38 @@ pub fn skill_warcry(cn: usize) {
             let co = GameState::with_map(|map| map[m].ch as usize);
             if co != 0 {
                 if warcry(cn, co, power) != 0 {
-                    GameState::with_mut(|s| s.remember_pvp(cn, co));
+                    GameState::global_mut().remember_pvp(cn, co);
                     let name = GameState::with_characters(|ch| ch[cn].get_name().to_string());
-                    GameState::with_mut(|state| {
-                        state.do_character_log(
-                            co,
-                            core::types::FontColor::Green,
-                            &format!(
-                                "You hear {}'s warcry. You feel frightened and immobilized.\n",
-                                name
-                            ),
-                        )
-                    });
+                    GameState::global_mut().do_character_log(
+                        co,
+                        core::types::FontColor::Green,
+                        &format!(
+                            "You hear {}'s warcry. You feel frightened and immobilized.\n",
+                            name
+                        ),
+                    );
                     hit += 1;
                 } else {
                     let name = GameState::with_characters(|ch| ch[cn].get_name().to_string());
-                    GameState::with_mut(|state| {
-                        state.do_character_log(
-                            co,
-                            core::types::FontColor::Green,
-                            &format!("You hear {}'s warcry.\n", name),
-                        )
-                    });
+                    GameState::global_mut().do_character_log(
+                        co,
+                        core::types::FontColor::Green,
+                        &format!("You hear {}'s warcry.\n", name),
+                    );
                     miss += 1;
                 }
             }
         }
     }
-    GameState::with_mut(|state| {
-        state.do_character_log(
-            cn,
-            core::types::FontColor::Green,
-            &format!(
-                "You cry out loud and clear. You affected {} of {} creatures in range.\n",
-                hit,
-                hit + miss
-            ),
-        )
-    });
+    GameState::global_mut().do_character_log(
+        cn,
+        core::types::FontColor::Green,
+        &format!(
+            "You cry out loud and clear. You affected {} of {} creatures in range.\n",
+            hit,
+            hit + miss
+        ),
+    );
 }
 
 pub fn item_info(cn: usize, in_: usize, _look: i32) {
@@ -2146,17 +2001,13 @@ pub fn item_info(cn: usize, in_: usize, _look: i32) {
 
     // Name
     let name = GameState::with_items(|it| it[in_].name);
-    GameState::with_mut(|state| {
-        state.do_character_log(
-            cn,
-            FontColor::Green,
-            &format!("{}:\n", c_string_to_str(&name)),
-        )
-    });
+    GameState::global_mut().do_character_log(
+        cn,
+        FontColor::Green,
+        &format!("{}:\n", c_string_to_str(&name)),
+    );
 
-    GameState::with_mut(|state| {
-        state.do_character_log(cn, FontColor::Green, "Stat         Mod0 Mod1 Min\n")
-    });
+    GameState::global_mut().do_character_log(cn, FontColor::Green, "Stat         Mod0 Mod1 Min\n");
 
     // Attributes
     for n in 0..5 {
@@ -2170,51 +2021,40 @@ pub fn item_info(cn: usize, in_: usize, _look: i32) {
         if a0 == 0 && a1 == 0 && a2 == 0 {
             continue;
         }
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                FontColor::Green,
-                &format!("{:<12.12} {:+4} {:+4} {:3}\n", at_name[n], a0, a1, a2),
-            )
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            FontColor::Green,
+            &format!("{:<12.12} {:+4} {:+4} {:3}\n", at_name[n], a0, a1, a2),
+        );
     }
 
     // HP/End/Mana
     let (hp0, hp1, hp2) =
         GameState::with_items(|it| (it[in_].hp[0], it[in_].hp[1], it[in_].hp[2]));
     if hp0 != 0 || hp1 != 0 || hp2 != 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                FontColor::Green,
-                &format!("{:<12.12} {:+4} {:+4} {:3}\n", "Hitpoints", hp0, hp1, hp2),
-            )
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            FontColor::Green,
+            &format!("{:<12.12} {:+4} {:+4} {:3}\n", "Hitpoints", hp0, hp1, hp2),
+        );
     }
     let (end0, end1, end2) =
         GameState::with_items(|it| (it[in_].end[0], it[in_].end[1], it[in_].end[2]));
     if end0 != 0 || end1 != 0 || end2 != 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                FontColor::Green,
-                &format!(
-                    "{:<12.12} {:+4} {:+4} {:3}\n",
-                    "Endurance", end0, end1, end2
-                ),
-            )
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            FontColor::Green,
+            &format!("{:<12.12} {:+4} {:+4} {:3}\n", "Endurance", end0, end1, end2),
+        );
     }
     let (mana0, mana1, mana2) =
         GameState::with_items(|it| (it[in_].mana[0], it[in_].mana[1], it[in_].mana[2]));
     if mana0 != 0 || mana1 != 0 || mana2 != 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                FontColor::Green,
-                &format!("{:<12.12} {:+4} {:+4} {:3}\n", "Mana", mana0, mana1, mana2),
-            )
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            FontColor::Green,
+            &format!("{:<12.12} {:+4} {:+4} {:3}\n", "Mana", mana0, mana1, mana2),
+        );
     }
 
     // Skills on item
@@ -2230,67 +2070,55 @@ pub fn item_info(cn: usize, in_: usize, _look: i32) {
             continue;
         }
         let skill_label = skill_name(n);
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                FontColor::Green,
-                &format!("{:<12.12} {:+4} {:+4} {:3}\n", skill_label, s0, s1, s2),
-            )
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            FontColor::Green,
+            &format!("{:<12.12} {:+4} {:+4} {:3}\n", skill_label, s0, s1, s2),
+        );
     }
 
     // Weapon/Armor/Light
     let (w0, w1) = GameState::with_items(|it| (it[in_].weapon[0], it[in_].weapon[1]));
     if w0 != 0 || w1 != 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                FontColor::Green,
-                &format!("{:<12.12} {:+4} {:+4}\n", "Weapon", w0, w1),
-            )
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            FontColor::Green,
+            &format!("{:<12.12} {:+4} {:+4}\n", "Weapon", w0, w1),
+        );
     }
     let (ar0, ar1) = GameState::with_items(|it| (it[in_].armor[0], it[in_].armor[1]));
     if ar0 != 0 || ar1 != 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                FontColor::Green,
-                &format!("{:<12.12} {:+4} {:+4}\n", "Armor", ar0, ar1),
-            )
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            FontColor::Green,
+            &format!("{:<12.12} {:+4} {:+4}\n", "Armor", ar0, ar1),
+        );
     }
     let (l0, l1) = GameState::with_items(|it| (it[in_].light[0], it[in_].light[1]));
     if l0 != 0 || l1 != 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                FontColor::Green,
-                &format!("{:<12.12} {:+4} {:+4}\n", "Light", l0, l1),
-            )
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            FontColor::Green,
+            &format!("{:<12.12} {:+4} {:+4}\n", "Light", l0, l1),
+        );
     }
 
     let power = GameState::with_items(|it| it[in_].power);
     if power != 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                FontColor::Green,
-                &format!("{:<12.12} {:+4}\n", "Power", power),
-            )
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            FontColor::Green,
+            &format!("{:<12.12} {:+4}\n", "Power", power),
+        );
     }
 
     let min_rank = GameState::with_items(|it| it[in_].min_rank);
     if min_rank != 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                FontColor::Green,
-                &format!("{:<12.12} {:+4}\n", "Min. Rank", min_rank),
-            )
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            FontColor::Green,
+            &format!("{:<12.12} {:+4}\n", "Min. Rank", min_rank),
+        );
     }
 }
 
@@ -2299,14 +2127,12 @@ pub fn char_info(cn: usize, co: usize) {
 
     // Header
     let name_bytes = GameState::with_characters(|ch| ch[co].name);
-    GameState::with_mut(|state| {
-        state.do_character_log(
-            cn,
-            FontColor::Green,
-            &format!("{}:\n", c_string_to_str(&name_bytes)),
-        )
-    });
-    GameState::with_mut(|state| state.do_character_log(cn, FontColor::Green, " \n"));
+    GameState::global_mut().do_character_log(
+        cn,
+        FontColor::Green,
+        &format!("{}:\n", c_string_to_str(&name_bytes)),
+    );
+    GameState::global_mut().do_character_log(cn, FontColor::Green, " \n");
 
     // Active spells (0..19)
     let mut flag = false;
@@ -2318,23 +2144,21 @@ pub fn char_info(cn: usize, co: usize) {
             let minutes = active / (TICKS as u32 * 60);
             let seconds = (active / TICKS as u32) % 60;
             let power = GameState::with_items(|it| it[in_idx].power);
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    FontColor::Green,
-                    &format!(
-                        "{} for {}m {}s power of {}\n",
-                        item_name, minutes, seconds, power
-                    ),
-                )
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                FontColor::Green,
+                &format!(
+                    "{} for {}m {}s power of {}\n",
+                    item_name, minutes, seconds, power
+                ),
+            );
             flag = true;
         }
     }
     if !flag {
-        GameState::with_mut(|state| state.do_character_log(cn, FontColor::Green, "No spells active.\n"));
+        GameState::global_mut().do_character_log(cn, FontColor::Green, "No spells active.\n");
     }
-    GameState::with_mut(|state| state.do_character_log(cn, FontColor::Green, " \n"));
+    GameState::global_mut().do_character_log(cn, FontColor::Green, " \n");
 
     // Skills two-column using static SKILL_NAMES
     let mut n1: i32 = -1;
@@ -2354,16 +2178,14 @@ pub fn char_info(cn: usize, co: usize) {
             let s2_5 = GameState::with_characters(|ch| ch[co].skill[n2 as usize][5]);
             let name1 = SKILL_NAMES[n1 as usize];
             let name2 = SKILL_NAMES[n2 as usize];
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    FontColor::Green,
-                    &format!(
-                        "{:<12.12} {:3}/{:3}  !  {:<12.12} {:3}/{:3}\n",
-                        name1, s1_0, s1_5, name2, s2_0, s2_5
-                    ),
-                )
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                FontColor::Green,
+                &format!(
+                    "{:<12.12} {:3}/{:3}  !  {:<12.12} {:3}/{:3}\n",
+                    name1, s1_0, s1_5, name2, s2_0, s2_5
+                ),
+            );
             n1 = -1;
             n2 = -1;
         }
@@ -2373,13 +2195,11 @@ pub fn char_info(cn: usize, co: usize) {
         let s1_0 = GameState::with_characters(|ch| ch[co].skill[n1 as usize][0]);
         let s1_5 = GameState::with_characters(|ch| ch[co].skill[n1 as usize][5]);
         let name1 = SKILL_NAMES[n1 as usize];
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                FontColor::Green,
-                &format!("{:<12.12} {:3}/{:3}\n", name1, s1_0, s1_5),
-            )
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            FontColor::Green,
+            &format!("{:<12.12} {:3}/{:3}\n", name1, s1_0, s1_5),
+        );
     }
 
     // Attributes
@@ -2387,41 +2207,35 @@ pub fn char_info(cn: usize, co: usize) {
     let a0_5 = GameState::with_characters(|ch| ch[co].attrib[0][5]);
     let a1_0 = GameState::with_characters(|ch| ch[co].attrib[1][0]);
     let a1_5 = GameState::with_characters(|ch| ch[co].attrib[1][5]);
-    GameState::with_mut(|state| {
-        state.do_character_log(
-            cn,
-            FontColor::Green,
-            &format!(
-                "{:<12.12} {:3}/{:3}  !  {:<12.12} {:3}/{:3}\n",
-                at_name[0], a0_0, a0_5, at_name[1], a1_0, a1_5
-            ),
-        )
-    });
+    GameState::global_mut().do_character_log(
+        cn,
+        FontColor::Green,
+        &format!(
+            "{:<12.12} {:3}/{:3}  !  {:<12.12} {:3}/{:3}\n",
+            at_name[0], a0_0, a0_5, at_name[1], a1_0, a1_5
+        ),
+    );
     let a2_0 = GameState::with_characters(|ch| ch[co].attrib[2][0]);
     let a2_5 = GameState::with_characters(|ch| ch[co].attrib[2][5]);
     let a3_0 = GameState::with_characters(|ch| ch[co].attrib[3][0]);
     let a3_5 = GameState::with_characters(|ch| ch[co].attrib[3][5]);
-    GameState::with_mut(|state| {
-        state.do_character_log(
-            cn,
-            FontColor::Green,
-            &format!(
-                "{:<12.12} {:3}/{:3}  !  {:<12.12} {:3}/{:3}\n",
-                at_name[2], a2_0, a2_5, at_name[3], a3_0, a3_5
-            ),
-        )
-    });
+    GameState::global_mut().do_character_log(
+        cn,
+        FontColor::Green,
+        &format!(
+            "{:<12.12} {:3}/{:3}  !  {:<12.12} {:3}/{:3}\n",
+            at_name[2], a2_0, a2_5, at_name[3], a3_0, a3_5
+        ),
+    );
     let a4_0 = GameState::with_characters(|ch| ch[co].attrib[4][0]);
     let a4_5 = GameState::with_characters(|ch| ch[co].attrib[4][5]);
-    GameState::with_mut(|state| {
-        state.do_character_log(
-            cn,
-            FontColor::Green,
-            &format!("{:<12.12} {:3}/{:3}\n", at_name[4], a4_0, a4_5),
-        )
-    });
+    GameState::global_mut().do_character_log(
+        cn,
+        FontColor::Green,
+        &format!("{:<12.12} {:3}/{:3}\n", at_name[4], a4_0, a4_5),
+    );
 
-    GameState::with_mut(|state| state.do_character_log(cn, FontColor::Green, " \n"));
+    GameState::global_mut().do_character_log(cn, FontColor::Green, " \n");
 }
 
 pub fn skill_identify(cn: usize) {
@@ -2529,32 +2343,26 @@ pub fn skill_blast(cn: usize) {
         }
     });
 
-    if GameState::with_mut(|state| state.do_char_can_see(cn, co)) == 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(cn, FontColor::Green, "You cannot see your target.\n")
-        });
+    if GameState::global_mut().do_char_can_see(cn, co) == 0 {
+        GameState::global_mut().do_character_log(cn, FontColor::Green, "You cannot see your target.\n");
         return;
     }
 
     if cn == co {
-        GameState::with_mut(|state| {
-            state.do_character_log(cn, FontColor::Green, "You cannot blast yourself!\n")
-        });
+        GameState::global_mut().do_character_log(cn, FontColor::Green, "You cannot blast yourself!\n");
         return;
     }
 
     if GameState::with_characters(|ch| (ch[co].flags & CharacterFlags::Stoned.bits()) != 0) {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                FontColor::Green,
-                "Your target is lagging. Try again later.\n",
-            )
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            FontColor::Green,
+            "Your target is lagging. Try again later.\n",
+        );
         return;
     }
 
-    if GameState::with_mut(|state| state.may_attack_msg(cn, co, true)) == 0 {
+    if GameState::global_mut().may_attack_msg(cn, co, true) == 0 {
         chlog!(
             cn,
             "Prevented from attacking {}",
@@ -2563,7 +2371,7 @@ pub fn skill_blast(cn: usize) {
         return;
     }
 
-    GameState::with_mut(|state| state.remember_pvp(cn, co));
+    GameState::global_mut().remember_pvp(cn, co);
 
     if is_exhausted(cn) != 0 {
         return;
@@ -2597,29 +2405,25 @@ pub fn skill_blast(cn: usize) {
             && GameState::with_characters(|ch| ch[co].skill[core::constants::SK_SENSE][5])
                 > GameState::with_characters(|ch| ch[cn].skill[core::constants::SK_BLAST][5]) + 5
         {
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    co,
-                    FontColor::Green,
-                    &format!(
-                        "{} tried to cast blast on you but failed.\n",
-                        c_string_to_str(&GameState::with_characters(|ch| ch[cn].reference))
-                    ),
-                )
-            });
+            GameState::global_mut().do_character_log(
+                co,
+                FontColor::Green,
+                &format!(
+                    "{} tried to cast blast on you but failed.\n",
+                    c_string_to_str(&GameState::with_characters(|ch| ch[cn].reference))
+                ),
+            );
             if GameState::with_characters(|ch| ch[co].flags & CharacterFlags::SpellIgnore.bits())
                 == 0
             {
-                GameState::with_mut(|state| {
-                    state.do_notify_character(
-                        co as u32,
-                        core::constants::NT_GOTMISS as i32,
-                        cn as i32,
-                        0,
-                        0,
-                        0,
-                    )
-                });
+                GameState::global_mut().do_notify_character(
+                    co as u32,
+                    core::constants::NT_GOTMISS as i32,
+                    cn as i32,
+                    0,
+                    0,
+                    0,
+                );
             }
         }
         return;

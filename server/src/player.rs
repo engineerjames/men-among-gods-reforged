@@ -189,13 +189,11 @@ pub fn plr_logout(
                 if map[map_index].ch == character_id as u32 {
                     map[map_index].ch = 0;
                     if light != 0 {
-                        State::with_mut(|state| {
-                            state.do_add_light(
-                                character_x as i32,
-                                character_y as i32,
-                                -(light as i32),
-                            );
-                        });
+                        Repository::global_mut().do_add_light(
+                            character_x as i32,
+                            character_y as i32,
+                            -(light as i32),
+                        );
                     }
                 }
 
@@ -205,7 +203,7 @@ pub fn plr_logout(
             });
 
             // Remove references to this character from other enemies lists.
-            State::with_mut(|state| state.remove_enemy(character_id));
+            Repository::global_mut().remove_enemy(character_id);
 
             // Handle lag scroll
             if reason == enums::LogoutReason::IdleTooLong
@@ -410,9 +408,7 @@ pub fn plr_map_remove(cn: usize) {
             map[to_m].to_ch = 0;
 
             if light != 0 {
-                State::with_mut(|state| {
-                    state.do_add_light(x as i32, y as i32, -(light as i32));
-                });
+                Repository::global_mut().do_add_light(x as i32, y as i32, -(light as i32));
             }
 
             if !is_body {
@@ -516,9 +512,7 @@ pub fn plr_map_set(cn: usize) {
                         });
 
                         if light != 0 {
-                            State::with_mut(|state| {
-                                state.do_add_light(nx, ny, light as i32);
-                            });
+                            Repository::global_mut().do_add_light(nx, ny, light as i32);
                         }
 
                         return;
@@ -558,9 +552,7 @@ pub fn plr_map_set(cn: usize) {
                     });
 
                     if light != 0 {
-                        State::with_mut(|state| {
-                            state.do_add_light(frx, fry, light as i32);
-                        });
+                        Repository::global_mut().do_add_light(frx, fry, light as i32);
                     }
 
                     return;
@@ -573,9 +565,11 @@ pub fn plr_map_set(cn: usize) {
                     });
 
                     if current_light != 0 {
-                        State::with_mut(|state| {
-                            state.do_add_light(tx as i32, ty as i32, current_light as i32);
-                        });
+                        Repository::global_mut().do_add_light(
+                            tx as i32,
+                            ty as i32,
+                            current_light as i32,
+                        );
                     }
                     return;
                 }
@@ -662,9 +656,7 @@ pub fn plr_map_set(cn: usize) {
 
     if !is_body {
         if light != 0 {
-            State::with_mut(|state| {
-                state.do_add_light(x as i32, y as i32, light as i32);
-            });
+            Repository::global_mut().do_add_light(x as i32, y as i32, light as i32);
         }
 
         // Check for death trap
@@ -1172,9 +1164,7 @@ pub fn plr_attack(cn: usize, is_surround: bool) {
     let attack_cn = Repository::with_characters(|characters| characters[cn].attack_cn as usize);
 
     if attack_cn == co {
-        State::with_mut(|state| {
-            state.do_attack(cn, co, is_surround);
-        });
+        Repository::global_mut().do_attack(cn, co, is_surround);
     }
 }
 
@@ -1380,13 +1370,9 @@ pub fn plr_pickup(cn: usize) {
         });
 
         if active != 0 && light_active != 0 {
-            State::with_mut(|state| {
-                state.do_add_light(x as i32, y as i32, -(light_active as i32));
-            });
+            Repository::global_mut().do_add_light(x as i32, y as i32, -(light_active as i32));
         } else if light_inactive != 0 {
-            State::with_mut(|state| {
-                state.do_add_light(x as i32, y as i32, -(light_inactive as i32));
-            });
+            Repository::global_mut().do_add_light(x as i32, y as i32, -(light_inactive as i32));
         }
 
         return;
@@ -1443,13 +1429,9 @@ pub fn plr_pickup(cn: usize) {
     });
 
     if active != 0 && light_active != 0 {
-        State::with_mut(|state| {
-            state.do_add_light(x as i32, y as i32, -(light_active as i32));
-        });
+        Repository::global_mut().do_add_light(x as i32, y as i32, -(light_active as i32));
     } else if light_inactive != 0 {
-        State::with_mut(|state| {
-            state.do_add_light(x as i32, y as i32, -(light_inactive as i32));
-        });
+        Repository::global_mut().do_add_light(x as i32, y as i32, -(light_inactive as i32));
     }
 }
 
@@ -1884,13 +1866,9 @@ pub fn plr_drop(cn: usize) {
     });
 
     if active != 0 && light_active != 0 {
-        State::with_mut(|state| {
-            state.do_add_light(x as i32, y as i32, light_active as i32);
-        });
+        Repository::global_mut().do_add_light(x as i32, y as i32, light_active as i32);
     } else if light_inactive != 0 {
-        State::with_mut(|state| {
-            state.do_add_light(x as i32, y as i32, light_inactive as i32);
-        });
+        Repository::global_mut().do_add_light(x as i32, y as i32, light_inactive as i32);
     }
 }
 
@@ -2577,16 +2555,14 @@ pub fn plr_getmap_complete(nr: usize) {
 
     let current_x = Repository::with_characters(|ch| ch[cn].x as i32);
     let current_y = Repository::with_characters(|ch| ch[cn].y as i32);
-    State::with_mut(|state| {
-        state.can_see(
-            Some(cn),
-            current_x,
-            current_y,
-            current_x + 1,
-            current_y + 1,
-            16,
-        )
-    });
+    Repository::global_mut().can_see(
+        Some(cn),
+        current_x,
+        current_y,
+        current_x + 1,
+        current_y + 1,
+        16,
+    );
 
     let player_vx = Server::with_players(|players| players[nr].vx);
     let player_vy = Server::with_players(|players| players[nr].vy);
@@ -2666,10 +2642,10 @@ pub fn plr_getmap_complete(nr: usize) {
                 continue;
             }
 
-            let tmp = State::with_mut(|state| state.check_dlightm(mi));
+            let tmp = Repository::global_mut().check_dlightm(mi);
 
             let mut light = std::cmp::max(Repository::with_map(|map| map[mi].light as i32), tmp);
-            light = State::with_mut(|state| state.do_character_calculate_light(cn, light));
+            light = Repository::global_mut().do_character_calculate_light(cn, light);
 
             if light <= 5
                 && Repository::with_characters(|characters| {
@@ -2819,7 +2795,7 @@ pub fn plr_getmap_complete(nr: usize) {
                 // Begin of character
                 let co = map_m.ch as usize;
                 let tmp_see = if visible && co != 0 {
-                    State::with_mut(|state| state.do_char_can_see(cn, co))
+                    Repository::global_mut().do_char_can_see(cn, co)
                 } else {
                     0
                 };
@@ -5661,9 +5637,7 @@ fn plr_cmd_look(nr: usize, autoflag: bool) {
     } else {
         // Looking at character
         let autoflag_int = if autoflag { 1 } else { 0 };
-        State::with_mut(|state| {
-            state.do_look_char(cn, co, 0, autoflag_int, 0);
-        });
+        Repository::global_mut().do_look_char(cn, co, 0, autoflag_int, 0);
     }
 }
 
@@ -6042,9 +6016,7 @@ fn plr_cmd_input(nr: usize, part: u8) {
         let text = c_string_to_str(&raw);
 
         // Call the server state handler (port of C++ do_say)
-        State::with_mut(|state| {
-            state.do_say(cn, text);
-        });
+        Repository::global_mut().do_say(cn, text);
     }
 }
 
@@ -6303,7 +6275,7 @@ fn plr_cmd_pickup(nr: usize) {
     let is_building = Repository::with_characters(|ch| ch[cn].is_building());
     if is_building {
         // Call the build removal helper (port of C++ build_remove)
-        State::with_mut(|state| state.do_build_remove(x, y));
+        Repository::global_mut().do_build_remove(x, y);
         return;
     }
 

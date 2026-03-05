@@ -159,35 +159,39 @@ pub fn npc_is_enemy(cn: usize, co: usize) -> bool {
 }
 
 pub fn npc_list_enemies(npc: usize, cn: usize) -> i32 {
-    GameState::with_mut(|state| {
-        GameState::with_characters(|characters| {
-            let mut none = true;
-            state.do_character_log(
+    let (npc_name, enemies) = GameState::with_characters(|characters| {
+        let npc_name = c_string_to_str(&characters[npc].name).to_string();
+        let mut enemies = Vec::new();
+
+        for n in 80..92 {
+            let cv = (characters[npc].data[n] & 0xFFFF) as usize;
+            if cv > 0 && cv < MAXCHARS {
+                enemies.push(c_string_to_str(&characters[cv].name).to_string());
+            }
+        }
+
+        (npc_name, enemies)
+    });
+
+    GameState::global_mut().do_character_log(
+        cn,
+        core::types::FontColor::Green,
+        &format!("Enemies of {}:", npc_name),
+    );
+
+    if enemies.is_empty() {
+        GameState::global_mut().do_character_log(cn, core::types::FontColor::Green, "-none-");
+        0
+    } else {
+        for enemy_name in enemies {
+            GameState::global_mut().do_character_log(
                 cn,
                 core::types::FontColor::Green,
-                &format!("Enemies of {}:", c_string_to_str(&characters[npc].name)),
+                &format!("  {}", enemy_name),
             );
-
-            for n in 80..92 {
-                let cv = (characters[npc].data[n] & 0xFFFF) as usize;
-                if cv > 0 && cv < MAXCHARS {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Green,
-                        &format!("  {}", c_string_to_str(&characters[cv].name)),
-                    );
-                    none = false;
-                }
-            }
-
-            if none {
-                state.do_character_log(cn, core::types::FontColor::Green, "-none-");
-                0
-            } else {
-                1
-            }
-        })
-    })
+        }
+        1
+    }
 }
 
 pub fn npc_remove_enemy(npc: usize, enemy: usize) -> bool {
@@ -239,14 +243,10 @@ pub fn npc_saytext_n(npc: usize, n: usize, name: Option<&str>) {
 
         if temp == CT_COMPANION as u16 {
             if talkative == -10 {
-                GameState::with_mut(|state| {
-                    state.do_sayx(npc, &text);
-                });
+                GameState::global_mut().do_sayx(npc, &text);
             }
         } else {
-            GameState::with_mut(|state| {
-                state.do_sayx(npc, &text);
-            });
+            GameState::global_mut().do_sayx(npc, &text);
         }
     });
 }
@@ -266,9 +266,8 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
                 || characters[cn].a_hp < (characters[cn].hp[5] * 500) as i32)
             && characters[cn].data[70] < ticker
         {
-            GameState::with_mut(|state| {
-                state.do_sayx(cn, "Skua! Protect the innocent! Send me a Peacekeeper!");
-            });
+            GameState::global_mut()
+                .do_sayx(cn, "Skua! Protect the innocent! Send me a Peacekeeper!");
             GameState::with_characters(|ch| {
                 EffectManager::fx_add_effect(6, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
             });
@@ -304,9 +303,7 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
             && characters[cn].data[70] < ticker
             && characters[cn].a_mana < characters[cn].mana[5] as i32 * 333
         {
-            GameState::with_mut(|state| {
-                state.do_sayx(cn, "Skua! Help me!");
-            });
+            GameState::global_mut().do_sayx(cn, "Skua! Help me!");
             characters[cn].data[70] = ticker + (TICKS * 60 * 2);
             characters[cn].a_mana = (characters[cn].mana[5] * 1000) as i32;
             EffectManager::fx_add_effect(6, 0, characters[cn].x as i32, characters[cn].y as i32, 0);
@@ -321,16 +318,14 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
                     let co_name = characters[co].get_name();
                     npc_saytext_n(cn, 4, Some(co_name));
                 }
-                GameState::with_mut(|state| {
-                    state.do_npc_shout(
-                        cn,
-                        NT_SHOUT as i32,
-                        cn as i32,
-                        characters[cn].data[52],
-                        characters[cn].x as i32,
-                        characters[cn].y as i32,
-                    );
-                });
+                GameState::global_mut().do_npc_shout(
+                    cn,
+                    NT_SHOUT as i32,
+                    cn as i32,
+                    characters[cn].data[52],
+                    characters[cn].x as i32,
+                    characters[cn].y as i32,
+                );
             }
         }
 
@@ -637,41 +632,37 @@ pub fn npc_give(cn: usize, co: usize, in_item: usize, money: i32) -> i32 {
                     items[in_item].used = core::constants::USE_EMPTY;
                 });
 
-                GameState::with_mut(|state| {
-                    state.do_sayx(
-                        cn,
-                        &format!(
-                            "Ah, a black candle! Great work, {}! Now we will have peace for a while...",
-                            characters[co].get_name()
-                        ),
-                    );
-                    state.do_area_log(
-                        cn,
-                        0,
-                        characters[cn].x as i32,
-                        characters[cn].y as i32,
-                        core::types::FontColor::Yellow,
-                        &format!(
-                            "The Cityguard is impressed by {}'s deed.\n",
-                            characters[co].get_name()
-                        ),
-                    );
-                });
+                GameState::global_mut().do_sayx(
+                    cn,
+                    &format!(
+                        "Ah, a black candle! Great work, {}! Now we will have peace for a while...",
+                        characters[co].get_name()
+                    ),
+                );
+                GameState::global_mut().do_area_log(
+                    cn,
+                    0,
+                    characters[cn].x as i32,
+                    characters[cn].y as i32,
+                    core::types::FontColor::Yellow,
+                    &format!(
+                        "The Cityguard is impressed by {}'s deed.\n",
+                        characters[co].get_name()
+                    ),
+                );
             } else {
                 // Thank you message
                 let ref_name = GameState::with_items(|items| {
                     c_string_to_str(&items[in_item].reference).to_string()
                 });
-                GameState::with_mut(|state| {
-                    state.do_sayx(
-                        cn,
-                        &format!(
-                            "Thank you {}. That's the {} I wanted.",
-                            characters[co].get_name(),
-                            ref_name
-                        ),
-                    );
-                });
+                GameState::global_mut().do_sayx(
+                    cn,
+                    &format!(
+                        "Thank you {}. That's the {} I wanted.",
+                        characters[co].get_name(),
+                        ref_name
+                    ),
+                );
             }
 
             // Quest-requested items: teach skill / give exp
@@ -700,78 +691,62 @@ pub fn npc_give(cn: usize, co: usize, in_item: usize, money: i32) -> i32 {
                 }
 
                 if skill_nr == SK_STUN && (co_kindred & KIN_SEYAN_DU) != 0 {
-                    GameState::with_mut(|state| {
-                        state.do_sayx(
-                            cn,
-                            &format!(
-                                "Bring me the item again to learn Immunity, {}!",
-                                characters[co].get_name()
-                            ),
-                        );
-                    });
+                    GameState::global_mut().do_sayx(
+                        cn,
+                        &format!(
+                            "Bring me the item again to learn Immunity, {}!",
+                            characters[co].get_name()
+                        ),
+                    );
                 }
                 if skill_nr == SK_CURSE && (co_kindred & KIN_SEYAN_DU) != 0 {
-                    GameState::with_mut(|state| {
-                        state.do_sayx(
-                            cn,
-                            &format!(
-                                "Bring me the item again to learn Surround Hit, {}!",
-                                characters[co].get_name()
-                            ),
-                        );
-                    });
+                    GameState::global_mut().do_sayx(
+                        cn,
+                        &format!(
+                            "Bring me the item again to learn Surround Hit, {}!",
+                            characters[co].get_name()
+                        ),
+                    );
                 }
 
                 let skill_name = skilltab::get_skill_name(skill_nr);
-                GameState::with_mut(|state| {
-                    state.do_sayx(cn, &format!("Now I'll teach you {}.", skill_name));
-                });
+                GameState::global_mut().do_sayx(cn, &format!("Now I'll teach you {}.", skill_name));
 
                 if characters[co].skill[skill_nr][0] != 0 {
-                    GameState::with_mut(|state| {
-                        state.do_sayx(
-                            cn,
-                            &format!(
-                                "But you already know {}, {}!",
-                                skill_name,
-                                characters[co].get_name()
-                            ),
-                        );
-                    });
+                    GameState::global_mut().do_sayx(
+                        cn,
+                        &format!(
+                            "But you already know {}, {}!",
+                            skill_name,
+                            characters[co].get_name()
+                        ),
+                    );
                     // give item back to player
                     God::take_from_char(in_item, cn);
                     God::give_character_item(co, in_item);
-                    GameState::with_mut(|state| {
-                        state.do_character_log(
-                            co,
-                            core::types::FontColor::Green,
-                            &format!(
-                                "{} did not accept the {}.\n",
-                                characters[cn].get_name(),
-                                GameState::with_items(|items| items[in_item]
-                                    .get_name()
-                                    .to_string())
-                            ),
-                        );
-                    });
+                    GameState::global_mut().do_character_log(
+                        co,
+                        core::types::FontColor::Green,
+                        &format!(
+                            "{} did not accept the {}.\n",
+                            characters[cn].get_name(),
+                            GameState::with_items(|items| items[in_item].get_name().to_string())
+                        ),
+                    );
                 } else {
                     // teach skill
                     characters[co].skill[skill_nr][0] = 1;
-                    GameState::with_mut(|state| {
-                        state.do_character_log(
-                            co,
-                            core::types::FontColor::Green,
-                            &format!("You learned {}!\n", skill_name),
-                        );
-                        characters[co].set_do_update_flags();
-                    });
+                    GameState::global_mut().do_character_log(
+                        co,
+                        core::types::FontColor::Green,
+                        &format!("You learned {}!\n", skill_name),
+                    );
+                    characters[co].set_do_update_flags();
 
                     let give_exp = characters[cn].data[51];
                     if give_exp != 0 {
-                        GameState::with_mut(|state| {
-                            state.do_sayx(cn, &format!("Now I'll teach you a bit about life, the world and everything, {}.", characters[co].get_name()));
-                            state.do_give_exp(co, give_exp, 0, -1);
-                        });
+                        GameState::global_mut().do_sayx(cn, &format!("Now I'll teach you a bit about life, the world and everything, {}.", characters[co].get_name()));
+                        GameState::global_mut().do_give_exp(co, give_exp, 0, -1);
                     }
 
                     // take and destroy the offered item
@@ -785,22 +760,18 @@ pub fn npc_give(cn: usize, co: usize, in_item: usize, money: i32) -> i32 {
             // Return-gift
             let give_temp = characters[cn].data[66];
             if give_temp != 0 {
-                GameState::with_mut(|state| {
-                    state.do_sayx(
-                        cn,
-                        &format!(
-                            "Here is your {} in exchange.",
-                            GameState::with_item_templates(|t| c_string_to_str(
-                                &t[give_temp as usize].reference
-                            )
-                            .to_string())
-                        ),
-                    );
-                });
+                GameState::global_mut().do_sayx(
+                    cn,
+                    &format!(
+                        "Here is your {} in exchange.",
+                        GameState::with_item_templates(|t| c_string_to_str(
+                            &t[give_temp as usize].reference
+                        )
+                        .to_string())
+                    ),
+                );
                 God::take_from_char(in_item, cn);
-                GameState::with_items_mut(|items| {
-                    items[in_item].used = core::constants::USE_EMPTY
-                });
+                GameState::with_items_mut(|items| items[in_item].used = core::constants::USE_EMPTY);
                 if let Some(new_item) = God::create_item(give_temp as usize) {
                     God::give_character_item(co, new_item);
                 }
@@ -816,17 +787,15 @@ pub fn npc_give(cn: usize, co: usize, in_item: usize, money: i32) -> i32 {
                 // check Lab9 guesser
                 let still = crate::lab9::Labyrinth9::with(|lab9| lab9.get_guesser(idx));
                 if still != 0 && still as usize != co {
-                    GameState::with_mut(|state| {
-                        state.do_sayx(
-                            cn,
-                            &format!(
-                                "I'm still riddling {}; please come back later!\n",
-                                GameState::with_characters(|ch| ch[still as usize]
-                                    .get_name()
-                                    .to_string())
-                            ),
-                        );
-                    });
+                    GameState::global_mut().do_sayx(
+                        cn,
+                        &format!(
+                            "I'm still riddling {}; please come back later!\n",
+                            GameState::with_characters(|ch| ch[still as usize]
+                                .get_name()
+                                .to_string())
+                        ),
+                    );
                     God::take_from_char(in_item, cn);
                     God::give_character_item(co, in_item);
                     return 0;
@@ -834,35 +803,29 @@ pub fn npc_give(cn: usize, co: usize, in_item: usize, money: i32) -> i32 {
 
                 // Destroy gift from player and pose riddle
                 God::take_from_char(in_item, co);
-                GameState::with_items_mut(|items| {
-                    items[in_item].used = core::constants::USE_EMPTY
-                });
+                GameState::with_items_mut(|items| items[in_item].used = core::constants::USE_EMPTY);
                 crate::lab9::Labyrinth9::with_mut(|lab9| lab9.lab9_pose_riddle(cn, co));
             }
 
             return 0;
         } else if in_item == 0 && money != 0 {
             // NPC doesn't take money
-            GameState::with_mut(|state| {
-                state.do_sayx(cn, "I don't take money from you!");
-            });
+            GameState::global_mut().do_sayx(cn, "I don't take money from you!");
             characters[co].gold += money;
             characters[cn].gold -= money;
         } else {
             // Not accepted - return item to giver
             God::take_from_char(in_item, cn);
             God::give_character_item(co, in_item);
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    co,
-                    core::types::FontColor::Green,
-                    &format!(
-                        "{} did not accept the {}.\n",
-                        characters[cn].get_name(),
-                        GameState::with_items(|items| items[in_item].get_name().to_string())
-                    ),
-                );
-            });
+            GameState::global_mut().do_character_log(
+                co,
+                core::types::FontColor::Green,
+                &format!(
+                    "{} did not accept the {}.\n",
+                    characters[cn].get_name(),
+                    GameState::with_items(|items| items[in_item].get_name().to_string())
+                ),
+            );
         }
 
         0
@@ -1256,41 +1219,38 @@ pub fn npc_quaff_potion(gs: &mut GameState, cn: usize, itemp: i32, stemp: i32) -
         }
 
         // Find potion and quaff it
-        let (should_quaff, name, item_index): (bool, String, usize) =
-            GameState::with_items(|it| {
-                for n in 0..40 {
-                    let item_index = ch[cn].item[n];
+        let (should_quaff, name, item_index): (bool, String, usize) = GameState::with_items(|it| {
+            for n in 0..40 {
+                let item_index = ch[cn].item[n];
 
-                    if item_index == 0 {
-                        continue;
-                    }
-
-                    if it[item_index as usize].temp == itemp as u16 {
-                        return (
-                            true,
-                            it[item_index as usize].get_name().to_string(),
-                            item_index as usize,
-                        );
-                    }
+                if item_index == 0 {
+                    continue;
                 }
 
-                (false, String::new().into(), 0)
-            });
+                if it[item_index as usize].temp == itemp as u16 {
+                    return (
+                        true,
+                        it[item_index as usize].get_name().to_string(),
+                        item_index as usize,
+                    );
+                }
+            }
+
+            (false, String::new().into(), 0)
+        });
 
         if !should_quaff {
             return false;
         }
 
-        GameState::with_mut(|state| {
-            state.do_area_log(
-                cn,
-                0,
-                ch[cn].x as i32,
-                ch[cn].y as i32,
-                core::types::FontColor::Yellow,
-                &format!("The {} uses a {}.\n", ch[cn].get_name(), name),
-            )
-        });
+        GameState::global_mut().do_area_log(
+            cn,
+            0,
+            ch[cn].x as i32,
+            ch[cn].y as i32,
+            core::types::FontColor::Yellow,
+            &format!("The {} uses a {}.\n", ch[cn].get_name(), name),
+        );
 
         driver::use_driver(gs, cn, item_index, true);
 
@@ -1307,9 +1267,7 @@ pub fn die_companion(cn: usize) {
         characters[cn].gold = 0;
     });
 
-    GameState::with_mut(|state| {
-        state.do_character_killed(cn, 0, false);
-    });
+    GameState::global_mut().do_character_killed(cn, 0, false);
 }
 
 // ****************************************************
@@ -1357,9 +1315,7 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> i32 {
             }
         });
         if do_die {
-            GameState::with_mut(|state| {
-                state.do_sayx(cn, "Free!");
-            });
+            GameState::global_mut().do_sayx(cn, "Free!");
             God::destroy_items(cn);
             player::plr_map_remove(cn);
             GameState::with_characters_mut(|characters| {
@@ -1372,9 +1328,8 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> i32 {
 
     // Count down master-no-see timer for player ghost companions
     {
-        let (temp, data64) = GameState::with_characters(|characters| {
-            (characters[cn].temp, characters[cn].data[64])
-        });
+        let (temp, data64) =
+            GameState::with_characters(|characters| (characters[cn].temp, characters[cn].data[64]));
         if temp == CT_COMPANION as u16 && data64 == 0 {
             let co = GameState::with_characters(|characters| characters[cn].data[CHD_MASTER]);
             let master_ok = GameState::with_characters(|characters| {
@@ -1650,8 +1605,7 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> i32 {
                 if npc_try_spell(cn, co, SK_STUN) {
                     GameState::with_characters_mut(|characters| {
                         characters[cn].data[75] = GameState::with_globals(|g| g.ticker)
-                            + GameState::with_characters(|chars| chars[cn].skill[SK_STUN][5])
-                                as i32
+                            + GameState::with_characters(|chars| chars[cn].skill[SK_STUN][5]) as i32
                             + TICKS * 8
                     });
                     return 1;
@@ -1805,9 +1759,8 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> i32 {
                         (characters[cn].x as i32, characters[cn].y as i32)
                     });
                     let can_reach =
-                        GameState::with_mut(|state| state.can_go(ch_x, ch_y, x as i32, y as i32)) != 0;
-                    let can_see =
-                        GameState::global_mut().do_char_can_see_item(cn, map_it) != 0;
+                        GameState::global_mut().can_go(ch_x, ch_y, x as i32, y as i32) != 0;
+                    let can_see = GameState::global_mut().do_char_can_see_item(cn, map_it) != 0;
 
                     if can_reach && can_see && it_temp != 18 {
                         GameState::with_characters_mut(|characters| {
@@ -1825,9 +1778,8 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> i32 {
                         (characters[cn].x as i32, characters[cn].y as i32)
                     });
                     let can_reach =
-                        GameState::with_mut(|state| state.can_go(ch_x, ch_y, x as i32, y as i32)) != 0;
-                    let can_see =
-                        GameState::global_mut().do_char_can_see_item(cn, map_it) != 0;
+                        GameState::global_mut().can_go(ch_x, ch_y, x as i32, y as i32) != 0;
+                    let can_see = GameState::global_mut().do_char_can_see_item(cn, map_it) != 0;
 
                     if can_reach && can_see && x + 1 < SERVER_MAPX as usize {
                         let map_idx = x + 1 + y * SERVER_MAPX as usize;
@@ -1912,9 +1864,8 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
     }
 
     // Did someone call help? - high prio
-    let (data_55, data_54) = GameState::with_characters(|characters| {
-        (characters[cn].data[55], characters[cn].data[54])
-    });
+    let (data_55, data_54) =
+        GameState::with_characters(|characters| (characters[cn].data[55], characters[cn].data[54]));
 
     if data_55 != 0 && data_55 + (TICKS * 120) > ticker && data_54 != 0 {
         let m = data_54;
@@ -2177,7 +2128,7 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
                     continue;
                 }
 
-                if GameState::with_mut(|state| state.can_go(ch_x as i32, ch_y as i32, x, y)) == 0 {
+                if GameState::global_mut().can_go(ch_x as i32, ch_y as i32, x, y) == 0 {
                     panic = attempt + 1;
                     continue;
                 }
@@ -2366,17 +2317,14 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
                     let co = match populate::pop_create_char(503 + m_idx, false) {
                         Some(co) => co,
                         None => {
-                            GameState::with_mut(|state| {
-                                state.do_sayx(cn, &format!("create char ({})", m_idx));
-                            });
+                            GameState::global_mut()
+                                .do_sayx(cn, &format!("create char ({})", m_idx));
                             break;
                         }
                     };
 
                     if !God::drop_char_fuzzy(co, 452, 345) {
-                        GameState::with_mut(|state| {
-                            state.do_sayx(cn, &format!("drop char ({})", m_idx));
-                        });
+                        GameState::global_mut().do_sayx(cn, &format!("drop char ({})", m_idx));
                         God::destroy_items(co);
                         GameState::with_characters_mut(|characters| {
                             characters[co].used = 0;
@@ -2392,9 +2340,7 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
                 GameState::with_characters(|ch| {
                     EffectManager::fx_add_effect(7, 0, ch[cn].x as i32, ch[cn].y as i32, 0);
                 });
-                GameState::with_mut(|state| {
-                    state.do_sayx(cn, "Khuzak gurawin duskar!");
-                });
+                GameState::global_mut().do_sayx(cn, "Khuzak gurawin duskar!");
 
                 GameState::with_characters_mut(|characters| {
                     characters[cn].a_mana -= (n * 100 * 1000) as i32;
@@ -2815,12 +2761,14 @@ pub fn npc_grave_logic(cn: usize) -> bool {
                         GameState::with_items(|items| (items[in_idx].x, items[in_idx].y));
 
                     // Check if we can reach the grave and haven't searched it yet
-                    let can_reach = GameState::with_mut(|state| {
-                        state.can_go(ch_x as i32, ch_y as i32, it_x as i32, it_y as i32) != 0
-                    });
+                    let can_reach = GameState::global_mut().can_go(
+                        ch_x as i32,
+                        ch_y as i32,
+                        it_x as i32,
+                        it_y as i32,
+                    ) != 0;
 
-                    let can_see =
-                        GameState::global_mut().do_char_can_see_item(cn, in_idx) != 0;
+                    let can_see = GameState::global_mut().do_char_can_see_item(cn, in_idx) != 0;
 
                     if can_reach && can_see && !npc_already_searched_grave(cn, in_idx) {
                         if !npc_loot_grave(cn, in_idx) {
@@ -2859,9 +2807,7 @@ pub fn update_shop(cn: usize) {
     });
 
     // Check if we have free space (at least 10 slots)
-    GameState::with_mut(|state| {
-        state.do_sort(cn, "v");
-    });
+    GameState::global_mut().do_sort(cn, "v");
 
     let mut m = 0; // Free slots
     let mut x = 0; // Last non-sale item position
@@ -2968,9 +2914,7 @@ pub fn update_shop(cn: usize) {
         }
     }
 
-    GameState::with_mut(|state| {
-        state.do_sort(cn, "v");
-    });
+    GameState::global_mut().do_sort(cn, "v");
 }
 
 // ****************************************************
@@ -3019,9 +2963,11 @@ pub fn shiva_activate_candle(cn: usize, in_idx: usize) -> i32 {
     });
 
     if light_0 != light_1 && it_x > 0 {
-        GameState::with_mut(|state| {
-            state.do_add_light(it_x as i32, it_y as i32, light_0 as i32 - light_1 as i32);
-        });
+        GameState::global_mut().do_add_light(
+            it_x as i32,
+            it_y as i32,
+            light_0 as i32 - light_1 as i32,
+        );
     }
 
     // Add visual effects
@@ -3032,9 +2978,7 @@ pub fn shiva_activate_candle(cn: usize, in_idx: usize) -> i32 {
     });
 
     // Character says the magic words
-    GameState::with_mut(|state| {
-        state.do_sayx(cn, "Shirak ishagur gorweran dulak!");
-    });
+    GameState::global_mut().do_sayx(cn, "Shirak ishagur gorweran dulak!");
 
     // Consume mana
     GameState::with_characters_mut(|characters| {
@@ -3125,16 +3069,14 @@ pub fn npc_cityguard_see(cn: usize, co: usize, flag: i32) -> i32 {
 
             // Say text and shout
             npc_saytext_n(cn, 4, Some(&co_name));
-            GameState::with_mut(|state| {
-                state.do_npc_shout(
-                    cn,
-                    NT_SHOUT as i32,
-                    cn as i32,
-                    data_52,
-                    ch_x as i32,
-                    ch_y as i32,
-                );
-            });
+            GameState::global_mut().do_npc_shout(
+                cn,
+                NT_SHOUT as i32,
+                cn as i32,
+                data_52,
+                ch_x as i32,
+                ch_y as i32,
+            );
 
             // Shout for players too
             for n in 1..MAXCHARS {
@@ -3411,9 +3353,7 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
                         co_name
                     )
                 };
-                GameState::with_mut(|state| {
-                    state.do_sayx(cn, &message);
-                });
+                GameState::global_mut().do_sayx(cn, &message);
             } else if text_2_str == "#cursespec\0" || text_2_str.starts_with("#cursespec") {
                 let message = if (co_kindred & (KIN_TEMPLAR | KIN_ARCHTEMPLAR)) != 0
                     || ((co_kindred & KIN_SEYAN_DU) != 0 && co_skill_19 != 0)
@@ -3428,16 +3368,12 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
                         co_name
                     )
                 };
-                GameState::with_mut(|state| {
-                    state.do_sayx(cn, &message);
-                });
+                GameState::global_mut().do_sayx(cn, &message);
             } else {
                 // Check if this is a priest (temp 180) greeting a PURPLE player
                 let cn_temp = GameState::with_characters(|characters| characters[cn].temp);
                 if cn_temp == 180 && (co_kindred & KIN_PURPLE) != 0 {
-                    GameState::with_mut(|state| {
-                        state.do_sayx(cn, &format!("Greetings, {}!", co_name));
-                    });
+                    GameState::global_mut().do_sayx(cn, &format!("Greetings, {}!", co_name));
                 } else {
                     // Normal greeting
                     npc_saytext_n(cn, 2, Some(&co_name));
@@ -3459,25 +3395,21 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
                 let cnt = count_uniques(co);
 
                 if cnt == 1 {
-                    GameState::with_mut(|state| {
-                        state.do_sayx(
-                            cn,
-                            &format!(
-                                "I see you have a sword dedicated to the gods. Make good use of it, {}.\n",
-                                co_name
-                            ),
-                        );
-                    });
+                    GameState::global_mut().do_sayx(
+                        cn,
+                        &format!(
+                            "I see you have a sword dedicated to the gods. Make good use of it, {}.\n",
+                            co_name
+                        ),
+                    );
                 } else if cnt > 1 {
-                    GameState::with_mut(|state| {
-                        state.do_sayx(
-                            cn,
-                            &format!(
-                                "I see you have several swords dedicated to the gods. They will get angry if you keep more than one, {}.\n",
-                                co_name
-                            ),
-                        );
-                    });
+                    GameState::global_mut().do_sayx(
+                        cn,
+                        &format!(
+                            "I see you have several swords dedicated to the gods. They will get angry if you keep more than one, {}.\n",
+                            co_name
+                        ),
+                    );
                 }
             }
         }

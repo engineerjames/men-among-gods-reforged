@@ -194,13 +194,11 @@ impl God {
                         };
 
                         if light_value != 0 {
-                            State::with_mut(|state| {
-                                state.do_add_light(
-                                    old_x as i32,
-                                    old_y as i32,
-                                    -(light_value as i32),
-                                );
-                            });
+                            Repository::global_mut().do_add_light(
+                                old_x as i32,
+                                old_y as i32,
+                                -(light_value as i32),
+                            );
                         }
 
                         Repository::with_map_mut(|map| {
@@ -848,14 +846,13 @@ impl God {
         ];
 
         for (try_x, try_y) in positions_to_try.iter() {
-            let early_return = State::with_mut(|state| {
-                if state.can_go(*try_x as i32, *try_y as i32, *try_x as i32, *try_y as i32) != 0
-                    && Self::drop_char(character_id, *try_x, *try_y)
-                {
-                    return true;
-                }
-                false
-            });
+            let early_return = Repository::global_mut().can_go(
+                *try_x as i32,
+                *try_y as i32,
+                *try_x as i32,
+                *try_y as i32,
+            ) != 0
+                && Self::drop_char(character_id, *try_x, *try_y);
 
             if early_return {
                 return true;
@@ -911,19 +908,13 @@ impl God {
 
         for (try_x, try_y) in positions_to_try.iter() {
             // Also check can_map_go here
-            let early_return = State::with_mut(|state| {
-                if state.can_go(
-                    center_x as i32,
-                    center_y as i32,
-                    *try_x as i32,
-                    *try_y as i32,
-                ) != 0
-                    && Self::drop_char(character_id, *try_x, *try_y)
-                {
-                    return true;
-                }
-                false
-            });
+            let early_return = Repository::global_mut().can_go(
+                center_x as i32,
+                center_y as i32,
+                *try_x as i32,
+                *try_y as i32,
+            ) != 0
+                && Self::drop_char(character_id, *try_x, *try_y);
 
             if early_return {
                 return true;
@@ -1323,9 +1314,7 @@ impl God {
             };
 
             if light_value != 0 {
-                State::with_mut(|state| {
-                    state.do_add_light(x as i32, y as i32, light_value as i32);
-                });
+                Repository::global_mut().do_add_light(x as i32, y as i32, light_value as i32);
             }
         });
 
@@ -1544,16 +1533,14 @@ impl God {
 
         // We expect at least one of the values passed in to be non-empty
         if cx.is_empty() && cy.is_empty() {
-            State::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Red,
-                    &format!(
-                        "Invalid coordinates provided for goto command: '{},{}'.\n",
-                        cx, cy
-                    ),
-                )
-            });
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                &format!(
+                    "Invalid coordinates provided for goto command: '{},{}'.\n",
+                    cx, cy
+                ),
+            );
             return;
         }
 
@@ -1622,13 +1609,11 @@ impl God {
             cy
         );
 
-        State::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                &format!("goto() failed with input '{},{}'\n", cx, cy),
-            )
-        });
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            &format!("goto() failed with input '{},{}'\n", cx, cy),
+        );
     }
 
     fn goto_target_coordinates(cn: usize, cx: &str, cy: &str) -> Option<(usize, usize)> {
@@ -1677,16 +1662,14 @@ impl God {
         // Attempting to use format like "n 10" or "s 5", etc;
         // but we didn't use N/S/E/W as the first character
         if !["n", "s", "e", "w"].contains(&cx.to_lowercase().as_str()) {
-            State::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Red,
-                    &format!(
-                        "Invalid coordinate format provided for goto command: '{},{}'.\n",
-                        cx, cy
-                    ),
-                )
-            });
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                &format!(
+                    "Invalid coordinate format provided for goto command: '{},{}'.\n",
+                    cx, cy
+                ),
+            );
             return None;
         }
 
@@ -1790,13 +1773,11 @@ impl God {
         if target_location.is_none() {
             log::error!("Character name '{}' not found in goto command", target_name);
 
-            State::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Red,
-                    &format!("No such character found with name '{}'.\n", target_name),
-                )
-            });
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                &format!("No such character found with name '{}'.\n", target_name),
+            );
             return None;
         }
 
@@ -2625,11 +2606,8 @@ impl God {
                 if Character::is_sane_character(gc) && characters[gc].is_living_character(gc) {
                     let gc_name = characters[gc].get_name();
                     let points_str = helpers::format_number(characters[gc].points_tot);
-                    let area_str = area::get_area_m(
-                        characters[gc].x as i32,
-                        characters[gc].y as i32,
-                        false,
-                    );
+                    let area_str =
+                        area::get_area_m(characters[gc].x as i32, characters[gc].y as i32, false);
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Blue,
@@ -3828,18 +3806,16 @@ impl God {
 
         chlog!(cn, "Raised character {} experience by {}\n", name, value);
 
-        State::with_mut(|state| {
-            state.do_check_new_level(co);
-            state.do_character_log(
-                co,
-                core::types::FontColor::Green,
-                format!(
-                    "You have been rewarded by the gods. You receive {} experience points.\n",
-                    value
-                )
-                .as_str(),
+        Repository::global_mut().do_check_new_level(co);
+        Repository::global_mut().do_character_log(
+            co,
+            core::types::FontColor::Green,
+            format!(
+                "You have been rewarded by the gods. You receive {} experience points.\n",
+                value
             )
-        });
+            .as_str(),
+        );
     }
 
     /// Admin command used to adjust character experience downward.
@@ -3928,17 +3904,15 @@ impl God {
 
         chlog!(cn, "Lowered character {} experience by {}\n", name, value);
 
-        State::with_mut(|state| {
-            state.do_character_log(
-                co,
-                core::types::FontColor::Red,
-                format!(
-                    "You have been punished by the gods. You lose {} experience points.\n",
-                    value
-                )
-                .as_str(),
+        Repository::global_mut().do_character_log(
+            co,
+            core::types::FontColor::Red,
+            format!(
+                "You have been punished by the gods. You lose {} experience points.\n",
+                value
             )
-        });
+            .as_str(),
+        );
     }
 
     /// Add gold/silver to a character's coin purse.
