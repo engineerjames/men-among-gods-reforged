@@ -2,6 +2,7 @@ use core::constants::{SV_SETMAP3, SV_SETMAP4, SV_SETMAP5, SV_SETMAP6};
 use std::net::Shutdown;
 use std::sync::{OnceLock, RwLock};
 
+use crate::game_state::GameState;
 use crate::{enums, player, server::Server};
 
 static NETWORK_MANAGER: OnceLock<RwLock<NetworkManager>> = OnceLock::new();
@@ -135,7 +136,9 @@ impl NetworkManager {
                 );
                 // Attempt to log out the associated character and clean up
                 let cn = p.usnr;
-                player::plr_logout(cn, player_id, enums::LogoutReason::Unknown);
+                GameState::with_mut(|gs| {
+                    player::plr_logout(gs, cn, player_id, enums::LogoutReason::Unknown);
+                });
                 if let Some(s) = p.sock.take() {
                     let _ = s.shutdown(Shutdown::Both);
                 }
@@ -221,7 +224,9 @@ impl NetworkManager {
                     // Connection too slow, terminate
                     log::warn!("Connection too slow for player {}, terminating", player_id);
                     let cn = p.usnr;
-                    player::plr_logout(cn, player_id, enums::LogoutReason::ClientTooSlow);
+                    GameState::with_mut(|gs| {
+                        player::plr_logout(gs, cn, player_id, enums::LogoutReason::ClientTooSlow);
+                    });
                     if let Some(s) = p.sock.take() {
                         let _ = s.shutdown(Shutdown::Both);
                     }

@@ -4,7 +4,7 @@ use core::{
     types::FontColor,
 };
 
-use crate::{driver, god::God, populate, repository::Repository, state::State};
+use crate::{driver, game_state::GameState, god::God, populate, repository::Repository};
 
 #[macro_export]
 macro_rules! chlog {
@@ -201,7 +201,7 @@ pub fn use_labtransfer(cn: usize, nr: i32, exp: i32) -> bool {
         }
     }
     if let Some(name) = busy_name {
-        State::with(|state| {
+        GameState::with_mut(|state| {
             state.do_character_log(
                 cn,
                 FontColor::Red,
@@ -229,7 +229,7 @@ pub fn use_labtransfer(cn: usize, nr: i32, exp: i32) -> bool {
         8 => 845, // forest/golem
         9 => 919, // riddle
         _ => {
-            State::with(|state| {
+            GameState::with_mut(|state| {
                 state.do_character_log(
                     cn,
                     FontColor::Red,
@@ -246,7 +246,7 @@ pub fn use_labtransfer(cn: usize, nr: i32, exp: i32) -> bool {
         Some(co) => co,
         None => {
             chlog!(cn, "Sorry, could not create your enemy.");
-            State::with(|state| {
+            GameState::with_mut(|state| {
                 state.do_character_log(cn, FontColor::Red, "Sorry, could not create your enemy.\n");
                 log::error!(
                     "use_labtransfer: pop_create_char({}) failed for player {}",
@@ -259,7 +259,7 @@ pub fn use_labtransfer(cn: usize, nr: i32, exp: i32) -> bool {
     };
 
     if !God::drop_char(co, 174, 172) {
-        State::with(|state| {
+        GameState::with_mut(|state| {
             state.do_character_log(cn, FontColor::Red, "Sorry, could not place your enemy.\n");
             log::error!(
                 "use_labtransfer: god_drop_char({}, 174, 172) failed for player {}",
@@ -292,7 +292,7 @@ pub fn use_labtransfer(cn: usize, nr: i32, exp: i32) -> bool {
 
     // god_transfer_char(cn, 174, 166): transfer player (assume function exists)
     if !God::transfer_char(cn, 174, 166) {
-        State::with(|state| {
+        GameState::with_mut(|state| {
             state.do_character_log(
                 cn,
                 FontColor::Red,
@@ -507,7 +507,7 @@ pub fn show_time(cn: usize) {
     let day_suf = ordinal_suffix(day);
     let month_suf = ordinal_suffix(month);
 
-    State::with(|state| {
+    GameState::with_mut(|state| {
         state.do_character_log(
             cn,
             core::types::FontColor::Yellow,

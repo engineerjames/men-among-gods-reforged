@@ -1,13 +1,17 @@
 use core::area::AREAS;
 
-use crate::repository::Repository;
+use crate::game_state::GameState;
 
 pub fn is_in_pentagram_quest(cn: usize) -> bool {
+    GameState::with_mut(|gs| is_in_pentagram_quest_gs(gs, cn))
+}
+
+pub fn is_in_pentagram_quest_gs(gs: &mut GameState, cn: usize) -> bool {
     if !(1..crate::core::constants::MAXCHARS).contains(&cn) {
         return false;
     }
 
-    let coords = Repository::with_characters(|ch| (ch[cn].x as i32, ch[cn].y as i32));
+    let coords = (gs.characters[cn].x as i32, gs.characters[cn].y as i32);
     let x = coords.0;
     let y = coords.1;
 
@@ -24,11 +28,15 @@ pub fn is_in_pentagram_quest(cn: usize) -> bool {
 // Unused in original implementation as well
 #[allow(dead_code)]
 pub fn get_area(cn: usize, verbose: bool) -> String {
+    GameState::with_mut(|gs| get_area_gs(gs, cn, verbose))
+}
+
+pub fn get_area_gs(gs: &mut GameState, cn: usize, verbose: bool) -> String {
     if !(1..crate::core::constants::MAXCHARS).contains(&cn) {
         return String::new();
     }
 
-    let (x, y) = Repository::with_characters(|ch| (ch[cn].x as i32, ch[cn].y as i32));
+    let (x, y) = (gs.characters[cn].x as i32, gs.characters[cn].y as i32);
     let mut buf = String::new();
     let mut first = true;
 

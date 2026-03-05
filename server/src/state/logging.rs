@@ -628,7 +628,7 @@ impl GameState {
             let can_see = self.do_char_can_see(npc, cn);
 
             if can_see != 0 {
-                npc_hear(npc, cn, text);
+                npc_hear(self, npc, cn, text);
             }
         }
     }

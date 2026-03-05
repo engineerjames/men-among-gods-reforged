@@ -160,7 +160,7 @@ impl Server {
             return;
         }
 
-        God::take_from_char(item_idx, cn);
+        God::take_from_char_gs(gs, item_idx, cn);
         gs.items[item_idx].used = core::constants::USE_EMPTY;
 
         log::warn!(
@@ -245,12 +245,12 @@ impl Server {
                 gs.characters[i].get_name(),
             );
 
-            player::plr_logout(i, 0, crate::enums::LogoutReason::Shutdown);
+            player::plr_logout(gs, i, 0, crate::enums::LogoutReason::Shutdown);
         }
 
         // Initialize subsystems
-        Labyrinth9::initialize()?;
-        populate::reset_changed_items();
+        Labyrinth9::initialize(gs)?;
+        populate::reset_changed_items(gs);
 
         log::info!("Checking for lab items on players...");
         for n in 1..core::constants::MAXITEM {
@@ -459,7 +459,7 @@ impl Server {
                 continue;
             }
 
-            player::plr_tick(n);
+            player::plr_tick(gs, n);
 
             if is_normal {
                 online += 1;
@@ -488,7 +488,7 @@ impl Server {
                     break;
                 }
 
-                player::plr_cmd(n);
+                player::plr_cmd(gs, n);
 
                 Self::with_players_mut(|players| {
                     players[n].in_len -= 16;
@@ -497,7 +497,7 @@ impl Server {
                 });
             }
 
-            player::plr_idle(n);
+            player::plr_idle(gs, n);
         }
 
         // Do login stuff for players not in normal state
@@ -513,7 +513,7 @@ impl Server {
                 continue;
             }
 
-            player::plr_state(n);
+            player::plr_state(gs, n);
         }
 
         // Send changes to players in normal state
@@ -529,8 +529,8 @@ impl Server {
                 continue;
             }
 
-            player::plr_getmap(n);
-            player::plr_change(n);
+            player::plr_getmap(gs, n);
+            player::plr_change(gs, n);
         }
 
         // Let characters act
@@ -581,7 +581,7 @@ impl Server {
                         gs.characters[n].data[98] += 1;
                         if gs.characters[n].data[98] > (core::constants::TICKS * 60 * 30) {
                             log::info!("Removing lost body for character {}", n);
-                            God::destroy_items(n);
+                            God::destroy_items_gs(gs, n);
                             gs.characters[n].used = core::constants::USE_EMPTY;
                             continue;
                         }
@@ -639,7 +639,7 @@ impl Server {
                     }
                 }
 
-                player::plr_act(n)
+                player::plr_act(gs, n)
             }
 
             State::with(|state| {
@@ -654,8 +654,8 @@ impl Server {
         gs.globals.players_online = plon;
 
         // Run subsystem ticks
-        populate::pop_tick();
-        EffectManager::effect_tick();
+        populate::pop_tick(gs);
+        EffectManager::effect_tick(gs);
         driver::item_tick();
 
         self.global_tick(gs);
@@ -809,7 +809,7 @@ impl Server {
                 cn
             );
             // Best-effort: destroy carried items and mark as unused
-            God::destroy_items(cn);
+            God::destroy_items_gs(gs, cn);
             gs.characters[cn].used = core::constants::USE_EMPTY;
             return false;
         }
@@ -828,7 +828,7 @@ impl Server {
             if map_ch != 0 {
                 // Try to drop character items near their position as in original
                 let (cx, cy) = (gs.characters[cn].x as usize, gs.characters[cn].y as usize);
-                if !God::drop_char_fuzzy_large(cn, cx, cy, cx, cy) {
+                if !God::drop_char_fuzzy_large_gs(gs, cn, cx, cy, cx, cy) {
                     // couldn't drop items; leave as-is (original tried a few options)
                 }
             } else {
@@ -1484,7 +1484,7 @@ impl Server {
                         players[idx].ltick = 0;
                         players[idx].rtick = 0;
                         players[idx].zs = None;
-                        player::plr_logout(cn, idx, crate::enums::LogoutReason::Unknown);
+                        player::plr_logout(gs, cn, idx, crate::enums::LogoutReason::Unknown);
                     }
                     Ok(len) => {
                         players[idx].in_len += len;
@@ -1500,7 +1500,7 @@ impl Server {
                         players[idx].ltick = 0;
                         players[idx].rtick = 0;
                         players[idx].zs = None;
-                        player::plr_logout(cn, idx, crate::enums::LogoutReason::Unknown);
+                        player::plr_logout(gs, cn, idx, crate::enums::LogoutReason::Unknown);
                     }
                 }
             }
@@ -1556,7 +1556,7 @@ impl Server {
                         players[idx].ltick = 0;
                         players[idx].rtick = 0;
                         players[idx].zs = None;
-                        player::plr_logout(cn, idx, crate::enums::LogoutReason::Unknown);
+                        player::plr_logout(gs, cn, idx, crate::enums::LogoutReason::Unknown);
                     }
                     Ok(ret) => {
                         gs.globals.send += ret as i64;
@@ -1575,7 +1575,7 @@ impl Server {
                         players[idx].ltick = 0;
                         players[idx].rtick = 0;
                         players[idx].zs = None;
-                        player::plr_logout(cn, idx, crate::enums::LogoutReason::Unknown);
+                        player::plr_logout(gs, cn, idx, crate::enums::LogoutReason::Unknown);
                     }
                 }
             }

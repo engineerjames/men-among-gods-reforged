@@ -12,6 +12,7 @@ use {core::constants::CharacterFlags, core::constants::ItemFlags};
 use crate::{
     driver::{self, use_item},
     effect::EffectManager,
+    game_state::GameState,
     god::God,
     helpers, player,
     repository::Repository,
@@ -20,7 +21,7 @@ use crate::{
 
 /// Port of `init_lights` from `populate.cpp`
 /// Initialize lighting on the map
-pub fn init_lights() {
+pub fn init_lights(gs: &mut GameState) {
     let mut cnt1 = 0;
     let mut cnt2 = 0;
 
@@ -28,10 +29,8 @@ pub fn init_lights() {
     for y in 0..SERVER_MAPY as usize {
         for x in 0..SERVER_MAPX as usize {
             let m = x + y * SERVER_MAPX as usize;
-            Repository::with_map_mut(|map| {
-                map[m].light = 0;
-                map[m].dlight = 0;
-            });
+            gs.map[m].light = 0;
+            gs.map[m].dlight = 0;
         }
     }
 
@@ -41,42 +40,32 @@ pub fn init_lights() {
             let m = x + y * SERVER_MAPX as usize;
 
             // Compute daylight for indoor tiles first
-            let is_indoors = Repository::with_map(|map| map[m].flags & MF_INDOORS as u64 != 0);
+            let is_indoors = gs.map[m].flags & MF_INDOORS as u64 != 0;
 
             if is_indoors {
-                State::with_mut(|state| {
-                    state.compute_dlight(x as i32, y as i32);
-                });
+                gs.compute_dlight(x as i32, y as i32);
                 cnt2 += 1;
             }
 
             // Then add light from items
-            let in_id = Repository::with_map(|map| map[m].it);
+            let in_id = gs.map[m].it;
 
             if in_id == 0 {
                 continue;
             }
 
-            let (active, light_active, light_inactive) = Repository::with_items(|items| {
-                (
-                    items[in_id as usize].active,
-                    items[in_id as usize].light[1],
-                    items[in_id as usize].light[0],
-                )
-            });
+            let active = gs.items[in_id as usize].active;
+            let light_active = gs.items[in_id as usize].light[1];
+            let light_inactive = gs.items[in_id as usize].light[0];
 
             if active != 0 {
                 if light_active != 0 {
-                    State::with_mut(|state| {
-                        state.do_add_light(x as i32, y as i32, light_active as i32);
-                    });
+                    gs.do_add_light(x as i32, y as i32, light_active as i32);
                     cnt1 += 1;
                 }
             } else {
                 if light_inactive != 0 {
-                    State::with_mut(|state| {
-                        state.do_add_light(x as i32, y as i32, light_inactive as i32);
-                    });
+                    gs.do_add_light(x as i32, y as i32, light_inactive as i32);
                     cnt1 += 1;
                 }
             }
@@ -88,6 +77,10 @@ pub fn init_lights() {
 
 /// Port of `pop_create_item` from `populate.cpp`
 /// Creates items for NPCs based on alignment and template
+pub fn pop_create_item_gs(_gs: &mut GameState, temp: usize, cn: usize) -> usize {
+    pop_create_item(temp, cn)
+}
+
 pub fn pop_create_item(temp: usize, cn: usize) -> usize {
     let mut in_id = 0;
     let alignment = Repository::with_characters(|characters| characters[cn].alignment);
@@ -1034,7 +1027,7 @@ pub fn skillcost(val: i32, dif: i32, start: i32) -> i32 {
 
 /// Port of `pop_skill` from `populate.cpp`
 /// Updates skills for all characters
-pub fn pop_skill() {
+pub fn pop_skill(_gs: &mut GameState) {
     for cn in 1..MAXCHARS {
         let is_player = Repository::with_characters(|characters| {
             (characters[cn].flags & CharacterFlags::Player.bits()) != 0
@@ -1184,7 +1177,7 @@ pub fn reset_item(n: usize) {
 
 /// Port of `reset_changed_items` from `populate.cpp`
 /// Resets a predefined list of changed items
-pub fn reset_changed_items() {
+pub fn reset_changed_items(_gs: &mut GameState) {
     let changelist: Vec<usize> = vec![];
 
     for n in changelist {
@@ -1194,7 +1187,7 @@ pub fn reset_changed_items() {
 
 /// Port of `pop_tick` from `populate.cpp`
 /// Handles population ticking and resets
-pub fn pop_tick() {
+pub fn pop_tick(_gs: &mut GameState) {
     const RESETTICKER: u32 = TICKS as u32 * 60;
 
     let ticker = Repository::with_globals(|globals| globals.ticker) as u32;
@@ -1234,7 +1227,7 @@ pub fn pop_reset_all() {
 
 /// Port of `pop_wipe` from `populate.cpp`
 /// Wipes all dynamic game data
-pub fn pop_wipe() {
+pub fn pop_wipe(_gs: &mut GameState) {
     // Clear all characters
     for n in 1..MAXCHARS {
         let is_player = Repository::with_characters(|characters| {
@@ -1326,7 +1319,7 @@ pub fn pop_load() {
 
 /// Port of `populate` from `populate.cpp`
 /// Populates the world with NPCs
-pub fn populate() {
+pub fn populate(_gs: &mut GameState) {
     log::info!("Populating world...");
 
     // Iterate through all character templates and spawn respawnable NPCs
@@ -1366,7 +1359,7 @@ pub fn pop_load_char(nr: usize) {
 
 /// Port of `pop_load_all_chars` from `populate.cpp`
 /// Loads all characters from disk
-pub fn pop_load_all_chars() {
+pub fn pop_load_all_chars(_gs: &mut GameState) {
     log::info!("Loading all characters...");
 
     for nr in 1..MAXCHARS {
@@ -1378,7 +1371,7 @@ pub fn pop_load_all_chars() {
 
 /// Port of `pop_save_all_chars` from `populate.cpp`
 /// Saves all characters to disk
-pub fn pop_save_all_chars() {
+pub fn pop_save_all_chars(_gs: &mut GameState) {
     log::info!("Saving all characters...");
 
     for nr in 1..MAXCHARS {

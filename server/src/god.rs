@@ -8,12 +8,34 @@ use core::{
 };
 
 use crate::{
-    area, chlog, driver, effect::EffectManager, enums::LogoutReason, helpers, player, populate,
-    repository::Repository, server::Server, state::State,
+    area, chlog, driver, effect::EffectManager, enums::LogoutReason, game_state::GameState,
+    helpers, player, populate, repository::Repository, server::Server, state::State,
 };
 
 pub struct God {}
 impl God {
+    /// Transitional Phase-3 entry point for taking an item from a character.
+    pub fn take_from_char_gs(_gs: &mut GameState, item_id: usize, cn: usize) -> bool {
+        Self::take_from_char(item_id, cn)
+    }
+
+    /// Transitional Phase-3 entry point for destroying a character's carried/worn items.
+    pub fn destroy_items_gs(_gs: &mut GameState, char_id: usize) {
+        Self::destroy_items(char_id)
+    }
+
+    /// Transitional Phase-3 entry point for fuzzy large character drop.
+    pub fn drop_char_fuzzy_large_gs(
+        _gs: &mut GameState,
+        character_id: usize,
+        x: usize,
+        y: usize,
+        backup_x: usize,
+        backup_y: usize,
+    ) -> bool {
+        Self::drop_char_fuzzy_large(character_id, x, y, backup_x, backup_y)
+    }
+
     /// Port of `create_item(int template_id)` from `svr_god.cpp`.
     ///
     /// Create a new item from the specified template. Returns the newly
@@ -3710,7 +3732,9 @@ impl God {
         });
 
         chlog!(cn, "Entered tavern and will be logged out.");
-        player::plr_logout(cn, player_id, LogoutReason::Tavern);
+        GameState::with_mut(|gs| {
+            player::plr_logout(gs, cn, player_id, LogoutReason::Tavern);
+        });
     }
 
     /// Admin command used to adjust a character's experience. Only
@@ -4060,7 +4084,9 @@ impl God {
             let name_str = c_string_to_str(&character_name);
 
             Repository::with_characters(|ch| {
-                player::plr_logout(co, ch[co].player as usize, LogoutReason::Shutdown);
+                GameState::with_mut(|gs| {
+                    player::plr_logout(gs, co, ch[co].player as usize, LogoutReason::Shutdown);
+                });
             });
 
             Repository::with_characters_mut(|characters| {
@@ -4145,7 +4171,9 @@ impl God {
         let name_str = c_string_to_str(&character_name);
 
         Repository::with_characters(|ch| {
-            player::plr_logout(co, ch[co].player as usize, LogoutReason::IdleTooLong);
+            GameState::with_mut(|gs| {
+                player::plr_logout(gs, co, ch[co].player as usize, LogoutReason::IdleTooLong);
+            });
         });
 
         State::with(|state| {
@@ -4928,7 +4956,9 @@ impl God {
                 }
             }
 
-            player::plr_logout(cn, nr as usize, LogoutReason::Usurp);
+            GameState::with_mut(|gs| {
+                player::plr_logout(gs, cn, nr as usize, LogoutReason::Usurp);
+            });
 
             characters[co].set_do_update_flags();
         });

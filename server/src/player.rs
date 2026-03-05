@@ -11,8 +11,9 @@ use core::{
 };
 
 use crate::{
-    driver, enums, god::God, helpers, keydb, network_manager::NetworkManager,
-    repository::Repository, server::Server, state::State, types::cmap::CMap,
+    driver, enums, game_state::GameState, god::God, helpers, keydb,
+    network_manager::NetworkManager, repository::Repository, server::Server, state::State,
+    types::cmap::CMap,
 };
 
 /// Port of `plr_logout(int cn, int player_id, LogoutReason reason)` from `svr_tick.cpp`
@@ -25,7 +26,12 @@ use crate::{
 /// * `character_id` - Character index being logged out (0 if none, interpreted as "no character")
 /// * `player_id` - Associated player slot id (0 if none, interpreted as "any player")
 /// * `reason` - Reason for logout (enum)
-pub fn plr_logout(character_id: usize, player_id: usize, reason: enums::LogoutReason) {
+pub fn plr_logout(
+    _gs: &mut GameState,
+    character_id: usize,
+    player_id: usize,
+    reason: enums::LogoutReason,
+) {
     let player_id = if player_id < core::constants::MAXPLAYER {
         player_id
     } else {
@@ -68,7 +74,7 @@ pub fn plr_logout(character_id: usize, player_id: usize, reason: enums::LogoutRe
         });
 
         if let Some(co) = should_logout_co {
-            plr_logout(co, 0, enums::LogoutReason::Shutdown);
+            plr_logout(_gs, co, 0, enums::LogoutReason::Shutdown);
         }
     }
 
@@ -593,7 +599,9 @@ pub fn plr_map_set(cn: usize) {
             log::info!("Character {} entered tavern", cn);
 
             let player_id = Repository::with_characters(|characters| characters[cn].player);
-            plr_logout(cn, player_id as usize, enums::LogoutReason::Tavern);
+            GameState::with_mut(|gs| {
+                plr_logout(gs, cn, player_id as usize, enums::LogoutReason::Tavern);
+            });
             return;
         }
 
@@ -2088,7 +2096,7 @@ pub fn plr_doact(cn: usize) {
 ///
 /// # Arguments
 /// * `cn` - Character index to process
-pub fn plr_act(cn: usize) {
+pub fn plr_act(_gs: &mut GameState, cn: usize) {
     let (stunned, flags, status) = Repository::with_characters(|characters| {
         (
             characters[cn].stunned,
@@ -2540,7 +2548,7 @@ pub fn plr_clear_map() {
 ///
 /// # Arguments
 /// * `nr` - Player slot index requesting the map update
-pub fn plr_getmap(nr: usize) {
+pub fn plr_getmap(_gs: &mut GameState, nr: usize) {
     plr_getmap_complete(nr);
 }
 
@@ -2917,7 +2925,7 @@ pub fn plr_getmap_complete(nr: usize) {
 
 /// Port of `plr_state` from `svr_tick.cpp`
 /// Handles player state transitions (login, exit, timeouts)
-pub fn plr_state(nr: usize) {
+pub fn plr_state(gs: &mut GameState, nr: usize) {
     let (ticker, lasttick, state) = Repository::with_globals(|globals| {
         Server::with_players(|players| {
             (
@@ -2943,16 +2951,16 @@ pub fn plr_state(nr: usize) {
     // Handle idle timeout - logout after 60 seconds
     if ticker.wrapping_sub(lasttick) > core::constants::TICKS * 60 {
         log::info!("Idle timeout for player {}", nr);
-        plr_logout(0, nr, enums::LogoutReason::IdleTooLong);
+        plr_logout(gs, 0, nr, enums::LogoutReason::IdleTooLong);
         return;
     }
 
     match state {
         state if state == core::constants::ST_NEWLOGIN => {
-            plr_newlogin(nr);
+            plr_newlogin(gs, nr);
         }
         state if state == core::constants::ST_LOGIN => {
-            plr_login(nr);
+            plr_login(gs, nr);
         }
         state if state == core::constants::ST_NEWCAP => {
             // Timeout after 10 seconds, go back to NEWLOGIN
@@ -2990,14 +2998,14 @@ pub fn plr_state(nr: usize) {
 
 /// Port of `plr_newlogin` from `svr_tick.cpp`
 /// Handles new player login (stub - to be implemented)
-fn plr_newlogin(nr: usize) {
+fn plr_newlogin(gs: &mut GameState, nr: usize) {
     // Port of C++ `plr_newlogin` from `svr_tick.cpp`.
 
     // version check
     let version = Server::with_players(|players| players[nr].version as u32);
     if version < core::constants::MINVERSION {
         log::warn!("Client too old ({}). Logout demanded", version);
-        plr_logout(0, nr, enums::LogoutReason::VersionMismatch);
+        plr_logout(gs, 0, nr, enums::LogoutReason::VersionMismatch);
         return;
     }
 
@@ -3005,7 +3013,7 @@ fn plr_newlogin(nr: usize) {
     let addr = Server::with_players(|players| players[nr].addr);
     if God::is_banned(addr as i32) {
         log::info!("Banned, sent away");
-        plr_logout(0, nr, enums::LogoutReason::Kicked);
+        plr_logout(gs, 0, nr, enums::LogoutReason::Kicked);
         return;
     }
 
@@ -3023,7 +3031,7 @@ fn plr_newlogin(nr: usize) {
         Some(v) => v as usize,
         None => {
             log::error!("plr_newlogin: failed to create character");
-            plr_logout(0, nr, enums::LogoutReason::Failure);
+            plr_logout(gs, 0, nr, enums::LogoutReason::Failure);
             return;
         }
     };
@@ -3064,7 +3072,7 @@ fn plr_newlogin(nr: usize) {
         core::constants::HOME_MERCENARY_Y as usize,
     ) {
         log::error!("plr_newlogin(): could not drop new character");
-        plr_logout(cn, nr, enums::LogoutReason::NoRoom);
+        plr_logout(gs, cn, nr, enums::LogoutReason::NoRoom);
         Repository::with_characters_mut(|characters| {
             characters[cn].used = core::constants::USE_EMPTY;
         });
@@ -3196,12 +3204,12 @@ fn plr_newlogin(nr: usize) {
 
 /// Port of `plr_login` from `svr_tick.cpp`
 /// Handles existing player login (stub - to be implemented)
-fn plr_login(nr: usize) {
+fn plr_login(gs: &mut GameState, nr: usize) {
     // version check
     let version = Server::with_players(|players| players[nr].version as u32);
     if version < core::constants::MINVERSION {
         log::warn!("Client too old ({}). Logout demanded", version);
-        plr_logout(0, nr, enums::LogoutReason::VersionMismatch);
+        plr_logout(gs, 0, nr, enums::LogoutReason::VersionMismatch);
         return;
     }
 
@@ -3213,7 +3221,7 @@ fn plr_login(nr: usize) {
             Ok(cn) => cn,
             Err(reason) => {
                 log::warn!("API login denied: {:?}", reason);
-                plr_logout(0, nr, reason);
+                plr_logout(gs, 0, nr, reason);
                 return;
             }
         };
@@ -3234,7 +3242,7 @@ fn plr_login(nr: usize) {
 
     if cn == 0 || cn >= core::constants::MAXCHARS {
         log::warn!("Login as {} denied (illegal cn)", cn);
-        plr_logout(0, nr, enums::LogoutReason::ParamsInvalid);
+        plr_logout(gs, 0, nr, enums::LogoutReason::ParamsInvalid);
         return;
     }
 
@@ -3251,7 +3259,7 @@ fn plr_login(nr: usize) {
 
         if !pass_ok {
             log::warn!("Login as {} denied (pass1/pass2)", cn);
-            plr_logout(0, nr, enums::LogoutReason::PasswordIncorrect);
+            plr_logout(gs, 0, nr, enums::LogoutReason::PasswordIncorrect);
             return;
         }
 
@@ -3269,7 +3277,7 @@ fn plr_login(nr: usize) {
 
         if has_passwd_mismatch {
             log::warn!("Login as {} denied (password)", cn);
-            plr_logout(0, nr, enums::LogoutReason::PasswordIncorrect);
+            plr_logout(gs, 0, nr, enums::LogoutReason::PasswordIncorrect);
             return;
         }
     }
@@ -3279,7 +3287,7 @@ fn plr_login(nr: usize) {
         Repository::with_characters(|characters| characters[cn].used == core::constants::USE_EMPTY);
     if is_deleted {
         log::warn!("Login as {} denied (deleted)", cn);
-        plr_logout(0, nr, enums::LogoutReason::PasswordIncorrect);
+        plr_logout(gs, 0, nr, enums::LogoutReason::PasswordIncorrect);
         return;
     }
 
@@ -3304,7 +3312,7 @@ fn plr_login(nr: usize) {
             && active_player < core::constants::MAXPLAYER
             && Server::with_players(|players| players[active_player].sock.is_some());
         if should_kick {
-            plr_logout(cn, active_player, enums::LogoutReason::IdleTooLong);
+            plr_logout(gs, cn, active_player, enums::LogoutReason::IdleTooLong);
         } else {
             log::warn!(
                 "Already-active character {} has stale/invalid active_player={} (current_player={}); continuing",
@@ -3321,7 +3329,7 @@ fn plr_login(nr: usize) {
     });
     if is_kicked {
         log::warn!("Login as {} denied (kicked)", cn);
-        plr_logout(0, nr, enums::LogoutReason::Kicked);
+        plr_logout(gs, 0, nr, enums::LogoutReason::Kicked);
         return;
     }
 
@@ -3332,7 +3340,7 @@ fn plr_login(nr: usize) {
     });
     if !exempt && God::is_banned(banned as i32) {
         log::info!("{} is banned, sent away", cn);
-        plr_logout(0, nr, enums::LogoutReason::Kicked);
+        plr_logout(gs, 0, nr, enums::LogoutReason::Kicked);
         return;
     }
 
@@ -3419,7 +3427,7 @@ fn plr_login(nr: usize) {
         && !God::drop_char_fuzzy_large(cn, tav_x, tav_y + 3, tav_x, tav_y)
     {
         log::error!("plr_login(): could not drop new character");
-        plr_logout(cn, nr, enums::LogoutReason::NoRoom);
+        plr_logout(gs, cn, nr, enums::LogoutReason::NoRoom);
         return;
     }
 
@@ -3643,7 +3651,7 @@ fn resolve_api_login_character(
 
 /// Port of `plr_change` from `svr_tick.cpp`
 /// Sends changed player data to the client
-pub fn plr_change(nr: usize) {
+pub fn plr_change(_gs: &mut GameState, nr: usize) {
     let cn = Server::with_players(|players| players[nr].usnr);
 
     if cn == 0 || cn >= core::constants::MAXCHARS {
@@ -4869,7 +4877,7 @@ fn plr_change_target(nr: usize, cn: usize) {
 
 /// Port of `plr_tick` from `svr_tick.cpp`
 /// Handles player tick processing (lag detection and stoning)
-pub fn plr_tick(nr: usize) {
+pub fn plr_tick(_gs: &mut GameState, nr: usize) {
     // Increment local tick counter
     Server::with_players_mut(|players| {
         players[nr].ltick = players[nr].ltick.wrapping_add(1);
@@ -4963,7 +4971,7 @@ fn stone_gc(cn: usize, mode: bool) {
 
 /// Port of `plr_idle` from `svr_tick.cpp`
 /// Handles idle timeout checking for players
-pub fn plr_idle(nr: usize) {
+pub fn plr_idle(gs: &mut GameState, nr: usize) {
     let (ticker, lasttick, lasttick2, state, usnr) = Repository::with_globals(|globals| {
         Server::with_players(|players| {
             (
@@ -4979,7 +4987,7 @@ pub fn plr_idle(nr: usize) {
     // Check protocol level idle (60 seconds)
     if ticker.wrapping_sub(lasttick) > (core::constants::TICKS * 60) as u32 {
         log::info!("Player {} idle too long (protocol level)", nr);
-        plr_logout(usnr, nr, enums::LogoutReason::IdleTooLong);
+        plr_logout(gs, usnr, nr, enums::LogoutReason::IdleTooLong);
     }
 
     if state == core::constants::ST_EXIT {
@@ -4989,13 +4997,13 @@ pub fn plr_idle(nr: usize) {
     // Check player level idle (15 minutes)
     if ticker.wrapping_sub(lasttick2) > (core::constants::TICKS * 60 * 15) as u32 {
         log::info!("Player {} idle too long (player level)", nr);
-        plr_logout(usnr, nr, enums::LogoutReason::IdleTooLong);
+        plr_logout(gs, usnr, nr, enums::LogoutReason::IdleTooLong);
     }
 }
 
 /// Port of `plr_cmd` from `svr_tick.cpp`
 /// Dispatches player commands from inbuf
-pub fn plr_cmd(nr: usize) {
+pub fn plr_cmd(gs: &mut GameState, nr: usize) {
     let cmd = Server::with_players(|players| players[nr].inbuf[0]);
 
     // Handle pre-login commands (mirrors the initial switch in the original C++).
@@ -5006,10 +5014,10 @@ pub fn plr_cmd(nr: usize) {
             plr_challenge_newlogin(nr);
         }
         core::constants::CL_CHALLENGE => {
-            plr_challenge(nr);
+            plr_challenge(gs, nr);
         }
         core::constants::CL_LOGIN => {
-            plr_challenge_login(nr);
+            plr_challenge_login(gs, nr);
         }
         core::constants::CL_API_LOGIN => {
             plr_challenge_api_login(nr);
@@ -5199,7 +5207,7 @@ pub fn plr_cmd(nr: usize) {
         }
         core::constants::CL_CMD_EXIT => {
             log::debug!("PLR_CMD_EXIT received for player {}", character_name);
-            plr_cmd_exit(nr);
+            plr_cmd_exit(gs, nr);
             return;
         }
         _ => {}
@@ -5296,7 +5304,7 @@ fn plr_challenge_newlogin(nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index handling the challenge response
-fn plr_challenge(nr: usize) {
+fn plr_challenge(gs: &mut GameState, nr: usize) {
     let (challenge, state) =
         Server::with_players(|players| (players[nr].challenge, players[nr].state));
 
@@ -5341,7 +5349,7 @@ fn plr_challenge(nr: usize) {
     if response != xcrypt(challenge) {
         log::warn!("Player {} challenge failed", nr);
         let usnr = Server::with_players(|players| players[nr].usnr);
-        plr_logout(usnr, nr, enums::LogoutReason::ChallengeFailed);
+        plr_logout(gs, usnr, nr, enums::LogoutReason::ChallengeFailed);
         return;
     }
 
@@ -5389,7 +5397,7 @@ fn plr_challenge(nr: usize) {
 /// `ST_LOGIN_CHALLENGE` state, validates the requested character index
 /// supplied by the client, stores `pass1`/`pass2` fragments and sends the
 /// challenge (and mod packets) back to the client.
-fn plr_challenge_login(nr: usize) {
+fn plr_challenge_login(gs: &mut GameState, nr: usize) {
     log::debug!("Player {} challenge_login", nr);
 
     // Generate random challenge value (0x3fffffff max, ensure non-zero)
@@ -5429,7 +5437,7 @@ fn plr_challenge_login(nr: usize) {
 
     if !(1..core::constants::MAXCHARS).contains(&cn) {
         log::warn!("Player {} sent wrong cn {} in challenge login", nr, cn);
-        plr_logout(0, nr, enums::LogoutReason::ChallengeFailed);
+        plr_logout(gs, 0, nr, enums::LogoutReason::ChallengeFailed);
         return;
     }
 
@@ -6746,10 +6754,10 @@ fn plr_cmd_inv(nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index pressing F12
-fn plr_cmd_exit(nr: usize) {
+fn plr_cmd_exit(gs: &mut GameState, nr: usize) {
     log::info!("Player {} pressed F12", nr);
     let cn = Server::with_players(|players| players[nr].usnr);
-    plr_logout(cn, nr, enums::LogoutReason::Exit);
+    plr_logout(gs, cn, nr, enums::LogoutReason::Exit);
 }
 
 /// Handle shop command

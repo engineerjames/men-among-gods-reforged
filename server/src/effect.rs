@@ -1,6 +1,6 @@
 use core::{constants::CharacterFlags, string_operations::c_string_to_str};
 
-use crate::{god::God, helpers, player, populate, repository::Repository, state::State};
+use crate::{game_state::GameState, god::God, helpers, player, populate, repository::Repository};
 
 pub struct EffectManager {}
 
@@ -49,13 +49,12 @@ impl EffectManager {
 
     /// Port of `effect_tick(void)` from `svr_effect.cpp`
     /// Main effect processing function called every tick
-    pub fn effect_tick() {
+    pub fn effect_tick(gs: &mut GameState) {
         let mut cnt = 0;
 
         for n in 1..core::constants::MAXEFFECT {
-            let (used, effect_type) = Repository::with_effects(|effects| {
-                (effects[n].used, effects[n].effect_type as i32)
-            });
+            let used = gs.effects[n].used;
+            let effect_type = gs.effects[n].effect_type as i32;
 
             if used == core::constants::USE_EMPTY {
                 continue;
@@ -83,9 +82,7 @@ impl EffectManager {
             }
         }
 
-        Repository::with_globals_mut(|globals| {
-            globals.effect_cnt = cnt;
-        });
+        gs.globals.effect_cnt = cnt;
     }
 
     /// Type 1: Remove injury flag from map
@@ -527,7 +524,7 @@ impl EffectManager {
                                 items[in2 as usize].used = core::constants::USE_EMPTY;
                             });
                         }
-                        State::with_mut(|state| {
+                        GameState::with_mut(|state| {
                             state.reset_go(effects[n].data[0] as i32, effects[n].data[1] as i32);
                         });
                     }

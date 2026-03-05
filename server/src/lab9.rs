@@ -8,7 +8,7 @@
 use core::{constants::ItemFlags, types::Character};
 use std::sync::{OnceLock, RwLock};
 
-use crate::{god::God, helpers, repository::Repository, state::State};
+use crate::{game_state::GameState, god::God, helpers, repository::Repository, state::State};
 
 #[derive(Clone, Copy)]
 struct Destination {
@@ -369,7 +369,7 @@ impl Labyrinth9 {
         }
     }
 
-    pub fn initialize() -> Result<(), String> {
+    pub fn initialize(_gs: &mut GameState) -> Result<(), String> {
         log::info!("Initializing Labyrinth 9...");
         let lab = Labyrinth9::new();
         LABYRINTH9

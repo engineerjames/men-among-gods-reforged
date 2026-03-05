@@ -1,6 +1,8 @@
 use core::constants::{CT_COMPANION, NT_GOTMISS, SERVER_MAPX, SERVER_MAPY, TICKS};
 use core::string_operations::c_string_to_str;
 
+use crate::game_state::GameState;
+
 struct Know {
     word: [&'static str; 20],
     value: i32,
@@ -1913,6 +1915,11 @@ pub fn obey(cn: usize, co: usize) -> i32 {
     })
 }
 
+/// Transitional Phase-3 entry point for obedience checks with GameState in signature.
+pub fn obey_gs(_gs: &mut GameState, cn: usize, co: usize) -> i32 {
+    obey(cn, co)
+}
+
 /// Port of `answer_spellinfo(int cn, int co)` from `talk.cpp`
 ///
 /// Lists all active spells attached to the companion and speaks the name and remaining time.
@@ -2908,47 +2915,39 @@ fn replace_synonym(word: &mut String) {
 /// * `cn` - NPC character
 /// * `co` - Player who spoke to the NPC
 /// * `text` - Text that the player spoke
-pub fn npc_hear(cn: usize, co: usize, text: &str) {
+pub fn npc_hear(gs: &mut GameState, cn: usize, co: usize, text: &str) {
     // Check for stop keyword
-    let stop_keyword = Repository::with_characters(|characters| {
-        c_string_to_str(&characters[cn].text[6]).to_string()
-    });
+    let stop_keyword = c_string_to_str(&gs.characters[cn].text[6]).to_string();
 
     if !stop_keyword.is_empty() && text.eq_ignore_ascii_case(&stop_keyword) {
-        Repository::with_characters_mut(|characters| {
-            for n in 80..92 {
-                characters[cn].data[n] = 0;
-            }
-            characters[cn].attack_cn = 0;
-            characters[cn].goto_x = 0;
-            characters[cn].goto_y = 0;
-            characters[cn].misc_action = 0;
-            characters[cn].data[78] = 0;
+        for n in 80..92 {
+            gs.characters[cn].data[n] = 0;
+        }
+        gs.characters[cn].attack_cn = 0;
+        gs.characters[cn].goto_x = 0;
+        gs.characters[cn].goto_y = 0;
+        gs.characters[cn].misc_action = 0;
+        gs.characters[cn].data[78] = 0;
+        gs.characters[cn].data[27] = gs.globals.ticker;
 
-            let ticker = Repository::with_globals(|g| g.ticker);
-            characters[cn].data[27] = ticker;
-
-            let response = c_string_to_str(&characters[cn].text[7]).to_string();
-
-            if !response.is_empty() {
-                State::with(|state| {
-                    state.do_sayx(cn, &response);
-                });
-            }
-        });
+        let response = c_string_to_str(&gs.characters[cn].text[7]).to_string();
+        if !response.is_empty() {
+            gs.do_sayx(cn, &response);
+        }
         return;
     }
 
     // Don't talk to enemies
-    if obey(cn, co) == 0 {
-        let is_enemy = Repository::with_characters(|characters| {
+    if obey_gs(gs, cn, co) == 0 {
+        let mut is_enemy = false;
+        {
             for n in 80..92 {
-                if (characters[cn].data[n] & 0xffff) == co as i32 {
-                    return true;
+                if (gs.characters[cn].data[n] & 0xffff) == co as i32 {
+                    is_enemy = true;
+                    break;
                 }
             }
-            false
-        });
+        }
 
         if is_enemy {
             return;
@@ -2962,8 +2961,7 @@ pub fn npc_hear(cn: usize, co: usize, text: &str) {
     let mut name_mentioned = false;
 
     let text_lower = str_lower(text);
-    let npc_name_lower =
-        Repository::with_characters(|characters| str_lower(characters[cn].get_name()));
+    let npc_name_lower = str_lower(gs.characters[cn].get_name());
 
     for c in text.chars() {
         if c == '!' {
@@ -3013,13 +3011,9 @@ pub fn npc_hear(cn: usize, co: usize, text: &str) {
     let mut best_conf = 0;
     let mut best_nr = None;
 
-    let (npc_knowledge, npc_area, npc_temp) = Repository::with_characters(|characters| {
-        (
-            characters[cn].data[68],
-            characters[cn].data[72],
-            characters[cn].temp,
-        )
-    });
+    let npc_knowledge = gs.characters[cn].data[68];
+    let npc_area = gs.characters[cn].data[72];
+    let npc_temp = gs.characters[cn].temp;
 
     for (idx, know_entry) in KNOW.iter().enumerate() {
         // Check if NPC has the required knowledge, area, and temp
@@ -3096,23 +3090,17 @@ pub fn npc_hear(cn: usize, co: usize, text: &str) {
     }
 
     // Determine if NPC should talk
-    let talk_level = Repository::with_characters(|characters| {
-        characters[cn].data[core::constants::CHD_TALKATIVE]
-    }) + if name_mentioned { 1 } else { 0 }
-        + if obey(cn, co) != 0 { 20 } else { 0 };
+    let talk_level = gs.characters[cn].data[core::constants::CHD_TALKATIVE]
+        + if name_mentioned { 1 } else { 0 }
+        + if obey_gs(gs, cn, co) != 0 { 20 } else { 0 };
 
     if talk_level > 0 && best_conf > 0 {
         if let Some(nr) = best_nr {
             let know_entry = &KNOW[nr];
 
             if know_entry.special == 0 {
-                let answer = Repository::with_characters(|characters| {
-                    know_entry.answer.replace("%s", characters[co].get_name())
-                });
-
-                State::with(|state| {
-                    state.do_sayx(cn, &answer);
-                });
+                let answer = know_entry.answer.replace("%s", gs.characters[co].get_name());
+                gs.do_sayx(cn, &answer);
 
                 log::info!("Character {} answered \"{}\" with \"{}\"", cn, text, answer);
             } else {
@@ -3126,9 +3114,7 @@ pub fn npc_hear(cn: usize, co: usize, text: &str) {
             }
         }
     } else if name_mentioned && talk_level > 0 {
-        State::with(|state| {
-            state.do_sayx(cn, "I don't know about that.");
-        });
+        gs.do_sayx(cn, "I don't know about that.");
     }
 
     if best_conf <= 0 && talk_level > 0 {
