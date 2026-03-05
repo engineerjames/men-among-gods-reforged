@@ -656,7 +656,7 @@ impl Server {
         // Run subsystem ticks
         populate::pop_tick(gs);
         EffectManager::effect_tick(gs);
-        driver::item_tick();
+        driver::item_tick(gs);
 
         self.global_tick(gs);
     }

@@ -126,6 +126,126 @@ pub struct GameState {
 }
 
 impl GameState {
+    /// Transitional immutable accessor for `characters`.
+    pub fn with_characters<F, R>(f: F) -> R
+    where
+        F: FnOnce(&Vec<core::types::Character>) -> R,
+    {
+        Self::with(|gs| f(&gs.characters))
+    }
+
+    /// Transitional mutable accessor for `characters`.
+    pub fn with_characters_mut<F, R>(f: F) -> R
+    where
+        F: FnOnce(&mut Vec<core::types::Character>) -> R,
+    {
+        Self::with_mut(|gs| f(&mut gs.characters))
+    }
+
+    /// Transitional immutable accessor for `items`.
+    pub fn with_items<F, R>(f: F) -> R
+    where
+        F: FnOnce(&Vec<core::types::Item>) -> R,
+    {
+        Self::with(|gs| f(&gs.items))
+    }
+
+    /// Transitional mutable accessor for `items`.
+    pub fn with_items_mut<F, R>(f: F) -> R
+    where
+        F: FnOnce(&mut Vec<core::types::Item>) -> R,
+    {
+        Self::with_mut(|gs| f(&mut gs.items))
+    }
+
+    /// Transitional immutable accessor for `map`.
+    pub fn with_map<F, R>(f: F) -> R
+    where
+        F: FnOnce(&Vec<core::types::Map>) -> R,
+    {
+        Self::with(|gs| f(&gs.map))
+    }
+
+    /// Transitional mutable accessor for `map`.
+    pub fn with_map_mut<F, R>(f: F) -> R
+    where
+        F: FnOnce(&mut Vec<core::types::Map>) -> R,
+    {
+        Self::with_mut(|gs| f(&mut gs.map))
+    }
+
+    /// Transitional immutable accessor for `globals`.
+    pub fn with_globals<F, R>(f: F) -> R
+    where
+        F: FnOnce(&core::types::Global) -> R,
+    {
+        Self::with(|gs| f(&gs.globals))
+    }
+
+    /// Transitional mutable accessor for `globals`.
+    pub fn with_globals_mut<F, R>(f: F) -> R
+    where
+        F: FnOnce(&mut core::types::Global) -> R,
+    {
+        Self::with_mut(|gs| f(&mut gs.globals))
+    }
+
+    /// Transitional immutable accessor for `item_templates`.
+    pub fn with_item_templates<F, R>(f: F) -> R
+    where
+        F: FnOnce(&Vec<core::types::Item>) -> R,
+    {
+        Self::with(|gs| f(&gs.item_templates))
+    }
+
+    /// Transitional immutable accessor for `character_templates`.
+    pub fn with_character_templates<F, R>(f: F) -> R
+    where
+        F: FnOnce(&Vec<core::types::Character>) -> R,
+    {
+        Self::with(|gs| f(&gs.character_templates))
+    }
+
+    /// Transitional getter for `ice_cloak_clock`.
+    pub fn get_ice_cloak_clock() -> u32 {
+        Self::with_mut(|gs| gs.ice_cloak_clock)
+    }
+
+    /// Transitional setter for `ice_cloak_clock`.
+    pub fn set_ice_cloak_clock(value: u32) {
+        Self::with_mut(|gs| gs.ice_cloak_clock = value);
+    }
+
+    /// Transitional getter for `item_tick_expire_counter`.
+    pub fn get_item_tick_expire_counter() -> u32 {
+        Self::with_mut(|gs| gs.item_tick_expire_counter)
+    }
+
+    /// Transitional setter for `item_tick_expire_counter`.
+    pub fn set_item_tick_expire_counter(value: u32) {
+        Self::with_mut(|gs| gs.item_tick_expire_counter = value);
+    }
+
+    /// Transitional getter for `item_tick_gc_off`.
+    pub fn get_item_tick_gc_off() -> u32 {
+        Self::with_mut(|gs| gs.item_tick_gc_off)
+    }
+
+    /// Transitional setter for `item_tick_gc_off`.
+    pub fn set_item_tick_gc_off(value: u32) {
+        Self::with_mut(|gs| gs.item_tick_gc_off = value);
+    }
+
+    /// Transitional getter for `item_tick_gc_count`.
+    pub fn get_item_tick_gc_count() -> u32 {
+        Self::with_mut(|gs| gs.item_tick_gc_count)
+    }
+
+    /// Transitional setter for `item_tick_gc_count`.
+    pub fn set_item_tick_gc_count(value: u32) {
+        Self::with_mut(|gs| gs.item_tick_gc_count = value);
+    }
+
     /// Normalize MOTD text for safe client display.
     ///
     /// Applies the historical maximum length constraint to avoid client

@@ -523,7 +523,7 @@ impl GameState {
         let has_lookspecial = self.items[item_idx].flags & ItemFlags::IF_LOOKSPECIAL.bits() != 0;
 
         if has_lookspecial {
-            crate::driver::look_driver(cn, item_idx);
+            crate::driver::look_driver(self, cn, item_idx);
         } else {
             // Show item description
             let description = self.items[item_idx].description;

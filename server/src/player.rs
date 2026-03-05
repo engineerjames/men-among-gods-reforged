@@ -1545,7 +1545,7 @@ pub fn plr_wave(cn: usize) {
 ///
 /// # Arguments
 /// * `cn` - Character index using the item
-pub fn plr_use(cn: usize) {
+pub fn plr_use(gs: &mut GameState, cn: usize) {
     Repository::with_characters(|characters| {
         State::with(|state| {
             state.do_area_notify(
@@ -1624,7 +1624,7 @@ pub fn plr_use(cn: usize) {
         return;
     }
 
-    driver::use_driver(cn, in_id as usize, false);
+    driver::use_driver(gs, cn, in_id as usize, false);
 }
 
 /// Port of `plr_skill` from `svr_act.cpp`
@@ -1634,7 +1634,7 @@ pub fn plr_use(cn: usize) {
 ///
 /// # Arguments
 /// * `cn` - Character index using the skill
-pub fn plr_skill(cn: usize) {
+pub fn plr_skill(gs: &mut GameState, cn: usize) {
     Repository::with_characters(|characters| {
         State::with(|state| {
             state.do_area_notify(
@@ -1653,7 +1653,7 @@ pub fn plr_skill(cn: usize) {
 
     let skill_target = Repository::with_characters(|characters| characters[cn].skill_target2);
 
-    driver::skill_driver(cn, skill_target as i32);
+    driver::skill_driver(gs, cn, skill_target as i32);
 }
 
 /// Periodic driver invoked at a medium rate for a player.
@@ -1903,7 +1903,7 @@ pub fn plr_drop(cn: usize) {
 ///
 /// # Arguments
 /// * `cn` - Character index whose misc action to process
-pub fn plr_misc(cn: usize) {
+pub fn plr_misc(gs: &mut GameState, cn: usize) {
     let (status2, is_player) = Repository::with_characters(|characters| {
         (characters[cn].status2, characters[cn].is_player())
     });
@@ -1940,7 +1940,7 @@ pub fn plr_misc(cn: usize) {
             if is_player {
                 log::debug!("plr_misc: use action for char {}", cn);
             }
-            plr_use(cn);
+            plr_use(gs, cn);
         }
         5 => {
             if is_player {
@@ -1973,7 +1973,7 @@ pub fn plr_misc(cn: usize) {
             if is_player {
                 log::debug!("plr_misc: skill action for char {}", cn);
             }
-            plr_skill(cn);
+            plr_skill(gs, cn);
         }
         _ => {
             log::error!("plr_misc: unknown status2 {} for char {}", status2, cn);
@@ -2080,10 +2080,10 @@ pub fn plr_reset_status(cn: usize) {
 ///
 /// # Arguments
 /// * `cn` - Character index to perform driver actions for
-pub fn plr_doact(cn: usize) {
+pub fn plr_doact(gs: &mut GameState, cn: usize) {
     plr_reset_status(cn);
     if Repository::with_characters(|characters| characters[cn].group_active()) {
-        driver::driver(cn);
+        driver::driver(gs, cn);
     }
 }
 
@@ -2119,7 +2119,7 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
         // idle states: call idle and driver
         0..=7 => {
             driver::act_idle(cn);
-            plr_doact(cn);
+            plr_doact(_gs, cn);
         }
 
         // walk up: 16..22 increment, 23 execute
@@ -2132,7 +2132,7 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status = 16);
                 plr_move_up(cn);
-                plr_doact(cn);
+                plr_doact(_gs, cn);
             }
         }
 
@@ -2146,7 +2146,7 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status = 24);
                 plr_move_down(cn);
-                plr_doact(cn);
+                plr_doact(_gs, cn);
             }
         }
 
@@ -2160,7 +2160,7 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status = 32);
                 plr_move_left(cn);
-                plr_doact(cn);
+                plr_doact(_gs, cn);
             }
         }
 
@@ -2174,7 +2174,7 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status = 40);
                 plr_move_right(cn);
-                plr_doact(cn);
+                plr_doact(_gs, cn);
             }
         }
 
@@ -2188,7 +2188,7 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status = 48);
                 plr_move_leftup(cn);
-                plr_doact(cn);
+                plr_doact(_gs, cn);
             }
         }
 
@@ -2202,7 +2202,7 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status = 60);
                 plr_move_leftdown(cn);
-                plr_doact(cn);
+                plr_doact(_gs, cn);
             }
         }
 
@@ -2216,7 +2216,7 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status = 72);
                 plr_move_rightup(cn);
-                plr_doact(cn);
+                plr_doact(_gs, cn);
             }
         }
 
@@ -2230,7 +2230,7 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status = 84);
                 plr_move_rightdown(cn);
-                plr_doact(cn);
+                plr_doact(_gs, cn);
             }
         }
 
@@ -2244,7 +2244,7 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status = 96);
                 plr_turn_leftup(cn);
-                plr_doact(cn);
+                plr_doact(_gs, cn);
             }
         }
 
@@ -2257,7 +2257,7 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status = 96);
                 plr_turn_left(cn);
-                plr_doact(cn);
+                plr_doact(_gs, cn);
             }
         }
 
@@ -2270,7 +2270,7 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status = 104);
                 plr_turn_rightup(cn);
-                plr_doact(cn);
+                plr_doact(_gs, cn);
             }
         }
 
@@ -2283,7 +2283,7 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status = 108);
                 plr_turn_right(cn);
-                plr_doact(cn);
+                plr_doact(_gs, cn);
             }
         }
 
@@ -2296,7 +2296,7 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status = 112);
                 plr_turn_leftdown(cn);
-                plr_doact(cn);
+                plr_doact(_gs, cn);
             }
         }
 
@@ -2309,7 +2309,7 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status = 116);
                 plr_turn_left(cn);
-                plr_doact(cn);
+                plr_doact(_gs, cn);
             }
         }
 
@@ -2322,7 +2322,7 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status = 120);
                 plr_turn_rightdown(cn);
-                plr_doact(cn);
+                plr_doact(_gs, cn);
             }
         }
 
@@ -2335,7 +2335,7 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status = 124);
                 plr_turn_right(cn);
-                plr_doact(cn);
+                plr_doact(_gs, cn);
             }
         }
 
@@ -2348,7 +2348,7 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status = 128);
                 plr_turn_leftup(cn);
-                plr_doact(cn);
+                plr_doact(_gs, cn);
             }
         }
 
@@ -2361,7 +2361,7 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status = 132);
                 plr_turn_up(cn);
-                plr_doact(cn);
+                plr_doact(_gs, cn);
             }
         }
 
@@ -2374,7 +2374,7 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status = 136);
                 plr_turn_leftdown(cn);
-                plr_doact(cn);
+                plr_doact(_gs, cn);
             }
         }
 
@@ -2387,7 +2387,7 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status = 140);
                 plr_turn_down(cn);
-                plr_doact(cn);
+                plr_doact(_gs, cn);
             }
         }
 
@@ -2400,7 +2400,7 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status = 144);
                 plr_turn_rightup(cn);
-                plr_doact(cn);
+                plr_doact(_gs, cn);
             }
         }
 
@@ -2413,7 +2413,7 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status = 148);
                 plr_turn_up(cn);
-                plr_doact(cn);
+                plr_doact(_gs, cn);
             }
         }
 
@@ -2426,7 +2426,7 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status = 152);
                 plr_turn_rightdown(cn);
-                plr_doact(cn);
+                plr_doact(_gs, cn);
             }
         }
 
@@ -2439,7 +2439,7 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status = 156);
                 plr_turn_down(cn);
-                plr_doact(cn);
+                plr_doact(_gs, cn);
             }
         }
 
@@ -2452,8 +2452,8 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
         167 => {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status = 160);
-                plr_misc(cn);
-                plr_doact(cn);
+                plr_misc(_gs, cn);
+                plr_doact(_gs, cn);
             }
         }
 
@@ -2466,8 +2466,8 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
         175 => {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status = 168);
-                plr_misc(cn);
-                plr_doact(cn);
+                plr_misc(_gs, cn);
+                plr_doact(_gs, cn);
             }
         }
 
@@ -2480,8 +2480,8 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
         183 => {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status = 176);
-                plr_misc(cn);
-                plr_doact(cn);
+                plr_misc(_gs, cn);
+                plr_doact(_gs, cn);
             }
         }
 
@@ -2494,8 +2494,8 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
         191 => {
             if speedo(cn) != 0 {
                 Repository::with_characters_mut(|ch| ch[cn].status = 184);
-                plr_misc(cn);
-                plr_doact(cn);
+                plr_misc(_gs, cn);
+                plr_doact(_gs, cn);
             }
         }
 

@@ -1,6 +1,6 @@
+use crate::game_state::GameState;
 use crate::god::God;
 use crate::network_manager::NetworkManager;
-use crate::game_state::GameState;
 use crate::{driver, helpers};
 use core::constants::{CharacterFlags, CT_LGUARD};
 use core::string_operations::c_string_to_str;
@@ -69,7 +69,15 @@ impl GameState {
         if character_id == 0 || character_id as usize >= core::constants::MAXCHARS {
             return;
         }
-        driver::driver_msg(character_id as usize, notify_type, dat1, dat2, dat3, dat4);
+        driver::driver_msg(
+            self,
+            character_id as usize,
+            notify_type,
+            dat1,
+            dat2,
+            dat3,
+            dat4,
+        );
     }
 
     /// Finds the 3 closest NPCs to the shouter and notifies them.
@@ -109,7 +117,8 @@ impl GameState {
                     }
 
                     // TODO: This distance calculation seems incorrect potentially -- doublecheck
-                    let distance = (self.characters[cn].x as i32 - self.characters[co].x as i32).abs()
+                    let distance = (self.characters[cn].x as i32 - self.characters[co].x as i32)
+                        .abs()
                         + (self.characters[cn].y as i32 - self.characters[co].y as i32).abs();
 
                     if distance < best[0] {
@@ -130,14 +139,7 @@ impl GameState {
 
             for i in 0..bestn.len() {
                 if bestn[i] != 0 {
-                    self.do_notify_character(
-                        bestn[i] as u32,
-                        shout_type,
-                        dat1,
-                        dat2,
-                        dat3,
-                        dat4,
-                    );
+                    self.do_notify_character(bestn[i] as u32, shout_type, dat1, dat2, dat3, dat4);
                 }
             }
         } else {
@@ -227,8 +229,7 @@ impl GameState {
 
         if autoflag == 0 && !is_merchant && !is_body {
             // Rate limiting for players
-            let is_player =
-                self.characters[cn].flags & CharacterFlags::Player.bits() != 0;
+            let is_player = self.characters[cn].flags & CharacterFlags::Player.bits() != 0;
 
             if is_player {
                 self.characters[cn].data[71] += core::constants::CNTSAY;
@@ -261,8 +262,7 @@ impl GameState {
             let co_text0 = c_string_to_str(&mut self.characters[co].text[0]).to_string();
 
             if co_is_player && co_data0 != 0 {
-                let co_name =
-                    c_string_to_str(&mut self.characters[co].name).to_string();
+                let co_name = c_string_to_str(&mut self.characters[co].name).to_string();
 
                 if !co_text0.is_empty() {
                     self.do_character_log(
@@ -298,8 +298,7 @@ impl GameState {
             let cn_is_shutup = self.characters[cn].flags & CharacterFlags::ShutUp.bits() != 0;
 
             if godflag == 0 && cn != co && cn_is_player && !cn_is_invisible && !cn_is_shutup {
-                let cn_name =
-                    c_string_to_str(&mut self.characters[cn].name).to_string();
+                let cn_name = c_string_to_str(&mut self.characters[cn].name).to_string();
 
                 self.do_character_log(
                     co,
@@ -362,7 +361,8 @@ impl GameState {
 
             // Show Purple of Honor status
             let co_is_poh = self.characters[co].flags & CharacterFlags::Poh.bits() != 0;
-            let co_is_poh_leader = self.characters[co].flags & CharacterFlags::PohLeader.bits() != 0;
+            let co_is_poh_leader =
+                self.characters[co].flags & CharacterFlags::PohLeader.bits() != 0;
 
             if co_is_player && co_is_poh {
                 if co_is_poh_leader {
@@ -381,8 +381,7 @@ impl GameState {
             }
 
             // Show custom text[3] (player description/title)
-            let co_text3 =
-                c_string_to_str(&mut self.characters[co].text[3]).to_string();
+            let co_text3 = c_string_to_str(&mut self.characters[co].text[3]).to_string();
 
             if !co_text3.is_empty() && co_is_player {
                 self.do_character_log(cn, FontColor::Yellow, &format!("{}\n", co_text3));
@@ -415,7 +414,8 @@ impl GameState {
                 let worn_indices = [0, 2, 3, 5, 6, 7, 8];
                 for (i, &slot) in worn_indices.iter().enumerate() {
                     if self.characters[co].worn[slot] != 0 {
-                        sprites[i] = self.items[self.characters[co].worn[slot] as usize].sprite[0] as u16;
+                        sprites[i] =
+                            self.items[self.characters[co].worn[slot] as usize].sprite[0] as u16;
                     }
                 }
                 sprites
@@ -645,8 +645,7 @@ impl GameState {
                 for m in n..std::cmp::min(40, n + 2) {
                     let item_idx = self.characters[co].item[m];
                     let (sprite, price) = if item_idx != 0 {
-                        let spr =
-                            self.items[item_idx as usize].sprite[0];
+                        let spr = self.items[item_idx as usize].sprite[0];
                         let pr = if is_merchant {
                             let item_val = self.do_item_value(item_idx as usize) as i32;
                             self.barter(cn, item_val, 1)
@@ -679,8 +678,7 @@ impl GameState {
                 for m in n..std::cmp::min(20, n + 2) {
                     let item_idx = self.characters[co].worn[m];
                     let (sprite, price) = if item_idx != 0 && is_body {
-                        let spr =
-                            self.items[item_idx as usize].sprite[0];
+                        let spr = self.items[item_idx as usize].sprite[0];
                         (spr, 0)
                     } else {
                         (0, 0)
@@ -752,8 +750,7 @@ impl GameState {
             & (CharacterFlags::God | CharacterFlags::Imp | CharacterFlags::Usurp).bits()
             != 0;
 
-        let co_is_god =
-            self.characters[co].flags & CharacterFlags::God.bits() != 0;
+        let co_is_god = self.characters[co].flags & CharacterFlags::God.bits() != 0;
 
         if cn_is_god_imp_usurp && autoflag == 0 && !is_merchant && !is_body && !co_is_god {
             let (co_x, co_y) = (self.characters[co].x, self.characters[co].y);
@@ -862,8 +859,7 @@ impl GameState {
             let master = self.characters[cn].data[63];
             if master > 0
                 && (master as usize) < core::constants::MAXCHARS
-                && self.characters[master as usize].points_tot
-                    > self.characters[cn].points_tot
+                && self.characters[master as usize].points_tot > self.characters[cn].points_tot
             {
                 p = helpers::scale_exps2(master, rank, p);
             } else {
@@ -897,7 +893,8 @@ impl GameState {
     pub(crate) fn do_say(&mut self, cn: usize, text: &str) {
         log::debug!("do_say: cn={}, text={}", cn, text);
         // Rate limiting for players (skip for direct '|' logs)
-        if (self.characters[cn].flags & CharacterFlags::Player.bits()) != 0 && !text.starts_with('|')
+        if (self.characters[cn].flags & CharacterFlags::Player.bits()) != 0
+            && !text.starts_with('|')
         {
             self.characters[cn].data[71] += core::constants::CNTSAY;
             let can_proceed = self.characters[cn].data[71] <= core::constants::MAXSAY;
@@ -1002,7 +999,8 @@ impl GameState {
 
         // Underwater: replace with "Blub!" unless blue pill (temp==648) is present
         let mut ptr: &str = text;
-        let m_idx = self.characters[cn].x as usize + self.characters[cn].y as usize * core::constants::SERVER_MAPX as usize;
+        let m_idx = self.characters[cn].x as usize
+            + self.characters[cn].y as usize * core::constants::SERVER_MAPX as usize;
         let is_underwater = self.map[m_idx].flags & core::constants::MF_UWATER as u64 != 0;
 
         if is_underwater {
@@ -1046,8 +1044,9 @@ impl GameState {
         }
 
         // Show to area (selective for players/usurp)
-        let is_player_or_usurp =
-            (self.characters[cn].flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits())) != 0;
+        let is_player_or_usurp = (self.characters[cn].flags
+            & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
+            != 0;
 
         let cx = self.characters[cn].x as usize;
         let cy = self.characters[cn].y as usize;
@@ -1130,8 +1129,7 @@ impl GameState {
         if co_afk {
             let co_afk_msg = self.characters[co].text[0][0] != 0;
             if co_afk_msg {
-                let msg =
-                    c_string_to_str(&mut self.characters[co].text[0]).to_string();
+                let msg = c_string_to_str(&mut self.characters[co].text[0]).to_string();
                 self.do_character_log(
                     cn,
                     core::types::FontColor::Red,
@@ -1231,8 +1229,7 @@ impl GameState {
                 core::types::FontColor::Green,
                 &format!("Told the group: \"{}\"\n", text),
             );
-            if (self.characters[cn].flags & CharacterFlags::Player.bits()) != 0
-            {
+            if (self.characters[cn].flags & CharacterFlags::Player.bits()) != 0 {
                 log::info!("group-tells \"{}\"", text);
             }
         } else {
@@ -1263,11 +1260,7 @@ impl GameState {
         let name = self.characters[cn].get_name().to_string();
         self.do_staff_log(
             core::types::FontColor::Blue,
-            &format!(
-                "{:.30} staff-tells: \"{:.200}\"\n",
-                name,
-                text
-            ),
+            &format!("{:.30} staff-tells: \"{:.200}\"\n", name, text),
         );
         if (self.characters[cn].flags & CharacterFlags::Player.bits()) != 0 {
             log::info!("staff-tells \"{}\"", text);
@@ -1295,21 +1288,13 @@ impl GameState {
             let name = self.characters[cn].get_name().to_string();
             self.do_imp_log(
                 core::types::FontColor::Blue,
-                &format!(
-                    "{:.30} (usurp) imp-tells: \"{:.170}\"\n",
-                    name,
-                    text
-                ),
+                &format!("{:.30} (usurp) imp-tells: \"{:.170}\"\n", name, text),
             );
         } else {
             let name = self.characters[cn].get_name().to_string();
             self.do_imp_log(
                 core::types::FontColor::Blue,
-                &format!(
-                    "{:.30} imp-tells: \"{:.200}\"\n",
-                    name,
-                    text
-                ),
+                &format!("{:.30} imp-tells: \"{:.200}\"\n", name, text),
             );
         }
         if (self.characters[cn].flags & CharacterFlags::Player.bits()) != 0 {
@@ -1350,15 +1335,12 @@ impl GameState {
             format!("Somebody shouts: \"{}\"\n", text)
         } else {
             let name = self.characters[cn].get_name().to_string();
-            format!(
-                "{} shouts: \"{}\"\n",
-                name,
-                text
-            )
+            format!("{} shouts: \"{}\"\n", name, text)
         };
 
         for n in 1..core::constants::MAXCHARS {
-            let send = ((self.characters[n].flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
+            let send = ((self.characters[n].flags
+                & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
                 != 0
                 || self.characters[n].temp == CT_LGUARD as u16)
                 && self.characters[n].used == core::constants::USE_ACTIVE;
@@ -1432,9 +1414,7 @@ impl GameState {
         if (self.characters[cn].flags & CharacterFlags::Player.bits()) != 0 {
             log::info!(
                 "Set nostaff to {}",
-                if (self.characters[cn].flags & CharacterFlags::NoStaff.bits())
-                    != 0
-                {
+                if (self.characters[cn].flags & CharacterFlags::NoStaff.bits()) != 0 {
                     "on"
                 } else {
                     "off"
@@ -1499,7 +1479,10 @@ impl GameState {
                 bestmatch = n;
                 break;
             }
-            let q = if (self.characters[n].flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits())) != 0 {
+            let q = if (self.characters[n].flags
+                & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
+                != 0
+            {
                 if self.characters[n].x != 0 {
                     3
                 } else {
