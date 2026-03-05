@@ -441,7 +441,7 @@ impl Labyrinth9 {
                 let riddler_name = Repository::with_characters(|characters| {
                     characters[riddler_id].get_name().to_string()
                 });
-                GameState::global_mut().do_character_log(
+                Repository::global_mut().do_character_log(
                     riddler_id,
                     core::types::FontColor::Yellow,
                     &format!(
@@ -501,7 +501,7 @@ impl Labyrinth9 {
 
             // Does the player see the riddler?
             let can_see_riddler =
-                GameState::global_mut().do_char_can_see(character_id, riddler_usize);
+                Repository::global_mut().do_char_can_see(character_id, riddler_usize);
 
             if can_see_riddler == 0 {
                 // If the guesser cannot see the riddler, ignore the speech
@@ -548,7 +548,7 @@ impl Labyrinth9 {
             }
 
             if found {
-                GameState::global_mut().do_sayx(
+                Repository::global_mut().do_sayx(
                     riddler as usize,
                     format!(
                         "That's absolutely correct, {}! \nFor solving my riddle, I will advance you in your quest. \nClose your eyes and...\n",
@@ -569,7 +569,7 @@ impl Labyrinth9 {
                         "Failed to transfer character {} to destination after solving riddle.",
                         character_id
                     );
-                    GameState::global_mut().do_sayx(
+                    Repository::global_mut().do_sayx(
                         riddler as usize,
                         "Oops! Something went wrong. Please try again a bit later.\n",
                     );
@@ -582,7 +582,7 @@ impl Labyrinth9 {
                 };
 
                 if riddle_attempts > 0 {
-                    GameState::global_mut().do_sayx(
+                    Repository::global_mut().do_sayx(
                         riddler as usize,
                         format!(
                             "Sorry, that's not right. You have {} more attempt{}!\n",
@@ -592,7 +592,7 @@ impl Labyrinth9 {
                         .as_str(),
                     );
                 } else {
-                    GameState::global_mut().do_sayx(
+                    Repository::global_mut().do_sayx(
                         riddler as usize,
                         "Sorry, that's not right. Now you'll have to bring me the book again to start over!\n",
                     );
@@ -619,7 +619,7 @@ impl Labyrinth9 {
         self.riddleno[riddle_index as usize] = riddle_number as i32;
         self.riddle_timeout[riddle_index as usize] = core::constants::RIDDLE_TIMEOUT;
         self.riddle_attempts[riddle_index as usize] = core::constants::RIDDLE_ATTEMPTS;
-        GameState::global_mut().do_sayx(
+        Repository::global_mut().do_sayx(
             riddler_id,
             format!(
                 "Here is a riddle. You have 3 minutes and {} attempts to say the correct answer.\n",
@@ -627,7 +627,7 @@ impl Labyrinth9 {
             )
             .as_str(),
         );
-        GameState::global_mut().do_sayx(riddler_id, question);
+        Repository::global_mut().do_sayx(riddler_id, question);
 
         Repository::with_characters_mut(|characters| {
             characters[character_id].data[core::constants::CHD_RIDDLER] = riddler_id as i32;
@@ -703,7 +703,7 @@ impl Labyrinth9 {
                 items[item_number as usize].flags &=
                     !(ItemFlags::IF_MOVEBLOCK | ItemFlags::IF_SIGHTBLOCK).bits();
 
-                GameState::global_mut().do_area_sound(
+                Repository::global_mut().do_area_sound(
                     0,
                     0,
                     items[item_number as usize].x as i32,
@@ -711,11 +711,11 @@ impl Labyrinth9 {
                     10,
                 );
 
-                GameState::global_mut().reset_go(
+                Repository::global_mut().reset_go(
                     items[item_number as usize].x as i32,
                     items[item_number as usize].y as i32,
                 );
-                GameState::global_mut().add_lights(
+                Repository::global_mut().add_lights(
                     items[item_number as usize].x as i32,
                     items[item_number as usize].y as i32,
                 );
@@ -738,18 +738,18 @@ impl Labyrinth9 {
 
                 items[item_number as usize].flags |= ItemFlags::IF_MOVEBLOCK.bits() | flags;
 
-                GameState::global_mut().do_area_sound(
+                Repository::global_mut().do_area_sound(
                     0,
                     0,
                     items[item_number as usize].x as i32,
                     items[item_number as usize].y as i32,
                     10,
                 );
-                GameState::global_mut().reset_go(
+                Repository::global_mut().reset_go(
                     items[item_number as usize].x as i32,
                     items[item_number as usize].y as i32,
                 );
-                GameState::global_mut().add_lights(
+                Repository::global_mut().add_lights(
                     items[item_number as usize].x as i32,
                     items[item_number as usize].y as i32,
                 );
@@ -858,7 +858,7 @@ impl Labyrinth9 {
                 0
             };
 
-            GameState::global_mut().do_area_sound(
+            Repository::global_mut().do_area_sound(
                 0,
                 0,
                 items[item_id as usize].x as i32,
@@ -869,7 +869,7 @@ impl Labyrinth9 {
             let bank_no = items[item_id as usize].data[0] as i32;
 
             if self.lab9_check_door(bank_no) {
-                GameState::global_mut().do_character_log(
+                Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Green,
                     "You hear a door open nearby.\n",
@@ -907,7 +907,7 @@ impl Labyrinth9 {
                 && ((character_x as i32) > (item_x as i32)
                     || (character_y as i32) < (item_y as i32))
             {
-                GameState::global_mut().do_character_log(
+                Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     "It's locked and no key will open it.\n",
@@ -916,10 +916,10 @@ impl Labyrinth9 {
             }
         }
 
-        GameState::global_mut().reset_go(item_x as i32, item_y as i32);
-        GameState::global_mut().remove_lights(item_x as i32, item_y as i32);
+        Repository::global_mut().reset_go(item_x as i32, item_y as i32);
+        Repository::global_mut().remove_lights(item_x as i32, item_y as i32);
 
-        GameState::global_mut().do_area_sound(0, 0, item_x as i32, item_y as i32, 10);
+        Repository::global_mut().do_area_sound(0, 0, item_x as i32, item_y as i32, 10);
 
         let is_active = Repository::with_items(|items| items[item_id as usize].active);
 
@@ -946,14 +946,14 @@ impl Labyrinth9 {
             });
         }
 
-        GameState::global_mut().reset_go(item_x as i32, item_y as i32);
-        GameState::global_mut().add_lights(item_x as i32, item_y as i32);
+        Repository::global_mut().reset_go(item_x as i32, item_y as i32);
+        Repository::global_mut().add_lights(item_x as i32, item_y as i32);
 
         if cn != 0 {
             let character_position = Repository::with_characters(|characters| {
                 (characters[cn].x as i32, characters[cn].y as i32)
             });
-            GameState::global_mut().do_area_notify(
+            Repository::global_mut().do_area_notify(
                 cn as i32,
                 0,
                 character_position.0,

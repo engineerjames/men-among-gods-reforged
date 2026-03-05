@@ -891,7 +891,7 @@ pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
         }
     }
 
-    GameState::global_mut().do_update_char(cn);
+    Repository::global_mut().do_update_char(cn);
     Repository::with_globals_mut(|globals| {
         globals.npcs_created += 1;
     });

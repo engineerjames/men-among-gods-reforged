@@ -9,7 +9,7 @@ use core::{
 
 use crate::{
     area, chlog, driver, effect::EffectManager, enums::LogoutReason, game_state::GameState,
-    game_state::GameState as Repository, helpers, player, populate, server::Server, state::State,
+    game_state::GameState as Repository, helpers, player, populate, server::Server,
 };
 
 pub struct God {}
@@ -568,15 +568,13 @@ impl God {
                     character.get_name()
                 );
 
-                State::with(|state| {
-                    state.do_character_log(
-                        character_id,
-                        core::types::FontColor::Blue,
-                        "You are now in build mode. To exit, use the build command again.\n",
-                    );
-                })
+                Repository::global_mut().do_character_log(
+                    character_id,
+                    core::types::FontColor::Blue,
+                    "You are now in build mode. To exit, use the build command again.\n",
+                );
             });
-        })
+        });
     }
 
     /// Start build mode for a character, creating helper companion state.
@@ -600,13 +598,11 @@ impl God {
             let companion_name = Repository::with_characters(|characters| {
                 characters[companion_id].get_name().to_string()
             });
-            State::with(|state| {
-                state.do_character_log(
-                    character_id,
-                    core::types::FontColor::Red,
-                    &format!("Get rid of your companion '{}' first.\n", companion_name),
-                );
-            });
+            Repository::global_mut().do_character_log(
+                character_id,
+                core::types::FontColor::Red,
+                &format!("Get rid of your companion '{}' first.\n", companion_name),
+            );
 
             return false;
         }
@@ -614,13 +610,11 @@ impl God {
         let character_id_to_hold_inventory = Self::create_char(1, false);
 
         if character_id_to_hold_inventory.is_none() {
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     character_id,
                     core::types::FontColor::Red,
                     "Failed to create temporary character to hold your items for build mode.\n",
                 );
-            });
             log::error!(
                 "Failed to create temporary character to hold items for build mode for character ID {}",
                 character_id
@@ -689,13 +683,11 @@ impl God {
             character.flags &= !CharacterFlags::BuildMode.bits();
             character.misc_action = 0; // DR_IDLE
 
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     character_id,
                     core::types::FontColor::Blue,
                     "You are now out of build mode.\n",
                 );
-            });
 
             log::info!("Character {} now out of build mode", character.get_name());
         });
@@ -711,13 +703,11 @@ impl God {
                 character_id
             );
 
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     character_id,
                     core::types::FontColor::Red,
                     "Could not find your item holder!\n",
                 );
-            });
             return;
         }
 
@@ -1258,10 +1248,8 @@ impl God {
                 // Mark character for update
                 characters[cn].set_do_update_flags();
 
-                // Call update hook in State so that network/clients can be informed
-                State::with(|state| {
-                    state.do_update_char(cn);
-                });
+                // Call update hook in GameState so network/clients can be informed.
+                Repository::global_mut().do_update_char(cn);
 
                 true
             })
@@ -1406,8 +1394,7 @@ impl God {
 
             character.set_do_update_flags();
 
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Green,
                     &format!(
@@ -1416,7 +1403,6 @@ impl God {
                     ),
                 );
                 log::info!("Password changed for character {}", character.get_name());
-            });
 
             1
         })
@@ -1569,13 +1555,11 @@ impl God {
                 }
 
                 if !Self::transfer_char(co, x, y) {
-                    State::with(|state| {
-                        state.do_character_log(
+                    Repository::global_mut().do_character_log(
                             cn,
                             core::types::FontColor::Red,
                             "GOTO failed. Dykstra was right (Elrac will explain this comment if you ask nicely).\n",
                         );
-                    });
                     return;
                 }
 
@@ -1586,8 +1570,7 @@ impl God {
                 if character_visible {
                     EffectManager::fx_add_effect(12, 0, new_pos.0, new_pos.1, 0);
                 }
-                State::with(|state| {
-                    state.do_character_log(
+                Repository::global_mut().do_character_log(
                         cn,
                         core::types::FontColor::Green,
                         &format!(
@@ -1597,7 +1580,6 @@ impl God {
                             new_pos.1
                         ),
                     );
-                });
                 return;
             }
         }
@@ -1797,13 +1779,11 @@ impl God {
             return;
         }
         if !Character::is_sane_character(co) {
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     "There's no such character.\n",
                 );
-            });
             return;
         }
 
@@ -1820,9 +1800,7 @@ impl God {
                     && (caller.flags & CharacterFlags::God.bits()) == 0)
         });
         if denied {
-            State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Red, "Access denied.\n");
-            });
+            Repository::global_mut().do_character_log(cn, core::types::FontColor::Red, "Access denied.\n");
             return;
         }
 
@@ -1948,21 +1926,19 @@ impl God {
         if player_flag {
             let rank = core::ranks::points2rank(pts as u32) as usize;
             let rank_short = helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
-            State::with(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Yellow,
-                    &format!(
-                        "{} {}{}{} Pts/need={}/{}.\n",
-                        rank_short,
-                        Repository::with_characters(|ch| ch[co].get_name().to_string()),
-                        cnum_str,
-                        pos_str,
-                        int2str(pts),
-                        int2str(need)
-                    ),
-                )
-            });
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!(
+                    "{} {}{}{} Pts/need={}/{}.\n",
+                    rank_short,
+                    Repository::with_characters(|ch| ch[co].get_name().to_string()),
+                    cnum_str,
+                    pos_str,
+                    int2str(pts),
+                    int2str(need)
+                ),
+            );
         } else {
             // NPC
             let temp_str = Repository::with_characters(|ch| {
@@ -1977,49 +1953,43 @@ impl God {
             });
             let rank = core::ranks::points2rank(pts as u32) as usize;
             let rank_short = helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
-            State::with(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Yellow,
-                    &format!(
-                        "{} {}{}{}{}.\n",
-                        rank_short,
-                        Repository::with_characters(|ch| ch[co].get_name().to_string()),
-                        cnum_str,
-                        pos_str,
-                        temp_str
-                    ),
-                )
-            });
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!(
+                    "{} {}{}{}{}.\n",
+                    rank_short,
+                    Repository::with_characters(|ch| ch[co].get_name().to_string()),
+                    cnum_str,
+                    pos_str,
+                    temp_str
+                ),
+            );
         }
 
         // HP/End/Mana line
-        State::with(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                &format!(
-                    "HP={}/{}, End={}/{}, Mana={}/{}.\n",
-                    hp_cur, hp_max, end_cur, end_max, mana_cur, mana_max
-                ),
-            );
-        });
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            &format!(
+                "HP={}/{}, End={}/{}, Mana={}/{}.\n",
+                hp_cur, hp_max, end_cur, end_max, mana_cur, mana_max
+            ),
+        );
 
         // Speed/Gold line
-        State::with(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                &format!(
-                    "Speed={}. Gold={}.{:02}G ({}.{:02}G).\n",
-                    speed,
-                    gold / 100,
-                    gold % 100,
-                    gold_data13 / 100,
-                    gold_data13 % 100
-                ),
-            );
-        });
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            &format!(
+                "Speed={}. Gold={}.{:02}G ({}.{:02}G).\n",
+                speed,
+                gold / 100,
+                gold % 100,
+                gold_data13 / 100,
+                gold_data13 % 100
+            ),
+        );
 
         // Last PvP attack for purple players
         if player_flag
@@ -2037,26 +2007,22 @@ impl God {
                 if Character::is_sane_character(victim) {
                     let victim_name =
                         Repository::with_characters(|ch| ch[victim].get_name().to_string());
-                    State::with(|state| {
-                        state.do_character_log(
-                            cn,
-                            core::types::FontColor::Yellow,
-                            &format!(
-                                "Last PvP attack: {}, against {}.\n",
-                                helpers::ago_string(dt as u128),
-                                victim_name
-                            ),
-                        )
-                    });
-                }
-            } else {
-                State::with(|state| {
-                    state.do_character_log(
+                    Repository::global_mut().do_character_log(
                         cn,
                         core::types::FontColor::Yellow,
-                        &format!("Last PvP attack: {}.\n", helpers::ago_string(dt as u128)),
-                    )
-                });
+                        &format!(
+                            "Last PvP attack: {}, against {}.\n",
+                            helpers::ago_string(dt as u128),
+                            victim_name
+                        ),
+                    );
+                }
+            } else {
+                Repository::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!("Last PvP attack: {}.\n", helpers::ago_string(dt as u128)),
+                );
             }
         }
 
@@ -2068,8 +2034,8 @@ impl God {
         });
         if caller_priv {
             // Print several data fields similar to C++ output
-            State::with(|state| {
-                state.do_character_log(
+            {
+                Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
                     &format!(
@@ -2077,7 +2043,7 @@ impl God {
                         data_vals[23], data_vals[24], data_vals[25]
                     ),
                 );
-                state.do_character_log(
+                Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
                     &format!(
@@ -2085,7 +2051,7 @@ impl God {
                         data_vals[29], data_vals[40]
                     ),
                 );
-                state.do_character_log(
+                Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
                     &format!(
@@ -2093,7 +2059,7 @@ impl God {
                         data_vals[26], data_vals[27], data_vals[28], data_vals[43]
                     ),
                 );
-                state.do_character_log(
+                Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
                     &format!(
@@ -2109,7 +2075,7 @@ impl God {
                 };
                 let single_awake = data_vals[92];
                 let spells = data_vals[96];
-                state.do_character_log(
+                Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
                     &format!(
@@ -2117,12 +2083,12 @@ impl God {
                         data_vals[42], group_count, single_awake, spells
                     ),
                 );
-                state.do_character_log(
+                Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
                     &format!("Luck={}, Gethit_Dam={}.\n", luck, gethit_dam),
                 );
-                state.do_character_log(
+                Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
                     &format!(
@@ -2137,7 +2103,7 @@ impl God {
                         (total_online_time / core::constants::TICKS) % 60
                     ),
                 );
-            });
+            }
 
             // Self-destruct time for sane NPCs
             if Repository::with_characters(|ch| {
@@ -2149,13 +2115,11 @@ impl God {
                 let t_secs = t / core::constants::TICKS;
                 let mins = t_secs / 60;
                 let secs = t_secs % 60;
-                State::with(|state| {
-                    state.do_character_log(
+                Repository::global_mut().do_character_log(
                         cn,
                         core::types::FontColor::Yellow,
                         &format!("Will self destruct in {}m {}s.\n", mins, secs),
                     );
-                });
             }
         }
     }
@@ -2173,23 +2137,21 @@ impl God {
         Repository::with_items(|items| {
             let item = &items[item_index];
 
-            State::with(|state| {
-                let sprite_0_to_print = item.sprite[0];
-                let sprite_1_to_print = item.sprite[1];
-                let carried_to_print = item.carried;
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Green,
-                    &format!(
-                        "Item Info: ID={}, Sprite=[{},{}], Carried={}, Used={}\n",
-                        item_index,
-                        sprite_0_to_print,
-                        sprite_1_to_print,
-                        carried_to_print,
-                        item.used
-                    ),
-                );
-            });
+            let sprite_0_to_print = item.sprite[0];
+            let sprite_1_to_print = item.sprite[1];
+            let carried_to_print = item.carried;
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                &format!(
+                    "Item Info: ID={}, Sprite=[{},{}], Carried={}, Used={}\n",
+                    item_index,
+                    sprite_0_to_print,
+                    sprite_1_to_print,
+                    carried_to_print,
+                    item.used
+                ),
+            );
         });
     }
 
@@ -2207,19 +2169,17 @@ impl God {
         Repository::with_item_templates(|templates| {
             let tmpl = &templates[template];
 
-            State::with(|state| {
-                let sprite_0_to_print = tmpl.sprite[0];
-                let sprite_1_to_print = tmpl.sprite[1];
-                let used_to_print = tmpl.used;
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Green,
-                    &format!(
-                        "Template Info: ID={}, Sprite=[{},{}], Used={}\n",
-                        template, sprite_0_to_print, sprite_1_to_print, used_to_print
-                    ),
-                );
-            });
+            let sprite_0_to_print = tmpl.sprite[0];
+            let sprite_1_to_print = tmpl.sprite[1];
+            let used_to_print = tmpl.used;
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                &format!(
+                    "Template Info: ID={}, Sprite=[{},{}], Used={}\n",
+                    template, sprite_0_to_print, sprite_1_to_print, used_to_print
+                ),
+            );
         });
     }
 
@@ -2233,25 +2193,23 @@ impl God {
         }
 
         Repository::with_items(|items| {
-            State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Green, "Listing unique items:");
-                for i in 1..core::constants::MAXITEM {
-                    if items[i].used != core::constants::USE_EMPTY && items[i].is_unique() {
-                        let sprite_0_to_print = items[i].sprite[0];
-                        let sprite_1_to_print = items[i].sprite[1];
-                        let carried_to_print = items[i].carried;
-                        state.do_character_log(
-                            cn,
-                            core::types::FontColor::Green,
-                            &format!(
-                                "  Item {}: Sprite=[{},{}], Carried={}\n",
-                                i, sprite_0_to_print, sprite_1_to_print, carried_to_print
-                            ),
-                        );
-                    }
+            Repository::global_mut().do_character_log(cn, core::types::FontColor::Green, "Listing unique items:");
+            for i in 1..core::constants::MAXITEM {
+                if items[i].used != core::constants::USE_EMPTY && items[i].is_unique() {
+                    let sprite_0_to_print = items[i].sprite[0];
+                    let sprite_1_to_print = items[i].sprite[1];
+                    let carried_to_print = items[i].carried;
+                    Repository::global_mut().do_character_log(
+                        cn,
+                        core::types::FontColor::Green,
+                        &format!(
+                            "  Item {}: Sprite=[{},{}], Carried={}\n",
+                            i, sprite_0_to_print, sprite_1_to_print, carried_to_print
+                        ),
+                    );
                 }
+            }
             });
-        });
     }
 
     /// Produce a 'who' listing visible to `cn`.
@@ -2266,7 +2224,7 @@ impl God {
         }
 
         Repository::with_characters(|characters| {
-            State::with(|state| {
+            {
                 let cn_flags = characters[cn].flags;
                 let cn_is_god = (cn_flags & CharacterFlags::God.bits()) != 0;
                 let cn_is_imp_or_god =
@@ -2280,7 +2238,7 @@ impl God {
                 let cn_invis_level = helpers::invis_level(cn);
 
                 let mut players = 0;
-                state.do_character_log(
+                Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Blue,
                     "-----------------------------------------------\n",
@@ -2347,7 +2305,7 @@ impl God {
                     let is_poh = (n_flags & CharacterFlags::Poh.bits()) != 0;
                     let is_poh_leader = (n_flags & CharacterFlags::PohLeader.bits()) != 0;
 
-                    state.do_character_log(
+                    Repository::global_mut().do_character_log(
                         cn,
                         font,
                         &format!(
@@ -2384,7 +2342,7 @@ impl God {
                     let is_poh = (n_flags & CharacterFlags::Poh.bits()) != 0;
                     let is_poh_leader = (n_flags & CharacterFlags::PohLeader.bits()) != 0;
 
-                    state.do_character_log(
+                    Repository::global_mut().do_character_log(
                         cn,
                         core::types::FontColor::Blue,
                         &format!(
@@ -2399,12 +2357,12 @@ impl God {
                     );
                 }
 
-                state.do_character_log(
+                Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Blue,
                     "-----------------------------------------------\n",
                 );
-                state.do_character_log(
+                Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
                     &format!(
@@ -2413,7 +2371,7 @@ impl God {
                         if players > 1 { "s" } else { "" }
                     ),
                 );
-            });
+            }
         });
     }
 
@@ -2427,7 +2385,7 @@ impl God {
         }
 
         Repository::with_characters(|characters| {
-            State::with(|state| {
+            {
                 let cn_flags = characters[cn].flags;
                 let cn_is_god = (cn_flags & CharacterFlags::God.bits()) != 0;
                 let cn_is_god_imp_or_usurp = (cn_flags
@@ -2437,7 +2395,7 @@ impl God {
                     != 0;
 
                 let mut imps = 0;
-                state.do_character_log(
+                Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Blue,
                     "-----------------------------------------------\n",
@@ -2483,7 +2441,7 @@ impl God {
                     let is_poh = (n_flags & CharacterFlags::Poh.bits()) != 0;
                     let is_poh_leader = (n_flags & CharacterFlags::PohLeader.bits()) != 0;
 
-                    state.do_character_log(
+                    Repository::global_mut().do_character_log(
                         cn,
                         core::types::FontColor::Yellow,
                         &format!(
@@ -2499,17 +2457,17 @@ impl God {
                     );
                 }
 
-                state.do_character_log(
+                Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Blue,
                     "-----------------------------------------------\n",
                 );
-                state.do_character_log(
+                Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
                     &format!("{:3} imp{}.\n", imps, if imps > 1 { "s" } else { "" }),
                 );
-            });
+            }
         });
     }
 
@@ -2523,7 +2481,7 @@ impl God {
         }
 
         Repository::with_characters(|characters| {
-            State::with(|state| {
+            {
                 let cn_flags = characters[cn].flags;
                 let cn_is_god = (cn_flags & CharacterFlags::God.bits()) != 0;
                 let cn_is_god_imp_or_usurp = (cn_flags
@@ -2533,7 +2491,7 @@ impl God {
                     != 0;
 
                 let mut players = 0;
-                state.do_character_log(
+                Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
                     "-----------------------------------------------\n",
@@ -2586,7 +2544,7 @@ impl God {
                     let is_poh = (n_flags & CharacterFlags::Poh.bits()) != 0;
                     let is_poh_leader = (n_flags & CharacterFlags::PohLeader.bits()) != 0;
 
-                    state.do_character_log(
+                    Repository::global_mut().do_character_log(
                         cn,
                         font,
                         &format!(
@@ -2608,7 +2566,7 @@ impl God {
                     let points_str = helpers::format_number(characters[gc].points_tot);
                     let area_str =
                         area::get_area_m(characters[gc].x as i32, characters[gc].y as i32, false);
-                    state.do_character_log(
+                    Repository::global_mut().do_character_log(
                         cn,
                         core::types::FontColor::Blue,
                         &format!(
@@ -2618,12 +2576,12 @@ impl God {
                     );
                 }
 
-                state.do_character_log(
+                Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
                     "-----------------------------------------------\n",
                 );
-                state.do_character_log(
+                Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
                     &format!(
@@ -2632,7 +2590,7 @@ impl God {
                         if players > 1 { "s" } else { "" }
                     ),
                 );
-            });
+            }
         });
     }
 
@@ -2647,27 +2605,25 @@ impl God {
 
         // Simple top players list - would need proper ranking system
         Repository::with_characters(|characters| {
-            State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Green, "Top players by points:");
-                // This is simplified - original had more complex ranking
-                for i in 1..core::constants::MAXCHARS {
-                    if characters[i].is_living_character(i) && characters[i].is_player() {
-                        if characters[i].points > 100000 {
-                            let points_to_print = characters[i].points;
-                            state.do_character_log(
-                                cn,
-                                core::types::FontColor::Green,
-                                &format!(
-                                    "  {}: Points={}\n",
-                                    characters[i].get_name(),
-                                    points_to_print
-                                ),
-                            );
-                        }
+            Repository::global_mut().do_character_log(cn, core::types::FontColor::Green, "Top players by points:");
+            // This is simplified - original had more complex ranking
+            for i in 1..core::constants::MAXCHARS {
+                if characters[i].is_living_character(i) && characters[i].is_player() {
+                    if characters[i].points > 100000 {
+                        let points_to_print = characters[i].points;
+                        Repository::global_mut().do_character_log(
+                            cn,
+                            core::types::FontColor::Green,
+                            &format!(
+                                "  {}: Points={}\n",
+                                characters[i].get_name(),
+                                points_to_print
+                            ),
+                        );
                     }
                 }
+            }
             });
-        });
     }
 
     /// Admin create item command: spawn item template `x` for `cn`.
@@ -2684,21 +2640,21 @@ impl God {
 
         // Match original behavior: require a sane, take-able template.
         if x == 0 {
-            State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Red, "No such item.\n")
-            });
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "No such item.\n",
+            );
             return;
         }
 
         let template_id = x as usize;
         if !core::types::Item::is_sane_item_template(template_id) {
-            State::with(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Red,
-                    &format!("Bad item number: {}.\n", x),
-                )
-            });
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                &format!("Bad item number: {}.\n", x),
+            );
             return;
         }
 
@@ -2707,13 +2663,11 @@ impl God {
         });
 
         if !is_takeable {
-            State::with(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Red,
-                    &format!("Item template {} is not take-able.\n", x),
-                )
-            });
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                &format!("Item template {} is not take-able.\n", x),
+            );
             return;
         }
 
@@ -2721,33 +2675,27 @@ impl God {
 
         if let Some(item_id) = item_id {
             if !Self::give_character_item(cn, item_id) {
-                State::with(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Red,
-                        "Your inventory is full!\n",
-                    )
-                });
+                Repository::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    "Your inventory is full!\n",
+                );
                 return;
             }
 
             let item_name = Repository::with_items(|items| items[item_id].get_name().to_string());
-            State::with(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Green,
-                    &format!("Created one {}.\n", item_name),
-                )
-            });
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                &format!("Created one {}.\n", item_name),
+            );
             chlog!(cn, "IMP: created one {}.", item_name);
         } else {
-            State::with(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Red,
-                    &format!("god_create_item() failed for {}.\n", x),
-                )
-            });
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                &format!("god_create_item() failed for {}.\n", x),
+            );
         }
     }
 
@@ -2768,13 +2716,11 @@ impl God {
         let armor_type = ArmorType::from_str(armor).unwrap_or_else(|| ArmorType::Cloth);
 
         if armor_type == ArmorType::Cloth || armor_type == ArmorType::Leather {
-            State::with(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Red,
-                    "Invalid armor type specified.\n",
-                )
-            });
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "Invalid armor type specified.\n",
+            );
             return;
         }
 
@@ -2790,13 +2736,11 @@ impl God {
             ArmorType::Emerald => (981usize, 982usize),
             ArmorType::Cloth | ArmorType::Leather => {
                 // Already filtered above, but keep an explicit guard.
-                State::with(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Red,
-                        "Invalid armor type specified.\n",
-                    )
-                });
+                Repository::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    "Invalid armor type specified.\n",
+                );
                 return;
             }
         };
@@ -2814,13 +2758,11 @@ impl God {
                             }
                         }
                     });
-                    State::with(|state| {
-                        state.do_character_log(
-                            cn,
-                            core::types::FontColor::Red,
-                            &format!("god_create_item() failed for {}.\n", temp),
-                        )
-                    });
+                    Repository::global_mut().do_character_log(
+                        cn,
+                        core::types::FontColor::Red,
+                        &format!("god_create_item() failed for {}.\n", temp),
+                    );
                     return;
                 }
             };
@@ -2908,9 +2850,11 @@ impl God {
         // Deliver both items (and roll back cleanly if we can't give the full pair).
         if !Self::give_character_item(cn, created[0]) {
             Repository::with_items_mut(|items| items[created[0]].used = core::constants::USE_EMPTY);
-            State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Red, "Your inventory is full!\n")
-            });
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "Your inventory is full!\n",
+            );
             return;
         }
         if !Self::give_character_item(cn, created[1]) {
@@ -2920,9 +2864,11 @@ impl God {
                 items[created[0]].used = core::constants::USE_EMPTY;
                 items[created[1]].used = core::constants::USE_EMPTY;
             });
-            State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Red, "Your inventory is full!\n")
-            });
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "Your inventory is full!\n",
+            );
             return;
         }
 
@@ -2933,13 +2879,11 @@ impl God {
             )
         });
 
-        State::with(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                &format!("Created special items: {}, {}.\n", helmet_name, armor_name),
-            )
-        });
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            &format!("Created special items: {}, {}.\n", helmet_name, armor_name),
+        );
         chlog!(
             cn,
             "IMP: created special items: {}, {}.",
@@ -3031,9 +2975,11 @@ impl God {
         }
 
         if spec1.is_empty() {
-            State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Red, "summon whom?\n");
-            });
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "summon whom?\n",
+            );
             return;
         }
 
@@ -3045,9 +2991,7 @@ impl God {
             co = spec1.parse::<usize>().unwrap_or(0);
 
             if co == 0 || !Character::is_sane_character(co) || Self::invis(cn, co) != 0 {
-                State::with(|state| {
-                    state.do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
-                });
+                Repository::global_mut().do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
                 return;
             }
 
@@ -3061,24 +3005,20 @@ impl God {
             });
 
             if let Some(owner) = corpse_owner {
-                State::with(|state| {
-                    state.do_character_log(
+                Repository::global_mut().do_character_log(
                         cn,
                         core::types::FontColor::Red,
                         &format!("Character recently deceased; try {}.\n", owner),
                     );
-                });
                 return;
             }
 
             if co == cn {
-                State::with(|state| {
-                    state.do_character_log(
+                Repository::global_mut().do_character_log(
                         cn,
                         core::types::FontColor::Red,
                         "You can't summon yourself!\n",
                     );
-                });
                 return;
             }
         } else {
@@ -3094,13 +3034,11 @@ impl God {
             {
                 if let Ok(rank) = spec2.parse::<usize>() {
                     if rank >= core::constants::RANKS {
-                        State::with(|state| {
-                            state.do_character_log(
+                        Repository::global_mut().do_character_log(
                                 cn,
                                 core::types::FontColor::Red,
                                 &format!("No such rank: {}\n", spec2),
                             );
-                        });
                         return;
                     }
                 }
@@ -3146,13 +3084,11 @@ impl God {
 
             if co == 0 {
                 // Not found — produce message similar to original C++ but simpler here
-                State::with(|state| {
-                    state.do_character_log(
+                Repository::global_mut().do_character_log(
                         cn,
                         core::types::FontColor::Red,
                         &format!("Couldn't find a {} {}.\n", spec1, spec2),
                     );
-                });
                 return;
             }
         }
@@ -3198,13 +3134,11 @@ impl God {
         });
 
         if !Self::transfer_char(co, x, y) {
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     "god_transfer_char() failed.\n",
                 );
-            });
 
             // show effects at original and current position
             EffectManager::fx_add_effect(12, 0, xo, yo, 0);
@@ -3215,13 +3149,11 @@ impl God {
 
         let character_name =
             Repository::with_characters(|characters| characters[co].get_name().to_string());
-        State::with(|state| {
-            state.do_character_log(
+        Repository::global_mut().do_character_log(
                 cn,
                 core::types::FontColor::Green,
                 &format!("{} was summoned.\n", character_name),
             );
-        });
 
         log::info!("IMP: summoned character {}.", co);
     }
@@ -3247,13 +3179,11 @@ impl God {
 
         // Parse character number or find by name
         let co = if spec1.is_empty() {
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     "create mirror-enemy of whom?\n",
                 );
-            });
             return;
         } else if spec1.chars().all(|c| c.is_ascii_digit()) {
             spec1.parse::<usize>().unwrap_or(0)
@@ -3262,27 +3192,22 @@ impl God {
         };
 
         if !Character::is_sane_character(co) {
-            State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
-            });
+            Repository::global_mut().do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
             return;
         }
 
         Repository::with_characters(|characters| {
             if characters[co].flags & CharacterFlags::Body.bits() != 0 {
-                State::with(|state| {
-                    state.do_character_log(
+                Repository::global_mut().do_character_log(
                         cn,
                         core::types::FontColor::Red,
                         "Character recently deceased.\n",
                     );
-                });
                 return;
             }
 
             if !characters[co].is_player() {
-                State::with(|state| {
-                    state.do_character_log(
+                Repository::global_mut().do_character_log(
                         cn,
                         core::types::FontColor::Red,
                         &format!(
@@ -3290,18 +3215,15 @@ impl God {
                             characters[co].get_name()
                         ),
                     );
-                });
                 return;
             }
 
             if co == cn {
-                State::with(|state| {
-                    state.do_character_log(
+                Repository::global_mut().do_character_log(
                         cn,
                         core::types::FontColor::Yellow,
                         "You want an enemy? Here it is...!\n",
                     );
-                });
             }
         });
 
@@ -3309,13 +3231,11 @@ impl God {
         let cc = match Self::create_char(968, false) {
             Some(cc) => cc as usize,
             None => {
-                State::with(|state| {
-                    state.do_character_log(
+                Repository::global_mut().do_character_log(
                         cn,
                         core::types::FontColor::Red,
                         "god_create_char() failed.\n",
                     );
-                });
                 return;
             }
         };
@@ -3396,13 +3316,11 @@ impl God {
             driver::npc_add_enemy(cc, co, true);
 
             let target_name = c_string_to_str(&target_name_bytes);
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Green,
                     &format!("Mirror of {} active (bonus: {})\n", target_name, bonus),
                 );
-            });
         });
     }
 
@@ -3420,9 +3338,7 @@ impl God {
 
         // Check for arguments
         if spec1.is_empty() {
-            State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Red, "enthrall whom?\n");
-            });
+            Repository::global_mut().do_character_log(cn, core::types::FontColor::Red, "enthrall whom?\n");
             return 0;
         }
 
@@ -3431,33 +3347,27 @@ impl God {
             let co = spec1.parse::<usize>().unwrap_or(0);
 
             if !Character::is_sane_character(co) {
-                State::with(|state| {
-                    state.do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
-                });
+                Repository::global_mut().do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
                 return 0;
             }
 
             Repository::with_characters(|characters| {
                 if characters[co].flags & CharacterFlags::Body.bits() != 0 {
                     let corpse_owner = characters[co].data[core::constants::CHD_COMPANION];
-                    State::with(|state| {
-                        state.do_character_log(
+                    Repository::global_mut().do_character_log(
                             cn,
                             core::types::FontColor::Red,
                             &format!("Character recently deceased; try {}.\n", corpse_owner),
                         );
-                    });
                     return 0;
                 }
 
                 if co == cn {
-                    State::with(|state| {
-                        state.do_character_log(
+                    Repository::global_mut().do_character_log(
                             cn,
                             core::types::FontColor::Red,
                             "You can't enthrall yourself!\n",
                         );
-                    });
                     return 0;
                 }
 
@@ -3484,13 +3394,11 @@ impl God {
             }
 
             if co == 0 {
-                State::with(|state| {
-                    state.do_character_log(
+                Repository::global_mut().do_character_log(
                         cn,
                         core::types::FontColor::Red,
                         &format!("Couldn't find a {} {}.\n", spec1, spec2),
                     );
-                });
                 return 0;
             }
             co
@@ -3499,8 +3407,7 @@ impl God {
         // Validate target
         let validation_failed = Repository::with_characters(|characters| {
             if characters[co].is_player() {
-                State::with(|state| {
-                    state.do_character_log(
+                Repository::global_mut().do_character_log(
                         cn,
                         core::types::FontColor::Red,
                         &format!(
@@ -3508,14 +3415,12 @@ impl God {
                             characters[co].get_name()
                         ),
                     );
-                });
                 return true;
             }
 
             // Check if already a companion/thrall (data[42] is group, companions have group 65536+cn)
             if characters[co].data[42] > 65536 {
-                State::with(|state| {
-                    state.do_character_log(
+                Repository::global_mut().do_character_log(
                         cn,
                         core::types::FontColor::Red,
                         &format!(
@@ -3523,7 +3428,6 @@ impl God {
                             characters[co].get_name()
                         ),
                     );
-                });
                 return true;
             }
 
@@ -3573,13 +3477,11 @@ impl God {
         let ct = match Self::create_char(target_template as usize, true) {
             Some(ct) => ct as usize,
             None => {
-                State::with(|state| {
-                    state.do_character_log(
+                Repository::global_mut().do_character_log(
                         cn,
                         core::types::FontColor::Red,
                         "god_create_char() failed.\n",
                     );
-                });
                 return 0;
             }
         };
@@ -3655,26 +3557,22 @@ impl God {
 
             // Drop thrall at calculated position
             if !Self::drop_char_fuzzy(ct, x, y) {
-                State::with(|state| {
-                    state.do_character_log(
+                Repository::global_mut().do_character_log(
                         cn,
                         core::types::FontColor::Red,
                         "god_drop_char_fuzzy() called from god_thrall() failed.\n",
                     );
-                });
                 Self::destroy_items(ct);
                 thrall.used = core::constants::USE_EMPTY;
                 return 0;
             }
 
             let target_name = c_string_to_str(&target_name_bytes);
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Green,
                     &format!("{} was enthralled.\n", target_name),
                 );
-            });
 
             ct as i32
         })
@@ -3691,13 +3589,11 @@ impl God {
         }
 
         if Repository::with_characters(|ch| ch[cn].is_usurp_or_thrall()) {
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     "NPCs cannot use the tavern.\n",
                 );
-            });
             return;
         }
 
@@ -3714,7 +3610,7 @@ impl God {
         });
 
         chlog!(cn, "Entered tavern and will be logged out.");
-        player::plr_logout(GameState::global_mut(), cn, player_id, LogoutReason::Tavern);
+        player::plr_logout(Repository::global_mut(), cn, player_id, LogoutReason::Tavern);
     }
 
     /// Admin command used to adjust a character's experience. Only
@@ -3751,49 +3647,41 @@ impl God {
         let (co, name) = if let Some((co, name)) = Self::find_character_by_name_or_id(arg1) {
             (co, name)
         } else {
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     &format!("No such character: {}\n", arg1),
                 );
-            });
             return;
         };
 
         let value = match arg2.parse::<i32>() {
             Ok(v) => v,
             Err(_) => {
-                State::with(|state| {
-                    state.do_character_log(
+                Repository::global_mut().do_character_log(
                         cn,
                         core::types::FontColor::Red,
                         &format!("Invalid raise value: {}\n", arg2),
                     );
-                });
                 return;
             }
         };
 
         if !Character::is_sane_character(co) {
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     &format!("Invalid character number: {}\n", co),
                 );
-            });
             return;
         }
 
         if value < 0 {
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     &format!("Invalid raise value - must be positive: {}\n", value),
                 );
-            });
             return;
         }
 
@@ -3849,49 +3737,41 @@ impl God {
         let (co, name) = if let Some((co, name)) = Self::find_character_by_name_or_id(arg1) {
             (co, name)
         } else {
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     &format!("No such character: {}\n", arg1),
                 );
-            });
             return;
         };
 
         let value = match arg2.parse::<i32>() {
             Ok(v) => v,
             Err(_) => {
-                State::with(|state| {
-                    state.do_character_log(
+                Repository::global_mut().do_character_log(
                         cn,
                         core::types::FontColor::Red,
                         &format!("Invalid lower value: {}\n", arg2),
                     );
-                });
                 return;
             }
         };
 
         if !Character::is_sane_character(co) {
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     &format!("Invalid character number: {}\n", co),
                 );
-            });
             return;
         }
 
         if value < 0 {
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     &format!("Invalid lower value - must be positive: {}\n", value),
                 );
-            });
             return;
         }
 
@@ -3949,13 +3829,11 @@ impl God {
         let (co, name) = if let Some((co, name)) = Self::find_character_by_name_or_id(arg) {
             (co, name)
         } else {
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     &format!("No such character: {}\n", arg),
                 );
-            });
             return;
         };
 
@@ -3964,13 +3842,11 @@ impl God {
             target.gold = (target.gold + total_silver as i32).max(0);
             target.set_do_update_flags();
 
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Green,
                     &format!("Gave {} silver to character {}\n", total_silver, name),
                 );
-            });
         });
     }
 
@@ -3985,21 +3861,17 @@ impl God {
     /// * `erase_player` - If non-zero, allow player erasure
     pub fn erase(cn: usize, co: usize, erase_player: i32) {
         if co == 0 {
-            State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
-            });
+            Repository::global_mut().do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
             return;
         }
 
         // Check if character is sane
         if !Character::is_sane_character(co) {
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     &format!("Bad character number: {}\n", co),
                 );
-            });
             return;
         }
 
@@ -4016,21 +3888,18 @@ impl God {
             });
 
         if !is_used {
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     &format!("Character {} is unused anyway.\n", co),
                 );
-            });
             return;
         }
 
         // Check if player/QM but erase_player is false
         if is_player_or_usurp && erase_player == 0 {
             let name_str = c_string_to_str(&character_name);
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     &format!(
@@ -4038,20 +3907,17 @@ impl God {
                         name_str
                     ),
                 );
-            });
             return;
         }
 
         // Check if erase_player is true but character is not player/usurp
         if erase_player != 0 && !is_player_or_usurp {
             let name_str = c_string_to_str(&character_name);
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     &format!("{} is not a player; use #ERASE for NPCs.\n", name_str),
                 );
-            });
             return;
         }
 
@@ -4061,7 +3927,7 @@ impl God {
 
             Repository::with_characters(|ch| {
                 player::plr_logout(
-                    GameState::global_mut(),
+                    Repository::global_mut(),
                     co,
                     ch[co].player as usize,
                     LogoutReason::Shutdown,
@@ -4074,29 +3940,23 @@ impl God {
 
             chlog!(cn, "IMP: Erased player {} ({}).", co, name_str);
 
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
                     &format!("Player {} ({}) is no more.\n", co, name_str),
                 );
-            });
         } else {
             // Erasing an NPC
             let name_str = c_string_to_str(&character_name);
 
             // Call do_char_killed(0, co)
-            State::with(|state| {
-                state.do_character_killed(co, 0, false);
-            });
+            Repository::global_mut().do_character_killed(co, 0, false);
 
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
                     &format!("NPC {} ({}) is no more.\n", co, name_str),
                 );
-            });
         }
     }
 
@@ -4111,21 +3971,17 @@ impl God {
     pub fn kick(cn: usize, co: usize) {
         // Check co == 0
         if co == 0 {
-            State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
-            });
+            Repository::global_mut().do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
             return;
         }
 
         // Check if character is sane and used
         if !Character::is_sane_character(co) {
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     &format!("Bad character number: {}\n", co),
                 );
-            });
             return;
         }
 
@@ -4137,13 +3993,11 @@ impl God {
         });
 
         if !is_used {
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     &format!("Character {} is unused anyway.\n", co),
                 );
-            });
             return;
         }
 
@@ -4151,20 +4005,18 @@ impl God {
 
         Repository::with_characters(|ch| {
             player::plr_logout(
-                GameState::global_mut(),
+                Repository::global_mut(),
                 co,
                 ch[co].player as usize,
                 LogoutReason::IdleTooLong,
             );
         });
 
-        State::with(|state| {
-            state.do_character_log(
+        Repository::global_mut().do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
                 &format!("Kicked {}.\n", name_str),
             );
-        });
 
         chlog!(cn, "IMP: Kicked {} ({}).", name_str, co);
 
@@ -4189,13 +4041,11 @@ impl God {
         }
 
         if !(0..50).contains(&n) {
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     &format!("Invalid skill number: {}\n", n),
                 );
-            });
             return;
         }
 
@@ -4209,8 +4059,7 @@ impl God {
             target.skill[n as usize][1] = val as u8;
             target.set_do_update_flags();
 
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Green,
                     &format!(
@@ -4221,7 +4070,6 @@ impl God {
                         target.get_name()
                     ),
                 );
-            });
         });
     }
 
@@ -4298,8 +4146,7 @@ impl God {
                 // Toggle the flag
                 if target.flags & flag != 0 {
                     target.flags &= !flag;
-                    State::with(|state| {
-                        state.do_character_log(
+                    Repository::global_mut().do_character_log(
                             cn,
                             core::types::FontColor::Green,
                             &format!(
@@ -4309,11 +4156,9 @@ impl God {
                                 name
                             ),
                         );
-                    });
                 } else {
                     target.flags |= flag;
-                    State::with(|state| {
-                        state.do_character_log(
+                    Repository::global_mut().do_character_log(
                             cn,
                             core::types::FontColor::Green,
                             &format!(
@@ -4323,7 +4168,6 @@ impl God {
                                 name
                             ),
                         );
-                    });
                 }
 
                 target.set_do_update_flags();
@@ -4333,13 +4177,11 @@ impl God {
                 }
             });
         } else {
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     &format!("No such character (id or name): '{}'\n", arg1),
                 );
-            });
         }
     }
 
@@ -4386,22 +4228,18 @@ impl God {
 
             if globals.flags & flag_bit != 0 {
                 globals.flags &= !flag_bit;
-                State::with(|state| {
-                    state.do_character_log(
+                Repository::global_mut().do_character_log(
                         cn,
                         core::types::FontColor::Green,
                         &format!("Removed global flag {}\n", flag),
                     );
-                });
             } else {
                 globals.flags |= flag_bit;
-                State::with(|state| {
-                    state.do_character_log(
+                Repository::global_mut().do_character_log(
                         cn,
                         core::types::FontColor::Green,
                         &format!("Added global flag {}\n", flag),
                     );
-                });
             }
         });
     }
@@ -4423,22 +4261,18 @@ impl God {
 
             if target.flags & pk_flag != 0 {
                 target.flags &= !pk_flag;
-                State::with(|state| {
-                    state.do_character_log(
+                Repository::global_mut().do_character_log(
                         cn,
                         core::types::FontColor::Green,
                         &format!("Removed PK status from character {}\n", target.get_name()),
                     );
-                });
             } else {
                 target.flags |= pk_flag;
-                State::with(|state| {
-                    state.do_character_log(
+                Repository::global_mut().do_character_log(
                         cn,
                         core::types::FontColor::Green,
                         &format!("Added PK status to character {}\n", target.get_name()),
                     );
-                });
             }
 
             target.set_do_update_flags();
@@ -4462,14 +4296,12 @@ impl God {
         }
 
         if temp < 0 || temp >= core::constants::MAXTCHARS as i32 {
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     co,
                     core::types::FontColor::Red,
                     &format!("Invalid character template: {}\n", temp),
                 );
                 log::error!("Invalid character template: {}", temp);
-            });
             return;
         }
 
@@ -4477,14 +4309,12 @@ impl God {
             let template = &templates[temp as usize];
 
             if template.used == core::constants::USE_EMPTY {
-                State::with(|state| {
-                    state.do_character_log(
+                Repository::global_mut().do_character_log(
                         co,
                         core::types::FontColor::Red,
                         &format!("Template {} is not in use\n", temp),
                     );
                     log::error!("Template {} is not in use", temp);
-                });
                 return;
             }
 
@@ -4614,9 +4444,7 @@ impl God {
             });
         });
 
-        State::with(|state| {
-            state.do_update_char(co);
-        });
+        Repository::global_mut().do_update_char(co);
     }
 
     /// Save character `co` to persistent storage.
@@ -4629,24 +4457,20 @@ impl God {
 
         Repository::with_characters(|characters| {
             if !characters[co].is_player() {
-                State::with(|state| {
-                    state.do_character_log(
+                Repository::global_mut().do_character_log(
                         cn,
                         core::types::FontColor::Red,
                         "Cannot save non-player character\n",
                     );
-                });
                 return 0;
             }
 
-            State::with(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Green,
-                    &format!("Saving character {}\n", characters[co].get_name()),
-                );
-                // TODO: Actual save logic would write to disk
-            });
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                &format!("Saving character {}\n", characters[co].get_name()),
+            );
+            // TODO: Actual save logic would write to disk
 
             1
         })
@@ -4663,14 +4487,12 @@ impl God {
         Repository::with_characters(|characters| {
             let character = &characters[co];
 
-            State::with(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Green,
-                    &format!("Mailing password for character {}\n", character.get_name()),
-                );
-                // TODO: Actual mail logic
-            });
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                &format!("Mailing password for character {}\n", character.get_name()),
+            );
+            // TODO: Actual mail logic
         });
     }
 
@@ -4689,8 +4511,7 @@ impl God {
 
             target.set_do_update_flags();
 
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Green,
                     &format!(
@@ -4699,7 +4520,6 @@ impl God {
                         damage
                     ),
                 );
-            });
         });
     }
 
@@ -4712,13 +4532,11 @@ impl God {
         }
 
         if !(0..=10000).contains(&sprite) {
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     &format!("Invalid sprite number: {}\n", sprite),
                 );
-            });
             return;
         }
 
@@ -4727,8 +4545,7 @@ impl God {
             target.sprite = sprite as u16;
             target.set_do_update_flags();
 
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Green,
                     &format!(
@@ -4737,7 +4554,6 @@ impl God {
                         sprite
                     ),
                 );
-            });
         });
     }
 
@@ -4754,13 +4570,11 @@ impl God {
             target.luck = value;
             target.set_do_update_flags();
 
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Green,
                     &format!("Set luck of character {} to {}\n", target.get_name(), value),
                 );
-            });
         });
     }
 
@@ -4786,13 +4600,11 @@ impl God {
                 .unwrap_or([0; 200]);
             target.set_do_update_flags();
 
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Green,
                     &format!("Reset description for character {}\n", target.get_name()),
                 );
-            });
         });
     }
 
@@ -4805,13 +4617,11 @@ impl God {
         }
 
         if name.len() > 16 || name.is_empty() {
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     &format!("Invalid name length: {}\n", name.len()),
                 );
-            });
             return;
         }
 
@@ -4826,13 +4636,11 @@ impl God {
                 .unwrap_or([0; 40]);
             target.set_do_update_flags();
 
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Green,
                     &format!("Changed name of character from {} to {}\n", old_name, name),
                 );
-            });
         });
     }
 
@@ -4846,21 +4654,17 @@ impl God {
     pub fn usurp(cn: usize, co: usize) {
         // Check co == 0
         if co == 0 {
-            State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
-            });
+            Repository::global_mut().do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
             return;
         }
 
         // Check if character is sane
         if !Character::is_sane_character(co) {
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     &format!("Bad character number: {}\n", co),
                 );
-            });
             return;
         }
 
@@ -4878,13 +4682,11 @@ impl God {
             });
 
         if !is_used || is_player_or_usurp {
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     &format!("Character {} is not an NPC.\n", co),
                 );
-            });
             return;
         }
 
@@ -4932,14 +4734,12 @@ impl God {
 
                 // Set AFK if not already AFK
                 if characters[cn].data[core::constants::CHD_AFK] == 0 {
-                    State::with(|state| {
-                        state.do_afk(cn, "");
-                    });
+                    Repository::global_mut().do_afk(cn, "");
                 }
             }
 
             player::plr_logout(
-                GameState::global_mut(),
+                Repository::global_mut(),
                 cn,
                 nr as usize,
                 LogoutReason::Usurp,
@@ -4987,9 +4787,7 @@ impl God {
                 // Transfer character back to recall position (512, 512)
                 God::transfer_char(co, 512, 512);
 
-                State::with(|state| {
-                    state.do_afk(co, "");
-                });
+                Repository::global_mut().do_afk(co, "");
 
                 characters[cn].set_do_update_flags();
             }
@@ -5047,9 +4845,7 @@ impl God {
         });
 
         if !is_valid || co == core::constants::MAXCHARS {
-            State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Yellow, "Grolmy is dead.\n");
-            });
+            Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, "Grolmy is dead.\n");
             return;
         }
 
@@ -5064,8 +4860,7 @@ impl God {
         let ticker = Repository::with_globals(|globals| globals.ticker);
         let timer_minutes = (ticker - data_23) as f64 / (core::constants::TICKS as f64 * 60.0);
 
-        State::with(|state| {
-            state.do_character_log(
+        Repository::global_mut().do_character_log(
                 cn,
                 core::types::FontColor::Green,
                 &format!(
@@ -5073,7 +4868,6 @@ impl God {
                     state_name, data_40, timer_minutes, co
                 ),
             );
-        });
     }
 
     /// Start scripted movement or behaviour for the Grolm NPC.
@@ -5104,21 +4898,17 @@ impl God {
         });
 
         if !is_valid || co == core::constants::MAXCHARS {
-            State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Yellow, "Grolmy is dead.\n");
-            });
+            Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, "Grolmy is dead.\n");
             return;
         }
 
         // Check if already moving
         if data_22 != 0 {
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
                     "Grolmy is already moving.\n",
                 );
-            });
             return;
         }
 
@@ -5224,9 +5014,7 @@ impl God {
             });
 
             // Check for new level
-            State::with(|state| {
-                state.do_check_new_level(cn);
-            });
+            Repository::global_mut().do_check_new_level(cn);
         });
     }
 
@@ -5246,9 +5034,7 @@ impl God {
 
         // Check if whom is empty
         if whom.is_empty() {
-            State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Red, "#FORCE whom?\n");
-            });
+            Repository::global_mut().do_character_log(cn, core::types::FontColor::Red, "#FORCE whom?\n");
             return;
         }
 
@@ -5256,9 +5042,7 @@ impl God {
         let co = Self::find_next_char(1, whom, "");
 
         if co <= 0 {
-            State::with(|state| {
-                state.do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
-            });
+            Repository::global_mut().do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
             return;
         }
 
@@ -5273,13 +5057,11 @@ impl God {
         });
 
         if !is_used {
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     "Character is not active.\n",
                 );
-            });
             return;
         }
 
@@ -5289,13 +5071,11 @@ impl God {
         });
 
         if is_player && !is_cn_god {
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     "Not allowed to #FORCE players.\n",
                 );
-            });
             return;
         }
 
@@ -5303,13 +5083,11 @@ impl God {
         if text.is_empty() {
             let name_str = c_string_to_str(&character_name);
 
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     &format!("#FORCE {} to what?\n", name_str),
                 );
-            });
             return;
         }
 
@@ -5318,18 +5096,14 @@ impl God {
         log::info!("IMP: {} forced {} ({}) to \"{}\"", cn, name_str, co, text);
 
         // Make the character say the text
-        State::with(|state| {
-            state.do_sayx(co_usize, text);
-        });
+        Repository::global_mut().do_sayx(co_usize, text);
 
         // Show success message
-        State::with(|state| {
-            state.do_character_log(
+        Repository::global_mut().do_character_log(
                 cn,
                 core::types::FontColor::Green,
                 &format!("{} was forced.\n", name_str),
             );
-        });
     }
 
     /// Check whether an IP address is present in the ban list.
@@ -5366,9 +5140,7 @@ impl God {
 
         Repository::with_ban_list_mut(|ban_list| {
             if ban_list.len() >= 250 {
-                State::with(|state| {
-                    state.do_character_log(cn, core::types::FontColor::Red, "Ban list is full\n");
-                });
+                Repository::global_mut().do_character_log(cn, core::types::FontColor::Red, "Ban list is full\n");
                 return;
             }
 
@@ -5379,13 +5151,11 @@ impl God {
 
             ban_list.push(ban);
 
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Green,
                     &format!("Added ban for address {} by {}\n", addr, creator_name),
                 );
-            });
         });
     }
 
@@ -5410,25 +5180,21 @@ impl God {
 
         Repository::with_ban_list_mut(|ban_list| {
             if nr >= ban_list.len() {
-                State::with(|state| {
-                    state.do_character_log(
+                Repository::global_mut().do_character_log(
                         cn,
                         core::types::FontColor::Red,
                         &format!("Invalid ban number: {}\n", nr),
                     );
-                });
                 return;
             }
 
             ban_list.remove(nr);
 
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Green,
                     &format!("Removed ban entry {}\n", nr),
                 );
-            });
         });
     }
 
@@ -5439,27 +5205,25 @@ impl God {
         }
 
         Repository::with_ban_list(|ban_list| {
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                &format!("Ban list ({} entries):\n", ban_list.len()),
+            );
+            for (i, ban) in ban_list.iter().enumerate() {
+                Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Green,
-                    &format!("Ban list ({} entries):\n", ban_list.len()),
+                    &format!(
+                        "  {}: Address={}, Creator={}, Victim={}\n",
+                        i,
+                        ban.address(),
+                        ban.creator(),
+                        ban.victim()
+                    ),
                 );
-                for (i, ban) in ban_list.iter().enumerate() {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Green,
-                        &format!(
-                            "  {}: Address={}, Creator={}, Victim={}\n",
-                            i,
-                            ban.address(),
-                            ban.creator(),
-                            ban.victim()
-                        ),
-                    );
-                }
+            }
             });
-        });
     }
 
     /// Mute a character `co` so they cannot speak publicly.
@@ -5474,22 +5238,18 @@ impl God {
             // Toggle shutup flag
             if target.flags & CharacterFlags::ShutUp.bits() != 0 {
                 target.flags &= !CharacterFlags::ShutUp.bits();
-                State::with(|state| {
-                    state.do_character_log(
+                Repository::global_mut().do_character_log(
                         cn,
                         core::types::FontColor::Green,
                         &format!("Removed shutup from character {}\n", target.get_name()),
                     );
-                });
             } else {
                 target.flags |= CharacterFlags::ShutUp.bits();
-                State::with(|state| {
-                    state.do_character_log(
+                Repository::global_mut().do_character_log(
                         cn,
                         core::types::FontColor::Green,
                         &format!("Added shutup to character {}\n", target.get_name()),
                     );
-                });
             }
 
             target.set_do_update_flags();
@@ -5518,13 +5278,11 @@ impl God {
             match target.parse::<usize>() {
                 Ok(id) => id,
                 Err(_) => {
-                    State::with(|state| {
-                        state.do_character_log(
+                    Repository::global_mut().do_character_log(
                             cn,
                             core::types::FontColor::Red,
                             "Invalid character number.\n",
                         );
-                    });
                     return;
                 }
             }
@@ -5550,26 +5308,22 @@ impl God {
             match found {
                 Some(co) => co,
                 None => {
-                    State::with(|state| {
-                        state.do_character_log(
+                    Repository::global_mut().do_character_log(
                             cn,
                             core::types::FontColor::Red,
                             &format!("No player found matching '{}'.\n", target),
                         );
-                    });
                     return;
                 }
             }
         };
 
         if !Character::is_sane_character(target_cn) {
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     "Invalid character number.\n",
                 );
-            });
             return;
         }
 
@@ -5582,24 +5336,20 @@ impl God {
         });
 
         if !is_player {
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     "Target is not a player character.\n",
                 );
-            });
             return;
         }
 
         if player_id <= 0 || player_id >= core::constants::MAXPLAYER as i32 {
-            State::with(|state| {
-                state.do_character_log(
+            Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     "Character has no active player connection.\n",
                 );
-            });
             return;
         }
 
@@ -5620,29 +5370,27 @@ impl God {
             Some((lag_ticks as f64 * 1000.0) / core::constants::TICKS as f64)
         };
 
-        State::with(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "Name               Lag(ms)\n",
-            );
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "-------------------------\n",
-            );
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "Name               Lag(ms)\n",
+        );
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "-------------------------\n",
+        );
 
             let lag_str = match lag_ms {
                 Some(ms) => format!("{ms:>7.0}"),
                 None => "   n/a".to_string(),
             };
 
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                &format!("{:<18} {}\n", target_name, lag_str),
-            );
-        });
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            &format!("{:<18} {}\n", target_name, lag_str),
+        );
     }
 
     /// Display basic network timing for all connected player characters.
@@ -5699,29 +5447,27 @@ impl God {
             out
         });
 
-        State::with(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "Name               Lag(ms)\n",
-            );
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "-------------------------\n",
-            );
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "Name               Lag(ms)\n",
+        );
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "-------------------------\n",
+        );
 
-            for (name, lag_ms) in rows {
-                let lag_str = match lag_ms {
-                    Some(ms) => format!("{ms:>7.0}"),
-                    None => "   n/a".to_string(),
-                };
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Yellow,
-                    &format!("{:<18} {}\n", name, lag_str),
-                );
-            }
-        });
+        for (name, lag_ms) in rows {
+            let lag_str = match lag_ms {
+                Some(ms) => format!("{ms:>7.0}"),
+                None => "   n/a".to_string(),
+            };
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!("{:<18} {}\n", name, lag_str),
+            );
+        }
     }
 }

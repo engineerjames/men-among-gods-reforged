@@ -16,9 +16,3 @@ pub(crate) mod player_actions;
 pub(crate) mod stats;
 pub(crate) mod visibility;
 
-use crate::game_state::GameState;
-
-/// Transitional compatibility alias.
-///
-/// Legacy callsites using `State::...` resolve directly to `GameState::...`.
-pub type State = GameState;

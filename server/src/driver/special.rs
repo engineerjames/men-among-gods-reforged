@@ -1,5 +1,6 @@
 use crate::effect::EffectManager;
 use crate::game_state::GameState;
+use crate::game_state::GameState as Repository;
 use crate::god::God;
 use crate::{driver, player};
 use core::constants::*;
@@ -34,14 +35,14 @@ pub fn npc_stunrun_high(_gs: &mut GameState, cn: usize) -> i32 {
     let mut right = 0; // directions to move in
     let mut done = false;
 
-    GameState::with_characters_mut(|ch| ch[cn].data[92] = TICKS * 60);
+    Repository::with_characters_mut(|ch| ch[cn].data[92] = TICKS * 60);
 
     // Scan data slots 0-19 for nearby characters
     for n in 0..20 {
-        let co = GameState::with_characters(|ch| ch[cn].data[n] as usize);
+        let co = Repository::with_characters(|ch| ch[cn].data[n] as usize);
         if co != 0 && Character::is_sane_character(co) {
-            let co_team = GameState::with_characters(|ch| ch[co].data[42]);
-            let cn_team = GameState::with_characters(|ch| ch[cn].data[42]);
+            let co_team = Repository::with_characters(|ch| ch[co].data[42]);
+            let cn_team = Repository::with_characters(|ch| ch[cn].data[42]);
 
             if co_team == cn_team {
                 // Friendly character
@@ -50,7 +51,7 @@ pub fn npc_stunrun_high(_gs: &mut GameState, cn: usize) -> i32 {
                 seen[maxseen].is_friend = true;
                 seen[maxseen].stun = 0;
                 let low_hp =
-                    GameState::with_characters(|ch| ch[co].a_hp < (ch[co].hp[5] as i32 * 400));
+                    Repository::with_characters(|ch| ch[co].a_hp < (ch[co].hp[5] as i32 * 400));
                 seen[maxseen].help = if low_hp { 1 } else { 0 };
                 help = help.max(seen[maxseen].help);
                 maxseen += 1;
@@ -60,7 +61,7 @@ pub fn npc_stunrun_high(_gs: &mut GameState, cn: usize) -> i32 {
                 seen[maxseen].dist = driver::npc_dist(cn, co);
                 seen[maxseen].is_friend = false;
                 if !driver::npc_is_stunned(co) {
-                    let can_stun = GameState::with_characters(|ch| {
+                    let can_stun = Repository::with_characters(|ch| {
                         ch[cn].skill[SK_STUN][5] * 12 > ch[co].skill[SK_RESIST][5] * 10
                     });
                     seen[maxseen].stun = if can_stun { 1 } else { 0 };
@@ -89,12 +90,12 @@ pub fn npc_stunrun_high(_gs: &mut GameState, cn: usize) -> i32 {
 
     // Scan data slots 30-34 for characters that got hit
     for n in 30..35 {
-        let co = GameState::with_characters(|ch| ch[cn].data[n] as usize);
+        let co = Repository::with_characters(|ch| ch[cn].data[n] as usize);
         if co != 0 && Character::is_sane_character(co) {
             for m in 0..maxseen {
                 if seen[m].co == co {
-                    let co_team = GameState::with_characters(|ch| ch[co].data[42]);
-                    let cn_team = GameState::with_characters(|ch| ch[cn].data[42]);
+                    let co_team = Repository::with_characters(|ch| ch[co].data[42]);
+                    let cn_team = Repository::with_characters(|ch| ch[cn].data[42]);
 
                     if co_team == cn_team {
                         seen[m].help += 1;
@@ -112,7 +113,7 @@ pub fn npc_stunrun_high(_gs: &mut GameState, cn: usize) -> i32 {
     }
 
     // Check who attacked us (data slot 20)
-    let co = GameState::with_characters(|ch| ch[cn].data[20] as usize);
+    let co = Repository::with_characters(|ch| ch[cn].data[20] as usize);
     if co != 0 && Character::is_sane_character(co) {
         flee += 5; // we don't like infights, try to flee if attacked
         let mut m = 0;
@@ -133,7 +134,7 @@ pub fn npc_stunrun_high(_gs: &mut GameState, cn: usize) -> i32 {
             seen[maxseen].co = co;
             seen[maxseen].dist = driver::npc_dist(cn, co);
             seen[maxseen].is_friend = false;
-            let can_stun = GameState::with_characters(|ch| {
+            let can_stun = Repository::with_characters(|ch| {
                 ch[cn].skill[SK_STUN][5] * 12 > ch[co].skill[SK_RESIST][5] * 10
             });
             seen[maxseen].stun = if can_stun { 1 } else { 0 };
@@ -149,7 +150,7 @@ pub fn npc_stunrun_high(_gs: &mut GameState, cn: usize) -> i32 {
     }
 
     // Adjust priorities based on mana
-    let low_mana = GameState::with_characters(|ch| ch[cn].a_mana < (ch[cn].mana[5] as i32 * 125));
+    let low_mana = Repository::with_characters(|ch| ch[cn].a_mana < (ch[cn].mana[5] as i32 * 125));
     if low_mana {
         stun -= 3;
         help -= 3;
@@ -157,7 +158,7 @@ pub fn npc_stunrun_high(_gs: &mut GameState, cn: usize) -> i32 {
     }
 
     // Reset former orders
-    GameState::with_characters_mut(|ch| {
+    Repository::with_characters_mut(|ch| {
         ch[cn].use_nr = 0;
         ch[cn].skill_nr = 0;
         ch[cn].attack_cn = 0;
@@ -168,7 +169,7 @@ pub fn npc_stunrun_high(_gs: &mut GameState, cn: usize) -> i32 {
     });
 
     // If low HP, increase flee priority
-    let low_hp = GameState::with_characters(|ch| ch[cn].a_hp < (ch[cn].hp[5] as i32 * 666));
+    let low_hp = Repository::with_characters(|ch| ch[cn].a_hp < (ch[cn].hp[5] as i32 * 666));
     if low_hp {
         flee += 5;
     }
@@ -179,14 +180,14 @@ pub fn npc_stunrun_high(_gs: &mut GameState, cn: usize) -> i32 {
     }
 
     // Set movement mode based on endurance
-    let high_endurance = GameState::with_characters(|ch| ch[cn].a_end > 15000);
-    GameState::with_characters_mut(|ch| {
+    let high_endurance = Repository::with_characters(|ch| ch[cn].a_end > 15000);
+    Repository::with_characters_mut(|ch| {
         ch[cn].mode = if high_endurance { 1 } else { 0 };
     });
 
     // Fleeing behavior
     if !done && flee > 1 && flee >= help && flee >= stun {
-        GameState::with_characters_mut(|ch| {
+        Repository::with_characters_mut(|ch| {
             ch[cn].mode = if ch[cn].a_end > 15000 { 2 } else { 1 };
         });
 
@@ -204,7 +205,7 @@ pub fn npc_stunrun_high(_gs: &mut GameState, cn: usize) -> i32 {
 
             let co = seen[n].co;
             let (cn_x, cn_y, co_x, co_y) =
-                GameState::with_characters(|ch| (ch[cn].x, ch[cn].y, ch[co].x, ch[co].y));
+                Repository::with_characters(|ch| (ch[cn].x, ch[cn].y, ch[co].x, ch[co].y));
 
             if co_x > cn_x {
                 right += tmp / (co_x - cn_x) as i32;
@@ -220,7 +221,7 @@ pub fn npc_stunrun_high(_gs: &mut GameState, cn: usize) -> i32 {
             }
         }
 
-        let (cn_x, cn_y) = GameState::with_characters(|ch| (ch[cn].x, ch[cn].y));
+        let (cn_x, cn_y) = Repository::with_characters(|ch| (ch[cn].x, ch[cn].y));
 
         // Check if up is free space
         for n in 1..5 {
@@ -279,7 +280,7 @@ pub fn npc_stunrun_high(_gs: &mut GameState, cn: usize) -> i32 {
         }
 
         // Bonus for current direction
-        let dir = GameState::with_characters(|ch| ch[cn].dir);
+        let dir = Repository::with_characters(|ch| ch[cn].dir);
         if dir == DX_UP {
             up += 20;
         }
@@ -296,19 +297,19 @@ pub fn npc_stunrun_high(_gs: &mut GameState, cn: usize) -> i32 {
         // Move in the best direction
         if !done && up >= down && up >= left && up >= right {
             if driver::npc_check_target(cn_x as usize, (cn_y - 1) as usize) {
-                GameState::with_characters_mut(|ch| {
+                Repository::with_characters_mut(|ch| {
                     ch[cn].goto_x = cn_x as u16;
                     ch[cn].goto_y = (cn_y - 1) as u16;
                 });
                 done = true;
             } else if driver::npc_check_target((cn_x + 1) as usize, (cn_y - 1) as usize) {
-                GameState::with_characters_mut(|ch| {
+                Repository::with_characters_mut(|ch| {
                     ch[cn].goto_x = (cn_x + 1) as u16;
                     ch[cn].goto_y = (cn_y - 1) as u16;
                 });
                 done = true;
             } else if driver::npc_check_target((cn_x - 1) as usize, (cn_y - 1) as usize) {
-                GameState::with_characters_mut(|ch| {
+                Repository::with_characters_mut(|ch| {
                     ch[cn].goto_x = (cn_x - 1) as u16;
                     ch[cn].goto_y = (cn_y - 1) as u16;
                 });
@@ -318,19 +319,19 @@ pub fn npc_stunrun_high(_gs: &mut GameState, cn: usize) -> i32 {
 
         if !done && down >= up && down >= left && down >= right {
             if driver::npc_check_target(cn_x as usize, (cn_y + 1) as usize) {
-                GameState::with_characters_mut(|ch| {
+                Repository::with_characters_mut(|ch| {
                     ch[cn].goto_x = cn_x as u16;
                     ch[cn].goto_y = (cn_y + 1) as u16;
                 });
                 done = true;
             } else if driver::npc_check_target((cn_x + 1) as usize, (cn_y + 1) as usize) {
-                GameState::with_characters_mut(|ch| {
+                Repository::with_characters_mut(|ch| {
                     ch[cn].goto_x = (cn_x + 1) as u16;
                     ch[cn].goto_y = (cn_y + 1) as u16;
                 });
                 done = true;
             } else if driver::npc_check_target((cn_x - 1) as usize, (cn_y + 1) as usize) {
-                GameState::with_characters_mut(|ch| {
+                Repository::with_characters_mut(|ch| {
                     ch[cn].goto_x = (cn_x - 1) as u16;
                     ch[cn].goto_y = (cn_y + 1) as u16;
                 });
@@ -340,19 +341,19 @@ pub fn npc_stunrun_high(_gs: &mut GameState, cn: usize) -> i32 {
 
         if !done && left >= up && left >= down && left >= right {
             if driver::npc_check_target((cn_x - 1) as usize, cn_y as usize) {
-                GameState::with_characters_mut(|ch| {
+                Repository::with_characters_mut(|ch| {
                     ch[cn].goto_x = (cn_x - 1) as u16;
                     ch[cn].goto_y = cn_y as u16;
                 });
                 done = true;
             } else if driver::npc_check_target((cn_x - 1) as usize, (cn_y + 1) as usize) {
-                GameState::with_characters_mut(|ch| {
+                Repository::with_characters_mut(|ch| {
                     ch[cn].goto_x = (cn_x - 1) as u16;
                     ch[cn].goto_y = (cn_y + 1) as u16;
                 });
                 done = true;
             } else if driver::npc_check_target((cn_x - 1) as usize, (cn_y - 1) as usize) {
-                GameState::with_characters_mut(|ch| {
+                Repository::with_characters_mut(|ch| {
                     ch[cn].goto_x = (cn_x - 1) as u16;
                     ch[cn].goto_y = (cn_y - 1) as u16;
                 });
@@ -362,19 +363,19 @@ pub fn npc_stunrun_high(_gs: &mut GameState, cn: usize) -> i32 {
 
         if !done && right >= up && right >= down && right >= left {
             if driver::npc_check_target((cn_x + 1) as usize, cn_y as usize) {
-                GameState::with_characters_mut(|ch| {
+                Repository::with_characters_mut(|ch| {
                     ch[cn].goto_x = (cn_x + 1) as u16;
                     ch[cn].goto_y = cn_y as u16;
                 });
                 done = true;
             } else if driver::npc_check_target((cn_x + 1) as usize, (cn_y + 1) as usize) {
-                GameState::with_characters_mut(|ch| {
+                Repository::with_characters_mut(|ch| {
                     ch[cn].goto_x = (cn_x + 1) as u16;
                     ch[cn].goto_y = (cn_y + 1) as u16;
                 });
                 done = true;
             } else if driver::npc_check_target((cn_x + 1) as usize, (cn_y - 1) as usize) {
-                GameState::with_characters_mut(|ch| {
+                Repository::with_characters_mut(|ch| {
                     ch[cn].goto_x = (cn_x + 1) as u16;
                     ch[cn].goto_y = (cn_y - 1) as u16;
                 });
@@ -384,9 +385,9 @@ pub fn npc_stunrun_high(_gs: &mut GameState, cn: usize) -> i32 {
 
         // Panic - attack whoever is attacking us
         if !done {
-            let co = GameState::with_characters(|ch| ch[cn].data[20] as usize);
+            let co = Repository::with_characters(|ch| ch[cn].data[20] as usize);
             if co != 0 {
-                GameState::with_characters_mut(|ch| ch[cn].attack_cn = co as u16);
+                Repository::with_characters_mut(|ch| ch[cn].attack_cn = co as u16);
                 driver::npc_try_spell(cn, co, SK_STUN);
                 done = true;
             }
@@ -424,8 +425,8 @@ pub fn npc_stunrun_high(_gs: &mut GameState, cn: usize) -> i32 {
             if !done {
                 done = driver::npc_try_spell(cn, seen[m].co, SK_CURSE);
             }
-            let ticker = GameState::with_globals(|g| g.ticker);
-            GameState::with_characters_mut(|ch| ch[cn].data[24] = ticker);
+            let ticker = Repository::with_globals(|g| g.ticker);
+            Repository::with_characters_mut(|ch| ch[cn].data[24] = ticker);
         }
     }
 
@@ -437,7 +438,7 @@ pub fn npc_stunrun_high(_gs: &mut GameState, cn: usize) -> i32 {
             if seen[n].help > tmp
                 || (seen[n].help != 0 && seen[n].help == tmp && seen[n].dist < seen[m].dist)
             {
-                let needs_help = GameState::with_characters(|ch| {
+                let needs_help = Repository::with_characters(|ch| {
                     !driver::npc_is_blessed(seen[n].co)
                         || ch[seen[n].co].a_hp < (ch[seen[n].co].hp[5] * 400) as i32
                 });
@@ -448,7 +449,7 @@ pub fn npc_stunrun_high(_gs: &mut GameState, cn: usize) -> i32 {
             }
         }
         if tmp > 0 {
-            let low_hp = GameState::with_characters(|ch| {
+            let low_hp = Repository::with_characters(|ch| {
                 ch[seen[m].co].a_hp < (ch[seen[m].co].hp[5] * 400) as i32
             });
             if low_hp {
@@ -463,29 +464,29 @@ pub fn npc_stunrun_high(_gs: &mut GameState, cn: usize) -> i32 {
             if !done {
                 done = driver::npc_try_spell(cn, seen[m].co, SK_ENHANCE);
             }
-            let ticker = GameState::with_globals(|g| g.ticker);
-            GameState::with_characters_mut(|ch| ch[cn].data[24] = ticker);
+            let ticker = Repository::with_globals(|g| g.ticker);
+            Repository::with_characters_mut(|ch| ch[cn].data[24] = ticker);
         }
     }
 
     // Patrol state machine
     if !done {
-        let state = GameState::with_characters(|ch| ch[cn].data[22]);
+        let state = Repository::with_characters(|ch| ch[cn].data[22]);
 
         if state == 0 {
             // Staying at home
-            let in_item = GameState::with_characters(|ch| ch[cn].citem);
+            let in_item = Repository::with_characters(|ch| ch[cn].citem);
             if in_item != 0 {
-                GameState::with_characters_mut(|ch| ch[cn].citem = 0);
-                GameState::with_items_mut(|items| items[in_item as usize].used = USE_EMPTY);
+                Repository::with_characters_mut(|ch| ch[cn].citem = 0);
+                Repository::with_items_mut(|items| items[in_item as usize].used = USE_EMPTY);
             }
-            let data_23 = GameState::with_characters(|ch| ch[cn].data[23]);
+            let data_23 = Repository::with_characters(|ch| ch[cn].data[23]);
             if data_23 == 0 {
-                let ticker = GameState::with_globals(|g| g.ticker);
-                GameState::with_characters_mut(|ch| ch[cn].data[23] = ticker);
+                let ticker = Repository::with_globals(|g| g.ticker);
+                Repository::with_characters_mut(|ch| ch[cn].data[23] = ticker);
             }
-            let ticker = GameState::with_globals(|g| g.ticker);
-            let data_23 = GameState::with_characters(|ch| ch[cn].data[23]);
+            let ticker = Repository::with_globals(|g| g.ticker);
+            let data_23 = Repository::with_characters(|ch| ch[cn].data[23]);
             if data_23 + TICKS * 60 * 60 < ticker {
                 let mut tmp = 0;
                 for y in 322..=332 {
@@ -493,9 +494,9 @@ pub fn npc_stunrun_high(_gs: &mut GameState, cn: usize) -> i32 {
                         break;
                     }
                     for x in 212..=232 {
-                        let co = GameState::with_map(|map| map[(x + y * SERVER_MAPX) as usize].ch);
+                        let co = Repository::with_map(|map| map[(x + y * SERVER_MAPX) as usize].ch);
                         if co != 0 {
-                            let (co_team, cn_team) = GameState::with_characters(|ch| {
+                            let (co_team, cn_team) = Repository::with_characters(|ch| {
                                 (ch[co as usize].data[42], ch[cn].data[42])
                             });
                             if co_team != cn_team {
@@ -506,61 +507,61 @@ pub fn npc_stunrun_high(_gs: &mut GameState, cn: usize) -> i32 {
                     }
                 }
                 if tmp == 0 {
-                    GameState::with_characters_mut(|ch| ch[cn].data[22] = 1); // set state for moving towards entry
+                    Repository::with_characters_mut(|ch| ch[cn].data[22] = 1); // set state for moving towards entry
                 }
-                GameState::with_characters_mut(|ch| ch[cn].data[23] = ticker);
+                Repository::with_characters_mut(|ch| ch[cn].data[23] = ticker);
             }
         }
 
-        let ticker = GameState::with_globals(|g| g.ticker);
-        let data_24 = GameState::with_characters(|ch| ch[cn].data[24]);
+        let ticker = Repository::with_globals(|g| g.ticker);
+        let data_24 = Repository::with_characters(|ch| ch[cn].data[24]);
         if state == 1 && ticker > data_24 + TICKS * 10 {
             // Moving towards entry
-            let citem = GameState::with_characters(|ch| ch[cn].citem);
+            let citem = Repository::with_characters(|ch| ch[cn].citem);
             if citem == 0 {
                 let in_item = God::create_item(718);
                 // TODO: Check the Some/None case properly here.
-                GameState::with_characters_mut(|ch| ch[cn].citem = in_item.unwrap() as u32);
-                GameState::with_items_mut(|items| items[in_item.unwrap()].carried = cn as u16);
+                Repository::with_characters_mut(|ch| ch[cn].citem = in_item.unwrap() as u32);
+                Repository::with_items_mut(|items| items[in_item.unwrap()].carried = cn as u16);
             }
-            let (cn_x, cn_y) = GameState::with_characters(|ch| (ch[cn].x, ch[cn].y));
+            let (cn_x, cn_y) = Repository::with_characters(|ch| (ch[cn].x, ch[cn].y));
             if (cn_x as i32 - 264).abs() + (cn_y as i32 - 317).abs() < 20 {
-                GameState::with_characters_mut(|ch| {
+                Repository::with_characters_mut(|ch| {
                     ch[cn].data[22] = 2;
                     ch[cn].data[23] = ticker;
                 });
             } else {
                 if driver::npc_check_target(264, 317) {
-                    GameState::with_characters_mut(|ch| {
+                    Repository::with_characters_mut(|ch| {
                         ch[cn].goto_x = 264;
                         ch[cn].goto_y = 317;
                     });
                 } else if driver::npc_check_target(265, 318) {
-                    GameState::with_characters_mut(|ch| {
+                    Repository::with_characters_mut(|ch| {
                         ch[cn].goto_x = 265;
                         ch[cn].goto_y = 318;
                     });
                 }
                 if cn_x > 232 {
-                    GameState::with_characters_mut(|ch| ch[cn].data[24] = ticker);
+                    Repository::with_characters_mut(|ch| ch[cn].data[24] = ticker);
                 } else {
-                    GameState::with_characters_mut(|ch| ch[cn].data[24] = 0);
+                    Repository::with_characters_mut(|ch| ch[cn].data[24] = 0);
                 }
             }
         }
 
         if state == 2 {
             // Moving towards home
-            let (cn_x, cn_y) = GameState::with_characters(|ch| (ch[cn].x, ch[cn].y));
+            let (cn_x, cn_y) = Repository::with_characters(|ch| (ch[cn].x, ch[cn].y));
             if (cn_x as i32 - 217).abs() + (cn_y as i32 - 349).abs() < 3 {
-                let ticker = GameState::with_globals(|g| g.ticker);
-                GameState::with_characters_mut(|ch| {
+                let ticker = Repository::with_globals(|g| g.ticker);
+                Repository::with_characters_mut(|ch| {
                     ch[cn].data[22] = 0;
                     ch[cn].data[23] = ticker;
                     ch[cn].data[40] += 1;
                 });
             } else {
-                GameState::with_characters_mut(|ch| {
+                Repository::with_characters_mut(|ch| {
                     ch[cn].goto_x = 217;
                     ch[cn].goto_y = 349;
                 });
@@ -569,22 +570,22 @@ pub fn npc_stunrun_high(_gs: &mut GameState, cn: usize) -> i32 {
     }
 
     // Clean up old data
-    let ticker = GameState::with_globals(|g| g.ticker);
+    let ticker = Repository::with_globals(|g| g.ticker);
     for n in 0..20 {
-        let data_val = GameState::with_characters(|ch| ch[cn].data[n + 50]);
+        let data_val = Repository::with_characters(|ch| ch[cn].data[n + 50]);
         if data_val + TICKS * 2 < ticker {
-            GameState::with_characters_mut(|ch| ch[cn].data[n] = 0); // erase all chars we saw
+            Repository::with_characters_mut(|ch| ch[cn].data[n] = 0); // erase all chars we saw
         }
     }
     for n in 30..35 {
-        let data_val = GameState::with_characters(|ch| ch[cn].data[n + 5]);
+        let data_val = Repository::with_characters(|ch| ch[cn].data[n + 5]);
         if data_val + TICKS * 2 < ticker {
-            GameState::with_characters_mut(|ch| ch[cn].data[n] = 0); // erase all fellows that got hit
+            Repository::with_characters_mut(|ch| ch[cn].data[n] = 0); // erase all fellows that got hit
         }
     }
-    let data_21 = GameState::with_characters(|ch| ch[cn].data[21]);
+    let data_21 = Repository::with_characters(|ch| ch[cn].data[21]);
     if data_21 + TICKS * 2 < ticker {
-        GameState::with_characters_mut(|ch| ch[cn].data[20] = 0); // forget who hit us
+        Repository::with_characters_mut(|ch| ch[cn].data[20] = 0); // forget who hit us
     }
 
     0
@@ -596,22 +597,22 @@ pub fn npc_stunrun_low(_gs: &mut GameState, _cn: usize) -> i32 {
 }
 
 fn npc_stunrun_add_seen(cn: usize, co: usize) -> i32 {
-    let ticker = GameState::with_globals(|g| g.ticker);
+    let ticker = Repository::with_globals(|g| g.ticker);
 
     // Check if co is already in the seen list (data[0-19])
     for n in 0..20 {
-        let data_n = GameState::with_characters(|ch| ch[cn].data[n]);
+        let data_n = Repository::with_characters(|ch| ch[cn].data[n]);
         if data_n == co as i32 {
-            GameState::with_characters_mut(|ch| ch[cn].data[n + 50] = ticker);
+            Repository::with_characters_mut(|ch| ch[cn].data[n + 50] = ticker);
             return 1;
         }
     }
 
     // Find an empty slot and add co
     for n in 0..20 {
-        let data_n = GameState::with_characters(|ch| ch[cn].data[n]);
+        let data_n = Repository::with_characters(|ch| ch[cn].data[n]);
         if data_n == 0 {
-            GameState::with_characters_mut(|ch| {
+            Repository::with_characters_mut(|ch| {
                 ch[cn].data[n] = co as i32;
                 ch[cn].data[n + 50] = ticker;
             });
@@ -624,27 +625,27 @@ fn npc_stunrun_add_seen(cn: usize, co: usize) -> i32 {
 
 fn npc_stunrun_gotattack(cn: usize, co: usize) -> i32 {
     npc_stunrun_add_seen(cn, co);
-    GameState::with_characters_mut(|ch| ch[cn].data[20] = co as i32);
+    Repository::with_characters_mut(|ch| ch[cn].data[20] = co as i32);
     1
 }
 
 fn npc_stunrun_add_fight(cn: usize, co: usize) {
-    let ticker = GameState::with_globals(|g| g.ticker);
+    let ticker = Repository::with_globals(|g| g.ticker);
 
     // Check if co is already in the fight list (data[30-34])
     for n in 30..35 {
-        let data_n = GameState::with_characters(|ch| ch[cn].data[n]);
+        let data_n = Repository::with_characters(|ch| ch[cn].data[n]);
         if data_n == co as i32 {
-            GameState::with_characters_mut(|ch| ch[cn].data[n + 5] = ticker);
+            Repository::with_characters_mut(|ch| ch[cn].data[n + 5] = ticker);
             return;
         }
     }
 
     // Find an empty slot and add co
     for n in 30..35 {
-        let data_n = GameState::with_characters(|ch| ch[cn].data[n]);
+        let data_n = Repository::with_characters(|ch| ch[cn].data[n]);
         if data_n == 0 {
-            GameState::with_characters_mut(|ch| {
+            Repository::with_characters_mut(|ch| {
                 ch[cn].data[n] = co as i32;
                 ch[cn].data[n + 5] = ticker;
             });
@@ -655,11 +656,11 @@ fn npc_stunrun_add_fight(cn: usize, co: usize) {
 
 fn npc_stunrun_seeattack(cn: usize, cc: usize, co: usize) -> i32 {
     // TODO: Double check this implementation now...
-    if GameState::global_mut().do_char_can_see(cn, co) != 0 {
+    if Repository::global_mut().do_char_can_see(cn, co) != 0 {
         npc_stunrun_add_seen(cn, co);
         npc_stunrun_add_fight(cn, co);
     }
-    if GameState::global_mut().do_char_can_see(cn, cc) != 0 {
+    if Repository::global_mut().do_char_can_see(cn, cc) != 0 {
         npc_stunrun_add_seen(cn, cc);
         npc_stunrun_add_fight(cn, cc);
     }
@@ -667,7 +668,7 @@ fn npc_stunrun_seeattack(cn: usize, cc: usize, co: usize) -> i32 {
 }
 
 fn npc_stunrun_see(cn: usize, co: usize) -> i32 {
-    if GameState::global_mut().do_char_can_see(cn, co) == 0 {
+    if Repository::global_mut().do_char_can_see(cn, co) == 0 {
         return 1; // processed it: we cannot see him, so ignore him
     }
 
@@ -700,7 +701,7 @@ pub fn npc_stunrun_msg(
         NT_SHOUT => 0,
         NT_HITME => 0,
         _ => {
-            let name = GameState::with_characters(|ch| ch[cn].get_name().to_string());
+            let name = Repository::with_characters(|ch| ch[cn].get_name().to_string());
             log::warn!("Unknown NPC message for {} ({}): {}", cn, name, msg_type);
             0
         }
@@ -709,7 +710,7 @@ pub fn npc_stunrun_msg(
 
 pub fn npc_cityattack_high(_gs: &mut GameState, cn: usize) -> i32 {
     // Heal if hurt
-    let low_hp = GameState::with_characters(|ch| ch[cn].a_hp < (ch[cn].hp[5] * 600) as i32);
+    let low_hp = Repository::with_characters(|ch| ch[cn].a_hp < (ch[cn].hp[5] * 600) as i32);
     if low_hp {
         if driver::npc_try_spell(cn, cn, SK_HEAL) {
             return 1;
@@ -717,14 +718,14 @@ pub fn npc_cityattack_high(_gs: &mut GameState, cn: usize) -> i32 {
     }
 
     // Generic spell management
-    let (high_mana, has_medit) = GameState::with_characters(|ch| {
+    let (high_mana, has_medit) = Repository::with_characters(|ch| {
         (
             ch[cn].a_mana > (ch[cn].mana[5] as i32 * 850),
             ch[cn].skill[SK_MEDIT][0] != 0,
         )
     });
     if high_mana && has_medit {
-        let very_high_mana = GameState::with_characters(|ch| ch[cn].a_mana > 75000);
+        let very_high_mana = Repository::with_characters(|ch| ch[cn].a_mana > 75000);
         if very_high_mana && driver::npc_try_spell(cn, cn, SK_BLESS) {
             return 1;
         }
@@ -744,34 +745,34 @@ pub fn npc_cityattack_high(_gs: &mut GameState, cn: usize) -> i32 {
 
     // Generic endurance management
     let (attack_cn, a_end, current_mode) =
-        GameState::with_characters(|ch| (ch[cn].attack_cn, ch[cn].a_end, ch[cn].mode));
+        Repository::with_characters(|ch| (ch[cn].attack_cn, ch[cn].a_end, ch[cn].mode));
 
     if attack_cn != 0 && a_end > 10000 {
         if current_mode != 2 {
-            GameState::with_characters_mut(|ch| {
+            Repository::with_characters_mut(|ch| {
                 ch[cn].mode = 2;
                 ch[cn].set_do_update_flags();
             });
         }
     } else if a_end > 10000 {
         if current_mode != 1 {
-            GameState::with_characters_mut(|ch| {
+            Repository::with_characters_mut(|ch| {
                 ch[cn].mode = 1;
                 ch[cn].set_do_update_flags();
             });
         }
     } else if current_mode != 0 {
-        GameState::with_characters_mut(|ch| {
+        Repository::with_characters_mut(|ch| {
             ch[cn].mode = 0;
             ch[cn].set_do_update_flags();
         });
     }
 
     // Fight management
-    let co = GameState::with_characters(|ch| ch[cn].attack_cn);
+    let co = Repository::with_characters(|ch| ch[cn].attack_cn);
     if co != 0 {
         // We're fighting
-        let losing = GameState::with_characters(|ch| ch[cn].a_hp < (ch[cn].hp[5] * 600) as i32);
+        let losing = Repository::with_characters(|ch| ch[cn].a_hp < (ch[cn].hp[5] * 600) as i32);
         if losing {
             // We're losing
             if driver::npc_try_spell(cn, co as usize, SK_BLAST) {
@@ -779,17 +780,17 @@ pub fn npc_cityattack_high(_gs: &mut GameState, cn: usize) -> i32 {
             }
         }
 
-        let ticker = GameState::with_globals(|g| g.ticker);
-        let data_75 = GameState::with_characters(|ch| ch[cn].data[75]);
+        let ticker = Repository::with_globals(|g| g.ticker);
+        let data_75 = Repository::with_characters(|ch| ch[cn].data[75]);
         if ticker > data_75 && driver::npc_try_spell(cn, co as usize, SK_STUN) {
-            let new_data_75 = GameState::with_characters(|ch| {
+            let new_data_75 = Repository::with_characters(|ch| {
                 ticker + ch[cn].skill[SK_STUN][5] as i32 + TICKS * 8
             });
-            GameState::with_characters_mut(|ch| ch[cn].data[75] = new_data_75);
+            Repository::with_characters_mut(|ch| ch[cn].data[75] = new_data_75);
             return 1;
         }
 
-        let very_high_mana = GameState::with_characters(|ch| ch[cn].a_mana > 75000);
+        let very_high_mana = Repository::with_characters(|ch| ch[cn].a_mana > 75000);
         if very_high_mana && driver::npc_try_spell(cn, cn, SK_BLESS) {
             return 1;
         }
@@ -809,16 +810,16 @@ pub fn npc_cityattack_high(_gs: &mut GameState, cn: usize) -> i32 {
             return 1;
         }
 
-        let ticker = GameState::with_globals(|g| g.ticker);
-        let data_74 = GameState::with_characters(|ch| ch[cn].data[74]);
+        let ticker = Repository::with_globals(|g| g.ticker);
+        let data_74 = Repository::with_characters(|ch| ch[cn].data[74]);
         if ticker > data_74 + TICKS * 10 && driver::npc_try_spell(cn, co as usize, SK_GHOST) {
-            GameState::with_characters_mut(|ch| ch[cn].data[74] = ticker);
+            Repository::with_characters_mut(|ch| ch[cn].data[74] = ticker);
             return 1;
         }
 
         // Blast always if we cannot hurt him otherwise
         let cannot_hurt =
-            GameState::with_characters(|ch| ch[co as usize].armor + 5 > ch[cn].weapon);
+            Repository::with_characters(|ch| ch[co as usize].armor + 5 > ch[cn].weapon);
         if cannot_hurt {
             if driver::npc_try_spell(cn, co as usize, SK_BLAST) {
                 return 1;
@@ -830,19 +831,19 @@ pub fn npc_cityattack_high(_gs: &mut GameState, cn: usize) -> i32 {
 }
 
 pub fn npc_moveto(cn: usize, x: u16, y: u16) -> i32 {
-    let (cn_x, cn_y) = GameState::with_characters(|ch| (ch[cn].x, ch[cn].y));
+    let (cn_x, cn_y) = Repository::with_characters(|ch| (ch[cn].x, ch[cn].y));
 
     // If we're within 3 tiles of the target, we're done
     if (cn_x as i32 - x as i32).abs() < 3 && (cn_y as i32 - y as i32).abs() < 3 {
-        GameState::with_characters_mut(|ch| ch[cn].data[1] = 0);
+        Repository::with_characters_mut(|ch| ch[cn].data[1] = 0);
         return 1;
     }
 
-    let data_1 = GameState::with_characters(|ch| ch[cn].data[1]);
+    let data_1 = Repository::with_characters(|ch| ch[cn].data[1]);
 
     // Try the exact target first
     if data_1 == 0 && driver::npc_check_target(x as usize, y as usize) {
-        GameState::with_characters_mut(|ch| {
+        Repository::with_characters_mut(|ch| {
             ch[cn].data[1] += 1;
             ch[cn].goto_x = x;
             ch[cn].goto_y = y;
@@ -855,11 +856,11 @@ pub fn npc_moveto(cn: usize, x: u16, y: u16) -> i32 {
     for dx in 0..3 {
         for dy in 0..3 {
             try_count += 1;
-            let data_1 = GameState::with_characters(|ch| ch[cn].data[1]);
+            let data_1 = Repository::with_characters(|ch| ch[cn].data[1]);
 
             if data_1 < try_count && driver::npc_check_target((x + dx) as usize, (y + dy) as usize)
             {
-                GameState::with_characters_mut(|ch| {
+                Repository::with_characters_mut(|ch| {
                     ch[cn].data[1] += 1;
                     ch[cn].goto_x = x + dx;
                     ch[cn].goto_y = y + dy;
@@ -870,7 +871,7 @@ pub fn npc_moveto(cn: usize, x: u16, y: u16) -> i32 {
                 && x >= dx
                 && driver::npc_check_target((x - dx) as usize, (y + dy) as usize)
             {
-                GameState::with_characters_mut(|ch| {
+                Repository::with_characters_mut(|ch| {
                     ch[cn].data[1] += 1;
                     ch[cn].goto_x = x - dx;
                     ch[cn].goto_y = y + dy;
@@ -881,7 +882,7 @@ pub fn npc_moveto(cn: usize, x: u16, y: u16) -> i32 {
                 && y >= dy
                 && driver::npc_check_target((x + dx) as usize, (y - dy) as usize)
             {
-                GameState::with_characters_mut(|ch| {
+                Repository::with_characters_mut(|ch| {
                     ch[cn].data[1] += 1;
                     ch[cn].goto_x = x + dx;
                     ch[cn].goto_y = y - dy;
@@ -893,7 +894,7 @@ pub fn npc_moveto(cn: usize, x: u16, y: u16) -> i32 {
                 && y >= dy
                 && driver::npc_check_target((x - dx) as usize, (y - dy) as usize)
             {
-                GameState::with_characters_mut(|ch| {
+                Repository::with_characters_mut(|ch| {
                     ch[cn].data[1] += 1;
                     ch[cn].goto_x = x - dx;
                     ch[cn].goto_y = y - dy;
@@ -903,12 +904,12 @@ pub fn npc_moveto(cn: usize, x: u16, y: u16) -> i32 {
         }
     }
 
-    GameState::with_characters_mut(|ch| ch[cn].data[1] = 0);
+    Repository::with_characters_mut(|ch| ch[cn].data[1] = 0);
     0
 }
 
 fn npc_cityattack_wait() -> i32 {
-    let mdtime = GameState::with_globals(|g| g.mdtime);
+    let mdtime = Repository::with_globals(|g| g.mdtime);
     if (mdtime % 28800) < 20 {
         1
     } else {
@@ -917,7 +918,7 @@ fn npc_cityattack_wait() -> i32 {
 }
 
 pub fn npc_cityattack_low(_gs: &mut GameState, cn: usize) -> i32 {
-    let state = GameState::with_characters(|ch| ch[cn].data[0]);
+    let state = Repository::with_characters(|ch| ch[cn].data[0]);
 
     let ret = match state {
         0 => npc_moveto(cn, 456, 356),
@@ -934,7 +935,7 @@ pub fn npc_cityattack_low(_gs: &mut GameState, cn: usize) -> i32 {
     };
 
     if ret != 0 {
-        GameState::with_characters_mut(|ch| ch[cn].data[0] += 1);
+        Repository::with_characters_mut(|ch| ch[cn].data[0] += 1);
     }
 
     0
@@ -946,31 +947,31 @@ fn npc_cityattack_gotattack(_cn: usize, _co: usize) -> i32 {
 
 fn npc_cityattack_seeattack(cn: usize, cc: usize, co: usize) -> i32 {
     // Check if cn can see co (does nothing with the result in C++ original)
-    GameState::global_mut().do_char_can_see(cn, co);
+    Repository::global_mut().do_char_can_see(cn, co);
 
     // Check if cn can see cc (does nothing with the result in C++ original)
-    GameState::global_mut().do_char_can_see(cn, cc);
+    Repository::global_mut().do_char_can_see(cn, cc);
 
     1
 }
 
 fn npc_cityattack_see(cn: usize, co: usize) -> i32 {
     // Check if cn can see co
-    let can_see = GameState::global_mut().do_char_can_see(cn, co);
+    let can_see = Repository::global_mut().do_char_can_see(cn, co);
     if can_see == 0 {
         return 1; // processed it: we cannot see them, so ignore
     }
 
     // Check if they're on different teams (data[42])
-    let (cn_team, co_team) = GameState::with_characters(|ch| (ch[cn].data[42], ch[co].data[42]));
+    let (cn_team, co_team) = Repository::with_characters(|ch| (ch[cn].data[42], ch[co].data[42]));
 
     if cn_team != co_team {
         // Get current attack target
-        let cc = GameState::with_characters(|ch| ch[cn].attack_cn as usize);
+        let cc = Repository::with_characters(|ch| ch[cn].attack_cn as usize);
 
         // If no current target or co is closer than current target
         if cc == 0 || crate::driver::npc_dist(cn, co) < crate::driver::npc_dist(cn, cc) {
-            GameState::with_characters_mut(|ch| {
+            Repository::with_characters_mut(|ch| {
                 ch[cn].attack_cn = co as u16;
                 ch[cn].goto_x = 0;
             });
@@ -1005,7 +1006,7 @@ pub fn npc_cityattack_msg(
         x if x == NT_SHOUT as i32 => 0,
         x if x == NT_HITME as i32 => 0,
         _ => {
-            let name = GameState::with_characters(|ch| ch[cn].get_name().to_string());
+            let name = Repository::with_characters(|ch| ch[cn].get_name().to_string());
             log::warn!("Unknown NPC message for {} ({}): {}", cn, name, msg_type);
             0
         }
@@ -1019,9 +1020,9 @@ pub fn npc_malte_high(_gs: &mut GameState, _character_id: usize) -> i32 {
 
 pub fn npc_malte_low(_gs: &mut GameState, cn: usize) -> i32 {
     // Check if we need to wait before progressing
-    let (ticker, data_2) = GameState::with_globals(|g| {
+    let (ticker, data_2) = Repository::with_globals(|g| {
         let ticker = g.ticker;
-        let data_2 = GameState::with_characters(|ch| ch[cn].data[2]);
+        let data_2 = Repository::with_characters(|ch| ch[cn].data[2]);
         (ticker, data_2)
     });
 
@@ -1029,17 +1030,17 @@ pub fn npc_malte_low(_gs: &mut GameState, cn: usize) -> i32 {
         return 0;
     }
 
-    let co = GameState::with_characters(|ch| ch[cn].data[0] as usize);
-    let state = GameState::with_characters(|ch| ch[cn].data[1]);
+    let co = Repository::with_characters(|ch| ch[cn].data[0] as usize);
+    let state = Repository::with_characters(|ch| ch[cn].data[1]);
 
     match state {
         0 => {
             // Thank the player
-            let co_name = GameState::with_characters(|ch| ch[co].get_name().to_string());
+            let co_name = Repository::with_characters(|ch| ch[co].get_name().to_string());
             let message = format!("Thank you so much for saving me, {}!", co_name);
-            GameState::global_mut().do_sayx(cn, &message);
+            Repository::global_mut().do_sayx(cn, &message);
 
-            GameState::with_characters_mut(|ch| {
+            Repository::with_characters_mut(|ch| {
                 ch[cn].data[2] = ticker + TICKS * 8;
                 ch[cn].data[1] += 1;
                 ch[cn].misc_action = DR_TURN as u16;
@@ -1048,80 +1049,80 @@ pub fn npc_malte_low(_gs: &mut GameState, cn: usize) -> i32 {
         }
         1 => {
             // Explain about the coin
-            GameState::global_mut().do_sayx(
+            Repository::global_mut().do_sayx(
                 cn,
                 "Before the monsters caught me, I discovered that you need a coin to open certain doors down here."
             );
 
-            GameState::with_characters_mut(|ch| {
+            Repository::with_characters_mut(|ch| {
                 ch[cn].data[2] = ticker + TICKS * 8;
                 ch[cn].data[1] += 1;
             });
         }
         2 => {
             // Give coin part and mention Damor
-            GameState::global_mut().do_sayx(
+            Repository::global_mut().do_sayx(
                 cn,
                 "I found this part of the coin, and I heard that Damor in Aston has another one. Ask him for the 'Black Stronghold Coin'."
             );
 
             // Create and give the coin item
             if let Some(in_item) = crate::god::God::create_item(763) {
-                GameState::with_characters_mut(|ch| {
+                Repository::with_characters_mut(|ch| {
                     ch[cn].citem = in_item as u32;
                     ch[cn].data[2] = ticker + TICKS * 5;
                     ch[cn].data[1] += 1;
                     ch[cn].misc_action = DR_GIVE as u16;
                     ch[cn].misc_target1 = co as u16;
                 });
-                GameState::with_items_mut(|items| {
+                Repository::with_items_mut(|items| {
                     items[in_item].carried = cn as u16;
                 });
             }
         }
         3 => {
             // Mention Shiva
-            GameState::global_mut().do_sayx(
+            Repository::global_mut().do_sayx(
                 cn,
                 "Shiva, the mage who creates all the monsters, has the third part of it.",
             );
 
-            GameState::with_characters_mut(|ch| {
+            Repository::with_characters_mut(|ch| {
                 ch[cn].data[2] = ticker + TICKS * 8;
                 ch[cn].data[1] += 1;
             });
         }
         4 => {
             // No idea about other parts
-            GameState::global_mut().do_sayx(cn, "I have no idea where the other parts are.");
+            Repository::global_mut().do_sayx(cn, "I have no idea where the other parts are.");
 
-            GameState::with_characters_mut(|ch| {
+            Repository::with_characters_mut(|ch| {
                 ch[cn].data[2] = ticker + TICKS * 8;
                 ch[cn].data[1] += 1;
             });
         }
         5 => {
             // Recall announcement
-            GameState::global_mut().do_sayx(cn, "I will recall now. I have enough of this prison!");
+            Repository::global_mut().do_sayx(cn, "I will recall now. I have enough of this prison!");
 
-            let (cn_x, cn_y) = GameState::with_characters(|ch| (ch[cn].x, ch[cn].y));
+            let (cn_x, cn_y) = Repository::with_characters(|ch| (ch[cn].x, ch[cn].y));
 
             EffectManager::fx_add_effect(7, 0, cn_x as i32, cn_y as i32, 0);
 
-            GameState::with_characters_mut(|ch| {
+            Repository::with_characters_mut(|ch| {
                 ch[cn].data[2] = ticker + TICKS * 6;
                 ch[cn].data[1] += 1;
             });
         }
         6 => {
             // Final goodbye and disappear
-            GameState::global_mut()
+            Repository::global_mut()
                 .do_sayx(cn, "Good luck my friend. And thank you for freeing me!");
 
             player::plr_map_remove(cn);
             God::destroy_items(cn);
 
-            GameState::with_characters_mut(|ch| {
+            Repository::with_characters_mut(|ch| {
                 ch[cn].used = USE_EMPTY;
             });
         }
@@ -1133,15 +1134,15 @@ pub fn npc_malte_low(_gs: &mut GameState, cn: usize) -> i32 {
 
 fn npc_malte_gotattack(cn: usize, co: usize) -> i32 {
     // Check if they're on different teams (data[42])
-    let (cn_team, co_team) = GameState::with_characters(|ch| (ch[cn].data[42], ch[co].data[42]));
+    let (cn_team, co_team) = Repository::with_characters(|ch| (ch[cn].data[42], ch[co].data[42]));
 
     if cn_team != co_team {
         // Get current attack target
-        let cc = GameState::with_characters(|ch| ch[cn].attack_cn as usize);
+        let cc = Repository::with_characters(|ch| ch[cn].attack_cn as usize);
 
         // If no current target or co is closer than current target
         if cc == 0 || crate::driver::npc_dist(cn, co) < crate::driver::npc_dist(cn, cc) {
-            GameState::with_characters_mut(|ch| {
+            Repository::with_characters_mut(|ch| {
                 ch[cn].attack_cn = co as u16;
                 ch[cn].goto_x = 0;
             });
@@ -1176,7 +1177,7 @@ pub fn npc_malte_msg(
         x if x == NT_SHOUT as i32 => 0,
         x if x == NT_HITME as i32 => 0,
         _ => {
-            let name = GameState::with_characters(|ch| ch[cn].get_name().to_string());
+            let name = Repository::with_characters(|ch| ch[cn].get_name().to_string());
             log::warn!("Unknown NPC message for {} ({}): {}", cn, name, msg_type);
             0
         }

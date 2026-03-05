@@ -417,7 +417,7 @@ impl GameState {
         let backend = StorageBackend::from_env();
         log::info!("GameState storage backend: {:?}", backend);
 
-        let mut gs = GameState::new(backend);
+        let mut gs = Self::new(backend);
         gs.load()?;
         Ok(gs)
     }
@@ -1130,28 +1130,28 @@ mod tests {
     #[test]
     fn normalize_motd_short_unchanged() {
         let input = "Hello world!".to_string();
-        let result = GameState::normalize_message_of_the_day(input.clone());
+        let result = Self::normalize_message_of_the_day(input.clone());
         assert_eq!(result, input);
     }
 
     #[test]
     fn normalize_motd_exactly_130_unchanged() {
         let input: String = "A".repeat(130);
-        let result = GameState::normalize_message_of_the_day(input.clone());
+        let result = Self::normalize_message_of_the_day(input.clone());
         assert_eq!(result, input);
     }
 
     #[test]
     fn normalize_motd_truncates_at_131() {
         let input: String = "B".repeat(200);
-        let result = GameState::normalize_message_of_the_day(input);
+        let result = Self::normalize_message_of_the_day(input);
         assert_eq!(result.chars().count(), 130);
         assert!(result.chars().all(|c| c == 'B'));
     }
 
     #[test]
     fn normalize_motd_empty() {
-        let result = GameState::normalize_message_of_the_day(String::new());
+        let result = Self::normalize_message_of_the_day(String::new());
         assert_eq!(result, "");
     }
 

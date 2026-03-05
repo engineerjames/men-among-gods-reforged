@@ -12,7 +12,7 @@ use core::{
 
 use crate::{
     driver, enums, game_state::GameState, game_state::GameState as Repository, god::God, helpers,
-    keydb, network_manager::NetworkManager, server::Server, state::State, types::cmap::CMap,
+    keydb, network_manager::NetworkManager, server::Server, types::cmap::CMap,
 };
 
 /// Port of `plr_logout(int cn, int player_id, LogoutReason reason)` from `svr_tick.cpp`
@@ -113,26 +113,22 @@ pub fn plr_logout(
                     ];
 
                     for i in 0..messages_to_send.len() {
-                        State::with(|state| {
-                            state.do_character_log(
-                                character_id,
-                                core::types::FontColor::Red,
-                                messages_to_send[i],
-                            );
-                        });
+                        Repository::global_mut().do_character_log(
+                            character_id,
+                            core::types::FontColor::Red,
+                            messages_to_send[i],
+                        );
                     }
 
                     character.a_hp -= (character.hp[5] * 800) as i32;
 
                     if character.a_hp < 500 {
-                        State::with(|state| {
-                            state.do_character_log(
-                                character_id,
-                                core::types::FontColor::Red,
-                                String::from("The demon killed you.\n \n").as_str(),
-                            );
-                            state.do_character_killed(character_id, 0, false);
-                        });
+                        Repository::global_mut().do_character_log(
+                            character_id,
+                            core::types::FontColor::Red,
+                            String::from("The demon killed you.\n \n").as_str(),
+                        );
+                        Repository::global_mut().do_character_killed(character_id, 0, false);
                     } else {
                         if character.gold / 10 > 0 {
                             let money_stolen_message = format!(
@@ -141,24 +137,20 @@ pub fn plr_logout(
                                 (character.gold / 10) % 100
                             );
 
-                            State::with(|state| {
-                                state.do_character_log(
-                                    character_id,
-                                    core::types::FontColor::Red,
-                                    money_stolen_message.as_str(),
-                                );
-                            });
+                            Repository::global_mut().do_character_log(
+                                character_id,
+                                core::types::FontColor::Red,
+                                money_stolen_message.as_str(),
+                            );
                             character.gold -= character.gold / 10;
 
                             // In the original protocol, the high bit marks "money in hand".
                             if character.citem != 0 && (character.citem & 0x80000000) != 0 {
-                                State::with(|state| {
-                                    state.do_character_log(
-                                        character_id,
-                                        core::types::FontColor::Red,
-                                        "The demon also takes the money in your hand!\n",
-                                    );
-                                });
+                                Repository::global_mut().do_character_log(
+                                    character_id,
+                                    core::types::FontColor::Red,
+                                    "The demon also takes the money in your hand!\n",
+                                );
 
                                 character.citem = 0;
                             }
@@ -310,9 +302,11 @@ pub fn plr_logout(
                 }
             });
 
-            State::with(|state| {
-                state.do_announce(character_id, 0, &format!("{} left the game.\n", name));
-            });
+            Repository::global_mut().do_announce(
+                character_id,
+                0,
+                &format!("{} left the game.\n", name),
+            );
         }
     }
 
@@ -593,7 +587,7 @@ pub fn plr_map_set(cn: usize) {
 
             let player_id = Repository::with_characters(|characters| characters[cn].player);
             plr_logout(
-                GameState::global_mut(),
+                Repository::global_mut(),
                 cn,
                 player_id as usize,
                 enums::LogoutReason::Tavern,
@@ -605,8 +599,8 @@ pub fn plr_map_set(cn: usize) {
         let is_nomagic =
             Repository::with_map(|map| (map[m].flags & core::constants::MF_NOMAGIC as u64) != 0);
 
-        let wears_466 = State::with(|s| s.char_wears_item(cn, 466));
-        let wears_481 = State::with(|s| s.char_wears_item(cn, 481));
+        let wears_466 = Repository::global_mut().char_wears_item(cn, 466);
+        let wears_481 = Repository::global_mut().char_wears_item(cn, 481);
 
         if is_nomagic && !wears_466 && !wears_481 {
             // Match original behavior: only apply/remove spells and log once
@@ -621,13 +615,11 @@ pub fn plr_map_set(cn: usize) {
 
             if became_nomagic {
                 driver::remove_spells(cn);
-                State::with(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Red,
-                        "You feel your magic fail.\n",
-                    );
-                });
+                Repository::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    "You feel your magic fail.\n",
+                );
             }
         } else {
             let mut was_nomagic = false;
@@ -640,13 +632,11 @@ pub fn plr_map_set(cn: usize) {
             });
 
             if was_nomagic {
-                State::with(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Red,
-                        "You feel your magic return.\n",
-                    );
-                });
+                Repository::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    "You feel your magic return.\n",
+                );
             }
         }
     }
@@ -667,32 +657,28 @@ pub fn plr_map_set(cn: usize) {
             Repository::with_map(|map| (map[m].flags & core::constants::MF_DEATHTRAP as u64) != 0);
 
         if is_deathtrap {
-            State::with(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Red,
-                    "You entered a Deathtrap!\n",
-                );
-                log::info!("Character {} entered a Deathtrap", cn);
-                state.do_character_killed(cn, 0, true);
-            });
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "You entered a Deathtrap!\n",
+            );
+            log::info!("Character {} entered a Deathtrap", cn);
+            Repository::global_mut().do_character_killed(cn, 0, true);
             return;
         }
     }
 
-    State::with(|state| {
-        state.do_area_notify(
-            cn as i32,
-            0,
-            x as i32,
-            y as i32,
-            core::constants::NT_SEE as i32,
-            cn as i32,
-            0,
-            0,
-            0,
-        );
-    });
+    Repository::global_mut().do_area_notify(
+        cn as i32,
+        0,
+        x as i32,
+        y as i32,
+        core::constants::NT_SEE as i32,
+        cn as i32,
+        0,
+        0,
+        0,
+    );
 }
 
 /// Port of `plr_move_up` from `svr_act.cpp`
@@ -883,19 +869,17 @@ pub fn plr_move_rightdown(cn: usize) {
 /// * `cn` - Character index rotating to face up
 pub fn plr_turn_up(cn: usize) {
     Repository::with_characters_mut(|characters| {
-        State::with(|state| {
-            state.do_area_notify(
-                cn as i32,
-                0,
-                characters[cn].x as i32,
-                characters[cn].y as i32,
-                core::constants::NT_SEE as i32,
-                cn as i32,
-                0,
-                0,
-                0,
-            );
-        });
+        Repository::global_mut().do_area_notify(
+            cn as i32,
+            0,
+            characters[cn].x as i32,
+            characters[cn].y as i32,
+            core::constants::NT_SEE as i32,
+            cn as i32,
+            0,
+            0,
+            0,
+        );
         characters[cn].dir = core::constants::DX_UP;
         characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
     });
@@ -910,19 +894,17 @@ pub fn plr_turn_up(cn: usize) {
 /// * `cn` - Character index rotating to face left-up
 pub fn plr_turn_leftup(cn: usize) {
     Repository::with_characters_mut(|characters| {
-        State::with(|state| {
-            state.do_area_notify(
-                cn as i32,
-                0,
-                characters[cn].x as i32,
-                characters[cn].y as i32,
-                core::constants::NT_SEE as i32,
-                cn as i32,
-                0,
-                0,
-                0,
-            );
-        });
+        Repository::global_mut().do_area_notify(
+            cn as i32,
+            0,
+            characters[cn].x as i32,
+            characters[cn].y as i32,
+            core::constants::NT_SEE as i32,
+            cn as i32,
+            0,
+            0,
+            0,
+        );
         characters[cn].dir = core::constants::DX_LEFTUP;
         characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
     });
@@ -937,19 +919,17 @@ pub fn plr_turn_leftup(cn: usize) {
 /// * `cn` - Character index rotating to face left-down
 pub fn plr_turn_leftdown(cn: usize) {
     Repository::with_characters_mut(|characters| {
-        State::with(|state| {
-            state.do_area_notify(
-                cn as i32,
-                0,
-                characters[cn].x as i32,
-                characters[cn].y as i32,
-                core::constants::NT_SEE as i32,
-                cn as i32,
-                0,
-                0,
-                0,
-            );
-        });
+        Repository::global_mut().do_area_notify(
+            cn as i32,
+            0,
+            characters[cn].x as i32,
+            characters[cn].y as i32,
+            core::constants::NT_SEE as i32,
+            cn as i32,
+            0,
+            0,
+            0,
+        );
         characters[cn].dir = core::constants::DX_LEFTDOWN;
         characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
     });
@@ -964,19 +944,17 @@ pub fn plr_turn_leftdown(cn: usize) {
 /// * `cn` - Character index rotating to face down
 pub fn plr_turn_down(cn: usize) {
     Repository::with_characters_mut(|characters| {
-        State::with(|state| {
-            state.do_area_notify(
-                cn as i32,
-                0,
-                characters[cn].x as i32,
-                characters[cn].y as i32,
-                core::constants::NT_SEE as i32,
-                cn as i32,
-                0,
-                0,
-                0,
-            );
-        });
+        Repository::global_mut().do_area_notify(
+            cn as i32,
+            0,
+            characters[cn].x as i32,
+            characters[cn].y as i32,
+            core::constants::NT_SEE as i32,
+            cn as i32,
+            0,
+            0,
+            0,
+        );
         characters[cn].dir = core::constants::DX_DOWN;
         characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
     });
@@ -991,19 +969,17 @@ pub fn plr_turn_down(cn: usize) {
 /// * `cn` - Character index rotating to face right-down
 pub fn plr_turn_rightdown(cn: usize) {
     Repository::with_characters_mut(|characters| {
-        State::with(|state| {
-            state.do_area_notify(
-                cn as i32,
-                0,
-                characters[cn].x as i32,
-                characters[cn].y as i32,
-                core::constants::NT_SEE as i32,
-                cn as i32,
-                0,
-                0,
-                0,
-            );
-        });
+        Repository::global_mut().do_area_notify(
+            cn as i32,
+            0,
+            characters[cn].x as i32,
+            characters[cn].y as i32,
+            core::constants::NT_SEE as i32,
+            cn as i32,
+            0,
+            0,
+            0,
+        );
         characters[cn].dir = core::constants::DX_RIGHTDOWN;
         characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
     });
@@ -1018,19 +994,17 @@ pub fn plr_turn_rightdown(cn: usize) {
 /// * `cn` - Character index rotating to face right-up
 pub fn plr_turn_rightup(cn: usize) {
     Repository::with_characters_mut(|characters| {
-        State::with(|state| {
-            state.do_area_notify(
-                cn as i32,
-                0,
-                characters[cn].x as i32,
-                characters[cn].y as i32,
-                core::constants::NT_SEE as i32,
-                cn as i32,
-                0,
-                0,
-                0,
-            );
-        });
+        Repository::global_mut().do_area_notify(
+            cn as i32,
+            0,
+            characters[cn].x as i32,
+            characters[cn].y as i32,
+            core::constants::NT_SEE as i32,
+            cn as i32,
+            0,
+            0,
+            0,
+        );
         characters[cn].dir = core::constants::DX_RIGHTUP;
         characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
     });
@@ -1045,19 +1019,17 @@ pub fn plr_turn_rightup(cn: usize) {
 /// * `cn` - Character index rotating to face left
 pub fn plr_turn_left(cn: usize) {
     Repository::with_characters_mut(|characters| {
-        State::with(|state| {
-            state.do_area_notify(
-                cn as i32,
-                0,
-                characters[cn].x as i32,
-                characters[cn].y as i32,
-                core::constants::NT_SEE as i32,
-                cn as i32,
-                0,
-                0,
-                0,
-            );
-        });
+        Repository::global_mut().do_area_notify(
+            cn as i32,
+            0,
+            characters[cn].x as i32,
+            characters[cn].y as i32,
+            core::constants::NT_SEE as i32,
+            cn as i32,
+            0,
+            0,
+            0,
+        );
         characters[cn].dir = core::constants::DX_LEFT;
         characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
     });
@@ -1072,19 +1044,17 @@ pub fn plr_turn_left(cn: usize) {
 /// * `cn` - Character index rotating to face right
 pub fn plr_turn_right(cn: usize) {
     Repository::with_characters_mut(|characters| {
-        State::with(|state| {
-            state.do_area_notify(
-                cn as i32,
-                0,
-                characters[cn].x as i32,
-                characters[cn].y as i32,
-                core::constants::NT_SEE as i32,
-                cn as i32,
-                0,
-                0,
-                0,
-            );
-        });
+        Repository::global_mut().do_area_notify(
+            cn as i32,
+            0,
+            characters[cn].x as i32,
+            characters[cn].y as i32,
+            core::constants::NT_SEE as i32,
+            cn as i32,
+            0,
+            0,
+            0,
+        );
         characters[cn].dir = core::constants::DX_RIGHT;
         characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
     });
@@ -1102,19 +1072,17 @@ pub fn plr_turn_right(cn: usize) {
 /// * `is_surround` - Surround flag passed to `do_attack` (0 or 1)
 pub fn plr_attack(cn: usize, is_surround: bool) {
     let (mut x, mut y, dir) = Repository::with_characters(|characters| {
-        State::with(|state| {
-            state.do_area_notify(
-                cn as i32,
-                0,
-                characters[cn].x as i32,
-                characters[cn].y as i32,
-                core::constants::NT_SEE as i32,
-                cn as i32,
-                0,
-                0,
-                0,
-            );
-        });
+        Repository::global_mut().do_area_notify(
+            cn as i32,
+            0,
+            characters[cn].x as i32,
+            characters[cn].y as i32,
+            core::constants::NT_SEE as i32,
+            cn as i32,
+            0,
+            0,
+            0,
+        );
         (
             characters[cn].x as i32,
             characters[cn].y as i32,
@@ -1158,9 +1126,11 @@ pub fn plr_attack(cn: usize, is_surround: bool) {
     }
 
     if co == 0 {
-        State::with(|state| {
-            state.do_character_log(cn, core::types::FontColor::Red, "Your target moved away!\n");
-        });
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            "Your target moved away!\n",
+        );
         return;
     }
 
@@ -1182,19 +1152,17 @@ pub fn plr_attack(cn: usize, is_surround: bool) {
 /// * `cn` - Giver character index
 pub fn plr_give(cn: usize) {
     let (mut x, mut y, dir) = Repository::with_characters(|characters| {
-        State::with(|state| {
-            state.do_area_notify(
-                cn as i32,
-                0,
-                characters[cn].x as i32,
-                characters[cn].y as i32,
-                core::constants::NT_SEE as i32,
-                cn as i32,
-                0,
-                0,
-                0,
-            );
-        });
+        Repository::global_mut().do_area_notify(
+            cn as i32,
+            0,
+            characters[cn].x as i32,
+            characters[cn].y as i32,
+            core::constants::NT_SEE as i32,
+            cn as i32,
+            0,
+            0,
+            0,
+        );
         (
             characters[cn].x as i32,
             characters[cn].y as i32,
@@ -1224,15 +1192,15 @@ pub fn plr_give(cn: usize) {
     }
 
     if co == 0 {
-        State::with(|state| {
-            state.do_character_log(cn, core::types::FontColor::Red, "Your target moved away!\n");
-        });
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            "Your target moved away!\n",
+        );
         return;
     }
 
-    State::with(|state| {
-        state.do_give(cn, co);
-    });
+    Repository::global_mut().do_give(cn, co);
 }
 
 /// Port of `plr_pickup` from `svr_act.cpp`
@@ -1246,19 +1214,17 @@ pub fn plr_give(cn: usize) {
 /// * `cn` - Character index attempting to pick up an item
 pub fn plr_pickup(cn: usize) {
     Repository::with_characters(|characters| {
-        State::with(|state| {
-            state.do_area_notify(
-                cn as i32,
-                0,
-                characters[cn].x as i32,
-                characters[cn].y as i32,
-                core::constants::NT_SEE as i32,
-                cn as i32,
-                0,
-                0,
-                0,
-            );
-        });
+        Repository::global_mut().do_area_notify(
+            cn as i32,
+            0,
+            characters[cn].x as i32,
+            characters[cn].y as i32,
+            core::constants::NT_SEE as i32,
+            cn as i32,
+            0,
+            0,
+            0,
+        );
     });
 
     let has_citem = Repository::with_characters(|characters| characters[cn].citem != 0);
@@ -1333,7 +1299,7 @@ pub fn plr_pickup(cn: usize) {
         characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
     });
 
-    State::with(|state| state.do_update_char(cn));
+    Repository::global_mut().do_update_char(cn);
 
     // Check if it's money
     let is_money = Repository::with_items(|items| {
@@ -1347,10 +1313,8 @@ pub fn plr_pickup(cn: usize) {
             characters[cn].gold += value as i32;
         });
 
-        State::with(|state| {
-            let message = format!("You got {}G {}S\n", value / 100, value % 100);
-            state.do_character_log(cn, core::types::FontColor::Red, &message);
-        });
+        let message = format!("You got {}G {}S\n", value / 100, value % 100);
+        Repository::global_mut().do_character_log(cn, core::types::FontColor::Red, &message);
 
         log::info!("Character {} took {}G {}S", cn, value / 100, value % 100);
 
@@ -1448,28 +1412,30 @@ pub fn plr_pickup(cn: usize) {
 /// * `cn` - Character index performing the bow
 pub fn plr_bow(cn: usize) {
     Repository::with_characters(|characters| {
-        State::with(|state| {
-            state.do_area_notify(
-                cn as i32,
-                0,
-                characters[cn].x as i32,
-                characters[cn].y as i32,
-                core::constants::NT_SEE as i32,
-                cn as i32,
-                0,
-                0,
-                0,
-            );
-            state.do_character_log(cn, core::types::FontColor::Red, "You bow deeply.\n");
-            state.do_area_log(
-                cn,
-                0,
-                characters[cn].x as i32,
-                characters[cn].y as i32,
-                core::types::FontColor::Blue,
-                &format!("{} bows deeply.\n", &characters[cn].get_reference()),
-            );
-        });
+        Repository::global_mut().do_area_notify(
+            cn as i32,
+            0,
+            characters[cn].x as i32,
+            characters[cn].y as i32,
+            core::constants::NT_SEE as i32,
+            cn as i32,
+            0,
+            0,
+            0,
+        );
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            "You bow deeply.\n",
+        );
+        Repository::global_mut().do_area_log(
+            cn,
+            0,
+            characters[cn].x as i32,
+            characters[cn].y as i32,
+            core::types::FontColor::Blue,
+            &format!("{} bows deeply.\n", &characters[cn].get_reference()),
+        );
     });
 
     log::info!("Character {} bows", cn);
@@ -1489,28 +1455,30 @@ pub fn plr_bow(cn: usize) {
 /// * `cn` - Character index performing the wave
 pub fn plr_wave(cn: usize) {
     Repository::with_characters(|characters| {
-        State::with(|state| {
-            state.do_area_notify(
-                cn as i32,
-                0,
-                characters[cn].x as i32,
-                characters[cn].y as i32,
-                core::constants::NT_SEE as i32,
-                cn as i32,
-                0,
-                0,
-                0,
-            );
-            state.do_character_log(cn, core::types::FontColor::Red, "You wave happily.\n");
-            state.do_area_log(
-                cn,
-                0,
-                characters[cn].x as i32,
-                characters[cn].y as i32,
-                core::types::FontColor::Blue,
-                &format!("{} waves happily.\n", &characters[cn].get_reference()),
-            );
-        });
+        Repository::global_mut().do_area_notify(
+            cn as i32,
+            0,
+            characters[cn].x as i32,
+            characters[cn].y as i32,
+            core::constants::NT_SEE as i32,
+            cn as i32,
+            0,
+            0,
+            0,
+        );
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            "You wave happily.\n",
+        );
+        Repository::global_mut().do_area_log(
+            cn,
+            0,
+            characters[cn].x as i32,
+            characters[cn].y as i32,
+            core::types::FontColor::Blue,
+            &format!("{} waves happily.\n", &characters[cn].get_reference()),
+        );
     });
 
     log::info!("Character {} waves", cn);
@@ -1531,19 +1499,17 @@ pub fn plr_wave(cn: usize) {
 /// * `cn` - Character index using the item
 pub fn plr_use(gs: &mut GameState, cn: usize) {
     Repository::with_characters(|characters| {
-        State::with(|state| {
-            state.do_area_notify(
-                cn as i32,
-                0,
-                characters[cn].x as i32,
-                characters[cn].y as i32,
-                core::constants::NT_SEE as i32,
-                cn as i32,
-                0,
-                0,
-                0,
-            );
-        });
+        Repository::global_mut().do_area_notify(
+            cn as i32,
+            0,
+            characters[cn].x as i32,
+            characters[cn].y as i32,
+            core::constants::NT_SEE as i32,
+            cn as i32,
+            0,
+            0,
+            0,
+        );
     });
 
     let m = Repository::with_characters(|characters| {
@@ -1620,19 +1586,17 @@ pub fn plr_use(gs: &mut GameState, cn: usize) {
 /// * `cn` - Character index using the skill
 pub fn plr_skill(gs: &mut GameState, cn: usize) {
     Repository::with_characters(|characters| {
-        State::with(|state| {
-            state.do_area_notify(
-                cn as i32,
-                0,
-                characters[cn].x as i32,
-                characters[cn].y as i32,
-                core::constants::NT_SEE as i32,
-                cn as i32,
-                0,
-                0,
-                0,
-            );
-        });
+        Repository::global_mut().do_area_notify(
+            cn as i32,
+            0,
+            characters[cn].x as i32,
+            characters[cn].y as i32,
+            core::constants::NT_SEE as i32,
+            cn as i32,
+            0,
+            0,
+            0,
+        );
     });
 
     let skill_target = Repository::with_characters(|characters| characters[cn].skill_target2);
@@ -1675,19 +1639,17 @@ pub fn player_driver_med(cn: usize) {
 /// * `cn` - Character index performing the drop
 pub fn plr_drop(cn: usize) {
     Repository::with_characters(|characters| {
-        State::with(|state| {
-            state.do_area_notify(
-                cn as i32,
-                0,
-                characters[cn].x as i32,
-                characters[cn].y as i32,
-                core::constants::NT_SEE as i32,
-                cn as i32,
-                0,
-                0,
-                0,
-            );
-        });
+        Repository::global_mut().do_area_notify(
+            cn as i32,
+            0,
+            characters[cn].x as i32,
+            characters[cn].y as i32,
+            core::constants::NT_SEE as i32,
+            cn as i32,
+            0,
+            0,
+            0,
+        );
     });
 
     let in_id = Repository::with_characters(|characters| characters[cn].citem);
@@ -1767,7 +1729,7 @@ pub fn plr_drop(cn: usize) {
         characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
     });
 
-    State::with(|state| state.do_update_char(cn));
+    Repository::global_mut().do_update_char(cn);
 
     // Handle money
     let final_in_id = if in_id & 0x80000000 != 0 {
@@ -1827,20 +1789,18 @@ pub fn plr_drop(cn: usize) {
         new_in as u32
     } else {
         // Check whether the item is allowed to be given/dropped
-        let may_drop = State::with(|state| state.do_maygive(cn, 0, in_id as usize));
+        let may_drop = Repository::global_mut().do_maygive(cn, 0, in_id as usize);
         if !may_drop {
             // Restore cursor item and indicate failure
             Repository::with_characters_mut(|characters| {
                 characters[cn].citem = in_id;
                 characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             });
-            State::with(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Red,
-                    "You are not allowed to do that!\n",
-                );
-            });
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "You are not allowed to do that!\n",
+            );
             return;
         }
 
@@ -3088,9 +3048,7 @@ fn plr_newlogin(gs: &mut GameState, nr: usize) {
     });
 
     // update character to clients
-    State::with(|state| {
-        state.do_update_char(cn);
-    });
+    Repository::global_mut().do_update_char(cn);
 
     // set player mapping and send SV_NEWPLAYER + SV_TICK
     Repository::with_characters(|characters| {
@@ -3151,14 +3109,12 @@ fn plr_newlogin(gs: &mut GameState, nr: usize) {
     let intro3 = " \n";
     let intro4 = "Use #help (or /help) to get a listing of the text commands.\n";
 
-    State::with(|state| {
-        state.do_character_log(cn, core::types::FontColor::Yellow, intro1);
-        state.do_character_log(cn, core::types::FontColor::Yellow, intro3);
-        state.do_character_log(cn, core::types::FontColor::Yellow, intro2);
-        state.do_character_log(cn, core::types::FontColor::Yellow, intro3);
-        state.do_character_log(cn, core::types::FontColor::Yellow, intro4);
-        state.do_character_log(cn, core::types::FontColor::Yellow, intro3);
-    });
+    Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, intro1);
+    Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, intro3);
+    Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, intro2);
+    Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, intro3);
+    Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, intro4);
+    Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, intro3);
 
     // change password if client provided one and character has no CF_PASSWD
     let needs_pass = Server::with_players(|players| players[nr].passwd[0] != 0);
@@ -3175,9 +3131,7 @@ fn plr_newlogin(gs: &mut GameState, nr: usize) {
     }
 
     // announce
-    State::with(|state| {
-        state.do_announce(cn, 0, &format!("A new player has entered the game.\n"));
-    });
+    Repository::global_mut().do_announce(cn, 0, &format!("A new player has entered the game.\n"));
 }
 
 /// Port of `plr_login` from `svr_tick.cpp`
@@ -3425,21 +3379,17 @@ fn plr_login(gs: &mut GameState, nr: usize) {
                 Repository::with_characters_mut(|characters| {
                     characters[cn].spell[i] = 0;
                 });
-                State::with(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Red,
-                        "CHEATER: removed active teleport\n",
-                    );
-                });
+                Repository::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    "CHEATER: removed active teleport\n",
+                );
             }
         }
     }
 
     // update client about char
-    State::with(|state| {
-        state.do_update_char(cn);
-    });
+    Repository::global_mut().do_update_char(cn);
 
     log::info!("Login successful");
 
@@ -3453,19 +3403,25 @@ fn plr_login(gs: &mut GameState, nr: usize) {
         message_of_the_day.push('\n');
     }
 
-    State::with(|state| {
-        state.do_character_log(cn, core::types::FontColor::Yellow, intro1);
-        state.do_character_log(cn, core::types::FontColor::Yellow, intro3);
-        state.do_character_log(cn, core::types::FontColor::Yellow, intro2);
-        state.do_character_log(cn, core::types::FontColor::Yellow, intro3);
-        state.do_character_log(cn, core::types::FontColor::Yellow, intro4);
-        state.do_character_log(cn, core::types::FontColor::Yellow, intro3);
-        if !message_of_the_day.trim().is_empty() {
-            state.do_character_log(cn, core::types::FontColor::Yellow, "Message of the Day:\n");
-            state.do_character_log(cn, core::types::FontColor::Yellow, &message_of_the_day);
-            state.do_character_log(cn, core::types::FontColor::Yellow, intro3);
-        }
-    });
+    Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, intro1);
+    Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, intro3);
+    Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, intro2);
+    Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, intro3);
+    Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, intro4);
+    Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, intro3);
+    if !message_of_the_day.trim().is_empty() {
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "Message of the Day:\n",
+        );
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            &message_of_the_day,
+        );
+        Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, intro3);
+    }
 
     if !is_api_login {
         // do password change if provided
@@ -3487,21 +3443,17 @@ fn plr_login(gs: &mut GameState, nr: usize) {
         if (characters[cn].flags & CharacterFlags::ComputerControlledPlayer.bits()) == 0
             && (characters[cn].flags & CharacterFlags::God.bits()) != 0
         {
-            State::with(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "Remember, you are invisible!\n",
-                )
-            });
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "Remember, you are invisible!\n",
+            );
         }
     });
 
     // announce
     let name = Repository::with_characters(|characters| characters[cn].get_name().to_string());
-    State::with(|state| {
-        state.do_announce(cn, 0, &format!("{} entered the game.\n", name));
-    });
+    Repository::global_mut().do_announce(cn, 0, &format!("{} entered the game.\n", name));
 }
 
 fn resolve_api_login_character(
@@ -5012,7 +4964,7 @@ pub fn plr_cmd(gs: &mut GameState, nr: usize) {
         }
     }
 
-    // State may have changed in the handlers above.
+    // Game state may have changed in the handlers above.
     let state = Server::with_players(|players| players[nr].state);
 
     // Only process other commands if in normal state
@@ -5105,13 +5057,11 @@ pub fn plr_cmd(gs: &mut GameState, nr: usize) {
     let is_stunned = Repository::with_characters(|ch| ch[cn].stunned > 0);
 
     if is_stunned {
-        State::with(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                "You have been stunned. You cannot move.\n",
-            );
-        });
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            "You have been stunned. You cannot move.\n",
+        );
     }
 
     let character_name = Repository::with_characters(|ch| ch[cn].get_name().to_string());
@@ -5619,7 +5569,7 @@ fn plr_perf_report(nr: usize) {
 /// Handles the client's LOOK command. If the high bit of the supplied id
 /// (`co`) is set, the player requested to see a depot slot (bank); otherwise
 /// it requests a character/NPC look. Delegates to `do_look_depot` or
-/// `do_look_char` in the server `State`.
+/// `do_look_char` on the shared `GameState`.
 ///
 /// # Arguments
 /// * `nr` - Player slot index issuing the look
@@ -5634,9 +5584,7 @@ fn plr_cmd_look(nr: usize, autoflag: bool) {
     if (co & 0x8000) != 0 {
         // Looking at depot slot
         let depot_slot = co & 0x7fff;
-        State::with(|state| {
-            state.do_look_depot(cn, depot_slot);
-        });
+        Repository::global_mut().do_look_depot(cn, depot_slot);
     } else {
         // Looking at character
         let autoflag_int = if autoflag { 1 } else { 0 };
@@ -5798,16 +5746,14 @@ fn plr_cmd_setuser(_nr: usize) {
                                     .to_string()
                             };
 
-                            State::with(|state| {
-                                state.do_character_log(
-                                    cn,
-                                    core::types::FontColor::Green,
-                                    &format!(
-                                        "The name \"{}\" you have chosen for your character {}\n",
-                                        name_str, reason
-                                    ),
-                                );
-                            });
+                            Repository::global_mut().do_character_log(
+                                cn,
+                                core::types::FontColor::Green,
+                                &format!(
+                                    "The name \"{}\" you have chosen for your character {}\n",
+                                    name_str, reason
+                                ),
+                            );
                         } else {
                             // Commit name -> copy into name and reference (40 bytes)
                             let name_end =
@@ -5876,13 +5822,14 @@ fn plr_cmd_setuser(_nr: usize) {
                             "a strange figure"
                         };
 
-                        State::with(|state| {
-                            state.do_character_log(
-                                cn,
-                                core::types::FontColor::Yellow,
-                                &format!("The description you entered for your character {} was rejected.\n", reason),
-                            );
-                        });
+                        Repository::global_mut().do_character_log(
+                            cn,
+                            core::types::FontColor::Yellow,
+                            &format!(
+                                "The description you entered for your character {} was rejected.\n",
+                                reason
+                            ),
+                        );
 
                         // fallback description
                         let name_str = c_string_to_str(&ch[cn].name).to_string();
@@ -5909,14 +5856,12 @@ fn plr_cmd_setuser(_nr: usize) {
                         }
                     }
                     // Finally acknowledge and request character update
-                    State::with(|state| {
-                        state.do_character_log(
-                            cn,
-                            core::types::FontColor::Yellow,
-                            "Account data received.\n",
-                        );
-                        state.do_update_char(cn);
-                    });
+                    Repository::global_mut().do_character_log(
+                        cn,
+                        core::types::FontColor::Yellow,
+                        "Account data received.\n",
+                    );
+                    Repository::global_mut().do_update_char(cn);
                 });
             }
         }
@@ -5930,7 +5875,7 @@ fn plr_cmd_setuser(_nr: usize) {
 ///
 /// Applies attribute/HP/endurance/mana/skill raises requested by the
 /// client. Validates indices and performs repeated raise operations via
-/// `State` helper functions, then requests a character update.
+/// `GameState` helpers, then requests a character update.
 ///
 /// # Arguments
 /// * `_nr` - Player slot index issuing the stat change
@@ -5951,38 +5896,28 @@ fn plr_cmd_stat(_nr: usize) {
     // perform raises
     if n < 5 {
         for _ in 0..v {
-            State::with(|state| {
-                let _ = state.do_raise_attrib(cn, n as i32);
-            });
+            let _ = Repository::global_mut().do_raise_attrib(cn, n as i32);
         }
     } else if n == 5 {
         for _ in 0..v {
-            State::with(|state| {
-                let _ = state.do_raise_hp(cn);
-            });
+            let _ = Repository::global_mut().do_raise_hp(cn);
         }
     } else if n == 6 {
         for _ in 0..v {
-            State::with(|state| {
-                let _ = state.do_raise_end(cn);
-            });
+            let _ = Repository::global_mut().do_raise_end(cn);
         }
     } else if n == 7 {
         for _ in 0..v {
-            State::with(|state| {
-                let _ = state.do_raise_mana(cn);
-            });
+            let _ = Repository::global_mut().do_raise_mana(cn);
         }
     } else {
         for _ in 0..v {
-            State::with(|state| {
-                let _ = state.do_raise_skill(cn, (n - 8) as i32);
-            });
+            let _ = Repository::global_mut().do_raise_skill(cn, (n - 8) as i32);
         }
     }
 
     // request character update
-    State::with(|state| state.do_update_char(cn));
+    Repository::global_mut().do_update_char(cn);
 }
 
 /// Handle text input commands (1-8)
@@ -6209,18 +6144,16 @@ fn plr_cmd_drop(_nr: usize) {
             let xe = std::cmp::max(x, tx as i32);
             let ye = std::cmp::max(y, ty as i32);
 
-            State::with(|s| {
-                s.do_character_log(
-                    cn,
-                    core::types::FontColor::Green,
-                    &format!("Areaend: {},{}\n", x, y),
-                );
-                s.do_character_log(
-                    cn,
-                    core::types::FontColor::Green,
-                    &format!("Area: {},{} - {},{}\n", xs, ys, xe, ye),
-                );
-            });
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                &format!("Areaend: {},{}\n", x, y),
+            );
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                &format!("Area: {},{} - {},{}\n", xs, ys, xe, ye),
+            );
 
             // Note: actual build_drop per-tile processing not implemented yet.
             Repository::with_characters_mut(|ch| {
@@ -6232,13 +6165,11 @@ fn plr_cmd_drop(_nr: usize) {
                 ch[cn].misc_target1 = x as u16;
                 ch[cn].misc_target2 = y as u16;
             });
-            State::with(|s| {
-                s.do_character_log(
-                    cn,
-                    core::types::FontColor::Green,
-                    &format!("Areastart: {},{}\n", x, y),
-                );
-            });
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                &format!("Areastart: {},{}\n", x, y),
+            );
         } else if action == core::constants::DR_SINGLEBUILD as u16 {
             // Single build: would normally place immediately. Not implemented.
         }
@@ -6335,7 +6266,7 @@ fn plr_cmd_attack(nr: usize) {
         }
     });
 
-    State::with(|s| s.remember_pvp(cn, co as usize));
+    Repository::global_mut().remember_pvp(cn, co as usize);
 }
 
 /// Handle speed mode command
@@ -6362,7 +6293,7 @@ fn plr_cmd_mode(nr: usize) {
         ch[cn].mode = mode as u8;
     });
 
-    State::with(|s| s.do_update_char(cn));
+    Repository::global_mut().do_update_char(cn);
 
     log::info!("Player {} set speed mode to {}", cn, mode);
 }
@@ -6495,7 +6426,7 @@ fn plr_cmd_inv_look(nr: usize) {
             ch[cn].citem = ch[cn].item[n];
             ch[cn].misc_action = core::constants::DR_AREABUILD1 as u16;
         });
-        State::with(|s| s.do_character_log(cn, core::types::FontColor::Green, "Area mode\n"));
+        Repository::global_mut().do_character_log(cn, core::types::FontColor::Green, "Area mode\n");
         return;
     }
 
@@ -6593,7 +6524,7 @@ fn plr_cmd_inv(nr: usize) {
             return;
         }
 
-        State::with(|s| s.do_update_char(cn));
+        Repository::global_mut().do_update_char(cn);
 
         // Now handle citem/gold swap or placing citem into slot
         Repository::with_characters_mut(|ch| {
@@ -6624,9 +6555,7 @@ fn plr_cmd_inv(nr: usize) {
         if stunned {
             return;
         }
-        State::with(|s| {
-            let _ = s.do_swap_item(cn, n);
-        });
+        let _ = Repository::global_mut().do_swap_item(cn, n);
         return;
     }
 
@@ -6650,7 +6579,7 @@ fn plr_cmd_inv(nr: usize) {
             ch[cn].citem = 0x80000000 | (n as u32);
             ch[cn].gold -= n as i32;
         });
-        State::with(|s| s.do_update_char(cn));
+        Repository::global_mut().do_update_char(cn);
         return;
     }
 

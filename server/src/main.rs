@@ -32,6 +32,7 @@ use std::sync::Arc;
 use core;
 
 use crate::game_state::GameState;
+use crate::game_state::GameState as Repository;
 use crate::server::Server;
 
 fn handle_command_line_args(args: &[String], gs: &mut GameState) {
@@ -99,7 +100,7 @@ fn main() -> Result<(), String> {
     }
 
     // Initialize unified game state (owns its own copy of all world data)
-    let mut gs = GameState::initialize().unwrap_or_else(|e| {
+    let mut gs = Repository::initialize().unwrap_or_else(|e| {
         log::error!("Failed to initialize game state: {}. Exiting.", e);
         process::exit(1);
     });
@@ -113,14 +114,15 @@ fn main() -> Result<(), String> {
         process::exit(1);
     }
 
-    // Register GameState as a global singleton so that modules not yet converted
-    // to receive `gs: &mut GameState` can still access it via State::with / State::with_mut.
-    GameState::register_global(gs);
+    // Register GameState as a global singleton so systems can access shared
+    // state via `Repository::global_mut()` where threaded through `&mut GameState`
+    // is not practical yet.
+    Repository::register_global(gs);
 
     let mut server = server::Server::new();
 
     server
-        .initialize(GameState::global_mut())
+        .initialize(Repository::global_mut())
         .unwrap_or_else(|e| {
             log::error!("Failed to initialize server: {}. Exiting.", e);
             process::exit(1);
@@ -129,7 +131,7 @@ fn main() -> Result<(), String> {
     log::info!("Entering main game loop...");
 
     while !quit_flag.load(Ordering::SeqCst) {
-        server.tick(GameState::global_mut());
+        server.tick(Repository::global_mut());
     }
 
     log::info!("Shutdown signal received, exiting main loop...");
@@ -140,7 +142,7 @@ fn main() -> Result<(), String> {
         }
     });
     {
-        let gs = GameState::global_mut();
+        let gs = Repository::global_mut();
         for (usnr, n) in &logout_entries {
             player::plr_logout(gs, *usnr, *n, enums::LogoutReason::Shutdown);
         }
@@ -150,7 +152,7 @@ fn main() -> Result<(), String> {
     server.shutdown_background_saver();
 
     // Perform a full synchronous save to the unified game state
-    GameState::global_mut().shutdown();
+    Repository::global_mut().shutdown();
 
     // TODO: Wait some amount of time and forceably close all sockets
 

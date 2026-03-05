@@ -526,7 +526,7 @@ impl EffectManager {
                                 items[in2 as usize].used = core::constants::USE_EMPTY;
                             });
                         }
-                        GameState::global_mut()
+                        Repository::global_mut()
                             .reset_go(effects[n].data[0] as i32, effects[n].data[1] as i32);
                     }
                 }
