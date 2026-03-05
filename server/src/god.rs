@@ -49,92 +49,90 @@ impl God {
             return None;
         }
 
-        Repository::with_item_templates(|item_templates| {
-            if item_templates[template_id].used == core::constants::USE_EMPTY {
-                log::error!(
-                    "Attempted to create item with an unused template ID: {}",
-                    template_id
-                );
-                return None;
+        if Repository::global_mut().item_templates[template_id].used == core::constants::USE_EMPTY {
+            log::error!(
+                "Attempted to create item with an unused template ID: {}",
+                template_id
+            );
+            return None;
+        }
+
+        if Repository::global_mut().item_templates[template_id].is_unique() {
+            // Check if the unique item already exists
+            for item in Repository::global_mut().items.iter() {
+                if item.used != core::constants::USE_EMPTY && item.temp as usize == template_id {
+                    log::error!(
+                        "Attempted to create unique item with template ID {} but it already exists.",
+                        template_id
+                    );
+                    return None;
+                }
             }
+        }
 
-            if item_templates[template_id].is_unique() {
-                // Check if the unique item already exists
-                Repository::with_items(|items| {
-                    for item in items.iter() {
-                        if item.used != core::constants::USE_EMPTY
-                            && item.temp as usize == template_id
-                        {
-                            log::error!(
-                                "Attempted to create unique item with template ID {} but it already exists.",
-                                template_id
-                            );
-                            return Some(None);
-                        }
-                    }
-                    None
-                }).unwrap_or(None)?;
-            }
+        let free_item_id = Self::get_free_item().unwrap_or_else(|| {
+            log::error!("No free item slots available to create new item.");
+            0
+        });
 
-            Repository::with_items_mut(|items| {
-                let free_item_id = Self::get_free_item(items).unwrap_or_else(|| {
-                    log::error!("No free item slots available to create new item.");
-                    0
-                });
+        {
+            let gs = Repository::global_mut();
+            let template_copy = gs.item_templates[template_id];
+            gs.items[free_item_id] = template_copy;
+            gs.items[free_item_id].temp = template_id as u16;
+        }
 
-                items[free_item_id] = item_templates[template_id];
-                items[free_item_id].temp = template_id as u16;
-
-                Some(free_item_id)
-            })
-        })
+        Some(free_item_id)
     }
 
     // TODO: Optimize this later
     /// Find a free item slot in the global item array.
     ///
     /// Returns `Some(index)` when a free slot is found, otherwise `None`.
-    fn get_free_item(items: &mut [core::types::Item]) -> Option<usize> {
+    fn get_free_item() -> Option<usize> {
         for item_id in 1..core::constants::MAXITEM {
-            if items[item_id].used != core::constants::USE_EMPTY {
+            if Repository::global_mut().items[item_id].used != core::constants::USE_EMPTY {
                 continue;
             }
 
             // Safety net: if an item was destroyed but left referenced by a character,
             // reusing this slot would make the client briefly show it as a different
             // template before server-side validity checks clear it.
-            let carried = items[item_id].carried as usize;
+            let carried = Repository::global_mut().items[item_id].carried as usize;
             if carried != 0 {
                 if Character::is_sane_character(carried) {
-                    Repository::with_characters_mut(|ch| {
-                        if ch[carried].citem as usize == item_id {
-                            ch[carried].citem = 0;
+                    {
+                        let gs = Repository::global_mut();
+                        let ch = &mut gs.characters[carried];
+                        if ch.citem as usize == item_id {
+                            ch.citem = 0;
                         }
                         for slot in 0..40 {
-                            if ch[carried].item[slot] as usize == item_id {
-                                ch[carried].item[slot] = 0;
+                            if ch.item[slot] as usize == item_id {
+                                ch.item[slot] = 0;
                             }
                         }
                         for slot in 0..20 {
-                            if ch[carried].worn[slot] as usize == item_id {
-                                ch[carried].worn[slot] = 0;
+                            if ch.worn[slot] as usize == item_id {
+                                ch.worn[slot] = 0;
                             }
-                            if ch[carried].spell[slot] as usize == item_id {
-                                ch[carried].spell[slot] = 0;
+                            if ch.spell[slot] as usize == item_id {
+                                ch.spell[slot] = 0;
                             }
                         }
                         for slot in 0..62 {
-                            if ch[carried].depot[slot] as usize == item_id {
-                                ch[carried].depot[slot] = 0;
+                            if ch.depot[slot] as usize == item_id {
+                                ch.depot[slot] = 0;
                             }
                         }
-                        ch[carried].set_do_update_flags();
-                    });
+                        ch.set_do_update_flags();
+                    }
                 }
 
-                items[item_id].carried = 0;
-                items[item_id].x = 0;
-                items[item_id].y = 0;
+                let gs = Repository::global_mut();
+                gs.items[item_id].carried = 0;
+                gs.items[item_id].x = 0;
+                gs.items[item_id].y = 0;
             }
 
             return Some(item_id);
@@ -158,83 +156,80 @@ impl God {
             return false;
         }
 
-        Repository::with_characters_mut(|characters| {
-            if !characters[character_id].is_living_character(character_id) {
-                log::error!("Invalid character ID {} when giving item.", character_id);
-                return false;
-            }
+        if !Repository::global_mut().characters[character_id].is_living_character(character_id) {
+            log::error!("Invalid character ID {} when giving item.", character_id);
+            return false;
+        }
 
-            Repository::with_items_mut(|items| {
-                let character = &mut characters[character_id];
-                let (old_x, old_y, old_carried, old_active, old_light_inactive, old_light_active) = {
-                    let item = &items[item_id];
-                    (
-                        item.x,
-                        item.y,
-                        item.carried,
-                        item.active,
-                        item.light[0],
-                        item.light[1],
-                    )
+        let (old_x, old_y, old_carried, old_active, old_light_inactive, old_light_active) = {
+            let item = &Repository::global_mut().items[item_id];
+            (
+                item.x,
+                item.y,
+                item.carried,
+                item.active,
+                item.light[0],
+                item.light[1],
+            )
+        };
+
+        // If the item is currently on the ground, ensure the map no longer references it
+        // before we move it into inventory. Otherwise, the item GC will later notice the
+        // map->item mismatch and clear the tile, which can produce visible sprite glitches.
+        if old_carried == 0 && Map::is_sane_coordinates(old_x as usize, old_y as usize) {
+            let map_index =
+                (old_x as usize) + (old_y as usize) * core::constants::SERVER_MAPX as usize;
+
+            let map_it = Repository::global_mut().map[map_index].it;
+            if map_it == item_id as u32 {
+                let light_value = if old_active != 0 {
+                    old_light_active
+                } else {
+                    old_light_inactive
                 };
 
-                // If the item is currently on the ground, ensure the map no longer references it
-                // before we move it into inventory. Otherwise, the item GC will later notice the
-                // map->item mismatch and clear the tile, which can produce visible sprite glitches.
-                if old_carried == 0 && Map::is_sane_coordinates(old_x as usize, old_y as usize) {
-                    let map_index =
-                        (old_x as usize) + (old_y as usize) * core::constants::SERVER_MAPX as usize;
-
-                    let map_it = Repository::with_map(|map| map[map_index].it);
-                    if map_it == item_id as u32 {
-                        let light_value = if old_active != 0 {
-                            old_light_active
-                        } else {
-                            old_light_inactive
-                        };
-
-                        if light_value != 0 {
-                            Repository::global_mut().do_add_light(
-                                old_x as i32,
-                                old_y as i32,
-                                -(light_value as i32),
-                            );
-                        }
-
-                        Repository::with_map_mut(|map| {
-                            map[map_index].it = 0;
-                        });
-                    }
-                }
-
-                let item = &mut items[item_id];
-
-                log::debug!(
-                    "Attempting to give item '{}' to character '{}'",
-                    item.get_name(),
-                    character.get_name(),
-                );
-
-                if let Some(slot) = character.get_next_inventory_slot() {
-                    character.item[slot] = item_id as u32;
-                    item.x = 0;
-                    item.y = 0;
-                    item.carried = character_id as u16;
-
-                    character.set_do_update_flags();
-
-                    true
-                } else {
-                    log::error!(
-                        "No free inventory slots available for character '{}' (ID {}).",
-                        character.get_name(),
-                        character_id
+                if light_value != 0 {
+                    Repository::global_mut().do_add_light(
+                        old_x as i32,
+                        old_y as i32,
+                        -(light_value as i32),
                     );
-
-                    false
                 }
-            })
-        })
+
+                Repository::global_mut().map[map_index].it = 0;
+            }
+        }
+
+        let (item_name, char_name) = {
+            let gs = Repository::global_mut();
+            (
+                gs.items[item_id].get_name().to_string(),
+                gs.characters[character_id].get_name().to_string(),
+            )
+        };
+        log::debug!(
+            "Attempting to give item '{}' to character '{}'",
+            item_name,
+            char_name,
+        );
+
+        let slot = Repository::global_mut().characters[character_id].get_next_inventory_slot();
+        if let Some(slot) = slot {
+            let gs = Repository::global_mut();
+            gs.characters[character_id].item[slot] = item_id as u32;
+            gs.items[item_id].x = 0;
+            gs.items[item_id].y = 0;
+            gs.items[item_id].carried = character_id as u16;
+            gs.characters[character_id].set_do_update_flags();
+            true
+        } else {
+            log::error!(
+                "No free inventory slots available for character '{}' (ID {}).",
+                char_name,
+                character_id
+            );
+            false
+        }
     }
 
     /// Manage build mode for a character.
@@ -272,309 +267,302 @@ impl God {
     /// * `character_id` - Character index
     /// * `build_type` - Equipment variant
     pub fn build_equip(character_id: usize, build_type: u32) {
-        Repository::with_characters_mut(|characters| {
-            let character = &mut characters[character_id];
+        let gs = Repository::global_mut();
+        let character = &mut gs.characters[character_id];
+        let mut m = 0;
+        {
+            match build_type {
+                0 => {
+                    // Map flags
+                    character.item[m] = 0x40000000 | core::constants::MF_MOVEBLOCK;
+                    m += 1;
+                    character.item[m] = 0x40000000 | core::constants::MF_SIGHTBLOCK;
+                    m += 1;
+                    character.item[m] = 0x40000000 | core::constants::MF_INDOORS;
+                    m += 1;
+                    character.item[m] = 0x40000000 | core::constants::MF_ARENA;
+                    m += 1;
+                    character.item[m] = 0x40000000 | core::constants::MF_NOMONST;
+                    m += 1;
+                    character.item[m] = 0x40000000 | core::constants::MF_BANK;
+                    m += 1;
+                    character.item[m] = 0x40000000 | core::constants::MF_TAVERN;
+                    m += 1;
+                    character.item[m] = 0x40000000 | core::constants::MF_NOMAGIC;
+                    m += 1;
+                    character.item[m] = 0x40000000 | core::constants::MF_DEATHTRAP;
+                    m += 1;
+                    character.item[m] = 0x40000000 | core::constants::MF_UWATER;
+                    m += 1;
+                    character.item[m] = 0x40000000 | core::constants::MF_NOLAG;
+                    m += 1;
+                    character.item[m] = 0x40000000 | (core::constants::MF_NOFIGHT as u32);
+                    m += 1;
+                    character.item[m] = 0x40000000 | core::constants::MF_NOEXPIRE;
+                    m += 1;
 
-            Repository::with_item_templates(|item_templates| {
-                let mut m = 0;
+                    // Ground sprites
+                    character.item[m] = 0x20000000 | core::constants::SPR_TUNDRA_GROUND as u32;
+                    m += 1;
+                    character.item[m] = 0x20000000 | core::constants::SPR_DESERT_GROUND as u32;
+                    m += 1;
+                    character.item[m] = 0x20000000 | core::constants::SPR_GROUND1 as u32;
+                    m += 1;
+                    character.item[m] = 0x20000000 | core::constants::SPR_WOOD_GROUND as u32;
+                    m += 1;
+                    character.item[m] = 0x20000000 | core::constants::SPR_TAVERN_GROUND as u32;
+                    m += 1;
+                    character.item[m] = 0x20000000 | core::constants::SPR_STONE_GROUND1 as u32;
+                    m += 1;
+                    character.item[m] = 0x20000000 | core::constants::SPR_STONE_GROUND2 as u32;
+                    m += 1;
 
-                match build_type {
-                    0 => {
-                        // Map flags
-                        character.item[m] = 0x40000000 | core::constants::MF_MOVEBLOCK;
-                        m += 1;
-                        character.item[m] = 0x40000000 | core::constants::MF_SIGHTBLOCK;
-                        m += 1;
-                        character.item[m] = 0x40000000 | core::constants::MF_INDOORS;
-                        m += 1;
-                        character.item[m] = 0x40000000 | core::constants::MF_ARENA;
-                        m += 1;
-                        character.item[m] = 0x40000000 | core::constants::MF_NOMONST;
-                        m += 1;
-                        character.item[m] = 0x40000000 | core::constants::MF_BANK;
-                        m += 1;
-                        character.item[m] = 0x40000000 | core::constants::MF_TAVERN;
-                        m += 1;
-                        character.item[m] = 0x40000000 | core::constants::MF_NOMAGIC;
-                        m += 1;
-                        character.item[m] = 0x40000000 | core::constants::MF_DEATHTRAP;
-                        m += 1;
-                        character.item[m] = 0x40000000 | core::constants::MF_UWATER;
-                        m += 1;
-                        character.item[m] = 0x40000000 | core::constants::MF_NOLAG;
-                        m += 1;
-                        character.item[m] = 0x40000000 | (core::constants::MF_NOFIGHT as u32);
-                        m += 1;
-                        character.item[m] = 0x40000000 | core::constants::MF_NOEXPIRE;
-                        m += 1;
-
-                        // Ground sprites
-                        character.item[m] = 0x20000000 | core::constants::SPR_TUNDRA_GROUND as u32;
-                        m += 1;
-                        character.item[m] = 0x20000000 | core::constants::SPR_DESERT_GROUND as u32;
-                        m += 1;
-                        character.item[m] = 0x20000000 | core::constants::SPR_GROUND1 as u32;
-                        m += 1;
-                        character.item[m] = 0x20000000 | core::constants::SPR_WOOD_GROUND as u32;
-                        m += 1;
-                        character.item[m] = 0x20000000 | core::constants::SPR_TAVERN_GROUND as u32;
-                        m += 1;
-                        character.item[m] = 0x20000000 | core::constants::SPR_STONE_GROUND1 as u32;
-                        m += 1;
-                        character.item[m] = 0x20000000 | core::constants::SPR_STONE_GROUND2 as u32;
-                        m += 1;
-
-                        // Additional sprite IDs
-                        character.item[m] = 0x20000000 | 1100;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 1099;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 1109;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 1118;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 1141;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 1158;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 1145;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 1014;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 1003;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 1005;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 1006;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 1007;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 402;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 500;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 558;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 596;
-                        m += 1;
-                    }
-                    1 => {
-                        for n in 520..=541 {
-                            character.item[m] = 0x20000000 | n;
-                            m += 1;
-                        }
-                    }
-                    2 => {
-                        for n in 542..=554 {
-                            character.item[m] = 0x20000000 | n;
-                            m += 1;
-                        }
-                    }
-                    3 => {
-                        for n in 130..=145 {
-                            character.item[m] = 0x20000000 | n;
-                            m += 1;
-                        }
-                    }
-                    4 => {
-                        for n in 170..=175 {
-                            character.item[m] = 0x20000000 | n;
-                            m += 1;
-                        }
-                    }
-                    331 => {
-                        character.item[m] = 0x40000000 | core::constants::MF_INDOORS;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 116;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 117;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 118;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 704;
-                        m += 1;
-                    }
-                    700 => {
-                        // Black stronghold
-                        character.item[m] = 0x40000000 | core::constants::MF_INDOORS;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 950;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 959;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 16652;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 16653;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 16654;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 16655;
-                        m += 1;
-                    }
-                    701 => {
-                        for n in 0..40 {
-                            character.item[m] = 0x20000000 | (n + 16430);
-                            m += 1;
-                        }
-                    }
-                    702 => {
-                        for n in 40..78 {
-                            character.item[m] = 0x20000000 | (n + 16430);
-                            m += 1;
-                        }
-                    }
-                    703 => {
-                        for n in 16584..16599 {
-                            character.item[m] = 0x20000000 | n;
-                            m += 1;
-                        }
-                    }
-                    704 => {
-                        for n in 985..989 {
-                            character.item[m] = 0x20000000 | n;
-                            m += 1;
-                        }
-                    }
-                    705 => {
-                        character.item[m] = 0x20000000 | 1118;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 989;
-                        m += 1;
-                        for n in 16634..16642 {
-                            character.item[m] = 0x20000000 | n;
-                            m += 1;
-                        }
-                    }
-                    819 => {
-                        character.item[m] = 0x40000000 | core::constants::MF_INDOORS;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 16728;
-                        m += 1;
-                    }
-                    900 => {
-                        // Graveyard quest
-                        character.item[m] = 0x20000000 | 16933; // lost souls tile
-                        m += 1;
-                        character.item[m] = 0x20000000 | 16934; // grave
-                        m += 1;
-                        character.item[m] = 0x20000000 | 16937; // grave, other dir
-                        m += 1;
-                    }
-                    1000 => {
-                        character.item[m] = 0x40000000 | core::constants::MF_INDOORS;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 1014;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 704;
-                        m += 1;
-
-                        for n in 508..=519 {
-                            character.item[m] = n;
-                            m += 1;
-                        }
-                        character.item[m] = 522;
-                        m += 1;
-                    }
-                    1001 => {
-                        character.item[m] = 0x40000000 | core::constants::MF_INDOORS;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 1118;
-                        m += 1;
-                        character.item[m] = 16;
-                        m += 1;
-                        character.item[m] = 17;
-                        m += 1;
-                        character.item[m] = 45;
-                        m += 1;
-                        character.item[m] = 47;
-                        m += 1;
-                        character.item[m] = 19;
-                        m += 1;
-                        character.item[m] = 20;
-                        m += 1;
-                        character.item[m] = 48;
-                        m += 1;
-                        character.item[m] = 49;
-                        m += 1;
-                        character.item[m] = 606;
-                        m += 1;
-                        character.item[m] = 607;
-                        m += 1;
-                        character.item[m] = 608;
-                        m += 1;
-                        character.item[m] = 609;
-                        m += 1;
-                        character.item[m] = 611;
-                        m += 1;
-                    }
-                    1002 => {
-                        // Ice penta
-                        character.item[m] = 0x40000000 | core::constants::MF_INDOORS;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 16670;
-                        m += 1;
-
-                        for n in 800..=812 {
-                            character.item[m] = n;
-                            m += 1;
-                        }
-                    }
-                    1003 => {
-                        character.item[m] = 0x20000000 | 16980;
-                        m += 1;
-                    }
-                    1140 => {
-                        character.item[m] = 0x20000000 | 17064;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 17065;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 17066;
-                        m += 1;
-                        character.item[m] = 0x20000000 | 17067;
-                        m += 1;
-                    }
-                    _ => {}
-                }
-
-                // Fill inventory with other stuff upward from last item
-                for n in build_type as usize..core::constants::MAXTITEM {
-                    if m >= 40 {
-                        break;
-                    }
-
-                    if item_templates[n].used == core::constants::USE_EMPTY {
-                        continue;
-                    }
-
-                    if item_templates[n].flags & core::constants::ItemFlags::IF_TAKE.bits() != 0 {
-                        continue;
-                    }
-
-                    if item_templates[n].driver == 25 && item_templates[n].data[3] == 0 {
-                        continue;
-                    }
-
-                    if item_templates[n].driver == 22 {
-                        continue;
-                    }
-
-                    character.item[m] = n as u32;
+                    // Additional sprite IDs
+                    character.item[m] = 0x20000000 | 1100;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 1099;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 1109;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 1118;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 1141;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 1158;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 1145;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 1014;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 1003;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 1005;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 1006;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 1007;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 402;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 500;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 558;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 596;
                     m += 1;
                 }
+                1 => {
+                    for n in 520..=541 {
+                        character.item[m] = 0x20000000 | n;
+                        m += 1;
+                    }
+                }
+                2 => {
+                    for n in 542..=554 {
+                        character.item[m] = 0x20000000 | n;
+                        m += 1;
+                    }
+                }
+                3 => {
+                    for n in 130..=145 {
+                        character.item[m] = 0x20000000 | n;
+                        m += 1;
+                    }
+                }
+                4 => {
+                    for n in 170..=175 {
+                        character.item[m] = 0x20000000 | n;
+                        m += 1;
+                    }
+                }
+                331 => {
+                    character.item[m] = 0x40000000 | core::constants::MF_INDOORS;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 116;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 117;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 118;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 704;
+                    m += 1;
+                }
+                700 => {
+                    // Black stronghold
+                    character.item[m] = 0x40000000 | core::constants::MF_INDOORS;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 950;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 959;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 16652;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 16653;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 16654;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 16655;
+                    m += 1;
+                }
+                701 => {
+                    for n in 0..40 {
+                        character.item[m] = 0x20000000 | (n + 16430);
+                        m += 1;
+                    }
+                }
+                702 => {
+                    for n in 40..78 {
+                        character.item[m] = 0x20000000 | (n + 16430);
+                        m += 1;
+                    }
+                }
+                703 => {
+                    for n in 16584..16599 {
+                        character.item[m] = 0x20000000 | n;
+                        m += 1;
+                    }
+                }
+                704 => {
+                    for n in 985..989 {
+                        character.item[m] = 0x20000000 | n;
+                        m += 1;
+                    }
+                }
+                705 => {
+                    character.item[m] = 0x20000000 | 1118;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 989;
+                    m += 1;
+                    for n in 16634..16642 {
+                        character.item[m] = 0x20000000 | n;
+                        m += 1;
+                    }
+                }
+                819 => {
+                    character.item[m] = 0x40000000 | core::constants::MF_INDOORS;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 16728;
+                    m += 1;
+                }
+                900 => {
+                    // Graveyard quest
+                    character.item[m] = 0x20000000 | 16933; // lost souls tile
+                    m += 1;
+                    character.item[m] = 0x20000000 | 16934; // grave
+                    m += 1;
+                    character.item[m] = 0x20000000 | 16937; // grave, other dir
+                    m += 1;
+                }
+                1000 => {
+                    character.item[m] = 0x40000000 | core::constants::MF_INDOORS;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 1014;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 704;
+                    m += 1;
 
-                log::info!(
-                    "Build mode {} set for character {}",
-                    build_type,
-                    character.get_name()
-                );
+                    for n in 508..=519 {
+                        character.item[m] = n;
+                        m += 1;
+                    }
+                    character.item[m] = 522;
+                    m += 1;
+                }
+                1001 => {
+                    character.item[m] = 0x40000000 | core::constants::MF_INDOORS;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 1118;
+                    m += 1;
+                    character.item[m] = 16;
+                    m += 1;
+                    character.item[m] = 17;
+                    m += 1;
+                    character.item[m] = 45;
+                    m += 1;
+                    character.item[m] = 47;
+                    m += 1;
+                    character.item[m] = 19;
+                    m += 1;
+                    character.item[m] = 20;
+                    m += 1;
+                    character.item[m] = 48;
+                    m += 1;
+                    character.item[m] = 49;
+                    m += 1;
+                    character.item[m] = 606;
+                    m += 1;
+                    character.item[m] = 607;
+                    m += 1;
+                    character.item[m] = 608;
+                    m += 1;
+                    character.item[m] = 609;
+                    m += 1;
+                    character.item[m] = 611;
+                    m += 1;
+                }
+                1002 => {
+                    // Ice penta
+                    character.item[m] = 0x40000000 | core::constants::MF_INDOORS;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 16670;
+                    m += 1;
 
-                Repository::global_mut().do_character_log(
-                    character_id,
-                    core::types::FontColor::Blue,
-                    "You are now in build mode. To exit, use the build command again.\n",
-                );
-            });
-        });
+                    for n in 800..=812 {
+                        character.item[m] = n;
+                        m += 1;
+                    }
+                }
+                1003 => {
+                    character.item[m] = 0x20000000 | 16980;
+                    m += 1;
+                }
+                1140 => {
+                    character.item[m] = 0x20000000 | 17064;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 17065;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 17066;
+                    m += 1;
+                    character.item[m] = 0x20000000 | 17067;
+                    m += 1;
+                }
+                _ => {}
+            }
+        }
+        // Fill inventory with other stuff upward from last item
+        for n in build_type as usize..core::constants::MAXTITEM {
+            if m >= 40 {
+                break;
+            }
+
+            if gs.item_templates[n].used == core::constants::USE_EMPTY {
+                continue;
+            }
+
+            if gs.item_templates[n].flags & core::constants::ItemFlags::IF_TAKE.bits() != 0 {
+                continue;
+            }
+
+            if gs.item_templates[n].driver == 25 && gs.item_templates[n].data[3] == 0 {
+                continue;
+            }
+
+            if gs.item_templates[n].driver == 22 {
+                continue;
+            }
+
+            character.item[m] = n as u32;
+            m += 1;
+        }
+
+        let char_name = character.get_name().to_string();
+        log::info!("Build mode {} set for character {}", build_type, char_name);
+
+        Repository::global_mut().do_character_log(
+            character_id,
+            core::types::FontColor::Blue,
+            "You are now in build mode. To exit, use the build command again.\n",
+        );
     }
 
     /// Start build mode for a character, creating helper companion state.
@@ -622,39 +610,37 @@ impl God {
             return false;
         }
 
-        Repository::with_characters_mut(|characters| {
-            // Transfer inventory
-            for i in 0..40 {
-                let item_id = characters[character_id].item[i] as usize;
-                if item_id != 0 {
-                    characters[character_id].item[i] = 0;
-                    characters[character_id_to_hold_inventory.unwrap() as usize].item[i] =
-                        item_id as u32;
-
-                    Repository::with_items_mut(|items| {
-                        items[item_id].carried = character_id_to_hold_inventory.unwrap() as u16;
-                    });
-                }
+        let holder_id = character_id_to_hold_inventory.unwrap() as usize;
+        for i in 0..40 {
+            let item_id = Repository::global_mut().characters[character_id].item[i] as usize;
+            if item_id != 0 {
+                Repository::global_mut().characters[character_id].item[i] = 0;
+                Repository::global_mut().characters[holder_id].item[i] = item_id as u32;
+                Repository::global_mut().items[item_id].carried = holder_id as u16;
             }
+        }
+        let citem = Repository::global_mut().characters[character_id].citem;
+        Repository::global_mut().characters[holder_id].citem = citem;
+        Repository::global_mut().characters[character_id].citem = 0;
 
-            characters[character_id_to_hold_inventory.unwrap() as usize].citem =
-                characters[character_id].citem;
-            characters[character_id].citem = 0;
+        // TODO: This function looks very ugly... refactor later
+        let holder_name = {
+            let char_name = Repository::global_mut().characters[character_id]
+                .get_name()
+                .to_string();
+            format!("{}'s holder", char_name)
+                .bytes()
+                .take(40)
+                .collect::<Vec<u8>>()
+                .try_into()
+                .unwrap_or([0; 40])
+        };
+        Repository::global_mut().characters[holder_id].name = holder_name;
 
-            // TODO: This function looks very ugly... refactor later
-            characters[character_id_to_hold_inventory.unwrap() as usize].name =
-                format!("{}'s holder", characters[character_id].get_name())
-                    .bytes()
-                    .take(40)
-                    .collect::<Vec<u8>>()
-                    .try_into()
-                    .unwrap_or([0; 40]);
+        Self::drop_char(holder_id, 10, 10);
 
-            Self::drop_char(character_id_to_hold_inventory.unwrap() as usize, 10, 10);
-
-            characters[character_id].flags |= CharacterFlags::BuildMode.bits();
-            characters[character_id].set_do_update_flags();
-        });
+        Repository::global_mut().characters[character_id].flags |= CharacterFlags::BuildMode.bits();
+        Repository::global_mut().characters[character_id].set_do_update_flags();
         true
     }
 
@@ -671,26 +657,23 @@ impl God {
         }
 
         // Empty builder's inventory
-        Repository::with_characters_mut(|characters| {
-            let character = &mut characters[character_id];
-
+        {
+            let gs = Repository::global_mut();
+            let character = &mut gs.characters[character_id];
             for n in 0..40 {
                 character.item[n] = 0;
             }
             character.citem = 0;
-
-            // Reset build mode
             character.flags &= !CharacterFlags::BuildMode.bits();
             character.misc_action = 0; // DR_IDLE
-
-            Repository::global_mut().do_character_log(
-                character_id,
-                core::types::FontColor::Blue,
-                "You are now out of build mode.\n",
-            );
-
-            log::info!("Character {} now out of build mode", character.get_name());
-        });
+            let char_name = character.get_name().to_string();
+            log::info!("Character {} now out of build mode", char_name);
+        }
+        Repository::global_mut().do_character_log(
+            character_id,
+            core::types::FontColor::Blue,
+            "You are now out of build mode.\n",
+        );
 
         // Retrieve inventory from item holder
         let companion_id = Repository::global_mut().characters[character_id].data
@@ -710,52 +693,41 @@ impl God {
             return;
         }
 
-        Repository::with_characters_mut(|characters| {
-            // Collect inventory data from companion first
-            let mut items_to_transfer = Vec::new();
-            let companion_citem;
-
-            {
-                let companion = &mut characters[companion_id];
-                for n in 0..40 {
-                    items_to_transfer.push((n, companion.item[n]));
-                    companion.item[n] = 0;
-                }
-                companion_citem = companion.citem;
-                companion.citem = 0;
-
-                // Destroy item holder (companion)
-                player::plr_map_remove(companion_id);
-                companion.used = core::constants::USE_EMPTY;
-                characters[character_id].data[core::constants::CHD_COMPANION] = 0;
+        let mut items_to_transfer = Vec::new();
+        let companion_citem;
+        {
+            let gs = Repository::global_mut();
+            let companion = &mut gs.characters[companion_id];
+            for n in 0..40 {
+                items_to_transfer.push((n, companion.item[n]));
+                companion.item[n] = 0;
             }
+            companion_citem = companion.citem;
+            companion.citem = 0;
+        }
+        player::plr_map_remove(companion_id);
+        Repository::global_mut().characters[companion_id].used = core::constants::USE_EMPTY;
+        Repository::global_mut().characters[character_id].data[core::constants::CHD_COMPANION] = 0;
 
-            // Transfer inventory from companion to builder
-            for (n, item_id) in items_to_transfer {
-                if item_id != 0 {
-                    characters[character_id].item[n] = item_id;
-
-                    // Update item's carrier
-                    Repository::with_items_mut(|items| {
-                        if core::types::Item::is_sane_item(item_id as usize) {
-                            items[item_id as usize].carried = character_id as u16;
-                        }
-                    });
+        // Transfer inventory from companion to builder
+        for (n, item_id) in items_to_transfer {
+            if item_id != 0 {
+                Repository::global_mut().characters[character_id].item[n] = item_id;
+                if core::types::Item::is_sane_item(item_id as usize) {
+                    Repository::global_mut().items[item_id as usize].carried = character_id as u16;
                 }
             }
+        }
 
-            // Transfer citem from companion to builder
-            characters[character_id].citem = companion_citem;
-            if companion_citem != 0 {
-                Repository::with_items_mut(|items| {
-                    if core::types::Item::is_sane_item(companion_citem as usize) {
-                        items[companion_citem as usize].carried = character_id as u16;
-                    }
-                });
+        // Transfer citem from companion to builder
+        Repository::global_mut().characters[character_id].citem = companion_citem;
+        if companion_citem != 0 {
+            if core::types::Item::is_sane_item(companion_citem as usize) {
+                Repository::global_mut().items[companion_citem as usize].carried =
+                    character_id as u16;
             }
-
-            characters[character_id].set_do_update_flags();
-        });
+        }
+        Repository::global_mut().characters[character_id].set_do_update_flags();
     }
 
     /// Transfer a character to exact coordinates `(x, y)` if possible.
@@ -777,14 +749,15 @@ impl God {
             return false;
         }
 
-        Repository::with_characters_mut(|characters| {
-            let character = &mut characters[character_id];
+        {
+            let gs = Repository::global_mut();
+            let character = &mut gs.characters[character_id];
             character.status = 0;
             character.attack_cn = 0;
             character.skill_nr = 0;
             character.goto_x = x as u16;
             character.goto_y = y as u16; // TODO: This was missing before... should this be here?
-        });
+        }
 
         let positions_to_try: [(usize, usize); 5] =
             [(x, y), (x + 3, y), (x, y + 3), (x - 3, y), (x, y - 3)];
@@ -933,52 +906,57 @@ impl God {
             }
         };
 
-        Repository::with_characters_mut(|characters| {
-            let character = &mut characters[char_index];
+        // Copy template into character slot
+        {
+            let gs = Repository::global_mut();
+            let template_copy = gs.character_templates[template_id];
+            gs.characters[char_index] = template_copy;
+        }
 
-            *character =
-                Repository::with_character_templates(|char_templates| char_templates[template_id]);
+        // Templates can carry runtime fields like `player`; never inherit a player binding.
+        Repository::global_mut().characters[char_index].player = 0;
+        Repository::global_mut().characters[char_index].pass1 =
+            crate::helpers::random_mod(0x3fffffff);
+        Repository::global_mut().characters[char_index].pass2 =
+            crate::helpers::random_mod(0x3fffffff);
+        Repository::global_mut().characters[char_index].temp = template_id as u16;
 
-            // Templates can carry runtime fields like `player`; never inherit a player binding.
-            character.player = 0;
+        loop {
+            log::info!("Generating random name for new character...");
+            let potential_new_name = core::names::randomly_generate_name();
 
-            character.pass1 = crate::helpers::random_mod(0x3fffffff);
-            character.pass2 = crate::helpers::random_mod(0x3fffffff);
-            character.temp = template_id as u16;
-
-            loop {
-                log::info!("Generating random name for new character...");
-                let potential_new_name = core::names::randomly_generate_name();
-
-                let name_exists = Repository::global_mut()
-                    .characters
-                    .iter()
-                    .any(|existing_char| {
-                        existing_char.used != core::constants::USE_EMPTY
-                            && existing_char
-                                .get_name()
-                                .eq_ignore_ascii_case(&potential_new_name)
-                    });
-                if !name_exists {
-                    let mut name_arr = [0u8; 40];
-                    let name_bytes = potential_new_name.as_bytes();
-                    let copy_len = name_bytes.len().min(40);
-                    name_arr[..copy_len].copy_from_slice(&name_bytes[..copy_len]);
-                    character.name = name_arr;
-                    log::info!(
-                        "Assigned name '{}' to new character (ID {})",
-                        character.get_name(),
-                        char_index
-                    );
-                    break;
-                }
-
+            let name_exists = Repository::global_mut()
+                .characters
+                .iter()
+                .any(|existing_char| {
+                    existing_char.used != core::constants::USE_EMPTY
+                        && existing_char
+                            .get_name()
+                            .eq_ignore_ascii_case(&potential_new_name)
+                });
+            if !name_exists {
+                let mut name_arr = [0u8; 40];
+                let name_bytes = potential_new_name.as_bytes();
+                let copy_len = name_bytes.len().min(40);
+                name_arr[..copy_len].copy_from_slice(&name_bytes[..copy_len]);
+                Repository::global_mut().characters[char_index].name = name_arr;
                 log::info!(
-                    "Generated name '{}' already exists. Retrying...",
-                    potential_new_name
+                    "Assigned name '{}' to new character (ID {})",
+                    Repository::global_mut().characters[char_index].get_name(),
+                    char_index
                 );
+                break;
             }
 
+            log::info!(
+                "Generated name '{}' already exists. Retrying...",
+                potential_new_name
+            );
+        }
+
+        {
+            let gs = Repository::global_mut();
+            let character = &mut gs.characters[char_index];
             character.reference = character.name;
             character.description = character
                 .get_default_description()
@@ -1002,105 +980,105 @@ impl God {
             character.stunned = 0;
             character.retry = 0;
             character.dir = core::constants::DX_DOWN;
+        }
 
-            let mut flag = 0;
-            for i in 0..40 {
-                let mut tmp = character.item[i];
+        let mut flag = 0;
+        for i in 0..40 {
+            let mut tmp = Repository::global_mut().characters[char_index].item[i];
+            if tmp == 0 {
+                continue;
+            }
+
+            if with_items {
+                tmp = Self::create_item(tmp as usize).unwrap_or(0) as u32;
                 if tmp == 0 {
-                    continue;
+                    log::error!(
+                        "Failed to create item from template new character ID {}",
+                        char_index
+                    );
+                    flag = 1;
                 }
-
-                if with_items {
-                    tmp = Self::create_item(tmp as usize).unwrap_or(0) as u32;
-                    if tmp == 0 {
-                        log::error!(
-                            "Failed to create item from template new character ID {}",
-                            char_index
-                        );
-                        flag = 1;
-                    }
-                    Repository::with_items_mut(|items| {
-                        if tmp != 0 && items[tmp as usize].used != core::constants::USE_EMPTY {
-                            items[tmp as usize].carried = char_index as u16;
-                        }
-                    });
-                } else {
-                    tmp = 0;
+                if tmp != 0
+                    && Repository::global_mut().items[tmp as usize].used
+                        != core::constants::USE_EMPTY
+                {
+                    Repository::global_mut().items[tmp as usize].carried = char_index as u16;
                 }
-
-                character.item[i] = tmp;
+            } else {
+                tmp = 0;
             }
 
-            for i in 0..20 {
-                let mut tmp_worn = character.worn[i];
+            Repository::global_mut().characters[char_index].item[i] = tmp;
+        }
+
+        for i in 0..20 {
+            let mut tmp_worn = Repository::global_mut().characters[char_index].worn[i];
+            if tmp_worn == 0 {
+                continue;
+            }
+
+            if with_items {
+                tmp_worn = Self::create_item(tmp_worn as usize).unwrap_or(0) as u32;
                 if tmp_worn == 0 {
-                    continue;
+                    log::error!(
+                        "Failed to create worn item from template for new character ID {}",
+                        char_index
+                    );
+                    flag = 1;
                 }
-
-                if with_items {
-                    tmp_worn = Self::create_item(tmp_worn as usize).unwrap_or(0) as u32;
-                    if tmp_worn == 0 {
-                        log::error!(
-                            "Failed to create worn item from template for new character ID {}",
-                            char_index
-                        );
-                        flag = 1;
-                    }
-                    Repository::with_items_mut(|items| {
-                        items[tmp_worn as usize].carried = char_index as u16;
-                    });
-                } else {
-                    tmp_worn = 0;
+                if core::types::Item::is_sane_item(tmp_worn as usize) {
+                    Repository::global_mut().items[tmp_worn as usize].carried = char_index as u16;
                 }
-
-                character.worn[i] = tmp_worn;
+            } else {
+                tmp_worn = 0;
             }
 
-            for i in 0..20 {
-                if character.spell[i] != 0 {
-                    character.spell[i] = 0;
+            Repository::global_mut().characters[char_index].worn[i] = tmp_worn;
+        }
+
+        for i in 0..20 {
+            if Repository::global_mut().characters[char_index].spell[i] != 0 {
+                Repository::global_mut().characters[char_index].spell[i] = 0;
+            }
+        }
+
+        let mut tmp_citem = Repository::global_mut().characters[char_index].citem;
+        if tmp_citem != 0 {
+            if with_items {
+                tmp_citem = Self::create_item(tmp_citem as usize).unwrap_or(0) as u32;
+                if tmp_citem == 0 {
+                    log::error!(
+                        "Failed to create citem from template for new character ID {}",
+                        char_index
+                    );
+                    flag = 1;
                 }
-            }
-
-            let mut tmp_citem = character.citem;
-            if tmp_citem != 0 {
-                if with_items {
-                    tmp_citem = Self::create_item(tmp_citem as usize).unwrap_or(0) as u32;
-                    if tmp_citem == 0 {
-                        log::error!(
-                            "Failed to create citem from template for new character ID {}",
-                            char_index
-                        );
-                        flag = 1;
-                    }
-                    Repository::with_items_mut(|items| {
-                        items[tmp_citem as usize].carried = char_index as u16;
-                    });
-                } else {
-                    tmp_citem = 0;
+                if core::types::Item::is_sane_item(tmp_citem as usize) {
+                    Repository::global_mut().items[tmp_citem as usize].carried = char_index as u16;
                 }
-
-                character.citem = tmp_citem;
+            } else {
+                tmp_citem = 0;
             }
 
-            if flag != 0 {
-                log::error!(
-                    "One or more items failed to be created for new character ID {}",
-                    char_index
-                );
-                Self::destroy_items(char_index);
-                character.used = core::constants::USE_EMPTY;
-                return None;
-            }
+            Repository::global_mut().characters[char_index].citem = tmp_citem;
+        }
 
-            character.a_end = 1000000;
-            character.a_hp = 1000000;
-            character.a_mana = 1000000;
+        if flag != 0 {
+            log::error!(
+                "One or more items failed to be created for new character ID {}",
+                char_index
+            );
+            Self::destroy_items(char_index);
+            Repository::global_mut().characters[char_index].used = core::constants::USE_EMPTY;
+            return None;
+        }
 
-            character.set_do_update_flags();
+        Repository::global_mut().characters[char_index].a_end = 1000000;
+        Repository::global_mut().characters[char_index].a_hp = 1000000;
+        Repository::global_mut().characters[char_index].a_mana = 1000000;
+        Repository::global_mut().characters[char_index].set_do_update_flags();
 
-            Some(char_index as i32)
-        })
+        Some(char_index as i32)
     }
 
     /// Destroy all items owned or carried by `char_id`.
@@ -1116,75 +1094,61 @@ impl God {
             return;
         }
 
-        Repository::with_characters_mut(|characters| {
-            let character = &mut characters[char_id];
+        // Destroy all inventory items (40 slots)
+        for n in 0..40 {
+            let item_id = Repository::global_mut().characters[char_id].item[n] as usize;
+            if item_id != 0 {
+                Repository::global_mut().characters[char_id].item[n] = 0;
+                if core::types::Item::is_sane_item(item_id) {
+                    Repository::global_mut().items[item_id].used = core::constants::USE_EMPTY;
+                }
+            }
+        }
 
-            // Destroy all inventory items (40 slots)
-            for n in 0..40 {
-                let item_id = character.item[n] as usize;
-                if item_id != 0 {
-                    character.item[n] = 0;
-                    if core::types::Item::is_sane_item(item_id) {
-                        Repository::with_items_mut(|items| {
-                            items[item_id].used = core::constants::USE_EMPTY;
-                        });
-                    }
+        // Destroy all worn items (20 slots)
+        for n in 0..20 {
+            let worn_id = Repository::global_mut().characters[char_id].worn[n] as usize;
+            if worn_id != 0 {
+                Repository::global_mut().characters[char_id].worn[n] = 0;
+                if core::types::Item::is_sane_item(worn_id) {
+                    Repository::global_mut().items[worn_id].used = core::constants::USE_EMPTY;
                 }
             }
 
-            // Destroy all worn items (20 slots)
-            for n in 0..20 {
-                let worn_id = character.worn[n] as usize;
-                if worn_id != 0 {
-                    character.worn[n] = 0;
-                    if core::types::Item::is_sane_item(worn_id) {
-                        Repository::with_items_mut(|items| {
-                            items[worn_id].used = core::constants::USE_EMPTY;
-                        });
-                    }
-                }
-
-                let spell_id = character.spell[n] as usize;
-                if spell_id != 0 {
-                    character.spell[n] = 0;
-                    if core::types::Item::is_sane_item(spell_id) {
-                        Repository::with_items_mut(|items| {
-                            items[spell_id].used = core::constants::USE_EMPTY;
-                        });
-                    }
+            let spell_id = Repository::global_mut().characters[char_id].spell[n] as usize;
+            if spell_id != 0 {
+                Repository::global_mut().characters[char_id].spell[n] = 0;
+                if core::types::Item::is_sane_item(spell_id) {
+                    Repository::global_mut().items[spell_id].used = core::constants::USE_EMPTY;
                 }
             }
+        }
 
-            // Destroy carried item (citem)
-            let citem_id = character.citem as usize;
-            if citem_id != 0 {
-                character.citem = 0;
-                // TODO: Refactor this check--it is duplicated due to the != 0
-                // check above anyway.
-                if core::types::Item::is_sane_item(citem_id) {
-                    Repository::with_items_mut(|items| {
-                        items[citem_id].used = core::constants::USE_EMPTY;
-                    });
-                }
+        // Destroy carried item (citem)
+        let citem_id = Repository::global_mut().characters[char_id].citem as usize;
+        if citem_id != 0 {
+            Repository::global_mut().characters[char_id].citem = 0;
+            // TODO: Refactor this check--it is duplicated due to the != 0
+            // check above anyway.
+            if core::types::Item::is_sane_item(citem_id) {
+                Repository::global_mut().items[citem_id].used = core::constants::USE_EMPTY;
             }
+        }
 
-            // If player, destroy depot/storage items (62 slots)
-            if character.is_player() {
-                for n in 0..62 {
-                    let depot_id = character.depot[n] as usize;
-                    if depot_id != 0 {
-                        character.depot[n] = 0;
-                        if core::types::Item::is_sane_item(depot_id) {
-                            Repository::with_items_mut(|items| {
-                                items[depot_id].used = core::constants::USE_EMPTY;
-                            });
-                        }
+        // If player, destroy depot/storage items (62 slots)
+        if Repository::global_mut().characters[char_id].is_player() {
+            for n in 0..62 {
+                let depot_id = Repository::global_mut().characters[char_id].depot[n] as usize;
+                if depot_id != 0 {
+                    Repository::global_mut().characters[char_id].depot[n] = 0;
+                    if core::types::Item::is_sane_item(depot_id) {
+                        Repository::global_mut().items[depot_id].used = core::constants::USE_EMPTY;
                     }
                 }
             }
+        }
 
-            character.set_do_update_flags();
-        });
+        Repository::global_mut().characters[char_id].set_do_update_flags();
     }
 
     /// Remove `item_id` from character `cn` and drop it onto their map tile.
@@ -1199,54 +1163,50 @@ impl God {
             return false;
         }
 
-        Repository::with_characters_mut(|characters| {
-            if !characters[cn].is_living_character(cn) {
-                return false;
-            }
+        if !Repository::global_mut().characters[cn].is_living_character(cn) {
+            return false;
+        }
 
-            Repository::with_items_mut(|items| {
-                // Remove from citem
-                if characters[cn].citem as usize == item_id {
-                    characters[cn].citem = 0;
-                } else {
-                    // Try inventory
-                    let mut found = false;
-                    for n in 0..40 {
-                        if characters[cn].item[n] as usize == item_id {
-                            characters[cn].item[n] = 0;
-                            found = true;
-                            break;
-                        }
-                    }
-                    if !found {
-                        // Try worn
-                        for n in 0..20 {
-                            if characters[cn].worn[n] as usize == item_id {
-                                characters[cn].worn[n] = 0;
-                                found = true;
-                                break;
-                            }
-                        }
-                        if !found {
-                            return false;
-                        }
+        // Remove from citem
+        if Repository::global_mut().characters[cn].citem as usize == item_id {
+            Repository::global_mut().characters[cn].citem = 0;
+        } else {
+            // Try inventory
+            let mut found = false;
+            for n in 0..40 {
+                if Repository::global_mut().characters[cn].item[n] as usize == item_id {
+                    Repository::global_mut().characters[cn].item[n] = 0;
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                // Try worn
+                for n in 0..20 {
+                    if Repository::global_mut().characters[cn].worn[n] as usize == item_id {
+                        Repository::global_mut().characters[cn].worn[n] = 0;
+                        found = true;
+                        break;
                     }
                 }
+                if !found {
+                    return false;
+                }
+            }
+        }
 
-                // Clear item carriage
-                items[item_id].x = 0;
-                items[item_id].y = 0;
-                items[item_id].carried = 0;
+        // Clear item carriage
+        Repository::global_mut().items[item_id].x = 0;
+        Repository::global_mut().items[item_id].y = 0;
+        Repository::global_mut().items[item_id].carried = 0;
 
-                // Mark character for update
-                characters[cn].set_do_update_flags();
+        // Mark character for update
+        Repository::global_mut().characters[cn].set_do_update_flags();
 
-                // Call update hook in GameState so network/clients can be informed.
-                Repository::global_mut().do_update_char(cn);
+        // Call update hook in GameState so network/clients can be informed.
+        Repository::global_mut().do_update_char(cn);
 
-                true
-            })
-        })
+        true
     }
 
     /// Drop an item at the given coordinates `x,y` on the map.
@@ -1263,19 +1223,21 @@ impl God {
 
         let map_index = x + y * core::constants::SERVER_MAPX as usize;
 
-        let can_drop = Repository::with_map(|map| {
-            if map[map_index].ch != 0
-                || map[map_index].to_ch != 0
-                || map[map_index].it != 0
-                || (map[map_index].flags
+        let can_drop = {
+            let gs = Repository::global_mut();
+            if gs.map[map_index].ch != 0
+                || gs.map[map_index].to_ch != 0
+                || gs.map[map_index].it != 0
+                || (gs.map[map_index].flags
                     & (core::constants::MF_MOVEBLOCK | core::constants::MF_DEATHTRAP) as u64)
                     != 0
-                || map[map_index].fsprite != 0
+                || gs.map[map_index].fsprite != 0
             {
-                return false;
+                false
+            } else {
+                true
             }
-            true
-        });
+        };
 
         if !can_drop {
             return false;
@@ -1283,26 +1245,23 @@ impl God {
 
         // Update the item first so if other systems validate map->item consistency
         // concurrently, they won't observe a map reference to an item with stale coordinates.
-        Repository::with_items_mut(|items| {
-            items[item_id].x = x as u16;
-            items[item_id].y = y as u16;
-            items[item_id].carried = 0;
-
-            let light_value = if items[item_id].active != 0 {
-                items[item_id].light[1]
+        {
+            let gs = Repository::global_mut();
+            gs.items[item_id].x = x as u16;
+            gs.items[item_id].y = y as u16;
+            gs.items[item_id].carried = 0;
+            let light_value = if gs.items[item_id].active != 0 {
+                gs.items[item_id].light[1]
             } else {
-                items[item_id].light[0]
+                gs.items[item_id].light[0]
             };
-
             if light_value != 0 {
                 Repository::global_mut().do_add_light(x as i32, y as i32, light_value as i32);
             }
-        });
+        }
 
         // Write the map reference last.
-        Repository::with_map_mut(|map| {
-            map[map_index].it = item_id as u32;
-        });
+        Repository::global_mut().map[map_index].it = item_id as u32;
 
         true
     }
@@ -1321,24 +1280,23 @@ impl God {
 
         let map_index = x + y * core::constants::SERVER_MAPX as usize;
 
-        let move_is_valid = Repository::with_map(|map_tiles| {
-            Repository::with_items(|items| {
-                let item_on_tile = map_tiles[map_index].it;
-                if map_tiles[map_index].ch != 0
-                    || (item_on_tile != 0
-                        && items[item_on_tile as usize].flags
-                            & core::constants::ItemFlags::IF_MOVEBLOCK.bits()
-                            != 0)
-                    || map_tiles[map_index].flags & core::constants::MF_MOVEBLOCK as u64 != 0
-                    || map_tiles[map_index].flags & core::constants::MF_TAVERN as u64 != 0
-                    || map_tiles[map_index].flags & core::constants::MF_DEATHTRAP as u64 != 0
-                {
-                    return false;
-                }
-
+        let move_is_valid = {
+            let gs = Repository::global_mut();
+            let item_on_tile = gs.map[map_index].it;
+            if gs.map[map_index].ch != 0
+                || (item_on_tile != 0
+                    && gs.items[item_on_tile as usize].flags
+                        & core::constants::ItemFlags::IF_MOVEBLOCK.bits()
+                        != 0)
+                || gs.map[map_index].flags & core::constants::MF_MOVEBLOCK as u64 != 0
+                || gs.map[map_index].flags & core::constants::MF_TAVERN as u64 != 0
+                || gs.map[map_index].flags & core::constants::MF_DEATHTRAP as u64 != 0
+            {
+                false
+            } else {
                 true
-            })
-        });
+            }
+        };
 
         if !move_is_valid {
             return false;
@@ -1346,12 +1304,13 @@ impl God {
 
         // Remove from previous tile (if any), update coords and insert into map
         player::plr_map_remove(character_id);
-        Repository::with_characters_mut(|characters| {
-            characters[character_id].x = x as i16;
-            characters[character_id].y = y as i16;
-            characters[character_id].tox = x as i16;
-            characters[character_id].toy = y as i16;
-        });
+        {
+            let gs = Repository::global_mut();
+            gs.characters[character_id].x = x as i16;
+            gs.characters[character_id].y = y as i16;
+            gs.characters[character_id].tox = x as i16;
+            gs.characters[character_id].toy = y as i16;
+        }
         player::plr_map_set(character_id);
 
         true
@@ -1370,35 +1329,34 @@ impl God {
             return 0;
         }
 
-        Repository::with_characters_mut(|characters| {
-            let character = &mut characters[co];
-
-            // Set new password (simplified - original used crypt)
-            let pass_hash = pass.as_bytes();
-            character.pass1 = pass_hash
-                .iter()
-                .take(4)
-                .fold(0u32, |acc, &b| (acc << 8) | b as u32);
-            character.pass2 = pass_hash
-                .iter()
-                .skip(4)
-                .take(4)
-                .fold(0u32, |acc, &b| (acc << 8) | b as u32);
-
+        let pass_hash = pass.as_bytes();
+        let pass1 = pass_hash
+            .iter()
+            .take(4)
+            .fold(0u32, |acc, &b| (acc << 8) | b as u32);
+        let pass2 = pass_hash
+            .iter()
+            .skip(4)
+            .take(4)
+            .fold(0u32, |acc, &b| (acc << 8) | b as u32);
+        {
+            let gs = Repository::global_mut();
+            let character = &mut gs.characters[co];
+            character.pass1 = pass1;
+            character.pass2 = pass2;
             character.set_do_update_flags();
-
-            Repository::global_mut().do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                &format!(
-                    "You have changed the password for character '{}'.\n",
-                    character.get_name()
-                ),
-            );
-            log::info!("Password changed for character {}", character.get_name());
-
-            1
-        })
+            let char_name = character.get_name().to_string();
+            log::info!("Password changed for character {}", char_name);
+        }
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            &format!(
+                "You have changed the password for character '{}'.\n",
+                Repository::global_mut().characters[co].get_name()
+            ),
+        );
+        1
     }
 
     // This function is unused in the original implementation
@@ -1413,35 +1371,27 @@ impl God {
             return 0;
         }
 
-        Repository::with_characters_mut(|characters| {
-            let character = &mut characters[cn];
-
-            // Check inventory slots
-            for n in 0..40 {
-                if character.item[n] == item_id as u32 {
-                    character.item[n] = 0;
-                    Repository::with_items_mut(|items| {
-                        items[item_id].carried = 0;
-                    });
-                    character.set_do_update_flags();
-                    return 1;
-                }
+        // Check inventory slots
+        for n in 0..40 {
+            if Repository::global_mut().characters[cn].item[n] == item_id as u32 {
+                Repository::global_mut().characters[cn].item[n] = 0;
+                Repository::global_mut().items[item_id].carried = 0;
+                Repository::global_mut().characters[cn].set_do_update_flags();
+                return 1;
             }
+        }
 
-            // Check worn/wielded slots
-            for n in 0..20 {
-                if character.worn[n] == item_id as u32 {
-                    character.worn[n] = 0;
-                    Repository::with_items_mut(|items| {
-                        items[item_id].carried = 0;
-                    });
-                    character.set_do_update_flags();
-                    return 1;
-                }
+        // Check worn/wielded slots
+        for n in 0..20 {
+            if Repository::global_mut().characters[cn].worn[n] == item_id as u32 {
+                Repository::global_mut().characters[cn].worn[n] = 0;
+                Repository::global_mut().items[item_id].carried = 0;
+                Repository::global_mut().characters[cn].set_do_update_flags();
+                return 1;
             }
+        }
 
-            0
-        })
+        0
     }
 
     /// Attempt to drop an item near `(x,y)` using a small search pattern.
@@ -1994,7 +1944,7 @@ impl God {
             && (kindred & core::constants::KIN_PURPLE as i32) != 0
             && data_vals[core::constants::CHD_ATTACKTIME] != 0
         {
-            let dt = Repository::with_globals(|g| g.ticker)
+            let dt = Repository::global_mut().globals.ticker
                 - Repository::global_mut().characters[co].data[core::constants::CHD_ATTACKTIME];
             if (Repository::global_mut().characters[cn].flags & CharacterFlags::Imp.bits()) != 0 {
                 let victim = Repository::global_mut().characters[co].data
@@ -2106,7 +2056,7 @@ impl God {
                 && Repository::global_mut().characters[co].data[64] != 0
             {
                 let t = Repository::global_mut().characters[co].data[64]
-                    - Repository::with_globals(|g| g.ticker);
+                    - Repository::global_mut().globals.ticker;
                 let t_secs = t / core::constants::TICKS;
                 let mins = t_secs / 60;
                 let secs = t_secs % 60;
@@ -2129,21 +2079,22 @@ impl God {
             return;
         }
 
-        Repository::with_items(|items| {
-            let item = &items[item_index];
-
+        {
+            let gs = Repository::global_mut();
+            let item = &gs.items[item_index];
             let sprite_0_to_print = item.sprite[0];
             let sprite_1_to_print = item.sprite[1];
             let carried_to_print = item.carried;
-            Repository::global_mut().do_character_log(
+            let used = item.used;
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Green,
                 &format!(
                     "Item Info: ID={}, Sprite=[{},{}], Carried={}, Used={}\n",
-                    item_index, sprite_0_to_print, sprite_1_to_print, carried_to_print, item.used
+                    item_index, sprite_0_to_print, sprite_1_to_print, carried_to_print, used
                 ),
             );
-        });
+        }
     }
 
     /// Inspect an item template and display its fields to `cn`.
@@ -2157,13 +2108,13 @@ impl God {
             return;
         }
 
-        Repository::with_item_templates(|templates| {
-            let tmpl = &templates[template];
-
+        {
+            let gs = Repository::global_mut();
+            let tmpl = &gs.item_templates[template];
             let sprite_0_to_print = tmpl.sprite[0];
             let sprite_1_to_print = tmpl.sprite[1];
             let used_to_print = tmpl.used;
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Green,
                 &format!(
@@ -2171,7 +2122,7 @@ impl God {
                     template, sprite_0_to_print, sprite_1_to_print, used_to_print
                 ),
             );
-        });
+        }
     }
 
     /// List or check unique items on the server for admin inspection.
@@ -2183,28 +2134,27 @@ impl God {
             return;
         }
 
-        Repository::with_items(|items| {
-            Repository::global_mut().do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                "Listing unique items:",
-            );
-            for i in 1..core::constants::MAXITEM {
-                if items[i].used != core::constants::USE_EMPTY && items[i].is_unique() {
-                    let sprite_0_to_print = items[i].sprite[0];
-                    let sprite_1_to_print = items[i].sprite[1];
-                    let carried_to_print = items[i].carried;
-                    Repository::global_mut().do_character_log(
-                        cn,
-                        core::types::FontColor::Green,
-                        &format!(
-                            "  Item {}: Sprite=[{},{}], Carried={}\n",
-                            i, sprite_0_to_print, sprite_1_to_print, carried_to_print
-                        ),
-                    );
-                }
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "Listing unique items:",
+        );
+        for i in 1..core::constants::MAXITEM {
+            let gs = Repository::global_mut();
+            if gs.items[i].used != core::constants::USE_EMPTY && gs.items[i].is_unique() {
+                let sprite_0_to_print = gs.items[i].sprite[0];
+                let sprite_1_to_print = gs.items[i].sprite[1];
+                let carried_to_print = gs.items[i].carried;
+                gs.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!(
+                        "  Item {}: Sprite=[{},{}], Carried={}\n",
+                        i, sprite_0_to_print, sprite_1_to_print, carried_to_print
+                    ),
+                );
             }
-        });
+        }
     }
 
     /// Produce a 'who' listing visible to `cn`.
@@ -2649,9 +2599,9 @@ impl God {
             return;
         }
 
-        let is_takeable = Repository::with_item_templates(|item_templates| {
-            (item_templates[template_id].flags & core::constants::ItemFlags::IF_TAKE.bits()) != 0
-        });
+        let is_takeable = (Repository::global_mut().item_templates[template_id].flags
+            & core::constants::ItemFlags::IF_TAKE.bits())
+            != 0;
 
         if !is_takeable {
             Repository::global_mut().do_character_log(
@@ -2674,7 +2624,9 @@ impl God {
                 return;
             }
 
-            let item_name = Repository::with_items(|items| items[item_id].get_name().to_string());
+            let item_name = Repository::global_mut().items[item_id]
+                .get_name()
+                .to_string();
             Repository::global_mut().do_character_log(
                 cn,
                 core::types::FontColor::Green,
@@ -2742,13 +2694,11 @@ impl God {
                 Some(item_id) => item_id,
                 None => {
                     // Clean up any items already created.
-                    Repository::with_items_mut(|items| {
-                        for &id in created.iter() {
-                            if id != 0 {
-                                items[id].used = core::constants::USE_EMPTY;
-                            }
+                    for &id in created.iter() {
+                        if id != 0 {
+                            Repository::global_mut().items[id].used = core::constants::USE_EMPTY;
                         }
-                    });
+                    }
                     Repository::global_mut().do_character_log(
                         cn,
                         core::types::FontColor::Red,
@@ -2840,7 +2790,7 @@ impl God {
 
         // Deliver both items (and roll back cleanly if we can't give the full pair).
         if !Self::give_character_item(cn, created[0]) {
-            Repository::with_items_mut(|items| items[created[0]].used = core::constants::USE_EMPTY);
+            Repository::global_mut().items[created[0]].used = core::constants::USE_EMPTY;
             Repository::global_mut().do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -2851,10 +2801,11 @@ impl God {
         if !Self::give_character_item(cn, created[1]) {
             // Remove the first item again to keep behavior consistent (we create a pair).
             let _ = Self::remove_item(cn, created[0]);
-            Repository::with_items_mut(|items| {
-                items[created[0]].used = core::constants::USE_EMPTY;
-                items[created[1]].used = core::constants::USE_EMPTY;
-            });
+            {
+                let gs = Repository::global_mut();
+                gs.items[created[0]].used = core::constants::USE_EMPTY;
+                gs.items[created[1]].used = core::constants::USE_EMPTY;
+            }
             Repository::global_mut().do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -2863,12 +2814,13 @@ impl God {
             return;
         }
 
-        let (helmet_name, armor_name) = Repository::with_items(|items| {
+        let (helmet_name, armor_name) = {
+            let gs = Repository::global_mut();
             (
-                items[created[0]].get_name().to_string(),
-                items[created[1]].get_name().to_string(),
+                gs.items[created[0]].get_name().to_string(),
+                gs.items[created[1]].get_name().to_string(),
             )
-        });
+        };
 
         Repository::global_mut().do_character_log(
             cn,
@@ -3236,21 +3188,22 @@ impl God {
         };
 
         // Copy attributes from target to mirror
-        Repository::with_characters_mut(|characters| {
-            let target_name_bytes = characters[co].name;
-            let target_sprite = characters[co].sprite;
-            let target_attrib = characters[co].attrib;
-            let target_hp = characters[co].hp;
-            let target_end = characters[co].end;
-            let target_mana = characters[co].mana;
-            let target_skill = characters[co].skill;
-            let target_kindred = characters[co].kindred as u32;
-            let caster_weapon = characters[cn].weapon;
-            let caster_armor = characters[cn].armor;
-            let caster_x = characters[cn].x;
-            let caster_y = characters[cn].y;
+        {
+            let gs = Repository::global_mut();
+            let target_name_bytes = gs.characters[co].name;
+            let target_sprite = gs.characters[co].sprite;
+            let target_attrib = gs.characters[co].attrib;
+            let target_hp = gs.characters[co].hp;
+            let target_end = gs.characters[co].end;
+            let target_mana = gs.characters[co].mana;
+            let target_skill = gs.characters[co].skill;
+            let target_kindred = gs.characters[co].kindred as u32;
+            let caster_weapon = gs.characters[cn].weapon;
+            let caster_armor = gs.characters[cn].armor;
+            let caster_x = gs.characters[cn].x;
+            let caster_y = gs.characters[cn].y;
 
-            let mirror = &mut characters[cc];
+            let mirror = &mut gs.characters[cc];
             mirror.name = target_name_bytes;
             mirror.sprite = target_sprite;
 
@@ -3316,7 +3269,7 @@ impl God {
                 core::types::FontColor::Green,
                 &format!("Mirror of {} active (bonus: {})\n", target_name, bonus),
             );
-        });
+        }
     }
 
     /// Create a thrall (controlled NPC) bound to the caller.
@@ -3487,95 +3440,90 @@ impl God {
         };
 
         // Configure the thrall
-        Repository::with_characters_mut(|characters| {
-            let target_name_bytes = characters[co].name;
-            let target_reference = characters[co].reference;
-            let target_description = characters[co].description;
+        {
+            let gs = Repository::global_mut();
+            let target_name_bytes = gs.characters[co].name;
+            let target_reference = gs.characters[co].reference;
+            let target_description = gs.characters[co].description;
 
-            let thrall = &mut characters[ct];
-            thrall.name = target_name_bytes;
-            thrall.reference = target_reference;
-            thrall.description = target_description;
+            gs.characters[ct].name = target_name_bytes;
+            gs.characters[ct].reference = target_reference;
+            gs.characters[ct].description = target_description;
 
             // Make thrall act like a ghost companion
-            thrall.temp = core::constants::CT_COMPANION as u16;
-            let ticker = Repository::with_globals(|globals| globals.ticker);
-            thrall.data[64] = ticker + 7 * 24 * 3600 * core::constants::TICKS; // die in one week
-            thrall.data[42] = (65536 + cn) as i32; // set group
-            thrall.data[59] = (65536 + cn) as i32; // protect all other members of this group
+            gs.characters[ct].temp = core::constants::CT_COMPANION as u16;
+            let ticker = gs.globals.ticker;
+            gs.characters[ct].data[64] = ticker + 7 * 24 * 3600 * core::constants::TICKS; // die in one week
+            gs.characters[ct].data[42] = (65536 + cn) as i32; // set group
+            gs.characters[ct].data[59] = (65536 + cn) as i32; // protect all other members of this group
 
             // Make thrall harmless
-            thrall.data[24] = 0; // do not interfere in fights
-            thrall.data[36] = 0; // no walking around
-            thrall.data[43] = 0; // don't attack anyone
-            thrall.data[80] = 0; // no enemies
-            thrall.data[63] = cn as i32; // obey and protect enthraller
+            gs.characters[ct].data[24] = 0; // do not interfere in fights
+            gs.characters[ct].data[36] = 0; // no walking around
+            gs.characters[ct].data[43] = 0; // don't attack anyone
+            gs.characters[ct].data[80] = 0; // no enemies
+            gs.characters[ct].data[63] = cn as i32; // obey and protect enthraller
 
-            thrall.flags |= CharacterFlags::ShutUp.bits() | CharacterFlags::Thrall.bits();
+            gs.characters[ct].flags |=
+                CharacterFlags::ShutUp.bits() | CharacterFlags::Thrall.bits();
 
             // Remove labyrinth items from worn slots
             for n in 0..20 {
-                if thrall.worn[n] != 0 {
-                    let item_id = thrall.worn[n] as usize;
-                    Repository::with_items_mut(|items| {
-                        if items[item_id].flags & core::constants::ItemFlags::IF_LABYDESTROY.bits()
-                            != 0
-                        {
-                            items[item_id].used = 0;
-                            thrall.worn[n] = 0;
-                        }
-                    });
+                let item_id = gs.characters[ct].worn[n] as usize;
+                if item_id != 0
+                    && gs.items[item_id].flags & core::constants::ItemFlags::IF_LABYDESTROY.bits()
+                        != 0
+                {
+                    gs.items[item_id].used = 0;
+                    gs.characters[ct].worn[n] = 0;
                 }
             }
 
             // Remove labyrinth items from inventory
             for n in 0..40 {
-                if thrall.item[n] != 0 {
-                    let item_id = thrall.item[n] as usize;
-                    Repository::with_items_mut(|items| {
-                        if items[item_id].flags & core::constants::ItemFlags::IF_LABYDESTROY.bits()
-                            != 0
-                        {
-                            items[item_id].used = 0;
-                            thrall.item[n] = 0;
-                        }
-                    });
+                let item_id = gs.characters[ct].item[n] as usize;
+                if item_id != 0
+                    && gs.items[item_id].flags & core::constants::ItemFlags::IF_LABYDESTROY.bits()
+                        != 0
+                {
+                    gs.items[item_id].used = 0;
+                    gs.characters[ct].item[n] = 0;
                 }
             }
 
             // Remove labyrinth item from carried item
-            if thrall.citem != 0 {
-                let item_id = thrall.citem as usize;
-                Repository::with_items_mut(|items| {
-                    if items[item_id].flags & core::constants::ItemFlags::IF_LABYDESTROY.bits() != 0
-                    {
-                        items[item_id].used = 0;
-                        thrall.citem = 0;
-                    }
-                });
+            let citem = gs.characters[ct].citem as usize;
+            if citem != 0
+                && gs.items[citem].flags & core::constants::ItemFlags::IF_LABYDESTROY.bits() != 0
+            {
+                gs.items[citem].used = 0;
+                gs.characters[ct].citem = 0;
             }
 
-            // Drop thrall at calculated position
-            if !Self::drop_char_fuzzy(ct, x, y) {
-                Repository::global_mut().do_character_log(
-                    cn,
-                    core::types::FontColor::Red,
-                    "god_drop_char_fuzzy() called from god_thrall() failed.\n",
-                );
-                Self::destroy_items(ct);
-                thrall.used = core::constants::USE_EMPTY;
-                return 0;
-            }
+            target_name_bytes
+        };
 
-            let target_name = c_string_to_str(&target_name_bytes);
+        // Drop thrall at calculated position
+        if !Self::drop_char_fuzzy(ct, x, y) {
             Repository::global_mut().do_character_log(
                 cn,
-                core::types::FontColor::Green,
-                &format!("{} was enthralled.\n", target_name),
+                core::types::FontColor::Red,
+                "god_drop_char_fuzzy() called from god_thrall() failed.\n",
             );
+            Self::destroy_items(ct);
+            Repository::global_mut().characters[ct].used = core::constants::USE_EMPTY;
+            return 0;
+        }
 
-            ct as i32
-        })
+        let target_name_bytes = Repository::global_mut().characters[ct].name;
+        let target_name = c_string_to_str(&target_name_bytes);
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            &format!("{} was enthralled.\n", target_name),
+        );
+
+        ct as i32
     }
 
     /// Logs out the player when they walk into a tavern.
@@ -3602,12 +3550,12 @@ impl God {
             God::build_stop(cn);
         }
 
-        let player_id = Repository::with_characters_mut(|ch| {
-            ch[cn].tavern_x = ch[cn].x as u16;
-            ch[cn].tavern_y = ch[cn].y as u16;
-
-            ch[cn].player as usize
-        });
+        let player_id = {
+            let gs = Repository::global_mut();
+            gs.characters[cn].tavern_x = gs.characters[cn].x as u16;
+            gs.characters[cn].tavern_y = gs.characters[cn].y as u16;
+            gs.characters[cn].player as usize
+        };
 
         chlog!(cn, "Entered tavern and will be logged out.");
         player::plr_logout(
@@ -3690,10 +3638,11 @@ impl God {
             return;
         }
 
-        Repository::with_characters_mut(|ch| {
-            ch[co].points += value;
-            ch[co].points_tot += value;
-        });
+        {
+            let gs = Repository::global_mut();
+            gs.characters[co].points += value;
+            gs.characters[co].points_tot += value;
+        }
 
         chlog!(cn, "Raised character {} experience by {}\n", name, value);
 
@@ -3780,10 +3729,11 @@ impl God {
             return;
         }
 
-        Repository::with_characters_mut(|ch| {
-            ch[co].points -= value;
-            ch[co].points_tot -= value;
-        });
+        {
+            let gs = Repository::global_mut();
+            gs.characters[co].points -= value;
+            gs.characters[co].points_tot -= value;
+        }
 
         chlog!(cn, "Lowered character {} experience by {}\n", name, value);
 
@@ -3842,17 +3792,20 @@ impl God {
             return;
         };
 
-        Repository::with_characters_mut(|characters| {
-            let target = &mut characters[co];
+        let target_name = Repository::global_mut().characters[co]
+            .get_name()
+            .to_string();
+        {
+            let gs = Repository::global_mut();
+            let target = &mut gs.characters[co];
             target.gold = (target.gold + total_silver as i32).max(0);
             target.set_do_update_flags();
-
-            Repository::global_mut().do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                &format!("Gave {} silver to character {}\n", total_silver, name),
-            );
-        });
+        }
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            &format!("Gave {} silver to character {}\n", total_silver, name),
+        );
     }
 
     /// Permanently erase a character or NPC from the world.
@@ -3936,9 +3889,7 @@ impl God {
                 LogoutReason::Shutdown,
             );
 
-            Repository::with_characters_mut(|characters| {
-                characters[co].used = core::constants::USE_EMPTY;
-            });
+            Repository::global_mut().characters[co].used = core::constants::USE_EMPTY;
 
             chlog!(cn, "IMP: Erased player {} ({}).", co, name_str);
 
@@ -4021,9 +3972,7 @@ impl God {
         chlog!(cn, "IMP: Kicked {} ({}).", name_str, co);
 
         // Set CF_KICKED flag
-        Repository::with_characters_mut(|characters| {
-            characters[co].flags |= CharacterFlags::Kicked.bits();
-        });
+        Repository::global_mut().characters[co].flags |= CharacterFlags::Kicked.bits();
     }
 
     /// Set a specific skill value for target character `co`.
@@ -4053,24 +4002,24 @@ impl God {
 
         let skill_name = core::types::skilltab::get_skill_name(n as usize);
 
-        Repository::with_characters_mut(|characters| {
-            let target = &mut characters[co];
+        let target_name = Repository::global_mut().characters[co]
+            .get_name()
+            .to_string();
+        {
+            let gs = Repository::global_mut();
+            let target = &mut gs.characters[co];
             target.skill[n as usize][0] = val as u8;
             target.skill[n as usize][1] = val as u8;
             target.set_do_update_flags();
-
-            Repository::global_mut().do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                &format!(
-                    "Set skill {} ({}) to {} for character {}\n",
-                    n,
-                    skill_name,
-                    val,
-                    target.get_name()
-                ),
-            );
-        });
+        }
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            &format!(
+                "Set skill {} ({}) to {} for character {}\n",
+                n, skill_name, val, target_name
+            ),
+        );
     }
 
     /// Donate an item to one of the server's donation locations.
@@ -4140,42 +4089,42 @@ impl God {
         };
 
         if let Some((co, name)) = Self::find_character_by_name_or_id(&query) {
-            Repository::with_characters_mut(|ch| {
-                let target = &mut ch[co];
+            // Toggle the flag
+            if Repository::global_mut().characters[co].flags & flag != 0 {
+                Repository::global_mut().characters[co].flags &= !flag;
+                Repository::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!(
+                        "Removed flag {} ({:x}) from character {}\n",
+                        character_flags_name(CharacterFlags::from_bits_truncate(flag)),
+                        flag,
+                        name
+                    ),
+                );
+            } else {
+                Repository::global_mut().characters[co].flags |= flag;
+                Repository::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!(
+                        "Added flag {} ({:x}) to character '{}'\n",
+                        character_flags_name(CharacterFlags::from_bits_truncate(flag)),
+                        flag,
+                        name
+                    ),
+                );
+            }
 
-                // Toggle the flag
-                if target.flags & flag != 0 {
-                    target.flags &= !flag;
-                    Repository::global_mut().do_character_log(
-                        cn,
-                        core::types::FontColor::Green,
-                        &format!(
-                            "Removed flag {} ({:x}) from character {}\n",
-                            character_flags_name(CharacterFlags::from_bits_truncate(flag)),
-                            flag,
-                            name
-                        ),
-                    );
-                } else {
-                    target.flags |= flag;
-                    Repository::global_mut().do_character_log(
-                        cn,
-                        core::types::FontColor::Green,
-                        &format!(
-                            "Added flag {} ({:x}) to character '{}'\n",
-                            character_flags_name(CharacterFlags::from_bits_truncate(flag)),
-                            flag,
-                            name
-                        ),
-                    );
-                }
+            Repository::global_mut().characters[co].set_do_update_flags();
 
-                target.set_do_update_flags();
-
-                if flag == CharacterFlags::Invisible.bits() {
-                    EffectManager::fx_add_effect(12, 0, ch[co].x as i32, ch[co].y as i32, 0);
-                }
-            });
+            if flag == CharacterFlags::Invisible.bits() {
+                let (x, y) = {
+                    let gs = Repository::global_mut();
+                    (gs.characters[co].x as i32, gs.characters[co].y as i32)
+                };
+                EffectManager::fx_add_effect(12, 0, x, y, 0);
+            }
         } else {
             Repository::global_mut().do_character_log(
                 cn,
@@ -4223,25 +4172,22 @@ impl God {
             return;
         }
 
-        Repository::with_globals_mut(|globals| {
-            let flag_bit = 1i32 << flag;
-
-            if globals.flags & flag_bit != 0 {
-                globals.flags &= !flag_bit;
-                Repository::global_mut().do_character_log(
-                    cn,
-                    core::types::FontColor::Green,
-                    &format!("Removed global flag {}\n", flag),
-                );
-            } else {
-                globals.flags |= flag_bit;
-                Repository::global_mut().do_character_log(
-                    cn,
-                    core::types::FontColor::Green,
-                    &format!("Added global flag {}\n", flag),
-                );
-            }
-        });
+        let flag_bit = 1i32 << flag;
+        if Repository::global_mut().globals.flags & flag_bit != 0 {
+            Repository::global_mut().globals.flags &= !flag_bit;
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                &format!("Removed global flag {}\n", flag),
+            );
+        } else {
+            Repository::global_mut().globals.flags |= flag_bit;
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                &format!("Added global flag {}\n", flag),
+            );
+        }
     }
 
     /// Toggle the purple (privileged) status for a character.
@@ -4252,31 +4198,30 @@ impl God {
             return;
         }
 
-        Repository::with_characters_mut(|characters| {
-            let target = &mut characters[co];
+        // Toggle purple (PK) status
+        // Assuming there's a PK flag in constants
+        let pk_flag = 0x1000000u64; // Example PK flag
+        let target_name = Repository::global_mut().characters[co]
+            .get_name()
+            .to_string();
 
-            // Toggle purple (PK) status
-            // Assuming there's a PK flag in constants
-            let pk_flag = 0x1000000u64; // Example PK flag
+        if Repository::global_mut().characters[co].flags & pk_flag != 0 {
+            Repository::global_mut().characters[co].flags &= !pk_flag;
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                &format!("Removed PK status from character {}\n", target_name),
+            );
+        } else {
+            Repository::global_mut().characters[co].flags |= pk_flag;
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                &format!("Added PK status to character {}\n", target_name),
+            );
+        }
 
-            if target.flags & pk_flag != 0 {
-                target.flags &= !pk_flag;
-                Repository::global_mut().do_character_log(
-                    cn,
-                    core::types::FontColor::Green,
-                    &format!("Removed PK status from character {}\n", target.get_name()),
-                );
-            } else {
-                target.flags |= pk_flag;
-                Repository::global_mut().do_character_log(
-                    cn,
-                    core::types::FontColor::Green,
-                    &format!("Added PK status to character {}\n", target.get_name()),
-                );
-            }
-
-            target.set_do_update_flags();
-        });
+        Repository::global_mut().characters[co].set_do_update_flags();
     }
 
     /// Change the race/template of character `co` to `temp`.
