@@ -221,7 +221,6 @@ impl Server {
 
         // Repository is already initialized at this point (currently)
         Server::initialize_players()?;
-        State::initialize()?;
         NetworkManager::initialize()?;
 
         // Mark data as dirty (in use) only for legacy `.dat` mode.

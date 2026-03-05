@@ -4,10 +4,9 @@ use core::types::FontColor;
 
 use crate::driver;
 use crate::god::God;
-use crate::repository::Repository;
-use crate::state::State;
+use crate::game_state::GameState;
 
-impl State {
+impl GameState {
     /// Port of `do_swap_item(int cn, int n)` from `svr_do.cpp`
     ///
     /// Swap the carried item (citem) with an equipment slot.
@@ -21,7 +20,7 @@ impl State {
     /// # Returns
     /// * The slot number on success
     /// * -1 on failure
-    pub(crate) fn do_swap_item(&self, cn: usize, n: usize) -> i32 {
+    pub(crate) fn do_swap_item(&mut self, cn: usize, n: usize) -> i32 {
         const AT_TEXT: [&str; 5] = [
             "not brave enough",
             "not determined enough",
@@ -30,193 +29,181 @@ impl State {
             "not strong enough",
         ];
 
-        let result = Repository::with_characters_mut(|characters| {
-            // Check if citem has high bit set (invalid state)
-            if (characters[cn].citem & 0x80000000) != 0 {
-                return -1;
-            }
+        // Check if citem has high bit set (invalid state)
+        if (self.characters[cn].citem & 0x80000000) != 0 {
+            return -1;
+        }
 
-            // Sanity check slot range
-            if n > 19 {
-                return -1;
-            }
+        // Sanity check slot range
+        if n > 19 {
+            return -1;
+        }
 
-            let tmp = characters[cn].citem as usize;
+        let tmp = self.characters[cn].citem as usize;
 
-            // Check prerequisites if there's an item to equip
-            if tmp != 0 {
-                let check_result = Repository::with_items_mut(|items| {
-                    // Driver 52: Personal item with character binding
-                    if items[tmp].driver == 52 && items[tmp].data[0] as usize != cn {
-                        if items[tmp].data[0] == 0 {
-                            // Bind item to character
-                            items[tmp].data[0] = cn as u32;
+        // Check prerequisites if there's an item to equip
+        if tmp != 0 {
+            // Driver 52: Personal item with character binding
+            if self.items[tmp].driver == 52 && self.items[tmp].data[0] as usize != cn {
+                if self.items[tmp].data[0] == 0 {
+                    // Bind item to character
+                    self.items[tmp].data[0] = cn as u32;
 
-                            // Engrave character name into description
-                            let current_desc = c_string_to_str(&items[tmp].description);
-                            let char_name = characters[cn].get_name();
-                            let new_desc = format!(
-                                "{} Engraved in it are the letters \"{}\".",
-                                current_desc, char_name
-                            );
+                    // Engrave character name into description
+                    let current_desc = c_string_to_str(&mut self.items[tmp].description);
+                    let char_name = self.characters[cn].get_name();
+                    let new_desc = format!(
+                        "{} Engraved in it are the letters \"{}\".",
+                        current_desc, char_name
+                    );
 
-                            if new_desc.len() < 200 {
-                                let desc_bytes = new_desc.as_bytes();
-                                items[tmp].description[..desc_bytes.len().min(200)]
-                                    .copy_from_slice(&desc_bytes[..desc_bytes.len().min(200)]);
-                            }
-                        } else {
-                            let item_ref = c_string_to_str(&items[tmp].reference);
-                            self.do_character_log(
-                                cn,
-                                FontColor::Red,
-                                &format!(
-                                    "The gods frown at your attempt to wear another ones {}.\n",
-                                    item_ref
-                                ),
-                            );
-                            return -1;
-                        }
+                    if new_desc.len() < 200 {
+                        let desc_bytes = new_desc.as_bytes();
+                        self.items[tmp].description[..desc_bytes.len().min(200)]
+                            .copy_from_slice(&desc_bytes[..desc_bytes.len().min(200)]);
                     }
-
-                    // Check attribute requirements
-                    for m in 0..5 {
-                        if items[tmp].attrib[m][2] > characters[cn].attrib[m][0] as i8 {
-                            self.do_character_log(
-                                cn,
-                                FontColor::Red,
-                                &format!("You're {} to use that.\n", AT_TEXT[m]),
-                            );
-                            return -1;
-                        }
-                    }
-
-                    // Check skill requirements
-                    for m in 0..50 {
-                        if items[tmp].skill[m][2] > characters[cn].skill[m][0] as i8 {
-                            self.do_character_log(
-                                cn,
-                                FontColor::Red,
-                                "You don't know how to use that.\n",
-                            );
-                            return -1;
-                        }
-                        if items[tmp].skill[m][2] != 0 && characters[cn].skill[m][0] == 0 {
-                            self.do_character_log(
-                                cn,
-                                FontColor::Red,
-                                "You don't know how to use that.\n",
-                            );
-                            return -1;
-                        }
-                    }
-
-                    // Check HP/END/MANA requirements
-                    if items[tmp].hp[2] > characters[cn].hp[0] as i16 {
-                        self.do_character_log(
-                            cn,
-                            FontColor::Red,
-                            "You don't have enough life force to use that.\n",
-                        );
-                        return -1;
-                    }
-                    if items[tmp].end[2] > characters[cn].end[0] as i16 {
-                        self.do_character_log(
-                            cn,
-                            FontColor::Red,
-                            "You don't have enough endurance to use that.\n",
-                        );
-                        return -1;
-                    }
-                    if items[tmp].mana[2] > characters[cn].mana[0] as i16 {
-                        self.do_character_log(
-                            cn,
-                            FontColor::Red,
-                            "You don't have enough mana to use that.\n",
-                        );
-                        return -1;
-                    }
-
-                    // Check faction/kindred restrictions
-                    if (items[tmp].driver == 18
-                        && (characters[cn].kindred & core::constants::KIN_PURPLE as i32) != 0)
-                        || (items[tmp].driver == 39
-                            && (characters[cn].kindred & core::constants::KIN_PURPLE as i32) == 0)
-                        || (items[tmp].driver == 40
-                            && (characters[cn].kindred & core::constants::KIN_SEYAN_DU as i32) == 0)
-                    {
-                        self.do_character_log(cn, FontColor::Red, "Ouch. That hurt.\n");
-                        return -1;
-                    }
-
-                    // Check rank requirement
-                    if items[tmp].min_rank
-                        > core::ranks::points2rank(characters[cn].points_tot as u32) as i8
-                    {
-                        self.do_character_log(
-                            cn,
-                            FontColor::Red,
-                            "You're not experienced enough to use that.\n",
-                        );
-                        return -1;
-                    }
-
-                    // Check for correct placement
-                    use core::constants::*;
-                    let placement_ok = match n {
-                        WN_HEAD => (items[tmp].placement & PL_HEAD) != 0,
-                        WN_NECK => (items[tmp].placement & PL_NECK) != 0,
-                        WN_BODY => (items[tmp].placement & PL_BODY) != 0,
-                        WN_ARMS => (items[tmp].placement & PL_ARMS) != 0,
-                        WN_BELT => (items[tmp].placement & PL_BELT) != 0,
-                        WN_LEGS => (items[tmp].placement & PL_LEGS) != 0,
-                        WN_FEET => (items[tmp].placement & PL_FEET) != 0,
-                        WN_LHAND => {
-                            if (items[tmp].placement & PL_SHIELD) == 0 {
-                                false
-                            } else {
-                                // Check if right hand has two-handed weapon
-                                let rhand_item = characters[cn].worn[WN_RHAND] as usize;
-                                !(rhand_item != 0
-                                    && (items[rhand_item].placement & PL_TWOHAND) != 0)
-                            }
-                        }
-                        WN_RHAND => {
-                            if (items[tmp].placement & PL_WEAPON) == 0 {
-                                false
-                            } else {
-                                !((items[tmp].placement & PL_TWOHAND) != 0
-                                    && characters[cn].worn[WN_LHAND] != 0)
-                            }
-                        }
-                        WN_CLOAK => (items[tmp].placement & PL_CLOAK) != 0,
-                        WN_RRING | WN_LRING => (items[tmp].placement & PL_RING) != 0,
-                        _ => false,
-                    };
-
-                    if !placement_ok {
-                        return -1;
-                    }
-
-                    0 // Success
-                });
-
-                if check_result == -1 {
+                } else {
+                    let item_ref = c_string_to_str(&mut self.items[tmp].reference).to_string();
+                    self.do_character_log(
+                        cn,
+                        FontColor::Red,
+                        &format!(
+                            "The gods frown at your attempt to wear another ones {}.\n",
+                            item_ref
+                        ),
+                    );
                     return -1;
                 }
             }
 
-            // Perform the swap
-            let tmp = characters[cn].citem;
-            characters[cn].citem = characters[cn].worn[n];
-            characters[cn].worn[n] = tmp;
+            // Check attribute requirements
+            for m in 0..5 {
+                if self.items[tmp].attrib[m][2] > self.characters[cn].attrib[m][0] as i8 {
+                    self.do_character_log(
+                        cn,
+                        FontColor::Red,
+                        &format!("You're {} to use that.\n", AT_TEXT[m]),
+                    );
+                    return -1;
+                }
+            }
 
-            characters[cn].set_do_update_flags();
+            // Check skill requirements
+            for m in 0..50 {
+                if self.items[tmp].skill[m][2] > self.characters[cn].skill[m][0] as i8 {
+                    self.do_character_log(
+                        cn,
+                        FontColor::Red,
+                        "You don't know how to use that.\n",
+                    );
+                    return -1;
+                }
+                if self.items[tmp].skill[m][2] != 0 && self.characters[cn].skill[m][0] == 0 {
+                    self.do_character_log(
+                        cn,
+                        FontColor::Red,
+                        "You don't know how to use that.\n",
+                    );
+                    return -1;
+                }
+            }
 
-            n as i32
-        });
+            // Check HP/END/MANA requirements
+            if self.items[tmp].hp[2] > self.characters[cn].hp[0] as i16 {
+                self.do_character_log(
+                    cn,
+                    FontColor::Red,
+                    "You don't have enough life force to use that.\n",
+                );
+                return -1;
+            }
+            if self.items[tmp].end[2] > self.characters[cn].end[0] as i16 {
+                self.do_character_log(
+                    cn,
+                    FontColor::Red,
+                    "You don't have enough endurance to use that.\n",
+                );
+                return -1;
+            }
+            if self.items[tmp].mana[2] > self.characters[cn].mana[0] as i16 {
+                self.do_character_log(
+                    cn,
+                    FontColor::Red,
+                    "You don't have enough mana to use that.\n",
+                );
+                return -1;
+            }
 
-        result
+            // Check faction/kindred restrictions
+            if (self.items[tmp].driver == 18
+                && (self.characters[cn].kindred & core::constants::KIN_PURPLE as i32) != 0)
+                || (self.items[tmp].driver == 39
+                    && (self.characters[cn].kindred & core::constants::KIN_PURPLE as i32) == 0)
+                || (self.items[tmp].driver == 40
+                    && (self.characters[cn].kindred & core::constants::KIN_SEYAN_DU as i32) == 0)
+            {
+                self.do_character_log(cn, FontColor::Red, "Ouch. That hurt.\n");
+                return -1;
+            }
+
+            // Check rank requirement
+            if self.items[tmp].min_rank
+                > core::ranks::points2rank(self.characters[cn].points_tot as u32) as i8
+            {
+                self.do_character_log(
+                    cn,
+                    FontColor::Red,
+                    "You're not experienced enough to use that.\n",
+                );
+                return -1;
+            }
+
+            // Check for correct placement
+            use core::constants::*;
+            let placement_ok = match n {
+                WN_HEAD => (self.items[tmp].placement & PL_HEAD) != 0,
+                WN_NECK => (self.items[tmp].placement & PL_NECK) != 0,
+                WN_BODY => (self.items[tmp].placement & PL_BODY) != 0,
+                WN_ARMS => (self.items[tmp].placement & PL_ARMS) != 0,
+                WN_BELT => (self.items[tmp].placement & PL_BELT) != 0,
+                WN_LEGS => (self.items[tmp].placement & PL_LEGS) != 0,
+                WN_FEET => (self.items[tmp].placement & PL_FEET) != 0,
+                WN_LHAND => {
+                    if (self.items[tmp].placement & PL_SHIELD) == 0 {
+                        false
+                    } else {
+                        // Check if right hand has two-handed weapon
+                        let rhand_item = self.characters[cn].worn[WN_RHAND] as usize;
+                        !(rhand_item != 0
+                            && (self.items[rhand_item].placement & PL_TWOHAND) != 0)
+                    }
+                }
+                WN_RHAND => {
+                    if (self.items[tmp].placement & PL_WEAPON) == 0 {
+                        false
+                    } else {
+                        !((self.items[tmp].placement & PL_TWOHAND) != 0
+                            && self.characters[cn].worn[WN_LHAND] != 0)
+                    }
+                }
+                WN_CLOAK => (self.items[tmp].placement & PL_CLOAK) != 0,
+                WN_RRING | WN_LRING => (self.items[tmp].placement & PL_RING) != 0,
+                _ => false,
+            };
+
+            if !placement_ok {
+                return -1;
+            }
+        }
+
+        // Perform the swap
+        let tmp = self.characters[cn].citem;
+        self.characters[cn].citem = self.characters[cn].worn[n];
+        self.characters[cn].worn[n] = tmp;
+
+        self.characters[cn].set_do_update_flags();
+
+        n as i32
     }
 
     /// Port of `use_labtransfer2(cn, co)` from the original server sources.
@@ -228,14 +215,14 @@ impl State {
     /// # Arguments
     /// * `cn` - Character id performing the lab transfer action
     /// * `co` - Corpse character id associated with the lab transfer
-    pub fn use_labtransfer2(&self, cn: usize, co: usize) {
+    pub fn use_labtransfer2(&mut self, cn: usize, co: usize) {
         // Port of use_labtransfer2 from helper.cpp
         // If cn is a companion and its master matches the corpse owner, notify master and teleport them.
-        let maybe_cc = Repository::with_characters(|ch| ch[cn].data[63] as usize);
+        let maybe_cc = self.characters[cn].data[63] as usize;
         let is_companion =
-            Repository::with_characters(|ch| ch[cn].temp == core::constants::CT_COMPANION as u16);
+            self.characters[cn].temp == core::constants::CT_COMPANION as u16;
 
-        if is_companion && maybe_cc == Repository::with_characters(|ch| ch[co].data[0] as usize) {
+        if is_companion && maybe_cc == self.characters[co].data[0] as usize {
             let cc = maybe_cc;
             self.do_character_log(
                 cc,
@@ -244,8 +231,8 @@ impl State {
             );
             driver::finish_laby_teleport(
                 cc,
-                Repository::with_characters(|ch| ch[co].data[1] as usize),
-                Repository::with_characters(|ch| ch[co].data[2] as usize),
+                self.characters[co].data[1] as usize,
+                self.characters[co].data[2] as usize,
             );
             God::transfer_char(cn, 512, 512);
             log::info!("Labkeeper room solved by GC: cc={}", cc);
@@ -253,7 +240,7 @@ impl State {
         }
 
         // If the corpse's designated killer isn't cn, inform and bail out
-        let corpse_owner = Repository::with_characters(|ch| ch[co].data[0] as usize);
+        let corpse_owner = self.characters[co].data[0] as usize;
         if corpse_owner != cn {
             self.do_character_log(
                 cn,
@@ -268,19 +255,18 @@ impl State {
         }
 
         // Finish teleport for the player
-        let tx = Repository::with_characters(|ch| ch[co].data[1] as usize);
-        let ty = Repository::with_characters(|ch| ch[co].data[2] as usize);
+        let tx = self.characters[co].data[1] as usize;
+        let ty = self.characters[co].data[2] as usize;
         driver::finish_laby_teleport(cn, tx, ty);
         log::info!("Solved Labkeeper Room: cn={}", cn);
 
         // If cn has a GC in data[64] which is sane and a companion, transfer it as well
-        let cc2 = Repository::with_characters(|ch| ch[cn].data[64] as usize);
+        let cc2 = self.characters[cn].data[64] as usize;
         // The C++ checks IS_SANENPC(cc) && IS_COMPANION(cc). We'll approximate by checking used/temp flags.
         if cc2 != 0 {
-            let is_sane_and_companion = Repository::with_characters(|ch| {
-                ch[cc2].used != core::constants::USE_EMPTY
-                    && (ch[cc2].temp == core::constants::CT_COMPANION as u16)
-            });
+            let is_sane_and_companion =
+                self.characters[cc2].used != core::constants::USE_EMPTY
+                    && (self.characters[cc2].temp == core::constants::CT_COMPANION as u16);
             if is_sane_and_companion {
                 God::transfer_char(cc2, 512, 512);
             }
@@ -297,8 +283,8 @@ impl State {
     ///
     /// # Returns
     /// Calculated integer score
-    pub fn do_char_score(&self, cn: usize) -> i32 {
-        let pts = Repository::with_characters(|characters| characters[cn].points_tot);
+    pub fn do_char_score(&mut self, cn: usize) -> i32 {
+        let pts = self.characters[cn].points_tot;
         let pts = if pts < 0 { 0 } else { pts } as f64;
         ((pts.sqrt() as i32) / 7) + 7
     }
@@ -318,23 +304,20 @@ impl State {
         let m = (x as usize) + (y as usize) * core::constants::SERVER_MAPX as usize;
 
         // Clear sprite and movement/sight flags
-        Repository::with_map_mut(|map| {
-            map[m].fsprite = 0;
-            map[m].flags &=
-                !(core::constants::MF_MOVEBLOCK as u64 | core::constants::MF_SIGHTBLOCK as u64);
-        });
+        self.map[m].fsprite = 0;
+        self.map[m].flags &=
+            !(core::constants::MF_MOVEBLOCK as u64 | core::constants::MF_SIGHTBLOCK as u64);
 
         // If there's no item on the tile, we're done
-        let in_id = Repository::with_map(|map| map[m].it);
+        let in_id = self.map[m].it;
         if in_id == 0 {
             return;
         }
 
         // Adjust lighting based on item's active state
-        let (active, light_active, light_inactive) = Repository::with_items(|items| {
-            let item = &items[in_id as usize];
-            (item.active, item.light[1], item.light[0])
-        });
+        let active = self.items[in_id as usize].active;
+        let light_active = self.items[in_id as usize].light[1];
+        let light_inactive = self.items[in_id as usize].light[0];
 
         if active != 0 {
             if light_active != 0 {
@@ -345,15 +328,11 @@ impl State {
         }
 
         // Mark the item slot free and clear the map reference
-        Repository::with_items_mut(|items| {
-            if (in_id as usize) < items.len() {
-                items[in_id as usize].used = core::constants::USE_EMPTY;
-            }
-        });
+        if (in_id as usize) < self.items.len() {
+            self.items[in_id as usize].used = core::constants::USE_EMPTY;
+        }
 
-        Repository::with_map_mut(|map| {
-            map[m].it = 0;
-        });
+        self.map[m].it = 0;
 
         log::info!("build: remove item from {},{}", x, y);
     }
@@ -368,120 +347,118 @@ impl State {
     /// # Arguments
     /// * `cn` - Querying character id
     /// * `target_name` - Name or numeric id string of the target
-    pub fn do_seen(&self, cn: usize, target_name: &str) {
+    pub fn do_seen(&mut self, cn: usize, target_name: &str) {
         if target_name.is_empty() {
             self.do_character_log(cn, core::types::FontColor::Red, "When was WHO last seen?\n");
             return;
         }
 
-        Repository::with_characters(|characters| {
-            // Numeric lookup only for deities
-            let co = if target_name.chars().next().unwrap_or('a').is_ascii_digit() {
-                if (characters[cn].flags
-                    & (CharacterFlags::Imp | CharacterFlags::God | CharacterFlags::Usurp).bits())
-                    == 0
-                {
-                    0
-                } else {
-                    target_name.parse::<usize>().unwrap_or(0)
-                }
+        // Numeric lookup only for deities
+        let co = if target_name.chars().next().unwrap_or('a').is_ascii_digit() {
+            if (self.characters[cn].flags
+                & (CharacterFlags::Imp | CharacterFlags::God | CharacterFlags::Usurp).bits())
+                == 0
+            {
+                0
             } else {
-                // Named lookup (supports "self")
-                self.do_lookup_char_self(target_name, cn) as usize
-            };
-
-            if co == 0 {
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Red,
-                    &format!("I've never heard of {}.\n", target_name),
-                );
-                return;
+                target_name.parse::<usize>().unwrap_or(0)
             }
+        } else {
+            // Named lookup (supports "self")
+            self.do_lookup_char_self(target_name, cn) as usize
+        };
 
-            if (characters[co].flags & CharacterFlags::Player.bits()) == 0 {
-                let co_name = characters[co].get_name();
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Red,
-                    &format!("{} is not a player.\n", co_name),
-                );
-                return;
-            }
+        if co == 0 {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                &format!("I've never heard of {}.\n", target_name),
+            );
+            return;
+        }
 
-            if (characters[cn].flags & CharacterFlags::God.bits()) == 0
-                && (characters[co].flags & CharacterFlags::God.bits()) != 0
+        if (self.characters[co].flags & CharacterFlags::Player.bits()) == 0 {
+            let co_name = self.characters[co].get_name();
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                &format!("{} is not a player.\n", co_name),
+            );
+            return;
+        }
+
+        if (self.characters[cn].flags & CharacterFlags::God.bits()) == 0
+            && (self.characters[co].flags & CharacterFlags::God.bits()) != 0
+        {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "No one knows when the gods where last seen.\n",
+            );
+            return;
+        }
+
+        if (self.characters[cn].flags & (CharacterFlags::Imp | CharacterFlags::God).bits()) != 0 {
+            // God view: detailed timestamp
+            let last = std::cmp::max(self.characters[co].login_date, self.characters[co].logout_date);
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i32;
+
+            let co_name = self.characters[co].get_name().to_string();
+
+            // Format timestamps
+            use chrono::{TimeZone, Utc};
+            let last_dt = Utc.timestamp_opt(last as i64, 0).unwrap();
+            let now_dt = Utc.timestamp_opt(now as i64, 0).unwrap();
+
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!(
+                    "{} was last seen on {} (time now: {})\n",
+                    co_name,
+                    last_dt.format("%Y-%m-%d %H:%M:%S"),
+                    now_dt.format("%Y-%m-%d %H:%M:%S")
+                ),
+            );
+
+            if self.characters[co].used == core::constants::USE_ACTIVE
+                && (self.characters[co].flags & CharacterFlags::Invisible.bits()) == 0
             {
                 self.do_character_log(
                     cn,
-                    core::types::FontColor::Red,
-                    "No one knows when the gods where last seen.\n",
-                );
-                return;
-            }
-
-            if (characters[cn].flags & (CharacterFlags::Imp | CharacterFlags::God).bits()) != 0 {
-                // God view: detailed timestamp
-                let last = std::cmp::max(characters[co].login_date, characters[co].logout_date);
-                let now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs() as i32;
-
-                let co_name = characters[co].get_name();
-
-                // Format timestamps
-                use chrono::{TimeZone, Utc};
-                let last_dt = Utc.timestamp_opt(last as i64, 0).unwrap();
-                let now_dt = Utc.timestamp_opt(now as i64, 0).unwrap();
-
-                self.do_character_log(
-                    cn,
                     core::types::FontColor::Yellow,
-                    &format!(
-                        "{} was last seen on {} (time now: {})\n",
-                        co_name,
-                        last_dt.format("%Y-%m-%d %H:%M:%S"),
-                        now_dt.format("%Y-%m-%d %H:%M:%S")
-                    ),
-                );
-
-                if characters[co].used == core::constants::USE_ACTIVE
-                    && (characters[co].flags & CharacterFlags::Invisible.bits()) == 0
-                {
-                    self.do_character_log(
-                        cn,
-                        core::types::FontColor::Yellow,
-                        &format!("PS: {} is online right now!\n", co_name),
-                    );
-                }
-            } else {
-                // Normal player view: relative time
-                let last_date =
-                    (std::cmp::max(characters[co].login_date, characters[co].logout_date)
-                        / (24 * 3600)) as i32;
-                let current_date = (std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs() as i32)
-                    / (24 * 3600);
-                let days = current_date - last_date;
-
-                let when = match days {
-                    0 => "earlier today".to_string(),
-                    1 => "yesterday".to_string(),
-                    2 => "the day before yesterday".to_string(),
-                    _ => format!("{} days ago", days),
-                };
-
-                let co_name = characters[co].get_name();
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Yellow,
-                    &format!("{} was last seen {}.\n", co_name, when),
+                    &format!("PS: {} is online right now!\n", co_name),
                 );
             }
-        });
+        } else {
+            // Normal player view: relative time
+            let last_date =
+                (std::cmp::max(self.characters[co].login_date, self.characters[co].logout_date)
+                    / (24 * 3600)) as i32;
+            let current_date = (std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i32)
+                / (24 * 3600);
+            let days = current_date - last_date;
+
+            let when = match days {
+                0 => "earlier today".to_string(),
+                1 => "yesterday".to_string(),
+                2 => "the day before yesterday".to_string(),
+                _ => format!("{} days ago", days),
+            };
+
+            let co_name = self.characters[co].get_name();
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!("{} was last seen {}.\n", co_name, when),
+            );
+        }
     }
 
     /// Port of `do_follow(cn, name)` from `svr_do.cpp`.
@@ -493,11 +470,11 @@ impl State {
     /// # Arguments
     /// * `cn` - Character setting follow
     /// * `name` - Name of player to follow (empty to clear/report)
-    pub(crate) fn do_follow(&self, cn: usize, name: &str) {
+    pub(crate) fn do_follow(&mut self, cn: usize, name: &str) {
         if name.is_empty() {
-            let co = Repository::with_characters(|ch| ch[cn].data[10] as usize);
+            let co = self.characters[cn].data[10] as usize;
             if co != 0 {
-                let target = Repository::with_characters(|ch| ch[co].get_name().to_string());
+                let target = self.characters[co].get_name().to_string();
                 self.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
@@ -531,16 +508,13 @@ impl State {
                 core::types::FontColor::Yellow,
                 "Now following no one.\n",
             );
-            Repository::with_characters_mut(|chars| {
-                chars[cn].data[10] = 0;
-                chars[cn].goto_x = 0;
-            });
+            self.characters[cn].data[10] = 0;
+            self.characters[cn].goto_x = 0;
             return;
         }
 
-        let invis_src = Repository::with_characters(|ch| {
-            ch[co].flags & (CharacterFlags::Invisible.bits() | CharacterFlags::NoWho.bits()) != 0
-        });
+        let invis_src =
+            self.characters[co].flags & (CharacterFlags::Invisible.bits() | CharacterFlags::NoWho.bits()) != 0;
         if invis_src {
             // approximate invis_level checks skipped
             self.do_character_log(
@@ -551,10 +525,8 @@ impl State {
             return;
         }
 
-        Repository::with_characters_mut(|chars| {
-            chars[cn].data[10] = co as i32;
-        });
-        let target = Repository::with_characters(|ch| ch[co].get_name().to_string());
+        self.characters[cn].data[10] = co as i32;
+        let target = self.characters[co].get_name().to_string();
         self.do_character_log(
             cn,
             core::types::FontColor::Yellow,
@@ -572,7 +544,7 @@ impl State {
     /// * `cn` - Character modifying their ignore list
     /// * `name` - Player name to add/remove (empty to display)
     /// * `flag` - Selector for ignore group (0 or 1)
-    pub(crate) fn do_ignore(&self, cn: usize, name: &str, flag: i32) {
+    pub(crate) fn do_ignore(&mut self, cn: usize, name: &str, flag: i32) {
         let base = if flag == 0 { 30 } else { 50 };
         if name.is_empty() {
             self.do_character_log(
@@ -581,11 +553,11 @@ impl State {
                 "Your ignore group consists of:\n",
             );
             for n in base..(base + 10) {
-                let co = Repository::with_characters(|ch| ch[cn].data[n] as usize);
+                let co = self.characters[cn].data[n] as usize;
                 if co == 0 {
                     continue;
                 }
-                let nm = Repository::with_characters(|ch| ch[co].get_name().to_string());
+                let nm = self.characters[co].get_name().to_string();
                 self.do_character_log(cn, core::types::FontColor::Yellow, &format!("{}\n", nm));
             }
             return;
@@ -610,9 +582,9 @@ impl State {
         }
 
         for n in base..(base + 10) {
-            if Repository::with_characters(|ch| ch[cn].data[n] as usize) == co {
-                Repository::with_characters_mut(|ch| ch[cn].data[n] = 0);
-                let nm = Repository::with_characters(|ch| ch[co].get_name().to_string());
+            if self.characters[cn].data[n] as usize == co {
+                self.characters[cn].data[n] = 0;
+                let nm = self.characters[co].get_name().to_string();
                 self.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
@@ -622,7 +594,7 @@ impl State {
             }
         }
 
-        if Repository::with_characters(|ch| (ch[co].flags & CharacterFlags::Player.bits()) == 0) {
+        if (self.characters[co].flags & CharacterFlags::Player.bits()) == 0 {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -632,9 +604,9 @@ impl State {
         }
 
         for n in base..(base + 10) {
-            if Repository::with_characters(|ch| ch[cn].data[n]) == 0 {
-                Repository::with_characters_mut(|ch| ch[cn].data[n] = co as i32);
-                let nm = Repository::with_characters(|ch| ch[co].get_name().to_string());
+            if self.characters[cn].data[n] == 0 {
+                self.characters[cn].data[n] = co as i32;
+                let nm = self.characters[co].get_name().to_string();
                 self.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
@@ -658,10 +630,10 @@ impl State {
     /// # Arguments
     /// * `cn` - Caller character id
     /// * `name` - Name of player to add/remove (empty to display)
-    pub(crate) fn do_group(&self, cn: usize, name: &str) {
-        let is_group_member = |owner: usize, member: usize| -> bool {
+    pub(crate) fn do_group(&mut self, cn: usize, name: &str) {
+        let is_group_member = |characters: &Vec<core::types::Character>, owner: usize, member: usize| -> bool {
             for n in core::constants::CHD_MINGROUP..=core::constants::CHD_MAXGROUP {
-                if Repository::with_characters(|ch| ch[owner].data[n] as usize) == member {
+                if characters[owner].data[n] as usize == member {
                     return true;
                 }
             }
@@ -680,22 +652,20 @@ impl State {
             trimmed
         };
 
-        let format_group_stats = |idx: usize| -> String {
-            Repository::with_characters(|ch| {
-                let name = format_name_15(ch[idx].get_name());
-                let hp = (ch[idx].a_hp + 500) / 1000;
-                let end = (ch[idx].a_end + 500) / 1000;
-                let mana = (ch[idx].a_mana + 500) / 1000;
+        let format_group_stats = |characters: &Vec<core::types::Character>, idx: usize| -> String {
+            let name = format_name_15(characters[idx].get_name());
+            let hp = (characters[idx].a_hp + 500) / 1000;
+            let end = (characters[idx].a_end + 500) / 1000;
+            let mana = (characters[idx].a_mana + 500) / 1000;
 
-                let ch_hp = ch[idx].hp[5];
-                let ch_end = ch[idx].end[5];
-                let ch_mana = ch[idx].mana[5];
+            let ch_hp = characters[idx].hp[5];
+            let ch_end = characters[idx].end[5];
+            let ch_mana = characters[idx].mana[5];
 
-                format!(
-                    "{} {}/{}H, {}/{}E, {}/{}M\n",
-                    name, hp, ch_hp, end, ch_end, mana, ch_mana
-                )
-            })
+            format!(
+                "{} {}/{}H, {}/{}E, {}/{}M\n",
+                name, hp, ch_hp, end, ch_end, mana, ch_mana
+            )
         };
 
         if name.is_empty() {
@@ -704,21 +674,23 @@ impl State {
                 core::types::FontColor::Yellow,
                 "Your group consists of:\n",
             );
-            self.do_character_log(cn, core::types::FontColor::Yellow, &format_group_stats(cn));
+            let stats_str = format_group_stats(&mut self.characters, cn);
+            self.do_character_log(cn, core::types::FontColor::Yellow, &stats_str);
 
             for n in core::constants::CHD_MINGROUP..=core::constants::CHD_MAXGROUP {
-                let co = Repository::with_characters(|ch| ch[cn].data[n] as usize);
+                let co = self.characters[cn].data[n] as usize;
                 if co == 0 {
                     continue;
                 }
-                if is_group_member(co, cn) {
+                if is_group_member(&mut self.characters, co, cn) {
+                    let stats_str = format_group_stats(&mut self.characters, co);
                     self.do_character_log(
                         cn,
                         core::types::FontColor::Yellow,
-                        &format_group_stats(co),
+                        &stats_str,
                     );
                 } else {
-                    let name = Repository::with_characters(|ch| format_name_15(ch[co].get_name()));
+                    let name = format_name_15(self.characters[co].get_name());
                     self.do_character_log(
                         cn,
                         core::types::FontColor::Yellow,
@@ -746,7 +718,7 @@ impl State {
             );
             return;
         }
-        if Repository::with_characters(|ch| (ch[co].flags & CharacterFlags::Player.bits()) == 0) {
+        if (self.characters[co].flags & CharacterFlags::Player.bits()) == 0 {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -755,20 +727,20 @@ impl State {
             return;
         }
 
-        let (co_used, co_flags) = Repository::with_characters(|ch| (ch[co].used, ch[co].flags));
+        let (co_used, co_flags) = (self.characters[co].used, self.characters[co].flags);
         let co_invis = (co_flags & CharacterFlags::Invisible.bits()) != 0;
         let cn_invis_level = crate::helpers::invis_level(cn);
         let co_invis_level = crate::helpers::invis_level(co);
         if co_used != core::constants::USE_ACTIVE || (co_invis && cn_invis_level < co_invis_level) {
-            let nm = Repository::with_characters(|ch| ch[co].get_name().to_string());
+            let nm = self.characters[co].get_name().to_string();
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 &format!("Sorry, {} seems not to be online.\n", nm),
             );
             for n in core::constants::CHD_MINGROUP..=core::constants::CHD_MAXGROUP {
-                if Repository::with_characters(|ch| ch[cn].data[n] as usize) == co {
-                    Repository::with_characters_mut(|ch| ch[cn].data[n] = 0);
+                if self.characters[cn].data[n] as usize == co {
+                    self.characters[cn].data[n] = 0;
                     self.do_character_log(
                         cn,
                         core::types::FontColor::Red,
@@ -780,32 +752,31 @@ impl State {
         }
 
         for n in core::constants::CHD_MINGROUP..=core::constants::CHD_MAXGROUP {
-            if Repository::with_characters(|ch| ch[cn].data[n] as usize) == co {
-                Repository::with_characters_mut(|ch| ch[cn].data[n] = 0);
-                let nm = Repository::with_characters(|ch| ch[co].get_name().to_string());
+            if self.characters[cn].data[n] as usize == co {
+                self.characters[cn].data[n] = 0;
+                let nm = self.characters[co].get_name().to_string();
                 self.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
                     &format!("{} removed from your group.\n", nm),
                 );
+                let cn_name = self.characters[cn].get_name().to_string();
                 self.do_character_log(
                     co,
                     core::types::FontColor::Red,
                     &format!(
                         "You are no longer part of {}'s group.\n",
-                        Repository::with_characters(|ch| ch[cn].get_name().to_string())
+                        cn_name
                     ),
                 );
                 return;
             }
         }
 
-        let (cn_rank, co_rank) = Repository::with_characters(|ch| {
-            (
-                core::ranks::points2rank(ch[cn].points_tot as u32) as i32,
-                core::ranks::points2rank(ch[co].points_tot as u32) as i32,
-            )
-        });
+        let (cn_rank, co_rank) = (
+            core::ranks::points2rank(self.characters[cn].points_tot as u32) as i32,
+            core::ranks::points2rank(self.characters[co].points_tot as u32) as i32,
+        );
         let max_rank = cn_rank.max(co_rank);
         let allow = match max_rank {
             21 => 4,
@@ -815,7 +786,7 @@ impl State {
         };
         let diff = crate::helpers::rankdiff(cn as i32, co as i32);
         if diff.abs() > allow {
-            let nm = Repository::with_characters(|ch| ch[co].get_name().to_string());
+            let nm = self.characters[co].get_name().to_string();
             let relation = if diff > 0 { "above" } else { "below" };
             self.do_character_log(
                 cn,
@@ -832,24 +803,25 @@ impl State {
         }
 
         for n in core::constants::CHD_MINGROUP..=core::constants::CHD_MAXGROUP {
-            if Repository::with_characters(|ch| ch[cn].data[n]) == 0 {
-                Repository::with_characters_mut(|ch| ch[cn].data[n] = co as i32);
-                let nm = Repository::with_characters(|ch| ch[co].get_name().to_string());
+            if self.characters[cn].data[n] == 0 {
+                self.characters[cn].data[n] = co as i32;
+                let nm = self.characters[co].get_name().to_string();
                 self.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
                     &format!("{} added to your group.\n", nm),
                 );
+                let cn_name = self.characters[cn].get_name().to_string();
                 self.do_character_log(
                     co,
                     core::types::FontColor::Red,
                     &format!(
                         "You are now part of {}'s group.\n",
-                        Repository::with_characters(|ch| ch[cn].get_name().to_string())
+                        cn_name
                     ),
                 );
 
-                if is_group_member(co, cn) {
+                if is_group_member(&mut self.characters, co, cn) {
                     self.do_character_log(
                         cn,
                         core::types::FontColor::Yellow,
@@ -861,7 +833,7 @@ impl State {
                         "Two way group established.\n",
                     );
                 } else {
-                    let nm = Repository::with_characters(|ch| ch[cn].get_name().to_string());
+                    let nm = self.characters[cn].get_name().to_string();
                     self.do_character_log(
                         co,
                         core::types::FontColor::Red,
@@ -887,10 +859,10 @@ impl State {
     /// # Arguments
     /// * `cn` - Owner character id
     /// * `co` - Character id to allow (0 to revoke)
-    pub(crate) fn do_allow(&self, cn: usize, co: usize) {
-        Repository::with_characters_mut(|ch| ch[cn].data[core::constants::CHD_ALLOW] = co as i32);
+    pub(crate) fn do_allow(&mut self, cn: usize, co: usize) {
+        self.characters[cn].data[core::constants::CHD_ALLOW] = co as i32;
         if co != 0 {
-            let name = Repository::with_characters(|ch| ch[co].get_name().to_string());
+            let name = self.characters[co].get_name().to_string();
             self.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
@@ -915,22 +887,22 @@ impl State {
     /// * `cn` - Caller character id
     /// * `co` - Target character id
     /// * `msg` - Marker text (empty to clear)
-    pub(crate) fn do_mark(&self, cn: usize, co: usize, msg: &str) {
+    pub(crate) fn do_mark(&mut self, cn: usize, co: usize, msg: &str) {
         if !core::types::Character::is_sane_character(co) {
             self.do_character_log(cn, core::types::FontColor::Red, "That's not a player\n");
             return;
         }
         if msg.is_empty() {
-            Repository::with_characters_mut(|ch| ch[co].text[3] = [0; 160]);
-            let old =
-                Repository::with_characters(|ch| c_string_to_str(&ch[co].text[3]).to_string());
+            self.characters[co].text[3] = [0; 160];
+            let old = c_string_to_str(&mut self.characters[co].text[3]).to_string();
+            let co_name = self.characters[co].get_name().to_string();
             self.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
                 &format!(
                     "Removed mark \"{}\" from {}\n",
                     old,
-                    Repository::with_characters(|ch| ch[co].get_name().to_string())
+                    co_name
                 ),
             );
             return;
@@ -940,13 +912,14 @@ impl State {
         let len_to_copy = std::cmp::min(bytes.len(), 159);
         buf[..len_to_copy].copy_from_slice(&bytes[..len_to_copy]);
 
-        Repository::with_characters_mut(|ch| ch[co].text[3] = buf);
+        self.characters[co].text[3] = buf;
+        let co_name = self.characters[co].get_name().to_string();
         self.do_character_log(
             cn,
             core::types::FontColor::Yellow,
             &format!(
                 "Marked {} with \"{}\"\n",
-                Repository::with_characters(|ch| ch[co].get_name().to_string()),
+                co_name,
                 msg
             ),
         );
@@ -960,38 +933,37 @@ impl State {
     /// # Arguments
     /// * `cn` - Caller character id
     /// * `msg` - AFK message (optional)
-    pub(crate) fn do_afk(&self, cn: usize, msg: &str) {
-        Repository::with_characters_mut(|ch| {
-            if ch[cn].data[core::constants::CHD_AFK] != 0 {
-                ch[cn].data[core::constants::CHD_AFK] = 0;
-                self.do_character_log(cn, core::types::FontColor::Yellow, "Back.\n");
-            } else {
-                ch[cn].data[core::constants::CHD_AFK] = 1;
-                if !msg.is_empty() {
-                    self.do_character_log(
-                        cn,
-                        core::types::FontColor::Yellow,
-                        "Away. Use #afk again to show you're back. Message:\n",
-                    );
-                    let bytes = msg.as_bytes();
-                    let len_to_copy = std::cmp::min(bytes.len(), 48);
-                    ch[cn].text[0][..len_to_copy].copy_from_slice(&bytes[..len_to_copy]);
+    pub(crate) fn do_afk(&mut self, cn: usize, msg: &str) {
+        if self.characters[cn].data[core::constants::CHD_AFK] != 0 {
+            self.characters[cn].data[core::constants::CHD_AFK] = 0;
+            self.do_character_log(cn, core::types::FontColor::Yellow, "Back.\n");
+        } else {
+            self.characters[cn].data[core::constants::CHD_AFK] = 1;
+            if !msg.is_empty() {
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    "Away. Use #afk again to show you're back. Message:\n",
+                );
+                let bytes = msg.as_bytes();
+                let len_to_copy = std::cmp::min(bytes.len(), 48);
+                self.characters[cn].text[0][..len_to_copy].copy_from_slice(&bytes[..len_to_copy]);
 
-                    self.do_character_log(
-                        cn,
-                        core::types::FontColor::Blue,
-                        &format!("  \"{}\"\n", c_string_to_str(&ch[cn].text[0])),
-                    );
-                } else {
-                    self.do_character_log(
-                        cn,
-                        core::types::FontColor::Yellow,
-                        "Away. Use #afk again to show you're back.\n",
-                    );
-                    ch[cn].text[0][0] = 0;
-                }
+                let afk_text = c_string_to_str(&mut self.characters[cn].text[0]).to_string();
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    &format!("  \"{}\"\n", afk_text),
+                );
+            } else {
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    "Away. Use #afk again to show you're back.\n",
+                );
+                self.characters[cn].text[0][0] = 0;
             }
-        });
+        }
     }
 
     /// Port of `do_help(cn, topic)` from `svr_do.cpp`.
@@ -1001,7 +973,7 @@ impl State {
     /// # Arguments
     /// * `cn` - Caller character id
     /// * `topic` - Help topic (currently unused)
-    pub(crate) fn do_help(&self, cn: usize, _topic: &str) {
+    pub(crate) fn do_help(&mut self, cn: usize, _topic: &str) {
         self.do_character_log(
             cn,
             core::types::FontColor::Green,
@@ -1115,20 +1087,18 @@ impl State {
         );
         self.do_character_log(cn, core::types::FontColor::Green, " \n");
 
-        Repository::with_characters(|characters| {
-            if (characters[cn].flags & CharacterFlags::PohLeader.bits()) != 0 {
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Green,
-                    "#poh <player>          add player to POH.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Green,
-                    "#pol <player>          make plr POH leader.\n",
-                );
-            }
-        });
+        if (self.characters[cn].flags & CharacterFlags::PohLeader.bits()) != 0 {
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                "#poh <player>          add player to POH.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                "#pol <player>          make plr POH leader.\n",
+            );
+        }
 
         self.do_character_log(
             cn,
@@ -1137,304 +1107,302 @@ impl State {
         );
         self.do_character_log(cn, core::types::FontColor::Green, " \n");
 
-        Repository::with_characters(|characters| {
-            if (characters[cn].flags
-                & (CharacterFlags::Staff | CharacterFlags::Imp | CharacterFlags::Usurp).bits())
-                != 0
-            {
-                self.do_character_log(cn, core::types::FontColor::Yellow, "Staff Commands:\n");
-                self.do_character_log(cn, core::types::FontColor::Yellow, " \n");
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Yellow,
-                    "#announce <message>    broadcast IMPORTANT msg.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Yellow,
-                    "#caution <text>        warn the population.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Yellow,
-                    "#info <player>         identify player.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Yellow,
-                    "#look <player>         look at player.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Yellow,
-                    "#stell <text>          tell all staff members.\n",
-                );
-                self.do_character_log(cn, core::types::FontColor::Yellow, " \n");
-            }
+        if (self.characters[cn].flags
+            & (CharacterFlags::Staff | CharacterFlags::Imp | CharacterFlags::Usurp).bits())
+            != 0
+        {
+            self.do_character_log(cn, core::types::FontColor::Yellow, "Staff Commands:\n");
+            self.do_character_log(cn, core::types::FontColor::Yellow, " \n");
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "#announce <message>    broadcast IMPORTANT msg.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "#caution <text>        warn the population.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "#info <player>         identify player.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "#look <player>         look at player.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "#stell <text>          tell all staff members.\n",
+            );
+            self.do_character_log(cn, core::types::FontColor::Yellow, " \n");
+        }
 
-            if (characters[cn].flags & (CharacterFlags::Imp | CharacterFlags::Usurp).bits()) != 0 {
-                self.do_character_log(cn, core::types::FontColor::Blue, "Imp Commands:\n");
-                self.do_character_log(cn, core::types::FontColor::Blue, " \n");
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#addban <player>       add plr to ban list.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#delban <lineno>       del plr from ban list.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#enemy <NPC><char>     make NPC fight char.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#enter                 fake enter the game.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#exit                  return from #USURP.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#force <char><text>    make him act.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#goto <char>           go to char.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#goto <x> <y>          goto x,y.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#goto n|e|s|w <nnn>    goto <nnn> in dir.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#itell <text>          tell all imps.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#kick <player>         kick player out.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#leave                 fake leave the game.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#listban               show ban list.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#look <player>         look at player.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#luck <player> <val>   set players luck.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#mark <player> <text>  mark a player with notes.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#name <name> <N.Name>  change chars(npcs) names.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#nodesc <player>       remove description.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#nolist <player>       exempt from top 10.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#nostaff               you won't hear #stell.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#nowho <player>        not listed in who.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#npclist <search>      display list of NPCs.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#raise <player> <exp>  give player exps.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#respawn <temp-id>     make npcs id respawn.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#shutup <player>       make unable to talk.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#slap <player>         slap in face.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#sprite <player>       change a player's sprite.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#thrall <name> [<rank>] clone slave.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#usurp <ID>            turn self into ID.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#write <text>          make scrolls with text.\n",
-                );
-                self.do_character_log(cn, core::types::FontColor::Blue, " \n");
-            }
+        if (self.characters[cn].flags & (CharacterFlags::Imp | CharacterFlags::Usurp).bits()) != 0 {
+            self.do_character_log(cn, core::types::FontColor::Blue, "Imp Commands:\n");
+            self.do_character_log(cn, core::types::FontColor::Blue, " \n");
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#addban <player>       add plr to ban list.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#delban <lineno>       del plr from ban list.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#enemy <NPC><char>     make NPC fight char.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#enter                 fake enter the game.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#exit                  return from #USURP.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#force <char><text>    make him act.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#goto <char>           go to char.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#goto <x> <y>          goto x,y.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#goto n|e|s|w <nnn>    goto <nnn> in dir.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#itell <text>          tell all imps.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#kick <player>         kick player out.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#leave                 fake leave the game.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#listban               show ban list.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#look <player>         look at player.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#luck <player> <val>   set players luck.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#mark <player> <text>  mark a player with notes.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#name <name> <N.Name>  change chars(npcs) names.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#nodesc <player>       remove description.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#nolist <player>       exempt from top 10.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#nostaff               you won't hear #stell.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#nowho <player>        not listed in who.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#npclist <search>      display list of NPCs.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#raise <player> <exp>  give player exps.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#respawn <temp-id>     make npcs id respawn.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#shutup <player>       make unable to talk.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#slap <player>         slap in face.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#sprite <player>       change a player's sprite.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#thrall <name> [<rank>] clone slave.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#usurp <ID>            turn self into ID.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#write <text>          make scrolls with text.\n",
+            );
+            self.do_character_log(cn, core::types::FontColor::Blue, " \n");
+        }
 
-            if (characters[cn].flags & CharacterFlags::God.bits()) != 0 {
-                self.do_character_log(cn, core::types::FontColor::Blue, "God Commands:\n");
-                self.do_character_log(cn, core::types::FontColor::Blue, " \n");
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#create <item template> creating items.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#ggold <amount>         give money to a player.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#god <player>           make player a God.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#imp <player> <amount>  make player an Imp.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#mailpass <player>      send passwd to admin.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#password <name>        change a plr's passwd.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#perase <player>        total player erase.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#pol <player>           make player POH leader.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#send <player> <target> teleport player to target.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#staff <player>         make a player staffer.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#summon <name> [<rank> [<which>]]\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#tavern                 log off quickly.\n",
-                );
-                self.do_character_log(cn, core::types::FontColor::Blue, " \n");
-            }
+        if (self.characters[cn].flags & CharacterFlags::God.bits()) != 0 {
+            self.do_character_log(cn, core::types::FontColor::Blue, "God Commands:\n");
+            self.do_character_log(cn, core::types::FontColor::Blue, " \n");
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#create <item template> creating items.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#ggold <amount>         give money to a player.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#god <player>           make player a God.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#imp <player> <amount>  make player an Imp.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#mailpass <player>      send passwd to admin.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#password <name>        change a plr's passwd.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#perase <player>        total player erase.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#pol <player>           make player POH leader.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#send <player> <target> teleport player to target.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#staff <player>         make a player staffer.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#summon <name> [<rank> [<which>]]\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#tavern                 log off quickly.\n",
+            );
+            self.do_character_log(cn, core::types::FontColor::Blue, " \n");
+        }
 
-            if (characters[cn].flags & CharacterFlags::GreaterGod.bits()) != 0 {
-                self.do_character_log(cn, core::types::FontColor::Blue, "Greater God Commands:\n");
-                self.do_character_log(cn, core::types::FontColor::Blue, " \n");
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#build <template>       build mode.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#creator <player>       make player a Creator.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#greatergod <player>    make player a G-God.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#lookinv <player>       look for items.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#lookdepot <player>     look for items.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#lookequip <player>     look for items.\n",
-                );
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "#steal <player> <item>  Steal item from player.\n",
-                );
-                self.do_character_log(cn, core::types::FontColor::Blue, " \n");
-            }
-        });
+        if (self.characters[cn].flags & CharacterFlags::GreaterGod.bits()) != 0 {
+            self.do_character_log(cn, core::types::FontColor::Blue, "Greater God Commands:\n");
+            self.do_character_log(cn, core::types::FontColor::Blue, " \n");
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#build <template>       build mode.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#creator <player>       make player a Creator.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#greatergod <player>    make player a G-God.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#lookinv <player>       look for items.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#lookdepot <player>     look for items.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#lookequip <player>     look for items.\n",
+            );
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "#steal <player> <item>  Steal item from player.\n",
+            );
+            self.do_character_log(cn, core::types::FontColor::Blue, " \n");
+        }
     }
 
     /// Port of `do_fightback(cn)` from `svr_do.cpp`.
@@ -1445,23 +1413,21 @@ impl State {
     ///
     /// # Arguments
     /// * `cn` - Character id toggling the setting
-    pub(crate) fn do_fightback(&self, cn: usize) {
-        Repository::with_characters_mut(|chars| {
-            if chars[cn].data[11] != 0 {
-                chars[cn].data[11] = 0;
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Yellow,
-                    "Auto-Fightback enabled.\n",
-                );
-            } else {
-                chars[cn].data[11] = 1;
-                self.do_character_log(
-                    cn,
-                    core::types::FontColor::Yellow,
-                    "Auto-Fightback disabled.\n",
-                );
-            }
-        });
+    pub(crate) fn do_fightback(&mut self, cn: usize) {
+        if self.characters[cn].data[11] != 0 {
+            self.characters[cn].data[11] = 0;
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "Auto-Fightback enabled.\n",
+            );
+        } else {
+            self.characters[cn].data[11] = 1;
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "Auto-Fightback disabled.\n",
+            );
+        }
     }
 }

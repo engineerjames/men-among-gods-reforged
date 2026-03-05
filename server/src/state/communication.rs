@@ -1,13 +1,12 @@
 use crate::god::God;
 use crate::network_manager::NetworkManager;
-use crate::repository::Repository;
-use crate::state::State;
+use crate::game_state::GameState;
 use crate::{driver, helpers};
 use core::constants::{CharacterFlags, CT_LGUARD};
 use core::string_operations::c_string_to_str;
 use core::types::FontColor;
 
-impl State {
+impl GameState {
     /// Notifies all characters in an area about an event, excluding `cn` and `co`.
     ///
     /// # Arguments
@@ -18,7 +17,7 @@ impl State {
     /// * `notify_type` - Type of notification
     /// * `dat1`, `dat2`, `dat3`, `dat4` - Additional data for the notification
     pub(crate) fn do_area_notify(
-        &self,
+        &mut self,
         cn: i32,
         co: i32,
         xs: i32,
@@ -29,28 +28,26 @@ impl State {
         dat3: i32,
         dat4: i32,
     ) {
-        Repository::with_map(|map| {
-            for y in std::cmp::max(0, ys - core::constants::AREA_SIZE)
+        for y in std::cmp::max(0, ys - core::constants::AREA_SIZE)
+            ..std::cmp::min(
+                core::constants::SERVER_MAPY,
+                ys + core::constants::AREA_SIZE + 1,
+            )
+        {
+            let m = y * core::constants::SERVER_MAPX;
+            for x in std::cmp::max(0, xs - core::constants::AREA_SIZE)
                 ..std::cmp::min(
-                    core::constants::SERVER_MAPY,
-                    ys + core::constants::AREA_SIZE + 1,
+                    core::constants::SERVER_MAPX,
+                    xs + core::constants::AREA_SIZE + 1,
                 )
             {
-                let m = y * core::constants::SERVER_MAPX;
-                for x in std::cmp::max(0, xs - core::constants::AREA_SIZE)
-                    ..std::cmp::min(
-                        core::constants::SERVER_MAPX,
-                        xs + core::constants::AREA_SIZE + 1,
-                    )
-                {
-                    let cc = map[(x + m) as usize].ch;
+                let cc = self.map[(x + m) as usize].ch;
 
-                    if cc != 0 && cc != cn as u32 && cc != co as u32 {
-                        self.do_notify_character(cc, notify_type, dat1, dat2, dat3, dat4);
-                    }
+                if cc != 0 && cc != cn as u32 && cc != co as u32 {
+                    self.do_notify_character(cc, notify_type, dat1, dat2, dat3, dat4);
                 }
             }
-        });
+        }
     }
 
     /// Sends a notification message to a specific character.
@@ -61,7 +58,7 @@ impl State {
     /// * `notify_type` - Type of notification
     /// * `dat1`, `dat2`, `dat3`, `dat4` - Additional data for the notification
     pub(crate) fn do_notify_character(
-        &self,
+        &mut self,
         character_id: u32,
         notify_type: i32,
         dat1: i32,
@@ -83,7 +80,7 @@ impl State {
     /// * `shout_type` - Type of shout
     /// * `dat1`, `dat2`, `dat3`, `dat4` - Additional data for the shout
     pub(crate) fn do_npc_shout(
-        &self,
+        &mut self,
         cn: usize,
         shout_type: i32,
         dat1: i32,
@@ -91,81 +88,79 @@ impl State {
         dat3: i32,
         dat4: i32,
     ) {
-        Repository::with_characters(|characters| {
-            let mut best: [i32; 3] = [99; 3];
-            let mut bestn: [i32; 3] = [0; 3];
+        let mut best: [i32; 3] = [99; 3];
+        let mut bestn: [i32; 3] = [0; 3];
 
-            if characters[cn].data[52] == 3 {
-                for co in 1..core::constants::MAXCHARS {
-                    if co != cn
-                        && characters[co].used == core::constants::USE_ACTIVE
-                        && characters[co].flags & CharacterFlags::Body.bits() == 0
+        if self.characters[cn].data[52] == 3 {
+            for co in 1..core::constants::MAXCHARS {
+                if co != cn
+                    && self.characters[co].used == core::constants::USE_ACTIVE
+                    && self.characters[co].flags & CharacterFlags::Body.bits() == 0
+                {
+                    if self.characters[co].flags
+                        & (CharacterFlags::Player | CharacterFlags::Usurp).bits()
+                        != 0
                     {
-                        if characters[co].flags
-                            & (CharacterFlags::Player | CharacterFlags::Usurp).bits()
-                            != 0
-                        {
-                            continue;
-                        }
-
-                        if characters[co].data[53] != characters[cn].data[52] {
-                            continue;
-                        }
-
-                        // TODO: This distance calculation seems incorrect potentially -- doublecheck
-                        let distance = (characters[cn].x as i32 - characters[co].x as i32).abs()
-                            + (characters[cn].y as i32 - characters[co].y as i32).abs();
-
-                        if distance < best[0] {
-                            best[2] = best[1];
-                            bestn[2] = bestn[1];
-                            best[1] = best[0];
-                            bestn[1] = bestn[0];
-                            best[0] = distance;
-                            bestn[0] = co as i32;
-                        } else if distance < best[1] {
-                            best[2] = best[1];
-                            bestn[2] = bestn[1];
-                            best[1] = distance;
-                            bestn[1] = co as i32;
-                        }
+                        continue;
                     }
-                }
 
-                for i in 0..bestn.len() {
-                    if bestn[i] != 0 {
-                        self.do_notify_character(
-                            bestn[i] as u32,
-                            shout_type,
-                            dat1,
-                            dat2,
-                            dat3,
-                            dat4,
-                        );
+                    if self.characters[co].data[53] != self.characters[cn].data[52] {
+                        continue;
                     }
-                }
-            } else {
-                for co in 1..core::constants::MAXCHARS {
-                    if co != cn
-                        && characters[co].used == core::constants::USE_ACTIVE
-                        && characters[co].flags & CharacterFlags::Body.bits() == 0
-                    {
-                        if characters[co].flags
-                            & (CharacterFlags::Player | CharacterFlags::Usurp).bits()
-                            != 0
-                        {
-                            continue;
-                        }
 
-                        if characters[co].data[53] != characters[cn].data[52] {
-                            continue;
-                        }
+                    // TODO: This distance calculation seems incorrect potentially -- doublecheck
+                    let distance = (self.characters[cn].x as i32 - self.characters[co].x as i32).abs()
+                        + (self.characters[cn].y as i32 - self.characters[co].y as i32).abs();
 
-                        self.do_notify_character(co as u32, shout_type, dat1, dat2, dat3, dat4);
+                    if distance < best[0] {
+                        best[2] = best[1];
+                        bestn[2] = bestn[1];
+                        best[1] = best[0];
+                        bestn[1] = bestn[0];
+                        best[0] = distance;
+                        bestn[0] = co as i32;
+                    } else if distance < best[1] {
+                        best[2] = best[1];
+                        bestn[2] = bestn[1];
+                        best[1] = distance;
+                        bestn[1] = co as i32;
                     }
                 }
             }
-        });
+
+            for i in 0..bestn.len() {
+                if bestn[i] != 0 {
+                    self.do_notify_character(
+                        bestn[i] as u32,
+                        shout_type,
+                        dat1,
+                        dat2,
+                        dat3,
+                        dat4,
+                    );
+                }
+            }
+        } else {
+            for co in 1..core::constants::MAXCHARS {
+                if co != cn
+                    && self.characters[co].used == core::constants::USE_ACTIVE
+                    && self.characters[co].flags & CharacterFlags::Body.bits() == 0
+                {
+                    if self.characters[co].flags
+                        & (CharacterFlags::Player | CharacterFlags::Usurp).bits()
+                        != 0
+                    {
+                        continue;
+                    }
+
+                    if self.characters[co].data[53] != self.characters[cn].data[52] {
+                        continue;
+                    }
+
+                    self.do_notify_character(co as u32, shout_type, dat1, dat2, dat3, dat4);
+                }
+            }
+        }
     }
 
     /// Port of `do_look_char(int cn, int co, int godflag, int autoflag, int lootflag)` from `svr_do.cpp`
@@ -196,16 +191,14 @@ impl State {
         }
 
         // Check if target is a corpse and distance
-        let (is_body, co_x, co_y) = Repository::with_characters(|ch| {
-            (
-                ch[co].flags & CharacterFlags::Body.bits() != 0,
-                ch[co].x,
-                ch[co].y,
-            )
-        });
+        let (is_body, co_x, co_y) = (
+            self.characters[co].flags & CharacterFlags::Body.bits() != 0,
+            self.characters[co].x,
+            self.characters[co].y,
+        );
 
         if is_body {
-            let (cn_x, cn_y) = Repository::with_characters(|ch| (ch[cn].x, ch[cn].y));
+            let (cn_x, cn_y) = (self.characters[cn].x, self.characters[cn].y);
             let distance = (cn_x - co_x).abs() + (cn_y - co_y).abs();
             if distance > 1 {
                 return;
@@ -227,23 +220,19 @@ impl State {
         }
 
         // Handle text descriptions and logging (only if not autoflag)
-        let (is_merchant, co_temp) = Repository::with_characters(|ch| {
-            (
-                ch[co].flags & CharacterFlags::Merchant.bits() != 0,
-                ch[co].temp,
-            )
-        });
+        let (is_merchant, co_temp) = (
+            self.characters[co].flags & CharacterFlags::Merchant.bits() != 0,
+            self.characters[co].temp,
+        );
 
         if autoflag == 0 && !is_merchant && !is_body {
             // Rate limiting for players
             let is_player =
-                Repository::with_characters(|ch| ch[cn].flags & CharacterFlags::Player.bits() != 0);
+                self.characters[cn].flags & CharacterFlags::Player.bits() != 0;
 
             if is_player {
-                let can_proceed = Repository::with_characters_mut(|ch| {
-                    ch[cn].data[71] += core::constants::CNTSAY;
-                    ch[cn].data[71] <= core::constants::MAXSAY
-                });
+                self.characters[cn].data[71] += core::constants::CNTSAY;
+                let can_proceed = self.characters[cn].data[71] <= core::constants::MAXSAY;
 
                 if !can_proceed {
                     self.do_character_log(
@@ -256,12 +245,9 @@ impl State {
             }
 
             // Show description or reference
-            let (has_desc, description, reference) = Repository::with_characters(|ch| {
-                let has_desc = ch[co].description[0] != 0;
-                let description = c_string_to_str(&ch[co].description).to_string();
-                let reference = c_string_to_str(&ch[co].reference).to_string();
-                (has_desc, description, reference)
-            });
+            let has_desc = self.characters[co].description[0] != 0;
+            let description = c_string_to_str(&mut self.characters[co].description).to_string();
+            let reference = c_string_to_str(&mut self.characters[co].reference).to_string();
 
             if has_desc {
                 self.do_character_log(cn, FontColor::Yellow, &format!("{}\n", description));
@@ -270,16 +256,13 @@ impl State {
             }
 
             // Check if target is AFK (away from keyboard)
-            let (co_is_player, co_data0, co_text0) = Repository::with_characters(|ch| {
-                let is_player = ch[co].is_player();
-                let data0 = ch[co].data[0];
-                let text0 = c_string_to_str(&ch[co].text[0]).to_string();
-                (is_player, data0, text0)
-            });
+            let co_is_player = self.characters[co].is_player();
+            let co_data0 = self.characters[co].data[0];
+            let co_text0 = c_string_to_str(&mut self.characters[co].text[0]).to_string();
 
             if co_is_player && co_data0 != 0 {
                 let co_name =
-                    Repository::with_characters(|ch| c_string_to_str(&ch[co].name).to_string());
+                    c_string_to_str(&mut self.characters[co].name).to_string();
 
                 if !co_text0.is_empty() {
                     self.do_character_log(
@@ -298,12 +281,8 @@ impl State {
             }
 
             // Check for Purple One follower
-            let (co_kindred, co_reference) = Repository::with_characters(|ch| {
-                (
-                    ch[co].kindred,
-                    c_string_to_str(&ch[co].reference).to_string(),
-                )
-            });
+            let co_kindred = self.characters[co].kindred;
+            let co_reference = c_string_to_str(&mut self.characters[co].reference).to_string();
 
             if co_is_player && (co_kindred as u32 & core::constants::KIN_PURPLE) != 0 {
                 self.do_character_log(
@@ -314,52 +293,37 @@ impl State {
             }
 
             // Reciprocal "looks at you" message
-            let (cn_is_player, cn_is_invisible, cn_is_shutup) = Repository::with_characters(|ch| {
-                (
-                    ch[cn].flags & CharacterFlags::Player.bits() != 0,
-                    ch[cn].flags & CharacterFlags::Invisible.bits() != 0,
-                    ch[cn].flags & CharacterFlags::ShutUp.bits() != 0,
-                )
-            });
+            let cn_is_player = self.characters[cn].flags & CharacterFlags::Player.bits() != 0;
+            let cn_is_invisible = self.characters[cn].flags & CharacterFlags::Invisible.bits() != 0;
+            let cn_is_shutup = self.characters[cn].flags & CharacterFlags::ShutUp.bits() != 0;
 
             if godflag == 0 && cn != co && cn_is_player && !cn_is_invisible && !cn_is_shutup {
                 let cn_name =
-                    Repository::with_characters(|ch| c_string_to_str(&ch[cn].name).to_string());
+                    c_string_to_str(&mut self.characters[cn].name).to_string();
 
-                State::with(|state| {
-                    state.do_character_log(
-                        co,
-                        FontColor::Yellow,
-                        &format!("{} looks at you.\n", cn_name),
-                    );
-                });
+                self.do_character_log(
+                    co,
+                    FontColor::Yellow,
+                    &format!("{} looks at you.\n", cn_name),
+                );
             }
 
             // Show death information for players
-            let (co_data14, co_data15, co_data16, co_data17, co_is_god) =
-                Repository::with_characters(|ch| {
-                    (
-                        ch[co].data[14],
-                        ch[co].data[15],
-                        ch[co].data[16],
-                        ch[co].data[17],
-                        ch[co].flags & CharacterFlags::God.bits() != 0,
-                    )
-                });
+            let co_data14 = self.characters[co].data[14];
+            let co_data15 = self.characters[co].data[15];
+            let co_data16 = self.characters[co].data[16];
+            let co_data17 = self.characters[co].data[17];
+            let co_is_god = self.characters[co].flags & CharacterFlags::God.bits() != 0;
 
             if co_is_player && co_data14 != 0 && !co_is_god {
                 let killer = if co_data15 == 0 {
                     "unknown causes".to_string()
                 } else if co_data15 >= core::constants::MAXCHARS as i32 {
                     let killer_idx = (co_data15 & 0xFFFF) as usize;
-                    Repository::with_characters(|ch| {
-                        c_string_to_str(&ch[killer_idx].reference).to_string()
-                    })
+                    c_string_to_str(&mut self.characters[killer_idx].reference).to_string()
                 } else {
                     let idx = co_data15 as usize;
-                    Repository::with_character_templates(|ct| {
-                        c_string_to_str(&ct[idx].reference).to_string()
-                    })
+                    c_string_to_str(&mut self.character_templates[idx].reference).to_string()
                 };
 
                 let area = {
@@ -384,7 +348,7 @@ impl State {
             }
 
             // Show "saved from death" count
-            let co_data44 = Repository::with_characters(|ch| ch[co].data[44]);
+            let co_data44 = self.characters[co].data[44];
             if co_is_player && co_data44 != 0 && !co_is_god {
                 self.do_character_log(
                     cn,
@@ -397,12 +361,8 @@ impl State {
             }
 
             // Show Purple of Honor status
-            let (co_is_poh, co_is_poh_leader) = Repository::with_characters(|ch| {
-                (
-                    ch[co].flags & CharacterFlags::Poh.bits() != 0,
-                    ch[co].flags & CharacterFlags::PohLeader.bits() != 0,
-                )
-            });
+            let co_is_poh = self.characters[co].flags & CharacterFlags::Poh.bits() != 0;
+            let co_is_poh_leader = self.characters[co].flags & CharacterFlags::PohLeader.bits() != 0;
 
             if co_is_player && co_is_poh {
                 if co_is_poh_leader {
@@ -422,7 +382,7 @@ impl State {
 
             // Show custom text[3] (player description/title)
             let co_text3 =
-                Repository::with_characters(|ch| c_string_to_str(&ch[co].text[3]).to_string());
+                c_string_to_str(&mut self.characters[co].text[3]).to_string();
 
             if !co_text3.is_empty() && co_is_player {
                 self.do_character_log(cn, FontColor::Yellow, &format!("{}\n", co_text3));
@@ -430,7 +390,7 @@ impl State {
         }
 
         // Get player_id for sending packets
-        let player_id = Repository::with_characters(|ch| ch[cn].player);
+        let player_id = self.characters[cn].player;
         if player_id == 0 {
             return;
         }
@@ -450,18 +410,16 @@ impl State {
         buf[0] = core::constants::SV_LOOK1;
 
         if visibility <= 75 {
-            let worn_sprites = Repository::with_characters(|ch| {
+            let worn_sprites = {
                 let mut sprites = [0u16; 7];
                 let worn_indices = [0, 2, 3, 5, 6, 7, 8];
                 for (i, &slot) in worn_indices.iter().enumerate() {
-                    if ch[co].worn[slot] != 0 {
-                        sprites[i] = Repository::with_items(|items| {
-                            items[ch[co].worn[slot] as usize].sprite[0] as u16
-                        });
+                    if self.characters[co].worn[slot] != 0 {
+                        sprites[i] = self.items[self.characters[co].worn[slot] as usize].sprite[0] as u16;
                     }
                 }
                 sprites
-            });
+            };
 
             for (i, sprite) in worn_sprites.iter().enumerate() {
                 let offset = 1 + i * 2;
@@ -486,28 +444,21 @@ impl State {
         buf[0] = core::constants::SV_LOOK2;
 
         if visibility <= 75 {
-            let (worn9, worn10, sprite, points_tot, hp5, end5, mana5) =
-                Repository::with_characters(|ch| {
-                    let w9 = if ch[co].worn[9] != 0 {
-                        Repository::with_items(|items| items[ch[co].worn[9] as usize].sprite[0])
-                    } else {
-                        0
-                    };
-                    let w10 = if ch[co].worn[10] != 0 {
-                        Repository::with_items(|items| items[ch[co].worn[10] as usize].sprite[0])
-                    } else {
-                        0
-                    };
-                    (
-                        w9,
-                        w10,
-                        ch[co].sprite,
-                        ch[co].points_tot,
-                        ch[co].hp[5],
-                        ch[co].end[5],
-                        ch[co].mana[5],
-                    )
-                });
+            let worn9 = if self.characters[co].worn[9] != 0 {
+                self.items[self.characters[co].worn[9] as usize].sprite[0]
+            } else {
+                0
+            };
+            let worn10 = if self.characters[co].worn[10] != 0 {
+                self.items[self.characters[co].worn[10] as usize].sprite[0]
+            } else {
+                0
+            };
+            let sprite = self.characters[co].sprite;
+            let points_tot = self.characters[co].points_tot;
+            let hp5 = self.characters[co].hp[5];
+            let end5 = self.characters[co].end[5];
+            let mana5 = self.characters[co].mana[5];
 
             buf[1] = (worn9 & 0xFF) as u8;
             buf[2] = (worn9 >> 8) as u8;
@@ -548,16 +499,12 @@ impl State {
         // Send SV_LOOK3 packet
         buf[0] = core::constants::SV_LOOK3;
 
-        let (end5, a_hp, a_end, mana5, a_mana, co_id) = Repository::with_characters(|ch| {
-            (
-                ch[co].end[5],
-                ch[co].a_hp,
-                ch[co].a_end,
-                ch[co].mana[5],
-                ch[co].a_mana,
-                helpers::char_id(co),
-            )
-        });
+        let end5 = self.characters[co].end[5];
+        let a_hp = self.characters[co].a_hp;
+        let a_end = self.characters[co].a_end;
+        let mana5 = self.characters[co].mana[5];
+        let a_mana = self.characters[co].a_mana;
+        let co_id = helpers::char_id(co);
 
         // reuse previously computed hp_diff, end_diff, mana_diff (populated in SV_LOOK2)
 
@@ -597,34 +544,31 @@ impl State {
         buf[0] = core::constants::SV_LOOK4;
 
         if visibility <= 75 {
-            let (worn1, worn4, worn11, worn12, worn13) = Repository::with_characters(|ch| {
-                let w1 = if ch[co].worn[1] != 0 {
-                    Repository::with_items(|items| items[ch[co].worn[1] as usize].sprite[0])
-                } else {
-                    0
-                };
-                let w4 = if ch[co].worn[4] != 0 {
-                    Repository::with_items(|items| items[ch[co].worn[4] as usize].sprite[0])
-                } else {
-                    0
-                };
-                let w11 = if ch[co].worn[11] != 0 {
-                    Repository::with_items(|items| items[ch[co].worn[11] as usize].sprite[0])
-                } else {
-                    0
-                };
-                let w12 = if ch[co].worn[12] != 0 {
-                    Repository::with_items(|items| items[ch[co].worn[12] as usize].sprite[0])
-                } else {
-                    0
-                };
-                let w13 = if ch[co].worn[13] != 0 {
-                    Repository::with_items(|items| items[ch[co].worn[13] as usize].sprite[0])
-                } else {
-                    0
-                };
-                (w1, w4, w11, w12, w13)
-            });
+            let worn1 = if self.characters[co].worn[1] != 0 {
+                self.items[self.characters[co].worn[1] as usize].sprite[0]
+            } else {
+                0
+            };
+            let worn4 = if self.characters[co].worn[4] != 0 {
+                self.items[self.characters[co].worn[4] as usize].sprite[0]
+            } else {
+                0
+            };
+            let worn11 = if self.characters[co].worn[11] != 0 {
+                self.items[self.characters[co].worn[11] as usize].sprite[0]
+            } else {
+                0
+            };
+            let worn12 = if self.characters[co].worn[12] != 0 {
+                self.items[self.characters[co].worn[12] as usize].sprite[0]
+            } else {
+                0
+            };
+            let worn13 = if self.characters[co].worn[13] != 0 {
+                self.items[self.characters[co].worn[13] as usize].sprite[0]
+            } else {
+                0
+            };
 
             buf[1] = (worn1 & 0xFF) as u8;
             buf[2] = (worn1 >> 8) as u8;
@@ -654,10 +598,11 @@ impl State {
             buf[5] = 1;
 
             // Show price for carried item if applicable
-            let citem = Repository::with_characters(|ch| ch[cn].citem);
+            let citem = self.characters[cn].citem;
             let price = if citem != 0 {
                 if is_merchant {
-                    self.barter(cn, self.do_item_value(citem as usize) as i32, 0)
+                    let item_val = self.do_item_value(citem as usize) as i32;
+                    self.barter(cn, item_val, 0)
                 } else {
                     0
                 }
@@ -678,11 +623,11 @@ impl State {
         // Send SV_LOOK5 packet (character name)
         buf[0] = core::constants::SV_LOOK5;
 
-        let co_name = Repository::with_characters(|ch| {
+        let co_name = {
             let mut name = [0u8; 15];
-            name.copy_from_slice(&ch[co].name[0..15]);
+            name.copy_from_slice(&mut self.characters[co].name[0..15]);
             name
-        });
+        };
 
         buf[1..16].copy_from_slice(&co_name);
 
@@ -698,21 +643,20 @@ impl State {
                 buf[1] = n as u8;
 
                 for m in n..std::cmp::min(40, n + 2) {
-                    let (sprite, price) = Repository::with_characters(|ch| {
-                        let item_idx = ch[co].item[m];
-                        if item_idx != 0 {
-                            let spr =
-                                Repository::with_items(|items| items[item_idx as usize].sprite[0]);
-                            let pr = if is_merchant {
-                                self.barter(cn, self.do_item_value(item_idx as usize) as i32, 1)
-                            } else {
-                                0
-                            };
-                            (spr, pr)
+                    let item_idx = self.characters[co].item[m];
+                    let (sprite, price) = if item_idx != 0 {
+                        let spr =
+                            self.items[item_idx as usize].sprite[0];
+                        let pr = if is_merchant {
+                            let item_val = self.do_item_value(item_idx as usize) as i32;
+                            self.barter(cn, item_val, 1)
                         } else {
-                            (0, 0)
-                        }
-                    });
+                            0
+                        };
+                        (spr, pr)
+                    } else {
+                        (0, 0)
+                    };
 
                     let offset = 2 + (m - n) * 6;
                     buf[offset] = (sprite & 0xFF) as u8;
@@ -733,16 +677,14 @@ impl State {
                 buf[1] = (n + 40) as u8;
 
                 for m in n..std::cmp::min(20, n + 2) {
-                    let (sprite, price) = Repository::with_characters(|ch| {
-                        let item_idx = ch[co].worn[m];
-                        if item_idx != 0 && is_body {
-                            let spr =
-                                Repository::with_items(|items| items[item_idx as usize].sprite[0]);
-                            (spr, 0)
-                        } else {
-                            (0, 0)
-                        }
-                    });
+                    let item_idx = self.characters[co].worn[m];
+                    let (sprite, price) = if item_idx != 0 && is_body {
+                        let spr =
+                            self.items[item_idx as usize].sprite[0];
+                        (spr, 0)
+                    } else {
+                        (0, 0)
+                    };
 
                     let offset = 2 + (m - n) * 6;
                     buf[offset] = (sprite & 0xFF) as u8;
@@ -762,15 +704,13 @@ impl State {
             buf[1] = 60;
 
             // Slot 60: citem
-            let (citem_sprite, gold) = Repository::with_characters(|ch| {
-                let citem_idx = ch[co].citem;
-                let spr = if citem_idx != 0 && is_body {
-                    Repository::with_items(|items| items[citem_idx as usize].sprite[0])
-                } else {
-                    0
-                };
-                (spr, ch[co].gold)
-            });
+            let citem_idx = self.characters[co].citem;
+            let citem_sprite = if citem_idx != 0 && is_body {
+                self.items[citem_idx as usize].sprite[0]
+            } else {
+                0
+            };
+            let gold = self.characters[co].gold;
 
             buf[2] = (citem_sprite & 0xFF) as u8;
             buf[3] = (citem_sprite >> 8) as u8;
@@ -808,17 +748,15 @@ impl State {
         }
 
         // God/IMP/USURP debug information
-        let cn_is_god_imp_usurp = Repository::with_characters(|ch| {
-            ch[cn].flags
-                & (CharacterFlags::God | CharacterFlags::Imp | CharacterFlags::Usurp).bits()
-                != 0
-        });
+        let cn_is_god_imp_usurp = self.characters[cn].flags
+            & (CharacterFlags::God | CharacterFlags::Imp | CharacterFlags::Usurp).bits()
+            != 0;
 
         let co_is_god =
-            Repository::with_characters(|ch| ch[co].flags & CharacterFlags::God.bits() != 0);
+            self.characters[co].flags & CharacterFlags::God.bits() != 0;
 
         if cn_is_god_imp_usurp && autoflag == 0 && !is_merchant && !is_body && !co_is_god {
-            let (co_x, co_y) = Repository::with_characters(|ch| (ch[co].x, ch[co].y));
+            let (co_x, co_y) = (self.characters[co].x, self.characters[co].y);
             self.do_character_log(
                 cn,
                 FontColor::Green,
@@ -828,12 +766,8 @@ impl State {
                 ),
             );
 
-            let (co_is_golden, co_is_black) = Repository::with_characters(|ch| {
-                (
-                    ch[co].flags & CharacterFlags::Golden.bits() != 0,
-                    ch[co].flags & CharacterFlags::Black.bits() != 0,
-                )
-            });
+            let co_is_golden = self.characters[co].flags & CharacterFlags::Golden.bits() != 0;
+            let co_is_black = self.characters[co].flags & CharacterFlags::Black.bits() != 0;
 
             if co_is_golden {
                 self.do_character_log(cn, FontColor::Green, "Golden List.\n");
@@ -855,25 +789,24 @@ impl State {
 
         if gflag != 0 {
             // Group distribution for players
-            let is_player = Repository::with_characters(|ch| {
-                (ch[cn].flags & core::constants::CharacterFlags::Player.bits()) != 0
-            });
+            let is_player =
+                (self.characters[cn].flags & core::constants::CharacterFlags::Player.bits()) != 0;
             if is_player {
                 let mut c = 1;
                 for n in 1..10 {
-                    let co = Repository::with_characters(|ch| ch[cn].data[n] as usize);
+                    let co = self.characters[cn].data[n] as usize;
                     if co != 0 {
                         // mutual membership and visible
-                        let mutual = Repository::with_characters(|ch| {
+                        let mutual = {
                             let mut found = false;
                             for m in 1..10 {
-                                if ch[co].data[m] as usize == cn {
+                                if self.characters[co].data[m] as usize == cn {
                                     found = true;
                                     break;
                                 }
                             }
                             found
-                        });
+                        };
                         if mutual && self.do_char_can_see(cn, co) != 0 {
                             c += 1;
                         }
@@ -883,18 +816,18 @@ impl State {
                 // distribute
                 let mut s = 0;
                 for n in 1..10 {
-                    let co = Repository::with_characters(|ch| ch[cn].data[n] as usize);
+                    let co = self.characters[cn].data[n] as usize;
                     if co != 0 {
-                        let mutual = Repository::with_characters(|ch| {
+                        let mutual = {
                             let mut found = false;
                             for m in 1..10 {
-                                if ch[co].data[m] as usize == cn {
+                                if self.characters[co].data[m] as usize == cn {
                                     found = true;
                                     break;
                                 }
                             }
                             found
-                        });
+                        };
                         if mutual && self.do_char_can_see(cn, co) != 0 {
                             let share = p / c;
                             self.do_give_exp(co, share, 0, rank);
@@ -905,22 +838,18 @@ impl State {
                 self.do_give_exp(cn, p - s, 0, rank);
             } else {
                 // NPC follower handling
-                let co = Repository::with_characters(|ch| ch[cn].data[63]);
+                let co = self.characters[cn].data[63];
                 if co != 0 {
                     self.do_give_exp(cn, p, 0, rank);
-                    let master = Repository::with_characters(|ch| ch[cn].data[63]);
+                    let master = self.characters[cn].data[63];
                     if master > 0
                         && (master as usize) < core::constants::MAXCHARS
-                        && Repository::with_characters(|ch| ch[master as usize].points_tot)
-                            > Repository::with_characters(|ch| ch[cn].points_tot)
+                        && self.characters[master as usize].points_tot
+                            > self.characters[cn].points_tot
                     {
-                        Repository::with_characters_mut(|characters| {
-                            characters[cn].data[28] += helpers::scale_exps2(master, rank, p);
-                        });
+                        self.characters[cn].data[28] += helpers::scale_exps2(master, rank, p);
                     } else {
-                        Repository::with_characters_mut(|characters| {
-                            characters[cn].data[28] += helpers::scale_exps2(cn as i32, rank, p);
-                        });
+                        self.characters[cn].data[28] += helpers::scale_exps2(cn as i32, rank, p);
                     }
                 }
             }
@@ -930,11 +859,11 @@ impl State {
         // Non-grouped experience
         let mut p = p;
         if (0..=24).contains(&rank) {
-            let master = Repository::with_characters(|ch| ch[cn].data[63]);
+            let master = self.characters[cn].data[63];
             if master > 0
                 && (master as usize) < core::constants::MAXCHARS
-                && Repository::with_characters(|ch| ch[master as usize].points_tot)
-                    > Repository::with_characters(|ch| ch[cn].points_tot)
+                && self.characters[master as usize].points_tot
+                    > self.characters[cn].points_tot
             {
                 p = helpers::scale_exps2(master, rank, p);
             } else {
@@ -943,10 +872,8 @@ impl State {
         }
 
         if p != 0 {
-            Repository::with_characters_mut(|characters| {
-                characters[cn].points += p * 10;
-                characters[cn].points_tot += p * 10;
-            });
+            self.characters[cn].points += p * 10;
+            self.characters[cn].points_tot += p * 10;
             self.do_character_log(
                 cn,
                 core::types::FontColor::Green,
@@ -957,7 +884,7 @@ impl State {
                 cn,
                 "Gets {} EXP (total {})",
                 p,
-                Repository::with_characters(|ch| ch[cn].points_tot)
+                self.characters[cn].points_tot
             );
             self.do_update_char(cn);
             self.do_check_new_level(cn);
@@ -970,13 +897,10 @@ impl State {
     pub(crate) fn do_say(&mut self, cn: usize, text: &str) {
         log::debug!("do_say: cn={}, text={}", cn, text);
         // Rate limiting for players (skip for direct '|' logs)
-        if Repository::with_characters(|ch| {
-            (ch[cn].flags & CharacterFlags::Player.bits()) != 0 && !text.starts_with('|')
-        }) {
-            let can_proceed = Repository::with_characters_mut(|ch| {
-                ch[cn].data[71] += core::constants::CNTSAY;
-                ch[cn].data[71] <= core::constants::MAXSAY
-            });
+        if (self.characters[cn].flags & CharacterFlags::Player.bits()) != 0 && !text.starts_with('|')
+        {
+            self.characters[cn].data[71] += core::constants::CNTSAY;
+            let can_proceed = self.characters[cn].data[71] <= core::constants::MAXSAY;
 
             if !can_proceed {
                 self.do_character_log(
@@ -990,19 +914,17 @@ impl State {
 
         // GOD password: grant god flags
         if text == core::constants::GODPASSWORD {
-            Repository::with_characters_mut(|ch| {
-                ch[cn].flags |= (CharacterFlags::GreaterGod
-                    | CharacterFlags::God
-                    | CharacterFlags::Immortal
-                    | CharacterFlags::Creator
-                    | CharacterFlags::Staff
-                    | CharacterFlags::Imp)
-                    .bits();
-            });
+            self.characters[cn].flags |= (CharacterFlags::GreaterGod
+                | CharacterFlags::God
+                | CharacterFlags::Immortal
+                | CharacterFlags::Creator
+                | CharacterFlags::Staff
+                | CharacterFlags::Imp)
+                .bits();
 
             self.do_character_log(cn, FontColor::Red, "Yes, Sire, I recognise you!\n");
 
-            let (x, y) = Repository::with_characters(|ch| (ch[cn].x as i32, ch[cn].y as i32));
+            let (x, y) = (self.characters[cn].x as i32, self.characters[cn].y as i32);
             self.do_area_log(
                 cn,
                 0,
@@ -1016,38 +938,38 @@ impl State {
         }
 
         // Special "Skua!/Purple!" behaviour
-        Repository::with_characters_mut(|ch| {
-            let kindred = ch[cn].kindred;
+        {
+            let kindred = self.characters[cn].kindred;
             let is_skua = text == "Skua!" && (kindred & core::constants::KIN_PURPLE as i32) == 0;
             let is_purple =
                 text == "Purple!" && (kindred & core::constants::KIN_PURPLE as i32) != 0;
-            if (is_skua || is_purple) && ch[cn].luck > 100 {
-                if ch[cn].a_hp < ch[cn].hp[5] as i32 * 200 {
-                    ch[cn].a_hp += 50000 + helpers::random_mod_i32(100000);
-                    let cap = ch[cn].hp[5] as i32 * 1000;
-                    if ch[cn].a_hp > cap {
-                        ch[cn].a_hp = cap;
+            if (is_skua || is_purple) && self.characters[cn].luck > 100 {
+                if self.characters[cn].a_hp < self.characters[cn].hp[5] as i32 * 200 {
+                    self.characters[cn].a_hp += 50000 + helpers::random_mod_i32(100000);
+                    let cap = self.characters[cn].hp[5] as i32 * 1000;
+                    if self.characters[cn].a_hp > cap {
+                        self.characters[cn].a_hp = cap;
                     }
-                    ch[cn].luck -= 25;
+                    self.characters[cn].luck -= 25;
                 }
-                if ch[cn].a_end < ch[cn].end[5] as i32 * 200 {
-                    ch[cn].a_end += 50000 + helpers::random_mod_i32(100000);
-                    let cap = ch[cn].end[5] as i32 * 1000;
-                    if ch[cn].a_end > cap {
-                        ch[cn].a_end = cap;
+                if self.characters[cn].a_end < self.characters[cn].end[5] as i32 * 200 {
+                    self.characters[cn].a_end += 50000 + helpers::random_mod_i32(100000);
+                    let cap = self.characters[cn].end[5] as i32 * 1000;
+                    if self.characters[cn].a_end > cap {
+                        self.characters[cn].a_end = cap;
                     }
-                    ch[cn].luck -= 10;
+                    self.characters[cn].luck -= 10;
                 }
-                if ch[cn].a_mana < ch[cn].mana[5] as i32 * 200 {
-                    ch[cn].a_mana += 50000 + helpers::random_mod_i32(100000);
-                    let cap = ch[cn].mana[5] as i32 * 1000;
-                    if ch[cn].a_mana > cap {
-                        ch[cn].a_mana = cap;
+                if self.characters[cn].a_mana < self.characters[cn].mana[5] as i32 * 200 {
+                    self.characters[cn].a_mana += 50000 + helpers::random_mod_i32(100000);
+                    let cap = self.characters[cn].mana[5] as i32 * 1000;
+                    if self.characters[cn].a_mana > cap {
+                        self.characters[cn].a_mana = cap;
                     }
-                    ch[cn].luck -= 50;
+                    self.characters[cn].luck -= 50;
                 }
             }
-        });
+        }
 
         if text == "help" {
             self.do_character_log(cn, FontColor::Red, "Use #help instead.\n");
@@ -1069,7 +991,7 @@ impl State {
         }
 
         // shutup check
-        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::ShutUp.bits()) != 0) {
+        if (self.characters[cn].flags & CharacterFlags::ShutUp.bits()) != 0 {
             self.do_character_log(
                 cn,
                 FontColor::Red,
@@ -1080,24 +1002,18 @@ impl State {
 
         // Underwater: replace with "Blub!" unless blue pill (temp==648) is present
         let mut ptr: &str = text;
-        let is_underwater = Repository::with_characters(|ch| {
-            let m = ch[cn].x as usize + ch[cn].y as usize * core::constants::SERVER_MAPX as usize;
-            Repository::with_map(|map| map[m].flags & core::constants::MF_UWATER as u64 != 0)
-        });
+        let m_idx = self.characters[cn].x as usize + self.characters[cn].y as usize * core::constants::SERVER_MAPX as usize;
+        let is_underwater = self.map[m_idx].flags & core::constants::MF_UWATER as u64 != 0;
 
         if is_underwater {
             let mut found_blue = false;
-            Repository::with_characters(|ch| {
-                Repository::with_items(|items| {
-                    for n in 0..20usize {
-                        let in_idx = ch[cn].spell[n] as usize;
-                        if in_idx != 0 && in_idx < items.len() && items[in_idx].temp == 648 {
-                            found_blue = true;
-                            break;
-                        }
-                    }
-                })
-            });
+            for n in 0..20usize {
+                let in_idx = self.characters[cn].spell[n] as usize;
+                if in_idx != 0 && in_idx < self.items.len() && self.items[in_idx].temp == 648 {
+                    found_blue = true;
+                    break;
+                }
+            }
 
             if !found_blue {
                 ptr = "Blub!";
@@ -1130,17 +1046,12 @@ impl State {
         }
 
         // Show to area (selective for players/usurp)
-        let is_player_or_usurp = Repository::with_characters(|ch| {
-            (ch[cn].flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits())) != 0
-        });
+        let is_player_or_usurp =
+            (self.characters[cn].flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits())) != 0;
 
-        let (cx, cy, name) = Repository::with_characters(|ch| {
-            (
-                ch[cn].x as usize,
-                ch[cn].y as usize,
-                ch[cn].get_name().to_string(),
-            )
-        });
+        let cx = self.characters[cn].x as usize;
+        let cy = self.characters[cn].y as usize;
+        let name = self.characters[cn].get_name().to_string();
 
         if is_player_or_usurp {
             self.do_area_say1(cn, cx, cy, ptr);
@@ -1167,8 +1078,8 @@ impl State {
     /// Port of `do_tell(int cn, const char *con, const char *text)` from `svr_do.cpp`
     ///
     /// Send a private message to another character.
-    pub(crate) fn do_tell(&self, cn: usize, con: &str, text: &str) {
-        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::ShutUp.bits()) != 0) {
+    pub(crate) fn do_tell(&mut self, cn: usize, con: &str, text: &str) {
+        if (self.characters[cn].flags & CharacterFlags::ShutUp.bits()) != 0 {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -1185,17 +1096,12 @@ impl State {
             );
             return;
         }
-        let (co_flags, co_used, co_invis, cn_flags, co_name, cn_name) =
-            Repository::with_characters(|ch| {
-                (
-                    ch[co].flags,
-                    ch[co].used,
-                    (ch[co].flags & CharacterFlags::Invisible.bits()) != 0,
-                    ch[cn].flags,
-                    ch[co].get_name().to_string(),
-                    ch[cn].get_name().to_string(),
-                )
-            });
+        let co_flags = self.characters[co].flags;
+        let co_used = self.characters[co].used;
+        let co_invis = (self.characters[co].flags & CharacterFlags::Invisible.bits()) != 0;
+        let cn_flags = self.characters[cn].flags;
+        let co_name = self.characters[co].get_name().to_string();
+        let cn_name = self.characters[cn].get_name().to_string();
         let cn_is_god = (cn_flags & CharacterFlags::God.bits()) != 0;
         let cn_is_player = (cn_flags & CharacterFlags::Player.bits()) != 0;
         let co_is_player = (co_flags & CharacterFlags::Player.bits()) != 0;
@@ -1220,12 +1126,12 @@ impl State {
             return;
         }
         // AFK message
-        let co_afk = Repository::with_characters(|ch| ch[co].data[0] != 0);
+        let co_afk = self.characters[co].data[0] != 0;
         if co_afk {
-            let co_afk_msg = Repository::with_characters(|ch| ch[co].text[0][0] != 0);
+            let co_afk_msg = self.characters[co].text[0][0] != 0;
             if co_afk_msg {
                 let msg =
-                    Repository::with_characters(|ch| c_string_to_str(&ch[co].text[0]).to_string());
+                    c_string_to_str(&mut self.characters[co].text[0]).to_string();
                 self.do_character_log(
                     cn,
                     core::types::FontColor::Red,
@@ -1282,21 +1188,12 @@ impl State {
     /// Port of `do_gtell(int cn, const char *text)` from `svr_do.cpp`
     ///
     /// Send a message to all group members.
-    pub(crate) fn do_gtell(&self, cn: usize, text: &str) {
-        let is_group_member = |owner: usize, member: usize| -> bool {
-            for n in core::constants::CHD_MINGROUP..=core::constants::CHD_MAXGROUP {
-                if Repository::with_characters(|ch| ch[owner].data[n] as usize) == member {
-                    return true;
-                }
-            }
-            false
-        };
-
+    pub(crate) fn do_gtell(&mut self, cn: usize, text: &str) {
         if text.is_empty() {
             self.do_character_log(cn, core::types::FontColor::Red, "Group-Tell. Yes. group-tell it will be. But what do you want to tell the other group members?\n");
             return;
         }
-        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::ShutUp.bits()) != 0) {
+        if (self.characters[cn].flags & CharacterFlags::ShutUp.bits()) != 0 {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -1306,18 +1203,24 @@ impl State {
         }
         let mut found = false;
         for n in core::constants::CHD_MINGROUP..=core::constants::CHD_MAXGROUP {
-            let co = Repository::with_characters(|ch| ch[cn].data[n] as usize);
+            let co = self.characters[cn].data[n] as usize;
             if co != 0 {
-                if !is_group_member(co, cn) {
-                    Repository::with_characters_mut(|ch| ch[cn].data[n] = 0);
+                let mut is_member = false;
+                for m in core::constants::CHD_MINGROUP..=core::constants::CHD_MAXGROUP {
+                    if self.characters[co].data[m] as usize == cn {
+                        is_member = true;
+                        break;
+                    }
+                }
+                if !is_member {
+                    self.characters[cn].data[n] = 0;
                 } else {
-                    Repository::with_characters(|ch| {
-                        self.do_character_log(
-                            co,
-                            core::types::FontColor::Green,
-                            &format!("{} group-tells: \"{}\"\n", ch[cn].get_name(), text),
-                        );
-                    });
+                    let name = self.characters[cn].get_name().to_string();
+                    self.do_character_log(
+                        co,
+                        core::types::FontColor::Green,
+                        &format!("{} group-tells: \"{}\"\n", name, text),
+                    );
                     found = true;
                 }
             }
@@ -1328,7 +1231,7 @@ impl State {
                 core::types::FontColor::Green,
                 &format!("Told the group: \"{}\"\n", text),
             );
-            if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Player.bits()) != 0)
+            if (self.characters[cn].flags & CharacterFlags::Player.bits()) != 0
             {
                 log::info!("group-tells \"{}\"", text);
             }
@@ -1344,12 +1247,12 @@ impl State {
     /// Port of `do_stell(int cn, const char *text)` from `svr_do.cpp`
     ///
     /// Send a message to all staff members.
-    pub(crate) fn do_stell(&self, cn: usize, text: &str) {
+    pub(crate) fn do_stell(&mut self, cn: usize, text: &str) {
         if text.is_empty() {
             self.do_character_log(cn, core::types::FontColor::Red, "Staff-Tell. Yes. staff-tell it will be. But what do you want to tell the other staff members?\n");
             return;
         }
-        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::ShutUp.bits()) != 0) {
+        if (self.characters[cn].flags & CharacterFlags::ShutUp.bits()) != 0 {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -1357,15 +1260,16 @@ impl State {
             );
             return;
         }
+        let name = self.characters[cn].get_name().to_string();
         self.do_staff_log(
             core::types::FontColor::Blue,
             &format!(
                 "{:.30} staff-tells: \"{:.200}\"\n",
-                Repository::with_characters(|ch| ch[cn].get_name().to_string()),
+                name,
                 text
             ),
         );
-        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Player.bits()) != 0) {
+        if (self.characters[cn].flags & CharacterFlags::Player.bits()) != 0 {
             log::info!("staff-tells \"{}\"", text);
         }
     }
@@ -1373,12 +1277,12 @@ impl State {
     /// Port of `do_itell(int cn, const char *text)` from `svr_do.cpp`
     ///
     /// Send a message to all imp members.
-    pub(crate) fn do_itell(&self, cn: usize, text: &str) {
+    pub(crate) fn do_itell(&mut self, cn: usize, text: &str) {
         if text.is_empty() {
             self.do_character_log(cn, core::types::FontColor::Red, "Imp-Tell. Yes. imp-tell it will be. But what do you want to tell the other imps?\n");
             return;
         }
-        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::ShutUp.bits()) != 0) {
+        if (self.characters[cn].flags & CharacterFlags::ShutUp.bits()) != 0 {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -1386,27 +1290,29 @@ impl State {
             );
             return;
         }
-        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Usurp.bits()) != 0) {
+        if (self.characters[cn].flags & CharacterFlags::Usurp.bits()) != 0 {
             // simplified
+            let name = self.characters[cn].get_name().to_string();
             self.do_imp_log(
                 core::types::FontColor::Blue,
                 &format!(
                     "{:.30} (usurp) imp-tells: \"{:.170}\"\n",
-                    Repository::with_characters(|ch| ch[cn].get_name().to_string()),
+                    name,
                     text
                 ),
             );
         } else {
+            let name = self.characters[cn].get_name().to_string();
             self.do_imp_log(
                 core::types::FontColor::Blue,
                 &format!(
                     "{:.30} imp-tells: \"{:.200}\"\n",
-                    Repository::with_characters(|ch| ch[cn].get_name().to_string()),
+                    name,
                     text
                 ),
             );
         }
-        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Player.bits()) != 0) {
+        if (self.characters[cn].flags & CharacterFlags::Player.bits()) != 0 {
             log::info!("imp-tells \"{}\"", text);
         }
     }
@@ -1414,7 +1320,7 @@ impl State {
     /// Port of `do_shout(int cn, const char *text)` from `svr_do.cpp`
     ///
     /// Shout a message to all players.
-    pub(crate) fn do_shout(&self, cn: usize, text: &str) {
+    pub(crate) fn do_shout(&mut self, cn: usize, text: &str) {
         if text.is_empty() {
             self.do_character_log(
                 cn,
@@ -1423,7 +1329,7 @@ impl State {
             );
             return;
         }
-        if Repository::with_characters(|ch| ch[cn].a_end) < 50000 {
+        if self.characters[cn].a_end < 50000 {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -1431,7 +1337,7 @@ impl State {
             );
             return;
         }
-        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::ShutUp.bits()) != 0) {
+        if (self.characters[cn].flags & CharacterFlags::ShutUp.bits()) != 0 {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -1439,31 +1345,28 @@ impl State {
             );
             return;
         }
-        Repository::with_characters_mut(|ch| ch[cn].a_end -= 50000);
-        let buf = if Repository::with_characters(|ch| {
-            (ch[cn].flags & CharacterFlags::Invisible.bits()) != 0
-        }) {
+        self.characters[cn].a_end -= 50000;
+        let buf = if (self.characters[cn].flags & CharacterFlags::Invisible.bits()) != 0 {
             format!("Somebody shouts: \"{}\"\n", text)
         } else {
+            let name = self.characters[cn].get_name().to_string();
             format!(
                 "{} shouts: \"{}\"\n",
-                Repository::with_characters(|ch| ch[cn].get_name().to_string()),
+                name,
                 text
             )
         };
 
         for n in 1..core::constants::MAXCHARS {
-            let send = Repository::with_characters(|ch| {
-                ((ch[n].flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
-                    != 0
-                    || ch[n].temp == CT_LGUARD as u16)
-                    && ch[n].used == core::constants::USE_ACTIVE
-            });
+            let send = ((self.characters[n].flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
+                != 0
+                || self.characters[n].temp == CT_LGUARD as u16)
+                && self.characters[n].used == core::constants::USE_ACTIVE;
             if send {
                 self.do_character_log(n, core::types::FontColor::Blue, &buf);
             }
         }
-        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Player.bits()) != 0) {
+        if (self.characters[cn].flags & CharacterFlags::Player.bits()) != 0 {
             log::info!("Shouts \"{}\"", text);
         }
     }
@@ -1471,9 +1374,9 @@ impl State {
     /// Port of `do_noshout(int cn)` from `svr_do.cpp`
     ///
     /// Toggle whether character hears shouts.
-    pub(crate) fn do_noshout(&self, cn: usize) {
-        Repository::with_characters_mut(|ch| ch[cn].flags ^= CharacterFlags::NoShout.bits());
-        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::NoShout.bits()) != 0) {
+    pub(crate) fn do_noshout(&mut self, cn: usize) {
+        self.characters[cn].flags ^= CharacterFlags::NoShout.bits();
+        if (self.characters[cn].flags & CharacterFlags::NoShout.bits()) != 0 {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
@@ -1491,9 +1394,9 @@ impl State {
     /// Port of `do_notell(int cn)` from `svr_do.cpp`
     ///
     /// Toggle whether character receives tells.
-    pub(crate) fn do_notell(&self, cn: usize) {
-        Repository::with_characters_mut(|ch| ch[cn].flags ^= CharacterFlags::NoTell.bits());
-        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::NoTell.bits()) != 0) {
+    pub(crate) fn do_notell(&mut self, cn: usize) {
+        self.characters[cn].flags ^= CharacterFlags::NoTell.bits();
+        if (self.characters[cn].flags & CharacterFlags::NoTell.bits()) != 0 {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
@@ -1511,11 +1414,9 @@ impl State {
     /// Port of `do_nostaff(int cn)` from `svr_do.cpp`
     ///
     /// Toggle whether character hears staff messages.
-    pub fn do_nostaff(&self, cn: usize) {
-        Repository::with_characters_mut(|ch| {
-            ch[cn].flags ^= CharacterFlags::NoStaff.bits();
-        });
-        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::NoStaff.bits()) != 0) {
+    pub fn do_nostaff(&mut self, cn: usize) {
+        self.characters[cn].flags ^= CharacterFlags::NoStaff.bits();
+        if (self.characters[cn].flags & CharacterFlags::NoStaff.bits()) != 0 {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
@@ -1528,10 +1429,10 @@ impl State {
                 "You will hear people using #stell.\n",
             );
         }
-        if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Player.bits()) != 0) {
+        if (self.characters[cn].flags & CharacterFlags::Player.bits()) != 0 {
             log::info!(
                 "Set nostaff to {}",
-                if (Repository::with_characters(|ch| ch[cn].flags) & CharacterFlags::NoStaff.bits())
+                if (self.characters[cn].flags & CharacterFlags::NoStaff.bits())
                     != 0
                 {
                     "on"
@@ -1545,16 +1446,16 @@ impl State {
     /// Port of `do_is_ignore(int cn, int co, int flag)` from `svr_do.cpp`
     ///
     /// Check if cn is ignoring co.
-    pub(crate) fn do_is_ignore(&self, cn: usize, co: usize, flag: i32) -> i32 {
+    pub(crate) fn do_is_ignore(&mut self, cn: usize, co: usize, flag: i32) -> i32 {
         if flag == 0 {
             for n in 30..39 {
-                if Repository::with_characters(|ch| ch[co].data[n] as usize) == cn {
+                if self.characters[co].data[n] as usize == cn {
                     return 1;
                 }
             }
         }
         for n in 50..59 {
-            if Repository::with_characters(|ch| ch[co].data[n] as usize) == cn {
+            if self.characters[co].data[n] as usize == cn {
                 return 1;
             }
         }
@@ -1564,7 +1465,7 @@ impl State {
     /// Port of `do_lookup_char_self(const char *name, int cn)` from `svr_do.cpp`
     ///
     /// Lookup a character by name, supporting "self" keyword.
-    pub(crate) fn do_lookup_char_self(&self, name: &str, cn: usize) -> i32 {
+    pub(crate) fn do_lookup_char_self(&mut self, name: &str, cn: usize) -> i32 {
         if name.eq_ignore_ascii_case("self") {
             return cn as i32;
         }
@@ -1574,7 +1475,7 @@ impl State {
     /// Port of `do_lookup_char(const char *name)` from `svr_do.cpp`
     ///
     /// Lookup a character by name (partial match supported).
-    pub(crate) fn do_lookup_char(&self, name: &str) -> i32 {
+    pub(crate) fn do_lookup_char(&mut self, name: &str) -> i32 {
         let len = name.len();
         if len < 2 {
             return 0;
@@ -1583,14 +1484,14 @@ impl State {
         let mut bestmatch = 0;
         let mut quality = 0;
         for n in 1..core::constants::MAXCHARS {
-            let used = Repository::with_characters(|ch| ch[n].used);
+            let used = self.characters[n].used;
             if used != core::constants::USE_ACTIVE && used != core::constants::USE_NONACTIVE {
                 continue;
             }
-            if Repository::with_characters(|ch| (ch[n].flags & CharacterFlags::Body.bits()) != 0) {
+            if (self.characters[n].flags & CharacterFlags::Body.bits()) != 0 {
                 continue;
             }
-            let nm = Repository::with_characters(|ch| ch[n].get_name().to_lowercase());
+            let nm = self.characters[n].get_name().to_lowercase();
             if !nm.starts_with(&matchname) {
                 continue;
             }
@@ -1598,10 +1499,8 @@ impl State {
                 bestmatch = n;
                 break;
             }
-            let q = if Repository::with_characters(|ch| {
-                (ch[n].flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits())) != 0
-            }) {
-                if Repository::with_characters(|ch| ch[n].x) != 0 {
+            let q = if (self.characters[n].flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits())) != 0 {
+                if self.characters[n].x != 0 {
                     3
                 } else {
                     2

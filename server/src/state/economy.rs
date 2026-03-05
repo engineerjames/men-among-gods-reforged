@@ -1,10 +1,9 @@
 use core::constants::TICKS;
 
+use crate::game_state::GameState;
 use crate::god::God;
-use crate::repository::Repository;
-use crate::state::State;
 
-impl State {
+impl GameState {
     /// Port of `do_balance(int cn)` from `svr_do.cpp`
     ///
     /// Display character's bank balance.
@@ -14,12 +13,10 @@ impl State {
     ///
     /// # Arguments
     /// * `cn` - Character id requesting their balance
-    pub(crate) fn do_balance(&self, cn: usize) {
-        let m = Repository::with_characters(|ch| {
-            ch[cn].x as usize + (ch[cn].y as usize * core::constants::SERVER_MAPX as usize)
-        });
-        let is_bank =
-            Repository::with_map(|map| (map[m].flags & core::constants::MF_BANK as u64) != 0);
+    pub(crate) fn do_balance(&mut self, cn: usize) {
+        let m = self.characters[cn].x as usize
+            + (self.characters[cn].y as usize * core::constants::SERVER_MAPX as usize);
+        let is_bank = (self.map[m].flags & core::constants::MF_BANK as u64) != 0;
         if !is_bank {
             self.do_character_log(
                 cn,
@@ -29,9 +26,9 @@ impl State {
             return;
         }
 
-        let (balance, depot_sold, depot_cost) = Repository::with_characters(|ch| {
-            (ch[cn].data[13], ch[cn].depot_sold as i32, ch[cn].depot_cost)
-        });
+        let balance = self.characters[cn].data[13];
+        let depot_sold = self.characters[cn].depot_sold as i32;
+        let depot_cost = self.characters[cn].depot_cost;
         self.do_character_log(
             cn,
             core::types::FontColor::Yellow,
@@ -53,7 +50,7 @@ impl State {
                     depot_sold
                 ),
             );
-            Repository::with_characters_mut(|ch| ch[cn].depot_sold = 0);
+            self.characters[cn].depot_sold = 0;
         }
 
         if depot_cost != 0 {
@@ -66,7 +63,7 @@ impl State {
                     depot_cost % 100
                 ),
             );
-            Repository::with_characters_mut(|ch| ch[cn].depot_cost = 0);
+            self.characters[cn].depot_cost = 0;
         }
     }
 
@@ -82,11 +79,10 @@ impl State {
     /// * `cn` - Character id performing the withdrawal
     /// * `g` - Gold portion to withdraw
     /// * `s` - Silver portion to withdraw
-    pub(crate) fn do_withdraw(&self, cn: usize, g: i32, s: i32) {
-        let m = Repository::with_characters(|ch| {
-            ch[cn].x as usize + (ch[cn].y as usize * core::constants::SERVER_MAPX as usize)
-        });
-        if Repository::with_map(|map| (map[m].flags & core::constants::MF_BANK as u64) == 0) {
+    pub(crate) fn do_withdraw(&mut self, cn: usize, g: i32, s: i32) {
+        let m = self.characters[cn].x as usize
+            + (self.characters[cn].y as usize * core::constants::SERVER_MAPX as usize);
+        if (self.map[m].flags & core::constants::MF_BANK as u64) == 0 {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -105,7 +101,7 @@ impl State {
             );
             return;
         }
-        let bank = Repository::with_characters(|ch| ch[cn].data[13]);
+        let bank = self.characters[cn].data[13];
         if v > bank {
             self.do_character_log(
                 cn,
@@ -114,12 +110,10 @@ impl State {
             );
             return;
         }
-        Repository::with_characters_mut(|chars| {
-            chars[cn].gold += v;
-            chars[cn].data[13] -= v;
-        });
+        self.characters[cn].gold += v;
+        self.characters[cn].data[13] -= v;
         self.do_update_char(cn);
-        let newbal = Repository::with_characters(|ch| ch[cn].data[13]);
+        let newbal = self.characters[cn].data[13];
         self.do_character_log(
             cn,
             core::types::FontColor::Yellow,
@@ -145,11 +139,10 @@ impl State {
     /// * `cn` - Character id performing the deposit
     /// * `g` - Gold portion to deposit
     /// * `s` - Silver portion to deposit
-    pub(crate) fn do_deposit(&self, cn: usize, g: i32, s: i32) {
-        let m = Repository::with_characters(|ch| {
-            ch[cn].x as usize + (ch[cn].y as usize * core::constants::SERVER_MAPX as usize)
-        });
-        if Repository::with_map(|map| (map[m].flags & core::constants::MF_BANK as u64) == 0) {
+    pub(crate) fn do_deposit(&mut self, cn: usize, g: i32, s: i32) {
+        let m = self.characters[cn].x as usize
+            + (self.characters[cn].y as usize * core::constants::SERVER_MAPX as usize);
+        if (self.map[m].flags & core::constants::MF_BANK as u64) == 0 {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -168,7 +161,7 @@ impl State {
             );
             return;
         }
-        let have = Repository::with_characters(|ch| ch[cn].gold);
+        let have = self.characters[cn].gold;
         if v > have {
             self.do_character_log(
                 cn,
@@ -177,12 +170,10 @@ impl State {
             );
             return;
         }
-        Repository::with_characters_mut(|chars| {
-            chars[cn].gold -= v;
-            chars[cn].data[13] += v;
-        });
+        self.characters[cn].gold -= v;
+        self.characters[cn].data[13] += v;
         self.do_update_char(cn);
-        let newbal = Repository::with_characters(|ch| ch[cn].data[13]);
+        let newbal = self.characters[cn].data[13];
         self.do_character_log(
             cn,
             core::types::FontColor::Yellow,
@@ -207,8 +198,8 @@ impl State {
     /// # Arguments
     /// * `cn` - Character id executing the command
     /// * `val` - Amount of gold (in full gold units) to take from the purse
-    pub(crate) fn do_gold(&self, cn: usize, val: i32) {
-        let citem = Repository::with_characters(|ch| ch[cn].citem);
+    pub(crate) fn do_gold(&mut self, cn: usize, val: i32) {
+        let citem = self.characters[cn].citem;
         if citem != 0 {
             self.do_character_log(
                 cn,
@@ -226,7 +217,7 @@ impl State {
             return;
         }
         let v = val * 100;
-        let have = Repository::with_characters(|ch| ch[cn].gold);
+        let have = self.characters[cn].gold;
         if v > have || v < 0 {
             self.do_character_log(
                 cn,
@@ -236,11 +227,9 @@ impl State {
             return;
         }
 
-        Repository::with_characters_mut(|chars| {
-            chars[cn].gold -= v;
-            chars[cn].citem = 0x8000_0000u32 | (v as u32);
-            chars[cn].set_do_update_flags();
-        });
+        self.characters[cn].gold -= v;
+        self.characters[cn].citem = 0x8000_0000u32 | (v as u32);
+        self.characters[cn].set_do_update_flags();
 
         self.do_update_char(cn);
         self.do_character_log(
@@ -259,8 +248,8 @@ impl State {
     /// # Arguments
     /// * `cn` - Character id giving the item
     /// * `co` - Target character id receiving the item
-    pub fn do_god_give(&self, cn: usize, co: usize) {
-        let in_id = Repository::with_characters(|ch| ch[cn].citem as usize);
+    pub fn do_god_give(&mut self, cn: usize, co: usize) {
+        let in_id = self.characters[cn].citem as usize;
         if in_id == 0 {
             self.do_character_log(
                 cn,
@@ -277,20 +266,16 @@ impl State {
             );
             return;
         }
-        let (iname, cname) = Repository::with_characters(|chars| {
-            let name = Repository::with_items(|items| items[in_id].get_name().to_string());
-            (name, chars[co].get_name().to_string())
-        });
+        let iname = self.items[in_id].get_name().to_string();
+        let cname = self.characters[co].get_name().to_string();
         self.do_character_log(
             cn,
             core::types::FontColor::Yellow,
             &format!("{} given to {}.\n", iname, cname),
         );
         log::info!("IMP: Gave {} (t={}) to {} ({})", iname, in_id, cname, co);
-        Repository::with_characters_mut(|chars| {
-            chars[cn].citem = 0;
-            chars[cn].set_do_update_flags();
-        });
+        self.characters[cn].citem = 0;
+        self.characters[cn].set_do_update_flags();
     }
 
     /// Port of `do_lag(cn, lag)` from `svr_do.cpp`
@@ -302,10 +287,10 @@ impl State {
     /// # Arguments
     /// * `cn` - Character id to modify lag control for
     /// * `lag` - Seconds threshold (0 to disable)
-    pub(crate) fn do_lag(&self, cn: usize, lag: i32) {
+    pub(crate) fn do_lag(&mut self, cn: usize, lag: i32) {
         if lag == 0 {
-            let prev = Repository::with_characters(|ch| ch[cn].data[19]);
-            Repository::with_characters_mut(|ch| ch[cn].data[19] = 0);
+            let prev = self.characters[cn].data[19];
+            self.characters[cn].data[19] = 0;
             self.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
@@ -324,7 +309,7 @@ impl State {
             );
             return;
         }
-        Repository::with_characters_mut(|ch| ch[cn].data[19] = lag * core::constants::TICKS);
+        self.characters[cn].data[19] = lag * core::constants::TICKS;
         self.do_character_log(
             cn,
             core::types::FontColor::Yellow,
@@ -344,7 +329,7 @@ impl State {
     ///
     /// # Arguments
     /// * `rank` - Rank index to lookup
-    pub(crate) fn rank2points(&self, rank: i32) -> i32 {
+    pub(crate) fn rank2points(&mut self, rank: i32) -> i32 {
         match rank {
             0 => 50,
             1 => 850,
@@ -383,12 +368,11 @@ impl State {
     ///
     /// # Arguments
     /// * `cn` - Character id to view requirements for
-    pub(crate) fn do_view_exp_to_rank(&self, cn: usize) {
+    pub(crate) fn do_view_exp_to_rank(&mut self, cn: usize) {
         let current_rank =
-            core::ranks::points2rank(Repository::with_characters(|ch| ch[cn].points_tot as u32))
-                as usize;
+            core::ranks::points2rank(self.characters[cn].points_tot as u32) as usize;
         let exp_to_next = self.rank2points(current_rank as i32);
-        let exp_needed = exp_to_next - Repository::with_characters(|ch| ch[cn].points_tot);
+        let exp_needed = exp_to_next - self.characters[cn].points_tot;
         let next_name = core::ranks::RANK_NAMES
             .get(current_rank + 1)
             .unwrap_or(&"Unknown");
@@ -408,25 +392,23 @@ impl State {
     ///
     /// # Arguments
     /// * `cn` - Character id to receive the report
-    pub(crate) fn do_check_pent_count(&self, cn: usize) {
+    pub(crate) fn do_check_pent_count(&mut self, cn: usize) {
         let mut active = 0;
-        Repository::with_items(|items| {
-            for it in items.iter() {
-                if it.used == core::constants::USE_EMPTY {
-                    continue;
-                }
-                if it.driver != 33 {
-                    continue;
-                }
-                if it.active != u32::MAX {
-                    // active == -1 in C
-                    continue;
-                }
-                active += 1;
+        for it in self.items.iter() {
+            if it.used == core::constants::USE_EMPTY {
+                continue;
             }
-        });
+            if it.driver != 33 {
+                continue;
+            }
+            if it.active != u32::MAX {
+                // active == -1 in C
+                continue;
+            }
+            active += 1;
+        }
 
-        let penta_needed: usize = State::with(|state| state.penta_needed);
+        let penta_needed: usize = self.penta_needed;
         self.do_character_log(
             cn,
             core::types::FontColor::Yellow,

@@ -114,7 +114,7 @@ fn main() -> Result<(), String> {
     }
 
     // Initialize unified game state (owns its own copy of all world data)
-    let mut gs = GameState::initialize().unwrap_or_else(|e| {
+    let gs = GameState::initialize().unwrap_or_else(|e| {
         log::error!("Failed to initialize game state: {}. Exiting.", e);
         process::exit(1);
     });
@@ -128,14 +128,25 @@ fn main() -> Result<(), String> {
         process::exit(1);
     }
 
+    // Register GameState as a global singleton so that modules not yet converted
+    // to receive `gs: &mut GameState` can still access it via State::with / State::with_mut.
+    GameState::register_global(gs);
+
     let mut server = server::Server::new();
 
-    server.initialize(&mut gs)?;
+    GameState::with_mut(|gs| {
+        server.initialize(gs).unwrap_or_else(|e| {
+            log::error!("Failed to initialize server: {}. Exiting.", e);
+            process::exit(1);
+        });
+    });
 
     log::info!("Entering main game loop...");
 
     while !quit_flag.load(Ordering::SeqCst) {
-        server.tick(&mut gs);
+        GameState::with_mut(|gs| {
+            server.tick(gs);
+        });
     }
 
     log::info!("Shutdown signal received, exiting main loop...");
@@ -149,7 +160,9 @@ fn main() -> Result<(), String> {
     server.shutdown_background_saver();
 
     // Perform a full synchronous save to the unified game state
-    gs.shutdown();
+    GameState::with_mut(|gs| {
+        gs.shutdown();
+    });
 
     // Shut down legacy repository (still needed until all modules are converted)
     Repository::shutdown();

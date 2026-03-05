@@ -4,8 +4,7 @@ use core::types::FontColor;
 
 use crate::effect::EffectManager;
 use crate::god::God;
-use crate::repository::Repository;
-use crate::state::State;
+use crate::game_state::GameState;
 use crate::{driver, helpers};
 
 fn atoi_i32(s: &str) -> i32 {
@@ -277,14 +276,14 @@ fn match_command(input: &str) -> Option<&'static str> {
     best.map(|(cmd, _)| cmd)
 }
 
-impl State {
+impl GameState {
     /// Creates a note item with custom text for the character.
     ///
     /// # Arguments
     ///
     /// * `cn` - Character number (index)
     /// * `text` - The note text to create
-    pub(crate) fn do_create_note(&self, cn: usize, text: &str) {
+    pub(crate) fn do_create_note(&mut self, cn: usize, text: &str) {
         if text.is_empty() {
             return;
         }
@@ -295,25 +294,23 @@ impl State {
         log::info!("created note: {}.", text);
 
         for m in 0..40 {
-            let slot = Repository::with_characters(|chars| chars[cn].item[m]);
+            let slot = self.characters[cn].item[m];
             if slot == 0 {
                 if let Some(in_idx) = God::create_item(132) {
-                    Repository::with_items_mut(|items| {
-                        items[in_idx].temp = 0;
-                        items[in_idx].description = [0; 200];
-                        let bytes = text.as_bytes();
-                        let length_to_copy =
-                            std::cmp::min(bytes.len(), items[in_idx].description.len());
-                        items[in_idx].description[..length_to_copy]
-                            .copy_from_slice(&bytes[..length_to_copy]);
+                    self.items[in_idx].temp = 0;
+                    self.items[in_idx].description = [0; 200];
+                    let bytes = text.as_bytes();
+                    let length_to_copy =
+                        std::cmp::min(bytes.len(), self.items[in_idx].description.len());
+                    self.items[in_idx].description[..length_to_copy]
+                        .copy_from_slice(&bytes[..length_to_copy]);
 
-                        items[in_idx].flags |= core::constants::ItemFlags::IF_NOEXPIRE.bits();
-                        items[in_idx].carried = cn as u16;
-                    });
-                    Repository::with_characters_mut(|chars| {
-                        chars[cn].item[m] = in_idx as u32;
-                        chars[cn].set_do_update_flags();
-                    });
+                    self.items[in_idx].flags |= core::constants::ItemFlags::IF_NOEXPIRE.bits();
+                    self.items[in_idx].carried = cn as u16;
+
+                    self.characters[cn].item[m] = in_idx as u32;
+                    self.characters[cn].set_do_update_flags();
+
                     self.do_update_char(cn);
                     return;
                 }
@@ -333,7 +330,7 @@ impl State {
     ///
     /// * `cn` - Character number (index)
     /// * `text` - The emote text
-    pub(crate) fn do_emote(&self, cn: usize, text: &str) {
+    pub(crate) fn do_emote(&mut self, cn: usize, text: &str) {
         if text.is_empty() {
             return;
         }
@@ -341,11 +338,8 @@ impl State {
             return;
         }
 
-        let shutup =
-            Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::ShutUp.bits()) != 0);
-        let invis = Repository::with_characters(|ch| {
-            (ch[cn].flags & CharacterFlags::Invisible.bits()) != 0
-        });
+        let shutup = (self.characters[cn].flags & CharacterFlags::ShutUp.bits()) != 0;
+        let invis = (self.characters[cn].flags & CharacterFlags::Invisible.bits()) != 0;
 
         if shutup {
             self.do_character_log(cn, core::types::FontColor::Red, "You feel guilty.\n");
@@ -354,19 +348,19 @@ impl State {
             self.do_area_log(
                 0,
                 0,
-                Repository::with_characters(|ch| ch[cn].x as i32),
-                Repository::with_characters(|ch| ch[cn].y as i32),
+                self.characters[cn].x as i32,
+                self.characters[cn].y as i32,
                 core::types::FontColor::Green,
                 &format!("Somebody {}.\n", text),
             );
             log::info!("emote(inv): {}", text);
         } else {
-            let name = Repository::with_characters(|ch| ch[cn].get_name().to_string());
+            let name = self.characters[cn].get_name().to_string();
             self.do_area_log(
                 0,
                 0,
-                Repository::with_characters(|ch| ch[cn].x as i32),
-                Repository::with_characters(|ch| ch[cn].y as i32),
+                self.characters[cn].x as i32,
+                self.characters[cn].y as i32,
                 core::types::FontColor::Green,
                 &format!("{} {}.\n", name, text),
             );
@@ -377,21 +371,19 @@ impl State {
     /// Port of `do_become_skua(int cn)` from `svr_do.cpp`
     ///
     /// Transform character into a Skua.
-    pub(crate) fn do_become_skua(&self, cn: usize) {
+    pub(crate) fn do_become_skua(&mut self, cn: usize) {
         // Ported from svr_do.cpp
-        let is_purple = Repository::with_characters(|characters| {
-            (characters[cn].kindred & core::constants::KIN_PURPLE as i32) != 0
-        });
+        let is_purple =
+            (self.characters[cn].kindred & core::constants::KIN_PURPLE as i32) != 0;
 
         if !is_purple {
             self.do_character_log(cn, FontColor::Red, "Hmm. Nothing happened.\n");
             return;
         }
 
-        let ticker = Repository::with_globals(|globals| globals.ticker);
-        let attack_time = Repository::with_characters(|characters| {
-            characters[cn].data[core::constants::CHD_ATTACKTIME]
-        });
+        let ticker = self.globals.ticker;
+        let attack_time =
+            self.characters[cn].data[core::constants::CHD_ATTACKTIME];
 
         let days = (ticker - attack_time) / (60 * core::constants::TICKS) / 60 / 24;
         if days < 30 {
@@ -419,15 +411,13 @@ impl State {
         self.do_character_log(cn, FontColor::Green, "Player killing flag cleared.\n");
         self.do_character_log(cn, FontColor::Red, " \n");
 
-        let (x, y) = Repository::with_characters(|characters| (characters[cn].x, characters[cn].y));
+        let (x, y) = (self.characters[cn].x, self.characters[cn].y);
 
-        Repository::with_characters_mut(|characters| {
-            characters[cn].kindred &= !(core::constants::KIN_PURPLE as i32);
-            characters[cn].data[core::constants::CHD_ATTACKTIME] = 0;
-            characters[cn].data[core::constants::CHD_ATTACKVICT] = 0;
-            characters[cn].temple_x = 512;
-            characters[cn].temple_y = 512;
-        });
+        self.characters[cn].kindred &= !(core::constants::KIN_PURPLE as i32);
+        self.characters[cn].data[core::constants::CHD_ATTACKTIME] = 0;
+        self.characters[cn].data[core::constants::CHD_ATTACKVICT] = 0;
+        self.characters[cn].temple_x = 512;
+        self.characters[cn].temple_y = 512;
 
         chlog!(cn, "Converted to skua. ({} days elapsed)", days);
 
@@ -437,37 +427,35 @@ impl State {
     /// Port of `do_make_soulstone(int cn, int cexp)` from `svr_do.cpp`
     ///
     /// Create a soulstone item.
-    pub(crate) fn do_make_soulstone(&self, cn: usize, cexp: i32) {
+    pub(crate) fn do_make_soulstone(&mut self, cn: usize, cexp: i32) {
         if let Some(in_idx) = God::create_item(1146) {
             let rank = core::ranks::points2rank(cexp as u32);
 
-            Repository::with_items_mut(|items| {
-                let it = &mut items[in_idx];
+            let it = &mut self.items[in_idx];
 
-                // set name
-                it.name = [0; 40];
-                for (i, &b) in b"Soulstone".iter().enumerate() {
-                    it.name[i] = b;
-                }
+            // set name
+            it.name = [0; 40];
+            for (i, &b) in b"Soulstone".iter().enumerate() {
+                it.name[i] = b;
+            }
 
-                // set reference
-                it.reference = [0; 40];
-                for (i, &b) in b"soulstone".iter().enumerate() {
-                    it.reference[i] = b;
-                }
+            // set reference
+            it.reference = [0; 40];
+            for (i, &b) in b"soulstone".iter().enumerate() {
+                it.reference[i] = b;
+            }
 
-                // set description
-                let desc = format!("Level {} soulstone, holding {} exp.", rank, cexp);
-                it.description = [0; 200];
-                let desc_bytes = desc.as_bytes();
-                let length_to_copy = std::cmp::min(desc_bytes.len(), it.description.len());
-                it.description[..length_to_copy].copy_from_slice(&desc_bytes[..length_to_copy]);
+            // set description
+            let desc = format!("Level {} soulstone, holding {} exp.", rank, cexp);
+            it.description = [0; 200];
+            let desc_bytes = desc.as_bytes();
+            let length_to_copy = std::cmp::min(desc_bytes.len(), it.description.len());
+            it.description[..length_to_copy].copy_from_slice(&desc_bytes[..length_to_copy]);
 
-                it.data[0] = rank;
-                it.data[1] = cexp as u32;
-                it.temp = 0;
-                it.driver = 68;
-            });
+            it.data[0] = rank;
+            it.data[1] = cexp as u32;
+            it.temp = 0;
+            it.driver = 68;
 
             God::give_character_item(cn, in_idx);
         }
@@ -476,21 +464,21 @@ impl State {
     /// Port of `do_list_all_flags(int cn, u64 flag)` from `svr_do.cpp`
     ///
     /// List all characters with a specific flag.
-    pub(crate) fn do_list_all_flags(&self, cn: usize, flag: u64) {
+    pub(crate) fn do_list_all_flags(&mut self, cn: usize, flag: u64) {
         for n in 1..core::constants::MAXCHARS {
-            let show = Repository::with_characters(|chars| {
-                let ch = &chars[n];
+            let ch = &mut self.characters[n];
+            let show = {
                 if ch.used == core::constants::USE_EMPTY {
-                    return false;
+                    false
+                } else if (ch.flags & CharacterFlags::Player.bits()) == 0 {
+                    false
+                } else {
+                    (ch.flags & flag) != 0
                 }
-                if (ch.flags & CharacterFlags::Player.bits()) == 0 {
-                    return false;
-                }
-                (ch.flags & flag) != 0
-            });
+            };
 
             if show {
-                let name = Repository::with_characters(|ch| ch[n].get_name().to_string());
+                let name = self.characters[n].get_name().to_string();
                 self.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
@@ -503,17 +491,15 @@ impl State {
     /// Port of `do_list_net(int cn, int co)` from `svr_do.cpp`
     ///
     /// List network information for a character.
-    pub(crate) fn do_list_net(&self, cn: usize, co: usize) {
-        let header = Repository::with_characters(|chars| {
-            format!(
-                "{} is know to log on from the following addresses:\n",
-                chars[co].get_name()
-            )
-        });
+    pub(crate) fn do_list_net(&mut self, cn: usize, co: usize) {
+        let header = format!(
+            "{} is know to log on from the following addresses:\n",
+            self.characters[co].get_name()
+        );
         self.do_character_log(cn, core::types::FontColor::Yellow, &header);
 
         for n in 80..90 {
-            let ip = Repository::with_characters(|chars| chars[co].data[n]);
+            let ip = self.characters[co].data[n];
             let a = (ip & 255) as u8;
             let b = ((ip >> 8) & 255) as u8;
             let c = ((ip >> 16) & 255) as u8;
@@ -529,7 +515,7 @@ impl State {
     /// Port of `do_respawn(int cn, int co)` from `svr_do.cpp`
     ///
     /// Admin command to respawn a character.
-    pub(crate) fn do_respawn(&self, cn: usize, co: usize) {
+    pub(crate) fn do_respawn(&mut self, cn: usize, co: usize) {
         if !(1..core::constants::MAXTCHARS).contains(&co) {
             self.do_character_log(
                 cn,
@@ -538,15 +524,13 @@ impl State {
             );
             return;
         }
-        Repository::with_globals_mut(|globals| {
-            globals.reset_char = co as i32;
-        });
+        self.globals.reset_char = co as i32;
     }
 
     /// Port of `do_npclist(int cn, char* name)` from `svr_do.cpp`
     ///
     /// List NPCs matching a name pattern.
-    pub(crate) fn do_npclist(&self, cn: usize, name: &str) {
+    pub(crate) fn do_npclist(&mut self, cn: usize, name: &str) {
         if name.is_empty() {
             self.do_character_log(
                 cn,
@@ -568,25 +552,21 @@ impl State {
         let mut foundtemp = 0;
 
         for n in 1..core::constants::MAXCHARS {
-            let matched = Repository::with_characters(|chars| {
-                let ch = &chars[n];
+            let ch = &mut self.characters[n];
+            let matched = {
                 if ch.used == core::constants::USE_EMPTY {
-                    return false;
+                    false
+                } else if (ch.flags & CharacterFlags::Player.bits()) != 0 {
+                    false
+                } else {
+                    ch.get_name().to_lowercase().contains(&name.to_lowercase())
                 }
-                if (ch.flags & CharacterFlags::Player.bits()) != 0 {
-                    return false;
-                }
-                ch.get_name().to_lowercase().contains(&name.to_lowercase())
-            });
+            };
 
             if matched {
                 foundalive += 1;
-                let (n_name, n_desc) = Repository::with_characters(|chars| {
-                    (
-                        chars[n].get_name().to_string(),
-                        c_string_to_str(&chars[n].description).to_string(),
-                    )
-                });
+                let n_name = self.characters[n].get_name().to_string();
+                let n_desc = c_string_to_str(&mut self.characters[n].description).to_string();
                 self.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
@@ -596,24 +576,21 @@ impl State {
         }
 
         for n in 1..core::constants::MAXTCHARS {
-            let matched = Repository::with_character_templates(|temps| {
-                if temps[n].used == core::constants::USE_EMPTY {
-                    return false;
+            let matched = {
+                if self.character_templates[n].used == core::constants::USE_EMPTY {
+                    false
+                } else if (self.character_templates[n].flags & CharacterFlags::Player.bits()) != 0 {
+                    false
+                } else {
+                    let name_s = c_string_to_str(&mut self.character_templates[n].name);
+                    name_s.to_lowercase().contains(&name.to_lowercase())
                 }
-                if (temps[n].flags & CharacterFlags::Player.bits()) != 0 {
-                    return false;
-                }
-                let name_s = c_string_to_str(&temps[n].name);
-                name_s.to_lowercase().contains(&name.to_lowercase())
-            });
+            };
 
             if matched {
                 foundtemp += 1;
-                let (t_name, t_desc) = Repository::with_character_templates(|temps| {
-                    let name_s = temps[n].get_name().to_string();
-                    let desc_s = c_string_to_str(&temps[n].description).to_string();
-                    (name_s, desc_s)
-                });
+                let t_name = self.character_templates[n].get_name().to_string();
+                let t_desc = c_string_to_str(&mut self.character_templates[n].description).to_string();
                 self.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
@@ -638,118 +615,110 @@ impl State {
     /// Port of `do_leave(int cn)` from `svr_do.cpp`
     ///
     /// Make character leave current location/mode.
-    pub(crate) fn do_leave(&self, cn: usize) {
-        let name = Repository::with_characters(|ch| ch[cn].get_name().to_string());
+    pub(crate) fn do_leave(&mut self, cn: usize) {
+        let name = self.characters[cn].get_name().to_string();
         self.do_announce(cn, 0, &format!("{} left the game.\n", name));
-        Repository::with_characters_mut(|characters| {
-            characters[cn].flags |= CharacterFlags::NoWho.bits() | CharacterFlags::Invisible.bits();
-        });
+        self.characters[cn].flags |= CharacterFlags::NoWho.bits() | CharacterFlags::Invisible.bits();
     }
 
     /// Port of `do_enter(int cn)` from `svr_do.cpp`
     ///
     /// Make character enter a location/mode.
-    pub(crate) fn do_enter(&self, cn: usize) {
-        Repository::with_characters_mut(|characters| {
-            characters[cn].flags &=
-                !(CharacterFlags::NoWho.bits() | CharacterFlags::Invisible.bits());
-        });
-        let name = Repository::with_characters(|ch| ch[cn].get_name().to_string());
+    pub(crate) fn do_enter(&mut self, cn: usize) {
+        self.characters[cn].flags &=
+            !(CharacterFlags::NoWho.bits() | CharacterFlags::Invisible.bits());
+        let name = self.characters[cn].get_name().to_string();
         self.do_announce(cn, 0, &format!("{} entered the game.\n", name));
     }
 
     /// Port of `do_stat(int cn)` from `svr_do.cpp`
     ///
     /// Display character statistics.
-    pub(crate) fn do_stat(&self, cn: usize) {
-        Repository::with_globals(|globals| {
-            self.do_character_log(
-                cn,
-                core::types::FontColor::Blue,
-                &format!("items: {}/{}\n", globals.item_cnt, core::constants::MAXITEM),
-            );
-            self.do_character_log(
-                cn,
-                core::types::FontColor::Blue,
-                &format!(
-                    "chars: {}/{}\n",
-                    globals.character_cnt,
-                    core::constants::MAXCHARS
-                ),
-            );
-            self.do_character_log(
-                cn,
-                core::types::FontColor::Blue,
-                &format!(
-                    "effes: {}/{}\n",
-                    globals.effect_cnt,
-                    core::constants::MAXEFFECT
-                ),
-            );
+    pub(crate) fn do_stat(&mut self, cn: usize) {
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Blue,
+            &format!("items: {}/{}\n", self.globals.item_cnt, core::constants::MAXITEM),
+        );
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Blue,
+            &format!(
+                "chars: {}/{}\n",
+                self.globals.character_cnt,
+                core::constants::MAXCHARS
+            ),
+        );
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Blue,
+            &format!(
+                "effes: {}/{}\n",
+                self.globals.effect_cnt,
+                core::constants::MAXEFFECT
+            ),
+        );
 
-            self.do_character_log(
-                cn,
-                core::types::FontColor::Blue,
-                &format!("newmoon={}\n", globals.newmoon),
-            );
-            self.do_character_log(
-                cn,
-                core::types::FontColor::Blue,
-                &format!("fullmoon={}\n", globals.fullmoon),
-            );
-            self.do_character_log(
-                cn,
-                core::types::FontColor::Blue,
-                &format!("mdday={} (%28={})\n", globals.mdday, globals.mdday % 28),
-            );
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Blue,
+            &format!("newmoon={}\n", self.globals.newmoon),
+        );
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Blue,
+            &format!("fullmoon={}\n", self.globals.fullmoon),
+        );
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Blue,
+            &format!("mdday={} (%28={})\n", self.globals.mdday, self.globals.mdday % 28),
+        );
 
-            self.do_character_log(
-                cn,
-                core::types::FontColor::Blue,
-                &format!(
-                    "mayhem={}, looting={}, close={}, cap={}, speedy={}\n",
-                    if (globals.flags & core::constants::GF_MAYHEM) != 0 {
-                        "yes"
-                    } else {
-                        "no"
-                    },
-                    if (globals.flags & core::constants::GF_LOOTING) != 0 {
-                        "yes"
-                    } else {
-                        "no"
-                    },
-                    if (globals.flags & core::constants::GF_CLOSEENEMY) != 0 {
-                        "yes"
-                    } else {
-                        "no"
-                    },
-                    if (globals.flags & core::constants::GF_CAP) != 0 {
-                        "yes"
-                    } else {
-                        "no"
-                    },
-                    if (globals.flags & core::constants::GF_SPEEDY) != 0 {
-                        "yes"
-                    } else {
-                        "no"
-                    }
-                ),
-            );
-        });
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Blue,
+            &format!(
+                "mayhem={}, looting={}, close={}, cap={}, speedy={}\n",
+                if (self.globals.flags & core::constants::GF_MAYHEM) != 0 {
+                    "yes"
+                } else {
+                    "no"
+                },
+                if (self.globals.flags & core::constants::GF_LOOTING) != 0 {
+                    "yes"
+                } else {
+                    "no"
+                },
+                if (self.globals.flags & core::constants::GF_CLOSEENEMY) != 0 {
+                    "yes"
+                } else {
+                    "no"
+                },
+                if (self.globals.flags & core::constants::GF_CAP) != 0 {
+                    "yes"
+                } else {
+                    "no"
+                },
+                if (self.globals.flags & core::constants::GF_SPEEDY) != 0 {
+                    "yes"
+                } else {
+                    "no"
+                }
+            ),
+        );
     }
 
     /// Port of `do_become_purple(int cn)` from `svr_do.cpp`
     ///
     /// Transform character into Purple faction.
-    pub(crate) fn do_become_purple(&self, cn: usize) {
+    pub(crate) fn do_become_purple(&mut self, cn: usize) {
         // Ported from svr_do.cpp
-        let ticker = Repository::with_globals(|globals| globals.ticker);
-        let last = Repository::with_characters(|characters| {
-            characters[cn].data[core::constants::CHD_RIDDLER]
-        });
-        let is_purple = Repository::with_characters(|characters| {
-            (characters[cn].kindred & core::constants::KIN_PURPLE as i32) != 0
-        });
+        let ticker = self.globals.ticker;
+        let last =
+            self.characters[cn].data[core::constants::CHD_RIDDLER];
+        let is_purple =
+            (self.characters[cn].kindred & core::constants::KIN_PURPLE as i32) != 0;
 
         if ticker - last < core::constants::TICKS * 60 && !is_purple {
             self.do_character_log(cn, FontColor::Red, " \n");
@@ -779,13 +748,11 @@ impl State {
             self.do_character_log(cn, FontColor::Red, " \n");
 
             let (x, y) =
-                Repository::with_characters(|characters| (characters[cn].x, characters[cn].y));
+                (self.characters[cn].x, self.characters[cn].y);
 
-            Repository::with_characters_mut(|characters| {
-                characters[cn].kindred |= core::constants::KIN_PURPLE as i32;
-                characters[cn].temple_x = 558;
-                characters[cn].temple_y = 542;
-            });
+            self.characters[cn].kindred |= core::constants::KIN_PURPLE as i32;
+            self.characters[cn].temple_x = 558;
+            self.characters[cn].temple_y = 542;
 
             self.do_update_char(cn);
 
@@ -860,21 +827,20 @@ impl State {
         let cmd = arg[0].to_lowercase();
 
         // Read flags for this character
-        let (f_gg, f_c, f_g, f_i, f_s, f_p, f_u, f_sh, f_pol) =
-            Repository::with_characters(|characters| {
-                let flags = characters[cn].flags;
-                (
-                    (flags & CharacterFlags::GreaterGod.bits()) != 0,
-                    (flags & CharacterFlags::Creator.bits()) != 0,
-                    (flags & CharacterFlags::God.bits()) != 0,
-                    (flags & CharacterFlags::Imp.bits()) != 0,
-                    (flags & CharacterFlags::Staff.bits()) != 0,
-                    (flags & CharacterFlags::Player.bits()) != 0,
-                    (flags & CharacterFlags::Usurp.bits()) != 0,
-                    (flags & CharacterFlags::ShutUp.bits()) != 0,
-                    (flags & (CharacterFlags::PohLeader.bits() | CharacterFlags::God.bits())) != 0,
-                )
-            });
+        let (f_gg, f_c, f_g, f_i, f_s, f_p, f_u, f_sh, f_pol) = {
+            let flags = self.characters[cn].flags;
+            (
+                (flags & CharacterFlags::GreaterGod.bits()) != 0,
+                (flags & CharacterFlags::Creator.bits()) != 0,
+                (flags & CharacterFlags::God.bits()) != 0,
+                (flags & CharacterFlags::Imp.bits()) != 0,
+                (flags & CharacterFlags::Staff.bits()) != 0,
+                (flags & CharacterFlags::Player.bits()) != 0,
+                (flags & CharacterFlags::Usurp.bits()) != 0,
+                (flags & CharacterFlags::ShutUp.bits()) != 0,
+                (flags & (CharacterFlags::PohLeader.bits() | CharacterFlags::God.bits())) != 0,
+            )
+        };
 
         let f_m = !f_p;
         let f_gi = f_g || f_i;
@@ -916,9 +882,7 @@ impl State {
             }
             Some("bow") if !f_sh => {
                 log::debug!("Processing bow command for {}", cn);
-                Repository::with_characters_mut(|characters| {
-                    characters[cn].misc_action = core::constants::DR_BOW as u16;
-                });
+                self.characters[cn].misc_action = core::constants::DR_BOW as u16;
                 return;
             }
             Some("balance") if !f_m => {
@@ -1459,7 +1423,7 @@ impl State {
             }
             Some("stell") if f_giu => {
                 log::debug!("Processing stell command for {}", cn);
-                State::with(|state| state.do_stell(cn, args_get(0)));
+                self.do_stell(cn, args_get(0));
                 return;
             }
             Some("stat") if f_g => {
@@ -1538,9 +1502,7 @@ impl State {
             }
             Some("wave") if !f_sh => {
                 log::debug!("Processing wave command for {}", cn);
-                Repository::with_characters_mut(|characters| {
-                    characters[cn].misc_action = core::constants::DR_WAVE as u16;
-                });
+                self.characters[cn].misc_action = core::constants::DR_WAVE as u16;
                 return;
             }
             Some("withdraw") if !f_m => {

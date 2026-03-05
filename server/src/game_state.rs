@@ -16,6 +16,7 @@
 ///   gs.shutdown();
 /// ```
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::{env, fs};
 
 use bincode::{Decode, Encode};
@@ -23,7 +24,14 @@ use bincode::{Decode, Encode};
 use crate::keydb;
 use crate::keydb_store;
 use crate::path_finding::PathFinder;
+use crate::single_thread_cell::SingleThreadCell;
 pub use crate::repository::StorageBackend;
+
+/// Global singleton for transitional access by modules not yet converted to
+/// receive `gs: &mut GameState` as a parameter.  Populated by
+/// [`GameState::register_global`] in `main()` and removed once all call sites
+/// are converted (Phase 5).
+static GAME_STATE: OnceLock<SingleThreadCell<GameState>> = OnceLock::new();
 
 const NORMALIZED_MAGIC: [u8; 4] = *b"MAG2";
 const NORMALIZED_VERSION: u32 = 1;
@@ -238,6 +246,51 @@ impl GameState {
         let mut gs = GameState::new(backend);
         gs.load()?;
         Ok(gs)
+    }
+
+    /// Store the given `GameState` in a global singleton so that modules not
+    /// yet converted to receive `gs: &mut GameState` can still access it via
+    /// [`GameState::with`] / [`GameState::with_mut`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if called more than once.
+    pub fn register_global(gs: GameState) {
+        if GAME_STATE.set(SingleThreadCell::new(gs)).is_err() {
+            panic!("GameState global already registered");
+        }
+    }
+
+    /// Immutable access to the global `GameState` singleton.
+    ///
+    /// **Transitional** — used by modules not yet converted to accept a
+    /// `gs` parameter.  Will be removed once all call sites are migrated.
+    ///
+    /// # Panics
+    ///
+    /// Panics if [`GameState::register_global`] has not been called.
+    pub fn with<F, R>(f: F) -> R
+    where
+        F: FnOnce(&GameState) -> R,
+    {
+        let cell = GAME_STATE.get().expect("GameState not initialized");
+        cell.with(f)
+    }
+
+    /// Mutable access to the global `GameState` singleton.
+    ///
+    /// **Transitional** — used by modules not yet converted to accept a
+    /// `gs` parameter.  Will be removed once all call sites are migrated.
+    ///
+    /// # Panics
+    ///
+    /// Panics if [`GameState::register_global`] has not been called.
+    pub fn with_mut<F, R>(f: F) -> R
+    where
+        F: FnOnce(&mut GameState) -> R,
+    {
+        let cell = GAME_STATE.get().expect("GameState not initialized");
+        cell.with_mut(f)
     }
 
     /// Return the storage backend in use.
