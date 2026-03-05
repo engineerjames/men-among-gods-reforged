@@ -335,7 +335,7 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
         }
 
         // Can't see attacker - panic mode
-        let character_can_see = GameState::with_mut(|state| state.do_char_can_see(cn, co));
+        let character_can_see = GameState::global_mut().do_char_can_see(cn, co);
         if co >= MAXCHARS || character_can_see == 0 {
             characters[cn].data[78] = ticker + (TICKS * 30);
             return 1;
@@ -423,9 +423,9 @@ pub fn npc_seeattack(cn: usize, cc: usize, co: usize) -> i32 {
     GameState::with_characters_mut(|characters| {
         characters[cn].data[92] = TICKS * 60;
 
-        let cn_can_see_co = GameState::with_mut(|state| state.do_char_can_see(cn, co));
+        let cn_can_see_co = GameState::global_mut().do_char_can_see(cn, co);
 
-        let cn_can_see_cc = GameState::with_mut(|state| state.do_char_can_see(cn, cc));
+        let cn_can_see_cc = GameState::global_mut().do_char_can_see(cn, cc);
 
         if cn_can_see_co == 0 || cn_can_see_cc == 0 {
             return 1; // Processed - can't see participants
@@ -934,7 +934,7 @@ pub fn npc_shout(cn: usize, co: usize, code: i32, x: i32, y: i32) -> i32 {
 }
 
 pub fn npc_hitme(cn: usize, co: usize) -> i32 {
-    let cn_can_see_co = GameState::with_mut(|state| state.do_char_can_see(cn, co));
+    let cn_can_see_co = GameState::global_mut().do_char_can_see(cn, co);
 
     if cn_can_see_co == 0 {
         return 1;
@@ -1516,21 +1516,21 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> i32 {
             GameState::with_characters_mut(|characters| {
                 if characters[cn].mode != 2 {
                     characters[cn].mode = 2;
-                    GameState::with_mut(|s| s.do_update_char(cn));
+                    GameState::global_mut().do_update_char(cn);
                 }
             });
         } else if data58 == 1 && a_end > 10000 {
             GameState::with_characters_mut(|characters| {
                 if characters[cn].mode != 1 {
                     characters[cn].mode = 1;
-                    GameState::with_mut(|s| s.do_update_char(cn));
+                    GameState::global_mut().do_update_char(cn);
                 }
             });
         } else {
             GameState::with_characters_mut(|characters| {
                 if characters[cn].mode != 0 {
                     characters[cn].mode = 0;
-                    GameState::with_mut(|s| s.do_update_char(cn));
+                    GameState::global_mut().do_update_char(cn);
                 }
             });
         }
@@ -1545,7 +1545,7 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> i32 {
             let (cx, cy) = GameState::with_characters(|characters| {
                 (characters[cn].x as usize, characters[cn].y as usize)
             });
-            let light = GameState::with_mut(|state| state.check_dlight(cx, cy));
+            let light = GameState::global_mut().check_dlight(cx, cy);
             let map_light = GameState::with_map(|map| {
                 let idx = cx + cy * SERVER_MAPX as usize;
                 map[idx].light
@@ -1807,7 +1807,7 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> i32 {
                     let can_reach =
                         GameState::with_mut(|state| state.can_go(ch_x, ch_y, x as i32, y as i32)) != 0;
                     let can_see =
-                        GameState::with_mut(|state| state.do_char_can_see_item(cn, map_it)) != 0;
+                        GameState::global_mut().do_char_can_see_item(cn, map_it) != 0;
 
                     if can_reach && can_see && it_temp != 18 {
                         GameState::with_characters_mut(|characters| {
@@ -1827,7 +1827,7 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> i32 {
                     let can_reach =
                         GameState::with_mut(|state| state.can_go(ch_x, ch_y, x as i32, y as i32)) != 0;
                     let can_see =
-                        GameState::with_mut(|state| state.do_char_can_see_item(cn, map_it)) != 0;
+                        GameState::global_mut().do_char_can_see_item(cn, map_it) != 0;
 
                     if can_reach && can_see && x + 1 < SERVER_MAPX as usize {
                         let map_idx = x + 1 + y * SERVER_MAPX as usize;
@@ -2512,7 +2512,7 @@ pub fn npc_want_item(cn: usize, in_idx: usize) -> bool {
             log::info!("have {} in citem", items[in_idx].get_name());
         });
 
-        let do_store_item = GameState::with_mut(|state| state.do_store_item(cn));
+        let do_store_item = GameState::global_mut().do_store_item(cn);
         if do_store_item == -1 {
             GameState::with_items_mut(|items| {
                 items[citem as usize].used = USE_EMPTY;
@@ -2532,7 +2532,7 @@ pub fn npc_want_item(cn: usize, in_idx: usize) -> bool {
         GameState::with_items_mut(|items| {
             items[in_idx].carried = cn as u16;
         });
-        GameState::with_mut(|state| state.do_store_item(cn));
+        GameState::global_mut().do_store_item(cn);
         return true;
     }
 
@@ -2547,7 +2547,7 @@ pub fn npc_equip_item(cn: usize, in_idx: usize) -> bool {
             log::info!("have {} in citem", items[in_idx].get_name());
         });
 
-        let do_store_item = GameState::with_mut(|state| state.do_store_item(cn));
+        let do_store_item = GameState::global_mut().do_store_item(cn);
         if do_store_item == -1 {
             GameState::with_items_mut(|items| {
                 items[citem as usize].used = USE_EMPTY;
@@ -2575,7 +2575,7 @@ pub fn npc_equip_item(cn: usize, in_idx: usize) -> bool {
                             characters[cn].citem = worn_n;
                         });
 
-                        let do_store_item = GameState::with_mut(|state| state.do_store_item(cn));
+                        let do_store_item = GameState::global_mut().do_store_item(cn);
                         if do_store_item == -1 {
                             return false; // Stop looting if our backpack is full
                         }
@@ -2820,7 +2820,7 @@ pub fn npc_grave_logic(cn: usize) -> bool {
                     });
 
                     let can_see =
-                        GameState::with_mut(|state| state.do_char_can_see_item(cn, in_idx)) != 0;
+                        GameState::global_mut().do_char_can_see_item(cn, in_idx) != 0;
 
                     if can_reach && can_see && !npc_already_searched_grave(cn, in_idx) {
                         if !npc_loot_grave(cn, in_idx) {
@@ -3190,7 +3190,7 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
     }
 
     // Check if we can see the character
-    let can_see = GameState::with_mut(|state| state.do_char_can_see(cn, co));
+    let can_see = GameState::global_mut().do_char_can_see(cn, co);
     if can_see == 0 {
         return 1; // Processed: we cannot see them, so ignore
     }

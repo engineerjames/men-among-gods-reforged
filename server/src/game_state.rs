@@ -25,7 +25,29 @@ use crate::keydb;
 use crate::keydb_store;
 use crate::path_finding::PathFinder;
 use crate::single_thread_cell::SingleThreadCell;
-pub use crate::repository::StorageBackend;
+
+/// Persistence backend used for loading and saving game data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StorageBackend {
+    /// Load/save from legacy `.dat` files on disk.
+    DatFiles,
+    /// Load/save from KeyDB.
+    KeyDb,
+}
+
+impl StorageBackend {
+    /// Determine the storage backend from the `MAG_STORAGE_BACKEND` env var.
+    pub fn from_env() -> Self {
+        match env::var("MAG_STORAGE_BACKEND")
+            .unwrap_or_default()
+            .to_lowercase()
+            .as_str()
+        {
+            "keydb" | "redis" => StorageBackend::KeyDb,
+            _ => StorageBackend::DatFiles,
+        }
+    }
+}
 
 /// Global singleton for transitional access by modules not yet converted to
 /// receive `gs: &mut GameState` as a parameter.  Populated by
@@ -172,6 +194,38 @@ impl GameState {
         F: FnOnce(&mut Vec<core::types::Map>) -> R,
     {
         Self::with_mut(|gs| f(&mut gs.map))
+    }
+
+    /// Transitional mutable accessor for `effects`.
+    pub fn with_effects_mut<F, R>(f: F) -> R
+    where
+        F: FnOnce(&mut Vec<core::types::Effect>) -> R,
+    {
+        Self::with_mut(|gs| f(&mut gs.effects))
+    }
+
+    /// Transitional immutable accessor for `see_map`.
+    pub fn with_see_map<F, R>(f: F) -> R
+    where
+        F: FnOnce(&Vec<core::types::SeeMap>) -> R,
+    {
+        Self::with(|gs| f(&gs.see_map))
+    }
+
+    /// Transitional immutable accessor for `ban_list`.
+    pub fn with_ban_list<F, R>(f: F) -> R
+    where
+        F: FnOnce(&Vec<core::types::Ban>) -> R,
+    {
+        Self::with(|gs| f(&gs.ban_list))
+    }
+
+    /// Transitional mutable accessor for `ban_list`.
+    pub fn with_ban_list_mut<F, R>(f: F) -> R
+    where
+        F: FnOnce(&mut Vec<core::types::Ban>) -> R,
+    {
+        Self::with_mut(|gs| f(&mut gs.ban_list))
     }
 
     /// Transitional immutable accessor for `globals`.
@@ -381,7 +435,7 @@ impl GameState {
         }
     }
 
-    /// Immutable access to the global `GameState` singleton.
+    /// Transitional access to the global `GameState` singleton.
     ///
     /// **Transitional** — used by modules not yet converted to accept a
     /// `gs` parameter.  Will be removed once all call sites are migrated.
@@ -391,10 +445,10 @@ impl GameState {
     /// Panics if [`GameState::register_global`] has not been called.
     pub fn with<F, R>(f: F) -> R
     where
-        F: FnOnce(&GameState) -> R,
+        F: FnOnce(&mut GameState) -> R,
     {
         let cell = GAME_STATE.get().expect("GameState not initialized");
-        cell.with(f)
+        cell.with_mut(f)
     }
 
     /// Mutable access to the global `GameState` singleton.
@@ -411,6 +465,16 @@ impl GameState {
     {
         let cell = GAME_STATE.get().expect("GameState not initialized");
         cell.with_mut(f)
+    }
+
+    /// Direct mutable access to the global `GameState` singleton.
+    ///
+    /// # Panics
+    ///
+    /// Panics if [`GameState::register_global`] has not been called.
+    pub fn global_mut() -> &'static mut GameState {
+        let cell = GAME_STATE.get().expect("GameState not initialized");
+        cell.get_mut()
     }
 
     /// Return the storage backend in use.

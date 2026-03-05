@@ -136,9 +136,12 @@ impl NetworkManager {
                 );
                 // Attempt to log out the associated character and clean up
                 let cn = p.usnr;
-                GameState::with_mut(|gs| {
-                    player::plr_logout(gs, cn, player_id, enums::LogoutReason::Unknown);
-                });
+                player::plr_logout(
+                    GameState::global_mut(),
+                    cn,
+                    player_id,
+                    enums::LogoutReason::Unknown,
+                );
                 if let Some(s) = p.sock.take() {
                     let _ = s.shutdown(Shutdown::Both);
                 }
@@ -224,9 +227,12 @@ impl NetworkManager {
                     // Connection too slow, terminate
                     log::warn!("Connection too slow for player {}, terminating", player_id);
                     let cn = p.usnr;
-                    GameState::with_mut(|gs| {
-                        player::plr_logout(gs, cn, player_id, enums::LogoutReason::ClientTooSlow);
-                    });
+                    player::plr_logout(
+                        GameState::global_mut(),
+                        cn,
+                        player_id,
+                        enums::LogoutReason::ClientTooSlow,
+                    );
                     if let Some(s) = p.sock.take() {
                         let _ = s.shutdown(Shutdown::Both);
                     }

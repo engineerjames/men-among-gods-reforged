@@ -1,7 +1,7 @@
-use crate::game_state::GameState;
-use crate::area::is_in_pentagram_quest;
+use crate::area;
 use crate::core::types::skilltab;
 use crate::effect::EffectManager;
+use crate::game_state::GameState;
 use crate::god::God;
 use crate::helpers::{self};
 use crate::lab9::Labyrinth9;
@@ -1175,7 +1175,9 @@ pub fn teleport(cn: usize, item_idx: usize) -> i32 {
     let data2 = GameState::with_items(|items| items[item_idx].data[2]);
     if data2 != 0 {
         let data3 = GameState::with_items(|items| items[item_idx].data[3]);
-        helpers::use_labtransfer(cn, data2 as i32, data3 as i32);
+        GameState::with_mut(|gs| {
+            helpers::use_labtransfer(gs, cn, data2 as i32, data3 as i32);
+        });
         return 1;
     }
 
@@ -3133,9 +3135,8 @@ pub fn use_mine(cn: usize, item_idx: usize) -> i32 {
     use core::constants::{AT_STREN, WN_RHAND};
 
     // Get character strength
-    let mut str = GameState::with_characters(|characters| {
-        characters[cn].attrib[AT_STREN as usize][5] as i32
-    });
+    let mut str =
+        GameState::with_characters(|characters| characters[cn].attrib[AT_STREN as usize][5] as i32);
 
     // Check and subtract endurance
     let insufficient_endurance = GameState::with_characters_mut(|characters| {
@@ -3258,9 +3259,8 @@ pub fn use_mine_fast(cn: usize, item_idx: usize) -> i32 {
     }
 
     // Get item position and template
-    let (x, y, temp) = GameState::with_items(|items| {
-        (items[item_idx].x, items[item_idx].y, items[item_idx].temp)
-    });
+    let (x, y, temp) =
+        GameState::with_items(|items| (items[item_idx].x, items[item_idx].y, items[item_idx].temp));
 
     EffectManager::fx_add_effect(
         10,
@@ -3789,7 +3789,7 @@ pub fn solved_pentagram(cn: usize, item_idx: usize) -> i32 {
             });
         }
 
-        if is_in_pentagram_quest(n) {
+        if area::is_in_pentagram_quest_gs(GameState::global_mut(), n) {
             characters_in_pents += 1;
         }
     }
@@ -4470,9 +4470,8 @@ pub fn use_kill_undead(cn: usize, item_idx: usize) -> i32 {
     });
 
     // Get character position
-    let (ch_x, ch_y) = GameState::with_characters(|characters| {
-        (characters[cn].x as i32, characters[cn].y as i32)
-    });
+    let (ch_x, ch_y) =
+        GameState::with_characters(|characters| (characters[cn].x as i32, characters[cn].y as i32));
 
     // Damage all undead in 8x8 area
     for y in (ch_y - 8)..(ch_y + 8) {
@@ -4601,9 +4600,8 @@ pub fn teleport3(cn: usize, item_idx: usize) -> i32 {
             (items[citem].flags & ItemFlags::IF_LABYDESTROY.bits()) != 0
         });
         if has_flag {
-            let item_ref = GameState::with_items(|items| {
-                c_string_to_str(&items[citem].reference).to_string()
-            });
+            let item_ref =
+                GameState::with_items(|items| c_string_to_str(&items[citem].reference).to_string());
             GameState::with_characters_mut(|characters| {
                 characters[cn].citem = 0;
             });
@@ -4816,9 +4814,8 @@ pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
 
     // Mark this shrine as visited
     let shrine_bit = GameState::with_items(|items| items[item_idx].data[0]);
-    let already_visited = GameState::with_characters(|characters| {
-        (characters[cn].data[21] as u32 & shrine_bit) != 0
-    });
+    let already_visited =
+        GameState::with_characters(|characters| (characters[cn].data[21] as u32 & shrine_bit) != 0);
 
     if !already_visited {
         GameState::with_characters_mut(|characters| {
@@ -5390,9 +5387,8 @@ pub fn use_lab8_shrine(cn: usize, item_idx: usize) -> i32 {
         });
     }
 
-    let gift_ref = GameState::with_items(|items| {
-        c_string_to_str(&items[gift.unwrap()].reference).to_string()
-    });
+    let gift_ref =
+        GameState::with_items(|items| c_string_to_str(&items[gift.unwrap()].reference).to_string());
     GameState::with_mut(|state| {
         state.do_character_log(
             cn,
@@ -5541,7 +5537,6 @@ pub fn change_to_archtemplar(cn: usize) {
 }
 
 pub fn change_to_archharakim(cn: usize) {
-
     // Check willpower requirement
     let willpower =
         GameState::with_characters(|characters| characters[cn].attrib[AT_WILL as usize][0]);
@@ -7365,7 +7360,6 @@ pub fn greenlingball(item_idx: usize) {
 }
 
 pub fn expire_blood_penta(item_idx: usize) {
-
     GameState::with_items_mut(|items| {
         let item = &mut items[item_idx];
         if item.data[0] != 0 {
@@ -7379,7 +7373,6 @@ pub fn expire_blood_penta(item_idx: usize) {
 }
 
 pub fn expire_driver(item_idx: usize) {
-
     let driver = GameState::with_items(|items| items[item_idx].driver);
 
     match driver {

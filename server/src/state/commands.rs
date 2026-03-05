@@ -3,8 +3,8 @@ use core::string_operations::c_string_to_str;
 use core::types::FontColor;
 
 use crate::effect::EffectManager;
-use crate::god::God;
 use crate::game_state::GameState;
+use crate::god::God;
 use crate::{driver, helpers};
 
 fn atoi_i32(s: &str) -> i32 {
@@ -373,8 +373,7 @@ impl GameState {
     /// Transform character into a Skua.
     pub(crate) fn do_become_skua(&mut self, cn: usize) {
         // Ported from svr_do.cpp
-        let is_purple =
-            (self.characters[cn].kindred & core::constants::KIN_PURPLE as i32) != 0;
+        let is_purple = (self.characters[cn].kindred & core::constants::KIN_PURPLE as i32) != 0;
 
         if !is_purple {
             self.do_character_log(cn, FontColor::Red, "Hmm. Nothing happened.\n");
@@ -382,8 +381,7 @@ impl GameState {
         }
 
         let ticker = self.globals.ticker;
-        let attack_time =
-            self.characters[cn].data[core::constants::CHD_ATTACKTIME];
+        let attack_time = self.characters[cn].data[core::constants::CHD_ATTACKTIME];
 
         let days = (ticker - attack_time) / (60 * core::constants::TICKS) / 60 / 24;
         if days < 30 {
@@ -590,7 +588,8 @@ impl GameState {
             if matched {
                 foundtemp += 1;
                 let t_name = self.character_templates[n].get_name().to_string();
-                let t_desc = c_string_to_str(&mut self.character_templates[n].description).to_string();
+                let t_desc =
+                    c_string_to_str(&mut self.character_templates[n].description).to_string();
                 self.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
@@ -618,7 +617,8 @@ impl GameState {
     pub(crate) fn do_leave(&mut self, cn: usize) {
         let name = self.characters[cn].get_name().to_string();
         self.do_announce(cn, 0, &format!("{} left the game.\n", name));
-        self.characters[cn].flags |= CharacterFlags::NoWho.bits() | CharacterFlags::Invisible.bits();
+        self.characters[cn].flags |=
+            CharacterFlags::NoWho.bits() | CharacterFlags::Invisible.bits();
     }
 
     /// Port of `do_enter(int cn)` from `svr_do.cpp`
@@ -638,7 +638,11 @@ impl GameState {
         self.do_character_log(
             cn,
             core::types::FontColor::Blue,
-            &format!("items: {}/{}\n", self.globals.item_cnt, core::constants::MAXITEM),
+            &format!(
+                "items: {}/{}\n",
+                self.globals.item_cnt,
+                core::constants::MAXITEM
+            ),
         );
         self.do_character_log(
             cn,
@@ -672,7 +676,11 @@ impl GameState {
         self.do_character_log(
             cn,
             core::types::FontColor::Blue,
-            &format!("mdday={} (%28={})\n", self.globals.mdday, self.globals.mdday % 28),
+            &format!(
+                "mdday={} (%28={})\n",
+                self.globals.mdday,
+                self.globals.mdday % 28
+            ),
         );
 
         self.do_character_log(
@@ -715,10 +723,8 @@ impl GameState {
     pub(crate) fn do_become_purple(&mut self, cn: usize) {
         // Ported from svr_do.cpp
         let ticker = self.globals.ticker;
-        let last =
-            self.characters[cn].data[core::constants::CHD_RIDDLER];
-        let is_purple =
-            (self.characters[cn].kindred & core::constants::KIN_PURPLE as i32) != 0;
+        let last = self.characters[cn].data[core::constants::CHD_RIDDLER];
+        let is_purple = (self.characters[cn].kindred & core::constants::KIN_PURPLE as i32) != 0;
 
         if ticker - last < core::constants::TICKS * 60 && !is_purple {
             self.do_character_log(cn, FontColor::Red, " \n");
@@ -747,8 +753,7 @@ impl GameState {
             );
             self.do_character_log(cn, FontColor::Red, " \n");
 
-            let (x, y) =
-                (self.characters[cn].x, self.characters[cn].y);
+            let (x, y) = (self.characters[cn].x, self.characters[cn].y);
 
             self.characters[cn].kindred |= core::constants::KIN_PURPLE as i32;
             self.characters[cn].temple_x = 558;
@@ -1468,7 +1473,7 @@ impl GameState {
             }
             Some("time") => {
                 log::debug!("Processing time command for {}", cn);
-                helpers::show_time(cn);
+                helpers::show_time(self, cn);
                 return;
             }
             Some("tinfo") if f_g => {

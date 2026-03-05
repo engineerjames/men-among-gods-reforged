@@ -11,9 +11,8 @@ use core::{
 };
 
 use crate::{
-    driver, enums, game_state::GameState, god::God, helpers, keydb,
-    network_manager::NetworkManager, repository::Repository, server::Server, state::State,
-    types::cmap::CMap,
+    driver, enums, game_state::GameState, game_state::GameState as Repository, god::God, helpers,
+    keydb, network_manager::NetworkManager, server::Server, state::State, types::cmap::CMap,
 };
 
 /// Port of `plr_logout(int cn, int player_id, LogoutReason reason)` from `svr_tick.cpp`
@@ -206,7 +205,7 @@ pub fn plr_logout(
             });
 
             // Remove references to this character from other enemies lists.
-            State::remove_enemy(character_id);
+            State::with_mut(|state| state.remove_enemy(character_id));
 
             // Handle lag scroll
             if reason == enums::LogoutReason::IdleTooLong
@@ -2667,7 +2666,7 @@ pub fn plr_getmap_complete(nr: usize) {
                 continue;
             }
 
-            let tmp = State::check_dlightm(mi);
+            let tmp = State::with_mut(|state| state.check_dlightm(mi));
 
             let mut light = std::cmp::max(Repository::with_map(|map| map[mi].light as i32), tmp);
             light = State::with_mut(|state| state.do_character_calculate_light(cn, light));
@@ -3470,7 +3469,7 @@ fn plr_login(gs: &mut GameState, nr: usize) {
     let intro2 = "May your visit here be... interesting.\n";
     let intro3 = "\n";
     let intro4 = "Use #help (or /help) to get a listing of the text commands.\n";
-    let mut message_of_the_day = Repository::latest_message_of_the_day();
+    let mut message_of_the_day = Repository::with(|gs| gs.latest_message_of_the_day());
     if !message_of_the_day.is_empty() && !message_of_the_day.ends_with('\n') {
         message_of_the_day.push('\n');
     }
@@ -5716,6 +5715,8 @@ fn plr_cmd_setuser(_nr: usize) {
             if pos == 65 {
                 // Work inside a mutable characters closure to inspect & modify
                 Repository::with_characters_mut(|ch| {
+                    let is_new_user =
+                        (ch[cn].flags & core::constants::CharacterFlags::NewUser.bits()) != 0;
                     // Name handling: examine text[0]
                     let name_bytes = &mut ch[cn].text[0];
                     let name_end = name_bytes
@@ -5725,9 +5726,7 @@ fn plr_cmd_setuser(_nr: usize) {
                     // IMPORTANT: Match the C++ gating logic.
                     // Only validate/commit the name when the user is new AND the name length is sane.
                     // Otherwise, do not touch `name`/`reference` (prevents committing empty names).
-                    let should_process_name = name_end > 3
-                        && name_end < 38
-                        && (ch[cn].flags & core::constants::CharacterFlags::NewUser.bits()) != 0;
+                    let should_process_name = name_end > 3 && name_end < 38 && is_new_user;
 
                     if should_process_name {
                         let mut flag: i32 = 0;

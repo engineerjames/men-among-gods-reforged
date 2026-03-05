@@ -4,7 +4,9 @@ use core::{
     types::FontColor,
 };
 
-use crate::{driver, game_state::GameState, god::God, populate, repository::Repository};
+use crate::{
+    driver, game_state::GameState, game_state::GameState as Repository, god::God, populate,
+};
 
 #[macro_export]
 macro_rules! chlog {
@@ -179,21 +181,21 @@ pub fn create_special_item(temp: usize) -> Option<usize> {
 /// into the lab. Returns `true` on success, `false` on failure.
 ///
 /// # Arguments
+/// * `gs` - Unified mutable game state
 /// * `cn` - Player character initiating the lab transfer
 /// * `nr` - Lab number (determines enemy template)
 /// * `exp` - Experience reward associated with the lab
-pub fn use_labtransfer(cn: usize, nr: i32, exp: i32) -> bool {
-    use crate::repository::Repository;
+pub fn use_labtransfer(gs: &mut GameState, cn: usize, nr: i32, exp: i32) -> bool {
     use core::constants::{CharacterFlags, SERVER_MAPX};
     // 1. Check if area is busy (any player or labkeeper in 164..184 x 159..178)
     let mut busy_name: Option<String> = None;
     'outer: for y in 159..179 {
         for x in 164..=184 {
-            let co = Repository::with_map(|map| map[x + y * SERVER_MAPX as usize].ch as usize);
+            let co = gs.map[x + y * SERVER_MAPX as usize].ch as usize;
             if co != 0 {
-                let flags = Repository::with_characters(|ch| ch[co].flags);
+                let flags = gs.characters[co].flags;
                 if flags & (CharacterFlags::Player.bits() | CharacterFlags::LabKeeper.bits()) != 0 {
-                    let name = Repository::with_characters(|ch| ch[co].get_name().to_string());
+                    let name = gs.characters[co].get_name().to_string();
                     busy_name = Some(name);
                     break 'outer;
                 }
@@ -201,19 +203,17 @@ pub fn use_labtransfer(cn: usize, nr: i32, exp: i32) -> bool {
         }
     }
     if let Some(name) = busy_name {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                FontColor::Red,
-                &format!("Sorry, the area is still busy. {} is there.\n", name),
-            );
-            log::info!(
-                "Player {} attempted to enter lab {}, but area is busy with {}",
-                Repository::with_characters(|ch| ch[cn].get_name().to_string()),
-                nr,
-                name
-            );
-        });
+        gs.do_character_log(
+            cn,
+            FontColor::Red,
+            &format!("Sorry, the area is still busy. {} is there.\n", name),
+        );
+        log::info!(
+            "Player {} attempted to enter lab {}, but area is busy with {}",
+            gs.characters[cn].get_name().to_string(),
+            nr,
+            name
+        );
         return false;
     }
 
@@ -229,13 +229,11 @@ pub fn use_labtransfer(cn: usize, nr: i32, exp: i32) -> bool {
         8 => 845, // forest/golem
         9 => 919, // riddle
         _ => {
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    FontColor::Red,
-                    "Sorry, could not determine which enemy to send you.\n",
-                )
-            });
+            gs.do_character_log(
+                cn,
+                FontColor::Red,
+                "Sorry, could not determine which enemy to send you.\n",
+            );
             chlog!(cn, "Sorry, could not determine which enemy to send you");
             return false;
         }
@@ -246,65 +244,56 @@ pub fn use_labtransfer(cn: usize, nr: i32, exp: i32) -> bool {
         Some(co) => co,
         None => {
             chlog!(cn, "Sorry, could not create your enemy.");
-            GameState::with_mut(|state| {
-                state.do_character_log(cn, FontColor::Red, "Sorry, could not create your enemy.\n");
-                log::error!(
-                    "use_labtransfer: pop_create_char({}) failed for player {}",
-                    template,
-                    Repository::with_characters(|ch| ch[cn].get_name().to_string())
-                );
-            });
+            gs.do_character_log(cn, FontColor::Red, "Sorry, could not create your enemy.\n");
+            log::error!(
+                "use_labtransfer: pop_create_char({}) failed for player {}",
+                template,
+                gs.characters[cn].get_name().to_string()
+            );
             return false;
         }
     };
 
     if !God::drop_char(co, 174, 172) {
-        GameState::with_mut(|state| {
-            state.do_character_log(cn, FontColor::Red, "Sorry, could not place your enemy.\n");
-            log::error!(
-                "use_labtransfer: god_drop_char({}, 174, 172) failed for player {}",
-                co,
-                Repository::with_characters(|ch| ch[cn].get_name().to_string())
-            );
-        });
+        gs.do_character_log(cn, FontColor::Red, "Sorry, could not place your enemy.\n");
+        log::error!(
+            "use_labtransfer: god_drop_char({}, 174, 172) failed for player {}",
+            co,
+            gs.characters[cn].get_name().to_string()
+        );
         God::destroy_items(co);
-        Repository::with_characters_mut(|ch| ch[co].used = core::constants::USE_EMPTY);
+        gs.characters[co].used = core::constants::USE_EMPTY;
         return false;
     }
 
     // Set up enemy data fields and flags
-    Repository::with_characters_mut(|ch| {
-        ch[co].data[64] =
-            Repository::with_globals(|globs| globs.ticker) + 5 * 60 * core::constants::TICKS; // die in 2 min
-        ch[co].data[24] = 0; // do not interfere in fights
-        ch[co].data[36] = 0; // no walking around
-        ch[co].data[43] = 0; // don't attack anyone
-        ch[co].data[80] = 0; // no enemies
-        ch[co].data[0] = cn as i32; // person to make solve
-        ch[co].data[1] = nr; // labnr
-        ch[co].data[2] = exp; // exp plr is supposed to get
-        ch[co].flags |= CharacterFlags::LabKeeper.bits() | CharacterFlags::NoSleep.bits();
-        ch[co].flags &= !CharacterFlags::Respawn.bits();
-    });
+    gs.characters[co].data[64] = gs.globals.ticker + 5 * 60 * core::constants::TICKS; // die in 2 min
+    gs.characters[co].data[24] = 0; // do not interfere in fights
+    gs.characters[co].data[36] = 0; // no walking around
+    gs.characters[co].data[43] = 0; // don't attack anyone
+    gs.characters[co].data[80] = 0; // no enemies
+    gs.characters[co].data[0] = cn as i32; // person to make solve
+    gs.characters[co].data[1] = nr; // labnr
+    gs.characters[co].data[2] = exp; // exp plr is supposed to get
+    gs.characters[co].flags |= CharacterFlags::LabKeeper.bits() | CharacterFlags::NoSleep.bits();
+    gs.characters[co].flags &= !CharacterFlags::Respawn.bits();
 
     // npc_add_enemy(co, cn, 1): make him attack the solver (assume function exists)
     driver::npc_add_enemy(co, cn, true);
 
     // god_transfer_char(cn, 174, 166): transfer player (assume function exists)
     if !God::transfer_char(cn, 174, 166) {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                FontColor::Red,
-                "Sorry, could not transfer you to your enemy.\n",
-            );
-            log::error!(
-                "use_labtransfer: god_transfer_char({}, 174, 166) failed",
-                Repository::with_characters(|ch| ch[cn].get_name().to_string())
-            );
-        });
+        gs.do_character_log(
+            cn,
+            FontColor::Red,
+            "Sorry, could not transfer you to your enemy.\n",
+        );
+        log::error!(
+            "use_labtransfer: god_transfer_char({}, 174, 166) failed",
+            gs.characters[cn].get_name().to_string()
+        );
         God::destroy_items(co);
-        Repository::with_characters_mut(|ch| ch[co].used = core::constants::USE_EMPTY);
+        gs.characters[co].used = core::constants::USE_EMPTY;
         return false;
     }
     chlog!(cn, "Entered Labkeeper room for lab {}", nr);
@@ -481,7 +470,7 @@ pub fn ago_string(dt: u128) -> String {
 ///
 /// Port of the original `show_time(int cn)` which printed something like:
 /// "It's H:MM on the Dth of the Mth month of the year Y."
-pub fn show_time(cn: usize) {
+pub fn show_time(gs: &mut GameState, cn: usize) {
     // Read time values from globals
     let (mdtime, mdday, mdyear) = Repository::with_globals(|g| (g.mdtime, g.mdday, g.mdyear));
 
@@ -507,16 +496,14 @@ pub fn show_time(cn: usize) {
     let day_suf = ordinal_suffix(day);
     let month_suf = ordinal_suffix(month);
 
-    GameState::with_mut(|state| {
-        state.do_character_log(
-            cn,
-            core::types::FontColor::Yellow,
-            &format!(
-                "It's {}:{:02} on the {}{} of the {}{} month of the year {}.\n",
-                hour, minute, day, day_suf, month, month_suf, year
-            ),
-        );
-    });
+    gs.do_character_log(
+        cn,
+        core::types::FontColor::Yellow,
+        &format!(
+            "It's {}:{:02} on the {}{} of the {}{} month of the year {}.\n",
+            hour, minute, day, day_suf, month, month_suf, year
+        ),
+    );
 }
 
 // WTF is this some kind of weird hash function?

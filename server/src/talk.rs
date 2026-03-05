@@ -1881,8 +1881,8 @@ static KNOW: [Know; 227] = [
 ];
 
 use crate::effect::EffectManager;
+use crate::game_state::GameState as Repository;
 use crate::god::God;
-use crate::repository::Repository;
 use crate::state::State;
 use crate::{driver, helpers};
 

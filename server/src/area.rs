@@ -1,10 +1,5 @@
-use core::area::AREAS;
-
 use crate::game_state::GameState;
-
-pub fn is_in_pentagram_quest(cn: usize) -> bool {
-    GameState::with_mut(|gs| is_in_pentagram_quest_gs(gs, cn))
-}
+use core::area::AREAS;
 
 pub fn is_in_pentagram_quest_gs(gs: &mut GameState, cn: usize) -> bool {
     if !(1..crate::core::constants::MAXCHARS).contains(&cn) {
@@ -23,50 +18,6 @@ pub fn is_in_pentagram_quest_gs(gs: &mut GameState, cn: usize) -> bool {
         }
     }
     false
-}
-
-// Unused in original implementation as well
-#[allow(dead_code)]
-pub fn get_area(cn: usize, verbose: bool) -> String {
-    GameState::with_mut(|gs| get_area_gs(gs, cn, verbose))
-}
-
-pub fn get_area_gs(gs: &mut GameState, cn: usize, verbose: bool) -> String {
-    if !(1..crate::core::constants::MAXCHARS).contains(&cn) {
-        return String::new();
-    }
-
-    let (x, y) = (gs.characters[cn].x as i32, gs.characters[cn].y as i32);
-    let mut buf = String::new();
-    let mut first = true;
-
-    for a in AREAS.iter() {
-        if a.contains(x, y) {
-            if verbose {
-                if first {
-                    buf.push_str("In ");
-                    first = false;
-                } else {
-                    buf.push_str(", in ");
-                }
-                match a.flag {
-                    1 => buf.push_str("the "),
-                    2 => buf.push_str("on "),
-                    3 => buf.push_str("at "),
-                    _ => {}
-                }
-                buf.push_str(a.name);
-            } else {
-                if !first {
-                    buf.push_str(", ");
-                }
-                first = false;
-                buf.push_str(a.name);
-            }
-        }
-    }
-
-    buf
 }
 
 pub fn get_area_m(x: i32, y: i32, verbose: bool) -> String {

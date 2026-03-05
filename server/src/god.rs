@@ -9,7 +9,7 @@ use core::{
 
 use crate::{
     area, chlog, driver, effect::EffectManager, enums::LogoutReason, game_state::GameState,
-    helpers, player, populate, repository::Repository, server::Server, state::State,
+    game_state::GameState as Repository, helpers, player, populate, server::Server, state::State,
 };
 
 pub struct God {}
@@ -2358,7 +2358,7 @@ impl God {
                     let name = c.get_name();
                     let points_str = helpers::format_number(c.points_tot);
                     let area_str = if showarea {
-                        area::get_area(n, false)
+                        area::get_area_m(c.x as i32, c.y as i32, false)
                     } else {
                         "--------".to_string()
                     };
@@ -2398,7 +2398,7 @@ impl God {
                     let rank_short = helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
 
                     let name = c.get_name();
-                    let area_str = area::get_area(n, false);
+                    let area_str = area::get_area_m(c.x as i32, c.y as i32, false);
                     let n_is_purple = (c.kindred as u32 & core::constants::KIN_PURPLE) != 0;
                     let is_poh = (n_flags & CharacterFlags::Poh.bits()) != 0;
                     let is_poh_leader = (n_flags & CharacterFlags::PohLeader.bits()) != 0;
@@ -2494,7 +2494,7 @@ impl God {
                     let name = c.get_name();
                     let points_str = helpers::format_number(c.points_tot);
                     let area_str = if showarea {
-                        area::get_area(n, false)
+                        area::get_area_m(c.x as i32, c.y as i32, false)
                     } else {
                         "--------".to_string()
                     };
@@ -2597,7 +2597,7 @@ impl God {
                     let rank_short = helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
                     let name = c.get_name();
                     let area_str = if showarea {
-                        area::get_area(n, false)
+                        area::get_area_m(c.x as i32, c.y as i32, false)
                     } else {
                         "--------".to_string()
                     };
@@ -2625,7 +2625,11 @@ impl God {
                 if Character::is_sane_character(gc) && characters[gc].is_living_character(gc) {
                     let gc_name = characters[gc].get_name();
                     let points_str = helpers::format_number(characters[gc].points_tot);
-                    let area_str = area::get_area(gc, false);
+                    let area_str = area::get_area_m(
+                        characters[gc].x as i32,
+                        characters[gc].y as i32,
+                        false,
+                    );
                     state.do_character_log(
                         cn,
                         core::types::FontColor::Blue,

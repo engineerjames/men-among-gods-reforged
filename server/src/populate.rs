@@ -13,10 +13,9 @@ use crate::{
     driver::{self, use_item},
     effect::EffectManager,
     game_state::GameState,
+    game_state::GameState as Repository,
     god::God,
     helpers, player,
-    repository::Repository,
-    state::State,
 };
 
 /// Port of `init_lights` from `populate.cpp`
@@ -73,12 +72,6 @@ pub fn init_lights(gs: &mut GameState) {
     }
 
     log::info!("Initialized lights: {} items, {} indoor tiles", cnt1, cnt2);
-}
-
-/// Port of `pop_create_item` from `populate.cpp`
-/// Creates items for NPCs based on alignment and template
-pub fn pop_create_item_gs(_gs: &mut GameState, temp: usize, cn: usize) -> usize {
-    pop_create_item(temp, cn)
 }
 
 pub fn pop_create_item(temp: usize, cn: usize) -> usize {
@@ -898,7 +891,7 @@ pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
         }
     }
 
-    State::with(|state| state.do_update_char(cn));
+    GameState::global_mut().do_update_char(cn);
     Repository::with_globals_mut(|globals| {
         globals.npcs_created += 1;
     });
@@ -908,18 +901,14 @@ pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
 
 /// Port of `reset_char` from `populate.cpp`
 /// Resets a character template and all instances
-pub fn reset_char(n: usize) {
+pub fn reset_char(gs: &mut GameState, n: usize) {
     if !(1..MAXTCHARS).contains(&n) {
         log::error!("reset_char: invalid template {}", n);
         return;
     }
 
-    let (used, has_respawn) = Repository::with_character_templates(|templates| {
-        (
-            templates[n].used,
-            (templates[n].flags & CharacterFlags::Respawn.bits()) != 0,
-        )
-    });
+    let used = gs.character_templates[n].used;
+    let has_respawn = (gs.character_templates[n].flags & CharacterFlags::Respawn.bits()) != 0;
 
     if used == USE_EMPTY || !has_respawn {
         log::error!(
@@ -929,8 +918,7 @@ pub fn reset_char(n: usize) {
         return;
     }
 
-    let name =
-        Repository::with_character_templates(|templates| templates[n].get_name().to_string());
+    let name = gs.character_templates[n].get_name().to_string();
     log::info!("Resetting char {} ({})", n, name);
 
     // Recalculate character template points
@@ -938,15 +926,11 @@ pub fn reset_char(n: usize) {
 
     // Destroy all instances of this template (they will be respawned)
     for cn in 1..MAXCHARS {
-        let (temp, used, char_name, x, y) = Repository::with_characters(|characters| {
-            (
-                characters[cn].temp,
-                characters[cn].used,
-                characters[cn].get_name().to_string(),
-                characters[cn].x,
-                characters[cn].y,
-            )
-        });
+        let temp = gs.characters[cn].temp;
+        let used = gs.characters[cn].used;
+        let char_name = gs.characters[cn].get_name().to_string();
+        let x = gs.characters[cn].x;
+        let y = gs.characters[cn].y;
 
         if temp as usize == n && used == USE_ACTIVE {
             log::info!(" --> {} ({}) ({},{})", char_name, cn, x, y);
@@ -956,9 +940,7 @@ pub fn reset_char(n: usize) {
             player::plr_map_remove(cn);
 
             // Mark character as unused
-            Repository::with_characters_mut(|characters| {
-                characters[cn].used = USE_EMPTY;
-            });
+            gs.characters[cn].used = USE_EMPTY;
 
             cnt += 1;
         }
@@ -966,31 +948,26 @@ pub fn reset_char(n: usize) {
 
     // Clean up effects referencing this template (type 2 = respawn timer)
     for m in 0..MAXEFFECT {
-        let (effect_used, effect_type, data2) = Repository::with_effects(|effects| {
-            (effects[m].used, effects[m].effect_type, effects[m].data[2])
-        });
+        let effect_used = gs.effects[m].used;
+        let effect_type = gs.effects[m].effect_type;
+        let data2 = gs.effects[m].data[2];
 
         if effect_used == USE_ACTIVE && effect_type == 2 && data2 == n as u32 {
             log::info!(" --> effect {}", m);
-            Repository::with_effects_mut(|effects| {
-                effects[m].used = USE_EMPTY;
-            });
+            gs.effects[m].used = USE_EMPTY;
         }
     }
 
     // Clean up items carried by this template
     for m in 0..MAXITEM {
-        let (item_used, carried) =
-            Repository::with_items(|items| (items[m].used, items[m].carried));
+        let item_used = gs.items[m].used;
+        let carried = gs.items[m].carried;
 
         if item_used == USE_ACTIVE && carried as usize == n {
-            let temp = Repository::with_items(|items| items[m].temp);
-            Repository::with_items_mut(|items| {
-                let item_template =
-                    Repository::with_item_templates(|templates| templates[temp as usize]);
-                items[m] = item_template;
-                items[m].temp = temp;
-            });
+            let temp = gs.items[m].temp;
+            let item_template = gs.item_templates[temp as usize];
+            gs.items[m] = item_template;
+            gs.items[m].temp = temp;
         }
     }
 
@@ -999,10 +976,10 @@ pub fn reset_char(n: usize) {
     }
 
     // Schedule respawn if template is still active
-    let template_used = Repository::with_character_templates(|templates| templates[n].used);
+    let template_used = gs.character_templates[n].used;
     if template_used == USE_ACTIVE {
-        let (template_x, template_y) =
-            Repository::with_character_templates(|templates| (templates[n].x, templates[n].y));
+        let template_x = gs.character_templates[n].x;
+        let template_y = gs.character_templates[n].y;
 
         EffectManager::fx_add_effect(
             2,          // Effect type 2 = respawn timer
@@ -1027,53 +1004,49 @@ pub fn skillcost(val: i32, dif: i32, start: i32) -> i32 {
 
 /// Port of `pop_skill` from `populate.cpp`
 /// Updates skills for all characters
-pub fn pop_skill(_gs: &mut GameState) {
+pub fn pop_skill(gs: &mut GameState) {
     for cn in 1..MAXCHARS {
-        let is_player = Repository::with_characters(|characters| {
-            (characters[cn].flags & CharacterFlags::Player.bits()) != 0
-                && characters[cn].used == USE_ACTIVE
-        });
+        let is_player = (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0
+            && gs.characters[cn].used == USE_ACTIVE;
         if !is_player {
             continue;
         }
 
-        let t = Repository::with_characters(|characters| characters[cn].temp as usize);
+        let t = gs.characters[cn].temp as usize;
 
-        let template_skills = Repository::with_character_templates(|templates| templates[t].skill);
+        let template_skills = gs.character_templates[t].skill;
 
         for n in 0..50usize {
             let temp_skill = template_skills[n];
 
-            Repository::with_characters_mut(|characters| {
-                let ch = &mut characters[cn];
+            let ch = &mut gs.characters[cn];
 
-                if ch.skill[n][0] == 0 && temp_skill[0] != 0 {
-                    ch.skill[n][0] = temp_skill[0];
-                    log::info!("added {} to {}", driver::skill_name(n), ch.get_name());
-                }
+            if ch.skill[n][0] == 0 && temp_skill[0] != 0 {
+                ch.skill[n][0] = temp_skill[0];
+                log::info!("added {} to {}", driver::skill_name(n), ch.get_name());
+            }
 
-                if temp_skill[2] < ch.skill[n][0] {
-                    let p = skillcost(
-                        ch.skill[n][0] as i32,
-                        ch.skill[n][3] as i32,
-                        temp_skill[2] as i32,
-                    );
-                    log::info!(
-                        "reduced {} on {} from {} to {}, added {} exp",
-                        driver::skill_name(n),
-                        ch.get_name(),
-                        ch.skill[n][0],
-                        temp_skill[2],
-                        p
-                    );
-                    ch.skill[n][0] = temp_skill[2];
-                    ch.points += p;
-                }
+            if temp_skill[2] < ch.skill[n][0] {
+                let p = skillcost(
+                    ch.skill[n][0] as i32,
+                    ch.skill[n][3] as i32,
+                    temp_skill[2] as i32,
+                );
+                log::info!(
+                    "reduced {} on {} from {} to {}, added {} exp",
+                    driver::skill_name(n),
+                    ch.get_name(),
+                    ch.skill[n][0],
+                    temp_skill[2],
+                    p
+                );
+                ch.skill[n][0] = temp_skill[2];
+                ch.points += p;
+            }
 
-                ch.skill[n][1] = temp_skill[1];
-                ch.skill[n][2] = temp_skill[2];
-                ch.skill[n][3] = temp_skill[3];
-            });
+            ch.skill[n][1] = temp_skill[1];
+            ch.skill[n][2] = temp_skill[2];
+            ch.skill[n][3] = temp_skill[3];
         }
     }
     log::info!("Changed Skills.");
@@ -1081,22 +1054,18 @@ pub fn pop_skill(_gs: &mut GameState) {
 
 /// Port of `reset_item` from `populate.cpp`
 /// Resets an item template and all instances
-pub fn reset_item(n: usize) {
+pub fn reset_item(gs: &mut GameState, n: usize) {
     if !(2..MAXTITEM).contains(&n) {
         return; // Never reset blank template (1)
     }
 
-    let name = Repository::with_item_templates(|templates| templates[n].get_name().to_string());
+    let name = gs.item_templates[n].get_name().to_string();
     log::info!("Resetting item {} ({})", n, name);
 
     for in_id in 1..MAXITEM {
-        let (used, item_temp, is_spell) = Repository::with_items(|items| {
-            (
-                items[in_id].used,
-                items[in_id].temp,
-                (items[in_id].flags & ItemFlags::IF_SPELL.bits()) != 0,
-            )
-        });
+        let used = gs.items[in_id].used;
+        let item_temp = gs.items[in_id].temp;
+        let is_spell = (gs.items[in_id].flags & ItemFlags::IF_SPELL.bits()) != 0;
 
         if used != USE_ACTIVE {
             continue;
@@ -1111,21 +1080,16 @@ pub fn reset_item(n: usize) {
             continue;
         }
 
-        let (item_name, carried, x, y) = Repository::with_items(|items| {
-            (
-                items[in_id].get_name().to_string(),
-                items[in_id].carried,
-                items[in_id].x,
-                items[in_id].y,
-            )
-        });
+        let item_name = gs.items[in_id].get_name().to_string();
+        let carried = gs.items[in_id].carried;
+        let x = gs.items[in_id].x;
+        let y = gs.items[in_id].y;
 
         log::info!(" --> {} ({}) ({}, {},{})", item_name, in_id, carried, x, y);
 
         // Check if item should be reset or removed
-        let (template_flags, template_sprite) = Repository::with_item_templates(|templates| {
-            (templates[n].flags, templates[n].sprite[0])
-        });
+        let template_flags = gs.item_templates[n].flags;
+        let template_sprite = gs.item_templates[n].sprite[0];
 
         let should_reset = (template_flags
             & (ItemFlags::IF_TAKE.bits()
@@ -1138,140 +1102,123 @@ pub fn reset_item(n: usize) {
 
         if should_reset {
             // Reset item from template (for takeable/interactive items or carried items)
-            Repository::with_items_mut(|items| {
-                let item_template = Repository::with_item_templates(|templates| templates[n]);
+            let item_template = gs.item_templates[n];
 
-                // Preserve certain fields
-                let x = items[in_id].x;
-                let y = items[in_id].y;
-                let carried = items[in_id].carried;
+            let x = gs.items[in_id].x;
+            let y = gs.items[in_id].y;
+            let carried = gs.items[in_id].carried;
 
-                items[in_id] = item_template;
-                items[in_id].x = x;
-                items[in_id].y = y;
-                items[in_id].carried = carried;
-                items[in_id].temp = n as u16;
-            });
+            gs.items[in_id] = item_template;
+            gs.items[in_id].x = x;
+            gs.items[in_id].y = y;
+            gs.items[in_id].carried = carried;
+            gs.items[in_id].temp = n as u16;
         } else {
             // Remove item and place floor sprite (for non-interactive map items)
             let map_index = x as usize + y as usize * SERVER_MAPX as usize;
 
-            Repository::with_map_mut(|map| {
-                map[map_index].it = 0;
-                map[map_index].fsprite = template_sprite as u16;
+            gs.map[map_index].it = 0;
+            gs.map[map_index].fsprite = template_sprite as u16;
 
-                if (template_flags & ItemFlags::IF_MOVEBLOCK.bits()) != 0 {
-                    map[map_index].flags |= MF_MOVEBLOCK as u64;
-                }
-                if (template_flags & ItemFlags::IF_SIGHTBLOCK.bits()) != 0 {
-                    map[map_index].flags |= MF_SIGHTBLOCK as u64;
-                }
-            });
+            if (template_flags & ItemFlags::IF_MOVEBLOCK.bits()) != 0 {
+                gs.map[map_index].flags |= MF_MOVEBLOCK as u64;
+            }
+            if (template_flags & ItemFlags::IF_SIGHTBLOCK.bits()) != 0 {
+                gs.map[map_index].flags |= MF_SIGHTBLOCK as u64;
+            }
 
-            Repository::with_items_mut(|items| {
-                items[in_id].used = USE_EMPTY;
-            });
+            gs.items[in_id].used = USE_EMPTY;
         }
     }
 }
 
 /// Port of `reset_changed_items` from `populate.cpp`
 /// Resets a predefined list of changed items
-pub fn reset_changed_items(_gs: &mut GameState) {
+pub fn reset_changed_items(gs: &mut GameState) {
     let changelist: Vec<usize> = vec![];
 
     for n in changelist {
-        reset_item(n);
+        reset_item(gs, n);
     }
 }
 
 /// Port of `pop_tick` from `populate.cpp`
 /// Handles population ticking and resets
-pub fn pop_tick(_gs: &mut GameState) {
+pub fn pop_tick(gs: &mut GameState) {
     const RESETTICKER: u32 = TICKS as u32 * 60;
 
-    let ticker = Repository::with_globals(|globals| globals.ticker) as u32;
+    let ticker = gs.globals.ticker as u32;
 
-    if ticker - Repository::get_last_population_reset_tick() >= RESETTICKER {
-        Repository::set_last_population_reset_tick(ticker);
+    if ticker - gs.last_population_reset_tick >= RESETTICKER {
+        gs.last_population_reset_tick = ticker;
         log::info!("Population tick: checking for resets");
     }
 
     // Check for character reset
-    let reset_char_id = Repository::with_globals(|globals| globals.reset_char);
+    let reset_char_id = gs.globals.reset_char;
     if reset_char_id != 0 {
-        reset_char(reset_char_id as usize);
-        Repository::with_globals_mut(|globals| globals.reset_char = 0);
+        reset_char(gs, reset_char_id as usize);
+        gs.globals.reset_char = 0;
     }
 
     // Check for item reset
-    let reset_item_id = Repository::with_globals(|globals| globals.reset_item);
+    let reset_item_id = gs.globals.reset_item;
     if reset_item_id != 0 {
-        reset_item(reset_item_id as usize);
-        Repository::with_globals_mut(|globals| globals.reset_item = 0);
+        reset_item(gs, reset_item_id as usize);
+        gs.globals.reset_item = 0;
     }
 }
 
 /// Port of `pop_reset_all` from `populate.cpp`
 /// Resets all character and item templates
 #[allow(dead_code)]
-pub fn pop_reset_all() {
+pub fn pop_reset_all(gs: &mut GameState) {
     for n in 1..MAXTCHARS {
-        reset_char(n);
+        reset_char(gs, n);
     }
     for n in 1..MAXTITEM {
-        reset_item(n);
+        reset_item(gs, n);
     }
     log::info!("Reset all templates");
 }
 
 /// Port of `pop_wipe` from `populate.cpp`
 /// Wipes all dynamic game data
-pub fn pop_wipe(_gs: &mut GameState) {
+pub fn pop_wipe(gs: &mut GameState) {
     // Clear all characters
     for n in 1..MAXCHARS {
-        let is_player = Repository::with_characters(|characters| {
-            (characters[n].flags & CharacterFlags::Player.bits()) != 0
-        });
+        let is_player = (gs.characters[n].flags & CharacterFlags::Player.bits()) != 0;
 
         if !is_player {
-            Repository::with_characters_mut(|characters| {
-                characters[n].used = USE_EMPTY;
-            });
+            gs.characters[n].used = USE_EMPTY;
         }
     }
 
     // Clear all items
     for n in 1..MAXITEM {
-        Repository::with_items_mut(|items| {
-            items[n].used = USE_EMPTY;
-        });
+        gs.items[n].used = USE_EMPTY;
     }
 
     // Clear all effects
     for n in 1..MAXEFFECT {
-        Repository::with_effects_mut(|effects| {
-            effects[n].used = USE_EMPTY;
-        });
+        gs.effects[n].used = USE_EMPTY;
     }
 
     // Reset global statistics
-    Repository::with_globals_mut(|globals| {
-        globals.players_created = 0;
-        globals.npcs_created = 0;
-        globals.players_died = 0;
-        globals.npcs_died = 0;
-        globals.expire_cnt = 0;
-        globals.expire_run = 0;
-        globals.gc_cnt = 0;
-        globals.gc_run = 0;
-        globals.lost_cnt = 0;
-        globals.lost_run = 0;
-        globals.reset_char = 0;
-        globals.reset_item = 0;
-        globals.total_online_time = 0;
-        globals.uptime = 0;
-    });
+    gs.globals.players_created = 0;
+    gs.globals.npcs_created = 0;
+    gs.globals.players_died = 0;
+    gs.globals.npcs_died = 0;
+    gs.globals.expire_cnt = 0;
+    gs.globals.expire_run = 0;
+    gs.globals.gc_cnt = 0;
+    gs.globals.gc_run = 0;
+    gs.globals.lost_cnt = 0;
+    gs.globals.lost_run = 0;
+    gs.globals.reset_char = 0;
+    gs.globals.reset_item = 0;
+    gs.globals.total_online_time = 0;
+    gs.globals.uptime = 0;
 
     log::info!("Wiped all dynamic game data");
 }
@@ -1279,7 +1226,7 @@ pub fn pop_wipe(_gs: &mut GameState) {
 /// Port of `pop_remove` from `populate.cpp`
 /// Saves all players to disk
 #[allow(dead_code)]
-pub fn pop_remove() {
+pub fn pop_remove(gs: &mut GameState) {
     log::info!("Saving players...");
 
     // TODO: Implement actual file saving when persistence system is ready
@@ -1289,12 +1236,8 @@ pub fn pop_remove() {
     let mut chc = 0;
 
     for n in 1..MAXCHARS {
-        let (used, is_player) = Repository::with_characters(|characters| {
-            (
-                characters[n].used,
-                (characters[n].flags & CharacterFlags::Player.bits()) != 0,
-            )
-        });
+        let used = gs.characters[n].used;
+        let is_player = (gs.characters[n].flags & CharacterFlags::Player.bits()) != 0;
 
         if used != USE_EMPTY && is_player {
             // TODO: Write character to file
@@ -1319,17 +1262,13 @@ pub fn pop_load() {
 
 /// Port of `populate` from `populate.cpp`
 /// Populates the world with NPCs
-pub fn populate(_gs: &mut GameState) {
+pub fn populate(gs: &mut GameState) {
     log::info!("Populating world...");
 
     // Iterate through all character templates and spawn respawnable NPCs
     for n in 1..MAXTCHARS {
-        let (used, has_respawn) = Repository::with_character_templates(|templates| {
-            (
-                templates[n].used,
-                (templates[n].flags & CharacterFlags::Respawn.bits()) != 0,
-            )
-        });
+        let used = gs.character_templates[n].used;
+        let has_respawn = (gs.character_templates[n].flags & CharacterFlags::Respawn.bits()) != 0;
 
         if used != USE_EMPTY && has_respawn {
             if let Some(cn) = pop_create_char(n, true) {
@@ -1371,13 +1310,11 @@ pub fn pop_load_all_chars(_gs: &mut GameState) {
 
 /// Port of `pop_save_all_chars` from `populate.cpp`
 /// Saves all characters to disk
-pub fn pop_save_all_chars(_gs: &mut GameState) {
+pub fn pop_save_all_chars(gs: &mut GameState) {
     log::info!("Saving all characters...");
 
     for nr in 1..MAXCHARS {
-        let is_player = Repository::with_characters(|characters| {
-            (characters[nr].flags & CharacterFlags::Player.bits()) != 0
-        });
+        let is_player = (gs.characters[nr].flags & CharacterFlags::Player.bits()) != 0;
 
         if is_player {
             pop_save_char(nr);

@@ -1,7 +1,6 @@
 use core::constants::CharacterFlags;
 
 use crate::game_state::GameState;
-use crate::path_finding::PathFinder;
 use crate::player;
 use crate::{core, driver, helpers};
 
@@ -14,19 +13,17 @@ pub fn act_idle(cn: usize) {
     let should_notify = GameState::with_globals(|g| (g.ticker & 15) == (cn as i32 & 15));
     if should_notify {
         let (x, y) = GameState::with_characters(|ch| (ch[cn].x as i32, ch[cn].y as i32));
-        GameState::with_mut(|state| {
-            state.do_area_notify(
-                cn as i32,
-                0,
-                x,
-                y,
-                core::constants::NT_SEE as i32,
-                cn as i32,
-                0,
-                0,
-                0,
-            );
-        });
+        GameState::global_mut().do_area_notify(
+            cn as i32,
+            0,
+            x,
+            y,
+            core::constants::NT_SEE as i32,
+            cn as i32,
+            0,
+            0,
+            0,
+        );
     }
 }
 
@@ -38,7 +35,7 @@ pub fn act_idle(cn: usize) {
 pub fn act_drop(cn: usize) {
     GameState::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_SUCCESS as u16);
 
-    let cannot_flee = GameState::with_mut(|s| s.do_char_can_flee(cn) == 0);
+    let cannot_flee = GameState::global_mut().do_char_can_flee(cn) == 0;
     let simple =
         GameState::with_characters(|ch| (ch[cn].flags & CharacterFlags::Simple.bits()) != 0);
 
@@ -92,7 +89,7 @@ pub fn act_drop(cn: usize) {
 pub fn act_use(cn: usize) {
     GameState::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_SUCCESS as u16);
 
-    let cannot_flee = GameState::with_mut(|s| s.do_char_can_flee(cn) == 0);
+    let cannot_flee = GameState::global_mut().do_char_can_flee(cn) == 0;
     let simple =
         GameState::with_characters(|ch| (ch[cn].flags & CharacterFlags::Simple.bits()) != 0);
 
@@ -153,7 +150,7 @@ pub fn act_pickup(cn: usize) {
 
     GameState::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_SUCCESS as u16);
 
-    let cannot_flee = GameState::with_mut(|s| s.do_char_can_flee(cn) == 0);
+    let cannot_flee = GameState::global_mut().do_char_can_flee(cn) == 0;
     let simple =
         GameState::with_characters(|ch| (ch[cn].flags & CharacterFlags::Simple.bits()) != 0);
 
@@ -678,7 +675,7 @@ pub fn act_move_rightdown(cn: usize) {
         return;
     }
 
-    if GameState::with_mut(|s| s.do_char_can_flee(cn) == 0) {
+    if GameState::global_mut().do_char_can_flee(cn) == 0 {
         GameState::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
         return;
     }
@@ -727,7 +724,7 @@ pub fn act_move_rightup(cn: usize) {
         return;
     }
 
-    if GameState::with_mut(|s| s.do_char_can_flee(cn) == 0) {
+    if GameState::global_mut().do_char_can_flee(cn) == 0 {
         GameState::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
         return;
     }
@@ -776,7 +773,7 @@ pub fn act_move_leftdown(cn: usize) {
         return;
     }
 
-    if GameState::with_mut(|s| s.do_char_can_flee(cn) == 0) {
+    if GameState::global_mut().do_char_can_flee(cn) == 0 {
         GameState::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
         return;
     }
@@ -825,7 +822,7 @@ pub fn act_move_leftup(cn: usize) {
         return;
     }
 
-    if GameState::with_mut(|s| s.do_char_can_flee(cn) == 0) {
+    if GameState::global_mut().do_char_can_flee(cn) == 0 {
         GameState::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
         return;
     }
@@ -870,7 +867,7 @@ pub fn act_move_right(cn: usize) {
         return;
     }
 
-    if GameState::with_mut(|s| s.do_char_can_flee(cn) == 0) {
+    if GameState::global_mut().do_char_can_flee(cn) == 0 {
         GameState::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
         return;
     }
@@ -905,7 +902,7 @@ pub fn act_move_left(cn: usize) {
         return;
     }
 
-    if GameState::with_mut(|s| s.do_char_can_flee(cn) == 0) {
+    if GameState::global_mut().do_char_can_flee(cn) == 0 {
         GameState::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
         return;
     }
@@ -940,7 +937,7 @@ pub fn act_move_down(cn: usize) {
         return;
     }
 
-    if GameState::with_mut(|s| s.do_char_can_flee(cn) == 0) {
+    if GameState::global_mut().do_char_can_flee(cn) == 0 {
         GameState::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
         return;
     }
@@ -975,7 +972,7 @@ pub fn act_move_up(cn: usize) {
         return;
     }
 
-    if GameState::with_mut(|s| s.do_char_can_flee(cn) == 0) {
+    if GameState::global_mut().do_char_can_flee(cn) == 0 {
         GameState::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
         return;
     }
@@ -1005,7 +1002,7 @@ pub fn char_give_char(cn: usize, co: usize) -> i32 {
     }
 
     let co_used = GameState::with_characters(|ch| ch[co].used);
-    let can_see = GameState::with_mut(|state| state.do_char_can_see(cn, co));
+    let can_see = GameState::global_mut().do_char_can_see(cn, co);
     if co_used != core::constants::USE_ACTIVE || can_see == 0 || cn == co {
         return -1;
     }
@@ -1088,7 +1085,7 @@ pub fn char_attack_char(cn: usize, co: usize) -> i32 {
     }
 
     let co_used = GameState::with_characters(|ch| ch[co].used);
-    let can_see = GameState::with_mut(|state| state.do_char_can_see(cn, co));
+    let can_see = GameState::global_mut().do_char_can_see(cn, co);
     let co_flags = GameState::with_characters(|ch| ch[co].flags);
     if co_used != core::constants::USE_ACTIVE
         || can_see == 0
@@ -1419,9 +1416,21 @@ pub fn char_moveto(cn: usize, x: i32, y: i32, flag: i32, x2: i32, y2: i32) -> i3
         return -1;
     }
 
-    let dir = PathFinder::with_mut(|pf| {
-        pf.find_path(cn, x as i16, y as i16, flag as u8, x2 as i16, y2 as i16)
-    });
+    let dir = {
+        let gs = GameState::global_mut();
+        let current_tick = gs.globals.ticker as u32;
+        gs.pathfinder.find_path(
+            &gs.characters[cn],
+            &gs.map,
+            &gs.items,
+            current_tick,
+            x as i16,
+            y as i16,
+            flag as u8,
+            x2 as i16,
+            y2 as i16,
+        )
+    };
 
     if dir.is_none() {
         GameState::with_characters_mut(|ch| {
@@ -1500,8 +1509,7 @@ pub fn char_moveto(cn: usize, x: i32, y: i32, flag: i32, x2: i32, y2: i32) -> i3
             0
         }
         d if d == Some(core::constants::DX_LEFT) => {
-            if GameState::with_characters(|ch| ch[cn].dir as i32)
-                != core::constants::DX_LEFT as i32
+            if GameState::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_LEFT as i32
             {
                 act_turn_left(cn);
                 return 0;
@@ -1522,8 +1530,7 @@ pub fn char_moveto(cn: usize, x: i32, y: i32, flag: i32, x2: i32, y2: i32) -> i3
             0
         }
         d if d == Some(core::constants::DX_DOWN) => {
-            if GameState::with_characters(|ch| ch[cn].dir as i32)
-                != core::constants::DX_DOWN as i32
+            if GameState::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_DOWN as i32
             {
                 act_turn_down(cn);
                 return 0;
@@ -1544,8 +1551,7 @@ pub fn char_moveto(cn: usize, x: i32, y: i32, flag: i32, x2: i32, y2: i32) -> i3
             0
         }
         d if d == Some(core::constants::DX_UP) => {
-            if GameState::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_UP as i32
-            {
+            if GameState::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_UP as i32 {
                 act_turn_up(cn);
                 return 0;
             }
@@ -1568,16 +1574,14 @@ pub fn char_moveto(cn: usize, x: i32, y: i32, flag: i32, x2: i32, y2: i32) -> i3
     }
 }
 
-pub fn drv_moveto(cn: usize, x: usize, y: usize) {
+pub fn drv_moveto(_gs: &mut GameState, cn: usize, x: usize, y: usize) {
     // Mirror C++ drv_moveto
     let ret = char_moveto(cn, x as i32, y as i32, 0, 0, 0);
     if ret != 0 {
         GameState::with_characters_mut(|ch| ch[cn].goto_x = 0);
     }
     if ret == -1 {
-        GameState::with_characters_mut(|ch| {
-            ch[cn].last_action = core::constants::ERR_FAILED as i8
-        });
+        GameState::with_characters_mut(|ch| ch[cn].last_action = core::constants::ERR_FAILED as i8);
     } else if ret == 1 {
         GameState::with_characters_mut(|ch| {
             ch[cn].last_action = core::constants::ERR_SUCCESS as i8
@@ -1607,16 +1611,14 @@ pub fn drv_turnto(cn: usize, x: usize, y: usize) {
     }
 }
 
-pub fn drv_dropto(cn: usize, x: usize, y: usize) {
+pub fn drv_dropto(_gs: &mut GameState, cn: usize, x: usize, y: usize) {
     // Mirror C++ drv_dropto
     let ret = char_dropto(cn, x as i32, y as i32);
     if ret != 0 {
         GameState::with_characters_mut(|ch| ch[cn].misc_action = core::constants::DR_IDLE as u16);
     }
     if ret == -1 {
-        GameState::with_characters_mut(|ch| {
-            ch[cn].last_action = core::constants::ERR_FAILED as i8
-        });
+        GameState::with_characters_mut(|ch| ch[cn].last_action = core::constants::ERR_FAILED as i8);
     } else if ret == 1 {
         GameState::with_characters_mut(|ch| {
             ch[cn].last_action = core::constants::ERR_SUCCESS as i8
@@ -1624,16 +1626,14 @@ pub fn drv_dropto(cn: usize, x: usize, y: usize) {
     }
 }
 
-pub fn drv_pickupto(cn: usize, x: usize, y: usize) {
+pub fn drv_pickupto(_gs: &mut GameState, cn: usize, x: usize, y: usize) {
     // Mirror C++ drv_pickupto
     let ret = char_pickupto(cn, x as i32, y as i32);
     if ret != 0 {
         GameState::with_characters_mut(|ch| ch[cn].misc_action = core::constants::DR_IDLE as u16);
     }
     if ret == -1 {
-        GameState::with_characters_mut(|ch| {
-            ch[cn].last_action = core::constants::ERR_FAILED as i8
-        });
+        GameState::with_characters_mut(|ch| ch[cn].last_action = core::constants::ERR_FAILED as i8);
     } else if ret == 1 {
         GameState::with_characters_mut(|ch| {
             ch[cn].last_action = core::constants::ERR_SUCCESS as i8
@@ -1641,7 +1641,7 @@ pub fn drv_pickupto(cn: usize, x: usize, y: usize) {
     }
 }
 
-pub fn drv_useto(cn: usize, x: usize, y: usize) {
+pub fn drv_useto(_gs: &mut GameState, cn: usize, x: usize, y: usize) {
     // Mirror C++ drv_useto
     let ret = char_useto(cn, x as i32, y as i32);
 
@@ -1664,9 +1664,7 @@ pub fn drv_useto(cn: usize, x: usize, y: usize) {
         GameState::with_characters_mut(|ch| ch[cn].misc_action = core::constants::DR_IDLE as u16);
     }
     if ret == -1 {
-        GameState::with_characters_mut(|ch| {
-            ch[cn].last_action = core::constants::ERR_FAILED as i8
-        });
+        GameState::with_characters_mut(|ch| ch[cn].last_action = core::constants::ERR_FAILED as i8);
     } else if ret == 1 {
         GameState::with_characters_mut(|ch| {
             ch[cn].last_action = core::constants::ERR_SUCCESS as i8
@@ -1725,9 +1723,7 @@ pub fn drv_give_char(cn: usize, co: usize) {
         GameState::with_characters_mut(|ch| ch[cn].misc_action = core::constants::DR_IDLE as u16);
     }
     if ret == -1 {
-        GameState::with_characters_mut(|ch| {
-            ch[cn].last_action = core::constants::ERR_FAILED as i8
-        });
+        GameState::with_characters_mut(|ch| ch[cn].last_action = core::constants::ERR_FAILED as i8);
     } else if ret == 1 {
         GameState::with_characters_mut(|ch| {
             ch[cn].last_action = core::constants::ERR_SUCCESS as i8
@@ -1820,7 +1816,15 @@ pub fn drv_skill(_gs: &mut GameState, cn: usize) {
     });
 }
 
-pub fn driver_msg(gs: &mut GameState, cn: usize, msg_type: i32, dat1: i32, dat2: i32, dat3: i32, dat4: i32) {
+pub fn driver_msg(
+    gs: &mut GameState,
+    cn: usize,
+    msg_type: i32,
+    dat1: i32,
+    dat2: i32,
+    dat3: i32,
+    dat4: i32,
+) {
     if cn == 0 || cn >= core::constants::MAXCHARS {
         log::warn!("driver_msg: invalid character id {}", cn);
         return;
@@ -1884,7 +1888,7 @@ pub fn follow_driver(cn: usize, co: usize) -> bool {
     let is_companion = GameState::with_characters(|ch| {
         (ch[cn].temp == core::constants::CT_COMPANION as u16) && ch[cn].data[63] as usize == co
     });
-    let can_see = GameState::with_mut(|state| state.do_char_can_see(cn, co)) != 0;
+    let can_see = GameState::global_mut().do_char_can_see(cn, co) != 0;
     if !(is_companion || can_see) {
         return false;
     }
@@ -2068,7 +2072,7 @@ pub fn driver(gs: &mut GameState, cn: usize) {
     let goto_x = GameState::with_characters(|ch| ch[cn].goto_x);
     if goto_x != 0 {
         let goto_y = GameState::with_characters(|ch| ch[cn].goto_y);
-        drv_moveto(cn, goto_x as usize, goto_y as usize);
+        drv_moveto(gs, cn, goto_x as usize, goto_y as usize);
         return;
     }
 
@@ -2092,6 +2096,7 @@ pub fn driver(gs: &mut GameState, cn: usize) {
         }
         x if x == core::constants::DR_DROP => {
             drv_dropto(
+                gs,
                 cn,
                 GameState::with_characters(|ch| ch[cn].misc_target1 as usize),
                 GameState::with_characters(|ch| ch[cn].misc_target2 as usize),
@@ -2099,6 +2104,7 @@ pub fn driver(gs: &mut GameState, cn: usize) {
         }
         x if x == core::constants::DR_PICKUP => {
             drv_pickupto(
+                gs,
                 cn,
                 GameState::with_characters(|ch| ch[cn].misc_target1 as usize),
                 GameState::with_characters(|ch| ch[cn].misc_target2 as usize),
@@ -2112,6 +2118,7 @@ pub fn driver(gs: &mut GameState, cn: usize) {
         }
         x if x == core::constants::DR_USE => {
             drv_useto(
+                gs,
                 cn,
                 GameState::with_characters(|ch| ch[cn].misc_target1 as usize),
                 GameState::with_characters(|ch| ch[cn].misc_target2 as usize),

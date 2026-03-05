@@ -14,9 +14,7 @@ use crate::game_state::{GameState, StorageBackend};
 use crate::god::God;
 use crate::lab9::Labyrinth9;
 use crate::network_manager::NetworkManager;
-use crate::repository::Repository;
 use crate::single_thread_cell::SingleThreadCell;
-use crate::state::State;
 use crate::tls::{self, GameStream};
 use crate::types::cmap::CMap;
 use crate::types::server_player::ServerPlayer;
@@ -565,9 +563,7 @@ impl Server {
                 CharacterTickState::Empty => continue,
                 CharacterTickState::NeedsUpdate => {
                     cnt += 1;
-                    State::with_mut(|state| {
-                        state.really_update_char(n);
-                    });
+                    gs.really_update_char(n);
 
                     gs.characters[n].flags &= !CharacterFlags::Update.bits();
                 }
@@ -642,9 +638,7 @@ impl Server {
                 player::plr_act(gs, n)
             }
 
-            State::with(|state| {
-                state.do_regenerate(n);
-            });
+            gs.do_regenerate(n);
         }
 
         // Update global stats
@@ -1007,7 +1001,7 @@ impl Server {
                 if !is_player {
                     continue;
                 }
-                State::with(|s| s.do_pay_depot(cn));
+                gs.do_pay_depot(cn);
             }
 
             // do_misc: adjust luck and clear temporary flags for players
@@ -1584,18 +1578,16 @@ impl Server {
 }
 
 impl Drop for Server {
-    /// Ensure background writes drain before the repository is torn down.
+    /// Ensure background writes drain before process teardown.
     ///
     /// In the normal shutdown path `shutdown_background_saver()` will already
     /// have been called explicitly (and will have taken the saver out of
     /// `self.background_saver`), so this call is a no-op there.  In abnormal
     /// exit / panic scenarios the saver may still hold queued jobs; calling
     /// `shutdown_background_saver()` here ensures those writes complete and
-    /// that the KeyDB connection is cleanly closed before `Repository::shutdown`
-    /// tears down the storage layer.
+    /// that the KeyDB connection is cleanly closed during teardown.
     fn drop(&mut self) {
         self.shutdown_background_saver();
-        Repository::shutdown();
     }
 }
 

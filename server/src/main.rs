@@ -17,7 +17,6 @@ mod path_finding;
 mod player;
 mod points;
 mod populate;
-mod repository;
 mod server;
 mod single_thread_cell;
 mod state;
@@ -33,8 +32,6 @@ use std::sync::Arc;
 use core;
 
 use crate::game_state::GameState;
-use crate::path_finding::PathFinder;
-use crate::repository::Repository;
 use crate::server::Server;
 
 fn handle_command_line_args(args: &[String], gs: &mut GameState) {
@@ -101,25 +98,13 @@ fn main() -> Result<(), String> {
         process::exit(1);
     }
 
-    // Initialize the global repository (still needed by unconverted modules)
-    if let Err(e) = Repository::initialize() {
-        log::error!("Failed to initialize repository: {}. Exiting.", e);
-        process::exit(1);
-    }
-
-    // Initialize the global pathfinder (still needed by unconverted modules)
-    if let Err(e) = PathFinder::initialize() {
-        log::error!("Failed to initialize pathfinder: {}. Exiting.", e);
-        process::exit(1);
-    }
-
     // Initialize unified game state (owns its own copy of all world data)
     let mut gs = GameState::initialize().unwrap_or_else(|e| {
         log::error!("Failed to initialize game state: {}. Exiting.", e);
         process::exit(1);
     });
 
-    // Handle CLI subcommands (requires Repository to be initialized)
+    // Handle CLI subcommands
     handle_command_line_args(&args, &mut gs);
 
     // Check for dirty flag
@@ -134,19 +119,17 @@ fn main() -> Result<(), String> {
 
     let mut server = server::Server::new();
 
-    GameState::with_mut(|gs| {
-        server.initialize(gs).unwrap_or_else(|e| {
+    server
+        .initialize(GameState::global_mut())
+        .unwrap_or_else(|e| {
             log::error!("Failed to initialize server: {}. Exiting.", e);
             process::exit(1);
         });
-    });
 
     log::info!("Entering main game loop...");
 
     while !quit_flag.load(Ordering::SeqCst) {
-        GameState::with_mut(|gs| {
-            server.tick(gs);
-        });
+        server.tick(GameState::global_mut());
     }
 
     log::info!("Shutdown signal received, exiting main loop...");
@@ -156,22 +139,18 @@ fn main() -> Result<(), String> {
             logout_entries.push((players[n].usnr, n));
         }
     });
-    GameState::with_mut(|gs| {
+    {
+        let gs = GameState::global_mut();
         for (usnr, n) in &logout_entries {
             player::plr_logout(gs, *usnr, *n, enums::LogoutReason::Shutdown);
         }
-    });
+    }
 
     // Shut down background saver thread (flushes pending writes)
     server.shutdown_background_saver();
 
     // Perform a full synchronous save to the unified game state
-    GameState::with_mut(|gs| {
-        gs.shutdown();
-    });
-
-    // Shut down legacy repository (still needed until all modules are converted)
-    Repository::shutdown();
+    GameState::global_mut().shutdown();
 
     // TODO: Wait some amount of time and forceably close all sockets
 

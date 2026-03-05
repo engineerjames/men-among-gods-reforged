@@ -36,6 +36,12 @@ impl<T> SingleThreadCell<T> {
         let value_mut: &mut T = unsafe { &mut *self.value.get() };
         f(value_mut)
     }
+
+    #[inline]
+    pub fn get_mut(&self) -> &mut T {
+        self.assert_owner_thread();
+        unsafe { &mut *self.value.get() }
+    }
 }
 
 unsafe impl<T> Sync for SingleThreadCell<T> {}

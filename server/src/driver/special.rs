@@ -655,11 +655,11 @@ fn npc_stunrun_add_fight(cn: usize, co: usize) {
 
 fn npc_stunrun_seeattack(cn: usize, cc: usize, co: usize) -> i32 {
     // TODO: Double check this implementation now...
-    if GameState::with_mut(|state| state.do_char_can_see(cn, co)) != 0 {
+    if GameState::global_mut().do_char_can_see(cn, co) != 0 {
         npc_stunrun_add_seen(cn, co);
         npc_stunrun_add_fight(cn, co);
     }
-    if GameState::with_mut(|state| state.do_char_can_see(cn, cc)) != 0 {
+    if GameState::global_mut().do_char_can_see(cn, cc) != 0 {
         npc_stunrun_add_seen(cn, cc);
         npc_stunrun_add_fight(cn, cc);
     }
@@ -667,7 +667,7 @@ fn npc_stunrun_seeattack(cn: usize, cc: usize, co: usize) -> i32 {
 }
 
 fn npc_stunrun_see(cn: usize, co: usize) -> i32 {
-    if GameState::with_mut(|state| state.do_char_can_see(cn, co)) == 0 {
+    if GameState::global_mut().do_char_can_see(cn, co) == 0 {
         return 1; // processed it: we cannot see him, so ignore him
     }
 
@@ -946,17 +946,17 @@ fn npc_cityattack_gotattack(_cn: usize, _co: usize) -> i32 {
 
 fn npc_cityattack_seeattack(cn: usize, cc: usize, co: usize) -> i32 {
     // Check if cn can see co (does nothing with the result in C++ original)
-    GameState::with_mut(|state| state.do_char_can_see(cn, co));
+    GameState::global_mut().do_char_can_see(cn, co);
 
     // Check if cn can see cc (does nothing with the result in C++ original)
-    GameState::with_mut(|state| state.do_char_can_see(cn, cc));
+    GameState::global_mut().do_char_can_see(cn, cc);
 
     1
 }
 
 fn npc_cityattack_see(cn: usize, co: usize) -> i32 {
     // Check if cn can see co
-    let can_see = GameState::with_mut(|state| state.do_char_can_see(cn, co));
+    let can_see = GameState::global_mut().do_char_can_see(cn, co);
     if can_see == 0 {
         return 1; // processed it: we cannot see them, so ignore
     }
@@ -1037,7 +1037,7 @@ pub fn npc_malte_low(_gs: &mut GameState, cn: usize) -> i32 {
             // Thank the player
             let co_name = GameState::with_characters(|ch| ch[co].get_name().to_string());
             let message = format!("Thank you so much for saving me, {}!", co_name);
-            GameState::with_mut(|state| state.do_sayx(cn, &message));
+            GameState::global_mut().do_sayx(cn, &message);
 
             GameState::with_characters_mut(|ch| {
                 ch[cn].data[2] = ticker + TICKS * 8;
@@ -1048,12 +1048,10 @@ pub fn npc_malte_low(_gs: &mut GameState, cn: usize) -> i32 {
         }
         1 => {
             // Explain about the coin
-            GameState::with_mut(|state| {
-                state.do_sayx(
+            GameState::global_mut().do_sayx(
                 cn,
                 "Before the monsters caught me, I discovered that you need a coin to open certain doors down here."
-            )
-            });
+            );
 
             GameState::with_characters_mut(|ch| {
                 ch[cn].data[2] = ticker + TICKS * 8;
@@ -1062,12 +1060,10 @@ pub fn npc_malte_low(_gs: &mut GameState, cn: usize) -> i32 {
         }
         2 => {
             // Give coin part and mention Damor
-            GameState::with_mut(|state| {
-                state.do_sayx(
+            GameState::global_mut().do_sayx(
                 cn,
                 "I found this part of the coin, and I heard that Damor in Aston has another one. Ask him for the 'Black Stronghold Coin'."
-            )
-            });
+            );
 
             // Create and give the coin item
             if let Some(in_item) = crate::god::God::create_item(763) {
@@ -1085,12 +1081,10 @@ pub fn npc_malte_low(_gs: &mut GameState, cn: usize) -> i32 {
         }
         3 => {
             // Mention Shiva
-            GameState::with_mut(|state| {
-                state.do_sayx(
-                    cn,
-                    "Shiva, the mage who creates all the monsters, has the third part of it.",
-                )
-            });
+            GameState::global_mut().do_sayx(
+                cn,
+                "Shiva, the mage who creates all the monsters, has the third part of it.",
+            );
 
             GameState::with_characters_mut(|ch| {
                 ch[cn].data[2] = ticker + TICKS * 8;
@@ -1099,7 +1093,7 @@ pub fn npc_malte_low(_gs: &mut GameState, cn: usize) -> i32 {
         }
         4 => {
             // No idea about other parts
-            GameState::with_mut(|state| state.do_sayx(cn, "I have no idea where the other parts are."));
+            GameState::global_mut().do_sayx(cn, "I have no idea where the other parts are.");
 
             GameState::with_characters_mut(|ch| {
                 ch[cn].data[2] = ticker + TICKS * 8;
@@ -1108,9 +1102,7 @@ pub fn npc_malte_low(_gs: &mut GameState, cn: usize) -> i32 {
         }
         5 => {
             // Recall announcement
-            GameState::with_mut(|state| {
-                state.do_sayx(cn, "I will recall now. I have enough of this prison!")
-            });
+            GameState::global_mut().do_sayx(cn, "I will recall now. I have enough of this prison!");
 
             let (cn_x, cn_y) = GameState::with_characters(|ch| (ch[cn].x, ch[cn].y));
 
@@ -1123,9 +1115,8 @@ pub fn npc_malte_low(_gs: &mut GameState, cn: usize) -> i32 {
         }
         6 => {
             // Final goodbye and disappear
-            GameState::with_mut(|state| {
-                state.do_sayx(cn, "Good luck my friend. And thank you for freeing me!")
-            });
+            GameState::global_mut()
+                .do_sayx(cn, "Good luck my friend. And thank you for freeing me!");
 
             player::plr_map_remove(cn);
             God::destroy_items(cn);

@@ -1,6 +1,8 @@
 use core::{constants::CharacterFlags, string_operations::c_string_to_str};
 
-use crate::{game_state::GameState, god::God, helpers, player, populate, repository::Repository};
+use crate::{
+    game_state::GameState, game_state::GameState as Repository, god::God, helpers, player, populate,
+};
 
 pub struct EffectManager {}
 
@@ -524,9 +526,8 @@ impl EffectManager {
                                 items[in2 as usize].used = core::constants::USE_EMPTY;
                             });
                         }
-                        GameState::with_mut(|state| {
-                            state.reset_go(effects[n].data[0] as i32, effects[n].data[1] as i32);
-                        });
+                        GameState::global_mut()
+                            .reset_go(effects[n].data[0] as i32, effects[n].data[1] as i32);
                     }
                 }
             }
