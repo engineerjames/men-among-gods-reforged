@@ -3714,9 +3714,7 @@ impl God {
         });
 
         chlog!(cn, "Entered tavern and will be logged out.");
-        GameState::with_mut(|gs| {
-            player::plr_logout(gs, cn, player_id, LogoutReason::Tavern);
-        });
+        player::plr_logout(GameState::global_mut(), cn, player_id, LogoutReason::Tavern);
     }
 
     /// Admin command used to adjust a character's experience. Only
@@ -4062,9 +4060,12 @@ impl God {
             let name_str = c_string_to_str(&character_name);
 
             Repository::with_characters(|ch| {
-                GameState::with_mut(|gs| {
-                    player::plr_logout(gs, co, ch[co].player as usize, LogoutReason::Shutdown);
-                });
+                player::plr_logout(
+                    GameState::global_mut(),
+                    co,
+                    ch[co].player as usize,
+                    LogoutReason::Shutdown,
+                );
             });
 
             Repository::with_characters_mut(|characters| {
@@ -4149,9 +4150,12 @@ impl God {
         let name_str = c_string_to_str(&character_name);
 
         Repository::with_characters(|ch| {
-            GameState::with_mut(|gs| {
-                player::plr_logout(gs, co, ch[co].player as usize, LogoutReason::IdleTooLong);
-            });
+            player::plr_logout(
+                GameState::global_mut(),
+                co,
+                ch[co].player as usize,
+                LogoutReason::IdleTooLong,
+            );
         });
 
         State::with(|state| {
@@ -4934,9 +4938,12 @@ impl God {
                 }
             }
 
-            GameState::with_mut(|gs| {
-                player::plr_logout(gs, cn, nr as usize, LogoutReason::Usurp);
-            });
+            player::plr_logout(
+                GameState::global_mut(),
+                cn,
+                nr as usize,
+                LogoutReason::Usurp,
+            );
 
             characters[co].set_do_update_flags();
         });

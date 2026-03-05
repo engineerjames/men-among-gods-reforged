@@ -592,9 +592,12 @@ pub fn plr_map_set(cn: usize) {
             log::info!("Character {} entered tavern", cn);
 
             let player_id = Repository::with_characters(|characters| characters[cn].player);
-            GameState::with_mut(|gs| {
-                plr_logout(gs, cn, player_id as usize, enums::LogoutReason::Tavern);
-            });
+            plr_logout(
+                GameState::global_mut(),
+                cn,
+                player_id as usize,
+                enums::LogoutReason::Tavern,
+            );
             return;
         }
 
@@ -6099,7 +6102,7 @@ fn plr_cmd_look_item(nr: usize) {
         map[(x + y * core::constants::SERVER_MAPX) as usize].it as usize
     });
 
-    State::with_mut(|s| s.do_look_item(cn, in_idx));
+    Repository::global_mut().do_look_item(cn, in_idx);
 }
 
 /// Handle give item command
@@ -6498,7 +6501,7 @@ fn plr_cmd_inv_look(nr: usize) {
 
     let in_idx = Repository::with_characters(|ch| ch[cn].item[n] as usize);
     if in_idx != 0 {
-        State::with_mut(|s| s.do_look_item(cn, in_idx));
+        Repository::global_mut().do_look_item(cn, in_idx);
     }
 }
 
@@ -6694,7 +6697,7 @@ fn plr_cmd_inv(nr: usize) {
         }
         let in_idx = Repository::with_characters(|ch| ch[cn].worn[n] as usize);
         if in_idx != 0 {
-            State::with_mut(|s| s.do_look_item(cn, in_idx));
+            Repository::global_mut().do_look_item(cn, in_idx);
         }
         return;
     }
@@ -6710,7 +6713,7 @@ fn plr_cmd_inv(nr: usize) {
         }
         let in_idx = Repository::with_characters(|ch| ch[cn].item[n] as usize);
         if in_idx != 0 {
-            State::with_mut(|s| s.do_look_item(cn, in_idx));
+            Repository::global_mut().do_look_item(cn, in_idx);
         }
         return;
     }
@@ -6748,8 +6751,8 @@ fn plr_cmd_shop(nr: usize) {
 
     if (co & 0x8000) != 0 {
         let idx = co & 0x7fff;
-        State::with_mut(|s| s.do_depot_char(cn, idx, n));
+        Repository::global_mut().do_depot_char(cn, idx, n);
     } else {
-        State::with_mut(|s| s.do_shop_char(cn, co, n));
+        Repository::global_mut().do_shop_char(cn, co, n);
     }
 }

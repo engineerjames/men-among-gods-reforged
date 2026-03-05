@@ -52,7 +52,7 @@ fn take_item_from_char(item_idx: usize, cn: usize) {
         items[item_idx].carried = 0;
     });
 
-    GameState::with_mut(|state| state.do_update_char(cn));
+    GameState::global_mut().do_update_char(cn);
 }
 
 pub fn sub_door_driver(_cn: usize, item_idx: usize) -> i32 {
@@ -177,13 +177,11 @@ pub fn use_door(cn: usize, item_idx: usize) -> i32 {
                             if power == 0 || skill >= (power + helpers::random_mod(20)) as u8 {
                                 lock = 1;
                             } else {
-                                GameState::with_mut(|state| {
-                                    state.do_character_log(
-                                        cn,
-                                        core::types::FontColor::Blue,
-                                        "You failed to pick the lock.\n",
-                                    );
-                                });
+                                GameState::global_mut().do_character_log(
+                                    cn,
+                                    core::types::FontColor::Blue,
+                                    "You failed to pick the lock.\n",
+                                );
                             }
                             // Damage lockpick
                             item_damage_citem(cn, 1);
@@ -203,13 +201,11 @@ pub fn use_door(cn: usize, item_idx: usize) -> i32 {
 
     // If door is locked and player doesn't have key, exit early
     if locked_without_key {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Blue,
-                "It's locked and you don't have the right key.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Blue,
+            "It's locked and you don't have the right key.\n",
+        );
         return 0;
     }
 
@@ -232,9 +228,7 @@ pub fn use_door(cn: usize, item_idx: usize) -> i32 {
                 });
             }
         });
-        GameState::with_mut(|state| {
-            state.do_character_log(cn, core::types::FontColor::Yellow, "The key vanished.\n");
-        });
+        GameState::global_mut().do_character_log(cn, core::types::FontColor::Yellow, "The key vanished.\n");
     }
 
     // Now modify the door state
@@ -243,12 +237,10 @@ pub fn use_door(cn: usize, item_idx: usize) -> i32 {
         let item_x = item.x as i32;
         let item_y = item.y as i32;
 
-        GameState::with_mut(|state| {
-            state.reset_go(item_x, item_y);
-            state.remove_lights(item_x, item_y);
-        });
+        GameState::global_mut().reset_go(item_x, item_y);
+        GameState::global_mut().remove_lights(item_x, item_y);
 
-        GameState::with_mut(|state| state.do_area_sound(0, 0, item_x, item_y, 10));
+        GameState::global_mut().do_area_sound(0, 0, item_x, item_y, 10);
 
         if item.active == 0 {
             item.flags &= !(ItemFlags::IF_MOVEBLOCK.bits() | ItemFlags::IF_SIGHTBLOCK.bits());
@@ -266,26 +258,22 @@ pub fn use_door(cn: usize, item_idx: usize) -> i32 {
             }
         }
 
-        GameState::with_mut(|state| {
-            state.reset_go(item_x, item_y);
-            state.add_lights(item_x, item_y);
-        });
+        GameState::global_mut().reset_go(item_x, item_y);
+        GameState::global_mut().add_lights(item_x, item_y);
 
         GameState::with_characters(|characters| {
             let ch = &characters[cn];
-            GameState::with_mut(|state| {
-                state.do_area_notify(
-                    cn as i32,
-                    0,
-                    ch.x as i32,
-                    ch.y as i32,
-                    core::constants::NT_SEE as i32,
-                    cn as i32,
-                    0,
-                    0,
-                    0,
-                );
-            });
+            GameState::global_mut().do_area_notify(
+                cn as i32,
+                0,
+                ch.x as i32,
+                ch.y as i32,
+                core::constants::NT_SEE as i32,
+                cn as i32,
+                0,
+                0,
+                0,
+            );
         });
     });
 
@@ -316,16 +304,14 @@ pub fn use_create_item(cn: usize, item_idx: usize) -> i32 {
     if !God::give_character_item(cn, in2) {
         GameState::with_items(|items| {
             let item_ref = items[in2].reference;
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    &format!(
-                        "Your backpack is full, so you can't take the {}.\n",
-                        c_string_to_str(&item_ref)
-                    ),
-                );
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                &format!(
+                    "Your backpack is full, so you can't take the {}.\n",
+                    c_string_to_str(&item_ref)
+                ),
+            );
         });
         GameState::with_items_mut(|items| {
             items[in2].used = core::constants::USE_EMPTY;
@@ -338,13 +324,11 @@ pub fn use_create_item(cn: usize, item_idx: usize) -> i32 {
         let item_name = items[in2].get_name();
         let source_name = items[item_idx].get_name();
 
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                &format!("You got a {}.\n", c_string_to_str(&item_ref)),
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            &format!("You got a {}.\n", c_string_to_str(&item_ref)),
+        );
 
         log::info!("Character {} got {} from {}", cn, item_name, source_name);
     });
@@ -359,16 +343,14 @@ pub fn use_create_item(cn: usize, item_idx: usize) -> i32 {
                 let char_name = characters[cn].get_name();
                 GameState::with_items_mut(|items| {
                     let item = &mut items[in2];
-                    GameState::with_mut(|state| {
-                        state.do_character_log(
-                            cn,
-                            core::types::FontColor::Blue,
-                            &format!(
-                                "You feel yourself form a magical connection with the {}.\n",
-                                c_string_to_str(&item.reference)
-                            ),
-                        );
-                    });
+                    GameState::global_mut().do_character_log(
+                        cn,
+                        core::types::FontColor::Blue,
+                        &format!(
+                            "You feel yourself form a magical connection with the {}.\n",
+                            c_string_to_str(&item.reference)
+                        ),
+                    );
                     item.data[0] = cn as u32;
 
                     let new_desc = format!(
@@ -390,19 +372,17 @@ pub fn use_create_item(cn: usize, item_idx: usize) -> i32 {
 
         if driver == 54 {
             let (x, y) = (items[item_idx].x as i32, items[item_idx].y as i32);
-            GameState::with_mut(|state| {
-                state.do_area_notify(
-                    cn as i32,
-                    0,
-                    x,
-                    y,
-                    core::constants::NT_HITME as i32,
-                    cn as i32,
-                    0,
-                    0,
-                    0,
-                );
-            });
+            GameState::global_mut().do_area_notify(
+                cn as i32,
+                0,
+                x,
+                y,
+                core::constants::NT_HITME as i32,
+                cn as i32,
+                0,
+                0,
+                0,
+            );
         }
     });
 
@@ -428,13 +408,11 @@ pub fn use_create_gold(cn: usize, item_idx: usize) -> i32 {
     });
 
     GameState::with_items(|items| {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                &format!("You got a {}G.\n", gold_amount),
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            &format!("You got a {}G.\n", gold_amount),
+        );
 
         log::info!(
             "Character {} got {}G from {}",
@@ -495,16 +473,14 @@ pub fn use_create_item2(cn: usize, item_idx: usize) -> i32 {
         GameState::with_items(|items| {
             let item_ref = c_string_to_str(&items[in2].reference);
 
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    &format!(
-                        "Your backpack is full, so you can't take the {}.\n",
-                        item_ref
-                    ),
-                );
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                &format!(
+                    "Your backpack is full, so you can't take the {}.\n",
+                    item_ref
+                ),
+            );
         });
         GameState::with_items_mut(|items| {
             items[in2].used = USE_EMPTY;
@@ -514,13 +490,11 @@ pub fn use_create_item2(cn: usize, item_idx: usize) -> i32 {
 
     GameState::with_items(|items| {
         let item_ref = c_string_to_str(&items[in2].reference);
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                &format!("You got a {}.\n", item_ref),
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            &format!("You got a {}.\n", item_ref),
+        );
 
         chlog!(
             cn,
@@ -592,21 +566,17 @@ pub fn use_create_item3(cn: usize, item_idx: usize) -> i32 {
     let in2 = match in2 {
         Some(id) => id,
         None => {
-            GameState::with_mut(|state| {
-                state.do_character_log(cn, core::types::FontColor::Green, "It's empty...\n");
-            });
+            GameState::global_mut().do_character_log(cn, core::types::FontColor::Green, "It's empty...\n");
             return 1;
         }
     };
 
     if !God::give_character_item(cn, in2) {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Blue,
-                "Your backpack is full, so you can't take anything.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Blue,
+            "Your backpack is full, so you can't take anything.\n",
+        );
         GameState::with_items_mut(|items| {
             items[in2].used = USE_EMPTY;
         });
@@ -615,13 +585,11 @@ pub fn use_create_item3(cn: usize, item_idx: usize) -> i32 {
 
     GameState::with_items(|items| {
         let item_ref = c_string_to_str(&items[in2].reference);
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                &format!("You got a {}.\n", item_ref),
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            &format!("You got a {}.\n", item_ref),
+        );
 
         chlog!(
             cn,
@@ -642,25 +610,21 @@ pub fn use_mix_potion(cn: usize, item_idx: usize) -> i32 {
     let citem = GameState::with_characters(|characters| characters[cn].citem as usize);
 
     if citem == 0 || (citem & 0x80000000) != 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Blue,
-                "What do you want to do with it?",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Blue,
+            "What do you want to do with it?",
+        );
         return 0;
     }
 
     let carried = GameState::with_items(|items| items[item_idx].carried);
     if carried == 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Blue,
-                "Too difficult to do on the ground.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Blue,
+            "Too difficult to do on the ground.\n",
+        );
         return 0;
     }
 
@@ -737,9 +701,7 @@ pub fn use_mix_potion(cn: usize, item_idx: usize) -> i32 {
     let result_template = match result_template {
         Some(t) => t,
         None => {
-            GameState::with_mut(|state| {
-                state.do_character_log(cn, core::types::FontColor::Blue, "Sorry?\n");
-            });
+            GameState::global_mut().do_character_log(cn, core::types::FontColor::Blue, "Sorry?\n");
             return 0;
         }
     };
@@ -773,33 +735,27 @@ pub fn use_chain(cn: usize, item_idx: usize) -> i32 {
     let citem = GameState::with_characters(|characters| characters[cn].citem as usize);
 
     if citem == 0 || (citem & 0x80000000) != 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Blue,
-                "What do you want to do with it?\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Blue,
+            "What do you want to do with it?\n",
+        );
         return 0;
     }
 
     let carried = GameState::with_items(|items| items[item_idx].carried);
     if carried == 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Blue,
-                "Too difficult to do on the ground.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Blue,
+            "Too difficult to do on the ground.\n",
+        );
         return 0;
     }
 
     let citem_temp = GameState::with_items(|items| items[citem].temp);
     if citem_temp != 206 {
-        GameState::with_mut(|state| {
-            state.do_character_log(cn, core::types::FontColor::Blue, "Sorry?\n");
-        });
+        GameState::global_mut().do_character_log(cn, core::types::FontColor::Blue, "Sorry?\n");
         return 0;
     }
 
@@ -807,9 +763,7 @@ pub fn use_chain(cn: usize, item_idx: usize) -> i32 {
         GameState::with_items(|items| (items[item_idx].temp as i32, items[item_idx].data[0]));
 
     if current_temp as u32 >= max_data {
-        GameState::with_mut(|state| {
-            state.do_character_log(cn, core::types::FontColor::Blue, "It won't fit anymore.\n");
-        });
+        GameState::global_mut().do_character_log(cn, core::types::FontColor::Blue, "It won't fit anymore.\n");
         return 0;
     }
 
@@ -861,13 +815,11 @@ pub fn stone_sword(cn: usize, item_idx: usize) -> i32 {
         GameState::with_characters(|characters| characters[cn].attrib[AT_STREN as usize][5]);
 
     if strength < 100 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Blue,
-                "You're not strong enough.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Blue,
+            "You're not strong enough.\n",
+        );
         return 0;
     }
 
@@ -880,13 +832,11 @@ pub fn stone_sword(cn: usize, item_idx: usize) -> i32 {
 
     GameState::with_items(|items| {
         let item_ref = c_string_to_str(&items[in2].reference);
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                &format!("You got a {}.\n", item_ref),
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            &format!("You got a {}.\n", item_ref),
+        );
     });
 
     1
@@ -910,20 +860,16 @@ pub fn finish_laby_teleport(cn: usize, nr: usize, exp: usize) -> i32 {
             _ => "th",
         };
 
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                &format!(
-                    "You have solved the {}{} part of the Labyrinth.\n",
-                    nr, ordinal
-                ),
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            &format!(
+                "You have solved the {}{} part of the Labyrinth.\n",
+                nr, ordinal
+            ),
+        );
 
-        GameState::with_mut(|state| {
-            state.do_give_exp(cn, exp as i32, 0, -1);
-        })
+        GameState::global_mut().do_give_exp(cn, exp as i32, 0, -1)
     }
 
     // Remove items with IF_LABYDESTROY flag from citem
@@ -946,13 +892,11 @@ pub fn finish_laby_teleport(cn: usize, nr: usize, exp: usize) -> i32 {
                 items[citem as usize].used = USE_EMPTY;
             });
 
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Yellow,
-                    &format!("Your {} vanished.\n", item_ref),
-                );
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!("Your {} vanished.\n", item_ref),
+            );
         }
     }
 
@@ -977,13 +921,11 @@ pub fn finish_laby_teleport(cn: usize, nr: usize, exp: usize) -> i32 {
                     items[item_idx as usize].used = USE_EMPTY;
                 });
 
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Yellow,
-                        &format!("Your {} vanished.\n", item_ref),
-                    );
-                });
+                GameState::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!("Your {} vanished.\n", item_ref),
+                );
             }
         }
     }
@@ -1009,13 +951,11 @@ pub fn finish_laby_teleport(cn: usize, nr: usize, exp: usize) -> i32 {
                     items[item_idx as usize].used = USE_EMPTY;
                 });
 
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Yellow,
-                        &format!("Your {} vanished.\n", item_ref),
-                    );
-                });
+                GameState::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!("Your {} vanished.\n", item_ref),
+                );
             }
         }
     }
@@ -1036,13 +976,11 @@ pub fn finish_laby_teleport(cn: usize, nr: usize, exp: usize) -> i32 {
                 items[spell_idx as usize].used = USE_EMPTY;
             });
 
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Yellow,
-                    &format!("Your {} vanished.\n", item_name),
-                );
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!("Your {} vanished.\n", item_name),
+            );
         }
     }
 
@@ -1117,13 +1055,11 @@ pub fn teleport(cn: usize, item_idx: usize) -> i32 {
             items[citem as usize].used = USE_EMPTY;
         });
 
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                &format!("Your {} vanished.\n", item_ref),
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            &format!("Your {} vanished.\n", item_ref),
+        );
     }
 
     // Remove nolab items from inventory (40 slots)
@@ -1142,13 +1078,11 @@ pub fn teleport(cn: usize, item_idx: usize) -> i32 {
                 items[inv_item as usize].used = USE_EMPTY;
             });
 
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Yellow,
-                    &format!("Your {} vanished.\n", item_ref),
-                );
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!("Your {} vanished.\n", item_ref),
+            );
         }
     }
 
@@ -1175,9 +1109,7 @@ pub fn teleport(cn: usize, item_idx: usize) -> i32 {
     let data2 = GameState::with_items(|items| items[item_idx].data[2]);
     if data2 != 0 {
         let data3 = GameState::with_items(|items| items[item_idx].data[3]);
-        GameState::with_mut(|gs| {
-            helpers::use_labtransfer(gs, cn, data2 as i32, data3 as i32);
-        });
+        helpers::use_labtransfer(GameState::global_mut(), cn, data2 as i32, data3 as i32);
         return 1;
     }
 
@@ -1228,13 +1160,11 @@ pub fn teleport2(cn: usize, item_idx: usize) -> i32 {
             diff,
             diff as f64 / TICKS as f64
         );
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "Sorry, this lag scroll was too old. You need to use it four minutes after lagging out or earlier!\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "Sorry, this lag scroll was too old. You need to use it four minutes after lagging out or earlier!\n",
+        );
         return 1;
     }
 
@@ -1267,16 +1197,14 @@ pub fn teleport2(cn: usize, item_idx: usize) -> i32 {
     if added == 0 {
         let spell_name =
             GameState::with_items(|items| c_string_to_str(&items[spell_item].name).to_string());
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                &format!(
-                    "Magical interference neutralised the {}'s effect.\n",
-                    spell_name
-                ),
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            &format!(
+                "Magical interference neutralised the {}'s effect.\n",
+                spell_name
+            ),
+        );
         return 0;
     }
 
@@ -1302,13 +1230,11 @@ pub fn use_labyrinth(cn: usize, _item_idx: usize) -> i32 {
             items[citem as usize].used = USE_EMPTY;
         });
 
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                &format!("Your {} vanished.\n", item_ref),
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            &format!("Your {} vanished.\n", item_ref),
+        );
     }
 
     // Remove nolab items from inventory (40 slots)
@@ -1327,13 +1253,11 @@ pub fn use_labyrinth(cn: usize, _item_idx: usize) -> i32 {
                 items[inv_item as usize].used = USE_EMPTY;
             });
 
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Yellow,
-                    &format!("Your {} vanished.\n", item_ref),
-                );
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!("Your {} vanished.\n", item_ref),
+            );
         }
     }
 
@@ -1442,13 +1366,11 @@ pub fn use_labyrinth(cn: usize, _item_idx: usize) -> i32 {
             result
         }
         _ => {
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Green,
-                    "You have already solved all existing parts of the labyrinth. Please come back later.\n",
-                );
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                "You have already solved all existing parts of the labyrinth. Please come back later.\n",
+            );
             false
         }
     };
@@ -1504,7 +1426,7 @@ pub fn use_bag(cn: usize, item_idx: usize) -> i32 {
 
     // Check if grave robbing is allowed
     if owner != 0 && owner != cn {
-        let may_attack = GameState::with_mut(|state| state.may_attack_msg(cn, owner, false));
+        let may_attack = GameState::global_mut().may_attack_msg(cn, owner, false);
         let allowed_cn = GameState::with_characters(|characters| {
             characters[owner].data[core::constants::CHD_ALLOW] as usize
         });
@@ -1519,16 +1441,14 @@ pub fn use_bag(cn: usize, item_idx: usize) -> i32 {
             });
             let owner_pronoun = if owner_is_male { "his" } else { "her" };
 
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Green,
-                    &format!(
-                        "This is {}'s grave, not yours. You may only search it with {} permission.\n",
-                        owner_name, owner_pronoun
-                    ),
-                );
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                &format!(
+                    "This is {}'s grave, not yours. You may only search it with {} permission.\n",
+                    owner_name, owner_pronoun
+                ),
+            );
 
             // Check if owner is active and notify them
             let (corpse_active, owner_x) = GameState::with_characters(|characters| {
@@ -1540,16 +1460,14 @@ pub fn use_bag(cn: usize, item_idx: usize) -> i32 {
                     c_string_to_str(&characters[cn].name).to_string()
                 });
 
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        owner,
-                        core::types::FontColor::Green,
-                        &format!(
-                            "{} just tried to search your grave. You must #ALLOW {} if you want them to.\n",
-                            cn_name, cn_name
-                        ),
-                    );
-                });
+                GameState::global_mut().do_character_log(
+                    owner,
+                    core::types::FontColor::Green,
+                    &format!(
+                        "{} just tried to search your grave. You must #ALLOW {} if you want them to.\n",
+                        cn_name, cn_name
+                    ),
+                );
             }
 
             return 0;
@@ -1561,14 +1479,12 @@ pub fn use_bag(cn: usize, item_idx: usize) -> i32 {
         c_string_to_str(&characters[co].reference).to_string()
     });
 
-    GameState::with_mut(|state| {
-        state.do_character_log(
-            cn,
-            core::types::FontColor::Yellow,
-            &format!("You search the remains of {}.\n", co_ref),
-        );
-        state.do_look_char(cn, co, 0, 0, 1);
-    });
+    GameState::global_mut().do_character_log(
+        cn,
+        core::types::FontColor::Yellow,
+        &format!("You search the remains of {}.\n", co_ref),
+    );
+    GameState::global_mut().do_look_char(cn, co, 0, 0, 1);
 
     1
 }
@@ -1597,38 +1513,32 @@ pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
     if current_val != 0 {
         // Already know the skill
         if teaches_only {
-            GameState::with_mut(|state| {
-                let name = skilltab::get_skill_name(skill_nr);
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Yellow,
-                    &format!("You already know {}.\n", name),
-                );
-            });
+            let name = skilltab::get_skill_name(skill_nr);
+            GameState::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!("You already know {}.\n", name),
+            );
             return 0;
         }
 
         if current_val >= max_val {
-            GameState::with_mut(|state| {
-                let name = skilltab::get_skill_name(skill_nr);
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Yellow,
-                    &format!("You cannot raise skill {} any higher.\n", name),
-                );
-            });
+            let name = skilltab::get_skill_name(skill_nr);
+            GameState::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!("You cannot raise skill {} any higher.\n", name),
+            );
             return 0;
         }
 
         // Raise skill by one
-        GameState::with_mut(|state| {
-            let name = skilltab::get_skill_name(skill_nr);
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                &format!("Raised {} by one.\n", name),
-            );
-        });
+        let name = skilltab::get_skill_name(skill_nr);
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            &format!("Raised {} by one.\n", name),
+        );
 
         // Calculate points needed and apply
         let v = current_val as i32;
@@ -1640,9 +1550,7 @@ pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
         });
 
         // Trigger level check
-        GameState::with_mut(|state| {
-            state.do_check_new_level(cn);
-        });
+        GameState::global_mut().do_check_new_level(cn);
         log::info!(
             "Used scroll to raise skill {} for {} (pts={})",
             skill_nr,
@@ -1651,28 +1559,24 @@ pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
         );
     } else if max_val == 0 {
         // Cannot learn this skill
-        GameState::with_mut(|state| {
-            let name = skilltab::get_skill_name(skill_nr);
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                &format!("This scroll teaches {}, which you cannot learn.\n", name),
-            );
-        });
+        let name = skilltab::get_skill_name(skill_nr);
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            &format!("This scroll teaches {}, which you cannot learn.\n", name),
+        );
         return 0;
     } else {
         // Learn the skill
         GameState::with_characters_mut(|characters| {
             characters[cn].skill[skill_nr][0] = 1;
         });
-        GameState::with_mut(|state| {
-            let name = skilltab::get_skill_name(skill_nr);
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                &format!("You learned {}!\n", name),
-            );
-        });
+        let name = skilltab::get_skill_name(skill_nr);
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            &format!("You learned {}!\n", name),
+        );
         log::info!("Used scroll to learn {} (cn={})", skill_nr, cn);
     }
 
@@ -1705,16 +1609,14 @@ pub fn use_scroll2(cn: usize, item_idx: usize) -> i32 {
     });
 
     if current_val >= max_val {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                &format!(
-                    "You cannot raise attribute {} any higher.\n",
-                    AT_NAME[attrib_nr]
-                ),
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            &format!(
+                "You cannot raise attribute {} any higher.\n",
+                AT_NAME[attrib_nr]
+            ),
+        );
         return 0;
     }
 
@@ -1723,13 +1625,11 @@ pub fn use_scroll2(cn: usize, item_idx: usize) -> i32 {
     let diff = difficulty as i32;
     let pts = (v * v * v * diff) / 20;
 
-    GameState::with_mut(|state| {
-        state.do_character_log(
-            cn,
-            core::types::FontColor::Yellow,
-            &format!("Raised attribute {} by one.\n", AT_NAME[attrib_nr]),
-        );
-    });
+    GameState::global_mut().do_character_log(
+        cn,
+        core::types::FontColor::Yellow,
+        &format!("Raised attribute {} by one.\n", AT_NAME[attrib_nr]),
+    );
     chlog!(
         cn,
         "used a scroll to raise attribute {} (pts={})",
@@ -1742,9 +1642,7 @@ pub fn use_scroll2(cn: usize, item_idx: usize) -> i32 {
         characters[cn].attrib[attrib_nr][0] += 1;
     });
 
-    GameState::with_mut(|state| {
-        state.do_check_new_level(cn);
-    });
+    GameState::global_mut().do_check_new_level(cn);
 
     // Remove the scroll
     GameState::with_items_mut(|items| {
@@ -1774,23 +1672,19 @@ pub fn use_scroll3(cn: usize, item_idx: usize) -> i32 {
     });
 
     if current_hp >= max_hp {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                "You cannot raise Hitpoints any higher.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "You cannot raise Hitpoints any higher.\n",
+        );
         return 0;
     }
 
-    GameState::with_mut(|state| {
-        state.do_character_log(
-            cn,
-            core::types::FontColor::Yellow,
-            &format!("Raised Hitpoints by {}.\n", amount),
-        );
-    });
+    GameState::global_mut().do_character_log(
+        cn,
+        core::types::FontColor::Yellow,
+        &format!("Raised Hitpoints by {}.\n", amount),
+    );
 
     // Calculate total points needed: sum of v*diff for each point
     let v = current_hp as i32;
@@ -1805,9 +1699,7 @@ pub fn use_scroll3(cn: usize, item_idx: usize) -> i32 {
         characters[cn].hp[0] += amount as u16;
     });
 
-    GameState::with_mut(|state| {
-        state.do_check_new_level(cn);
-    });
+    GameState::global_mut().do_check_new_level(cn);
 
     // Remove the scroll
     GameState::with_items_mut(|items| {
@@ -1837,23 +1729,19 @@ pub fn use_scroll4(cn: usize, item_idx: usize) -> i32 {
     });
 
     if current_end >= max_end {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                "You cannot raise Endurance any higher.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "You cannot raise Endurance any higher.\n",
+        );
         return 0;
     }
 
-    GameState::with_mut(|state| {
-        state.do_character_log(
-            cn,
-            core::types::FontColor::Yellow,
-            &format!("Raised Endurance by {}.\n", amount),
-        );
-    });
+    GameState::global_mut().do_character_log(
+        cn,
+        core::types::FontColor::Yellow,
+        &format!("Raised Endurance by {}.\n", amount),
+    );
 
     // Calculate total points needed: sum of (v*diff)/2 for each point
     let v = current_end as i32;
@@ -1868,9 +1756,7 @@ pub fn use_scroll4(cn: usize, item_idx: usize) -> i32 {
         characters[cn].end[0] += amount as u16;
     });
 
-    GameState::with_mut(|state| {
-        state.do_check_new_level(cn);
-    });
+    GameState::global_mut().do_check_new_level(cn);
 
     // Remove the scroll
     GameState::with_items_mut(|items| {
@@ -1900,23 +1786,19 @@ pub fn use_scroll5(cn: usize, item_idx: usize) -> i32 {
     });
 
     if current_mana >= max_mana {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                "You cannot raise Mana any higher.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "You cannot raise Mana any higher.\n",
+        );
         return 0;
     }
 
-    GameState::with_mut(|state| {
-        state.do_character_log(
-            cn,
-            core::types::FontColor::Yellow,
-            &format!("Raised Mana by {}.\n", amount),
-        );
-    });
+    GameState::global_mut().do_character_log(
+        cn,
+        core::types::FontColor::Yellow,
+        &format!("Raised Mana by {}.\n", amount),
+    );
 
     // Calculate total points needed: sum of v*diff for each point
     let v = current_mana as i32;
@@ -1932,9 +1814,7 @@ pub fn use_scroll5(cn: usize, item_idx: usize) -> i32 {
         characters[cn].mana[0] += amount as u16;
     });
 
-    GameState::with_mut(|state| {
-        state.do_check_new_level(cn);
-    });
+    GameState::global_mut().do_check_new_level(cn);
 
     // Remove the scroll
     GameState::with_items_mut(|items| {
@@ -2442,7 +2322,7 @@ pub fn use_crystal_sub(_cn: usize, item_idx: usize) -> i32 {
     }
 
     // update character state
-    GameState::with_mut(|state| state.do_update_char(cc));
+    GameState::global_mut().do_update_char(cc);
 
     need
 }
@@ -2530,7 +2410,7 @@ pub fn use_mine_respawn(_cn: usize, item_idx: usize) -> i32 {
     }
 
     // ensure the new character is visible/updated
-    GameState::with_mut(|state| state.do_update_char(cc));
+    GameState::global_mut().do_update_char(cc);
 
     1
 }
@@ -2543,26 +2423,22 @@ pub fn rat_eye(cn: usize, item_idx: usize) -> i32 {
     let citem = GameState::with_characters(|characters| characters[cn].citem);
 
     if citem == 0 || (citem & 0x80000000) != 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                "What do you want to do with it?\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "What do you want to do with it?\n",
+        );
         return 0;
     }
 
     // Check if rat eye is carried (not on ground)
     let carried = GameState::with_items(|items| items[item_idx].carried);
     if carried == 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                "Too difficult to do on the ground.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "Too difficult to do on the ground.\n",
+        );
         return 0;
     }
 
@@ -2581,9 +2457,7 @@ pub fn rat_eye(cn: usize, item_idx: usize) -> i32 {
     let slot = match slot {
         Some(s) => s,
         None => {
-            GameState::with_mut(|state| {
-                state.do_character_log(cn, core::types::FontColor::Green, "This doesnt fit.\n");
-            });
+            GameState::global_mut().do_character_log(cn, core::types::FontColor::Green, "This doesnt fit.\n");
             return 0;
         }
     };
@@ -2649,13 +2523,11 @@ pub fn skua_protect(cn: usize, item_idx: usize) -> i32 {
         GameState::with_characters(|characters| characters[cn].worn[WN_RHAND] == item_idx as u32);
 
     if !is_wielded {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                "You cannot use Skua's weapon if you're not wielding it.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "You cannot use Skua's weapon if you're not wielding it.\n",
+        );
         return 0;
     }
 
@@ -2664,14 +2536,12 @@ pub fn skua_protect(cn: usize, item_idx: usize) -> i32 {
         GameState::with_characters(|characters| (characters[cn].kindred & 0x00000002) != 0);
 
     if !has_skua_kindred {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                "How dare you to call on Skua to help you? Slave of the Purple One!\n",
-            );
-            state.do_character_log(cn, core::types::FontColor::Green, "Your weapon vanished.\n");
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "How dare you to call on Skua to help you? Slave of the Purple One!\n",
+        );
+        GameState::global_mut().do_character_log(cn, core::types::FontColor::Green, "Your weapon vanished.\n");
 
         GameState::with_characters_mut(|characters| {
             characters[cn].worn[WN_RHAND] = 0;
@@ -2681,18 +2551,16 @@ pub fn skua_protect(cn: usize, item_idx: usize) -> i32 {
             items[item_idx].used = core::constants::USE_EMPTY;
         });
     } else {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                "You feel Skua's presence protect you.\n",
-            );
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                "He takes away His weapon and replaces it by a common one.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "You feel Skua's presence protect you.\n",
+        );
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "He takes away His weapon and replaces it by a common one.\n",
+        );
 
         driver::spell_from_item(cn, item_idx);
 
@@ -2727,13 +2595,11 @@ pub fn purple_protect(cn: usize, item_idx: usize) -> i32 {
     });
 
     if !is_wielded {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                "You cannot use the Purple One's weapon if you're not wielding it.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "You cannot use the Purple One's weapon if you're not wielding it.\n",
+        );
         return 0;
     }
 
@@ -2742,14 +2608,12 @@ pub fn purple_protect(cn: usize, item_idx: usize) -> i32 {
         GameState::with_characters(|characters| (characters[cn].kindred & 0x00000001) != 0);
 
     if !has_purple_kindred {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                "How dare you to call on the Purple One to help you? Slave of Skua!\n",
-            );
-            state.do_character_log(cn, core::types::FontColor::Green, "Your weapon vanished.\n");
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "How dare you to call on the Purple One to help you? Slave of Skua!\n",
+        );
+        GameState::global_mut().do_character_log(cn, core::types::FontColor::Green, "Your weapon vanished.\n");
 
         GameState::with_characters_mut(|characters| {
             characters[cn].worn[core::constants::WN_RHAND] = 0;
@@ -2759,18 +2623,16 @@ pub fn purple_protect(cn: usize, item_idx: usize) -> i32 {
             items[item_idx].used = core::constants::USE_EMPTY;
         });
     } else {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                "You feel the Purple One's presence protect you.\n",
-            );
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                "He takes away His weapon and replaces it by a common one.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "You feel the Purple One's presence protect you.\n",
+        );
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "He takes away His weapon and replaces it by a common one.\n",
+        );
 
         driver::spell_from_item(cn, item_idx);
 
@@ -2824,13 +2686,11 @@ pub fn use_lever(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
         item.active = item.duration;
 
         if item.light[0] != item.light[1] {
-            GameState::with_mut(|state| {
-                state.do_add_light(
-                    item.x as i32,
-                    item.y as i32,
-                    item.light[1] as i32 - item.light[0] as i32,
-                );
-            });
+            GameState::global_mut().do_add_light(
+                item.x as i32,
+                item.y as i32,
+                item.light[1] as i32 - item.light[0] as i32,
+            );
         }
     });
 
@@ -2985,13 +2845,11 @@ pub fn use_pile(cn: usize, item_idx: usize) -> i32 {
             // Give to player
             if God::give_character_item(cn, in2) {
                 let reference = GameState::with_items(|items| items[in2].reference);
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Green,
-                        &format!("You've found a {}!\n", c_string_to_str(&reference)),
-                    );
-                });
+                GameState::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!("You've found a {}!\n", c_string_to_str(&reference)),
+                );
             }
         } else {
             // It's a monster spawner
@@ -3149,13 +3007,11 @@ pub fn use_mine(cn: usize, item_idx: usize) -> i32 {
     });
 
     if insufficient_endurance {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                "You're too exhausted to continue digging.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "You're too exhausted to continue digging.\n",
+        );
         GameState::with_characters_mut(|characters| {
             characters[cn].misc_action = 0; // DR_IDLE
         });
@@ -3184,15 +3040,13 @@ pub fn use_mine(cn: usize, item_idx: usize) -> i32 {
             str /= 4;
         }
         GameState::char_play_sound(cn, 11, -150, 0);
-        GameState::with_mut(|state| {
-            state.do_area_sound(
-                cn,
-                0,
-                GameState::with_characters(|characters| characters[cn].x as i32),
-                GameState::with_characters(|characters| characters[cn].y as i32),
-                11,
-            )
-        });
+        GameState::global_mut().do_area_sound(
+            cn,
+            0,
+            GameState::with_characters(|characters| characters[cn].x as i32),
+            GameState::with_characters(|characters| characters[cn].y as i32),
+            11,
+        );
     } else {
         str /= 10;
         let low_health = GameState::with_characters_mut(|characters| {
@@ -3205,13 +3059,11 @@ pub fn use_mine(cn: usize, item_idx: usize) -> i32 {
         });
 
         if low_health {
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Green,
-                    "You don't want to kill yourself beating at this wall with your bare hands, so you stop.\n",
-                );
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                "You don't want to kill yourself beating at this wall with your bare hands, so you stop.\n",
+            );
             GameState::with_characters_mut(|characters| {
                 characters[cn].misc_action = 0; // DR_IDLE
             });
@@ -3232,17 +3084,13 @@ pub fn use_mine(cn: usize, item_idx: usize) -> i32 {
     if tmp <= 0 {
         // Wall destroyed
         let (x, y) = GameState::with_items(|items| (items[item_idx].x, items[item_idx].y));
-        GameState::with_mut(|state| {
-            state.reset_go(x as i32, y as i32);
-            state.remove_lights(x as i32, y as i32);
-        });
+        GameState::global_mut().reset_go(x as i32, y as i32);
+        GameState::global_mut().remove_lights(x as i32, y as i32);
 
         let _result = mine_wall(cn, item_idx);
 
-        GameState::with_mut(|state| {
-            state.reset_go(x as i32, y as i32);
-            state.add_lights(x as i32, y as i32);
-        });
+        GameState::global_mut().reset_go(x as i32, y as i32);
+        GameState::global_mut().add_lights(x as i32, y as i32);
     }
 
     0
@@ -3270,10 +3118,8 @@ pub fn use_mine_fast(cn: usize, item_idx: usize) -> i32 {
         temp as i32,
     );
 
-    GameState::with_mut(|state| {
-        state.reset_go(x as i32, y as i32);
-        state.remove_lights(x as i32, y as i32);
-    });
+    GameState::global_mut().reset_go(x as i32, y as i32);
+    GameState::global_mut().remove_lights(x as i32, y as i32);
 
     // Remove item from map
     GameState::with_map_mut(|map| {
@@ -3284,10 +3130,8 @@ pub fn use_mine_fast(cn: usize, item_idx: usize) -> i32 {
         items[item_idx].used = USE_EMPTY;
     });
 
-    GameState::with_mut(|state| {
-        state.reset_go(x as i32, y as i32);
-        state.add_lights(x as i32, y as i32);
-    });
+    GameState::global_mut().reset_go(x as i32, y as i32);
+    GameState::global_mut().add_lights(x as i32, y as i32);
 
     1
 }
@@ -3346,13 +3190,11 @@ pub fn build_ring(cn: usize, item_idx: usize) -> i32 {
             347 => 356, // big saphire
             487..=489 => {
                 // Huge gems too powerful for silver
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Green,
-                        "This stone is too powerful for a silver ring.\n",
-                    );
-                });
+                GameState::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    "This stone is too powerful for a silver ring.\n",
+                );
                 return 0;
             }
             _ => return 0,
@@ -3400,9 +3242,7 @@ pub fn build_amulet(cn: usize, item_idx: usize) -> i32 {
     let in2 = GameState::with_characters(|characters| characters[cn].citem as usize);
 
     if in2 == 0 || (in2 & 0x80000000) != 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(cn, core::types::FontColor::Yellow, "Nothing happens.\n");
-        });
+        GameState::global_mut().do_character_log(cn, core::types::FontColor::Yellow, "Nothing happens.\n");
         return 0;
     }
 
@@ -3422,9 +3262,7 @@ pub fn build_amulet(cn: usize, item_idx: usize) -> i32 {
     } else if (t1 == 473 && t2 == 476) || (t1 == 476 && t2 == 473) {
         466
     } else {
-        GameState::with_mut(|state| {
-            state.do_character_log(cn, core::types::FontColor::Yellow, "That doesn't fit.\n");
-        });
+        GameState::global_mut().do_character_log(cn, core::types::FontColor::Yellow, "That doesn't fit.\n");
         return 0;
     };
 
@@ -3485,13 +3323,11 @@ pub fn use_gargoyle(cn: usize, item_idx: usize) -> i32 {
             characters[cc].used = USE_EMPTY;
         });
         God::destroy_items(cc);
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                "The Gargoyle could not materialize.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "The Gargoyle could not materialize.\n",
+        );
         return 0;
     }
 
@@ -3543,13 +3379,11 @@ pub fn use_grolm(cn: usize, item_idx: usize) -> i32 {
             characters[cc].used = USE_EMPTY;
         });
         God::destroy_items(cc);
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                "The Grolm could not materialize.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "The Grolm could not materialize.\n",
+        );
         return 0;
     }
 
@@ -3729,16 +3563,14 @@ pub fn solved_pentagram(cn: usize, item_idx: usize) -> i32 {
     });
 
     // Log to character
-    GameState::with_mut(|state| {
-        state.do_character_log(
-            cn,
-            core::types::FontColor::Green,
-            &format!(
-                "You solved the pentagram quest. Congratulations! You will get {} bonus experience points.\n",
-                bonus
-            ),
-        );
-    });
+    GameState::global_mut().do_character_log(
+        cn,
+        core::types::FontColor::Green,
+        &format!(
+            "You solved the pentagram quest. Congratulations! You will get {} bonus experience points.\n",
+            bonus
+        ),
+    );
 
     log::info!("Character {} solved pentagram quest", cn);
 
@@ -3772,18 +3604,16 @@ pub fn solved_pentagram(cn: usize, item_idx: usize) -> i32 {
 
         // Notify other active players
         if active != 0 && n != cn {
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    n,
-                    core::types::FontColor::Green,
-                    &format!("{} solved the pentagram quest!\n", cn_name),
-                );
-            });
+            GameState::global_mut().do_character_log(
+                n,
+                core::types::FontColor::Green,
+                &format!("{} solved the pentagram quest!\n", cn_name),
+            );
         }
 
         // Award pending bonus exp
         if has_bonus != 0 {
-            GameState::with_mut(|state| state.do_give_exp(n, has_bonus, 0, -1));
+            GameState::global_mut().do_give_exp(n, has_bonus, 0, -1);
             GameState::with_characters_mut(|characters| {
                 characters[n].data[18] = 0;
             });
@@ -3805,13 +3635,11 @@ pub fn solved_pentagram(cn: usize, item_idx: usize) -> i32 {
             }
             if items[n].active == 0 {
                 if items[n].light[0] != items[n].light[1] && items[n].x > 0 {
-                    GameState::with_mut(|state| {
-                        state.do_add_light(
-                            items[n].x as i32,
-                            items[n].y as i32,
-                            items[n].light[1] as i32 - items[n].light[0] as i32,
-                        );
-                    });
+                    GameState::global_mut().do_add_light(
+                        items[n].x as i32,
+                        items[n].y as i32,
+                        items[n].light[1] as i32 - items[n].light[0] as i32,
+                    );
                 }
             }
             items[n].duration = 10 * 60 + crate::helpers::random_mod(20 * 60);
@@ -3819,12 +3647,13 @@ pub fn solved_pentagram(cn: usize, item_idx: usize) -> i32 {
         }
     });
 
-    let new_solve = GameState::with_mut(|state| {
+    let new_solve = {
+        let state = GameState::global_mut();
         state.penta_needed = characters_in_pents * 5 + crate::helpers::random_mod_usize(6);
 
         // Ensure at least 5 are needed
         state.penta_needed.max(5)
-    });
+    };
 
     log::info!(
         "Pentagram quest solved. Characters in pents: {}, new penta_needed: {}",
@@ -3840,13 +3669,11 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
     let active = GameState::with_items(|items| items[item_idx].active);
     if active != 0 {
         if cn != 0 {
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Green,
-                    "This pentagram is already active.\n",
-                );
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                "This pentagram is already active.\n",
+            );
         } else {
             // Respawn enemies if needed
             for m in 1..4 {
@@ -3905,16 +3732,14 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
     });
 
     if r1 as u32 > r2 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                &format!(
-                    "You cannot use this pentagram. It is reserved for rank {} and below.\n",
-                    r2
-                ),
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            &format!(
+                "You cannot use this pentagram. It is reserved for rank {} and below.\n",
+                r2
+            ),
+        );
         return 0;
     }
 
@@ -3927,18 +3752,16 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
     });
 
     let exp_points = (v * v) / 7 + 1;
-    GameState::with_mut(|state| {
-        state.do_character_log(
-            cn,
-            core::types::FontColor::Yellow,
-            &format!(
-                "You activated the pentagram with the value {}. It is worth {} experience point{}.\n",
-                v,
-                exp_points,
-                if v == 1 { "" } else { "s" }
-            ),
-        );
-    });
+    GameState::global_mut().do_character_log(
+        cn,
+        core::types::FontColor::Yellow,
+        &format!(
+            "You activated the pentagram with the value {}. It is worth {} experience point{}.\n",
+            v,
+            exp_points,
+            if v == 1 { "" } else { "s" }
+        ),
+    );
 
     // Count active pentagrams and find top 5
     let mut tot = 0;
@@ -4020,26 +3843,22 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
 
     // Display top 5 pentagrams
     if b[0] != 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(cn, core::types::FontColor::Yellow, "You're holding:\n");
-        });
+        GameState::global_mut().do_character_log(cn, core::types::FontColor::Yellow, "You're holding:\n");
     }
 
     for n in 0..5 {
         if b[n] != 0 {
             let points = (bv[n] * bv[n]) / 7 + 1;
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Yellow,
-                    &format!(
-                        "Pentagram {:3}, worth {:5} point{}.\n",
-                        bv[n],
-                        points,
-                        if bv[n] == 1 { "" } else { "s" }
-                    ),
-                );
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!(
+                    "Pentagram {:3}, worth {:5} point{}.\n",
+                    bv[n],
+                    points,
+                    if bv[n] == 1 { "" } else { "s" }
+                ),
+            );
             exp += points;
         }
     }
@@ -4048,24 +3867,22 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
         characters[cn].data[18] = exp;
     });
 
-    GameState::with_mut(|state| {
-        state.do_character_log(
-            cn,
-            core::types::FontColor::Yellow,
-            &format!(
-                "Your pentagrammas are worth a total of {} experience points. Note that only the highest 5 pentagrammas count towards your experience bonus.\n",
-                exp
-            ),
-        );
-        state.do_character_log(
-            cn,
-            core::types::FontColor::Yellow,
-            &format!(
-                "There are {} pentagrammas total, of which {} are active.\n",
-                tot, act
-            ),
-        );
-    });
+    GameState::global_mut().do_character_log(
+        cn,
+        core::types::FontColor::Yellow,
+        &format!(
+            "Your pentagrammas are worth a total of {} experience points. Note that only the highest 5 pentagrammas count towards your experience bonus.\n",
+            exp
+        ),
+    );
+    GameState::global_mut().do_character_log(
+        cn,
+        core::types::FontColor::Yellow,
+        &format!(
+            "There are {} pentagrammas total, of which {} are active.\n",
+            tot, act
+        ),
+    );
 
     log::info!(
         "Character {} activated pentagram {} ({} of needed)",
@@ -4075,7 +3892,7 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
     );
 
     // Check if quest solved
-    let penta_needed = GameState::with_mut(|state| state.penta_needed);
+    let penta_needed = GameState::global_mut().penta_needed;
     if act >= penta_needed {
         solved_pentagram(cn, item_idx);
         return 0;
@@ -4120,13 +3937,11 @@ pub fn use_shrine(cn: usize, _item_idx: usize) -> i32 {
     let in2 = GameState::with_characters(|characters| characters[cn].citem as usize);
 
     if in2 == 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "You get the feeling that it would be apropriate to give the gods a present.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "You get the feeling that it would be apropriate to give the gods a present.\n",
+        );
         return 0;
     }
 
@@ -4147,26 +3962,19 @@ pub fn use_shrine(cn: usize, _item_idx: usize) -> i32 {
                 GameState::with_characters_mut(|characters| {
                     characters[cn].data[70] += 1;
                 });
-                GameState::with_mut(|state| {
-                    let fp = GameState::with_characters(|characters| characters[cn].data[70]);
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Yellow,
-                        &format!(
-                            "One fire point accounted for. You now have {} fire points.\n",
-                            fp
-                        ),
-                    );
-                });
+                let fp = GameState::with_characters(|characters| characters[cn].data[70]);
+                GameState::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!("One fire point accounted for. You now have {} fire points.\n", fp),
+                );
             } else {
                 let fp = GameState::with_characters(|characters| characters[cn].data[70]);
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Yellow,
-                        &format!("Err, that's a fake point. You have {} fire points.\n", fp),
-                    );
-                });
+                GameState::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!("Err, that's a fake point. You have {} fire points.\n", fp),
+                );
             }
 
             GameState::with_items_mut(|items| {
@@ -4220,62 +4028,49 @@ pub fn use_shrine(cn: usize, _item_idx: usize) -> i32 {
                 });
 
             if equal > 1 {
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Yellow,
-                        &format!(
-                            "Your rank is {}, there are {} participating players of the same rank, {} are worse.\n",
-                            better + 1,
-                            equal - 1,
-                            worse
-                        ),
-                    );
-                });
+                GameState::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!(
+                        "Your rank is {}, there are {} participating players of the same rank, {} are worse.\n",
+                        better + 1,
+                        equal - 1,
+                        worse
+                    ),
+                );
             } else {
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Yellow,
-                        &format!(
-                            "Your rank is {} and {} participating players are worse.\n",
-                            better + 1,
-                            worse
-                        ),
-                    );
-                });
+                GameState::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!(
+                        "Your rank is {} and {} participating players are worse.\n",
+                        better + 1,
+                        worse
+                    ),
+                );
             }
 
-            GameState::with_mut(|state| {
-                state.do_character_log(cn, core::types::FontColor::Yellow, " \n");
-            });
+            GameState::global_mut().do_character_log(cn, core::types::FontColor::Yellow, " \n");
 
             if bestcount == 1 {
                 let name = GameState::with_characters(|characters| {
                     characters[bestcn].get_name().to_string()
                 });
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Yellow,
-                        &format!(
-                            "First place holder is {} with {} fire points.\n",
-                            name, bestval
-                        ),
-                    );
-                });
+                GameState::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!("First place holder is {} with {} fire points.\n", name, bestval),
+                );
             } else {
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Yellow,
-                        &format!(
-                            "First place is shared by {} players, all with {} fire points:\n",
-                            bestcount, bestval
-                        ),
-                    );
-                    state.do_character_log(cn, core::types::FontColor::Yellow, " \n");
-                });
+                GameState::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!(
+                        "First place is shared by {} players, all with {} fire points:\n",
+                        bestcount, bestval
+                    ),
+                );
+                GameState::global_mut().do_character_log(cn, core::types::FontColor::Yellow, " \n");
 
                 GameState::with_characters(|characters| {
                     for m in 1..core::constants::MAXCHARS {
@@ -4290,21 +4085,17 @@ pub fn use_shrine(cn: usize, _item_idx: usize) -> i32 {
                         }
                         if characters[m].data[70] == bestval {
                             let name = characters[m].get_name();
-                            GameState::with_mut(|state| {
-                                state.do_character_log(
-                                    cn,
-                                    core::types::FontColor::Yellow,
-                                    &format!("{}\n", name),
-                                );
-                            });
+                            GameState::global_mut().do_character_log(
+                                cn,
+                                core::types::FontColor::Yellow,
+                                &format!("{}\n", name),
+                            );
                         }
                     }
                 });
             }
 
-            GameState::with_mut(|state| {
-                state.do_character_log(cn, core::types::FontColor::Yellow, " \n");
-            });
+            GameState::global_mut().do_character_log(cn, core::types::FontColor::Yellow, " \n");
 
             return 0;
         }
@@ -4358,13 +4149,11 @@ pub fn use_shrine(cn: usize, _item_idx: usize) -> i32 {
         });
 
         if mana_restored {
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Green,
-                    "You feel the hand of the Goddess of Magic touch your mind.\n",
-                );
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                "You feel the hand of the Goddess of Magic touch your mind.\n",
+            );
             let (x, y) = GameState::with_characters(|characters| {
                 (characters[cn].x as i32, characters[cn].y as i32)
             });
@@ -4389,9 +4178,7 @@ pub fn use_shrine(cn: usize, _item_idx: usize) -> i32 {
             "The gods accepted your offer.\n"
         };
 
-        GameState::with_mut(|state| {
-            state.do_character_log(cn, core::types::FontColor::Yellow, message);
-        });
+        GameState::global_mut().do_character_log(cn, core::types::FontColor::Yellow, message);
 
         // Increase luck
         if val != 0 && rank != 0 {
@@ -4415,9 +4202,7 @@ pub fn use_shrine(cn: usize, _item_idx: usize) -> i32 {
             )
         };
 
-        GameState::with_mut(|state| {
-            state.do_character_log(cn, core::types::FontColor::Yellow, message);
-        });
+        GameState::global_mut().do_character_log(cn, core::types::FontColor::Yellow, message);
 
         if luck_change != 0 {
             GameState::with_characters_mut(|characters| {
@@ -4427,9 +4212,7 @@ pub fn use_shrine(cn: usize, _item_idx: usize) -> i32 {
     }
 
     // Show luck status
-    GameState::with_mut(|state| {
-        state.do_character_log(cn, core::types::FontColor::Yellow, " \n");
-    });
+    GameState::global_mut().do_character_log(cn, core::types::FontColor::Yellow, " \n");
 
     let luck = GameState::with_characters(|characters| characters[cn].luck);
     let luck_message = if luck < -10000 {
@@ -4444,9 +4227,7 @@ pub fn use_shrine(cn: usize, _item_idx: usize) -> i32 {
         "You feel that the gods are very fond of you.\n"
     };
 
-    GameState::with_mut(|state| {
-        state.do_character_log(cn, core::types::FontColor::Yellow, luck_message);
-    });
+    GameState::global_mut().do_character_log(cn, core::types::FontColor::Yellow, luck_message);
 
     1
 }
@@ -4493,7 +4274,7 @@ pub fn use_kill_undead(cn: usize, item_idx: usize) -> i32 {
                 });
 
                 if is_undead {
-                    GameState::with_mut(|state| state.do_hurt(cn, co, 500, 2));
+                    GameState::global_mut().do_hurt(cn, co, 500, 2);
                     EffectManager::fx_add_effect(5, 0, x, y, 0);
                 }
             }
@@ -4532,13 +4313,11 @@ pub fn teleport3(cn: usize, item_idx: usize) -> i32 {
         GameState::with_items_mut(|items| {
             items[citem].used = USE_EMPTY;
         });
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                &format!("Your {} vanished.\n", c_string_to_str(&item_ref)),
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            &format!("Your {} vanished.\n", c_string_to_str(&item_ref)),
+        );
     }
 
     // Remove nolab items from inventory
@@ -4552,13 +4331,11 @@ pub fn teleport3(cn: usize, item_idx: usize) -> i32 {
             GameState::with_items_mut(|items| {
                 items[in2].used = USE_EMPTY;
             });
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Yellow,
-                    &format!("Your {} vanished.\n", c_string_to_str(&item_ref)),
-                );
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!("Your {} vanished.\n", c_string_to_str(&item_ref)),
+            );
         }
     }
 
@@ -4608,13 +4385,11 @@ pub fn teleport3(cn: usize, item_idx: usize) -> i32 {
             GameState::with_items_mut(|items| {
                 items[citem].used = USE_EMPTY;
             });
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Yellow,
-                    &format!("Your {} vanished.\n", item_ref),
-                );
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!("Your {} vanished.\n", item_ref),
+            );
         }
     }
 
@@ -4635,13 +4410,11 @@ pub fn teleport3(cn: usize, item_idx: usize) -> i32 {
                 GameState::with_items_mut(|items| {
                     items[in2].used = USE_EMPTY;
                 });
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Yellow,
-                        &format!("Your {} vanished.\n", c_string_to_str(&item_ref)),
-                    );
-                });
+                GameState::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!("Your {} vanished.\n", c_string_to_str(&item_ref)),
+                );
             }
         }
     }
@@ -4663,13 +4436,11 @@ pub fn teleport3(cn: usize, item_idx: usize) -> i32 {
                 GameState::with_items_mut(|items| {
                     items[in2].used = USE_EMPTY;
                 });
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Yellow,
-                        &format!("Your {} vanished.\n", c_string_to_str(&item_ref)),
-                    );
-                });
+                GameState::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!("Your {} vanished.\n", c_string_to_str(&item_ref)),
+                );
             }
         }
     }
@@ -4720,13 +4491,11 @@ pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
     });
 
     if !is_seyan {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "You have the feeling you're in the wrong place here.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "You have the feeling you're in the wrong place here.\n",
+        );
         return 0;
     }
 
@@ -4778,13 +4547,11 @@ pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
         // Check luck requirement
         let luck = GameState::with_characters(|characters| characters[cn].luck);
         if luck < 50 {
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Yellow,
-                    "Kwai, the great goddess of war, deemed you unworthy to receive a new blade.\n",
-                );
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "Kwai, the great goddess of war, deemed you unworthy to receive a new blade.\n",
+            );
             return 0;
         }
 
@@ -4800,13 +4567,11 @@ pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
         GameState::with_items_mut(|items| {
             items[in2].data[0] = cn as u32;
         });
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "Kwai, the great goddess of war, deemed you worthy to receive a new blade.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "Kwai, the great goddess of war, deemed you worthy to receive a new blade.\n",
+        );
         GameState::with_characters_mut(|characters| {
             characters[cn].luck -= 50;
         });
@@ -4821,13 +4586,11 @@ pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
         GameState::with_characters_mut(|characters| {
             characters[cn].data[21] |= shrine_bit as i32;
         });
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "You found a new shrine of Kwai!\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "You found a new shrine of Kwai!\n",
+        );
         GameState::with_characters_mut(|characters| {
             characters[cn].luck += 10;
         });
@@ -4846,16 +4609,11 @@ pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
         count
     });
 
-    GameState::with_mut(|state| {
-        state.do_character_log(
-            cn,
-            core::types::FontColor::Green,
-            &format!(
-                "You have visited {} of the 20 shrines of Kwai.\n",
-                visited_bits
-            ),
-        );
-    });
+    GameState::global_mut().do_character_log(
+        cn,
+        core::types::FontColor::Green,
+        &format!("You have visited {} of the 20 shrines of Kwai.\n", visited_bits),
+    );
 
     // Update sword weapon power based on shrines visited
     let cn_name = GameState::with_characters(|characters| characters[cn].name);
@@ -4875,7 +4633,7 @@ pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
         }
     });
 
-    GameState::with_mut(|state| state.do_update_char(cn));
+    GameState::global_mut().do_update_char(cn);
 
     0
 }
@@ -4887,13 +4645,11 @@ pub fn use_seyan_door(cn: usize, item_idx: usize) -> i32 {
             (characters[cn].kindred & KIN_SEYAN_DU as i32) != 0
         });
         if !is_seyan {
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Red,
-                    "You have the feeling this isn't meant for you.\n",
-                );
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "You have the feeling this isn't meant for you.\n",
+            );
             return 0;
         }
     }
@@ -4915,21 +4671,17 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
     });
 
     if is_seyan {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Blue,
-                "You're already Seyan'Du, aren't you?\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Blue,
+            "You're already Seyan'Du, aren't you?\n",
+        );
     } else {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Blue,
-                &format!("The Seyan'Du welcome you among their ranks, {}!\n", cn_name),
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Blue,
+            &format!("The Seyan'Du welcome you among their ranks, {}!\n", cn_name),
+        );
 
         // Change race: 13 for male Seyan'Du, 79 for female Seyan'Du
         if is_male {
@@ -4963,13 +4715,11 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
             GameState::with_items_mut(|items| {
                 items[citem].used = USE_EMPTY;
             });
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Green,
-                    &format!("Your {} vanished.\n", c_string_to_str(&item_ref)),
-                );
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                &format!("Your {} vanished.\n", c_string_to_str(&item_ref)),
+            );
         }
     }
 
@@ -4990,13 +4740,11 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
                 GameState::with_items_mut(|items| {
                     items[in2].used = USE_EMPTY;
                 });
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Green,
-                        &format!("Your {} vanished.\n", c_string_to_str(&item_ref)),
-                    );
-                });
+                GameState::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!("Your {} vanished.\n", c_string_to_str(&item_ref)),
+                );
             }
         }
     }
@@ -5018,13 +4766,11 @@ pub fn use_seyan_portal(cn: usize, item_idx: usize) -> i32 {
                 GameState::with_items_mut(|items| {
                     items[in2].used = USE_EMPTY;
                 });
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Green,
-                        &format!("Your {} vanished.\n", c_string_to_str(&item_ref)),
-                    );
-                });
+                GameState::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!("Your {} vanished.\n", c_string_to_str(&item_ref)),
+                );
             }
         }
     }
@@ -5058,9 +4804,7 @@ pub fn spell_scroll(cn: usize, item_idx: usize) -> i32 {
     });
 
     if charges == 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(cn, core::types::FontColor::Yellow, "Nothing happened!\n");
-        });
+        GameState::global_mut().do_character_log(cn, core::types::FontColor::Yellow, "Nothing happened!\n");
         return 0;
     }
 
@@ -5071,21 +4815,19 @@ pub fn spell_scroll(cn: usize, item_idx: usize) -> i32 {
     }
 
     // Check if can see target
-    let can_see = GameState::with_mut(|state| state.do_char_can_see(cn, co)) != 0;
+    let can_see = GameState::global_mut().do_char_can_see(cn, co) != 0;
     if !can_see {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "You cannot see your target.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "You cannot see your target.\n",
+        );
         return 0;
     }
 
     // Check attack spells for may_attack
     if spell as usize == SK_CURSE || spell as usize == SK_STUN {
-        if GameState::with_mut(|state| state.may_attack_msg(cn, co, true) == 0) {
+        if GameState::global_mut().may_attack_msg(cn, co, true) == 0 {
             log::info!("Prevented from attacking target {}", co);
             return 0;
         }
@@ -5157,13 +4899,11 @@ pub fn use_blook_pentagram(cn: usize, item_idx: usize) -> i32 {
         return 0;
     }
 
-    GameState::with_mut(|state| {
-        state.do_character_log(
-            cn,
-            core::types::FontColor::Green,
-            "You try to wipe off the blood, but it seems to be coming back slowly.\n",
-        );
-    });
+    GameState::global_mut().do_character_log(
+        cn,
+        core::types::FontColor::Green,
+        "You try to wipe off the blood, but it seems to be coming back slowly.\n",
+    );
 
     // Set blood state and update sprite
     GameState::with_items_mut(|items| {
@@ -5241,21 +4981,17 @@ pub fn use_lab8_key(cn: usize, item_idx: usize) -> i32 {
 
     let citem = GameState::with_characters(|characters| characters[cn].citem as usize);
     if citem == 0 || (citem & 0x80000000) != 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(cn, core::types::FontColor::Yellow, "Nothing happens.\n");
-        });
+        GameState::global_mut().do_character_log(cn, core::types::FontColor::Yellow, "Nothing happens.\n");
         return 0;
     }
 
     let carried = GameState::with_items(|items| items[item_idx].carried);
     if carried == 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                "Too difficult to do on the ground.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            "Too difficult to do on the ground.\n",
+        );
         return 0;
     }
 
@@ -5279,13 +5015,11 @@ pub fn use_lab8_key(cn: usize, item_idx: usize) -> i32 {
     };
 
     if result_template == 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                "Those don't fit together.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            "Those don't fit together.\n",
+        );
         return 0;
     }
 
@@ -5331,13 +5065,11 @@ pub fn use_lab8_shrine(cn: usize, item_idx: usize) -> i32 {
 
     let offer = GameState::with_characters(|characters| characters[cn].citem as usize);
     if offer == 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "You get the feeling that it would be appropriate to give the Goddess a present.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "You get the feeling that it would be appropriate to give the Goddess a present.\n",
+        );
         return 0;
     }
 
@@ -5346,13 +5078,11 @@ pub fn use_lab8_shrine(cn: usize, item_idx: usize) -> i32 {
         GameState::with_items(|items| (items[offer].temp, items[item_idx].data[0]));
 
     if (offer & 0x80000000) != 0 || offer_temp as u32 != expected_temp {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "The Goddess only wants her property back, and rejects your offer.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "The Goddess only wants her property back, and rejects your offer.\n",
+        );
         return 0;
     }
 
@@ -5389,13 +5119,11 @@ pub fn use_lab8_shrine(cn: usize, item_idx: usize) -> i32 {
 
     let gift_ref =
         GameState::with_items(|items| c_string_to_str(&items[gift.unwrap()].reference).to_string());
-    GameState::with_mut(|state| {
-        state.do_character_log(
-            cn,
-            core::types::FontColor::Yellow,
-            &format!("The Goddess has given you a {} in return!\n", gift_ref),
-        );
-    });
+    GameState::global_mut().do_character_log(
+        cn,
+        core::types::FontColor::Yellow,
+        &format!("The Goddess has given you a {} in return!\n", gift_ref),
+    );
 
     1
 }
@@ -5411,25 +5139,21 @@ pub fn use_lab8_moneyshrine(cn: usize, item_idx: usize) -> i32 {
 
     let offer = GameState::with_characters(|characters| characters[cn].citem);
     if offer == 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "You get the feeling that it would be appropriate to give the Goddess a present.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "You get the feeling that it would be appropriate to give the Goddess a present.\n",
+        );
         return 0;
     }
 
     // Check if it's money
     if (offer & 0x80000000) == 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "Only money is accepted at this shrine.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "Only money is accepted at this shrine.\n",
+        );
         return 0;
     }
 
@@ -5437,13 +5161,11 @@ pub fn use_lab8_moneyshrine(cn: usize, item_idx: usize) -> i32 {
     let min_offering = GameState::with_items(|items| items[item_idx].data[0]);
 
     if amount < min_offering {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "Your offering is not sufficient, and was rejected.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "Your offering is not sufficient, and was rejected.\n",
+        );
         return 0;
     }
 
@@ -5470,13 +5192,11 @@ pub fn use_lab8_moneyshrine(cn: usize, item_idx: usize) -> i32 {
         GameState::with_characters_mut(|characters| {
             characters[cn].a_mana = characters[cn].mana[5] as i32 * 1000;
         });
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                "You feel the hand of the Goddess of Magic touch your mind.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            "You feel the hand of the Goddess of Magic touch your mind.\n",
+        );
         GameState::with_characters(|ch| {
             EffectManager::fx_add_effect(6, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
         });
@@ -5490,13 +5210,11 @@ pub fn change_to_archtemplar(cn: usize) {
     let agility =
         GameState::with_characters(|characters| characters[cn].attrib[AT_AGIL as usize][0]);
     if agility < 90 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "Your agility is too low. There is still room for improvement.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "Your agility is too low. There is still room for improvement.\n",
+        );
         return;
     }
 
@@ -5504,13 +5222,11 @@ pub fn change_to_archtemplar(cn: usize) {
     let strength =
         GameState::with_characters(|characters| characters[cn].attrib[AT_STREN as usize][0]);
     if strength < 90 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "Your strength is too low. There is still room for improvement.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "Your strength is too low. There is still room for improvement.\n",
+        );
         return;
     }
 
@@ -5524,16 +5240,14 @@ pub fn change_to_archtemplar(cn: usize) {
 
     let new_race = if is_male { 544 } else { 549 };
     God::minor_racechange(cn, new_race);
-    GameState::with_mut(|state| {
-        state.do_character_log(
-            cn,
-            core::types::FontColor::Yellow,
-            &format!(
-                "You are truly worthy to become a Archtemplar. Congratulations, {}.\n",
-                name
-            ),
-        );
-    });
+    GameState::global_mut().do_character_log(
+        cn,
+        core::types::FontColor::Yellow,
+        &format!(
+            "You are truly worthy to become a Archtemplar. Congratulations, {}.\n",
+            name
+        ),
+    );
 }
 
 pub fn change_to_archharakim(cn: usize) {
@@ -5541,13 +5255,11 @@ pub fn change_to_archharakim(cn: usize) {
     let willpower =
         GameState::with_characters(|characters| characters[cn].attrib[AT_WILL as usize][0]);
     if willpower < 90 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "Your willpower is too low. There is still room for improvement.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "Your willpower is too low. There is still room for improvement.\n",
+        );
         return;
     }
 
@@ -5555,13 +5267,11 @@ pub fn change_to_archharakim(cn: usize) {
     let intuition =
         GameState::with_characters(|characters| characters[cn].attrib[AT_INT as usize][0]);
     if intuition < 90 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "Your intuition is too low. There is still room for improvement.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "Your intuition is too low. There is still room for improvement.\n",
+        );
         return;
     }
 
@@ -5576,16 +5286,14 @@ pub fn change_to_archharakim(cn: usize) {
     let new_race = if is_male { 545 } else { 550 };
     God::minor_racechange(cn, new_race);
 
-    GameState::with_mut(|state| {
-        state.do_character_log(
-            cn,
-            core::types::FontColor::Yellow,
-            &format!(
-                "You are truly worthy to become a Archharakim. Congratulations, {}.\n",
-                name
-            ),
-        );
-    });
+    GameState::global_mut().do_character_log(
+        cn,
+        core::types::FontColor::Yellow,
+        &format!(
+            "You are truly worthy to become a Archharakim. Congratulations, {}.\n",
+            name
+        ),
+    );
 }
 
 pub fn change_to_warrior(cn: usize) {
@@ -5593,13 +5301,11 @@ pub fn change_to_warrior(cn: usize) {
     let agility =
         GameState::with_characters(|characters| characters[cn].attrib[AT_AGIL as usize][0]);
     if agility < 60 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "Your agility is too low. There is still room for improvement.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "Your agility is too low. There is still room for improvement.\n",
+        );
         return;
     }
 
@@ -5607,13 +5313,11 @@ pub fn change_to_warrior(cn: usize) {
     let strength =
         GameState::with_characters(|characters| characters[cn].attrib[AT_STREN as usize][0]);
     if strength < 60 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "Your strength is too low. There is still room for improvement.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "Your strength is too low. There is still room for improvement.\n",
+        );
         return;
     }
 
@@ -5628,16 +5332,14 @@ pub fn change_to_warrior(cn: usize) {
     let new_race = if is_male { 547 } else { 552 };
     God::minor_racechange(cn, new_race);
 
-    GameState::with_mut(|state| {
-        state.do_character_log(
-            cn,
-            core::types::FontColor::Yellow,
-            &format!(
-                "You are truly worthy to become a Warrior. Congratulations, {}.\n",
-                name
-            ),
-        );
-    });
+    GameState::global_mut().do_character_log(
+        cn,
+        core::types::FontColor::Yellow,
+        &format!(
+            "You are truly worthy to become a Warrior. Congratulations, {}.\n",
+            name
+        ),
+    );
 }
 
 pub fn change_to_sorcerer(cn: usize) {
@@ -5645,13 +5347,11 @@ pub fn change_to_sorcerer(cn: usize) {
     let willpower =
         GameState::with_characters(|characters| characters[cn].attrib[AT_WILL as usize][0]);
     if willpower < 60 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "Your willpower is too low. There is still room for improvement.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "Your willpower is too low. There is still room for improvement.\n",
+        );
         return;
     }
 
@@ -5659,13 +5359,11 @@ pub fn change_to_sorcerer(cn: usize) {
     let intuition =
         GameState::with_characters(|characters| characters[cn].attrib[AT_INT as usize][0]);
     if intuition < 60 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "Your intuition is too low. There is still room for improvement.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "Your intuition is too low. There is still room for improvement.\n",
+        );
         return;
     }
 
@@ -5680,16 +5378,14 @@ pub fn change_to_sorcerer(cn: usize) {
     let new_race = if is_male { 546 } else { 551 };
     God::minor_racechange(cn, new_race);
 
-    GameState::with_mut(|state| {
-        state.do_character_log(
-            cn,
-            core::types::FontColor::Yellow,
-            &format!(
-                "You are truly worthy to become a Sorcerer. Congratulations, {}.\n",
-                name
-            ),
-        );
-    });
+    GameState::global_mut().do_character_log(
+        cn,
+        core::types::FontColor::Yellow,
+        &format!(
+            "You are truly worthy to become a Sorcerer. Congratulations, {}.\n",
+            name
+        ),
+    );
 }
 
 pub fn shrine_of_change(cn: usize, _item_idx: usize) -> i32 {
@@ -5704,13 +5400,11 @@ pub fn shrine_of_change(cn: usize, _item_idx: usize) -> i32 {
 
     let citem = GameState::with_characters(|characters| characters[cn].citem as usize);
     if citem == 0 || (citem & 0x80000000) != 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "Read the notes, my friend.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "Read the notes, my friend.\n",
+        );
         return 0;
     }
 
@@ -5727,13 +5421,11 @@ pub fn shrine_of_change(cn: usize, _item_idx: usize) -> i32 {
         } else if (kindred as u32 & KIN_HARAKIM) != 0 {
             change_to_archharakim(cn);
         } else {
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Yellow,
-                    "You are neither Templar nor Harakim.\n",
-                );
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "You are neither Templar nor Harakim.\n",
+            );
         }
         return 0;
     }
@@ -5743,13 +5435,11 @@ pub fn shrine_of_change(cn: usize, _item_idx: usize) -> i32 {
         if (kindred as u32 & KIN_MERCENARY) != 0 {
             change_to_warrior(cn);
         } else {
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Yellow,
-                    "You are not a Mercenary.\n",
-                );
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "You are not a Mercenary.\n",
+            );
         }
         return 0;
     }
@@ -5759,24 +5449,20 @@ pub fn shrine_of_change(cn: usize, _item_idx: usize) -> i32 {
         if (kindred as u32 & KIN_MERCENARY) != 0 {
             change_to_sorcerer(cn);
         } else {
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Yellow,
-                    "You are not a Mercenary.\n",
-                );
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "You are not a Mercenary.\n",
+            );
         }
         return 0;
     }
 
-    GameState::with_mut(|state| {
-        state.do_character_log(
-            cn,
-            core::types::FontColor::Yellow,
-            "Read the notes, my friend.\n",
-        );
-    });
+    GameState::global_mut().do_character_log(
+        cn,
+        core::types::FontColor::Yellow,
+        "Read the notes, my friend.\n",
+    );
     0
 }
 
@@ -5819,13 +5505,11 @@ pub fn explorer_point(cn: usize, item_idx: usize) -> i32 {
             characters[cn].luck += 10;
         });
 
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                "You found a new exploration point!\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            "You found a new exploration point!\n",
+        );
 
         // Calculate experience reward
         let (base_exp, points_tot) = GameState::with_items(|items| {
@@ -5845,15 +5529,13 @@ pub fn explorer_point(cn: usize, item_idx: usize) -> i32 {
             points_tot
         );
 
-        GameState::with_mut(|state| state.do_give_exp(cn, exp as i32, 0, -1))
+        GameState::global_mut().do_give_exp(cn, exp as i32, 0, -1)
     } else {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "Hmm. Seems somewhat familiar. You've been here before...\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "Hmm. Seems somewhat familiar. You've been here before...\n",
+        );
     }
 
     1
@@ -5866,13 +5548,11 @@ pub fn use_garbage(cn: usize, _item_idx: usize) -> i32 {
 
     let citem = GameState::with_characters(|characters| characters[cn].citem);
     if citem == 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "You feel that you could dispose of unwanted items in this digusting garbage can.\n",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "You feel that you could dispose of unwanted items in this digusting garbage can.\n",
+        );
         return 0;
     }
 
@@ -5883,17 +5563,11 @@ pub fn use_garbage(cn: usize, _item_idx: usize) -> i32 {
             characters[cn].citem = 0;
         });
 
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                &format!(
-                    "You disposed of {} gold and {} silver.\n",
-                    val / 100,
-                    val % 100
-                ),
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            &format!("You disposed of {} gold and {} silver.\n", val / 100, val % 100),
+        );
     } else {
         // Item
         let reference = GameState::with_items(|items| {
@@ -5907,13 +5581,11 @@ pub fn use_garbage(cn: usize, _item_idx: usize) -> i32 {
             items[citem as usize].used = USE_EMPTY;
         });
 
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                &format!("You disposed of the {}.\n", reference),
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            &format!("You disposed of the {}.\n", reference),
+        );
     }
 
     1
@@ -5974,13 +5646,11 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
             3 => {
                 // Lock-pick - special message
                 if cn != 0 {
-                    GameState::with_mut(|state| {
-                        state.do_character_log(
-                            cn,
-                            core::types::FontColor::Red,
-                            "You use cannot the lock-pick directly. Hold it under your mouse cursor and click on the door...\n",
-                        );
-                    });
+                    GameState::global_mut().do_character_log(
+                        cn,
+                        core::types::FontColor::Red,
+                        "You use cannot the lock-pick directly. Hold it under your mouse cursor and click on the door...\n",
+                    );
                 }
                 0
             }
@@ -6075,7 +5745,7 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
             }
 
             // Ensure client update for the acting character
-            GameState::with_mut(|state| state.do_update_char(cn));
+            GameState::global_mut().do_update_char(cn);
         }
     }
 
@@ -6106,16 +5776,14 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
         GameState::with_items_mut(|items| items[item_idx].active = 0);
 
         if light0 != light1 && it_x > 0 {
-            GameState::with_mut(|state| {
-                state.do_add_light(it_x as i32, it_y as i32, light0 as i32 - light1 as i32);
-            });
+            GameState::global_mut().do_add_light(it_x as i32, it_y as i32, light0 as i32 - light1 as i32);
         }
 
         if carried {
             GameState::with_items_mut(|items| {
                 items[item_idx].flags |= core::constants::ItemFlags::IF_UPDATE.bits();
             });
-            GameState::with_mut(|state| state.do_update_char(cn));
+            GameState::global_mut().do_update_char(cn);
         }
 
         if cn != 0 && !carried {
@@ -6138,16 +5806,14 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
         GameState::with_items_mut(|items| items[item_idx].active = duration);
 
         if light0 != light1 && it_x > 0 {
-            GameState::with_mut(|state| {
-                state.do_add_light(it_x as i32, it_y as i32, light1 as i32 - light0 as i32);
-            });
+            GameState::global_mut().do_add_light(it_x as i32, it_y as i32, light1 as i32 - light0 as i32);
         }
 
         if carried {
             GameState::with_items_mut(|items| {
                 items[item_idx].flags |= core::constants::ItemFlags::IF_UPDATE.bits();
             });
-            GameState::with_mut(|state| state.do_update_char(cn));
+            GameState::global_mut().do_update_char(cn);
         }
 
         if cn != 0 && !carried {
@@ -6170,13 +5836,11 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
                 core::ranks::points2rank(characters[cn].points_tot as u32)
             });
             if min_rank as i32 > curr_rank as i32 {
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Red,
-                        "You're not experienced enough to use this.\n",
-                    );
-                });
+                GameState::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    "You're not experienced enough to use this.\n",
+                );
                 return;
             }
 
@@ -6227,36 +5891,30 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
                 let (x, y) = GameState::with_characters(|characters| {
                     (characters[cn].x as i32, characters[cn].y as i32)
                 });
-                GameState::with_mut(|state| {
-                    state.do_area_log(
-                        cn,
-                        0,
-                        x,
-                        y,
-                        core::types::FontColor::Yellow,
-                        &format!(
-                            "{} was killed by {}.\n",
-                            GameState::with_characters(|ch| ch[cn].get_name().to_string()),
-                            GameState::with_items(
-                                |it| c_string_to_str(&it[item_idx].reference).to_string()
-                            )
-                        ),
-                    );
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Yellow,
-                        &format!(
-                            "You were killed by {}.\n",
-                            GameState::with_items(
-                                |it| c_string_to_str(&it[item_idx].reference).to_string()
-                            )
-                        ),
-                    );
-                    state.do_character_killed(cn, 0, true);
-                });
+                GameState::global_mut().do_area_log(
+                    cn,
+                    0,
+                    x,
+                    y,
+                    core::types::FontColor::Yellow,
+                    &format!(
+                        "{} was killed by {}.\n",
+                        GameState::with_characters(|ch| ch[cn].get_name().to_string()),
+                        GameState::with_items(|it| c_string_to_str(&it[item_idx].reference).to_string())
+                    ),
+                );
+                GameState::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!(
+                        "You were killed by {}.\n",
+                        GameState::with_items(|it| c_string_to_str(&it[item_idx].reference).to_string())
+                    ),
+                );
+                GameState::global_mut().do_character_killed(cn, 0, true);
             }
 
-            GameState::with_mut(|state| state.do_update_char(cn));
+            GameState::global_mut().do_update_char(cn);
         }
     }
 }
@@ -6271,13 +5929,11 @@ pub fn use_soulstone(cn: usize, item_idx: usize) -> i32 {
 
     let citem = GameState::with_characters(|characters| characters[cn].citem);
     if citem == 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Blue,
-                "Try using something with the soulstone. That is, click on the stone with an item under your cursor.",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Blue,
+            "Try using something with the soulstone. That is, click on the stone with an item under your cursor.",
+        );
         return 0;
     }
 
@@ -6305,13 +5961,11 @@ pub fn use_soulstone(cn: usize, item_idx: usize) -> i32 {
             items[item_idx].description[..len].copy_from_slice(&bytes[..len]);
 
             if rank > 20 {
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Blue,
-                        "That's as high as they go.",
-                    );
-                });
+                GameState::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Blue,
+                    "That's as high as they go.",
+                );
             }
         });
 
@@ -6374,9 +6028,7 @@ pub fn use_soulstone(cn: usize, item_idx: usize) -> i32 {
             1
         }
         _ => {
-            GameState::with_mut(|state| {
-                state.do_character_log(cn, core::types::FontColor::Blue, "Nothing happened.\n");
-            });
+            GameState::global_mut().do_character_log(cn, core::types::FontColor::Blue, "Nothing happened.\n");
             0
         }
     }
@@ -6720,40 +6372,32 @@ pub fn item_damage_worn(cn: usize, n: usize, damage: i32) {
 
         match damage_state {
             1 => {
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Yellow,
-                        &format!("The {} you are using is showing signs of use.\n", reference),
-                    );
-                });
+                GameState::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!("The {} you are using is showing signs of use.\n", reference),
+                );
             }
             2 => {
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Yellow,
-                        &format!("The {} you are using was slightly damaged.\n", reference),
-                    );
-                });
+                GameState::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!("The {} you are using was slightly damaged.\n", reference),
+                );
             }
             3 => {
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Yellow,
-                        &format!("The {} you are using was damaged.\n", reference),
-                    );
-                });
+                GameState::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!("The {} you are using was damaged.\n", reference),
+                );
             }
             4 => {
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Red,
-                        &format!("The {} you are using was badly damaged.\n", reference),
-                    );
-                });
+                GameState::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("The {} you are using was badly damaged.\n", reference),
+                );
             }
             5 => {
                 GameState::with_characters_mut(|characters| {
@@ -6762,17 +6406,15 @@ pub fn item_damage_worn(cn: usize, n: usize, damage: i32) {
                 GameState::with_items_mut(|items| {
                     items[worn_idx].used = USE_EMPTY;
                 });
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Red,
-                        &format!("The {} you were using was destroyed.\n", reference),
-                    );
-                });
+                GameState::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("The {} you were using was destroyed.\n", reference),
+                );
             }
             _ => {}
         }
-        GameState::with_mut(|state| state.do_update_char(cn));
+        GameState::global_mut().do_update_char(cn);
     }
 }
 
@@ -6804,40 +6446,32 @@ pub fn item_damage_citem(cn: usize, damage: i32) {
 
         match damage_state {
             1 => {
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Yellow,
-                        &format!("The {} you are using is showing signs of use.\n", reference),
-                    );
-                });
+                GameState::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!("The {} you are using is showing signs of use.\n", reference),
+                );
             }
             2 => {
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Yellow,
-                        &format!("The {} you are using was slightly damaged.\n", reference),
-                    );
-                });
+                GameState::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!("The {} you are using was slightly damaged.\n", reference),
+                );
             }
             3 => {
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Yellow,
-                        &format!("The {} you are using was damaged.\n", reference),
-                    );
-                });
+                GameState::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!("The {} you are using was damaged.\n", reference),
+                );
             }
             4 => {
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Red,
-                        &format!("The {} you are using was badly damaged.\n", reference),
-                    );
-                });
+                GameState::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("The {} you are using was badly damaged.\n", reference),
+                );
             }
             5 => {
                 GameState::with_characters_mut(|characters| {
@@ -6846,13 +6480,11 @@ pub fn item_damage_citem(cn: usize, damage: i32) {
                 GameState::with_items_mut(|items| {
                     items[citem_idx].used = USE_EMPTY;
                 });
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Red,
-                        &format!("The {} you were using was destroyed.\n", reference),
-                    );
-                });
+                GameState::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("The {} you were using was destroyed.\n", reference),
+                );
             }
             _ => {}
         }
@@ -6984,9 +6616,7 @@ pub fn age_message(cn: usize, item_idx: usize, where_is: &str) {
         .replace("{ref}", &reference)
         .replace("{where}", where_is);
 
-    GameState::with_mut(|state| {
-        state.do_character_log(cn, font, &formatted_msg);
-    });
+    GameState::global_mut().do_character_log(cn, font, &formatted_msg);
 }
 
 pub fn char_item_expire(cn: usize) {
@@ -7148,9 +6778,7 @@ pub fn char_item_expire(cn: usize) {
     }
 
     if must_update {
-        GameState::with_mut(|state| {
-            state.do_update_char(cn);
-        });
+        GameState::global_mut().do_update_char(cn);
     }
 }
 
@@ -7434,9 +7062,7 @@ pub fn item_tick_expire(gs: &mut GameState) {
                     });
                     active = duration;
                     if light_diff != 0 {
-                        GameState::with_mut(|state| {
-                            state.do_add_light(x as i32, y as i32, light_diff);
-                        });
+                        GameState::global_mut().do_add_light(x as i32, y as i32, light_diff);
                     }
                 }
             }
@@ -7451,9 +7077,7 @@ pub fn item_tick_expire(gs: &mut GameState) {
                         });
                         active = 0;
                         if light_diff != 0 {
-                            GameState::with_mut(|state| {
-                                state.do_add_light(x as i32, y as i32, -light_diff);
-                            });
+                            GameState::global_mut().do_add_light(x as i32, y as i32, -light_diff);
                         }
                     }
                 } else {
@@ -7507,9 +7131,7 @@ pub fn item_tick_expire(gs: &mut GameState) {
                     if damage_state == 5 {
                         let light = GameState::with_items(|items| items[in_idx].light[act]);
                         if light != 0 {
-                            GameState::with_mut(|state| {
-                                state.do_add_light(x as i32, y as i32, -(light as i32));
-                            });
+                            GameState::global_mut().do_add_light(x as i32, y as i32, -(light as i32));
                         }
 
                         GameState::with_map_mut(|map| {
@@ -7697,7 +7319,7 @@ pub fn item_tick_gc() {
 
             let cn = GameState::with_items(|items| items[n].carried);
             if cn != 0 {
-                GameState::with_mut(|state| state.do_update_char(cn as usize));
+                GameState::global_mut().do_update_char(cn as usize);
                 log::info!("reset sword from character {}", cn);
             }
         }
@@ -7820,13 +7442,11 @@ pub fn trap1(cn: usize, item_idx: usize) {
             let (active, data0) =
                 GameState::with_items(|items| (items[in2].active, items[in2].data[0]));
             if active != 0 || data0 != 0 {
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Red,
-                        "You stepped on a trap, but nothing happened!",
-                    );
-                });
+                GameState::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    "You stepped on a trap, but nothing happened!",
+                );
                 return;
             }
         }
@@ -7838,16 +7458,11 @@ pub fn trap1(cn: usize, item_idx: usize) {
     if in_worn != 0 {
         let item_name =
             GameState::with_items(|items| items[in_worn as usize].get_name().to_string());
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                &format!(
-                    "You triggered an acid attack. Your {} desintegrated.",
-                    item_name
-                ),
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            &format!("You triggered an acid attack. Your {} desintegrated.", item_name),
+        );
         log::info!(
             "Character {} stepped on Acid Trap, {} vanished",
             cn,
@@ -7860,19 +7475,15 @@ pub fn trap1(cn: usize, item_idx: usize) {
         GameState::with_characters_mut(|characters| {
             characters[cn].worn[slot] = 0;
         });
-        GameState::with_mut(|state| state.do_update_char(cn));
+        GameState::global_mut().do_update_char(cn);
     } else {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                "You triggered an acid attack, but it hit only your skin.",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            "You triggered an acid attack, but it hit only your skin.",
+        );
         log::info!("Character {} stepped on Acid Trap", cn);
-        GameState::with_mut(|state| {
-            state.do_hurt(0, cn, 350, 0);
-        });
+        GameState::global_mut().do_hurt(0, cn, 350, 0);
     }
 }
 
@@ -7901,7 +7512,7 @@ pub fn trap2(cn: usize, tmp: usize) {
     GameState::with_characters_mut(|characters| {
         characters[cc].attack_cn = cn as u16;
     });
-    GameState::with_mut(|state| state.do_update_char(cc));
+    GameState::global_mut().do_update_char(cc);
 }
 
 pub fn start_trap(cn: usize, item_idx: usize) {
@@ -7915,9 +7526,7 @@ pub fn start_trap(cn: usize, item_idx: usize) {
             items[item_idx].active = duration;
         });
         if light0 != light1 && x > 0 {
-            GameState::with_mut(|state| {
-                state.do_add_light(x as i32, y as i32, light1 as i32 - light0 as i32);
-            });
+            GameState::global_mut().do_add_light(x as i32, y as i32, light1 as i32 - light0 as i32);
         }
     }
 
@@ -7926,49 +7535,41 @@ pub fn start_trap(cn: usize, item_idx: usize) {
     match trap_type {
         0 => {
             log::info!("Character {} stepped on Arrow Trap", cn);
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Red,
-                    "You feel a sudden pain!\n",
-                );
-                state.do_hurt(0, cn, 250, 0);
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "You feel a sudden pain!\n",
+            );
+            GameState::global_mut().do_hurt(0, cn, 250, 0);
         }
         1 => {
             log::info!("Character {} stepped on Attack Trigger Trap", cn);
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Yellow,
-                    "You hear a loud croaking noise!",
-                );
-            });
-            GameState::with_mut(|state| {
-                state.do_area_notify(
-                    cn as i32,
-                    0,
-                    x as i32,
-                    y as i32,
-                    NT_HITME as i32,
-                    cn as i32,
-                    0,
-                    0,
-                    0,
-                );
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "You hear a loud croaking noise!",
+            );
+            GameState::global_mut().do_area_notify(
+                cn as i32,
+                0,
+                x as i32,
+                y as i32,
+                NT_HITME as i32,
+                cn as i32,
+                0,
+                0,
+                0,
+            );
         }
         2 => trap1(cn, item_idx),
         3 => trap2(cn, 323),
         4 => trap2(cn, 324),
         _ => {
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Yellow,
-                    "Phew. Must be your lucky day today.",
-                );
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                "Phew. Must be your lucky day today.",
+            );
         }
     }
 }
@@ -7981,13 +7582,11 @@ pub fn step_trap(cn: usize, item_idx: usize) -> i32 {
     if is_player {
         start_trap(cn, item_idx);
     } else {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                "You stepped on a trap. Fortunately, nothing happened.",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "You stepped on a trap. Fortunately, nothing happened.",
+        );
     }
 
     0
@@ -8004,9 +7603,7 @@ pub fn step_trap_remove(_cn: usize, item_idx: usize) {
             items[item_idx].active = 0;
         });
         if light0 != light1 && x > 0 {
-            GameState::with_mut(|state| {
-                state.do_add_light(x as i32, y as i32, light0 as i32 - light1 as i32);
-            });
+            GameState::global_mut().do_add_light(x as i32, y as i32, light0 as i32 - light1 as i32);
         }
     }
 }
@@ -8020,13 +7617,11 @@ pub fn step_portal1_lab13(cn: usize, _item_idx: usize) -> i32 {
         && (kindred & KIN_SORCERER) == 0
         && (kindred & KIN_WARRIOR) == 0
     {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                "This portal opens only for Harakim, Templars, Mercenaries, Warrior and Sorcerers.",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            "This portal opens only for Harakim, Templars, Mercenaries, Warrior and Sorcerers.",
+        );
         return -1;
     }
 
@@ -8059,13 +7654,11 @@ pub fn step_portal1_lab13(cn: usize, _item_idx: usize) -> i32 {
     }
 
     if has_items {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                "You may not pass unless you leave all your items behind.",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            "You may not pass unless you leave all your items behind.",
+        );
         return -1;
     }
 
@@ -8082,7 +7675,7 @@ pub fn step_portal1_lab13(cn: usize, _item_idx: usize) -> i32 {
         }
     }
 
-    GameState::with_mut(|state| state.do_update_char(cn));
+    GameState::global_mut().do_update_char(cn);
 
     1
 }
@@ -8166,24 +7759,20 @@ pub fn step_portal2_lab13(cn: usize, _item_idx: usize) -> i32 {
     }
 
     if flag == 2 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                "The Final Test is waiting for a certain item to expire, please try again later.",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            "The Final Test is waiting for a certain item to expire, please try again later.",
+        );
         return -1;
     }
 
     if flag == 1 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                "You may not pass while another player is inside.",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            "You may not pass while another player is inside.",
+        );
         return -1;
     }
 
@@ -8216,26 +7805,22 @@ pub fn step_portal2_lab13(cn: usize, _item_idx: usize) -> i32 {
     }
 
     if flag == 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                "The Gatekeeper is currently busy. Please try again in a few minutes.",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            "The Gatekeeper is currently busy. Please try again in a few minutes.",
+        );
         return -1;
     }
 
     // Check if doors are closed (item 15220)
     let door_data = GameState::with_items(|items| items[15220].data[1]);
     if door_data == 0 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                "The doors aren't closed again yet. Please try again in a few minutes.",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            "The doors aren't closed again yet. Please try again in a few minutes.",
+        );
         return -1;
     }
 
@@ -8280,7 +7865,7 @@ pub fn step_portal2_lab13(cn: usize, _item_idx: usize) -> i32 {
             });
         }
     }
-    GameState::with_mut(|state| state.do_update_char(cn));
+    GameState::global_mut().do_update_char(cn);
 
     1
 }
@@ -8320,13 +7905,11 @@ pub fn step_portal_arena(cn: usize, item_idx: usize) -> i32 {
     }
 
     if flag == 1 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "A winner! You gain one arena-rank!",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "A winner! You gain one arena-rank!",
+        );
         GameState::with_characters_mut(|characters| {
             characters[cn].data[22] += 1;
             characters[cn].data[23] = 1;
@@ -8338,13 +7921,11 @@ pub fn step_portal_arena(cn: usize, item_idx: usize) -> i32 {
     let nr = GameState::with_characters(|characters| characters[cn].data[22] as usize);
     let nr = nr + 364;
     if nr > 381 {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "Please tell the gods to add more potent monsters to the arena.",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "Please tell the gods to add more potent monsters to the arena.",
+        );
         return -1;
     }
 
@@ -8361,13 +7942,7 @@ pub fn step_portal_arena(cn: usize, item_idx: usize) -> i32 {
         (characters[cn].frx as usize, characters[cn].fry as usize)
     });
     if frx >= xs && frx <= xe && fry >= ys && fry <= ye {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "You forfeit this fight.",
-            );
-        });
+        GameState::global_mut().do_character_log(cn, core::types::FontColor::Yellow, "You forfeit this fight.");
         return 1;
     }
 
@@ -8377,13 +7952,11 @@ pub fn step_portal_arena(cn: usize, item_idx: usize) -> i32 {
             let m = x + y * SERVER_MAPX as usize;
             let occupied = GameState::with_map(|map| map[m].ch != 0);
             if occupied {
-                GameState::with_mut(|state| {
-                    state.do_character_log(
-                        cn,
-                        core::types::FontColor::Yellow,
-                        "The arena is busy. Please come back later.",
-                    );
-                });
+                GameState::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    "The arena is busy. Please come back later.",
+                );
                 return -1;
             }
         }
@@ -8393,13 +7966,11 @@ pub fn step_portal_arena(cn: usize, item_idx: usize) -> i32 {
     let co = match populate::pop_create_char(nr, false) {
         Some(co) => co,
         None => {
-            GameState::with_mut(|state| {
-                state.do_character_log(
-                    cn,
-                    core::types::FontColor::Red,
-                    "Please tell the gods that the arena isn't working.",
-                );
-            });
+            GameState::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "Please tell the gods that the arena isn't working.",
+            );
             return -1;
         }
     };
@@ -8409,13 +7980,11 @@ pub fn step_portal_arena(cn: usize, item_idx: usize) -> i32 {
     let drop_y = (data0 as usize) / SERVER_MAPX as usize;
 
     if !God::drop_char_fuzzy(co, drop_x, drop_y) {
-        GameState::with_mut(|state| {
-            state.do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                "Please tell the gods that the arena isn't working.",
-            );
-        });
+        GameState::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            "Please tell the gods that the arena isn't working.",
+        );
         return -1;
     }
 
@@ -8524,22 +8093,19 @@ pub fn step_teleport(cn: usize, item_idx: usize) -> i32 {
         characters[cn].y = (m3 / SERVER_MAPX as usize) as i16;
     });
 
-    GameState::with_mut(|state| {
-        let (new_x, new_y) =
-            GameState::with_characters(|characters| (characters[cn].x, characters[cn].y));
-        state.do_area_notify(
-            cn as i32,
-            0,
-            new_x as i32,
-            new_y as i32,
-            1,
-            cn as i32,
-            0,
-            0,
-            0,
-        );
-        // NT_SEE = 1
-    });
+    let (new_x, new_y) = GameState::with_characters(|characters| (characters[cn].x, characters[cn].y));
+    GameState::global_mut().do_area_notify(
+        cn as i32,
+        0,
+        new_x as i32,
+        new_y as i32,
+        1,
+        cn as i32,
+        0,
+        0,
+        0,
+    );
+    // NT_SEE = 1
 
     // Add arrival effect
     GameState::with_characters(|ch| {
@@ -8550,9 +8116,7 @@ pub fn step_teleport(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn step_firefloor(cn: usize, item_idx: usize) -> i32 {
-    GameState::with_mut(|state| {
-        state.do_character_log(cn, core::types::FontColor::Red, "Outch!\n");
-    });
+    GameState::global_mut().do_character_log(cn, core::types::FontColor::Red, "Outch!\n");
 
     let in2 = match God::create_item(1) {
         Some(idx) => idx,
