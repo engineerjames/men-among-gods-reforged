@@ -169,8 +169,7 @@ impl EffectManager {
                     let m = Self::find_drop_position(map_index);
 
                     if m == 0 {
-                        let temp =
-                            Repository::with_characters(|characters| characters[co].temp as usize);
+                        let temp = Repository::global_mut().characters[co].temp as usize;
 
                         log::info!("Character {} could not drop grave", co);
 
@@ -229,63 +228,63 @@ impl EffectManager {
                 let in_id = God::create_item(170);
                 if let Some(in_id) = in_id {
                     Repository::with_items_mut(|items| {
-                        Repository::with_characters(|characters| {
-                            items[in_id].data[0] = co as u32;
+                        items[in_id].data[0] = co as u32;
 
-                            if characters[co].data[99] != 0 {
-                                items[in_id].max_age[0] *= 4;
-                            }
+                        if Repository::global_mut().characters[co].data[99] != 0 {
+                            items[in_id].max_age[0] *= 4;
+                        }
 
-                            Repository::with_globals(|globals| {
-                                let day_suffix = match globals.mdday {
-                                    1 => "st",
-                                    2 => "nd",
-                                    3 => "rd",
-                                    _ => "th",
-                                };
+                        Repository::with_globals(|globals| {
+                            let day_suffix = match globals.mdday {
+                                1 => "st",
+                                2 => "nd",
+                                3 => "rd",
+                                _ => "th",
+                            };
 
-                                let killer_name = if effects[n].data[3] != 0 {
-                                    c_string_to_str(
-                                        &characters[effects[n].data[3] as usize].reference,
-                                    )
-                                } else {
-                                    "unknown causes"
-                                };
+                            let killer_name = if effects[n].data[3] != 0 {
+                                c_string_to_str(
+                                    &Repository::global_mut().characters
+                                        [effects[n].data[3] as usize]
+                                        .reference,
+                                )
+                            } else {
+                                "unknown causes"
+                            };
 
-                                let character_name = c_string_to_str(&characters[co].reference);
+                            let character_name =
+                                c_string_to_str(&Repository::global_mut().characters[co].reference);
 
-                                let description_string = format!(
-                                    "Here rests {}, killed by {} on the {}{} day of the Year {}.",
-                                    character_name,
-                                    killer_name,
-                                    globals.mdday,
-                                    day_suffix,
-                                    globals.mdyear
-                                );
-
-                                let mut desc_bytes = [0u8; 200];
-                                let bytes_to_copy = description_string.as_bytes().len().min(199);
-                                desc_bytes[..bytes_to_copy].copy_from_slice(
-                                    &description_string.as_bytes()[..bytes_to_copy],
-                                );
-                                items[in_id].description = desc_bytes;
-                            });
-
-                            God::drop_item(
-                                in_id,
-                                effects[n].data[0] as usize,
-                                effects[n].data[1] as usize,
+                            let description_string = format!(
+                                "Here rests {}, killed by {} on the {}{} day of the Year {}.",
+                                character_name,
+                                killer_name,
+                                globals.mdday,
+                                day_suffix,
+                                globals.mdyear
                             );
 
-                            Repository::with_items(|items| {
-                                Repository::with_characters_mut(|characters| {
-                                    characters[co].x = items[in_id].x as i16;
-                                    characters[co].y = items[in_id].y as i16;
-                                });
-                            });
-
-                            log::info!("Grave done for character {}", co);
+                            let mut desc_bytes = [0u8; 200];
+                            let bytes_to_copy = description_string.as_bytes().len().min(199);
+                            desc_bytes[..bytes_to_copy]
+                                .copy_from_slice(&description_string.as_bytes()[..bytes_to_copy]);
+                            items[in_id].description = desc_bytes;
                         });
+
+                        God::drop_item(
+                            in_id,
+                            effects[n].data[0] as usize,
+                            effects[n].data[1] as usize,
+                        );
+
+                        Repository::with_items(|items| {
+                            Repository::with_characters_mut(|characters| {
+                                characters[co].x = items[in_id].x as i16;
+                                characters[co].y = items[in_id].y as i16;
+                            });
+                        });
+
+                        log::info!("Grave done for character {}", co);
                     });
                 }
             } else {
@@ -655,33 +654,30 @@ impl EffectManager {
     /// is added to create a tombstone. Otherwise items are destroyed and the
     /// character slot may be freed or scheduled for respawn.
     fn handle_grave_creation(map_index: usize, co: usize, killer_cn: i32) {
-        let (has_items, has_gold) = Repository::with_characters(|characters| {
-            let mut flag = false;
+        let ch = Repository::global_mut().characters[co];
+        let mut has_items = false;
 
-            for z in 0..40 {
-                if characters[co].item[z] != 0 {
-                    flag = true;
+        for z in 0..40 {
+            if ch.item[z] != 0 {
+                has_items = true;
+                break;
+            }
+        }
+
+        if !has_items {
+            for z in 0..20 {
+                if ch.worn[z] != 0 {
+                    has_items = true;
                     break;
                 }
             }
+        }
 
-            if !flag {
-                for z in 0..20 {
-                    if characters[co].worn[z] != 0 {
-                        flag = true;
-                        break;
-                    }
-                }
-            }
+        if ch.citem != 0 {
+            has_items = true;
+        }
 
-            if characters[co].citem != 0 {
-                flag = true;
-            }
-
-            let has_gold = characters[co].gold != 0;
-
-            (flag, has_gold)
-        });
+        let has_gold = ch.gold != 0;
 
         if has_items || has_gold {
             Repository::with_map_mut(|map| {
@@ -702,7 +698,7 @@ impl EffectManager {
                 });
             }
         } else {
-            let temp = Repository::with_characters(|characters| characters[co].temp as usize);
+            let temp = Repository::global_mut().characters[co].temp as usize;
 
             God::destroy_items(co);
 

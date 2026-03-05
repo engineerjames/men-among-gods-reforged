@@ -39,20 +39,16 @@ pub fn plr_logout(
     let valid_character = character_id > 0 && character_id < core::constants::MAXCHARS;
 
     if valid_character && reason != enums::LogoutReason::Shutdown {
-        Repository::with_characters(|characters| {
-            log::debug!(
-                "Logging out character '{}' for reason: {:?}",
-                characters[character_id].get_name(),
-                reason
-            );
-        });
+        log::debug!(
+            "Logging out character '{}' for reason: {:?}",
+            Repository::global_mut().characters[character_id].get_name(),
+            reason
+        );
     }
 
     let character_matches_player = valid_character
         && (player_id == 0
-            || Repository::with_characters(|characters| {
-                characters[character_id].player == player_id as i32
-            }));
+            || Repository::global_mut().characters[character_id].player == player_id as i32);
 
     // Handle usurp flag and recursive logout
     if character_matches_player {
@@ -79,18 +75,16 @@ pub fn plr_logout(
 
     // Main logout logic for active players
     if character_matches_player {
-        let (is_player, is_not_ccp) = Repository::with_characters(|characters| {
-            let character = &characters[character_id];
-            (
-                character.flags & CharacterFlags::Player.bits() != 0,
-                character.flags & CharacterFlags::ComputerControlledPlayer.bits() == 0,
-            )
-        });
+        let character_flags = Repository::global_mut().characters[character_id].flags;
+        let (is_player, is_not_ccp) = (
+            character_flags & CharacterFlags::Player.bits() != 0,
+            character_flags & CharacterFlags::ComputerControlledPlayer.bits() == 0,
+        );
 
         if is_player && is_not_ccp {
-            let name = Repository::with_characters(|characters| {
-                characters[character_id].get_name().to_string()
-            });
+            let name = Repository::global_mut().characters[character_id]
+                .get_name()
+                .to_string();
 
             // Handle exit punishment
             if reason == enums::LogoutReason::Exit {
@@ -160,22 +154,14 @@ pub fn plr_logout(
             }
 
             // Clear map positions
-            let (map_index, to_map_index, light, character_x, character_y) =
-                Repository::with_characters(|characters| {
-                    let character = &characters[character_id];
-                    let map_index = (character.y as usize) * core::constants::SERVER_MAPX as usize
-                        + (character.x as usize);
-                    let to_map_index = (character.toy as usize)
-                        * core::constants::SERVER_MAPX as usize
-                        + (character.tox as usize);
-                    (
-                        map_index,
-                        to_map_index,
-                        character.light,
-                        character.x,
-                        character.y,
-                    )
-                });
+            let ch = Repository::global_mut().characters[character_id];
+            let (map_index, to_map_index, light, character_x, character_y) = (
+                (ch.y as usize) * core::constants::SERVER_MAPX as usize + (ch.x as usize),
+                (ch.toy as usize) * core::constants::SERVER_MAPX as usize + (ch.tox as usize),
+                ch.light,
+                ch.x,
+                ch.y,
+            );
 
             Repository::with_map_mut(|map| {
                 if map[map_index].ch == character_id as u32 {
@@ -202,54 +188,48 @@ pub fn plr_logout(
                 || reason == enums::LogoutReason::Shutdown
                 || reason == enums::LogoutReason::Unknown
             {
-                let (is_close_to_temple, map_index) = Repository::with_characters(|characters| {
-                    let character = &characters[character_id];
-                    let map_index = (character.y as usize) * core::constants::SERVER_MAPX as usize
-                        + (character.x as usize);
-                    (character.is_close_to_temple(), map_index)
-                });
+                let ch = Repository::global_mut().characters[character_id];
+                let (is_close_to_temple, map_index) = (
+                    ch.is_close_to_temple(),
+                    (ch.y as usize) * core::constants::SERVER_MAPX as usize + (ch.x as usize),
+                );
 
                 let should_give = if !is_close_to_temple {
-                    Repository::with_map(|map| {
-                        map[map_index].flags & core::constants::MF_NOLAG as u64 == 0
-                    })
+                    Repository::global_mut().map[map_index].flags & core::constants::MF_NOLAG as u64
+                        == 0
                 } else {
                     false
                 };
 
                 if should_give {
-                    Repository::with_characters(|characters| {
-                        log::info!(
-                            "Giving lag scroll to character '{}' for idle/logout too long.",
-                            characters[character_id].get_name(),
-                        );
-                    });
+                    log::info!(
+                        "Giving lag scroll to character '{}' for idle/logout too long.",
+                        Repository::global_mut().characters[character_id].get_name(),
+                    );
 
                     if let Some(item_id) = God::create_item(core::constants::IT_LAGSCROLL as usize)
                     {
-                        let (char_x, char_y) = Repository::with_characters(|characters| {
-                            (characters[character_id].x, characters[character_id].y)
-                        });
+                        let (char_x, char_y) = (
+                            Repository::global_mut().characters[character_id].x,
+                            Repository::global_mut().characters[character_id].y,
+                        );
 
                         Repository::with_items_mut(|items| {
                             items[item_id].data[0] = char_x as u32;
                             items[item_id].data[1] = char_y as u32;
                         });
 
-                        Repository::with_globals(|globals| {
-                            Repository::with_items_mut(|items| {
-                                items[item_id].data[2] = globals.ticker as u32;
-                            });
+                        let ticker = Repository::global_mut().globals.ticker as u32;
+                        Repository::with_items_mut(|items| {
+                            items[item_id].data[2] = ticker;
                         });
 
                         God::give_character_item(character_id, item_id);
                     } else {
-                        Repository::with_characters(|characters| {
-                            log::error!(
-                                "Failed to create lag scroll for character '{}'.",
-                                characters[character_id].get_name(),
-                            );
-                        });
+                        log::error!(
+                            "Failed to create lag scroll for character '{}'.",
+                            Repository::global_mut().characters[character_id].get_name(),
+                        );
                     }
                 }
             }
@@ -351,22 +331,18 @@ pub fn player_exit(player_id: usize) {
         return;
     }
 
-    let ticker = Repository::with_globals(|globals| globals.ticker as u32);
+    let ticker = Repository::global_mut().globals.ticker as u32;
 
     Server::with_players_mut(|players| {
         players[player_id].state = core::constants::ST_EXIT;
         players[player_id].lasttick = ticker;
 
-        Repository::with_characters_mut(|characters| {
-            let char = characters
-                .iter_mut()
-                .find(|ch| ch.player as usize == player_id);
+        let maybe_char = Repository::global_mut()
+            .characters
+            .iter_mut()
+            .find(|ch| ch.player as usize == player_id);
 
-            if char.is_none() {
-                return;
-            }
-
-            let char = char.unwrap();
+        if let Some(char) = maybe_char {
             log::info!(
                 "Player {} exiting for character '{}'",
                 player_id,
@@ -374,7 +350,7 @@ pub fn player_exit(player_id: usize) {
             );
 
             char.player = 0;
-        });
+        }
     });
 }
 
@@ -388,37 +364,34 @@ pub fn player_exit(player_id: usize) {
 /// # Arguments
 /// * `cn` - Character index to remove from the map
 pub fn plr_map_remove(cn: usize) {
-    Repository::with_characters(|characters| {
-        let m = (characters[cn].x as usize)
-            + (characters[cn].y as usize) * core::constants::SERVER_MAPX as usize;
-        let to_m = (characters[cn].tox as usize)
-            + (characters[cn].toy as usize) * core::constants::SERVER_MAPX as usize;
-        let light = characters[cn].light;
-        let (x, y) = (characters[cn].x, characters[cn].y);
-        let is_body = (characters[cn].flags & CharacterFlags::Body.bits()) != 0;
+    let ch = Repository::global_mut().characters[cn];
+    let m = (ch.x as usize) + (ch.y as usize) * core::constants::SERVER_MAPX as usize;
+    let to_m = (ch.tox as usize) + (ch.toy as usize) * core::constants::SERVER_MAPX as usize;
+    let light = ch.light;
+    let (x, y) = (ch.x, ch.y);
+    let is_body = (ch.flags & CharacterFlags::Body.bits()) != 0;
 
-        Repository::with_map_mut(|map| {
-            map[m].ch = 0;
-            map[to_m].to_ch = 0;
+    Repository::with_map_mut(|map| {
+        map[m].ch = 0;
+        map[to_m].to_ch = 0;
 
-            if light != 0 {
-                Repository::global_mut().do_add_light(x as i32, y as i32, -(light as i32));
+        if light != 0 {
+            Repository::global_mut().do_add_light(x as i32, y as i32, -(light as i32));
+        }
+
+        if !is_body {
+            let in_id = map[m].it;
+            if in_id != 0 {
+                Repository::with_items(|items| {
+                    if (items[in_id as usize].flags
+                        & core::constants::ItemFlags::IF_STEPACTION.bits())
+                        != 0
+                    {
+                        driver::step_driver_remove(cn, in_id as usize);
+                    }
+                });
             }
-
-            if !is_body {
-                let in_id = map[m].it;
-                if in_id != 0 {
-                    Repository::with_items(|items| {
-                        if (items[in_id as usize].flags
-                            & core::constants::ItemFlags::IF_STEPACTION.bits())
-                            != 0
-                        {
-                            driver::step_driver_remove(cn, in_id as usize);
-                        }
-                    });
-                }
-            }
-        });
+        }
     });
 }
 
@@ -436,14 +409,12 @@ pub fn plr_map_remove(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index to place on the map
 pub fn plr_map_set(cn: usize) {
-    let (x, y, flags, light) = Repository::with_characters(|characters| {
-        (
-            characters[cn].x,
-            characters[cn].y,
-            characters[cn].flags,
-            characters[cn].light,
-        )
-    });
+    let (x, y, flags, light) = (
+        Repository::global_mut().characters[cn].x,
+        Repository::global_mut().characters[cn].y,
+        Repository::global_mut().characters[cn].flags,
+        Repository::global_mut().characters[cn].light,
+    );
 
     let m = (x as usize) + (y as usize) * core::constants::SERVER_MAPX as usize;
     let is_body = (flags & CharacterFlags::Body.bits()) != 0;
@@ -451,7 +422,7 @@ pub fn plr_map_set(cn: usize) {
 
     if !is_body {
         // Check for step action
-        let in_id = Repository::with_map(|map| map[m].it);
+        let in_id = Repository::global_mut().map[m].it;
         if in_id != 0 {
             let has_step_action = Repository::with_items(|items| {
                 (items[in_id as usize].flags & core::constants::ItemFlags::IF_STEPACTION.bits())
@@ -468,24 +439,19 @@ pub fn plr_map_set(cn: usize) {
                     });
 
                     // compute destination: x + (x - frx), y + (y - fry)
-                    let (cx, cy, frx, fry, light) = Repository::with_characters(|characters| {
-                        (
-                            characters[cn].x as i32,
-                            characters[cn].y as i32,
-                            characters[cn].frx as i32,
-                            characters[cn].fry as i32,
-                            characters[cn].light,
-                        )
-                    });
+                    let (cx, cy, frx, fry, light) = (
+                        Repository::global_mut().characters[cn].x as i32,
+                        Repository::global_mut().characters[cn].y as i32,
+                        Repository::global_mut().characters[cn].frx as i32,
+                        Repository::global_mut().characters[cn].fry as i32,
+                        Repository::global_mut().characters[cn].light,
+                    );
 
                     let nx = cx + (cx - frx);
                     let ny = cy + (cy - fry);
 
-                    let target_empty = Repository::with_map(|map| {
-                        let idx =
-                            (nx as usize) + (ny as usize) * core::constants::SERVER_MAPX as usize;
-                        map[idx].ch == 0
-                    });
+                    let idx = (nx as usize) + (ny as usize) * core::constants::SERVER_MAPX as usize;
+                    let target_empty = Repository::global_mut().map[idx].ch == 0;
 
                     if target_empty {
                         Repository::with_characters_mut(|characters| {
@@ -520,13 +486,11 @@ pub fn plr_map_set(cn: usize) {
                         map[m].to_ch = 0;
                     });
 
-                    let (frx, fry, light) = Repository::with_characters(|characters| {
-                        (
-                            characters[cn].frx as i32,
-                            characters[cn].fry as i32,
-                            characters[cn].light,
-                        )
-                    });
+                    let (frx, fry, light) = (
+                        Repository::global_mut().characters[cn].frx as i32,
+                        Repository::global_mut().characters[cn].fry as i32,
+                        Repository::global_mut().characters[cn].light,
+                    );
 
                     Repository::with_characters_mut(|characters| {
                         characters[cn].x = frx as i16;
@@ -554,9 +518,11 @@ pub fn plr_map_set(cn: usize) {
 
                 if ret == 2 {
                     // TELEPORT_SUCCESS: just add light and return
-                    let (tx, ty, current_light) = Repository::with_characters(|characters| {
-                        (characters[cn].x, characters[cn].y, characters[cn].light)
-                    });
+                    let (tx, ty, current_light) = (
+                        Repository::global_mut().characters[cn].x,
+                        Repository::global_mut().characters[cn].y,
+                        Repository::global_mut().characters[cn].light,
+                    );
 
                     if current_light != 0 {
                         Repository::global_mut().do_add_light(
@@ -572,20 +538,20 @@ pub fn plr_map_set(cn: usize) {
 
         // Check for tavern
         let is_tavern =
-            Repository::with_map(|map| (map[m].flags & core::constants::MF_TAVERN as u64) != 0);
+            (Repository::global_mut().map[m].flags & core::constants::MF_TAVERN as u64) != 0;
 
         if is_tavern && is_player {
-            Repository::with_characters_mut(|characters| {
-                if characters[cn].is_building() {
-                    God::build(cn, 0);
-                }
-                characters[cn].tavern_x = characters[cn].x as u16;
-                characters[cn].tavern_y = characters[cn].y as u16;
-            });
+            if Repository::global_mut().characters[cn].is_building() {
+                God::build(cn, 0);
+            }
+            Repository::global_mut().characters[cn].tavern_x =
+                Repository::global_mut().characters[cn].x as u16;
+            Repository::global_mut().characters[cn].tavern_y =
+                Repository::global_mut().characters[cn].y as u16;
 
             log::info!("Character {} entered tavern", cn);
 
-            let player_id = Repository::with_characters(|characters| characters[cn].player);
+            let player_id = Repository::global_mut().characters[cn].player;
             plr_logout(
                 Repository::global_mut(),
                 cn,
@@ -597,7 +563,7 @@ pub fn plr_map_set(cn: usize) {
 
         // Check for no magic zone, respect items that exempt char from nomagic
         let is_nomagic =
-            Repository::with_map(|map| (map[m].flags & core::constants::MF_NOMAGIC as u64) != 0);
+            (Repository::global_mut().map[m].flags & core::constants::MF_NOMAGIC as u64) != 0;
 
         let wears_466 = Repository::global_mut().char_wears_item(cn, 466);
         let wears_481 = Repository::global_mut().char_wears_item(cn, 481);
@@ -606,12 +572,11 @@ pub fn plr_map_set(cn: usize) {
             // Match original behavior: only apply/remove spells and log once
             // when entering a no-magic tile (i.e., on flag transition).
             let mut became_nomagic = false;
-            Repository::with_characters_mut(|characters| {
-                if (characters[cn].flags & CharacterFlags::NoMagic.bits()) == 0 {
-                    characters[cn].flags |= CharacterFlags::NoMagic.bits();
-                    became_nomagic = true;
-                }
-            });
+            if (Repository::global_mut().characters[cn].flags & CharacterFlags::NoMagic.bits()) == 0
+            {
+                Repository::global_mut().characters[cn].flags |= CharacterFlags::NoMagic.bits();
+                became_nomagic = true;
+            }
 
             if became_nomagic {
                 driver::remove_spells(cn);
@@ -623,13 +588,12 @@ pub fn plr_map_set(cn: usize) {
             }
         } else {
             let mut was_nomagic = false;
-            Repository::with_characters_mut(|characters| {
-                if (characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
-                    characters[cn].flags &= !CharacterFlags::NoMagic.bits();
-                    characters[cn].set_do_update_flags();
-                    was_nomagic = true;
-                }
-            });
+            if (Repository::global_mut().characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0
+            {
+                Repository::global_mut().characters[cn].flags &= !CharacterFlags::NoMagic.bits();
+                Repository::global_mut().characters[cn].set_do_update_flags();
+                was_nomagic = true;
+            }
 
             if was_nomagic {
                 Repository::global_mut().do_character_log(
@@ -654,7 +618,7 @@ pub fn plr_map_set(cn: usize) {
 
         // Check for death trap
         let is_deathtrap =
-            Repository::with_map(|map| (map[m].flags & core::constants::MF_DEATHTRAP as u64) != 0);
+            (Repository::global_mut().map[m].flags & core::constants::MF_DEATHTRAP as u64) != 0;
 
         if is_deathtrap {
             Repository::global_mut().do_character_log(
@@ -1071,24 +1035,22 @@ pub fn plr_turn_right(cn: usize) {
 /// * `cn` - Attacking character index
 /// * `is_surround` - Surround flag passed to `do_attack` (0 or 1)
 pub fn plr_attack(cn: usize, is_surround: bool) {
-    let (mut x, mut y, dir) = Repository::with_characters(|characters| {
-        Repository::global_mut().do_area_notify(
-            cn as i32,
-            0,
-            characters[cn].x as i32,
-            characters[cn].y as i32,
-            core::constants::NT_SEE as i32,
-            cn as i32,
-            0,
-            0,
-            0,
-        );
-        (
-            characters[cn].x as i32,
-            characters[cn].y as i32,
-            characters[cn].dir,
-        )
-    });
+    let (mut x, mut y, dir) = (
+        Repository::global_mut().characters[cn].x as i32,
+        Repository::global_mut().characters[cn].y as i32,
+        Repository::global_mut().characters[cn].dir,
+    );
+    Repository::global_mut().do_area_notify(
+        cn as i32,
+        0,
+        x,
+        y,
+        core::constants::NT_SEE as i32,
+        cn as i32,
+        0,
+        0,
+        0,
+    );
 
     match dir {
         core::constants::DX_UP => y -= 1,
@@ -1105,24 +1067,20 @@ pub fn plr_attack(cn: usize, is_surround: bool) {
     }
 
     let m = (x as usize) + (y as usize) * core::constants::SERVER_MAPX as usize;
-    let mut co = Repository::with_map(|map| map[m].ch as usize);
+    let mut co = Repository::global_mut().map[m].ch as usize;
 
     if co == 0 {
-        co = Repository::with_map(|map| map[m].to_ch as usize);
+        co = Repository::global_mut().map[m].to_ch as usize;
     }
 
     if co == 0 {
-        co = Repository::with_characters(|characters| {
-            let attack_cn = characters[cn].attack_cn as usize;
-            if attack_cn > 0
-                && characters[attack_cn].frx == x as i16
-                && characters[attack_cn].fry == y as i16
-            {
-                attack_cn
-            } else {
-                0
-            }
-        });
+        let attack_cn = Repository::global_mut().characters[cn].attack_cn as usize;
+        if attack_cn > 0
+            && Repository::global_mut().characters[attack_cn].frx == x as i16
+            && Repository::global_mut().characters[attack_cn].fry == y as i16
+        {
+            co = attack_cn;
+        }
     }
 
     if co == 0 {
@@ -1134,7 +1092,7 @@ pub fn plr_attack(cn: usize, is_surround: bool) {
         return;
     }
 
-    let attack_cn = Repository::with_characters(|characters| characters[cn].attack_cn as usize);
+    let attack_cn = Repository::global_mut().characters[cn].attack_cn as usize;
 
     if attack_cn == co {
         Repository::global_mut().do_attack(cn, co, is_surround);
@@ -1151,24 +1109,22 @@ pub fn plr_attack(cn: usize, is_surround: bool) {
 /// # Arguments
 /// * `cn` - Giver character index
 pub fn plr_give(cn: usize) {
-    let (mut x, mut y, dir) = Repository::with_characters(|characters| {
-        Repository::global_mut().do_area_notify(
-            cn as i32,
-            0,
-            characters[cn].x as i32,
-            characters[cn].y as i32,
-            core::constants::NT_SEE as i32,
-            cn as i32,
-            0,
-            0,
-            0,
-        );
-        (
-            characters[cn].x as i32,
-            characters[cn].y as i32,
-            characters[cn].dir,
-        )
-    });
+    let (mut x, mut y, dir) = (
+        Repository::global_mut().characters[cn].x as i32,
+        Repository::global_mut().characters[cn].y as i32,
+        Repository::global_mut().characters[cn].dir,
+    );
+    Repository::global_mut().do_area_notify(
+        cn as i32,
+        0,
+        x,
+        y,
+        core::constants::NT_SEE as i32,
+        cn as i32,
+        0,
+        0,
+        0,
+    );
 
     match dir {
         core::constants::DX_UP => y -= 1,
@@ -1185,10 +1141,10 @@ pub fn plr_give(cn: usize) {
     }
 
     let m = (x as usize) + (y as usize) * core::constants::SERVER_MAPX as usize;
-    let mut co = Repository::with_map(|map| map[m].ch as usize);
+    let mut co = Repository::global_mut().map[m].ch as usize;
 
     if co == 0 {
-        co = Repository::with_map(|map| map[m].to_ch as usize);
+        co = Repository::global_mut().map[m].to_ch as usize;
     }
 
     if co == 0 {
@@ -1213,21 +1169,19 @@ pub fn plr_give(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index attempting to pick up an item
 pub fn plr_pickup(cn: usize) {
-    Repository::with_characters(|characters| {
-        Repository::global_mut().do_area_notify(
-            cn as i32,
-            0,
-            characters[cn].x as i32,
-            characters[cn].y as i32,
-            core::constants::NT_SEE as i32,
-            cn as i32,
-            0,
-            0,
-            0,
-        );
-    });
+    Repository::global_mut().do_area_notify(
+        cn as i32,
+        0,
+        Repository::global_mut().characters[cn].x as i32,
+        Repository::global_mut().characters[cn].y as i32,
+        core::constants::NT_SEE as i32,
+        cn as i32,
+        0,
+        0,
+        0,
+    );
 
-    let has_citem = Repository::with_characters(|characters| characters[cn].citem != 0);
+    let has_citem = Repository::global_mut().characters[cn].citem != 0;
 
     if has_citem {
         Repository::with_characters_mut(|characters| {
@@ -1236,37 +1190,26 @@ pub fn plr_pickup(cn: usize) {
         return;
     }
 
-    let (m, x, y) = Repository::with_characters(|characters| {
-        let dir = characters[cn].dir;
-        let (m, x, y) = match dir {
-            core::constants::DX_UP if characters[cn].y > 0 => {
-                let m = (characters[cn].x as usize)
-                    + ((characters[cn].y - 1) as usize) * core::constants::SERVER_MAPX as usize;
-                (Some(m), characters[cn].x, characters[cn].y - 1)
-            }
-            core::constants::DX_DOWN
-                if characters[cn].y < (core::constants::SERVER_MAPY as i16 - 1) =>
-            {
-                let m = (characters[cn].x as usize)
-                    + ((characters[cn].y + 1) as usize) * core::constants::SERVER_MAPX as usize;
-                (Some(m), characters[cn].x, characters[cn].y + 1)
-            }
-            core::constants::DX_LEFT if characters[cn].x > 0 => {
-                let m = ((characters[cn].x - 1) as usize)
-                    + (characters[cn].y as usize) * core::constants::SERVER_MAPX as usize;
-                (Some(m), characters[cn].x - 1, characters[cn].y)
-            }
-            core::constants::DX_RIGHT
-                if characters[cn].x < (core::constants::SERVER_MAPX as i16 - 1) =>
-            {
-                let m = ((characters[cn].x + 1) as usize)
-                    + (characters[cn].y as usize) * core::constants::SERVER_MAPX as usize;
-                (Some(m), characters[cn].x + 1, characters[cn].y)
-            }
-            _ => (None, 0, 0),
-        };
-        (m, x, y)
-    });
+    let ch = Repository::global_mut().characters[cn];
+    let (m, x, y) = match ch.dir {
+        core::constants::DX_UP if ch.y > 0 => {
+            let m = (ch.x as usize) + ((ch.y - 1) as usize) * core::constants::SERVER_MAPX as usize;
+            (Some(m), ch.x, ch.y - 1)
+        }
+        core::constants::DX_DOWN if ch.y < (core::constants::SERVER_MAPY as i16 - 1) => {
+            let m = (ch.x as usize) + ((ch.y + 1) as usize) * core::constants::SERVER_MAPX as usize;
+            (Some(m), ch.x, ch.y + 1)
+        }
+        core::constants::DX_LEFT if ch.x > 0 => {
+            let m = ((ch.x - 1) as usize) + (ch.y as usize) * core::constants::SERVER_MAPX as usize;
+            (Some(m), ch.x - 1, ch.y)
+        }
+        core::constants::DX_RIGHT if ch.x < (core::constants::SERVER_MAPX as i16 - 1) => {
+            let m = ((ch.x + 1) as usize) + (ch.y as usize) * core::constants::SERVER_MAPX as usize;
+            (Some(m), ch.x + 1, ch.y)
+        }
+        _ => (None, 0, 0),
+    };
 
     let Some(m) = m else {
         Repository::with_characters_mut(|characters| {
@@ -1275,7 +1218,7 @@ pub fn plr_pickup(cn: usize) {
         return;
     };
 
-    let in_id = Repository::with_map(|map| map[m].it);
+    let in_id = Repository::global_mut().map[m].it;
 
     if in_id == 0 {
         Repository::with_characters_mut(|characters| {
@@ -1350,9 +1293,8 @@ pub fn plr_pickup(cn: usize) {
         map[m].it = 0;
     });
 
-    let is_player = Repository::with_characters(|characters| {
-        (characters[cn].flags & CharacterFlags::Player.bits()) != 0
-    });
+    let is_player =
+        (Repository::global_mut().characters[cn].flags & CharacterFlags::Player.bits()) != 0;
 
     if is_player {
         let slot_found = Repository::with_characters_mut(|characters| {
@@ -1411,32 +1353,27 @@ pub fn plr_pickup(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index performing the bow
 pub fn plr_bow(cn: usize) {
-    Repository::with_characters(|characters| {
-        Repository::global_mut().do_area_notify(
-            cn as i32,
-            0,
-            characters[cn].x as i32,
-            characters[cn].y as i32,
-            core::constants::NT_SEE as i32,
-            cn as i32,
-            0,
-            0,
-            0,
-        );
-        Repository::global_mut().do_character_log(
-            cn,
-            core::types::FontColor::Red,
-            "You bow deeply.\n",
-        );
-        Repository::global_mut().do_area_log(
-            cn,
-            0,
-            characters[cn].x as i32,
-            characters[cn].y as i32,
-            core::types::FontColor::Blue,
-            &format!("{} bows deeply.\n", &characters[cn].get_reference()),
-        );
-    });
+    let ch = Repository::global_mut().characters[cn];
+    Repository::global_mut().do_area_notify(
+        cn as i32,
+        0,
+        ch.x as i32,
+        ch.y as i32,
+        core::constants::NT_SEE as i32,
+        cn as i32,
+        0,
+        0,
+        0,
+    );
+    Repository::global_mut().do_character_log(cn, core::types::FontColor::Red, "You bow deeply.\n");
+    Repository::global_mut().do_area_log(
+        cn,
+        0,
+        ch.x as i32,
+        ch.y as i32,
+        core::types::FontColor::Blue,
+        &format!("{} bows deeply.\n", &ch.get_reference()),
+    );
 
     log::info!("Character {} bows", cn);
 
@@ -1454,32 +1391,31 @@ pub fn plr_bow(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index performing the wave
 pub fn plr_wave(cn: usize) {
-    Repository::with_characters(|characters| {
-        Repository::global_mut().do_area_notify(
-            cn as i32,
-            0,
-            characters[cn].x as i32,
-            characters[cn].y as i32,
-            core::constants::NT_SEE as i32,
-            cn as i32,
-            0,
-            0,
-            0,
-        );
-        Repository::global_mut().do_character_log(
-            cn,
-            core::types::FontColor::Red,
-            "You wave happily.\n",
-        );
-        Repository::global_mut().do_area_log(
-            cn,
-            0,
-            characters[cn].x as i32,
-            characters[cn].y as i32,
-            core::types::FontColor::Blue,
-            &format!("{} waves happily.\n", &characters[cn].get_reference()),
-        );
-    });
+    let ch = Repository::global_mut().characters[cn];
+    Repository::global_mut().do_area_notify(
+        cn as i32,
+        0,
+        ch.x as i32,
+        ch.y as i32,
+        core::constants::NT_SEE as i32,
+        cn as i32,
+        0,
+        0,
+        0,
+    );
+    Repository::global_mut().do_character_log(
+        cn,
+        core::types::FontColor::Red,
+        "You wave happily.\n",
+    );
+    Repository::global_mut().do_area_log(
+        cn,
+        0,
+        ch.x as i32,
+        ch.y as i32,
+        core::types::FontColor::Blue,
+        &format!("{} waves happily.\n", &ch.get_reference()),
+    );
 
     log::info!("Character {} waves", cn);
 
@@ -1498,52 +1434,34 @@ pub fn plr_wave(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index using the item
 pub fn plr_use(gs: &mut GameState, cn: usize) {
-    Repository::with_characters(|characters| {
-        Repository::global_mut().do_area_notify(
-            cn as i32,
-            0,
-            characters[cn].x as i32,
-            characters[cn].y as i32,
-            core::constants::NT_SEE as i32,
-            cn as i32,
-            0,
-            0,
-            0,
-        );
-    });
+    Repository::global_mut().do_area_notify(
+        cn as i32,
+        0,
+        Repository::global_mut().characters[cn].x as i32,
+        Repository::global_mut().characters[cn].y as i32,
+        core::constants::NT_SEE as i32,
+        cn as i32,
+        0,
+        0,
+        0,
+    );
 
-    let m = Repository::with_characters(|characters| {
-        let dir = characters[cn].dir;
-        let m = match dir {
-            core::constants::DX_UP if characters[cn].y > 0 => Some(
-                (characters[cn].x as usize)
-                    + ((characters[cn].y - 1) as usize) * core::constants::SERVER_MAPX as usize,
-            ),
-            core::constants::DX_DOWN
-                if characters[cn].y < (core::constants::SERVER_MAPY as i16 - 1) =>
-            {
-                Some(
-                    (characters[cn].x as usize)
-                        + ((characters[cn].y + 1) as usize) * core::constants::SERVER_MAPX as usize,
-                )
-            }
-            core::constants::DX_LEFT if characters[cn].x > 0 => Some(
-                ((characters[cn].x - 1) as usize)
-                    + (characters[cn].y as usize) * core::constants::SERVER_MAPX as usize,
-            ),
-            core::constants::DX_RIGHT
-                if characters[cn].x < (core::constants::SERVER_MAPX as i16 - 1) =>
-            {
-                Some(
-                    ((characters[cn].x + 1) as usize)
-                        + (characters[cn].y as usize) * core::constants::SERVER_MAPX as usize,
-                )
-            }
-            _ => None,
-        };
-
-        m
-    });
+    let ch = Repository::global_mut().characters[cn];
+    let m = match ch.dir {
+        core::constants::DX_UP if ch.y > 0 => {
+            Some((ch.x as usize) + ((ch.y - 1) as usize) * core::constants::SERVER_MAPX as usize)
+        }
+        core::constants::DX_DOWN if ch.y < (core::constants::SERVER_MAPY as i16 - 1) => {
+            Some((ch.x as usize) + ((ch.y + 1) as usize) * core::constants::SERVER_MAPX as usize)
+        }
+        core::constants::DX_LEFT if ch.x > 0 => {
+            Some(((ch.x - 1) as usize) + (ch.y as usize) * core::constants::SERVER_MAPX as usize)
+        }
+        core::constants::DX_RIGHT if ch.x < (core::constants::SERVER_MAPX as i16 - 1) => {
+            Some(((ch.x + 1) as usize) + (ch.y as usize) * core::constants::SERVER_MAPX as usize)
+        }
+        _ => None,
+    };
 
     let Some(m) = m else {
         Repository::with_characters_mut(|characters| {
@@ -1552,7 +1470,7 @@ pub fn plr_use(gs: &mut GameState, cn: usize) {
         return;
     };
 
-    let in_id = Repository::with_map(|map| map[m].it);
+    let in_id = Repository::global_mut().map[m].it;
 
     if in_id == 0 {
         Repository::with_characters_mut(|characters| {
@@ -1585,21 +1503,19 @@ pub fn plr_use(gs: &mut GameState, cn: usize) {
 /// # Arguments
 /// * `cn` - Character index using the skill
 pub fn plr_skill(gs: &mut GameState, cn: usize) {
-    Repository::with_characters(|characters| {
-        Repository::global_mut().do_area_notify(
-            cn as i32,
-            0,
-            characters[cn].x as i32,
-            characters[cn].y as i32,
-            core::constants::NT_SEE as i32,
-            cn as i32,
-            0,
-            0,
-            0,
-        );
-    });
+    Repository::global_mut().do_area_notify(
+        cn as i32,
+        0,
+        Repository::global_mut().characters[cn].x as i32,
+        Repository::global_mut().characters[cn].y as i32,
+        core::constants::NT_SEE as i32,
+        cn as i32,
+        0,
+        0,
+        0,
+    );
 
-    let skill_target = Repository::with_characters(|characters| characters[cn].skill_target2);
+    let skill_target = Repository::global_mut().characters[cn].skill_target2;
 
     driver::skill_driver(gs, cn, skill_target as i32);
 }
@@ -1613,19 +1529,15 @@ pub fn plr_skill(gs: &mut GameState, cn: usize) {
 /// # Arguments
 /// * `cn` - Character index to process
 pub fn player_driver_med(cn: usize) {
-    Repository::with_characters(|ch| {
-        if ch[cn].data[12] + core::constants::TICKS * 15
-            > Repository::with_globals(|globs| globs.ticker)
-        {
-            return;
-        }
+    let ticker = Repository::global_mut().globals.ticker;
+    if Repository::global_mut().characters[cn].data[12] + core::constants::TICKS * 15 > ticker {
+        return;
+    }
 
-        let co = ch[cn].data[10];
-
-        if co != 0 {
-            driver::follow_driver(cn, co as usize);
-        }
-    });
+    let co = Repository::global_mut().characters[cn].data[10];
+    if co != 0 {
+        driver::follow_driver(cn, co as usize);
+    }
 }
 
 /// Port of `plr_drop` from `svr_act.cpp`
@@ -1638,53 +1550,44 @@ pub fn player_driver_med(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index performing the drop
 pub fn plr_drop(cn: usize) {
-    Repository::with_characters(|characters| {
-        Repository::global_mut().do_area_notify(
-            cn as i32,
-            0,
-            characters[cn].x as i32,
-            characters[cn].y as i32,
-            core::constants::NT_SEE as i32,
-            cn as i32,
-            0,
-            0,
-            0,
-        );
-    });
+    Repository::global_mut().do_area_notify(
+        cn as i32,
+        0,
+        Repository::global_mut().characters[cn].x as i32,
+        Repository::global_mut().characters[cn].y as i32,
+        core::constants::NT_SEE as i32,
+        cn as i32,
+        0,
+        0,
+        0,
+    );
 
-    let in_id = Repository::with_characters(|characters| characters[cn].citem);
+    let in_id = Repository::global_mut().characters[cn].citem;
 
     if in_id == 0 {
         return;
     }
 
-    let (m, x, y) = Repository::with_characters(|characters| match characters[cn].dir {
-        core::constants::DX_UP if characters[cn].y > 0 => {
-            let m = (characters[cn].x as usize)
-                + ((characters[cn].y - 1) as usize) * core::constants::SERVER_MAPX as usize;
-            (Some(m), characters[cn].x, characters[cn].y - 1)
+    let ch = Repository::global_mut().characters[cn];
+    let (m, x, y) = match ch.dir {
+        core::constants::DX_UP if ch.y > 0 => {
+            let m = (ch.x as usize) + ((ch.y - 1) as usize) * core::constants::SERVER_MAPX as usize;
+            (Some(m), ch.x, ch.y - 1)
         }
-        core::constants::DX_DOWN
-            if characters[cn].y < (core::constants::SERVER_MAPY as i16 - 1) =>
-        {
-            let m = (characters[cn].x as usize)
-                + ((characters[cn].y + 1) as usize) * core::constants::SERVER_MAPX as usize;
-            (Some(m), characters[cn].x, characters[cn].y + 1)
+        core::constants::DX_DOWN if ch.y < (core::constants::SERVER_MAPY as i16 - 1) => {
+            let m = (ch.x as usize) + ((ch.y + 1) as usize) * core::constants::SERVER_MAPX as usize;
+            (Some(m), ch.x, ch.y + 1)
         }
-        core::constants::DX_LEFT if characters[cn].x > 0 => {
-            let m = ((characters[cn].x - 1) as usize)
-                + (characters[cn].y as usize) * core::constants::SERVER_MAPX as usize;
-            (Some(m), characters[cn].x - 1, characters[cn].y)
+        core::constants::DX_LEFT if ch.x > 0 => {
+            let m = ((ch.x - 1) as usize) + (ch.y as usize) * core::constants::SERVER_MAPX as usize;
+            (Some(m), ch.x - 1, ch.y)
         }
-        core::constants::DX_RIGHT
-            if characters[cn].x < (core::constants::SERVER_MAPX as i16 - 1) =>
-        {
-            let m = ((characters[cn].x + 1) as usize)
-                + (characters[cn].y as usize) * core::constants::SERVER_MAPX as usize;
-            (Some(m), characters[cn].x + 1, characters[cn].y)
+        core::constants::DX_RIGHT if ch.x < (core::constants::SERVER_MAPX as i16 - 1) => {
+            let m = ((ch.x + 1) as usize) + (ch.y as usize) * core::constants::SERVER_MAPX as usize;
+            (Some(m), ch.x + 1, ch.y)
         }
         _ => (None, 0, 0),
-    });
+    };
 
     let Some(m) = m else {
         Repository::with_characters_mut(|characters| {
@@ -1694,7 +1597,7 @@ pub fn plr_drop(cn: usize) {
     };
 
     // Check for step action items
-    let in2 = Repository::with_map(|map| map[m].it);
+    let in2 = Repository::global_mut().map[m].it;
     if in2 != 0 {
         let has_step_action = Repository::with_items(|items| {
             (items[in2 as usize].flags & core::constants::ItemFlags::IF_STEPACTION.bits()) != 0
@@ -1710,12 +1613,10 @@ pub fn plr_drop(cn: usize) {
     }
 
     // Check if tile is blocked
-    let is_blocked = Repository::with_map(|map| {
-        map[m].ch != 0
-            || map[m].to_ch != 0
-            || map[m].it != 0
-            || (map[m].flags & core::constants::MF_MOVEBLOCK as u64) != 0
-    });
+    let is_blocked = Repository::global_mut().map[m].ch != 0
+        || Repository::global_mut().map[m].to_ch != 0
+        || Repository::global_mut().map[m].it != 0
+        || (Repository::global_mut().map[m].flags & core::constants::MF_MOVEBLOCK as u64) != 0;
 
     if is_blocked {
         Repository::with_characters_mut(|characters| {
@@ -1844,9 +1745,8 @@ pub fn plr_drop(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index whose misc action to process
 pub fn plr_misc(gs: &mut GameState, cn: usize) {
-    let (status2, is_player) = Repository::with_characters(|characters| {
-        (characters[cn].status2, characters[cn].is_player())
-    });
+    let status2 = Repository::global_mut().characters[cn].status2;
+    let is_player = Repository::global_mut().characters[cn].is_player();
 
     match status2 {
         0 => {
@@ -1937,24 +1837,22 @@ pub fn plr_misc(gs: &mut GameState, cn: usize) {
 /// # Returns
 /// `true` if tile is a valid empty target, `false` otherwise
 pub fn plr_check_target(m: usize) -> bool {
-    Repository::with_map(|map| {
-        if map[m].ch != 0 || map[m].to_ch != 0 {
-            return false;
-        }
+    if Repository::global_mut().map[m].ch != 0 || Repository::global_mut().map[m].to_ch != 0 {
+        return false;
+    }
 
-        if (map[m].flags & core::constants::MF_MOVEBLOCK as u64) != 0 {
-            return false;
-        }
+    if (Repository::global_mut().map[m].flags & core::constants::MF_MOVEBLOCK as u64) != 0 {
+        return false;
+    }
 
-        let it_id = map[m].it;
-        if it_id != 0 {
-            Repository::with_items(|items| {
-                (items[it_id as usize].flags & core::constants::ItemFlags::IF_MOVEBLOCK.bits()) == 0
-            })
-        } else {
-            true
-        }
-    })
+    let it_id = Repository::global_mut().map[m].it;
+    if it_id != 0 {
+        Repository::with_items(|items| {
+            (items[it_id as usize].flags & core::constants::ItemFlags::IF_MOVEBLOCK.bits()) == 0
+        })
+    } else {
+        true
+    }
 }
 
 /// Port of `plr_set_target` from `svr_act.cpp`
@@ -2022,7 +1920,7 @@ pub fn plr_reset_status(cn: usize) {
 /// * `cn` - Character index to perform driver actions for
 pub fn plr_doact(gs: &mut GameState, cn: usize) {
     plr_reset_status(cn);
-    if Repository::with_characters(|characters| characters[cn].group_active()) {
+    if Repository::global_mut().characters[cn].group_active() {
         driver::driver(gs, cn);
     }
 }
@@ -2037,13 +1935,11 @@ pub fn plr_doact(gs: &mut GameState, cn: usize) {
 /// # Arguments
 /// * `cn` - Character index to process
 pub fn plr_act(_gs: &mut GameState, cn: usize) {
-    let (stunned, flags, status) = Repository::with_characters(|characters| {
-        (
-            characters[cn].stunned,
-            characters[cn].flags,
-            characters[cn].status,
-        )
-    });
+    let (stunned, flags, status) = (
+        Repository::global_mut().characters[cn].stunned,
+        Repository::global_mut().characters[cn].flags,
+        Repository::global_mut().characters[cn].status,
+    );
 
     if stunned != 0 {
         driver::act_idle(cn);
@@ -2065,12 +1961,12 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
         // walk up: 16..22 increment, 23 execute
         16..=22 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+                Repository::global_mut().characters[cn].status += 1;
             }
         }
         23 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status = 16);
+                Repository::global_mut().characters[cn].status = 16;
                 plr_move_up(cn);
                 plr_doact(_gs, cn);
             }
@@ -2079,12 +1975,12 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
         // walk down: 24..30 then 31
         24..=30 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+                Repository::global_mut().characters[cn].status += 1;
             }
         }
         31 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status = 24);
+                Repository::global_mut().characters[cn].status = 24;
                 plr_move_down(cn);
                 plr_doact(_gs, cn);
             }
@@ -2093,12 +1989,12 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
         // walk left: 32..38 then 39
         32..=38 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+                Repository::global_mut().characters[cn].status += 1;
             }
         }
         39 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status = 32);
+                Repository::global_mut().characters[cn].status = 32;
                 plr_move_left(cn);
                 plr_doact(_gs, cn);
             }
@@ -2107,12 +2003,12 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
         // walk right: 40..46 then 47
         40..=46 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+                Repository::global_mut().characters[cn].status += 1;
             }
         }
         47 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status = 40);
+                Repository::global_mut().characters[cn].status = 40;
                 plr_move_right(cn);
                 plr_doact(_gs, cn);
             }
@@ -2121,12 +2017,12 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
         // left+up: 48..58 then 59
         48..=58 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+                Repository::global_mut().characters[cn].status += 1;
             }
         }
         59 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status = 48);
+                Repository::global_mut().characters[cn].status = 48;
                 plr_move_leftup(cn);
                 plr_doact(_gs, cn);
             }
@@ -2135,12 +2031,12 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
         // left+down: 60..70 then 71
         60..=70 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+                Repository::global_mut().characters[cn].status += 1;
             }
         }
         71 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status = 60);
+                Repository::global_mut().characters[cn].status = 60;
                 plr_move_leftdown(cn);
                 plr_doact(_gs, cn);
             }
@@ -2149,12 +2045,12 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
         // right+up: 72..82 then 83
         72..=82 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+                Repository::global_mut().characters[cn].status += 1;
             }
         }
         83 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status = 72);
+                Repository::global_mut().characters[cn].status = 72;
                 plr_move_rightup(cn);
                 plr_doact(_gs, cn);
             }
@@ -2163,12 +2059,12 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
         // right+down: 84..94 then 95
         84..=94 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+                Repository::global_mut().characters[cn].status += 1;
             }
         }
         95 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status = 84);
+                Repository::global_mut().characters[cn].status = 84;
                 plr_move_rightdown(cn);
                 plr_doact(_gs, cn);
             }
@@ -2177,12 +2073,12 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
         // turns: grouped ranges mapping to final turn actions
         96..=98 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+                Repository::global_mut().characters[cn].status += 1;
             }
         }
         99 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status = 96);
+                Repository::global_mut().characters[cn].status = 96;
                 plr_turn_leftup(cn);
                 plr_doact(_gs, cn);
             }
@@ -2190,12 +2086,12 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
 
         100..=102 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+                Repository::global_mut().characters[cn].status += 1;
             }
         }
         103 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status = 96);
+                Repository::global_mut().characters[cn].status = 96;
                 plr_turn_left(cn);
                 plr_doact(_gs, cn);
             }
@@ -2203,12 +2099,12 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
 
         104..=106 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+                Repository::global_mut().characters[cn].status += 1;
             }
         }
         107 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status = 104);
+                Repository::global_mut().characters[cn].status = 104;
                 plr_turn_rightup(cn);
                 plr_doact(_gs, cn);
             }
@@ -2216,12 +2112,12 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
 
         108..=110 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+                Repository::global_mut().characters[cn].status += 1;
             }
         }
         111 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status = 108);
+                Repository::global_mut().characters[cn].status = 108;
                 plr_turn_right(cn);
                 plr_doact(_gs, cn);
             }
@@ -2229,12 +2125,12 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
 
         112..=114 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+                Repository::global_mut().characters[cn].status += 1;
             }
         }
         115 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status = 112);
+                Repository::global_mut().characters[cn].status = 112;
                 plr_turn_leftdown(cn);
                 plr_doact(_gs, cn);
             }
@@ -2242,12 +2138,12 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
 
         116..=118 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+                Repository::global_mut().characters[cn].status += 1;
             }
         }
         119 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status = 116);
+                Repository::global_mut().characters[cn].status = 116;
                 plr_turn_left(cn);
                 plr_doact(_gs, cn);
             }
@@ -2255,12 +2151,12 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
 
         120..=122 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+                Repository::global_mut().characters[cn].status += 1;
             }
         }
         123 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status = 120);
+                Repository::global_mut().characters[cn].status = 120;
                 plr_turn_rightdown(cn);
                 plr_doact(_gs, cn);
             }
@@ -2268,12 +2164,12 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
 
         124..=126 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+                Repository::global_mut().characters[cn].status += 1;
             }
         }
         127 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status = 124);
+                Repository::global_mut().characters[cn].status = 124;
                 plr_turn_right(cn);
                 plr_doact(_gs, cn);
             }
@@ -2281,12 +2177,12 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
 
         128..=130 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+                Repository::global_mut().characters[cn].status += 1;
             }
         }
         131 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status = 128);
+                Repository::global_mut().characters[cn].status = 128;
                 plr_turn_leftup(cn);
                 plr_doact(_gs, cn);
             }
@@ -2294,12 +2190,12 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
 
         132..=134 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+                Repository::global_mut().characters[cn].status += 1;
             }
         }
         135 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status = 132);
+                Repository::global_mut().characters[cn].status = 132;
                 plr_turn_up(cn);
                 plr_doact(_gs, cn);
             }
@@ -2307,12 +2203,12 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
 
         136..=138 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+                Repository::global_mut().characters[cn].status += 1;
             }
         }
         139 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status = 136);
+                Repository::global_mut().characters[cn].status = 136;
                 plr_turn_leftdown(cn);
                 plr_doact(_gs, cn);
             }
@@ -2320,12 +2216,12 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
 
         140..=142 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+                Repository::global_mut().characters[cn].status += 1;
             }
         }
         143 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status = 140);
+                Repository::global_mut().characters[cn].status = 140;
                 plr_turn_down(cn);
                 plr_doact(_gs, cn);
             }
@@ -2333,12 +2229,12 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
 
         144..=146 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+                Repository::global_mut().characters[cn].status += 1;
             }
         }
         147 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status = 144);
+                Repository::global_mut().characters[cn].status = 144;
                 plr_turn_rightup(cn);
                 plr_doact(_gs, cn);
             }
@@ -2346,12 +2242,12 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
 
         148..=150 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+                Repository::global_mut().characters[cn].status += 1;
             }
         }
         151 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status = 148);
+                Repository::global_mut().characters[cn].status = 148;
                 plr_turn_up(cn);
                 plr_doact(_gs, cn);
             }
@@ -2359,12 +2255,12 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
 
         152..=154 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+                Repository::global_mut().characters[cn].status += 1;
             }
         }
         155 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status = 152);
+                Repository::global_mut().characters[cn].status = 152;
                 plr_turn_rightdown(cn);
                 plr_doact(_gs, cn);
             }
@@ -2372,12 +2268,12 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
 
         156..=158 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+                Repository::global_mut().characters[cn].status += 1;
             }
         }
         159 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status = 156);
+                Repository::global_mut().characters[cn].status = 156;
                 plr_turn_down(cn);
                 plr_doact(_gs, cn);
             }
@@ -2386,12 +2282,12 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
         // misc actions: 160..166 increment, 167 execute misc then doact
         160..=166 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+                Repository::global_mut().characters[cn].status += 1;
             }
         }
         167 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status = 160);
+                Repository::global_mut().characters[cn].status = 160;
                 plr_misc(_gs, cn);
                 plr_doact(_gs, cn);
             }
@@ -2400,12 +2296,12 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
         // misc down 168..174 then 175
         168..=174 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+                Repository::global_mut().characters[cn].status += 1;
             }
         }
         175 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status = 168);
+                Repository::global_mut().characters[cn].status = 168;
                 plr_misc(_gs, cn);
                 plr_doact(_gs, cn);
             }
@@ -2414,12 +2310,12 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
         // misc left 176..182 then 183
         176..=182 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+                Repository::global_mut().characters[cn].status += 1;
             }
         }
         183 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status = 176);
+                Repository::global_mut().characters[cn].status = 176;
                 plr_misc(_gs, cn);
                 plr_doact(_gs, cn);
             }
@@ -2428,25 +2324,25 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
         // misc right 184..190 then 191
         184..=190 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status += 1);
+                Repository::global_mut().characters[cn].status += 1;
             }
         }
         191 => {
             if speedo(cn) != 0 {
-                Repository::with_characters_mut(|ch| ch[cn].status = 184);
+                Repository::global_mut().characters[cn].status = 184;
                 plr_misc(_gs, cn);
                 plr_doact(_gs, cn);
             }
         }
 
         _ => {
-            let status = Repository::with_characters(|characters| characters[cn].status);
+            let status = Repository::global_mut().characters[cn].status;
             log::error!(
                 "plr_act: unknown character status {} for char {}",
                 status,
                 cn
             );
-            Repository::with_characters_mut(|ch| ch[cn].status = 0);
+            Repository::global_mut().characters[cn].status = 0;
         }
     }
 }
@@ -2459,12 +2355,9 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
 /// # Arguments
 /// * `n` - Character index
 pub fn speedo(n: usize) -> i32 {
-    let speed = Repository::with_characters(|characters| {
-        (characters[n].speed as usize).min(core::constants::MAX_SPEEDTAB_SPEED_INDEX)
-    });
-    let ctick = Repository::with_globals(|globals| {
-        globals.ticker as usize % core::constants::CTICK_CYCLE_LEN
-    });
+    let speed = (Repository::global_mut().characters[n].speed as usize)
+        .min(core::constants::MAX_SPEEDTAB_SPEED_INDEX);
+    let ctick = Repository::global_mut().globals.ticker as usize % core::constants::CTICK_CYCLE_LEN;
     SPEEDTAB[speed][ctick] as i32
 }
 
@@ -2503,21 +2396,17 @@ pub fn plr_getmap_complete(nr: usize) {
     const XSCUT: i32 = 2;
     const XECUT: i32 = 2;
 
-    let ys = Repository::with_characters(|ch| {
-        ch[cn].y as i32 - (core::constants::TILEY as i32 / 2) + YSCUT
-    });
-    let ye = Repository::with_characters(|ch| {
-        ch[cn].y as i32 + (core::constants::TILEY as i32 / 2) - YECUT
-    });
-    let xs = Repository::with_characters(|ch| {
-        ch[cn].x as i32 - (core::constants::TILEX as i32 / 2) + XSCUT
-    });
-    let xe = Repository::with_characters(|ch| {
-        ch[cn].x as i32 + (core::constants::TILEX as i32 / 2) - XECUT
-    });
+    let ys = Repository::global_mut().characters[cn].y as i32 - (core::constants::TILEY as i32 / 2)
+        + YSCUT;
+    let ye = Repository::global_mut().characters[cn].y as i32 + (core::constants::TILEY as i32 / 2)
+        - YECUT;
+    let xs = Repository::global_mut().characters[cn].x as i32 - (core::constants::TILEX as i32 / 2)
+        + XSCUT;
+    let xe = Repository::global_mut().characters[cn].x as i32 + (core::constants::TILEX as i32 / 2)
+        - XECUT;
 
-    let current_x = Repository::with_characters(|ch| ch[cn].x as i32);
-    let current_y = Repository::with_characters(|ch| ch[cn].y as i32);
+    let current_x = Repository::global_mut().characters[cn].x as i32;
+    let current_y = Repository::global_mut().characters[cn].y as i32;
     Repository::global_mut().can_see(
         Some(cn),
         current_x,
@@ -2546,7 +2435,7 @@ pub fn plr_getmap_complete(nr: usize) {
         do_all = true;
     }
 
-    if Repository::with_characters(|ch| ch[cn].is_building()) {
+    if Repository::global_mut().characters[cn].is_building() {
         do_all = true;
     }
 
@@ -2591,7 +2480,7 @@ pub fn plr_getmap_complete(nr: usize) {
 
             let mi = (x + y * core::constants::SERVER_MAPX) as usize;
 
-            let map_m = Repository::with_map(|map| map[mi]);
+            let map_m = Repository::global_mut().map[mi];
             if do_all
                 || map_m.it != 0
                 || map_m.ch as usize != 0
@@ -2607,13 +2496,12 @@ pub fn plr_getmap_complete(nr: usize) {
 
             let tmp = Repository::global_mut().check_dlightm(mi);
 
-            let mut light = std::cmp::max(Repository::with_map(|map| map[mi].light as i32), tmp);
+            let mut light = std::cmp::max(Repository::global_mut().map[mi].light as i32, tmp);
             light = Repository::global_mut().do_character_calculate_light(cn, light);
 
             if light <= 5
-                && Repository::with_characters(|characters| {
-                    (characters[cn].flags & CharacterFlags::Infrared.bits()) != 0
-                })
+                && (Repository::global_mut().characters[cn].flags & CharacterFlags::Infrared.bits())
+                    != 0
             {
                 infra = true;
             } else {
@@ -2621,7 +2509,7 @@ pub fn plr_getmap_complete(nr: usize) {
             }
 
             // Everyone sees themselves at least
-            if light == 0 && Repository::with_map(|map| map[mi].ch as usize) == cn {
+            if light == 0 && Repository::global_mut().map[mi].ch as usize == cn {
                 light = 1;
             }
 
@@ -2638,8 +2526,9 @@ pub fn plr_getmap_complete(nr: usize) {
             // Begin of flags
             smap[n].flags = 0;
 
-            Repository::with_map(|map| {
-                if map[mi].flags
+            {
+                let map_flags = Repository::global_mut().map[mi].flags;
+                if map_flags
                     & (MF_GFX_INJURED
                         | MF_GFX_INJURED1
                         | MF_GFX_INJURED2
@@ -2651,40 +2540,40 @@ pub fn plr_getmap_complete(nr: usize) {
                         | MF_UWATER as u64)
                     != 0
                 {
-                    if map[mi].flags & core::constants::MF_GFX_INJURED != 0 {
+                    if map_flags & core::constants::MF_GFX_INJURED != 0 {
                         smap[n].flags |= INJURED;
                     }
 
-                    if map[mi].flags & core::constants::MF_GFX_INJURED1 != 0 {
+                    if map_flags & core::constants::MF_GFX_INJURED1 != 0 {
                         smap[n].flags |= INJURED1;
                     }
 
-                    if map[mi].flags & core::constants::MF_GFX_INJURED2 != 0 {
+                    if map_flags & core::constants::MF_GFX_INJURED2 != 0 {
                         smap[n].flags |= INJURED2;
                     }
 
-                    if map[mi].flags & core::constants::MF_GFX_DEATH != 0 {
+                    if map_flags & core::constants::MF_GFX_DEATH != 0 {
                         // TODO: Confirm shift
-                        smap[n].flags |= ((map[mi].flags & MF_GFX_DEATH) >> 23) as u32;
+                        smap[n].flags |= ((map_flags & MF_GFX_DEATH) >> 23) as u32;
                     }
 
-                    if map[mi].flags & core::constants::MF_GFX_TOMB != 0 {
-                        smap[n].flags |= ((map[mi].flags & MF_GFX_TOMB) >> 23) as u32;
+                    if map_flags & core::constants::MF_GFX_TOMB != 0 {
+                        smap[n].flags |= ((map_flags & MF_GFX_TOMB) >> 23) as u32;
                     }
 
-                    if map[mi].flags & core::constants::MF_GFX_EMAGIC != 0 {
-                        smap[n].flags |= ((map[mi].flags & MF_GFX_EMAGIC) >> 23) as u32;
+                    if map_flags & core::constants::MF_GFX_EMAGIC != 0 {
+                        smap[n].flags |= ((map_flags & MF_GFX_EMAGIC) >> 23) as u32;
                     }
 
-                    if map[mi].flags & core::constants::MF_GFX_GMAGIC != 0 {
-                        smap[n].flags |= ((map[mi].flags & MF_GFX_GMAGIC) >> 23) as u32;
+                    if map_flags & core::constants::MF_GFX_GMAGIC != 0 {
+                        smap[n].flags |= ((map_flags & MF_GFX_GMAGIC) >> 23) as u32;
                     }
 
-                    if map[mi].flags & core::constants::MF_GFX_CMAGIC != 0 {
-                        smap[n].flags |= ((map[mi].flags & MF_GFX_CMAGIC) >> 23) as u32;
+                    if map_flags & core::constants::MF_GFX_CMAGIC != 0 {
+                        smap[n].flags |= ((map_flags & MF_GFX_CMAGIC) >> 23) as u32;
                     }
 
-                    if map[mi].flags & core::constants::MF_UWATER as u64 != 0 {
+                    if map_flags & core::constants::MF_UWATER as u64 != 0 {
                         smap[n].flags |= UWATER;
                     }
                 }
@@ -2693,8 +2582,8 @@ pub fn plr_getmap_complete(nr: usize) {
                     smap[n].flags |= INFRARED;
                 }
 
-                if Repository::with_characters(|ch| ch[cn].is_building()) {
-                    smap[n].flags2 = map[mi].flags as u32;
+                if Repository::global_mut().characters[cn].is_building() {
+                    smap[n].flags2 = map_flags as u32;
                 } else {
                     smap[n].flags2 = 0;
                 }
@@ -2764,7 +2653,7 @@ pub fn plr_getmap_complete(nr: usize) {
                 };
 
                 if tmp_see != 0 {
-                    let char_co = Repository::with_characters(|characters| characters[co]);
+                    let char_co = Repository::global_mut().characters[co];
                     if char_co.sprite_override != 0 {
                         smap[n].ch_sprite = char_co.sprite_override;
                     } else {
@@ -2843,7 +2732,7 @@ pub fn plr_getmap_complete(nr: usize) {
                     smap[n].it_sprite = 0;
                     smap[n].it_status = 0;
                 }
-            });
+            }
 
             Server::with_players_mut(|players| players[nr].smap[n] = smap[n]);
 
@@ -2864,15 +2753,9 @@ pub fn plr_getmap_complete(nr: usize) {
 /// Port of `plr_state` from `svr_tick.cpp`
 /// Handles player state transitions (login, exit, timeouts)
 pub fn plr_state(gs: &mut GameState, nr: usize) {
-    let (ticker, lasttick, state) = Repository::with_globals(|globals| {
-        Server::with_players(|players| {
-            (
-                globals.ticker,
-                players[nr].lasttick as i32,
-                players[nr].state,
-            )
-        })
-    });
+    let ticker = Repository::global_mut().globals.ticker;
+    let (lasttick, state) =
+        Server::with_players(|players| (players[nr].lasttick as i32, players[nr].state));
 
     // Handle ST_EXIT timeout - close connection after 15 seconds
     if ticker.wrapping_sub(lasttick) > core::constants::TICKS * 15
@@ -3051,9 +2934,9 @@ fn plr_newlogin(gs: &mut GameState, nr: usize) {
     Repository::global_mut().do_update_char(cn);
 
     // set player mapping and send SV_NEWPLAYER + SV_TICK
-    Repository::with_characters(|characters| {
-        let pass1 = characters[cn].pass1;
-        let pass2 = characters[cn].pass2;
+    {
+        let pass1 = Repository::global_mut().characters[cn].pass1;
+        let pass2 = Repository::global_mut().characters[cn].pass2;
 
         Server::with_players_mut(|players| {
             players[nr].usnr = cn;
@@ -3080,10 +2963,10 @@ fn plr_newlogin(gs: &mut GameState, nr: usize) {
         NetworkManager::with(|network| {
             network.csend(nr, &buf, 16);
         });
-    });
+    }
 
     // finalize player state
-    let ticker = Repository::with_globals(|globals| globals.ticker as u32);
+    let ticker = Repository::global_mut().globals.ticker as u32;
     Server::with_players_mut(|players| {
         players[nr].state = core::constants::ST_NORMAL;
         players[nr].lasttick = ticker;
@@ -3094,9 +2977,8 @@ fn plr_newlogin(gs: &mut GameState, nr: usize) {
     // send tick
     let mut tbuf: [u8; 2] = [0; 2];
     tbuf[0] = core::constants::SV_TICK;
-    tbuf[1] = Repository::with_globals(|globals| {
-        (globals.ticker as usize % core::constants::CTICK_CYCLE_LEN) as u8
-    });
+    tbuf[1] =
+        (Repository::global_mut().globals.ticker as usize % core::constants::CTICK_CYCLE_LEN) as u8;
     NetworkManager::with(|network| {
         network.xsend(nr, &tbuf, 2);
     });
@@ -3119,15 +3001,12 @@ fn plr_newlogin(gs: &mut GameState, nr: usize) {
     // change password if client provided one and character has no CF_PASSWD
     let needs_pass = Server::with_players(|players| players[nr].passwd[0] != 0);
     if needs_pass {
-        Repository::with_characters(|characters| {
-            if (characters[cn].flags & CharacterFlags::Passwd.bits()) == 0 {
-                // extract password string
-                let pass = Server::with_players(|players| {
-                    c_string_to_str(&players[nr].passwd).to_string()
-                });
-                God::change_pass(cn, cn, &pass);
-            }
-        });
+        if (Repository::global_mut().characters[cn].flags & CharacterFlags::Passwd.bits()) == 0 {
+            // extract password string
+            let pass =
+                Server::with_players(|players| c_string_to_str(&players[nr].passwd).to_string());
+            God::change_pass(cn, cn, &pass);
+        }
     }
 
     // announce
@@ -3158,8 +3037,10 @@ fn plr_login(gs: &mut GameState, nr: usize) {
             }
         };
 
-        let (pass1, pass2) =
-            Repository::with_characters(|characters| (characters[cn].pass1, characters[cn].pass2));
+        let (pass1, pass2) = (
+            Repository::global_mut().characters[cn].pass1,
+            Repository::global_mut().characters[cn].pass2,
+        );
 
         Server::with_players_mut(|players| {
             players[nr].usnr = cn;
@@ -3180,14 +3061,14 @@ fn plr_login(gs: &mut GameState, nr: usize) {
 
     if !is_api_login {
         // password/pass1/pass2 check
-        let pass_ok = Repository::with_characters(|characters| {
-            let ch = &characters[cn];
+        let pass_ok = {
+            let ch = Repository::global_mut().characters[cn];
             let p1 = ch.pass1;
             let p2 = ch.pass2;
             let player_p1 = Server::with_players(|players| players[nr].pass1);
             let player_p2 = Server::with_players(|players| players[nr].pass2);
             p1 == player_p1 && p2 == player_p2
-        });
+        };
 
         if !pass_ok {
             log::warn!("Login as {} denied (pass1/pass2)", cn);
@@ -3196,8 +3077,8 @@ fn plr_login(gs: &mut GameState, nr: usize) {
         }
 
         // If character has explicit password flag, compare stored passwd
-        let has_passwd_mismatch = Repository::with_characters(|characters| {
-            let ch = &characters[cn];
+        let has_passwd_mismatch = {
+            let ch = Repository::global_mut().characters[cn];
             if (ch.flags & CharacterFlags::Passwd.bits()) != 0 {
                 let stored = ch.passwd;
                 let client = Server::with_players(|players| players[nr].passwd);
@@ -3205,7 +3086,7 @@ fn plr_login(gs: &mut GameState, nr: usize) {
             } else {
                 false
             }
-        });
+        };
 
         if has_passwd_mismatch {
             log::warn!("Login as {} denied (password)", cn);
@@ -3215,8 +3096,7 @@ fn plr_login(gs: &mut GameState, nr: usize) {
     }
 
     // Deleted account
-    let is_deleted =
-        Repository::with_characters(|characters| characters[cn].used == core::constants::USE_EMPTY);
+    let is_deleted = Repository::global_mut().characters[cn].used == core::constants::USE_EMPTY;
     if is_deleted {
         log::warn!("Login as {} denied (deleted)", cn);
         plr_logout(gs, 0, nr, enums::LogoutReason::PasswordIncorrect);
@@ -3229,14 +3109,14 @@ fn plr_login(gs: &mut GameState, nr: usize) {
     //       plr_logout(cn, ch[cn].player, LO_IDLE);
     //   }
     // and then continue the login (no early return).
-    let already_active = Repository::with_characters(|characters| {
-        characters[cn].used != core::constants::USE_NONACTIVE
-            && (characters[cn].flags & CharacterFlags::ComputerControlledPlayer.bits()) == 0
-    });
+    let already_active = Repository::global_mut().characters[cn].used
+        != core::constants::USE_NONACTIVE
+        && (Repository::global_mut().characters[cn].flags
+            & CharacterFlags::ComputerControlledPlayer.bits())
+            == 0;
     if already_active {
         log::warn!("Login as {} who is already active", cn);
-        let active_player =
-            Repository::with_characters(|characters| characters[cn].player as usize);
+        let active_player = Repository::global_mut().characters[cn].player as usize;
         // Only kick the *other* active player if they still have a live socket.
         // A stale `ch.player` binding can happen after disconnects; never kick ourselves.
         let should_kick = active_player != 0
@@ -3256,9 +3136,8 @@ fn plr_login(gs: &mut GameState, nr: usize) {
     }
 
     // Kicked
-    let is_kicked = Repository::with_characters(|characters| {
-        (characters[cn].flags & CharacterFlags::Kicked.bits()) != 0
-    });
+    let is_kicked =
+        (Repository::global_mut().characters[cn].flags & CharacterFlags::Kicked.bits()) != 0;
     if is_kicked {
         log::warn!("Login as {} denied (kicked)", cn);
         plr_logout(gs, 0, nr, enums::LogoutReason::Kicked);
@@ -3267,9 +3146,9 @@ fn plr_login(gs: &mut GameState, nr: usize) {
 
     // Ban check (skip golden/god)
     let banned = Server::with_players(|players| players[nr].addr);
-    let exempt = Repository::with_characters(|characters| {
-        (characters[cn].flags & (CharacterFlags::Golden.bits() | CharacterFlags::God.bits())) != 0
-    });
+    let exempt = (Repository::global_mut().characters[cn].flags
+        & (CharacterFlags::Golden.bits() | CharacterFlags::God.bits()))
+        != 0;
     if !exempt && God::is_banned(banned as i32) {
         log::info!("{} is banned, sent away", cn);
         plr_logout(gs, 0, nr, enums::LogoutReason::Kicked);
@@ -3294,7 +3173,7 @@ fn plr_login(gs: &mut GameState, nr: usize) {
     });
 
     // finalize player state
-    let ticker = Repository::with_globals(|globals| globals.ticker as u32);
+    let ticker = Repository::global_mut().globals.ticker as u32;
     Server::with_players_mut(|players| {
         players[nr].state = core::constants::ST_NORMAL;
         players[nr].lasttick = ticker;
@@ -3313,9 +3192,8 @@ fn plr_login(gs: &mut GameState, nr: usize) {
     // send tick
     let mut tbuf: [u8; 2] = [0; 2];
     tbuf[0] = core::constants::SV_TICK;
-    tbuf[1] = Repository::with_globals(|globals| {
-        (globals.ticker as usize % core::constants::CTICK_CYCLE_LEN) as u8
-    });
+    tbuf[1] =
+        (Repository::global_mut().globals.ticker as usize % core::constants::CTICK_CYCLE_LEN) as u8;
     NetworkManager::with(|network| {
         network.xsend(nr, &tbuf, 2);
     });
@@ -3352,8 +3230,8 @@ fn plr_login(gs: &mut GameState, nr: usize) {
     Server::with_players_mut(|players| players[nr].cpl.mode = -1);
 
     // Try to drop character at tavern/nearby
-    let tav_x = Repository::with_characters(|characters| characters[cn].tavern_x as usize);
-    let tav_y = Repository::with_characters(|characters| characters[cn].tavern_y as usize);
+    let tav_x = Repository::global_mut().characters[cn].tavern_x as usize;
+    let tav_y = Repository::global_mut().characters[cn].tavern_y as usize;
     if !God::drop_char_fuzzy_large(cn, tav_x, tav_y, tav_x, tav_y)
         && !God::drop_char_fuzzy_large(cn, tav_x + 3, tav_y, tav_x, tav_y)
         && !God::drop_char_fuzzy_large(cn, tav_x, tav_y + 3, tav_x, tav_y)
@@ -3365,10 +3243,9 @@ fn plr_login(gs: &mut GameState, nr: usize) {
 
     // remove illegal active recall spells
     for i in 0..20usize {
-        let has_recall = Repository::with_characters(|characters| characters[cn].spell[i] != 0);
+        let has_recall = Repository::global_mut().characters[cn].spell[i] != 0;
         if has_recall {
-            let spell_idx =
-                Repository::with_characters(|characters| characters[cn].spell[i] as usize);
+            let spell_idx = Repository::global_mut().characters[cn].spell[i] as usize;
             let is_recall = Repository::with_items(|items| {
                 items[spell_idx].temp == core::constants::SK_RECALL as u16
             });
@@ -3398,7 +3275,7 @@ fn plr_login(gs: &mut GameState, nr: usize) {
     let intro2 = "May your visit here be... interesting.\n";
     let intro3 = "\n";
     let intro4 = "Use #help (or /help) to get a listing of the text commands.\n";
-    let mut message_of_the_day = Repository::with(|gs| gs.latest_message_of_the_day());
+    let mut message_of_the_day = Repository::global_mut().latest_message_of_the_day();
     if !message_of_the_day.is_empty() && !message_of_the_day.ends_with('\n') {
         message_of_the_day.push('\n');
     }
@@ -3427,32 +3304,33 @@ fn plr_login(gs: &mut GameState, nr: usize) {
         // do password change if provided
         let needs_pass = Server::with_players(|players| players[nr].passwd[0] != 0);
         if needs_pass {
-            Repository::with_characters(|characters| {
-                if (characters[cn].flags & CharacterFlags::Passwd.bits()) == 0 {
-                    let pass = Server::with_players(|players| {
-                        c_string_to_str(&players[nr].passwd).to_string()
-                    });
-                    God::change_pass(cn, cn, &pass);
-                }
-            });
+            if (Repository::global_mut().characters[cn].flags & CharacterFlags::Passwd.bits()) == 0
+            {
+                let pass = Server::with_players(|players| {
+                    c_string_to_str(&players[nr].passwd).to_string()
+                });
+                God::change_pass(cn, cn, &pass);
+            }
         }
     }
 
     // If god, remind invisibility
-    Repository::with_characters(|characters| {
-        if (characters[cn].flags & CharacterFlags::ComputerControlledPlayer.bits()) == 0
-            && (characters[cn].flags & CharacterFlags::God.bits()) != 0
-        {
-            Repository::global_mut().do_character_log(
-                cn,
-                core::types::FontColor::Blue,
-                "Remember, you are invisible!\n",
-            );
-        }
-    });
+    if (Repository::global_mut().characters[cn].flags
+        & CharacterFlags::ComputerControlledPlayer.bits())
+        == 0
+        && (Repository::global_mut().characters[cn].flags & CharacterFlags::God.bits()) != 0
+    {
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Blue,
+            "Remember, you are invisible!\n",
+        );
+    }
 
     // announce
-    let name = Repository::with_characters(|characters| characters[cn].get_name().to_string());
+    let name = Repository::global_mut().characters[cn]
+        .get_name()
+        .to_string();
     Repository::global_mut().do_announce(cn, 0, &format!("{} entered the game.\n", name));
 }
 
@@ -3491,9 +3369,8 @@ fn resolve_api_login_character(
             let candidate = server_id as usize;
             let candidate_is_valid = candidate > 0
                 && candidate < core::constants::MAXCHARS
-                && Repository::with_characters(|characters| {
-                    characters[candidate].used != core::constants::USE_EMPTY
-                });
+                && Repository::global_mut().characters[candidate].used
+                    != core::constants::USE_EMPTY;
 
             if !candidate_is_valid {
                 log::error!(
@@ -3589,13 +3466,13 @@ pub fn plr_change(_gs: &mut GameState, nr: usize) {
         return;
     }
 
-    let (ticker, should_update) = Repository::with_globals(|globals| {
-        Repository::with_characters(|ch| {
-            let has_update_flag = (ch[cn].flags & CharacterFlags::Update.bits()) != 0;
-            let ticker_match = (cn & 15) == (globals.ticker as usize & 15);
-            (globals.ticker, has_update_flag || ticker_match)
-        })
-    });
+    let ticker = Repository::global_mut().globals.ticker;
+    let should_update = {
+        let has_update_flag =
+            (Repository::global_mut().characters[cn].flags & CharacterFlags::Update.bits()) != 0;
+        let ticker_match = (cn & 15) == (ticker as usize & 15);
+        has_update_flag || ticker_match
+    };
 
     if should_update {
         // Send full player stats update
@@ -3629,51 +3506,44 @@ pub fn plr_change(_gs: &mut GameState, nr: usize) {
 /// Send full stats update to player
 fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
     // Send name in three parts if changed
-    let name_changed = Repository::with_characters(|characters| {
-        let ch = &characters[cn];
-        Server::with_players(|players| &players[nr].cpl.name[..] != &ch.name[..])
+    let name_changed = Server::with_players(|players| {
+        let ch = Repository::global_mut().characters[cn];
+        players[nr].cpl.name[..] != ch.name[..]
     });
 
     if name_changed {
-        Repository::with_characters(|characters| {
-            let ch = &characters[cn];
-            // part1: 15 bytes
-            let mut buf: [u8; 16] = [0; 16];
-            buf[0] = core::constants::SV_SETCHAR_NAME1;
-            buf[1..16].copy_from_slice(&ch.name[0..15]);
-            NetworkManager::with(|network| network.xsend(nr, &buf, 16));
+        let ch = Repository::global_mut().characters[cn];
+        // part1: 15 bytes
+        let mut buf: [u8; 16] = [0; 16];
+        buf[0] = core::constants::SV_SETCHAR_NAME1;
+        buf[1..16].copy_from_slice(&ch.name[0..15]);
+        NetworkManager::with(|network| network.xsend(nr, &buf, 16));
 
-            // part2: next 15 bytes
-            let mut buf2: [u8; 16] = [0; 16];
-            buf2[0] = core::constants::SV_SETCHAR_NAME2;
-            buf2[1..16].copy_from_slice(&ch.name[15..30]);
-            NetworkManager::with(|network| network.xsend(nr, &buf2, 16));
+        // part2: next 15 bytes
+        let mut buf2: [u8; 16] = [0; 16];
+        buf2[0] = core::constants::SV_SETCHAR_NAME2;
+        buf2[1..16].copy_from_slice(&ch.name[15..30]);
+        NetworkManager::with(|network| network.xsend(nr, &buf2, 16));
 
-            // part3: last 10 bytes + temp (u16 -> u32 slot)
-            let mut buf3: [u8; 16] = [0; 16];
-            buf3[0] = core::constants::SV_SETCHAR_NAME3;
-            buf3[1..11].copy_from_slice(&ch.name[30..40]);
-            let temp_bytes = (ch.temp as u32).to_le_bytes();
-            buf3[11..15].copy_from_slice(&temp_bytes[0..4]);
-            NetworkManager::with(|network| network.xsend(nr, &buf3, 16));
+        // part3: last 10 bytes + temp (u16 -> u32 slot)
+        let mut buf3: [u8; 16] = [0; 16];
+        buf3[0] = core::constants::SV_SETCHAR_NAME3;
+        buf3[1..11].copy_from_slice(&ch.name[30..40]);
+        let temp_bytes = (ch.temp as u32).to_le_bytes();
+        buf3[11..15].copy_from_slice(&temp_bytes[0..4]);
+        NetworkManager::with(|network| network.xsend(nr, &buf3, 16));
 
-            // copy into cpl
-            Server::with_players_mut(|players| players[nr].cpl.name.copy_from_slice(&ch.name));
-        });
+        // copy into cpl
+        Server::with_players_mut(|players| players[nr].cpl.name.copy_from_slice(&ch.name));
     }
 
-    // mode
-    Repository::with_characters(|characters| {
-        let mode = characters[cn].mode as i32;
-        Server::with_players(|players| players[nr].cpl.mode != mode)
-    });
     // send mode if different
-    let need_mode = Repository::with_characters(|characters| {
-        let mode = characters[cn].mode as i32;
+    let need_mode = {
+        let mode = Repository::global_mut().characters[cn].mode as i32;
         Server::with_players(|players| players[nr].cpl.mode != mode)
-    });
+    };
     if need_mode {
-        let mode = Repository::with_characters(|characters| characters[cn].mode);
+        let mode = Repository::global_mut().characters[cn].mode;
         let mut buf: [u8; 2] = [0; 2];
         buf[0] = core::constants::SV_SETCHAR_MODE;
         buf[1] = mode;
@@ -3683,12 +3553,12 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
 
     // attribs (5 x 6 bytes)
     for a in 0..5usize {
-        let changed = Repository::with_characters(|characters| {
-            let chv = &characters[cn].attrib[a];
-            Server::with_players(|players| players[nr].cpl.attrib[a] != *chv)
-        });
+        let changed = {
+            let chv = Repository::global_mut().characters[cn].attrib[a];
+            Server::with_players(|players| players[nr].cpl.attrib[a] != chv)
+        };
         if changed {
-            let bytes = Repository::with_characters(|characters| characters[cn].attrib[a]);
+            let bytes = Repository::global_mut().characters[cn].attrib[a];
             let mut buf: [u8; 8] = [0; 8];
             buf[0] = core::constants::SV_SETCHAR_ATTRIB;
             buf[1] = a as u8;
@@ -3705,78 +3575,47 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
         core::constants::SV_SETCHAR_MANA,
     ];
     for (idx, code) in powers.iter().enumerate() {
-        let different = Repository::with_characters(|characters| {
-            let ch = &characters[cn];
-            Server::with_players(|players| match idx {
-                0 => {
-                    let ch_hp = ch.hp;
-                    players[nr].cpl.hp != ch_hp
-                }
-                1 => {
-                    let end = ch.end;
-                    players[nr].cpl.end != end
-                }
-                2 => {
-                    let mana = ch.mana;
-                    players[nr].cpl.mana != mana
-                }
-                _ => false,
-            })
+        let ch = Repository::global_mut().characters[cn];
+        let different = Server::with_players(|players| match idx {
+            0 => players[nr].cpl.hp != ch.hp,
+            1 => players[nr].cpl.end != ch.end,
+            2 => players[nr].cpl.mana != ch.mana,
+            _ => false,
         });
         if different {
             let mut buf: [u8; 13] = [0; 13];
             buf[0] = *code;
-            Repository::with_characters(|characters| {
-                let ch = &characters[cn];
-                let arr: [u16; 6] = match idx {
-                    0 => {
-                        let hp = ch.hp;
-                        hp
-                    }
-                    1 => {
-                        let end = ch.end;
-                        end
-                    }
-                    2 => {
-                        let mana = ch.mana;
-                        mana
-                    }
-                    _ => {
-                        let hp = ch.hp;
-                        hp
-                    }
-                };
-                for i in 0..6 {
-                    let off = 1 + i * 2;
-                    let v = arr[i];
-                    buf[off] = (v & 0xff) as u8;
-                    buf[off + 1] = (v >> 8) as u8;
-                }
-            });
+            let arr: [u16; 6] = match idx {
+                0 => ch.hp,
+                1 => ch.end,
+                2 => ch.mana,
+                _ => ch.hp,
+            };
+            for i in 0..6 {
+                let off = 1 + i * 2;
+                let v = arr[i];
+                buf[off] = (v & 0xff) as u8;
+                buf[off + 1] = (v >> 8) as u8;
+            }
             NetworkManager::with(|network| network.xsend(nr, &buf, 13));
             // copy into cpl
-            Server::with_players_mut(|players| {
-                Repository::with_characters(|characters| {
-                    let ch = &characters[cn];
-                    match idx {
-                        0 => players[nr].cpl.hp = ch.hp,
-                        1 => players[nr].cpl.end = ch.end,
-                        2 => players[nr].cpl.mana = ch.mana,
-                        _ => {}
-                    }
-                });
+            Server::with_players_mut(|players| match idx {
+                0 => players[nr].cpl.hp = ch.hp,
+                1 => players[nr].cpl.end = ch.end,
+                2 => players[nr].cpl.mana = ch.mana,
+                _ => {}
             });
         }
     }
 
     // skills (0..50)
     for s in 0..50usize {
-        let changed = Repository::with_characters(|characters| {
-            let chv = &characters[cn].skill[s];
-            Server::with_players(|players| players[nr].cpl.skill[s] != *chv)
-        });
+        let changed = {
+            let chv = Repository::global_mut().characters[cn].skill[s];
+            Server::with_players(|players| players[nr].cpl.skill[s] != chv)
+        };
         if changed {
-            let bytes = Repository::with_characters(|characters| characters[cn].skill[s]);
+            let bytes = Repository::global_mut().characters[cn].skill[s];
             let mut buf: [u8; 8] = [0; 8];
             buf[0] = core::constants::SV_SETCHAR_SKILL;
             buf[1] = s as u8;
@@ -3788,8 +3627,8 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
 
     // items (40)
     for i in 0..40usize {
-        let is_building = Repository::with_characters(|ch| ch[cn].is_building());
-        let in_idx = Repository::with_characters(|characters| characters[cn].item[i] as usize);
+        let is_building = Repository::global_mut().characters[cn].is_building();
+        let in_idx = Repository::global_mut().characters[cn].item[i] as usize;
         let cpl_item = Server::with_players(|players| players[nr].cpl.item[i]);
 
         // Check if changed OR if IF_UPDATE is set (but not for building mode)
@@ -3884,7 +3723,7 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
 
     // worn (20)
     for i in 0..20usize {
-        let in_idx = Repository::with_characters(|characters| characters[cn].worn[i] as usize);
+        let in_idx = Repository::global_mut().characters[cn].worn[i] as usize;
         let cpl_worn = Server::with_players(|players| players[nr].cpl.worn[i]);
 
         // Check if changed OR if IF_UPDATE is set
@@ -3935,7 +3774,7 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
 
     // spells (20)
     for i in 0..20usize {
-        let in_idx = Repository::with_characters(|characters| characters[cn].spell[i] as usize);
+        let in_idx = Repository::global_mut().characters[cn].spell[i] as usize;
         let cpl_spell = Server::with_players(|players| players[nr].cpl.spell[i]);
         let cpl_active = Server::with_players(|players| players[nr].cpl.active[i]);
 
@@ -3999,8 +3838,8 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
     }
 
     // citem (cursor item)
-    let is_building = Repository::with_characters(|ch| ch[cn].is_building());
-    let in_idx = Repository::with_characters(|characters| characters[cn].citem as usize);
+    let is_building = Repository::global_mut().characters[cn].is_building();
+    let in_idx = Repository::global_mut().characters[cn].citem as usize;
     let cpl_citem = Server::with_players(|players| players[nr].cpl.citem);
 
     // Check if changed OR if IF_UPDATE is set (but not for building mode or gold amounts)
@@ -4081,12 +3920,8 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
 
 /// Send HP change to player
 fn plr_change_hp(nr: usize, cn: usize) {
-    let (current_hp, player_hp) = Repository::with_characters(|ch| {
-        Server::with_players(|players| {
-            let a_hp = (ch[cn].a_hp + 500) / 1000;
-            (a_hp, players[nr].cpl.a_hp)
-        })
-    });
+    let current_hp = (Repository::global_mut().characters[cn].a_hp + 500) / 1000;
+    let player_hp = Server::with_players(|players| players[nr].cpl.a_hp);
 
     if current_hp != player_hp {
         let mut buf: [u8; 16] = [0; 16];
@@ -4106,12 +3941,8 @@ fn plr_change_hp(nr: usize, cn: usize) {
 
 /// Send endurance change to player
 fn plr_change_end(nr: usize, cn: usize) {
-    let (current_end, player_end) = Repository::with_characters(|ch| {
-        Server::with_players(|players| {
-            let a_end = (ch[cn].a_end + 500) / 1000;
-            (a_end, players[nr].cpl.a_end)
-        })
-    });
+    let current_end = (Repository::global_mut().characters[cn].a_end + 500) / 1000;
+    let player_end = Server::with_players(|players| players[nr].cpl.a_end);
 
     if current_end != player_end {
         let mut buf: [u8; 16] = [0; 16];
@@ -4131,12 +3962,8 @@ fn plr_change_end(nr: usize, cn: usize) {
 
 /// Send mana change to player
 fn plr_change_mana(nr: usize, cn: usize) {
-    let (current_mana, player_mana) = Repository::with_characters(|ch| {
-        Server::with_players(|players| {
-            let a_mana = (ch[cn].a_mana + 500) / 1000;
-            (a_mana, players[nr].cpl.a_mana)
-        })
-    });
+    let current_mana = (Repository::global_mut().characters[cn].a_mana + 500) / 1000;
+    let player_mana = Server::with_players(|players| players[nr].cpl.a_mana);
 
     if current_mana != player_mana {
         let mut buf: [u8; 16] = [0; 16];
@@ -4156,9 +3983,8 @@ fn plr_change_mana(nr: usize, cn: usize) {
 
 /// Send direction change to player
 fn plr_change_dir(nr: usize, cn: usize) {
-    let (current_dir, player_dir) = Repository::with_characters(|ch| {
-        Server::with_players(|players| (ch[cn].dir, players[nr].cpl.dir))
-    });
+    let current_dir = Repository::global_mut().characters[cn].dir;
+    let player_dir = Server::with_players(|players| players[nr].cpl.dir);
 
     if current_dir as i32 != player_dir {
         let mut buf: [u8; 16] = [0; 16];
@@ -4175,19 +4001,16 @@ fn plr_change_dir(nr: usize, cn: usize) {
 
 /// Send points/kindred change to player
 fn plr_change_points(nr: usize, cn: usize) {
-    let (points, points_tot, kindred, cpl_points, cpl_points_tot, cpl_kindred) =
-        Repository::with_characters(|ch| {
-            Server::with_players(|players| {
-                (
-                    ch[cn].points,
-                    ch[cn].points_tot,
-                    ch[cn].kindred,
-                    players[nr].cpl.points,
-                    players[nr].cpl.points_tot,
-                    players[nr].cpl.kindred,
-                )
-            })
-        });
+    let points = Repository::global_mut().characters[cn].points;
+    let points_tot = Repository::global_mut().characters[cn].points_tot;
+    let kindred = Repository::global_mut().characters[cn].kindred;
+    let (cpl_points, cpl_points_tot, cpl_kindred) = Server::with_players(|players| {
+        (
+            players[nr].cpl.points,
+            players[nr].cpl.points_tot,
+            players[nr].cpl.kindred,
+        )
+    });
 
     if points != cpl_points || points_tot != cpl_points_tot || kindred != cpl_kindred {
         // Match C++: SV_SETCHAR_PTS + points(u32) + points_tot(u32) + kindred(u32) => 13 bytes
@@ -4209,19 +4032,16 @@ fn plr_change_points(nr: usize, cn: usize) {
 
 /// Send gold/armor/weapon change to player
 fn plr_change_gold(nr: usize, cn: usize) {
-    let (gold, armor, weapon, cpl_gold, cpl_armor, cpl_weapon) =
-        Repository::with_characters(|ch| {
-            Server::with_players(|players| {
-                (
-                    ch[cn].gold,
-                    ch[cn].armor,
-                    ch[cn].weapon,
-                    players[nr].cpl.gold,
-                    players[nr].cpl.armor,
-                    players[nr].cpl.weapon,
-                )
-            })
-        });
+    let gold = Repository::global_mut().characters[cn].gold;
+    let armor = Repository::global_mut().characters[cn].armor;
+    let weapon = Repository::global_mut().characters[cn].weapon;
+    let (cpl_gold, cpl_armor, cpl_weapon) = Server::with_players(|players| {
+        (
+            players[nr].cpl.gold,
+            players[nr].cpl.armor,
+            players[nr].cpl.weapon,
+        )
+    });
 
     if gold != cpl_gold || armor as i32 != cpl_armor || weapon as i32 != cpl_weapon {
         // Match C++: SV_SETCHAR_GOLD + gold(u32) + armor(u32) + weapon(u32) => 13 bytes
@@ -4246,10 +4066,10 @@ fn plr_change_gold(nr: usize, cn: usize) {
 
 /// Send server load info to gods every 32 ticks
 fn plr_change_load(nr: usize, cn: usize, ticker: i32) {
-    let is_god = Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::God.bits()) != 0);
+    let is_god = (Repository::global_mut().characters[cn].flags & CharacterFlags::God.bits()) != 0;
 
     if is_god && (ticker & 31) == 0 {
-        let load = Repository::with_globals(|globals| globals.load as u32);
+        let load = Repository::global_mut().globals.load as u32;
         let mut buf: [u8; 5] = [0; 5];
         buf[0] = core::constants::SV_LOAD;
         buf[1..5].copy_from_slice(&load.to_le_bytes());
@@ -4597,9 +4417,9 @@ fn plr_change_map(nr: usize) {
 
 /// Send position change to player with map scrolling
 fn plr_change_position(nr: usize, cn: usize) {
-    let (x, y, cpl_x, cpl_y) = Repository::with_characters(|ch| {
-        Server::with_players(|players| (ch[cn].x, ch[cn].y, players[nr].cpl.x, players[nr].cpl.y))
-    });
+    let x = Repository::global_mut().characters[cn].x;
+    let y = Repository::global_mut().characters[cn].y;
+    let (cpl_x, cpl_y) = Server::with_players(|players| (players[nr].cpl.x, players[nr].cpl.y));
 
     if x as i32 != cpl_x || y as i32 != cpl_y {
         let mut buf: [u8; 16] = [0; 16];
@@ -4724,17 +4544,14 @@ fn plr_change_position(nr: usize, cn: usize) {
 
 /// Send target change to player
 fn plr_change_target(nr: usize, cn: usize) {
-    let (attack_cn, goto_x, goto_y, misc_action, misc_target1, misc_target2) =
-        Repository::with_characters(|ch| {
-            (
-                ch[cn].attack_cn,
-                ch[cn].goto_x,
-                ch[cn].goto_y,
-                ch[cn].misc_action,
-                ch[cn].misc_target1,
-                ch[cn].misc_target2,
-            )
-        });
+    let (attack_cn, goto_x, goto_y, misc_action, misc_target1, misc_target2) = (
+        Repository::global_mut().characters[cn].attack_cn,
+        Repository::global_mut().characters[cn].goto_x,
+        Repository::global_mut().characters[cn].goto_y,
+        Repository::global_mut().characters[cn].misc_action,
+        Repository::global_mut().characters[cn].misc_target1,
+        Repository::global_mut().characters[cn].misc_target2,
+    );
 
     let (
         cpl_attack_cn,
@@ -4824,7 +4641,10 @@ pub fn plr_tick(_gs: &mut GameState, nr: usize) {
     }
 
     // Check lag-based stoning conditions
-    let (data_19, flags) = Repository::with_characters(|ch| (ch[cn].data[19], ch[cn].flags));
+    let (data_19, flags) = (
+        Repository::global_mut().characters[cn].data[19],
+        Repository::global_mut().characters[cn].flags,
+    );
 
     let is_player = (flags & CharacterFlags::Player.bits()) != 0;
     let is_stoned = (flags & CharacterFlags::Stoned.bits()) != 0;
@@ -4865,11 +4685,9 @@ pub fn plr_tick(_gs: &mut GameState, nr: usize) {
 /// Port of `stone_gc` from `svr_tick.cpp`
 /// Handles stoning/unstoning of linked characters (e.g., usurped characters)
 fn stone_gc(cn: usize, mode: bool) {
-    let (is_player, co) = Repository::with_characters(|ch| {
-        let is_player = (ch[cn].flags & CharacterFlags::Player.bits()) != 0;
-        let co = ch[cn].data[64] as usize;
-        (is_player, co)
-    });
+    let is_player =
+        (Repository::global_mut().characters[cn].flags & CharacterFlags::Player.bits()) != 0;
+    let co = Repository::global_mut().characters[cn].data[64] as usize;
 
     if !is_player {
         return;
@@ -4880,11 +4698,9 @@ fn stone_gc(cn: usize, mode: bool) {
     }
 
     // Check if co is a valid active character
-    let is_valid = Repository::with_characters(|ch| {
-        co < core::constants::MAXCHARS
-            && ch[co].used == core::constants::USE_ACTIVE
-            && ch[co].data[63] == cn as i32
-    });
+    let is_valid = co < core::constants::MAXCHARS
+        && Repository::global_mut().characters[co].used == core::constants::USE_ACTIVE
+        && Repository::global_mut().characters[co].data[63] == cn as i32;
 
     if !is_valid {
         return;
@@ -4902,16 +4718,14 @@ fn stone_gc(cn: usize, mode: bool) {
 /// Port of `plr_idle` from `svr_tick.cpp`
 /// Handles idle timeout checking for players
 pub fn plr_idle(gs: &mut GameState, nr: usize) {
-    let (ticker, lasttick, lasttick2, state, usnr) = Repository::with_globals(|globals| {
-        Server::with_players(|players| {
-            (
-                globals.ticker as u32,
-                players[nr].lasttick,
-                players[nr].lasttick2,
-                players[nr].state,
-                players[nr].usnr,
-            )
-        })
+    let ticker = Repository::global_mut().globals.ticker as u32;
+    let (lasttick, lasttick2, state, usnr) = Server::with_players(|players| {
+        (
+            players[nr].lasttick,
+            players[nr].lasttick2,
+            players[nr].state,
+            players[nr].usnr,
+        )
     });
 
     // Check protocol level idle (60 seconds)
@@ -4978,7 +4792,7 @@ pub fn plr_cmd(gs: &mut GameState, nr: usize) {
         && cmd != core::constants::CL_CMD_CTICK
         && cmd != core::constants::CL_PING
     {
-        let ticker = Repository::with_globals(|globals| globals.ticker as u32);
+        let ticker = Repository::global_mut().globals.ticker as u32;
         Server::with_players_mut(|players| {
             players[nr].lasttick2 = ticker;
         });
@@ -5054,7 +4868,7 @@ pub fn plr_cmd(gs: &mut GameState, nr: usize) {
     }
 
     let cn = Server::with_players(|players| players[nr].usnr);
-    let is_stunned = Repository::with_characters(|ch| ch[cn].stunned > 0);
+    let is_stunned = Repository::global_mut().characters[cn].stunned > 0;
 
     if is_stunned {
         Repository::global_mut().do_character_log(
@@ -5064,7 +4878,9 @@ pub fn plr_cmd(gs: &mut GameState, nr: usize) {
         );
     }
 
-    let character_name = Repository::with_characters(|ch| ch[cn].get_name().to_string());
+    let character_name = Repository::global_mut().characters[cn]
+        .get_name()
+        .to_string();
 
     // Handle commands that show stun message but still execute
     match cmd {
@@ -5196,7 +5012,7 @@ fn plr_challenge_newlogin(nr: usize) {
         tmp = 42;
     }
 
-    let ticker = Repository::with_globals(|globals| globals.ticker as u32);
+    let ticker = Repository::global_mut().globals.ticker as u32;
 
     Server::with_players_mut(|players| {
         players[nr].challenge = tmp;
@@ -5281,7 +5097,7 @@ fn plr_challenge(gs: &mut GameState, nr: usize) {
         return;
     }
 
-    let ticker = Repository::with_globals(|globals| globals.ticker as u32);
+    let ticker = Repository::global_mut().globals.ticker as u32;
 
     // Update state based on current state
     match state {
@@ -5334,7 +5150,7 @@ fn plr_challenge_login(gs: &mut GameState, nr: usize) {
         tmp = 42;
     }
 
-    let ticker = Repository::with_globals(|globals| globals.ticker as u32);
+    let ticker = Repository::global_mut().globals.ticker as u32;
 
     Server::with_players_mut(|players| {
         players[nr].challenge = tmp;
@@ -5429,7 +5245,7 @@ fn plr_challenge_api_login(nr: usize) {
         ])
     });
 
-    let ticker = Repository::with_globals(|globals| globals.ticker as u32);
+    let ticker = Repository::global_mut().globals.ticker as u32;
     Server::with_players_mut(|players| {
         players[nr].challenge = tmp;
         players[nr].state = core::constants::ST_LOGIN_CHALLENGE;
@@ -5555,7 +5371,7 @@ fn plr_perf_report(nr: usize) {
     });
 
     // Update timeout - this is the important part
-    let ticker = Repository::with_globals(|globals| globals.ticker as u32);
+    let ticker = Repository::global_mut().globals.ticker as u32;
     Server::with_players_mut(|players| {
         players[nr].lasttick = ticker;
     });
@@ -5625,15 +5441,13 @@ fn plr_cmd_setuser(_nr: usize) {
         0 | 1 => {
             // write 13 bytes into text[0] or text[1]
             let text_idx = if subtype == 0 { 0 } else { 1 };
-            Repository::with_characters_mut(|ch| {
-                ch[cn].text[text_idx][pos..(13 + pos)].copy_from_slice(&chunk);
-            });
+            Repository::global_mut().characters[cn].text[text_idx][pos..(13 + pos)]
+                .copy_from_slice(&chunk);
         }
         2 => {
             // write into text[2]
-            Repository::with_characters_mut(|ch| {
-                ch[cn].text[2][pos..(13 + pos)].copy_from_slice(&chunk);
-            });
+            Repository::global_mut().characters[cn].text[2][pos..(13 + pos)]
+                .copy_from_slice(&chunk);
 
             // If this was the final chunk (pos == 65) perform validation and possibly
             // commit name/reference/description changes.
@@ -5967,7 +5781,7 @@ fn plr_cmd_input(nr: usize, part: u8) {
 /// # Arguments
 /// * `nr` - Player slot index sending the tick
 fn plr_cmd_ctick(nr: usize) {
-    let ticker = Repository::with_globals(|globals| globals.ticker as u32);
+    let ticker = Repository::global_mut().globals.ticker as u32;
     Server::with_players_mut(|players| {
         // Read rtick from inbuf (4 bytes at offset 1)
         let rtick = u32::from_le_bytes([
@@ -6033,9 +5847,8 @@ fn plr_cmd_look_item(nr: usize) {
         return;
     }
 
-    let in_idx = Repository::with_map(|map| {
-        map[(x + y * core::constants::SERVER_MAPX) as usize].it as usize
-    });
+    let in_idx =
+        Repository::global_mut().map[(x + y * core::constants::SERVER_MAPX) as usize].it as usize;
 
     Repository::global_mut().do_look_item(cn, in_idx);
 }
@@ -6065,7 +5878,7 @@ fn plr_cmd_give(nr: usize) {
     }
 
     let cn = Server::with_players(|players| players[nr].usnr);
-    let ticker = Repository::with_globals(|g| g.ticker);
+    let ticker = Repository::global_mut().globals.ticker;
 
     Repository::with_characters_mut(|ch| {
         ch[cn].attack_cn = 0;
@@ -6096,13 +5909,13 @@ fn plr_cmd_turn(nr: usize) {
     log::info!("plr_cmd_turn: cn={} turning to {},{}", cn, x, y);
 
     // If building mode, ignore
-    let is_building = Repository::with_characters(|ch| ch[cn].is_building());
+    let is_building = Repository::global_mut().characters[cn].is_building();
     if is_building {
         log::debug!("plr_cmd_turn: cn={} is building, ignoring turn", cn);
         return;
     }
 
-    let ticker = Repository::with_globals(|g| g.ticker);
+    let ticker = Repository::global_mut().globals.ticker;
 
     Repository::with_characters_mut(|ch| {
         ch[cn].attack_cn = 0;
@@ -6132,11 +5945,13 @@ fn plr_cmd_drop(_nr: usize) {
     });
 
     // Building-mode special handling
-    let is_building = Repository::with_characters(|ch| ch[cn].is_building());
+    let is_building = Repository::global_mut().characters[cn].is_building();
     if is_building {
-        let (action, tx, ty) = Repository::with_characters(|ch| {
-            (ch[cn].misc_action, ch[cn].misc_target1, ch[cn].misc_target2)
-        });
+        let (action, tx, ty) = (
+            Repository::global_mut().characters[cn].misc_action,
+            Repository::global_mut().characters[cn].misc_target1,
+            Repository::global_mut().characters[cn].misc_target2,
+        );
 
         if action == core::constants::DR_AREABUILD2 as u16 {
             let xs = std::cmp::min(x, tx as i32);
@@ -6177,7 +5992,7 @@ fn plr_cmd_drop(_nr: usize) {
         return;
     }
 
-    let ticker = Repository::with_globals(|g| g.ticker);
+    let ticker = Repository::global_mut().globals.ticker;
 
     Repository::with_characters_mut(|ch| {
         ch[cn].attack_cn = 0;
@@ -6206,14 +6021,14 @@ fn plr_cmd_pickup(nr: usize) {
     });
 
     // Building-mode: removal in build mode should remove the temporary build object
-    let is_building = Repository::with_characters(|ch| ch[cn].is_building());
+    let is_building = Repository::global_mut().characters[cn].is_building();
     if is_building {
         // Call the build removal helper (port of C++ build_remove)
         Repository::global_mut().do_build_remove(x, y);
         return;
     }
 
-    let ticker = Repository::with_globals(|g| g.ticker);
+    let ticker = Repository::global_mut().globals.ticker;
 
     Repository::with_characters_mut(|ch| {
         ch[cn].attack_cn = 0;
@@ -6250,7 +6065,7 @@ fn plr_cmd_attack(nr: usize) {
     }
 
     let cn = Server::with_players(|players| players[nr].usnr);
-    let ticker = Repository::with_globals(|g| g.ticker);
+    let ticker = Repository::global_mut().globals.ticker;
 
     Repository::with_characters_mut(|ch| {
         ch[cn].attack_cn = co as u16;
@@ -6260,11 +6075,13 @@ fn plr_cmd_attack(nr: usize) {
         ch[cn].data[12] = ticker;
     });
 
-    Repository::with_characters(|ch| {
-        if (co as usize) < ch.len() {
-            log::info!("Trying to attack {} ({})", ch[co as usize].get_name(), co);
-        }
-    });
+    if (co as usize) < Repository::global_mut().characters.len() {
+        log::info!(
+            "Trying to attack {} ({})",
+            Repository::global_mut().characters[co as usize].get_name(),
+            co
+        );
+    }
 
     Repository::global_mut().remember_pvp(cn, co as usize);
 }
@@ -6313,7 +6130,7 @@ fn plr_cmd_move(nr: usize) {
         (x, y, players[nr].usnr)
     });
 
-    let ticker = Repository::with_globals(|g| g.ticker);
+    let ticker = Repository::global_mut().globals.ticker;
 
     Repository::with_characters_mut(|ch| {
         let current_position = (ch[cn].x, ch[cn].y);
@@ -6342,7 +6159,7 @@ fn plr_cmd_move(nr: usize) {
 /// * `nr` - Player slot index requesting the reset
 fn plr_cmd_reset(nr: usize) {
     let cn = Server::with_players(|players| players[nr].usnr);
-    let ticker = Repository::with_globals(|g| g.ticker);
+    let ticker = Repository::global_mut().globals.ticker;
 
     Repository::with_characters_mut(|ch| {
         ch[cn].use_nr = 0;
@@ -6390,7 +6207,7 @@ fn plr_cmd_skill(nr: usize) {
     }
 
     // ensure skill exists for this character
-    let has_skill = Repository::with_characters(|ch| ch[cn].skill[n][0] != 0);
+    let has_skill = Repository::global_mut().characters[cn].skill[n][0] != 0;
     if !has_skill {
         return;
     }
@@ -6419,7 +6236,7 @@ fn plr_cmd_inv_look(nr: usize) {
         return;
     }
 
-    let is_building = Repository::with_characters(|ch| ch[cn].is_building());
+    let is_building = Repository::global_mut().characters[cn].is_building();
     if is_building {
         // set carried item to the selected inventory slot and enter area-build
         Repository::with_characters_mut(|ch| {
@@ -6430,7 +6247,7 @@ fn plr_cmd_inv_look(nr: usize) {
         return;
     }
 
-    let in_idx = Repository::with_characters(|ch| ch[cn].item[n] as usize);
+    let in_idx = Repository::global_mut().characters[cn].item[n] as usize;
     if in_idx != 0 {
         Repository::global_mut().do_look_item(cn, in_idx);
     }
@@ -6451,7 +6268,7 @@ fn plr_cmd_use(nr: usize) {
         (x, y, players[nr].usnr)
     });
 
-    let ticker = Repository::with_globals(|g| g.ticker);
+    let ticker = Repository::global_mut().globals.ticker;
 
     Repository::with_characters_mut(|ch| {
         ch[cn].attack_cn = 0;
@@ -6506,13 +6323,13 @@ fn plr_cmd_inv(nr: usize) {
             return;
         }
 
-        let stunned = Repository::with_characters(|ch| ch[cn].stunned > 0);
+        let stunned = Repository::global_mut().characters[cn].stunned > 0;
         if stunned {
             return;
         }
 
         // check for lag scroll template on the item
-        let tmp = Repository::with_characters(|ch| ch[cn].item[n] as usize);
+        let tmp = Repository::global_mut().characters[cn].item[n] as usize;
         let is_lag = Repository::with_items(|items| {
             if tmp != 0 && tmp < items.len() && items[tmp].used == core::constants::USE_ACTIVE {
                 items[tmp].temp as i32 == core::constants::IT_LAGSCROLL
@@ -6551,7 +6368,7 @@ fn plr_cmd_inv(nr: usize) {
 
     // what == 1 : big inventory swap
     if what == 1 {
-        let stunned = Repository::with_characters(|ch| ch[cn].stunned > 0);
+        let stunned = Repository::global_mut().characters[cn].stunned > 0;
         if stunned {
             return;
         }
@@ -6561,15 +6378,15 @@ fn plr_cmd_inv(nr: usize) {
 
     // what == 2 : withdraw gold into cursor
     if what == 2 {
-        let stunned = Repository::with_characters(|ch| ch[cn].stunned > 0);
+        let stunned = Repository::global_mut().characters[cn].stunned > 0;
         if stunned {
             return;
         }
-        let citem = Repository::with_characters(|ch| ch[cn].citem);
+        let citem = Repository::global_mut().characters[cn].citem;
         if citem != 0 {
             return;
         }
-        if n as i32 > Repository::with_characters(|ch| ch[cn].gold) {
+        if n as i32 > Repository::global_mut().characters[cn].gold {
             return;
         }
         if n == 0 {
@@ -6588,7 +6405,7 @@ fn plr_cmd_inv(nr: usize) {
         if n > 19 {
             return;
         }
-        let is_building = Repository::with_characters(|ch| ch[cn].is_building());
+        let is_building = Repository::global_mut().characters[cn].is_building();
         if is_building {
             return;
         }
@@ -6604,7 +6421,7 @@ fn plr_cmd_inv(nr: usize) {
         if n > 39 {
             return;
         }
-        let is_building = Repository::with_characters(|ch| ch[cn].is_building());
+        let is_building = Repository::global_mut().characters[cn].is_building();
         if is_building {
             return;
         }
@@ -6620,11 +6437,11 @@ fn plr_cmd_inv(nr: usize) {
         if n > 19 {
             return;
         }
-        let is_building = Repository::with_characters(|ch| ch[cn].is_building());
+        let is_building = Repository::global_mut().characters[cn].is_building();
         if is_building {
             return;
         }
-        let in_idx = Repository::with_characters(|ch| ch[cn].worn[n] as usize);
+        let in_idx = Repository::global_mut().characters[cn].worn[n] as usize;
         if in_idx != 0 {
             Repository::global_mut().do_look_item(cn, in_idx);
         }
@@ -6636,11 +6453,11 @@ fn plr_cmd_inv(nr: usize) {
         if n > 39 {
             return;
         }
-        let is_building = Repository::with_characters(|ch| ch[cn].is_building());
+        let is_building = Repository::global_mut().characters[cn].is_building();
         if is_building {
             return;
         }
-        let in_idx = Repository::with_characters(|ch| ch[cn].item[n] as usize);
+        let in_idx = Repository::global_mut().characters[cn].item[n] as usize;
         if in_idx != 0 {
             Repository::global_mut().do_look_item(cn, in_idx);
         }

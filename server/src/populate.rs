@@ -76,7 +76,7 @@ pub fn init_lights(gs: &mut GameState) {
 
 pub fn pop_create_item(temp: usize, cn: usize) -> usize {
     let mut in_id = 0;
-    let alignment = Repository::with_characters(|characters| characters[cn].alignment);
+    let alignment = Repository::global_mut().characters[cn].alignment;
 
     // First check: Gorn uniques (1/150 chance)
     if in_id == 0 && alignment < 0 && helpers::random_mod(150) == 0 {
@@ -192,8 +192,9 @@ pub fn pop_create_item(temp: usize, cn: usize) -> usize {
             }
         }
     } else {
-        let char_name =
-            Repository::with_characters(|characters| characters[cn].get_name().to_string());
+        let char_name = Repository::global_mut().characters[cn]
+            .get_name()
+            .to_string();
         let item_name = Repository::with_items(|items| items[in_id].get_name().to_string());
         log::info!("{} got unique item {}.", char_name, item_name);
     }
@@ -204,7 +205,7 @@ pub fn pop_create_item(temp: usize, cn: usize) -> usize {
 /// Port of `pop_create_bonus` from `populate.c`
 /// Creates bonus items based on character rank (points_tot)
 pub fn pop_create_bonus(cn: usize, _chance: i32) -> i32 {
-    let points_tot = Repository::with_characters(|characters| characters[cn].points_tot);
+    let points_tot = Repository::global_mut().characters[cn].points_tot;
 
     let template = if points_tot > 20000000 {
         // Very high rank items
@@ -275,8 +276,9 @@ pub fn pop_create_bonus(cn: usize, _chance: i32) -> i32 {
     let in_id = God::create_item(template);
 
     if let Some(in_id) = in_id {
-        let char_name =
-            Repository::with_characters(|characters| characters[cn].get_name().to_string());
+        let char_name = Repository::global_mut().characters[cn]
+            .get_name()
+            .to_string();
         let item_name = Repository::with_items(|items| items[in_id].get_name().to_string());
         log::info!("{} got {} (template={})", char_name, item_name, template);
         in_id as i32
@@ -288,7 +290,7 @@ pub fn pop_create_bonus(cn: usize, _chance: i32) -> i32 {
 /// Port of `pop_create_bonus_belt` from `populate.cpp`
 /// Creates special rainbow belts with random skills
 pub fn pop_create_bonus_belt(cn: usize) -> i32 {
-    let points_tot = Repository::with_characters(|characters| characters[cn].points_tot);
+    let points_tot = Repository::global_mut().characters[cn].points_tot;
 
     // Calculate rank (from points2rank - needs to be implemented elsewhere)
     let rank = if points_tot < 1000 {
@@ -693,9 +695,8 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
 /// Creates a character from a template
 pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
     // Find a free character slot.
-    let cn = match Repository::with_characters(|characters| {
-        (1..MAXCHARS).find(|&i| characters[i].used == USE_EMPTY)
-    }) {
+    let cn = match (1..MAXCHARS).find(|&i| Repository::global_mut().characters[i].used == USE_EMPTY)
+    {
         Some(index) => index,
         None => {
             log::error!("MAXCHARS reached!");
@@ -717,7 +718,7 @@ pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
 
     // Create inventory items from template.
     for m in 0..40usize {
-        let tmp_template = Repository::with_characters(|characters| characters[cn].item[m]);
+        let tmp_template = Repository::global_mut().characters[cn].item[m];
         if tmp_template == 0 {
             continue;
         }
@@ -741,7 +742,7 @@ pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
 
     // Create worn items from template (uses pop_create_item to preserve unique logic).
     for m in 0..20usize {
-        let tmp_template = Repository::with_characters(|characters| characters[cn].worn[m]);
+        let tmp_template = Repository::global_mut().characters[cn].worn[m];
         if tmp_template == 0 {
             continue;
         }
@@ -773,7 +774,7 @@ pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
     });
 
     // Create carried item (citem) from template.
-    let tmp_template = Repository::with_characters(|characters| characters[cn].citem);
+    let tmp_template = Repository::global_mut().characters[cn].citem;
     if tmp_template != 0 {
         let tmp_instance = God::create_item(tmp_template as usize).unwrap_or(0);
         if tmp_instance == 0 {
@@ -821,10 +822,9 @@ pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
     });
 
     // Bonus item / belt logic (matches C++: only if evil and hasitems; only first free slot).
-    let has_meditation =
-        Repository::with_characters(|characters| characters[cn].skill[SK_MEDIT][0] != 0);
-    let a_mana = Repository::with_characters(|characters| characters[cn].a_mana);
-    let alignment = Repository::with_characters(|characters| characters[cn].alignment);
+    let has_meditation = Repository::global_mut().characters[cn].skill[SK_MEDIT][0] != 0;
+    let a_mana = Repository::global_mut().characters[cn].a_mana;
+    let alignment = Repository::global_mut().characters[cn].alignment;
 
     let mut chance: i32 = 25;
     if !has_meditation && a_mana > 15 * 100 {
@@ -839,10 +839,11 @@ pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
 
     if alignment < 0 && hasitems {
         // Bonus item: at most one, attempt on first empty slot.
-        if let Some(slot) = Repository::with_characters(|characters| {
-            let items = characters[cn].item;
+        let first_empty_slot = {
+            let items = Repository::global_mut().characters[cn].item;
             items.iter().position(|&it| it == 0)
-        }) {
+        };
+        if let Some(slot) = first_empty_slot {
             if chance > 0 && helpers::random_mod(chance as u32) == 0 {
                 let tmp = pop_create_bonus(cn, chance);
                 if tmp != 0 {
@@ -858,10 +859,11 @@ pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
         }
 
         // Rainbow belt: at most one, attempt on (new) first empty slot.
-        if let Some(slot) = Repository::with_characters(|characters| {
-            let items = characters[cn].item;
+        let first_empty_slot = {
+            let items = Repository::global_mut().characters[cn].item;
             items.iter().position(|&it| it == 0)
-        }) {
+        };
+        if let Some(slot) = first_empty_slot {
             if helpers::random_mod(10000) == 0 {
                 let tmp = pop_create_bonus_belt(cn);
                 if tmp != 0 {
@@ -879,7 +881,10 @@ pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
 
     // Drop character on map if requested (matches C++: exact coords, cleanup on failure).
     if drop {
-        let (x, y) = Repository::with_characters(|characters| (characters[cn].x, characters[cn].y));
+        let (x, y) = {
+            let ch = Repository::global_mut().characters[cn];
+            (ch.x, ch.y)
+        };
 
         if x < 0 || y < 0 || !God::drop_char(cn, x as usize, y as usize) {
             log::error!("Could not drop char template {}", template_id);

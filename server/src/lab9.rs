@@ -414,8 +414,7 @@ impl Labyrinth9 {
     }
 
     pub fn tick_riddle_timeout(&mut self, riddler_id: usize) {
-        let area_of_knowledge =
-            Repository::with_characters(|characters| characters[riddler_id].data[72]);
+        let area_of_knowledge = Repository::global_mut().characters[riddler_id].data[72];
         if !(core::constants::RIDDLE_MIN_AREA..=core::constants::RIDDLE_MAX_AREA)
             .contains(&area_of_knowledge)
         {
@@ -438,9 +437,9 @@ impl Labyrinth9 {
                 }
                 self.guesser[guesser_index] = 0;
 
-                let riddler_name = Repository::with_characters(|characters| {
-                    characters[riddler_id].get_name().to_string()
-                });
+                let riddler_name = Repository::global_mut().characters[riddler_id]
+                    .get_name()
+                    .to_string();
                 Repository::global_mut().do_character_log(
                     riddler_id,
                     core::types::FontColor::Yellow,
@@ -454,8 +453,7 @@ impl Labyrinth9 {
     }
 
     pub fn lab9_guesser_says(&mut self, character_id: usize, text: &str) -> bool {
-        let is_player =
-            Repository::with_characters(|characters| characters[character_id].is_player());
+        let is_player = Repository::global_mut().characters[character_id].is_player();
 
         if !is_player {
             return false;
@@ -609,9 +607,8 @@ impl Labyrinth9 {
     }
 
     pub fn lab9_pose_riddle(&mut self, riddler_id: usize, character_id: usize) {
-        let riddle_index = Repository::with_characters(|characters| {
-            characters[riddler_id].data[72] - core::constants::RIDDLE_MIN_AREA
-        });
+        let riddle_index = Repository::global_mut().characters[riddler_id].data[72]
+            - core::constants::RIDDLE_MIN_AREA;
 
         let riddle_number = 1 + helpers::random_mod(core::constants::MAX_RIDDLES as u32);
         let question = self.riddles[riddle_index as usize][riddle_number as usize - 1].question;
@@ -900,8 +897,8 @@ impl Labyrinth9 {
             });
         } else {
             let is_active = Repository::with_items(|items| items[item_id as usize].active);
-            let character_x = Repository::with_characters(|characters| characters[cn].x);
-            let character_y = Repository::with_characters(|characters| characters[cn].y);
+            let character_x = Repository::global_mut().characters[cn].x;
+            let character_y = Repository::global_mut().characters[cn].y;
 
             if is_active == 0
                 && ((character_x as i32) > (item_x as i32)
@@ -950,9 +947,10 @@ impl Labyrinth9 {
         Repository::global_mut().add_lights(item_x as i32, item_y as i32);
 
         if cn != 0 {
-            let character_position = Repository::with_characters(|characters| {
-                (characters[cn].x as i32, characters[cn].y as i32)
-            });
+            let character_position = (
+                Repository::global_mut().characters[cn].x as i32,
+                Repository::global_mut().characters[cn].y as i32,
+            );
             Repository::global_mut().do_area_notify(
                 cn as i32,
                 0,

@@ -153,7 +153,8 @@ impl GameState {
     where
         F: FnOnce(&Vec<core::types::Character>) -> R,
     {
-        Self::with(|gs| f(&gs.characters))
+        let gs = Self::global_mut();
+        f(&gs.characters)
     }
 
     /// Transitional mutable accessor for `characters`.
@@ -161,7 +162,8 @@ impl GameState {
     where
         F: FnOnce(&mut Vec<core::types::Character>) -> R,
     {
-        Self::with_mut(|gs| f(&mut gs.characters))
+        let gs = Self::global_mut();
+        f(&mut gs.characters)
     }
 
     /// Transitional immutable accessor for `items`.
@@ -169,7 +171,8 @@ impl GameState {
     where
         F: FnOnce(&Vec<core::types::Item>) -> R,
     {
-        Self::with(|gs| f(&gs.items))
+        let gs = Self::global_mut();
+        f(&gs.items)
     }
 
     /// Transitional mutable accessor for `items`.
@@ -177,7 +180,8 @@ impl GameState {
     where
         F: FnOnce(&mut Vec<core::types::Item>) -> R,
     {
-        Self::with_mut(|gs| f(&mut gs.items))
+        let gs = Self::global_mut();
+        f(&mut gs.items)
     }
 
     /// Transitional immutable accessor for `map`.
@@ -185,7 +189,8 @@ impl GameState {
     where
         F: FnOnce(&Vec<core::types::Map>) -> R,
     {
-        Self::with(|gs| f(&gs.map))
+        let gs = Self::global_mut();
+        f(&gs.map)
     }
 
     /// Transitional mutable accessor for `map`.
@@ -193,7 +198,8 @@ impl GameState {
     where
         F: FnOnce(&mut Vec<core::types::Map>) -> R,
     {
-        Self::with_mut(|gs| f(&mut gs.map))
+        let gs = Self::global_mut();
+        f(&mut gs.map)
     }
 
     /// Transitional mutable accessor for `effects`.
@@ -201,7 +207,8 @@ impl GameState {
     where
         F: FnOnce(&mut Vec<core::types::Effect>) -> R,
     {
-        Self::with_mut(|gs| f(&mut gs.effects))
+        let gs = Self::global_mut();
+        f(&mut gs.effects)
     }
 
     /// Transitional immutable accessor for `see_map`.
@@ -209,7 +216,8 @@ impl GameState {
     where
         F: FnOnce(&Vec<core::types::SeeMap>) -> R,
     {
-        Self::with(|gs| f(&gs.see_map))
+        let gs = Self::global_mut();
+        f(&gs.see_map)
     }
 
     /// Transitional immutable accessor for `ban_list`.
@@ -217,7 +225,8 @@ impl GameState {
     where
         F: FnOnce(&Vec<core::types::Ban>) -> R,
     {
-        Self::with(|gs| f(&gs.ban_list))
+        let gs = Self::global_mut();
+        f(&gs.ban_list)
     }
 
     /// Transitional mutable accessor for `ban_list`.
@@ -225,7 +234,8 @@ impl GameState {
     where
         F: FnOnce(&mut Vec<core::types::Ban>) -> R,
     {
-        Self::with_mut(|gs| f(&mut gs.ban_list))
+        let gs = Self::global_mut();
+        f(&mut gs.ban_list)
     }
 
     /// Transitional immutable accessor for `globals`.
@@ -233,7 +243,8 @@ impl GameState {
     where
         F: FnOnce(&core::types::Global) -> R,
     {
-        Self::with(|gs| f(&gs.globals))
+        let gs = Self::global_mut();
+        f(&gs.globals)
     }
 
     /// Transitional mutable accessor for `globals`.
@@ -241,7 +252,8 @@ impl GameState {
     where
         F: FnOnce(&mut core::types::Global) -> R,
     {
-        Self::with_mut(|gs| f(&mut gs.globals))
+        let gs = Self::global_mut();
+        f(&mut gs.globals)
     }
 
     /// Transitional immutable accessor for `item_templates`.
@@ -249,7 +261,8 @@ impl GameState {
     where
         F: FnOnce(&Vec<core::types::Item>) -> R,
     {
-        Self::with(|gs| f(&gs.item_templates))
+        let gs = Self::global_mut();
+        f(&gs.item_templates)
     }
 
     /// Transitional immutable accessor for `character_templates`.
@@ -257,47 +270,48 @@ impl GameState {
     where
         F: FnOnce(&Vec<core::types::Character>) -> R,
     {
-        Self::with(|gs| f(&gs.character_templates))
+        let gs = Self::global_mut();
+        f(&gs.character_templates)
     }
 
     /// Transitional getter for `ice_cloak_clock`.
     pub fn get_ice_cloak_clock() -> u32 {
-        Self::with_mut(|gs| gs.ice_cloak_clock)
+        Self::global_mut().ice_cloak_clock
     }
 
     /// Transitional setter for `ice_cloak_clock`.
     pub fn set_ice_cloak_clock(value: u32) {
-        Self::with_mut(|gs| gs.ice_cloak_clock = value);
+        Self::global_mut().ice_cloak_clock = value;
     }
 
     /// Transitional getter for `item_tick_expire_counter`.
     pub fn get_item_tick_expire_counter() -> u32 {
-        Self::with_mut(|gs| gs.item_tick_expire_counter)
+        Self::global_mut().item_tick_expire_counter
     }
 
     /// Transitional setter for `item_tick_expire_counter`.
     pub fn set_item_tick_expire_counter(value: u32) {
-        Self::with_mut(|gs| gs.item_tick_expire_counter = value);
+        Self::global_mut().item_tick_expire_counter = value;
     }
 
     /// Transitional getter for `item_tick_gc_off`.
     pub fn get_item_tick_gc_off() -> u32 {
-        Self::with_mut(|gs| gs.item_tick_gc_off)
+        Self::global_mut().item_tick_gc_off
     }
 
     /// Transitional setter for `item_tick_gc_off`.
     pub fn set_item_tick_gc_off(value: u32) {
-        Self::with_mut(|gs| gs.item_tick_gc_off = value);
+        Self::global_mut().item_tick_gc_off = value;
     }
 
     /// Transitional getter for `item_tick_gc_count`.
     pub fn get_item_tick_gc_count() -> u32 {
-        Self::with_mut(|gs| gs.item_tick_gc_count)
+        Self::global_mut().item_tick_gc_count
     }
 
     /// Transitional setter for `item_tick_gc_count`.
     pub fn set_item_tick_gc_count(value: u32) {
-        Self::with_mut(|gs| gs.item_tick_gc_count = value);
+        Self::global_mut().item_tick_gc_count = value;
     }
 
     /// Normalize MOTD text for safe client display.
@@ -422,9 +436,8 @@ impl GameState {
         Ok(gs)
     }
 
-    /// Store the given `GameState` in a global singleton so that modules not
-    /// yet converted to receive `gs: &mut GameState` can still access it via
-    /// [`GameState::with`] / [`GameState::with_mut`].
+    /// Store the given `GameState` in a global singleton so that transitional
+    /// call sites can access it via global helper APIs.
     ///
     /// # Panics
     ///
@@ -433,38 +446,6 @@ impl GameState {
         if GAME_STATE.set(SingleThreadCell::new(gs)).is_err() {
             panic!("GameState global already registered");
         }
-    }
-
-    /// Transitional access to the global `GameState` singleton.
-    ///
-    /// **Transitional** — used by modules not yet converted to accept a
-    /// `gs` parameter.  Will be removed once all call sites are migrated.
-    ///
-    /// # Panics
-    ///
-    /// Panics if [`GameState::register_global`] has not been called.
-    pub fn with<F, R>(f: F) -> R
-    where
-        F: FnOnce(&mut GameState) -> R,
-    {
-        let cell = GAME_STATE.get().expect("GameState not initialized");
-        cell.with_mut(f)
-    }
-
-    /// Mutable access to the global `GameState` singleton.
-    ///
-    /// **Transitional** — used by modules not yet converted to accept a
-    /// `gs` parameter.  Will be removed once all call sites are migrated.
-    ///
-    /// # Panics
-    ///
-    /// Panics if [`GameState::register_global`] has not been called.
-    pub fn with_mut<F, R>(f: F) -> R
-    where
-        F: FnOnce(&mut GameState) -> R,
-    {
-        let cell = GAME_STATE.get().expect("GameState not initialized");
-        cell.with_mut(f)
     }
 
     /// Direct mutable access to the global `GameState` singleton.
@@ -1130,28 +1111,28 @@ mod tests {
     #[test]
     fn normalize_motd_short_unchanged() {
         let input = "Hello world!".to_string();
-        let result = Self::normalize_message_of_the_day(input.clone());
+        let result = GameState::normalize_message_of_the_day(input.clone());
         assert_eq!(result, input);
     }
 
     #[test]
     fn normalize_motd_exactly_130_unchanged() {
         let input: String = "A".repeat(130);
-        let result = Self::normalize_message_of_the_day(input.clone());
+        let result = GameState::normalize_message_of_the_day(input.clone());
         assert_eq!(result, input);
     }
 
     #[test]
     fn normalize_motd_truncates_at_131() {
         let input: String = "B".repeat(200);
-        let result = Self::normalize_message_of_the_day(input);
+        let result = GameState::normalize_message_of_the_day(input);
         assert_eq!(result.chars().count(), 130);
         assert!(result.chars().all(|c| c == 'B'));
     }
 
     #[test]
     fn normalize_motd_empty() {
-        let result = Self::normalize_message_of_the_day(String::new());
+        let result = GameState::normalize_message_of_the_day(String::new());
         assert_eq!(result, "");
     }
 

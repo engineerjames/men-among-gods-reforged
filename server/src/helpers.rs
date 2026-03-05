@@ -515,18 +515,17 @@ pub fn show_time(gs: &mut GameState, cn: usize) {
 /// # Arguments
 /// * `cn` - Character index
 pub fn char_id(cn: usize) -> i32 {
-    Repository::with_characters(|characters| {
-        let mut id = 0;
+    let mut id = 0;
+    let ch = Repository::global_mut().characters[cn];
 
-        for n in (0..40).step_by(std::mem::size_of::<i32>()) {
-            id ^= characters[cn].name[n] as u32;
-        }
+    for n in (0..40).step_by(std::mem::size_of::<i32>()) {
+        id ^= ch.name[n] as u32;
+    }
 
-        id ^= characters[cn].pass1;
-        id ^= characters[cn].pass2;
+    id ^= ch.pass1;
+    id ^= ch.pass2;
 
-        id as i32
-    })
+    id as i32
 }
 
 /// Calculate experience required to reach the next rank from `current_experience`.
@@ -579,10 +578,8 @@ pub fn points_tolevel(current_experience: u32) -> u32 {
 /// * `cn` - First character index
 /// * `co` - Second character index
 pub fn rankdiff(cn: i32, co: i32) -> i32 {
-    let cn_experience =
-        Repository::with_characters(|characters| characters[cn as usize].points_tot as u32);
-    let co_experience =
-        Repository::with_characters(|characters| characters[co as usize].points_tot as u32);
+    let cn_experience = Repository::global_mut().characters[cn as usize].points_tot as u32;
+    let co_experience = Repository::global_mut().characters[co as usize].points_tot as u32;
 
     core::ranks::points2rank(co_experience) as i32 - core::ranks::points2rank(cn_experience) as i32
 }
@@ -634,8 +631,7 @@ pub fn scale_exps2(cn: i32, co_rank: i32, exp: i32) -> i32 {
         4.00, 4.00, 4.00, 4.00,
     ];
 
-    let player_experience =
-        Repository::with_characters(|characters| characters[cn as usize].points_tot as u32);
+    let player_experience = Repository::global_mut().characters[cn as usize].points_tot as u32;
 
     let mut diff = co_rank - core::ranks::points2rank(player_experience) as i32;
 
@@ -655,8 +651,7 @@ pub fn scale_exps2(cn: i32, co_rank: i32, exp: i32) -> i32 {
 /// * `co` - Opponent character index
 /// * `exp` - Base experience to scale
 pub fn scale_exps(cn: i32, co: i32, exp: i32) -> i32 {
-    let co_experience =
-        Repository::with_characters(|characters| characters[co as usize].points_tot as u32);
+    let co_experience = Repository::global_mut().characters[co as usize].points_tot as u32;
     scale_exps2(cn, core::ranks::points2rank(co_experience) as i32, exp)
 }
 
@@ -832,22 +827,21 @@ pub fn drv_dcoor2dir(dx: i32, dy: i32) -> i32 {
 /// # Arguments
 /// * `cn` - Character index
 pub fn invis_level(cn: usize) -> i32 {
-    Repository::with_characters(|characters| {
-        if characters[cn].flags & CharacterFlags::GreaterInv.bits() != 0 {
-            return 15;
-        }
-        if characters[cn].flags & CharacterFlags::God.bits() != 0 {
-            return 10;
-        }
-        if characters[cn].flags & (CharacterFlags::Imp.bits() | CharacterFlags::Usurp.bits()) != 0 {
-            return 5;
-        }
-        if characters[cn].flags & CharacterFlags::Staff.bits() != 0 {
-            return 2;
-        }
+    let flags = Repository::global_mut().characters[cn].flags;
+    if flags & CharacterFlags::GreaterInv.bits() != 0 {
+        return 15;
+    }
+    if flags & CharacterFlags::God.bits() != 0 {
+        return 10;
+    }
+    if flags & (CharacterFlags::Imp.bits() | CharacterFlags::Usurp.bits()) != 0 {
+        return 5;
+    }
+    if flags & CharacterFlags::Staff.bits() != 0 {
+        return 2;
+    }
 
-        1
-    })
+    1
 }
 
 /// Helper: points needed to raise an attribute.
