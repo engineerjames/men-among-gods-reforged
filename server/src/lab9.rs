@@ -427,13 +427,13 @@ impl Labyrinth9 {
             if self.riddle_timeout[guesser_index] <= 0 {
                 let guesser_id = self.guesser[guesser_index];
                 if guesser_id > 0 {
-                    Repository::with_characters_mut(|characters| {
-                        let guesser_usize = guesser_id as usize;
-                        if guesser_usize < characters.len() && characters[guesser_usize].is_player()
-                        {
-                            characters[guesser_usize].data[core::constants::CHD_RIDDLER] = 0;
-                        }
-                    });
+                    let guesser_usize = guesser_id as usize;
+                    if guesser_usize < Repository::global_mut().characters.len()
+                        && Repository::global_mut().characters[guesser_usize].is_player()
+                    {
+                        Repository::global_mut().characters[guesser_usize].data
+                            [core::constants::CHD_RIDDLER] = 0;
+                    }
                 }
                 self.guesser[guesser_index] = 0;
 
@@ -459,33 +459,42 @@ impl Labyrinth9 {
             return false;
         }
 
-        let return_value = Repository::with_characters_mut(|characters| {
-            let riddler = characters[character_id].data[core::constants::CHD_RIDDLER];
+        let return_value = 'guesser: {
+            let riddler = Repository::global_mut().characters[character_id].data
+                [core::constants::CHD_RIDDLER];
 
             if riddler <= 0 {
-                characters[character_id].data[core::constants::CHD_RIDDLER] = 0;
-                return false;
+                Repository::global_mut().characters[character_id].data
+                    [core::constants::CHD_RIDDLER] = 0;
+                break 'guesser false;
             }
 
             let riddler_usize = riddler as usize;
-            if riddler_usize >= characters.len() {
-                characters[character_id].data[core::constants::CHD_RIDDLER] = 0;
-                return false;
+            if riddler_usize >= Repository::global_mut().characters.len() {
+                Repository::global_mut().characters[character_id].data
+                    [core::constants::CHD_RIDDLER] = 0;
+                break 'guesser false;
             }
 
             // Valid riddler?
-            if !Character::is_sane_npc(riddler_usize, &characters[riddler_usize]) {
-                characters[character_id].data[core::constants::CHD_RIDDLER] = 0;
-                return false;
+            let is_sane = Character::is_sane_npc(
+                riddler_usize,
+                &Repository::global_mut().characters[riddler_usize],
+            );
+            if !is_sane {
+                Repository::global_mut().characters[character_id].data
+                    [core::constants::CHD_RIDDLER] = 0;
+                break 'guesser false;
             }
 
             // Certified riddler?
-            let area_of_knowledge = characters[riddler_usize].data[72]; // Area of knowledge
+            let area_of_knowledge = Repository::global_mut().characters[riddler_usize].data[72];
             if !(core::constants::RIDDLE_MIN_AREA..=core::constants::RIDDLE_MAX_AREA)
                 .contains(&area_of_knowledge)
             {
-                characters[character_id].data[core::constants::CHD_RIDDLER] = 0;
-                return false;
+                Repository::global_mut().characters[character_id].data
+                    [core::constants::CHD_RIDDLER] = 0;
+                break 'guesser false;
             }
 
             // Does the riddler remember the guesser?
@@ -493,8 +502,9 @@ impl Labyrinth9 {
             let guesser_match = self.guesser[guesser_index as usize] == character_id as i32;
 
             if !guesser_match {
-                characters[character_id].data[core::constants::CHD_RIDDLER] = 0;
-                return false;
+                Repository::global_mut().characters[character_id].data
+                    [core::constants::CHD_RIDDLER] = 0;
+                break 'guesser false;
             }
 
             // Does the player see the riddler?
@@ -504,7 +514,7 @@ impl Labyrinth9 {
             if can_see_riddler == 0 {
                 // If the guesser cannot see the riddler, ignore the speech
                 // without resetting the riddle state.
-                return false;
+                break 'guesser false;
             }
 
             let riddle = {
@@ -546,11 +556,14 @@ impl Labyrinth9 {
             }
 
             if found {
+                let char_name = Repository::global_mut().characters[character_id]
+                    .get_name()
+                    .to_string();
                 Repository::global_mut().do_sayx(
                     riddler as usize,
                     format!(
                         "That's absolutely correct, {}! \nFor solving my riddle, I will advance you in your quest. \nClose your eyes and...\n",
-                        characters[character_id].get_name()
+                        char_name
                     )
                     .as_str(),
                 );
@@ -560,7 +573,8 @@ impl Labyrinth9 {
                     DESTINATIONS[guesser_index as usize].x as usize,
                     DESTINATIONS[guesser_index as usize].y as usize,
                 ) {
-                    characters[character_id].data[core::constants::CHD_RIDDLER] = 0;
+                    Repository::global_mut().characters[character_id].data
+                        [core::constants::CHD_RIDDLER] = 0;
                     self.guesser[guesser_index as usize] = 0;
                 } else {
                     log::error!(
@@ -572,7 +586,7 @@ impl Labyrinth9 {
                         "Oops! Something went wrong. Please try again a bit later.\n",
                     );
                 }
-                return true;
+                break 'guesser true;
             } else {
                 let riddle_attempts = {
                     self.riddle_attempts[guesser_index as usize] -= 1;
@@ -594,14 +608,15 @@ impl Labyrinth9 {
                         riddler as usize,
                         "Sorry, that's not right. Now you'll have to bring me the book again to start over!\n",
                     );
-                    characters[character_id].data[core::constants::CHD_RIDDLER] = 0;
+                    Repository::global_mut().characters[character_id].data
+                        [core::constants::CHD_RIDDLER] = 0;
                     self.guesser[guesser_index as usize] = 0;
                 }
             }
 
-            // wrong/no matching answer returns 0.
+            // wrong/no matching answer returns false.
             false
-        });
+        };
 
         return_value
     }
@@ -626,9 +641,8 @@ impl Labyrinth9 {
         );
         Repository::global_mut().do_sayx(riddler_id, question);
 
-        Repository::with_characters_mut(|characters| {
-            characters[character_id].data[core::constants::CHD_RIDDLER] = riddler_id as i32;
-        });
+        Repository::global_mut().characters[character_id].data[core::constants::CHD_RIDDLER] =
+            riddler_id as i32;
     }
 
     pub fn lab9_check_door(&self, bankno: i32) -> bool {
@@ -646,10 +660,10 @@ impl Labyrinth9 {
         let mut m = x + y * core::constants::SERVER_MAPX;
 
         for n in 0..core::constants::SWITCHES {
-            let item_number = Repository::with_map(|map| map[m as usize].it);
+            let item_number = Repository::global_mut().map[m as usize].it;
 
             if item_number == 0
-                || Repository::with_items(|items| items[item_number as usize].temp) != t as u16
+                || Repository::global_mut().items[item_number as usize].temp != t as u16
             {
                 log::error!(
                     "lab9_check_door: switch {} in bank {} is not set correctly",
@@ -660,8 +674,7 @@ impl Labyrinth9 {
             }
 
             let question = self.questions[bank_index as usize][n];
-            let switch_is_true =
-                Repository::with_items(|items| items[item_number as usize].data[1] == 0);
+            let switch_is_true = Repository::global_mut().items[item_number as usize].data[1] == 0;
 
             if switch_is_true
                 != self.switch_questions[bank_index as usize][question as usize - 1].should_be_true
@@ -677,7 +690,7 @@ impl Labyrinth9 {
         m = self.banks[bank_index as usize].doorx
             + self.banks[bank_index as usize].doory * core::constants::SERVER_MAPX;
 
-        let item_number = Repository::with_map(|map| map[m as usize].it);
+        let item_number = Repository::global_mut().map[m as usize].it;
 
         if item_number == 0 {
             log::error!(
@@ -689,68 +702,35 @@ impl Labyrinth9 {
 
         if correct {
             // Open the door
-            Repository::with_items_mut(|items| {
-                // Only open if currently closed.
-                if items[item_number as usize].active != 0 {
-                    return;
-                }
-
-                items[item_number as usize].data[1] = 0;
-                items[item_number as usize].active = items[item_number as usize].duration;
-                items[item_number as usize].flags &=
+            let item_idx = item_number as usize;
+            let gs = Repository::global_mut();
+            if gs.items[item_idx].active == 0 {
+                gs.items[item_idx].data[1] = 0;
+                gs.items[item_idx].active = gs.items[item_idx].duration;
+                gs.items[item_idx].flags &=
                     !(ItemFlags::IF_MOVEBLOCK | ItemFlags::IF_SIGHTBLOCK).bits();
-
-                Repository::global_mut().do_area_sound(
-                    0,
-                    0,
-                    items[item_number as usize].x as i32,
-                    items[item_number as usize].y as i32,
-                    10,
-                );
-
-                Repository::global_mut().reset_go(
-                    items[item_number as usize].x as i32,
-                    items[item_number as usize].y as i32,
-                );
-                Repository::global_mut().add_lights(
-                    items[item_number as usize].x as i32,
-                    items[item_number as usize].y as i32,
-                );
-            });
+                let (ix, iy) = (gs.items[item_idx].x as i32, gs.items[item_idx].y as i32);
+                gs.do_area_sound(0, 0, ix, iy, 10);
+                gs.reset_go(ix, iy);
+                gs.add_lights(ix, iy);
+            }
             true
         } else {
             // Close the door
-            Repository::with_items_mut(|items| {
-                // Only close if currently open.
-                if items[item_number as usize].active == 0 {
-                    return;
-                }
-
-                items[item_number as usize].data[1] = 1;
-                items[item_number as usize].active = 0;
-                let temp = items[item_number as usize].temp;
-                let flags = Repository::with_item_templates(|item_templates| {
-                    item_templates[temp as usize].flags & ItemFlags::IF_SIGHTBLOCK.bits()
-                });
-
-                items[item_number as usize].flags |= ItemFlags::IF_MOVEBLOCK.bits() | flags;
-
-                Repository::global_mut().do_area_sound(
-                    0,
-                    0,
-                    items[item_number as usize].x as i32,
-                    items[item_number as usize].y as i32,
-                    10,
-                );
-                Repository::global_mut().reset_go(
-                    items[item_number as usize].x as i32,
-                    items[item_number as usize].y as i32,
-                );
-                Repository::global_mut().add_lights(
-                    items[item_number as usize].x as i32,
-                    items[item_number as usize].y as i32,
-                );
-            });
+            let item_idx = item_number as usize;
+            let gs = Repository::global_mut();
+            if gs.items[item_idx].active != 0 {
+                gs.items[item_idx].data[1] = 1;
+                gs.items[item_idx].active = 0;
+                let temp = gs.items[item_idx].temp;
+                let sightblock_flag =
+                    gs.item_templates[temp as usize].flags & ItemFlags::IF_SIGHTBLOCK.bits();
+                gs.items[item_idx].flags |= ItemFlags::IF_MOVEBLOCK.bits() | sightblock_flag;
+                let (ix, iy) = (gs.items[item_idx].x as i32, gs.items[item_idx].y as i32);
+                gs.do_area_sound(0, 0, ix, iy, 10);
+                gs.reset_go(ix, iy);
+                gs.add_lights(ix, iy);
+            }
             false
         }
     }
@@ -774,23 +754,23 @@ impl Labyrinth9 {
         // Reset switches and build description from random question
         for n in 0..core::constants::SWITCHES {
             let m = (x + y * core::constants::SERVER_MAPX) as usize;
-            let item_number = Repository::with_map(|map| map[m].it);
+            let item_number = Repository::global_mut().map[m].it;
 
             if item_number == 0
-                || Repository::with_items(|items| items[item_number as usize].temp) != t as u16
+                || Repository::global_mut().items[item_number as usize].temp != t as u16
             {
                 log::error!("reset_bank_at(): panic: no switch at {}!!", m);
                 return;
             }
 
-            let bankidx = Repository::with_items(|items| {
-                (items[item_number as usize].data[0] as i32 - 1) as usize
-            });
+            let bankidx =
+                (Repository::global_mut().items[item_number as usize].data[0] as i32 - 1) as usize;
 
-            Repository::with_items_mut(|items| {
-                items[item_number as usize].data[1] = 1;
-                items[item_number as usize].active = 0;
-            });
+            {
+                let gs = Repository::global_mut();
+                gs.items[item_number as usize].data[1] = 1;
+                gs.items[item_number as usize].active = 0;
+            }
 
             let mut q: i32;
             let mut unique: bool;
@@ -821,22 +801,24 @@ impl Labyrinth9 {
                 question_text
             );
 
-            Repository::with_items_mut(|items| {
+            {
+                let gs = Repository::global_mut();
                 let desc_bytes = description.as_bytes();
                 let len = desc_bytes.len().min(200);
-                items[item_number as usize].description[..len].copy_from_slice(&desc_bytes[..len]);
+                gs.items[item_number as usize].description[..len]
+                    .copy_from_slice(&desc_bytes[..len]);
                 // Null-terminate if there's space
                 if len < 200 {
-                    items[item_number as usize].description[len] = 0;
+                    gs.items[item_number as usize].description[len] = 0;
                 }
-            });
+            }
 
             y += 1;
         }
 
         // Handle door
         let door_m = (bank.doorx + bank.doory * core::constants::SERVER_MAPX) as usize;
-        let door = Repository::with_map(|map| map[door_m].it);
+        let door = Repository::global_mut().map[door_m].it;
 
         if closedoor && door != 0 {
             self.use_lab9_door(0, door as i32);
@@ -848,31 +830,29 @@ impl Labyrinth9 {
     pub fn use_lab9_switch(&self, cn: usize, item_id: i32) -> bool {
         log::info!("Character {} flipped a switch.", cn);
 
-        Repository::with_items_mut(|items| {
-            items[item_id as usize].data[1] = if items[item_id as usize].data[1] == 0 {
+        let (ix, iy, bank_no) = {
+            let gs = Repository::global_mut();
+            gs.items[item_id as usize].data[1] = if gs.items[item_id as usize].data[1] == 0 {
                 1
             } else {
                 0
             };
+            (
+                gs.items[item_id as usize].x as i32,
+                gs.items[item_id as usize].y as i32,
+                gs.items[item_id as usize].data[0] as i32,
+            )
+        };
 
-            Repository::global_mut().do_area_sound(
-                0,
-                0,
-                items[item_id as usize].x as i32,
-                items[item_id as usize].y as i32,
-                10,
+        Repository::global_mut().do_area_sound(0, 0, ix, iy, 10);
+
+        if self.lab9_check_door(bank_no) {
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                "You hear a door open nearby.\n",
             );
-
-            let bank_no = items[item_id as usize].data[0] as i32;
-
-            if self.lab9_check_door(bank_no) {
-                Repository::global_mut().do_character_log(
-                    cn,
-                    core::types::FontColor::Green,
-                    "You hear a door open nearby.\n",
-                );
-            }
-        });
+        }
 
         true
     }
@@ -881,22 +861,20 @@ impl Labyrinth9 {
     /// Translates C++ function: int use_lab9_door(int cn, int in)
     /// data[3] = switch bank number (1..5)
     pub fn use_lab9_door(&mut self, cn: usize, item_id: i32) -> bool {
-        let item_x = Repository::with_items(|items| items[item_id as usize].x);
-        let item_y = Repository::with_items(|items| items[item_id as usize].y);
+        let item_x = Repository::global_mut().items[item_id as usize].x;
+        let item_y = Repository::global_mut().items[item_id as usize].y;
         let m = (item_x as i32 + item_y as i32 * core::constants::SERVER_MAPX) as usize;
 
-        let ch_at_door = Repository::with_map(|map| map[m].ch);
+        let ch_at_door = Repository::global_mut().map[m].ch;
         if ch_at_door != 0 {
             return false;
         }
 
         // This statement allows free movement southward.
         if cn == 0 {
-            Repository::with_items_mut(|items| {
-                items[item_id as usize].active = 1; // just so it will close for sure
-            });
+            Repository::global_mut().items[item_id as usize].active = 1; // just so it will close for sure
         } else {
-            let is_active = Repository::with_items(|items| items[item_id as usize].active);
+            let is_active = Repository::global_mut().items[item_id as usize].active;
             let character_x = Repository::global_mut().characters[cn].x;
             let character_y = Repository::global_mut().characters[cn].y;
 
@@ -918,29 +896,27 @@ impl Labyrinth9 {
 
         Repository::global_mut().do_area_sound(0, 0, item_x as i32, item_y as i32, 10);
 
-        let is_active = Repository::with_items(|items| items[item_id as usize].active);
+        let is_active = Repository::global_mut().items[item_id as usize].active;
 
         if is_active == 0 {
             // open door
-            Repository::with_items_mut(|items| {
-                items[item_id as usize].flags &=
-                    !(ItemFlags::IF_MOVEBLOCK | ItemFlags::IF_SIGHTBLOCK).bits();
-                items[item_id as usize].data[1] = 0;
-            });
+            let gs = Repository::global_mut();
+            gs.items[item_id as usize].flags &=
+                !(ItemFlags::IF_MOVEBLOCK | ItemFlags::IF_SIGHTBLOCK).bits();
+            gs.items[item_id as usize].data[1] = 0;
         } else {
             // close door
-            let temp = Repository::with_items(|items| items[item_id as usize].temp);
-            let flags = Repository::with_item_templates(|item_templates| {
-                item_templates[temp as usize].flags & ItemFlags::IF_SIGHTBLOCK.bits()
-            });
+            let temp = Repository::global_mut().items[item_id as usize].temp;
+            let flags = Repository::global_mut().item_templates[temp as usize].flags
+                & ItemFlags::IF_SIGHTBLOCK.bits();
 
-            Repository::with_items_mut(|items| {
-                items[item_id as usize].flags |= ItemFlags::IF_MOVEBLOCK.bits() | flags;
-                items[item_id as usize].data[1] = 1;
-
-                let bank_no = items[item_id as usize].data[3] as i32;
-                self.lab9_reset_bank(bank_no, false);
-            });
+            let bank_no = {
+                let gs = Repository::global_mut();
+                gs.items[item_id as usize].flags |= ItemFlags::IF_MOVEBLOCK.bits() | flags;
+                gs.items[item_id as usize].data[1] = 1;
+                gs.items[item_id as usize].data[3] as i32
+            };
+            self.lab9_reset_bank(bank_no, false);
         }
 
         Repository::global_mut().reset_go(item_x as i32, item_y as i32);

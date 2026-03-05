@@ -1932,26 +1932,27 @@ pub fn answer_spellinfo(cn: usize, co: usize) {
         return;
     }
 
-    Repository::with_items(|items| {
-        let mut found = false;
+    let mut found = false;
 
-        for n in 0..20 {
-            let spell_idx = Repository::global_mut().characters[cn].spell[n] as usize;
-            if spell_idx != 0 && core::types::Item::is_sane_item(spell_idx) {
-                let minutes = items[spell_idx].active / (TICKS as u32 * 60);
-                let seconds = (items[spell_idx].active / TICKS as u32) % 60;
-                let name = items[spell_idx].get_name();
-
-                Repository::global_mut()
-                    .do_sayx(cn, &format!("{}, for {}m {}s.", name, minutes, seconds));
-                found = true;
-            }
+    for n in 0..20 {
+        let spell_idx = Repository::global_mut().characters[cn].spell[n] as usize;
+        if spell_idx != 0 && core::types::Item::is_sane_item(spell_idx) {
+            let (minutes, seconds, name) = {
+                let gs = Repository::global_mut();
+                let minutes = gs.items[spell_idx].active / (TICKS as u32 * 60);
+                let seconds = (gs.items[spell_idx].active / TICKS as u32) % 60;
+                let name = gs.items[spell_idx].get_name().to_string();
+                (minutes, seconds, name)
+            };
+            Repository::global_mut()
+                .do_sayx(cn, &format!("{}, for {}m {}s.", name, minutes, seconds));
+            found = true;
         }
+    }
 
-        if !found {
-            Repository::global_mut().do_sayx(cn, "I have no spells on me at the moment.");
-        }
-    });
+    if !found {
+        Repository::global_mut().do_sayx(cn, "I have no spells on me at the moment.");
+    }
 }
 
 /// Port of `answer_transfer(int cn, int co)` from `talk.cpp`
@@ -2000,9 +2001,7 @@ pub fn answer_transfer(cn: usize, co: usize) {
 
     driver::die_companion(cn);
 
-    Repository::with_characters_mut(|characters| {
-        characters[co].luck -= 1;
-    });
+    Repository::global_mut().characters[co].luck -= 1;
 
     log::info!(
         "Character {} transferred companion {} (exp: {})",
@@ -2027,7 +2026,8 @@ pub fn answer_follow(cn: usize, co: usize) {
         return;
     }
 
-    Repository::with_characters_mut(|characters| {
+    let co_name = {
+        let characters = &mut Repository::global_mut().characters;
         // Clear data[80..92]
         for n in 80..92 {
             characters[cn].data[n] = 0;
@@ -2041,9 +2041,9 @@ pub fn answer_follow(cn: usize, co: usize) {
         characters[cn].data[69] = co as i32; // Set follow target
         characters[cn].data[29] = 0; // Clear wait position
 
-        let co_name = characters[co].get_name().to_string();
-        Repository::global_mut().do_sayx(cn, &format!("Yes, {}!", co_name));
-    });
+        characters[co].get_name().to_string()
+    };
+    Repository::global_mut().do_sayx(cn, &format!("Yes, {}!", co_name));
 }
 
 /// Port of `answer_wait(int cn, int co)` from `talk.cpp`
@@ -2061,7 +2061,8 @@ pub fn answer_wait(cn: usize, co: usize) {
         return;
     }
 
-    Repository::with_characters_mut(|characters| {
+    let co_name = {
+        let characters = &mut Repository::global_mut().characters;
         // Clear data[80..92]
         for n in 80..92 {
             characters[cn].data[n] = 0;
@@ -2081,9 +2082,9 @@ pub fn answer_wait(cn: usize, co: usize) {
         characters[cn].data[30] = dir as i32;
         characters[cn].data[69] = 0; // Clear follow target
 
-        let co_name = characters[co].get_name().to_string();
-        Repository::global_mut().do_sayx(cn, &format!("Yes, {}!", co_name));
-    });
+        characters[co].get_name().to_string()
+    };
+    Repository::global_mut().do_sayx(cn, &format!("Yes, {}!", co_name));
 }
 
 /// Port of `answer_stop(int cn, int co)` from `talk.cpp`
@@ -2101,7 +2102,9 @@ pub fn answer_stop(cn: usize, co: usize) {
         return;
     }
 
-    Repository::with_characters_mut(|characters| {
+    let ticker = Repository::global_mut().globals.ticker;
+    let co_name = {
+        let characters = &mut Repository::global_mut().characters;
         // Clear data[80..92]
         for n in 80..92 {
             characters[cn].data[n] = 0;
@@ -2112,13 +2115,11 @@ pub fn answer_stop(cn: usize, co: usize) {
         characters[cn].goto_y = 0;
         characters[cn].misc_action = 0;
         characters[cn].data[78] = 0;
-
-        let ticker = Repository::with_globals(|globals| globals.ticker);
         characters[cn].data[27] = ticker;
 
-        let co_name = characters[co].get_name().to_string();
-        Repository::global_mut().do_sayx(cn, &format!("Yes master {}!", co_name));
-    });
+        characters[co].get_name().to_string()
+    };
+    Repository::global_mut().do_sayx(cn, &format!("Yes master {}!", co_name));
 }
 
 /// Port of `answer_move(int cn, int co)` from `talk.cpp`
@@ -2136,7 +2137,8 @@ pub fn answer_move(cn: usize, co: usize) {
         return;
     }
 
-    Repository::with_characters_mut(|characters| {
+    let co_name = {
+        let characters = &mut Repository::global_mut().characters;
         let cn_x = characters[cn].x;
         let cn_y = characters[cn].y;
 
@@ -2147,9 +2149,9 @@ pub fn answer_move(cn: usize, co: usize) {
             (cn_y as i32 + 4 - helpers::random_mod_i32(9)).clamp(0, SERVER_MAPY - 1) as u16;
         characters[cn].misc_action = 0;
 
-        let co_name = characters[co].get_name().to_string();
-        Repository::global_mut().do_sayx(cn, &format!("Yes master {}!", co_name));
-    });
+        characters[co].get_name().to_string()
+    };
+    Repository::global_mut().do_sayx(cn, &format!("Yes master {}!", co_name));
 }
 
 /// Port of `answer_attack(int cn, int co, char* text)` from `talk.cpp`
@@ -2259,7 +2261,8 @@ pub fn answer_attack(cn: usize, co: usize, text: &str) {
             .get_name()
             .to_string();
 
-        Repository::with_characters_mut(|characters_mut| {
+        {
+            let characters_mut = &mut Repository::global_mut().characters;
             if best_target <= u16::MAX as usize {
                 characters_mut[cn].attack_cn = best_target as u16;
             }
@@ -2267,12 +2270,11 @@ pub fn answer_attack(cn: usize, co: usize, text: &str) {
             let idx = best_target | (helpers::char_id(best_target) as usize) << 16;
             characters_mut[cn].data[80] = idx as i32;
             characters_mut[cn].data[80] = best_target as i32;
-
-            Repository::global_mut().do_sayx(
-                cn,
-                &format!("Yes {}, I will kill {}!", co_name, target_name),
-            );
-        });
+        }
+        Repository::global_mut().do_sayx(
+            cn,
+            &format!("Yes {}, I will kill {}!", co_name, target_name),
+        );
 
         // Notify target
         Repository::global_mut().do_notify_character(
@@ -2298,31 +2300,31 @@ pub fn answer_attack(cn: usize, co: usize, text: &str) {
 pub fn answer_quiet(cn: usize, co: usize) {
     let is_talkative =
         Repository::global_mut().characters[cn].data[core::constants::CHD_TALKATIVE] != 0;
-    let template_talkative = Repository::with_character_templates(|templates| {
-        if (Repository::global_mut().characters[cn].temp as usize) < core::constants::MAXTCHARS {
-            templates[Repository::global_mut().characters[cn].temp as usize].data
+    let template_talkative = {
+        let cn_temp = Repository::global_mut().characters[cn].temp as usize;
+        if cn_temp < core::constants::MAXTCHARS {
+            Repository::global_mut().character_templates[cn_temp].data
                 [core::constants::CHD_TALKATIVE]
         } else {
             0
         }
-    });
+    };
 
     let co_name = Repository::global_mut().characters[co]
         .get_name()
         .to_string();
 
-    Repository::with_characters_mut(|characters_mut| {
-        if !is_talkative {
-            characters_mut[cn].data[core::constants::CHD_TALKATIVE] = template_talkative;
-            Repository::global_mut().do_sayx(
-                cn,
-                &format!("Thank you, {}, for letting me talk again!", co_name),
-            );
-        } else {
-            Repository::global_mut().do_sayx(cn, &format!("Yes {}, I will shut up now.", co_name));
-            characters_mut[cn].data[core::constants::CHD_TALKATIVE] = 0;
-        }
-    });
+    if !is_talkative {
+        Repository::global_mut().characters[cn].data[core::constants::CHD_TALKATIVE] =
+            template_talkative;
+        Repository::global_mut().do_sayx(
+            cn,
+            &format!("Thank you, {}, for letting me talk again!", co_name),
+        );
+    } else {
+        Repository::global_mut().do_sayx(cn, &format!("Yes {}, I will shut up now.", co_name));
+        Repository::global_mut().characters[cn].data[core::constants::CHD_TALKATIVE] = 0;
+    }
 }
 
 /// Port of `answer_health(int cn, int co)` from `talk.cpp`
@@ -2442,27 +2444,25 @@ pub fn answer_where(cn: usize, _co: usize) {
 /// * `cn` - NPC character speaking
 /// * `_co` - (unused) Player who asked
 pub fn answer_time(cn: usize, _co: usize) {
-    Repository::with_globals(|globals| {
-        let day = globals.mdday;
-        let year = globals.mdyear;
-        let hour = globals.mdtime / 3600;
-        let minute = (globals.mdtime / 60) % 60;
+    let (day, year, hour, minute) = {
+        let g = &Repository::global_mut().globals;
+        (g.mdday, g.mdyear, g.mdtime / 3600, (g.mdtime / 60) % 60)
+    };
 
-        let suffix = match day {
-            1 => "st",
-            2 => "nd",
-            3 => "rd",
-            _ => "th",
-        };
+    let suffix = match day {
+        1 => "st",
+        2 => "nd",
+        3 => "rd",
+        _ => "th",
+    };
 
-        Repository::global_mut().do_sayx(
-            cn,
-            &format!(
-                "Today is the {}{} day of the Year {}. It is {}:{:02} Astonian Standard Time.\n",
-                day, suffix, year, hour, minute
-            ),
-        );
-    });
+    Repository::global_mut().do_sayx(
+        cn,
+        &format!(
+            "Today is the {}{} day of the Year {}. It is {}:{:02} Astonian Standard Time.\n",
+            day, suffix, year, hour, minute
+        ),
+    );
 }
 
 /// Port of `stronghold_points(int cn)` from `talk.cpp`
@@ -2541,19 +2541,19 @@ pub fn answer_buygold(cn: usize, co: usize) {
         return;
     }
 
-    Repository::with_characters_mut(|characters| {
+    let co_name = {
+        let characters = &mut Repository::global_mut().characters;
         characters[co].data[41] += pts;
         characters[co].gold += pts * 100;
-
-        let co_name = characters[co].get_name().to_string();
-        Repository::global_mut().do_sayx(
-            cn,
-            &format!(
-                "There you are, {}. {} gold coins. Thank you for your help!",
-                co_name, pts
-            ),
-        );
-    });
+        characters[co].get_name().to_string()
+    };
+    Repository::global_mut().do_sayx(
+        cn,
+        &format!(
+            "There you are, {}. {} gold coins. Thank you for your help!",
+            co_name, pts
+        ),
+    );
 
     log::info!("Character {} bought gold from cityguard ({} pts)", co, pts);
 }
@@ -2580,9 +2580,7 @@ pub fn answer_buyhealth(cn: usize, co: usize) {
         return;
     }
 
-    Repository::with_characters_mut(|characters| {
-        characters[co].data[41] += 6;
-    });
+    Repository::global_mut().characters[co].data[41] += 6;
 
     if let Some(item_id) = God::create_item(101) {
         God::give_character_item(co, item_id);
@@ -2621,9 +2619,7 @@ pub fn answer_buymana(cn: usize, co: usize) {
         return;
     }
 
-    Repository::with_characters_mut(|characters| {
-        characters[co].data[41] += 9;
-    });
+    Repository::global_mut().characters[co].data[41] += 9;
 
     if let Some(item_id) = God::create_item(102) {
         God::give_character_item(co, item_id);
@@ -2666,21 +2662,20 @@ pub fn answer_buyexp(cn: usize, co: usize) {
 
     let total_exp = pts * exp;
 
-    Repository::with_characters_mut(|characters| {
+    let co_name = {
+        let characters = &mut Repository::global_mut().characters;
         characters[co].data[41] += pts;
         characters[co].points += total_exp;
         characters[co].points_tot += total_exp;
-
-        let co_name = characters[co].get_name().to_string();
-
-        Repository::global_mut().do_check_new_level(co);
-        Repository::global_mut().do_sayx(cn, &format!("Now I'll teach you a bit about life, the world and everything, {}. Thank you for your help!", co_name));
-        Repository::global_mut().do_character_log(
-            co,
-            core::types::FontColor::Yellow,
-            &format!("You get {} experience points.", total_exp),
-        );
-    });
+        characters[co].get_name().to_string()
+    };
+    Repository::global_mut().do_check_new_level(co);
+    Repository::global_mut().do_sayx(cn, &format!("Now I'll teach you a bit about life, the world and everything, {}. Thank you for your help!", co_name));
+    Repository::global_mut().do_character_log(
+        co,
+        core::types::FontColor::Yellow,
+        &format!("You get {} experience points.", total_exp),
+    );
 
     log::info!(
         "Character {} bought {} exps from cityguard ({} pts)",

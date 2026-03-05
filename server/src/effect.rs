@@ -17,18 +17,14 @@ impl EffectManager {
     /// Port of `can_drop(int m)` from `svr_effect.cpp`
     /// Checks if an item can be dropped at the given map index
     pub fn can_drop(map_index: usize) -> bool {
-        Repository::with_map(|map| {
-            if map[map_index].ch != 0
-                || map[map_index].to_ch != 0
-                || map[map_index].it != 0
-                || (map[map_index].flags & core::constants::MF_MOVEBLOCK as u64) != 0
-                || (map[map_index].flags & core::constants::MF_DEATHTRAP as u64) != 0
-                || map[map_index].fsprite != 0
-            {
-                return false;
-            }
-            true
-        })
+        let gs = Repository::global_mut();
+        let m = &gs.map[map_index];
+        !(m.ch != 0
+            || m.to_ch != 0
+            || m.it != 0
+            || (m.flags & core::constants::MF_MOVEBLOCK as u64) != 0
+            || (m.flags & core::constants::MF_DEATHTRAP as u64) != 0
+            || m.fsprite != 0)
     }
 
     /// Port of `is_beam(int in)` from `svr_effect.cpp`
@@ -37,16 +33,8 @@ impl EffectManager {
         if item_id == 0 {
             return false;
         }
-
-        Repository::with_items(|items| {
-            if items[item_id].temp != 453 {
-                return false;
-            }
-            if items[item_id].active == 0 {
-                return false;
-            }
-            true
-        })
+        let gs = Repository::global_mut();
+        gs.items[item_id].temp == 453 && gs.items[item_id].active != 0
     }
 
     /// Port of `effect_tick(void)` from `svr_effect.cpp`
@@ -93,22 +81,19 @@ impl EffectManager {
     /// Internal helper invoked by `effect_tick` when processing effects of
     /// type 1. Decrements duration and clears map injury flags when expired.
     fn handle_effect_type_1(n: usize) {
-        Repository::with_effects_mut(|effects| {
-            effects[n].duration -= 1;
+        let gs = Repository::global_mut();
+        gs.effects[n].duration -= 1;
 
-            if effects[n].duration == 0 {
-                effects[n].used = core::constants::USE_EMPTY;
+        if gs.effects[n].duration == 0 {
+            gs.effects[n].used = core::constants::USE_EMPTY;
 
-                let map_index = effects[n].data[0] as usize
-                    + effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
+            let map_index = gs.effects[n].data[0] as usize
+                + gs.effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
 
-                Repository::with_map_mut(|map| {
-                    map[map_index].flags &= !(core::constants::MF_GFX_INJURED
-                        | core::constants::MF_GFX_INJURED1
-                        | core::constants::MF_GFX_INJURED2);
-                });
-            }
-        });
+            gs.map[map_index].flags &= !(core::constants::MF_GFX_INJURED
+                | core::constants::MF_GFX_INJURED1
+                | core::constants::MF_GFX_INJURED2);
+        }
     }
 
     /// Type 2: Timer for character respawn
@@ -118,24 +103,24 @@ impl EffectManager {
     /// zero, it attempts to reserve the map tile and transitions the effect
     /// to type 8 (respawn mist) if successful.
     fn handle_effect_type_2(n: usize) {
-        Repository::with_effects_mut(|effects| {
-            if effects[n].duration > 0 {
-                effects[n].duration -= 1;
+        let (duration, map_index) = {
+            let gs = Repository::global_mut();
+            if gs.effects[n].duration > 0 {
+                gs.effects[n].duration -= 1;
             }
+            let map_index = gs.effects[n].data[0] as usize
+                + gs.effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
+            (gs.effects[n].duration, map_index)
+        };
 
-            if effects[n].duration == 0 {
-                let map_index = effects[n].data[0] as usize
-                    + effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
-
-                // Check if target position is clear
-                if player::plr_check_target(map_index) {
-                    Repository::with_map_mut(|map| {
-                        map[map_index].flags |= core::constants::MF_MOVEBLOCK as u64;
-                    });
-                    effects[n].effect_type = 8;
-                }
+        if duration == 0 {
+            // Check if target position is clear
+            if player::plr_check_target(map_index) {
+                let gs = Repository::global_mut();
+                gs.map[map_index].flags |= core::constants::MF_MOVEBLOCK as u64;
+                gs.effects[n].effect_type = 8;
             }
-        });
+        }
     }
 
     /// Type 3: Death mist
@@ -302,24 +287,20 @@ impl EffectManager {
     /// Updates evil-magic graphic flags and expires the effect after the
     /// configured duration.
     fn handle_effect_type_5(n: usize) {
-        Repository::with_effects_mut(|effects| {
-            effects[n].duration += 1;
+        let gs = Repository::global_mut();
+        gs.effects[n].duration += 1;
 
-            let map_index = effects[n].data[0] as usize
-                + effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
+        let map_index = gs.effects[n].data[0] as usize
+            + gs.effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
 
-            if effects[n].duration == Self::EFFECT_MAGIC_DURATION {
-                effects[n].used = core::constants::USE_EMPTY;
-                Repository::with_map_mut(|map| {
-                    map[map_index].flags &= !core::constants::MF_GFX_EMAGIC;
-                });
-            } else {
-                Repository::with_map_mut(|map| {
-                    map[map_index].flags &= !core::constants::MF_GFX_EMAGIC;
-                    map[map_index].flags |= ((effects[n].duration / 2) as u64) << 45;
-                });
-            }
-        });
+        if gs.effects[n].duration == Self::EFFECT_MAGIC_DURATION {
+            gs.effects[n].used = core::constants::USE_EMPTY;
+            gs.map[map_index].flags &= !core::constants::MF_GFX_EMAGIC;
+        } else {
+            let duration = gs.effects[n].duration;
+            gs.map[map_index].flags &= !core::constants::MF_GFX_EMAGIC;
+            gs.map[map_index].flags |= ((duration / 2) as u64) << 45;
+        }
     }
 
     /// Type 6: Good magic
@@ -328,24 +309,20 @@ impl EffectManager {
     /// Updates good-magic graphic flags and expires the effect after the
     /// configured duration.
     fn handle_effect_type_6(n: usize) {
-        Repository::with_effects_mut(|effects| {
-            effects[n].duration += 1;
+        let gs = Repository::global_mut();
+        gs.effects[n].duration += 1;
 
-            let map_index = effects[n].data[0] as usize
-                + effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
+        let map_index = gs.effects[n].data[0] as usize
+            + gs.effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
 
-            if effects[n].duration == Self::EFFECT_MAGIC_DURATION {
-                effects[n].used = core::constants::USE_EMPTY;
-                Repository::with_map_mut(|map| {
-                    map[map_index].flags &= !core::constants::MF_GFX_GMAGIC;
-                });
-            } else {
-                Repository::with_map_mut(|map| {
-                    map[map_index].flags &= !core::constants::MF_GFX_GMAGIC;
-                    map[map_index].flags |= ((effects[n].duration / 2) as u64) << 48;
-                });
-            }
-        });
+        if gs.effects[n].duration == Self::EFFECT_MAGIC_DURATION {
+            gs.effects[n].used = core::constants::USE_EMPTY;
+            gs.map[map_index].flags &= !core::constants::MF_GFX_GMAGIC;
+        } else {
+            let duration = gs.effects[n].duration;
+            gs.map[map_index].flags &= !core::constants::MF_GFX_GMAGIC;
+            gs.map[map_index].flags |= ((duration / 2) as u64) << 48;
+        }
     }
 
     /// Type 7: Caster magic
@@ -354,24 +331,20 @@ impl EffectManager {
     /// Updates caster-magic graphic flags and expires the effect after the
     /// configured duration.
     fn handle_effect_type_7(n: usize) {
-        Repository::with_effects_mut(|effects| {
-            effects[n].duration += 1;
+        let gs = Repository::global_mut();
+        gs.effects[n].duration += 1;
 
-            let map_index = effects[n].data[0] as usize
-                + effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
+        let map_index = gs.effects[n].data[0] as usize
+            + gs.effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
 
-            if effects[n].duration == Self::EFFECT_MAGIC_DURATION {
-                effects[n].used = core::constants::USE_EMPTY;
-                Repository::with_map_mut(|map| {
-                    map[map_index].flags &= !core::constants::MF_GFX_CMAGIC;
-                });
-            } else {
-                Repository::with_map_mut(|map| {
-                    map[map_index].flags &= !core::constants::MF_GFX_CMAGIC;
-                    map[map_index].flags |= ((effects[n].duration / 2) as u64) << 51;
-                });
-            }
-        });
+        if gs.effects[n].duration == Self::EFFECT_MAGIC_DURATION {
+            gs.effects[n].used = core::constants::USE_EMPTY;
+            gs.map[map_index].flags &= !core::constants::MF_GFX_CMAGIC;
+        } else {
+            let duration = gs.effects[n].duration;
+            gs.map[map_index].flags &= !core::constants::MF_GFX_CMAGIC;
+            gs.map[map_index].flags |= ((duration / 2) as u64) << 51;
+        }
     }
 
     /// Type 8: Respawn mist
@@ -380,54 +353,52 @@ impl EffectManager {
     /// Handles the visual respawn mist effect and, at mid-life, may spawn
     /// the NPC via the populate helper when the tile becomes available.
     fn handle_effect_type_8(n: usize) {
-        Repository::with_effects_mut(|effects| {
-            effects[n].duration += 1;
+        let (duration, map_index) = {
+            let gs = Repository::global_mut();
+            gs.effects[n].duration += 1;
+            let map_index = gs.effects[n].data[0] as usize
+                + gs.effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
+            (gs.effects[n].duration, map_index)
+        };
 
-            let map_index = effects[n].data[0] as usize
-                + effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
+        if duration == Self::EFFECT_DEATH_MIST_DURATION {
+            let gs = Repository::global_mut();
+            gs.effects[n].used = core::constants::USE_EMPTY;
+            gs.map[map_index].flags &= !core::constants::MF_GFX_DEATH;
+        } else {
+            {
+                let gs = Repository::global_mut();
+                gs.map[map_index].flags &= !core::constants::MF_GFX_DEATH;
+                gs.map[map_index].flags |= ((duration / 2) as u64) << 40;
+            }
 
-            if effects[n].duration == Self::EFFECT_DEATH_MIST_DURATION {
-                effects[n].used = core::constants::USE_EMPTY;
-                Repository::with_map_mut(|map| {
-                    map[map_index].flags &= !core::constants::MF_GFX_DEATH;
-                });
-            } else {
-                Repository::with_map_mut(|map| {
-                    map[map_index].flags &= !core::constants::MF_GFX_DEATH;
-                    map[map_index].flags |= ((effects[n].duration / 2) as u64) << 40;
-                });
+            if duration == Self::EFFECT_DEATH_MIST_MIDPOINT {
+                // See note above about cast/negation precedence.
+                Repository::global_mut().map[map_index].flags &=
+                    !(core::constants::MF_MOVEBLOCK as u64);
 
-                if effects[n].duration == Self::EFFECT_DEATH_MIST_MIDPOINT {
-                    Repository::with_map_mut(|map| {
-                        // See note above about cast/negation precedence.
-                        map[map_index].flags &= !(core::constants::MF_MOVEBLOCK as u64);
-                    });
+                let char_template_idx = Repository::global_mut().effects[n].data[2] as usize;
 
-                    // Port of `svr_effect.c`: only reschedule the respawn timer if spawning
-                    // failed (e.g., tile became blocked again). If spawning succeeded, let
-                    // the mist animation finish and then expire normally.
-                    let spawned =
-                        populate::pop_create_char(effects[n].data[2] as usize, true).is_some();
+                // Port of `svr_effect.c`: only reschedule the respawn timer if spawning
+                // failed (e.g., tile became blocked again). If spawning succeeded, let
+                // the mist animation finish and then expire normally.
+                let spawned = populate::pop_create_char(char_template_idx, true).is_some();
 
-                    if !spawned {
-                        let respawn_flag = Repository::with_character_templates(|char_templates| {
-                            (char_templates[effects[n].data[2] as usize].flags
-                                & CharacterFlags::Respawn.bits())
-                                != 0
-                        });
+                if !spawned {
+                    let respawn_flag =
+                        (Repository::global_mut().character_templates[char_template_idx].flags
+                            & CharacterFlags::Respawn.bits())
+                            != 0;
 
-                        if respawn_flag {
-                            effects[n].effect_type = 2;
-                            effects[n].duration = (core::constants::TICKS * 60 * 5) as u32;
-
-                            Repository::with_map_mut(|map| {
-                                map[map_index].flags &= !core::constants::MF_GFX_DEATH;
-                            });
-                        }
+                    if respawn_flag {
+                        let gs = Repository::global_mut();
+                        gs.effects[n].effect_type = 2;
+                        gs.effects[n].duration = (core::constants::TICKS * 60 * 5) as u32;
+                        gs.map[map_index].flags &= !core::constants::MF_GFX_DEATH;
                     }
                 }
             }
-        });
+        }
     }
 
     /// Type 9: Controlled item animation with optional monster creation
@@ -539,17 +510,16 @@ impl EffectManager {
     /// Clears queued-spell flags on the target character when the effect
     /// duration elapses.
     fn handle_effect_type_11(n: usize) {
-        Repository::with_effects_mut(|effects| {
-            effects[n].duration -= 1;
+        let gs = Repository::global_mut();
+        gs.effects[n].duration -= 1;
 
-            if effects[n].duration < 1 {
-                effects[n].used = core::constants::USE_EMPTY;
+        if gs.effects[n].duration < 1 {
+            gs.effects[n].used = core::constants::USE_EMPTY;
 
-                Repository::with_characters_mut(|characters| {
-                    characters[effects[n].data[0] as usize].data[96] &= !effects[n].data[1] as i32;
-                });
-            }
-        });
+            let co = gs.effects[n].data[0] as usize;
+            let mask = !gs.effects[n].data[1];
+            gs.characters[co].data[96] &= mask as i32;
+        }
     }
 
     /// Type 12: Death mist (alternative)
@@ -558,24 +528,20 @@ impl EffectManager {
     /// Similar to type 3 but used for alternative death-mist sequences; it
     /// increments the animation and clears map flags on completion.
     fn handle_effect_type_12(n: usize) {
-        Repository::with_effects_mut(|effects| {
-            effects[n].duration += 1;
+        let gs = Repository::global_mut();
+        gs.effects[n].duration += 1;
 
-            let map_index = effects[n].data[0] as usize
-                + effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
+        let map_index = gs.effects[n].data[0] as usize
+            + gs.effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
 
-            if effects[n].duration == Self::EFFECT_DEATH_MIST_DURATION {
-                effects[n].used = core::constants::USE_EMPTY;
-                Repository::with_map_mut(|map| {
-                    map[map_index].flags &= !core::constants::MF_GFX_DEATH;
-                });
-            } else {
-                Repository::with_map_mut(|map| {
-                    map[map_index].flags &= !core::constants::MF_GFX_DEATH;
-                    map[map_index].flags |= ((effects[n].duration / 2) as u64) << 40;
-                });
-            }
-        });
+        if gs.effects[n].duration == Self::EFFECT_DEATH_MIST_DURATION {
+            gs.effects[n].used = core::constants::USE_EMPTY;
+            gs.map[map_index].flags &= !core::constants::MF_GFX_DEATH;
+        } else {
+            let duration = gs.effects[n].duration;
+            gs.map[map_index].flags &= !core::constants::MF_GFX_DEATH;
+            gs.map[map_index].flags |= ((duration / 2) as u64) << 40;
+        }
     }
 
     /// Port of `fx_add_effect` from `svr_effect.cpp`
@@ -586,21 +552,20 @@ impl EffectManager {
         d2: i32,
         d3: i32,
     ) -> Option<usize> {
-        Repository::with_effects_mut(|effects| {
-            for n in 1..core::constants::MAXEFFECT {
-                if effects[n].used == core::constants::USE_EMPTY {
-                    effects[n].used = core::constants::USE_ACTIVE;
-                    effects[n].effect_type = effect_type as u8;
-                    effects[n].duration = duration as u32;
-                    effects[n].flags = 0;
-                    effects[n].data[0] = d1 as u32;
-                    effects[n].data[1] = d2 as u32;
-                    effects[n].data[2] = d3 as u32;
-                    return Some(n);
-                }
+        let effects = &mut Repository::global_mut().effects;
+        for n in 1..core::constants::MAXEFFECT {
+            if effects[n].used == core::constants::USE_EMPTY {
+                effects[n].used = core::constants::USE_ACTIVE;
+                effects[n].effect_type = effect_type as u8;
+                effects[n].duration = duration as u32;
+                effects[n].flags = 0;
+                effects[n].data[0] = d1 as u32;
+                effects[n].data[1] = d2 as u32;
+                effects[n].data[2] = d3 as u32;
+                return Some(n);
             }
-            None
-        })
+        }
+        None
     }
 
     // Helper functions
@@ -777,14 +742,16 @@ impl EffectManager {
             2 - 2 * core::constants::SERVER_MAPX,
         ];
 
-        Repository::with_map(|map| {
-            for offset in offsets.iter() {
-                let m = (map_index as i32 + offset) as usize;
-                if m < map.len() && Self::is_beam(map[m].it as usize) {
+        let map_len = Repository::global_mut().map.len();
+        for offset in offsets.iter() {
+            let m = (map_index as i32 + offset) as usize;
+            if m < map_len {
+                let it = Repository::global_mut().map[m].it;
+                if Self::is_beam(it as usize) {
                     return true;
                 }
             }
-            false
-        })
+        }
+        false
     }
 }

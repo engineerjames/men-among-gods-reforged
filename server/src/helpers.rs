@@ -81,94 +81,93 @@ pub fn write_c_string(buf: &mut [u8], s: &str) {
 pub fn create_special_item(temp: usize) -> Option<usize> {
     let item_id = God::create_item(temp)?;
 
-    Repository::with_items_mut(|items| {
-        let item = &mut items[item_id];
+    let gs = GameState::global_mut();
+    let item = &mut gs.items[item_id];
 
-        // Match C: the resulting item should not be linked to its original template.
-        item.temp = 0;
+    // Match C: the resulting item should not be linked to its original template.
+    item.temp = 0;
 
-        let mut mul: i16 = 1;
-        let pref: &str = match random_mod_usize(8) {
-            0 => {
-                // "Shining " +10 light
-                item.light[0] += 10;
-                "Shining "
-            }
-            1 => {
-                // "Godly " doubles suffix bonuses
-                mul = 2;
-                "Godly "
-            }
-            _ => "",
-        };
-
-        let suffix: &str = match random_mod_usize(8) {
-            0 => {
-                item.attrib[AT_BRAVE as usize][0] += 4 * mul as i8;
-                " of the Lion"
-            }
-            1 => {
-                item.attrib[AT_WILL as usize][0] += 4 * mul as i8;
-                " of the Snake"
-            }
-            2 => {
-                item.attrib[AT_INT as usize][0] += 4 * mul as i8;
-                " of the Owl"
-            }
-            3 => {
-                item.attrib[AT_AGIL as usize][0] += 4 * mul as i8;
-                " of the Weasel"
-            }
-            4 => {
-                item.attrib[AT_STREN as usize][0] += 4 * mul as i8;
-                " of the Bear"
-            }
-            5 => {
-                item.mana[0] += 10 * mul;
-                " of Magic"
-            }
-            6 => {
-                item.hp[0] += 10 * mul;
-                " of Life"
-            }
-            7 => {
-                item.armor[0] += 2 * mul as i8;
-                " of Defence"
-            }
-            _ => "",
-        };
-
-        let spr: i16 = match temp {
-            57 => 840,    // Bronze Helmet
-            59 => 845,    // Bronze Armor
-            63 => 830,    // Steel Helmt
-            65 => 835,    // Steel Armor
-            69 => 870,    // Golden Helmet
-            71 => 875,    // Golden Armor
-            75 => 850,    // Crystal Helmet
-            76 => 855,    // Crystal Armor
-            94 => 860,    // Titanium Helmet
-            95 => 865,    // Titanium Armor
-            981 => 16775, // Emerald Helmet
-            982 => 16780, // Emerald Armor
-            _ => item.sprite[0],
-        };
-
-        item.sprite[0] = spr;
-        item.max_damage = 0;
-
-        let base_name = c_string_to_str(&item.name);
-        let combined = format!("{}{}{}", pref, base_name, suffix);
-
-        write_c_string(&mut item.name, &combined);
-        // Match C: titlecase first letter of *name* only.
-        if let Some(b0) = item.name.first_mut() {
-            *b0 = b0.to_ascii_uppercase();
+    let mut mul: i16 = 1;
+    let pref: &str = match random_mod_usize(8) {
+        0 => {
+            // "Shining " +10 light
+            item.light[0] += 10;
+            "Shining "
         }
+        1 => {
+            // "Godly " doubles suffix bonuses
+            mul = 2;
+            "Godly "
+        }
+        _ => "",
+    };
 
-        write_c_string(&mut item.reference, &combined);
-        write_c_string(&mut item.description, &format!("A {}.", combined));
-    });
+    let suffix: &str = match random_mod_usize(8) {
+        0 => {
+            item.attrib[AT_BRAVE as usize][0] += 4 * mul as i8;
+            " of the Lion"
+        }
+        1 => {
+            item.attrib[AT_WILL as usize][0] += 4 * mul as i8;
+            " of the Snake"
+        }
+        2 => {
+            item.attrib[AT_INT as usize][0] += 4 * mul as i8;
+            " of the Owl"
+        }
+        3 => {
+            item.attrib[AT_AGIL as usize][0] += 4 * mul as i8;
+            " of the Weasel"
+        }
+        4 => {
+            item.attrib[AT_STREN as usize][0] += 4 * mul as i8;
+            " of the Bear"
+        }
+        5 => {
+            item.mana[0] += 10 * mul;
+            " of Magic"
+        }
+        6 => {
+            item.hp[0] += 10 * mul;
+            " of Life"
+        }
+        7 => {
+            item.armor[0] += 2 * mul as i8;
+            " of Defence"
+        }
+        _ => "",
+    };
+
+    let spr: i16 = match temp {
+        57 => 840,    // Bronze Helmet
+        59 => 845,    // Bronze Armor
+        63 => 830,    // Steel Helmt
+        65 => 835,    // Steel Armor
+        69 => 870,    // Golden Helmet
+        71 => 875,    // Golden Armor
+        75 => 850,    // Crystal Helmet
+        76 => 855,    // Crystal Armor
+        94 => 860,    // Titanium Helmet
+        95 => 865,    // Titanium Armor
+        981 => 16775, // Emerald Helmet
+        982 => 16780, // Emerald Armor
+        _ => item.sprite[0],
+    };
+
+    item.sprite[0] = spr;
+    item.max_damage = 0;
+
+    let base_name = c_string_to_str(&item.name);
+    let combined = format!("{}{}{}", pref, base_name, suffix);
+
+    write_c_string(&mut item.name, &combined);
+    // Match C: titlecase first letter of *name* only.
+    if let Some(b0) = item.name.first_mut() {
+        *b0 = b0.to_ascii_uppercase();
+    }
+
+    write_c_string(&mut item.reference, &combined);
+    write_c_string(&mut item.description, &format!("A {}.", combined));
 
     Some(item_id)
 }
@@ -412,20 +411,19 @@ pub fn get_class_name(nr: i32) -> &'static str {
 /// * `cn` - Character index owning the kill record
 /// * `val` - Monster class id
 pub fn killed_class(cn: usize, val: i32) -> bool {
-    Repository::with_characters_mut(|characters| {
-        let (bit, data_idx) = if val < 32 {
-            (1 << val, 60)
-        } else if val < 64 {
-            (1 << (val - 32), 61)
-        } else if val < 96 {
-            (1 << (val - 64), 62)
-        } else {
-            (1 << (val - 96), 63)
-        };
-        let tmp = characters[cn].data[data_idx] & bit;
-        characters[cn].data[data_idx] |= bit;
-        tmp != 0
-    })
+    let (bit, data_idx) = if val < 32 {
+        (1 << val, 60)
+    } else if val < 64 {
+        (1 << (val - 32), 61)
+    } else if val < 96 {
+        (1 << (val - 64), 62)
+    } else {
+        (1 << (val - 96), 63)
+    };
+    let characters = &mut GameState::global_mut().characters;
+    let tmp = characters[cn].data[data_idx] & bit;
+    characters[cn].data[data_idx] |= bit;
+    tmp != 0
 }
 
 /// Short rank names used in compact `who` displays.
@@ -472,7 +470,10 @@ pub fn ago_string(dt: u128) -> String {
 /// "It's H:MM on the Dth of the Mth month of the year Y."
 pub fn show_time(gs: &mut GameState, cn: usize) {
     // Read time values from globals
-    let (mdtime, mdday, mdyear) = Repository::with_globals(|g| (g.mdtime, g.mdday, g.mdyear));
+    let (mdtime, mdday, mdyear) = {
+        let g = &gs.globals;
+        (g.mdtime, g.mdday, g.mdyear)
+    };
 
     let hour = mdtime / (60 * 60);
     let minute = (mdtime / 60) % 60;

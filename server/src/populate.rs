@@ -176,26 +176,23 @@ pub fn pop_create_item(temp: usize, cn: usize) -> usize {
 
         // Apply item damage for regular items
         if in_id != 0 {
-            let max_damage = Repository::with_items(|items| items[in_id].max_damage);
+            let max_damage = Repository::global_mut().items[in_id].max_damage;
             if max_damage > 0 {
                 // 50% chance to age the item first
                 if helpers::random_mod(2) == 0 {
-                    Repository::with_items_mut(|items| {
-                        items[in_id].current_damage = max_damage + 1;
-                    });
+                    Repository::global_mut().items[in_id].current_damage = max_damage + 1;
                     use_item::item_age(in_id);
                 }
                 // Set random damage
-                Repository::with_items_mut(|items| {
-                    items[in_id].current_damage = helpers::random_mod(max_damage);
-                });
+                Repository::global_mut().items[in_id].current_damage =
+                    helpers::random_mod(max_damage);
             }
         }
     } else {
         let char_name = Repository::global_mut().characters[cn]
             .get_name()
             .to_string();
-        let item_name = Repository::with_items(|items| items[in_id].get_name().to_string());
+        let item_name = Repository::global_mut().items[in_id].get_name().to_string();
         log::info!("{} got unique item {}.", char_name, item_name);
     }
 
@@ -279,7 +276,7 @@ pub fn pop_create_bonus(cn: usize, _chance: i32) -> i32 {
         let char_name = Repository::global_mut().characters[cn]
             .get_name()
             .to_string();
-        let item_name = Repository::with_items(|items| items[in_id].get_name().to_string());
+        let item_name = Repository::global_mut().items[in_id].get_name().to_string();
         log::info!("{} got {} (template={})", char_name, item_name, template);
         in_id as i32
     } else {
@@ -310,19 +307,20 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
     let in_id = in_id.unwrap();
 
     // Customize the belt item (clear template and set sprite/name/description)
-    Repository::with_items_mut(|items| {
-        items[in_id].temp = 0; // Clear template
-        items[in_id].sprite[0] = 16964;
+    {
+        let item = &mut Repository::global_mut().items[in_id];
+        item.temp = 0; // Clear template
+        item.sprite[0] = 16964;
         let name_bytes = b"Rainbow Belt";
-        items[in_id].name[..name_bytes.len()].copy_from_slice(name_bytes);
-        items[in_id].name[name_bytes.len()..].fill(0);
+        item.name[..name_bytes.len()].copy_from_slice(name_bytes);
+        item.name[name_bytes.len()..].fill(0);
         let desc_bytes = b"An ancient belt. It seems to be highly magical";
-        items[in_id].description[..desc_bytes.len()].copy_from_slice(desc_bytes);
-        items[in_id].description[desc_bytes.len()..].fill(0);
+        item.description[..desc_bytes.len()].copy_from_slice(desc_bytes);
+        item.description[desc_bytes.len()..].fill(0);
         let ref_bytes = b"rainbow belt";
-        items[in_id].reference[..ref_bytes.len()].copy_from_slice(ref_bytes);
-        items[in_id].reference[ref_bytes.len()..].fill(0);
-    });
+        item.reference[..ref_bytes.len()].copy_from_slice(ref_bytes);
+        item.reference[ref_bytes.len()..].fill(0);
+    }
 
     log::info!(
         "Character {} with rank {} got Rainbow Belt (t={})",
@@ -337,10 +335,11 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
     }
 
     // Update item properties
-    Repository::with_items_mut(|items| {
-        items[in_id].power += 5 * num_skills;
-        items[in_id].value += 10000 * num_skills;
-    });
+    {
+        let item = &mut Repository::global_mut().items[in_id];
+        item.power += 5 * num_skills;
+        item.value += 10000 * num_skills;
+    }
 
     // Add random skills to belt
     for _ in 0..num_skills {
@@ -351,8 +350,8 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
             skill_value = 1; // Ensure at least 1
         }
 
-        Repository::with_items_mut(|items| {
-            let item = &mut items[in_id];
+        {
+            let item = &mut Repository::global_mut().items[in_id];
             match skill_number {
                 // Attributes
                 0 => {
@@ -685,7 +684,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                 }
                 _ => {}
             }
-        });
+        }
     }
 
     in_id as i32
@@ -705,13 +704,13 @@ pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
     };
 
     // Copy template and set initial fields (matches C++: ch[cn] = ch_temp[n]).
-    Repository::with_characters_mut(|characters| {
-        characters[cn] =
-            Repository::with_character_templates(|char_templates| char_templates[template_id]);
-        characters[cn].pass1 = helpers::random_mod(0x3fffffff);
-        characters[cn].pass2 = helpers::random_mod(0x3fffffff);
-        characters[cn].temp = template_id as u16;
-    });
+    {
+        Repository::global_mut().characters[cn] =
+            Repository::global_mut().character_templates[template_id];
+        Repository::global_mut().characters[cn].pass1 = helpers::random_mod(0x3fffffff);
+        Repository::global_mut().characters[cn].pass2 = helpers::random_mod(0x3fffffff);
+        Repository::global_mut().characters[cn].temp = template_id as u16;
+    }
 
     let mut flag = false;
     let mut hasitems = false;
@@ -726,16 +725,10 @@ pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
         let tmp_instance = God::create_item(tmp_template as usize).unwrap_or(0);
         if tmp_instance == 0 {
             flag = true;
-            Repository::with_characters_mut(|characters| {
-                characters[cn].item[m] = 0;
-            });
+            Repository::global_mut().characters[cn].item[m] = 0;
         } else {
-            Repository::with_items_mut(|items| {
-                items[tmp_instance].carried = cn as u16;
-            });
-            Repository::with_characters_mut(|characters| {
-                characters[cn].item[m] = tmp_instance as u32;
-            });
+            Repository::global_mut().items[tmp_instance].carried = cn as u16;
+            Repository::global_mut().characters[cn].item[m] = tmp_instance as u32;
             hasitems = true;
         }
     }
@@ -750,28 +743,18 @@ pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
         let tmp_instance = pop_create_item(tmp_template as usize, cn);
         if tmp_instance == 0 {
             flag = true;
-            Repository::with_characters_mut(|characters| {
-                characters[cn].worn[m] = 0;
-            });
+            Repository::global_mut().characters[cn].worn[m] = 0;
         } else {
-            Repository::with_items_mut(|items| {
-                items[tmp_instance].carried = cn as u16;
-            });
-            Repository::with_characters_mut(|characters| {
-                characters[cn].worn[m] = tmp_instance as u32;
-            });
+            Repository::global_mut().items[tmp_instance].carried = cn as u16;
+            Repository::global_mut().characters[cn].worn[m] = tmp_instance as u32;
             hasitems = true;
         }
     }
 
     // Clear spells from template.
-    Repository::with_characters_mut(|characters| {
-        for m in 0..20usize {
-            if characters[cn].spell[m] != 0 {
-                characters[cn].spell[m] = 0;
-            }
-        }
-    });
+    for m in 0..20usize {
+        Repository::global_mut().characters[cn].spell[m] = 0;
+    }
 
     // Create carried item (citem) from template.
     let tmp_template = Repository::global_mut().characters[cn].citem;
@@ -779,16 +762,10 @@ pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
         let tmp_instance = God::create_item(tmp_template as usize).unwrap_or(0);
         if tmp_instance == 0 {
             flag = true;
-            Repository::with_characters_mut(|characters| {
-                characters[cn].citem = 0;
-            });
+            Repository::global_mut().characters[cn].citem = 0;
         } else {
-            Repository::with_items_mut(|items| {
-                items[tmp_instance].carried = cn as u16;
-            });
-            Repository::with_characters_mut(|characters| {
-                characters[cn].citem = tmp_instance as u32;
-            });
+            Repository::global_mut().items[tmp_instance].carried = cn as u16;
+            Repository::global_mut().characters[cn].citem = tmp_instance as u32;
             hasitems = true;
         }
     }
@@ -796,14 +773,13 @@ pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
     // Roll back if any item creation failed.
     if flag {
         God::destroy_items(cn);
-        Repository::with_characters_mut(|characters| {
-            characters[cn].used = USE_EMPTY;
-        });
+        Repository::global_mut().characters[cn].used = USE_EMPTY;
         return None;
     }
 
     // Finalize stats (mana logic matches C++).
-    Repository::with_characters_mut(|characters| {
+    {
+        let characters = &mut Repository::global_mut().characters;
         characters[cn].a_end = 1000000;
         characters[cn].a_hp = 1000000;
 
@@ -819,7 +795,7 @@ pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
 
         characters[cn].dir = DX_DOWN;
         characters[cn].data[92] = TICKS * 60;
-    });
+    }
 
     // Bonus item / belt logic (matches C++: only if evil and hasitems; only first free slot).
     let has_meditation = Repository::global_mut().characters[cn].skill[SK_MEDIT][0] != 0;
@@ -848,12 +824,8 @@ pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
                 let tmp = pop_create_bonus(cn, chance);
                 if tmp != 0 {
                     let tmp = tmp as usize;
-                    Repository::with_items_mut(|items| {
-                        items[tmp].carried = cn as u16;
-                    });
-                    Repository::with_characters_mut(|characters| {
-                        characters[cn].item[slot] = tmp as u32;
-                    });
+                    Repository::global_mut().items[tmp].carried = cn as u16;
+                    Repository::global_mut().characters[cn].item[slot] = tmp as u32;
                 }
             }
         }
@@ -868,12 +840,8 @@ pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
                 let tmp = pop_create_bonus_belt(cn);
                 if tmp != 0 {
                     let tmp = tmp as usize;
-                    Repository::with_items_mut(|items| {
-                        items[tmp].carried = cn as u16;
-                    });
-                    Repository::with_characters_mut(|characters| {
-                        characters[cn].item[slot] = tmp as u32;
-                    });
+                    Repository::global_mut().items[tmp].carried = cn as u16;
+                    Repository::global_mut().characters[cn].item[slot] = tmp as u32;
                 }
             }
         }
@@ -889,17 +857,13 @@ pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
         if x < 0 || y < 0 || !God::drop_char(cn, x as usize, y as usize) {
             log::error!("Could not drop char template {}", template_id);
             God::destroy_items(cn);
-            Repository::with_characters_mut(|characters| {
-                characters[cn].used = USE_EMPTY;
-            });
+            Repository::global_mut().characters[cn].used = USE_EMPTY;
             return None;
         }
     }
 
     Repository::global_mut().do_update_char(cn);
-    Repository::with_globals_mut(|globals| {
-        globals.npcs_created += 1;
-    });
+    Repository::global_mut().globals.npcs_created += 1;
 
     Some(cn)
 }
