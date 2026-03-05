@@ -103,7 +103,12 @@ impl GameState {
     ///
     /// # Returns
     /// * `Ordering` indicating the sort relation of `in1` and `in2`.
-    pub(crate) fn qsort_compare(&mut self, in1: usize, in2: usize, order: &str) -> std::cmp::Ordering {
+    pub(crate) fn qsort_compare(
+        &mut self,
+        in1: usize,
+        in2: usize,
+        order: &str,
+    ) -> std::cmp::Ordering {
         // Handle empty slots - they go to the end
         if in1 == 0 && in2 == 0 {
             return Ordering::Equal;
@@ -136,10 +141,8 @@ impl GameState {
                 }
                 'a' => {
                     // Sort by armor
-                    let is_armor1 =
-                        item1.flags & core::constants::ItemFlags::IF_ARMOR.bits() != 0;
-                    let is_armor2 =
-                        item2.flags & core::constants::ItemFlags::IF_ARMOR.bits() != 0;
+                    let is_armor1 = item1.flags & core::constants::ItemFlags::IF_ARMOR.bits() != 0;
+                    let is_armor2 = item2.flags & core::constants::ItemFlags::IF_ARMOR.bits() != 0;
                     if is_armor1 && !is_armor2 {
                         return Ordering::Less;
                     }
@@ -491,7 +494,11 @@ impl GameState {
     /// * `item_idx` - Item index to inspect
     pub(crate) fn do_look_item(&mut self, cn: usize, item_idx: usize) {
         // Determine if item is active
-        let act = if self.items[item_idx].active != 0 { 1 } else { 0 };
+        let act = if self.items[item_idx].active != 0 {
+            1
+        } else {
+            0
+        };
 
         // Check if character has the item in inventory or worn
         let mut has_item = false;
@@ -560,8 +567,7 @@ impl GameState {
             }
 
             // Show detailed info for build mode
-            let is_building =
-                self.characters[cn].flags & CharacterFlags::BuildMode.bits() != 0;
+            let is_building = self.characters[cn].flags & CharacterFlags::BuildMode.bits() != 0;
 
             if is_building {
                 let temp = self.items[item_idx].temp;
@@ -624,8 +630,7 @@ impl GameState {
             }
 
             // Show god-mode info
-            let is_god =
-                self.characters[cn].flags & CharacterFlags::God.bits() != 0;
+            let is_god = self.characters[cn].flags & CharacterFlags::God.bits() != 0;
 
             if is_god {
                 let temp = self.items[item_idx].temp;

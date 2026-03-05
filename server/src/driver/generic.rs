@@ -1510,7 +1510,8 @@ pub fn char_moveto(cn: usize, x: i32, y: i32, flag: i32, x2: i32, y2: i32) -> i3
             0
         }
         d if d == Some(core::constants::DX_LEFT) => {
-            if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_LEFT as i32
+            if Repository::with_characters(|ch| ch[cn].dir as i32)
+                != core::constants::DX_LEFT as i32
             {
                 act_turn_left(cn);
                 return 0;
@@ -1531,7 +1532,8 @@ pub fn char_moveto(cn: usize, x: i32, y: i32, flag: i32, x2: i32, y2: i32) -> i3
             0
         }
         d if d == Some(core::constants::DX_DOWN) => {
-            if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_DOWN as i32
+            if Repository::with_characters(|ch| ch[cn].dir as i32)
+                != core::constants::DX_DOWN as i32
             {
                 act_turn_down(cn);
                 return 0;
@@ -1552,7 +1554,8 @@ pub fn char_moveto(cn: usize, x: i32, y: i32, flag: i32, x2: i32, y2: i32) -> i3
             0
         }
         d if d == Some(core::constants::DX_UP) => {
-            if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_UP as i32 {
+            if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_UP as i32
+            {
                 act_turn_up(cn);
                 return 0;
             }
@@ -1582,7 +1585,9 @@ pub fn drv_moveto(_gs: &mut GameState, cn: usize, x: usize, y: usize) {
         Repository::with_characters_mut(|ch| ch[cn].goto_x = 0);
     }
     if ret == -1 {
-        Repository::with_characters_mut(|ch| ch[cn].last_action = core::constants::ERR_FAILED as i8);
+        Repository::with_characters_mut(|ch| {
+            ch[cn].last_action = core::constants::ERR_FAILED as i8
+        });
     } else if ret == 1 {
         Repository::with_characters_mut(|ch| {
             ch[cn].last_action = core::constants::ERR_SUCCESS as i8
@@ -1619,7 +1624,9 @@ pub fn drv_dropto(_gs: &mut GameState, cn: usize, x: usize, y: usize) {
         Repository::with_characters_mut(|ch| ch[cn].misc_action = core::constants::DR_IDLE as u16);
     }
     if ret == -1 {
-        Repository::with_characters_mut(|ch| ch[cn].last_action = core::constants::ERR_FAILED as i8);
+        Repository::with_characters_mut(|ch| {
+            ch[cn].last_action = core::constants::ERR_FAILED as i8
+        });
     } else if ret == 1 {
         Repository::with_characters_mut(|ch| {
             ch[cn].last_action = core::constants::ERR_SUCCESS as i8
@@ -1634,7 +1641,9 @@ pub fn drv_pickupto(_gs: &mut GameState, cn: usize, x: usize, y: usize) {
         Repository::with_characters_mut(|ch| ch[cn].misc_action = core::constants::DR_IDLE as u16);
     }
     if ret == -1 {
-        Repository::with_characters_mut(|ch| ch[cn].last_action = core::constants::ERR_FAILED as i8);
+        Repository::with_characters_mut(|ch| {
+            ch[cn].last_action = core::constants::ERR_FAILED as i8
+        });
     } else if ret == 1 {
         Repository::with_characters_mut(|ch| {
             ch[cn].last_action = core::constants::ERR_SUCCESS as i8
@@ -1665,7 +1674,9 @@ pub fn drv_useto(_gs: &mut GameState, cn: usize, x: usize, y: usize) {
         Repository::with_characters_mut(|ch| ch[cn].misc_action = core::constants::DR_IDLE as u16);
     }
     if ret == -1 {
-        Repository::with_characters_mut(|ch| ch[cn].last_action = core::constants::ERR_FAILED as i8);
+        Repository::with_characters_mut(|ch| {
+            ch[cn].last_action = core::constants::ERR_FAILED as i8
+        });
     } else if ret == 1 {
         Repository::with_characters_mut(|ch| {
             ch[cn].last_action = core::constants::ERR_SUCCESS as i8
@@ -1724,7 +1735,9 @@ pub fn drv_give_char(cn: usize, co: usize) {
         Repository::with_characters_mut(|ch| ch[cn].misc_action = core::constants::DR_IDLE as u16);
     }
     if ret == -1 {
-        Repository::with_characters_mut(|ch| ch[cn].last_action = core::constants::ERR_FAILED as i8);
+        Repository::with_characters_mut(|ch| {
+            ch[cn].last_action = core::constants::ERR_FAILED as i8
+        });
     } else if ret == 1 {
         Repository::with_characters_mut(|ch| {
             ch[cn].last_action = core::constants::ERR_SUCCESS as i8

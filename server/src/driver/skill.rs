@@ -12,11 +12,11 @@ use core::{
     types::FontColor,
 };
 
+use crate::game_state::GameState as Repository;
 use crate::{
     chlog, core::types::Character, driver, effect::EffectManager, game_state::GameState, god::God,
     helpers, populate,
 };
-use crate::game_state::GameState as Repository;
 
 use core::constants::LEGACY_TICKS;
 
@@ -111,7 +111,8 @@ pub fn spellcost(cn: usize, cost: i32) -> i32 {
     // Ported from C++ spellcost(int cn, int cost)
     // concentrate:
     let mut cost = cost;
-    let concen_skill = Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_CONCEN][0]);
+    let concen_skill =
+        Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_CONCEN][0]);
     if concen_skill != 0 {
         let concen_val =
             Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_CONCEN][5]);
@@ -1352,7 +1353,10 @@ pub fn spell_mshield(cn: usize, co: usize, power: i32) -> i32 {
         it[in_].name = name_bytes;
         it[in_].flags |= ItemFlags::IF_SPELL.bits();
         it[in_].sprite[1] = 95;
-        let dur = spell_race_mod(power * 256, Repository::with_characters(|ch| ch[cn].kindred));
+        let dur = spell_race_mod(
+            power * 256,
+            Repository::with_characters(|ch| ch[cn].kindred),
+        );
         it[in_].duration = dur as u32;
         it[in_].active = dur as u32;
         it[in_].armor[1] = (it[in_].active / 1024) as i8 + 1;
@@ -1481,7 +1485,11 @@ pub fn spell_heal(cn: usize, co: usize, power: i32) -> i32 {
                 &format!("{} cast heal on you.\n", c_string_to_str(&reference)),
             );
         } else {
-            Repository::global_mut().do_character_log(co, FontColor::Red, "You have been healed.\n");
+            Repository::global_mut().do_character_log(
+                co,
+                FontColor::Red,
+                "You have been healed.\n",
+            );
         }
         Repository::global_mut().do_character_log(
             cn,
@@ -1861,8 +1869,9 @@ pub fn skill_curse(cn: usize) {
         {
             if Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_CURSE][5]) as i32
                 + helpers::random_mod_i32(20)
-                > Repository::with_characters(|ch| ch[maybe_co].skill[core::constants::SK_RESIST][5])
-                    as i32
+                > Repository::with_characters(|ch| {
+                    ch[maybe_co].skill[core::constants::SK_RESIST][5]
+                }) as i32
                     + helpers::random_mod_i32(20)
             {
                 spell_curse(
@@ -1898,7 +1907,8 @@ pub fn warcry(cn: usize, co: usize, power: i32) -> i32 {
         return 0;
     }
 
-    if power < Repository::with_characters(|ch| ch[co].skill[core::constants::SK_RESIST][5]) as i32 {
+    if power < Repository::with_characters(|ch| ch[co].skill[core::constants::SK_RESIST][5]) as i32
+    {
         return 0;
     }
 
@@ -1997,7 +2007,8 @@ pub fn skill_warcry(cn: usize) {
 
     Repository::with_characters_mut(|ch| ch[cn].a_end -= 150 * 1000);
 
-    let power = Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_WARCRY][5] as i32);
+    let power =
+        Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_WARCRY][5] as i32);
 
     let xf = std::cmp::max(1, Repository::with_characters(|ch| ch[cn].x as i32) - 10);
     let yf = std::cmp::max(1, Repository::with_characters(|ch| ch[cn].y as i32) - 10);
@@ -2085,7 +2096,8 @@ pub fn item_info(cn: usize, in_: usize, _look: i32) {
     }
 
     // HP/End/Mana
-    let (hp0, hp1, hp2) = Repository::with_items(|it| (it[in_].hp[0], it[in_].hp[1], it[in_].hp[2]));
+    let (hp0, hp1, hp2) =
+        Repository::with_items(|it| (it[in_].hp[0], it[in_].hp[1], it[in_].hp[2]));
     if hp0 != 0 || hp1 != 0 || hp2 != 0 {
         Repository::global_mut().do_character_log(
             cn,
@@ -2311,7 +2323,9 @@ pub fn skill_identify(cn: usize) {
     let power: i32;
 
     let sane_item = if citem != 0 {
-        Repository::with_items(|it| citem < it.len() && it[citem].used != core::constants::USE_EMPTY)
+        Repository::with_items(|it| {
+            citem < it.len() && it[citem].used != core::constants::USE_EMPTY
+        })
     } else {
         false
     };
@@ -3441,8 +3455,9 @@ pub fn skill_ghost(cn: usize) {
 
     // Notify target and attacker
     if co != 0 {
-        if Repository::with_characters(|ch| (ch[co].flags & CharacterFlags::SpellIgnore.bits()) == 0)
-        {
+        if Repository::with_characters(|ch| {
+            (ch[co].flags & CharacterFlags::SpellIgnore.bits()) == 0
+        }) {
             Repository::global_mut().do_notify_character(
                 co as u32,
                 NT_GOTHIT as i32,

@@ -229,7 +229,11 @@ pub fn use_door(cn: usize, item_idx: usize) -> i32 {
                 });
             }
         });
-        Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, "The key vanished.\n");
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "The key vanished.\n",
+        );
     }
 
     // Now modify the door state
@@ -567,7 +571,11 @@ pub fn use_create_item3(cn: usize, item_idx: usize) -> i32 {
     let in2 = match in2 {
         Some(id) => id,
         None => {
-            Repository::global_mut().do_character_log(cn, core::types::FontColor::Green, "It's empty...\n");
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                "It's empty...\n",
+            );
             return 1;
         }
     };
@@ -764,7 +772,11 @@ pub fn use_chain(cn: usize, item_idx: usize) -> i32 {
         Repository::with_items(|items| (items[item_idx].temp as i32, items[item_idx].data[0]));
 
     if current_temp as u32 >= max_data {
-        Repository::global_mut().do_character_log(cn, core::types::FontColor::Blue, "It won't fit anymore.\n");
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Blue,
+            "It won't fit anymore.\n",
+        );
         return 0;
     }
 
@@ -2458,7 +2470,11 @@ pub fn rat_eye(cn: usize, item_idx: usize) -> i32 {
     let slot = match slot {
         Some(s) => s,
         None => {
-            Repository::global_mut().do_character_log(cn, core::types::FontColor::Green, "This doesnt fit.\n");
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                "This doesnt fit.\n",
+            );
             return 0;
         }
     };
@@ -2542,7 +2558,11 @@ pub fn skua_protect(cn: usize, item_idx: usize) -> i32 {
             core::types::FontColor::Green,
             "How dare you to call on Skua to help you? Slave of the Purple One!\n",
         );
-        Repository::global_mut().do_character_log(cn, core::types::FontColor::Green, "Your weapon vanished.\n");
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "Your weapon vanished.\n",
+        );
 
         Repository::with_characters_mut(|characters| {
             characters[cn].worn[WN_RHAND] = 0;
@@ -2614,7 +2634,11 @@ pub fn purple_protect(cn: usize, item_idx: usize) -> i32 {
             core::types::FontColor::Green,
             "How dare you to call on the Purple One to help you? Slave of Skua!\n",
         );
-        Repository::global_mut().do_character_log(cn, core::types::FontColor::Green, "Your weapon vanished.\n");
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "Your weapon vanished.\n",
+        );
 
         Repository::with_characters_mut(|characters| {
             characters[cn].worn[core::constants::WN_RHAND] = 0;
@@ -2994,8 +3018,9 @@ pub fn use_mine(cn: usize, item_idx: usize) -> i32 {
     use core::constants::{AT_STREN, WN_RHAND};
 
     // Get character strength
-    let mut str =
-        Repository::with_characters(|characters| characters[cn].attrib[AT_STREN as usize][5] as i32);
+    let mut str = Repository::with_characters(|characters| {
+        characters[cn].attrib[AT_STREN as usize][5] as i32
+    });
 
     // Check and subtract endurance
     let insufficient_endurance = Repository::with_characters_mut(|characters| {
@@ -3108,8 +3133,9 @@ pub fn use_mine_fast(cn: usize, item_idx: usize) -> i32 {
     }
 
     // Get item position and template
-    let (x, y, temp) =
-        Repository::with_items(|items| (items[item_idx].x, items[item_idx].y, items[item_idx].temp));
+    let (x, y, temp) = Repository::with_items(|items| {
+        (items[item_idx].x, items[item_idx].y, items[item_idx].temp)
+    });
 
     EffectManager::fx_add_effect(
         10,
@@ -3243,7 +3269,11 @@ pub fn build_amulet(cn: usize, item_idx: usize) -> i32 {
     let in2 = Repository::with_characters(|characters| characters[cn].citem as usize);
 
     if in2 == 0 || (in2 & 0x80000000) != 0 {
-        Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, "Nothing happens.\n");
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "Nothing happens.\n",
+        );
         return 0;
     }
 
@@ -3263,7 +3293,11 @@ pub fn build_amulet(cn: usize, item_idx: usize) -> i32 {
     } else if (t1 == 473 && t2 == 476) || (t1 == 476 && t2 == 473) {
         466
     } else {
-        Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, "That doesn't fit.\n");
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "That doesn't fit.\n",
+        );
         return 0;
     };
 
@@ -3844,7 +3878,11 @@ pub fn use_pentagram(cn: usize, item_idx: usize) -> i32 {
 
     // Display top 5 pentagrams
     if b[0] != 0 {
-        Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, "You're holding:\n");
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "You're holding:\n",
+        );
     }
 
     for n in 0..5 {
@@ -3967,7 +4005,10 @@ pub fn use_shrine(cn: usize, _item_idx: usize) -> i32 {
                 Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
-                    &format!("One fire point accounted for. You now have {} fire points.\n", fp),
+                    &format!(
+                        "One fire point accounted for. You now have {} fire points.\n",
+                        fp
+                    ),
                 );
             } else {
                 let fp = Repository::with_characters(|characters| characters[cn].data[70]);
@@ -4060,7 +4101,10 @@ pub fn use_shrine(cn: usize, _item_idx: usize) -> i32 {
                 Repository::global_mut().do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
-                    &format!("First place holder is {} with {} fire points.\n", name, bestval),
+                    &format!(
+                        "First place holder is {} with {} fire points.\n",
+                        name, bestval
+                    ),
                 );
             } else {
                 Repository::global_mut().do_character_log(
@@ -4071,7 +4115,11 @@ pub fn use_shrine(cn: usize, _item_idx: usize) -> i32 {
                         bestcount, bestval
                     ),
                 );
-                Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, " \n");
+                Repository::global_mut().do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    " \n",
+                );
 
                 Repository::with_characters(|characters| {
                     for m in 1..core::constants::MAXCHARS {
@@ -4252,8 +4300,9 @@ pub fn use_kill_undead(cn: usize, item_idx: usize) -> i32 {
     });
 
     // Get character position
-    let (ch_x, ch_y) =
-        Repository::with_characters(|characters| (characters[cn].x as i32, characters[cn].y as i32));
+    let (ch_x, ch_y) = Repository::with_characters(|characters| {
+        (characters[cn].x as i32, characters[cn].y as i32)
+    });
 
     // Damage all undead in 8x8 area
     for y in (ch_y - 8)..(ch_y + 8) {
@@ -4378,8 +4427,9 @@ pub fn teleport3(cn: usize, item_idx: usize) -> i32 {
             (items[citem].flags & ItemFlags::IF_LABYDESTROY.bits()) != 0
         });
         if has_flag {
-            let item_ref =
-                Repository::with_items(|items| c_string_to_str(&items[citem].reference).to_string());
+            let item_ref = Repository::with_items(|items| {
+                c_string_to_str(&items[citem].reference).to_string()
+            });
             Repository::with_characters_mut(|characters| {
                 characters[cn].citem = 0;
             });
@@ -4580,8 +4630,9 @@ pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
 
     // Mark this shrine as visited
     let shrine_bit = Repository::with_items(|items| items[item_idx].data[0]);
-    let already_visited =
-        Repository::with_characters(|characters| (characters[cn].data[21] as u32 & shrine_bit) != 0);
+    let already_visited = Repository::with_characters(|characters| {
+        (characters[cn].data[21] as u32 & shrine_bit) != 0
+    });
 
     if !already_visited {
         Repository::with_characters_mut(|characters| {
@@ -4613,7 +4664,10 @@ pub fn use_seyan_shrine(cn: usize, item_idx: usize) -> i32 {
     Repository::global_mut().do_character_log(
         cn,
         core::types::FontColor::Green,
-        &format!("You have visited {} of the 20 shrines of Kwai.\n", visited_bits),
+        &format!(
+            "You have visited {} of the 20 shrines of Kwai.\n",
+            visited_bits
+        ),
     );
 
     // Update sword weapon power based on shrines visited
@@ -4805,7 +4859,11 @@ pub fn spell_scroll(cn: usize, item_idx: usize) -> i32 {
     });
 
     if charges == 0 {
-        Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, "Nothing happened!\n");
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "Nothing happened!\n",
+        );
         return 0;
     }
 
@@ -4982,7 +5040,11 @@ pub fn use_lab8_key(cn: usize, item_idx: usize) -> i32 {
 
     let citem = Repository::with_characters(|characters| characters[cn].citem as usize);
     if citem == 0 || (citem & 0x80000000) != 0 {
-        Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, "Nothing happens.\n");
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "Nothing happens.\n",
+        );
         return 0;
     }
 
@@ -5118,8 +5180,9 @@ pub fn use_lab8_shrine(cn: usize, item_idx: usize) -> i32 {
         });
     }
 
-    let gift_ref =
-        Repository::with_items(|items| c_string_to_str(&items[gift.unwrap()].reference).to_string());
+    let gift_ref = Repository::with_items(|items| {
+        c_string_to_str(&items[gift.unwrap()].reference).to_string()
+    });
     Repository::global_mut().do_character_log(
         cn,
         core::types::FontColor::Yellow,
@@ -5567,7 +5630,11 @@ pub fn use_garbage(cn: usize, _item_idx: usize) -> i32 {
         Repository::global_mut().do_character_log(
             cn,
             core::types::FontColor::Yellow,
-            &format!("You disposed of {} gold and {} silver.\n", val / 100, val % 100),
+            &format!(
+                "You disposed of {} gold and {} silver.\n",
+                val / 100,
+                val % 100
+            ),
         );
     } else {
         // Item
@@ -5777,7 +5844,11 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
         Repository::with_items_mut(|items| items[item_idx].active = 0);
 
         if light0 != light1 && it_x > 0 {
-            Repository::global_mut().do_add_light(it_x as i32, it_y as i32, light0 as i32 - light1 as i32);
+            Repository::global_mut().do_add_light(
+                it_x as i32,
+                it_y as i32,
+                light0 as i32 - light1 as i32,
+            );
         }
 
         if carried {
@@ -5807,7 +5878,11 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
         Repository::with_items_mut(|items| items[item_idx].active = duration);
 
         if light0 != light1 && it_x > 0 {
-            Repository::global_mut().do_add_light(it_x as i32, it_y as i32, light1 as i32 - light0 as i32);
+            Repository::global_mut().do_add_light(
+                it_x as i32,
+                it_y as i32,
+                light1 as i32 - light0 as i32,
+            );
         }
 
         if carried {
@@ -5901,7 +5976,9 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
                     &format!(
                         "{} was killed by {}.\n",
                         Repository::with_characters(|ch| ch[cn].get_name().to_string()),
-                        Repository::with_items(|it| c_string_to_str(&it[item_idx].reference).to_string())
+                        Repository::with_items(
+                            |it| c_string_to_str(&it[item_idx].reference).to_string()
+                        )
                     ),
                 );
                 Repository::global_mut().do_character_log(
@@ -5909,7 +5986,9 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
                     core::types::FontColor::Yellow,
                     &format!(
                         "You were killed by {}.\n",
-                        Repository::with_items(|it| c_string_to_str(&it[item_idx].reference).to_string())
+                        Repository::with_items(
+                            |it| c_string_to_str(&it[item_idx].reference).to_string()
+                        )
                     ),
                 );
                 Repository::global_mut().do_character_killed(cn, 0, true);
@@ -6029,7 +6108,11 @@ pub fn use_soulstone(cn: usize, item_idx: usize) -> i32 {
             1
         }
         _ => {
-            Repository::global_mut().do_character_log(cn, core::types::FontColor::Blue, "Nothing happened.\n");
+            Repository::global_mut().do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "Nothing happened.\n",
+            );
             0
         }
     }
@@ -7132,7 +7215,11 @@ pub fn item_tick_expire(gs: &mut GameState) {
                     if damage_state == 5 {
                         let light = Repository::with_items(|items| items[in_idx].light[act]);
                         if light != 0 {
-                            Repository::global_mut().do_add_light(x as i32, y as i32, -(light as i32));
+                            Repository::global_mut().do_add_light(
+                                x as i32,
+                                y as i32,
+                                -(light as i32),
+                            );
                         }
 
                         Repository::with_map_mut(|map| {
@@ -7462,7 +7549,10 @@ pub fn trap1(cn: usize, item_idx: usize) {
         Repository::global_mut().do_character_log(
             cn,
             core::types::FontColor::Red,
-            &format!("You triggered an acid attack. Your {} desintegrated.", item_name),
+            &format!(
+                "You triggered an acid attack. Your {} desintegrated.",
+                item_name
+            ),
         );
         log::info!(
             "Character {} stepped on Acid Trap, {} vanished",
@@ -7527,7 +7617,11 @@ pub fn start_trap(cn: usize, item_idx: usize) {
             items[item_idx].active = duration;
         });
         if light0 != light1 && x > 0 {
-            Repository::global_mut().do_add_light(x as i32, y as i32, light1 as i32 - light0 as i32);
+            Repository::global_mut().do_add_light(
+                x as i32,
+                y as i32,
+                light1 as i32 - light0 as i32,
+            );
         }
     }
 
@@ -7604,7 +7698,11 @@ pub fn step_trap_remove(_cn: usize, item_idx: usize) {
             items[item_idx].active = 0;
         });
         if light0 != light1 && x > 0 {
-            Repository::global_mut().do_add_light(x as i32, y as i32, light0 as i32 - light1 as i32);
+            Repository::global_mut().do_add_light(
+                x as i32,
+                y as i32,
+                light0 as i32 - light1 as i32,
+            );
         }
     }
 }
@@ -7943,7 +8041,11 @@ pub fn step_portal_arena(cn: usize, item_idx: usize) -> i32 {
         (characters[cn].frx as usize, characters[cn].fry as usize)
     });
     if frx >= xs && frx <= xe && fry >= ys && fry <= ye {
-        Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, "You forfeit this fight.");
+        Repository::global_mut().do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "You forfeit this fight.",
+        );
         return 1;
     }
 
@@ -8094,7 +8196,8 @@ pub fn step_teleport(cn: usize, item_idx: usize) -> i32 {
         characters[cn].y = (m3 / SERVER_MAPX as usize) as i16;
     });
 
-    let (new_x, new_y) = Repository::with_characters(|characters| (characters[cn].x, characters[cn].y));
+    let (new_x, new_y) =
+        Repository::with_characters(|characters| (characters[cn].x, characters[cn].y));
     Repository::global_mut().do_area_notify(
         cn as i32,
         0,

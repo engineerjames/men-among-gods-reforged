@@ -5,8 +5,8 @@ use core::types::FontColor;
 
 use crate::core::types::skilltab;
 use crate::effect::EffectManager;
-use crate::god::God;
 use crate::game_state::GameState;
+use crate::god::God;
 use crate::{driver, helpers};
 
 impl GameState {
@@ -53,8 +53,7 @@ impl GameState {
         let wears_481 = self.char_wears_item(cn, 481);
 
         let map_index = char_x as usize + char_y as usize * core::constants::SERVER_MAPX as usize;
-        let has_nomagic_flag =
-            self.map[map_index].flags & core::constants::MF_NOMAGIC as u64 != 0;
+        let has_nomagic_flag = self.map[map_index].flags & core::constants::MF_NOMAGIC as u64 != 0;
 
         if has_nomagic_flag && !wears_466 && !wears_481 {
             let already_has_nomagic =
@@ -106,8 +105,7 @@ impl GameState {
         self.characters[cn].stunned = 0;
         self.characters[cn].light = 0;
 
-        let char_has_nomagic =
-            self.characters[cn].flags & CharacterFlags::NoMagic.bits() != 0;
+        let char_has_nomagic = self.characters[cn].flags & CharacterFlags::NoMagic.bits() != 0;
 
         // Calculate bonuses from worn items
         for n in 0..20 {
@@ -283,19 +281,16 @@ impl GameState {
         self.characters[cn].mana[5] = final_mana as u16;
 
         // Handle infrared vision
-        let is_player =
-            self.characters[cn].flags & CharacterFlags::Player.bits() != 0;
+        let is_player = self.characters[cn].flags & CharacterFlags::Player.bits() != 0;
 
         if is_player {
-            let has_infrared =
-                self.characters[cn].flags & CharacterFlags::Infrared.bits() != 0;
+            let has_infrared = self.characters[cn].flags & CharacterFlags::Infrared.bits() != 0;
 
             if infra == 15 && !has_infrared {
                 self.characters[cn].flags |= CharacterFlags::Infrared.bits();
                 self.do_character_log(cn, FontColor::Green, "You can see in the dark!\n");
             } else if infra != 15 && has_infrared {
-                let is_god =
-                    self.characters[cn].flags & CharacterFlags::God.bits() != 0;
+                let is_god = self.characters[cn].flags & CharacterFlags::God.bits() != 0;
 
                 if !is_god {
                     self.characters[cn].flags &= !CharacterFlags::Infrared.bits();
@@ -413,8 +408,7 @@ impl GameState {
     /// * `cn` - Character id to regenerate (called every tick)
     pub(crate) fn do_regenerate(&mut self, cn: usize) {
         // Check if character is stoned - no regeneration if stoned
-        let is_stoned =
-            self.characters[cn].flags & CharacterFlags::Stoned.bits() != 0;
+        let is_stoned = self.characters[cn].flags & CharacterFlags::Stoned.bits() != 0;
 
         if is_stoned {
             return;
@@ -423,8 +417,7 @@ impl GameState {
         // Determine moon multiplier for regen rates
         let mut moonmult = 20;
 
-        let is_player =
-            self.characters[cn].flags & CharacterFlags::Player.bits() != 0;
+        let is_player = self.characters[cn].flags & CharacterFlags::Player.bits() != 0;
         let globs_flags = self.globals.flags;
         let newmoon = self.globals.newmoon != 0;
         let fullmoon = self.globals.fullmoon != 0;
@@ -560,8 +553,7 @@ impl GameState {
         }
 
         // Undead characters get bonus HP regeneration
-        let is_undead =
-            self.characters[cn].flags & CharacterFlags::Undead.bits() != 0;
+        let is_undead = self.characters[cn].flags & CharacterFlags::Undead.bits() != 0;
 
         if is_undead {
             hp_regen = true;
@@ -575,12 +567,9 @@ impl GameState {
             let is_ankh = self.items[worn_neck as usize].temp == 768;
 
             if is_ankh {
-                let has_regen =
-                    self.characters[cn].skill[core::constants::SK_REGEN][0] != 0;
-                let has_rest =
-                    self.characters[cn].skill[core::constants::SK_REST][0] != 0;
-                let has_medit =
-                    self.characters[cn].skill[core::constants::SK_MEDIT][0] != 0;
+                let has_regen = self.characters[cn].skill[core::constants::SK_REGEN][0] != 0;
+                let has_rest = self.characters[cn].skill[core::constants::SK_REST][0] != 0;
+                let has_medit = self.characters[cn].skill[core::constants::SK_MEDIT][0] != 0;
 
                 if has_regen {
                     self.characters[cn].a_hp += scale(
@@ -623,8 +612,7 @@ impl GameState {
         }
 
         if mana_regen {
-            let needs_timer =
-                self.characters[cn].a_mana < self.characters[cn].mana[5] as i32 * 900;
+            let needs_timer = self.characters[cn].a_mana < self.characters[cn].mana[5] as i32 * 900;
             if needs_timer {
                 self.characters[cn].data[92] = core::constants::TICKS * 60;
             }
@@ -689,8 +677,7 @@ impl GameState {
                 }
 
                 if killed {
-                    let spell_name =
-                        self.items[spell_item as usize].get_name().to_string();
+                    let spell_name = self.items[spell_item as usize].get_name().to_string();
                     log::info!("Character {} killed by spell: {}", cn, spell_name);
                     self.do_character_log(
                         cn,
@@ -710,8 +697,7 @@ impl GameState {
                 }
 
                 if end_depleted {
-                    let spell_name =
-                        self.items[spell_item as usize].get_name().to_string();
+                    let spell_name = self.items[spell_item as usize].get_name().to_string();
                     self.items[spell_item as usize].active = 0;
                     log::info!(
                         "{} ran out due to lack of endurance for cn={}",
@@ -721,8 +707,7 @@ impl GameState {
                 }
 
                 if mana_depleted {
-                    let spell_name =
-                        self.items[spell_item as usize].get_name().to_string();
+                    let spell_name = self.items[spell_item as usize].get_name().to_string();
                     self.items[spell_item as usize].active = 0;
                     log::info!("{} ran out due to lack of mana for cn={}", spell_name, cn);
                 }
@@ -736,11 +721,9 @@ impl GameState {
 
                 // Warn when spell is about to run out
                 if active == core::constants::TICKS as u32 * 30 {
-                    let spell_name =
-                        self.items[spell_item as usize].get_name().to_string();
+                    let spell_name = self.items[spell_item as usize].get_name().to_string();
                     let is_player_or_usurp = self.characters[cn].flags
-                        & (CharacterFlags::Player.bits()
-                            | CharacterFlags::Usurp.bits())
+                        & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits())
                         != 0;
                     let temp = self.characters[cn].temp;
                     let companion_owner = self.characters[cn].data[63];
@@ -754,10 +737,9 @@ impl GameState {
                     } else if temp == core::constants::CT_COMPANION as u16 && companion_owner != 0 {
                         let co = companion_owner as usize;
                         if co > 0 && co < MAXCHARS {
-                            let is_sane_player =
-                                self.characters[co].used == core::constants::USE_ACTIVE
-                                    && self.characters[co].flags & CharacterFlags::Player.bits()
-                                        != 0;
+                            let is_sane_player = self.characters[co].used
+                                == core::constants::USE_ACTIVE
+                                && self.characters[co].flags & CharacterFlags::Player.bits() != 0;
 
                             if is_sane_player {
                                 let item_temp = self.items[spell_item as usize].temp;
@@ -767,8 +749,7 @@ impl GameState {
                                     || item_temp == core::constants::SK_PROTECT as u16
                                     || item_temp == core::constants::SK_ENHANCE as u16
                                 {
-                                    let co_name =
-                                        self.characters[co].get_name().to_string();
+                                    let co_name = self.characters[co].get_name().to_string();
 
                                     self.do_sayx(
                                         cn,
@@ -808,8 +789,7 @@ impl GameState {
 
                 // Handle spell expiration
                 if active == 0 {
-                    let spell_name =
-                        self.items[spell_item as usize].get_name().to_string();
+                    let spell_name = self.items[spell_item as usize].get_name().to_string();
 
                     // Recall spell - teleport character
                     if item_temp == core::constants::SK_RECALL as u16 {
@@ -870,10 +850,8 @@ impl GameState {
 
         // Handle underwater damage for players
         if uwater_active {
-            let is_player =
-                self.characters[cn].flags & CharacterFlags::Player.bits() != 0;
-            let is_immortal =
-                self.characters[cn].flags & CharacterFlags::Immortal.bits() != 0;
+            let is_player = self.characters[cn].flags & CharacterFlags::Player.bits() != 0;
+            let is_immortal = self.characters[cn].flags & CharacterFlags::Immortal.bits() != 0;
 
             if is_player && !is_immortal {
                 self.characters[cn].a_hp -= 250 + gothp;
@@ -887,8 +865,7 @@ impl GameState {
 
         // Handle item tear and wear for active players
         let used = self.characters[cn].used;
-        let is_player =
-            self.characters[cn].flags & CharacterFlags::Player.bits() != 0;
+        let is_player = self.characters[cn].flags & CharacterFlags::Player.bits() != 0;
 
         if used == core::constants::USE_ACTIVE && is_player {
             driver::char_item_expire(cn);
@@ -1292,15 +1269,13 @@ impl GameState {
     /// Actual damage dealt in game units (after internal scaling/truncation)
     pub(crate) fn do_hurt(&mut self, cn: usize, co: usize, dam: i32, type_hurt: i32) -> i32 {
         // Quick sanity/body check
-        let is_body =
-            (self.characters[co].flags & CharacterFlags::Body.bits()) != 0;
+        let is_body = (self.characters[co].flags & CharacterFlags::Body.bits()) != 0;
         if is_body {
             return 0;
         }
 
         // If a real player got hit, damage armour pieces
-        let co_is_player =
-            (self.characters[co].flags & CharacterFlags::Player.bits()) != 0;
+        let co_is_player = (self.characters[co].flags & CharacterFlags::Player.bits()) != 0;
         if co_is_player {
             driver::item_damage_armor(co, dam);
         }
@@ -1398,8 +1373,7 @@ impl GameState {
         }
 
         // Immortal characters take no damage
-        let is_immortal =
-            (self.characters[co].flags & CharacterFlags::Immortal.bits()) != 0;
+        let is_immortal = (self.characters[co].flags & CharacterFlags::Immortal.bits()) != 0;
         if is_immortal {
             dam = 0;
         }
@@ -1499,8 +1473,7 @@ impl GameState {
 
         if saved_by_god {
             if (mf_flags & core::constants::MF_ARENA as u64) == 0
-                && helpers::random_mod_i32(10000)
-                    < 5000 + self.characters[co].luck
+                && helpers::random_mod_i32(10000) < 5000 + self.characters[co].luck
             {
                 // Save the character
                 self.characters[co].a_hp = self.characters[co].hp[5] as i32 * 500;
@@ -1597,10 +1570,7 @@ impl GameState {
                 self.do_character_log(
                     co,
                     core::types::FontColor::Red,
-                    &format!(
-                        "Oh dear, that blow was fatal. {} killed you...\n",
-                        cn_name
-                    ),
+                    &format!("Oh dear, that blow was fatal. {} killed you...\n", cn_name),
                 );
             }
 
@@ -1633,12 +1603,9 @@ impl GameState {
                 && noexp == 0
             {
                 let tmp = self.do_char_score(co);
-                let rank = core::ranks::points2rank(
-                    self.characters[co].points_tot as u32,
-                ) as i32;
+                let rank = core::ranks::points2rank(self.characters[co].points_tot as u32) as i32;
                 let mut tmp = tmp;
-                let has_medit =
-                    self.characters[co].skill[core::constants::SK_MEDIT][0] != 0;
+                let has_medit = self.characters[co].skill[core::constants::SK_MEDIT][0] != 0;
                 if !has_medit {
                     let spells = self.characters[co].spell;
                     for n in 0..20 {

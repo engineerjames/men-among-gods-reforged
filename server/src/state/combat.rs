@@ -3,8 +3,8 @@ use core::string_operations::c_string_to_str;
 use core::types::FontColor;
 
 use crate::driver;
-use crate::helpers;
 use crate::game_state::GameState;
+use crate::helpers;
 
 impl GameState {
     /// Port of `get_fight_skill(int cn)` from `svr_do.cpp`
@@ -74,8 +74,7 @@ impl GameState {
         }
 
         // Only works on NPCs
-        let is_player =
-            (self.characters[co].flags & CharacterFlags::Player.bits()) != 0;
+        let is_player = (self.characters[co].flags & CharacterFlags::Player.bits()) != 0;
         if is_player {
             let name = self.characters[co].get_name().to_string();
             self.do_character_log(
@@ -139,8 +138,8 @@ impl GameState {
         }
 
         // Refuse if same group
-        let same_group =
-            self.characters[co].data[core::constants::CHD_GROUP] == self.characters[cv].data[core::constants::CHD_GROUP];
+        let same_group = self.characters[co].data[core::constants::CHD_GROUP]
+            == self.characters[cv].data[core::constants::CHD_GROUP];
         if same_group {
             let cname = self.characters[co].get_name().to_string();
             let vname = self.characters[cv].get_name().to_string();
@@ -163,8 +162,7 @@ impl GameState {
         }
 
         // If caller has text[1], make NPC say its text[1] with victim name substitution
-        let caller_has_text1 =
-            !c_string_to_str(&mut self.characters[cn].text[1]).is_empty();
+        let caller_has_text1 = !c_string_to_str(&mut self.characters[cn].text[1]).is_empty();
         if caller_has_text1 {
             let victim_name = self.characters[cv].get_name().to_string();
             driver::npc_saytext_n(co, 1, Some(&victim_name));
@@ -225,13 +223,10 @@ impl GameState {
         let mut s2 = self.get_fight_skill(co);
 
         // GF_MAYHEM: In mayhem mode, non-player characters get a skill bonus.
-        let mayhem =
-            (self.globals.flags & core::constants::GF_MAYHEM) != 0;
+        let mayhem = (self.globals.flags & core::constants::GF_MAYHEM) != 0;
         if mayhem {
-            let cn_is_player =
-                (self.characters[cn].flags & CharacterFlags::Player.bits()) != 0;
-            let co_is_player =
-                (self.characters[co].flags & CharacterFlags::Player.bits()) != 0;
+            let cn_is_player = (self.characters[cn].flags & CharacterFlags::Player.bits()) != 0;
+            let co_is_player = (self.characters[co].flags & CharacterFlags::Player.bits()) != 0;
             if !cn_is_player {
                 s1 += 10;
             }
@@ -242,11 +237,9 @@ impl GameState {
 
         // Apply negative luck adjustments if present (C++: luck < 0 -> luck/250 - 1)
         // Only applies to players in the original C code
-        let cn_is_player =
-            (self.characters[cn].flags & CharacterFlags::Player.bits()) != 0;
+        let cn_is_player = (self.characters[cn].flags & CharacterFlags::Player.bits()) != 0;
         let cn_luck = self.characters[cn].luck;
-        let co_is_player =
-            (self.characters[co].flags & CharacterFlags::Player.bits()) != 0;
+        let co_is_player = (self.characters[co].flags & CharacterFlags::Player.bits()) != 0;
         let co_luck = self.characters[co].luck;
         if cn_is_player && cn_luck < 0 {
             s1 += cn_luck / 250 - 1;
@@ -341,8 +334,7 @@ impl GameState {
 
         if hit {
             // Damage calculation follows original pattern
-            let strn =
-                self.characters[cn].attrib[core::constants::AT_STREN as usize][5] as i32;
+            let strn = self.characters[cn].attrib[core::constants::AT_STREN as usize][5] as i32;
 
             // Base damage uses character.weapon
             let base_weapon = self.characters[cn].weapon as i32;
@@ -364,11 +356,9 @@ impl GameState {
             dam += bonus;
 
             // Apply weapon wear if wielding (only for players in original)
-            let cn_is_player =
-                (self.characters[cn].flags & CharacterFlags::Player.bits()) != 0;
+            let cn_is_player = (self.characters[cn].flags & CharacterFlags::Player.bits()) != 0;
             if cn_is_player {
-                let rhand =
-                    self.characters[cn].worn[core::constants::WN_RHAND] as usize;
+                let rhand = self.characters[cn].worn[core::constants::WN_RHAND] as usize;
                 if rhand != 0 {
                     driver::item_damage_weapon(cn, dam);
                 }
@@ -419,8 +409,7 @@ impl GameState {
                         if co2 == 0 || co2 == cn || co2 == co {
                             continue;
                         }
-                        if self.characters[co2].attack_cn as usize != cn
-                        {
+                        if self.characters[co2].attack_cn as usize != cn {
                             continue;
                         }
                         if surround_eff + helpers::random_mod_i32(20) > self.get_fight_skill(co2) {
@@ -549,12 +538,10 @@ impl GameState {
     ///
     /// Handle looting a corpse.
     pub(crate) fn do_ransack_corpse(&mut self, cn: usize, co: usize, msg: &str) {
-        let sense_skill =
-            self.characters[cn].skill[core::constants::SK_SENSE][5] as i32;
+        let sense_skill = self.characters[cn].skill[core::constants::SK_SENSE][5] as i32;
 
         // Check for unique weapon in right hand
-        let rhand =
-            self.characters[co].worn[core::constants::WN_RHAND];
+        let rhand = self.characters[co].worn[core::constants::WN_RHAND];
         if rhand != 0 {
             let unique = if (rhand as usize) < self.items.len() {
                 self.items[rhand as usize].is_unique()
@@ -699,7 +686,8 @@ impl GameState {
         let mut co_actual = co;
 
         // Player companion? Act as if trying to attack the master instead
-        if self.characters[cn].temp as i32 == CT_COMPANION && self.characters[cn].data[CHD_COMPANION] == 0
+        if self.characters[cn].temp as i32 == CT_COMPANION
+            && self.characters[cn].data[CHD_COMPANION] == 0
         {
             cn_actual = self.characters[cn].data[CHD_MASTER] as usize;
             if cn_actual == 0 || cn_actual >= MAXCHARS || self.characters[cn_actual].used == 0 {
@@ -714,11 +702,9 @@ impl GameState {
 
         // Check for NOFIGHT
         let m1 = (self.characters[cn_actual].x as i32
-            + self.characters[cn_actual].y as i32 * SERVER_MAPX)
-            as usize;
+            + self.characters[cn_actual].y as i32 * SERVER_MAPX) as usize;
         let m2 = (self.characters[co_actual].x as i32
-            + self.characters[co_actual].y as i32 * SERVER_MAPX)
-            as usize;
+            + self.characters[co_actual].y as i32 * SERVER_MAPX) as usize;
 
         if ((self.map[m1].flags | self.map[m2].flags) & MF_NOFIGHT) != 0 {
             if msg {
@@ -817,8 +803,7 @@ impl GameState {
     /// * `co` - Victim character index
     pub fn remember_pvp(&mut self, cn: usize, co: usize) {
         let m = (self.characters[cn].x as i32
-            + self.characters[cn].y as i32 * core::constants::SERVER_MAPX)
-            as usize;
+            + self.characters[cn].y as i32 * core::constants::SERVER_MAPX) as usize;
 
         // Arena attacks don't count
         if (self.map[m].flags & core::constants::MF_ARENA as u64) != 0 {

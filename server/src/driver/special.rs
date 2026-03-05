@@ -1103,7 +1103,8 @@ pub fn npc_malte_low(_gs: &mut GameState, cn: usize) -> i32 {
         }
         5 => {
             // Recall announcement
-            Repository::global_mut().do_sayx(cn, "I will recall now. I have enough of this prison!");
+            Repository::global_mut()
+                .do_sayx(cn, "I will recall now. I have enough of this prison!");
 
             let (cn_x, cn_y) = Repository::with_characters(|ch| (ch[cn].x, ch[cn].y));
 

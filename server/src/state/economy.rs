@@ -369,8 +369,7 @@ impl GameState {
     /// # Arguments
     /// * `cn` - Character id to view requirements for
     pub(crate) fn do_view_exp_to_rank(&mut self, cn: usize) {
-        let current_rank =
-            core::ranks::points2rank(self.characters[cn].points_tot as u32) as usize;
+        let current_rank = core::ranks::points2rank(self.characters[cn].points_tot as u32) as usize;
         let exp_to_next = self.rank2points(current_rank as i32);
         let exp_needed = exp_to_next - self.characters[cn].points_tot;
         let next_name = core::ranks::RANK_NAMES

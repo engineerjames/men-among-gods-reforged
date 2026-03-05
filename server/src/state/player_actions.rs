@@ -3,8 +3,8 @@ use core::string_operations::c_string_to_str;
 use core::types::FontColor;
 
 use crate::driver;
-use crate::god::God;
 use crate::game_state::GameState;
+use crate::god::God;
 
 impl GameState {
     /// Port of `do_swap_item(int cn, int n)` from `svr_do.cpp`
@@ -91,19 +91,11 @@ impl GameState {
             // Check skill requirements
             for m in 0..50 {
                 if self.items[tmp].skill[m][2] > self.characters[cn].skill[m][0] as i8 {
-                    self.do_character_log(
-                        cn,
-                        FontColor::Red,
-                        "You don't know how to use that.\n",
-                    );
+                    self.do_character_log(cn, FontColor::Red, "You don't know how to use that.\n");
                     return -1;
                 }
                 if self.items[tmp].skill[m][2] != 0 && self.characters[cn].skill[m][0] == 0 {
-                    self.do_character_log(
-                        cn,
-                        FontColor::Red,
-                        "You don't know how to use that.\n",
-                    );
+                    self.do_character_log(cn, FontColor::Red, "You don't know how to use that.\n");
                     return -1;
                 }
             }
@@ -174,8 +166,7 @@ impl GameState {
                     } else {
                         // Check if right hand has two-handed weapon
                         let rhand_item = self.characters[cn].worn[WN_RHAND] as usize;
-                        !(rhand_item != 0
-                            && (self.items[rhand_item].placement & PL_TWOHAND) != 0)
+                        !(rhand_item != 0 && (self.items[rhand_item].placement & PL_TWOHAND) != 0)
                     }
                 }
                 WN_RHAND => {
@@ -219,8 +210,7 @@ impl GameState {
         // Port of use_labtransfer2 from helper.cpp
         // If cn is a companion and its master matches the corpse owner, notify master and teleport them.
         let maybe_cc = self.characters[cn].data[63] as usize;
-        let is_companion =
-            self.characters[cn].temp == core::constants::CT_COMPANION as u16;
+        let is_companion = self.characters[cn].temp == core::constants::CT_COMPANION as u16;
 
         if is_companion && maybe_cc == self.characters[co].data[0] as usize {
             let cc = maybe_cc;
@@ -264,9 +254,8 @@ impl GameState {
         let cc2 = self.characters[cn].data[64] as usize;
         // The C++ checks IS_SANENPC(cc) && IS_COMPANION(cc). We'll approximate by checking used/temp flags.
         if cc2 != 0 {
-            let is_sane_and_companion =
-                self.characters[cc2].used != core::constants::USE_EMPTY
-                    && (self.characters[cc2].temp == core::constants::CT_COMPANION as u16);
+            let is_sane_and_companion = self.characters[cc2].used != core::constants::USE_EMPTY
+                && (self.characters[cc2].temp == core::constants::CT_COMPANION as u16);
             if is_sane_and_companion {
                 God::transfer_char(cc2, 512, 512);
             }
@@ -400,7 +389,10 @@ impl GameState {
 
         if (self.characters[cn].flags & (CharacterFlags::Imp | CharacterFlags::God).bits()) != 0 {
             // God view: detailed timestamp
-            let last = std::cmp::max(self.characters[co].login_date, self.characters[co].logout_date);
+            let last = std::cmp::max(
+                self.characters[co].login_date,
+                self.characters[co].logout_date,
+            );
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -435,9 +427,10 @@ impl GameState {
             }
         } else {
             // Normal player view: relative time
-            let last_date =
-                (std::cmp::max(self.characters[co].login_date, self.characters[co].logout_date)
-                    / (24 * 3600)) as i32;
+            let last_date = (std::cmp::max(
+                self.characters[co].login_date,
+                self.characters[co].logout_date,
+            ) / (24 * 3600)) as i32;
             let current_date = (std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -513,8 +506,9 @@ impl GameState {
             return;
         }
 
-        let invis_src =
-            self.characters[co].flags & (CharacterFlags::Invisible.bits() | CharacterFlags::NoWho.bits()) != 0;
+        let invis_src = self.characters[co].flags
+            & (CharacterFlags::Invisible.bits() | CharacterFlags::NoWho.bits())
+            != 0;
         if invis_src {
             // approximate invis_level checks skipped
             self.do_character_log(
@@ -631,14 +625,15 @@ impl GameState {
     /// * `cn` - Caller character id
     /// * `name` - Name of player to add/remove (empty to display)
     pub(crate) fn do_group(&mut self, cn: usize, name: &str) {
-        let is_group_member = |characters: &Vec<core::types::Character>, owner: usize, member: usize| -> bool {
-            for n in core::constants::CHD_MINGROUP..=core::constants::CHD_MAXGROUP {
-                if characters[owner].data[n] as usize == member {
-                    return true;
+        let is_group_member =
+            |characters: &Vec<core::types::Character>, owner: usize, member: usize| -> bool {
+                for n in core::constants::CHD_MINGROUP..=core::constants::CHD_MAXGROUP {
+                    if characters[owner].data[n] as usize == member {
+                        return true;
+                    }
                 }
-            }
-            false
-        };
+                false
+            };
 
         let format_name_15 = |name: &str| -> String {
             let mut trimmed = String::new();
@@ -684,11 +679,7 @@ impl GameState {
                 }
                 if is_group_member(&mut self.characters, co, cn) {
                     let stats_str = format_group_stats(&mut self.characters, co);
-                    self.do_character_log(
-                        cn,
-                        core::types::FontColor::Yellow,
-                        &stats_str,
-                    );
+                    self.do_character_log(cn, core::types::FontColor::Yellow, &stats_str);
                 } else {
                     let name = format_name_15(self.characters[co].get_name());
                     self.do_character_log(
@@ -764,10 +755,7 @@ impl GameState {
                 self.do_character_log(
                     co,
                     core::types::FontColor::Red,
-                    &format!(
-                        "You are no longer part of {}'s group.\n",
-                        cn_name
-                    ),
+                    &format!("You are no longer part of {}'s group.\n", cn_name),
                 );
                 return;
             }
@@ -815,10 +803,7 @@ impl GameState {
                 self.do_character_log(
                     co,
                     core::types::FontColor::Red,
-                    &format!(
-                        "You are now part of {}'s group.\n",
-                        cn_name
-                    ),
+                    &format!("You are now part of {}'s group.\n", cn_name),
                 );
 
                 if is_group_member(&mut self.characters, co, cn) {
@@ -899,11 +884,7 @@ impl GameState {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
-                &format!(
-                    "Removed mark \"{}\" from {}\n",
-                    old,
-                    co_name
-                ),
+                &format!("Removed mark \"{}\" from {}\n", old, co_name),
             );
             return;
         }
@@ -917,11 +898,7 @@ impl GameState {
         self.do_character_log(
             cn,
             core::types::FontColor::Yellow,
-            &format!(
-                "Marked {} with \"{}\"\n",
-                co_name,
-                msg
-            ),
+            &format!("Marked {} with \"{}\"\n", co_name, msg),
         );
     }
 

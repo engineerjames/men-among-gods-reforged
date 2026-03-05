@@ -188,7 +188,8 @@ impl GameState {
                 }
 
                 // Update statistics
-                let r1: u32 = core::ranks::points2rank(self.characters[killer_id].points_tot as u32);
+                let r1: u32 =
+                    core::ranks::points2rank(self.characters[killer_id].points_tot as u32);
                 let r2: u32 =
                     core::ranks::points2rank(self.characters[character_id].points_tot as u32);
 
@@ -224,18 +225,10 @@ impl GameState {
                             self.do_character_log(
                                 killer_id,
                                 core::types::FontColor::Yellow,
-                                &format!(
-                                    "You just killed your first {}. Good job.\n",
-                                    class_name
-                                ),
+                                &format!("You just killed your first {}. Good job.\n", class_name),
                             );
                             let score = self.do_char_score(character_id) * 25;
-                            self.do_give_exp(
-                                killer_id,
-                                score,
-                                0,
-                                -1,
-                            );
+                            self.do_give_exp(killer_id, score, 0, -1);
                         }
                     }
                 }
@@ -299,8 +292,7 @@ impl GameState {
         self.remove_enemy(character_id);
 
         // Handle player death
-        let is_player =
-            self.characters[character_id].flags & CharacterFlags::Player.bits() != 0;
+        let is_player = self.characters[character_id].flags & CharacterFlags::Player.bits() != 0;
 
         let corpse_id: usize;
         if is_player {
@@ -321,15 +313,13 @@ impl GameState {
                 if is_killer_player {
                     self.characters[character_id].data[15] = killer_id as i32 | 0x10000;
                 } else {
-                    self.characters[character_id].data[15] =
-                        self.characters[killer_id].temp as i32;
+                    self.characters[character_id].data[15] = self.characters[killer_id].temp as i32;
                 }
             } else {
                 self.characters[character_id].data[15] = 0;
             }
 
-            self.characters[character_id].data[16] =
-                self.globals.mdday + self.globals.mdyear * 300;
+            self.characters[character_id].data[16] = self.globals.mdday + self.globals.mdyear * 300;
             self.characters[character_id].data[17] =
                 co_x as i32 + co_y as i32 * core::constants::SERVER_MAPX;
 
@@ -481,8 +471,7 @@ impl GameState {
         player::plr_reset_status(co);
 
         // Apply permanent stat loss if not a god and no guardian angel
-        let is_god =
-            self.characters[co].flags & CharacterFlags::God.bits() != 0;
+        let is_god = self.characters[co].flags & CharacterFlags::God.bits() != 0;
 
         if !is_god && wimp == 0 && !force_save {
             self.apply_death_penalties(co);
@@ -583,11 +572,11 @@ impl GameState {
         log::info!("new npc body");
 
         // Convert to body
-        let should_respawn =
-            self.characters[co].flags & CharacterFlags::Respawn.bits() != 0;
+        let should_respawn = self.characters[co].flags & CharacterFlags::Respawn.bits() != 0;
 
         if should_respawn {
-            self.characters[co].flags = CharacterFlags::Body.bits() | CharacterFlags::Respawn.bits();
+            self.characters[co].flags =
+                CharacterFlags::Body.bits() | CharacterFlags::Respawn.bits();
         } else {
             self.characters[co].flags = CharacterFlags::Body.bits();
         }

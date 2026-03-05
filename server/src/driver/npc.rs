@@ -711,7 +711,8 @@ pub fn npc_give(cn: usize, co: usize, in_item: usize, money: i32) -> i32 {
                 }
 
                 let skill_name = skilltab::get_skill_name(skill_nr);
-                Repository::global_mut().do_sayx(cn, &format!("Now I'll teach you {}.", skill_name));
+                Repository::global_mut()
+                    .do_sayx(cn, &format!("Now I'll teach you {}.", skill_name));
 
                 if characters[co].skill[skill_nr][0] != 0 {
                     Repository::global_mut().do_sayx(
@@ -772,7 +773,9 @@ pub fn npc_give(cn: usize, co: usize, in_item: usize, money: i32) -> i32 {
                     ),
                 );
                 God::take_from_char(in_item, cn);
-                Repository::with_items_mut(|items| items[in_item].used = core::constants::USE_EMPTY);
+                Repository::with_items_mut(|items| {
+                    items[in_item].used = core::constants::USE_EMPTY
+                });
                 if let Some(new_item) = God::create_item(give_temp as usize) {
                     God::give_character_item(co, new_item);
                 }
@@ -804,7 +807,9 @@ pub fn npc_give(cn: usize, co: usize, in_item: usize, money: i32) -> i32 {
 
                 // Destroy gift from player and pose riddle
                 God::take_from_char(in_item, co);
-                Repository::with_items_mut(|items| items[in_item].used = core::constants::USE_EMPTY);
+                Repository::with_items_mut(|items| {
+                    items[in_item].used = core::constants::USE_EMPTY
+                });
                 crate::lab9::Labyrinth9::with_mut(|lab9| lab9.lab9_pose_riddle(cn, co));
             }
 
@@ -1220,25 +1225,26 @@ pub fn npc_quaff_potion(gs: &mut GameState, cn: usize, itemp: i32, stemp: i32) -
         }
 
         // Find potion and quaff it
-        let (should_quaff, name, item_index): (bool, String, usize) = Repository::with_items(|it| {
-            for n in 0..40 {
-                let item_index = ch[cn].item[n];
+        let (should_quaff, name, item_index): (bool, String, usize) =
+            Repository::with_items(|it| {
+                for n in 0..40 {
+                    let item_index = ch[cn].item[n];
 
-                if item_index == 0 {
-                    continue;
+                    if item_index == 0 {
+                        continue;
+                    }
+
+                    if it[item_index as usize].temp == itemp as u16 {
+                        return (
+                            true,
+                            it[item_index as usize].get_name().to_string(),
+                            item_index as usize,
+                        );
+                    }
                 }
 
-                if it[item_index as usize].temp == itemp as u16 {
-                    return (
-                        true,
-                        it[item_index as usize].get_name().to_string(),
-                        item_index as usize,
-                    );
-                }
-            }
-
-            (false, String::new().into(), 0)
-        });
+                (false, String::new().into(), 0)
+            });
 
         if !should_quaff {
             return false;
@@ -1329,8 +1335,9 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> i32 {
 
     // Count down master-no-see timer for player ghost companions
     {
-        let (temp, data64) =
-            Repository::with_characters(|characters| (characters[cn].temp, characters[cn].data[64]));
+        let (temp, data64) = Repository::with_characters(|characters| {
+            (characters[cn].temp, characters[cn].data[64])
+        });
         if temp == CT_COMPANION as u16 && data64 == 0 {
             let co = Repository::with_characters(|characters| characters[cn].data[CHD_MASTER]);
             let master_ok = Repository::with_characters(|characters| {
@@ -1606,7 +1613,8 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> i32 {
                 if npc_try_spell(cn, co, SK_STUN) {
                     Repository::with_characters_mut(|characters| {
                         characters[cn].data[75] = Repository::with_globals(|g| g.ticker)
-                            + Repository::with_characters(|chars| chars[cn].skill[SK_STUN][5]) as i32
+                            + Repository::with_characters(|chars| chars[cn].skill[SK_STUN][5])
+                                as i32
                             + TICKS * 8
                     });
                     return 1;
@@ -1865,8 +1873,9 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
     }
 
     // Did someone call help? - high prio
-    let (data_55, data_54) =
-        Repository::with_characters(|characters| (characters[cn].data[55], characters[cn].data[54]));
+    let (data_55, data_54) = Repository::with_characters(|characters| {
+        (characters[cn].data[55], characters[cn].data[54])
+    });
 
     if data_55 != 0 && data_55 + (TICKS * 120) > ticker && data_54 != 0 {
         let m = data_54;
