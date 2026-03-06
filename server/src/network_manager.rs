@@ -2,7 +2,7 @@ use core::constants::{SV_SETMAP3, SV_SETMAP4, SV_SETMAP5, SV_SETMAP6};
 use std::net::Shutdown;
 use std::sync::{OnceLock, RwLock};
 
-use crate::game_state::GameState as Repository;
+use crate::game_state::GameState;
 use crate::{enums, player, server::Server};
 
 static NETWORK_MANAGER: OnceLock<RwLock<NetworkManager>> = OnceLock::new();
@@ -110,6 +110,20 @@ impl NetworkManager {
     /// * `data` - Source byte slice
     /// * `length` - Number of bytes to copy
     pub fn xsend(&self, player_id: usize, data: &[u8], length: u8) {
+        self.xsend_gs(GameState::global_mut(), player_id, data, length);
+    }
+
+    /// Send bytes to a player's tick buffer using an explicit `GameState`.
+    ///
+    /// This is the non-singleton send path used by refactored callers that
+    /// already own `&mut GameState`.
+    ///
+    /// # Arguments
+    /// * `gs` - Active game state used for disconnect cleanup
+    /// * `player_id` - Target player index
+    /// * `data` - Source byte slice
+    /// * `length` - Number of bytes to copy
+    pub fn xsend_gs(&self, gs: &mut GameState, player_id: usize, data: &[u8], length: u8) {
         // Determine number of bytes to send (don't exceed provided slice)
         let send_len = std::cmp::min(length as usize, data.len());
 
@@ -136,12 +150,7 @@ impl NetworkManager {
                 );
                 // Attempt to log out the associated character and clean up
                 let cn = p.usnr;
-                player::plr_logout(
-                    Repository::global_mut(),
-                    cn,
-                    player_id,
-                    enums::LogoutReason::Unknown,
-                );
+                player::plr_logout(gs, cn, player_id, enums::LogoutReason::Unknown);
                 if let Some(s) = p.sock.take() {
                     let _ = s.shutdown(Shutdown::Both);
                 }
@@ -200,6 +209,18 @@ impl NetworkManager {
     /// * `data` - Source byte slice
     /// * `length` - Number of bytes to enqueue
     pub fn csend(&self, player_id: usize, data: &[u8], length: u8) {
+        self.csend_gs(GameState::global_mut(), player_id, data, length);
+    }
+
+    /// Send bytes into the player's circular output buffer using an explicit
+    /// `GameState` for cleanup.
+    ///
+    /// # Arguments
+    /// * `gs` - Active game state used for disconnect cleanup
+    /// * `player_id` - Target player index
+    /// * `data` - Source byte slice
+    /// * `length` - Number of bytes to enqueue
+    pub fn csend_gs(&self, gs: &mut GameState, player_id: usize, data: &[u8], length: u8) {
         let send_len = std::cmp::min(length as usize, data.len());
 
         Server::with_players_mut(|players| {
@@ -227,12 +248,7 @@ impl NetworkManager {
                     // Connection too slow, terminate
                     log::warn!("Connection too slow for player {}, terminating", player_id);
                     let cn = p.usnr;
-                    player::plr_logout(
-                        Repository::global_mut(),
-                        cn,
-                        player_id,
-                        enums::LogoutReason::ClientTooSlow,
-                    );
+                    player::plr_logout(gs, cn, player_id, enums::LogoutReason::ClientTooSlow);
                     if let Some(s) = p.sock.take() {
                         let _ = s.shutdown(Shutdown::Both);
                     }

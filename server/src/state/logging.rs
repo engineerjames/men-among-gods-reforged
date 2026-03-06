@@ -95,7 +95,7 @@ impl GameState {
             }
 
             NetworkManager::with(|network| {
-                network.xsend(player_number, &buffer, 16);
+                network.xsend_gs(self, player_number, &buffer, 16);
             });
 
             pos += take;

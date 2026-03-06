@@ -26,7 +26,7 @@ use crate::{
 /// * `player_id` - Associated player slot id (0 if none, interpreted as "any player")
 /// * `reason` - Reason for logout (enum)
 pub fn plr_logout(
-    _gs: &mut GameState,
+    gs: &mut GameState,
     character_id: usize,
     player_id: usize,
     reason: enums::LogoutReason,
@@ -70,7 +70,7 @@ pub fn plr_logout(
         };
 
         if let Some(co) = should_logout_co {
-            plr_logout(_gs, co, 0, enums::LogoutReason::Shutdown);
+            plr_logout(gs, co, 0, enums::LogoutReason::Shutdown);
         }
     }
 
@@ -317,11 +317,11 @@ pub fn plr_logout(
 
             if player_state == core::constants::ST_NORMAL {
                 NetworkManager::with(|network| {
-                    network.xsend(player_id, &buffer, 2);
+                    network.xsend_gs(gs, player_id, &buffer, 2);
                 });
             } else {
                 NetworkManager::with(|network| {
-                    network.csend(player_id, &buffer, 2);
+                    network.csend_gs(gs, player_id, &buffer, 2);
                 });
             }
         }
@@ -2938,7 +2938,7 @@ fn plr_newlogin(gs: &mut GameState, nr: usize) {
         buf[15] = ver_bytes[2];
 
         NetworkManager::with(|network| {
-            network.csend(nr, &buf, 16);
+            network.csend_gs(gs, nr, &buf, 16);
         });
     }
 
@@ -2957,7 +2957,7 @@ fn plr_newlogin(gs: &mut GameState, nr: usize) {
     tbuf[1] =
         (Repository::global_mut().globals.ticker as usize % core::constants::CTICK_CYCLE_LEN) as u8;
     NetworkManager::with(|network| {
-        network.xsend(nr, &tbuf, 2);
+        network.xsend_gs(gs, nr, &tbuf, 2);
     });
 
     log::info!("Created new character");
@@ -3173,7 +3173,7 @@ fn plr_login(gs: &mut GameState, nr: usize) {
     tbuf[1] =
         (Repository::global_mut().globals.ticker as usize % core::constants::CTICK_CYCLE_LEN) as u8;
     NetworkManager::with(|network| {
-        network.xsend(nr, &tbuf, 2);
+        network.xsend_gs(gs, nr, &tbuf, 2);
     });
 
     // mark active and set login date, addr, add net history
