@@ -20,102 +20,81 @@ use core::types::FontColor;
 
 // Helper function to take an item from a character
 fn take_item_from_char(item_idx: usize, cn: usize) {
-    Repository::with_characters_mut(|characters| {
-        let ch = &mut characters[cn];
+    let gs = Repository::global_mut();
 
-        // Check citem first
+    {
+        let ch = &mut gs.characters[cn];
+
         if ch.citem as usize == item_idx {
             ch.citem = 0;
-            return;
-        }
+        } else {
+            for n in 0..40 {
+                if ch.item[n] as usize == item_idx {
+                    ch.item[n] = 0;
+                    break;
+                }
+            }
 
-        // Check inventory
-        for n in 0..40 {
-            if ch.item[n] as usize == item_idx {
-                ch.item[n] = 0;
-                return;
+            for n in 0..20 {
+                if ch.worn[n] as usize == item_idx {
+                    ch.worn[n] = 0;
+                    break;
+                }
             }
         }
+    }
 
-        // Check worn items
-        for n in 0..20 {
-            if ch.worn[n] as usize == item_idx {
-                ch.worn[n] = 0;
-                return;
-            }
-        }
-    });
-
-    // Clear item position
-    Repository::with_items_mut(|items| {
-        items[item_idx].x = 0;
-        items[item_idx].y = 0;
-        items[item_idx].carried = 0;
-    });
-
-    Repository::global_mut().do_update_char(cn);
+    gs.items[item_idx].x = 0;
+    gs.items[item_idx].y = 0;
+    gs.items[item_idx].carried = 0;
+    gs.do_update_char(cn);
 }
 
 pub fn sub_door_driver(_cn: usize, item_idx: usize) -> i32 {
-    Repository::with_items(|items| {
-        let item = &items[item_idx];
+    let gs = Repository::global_mut();
+    let item = &gs.items[item_idx];
 
-        if item.data[0] == 65500 {
-            return 0;
-        }
+    if item.data[0] == 65500 {
+        return 0;
+    }
 
-        if item.data[0] == 65501 || item.data[0] == 65502 {
-            // Star door in black stronghold
-            let mut empty = 0;
-            let mut star = 0;
-            let mut circle = 0;
-            let loctab: [usize; 4] = [344487, 343463, 344488, 343464];
+    if item.data[0] == 65501 || item.data[0] == 65502 {
+        let mut empty = 0;
+        let mut star = 0;
+        let mut circle = 0;
+        let loctab: [usize; 4] = [344487, 343463, 344488, 343464];
 
-            for n in 0..4 {
-                let map_idx = loctab[n];
-                Repository::with_map(|map| {
-                    let in2 = map[map_idx].it as usize;
-                    if in2 == 0 {
-                        return;
-                    }
-
-                    if items[in2].data[1] != n as u32 {
-                        return;
-                    }
-
-                    if items[in2].temp == 761 {
-                        star += 1;
-                    }
-                    if items[in2].temp == 762 {
-                        circle += 1;
-                    }
-                    if items[in2].temp == 763 {
-                        empty += 1;
-                    }
-                });
+        for (n, map_idx) in loctab.iter().copied().enumerate() {
+            let in2 = gs.map[map_idx].it as usize;
+            if in2 == 0 || gs.items[in2].data[1] != n as u32 {
+                continue;
             }
 
-            if item.data[0] == 65501 && empty == 3 && star == 1 {
-                return 1;
-            } else if item.data[0] == 65502 && empty == 3 && circle == 1 {
-                return 1;
-            } else {
-                return 0;
+            match gs.items[in2].temp {
+                761 => star += 1,
+                762 => circle += 1,
+                763 => empty += 1,
+                _ => {}
             }
         }
 
-        0
-    })
+        return if item.data[0] == 65501 && empty == 3 && star == 1 {
+            1
+        } else if item.data[0] == 65502 && empty == 3 && circle == 1 {
+            1
+        } else {
+            0
+        };
+    }
+
+    0
 }
 
 pub fn use_door(cn: usize, item_idx: usize) -> i32 {
-    // Check if someone is standing on the door
-    let map_idx = Repository::with_items(|items| {
-        let item = &items[item_idx];
-        item.x as usize + item.y as usize * SERVER_MAPX as usize
-    });
-
-    let blocked = Repository::with_map(|map| map[map_idx].ch != 0);
+    let gs = Repository::global_mut();
+    let map_idx =
+        gs.items[item_idx].x as usize + gs.items[item_idx].y as usize * SERVER_MAPX as usize;
+    let blocked = gs.map[map_idx].ch != 0;
     if blocked {
         return 0;
     }
@@ -125,84 +104,69 @@ pub fn use_door(cn: usize, item_idx: usize) -> i32 {
     let mut key_slot: Option<usize> = None;
 
     // Check lock requirements
-    let locked_without_key = Repository::with_items(|items| {
-        let item = &items[item_idx];
-
-        if item.data[0] != 0 {
+    let locked_without_key = {
+        let lock_code = gs.items[item_idx].data[0];
+        if lock_code != 0 {
             if cn == 0 {
                 lock = 1;
-            } else if item.data[0] >= 65500 {
+            } else if lock_code >= 65500 {
                 lock = sub_door_driver(cn, item_idx);
             } else {
-                // Check if character has the right key
-                Repository::with_characters(|characters| {
-                    let character = &characters[cn];
+                let character = &gs.characters[cn];
+                let citem = character.citem as usize;
 
-                    // Check citem (carried item)
-                    let citem = character.citem as usize;
-                    if citem != 0
-                        && (citem & 0x80000000) == 0
-                        && items[citem].temp == item.data[0] as u16
-                    {
-                        lock = 1;
-                        if item.data[3] != 0 {
-                            key_vanishes = true;
-                            key_slot = None; // citem
-                        }
-                    } else {
-                        // Check inventory
-                        for n in 0..40 {
-                            let in2 = character.item[n] as usize;
-                            if in2 != 0 && items[in2].temp == item.data[0] as u16 {
-                                lock = 1;
-                                if item.data[3] != 0 {
-                                    key_vanishes = true;
-                                    key_slot = Some(n); // inventory slot
-                                }
-                                break;
+                if citem != 0
+                    && (citem & 0x80000000) == 0
+                    && gs.items[citem].temp == lock_code as u16
+                {
+                    lock = 1;
+                    if gs.items[item_idx].data[3] != 0 {
+                        key_vanishes = true;
+                        key_slot = None;
+                    }
+                } else {
+                    for n in 0..40 {
+                        let in2 = character.item[n] as usize;
+                        if in2 != 0 && gs.items[in2].temp == lock_code as u16 {
+                            lock = 1;
+                            if gs.items[item_idx].data[3] != 0 {
+                                key_vanishes = true;
+                                key_slot = Some(n);
                             }
+                            break;
                         }
                     }
-                });
+                }
 
-                // Try to pick the lock with lockpicks
                 if lock == 0 {
-                    Repository::with_characters(|characters| {
-                        let character = &characters[cn];
-                        let citem = character.citem as usize;
+                    let citem = character.citem as usize;
+                    if citem != 0 && (citem & 0x80000000) == 0 && gs.items[citem].driver == 3 {
+                        let skill = character.skill[SK_LOCK][5] + gs.items[citem].data[0] as u8;
+                        let power = gs.items[item_idx].data[2];
 
-                        if citem != 0 && (citem & 0x80000000) == 0 && items[citem].driver == 3 {
-                            let skill = character.skill[SK_LOCK][5] + items[citem].data[0] as u8;
-                            let power = item.data[2];
-
-                            if power == 0 || skill >= (power + helpers::random_mod(20)) as u8 {
-                                lock = 1;
-                            } else {
-                                Repository::global_mut().do_character_log(
-                                    cn,
-                                    core::types::FontColor::Blue,
-                                    "You failed to pick the lock.\n",
-                                );
-                            }
-                            // Damage lockpick
-                            item_damage_citem(cn, 1);
+                        if power == 0 || skill >= (power + helpers::random_mod(20)) as u8 {
+                            lock = 1;
+                        } else {
+                            gs.do_character_log(
+                                cn,
+                                core::types::FontColor::Blue,
+                                "You failed to pick the lock.\n",
+                            );
                         }
-                    });
+                        item_damage_citem(cn, 1);
+                    }
                 }
             }
 
-            // If the door has a lock and we did not unlock it, block the use.
-            if item.data[1] != 0 && lock == 0 {
-                return true;
-            }
+            gs.items[item_idx].data[1] != 0 && lock == 0
+        } else {
+            false
         }
-
-        false
-    });
+    };
 
     // If door is locked and player doesn't have key, exit early
     if locked_without_key {
-        Repository::global_mut().do_character_log(
+        gs.do_character_log(
             cn,
             core::types::FontColor::Blue,
             "It's locked and you don't have the right key.\n",
@@ -210,88 +174,75 @@ pub fn use_door(cn: usize, item_idx: usize) -> i32 {
         return 0;
     }
 
-    // Handle key vanishing if needed
     if key_vanishes {
-        Repository::with_characters_mut(|characters| {
-            if let Some(slot) = key_slot {
-                // Key was in inventory
-                let item_idx = characters[cn].item[slot] as usize;
-                characters[cn].item[slot] = 0;
-                Repository::with_items_mut(|items| {
-                    items[item_idx].used = USE_EMPTY;
-                });
-            } else {
-                // Key was in citem
-                let item_idx = characters[cn].citem as usize;
-                characters[cn].citem = 0;
-                Repository::with_items_mut(|items| {
-                    items[item_idx].used = USE_EMPTY;
-                });
-            }
-        });
-        Repository::global_mut().do_character_log(
-            cn,
-            core::types::FontColor::Yellow,
-            "The key vanished.\n",
-        );
+        if let Some(slot) = key_slot {
+            let consumed_item_idx = gs.characters[cn].item[slot] as usize;
+            gs.characters[cn].item[slot] = 0;
+            gs.items[consumed_item_idx].used = USE_EMPTY;
+        } else {
+            let consumed_item_idx = gs.characters[cn].citem as usize;
+            gs.characters[cn].citem = 0;
+            gs.items[consumed_item_idx].used = USE_EMPTY;
+        }
+        gs.do_character_log(cn, core::types::FontColor::Yellow, "The key vanished.\n");
     }
 
-    // Now modify the door state
-    Repository::with_items_mut(|items| {
-        let item = &mut items[item_idx];
-        let item_x = item.x as i32;
-        let item_y = item.y as i32;
+    let (item_x, item_y, temp, active) = {
+        let item = &gs.items[item_idx];
+        (
+            item.x as i32,
+            item.y as i32,
+            item.temp as usize,
+            item.active,
+        )
+    };
 
-        Repository::global_mut().reset_go(item_x, item_y);
-        Repository::global_mut().remove_lights(item_x, item_y);
+    gs.reset_go(item_x, item_y);
+    gs.remove_lights(item_x, item_y);
+    gs.do_area_sound(0, 0, item_x, item_y, 10);
 
-        Repository::global_mut().do_area_sound(0, 0, item_x, item_y, 10);
-
-        if item.active == 0 {
-            item.flags &= !(ItemFlags::IF_MOVEBLOCK.bits() | ItemFlags::IF_SIGHTBLOCK.bits());
-            item.data[1] = 0;
-        } else {
-            // Get template flags
-            let temp = item.temp as usize;
-            let flags = Repository::with_item_templates(|templates| {
-                templates[temp].flags & ItemFlags::IF_SIGHTBLOCK.bits()
-            });
-
-            item.flags |= ItemFlags::IF_MOVEBLOCK.bits() | flags;
-            if lock != 0 {
-                item.data[1] = 1;
-            }
+    if active == 0 {
+        let item = &mut gs.items[item_idx];
+        item.flags &= !(ItemFlags::IF_MOVEBLOCK.bits() | ItemFlags::IF_SIGHTBLOCK.bits());
+        item.data[1] = 0;
+    } else {
+        let sight_flags = gs.item_templates[temp].flags & ItemFlags::IF_SIGHTBLOCK.bits();
+        let item = &mut gs.items[item_idx];
+        item.flags |= ItemFlags::IF_MOVEBLOCK.bits() | sight_flags;
+        if lock != 0 {
+            item.data[1] = 1;
         }
+    }
 
-        Repository::global_mut().reset_go(item_x, item_y);
-        Repository::global_mut().add_lights(item_x, item_y);
-
-        Repository::with_characters(|characters| {
-            let ch = &characters[cn];
-            Repository::global_mut().do_area_notify(
-                cn as i32,
-                0,
-                ch.x as i32,
-                ch.y as i32,
-                core::constants::NT_SEE as i32,
-                cn as i32,
-                0,
-                0,
-                0,
-            );
-        });
-    });
+    gs.reset_go(item_x, item_y);
+    gs.add_lights(item_x, item_y);
+    let ch = &gs.characters[cn];
+    gs.do_area_notify(
+        cn as i32,
+        0,
+        ch.x as i32,
+        ch.y as i32,
+        core::constants::NT_SEE as i32,
+        cn as i32,
+        0,
+        0,
+        0,
+    );
 
     1
 }
 
 pub fn use_create_item(cn: usize, item_idx: usize) -> i32 {
+    let gs = Repository::global_mut();
+
     if cn == 0 {
         return 0;
     }
 
-    let (active, template_id) =
-        Repository::with_items(|items| (items[item_idx].active, items[item_idx].data[0] as usize));
+    let (active, template_id) = (
+        gs.items[item_idx].active,
+        gs.items[item_idx].data[0] as usize,
+    );
 
     if active != 0 {
         return 0;
@@ -307,159 +258,139 @@ pub fn use_create_item(cn: usize, item_idx: usize) -> i32 {
     };
 
     if !God::give_character_item(cn, in2) {
-        Repository::with_items(|items| {
-            let item_ref = items[in2].reference;
-            Repository::global_mut().do_character_log(
-                cn,
-                core::types::FontColor::Blue,
-                &format!(
-                    "Your backpack is full, so you can't take the {}.\n",
-                    c_string_to_str(&item_ref)
-                ),
-            );
-        });
-        Repository::with_items_mut(|items| {
-            items[in2].used = core::constants::USE_EMPTY;
-        });
+        let item_ref = gs.items[in2].reference;
+        gs.do_character_log(
+            cn,
+            core::types::FontColor::Blue,
+            &format!(
+                "Your backpack is full, so you can't take the {}.\n",
+                c_string_to_str(&item_ref)
+            ),
+        );
+        gs.items[in2].used = core::constants::USE_EMPTY;
         return 0;
     }
 
-    Repository::with_items(|items| {
-        let item_ref = items[in2].reference;
-        let item_name = items[in2].get_name();
-        let source_name = items[item_idx].get_name();
+    let item_ref = gs.items[in2].reference;
+    let item_name = gs.items[in2].get_name().to_string();
+    let source_name = gs.items[item_idx].get_name().to_string();
+    gs.do_character_log(
+        cn,
+        core::types::FontColor::Green,
+        &format!("You got a {}.\n", c_string_to_str(&item_ref)),
+    );
+    log::info!("Character {} got {} from {}", cn, item_name, source_name);
 
-        Repository::global_mut().do_character_log(
+    let driver = gs.items[item_idx].driver;
+    let data1 = gs.items[item_idx].data[1];
+
+    if data1 != 0 && driver == 53 {
+        let char_name = gs.characters[cn].get_name().to_string();
+        let item_ref = c_string_to_str(&gs.items[in2].reference).to_string();
+        gs.do_character_log(
             cn,
-            core::types::FontColor::Green,
-            &format!("You got a {}.\n", c_string_to_str(&item_ref)),
+            core::types::FontColor::Blue,
+            &format!(
+                "You feel yourself form a magical connection with the {}.\n",
+                item_ref
+            ),
         );
 
-        log::info!("Character {} got {} from {}", cn, item_name, source_name);
-    });
+        let item = &mut gs.items[in2];
+        item.data[0] = cn as u32;
 
-    // Handle special driver types
-    Repository::with_items(|items| {
-        let driver = items[item_idx].driver;
-        let data1 = items[item_idx].data[1];
-
-        if data1 != 0 && driver == 53 {
-            Repository::with_characters(|characters| {
-                let char_name = characters[cn].get_name();
-                Repository::with_items_mut(|items| {
-                    let item = &mut items[in2];
-                    Repository::global_mut().do_character_log(
-                        cn,
-                        core::types::FontColor::Blue,
-                        &format!(
-                            "You feel yourself form a magical connection with the {}.\n",
-                            c_string_to_str(&item.reference)
-                        ),
-                    );
-                    item.data[0] = cn as u32;
-
-                    let new_desc = format!(
-                        "{} Engraved in it are the letters \"{}\".",
-                        c_string_to_str(&item.description),
-                        char_name,
-                    );
-                    if new_desc.len() < 200 {
-                        let bytes = new_desc.as_bytes();
-                        item.description[..bytes.len()].copy_from_slice(bytes);
-                        // Fill remaining bytes with zeros
-                        if bytes.len() < 200 {
-                            item.description[bytes.len()..].fill(0);
-                        }
-                    }
-                });
-            });
+        let new_desc = format!(
+            "{} Engraved in it are the letters \"{}\".",
+            c_string_to_str(&item.description),
+            char_name,
+        );
+        if new_desc.len() < 200 {
+            let bytes = new_desc.as_bytes();
+            item.description[..bytes.len()].copy_from_slice(bytes);
+            if bytes.len() < 200 {
+                item.description[bytes.len()..].fill(0);
+            }
         }
+    }
 
-        if driver == 54 {
-            let (x, y) = (items[item_idx].x as i32, items[item_idx].y as i32);
-            Repository::global_mut().do_area_notify(
-                cn as i32,
-                0,
-                x,
-                y,
-                core::constants::NT_HITME as i32,
-                cn as i32,
-                0,
-                0,
-                0,
-            );
-        }
-    });
+    if driver == 54 {
+        let (x, y) = (gs.items[item_idx].x as i32, gs.items[item_idx].y as i32);
+        gs.do_area_notify(
+            cn as i32,
+            0,
+            x,
+            y,
+            core::constants::NT_HITME as i32,
+            cn as i32,
+            0,
+            0,
+            0,
+        );
+    }
 
     1
 }
 
 pub fn use_create_gold(cn: usize, item_idx: usize) -> i32 {
+    let gs = Repository::global_mut();
+
     if cn == 0 {
         return 0;
     }
 
-    let (active, gold_amount) =
-        Repository::with_items(|items| (items[item_idx].active, items[item_idx].data[0]));
+    let (active, gold_amount) = (gs.items[item_idx].active, gs.items[item_idx].data[0]);
 
     if active != 0 {
         return 0;
     }
 
     let gold_to_add = gold_amount * 100;
-
-    Repository::with_characters_mut(|characters| {
-        characters[cn].gold += gold_to_add as i32;
-    });
-
-    Repository::with_items(|items| {
-        Repository::global_mut().do_character_log(
-            cn,
-            core::types::FontColor::Green,
-            &format!("You got a {}G.\n", gold_amount),
-        );
-
-        log::info!(
-            "Character {} got {}G from {}",
-            cn,
-            gold_amount,
-            items[item_idx]
-                .name
-                .iter()
-                .take_while(|&&c| c != 0)
-                .map(|&c| c as char)
-                .collect::<String>()
-        );
-    });
+    gs.characters[cn].gold += gold_to_add as i32;
+    gs.do_character_log(
+        cn,
+        core::types::FontColor::Green,
+        &format!("You got a {}G.\n", gold_amount),
+    );
+    log::info!(
+        "Character {} got {}G from {}",
+        cn,
+        gold_amount,
+        gs.items[item_idx]
+            .name
+            .iter()
+            .take_while(|&&c| c != 0)
+            .map(|&c| c as char)
+            .collect::<String>()
+    );
 
     1
 }
 
 pub fn use_create_item2(cn: usize, item_idx: usize) -> i32 {
+    let gs = Repository::global_mut();
+
     if cn == 0 {
         return 0;
     }
 
-    let (active, required_temp, template_id) = Repository::with_items(|items| {
-        (
-            items[item_idx].active,
-            items[item_idx].data[1],
-            items[item_idx].data[0] as usize,
-        )
-    });
+    let (active, required_temp, template_id) = (
+        gs.items[item_idx].active,
+        gs.items[item_idx].data[1],
+        gs.items[item_idx].data[0] as usize,
+    );
 
     if active != 0 {
         return 0;
     }
 
     // Check if character has the required item in citem
-    let citem = Repository::with_characters(|characters| characters[cn].citem as usize);
+    let citem = gs.characters[cn].citem as usize;
 
     if citem == 0 || (citem & 0x80000000) != 0 {
         return 0;
     }
 
-    let citem_temp = Repository::with_items(|items| items[citem].temp);
+    let citem_temp = gs.items[citem].temp;
 
     if citem_temp as u32 != required_temp {
         return 0;
@@ -475,65 +406,54 @@ pub fn use_create_item2(cn: usize, item_idx: usize) -> i32 {
     };
 
     if !God::give_character_item(cn, in2) {
-        Repository::with_items(|items| {
-            let item_ref = c_string_to_str(&items[in2].reference);
-
-            Repository::global_mut().do_character_log(
-                cn,
-                core::types::FontColor::Blue,
-                &format!(
-                    "Your backpack is full, so you can't take the {}.\n",
-                    item_ref
-                ),
-            );
-        });
-        Repository::with_items_mut(|items| {
-            items[in2].used = USE_EMPTY;
-        });
+        let item_ref = c_string_to_str(&gs.items[in2].reference);
+        gs.do_character_log(
+            cn,
+            core::types::FontColor::Blue,
+            &format!(
+                "Your backpack is full, so you can't take the {}.\n",
+                item_ref
+            ),
+        );
+        gs.items[in2].used = USE_EMPTY;
         return 0;
     }
 
-    Repository::with_items(|items| {
-        let item_ref = c_string_to_str(&items[in2].reference);
-        Repository::global_mut().do_character_log(
-            cn,
-            core::types::FontColor::Green,
-            &format!("You got a {}.\n", item_ref),
-        );
+    let item_ref = c_string_to_str(&gs.items[in2].reference);
+    gs.do_character_log(
+        cn,
+        core::types::FontColor::Green,
+        &format!("You got a {}.\n", item_ref),
+    );
+    chlog!(
+        cn,
+        "Got {} from {}",
+        gs.items[in2].get_name(),
+        gs.items[item_idx].get_name()
+    );
 
-        chlog!(
-            cn,
-            "Got {} from {}",
-            items[in2].get_name(),
-            items[item_idx].get_name()
-        );
-    });
-
-    // Remove the consumed item
-    Repository::with_items_mut(|items| {
-        items[citem].used = USE_EMPTY;
-    });
-    Repository::with_characters_mut(|characters| {
-        characters[cn].citem = 0;
-    });
+    gs.items[citem].used = USE_EMPTY;
+    gs.characters[cn].citem = 0;
 
     1
 }
 
 pub fn use_create_item3(cn: usize, item_idx: usize) -> i32 {
+    let gs = Repository::global_mut();
+
     if cn == 0 {
         return 0;
     }
 
-    let active = Repository::with_items(|items| items[item_idx].active);
+    let active = gs.items[item_idx].active;
 
     if active != 0 {
         return 0;
     }
 
     // Find how many data entries are non-zero
-    let data_entries = Repository::with_items(|items| {
-        let item_data = items[item_idx].data;
+    let data_entries = {
+        let item_data = gs.items[item_idx].data;
         let mut count = 0;
         for n in 0..10 {
             if item_data[n] == 0 {
@@ -542,10 +462,11 @@ pub fn use_create_item3(cn: usize, item_idx: usize) -> i32 {
             count += 1;
         }
         if count == 0 {
-            return None;
+            None
+        } else {
+            Some((count, item_data))
         }
-        Some((count, item_data))
-    });
+    };
 
     let (count, data) = match data_entries {
         Some(v) => v,
@@ -571,55 +492,48 @@ pub fn use_create_item3(cn: usize, item_idx: usize) -> i32 {
     let in2 = match in2 {
         Some(id) => id,
         None => {
-            Repository::global_mut().do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                "It's empty...\n",
-            );
+            gs.do_character_log(cn, core::types::FontColor::Green, "It's empty...\n");
             return 1;
         }
     };
 
     if !God::give_character_item(cn, in2) {
-        Repository::global_mut().do_character_log(
+        gs.do_character_log(
             cn,
             core::types::FontColor::Blue,
             "Your backpack is full, so you can't take anything.\n",
         );
-        Repository::with_items_mut(|items| {
-            items[in2].used = USE_EMPTY;
-        });
+        gs.items[in2].used = USE_EMPTY;
         return 0;
     }
 
-    Repository::with_items(|items| {
-        let item_ref = c_string_to_str(&items[in2].reference);
-        Repository::global_mut().do_character_log(
-            cn,
-            core::types::FontColor::Green,
-            &format!("You got a {}.\n", item_ref),
-        );
-
-        chlog!(
-            cn,
-            "Got {} from {}",
-            items[in2].get_name(),
-            items[item_idx].get_name()
-        );
-    });
+    let item_ref = c_string_to_str(&gs.items[in2].reference);
+    gs.do_character_log(
+        cn,
+        core::types::FontColor::Green,
+        &format!("You got a {}.\n", item_ref),
+    );
+    chlog!(
+        cn,
+        "Got {} from {}",
+        gs.items[in2].get_name(),
+        gs.items[item_idx].get_name()
+    );
 
     1
 }
 
 pub fn use_mix_potion(cn: usize, item_idx: usize) -> i32 {
+    let gs = Repository::global_mut();
+
     if cn == 0 {
         return 0;
     }
 
-    let citem = Repository::with_characters(|characters| characters[cn].citem as usize);
+    let citem = gs.characters[cn].citem as usize;
 
     if citem == 0 || (citem & 0x80000000) != 0 {
-        Repository::global_mut().do_character_log(
+        gs.do_character_log(
             cn,
             core::types::FontColor::Blue,
             "What do you want to do with it?",
@@ -627,9 +541,9 @@ pub fn use_mix_potion(cn: usize, item_idx: usize) -> i32 {
         return 0;
     }
 
-    let carried = Repository::with_items(|items| items[item_idx].carried);
+    let carried = gs.items[item_idx].carried;
     if carried == 0 {
-        Repository::global_mut().do_character_log(
+        gs.do_character_log(
             cn,
             core::types::FontColor::Blue,
             "Too difficult to do on the ground.\n",
@@ -637,8 +551,7 @@ pub fn use_mix_potion(cn: usize, item_idx: usize) -> i32 {
         return 0;
     }
 
-    let (base_temp, ingredient_temp) =
-        Repository::with_items(|items| (items[item_idx].temp, items[citem].temp));
+    let (base_temp, ingredient_temp) = (gs.items[item_idx].temp, gs.items[citem].temp);
 
     let result_template: Option<usize> = match base_temp {
         100 => match ingredient_temp {
@@ -710,7 +623,7 @@ pub fn use_mix_potion(cn: usize, item_idx: usize) -> i32 {
     let result_template = match result_template {
         Some(t) => t,
         None => {
-            Repository::global_mut().do_character_log(cn, core::types::FontColor::Blue, "Sorry?\n");
+            gs.do_character_log(cn, core::types::FontColor::Blue, "Sorry?\n");
             return 0;
         }
     };
@@ -720,15 +633,10 @@ pub fn use_mix_potion(cn: usize, item_idx: usize) -> i32 {
         None => return 0,
     };
 
-    Repository::with_items_mut(|items| {
-        items[in3].flags |= ItemFlags::IF_UPDATE.bits();
-        items[citem].used = USE_EMPTY;
-        items[item_idx].used = USE_EMPTY;
-    });
-
-    Repository::with_characters_mut(|characters| {
-        characters[cn].citem = 0;
-    });
+    gs.items[in3].flags |= ItemFlags::IF_UPDATE.bits();
+    gs.items[citem].used = USE_EMPTY;
+    gs.items[item_idx].used = USE_EMPTY;
+    gs.characters[cn].citem = 0;
 
     take_item_from_char(item_idx, cn);
     God::give_character_item(cn, in3);
@@ -737,14 +645,16 @@ pub fn use_mix_potion(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_chain(cn: usize, item_idx: usize) -> i32 {
+    let gs = Repository::global_mut();
+
     if cn == 0 {
         return 0;
     }
 
-    let citem = Repository::with_characters(|characters| characters[cn].citem as usize);
+    let citem = gs.characters[cn].citem as usize;
 
     if citem == 0 || (citem & 0x80000000) != 0 {
-        Repository::global_mut().do_character_log(
+        gs.do_character_log(
             cn,
             core::types::FontColor::Blue,
             "What do you want to do with it?\n",
@@ -752,9 +662,9 @@ pub fn use_chain(cn: usize, item_idx: usize) -> i32 {
         return 0;
     }
 
-    let carried = Repository::with_items(|items| items[item_idx].carried);
+    let carried = gs.items[item_idx].carried;
     if carried == 0 {
-        Repository::global_mut().do_character_log(
+        gs.do_character_log(
             cn,
             core::types::FontColor::Blue,
             "Too difficult to do on the ground.\n",
@@ -762,21 +672,16 @@ pub fn use_chain(cn: usize, item_idx: usize) -> i32 {
         return 0;
     }
 
-    let citem_temp = Repository::with_items(|items| items[citem].temp);
+    let citem_temp = gs.items[citem].temp;
     if citem_temp != 206 {
-        Repository::global_mut().do_character_log(cn, core::types::FontColor::Blue, "Sorry?\n");
+        gs.do_character_log(cn, core::types::FontColor::Blue, "Sorry?\n");
         return 0;
     }
 
-    let (current_temp, max_data) =
-        Repository::with_items(|items| (items[item_idx].temp as i32, items[item_idx].data[0]));
+    let (current_temp, max_data) = (gs.items[item_idx].temp as i32, gs.items[item_idx].data[0]);
 
     if current_temp as u32 >= max_data {
-        Repository::global_mut().do_character_log(
-            cn,
-            core::types::FontColor::Blue,
-            "It won't fit anymore.\n",
-        );
+        gs.do_character_log(cn, core::types::FontColor::Blue, "It won't fit anymore.\n");
         return 0;
     }
 
@@ -785,15 +690,10 @@ pub fn use_chain(cn: usize, item_idx: usize) -> i32 {
         None => return 0,
     };
 
-    Repository::with_items_mut(|items| {
-        items[in3].flags |= ItemFlags::IF_UPDATE.bits();
-        items[citem].used = USE_EMPTY;
-        items[item_idx].used = USE_EMPTY;
-    });
-
-    Repository::with_characters_mut(|characters| {
-        characters[cn].citem = 0;
-    });
+    gs.items[in3].flags |= ItemFlags::IF_UPDATE.bits();
+    gs.items[citem].used = USE_EMPTY;
+    gs.items[item_idx].used = USE_EMPTY;
+    gs.characters[cn].citem = 0;
 
     take_item_from_char(item_idx, cn);
     God::give_character_item(cn, in3);
@@ -802,13 +702,17 @@ pub fn use_chain(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn stone_sword(cn: usize, item_idx: usize) -> i32 {
+    let gs = Repository::global_mut();
+
     if cn == 0 {
         log::error!("stone_sword called with cn=0");
         return 0;
     }
 
-    let (active, template_id) =
-        Repository::with_items(|items| (items[item_idx].active, items[item_idx].data[0] as usize));
+    let (active, template_id) = (
+        gs.items[item_idx].active,
+        gs.items[item_idx].data[0] as usize,
+    );
 
     if active != 0 {
         log::error!("stone_sword called on active item");
@@ -824,11 +728,10 @@ pub fn stone_sword(cn: usize, item_idx: usize) -> i32 {
     }
 
     // Check if character has enough strength (100+)
-    let strength =
-        Repository::with_characters(|characters| characters[cn].attrib[AT_STREN as usize][5]);
+    let strength = gs.characters[cn].attrib[AT_STREN as usize][5];
 
     if strength < 100 {
-        Repository::global_mut().do_character_log(
+        gs.do_character_log(
             cn,
             core::types::FontColor::Blue,
             "You're not strong enough.\n",
@@ -843,28 +746,23 @@ pub fn stone_sword(cn: usize, item_idx: usize) -> i32 {
 
     God::give_character_item(cn, in2);
 
-    Repository::with_items(|items| {
-        let item_ref = c_string_to_str(&items[in2].reference);
-        Repository::global_mut().do_character_log(
-            cn,
-            core::types::FontColor::Green,
-            &format!("You got a {}.\n", item_ref),
-        );
-    });
+    let item_ref = c_string_to_str(&gs.items[in2].reference).to_string();
+    gs.do_character_log(
+        cn,
+        core::types::FontColor::Green,
+        &format!("You got a {}.\n", item_ref),
+    );
 
     1
 }
 
 pub fn finish_laby_teleport(cn: usize, nr: usize, exp: usize) -> i32 {
-    // Update labyrinth progress if this is a new level
-    let (current_progress, x, y) = Repository::with_characters(|characters| {
-        (characters[cn].data[20], characters[cn].x, characters[cn].y)
-    });
+    let gs = Repository::global_mut();
+    let current_progress = gs.characters[cn].data[20];
+    let (x, y) = (gs.characters[cn].x, gs.characters[cn].y);
 
     if (current_progress as usize) < nr {
-        Repository::with_characters_mut(|characters| {
-            characters[cn].data[20] = nr as i32;
-        });
+        gs.characters[cn].data[20] = nr as i32;
 
         let ordinal = match nr {
             1 => "st",
@@ -873,7 +771,7 @@ pub fn finish_laby_teleport(cn: usize, nr: usize, exp: usize) -> i32 {
             _ => "th",
         };
 
-        Repository::global_mut().do_character_log(
+        gs.do_character_log(
             cn,
             core::types::FontColor::Green,
             &format!(
@@ -882,30 +780,17 @@ pub fn finish_laby_teleport(cn: usize, nr: usize, exp: usize) -> i32 {
             ),
         );
 
-        Repository::global_mut().do_give_exp(cn, exp as i32, 0, -1)
+        gs.do_give_exp(cn, exp as i32, 0, -1)
     }
 
-    // Remove items with IF_LABYDESTROY flag from citem
-    let citem = Repository::with_characters(|characters| characters[cn].citem);
+    let citem = gs.characters[cn].citem;
     if citem != 0 && (citem & 0x80000000) == 0 {
-        let has_labydestroy = Repository::with_items(|items| {
-            (items[citem as usize].flags & ItemFlags::IF_LABYDESTROY.bits()) != 0
-        });
-
-        if has_labydestroy {
-            let item_ref = Repository::with_items(|items| {
-                c_string_to_str(&items[citem as usize].reference).to_string()
-            });
-
-            Repository::with_characters_mut(|characters| {
-                characters[cn].citem = 0;
-            });
-
-            Repository::with_items_mut(|items| {
-                items[citem as usize].used = USE_EMPTY;
-            });
-
-            Repository::global_mut().do_character_log(
+        let citem = citem as usize;
+        if (gs.items[citem].flags & ItemFlags::IF_LABYDESTROY.bits()) != 0 {
+            let item_ref = c_string_to_str(&gs.items[citem].reference).to_string();
+            gs.characters[cn].citem = 0;
+            gs.items[citem].used = USE_EMPTY;
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
                 &format!("Your {} vanished.\n", item_ref),
@@ -913,28 +798,14 @@ pub fn finish_laby_teleport(cn: usize, nr: usize, exp: usize) -> i32 {
         }
     }
 
-    // Remove items with IF_LABYDESTROY flag from inventory (40 slots)
     for n in 0..40 {
-        let item_idx = Repository::with_characters(|characters| characters[cn].item[n]);
+        let item_idx = gs.characters[cn].item[n] as usize;
         if item_idx != 0 {
-            let has_labydestroy = Repository::with_items(|items| {
-                (items[item_idx as usize].flags & ItemFlags::IF_LABYDESTROY.bits()) != 0
-            });
-
-            if has_labydestroy {
-                let item_ref = Repository::with_items(|items| {
-                    c_string_to_str(&items[item_idx as usize].reference).to_string()
-                });
-
-                Repository::with_characters_mut(|characters| {
-                    characters[cn].item[n] = 0;
-                });
-
-                Repository::with_items_mut(|items| {
-                    items[item_idx as usize].used = USE_EMPTY;
-                });
-
-                Repository::global_mut().do_character_log(
+            if (gs.items[item_idx].flags & ItemFlags::IF_LABYDESTROY.bits()) != 0 {
+                let item_ref = c_string_to_str(&gs.items[item_idx].reference).to_string();
+                gs.characters[cn].item[n] = 0;
+                gs.items[item_idx].used = USE_EMPTY;
+                gs.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
                     &format!("Your {} vanished.\n", item_ref),
@@ -943,28 +814,14 @@ pub fn finish_laby_teleport(cn: usize, nr: usize, exp: usize) -> i32 {
         }
     }
 
-    // Remove items with IF_LABYDESTROY flag from worn (20 slots)
     for n in 0..20 {
-        let item_idx = Repository::with_characters(|characters| characters[cn].worn[n]);
+        let item_idx = gs.characters[cn].worn[n] as usize;
         if item_idx != 0 {
-            let has_labydestroy = Repository::with_items(|items| {
-                (items[item_idx as usize].flags & ItemFlags::IF_LABYDESTROY.bits()) != 0
-            });
-
-            if has_labydestroy {
-                let item_ref = Repository::with_items(|items| {
-                    c_string_to_str(&items[item_idx as usize].reference).to_string()
-                });
-
-                Repository::with_characters_mut(|characters| {
-                    characters[cn].worn[n] = 0;
-                });
-
-                Repository::with_items_mut(|items| {
-                    items[item_idx as usize].used = USE_EMPTY;
-                });
-
-                Repository::global_mut().do_character_log(
+            if (gs.items[item_idx].flags & ItemFlags::IF_LABYDESTROY.bits()) != 0 {
+                let item_ref = c_string_to_str(&gs.items[item_idx].reference).to_string();
+                gs.characters[cn].worn[n] = 0;
+                gs.items[item_idx].used = USE_EMPTY;
+                gs.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
                     &format!("Your {} vanished.\n", item_ref),
@@ -973,23 +830,13 @@ pub fn finish_laby_teleport(cn: usize, nr: usize, exp: usize) -> i32 {
         }
     }
 
-    // Remove all spells (20 slots)
     for n in 0..20 {
-        let spell_idx = Repository::with_characters(|characters| characters[cn].spell[n]);
+        let spell_idx = gs.characters[cn].spell[n] as usize;
         if spell_idx != 0 {
-            let item_name = Repository::with_items(|items| {
-                c_string_to_str(&items[spell_idx as usize].name).to_string()
-            });
-
-            Repository::with_characters_mut(|characters| {
-                characters[cn].spell[n] = 0;
-            });
-
-            Repository::with_items_mut(|items| {
-                items[spell_idx as usize].used = USE_EMPTY;
-            });
-
-            Repository::global_mut().do_character_log(
+            let item_name = c_string_to_str(&gs.items[spell_idx].name).to_string();
+            gs.characters[cn].spell[n] = 0;
+            gs.items[spell_idx].used = USE_EMPTY;
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
                 &format!("Your {} vanished.\n", item_name),
@@ -1002,14 +849,11 @@ pub fn finish_laby_teleport(cn: usize, nr: usize, exp: usize) -> i32 {
     God::transfer_char(cn, 512, 512); // TODO: Shouldn't this be their temple coords?
     EffectManager::fx_add_effect(6, 0, 512_i32, 512_i32, 0);
 
-    // Update temple and tavern coordinates
-    let (x, y) = Repository::with_characters(|characters| (characters[cn].x, characters[cn].y));
-    Repository::with_characters_mut(|characters| {
-        characters[cn].temple_x = x as u16;
-        characters[cn].temple_y = y as u16;
-        characters[cn].tavern_x = x as u16;
-        characters[cn].tavern_y = y as u16;
-    });
+    let (x, y) = (gs.characters[cn].x, gs.characters[cn].y);
+    gs.characters[cn].temple_x = x as u16;
+    gs.characters[cn].temple_y = y as u16;
+    gs.characters[cn].tavern_x = x as u16;
+    gs.characters[cn].tavern_y = y as u16;
 
     1
 }
@@ -1019,79 +863,54 @@ pub fn is_nolab_item(item_idx: usize) -> bool {
         return false;
     }
 
-    Repository::with_items(|items| {
-        let temp = items[item_idx].temp;
-        matches!(
-            temp,
-            331   // tavern scroll
-            | 500   // lag scroll
-            | 592   // gorn scroll
-            | 903   // forest scroll
-            | 1114  // staffers corner scroll
-            | 1118  // inn scroll
-            | 1144 // arena scroll
-        )
-    })
+    let gs = Repository::global_mut();
+    let temp = gs.items[item_idx].temp;
+    matches!(
+        temp,
+        331   // tavern scroll
+        | 500   // lag scroll
+        | 592   // gorn scroll
+        | 903   // forest scroll
+        | 1114  // staffers corner scroll
+        | 1118  // inn scroll
+        | 1144 // arena scroll
+    )
 }
 
 pub fn teleport(cn: usize, item_idx: usize) -> i32 {
+    let gs = Repository::global_mut();
+
     if cn == 0 {
         return 1;
     }
 
-    // Check if item needs to be activated first
-    let (has_useactivate, is_active) = Repository::with_items(|items| {
-        (
-            (items[item_idx].flags & ItemFlags::IF_USEACTIVATE.bits()) != 0,
-            items[item_idx].active != 0,
-        )
-    });
+    let has_useactivate = (gs.items[item_idx].flags & ItemFlags::IF_USEACTIVATE.bits()) != 0;
+    let is_active = gs.items[item_idx].active != 0;
 
     if has_useactivate && !is_active {
         return 1;
     }
 
-    // Remove nolab items from citem
-    let (citem, x, y) = Repository::with_characters(|characters| {
-        (characters[cn].citem, characters[cn].x, characters[cn].y)
-    });
-    if citem != 0 && is_nolab_item(citem as usize) {
-        let item_ref = Repository::with_items(|items| {
-            c_string_to_str(&items[citem as usize].reference).to_string()
-        });
-
-        Repository::with_characters_mut(|characters| {
-            characters[cn].citem = 0;
-        });
-
-        Repository::with_items_mut(|items| {
-            items[citem as usize].used = USE_EMPTY;
-        });
-
-        Repository::global_mut().do_character_log(
+    let citem = gs.characters[cn].citem as usize;
+    let (x, y) = (gs.characters[cn].x, gs.characters[cn].y);
+    if citem != 0 && is_nolab_item(citem) {
+        let item_ref = c_string_to_str(&gs.items[citem].reference).to_string();
+        gs.characters[cn].citem = 0;
+        gs.items[citem].used = USE_EMPTY;
+        gs.do_character_log(
             cn,
             core::types::FontColor::Yellow,
             &format!("Your {} vanished.\n", item_ref),
         );
     }
 
-    // Remove nolab items from inventory (40 slots)
     for n in 0..40 {
-        let inv_item = Repository::with_characters(|characters| characters[cn].item[n]);
-        if inv_item != 0 && is_nolab_item(inv_item as usize) {
-            let item_ref = Repository::with_items(|items| {
-                c_string_to_str(&items[inv_item as usize].reference).to_string()
-            });
-
-            Repository::with_characters_mut(|characters| {
-                characters[cn].item[n] = 0;
-            });
-
-            Repository::with_items_mut(|items| {
-                items[inv_item as usize].used = USE_EMPTY;
-            });
-
-            Repository::global_mut().do_character_log(
+        let inv_item = gs.characters[cn].item[n] as usize;
+        if inv_item != 0 && is_nolab_item(inv_item) {
+            let item_ref = c_string_to_str(&gs.items[inv_item].reference).to_string();
+            gs.characters[cn].item[n] = 0;
+            gs.items[inv_item].used = USE_EMPTY;
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
                 &format!("Your {} vanished.\n", item_ref),
@@ -1099,40 +918,25 @@ pub fn teleport(cn: usize, item_idx: usize) -> i32 {
         }
     }
 
-    // Remove recall spells from spell slots (20 slots)
     for n in 0..20 {
-        let spell_idx = Repository::with_characters(|characters| characters[cn].spell[n]);
+        let spell_idx = gs.characters[cn].spell[n] as usize;
         if spell_idx != 0 {
-            let is_recall = Repository::with_items(|items| {
-                items[spell_idx as usize].temp == core::constants::SK_RECALL as u16
-            });
-            if is_recall {
-                Repository::with_characters_mut(|characters| {
-                    characters[cn].spell[n] = 0;
-                });
-
-                Repository::with_items_mut(|items| {
-                    items[spell_idx as usize].used = USE_EMPTY;
-                });
+            if gs.items[spell_idx].temp == core::constants::SK_RECALL as u16 {
+                gs.characters[cn].spell[n] = 0;
+                gs.items[spell_idx].used = USE_EMPTY;
             }
         }
     }
 
-    // Check if this is a lab-solved teleport (data[2] != 0)
-    let data2 = Repository::with_items(|items| items[item_idx].data[2]);
+    let data2 = gs.items[item_idx].data[2];
     if data2 != 0 {
-        let data3 = Repository::with_items(|items| items[item_idx].data[3]);
-        helpers::use_labtransfer(Repository::global_mut(), cn, data2 as i32, data3 as i32);
+        let data3 = gs.items[item_idx].data[3];
+        helpers::use_labtransfer(gs, cn, data2 as i32, data3 as i32);
         return 1;
     }
 
-    // Regular teleport
-    let (dest_x, dest_y) = Repository::with_items(|items| {
-        (
-            items[item_idx].data[0] as usize,
-            items[item_idx].data[1] as usize,
-        )
-    });
+    let dest_x = gs.items[item_idx].data[0] as usize;
+    let dest_y = gs.items[item_idx].data[1] as usize;
 
     EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
     God::transfer_char(cn, dest_x, dest_y);
@@ -1142,18 +946,15 @@ pub fn teleport(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn teleport2(cn: usize, item_idx: usize) -> i32 {
+    let gs = Repository::global_mut();
+
     if cn == 0 {
         return 1;
     }
 
-    // Log teleport scroll usage
-    let (dest_x, dest_y, area_name) = Repository::with_items(|items| {
-        let x = items[item_idx].data[0];
-        let y = items[item_idx].data[1];
-        // get_area_m is not implemented, so just use a placeholder
-        let area = format!("({}, {})", x, y);
-        (x, y, area)
-    });
+    let dest_x = gs.items[item_idx].data[0];
+    let dest_y = gs.items[item_idx].data[1];
+    let area_name = format!("({}, {})", dest_x, dest_y);
     log::info!(
         "Used teleport scroll to {},{} ({})",
         dest_x,
@@ -1161,11 +962,9 @@ pub fn teleport2(cn: usize, item_idx: usize) -> i32 {
         area_name
     );
 
-    // Check if lag scroll is too old (more than 4 minutes)
-    let (scroll_time, power) =
-        Repository::with_items(|items| (items[item_idx].data[2], items[item_idx].power));
-    let ticker = Repository::with_globals(|globs| globs.ticker);
-    use core::constants::TICKS;
+    let scroll_time = gs.items[item_idx].data[2];
+    let power = gs.items[item_idx].power;
+    let ticker = gs.globals.ticker;
     if scroll_time != 0 && scroll_time + TICKS as u32 * 60 * 4 < ticker as u32 {
         let diff = ticker - scroll_time as i32;
         log::info!(
@@ -1173,7 +972,7 @@ pub fn teleport2(cn: usize, item_idx: usize) -> i32 {
             diff,
             diff as f64 / TICKS as f64
         );
-        Repository::global_mut().do_character_log(
+        gs.do_character_log(
             cn,
             core::types::FontColor::Yellow,
             "Sorry, this lag scroll was too old. You need to use it four minutes after lagging out or earlier!\n",
@@ -1190,9 +989,8 @@ pub fn teleport2(cn: usize, item_idx: usize) -> i32 {
         }
     };
 
-    // Configure the spell item
-    Repository::with_items_mut(|items| {
-        let spell = &mut items[spell_item];
+    {
+        let spell = &mut gs.items[spell_item];
         let name = b"Teleport";
         spell.name[..name.len()].copy_from_slice(name);
         spell.flags |= ItemFlags::IF_SPELL.bits();
@@ -1203,14 +1001,12 @@ pub fn teleport2(cn: usize, item_idx: usize) -> i32 {
         spell.power = power;
         spell.data[0] = dest_x;
         spell.data[1] = dest_y;
-    });
+    }
 
-    // Use add_spell to add the spell to the character
     let added = driver::add_spell(cn, spell_item);
     if added == 0 {
-        let spell_name =
-            Repository::with_items(|items| c_string_to_str(&items[spell_item].name).to_string());
-        Repository::global_mut().do_character_log(
+        let spell_name = c_string_to_str(&gs.items[spell_item].name).to_string();
+        gs.do_character_log(
             cn,
             core::types::FontColor::Yellow,
             &format!(
@@ -1221,52 +1017,32 @@ pub fn teleport2(cn: usize, item_idx: usize) -> i32 {
         return 0;
     }
 
-    // Add teleport effect (fx_add_effect(7, 0, x, y, 0))
-    let (x, y) = Repository::with_characters(|characters| (characters[cn].x, characters[cn].y));
+    let (x, y) = (gs.characters[cn].x, gs.characters[cn].y);
     crate::effect::EffectManager::fx_add_effect(7, 0, x as i32, y as i32, 0);
     1
 }
 
 pub fn use_labyrinth(cn: usize, _item_idx: usize) -> i32 {
-    // Remove nolab items from citem
-    let citem = Repository::with_characters(|characters| characters[cn].citem);
-    if citem != 0 && is_nolab_item(citem as usize) {
-        let item_ref = Repository::with_items(|items| {
-            c_string_to_str(&items[citem as usize].reference).to_string()
-        });
-
-        Repository::with_characters_mut(|characters| {
-            characters[cn].citem = 0;
-        });
-
-        Repository::with_items_mut(|items| {
-            items[citem as usize].used = USE_EMPTY;
-        });
-
-        Repository::global_mut().do_character_log(
+    let gs = Repository::global_mut();
+    let citem = gs.characters[cn].citem as usize;
+    if citem != 0 && is_nolab_item(citem) {
+        let item_ref = c_string_to_str(&gs.items[citem].reference).to_string();
+        gs.characters[cn].citem = 0;
+        gs.items[citem].used = USE_EMPTY;
+        gs.do_character_log(
             cn,
             core::types::FontColor::Yellow,
             &format!("Your {} vanished.\n", item_ref),
         );
     }
 
-    // Remove nolab items from inventory (40 slots)
     for n in 0..40 {
-        let inv_item = Repository::with_characters(|characters| characters[cn].item[n]);
-        if inv_item != 0 && is_nolab_item(inv_item as usize) {
-            let item_ref = Repository::with_items(|items| {
-                c_string_to_str(&items[inv_item as usize].reference).to_string()
-            });
-
-            Repository::with_characters_mut(|characters| {
-                characters[cn].item[n] = 0;
-            });
-
-            Repository::with_items_mut(|items| {
-                items[inv_item as usize].used = USE_EMPTY;
-            });
-
-            Repository::global_mut().do_character_log(
+        let inv_item = gs.characters[cn].item[n] as usize;
+        if inv_item != 0 && is_nolab_item(inv_item) {
+            let item_ref = c_string_to_str(&gs.items[inv_item].reference).to_string();
+            gs.characters[cn].item[n] = 0;
+            gs.items[inv_item].used = USE_EMPTY;
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
                 &format!("Your {} vanished.\n", item_ref),
@@ -1274,129 +1050,53 @@ pub fn use_labyrinth(cn: usize, _item_idx: usize) -> i32 {
         }
     }
 
-    // Remove recall spells from spell slots (20 slots)
     for n in 0..20 {
-        let spell_idx = Repository::with_characters(|characters| characters[cn].spell[n]);
+        let spell_idx = gs.characters[cn].spell[n] as usize;
         if spell_idx != 0 {
-            let is_recall =
-                Repository::with_items(|items| items[spell_idx as usize].temp == SK_RECALL as u16);
-            if is_recall {
-                Repository::with_characters_mut(|characters| {
-                    characters[cn].spell[n] = 0;
-                });
-
-                Repository::with_items_mut(|items| {
-                    items[spell_idx as usize].used = USE_EMPTY;
-                });
+            if gs.items[spell_idx].temp == SK_RECALL as u16 {
+                gs.characters[cn].spell[n] = 0;
+                gs.items[spell_idx].used = USE_EMPTY;
             }
         }
     }
 
-    // Teleport based on labyrinth progress
-    let (progress, x, y) = Repository::with_characters(|characters| {
-        (characters[cn].data[20], characters[cn].x, characters[cn].y)
-    });
-
-    let flag = match progress {
-        0 => {
-            EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
-            let result = God::transfer_char(cn, 64, 56);
-            Repository::with_characters(|ch| {
-                EffectManager::fx_add_effect(6, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
-            });
-            result
-        }
-        1 => {
-            EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
-            let result = God::transfer_char(cn, 95, 207);
-            Repository::with_characters(|ch| {
-                EffectManager::fx_add_effect(6, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
-            });
-            result
-        }
-        2 => {
-            EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
-            let result = God::transfer_char(cn, 74, 240);
-            Repository::with_characters(|ch| {
-                EffectManager::fx_add_effect(6, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
-            });
-            result
-        }
-        3 => {
-            EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
-            let result = God::transfer_char(cn, 37, 370);
-            Repository::with_characters(|ch| {
-                EffectManager::fx_add_effect(6, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
-            });
-            result
-        }
-        4 => {
-            EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
-            let result = God::transfer_char(cn, 114, 390);
-            Repository::with_characters(|ch| {
-                EffectManager::fx_add_effect(6, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
-            });
-            result
-        }
-        5 => {
-            EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
-            let result = God::transfer_char(cn, 28, 493);
-            Repository::with_characters(|ch| {
-                EffectManager::fx_add_effect(6, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
-            });
-            result
-        }
-        6 => {
-            EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
-            let result = God::transfer_char(cn, 24, 534);
-            Repository::with_characters(|ch| {
-                EffectManager::fx_add_effect(6, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
-            });
-            result
-        }
-        7 => {
-            EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
-            let result = God::transfer_char(cn, 118, 667);
-            Repository::with_characters(|ch| {
-                EffectManager::fx_add_effect(6, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
-            });
-            result
-        }
-        8 => {
-            EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
-            let result = God::transfer_char(cn, 63, 720);
-            Repository::with_characters(|ch| {
-                EffectManager::fx_add_effect(6, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
-            });
-            result
-        }
-        9 => {
-            EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
-            let result = God::transfer_char(cn, 33, 597);
-            Repository::with_characters(|ch| {
-                EffectManager::fx_add_effect(6, 0, ch[cn].x as i32, ch[cn].y as i32, 0)
-            });
-            result
-        }
-        _ => {
-            Repository::global_mut().do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                "You have already solved all existing parts of the labyrinth. Please come back later.\n",
-            );
-            false
-        }
+    let progress = gs.characters[cn].data[20];
+    let (x, y) = (gs.characters[cn].x, gs.characters[cn].y);
+    let destination = match progress {
+        0 => Some((64, 56)),
+        1 => Some((95, 207)),
+        2 => Some((74, 240)),
+        3 => Some((37, 370)),
+        4 => Some((114, 390)),
+        5 => Some((28, 493)),
+        6 => Some((24, 534)),
+        7 => Some((118, 667)),
+        8 => Some((63, 720)),
+        9 => Some((33, 597)),
+        _ => None,
     };
 
-    // Update temple and tavern coordinates if teleport was successful
+    let flag = if let Some((dest_x, dest_y)) = destination {
+        EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
+        let result = God::transfer_char(cn, dest_x, dest_y);
+        let (new_x, new_y) = (gs.characters[cn].x, gs.characters[cn].y);
+        EffectManager::fx_add_effect(6, 0, new_x as i32, new_y as i32, 0);
+        result
+    } else {
+        gs.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "You have already solved all existing parts of the labyrinth. Please come back later.\n",
+        );
+        false
+    };
+
     if flag {
-        let (x, y) = Repository::with_characters(|characters| (characters[cn].x, characters[cn].y));
-        Repository::with_characters_mut(|characters| {
-            characters[cn].temple_x = x as u16;
-            characters[cn].temple_y = y as u16;
-            characters[cn].tavern_x = x as u16;
-            characters[cn].tavern_y = y as u16;
-        });
+        let (x, y) = (gs.characters[cn].x, gs.characters[cn].y);
+        gs.characters[cn].temple_x = x as u16;
+        gs.characters[cn].temple_y = y as u16;
+        gs.characters[cn].tavern_x = x as u16;
+        gs.characters[cn].tavern_y = y as u16;
     }
 
     1
@@ -1405,18 +1105,12 @@ pub fn use_labyrinth(cn: usize, _item_idx: usize) -> i32 {
 pub fn use_ladder(cn: usize, item_idx: usize) -> i32 {
     use crate::god::God;
 
-    // Get item position and offset from data
-    let (item_x, item_y, offset_x, offset_y) = Repository::with_items(|items| {
-        let item = &items[item_idx];
-        (
-            item.x as usize,
-            item.y as usize,
-            item.data[0] as i32,
-            item.data[1] as i32,
-        )
-    });
-
-    // Calculate destination (item position + offset)
+    let gs = Repository::global_mut();
+    let item = &gs.items[item_idx];
+    let item_x = item.x as usize;
+    let item_y = item.y as usize;
+    let offset_x = item.data[0] as i32;
+    let offset_y = item.data[1] as i32;
     let dest_x = (item_x as i32 + offset_x) as usize;
     let dest_y = (item_y as i32 + offset_y) as usize;
 
@@ -1426,35 +1120,26 @@ pub fn use_ladder(cn: usize, item_idx: usize) -> i32 {
 }
 
 pub fn use_bag(cn: usize, item_idx: usize) -> i32 {
-    // Get the character ID stored in the bag's data[0]
-    let co = Repository::with_items(|items| items[item_idx].data[0] as usize);
+    let gs = Repository::global_mut();
+    let co = gs.items[item_idx].data[0] as usize;
 
     if !core::types::Character::is_sane_character(co) {
         return 0;
     }
 
-    let owner = Repository::with_characters(|characters| {
-        characters[co].data[core::constants::CHD_CORPSEOWNER] as usize
-    });
+    let owner = gs.characters[co].data[core::constants::CHD_CORPSEOWNER] as usize;
 
-    // Check if grave robbing is allowed
     if owner != 0 && owner != cn {
-        let may_attack = Repository::global_mut().may_attack_msg(cn, owner, false);
-        let allowed_cn = Repository::with_characters(|characters| {
-            characters[owner].data[core::constants::CHD_ALLOW] as usize
-        });
+        let may_attack = gs.may_attack_msg(cn, owner, false);
+        let allowed_cn = gs.characters[owner].data[core::constants::CHD_ALLOW] as usize;
 
         if may_attack == 0 && allowed_cn != cn {
-            let owner_name = Repository::with_characters(|characters| {
-                c_string_to_str(&characters[owner].name).to_string()
-            });
-
-            let owner_is_male = Repository::with_characters(|characters| {
-                (characters[owner].kindred & core::constants::KIN_MALE as i32) != 0
-            });
+            let owner_name = c_string_to_str(&gs.characters[owner].name).to_string();
+            let owner_is_male =
+                (gs.characters[owner].kindred & core::constants::KIN_MALE as i32) != 0;
             let owner_pronoun = if owner_is_male { "his" } else { "her" };
 
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Green,
                 &format!(
@@ -1463,17 +1148,12 @@ pub fn use_bag(cn: usize, item_idx: usize) -> i32 {
                 ),
             );
 
-            // Check if owner is active and notify them
-            let (corpse_active, owner_x) = Repository::with_characters(|characters| {
-                (characters[co].used == USE_ACTIVE, characters[owner].x)
-            });
+            let corpse_active = gs.characters[co].used == USE_ACTIVE;
+            let owner_x = gs.characters[owner].x;
 
             if corpse_active && owner_x != 0 {
-                let cn_name = Repository::with_characters(|characters| {
-                    c_string_to_str(&characters[cn].name).to_string()
-                });
-
-                Repository::global_mut().do_character_log(
+                let cn_name = c_string_to_str(&gs.characters[cn].name).to_string();
+                gs.do_character_log(
                     owner,
                     core::types::FontColor::Green,
                     &format!(
@@ -1487,47 +1167,34 @@ pub fn use_bag(cn: usize, item_idx: usize) -> i32 {
         }
     }
 
-    // Allow the search
-    let co_ref = Repository::with_characters(|characters| {
-        c_string_to_str(&characters[co].reference).to_string()
-    });
-
-    Repository::global_mut().do_character_log(
+    let co_ref = c_string_to_str(&gs.characters[co].reference).to_string();
+    gs.do_character_log(
         cn,
         core::types::FontColor::Yellow,
         &format!("You search the remains of {}.\n", co_ref),
     );
-    Repository::global_mut().do_look_char(cn, co, 0, 0, 1);
+    gs.do_look_char(cn, co, 0, 0, 1);
 
     1
 }
 
 pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
-    // Get skill number from data[0]
-    let (skill_nr, teaches_only) = Repository::with_items(|items| {
-        (
-            items[item_idx].data[0] as usize,
-            items[item_idx].data[1] != 0,
-        )
-    });
+    let gs = Repository::global_mut();
+    let skill_nr = gs.items[item_idx].data[0] as usize;
+    let teaches_only = gs.items[item_idx].data[1] != 0;
 
     if skill_nr >= MAXSKILL {
         return 0;
     }
 
-    let (current_val, max_val, difficulty) = Repository::with_characters(|characters| {
-        (
-            characters[cn].skill[skill_nr][0],
-            characters[cn].skill[skill_nr][2],
-            characters[cn].skill[skill_nr][3],
-        )
-    });
+    let current_val = gs.characters[cn].skill[skill_nr][0];
+    let max_val = gs.characters[cn].skill[skill_nr][2];
+    let difficulty = gs.characters[cn].skill[skill_nr][3];
 
     if current_val != 0 {
-        // Already know the skill
         if teaches_only {
             let name = skilltab::get_skill_name(skill_nr);
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
                 &format!("You already know {}.\n", name),
@@ -1537,7 +1204,7 @@ pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
 
         if current_val >= max_val {
             let name = skilltab::get_skill_name(skill_nr);
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
                 &format!("You cannot raise skill {} any higher.\n", name),
@@ -1545,25 +1212,19 @@ pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
             return 0;
         }
 
-        // Raise skill by one
         let name = skilltab::get_skill_name(skill_nr);
-        Repository::global_mut().do_character_log(
+        gs.do_character_log(
             cn,
             core::types::FontColor::Green,
             &format!("Raised {} by one.\n", name),
         );
 
-        // Calculate points needed and apply
         let v = current_val as i32;
         let diff = difficulty as i32;
         let pts = helpers::skill_needed(v, diff);
-        Repository::with_characters_mut(|characters| {
-            characters[cn].points_tot += pts;
-            characters[cn].skill[skill_nr][0] += 1;
-        });
-
-        // Trigger level check
-        Repository::global_mut().do_check_new_level(cn);
+        gs.characters[cn].points_tot += pts;
+        gs.characters[cn].skill[skill_nr][0] += 1;
+        gs.do_check_new_level(cn);
         log::info!(
             "Used scroll to raise skill {} for {} (pts={})",
             skill_nr,
@@ -1571,21 +1232,17 @@ pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
             pts
         );
     } else if max_val == 0 {
-        // Cannot learn this skill
         let name = skilltab::get_skill_name(skill_nr);
-        Repository::global_mut().do_character_log(
+        gs.do_character_log(
             cn,
             core::types::FontColor::Yellow,
             &format!("This scroll teaches {}, which you cannot learn.\n", name),
         );
         return 0;
     } else {
-        // Learn the skill
-        Repository::with_characters_mut(|characters| {
-            characters[cn].skill[skill_nr][0] = 1;
-        });
+        gs.characters[cn].skill[skill_nr][0] = 1;
         let name = skilltab::get_skill_name(skill_nr);
-        Repository::global_mut().do_character_log(
+        gs.do_character_log(
             cn,
             core::types::FontColor::Green,
             &format!("You learned {}!\n", name),
@@ -1593,15 +1250,9 @@ pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
         log::info!("Used scroll to learn {} (cn={})", skill_nr, cn);
     }
 
-    // Consume scroll
-    Repository::with_items_mut(|items| {
-        items[item_idx].used = USE_EMPTY;
-    });
+    gs.items[item_idx].used = USE_EMPTY;
     God::take_from_char(item_idx, cn);
-
-    Repository::with_characters_mut(|characters| {
-        characters[cn].set_do_update_flags();
-    });
+    gs.characters[cn].set_do_update_flags();
 
     1
 }
@@ -1609,20 +1260,15 @@ pub fn use_scroll(cn: usize, item_idx: usize) -> i32 {
 pub fn use_scroll2(cn: usize, item_idx: usize) -> i32 {
     // TODO: Move these to core library
     const AT_NAME: [&str; 5] = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
+    let gs = Repository::global_mut();
 
-    // Get the attribute number from data[0]
-    let attrib_nr = Repository::with_items(|items| items[item_idx].data[0] as usize);
-
-    let (current_val, max_val, difficulty) = Repository::with_characters(|characters| {
-        (
-            characters[cn].attrib[attrib_nr][0],
-            characters[cn].attrib[attrib_nr][2],
-            characters[cn].attrib[attrib_nr][3],
-        )
-    });
+    let attrib_nr = gs.items[item_idx].data[0] as usize;
+    let current_val = gs.characters[cn].attrib[attrib_nr][0];
+    let max_val = gs.characters[cn].attrib[attrib_nr][2];
+    let difficulty = gs.characters[cn].attrib[attrib_nr][3];
 
     if current_val >= max_val {
-        Repository::global_mut().do_character_log(
+        gs.do_character_log(
             cn,
             core::types::FontColor::Green,
             &format!(
@@ -1638,7 +1284,7 @@ pub fn use_scroll2(cn: usize, item_idx: usize) -> i32 {
     let diff = difficulty as i32;
     let pts = (v * v * v * diff) / 20;
 
-    Repository::global_mut().do_character_log(
+    gs.do_character_log(
         cn,
         core::types::FontColor::Yellow,
         &format!("Raised attribute {} by one.\n", AT_NAME[attrib_nr]),
@@ -1650,42 +1296,26 @@ pub fn use_scroll2(cn: usize, item_idx: usize) -> i32 {
         pts
     );
 
-    Repository::with_characters_mut(|characters| {
-        characters[cn].points_tot += pts;
-        characters[cn].attrib[attrib_nr][0] += 1;
-    });
-
-    Repository::global_mut().do_check_new_level(cn);
-
-    // Remove the scroll
-    Repository::with_items_mut(|items| {
-        items[item_idx].used = USE_EMPTY;
-    });
+    gs.characters[cn].points_tot += pts;
+    gs.characters[cn].attrib[attrib_nr][0] += 1;
+    gs.do_check_new_level(cn);
+    gs.items[item_idx].used = USE_EMPTY;
 
     take_item_from_char(item_idx, cn);
-
-    // Update character
-    Repository::with_characters_mut(|characters| {
-        characters[cn].set_do_update_flags();
-    });
+    gs.characters[cn].set_do_update_flags();
 
     1
 }
 
 pub fn use_scroll3(cn: usize, item_idx: usize) -> i32 {
-    // Get the amount to raise from data[0]
-    let amount = Repository::with_items(|items| items[item_idx].data[0] as i32);
-
-    let (current_hp, max_hp, difficulty) = Repository::with_characters(|characters| {
-        (
-            characters[cn].hp[0],
-            characters[cn].hp[2],
-            characters[cn].hp[3],
-        )
-    });
+    let gs = Repository::global_mut();
+    let amount = gs.items[item_idx].data[0] as i32;
+    let current_hp = gs.characters[cn].hp[0];
+    let max_hp = gs.characters[cn].hp[2];
+    let difficulty = gs.characters[cn].hp[3];
 
     if current_hp >= max_hp {
-        Repository::global_mut().do_character_log(
+        gs.do_character_log(
             cn,
             core::types::FontColor::Green,
             "You cannot raise Hitpoints any higher.\n",
@@ -1693,13 +1323,12 @@ pub fn use_scroll3(cn: usize, item_idx: usize) -> i32 {
         return 0;
     }
 
-    Repository::global_mut().do_character_log(
+    gs.do_character_log(
         cn,
         core::types::FontColor::Yellow,
         &format!("Raised Hitpoints by {}.\n", amount),
     );
 
-    // Calculate total points needed: sum of v*diff for each point
     let v = current_hp as i32;
     let diff = difficulty as i32;
     let mut pts = 0;
@@ -1707,42 +1336,26 @@ pub fn use_scroll3(cn: usize, item_idx: usize) -> i32 {
         pts += (n + v) * diff;
     }
 
-    Repository::with_characters_mut(|characters| {
-        characters[cn].points_tot += pts;
-        characters[cn].hp[0] += amount as u16;
-    });
-
-    Repository::global_mut().do_check_new_level(cn);
-
-    // Remove the scroll
-    Repository::with_items_mut(|items| {
-        items[item_idx].used = USE_EMPTY;
-    });
+    gs.characters[cn].points_tot += pts;
+    gs.characters[cn].hp[0] += amount as u16;
+    gs.do_check_new_level(cn);
+    gs.items[item_idx].used = USE_EMPTY;
 
     take_item_from_char(item_idx, cn);
-
-    // Update character
-    Repository::with_characters_mut(|characters| {
-        characters[cn].set_do_update_flags();
-    });
+    gs.characters[cn].set_do_update_flags();
 
     1
 }
 
 pub fn use_scroll4(cn: usize, item_idx: usize) -> i32 {
-    // Get the amount to raise from data[0]
-    let amount = Repository::with_items(|items| items[item_idx].data[0] as i32);
-
-    let (current_end, max_end, difficulty) = Repository::with_characters(|characters| {
-        (
-            characters[cn].end[0],
-            characters[cn].end[2],
-            characters[cn].end[3],
-        )
-    });
+    let gs = Repository::global_mut();
+    let amount = gs.items[item_idx].data[0] as i32;
+    let current_end = gs.characters[cn].end[0];
+    let max_end = gs.characters[cn].end[2];
+    let difficulty = gs.characters[cn].end[3];
 
     if current_end >= max_end {
-        Repository::global_mut().do_character_log(
+        gs.do_character_log(
             cn,
             core::types::FontColor::Green,
             "You cannot raise Endurance any higher.\n",
@@ -1750,13 +1363,12 @@ pub fn use_scroll4(cn: usize, item_idx: usize) -> i32 {
         return 0;
     }
 
-    Repository::global_mut().do_character_log(
+    gs.do_character_log(
         cn,
         core::types::FontColor::Yellow,
         &format!("Raised Endurance by {}.\n", amount),
     );
 
-    // Calculate total points needed: sum of (v*diff)/2 for each point
     let v = current_end as i32;
     let diff = difficulty as i32;
     let mut pts = 0;
@@ -1764,42 +1376,26 @@ pub fn use_scroll4(cn: usize, item_idx: usize) -> i32 {
         pts += ((n + v) * diff) / 2;
     }
 
-    Repository::with_characters_mut(|characters| {
-        characters[cn].points_tot += pts;
-        characters[cn].end[0] += amount as u16;
-    });
-
-    Repository::global_mut().do_check_new_level(cn);
-
-    // Remove the scroll
-    Repository::with_items_mut(|items| {
-        items[item_idx].used = USE_EMPTY;
-    });
+    gs.characters[cn].points_tot += pts;
+    gs.characters[cn].end[0] += amount as u16;
+    gs.do_check_new_level(cn);
+    gs.items[item_idx].used = USE_EMPTY;
 
     take_item_from_char(item_idx, cn);
-
-    // Update character
-    Repository::with_characters_mut(|characters| {
-        characters[cn].set_do_update_flags();
-    });
+    gs.characters[cn].set_do_update_flags();
 
     1
 }
 
 pub fn use_scroll5(cn: usize, item_idx: usize) -> i32 {
-    // Get the amount to raise from data[0]
-    let amount = Repository::with_items(|items| items[item_idx].data[0] as i32);
-
-    let (current_mana, max_mana, difficulty) = Repository::with_characters(|characters| {
-        (
-            characters[cn].mana[0],
-            characters[cn].mana[2],
-            characters[cn].mana[3],
-        )
-    });
+    let gs = Repository::global_mut();
+    let amount = gs.items[item_idx].data[0] as i32;
+    let current_mana = gs.characters[cn].mana[0];
+    let max_mana = gs.characters[cn].mana[2];
+    let difficulty = gs.characters[cn].mana[3];
 
     if current_mana >= max_mana {
-        Repository::global_mut().do_character_log(
+        gs.do_character_log(
             cn,
             core::types::FontColor::Green,
             "You cannot raise Mana any higher.\n",
@@ -1807,13 +1403,12 @@ pub fn use_scroll5(cn: usize, item_idx: usize) -> i32 {
         return 0;
     }
 
-    Repository::global_mut().do_character_log(
+    gs.do_character_log(
         cn,
         core::types::FontColor::Yellow,
         &format!("Raised Mana by {}.\n", amount),
     );
 
-    // Calculate total points needed: sum of v*diff for each point
     let v = current_mana as i32;
     let diff = difficulty as i32;
     let mut pts = 0;
@@ -1822,24 +1417,13 @@ pub fn use_scroll5(cn: usize, item_idx: usize) -> i32 {
         pts += (n + v) * diff;
     }
 
-    Repository::with_characters_mut(|characters| {
-        characters[cn].points_tot += pts;
-        characters[cn].mana[0] += amount as u16;
-    });
-
-    Repository::global_mut().do_check_new_level(cn);
-
-    // Remove the scroll
-    Repository::with_items_mut(|items| {
-        items[item_idx].used = USE_EMPTY;
-    });
+    gs.characters[cn].points_tot += pts;
+    gs.characters[cn].mana[0] += amount as u16;
+    gs.do_check_new_level(cn);
+    gs.items[item_idx].used = USE_EMPTY;
 
     take_item_from_char(item_idx, cn);
-
-    // Update character
-    Repository::with_characters_mut(|characters| {
-        characters[cn].set_do_update_flags();
-    });
+    gs.characters[cn].set_do_update_flags();
 
     1
 }

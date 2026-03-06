@@ -1885,7 +1885,7 @@ use crate::god::God;
 use crate::{driver, helpers};
 
 /// Port of `obey(int cn, int co)` from `talk.cpp` using direct `GameState` access.
-pub fn obey_gs(gs: &mut GameState, cn: usize, co: usize) -> i32 {
+pub fn obey(gs: &mut GameState, cn: usize, co: usize) -> i32 {
     // Check if co is the companion master (data[63])
     if gs.characters[cn].data[63] == co as i32 {
         return 1;
@@ -1908,7 +1908,7 @@ pub fn obey_gs(gs: &mut GameState, cn: usize, co: usize) -> i32 {
 /// * `cn` - Companion character (the one with spells)
 /// * `co` - Master character (viewer)
 pub fn answer_spellinfo(gs: &mut GameState, cn: usize, co: usize) {
-    if obey_gs(gs, cn, co) != 1 {
+    if obey(gs, cn, co) != 1 {
         return;
     }
 
@@ -1940,7 +1940,7 @@ pub fn answer_spellinfo(gs: &mut GameState, cn: usize, co: usize) {
 /// * `cn` - Companion character to transfer (and destroy)
 /// * `co` - Master character who receives experience
 pub fn answer_transfer(gs: &mut GameState, cn: usize, co: usize) {
-    if obey_gs(gs, cn, co) != 1 {
+    if obey(gs, cn, co) != 1 {
         return;
     }
 
@@ -1986,7 +1986,7 @@ pub fn answer_transfer(gs: &mut GameState, cn: usize, co: usize) {
 /// * `cn` - Companion character
 /// * `co` - Master character to follow
 pub fn answer_follow(gs: &mut GameState, cn: usize, co: usize) {
-    if obey_gs(gs, cn, co) != 1 {
+    if obey(gs, cn, co) != 1 {
         return;
     }
 
@@ -2021,7 +2021,7 @@ pub fn answer_follow(gs: &mut GameState, cn: usize, co: usize) {
 /// * `cn` - Companion character
 /// * `co` - Master character issuing the command
 pub fn answer_wait(gs: &mut GameState, cn: usize, co: usize) {
-    if obey_gs(gs, cn, co) != 1 {
+    if obey(gs, cn, co) != 1 {
         return;
     }
 
@@ -2062,7 +2062,7 @@ pub fn answer_wait(gs: &mut GameState, cn: usize, co: usize) {
 /// * `cn` - Companion character
 /// * `co` - Master character issuing the command
 pub fn answer_stop(gs: &mut GameState, cn: usize, co: usize) {
-    if obey_gs(gs, cn, co) == 0 {
+    if obey(gs, cn, co) == 0 {
         return;
     }
 
@@ -2097,7 +2097,7 @@ pub fn answer_stop(gs: &mut GameState, cn: usize, co: usize) {
 /// * `cn` - Companion character
 /// * `co` - Master character issuing the command
 pub fn answer_move(gs: &mut GameState, cn: usize, co: usize) {
-    if obey_gs(gs, cn, co) == 0 {
+    if obey(gs, cn, co) == 0 {
         return;
     }
 
@@ -2130,7 +2130,7 @@ pub fn answer_move(gs: &mut GameState, cn: usize, co: usize) {
 /// * `co` - Master character issuing the command
 /// * `text` - Spoken text containing the target name
 pub fn answer_attack(gs: &mut GameState, cn: usize, co: usize, text: &str) {
-    if obey_gs(gs, cn, co) == 0 {
+    if obey(gs, cn, co) == 0 {
         return;
     }
 
@@ -2805,7 +2805,7 @@ pub fn npc_hear(gs: &mut GameState, cn: usize, co: usize, text: &str) {
     }
 
     // Don't talk to enemies
-    if obey_gs(gs, cn, co) == 0 {
+    if obey(gs, cn, co) == 0 {
         let mut is_enemy = false;
         {
             for n in 80..92 {
@@ -2959,7 +2959,7 @@ pub fn npc_hear(gs: &mut GameState, cn: usize, co: usize, text: &str) {
     // Determine if NPC should talk
     let talk_level = gs.characters[cn].data[core::constants::CHD_TALKATIVE]
         + if name_mentioned { 1 } else { 0 }
-        + if obey_gs(gs, cn, co) != 0 { 20 } else { 0 };
+        + if obey(gs, cn, co) != 0 { 20 } else { 0 };
 
     if talk_level > 0 && best_conf > 0 {
         if let Some(nr) = best_nr {
