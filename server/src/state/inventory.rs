@@ -743,7 +743,7 @@ impl GameState {
                     self.items[item_idx].flags & ItemFlags::IF_IDENTIFIED.bits() != 0;
 
                 if is_identified {
-                    driver::item_info(cn, item_idx, 1);
+                    driver::item_info(self, cn, item_idx, 1);
                 }
             }
 

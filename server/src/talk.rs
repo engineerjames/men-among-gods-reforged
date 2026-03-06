@@ -1963,7 +1963,7 @@ pub fn answer_transfer(gs: &mut GameState, cn: usize, co: usize) {
     EffectManager::fx_add_effect(6, 0, co_x as i32, co_y as i32, 0);
     EffectManager::fx_add_effect(7, 0, cn_x as i32, cn_y as i32, 0);
 
-    driver::die_companion(cn);
+    driver::die_companion(gs, cn);
 
     gs.characters[co].luck -= 1;
 

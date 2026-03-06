@@ -868,7 +868,7 @@ impl GameState {
         let is_player = self.characters[cn].flags & CharacterFlags::Player.bits() != 0;
 
         if used == core::constants::USE_ACTIVE && is_player {
-            driver::char_item_expire(cn);
+            driver::char_item_expire(self, cn);
         }
     }
 
@@ -1277,7 +1277,7 @@ impl GameState {
         // If a real player got hit, damage armour pieces
         let co_is_player = (self.characters[co].flags & CharacterFlags::Player.bits()) != 0;
         if co_is_player {
-            driver::item_damage_armor(co, dam);
+            driver::item_damage_armor(self, co, dam);
         }
 
         // Determine noexp conditions

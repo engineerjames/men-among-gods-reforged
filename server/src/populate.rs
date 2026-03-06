@@ -186,7 +186,7 @@ pub fn pop_create_item(gs: &mut GameState, temp: usize, cn: usize) -> usize {
                 // 50% chance to age the item first
                 if helpers::random_mod(2) == 0 {
                     gs.items[in_id].current_damage = max_damage + 1;
-                    use_item::item_age(in_id);
+                    use_item::item_age(gs, in_id);
                 }
                 // Set random damage
                 gs.items[in_id].current_damage = helpers::random_mod(max_damage);

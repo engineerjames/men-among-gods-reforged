@@ -292,7 +292,7 @@ pub fn add_spell(gs: &mut GameState, cn: usize, in_: usize) -> i32 {
     1
 }
 
-pub fn is_exhausted(gs: &GameState, cn: usize) -> i32 {
+pub fn is_exhausted(gs: &mut GameState, cn: usize) -> i32 {
     // Ported from C++ is_exhausted(int cn)
     for n in 0..20 {
         let in_ = gs.characters[cn].spell[n] as usize;
@@ -2529,12 +2529,12 @@ pub fn skill_repair(gs: &mut GameState, cn: usize) {
         gs.do_character_log(cn, core::types::FontColor::Green, "Success!\n");
     } else {
         gs.do_character_log(cn, core::types::FontColor::Green, "You failed.\n");
-        driver::item_damage_citem(cn, 1000000);
+        driver::item_damage_citem(gs, cn, 1000000);
         if die - chan > 3 {
-            driver::item_damage_citem(cn, 1000000);
+            driver::item_damage_citem(gs, cn, 1000000);
         }
         if die - chan > 6 {
-            driver::item_damage_citem(cn, 1000000);
+            driver::item_damage_citem(gs, cn, 1000000);
         }
     }
     chlog!(

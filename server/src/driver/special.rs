@@ -44,7 +44,7 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> i32 {
 
             if co_team == cn_team {
                 seen[maxseen].co = co;
-                seen[maxseen].dist = driver::npc_dist(cn, co);
+                seen[maxseen].dist = driver::npc_dist(gs, cn, co);
                 seen[maxseen].is_friend = true;
                 seen[maxseen].stun = 0;
                 let low_hp = gs.characters[co].a_hp < (gs.characters[co].hp[5] as i32 * 400);
@@ -53,9 +53,9 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> i32 {
                 maxseen += 1;
             } else {
                 seen[maxseen].co = co;
-                seen[maxseen].dist = driver::npc_dist(cn, co);
+                seen[maxseen].dist = driver::npc_dist(gs, cn, co);
                 seen[maxseen].is_friend = false;
-                if !driver::npc_is_stunned(co) {
+                if !driver::npc_is_stunned(gs, co) {
                     let can_stun = gs.characters[cn].skill[SK_STUN][5] * 12
                         > gs.characters[co].skill[SK_RESIST][5] * 10;
                     seen[maxseen].stun = if can_stun { 1 } else { 0 };
@@ -123,7 +123,7 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> i32 {
         }
         if m == 0 {
             seen[maxseen].co = co;
-            seen[maxseen].dist = driver::npc_dist(cn, co);
+            seen[maxseen].dist = driver::npc_dist(gs, cn, co);
             seen[maxseen].is_friend = false;
             let can_stun = gs.characters[cn].skill[SK_STUN][5] * 12
                 > gs.characters[co].skill[SK_RESIST][5] * 10;
@@ -160,7 +160,7 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> i32 {
     }
 
     if !done && low_hp {
-        done = driver::npc_try_spell(cn, cn, SK_HEAL);
+        done = driver::npc_try_spell(gs, cn, cn, SK_HEAL);
     }
 
     let high_endurance = gs.characters[cn].a_end > 15000;
@@ -209,11 +209,11 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> i32 {
         let (cn_x, cn_y) = (gs.characters[cn].x, gs.characters[cn].y);
 
         for n in 1..5 {
-            if !driver::npc_check_target(cn_x as usize, (cn_y - n) as usize) {
+            if !driver::npc_check_target(gs, cn_x as usize, (cn_y - n) as usize) {
                 up -= 20;
-                if !driver::npc_check_target((cn_x + 1) as usize, (cn_y - n) as usize) {
+                if !driver::npc_check_target(gs, (cn_x + 1) as usize, (cn_y - n) as usize) {
                     up -= 20;
-                    if !driver::npc_check_target((cn_x - 1) as usize, (cn_y - n) as usize) {
+                    if !driver::npc_check_target(gs, (cn_x - 1) as usize, (cn_y - n) as usize) {
                         up -= 10000;
                         break;
                     }
@@ -222,11 +222,11 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> i32 {
         }
 
         for n in 1..5 {
-            if !driver::npc_check_target(cn_x as usize, (cn_y + n) as usize) {
+            if !driver::npc_check_target(gs, cn_x as usize, (cn_y + n) as usize) {
                 down -= 20;
-                if !driver::npc_check_target((cn_x + 1) as usize, (cn_y + n) as usize) {
+                if !driver::npc_check_target(gs, (cn_x + 1) as usize, (cn_y + n) as usize) {
                     down -= 20;
-                    if !driver::npc_check_target((cn_x - 1) as usize, (cn_y + n) as usize) {
+                    if !driver::npc_check_target(gs, (cn_x - 1) as usize, (cn_y + n) as usize) {
                         down -= 10000;
                         break;
                     }
@@ -235,11 +235,11 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> i32 {
         }
 
         for n in 1..5 {
-            if !driver::npc_check_target((cn_x - n) as usize, cn_y as usize) {
+            if !driver::npc_check_target(gs, (cn_x - n) as usize, cn_y as usize) {
                 left -= 20;
-                if !driver::npc_check_target((cn_x - n) as usize, (cn_y + 1) as usize) {
+                if !driver::npc_check_target(gs, (cn_x - n) as usize, (cn_y + 1) as usize) {
                     left -= 20;
-                    if !driver::npc_check_target((cn_x - n) as usize, (cn_y - n) as usize) {
+                    if !driver::npc_check_target(gs, (cn_x - n) as usize, (cn_y - n) as usize) {
                         left -= 10000;
                         break;
                     }
@@ -248,11 +248,11 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> i32 {
         }
 
         for n in 1..5 {
-            if !driver::npc_check_target((cn_x + n) as usize, cn_y as usize) {
+            if !driver::npc_check_target(gs, (cn_x + n) as usize, cn_y as usize) {
                 right -= 20;
-                if !driver::npc_check_target((cn_x + n) as usize, (cn_y + 1) as usize) {
+                if !driver::npc_check_target(gs, (cn_x + n) as usize, (cn_y + 1) as usize) {
                     right -= 20;
-                    if !driver::npc_check_target((cn_x + n) as usize, (cn_y - n) as usize) {
+                    if !driver::npc_check_target(gs, (cn_x + n) as usize, (cn_y - n) as usize) {
                         right -= 10000;
                         break;
                     }
@@ -275,15 +275,15 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> i32 {
         }
 
         if !done && up >= down && up >= left && up >= right {
-            if driver::npc_check_target(cn_x as usize, (cn_y - 1) as usize) {
+            if driver::npc_check_target(gs, cn_x as usize, (cn_y - 1) as usize) {
                 gs.characters[cn].goto_x = cn_x as u16;
                 gs.characters[cn].goto_y = (cn_y - 1) as u16;
                 done = true;
-            } else if driver::npc_check_target((cn_x + 1) as usize, (cn_y - 1) as usize) {
+            } else if driver::npc_check_target(gs, (cn_x + 1) as usize, (cn_y - 1) as usize) {
                 gs.characters[cn].goto_x = (cn_x + 1) as u16;
                 gs.characters[cn].goto_y = (cn_y - 1) as u16;
                 done = true;
-            } else if driver::npc_check_target((cn_x - 1) as usize, (cn_y - 1) as usize) {
+            } else if driver::npc_check_target(gs, (cn_x - 1) as usize, (cn_y - 1) as usize) {
                 gs.characters[cn].goto_x = (cn_x - 1) as u16;
                 gs.characters[cn].goto_y = (cn_y - 1) as u16;
                 done = true;
@@ -291,15 +291,15 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> i32 {
         }
 
         if !done && down >= up && down >= left && down >= right {
-            if driver::npc_check_target(cn_x as usize, (cn_y + 1) as usize) {
+            if driver::npc_check_target(gs, cn_x as usize, (cn_y + 1) as usize) {
                 gs.characters[cn].goto_x = cn_x as u16;
                 gs.characters[cn].goto_y = (cn_y + 1) as u16;
                 done = true;
-            } else if driver::npc_check_target((cn_x + 1) as usize, (cn_y + 1) as usize) {
+            } else if driver::npc_check_target(gs, (cn_x + 1) as usize, (cn_y + 1) as usize) {
                 gs.characters[cn].goto_x = (cn_x + 1) as u16;
                 gs.characters[cn].goto_y = (cn_y + 1) as u16;
                 done = true;
-            } else if driver::npc_check_target((cn_x - 1) as usize, (cn_y + 1) as usize) {
+            } else if driver::npc_check_target(gs, (cn_x - 1) as usize, (cn_y + 1) as usize) {
                 gs.characters[cn].goto_x = (cn_x - 1) as u16;
                 gs.characters[cn].goto_y = (cn_y + 1) as u16;
                 done = true;
@@ -307,15 +307,15 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> i32 {
         }
 
         if !done && left >= up && left >= down && left >= right {
-            if driver::npc_check_target((cn_x - 1) as usize, cn_y as usize) {
+            if driver::npc_check_target(gs, (cn_x - 1) as usize, cn_y as usize) {
                 gs.characters[cn].goto_x = (cn_x - 1) as u16;
                 gs.characters[cn].goto_y = cn_y as u16;
                 done = true;
-            } else if driver::npc_check_target((cn_x - 1) as usize, (cn_y + 1) as usize) {
+            } else if driver::npc_check_target(gs, (cn_x - 1) as usize, (cn_y + 1) as usize) {
                 gs.characters[cn].goto_x = (cn_x - 1) as u16;
                 gs.characters[cn].goto_y = (cn_y + 1) as u16;
                 done = true;
-            } else if driver::npc_check_target((cn_x - 1) as usize, (cn_y - 1) as usize) {
+            } else if driver::npc_check_target(gs, (cn_x - 1) as usize, (cn_y - 1) as usize) {
                 gs.characters[cn].goto_x = (cn_x - 1) as u16;
                 gs.characters[cn].goto_y = (cn_y - 1) as u16;
                 done = true;
@@ -323,15 +323,15 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> i32 {
         }
 
         if !done && right >= up && right >= down && right >= left {
-            if driver::npc_check_target((cn_x + 1) as usize, cn_y as usize) {
+            if driver::npc_check_target(gs, (cn_x + 1) as usize, cn_y as usize) {
                 gs.characters[cn].goto_x = (cn_x + 1) as u16;
                 gs.characters[cn].goto_y = cn_y as u16;
                 done = true;
-            } else if driver::npc_check_target((cn_x + 1) as usize, (cn_y + 1) as usize) {
+            } else if driver::npc_check_target(gs, (cn_x + 1) as usize, (cn_y + 1) as usize) {
                 gs.characters[cn].goto_x = (cn_x + 1) as u16;
                 gs.characters[cn].goto_y = (cn_y + 1) as u16;
                 done = true;
-            } else if driver::npc_check_target((cn_x + 1) as usize, (cn_y - 1) as usize) {
+            } else if driver::npc_check_target(gs, (cn_x + 1) as usize, (cn_y - 1) as usize) {
                 gs.characters[cn].goto_x = (cn_x + 1) as u16;
                 gs.characters[cn].goto_y = (cn_y - 1) as u16;
                 done = true;
@@ -342,23 +342,23 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> i32 {
             let co = gs.characters[cn].data[20] as usize;
             if co != 0 {
                 gs.characters[cn].attack_cn = co as u16;
-                driver::npc_try_spell(cn, co, SK_STUN);
+                driver::npc_try_spell(gs, cn, co, SK_STUN);
                 done = true;
             }
         }
     }
 
     if !done {
-        done = driver::npc_try_spell(cn, cn, SK_BLESS);
+        done = driver::npc_try_spell(gs, cn, cn, SK_BLESS);
     }
     if !done {
-        done = driver::npc_try_spell(cn, cn, SK_MSHIELD);
+        done = driver::npc_try_spell(gs, cn, cn, SK_MSHIELD);
     }
     if !done {
-        done = driver::npc_try_spell(cn, cn, SK_PROTECT);
+        done = driver::npc_try_spell(gs, cn, cn, SK_PROTECT);
     }
     if !done {
-        done = driver::npc_try_spell(cn, cn, SK_ENHANCE);
+        done = driver::npc_try_spell(gs, cn, cn, SK_ENHANCE);
     }
 
     if !done && stun > 1 && stun >= help {
@@ -373,9 +373,9 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> i32 {
             }
         }
         if tmp > 0 {
-            done = driver::npc_try_spell(cn, seen[m].co, SK_STUN);
+            done = driver::npc_try_spell(gs, cn, seen[m].co, SK_STUN);
             if !done {
-                done = driver::npc_try_spell(cn, seen[m].co, SK_CURSE);
+                done = driver::npc_try_spell(gs, cn, seen[m].co, SK_CURSE);
             }
             gs.characters[cn].data[24] = gs.globals.ticker;
         }
@@ -388,7 +388,7 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> i32 {
             if seen[n].help > tmp
                 || (seen[n].help != 0 && seen[n].help == tmp && seen[n].dist < seen[m].dist)
             {
-                let needs_help = !driver::npc_is_blessed(seen[n].co)
+                let needs_help = !driver::npc_is_blessed(gs, seen[n].co)
                     || gs.characters[seen[n].co].a_hp
                         < (gs.characters[seen[n].co].hp[5] * 400) as i32;
                 if needs_help {
@@ -401,16 +401,16 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> i32 {
             let low_hp =
                 gs.characters[seen[m].co].a_hp < (gs.characters[seen[m].co].hp[5] * 400) as i32;
             if low_hp {
-                done = driver::npc_try_spell(cn, seen[m].co, SK_HEAL);
+                done = driver::npc_try_spell(gs, cn, seen[m].co, SK_HEAL);
             }
             if !done {
-                done = driver::npc_try_spell(cn, seen[m].co, SK_BLESS);
+                done = driver::npc_try_spell(gs, cn, seen[m].co, SK_BLESS);
             }
             if !done {
-                done = driver::npc_try_spell(cn, seen[m].co, SK_PROTECT);
+                done = driver::npc_try_spell(gs, cn, seen[m].co, SK_PROTECT);
             }
             if !done {
-                done = driver::npc_try_spell(cn, seen[m].co, SK_ENHANCE);
+                done = driver::npc_try_spell(gs, cn, seen[m].co, SK_ENHANCE);
             }
             gs.characters[cn].data[24] = gs.globals.ticker;
         }
@@ -469,10 +469,10 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> i32 {
                 gs.characters[cn].data[22] = 2;
                 gs.characters[cn].data[23] = ticker;
             } else {
-                if driver::npc_check_target(264, 317) {
+                if driver::npc_check_target(gs, 264, 317) {
                     gs.characters[cn].goto_x = 264;
                     gs.characters[cn].goto_y = 317;
-                } else if driver::npc_check_target(265, 318) {
+                } else if driver::npc_check_target(gs, 265, 318) {
                     gs.characters[cn].goto_x = 265;
                     gs.characters[cn].goto_y = 318;
                 }
@@ -631,7 +631,7 @@ pub fn npc_stunrun_msg(
 
 pub fn npc_cityattack_high(gs: &mut GameState, cn: usize) -> i32 {
     let low_hp = gs.characters[cn].a_hp < (gs.characters[cn].hp[5] * 600) as i32;
-    if low_hp && driver::npc_try_spell(cn, cn, SK_HEAL) {
+    if low_hp && driver::npc_try_spell(gs, cn, cn, SK_HEAL) {
         return 1;
     }
 
@@ -639,19 +639,19 @@ pub fn npc_cityattack_high(gs: &mut GameState, cn: usize) -> i32 {
     let has_medit = gs.characters[cn].skill[SK_MEDIT][0] != 0;
     if high_mana && has_medit {
         let very_high_mana = gs.characters[cn].a_mana > 75000;
-        if very_high_mana && driver::npc_try_spell(cn, cn, SK_BLESS) {
+        if very_high_mana && driver::npc_try_spell(gs, cn, cn, SK_BLESS) {
             return 1;
         }
-        if driver::npc_try_spell(cn, cn, SK_PROTECT) {
+        if driver::npc_try_spell(gs, cn, cn, SK_PROTECT) {
             return 1;
         }
-        if driver::npc_try_spell(cn, cn, SK_MSHIELD) {
+        if driver::npc_try_spell(gs, cn, cn, SK_MSHIELD) {
             return 1;
         }
-        if driver::npc_try_spell(cn, cn, SK_ENHANCE) {
+        if driver::npc_try_spell(gs, cn, cn, SK_ENHANCE) {
             return 1;
         }
-        if driver::npc_try_spell(cn, cn, SK_BLESS) {
+        if driver::npc_try_spell(gs, cn, cn, SK_BLESS) {
             return 1;
         }
     }
@@ -678,46 +678,46 @@ pub fn npc_cityattack_high(gs: &mut GameState, cn: usize) -> i32 {
     let co = gs.characters[cn].attack_cn;
     if co != 0 {
         let losing = gs.characters[cn].a_hp < (gs.characters[cn].hp[5] * 600) as i32;
-        if losing && driver::npc_try_spell(cn, co as usize, SK_BLAST) {
+        if losing && driver::npc_try_spell(gs, cn, co as usize, SK_BLAST) {
             return 1;
         }
 
         let ticker = gs.globals.ticker;
         let data_75 = gs.characters[cn].data[75];
-        if ticker > data_75 && driver::npc_try_spell(cn, co as usize, SK_STUN) {
+        if ticker > data_75 && driver::npc_try_spell(gs, cn, co as usize, SK_STUN) {
             gs.characters[cn].data[75] =
                 ticker + gs.characters[cn].skill[SK_STUN][5] as i32 + TICKS * 8;
             return 1;
         }
 
         let very_high_mana = gs.characters[cn].a_mana > 75000;
-        if very_high_mana && driver::npc_try_spell(cn, cn, SK_BLESS) {
+        if very_high_mana && driver::npc_try_spell(gs, cn, cn, SK_BLESS) {
             return 1;
         }
-        if driver::npc_try_spell(cn, cn, SK_PROTECT) {
+        if driver::npc_try_spell(gs, cn, cn, SK_PROTECT) {
             return 1;
         }
-        if driver::npc_try_spell(cn, cn, SK_MSHIELD) {
+        if driver::npc_try_spell(gs, cn, cn, SK_MSHIELD) {
             return 1;
         }
-        if driver::npc_try_spell(cn, cn, SK_ENHANCE) {
+        if driver::npc_try_spell(gs, cn, cn, SK_ENHANCE) {
             return 1;
         }
-        if driver::npc_try_spell(cn, cn, SK_BLESS) {
+        if driver::npc_try_spell(gs, cn, cn, SK_BLESS) {
             return 1;
         }
-        if driver::npc_try_spell(cn, co as usize, SK_CURSE) {
+        if driver::npc_try_spell(gs, cn, co as usize, SK_CURSE) {
             return 1;
         }
 
         let data_74 = gs.characters[cn].data[74];
-        if ticker > data_74 + TICKS * 10 && driver::npc_try_spell(cn, co as usize, SK_GHOST) {
+        if ticker > data_74 + TICKS * 10 && driver::npc_try_spell(gs, cn, co as usize, SK_GHOST) {
             gs.characters[cn].data[74] = ticker;
             return 1;
         }
 
         let cannot_hurt = gs.characters[co as usize].armor + 5 > gs.characters[cn].weapon;
-        if cannot_hurt && driver::npc_try_spell(cn, co as usize, SK_BLAST) {
+        if cannot_hurt && driver::npc_try_spell(gs, cn, co as usize, SK_BLAST) {
             return 1;
         }
     }
@@ -734,7 +734,7 @@ pub fn npc_moveto(gs: &mut GameState, cn: usize, x: u16, y: u16) -> i32 {
     }
 
     let data_1 = gs.characters[cn].data[1];
-    if data_1 == 0 && driver::npc_check_target(x as usize, y as usize) {
+    if data_1 == 0 && driver::npc_check_target(gs, x as usize, y as usize) {
         gs.characters[cn].data[1] += 1;
         gs.characters[cn].goto_x = x;
         gs.characters[cn].goto_y = y;
@@ -746,7 +746,8 @@ pub fn npc_moveto(gs: &mut GameState, cn: usize, x: u16, y: u16) -> i32 {
         for dy in 0..3 {
             try_count += 1;
             let data_1 = gs.characters[cn].data[1];
-            if data_1 < try_count && driver::npc_check_target((x + dx) as usize, (y + dy) as usize)
+            if data_1 < try_count
+                && driver::npc_check_target(gs, (x + dx) as usize, (y + dy) as usize)
             {
                 gs.characters[cn].data[1] += 1;
                 gs.characters[cn].goto_x = x + dx;
@@ -755,7 +756,7 @@ pub fn npc_moveto(gs: &mut GameState, cn: usize, x: u16, y: u16) -> i32 {
             }
             if data_1 < try_count
                 && x >= dx
-                && driver::npc_check_target((x - dx) as usize, (y + dy) as usize)
+                && driver::npc_check_target(gs, (x - dx) as usize, (y + dy) as usize)
             {
                 gs.characters[cn].data[1] += 1;
                 gs.characters[cn].goto_x = x - dx;
@@ -764,7 +765,7 @@ pub fn npc_moveto(gs: &mut GameState, cn: usize, x: u16, y: u16) -> i32 {
             }
             if data_1 < try_count
                 && y >= dy
-                && driver::npc_check_target((x + dx) as usize, (y - dy) as usize)
+                && driver::npc_check_target(gs, (x + dx) as usize, (y - dy) as usize)
             {
                 gs.characters[cn].data[1] += 1;
                 gs.characters[cn].goto_x = x + dx;
@@ -774,7 +775,7 @@ pub fn npc_moveto(gs: &mut GameState, cn: usize, x: u16, y: u16) -> i32 {
             if data_1 < try_count
                 && x >= dx
                 && y >= dy
-                && driver::npc_check_target((x - dx) as usize, (y - dy) as usize)
+                && driver::npc_check_target(gs, (x - dx) as usize, (y - dy) as usize)
             {
                 gs.characters[cn].data[1] += 1;
                 gs.characters[cn].goto_x = x - dx;
@@ -840,7 +841,7 @@ fn npc_cityattack_see(gs: &mut GameState, cn: usize, co: usize) -> i32 {
     let co_team = gs.characters[co].data[42];
     if cn_team != co_team {
         let cc = gs.characters[cn].attack_cn as usize;
-        if cc == 0 || crate::driver::npc_dist(cn, co) < crate::driver::npc_dist(cn, cc) {
+        if cc == 0 || crate::driver::npc_dist(gs, cn, co) < crate::driver::npc_dist(gs, cn, cc) {
             gs.characters[cn].attack_cn = co as u16;
             gs.characters[cn].goto_x = 0;
         }
@@ -977,7 +978,7 @@ fn npc_malte_gotattack(gs: &mut GameState, cn: usize, co: usize) -> i32 {
 
     if cn_team != co_team {
         let cc = gs.characters[cn].attack_cn as usize;
-        if cc == 0 || crate::driver::npc_dist(cn, co) < crate::driver::npc_dist(cn, cc) {
+        if cc == 0 || crate::driver::npc_dist(gs, cn, co) < crate::driver::npc_dist(gs, cn, cc) {
             gs.characters[cn].attack_cn = co as u16;
             gs.characters[cn].goto_x = 0;
         }

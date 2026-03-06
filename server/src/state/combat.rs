@@ -87,7 +87,7 @@ impl GameState {
 
         if victim.is_empty() {
             // list enemies
-            driver::npc_list_enemies(co, cn);
+            driver::npc_list_enemies(self, co, cn);
             return;
         }
 
@@ -110,8 +110,8 @@ impl GameState {
             return;
         }
 
-        if driver::npc_is_enemy(co, cv) {
-            if !driver::npc_remove_enemy(co, cv) {
+        if driver::npc_is_enemy(self, co, cv) {
+            if !driver::npc_remove_enemy(self, co, cv) {
                 let vname = self.characters[cv].get_name().to_string();
                 let cname = self.characters[co].get_name().to_string();
                 self.do_character_log(
@@ -151,7 +151,7 @@ impl GameState {
             return;
         }
 
-        if !driver::npc_add_enemy(co, cv, true) {
+        if !driver::npc_add_enemy(self, co, cv, true) {
             let cname = self.characters[co].get_name().to_string();
             self.do_character_log(
                 cn,
@@ -165,7 +165,7 @@ impl GameState {
         let caller_has_text1 = !c_string_to_str(&mut self.characters[cn].text[1]).is_empty();
         if caller_has_text1 {
             let victim_name = self.characters[cv].get_name().to_string();
-            driver::npc_saytext_n(co, 1, Some(&victim_name));
+            driver::npc_saytext_n(self, co, 1, Some(&victim_name));
         }
 
         // Log chlogs via info for now
@@ -249,11 +249,11 @@ impl GameState {
         }
 
         // Use canonical helpers for facing/back checks
-        if driver::is_facing(co, cn) == 0 {
+        if driver::is_facing(self, co, cn) == 0 {
             s2 -= 10;
         }
 
-        if driver::is_back(co, cn) != 0 {
+        if driver::is_back(self, co, cn) != 0 {
             s2 -= 10;
         }
 
@@ -360,7 +360,7 @@ impl GameState {
             if cn_is_player {
                 let rhand = self.characters[cn].worn[core::constants::WN_RHAND] as usize;
                 if rhand != 0 {
-                    driver::item_damage_weapon(cn, dam);
+                    driver::item_damage_weapon(self, cn, dam);
                 }
             }
 

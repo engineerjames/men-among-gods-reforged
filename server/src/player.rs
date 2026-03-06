@@ -367,7 +367,7 @@ pub fn plr_map_remove_gs(gs: &mut GameState, cn: usize) {
                 & core::constants::ItemFlags::IF_STEPACTION.bits())
                 != 0;
             if has_step_action {
-                driver::step_driver_remove(cn, in_id as usize);
+                driver::step_driver_remove(gs, cn, in_id as usize);
             }
         }
     }
@@ -417,7 +417,7 @@ pub fn plr_map_set_gs(gs: &mut GameState, cn: usize) {
 
             if has_step_action {
                 // Call step_driver and handle return values per original C++ logic
-                let ret = driver::step_driver(cn, in_id as usize);
+                let ret = driver::step_driver(gs, cn, in_id as usize);
 
                 if ret == 1 {
                     gs.map[m].to_ch = 0;
@@ -537,7 +537,7 @@ pub fn plr_map_set_gs(gs: &mut GameState, cn: usize) {
             }
 
             if became_nomagic {
-                driver::remove_spells(cn);
+                driver::remove_spells(gs, cn);
                 gs.do_character_log(
                     cn,
                     core::types::FontColor::Red,
@@ -1304,7 +1304,7 @@ pub fn plr_drop(cn: usize) {
             (gs.items[in2 as usize].flags & core::constants::ItemFlags::IF_STEPACTION.bits()) != 0;
 
         if has_step_action {
-            driver::step_driver(cn, in2 as usize);
+            driver::step_driver(gs, cn, in2 as usize);
             gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             return;
         }

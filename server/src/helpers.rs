@@ -276,7 +276,7 @@ pub fn use_labtransfer(gs: &mut GameState, cn: usize, nr: i32, exp: i32) -> bool
     gs.characters[co].flags &= !CharacterFlags::Respawn.bits();
 
     // npc_add_enemy(co, cn, 1): make him attack the solver (assume function exists)
-    driver::npc_add_enemy(co, cn, true);
+    driver::npc_add_enemy(gs, co, cn, true);
 
     // god_transfer_char(cn, 174, 166): transfer player (assume function exists)
     if !God::transfer_char(cn, 174, 166) {

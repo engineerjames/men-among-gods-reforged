@@ -317,8 +317,8 @@ pub fn npc_gotattack(gs: &mut GameState, cn: usize, co: usize, _dam: i32) -> i32
             gs.characters[cn].data[54] = 0;
             gs.characters[cn].data[55] = ticker;
             if co < MAXCHARS {
-                let co_name = gs.characters[co].get_name();
-                npc_saytext_n(gs, cn, 4, Some(co_name));
+                let co_name = gs.characters[co].get_name().to_string();
+                npc_saytext_n(gs, cn, 4, Some(&co_name));
             }
             gs.do_npc_shout(
                 cn,
@@ -340,10 +340,10 @@ pub fn npc_gotattack(gs: &mut GameState, cn: usize, co: usize, _dam: i32) -> i32
 
     // Fight back
     if co < MAXCHARS {
-        let co_name = gs.characters[co].get_name();
-        let cn_name = gs.characters[cn].get_name();
+        let co_name = gs.characters[co].get_name().to_string();
+        let cn_name = gs.characters[cn].get_name().to_string();
         if npc_add_enemy(gs, cn, co, true) {
-            npc_saytext_n(gs, cn, 1, Some(co_name));
+            npc_saytext_n(gs, cn, 1, Some(&co_name));
             log::info!(
                 "NPC {} ({}) added {} ({}) to enemy list for attacking",
                 cn,

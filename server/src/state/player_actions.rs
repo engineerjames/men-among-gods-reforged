@@ -220,6 +220,7 @@ impl GameState {
                 "Your Companion killed your enemy.\n",
             );
             driver::finish_laby_teleport(
+                self,
                 cc,
                 self.characters[co].data[1] as usize,
                 self.characters[co].data[2] as usize,
@@ -247,7 +248,7 @@ impl GameState {
         // Finish teleport for the player
         let tx = self.characters[co].data[1] as usize;
         let ty = self.characters[co].data[2] as usize;
-        driver::finish_laby_teleport(cn, tx, ty);
+        driver::finish_laby_teleport(self, cn, tx, ty);
         log::info!("Solved Labkeeper Room: cn={}", cn);
 
         // If cn has a GC in data[64] which is sane and a companion, transfer it as well

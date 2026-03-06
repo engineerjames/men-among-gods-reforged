@@ -1737,7 +1737,7 @@ impl God {
         }
 
         // Print detailed character info via char_info first (matches C++ flow)
-        driver::char_info(cn, co);
+        driver::char_info(gs, cn, co);
 
         // cnum_str: only visible to IMP/USURP
         let cnum_str = {
@@ -3195,7 +3195,7 @@ impl God {
             Self::drop_char_fuzzy_in_state(gs, cc, caster_x as usize, caster_y as usize);
 
             // Add target as enemy
-            driver::npc_add_enemy(cc, co, true);
+            driver::npc_add_enemy(gs, cc, co, true);
 
             let target_name = c_string_to_str(&target_name_bytes);
             gs.do_character_log(
