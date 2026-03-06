@@ -607,6 +607,94 @@ pub fn plr_map_set(cn: usize) {
     plr_map_set_gs(GameState::global_mut(), cn);
 }
 
+/// Notify nearby clients about the character's current tile.
+///
+/// # Arguments
+/// * `gs` - Active game state used for notification dispatch.
+/// * `cn` - Character index being announced.
+fn notify_character_tile(gs: &mut GameState, cn: usize) {
+    let x = gs.characters[cn].x as i32;
+    let y = gs.characters[cn].y as i32;
+    gs.do_area_notify(
+        cn as i32,
+        0,
+        x,
+        y,
+        core::constants::NT_SEE as i32,
+        cn as i32,
+        0,
+        0,
+        0,
+    );
+}
+
+/// Move a character by the given delta and reinsert them into the map.
+///
+/// # Arguments
+/// * `gs` - Active game state used for movement bookkeeping.
+/// * `cn` - Character index performing the move.
+/// * `dx` - Horizontal movement delta.
+/// * `dy` - Vertical movement delta.
+fn plr_move_by_gs(gs: &mut GameState, cn: usize, dx: i16, dy: i16) {
+    plr_map_remove_gs(gs, cn);
+
+    let ch = &mut gs.characters[cn];
+    ch.frx = ch.x;
+    ch.fry = ch.y;
+    ch.x += dx;
+    ch.y += dy;
+    ch.tox = ch.x;
+    ch.toy = ch.y;
+
+    plr_map_set_gs(gs, cn);
+    gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
+}
+
+/// Rotate a character and notify nearby clients about the change.
+///
+/// # Arguments
+/// * `gs` - Active game state used for notification dispatch.
+/// * `cn` - Character index rotating.
+/// * `dir` - New facing direction.
+fn plr_turn_gs(gs: &mut GameState, cn: usize, dir: u8) {
+    notify_character_tile(gs, cn);
+    gs.characters[cn].dir = dir;
+    gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
+}
+
+/// Compute the map tile directly in front of the character.
+///
+/// # Arguments
+/// * `gs` - Active game state used to inspect character position.
+/// * `cn` - Character index performing the action.
+/// * `action` - Action name used for logging invalid directions.
+///
+/// # Returns
+/// * `Some((map_index, x, y))` if the facing direction is valid.
+/// * `None` if the direction is invalid and `cerrno` was set.
+fn plr_front_tile_gs(gs: &mut GameState, cn: usize, action: &str) -> Option<(usize, i32, i32)> {
+    let (mut x, mut y, dir) = (
+        gs.characters[cn].x as i32,
+        gs.characters[cn].y as i32,
+        gs.characters[cn].dir,
+    );
+
+    match dir {
+        core::constants::DX_UP => y -= 1,
+        core::constants::DX_DOWN => y += 1,
+        core::constants::DX_LEFT => x -= 1,
+        core::constants::DX_RIGHT => x += 1,
+        _ => {
+            log::error!("{}: unknown dir {} for char {}", action, dir, cn);
+            gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
+            return None;
+        }
+    }
+
+    let m = (x as usize) + (y as usize) * core::constants::SERVER_MAPX as usize;
+    Some((m, x, y))
+}
+
 /// Port of `plr_move_up` from `svr_act.cpp`
 ///
 /// Performs a move action upwards for the given character. This removes the
@@ -618,18 +706,7 @@ pub fn plr_map_set(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index performing the move
 pub fn plr_move_up(cn: usize) {
-    plr_map_remove(cn);
-    {
-        let gs = Repository::global_mut();
-        let ch = &mut gs.characters[cn];
-        ch.frx = ch.x;
-        ch.fry = ch.y;
-        ch.y -= 1;
-        ch.tox = ch.x;
-        ch.toy = ch.y;
-    }
-    plr_map_set(cn);
-    Repository::global_mut().characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
+    plr_move_by_gs(GameState::global_mut(), cn, 0, -1);
 }
 
 /// Port of `plr_move_down` from `svr_act.cpp`
@@ -640,18 +717,7 @@ pub fn plr_move_up(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index performing the move
 pub fn plr_move_down(cn: usize) {
-    plr_map_remove(cn);
-    {
-        let gs = Repository::global_mut();
-        let ch = &mut gs.characters[cn];
-        ch.frx = ch.x;
-        ch.fry = ch.y;
-        ch.y += 1;
-        ch.tox = ch.x;
-        ch.toy = ch.y;
-    }
-    plr_map_set(cn);
-    Repository::global_mut().characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
+    plr_move_by_gs(GameState::global_mut(), cn, 0, 1);
 }
 
 /// Port of `plr_move_left` from `svr_act.cpp`
@@ -662,18 +728,7 @@ pub fn plr_move_down(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index performing the move
 pub fn plr_move_left(cn: usize) {
-    plr_map_remove(cn);
-    {
-        let gs = Repository::global_mut();
-        let ch = &mut gs.characters[cn];
-        ch.frx = ch.x;
-        ch.fry = ch.y;
-        ch.x -= 1;
-        ch.tox = ch.x;
-        ch.toy = ch.y;
-    }
-    plr_map_set(cn);
-    Repository::global_mut().characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
+    plr_move_by_gs(GameState::global_mut(), cn, -1, 0);
 }
 
 /// Port of `plr_move_right` from `svr_act.cpp`
@@ -684,18 +739,7 @@ pub fn plr_move_left(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index performing the move
 pub fn plr_move_right(cn: usize) {
-    plr_map_remove(cn);
-    {
-        let gs = Repository::global_mut();
-        let ch = &mut gs.characters[cn];
-        ch.frx = ch.x;
-        ch.fry = ch.y;
-        ch.x += 1;
-        ch.tox = ch.x;
-        ch.toy = ch.y;
-    }
-    plr_map_set(cn);
-    Repository::global_mut().characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
+    plr_move_by_gs(GameState::global_mut(), cn, 1, 0);
 }
 
 /// Port of `plr_move_leftup` from `svr_act.cpp`
@@ -705,19 +749,7 @@ pub fn plr_move_right(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index performing the move
 pub fn plr_move_leftup(cn: usize) {
-    plr_map_remove(cn);
-    {
-        let gs = Repository::global_mut();
-        let ch = &mut gs.characters[cn];
-        ch.frx = ch.x;
-        ch.fry = ch.y;
-        ch.x -= 1;
-        ch.y -= 1;
-        ch.tox = ch.x;
-        ch.toy = ch.y;
-    }
-    plr_map_set(cn);
-    Repository::global_mut().characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
+    plr_move_by_gs(GameState::global_mut(), cn, -1, -1);
 }
 
 /// Port of `plr_move_leftdown` from `svr_act.cpp`
@@ -727,19 +759,7 @@ pub fn plr_move_leftup(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index performing the move
 pub fn plr_move_leftdown(cn: usize) {
-    plr_map_remove(cn);
-    {
-        let gs = Repository::global_mut();
-        let ch = &mut gs.characters[cn];
-        ch.frx = ch.x;
-        ch.fry = ch.y;
-        ch.x -= 1;
-        ch.y += 1;
-        ch.tox = ch.x;
-        ch.toy = ch.y;
-    }
-    plr_map_set(cn);
-    Repository::global_mut().characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
+    plr_move_by_gs(GameState::global_mut(), cn, -1, 1);
 }
 
 /// Port of `plr_move_rightup` from `svr_act.cpp`
@@ -749,19 +769,7 @@ pub fn plr_move_leftdown(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index performing the move
 pub fn plr_move_rightup(cn: usize) {
-    plr_map_remove(cn);
-    {
-        let gs = Repository::global_mut();
-        let ch = &mut gs.characters[cn];
-        ch.frx = ch.x;
-        ch.fry = ch.y;
-        ch.x += 1;
-        ch.y -= 1;
-        ch.tox = ch.x;
-        ch.toy = ch.y;
-    }
-    plr_map_set(cn);
-    Repository::global_mut().characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
+    plr_move_by_gs(GameState::global_mut(), cn, 1, -1);
 }
 
 /// Port of `plr_move_rightdown` from `svr_act.cpp`
@@ -771,19 +779,7 @@ pub fn plr_move_rightup(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index performing the move
 pub fn plr_move_rightdown(cn: usize) {
-    plr_map_remove(cn);
-    {
-        let gs = Repository::global_mut();
-        let ch = &mut gs.characters[cn];
-        ch.frx = ch.x;
-        ch.fry = ch.y;
-        ch.x += 1;
-        ch.y += 1;
-        ch.tox = ch.x;
-        ch.toy = ch.y;
-    }
-    plr_map_set(cn);
-    Repository::global_mut().characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
+    plr_move_by_gs(GameState::global_mut(), cn, 1, 1);
 }
 
 /// Port of `plr_turn_up` from `svr_act.cpp`
@@ -794,22 +790,7 @@ pub fn plr_move_rightdown(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index rotating to face up
 pub fn plr_turn_up(cn: usize) {
-    let gs = Repository::global_mut();
-    let x = gs.characters[cn].x as i32;
-    let y = gs.characters[cn].y as i32;
-    gs.do_area_notify(
-        cn as i32,
-        0,
-        x,
-        y,
-        core::constants::NT_SEE as i32,
-        cn as i32,
-        0,
-        0,
-        0,
-    );
-    gs.characters[cn].dir = core::constants::DX_UP;
-    gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
+    plr_turn_gs(GameState::global_mut(), cn, core::constants::DX_UP);
 }
 
 /// Port of `plr_turn_leftup` from `svr_act.cpp`
@@ -820,22 +801,7 @@ pub fn plr_turn_up(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index rotating to face left-up
 pub fn plr_turn_leftup(cn: usize) {
-    let gs = Repository::global_mut();
-    let x = gs.characters[cn].x as i32;
-    let y = gs.characters[cn].y as i32;
-    gs.do_area_notify(
-        cn as i32,
-        0,
-        x,
-        y,
-        core::constants::NT_SEE as i32,
-        cn as i32,
-        0,
-        0,
-        0,
-    );
-    gs.characters[cn].dir = core::constants::DX_LEFTUP;
-    gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
+    plr_turn_gs(GameState::global_mut(), cn, core::constants::DX_LEFTUP);
 }
 
 /// Port of `plr_turn_leftdown` from `svr_act.cpp`
@@ -846,22 +812,7 @@ pub fn plr_turn_leftup(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index rotating to face left-down
 pub fn plr_turn_leftdown(cn: usize) {
-    let gs = Repository::global_mut();
-    let x = gs.characters[cn].x as i32;
-    let y = gs.characters[cn].y as i32;
-    gs.do_area_notify(
-        cn as i32,
-        0,
-        x,
-        y,
-        core::constants::NT_SEE as i32,
-        cn as i32,
-        0,
-        0,
-        0,
-    );
-    gs.characters[cn].dir = core::constants::DX_LEFTDOWN;
-    gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
+    plr_turn_gs(GameState::global_mut(), cn, core::constants::DX_LEFTDOWN);
 }
 
 /// Port of `plr_turn_down` from `svr_act.cpp`
@@ -872,22 +823,7 @@ pub fn plr_turn_leftdown(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index rotating to face down
 pub fn plr_turn_down(cn: usize) {
-    let gs = Repository::global_mut();
-    let x = gs.characters[cn].x as i32;
-    let y = gs.characters[cn].y as i32;
-    gs.do_area_notify(
-        cn as i32,
-        0,
-        x,
-        y,
-        core::constants::NT_SEE as i32,
-        cn as i32,
-        0,
-        0,
-        0,
-    );
-    gs.characters[cn].dir = core::constants::DX_DOWN;
-    gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
+    plr_turn_gs(GameState::global_mut(), cn, core::constants::DX_DOWN);
 }
 
 /// Port of `plr_turn_rightdown` from `svr_act.cpp`
@@ -898,22 +834,7 @@ pub fn plr_turn_down(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index rotating to face right-down
 pub fn plr_turn_rightdown(cn: usize) {
-    let gs = Repository::global_mut();
-    let x = gs.characters[cn].x as i32;
-    let y = gs.characters[cn].y as i32;
-    gs.do_area_notify(
-        cn as i32,
-        0,
-        x,
-        y,
-        core::constants::NT_SEE as i32,
-        cn as i32,
-        0,
-        0,
-        0,
-    );
-    gs.characters[cn].dir = core::constants::DX_RIGHTDOWN;
-    gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
+    plr_turn_gs(GameState::global_mut(), cn, core::constants::DX_RIGHTDOWN);
 }
 
 /// Port of `plr_turn_rightup` from `svr_act.cpp`
@@ -924,22 +845,7 @@ pub fn plr_turn_rightdown(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index rotating to face right-up
 pub fn plr_turn_rightup(cn: usize) {
-    let gs = Repository::global_mut();
-    let x = gs.characters[cn].x as i32;
-    let y = gs.characters[cn].y as i32;
-    gs.do_area_notify(
-        cn as i32,
-        0,
-        x,
-        y,
-        core::constants::NT_SEE as i32,
-        cn as i32,
-        0,
-        0,
-        0,
-    );
-    gs.characters[cn].dir = core::constants::DX_RIGHTUP;
-    gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
+    plr_turn_gs(GameState::global_mut(), cn, core::constants::DX_RIGHTUP);
 }
 
 /// Port of `plr_turn_left` from `svr_act.cpp`
@@ -950,22 +856,7 @@ pub fn plr_turn_rightup(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index rotating to face left
 pub fn plr_turn_left(cn: usize) {
-    let gs = Repository::global_mut();
-    let x = gs.characters[cn].x as i32;
-    let y = gs.characters[cn].y as i32;
-    gs.do_area_notify(
-        cn as i32,
-        0,
-        x,
-        y,
-        core::constants::NT_SEE as i32,
-        cn as i32,
-        0,
-        0,
-        0,
-    );
-    gs.characters[cn].dir = core::constants::DX_LEFT;
-    gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
+    plr_turn_gs(GameState::global_mut(), cn, core::constants::DX_LEFT);
 }
 
 /// Port of `plr_turn_right` from `svr_act.cpp`
@@ -976,22 +867,7 @@ pub fn plr_turn_left(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index rotating to face right
 pub fn plr_turn_right(cn: usize) {
-    let gs = Repository::global_mut();
-    let x = gs.characters[cn].x as i32;
-    let y = gs.characters[cn].y as i32;
-    gs.do_area_notify(
-        cn as i32,
-        0,
-        x,
-        y,
-        core::constants::NT_SEE as i32,
-        cn as i32,
-        0,
-        0,
-        0,
-    );
-    gs.characters[cn].dir = core::constants::DX_RIGHT;
-    gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
+    plr_turn_gs(GameState::global_mut(), cn, core::constants::DX_RIGHT);
 }
 
 /// Port of `plr_attack` from `svr_act.cpp`
@@ -1005,65 +881,38 @@ pub fn plr_turn_right(cn: usize) {
 /// * `cn` - Attacking character index
 /// * `is_surround` - Surround flag passed to `do_attack` (0 or 1)
 pub fn plr_attack(cn: usize, is_surround: bool) {
-    let (mut x, mut y, dir) = (
-        Repository::global_mut().characters[cn].x as i32,
-        Repository::global_mut().characters[cn].y as i32,
-        Repository::global_mut().characters[cn].dir,
-    );
-    Repository::global_mut().do_area_notify(
-        cn as i32,
-        0,
-        x,
-        y,
-        core::constants::NT_SEE as i32,
-        cn as i32,
-        0,
-        0,
-        0,
-    );
+    let gs = GameState::global_mut();
+    notify_character_tile(gs, cn);
 
-    match dir {
-        core::constants::DX_UP => y -= 1,
-        core::constants::DX_DOWN => y += 1,
-        core::constants::DX_LEFT => x -= 1,
-        core::constants::DX_RIGHT => x += 1,
-        _ => {
-            log::error!("plr_attack: unknown dir {} for char {}", dir, cn);
-            Repository::global_mut().characters[cn].cerrno = core::constants::ERR_FAILED as u16;
-            return;
-        }
-    }
+    let Some((m, x, y)) = plr_front_tile_gs(gs, cn, "plr_attack") else {
+        return;
+    };
 
-    let m = (x as usize) + (y as usize) * core::constants::SERVER_MAPX as usize;
-    let mut co = Repository::global_mut().map[m].ch as usize;
+    let mut co = gs.map[m].ch as usize;
 
     if co == 0 {
-        co = Repository::global_mut().map[m].to_ch as usize;
+        co = gs.map[m].to_ch as usize;
     }
 
     if co == 0 {
-        let attack_cn = Repository::global_mut().characters[cn].attack_cn as usize;
+        let attack_cn = gs.characters[cn].attack_cn as usize;
         if attack_cn > 0
-            && Repository::global_mut().characters[attack_cn].frx == x as i16
-            && Repository::global_mut().characters[attack_cn].fry == y as i16
+            && gs.characters[attack_cn].frx == x as i16
+            && gs.characters[attack_cn].fry == y as i16
         {
             co = attack_cn;
         }
     }
 
     if co == 0 {
-        Repository::global_mut().do_character_log(
-            cn,
-            core::types::FontColor::Red,
-            "Your target moved away!\n",
-        );
+        gs.do_character_log(cn, core::types::FontColor::Red, "Your target moved away!\n");
         return;
     }
 
-    let attack_cn = Repository::global_mut().characters[cn].attack_cn as usize;
+    let attack_cn = gs.characters[cn].attack_cn as usize;
 
     if attack_cn == co {
-        Repository::global_mut().do_attack(cn, co, is_surround);
+        gs.do_attack(cn, co, is_surround);
     }
 }
 
@@ -1077,52 +926,59 @@ pub fn plr_attack(cn: usize, is_surround: bool) {
 /// # Arguments
 /// * `cn` - Giver character index
 pub fn plr_give(cn: usize) {
-    let (mut x, mut y, dir) = (
-        Repository::global_mut().characters[cn].x as i32,
-        Repository::global_mut().characters[cn].y as i32,
-        Repository::global_mut().characters[cn].dir,
-    );
-    Repository::global_mut().do_area_notify(
-        cn as i32,
-        0,
-        x,
-        y,
-        core::constants::NT_SEE as i32,
-        cn as i32,
-        0,
-        0,
-        0,
-    );
+    let gs = GameState::global_mut();
+    notify_character_tile(gs, cn);
 
-    match dir {
-        core::constants::DX_UP => y -= 1,
-        core::constants::DX_DOWN => y += 1,
-        core::constants::DX_LEFT => x -= 1,
-        core::constants::DX_RIGHT => x += 1,
-        _ => {
-            log::error!("plr_give: Unknown dir {} for char {}", dir, cn);
-            Repository::global_mut().characters[cn].cerrno = core::constants::ERR_FAILED as u16;
-            return;
-        }
-    }
+    let Some((m, _, _)) = plr_front_tile_gs(gs, cn, "plr_give") else {
+        return;
+    };
 
-    let m = (x as usize) + (y as usize) * core::constants::SERVER_MAPX as usize;
-    let mut co = Repository::global_mut().map[m].ch as usize;
+    let mut co = gs.map[m].ch as usize;
 
     if co == 0 {
-        co = Repository::global_mut().map[m].to_ch as usize;
+        co = gs.map[m].to_ch as usize;
     }
 
     if co == 0 {
-        Repository::global_mut().do_character_log(
-            cn,
-            core::types::FontColor::Red,
-            "Your target moved away!\n",
-        );
+        gs.do_character_log(cn, core::types::FontColor::Red, "Your target moved away!\n");
         return;
     }
 
-    Repository::global_mut().do_give(cn, co);
+    gs.do_give(cn, co);
+}
+
+/// Emit a simple social action log for the acting character and nearby area.
+///
+/// # Arguments
+/// * `gs` - Active game state used for notifications and logs.
+/// * `cn` - Character index performing the action.
+/// * `self_text` - Message shown to the acting character.
+/// * `area_text` - Message template shown to nearby players.
+/// * `log_verb` - Verb used for server logging.
+fn plr_social_action_gs(
+    gs: &mut GameState,
+    cn: usize,
+    self_text: &str,
+    area_text: &str,
+    log_verb: &str,
+) {
+    let ch = gs.characters[cn];
+    let reference = ch.get_reference();
+    let area_message = area_text.replace("{}", reference);
+    notify_character_tile(gs, cn);
+    gs.do_character_log(cn, core::types::FontColor::Red, self_text);
+    gs.do_area_log(
+        cn,
+        0,
+        ch.x as i32,
+        ch.y as i32,
+        core::types::FontColor::Blue,
+        &area_message,
+    );
+
+    log::info!("Character {} {}", cn, log_verb);
+
+    gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
 }
 
 /// Port of `plr_pickup` from `svr_act.cpp`
@@ -1135,26 +991,17 @@ pub fn plr_give(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index attempting to pick up an item
 pub fn plr_pickup(cn: usize) {
-    Repository::global_mut().do_area_notify(
-        cn as i32,
-        0,
-        Repository::global_mut().characters[cn].x as i32,
-        Repository::global_mut().characters[cn].y as i32,
-        core::constants::NT_SEE as i32,
-        cn as i32,
-        0,
-        0,
-        0,
-    );
+    let gs = GameState::global_mut();
+    notify_character_tile(gs, cn);
 
-    let has_citem = Repository::global_mut().characters[cn].citem != 0;
+    let has_citem = gs.characters[cn].citem != 0;
 
     if has_citem {
-        Repository::global_mut().characters[cn].cerrno = core::constants::ERR_FAILED as u16;
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
-    let ch = Repository::global_mut().characters[cn];
+    let ch = gs.characters[cn];
     let (m, x, y) = match ch.dir {
         core::constants::DX_UP if ch.y > 0 => {
             let m = (ch.x as usize) + ((ch.y - 1) as usize) * core::constants::SERVER_MAPX as usize;
@@ -1176,125 +1023,100 @@ pub fn plr_pickup(cn: usize) {
     };
 
     let Some(m) = m else {
-        Repository::global_mut().characters[cn].cerrno = core::constants::ERR_FAILED as u16;
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     };
 
-    let in_id = Repository::global_mut().map[m].it;
+    let in_id = gs.map[m].it;
 
     if in_id == 0 {
-        Repository::global_mut().characters[cn].cerrno = core::constants::ERR_FAILED as u16;
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
-    let can_take = (Repository::global_mut().items[in_id as usize].flags
-        & core::constants::ItemFlags::IF_TAKE.bits())
-        != 0;
+    let can_take =
+        (gs.items[in_id as usize].flags & core::constants::ItemFlags::IF_TAKE.bits()) != 0;
 
     if !can_take {
-        Repository::global_mut().characters[cn].cerrno = core::constants::ERR_FAILED as u16;
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
-    Repository::global_mut().characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
+    gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
 
-    Repository::global_mut().do_update_char(cn);
+    gs.do_update_char(cn);
 
     // Check if it's money
-    let is_money = (Repository::global_mut().items[in_id as usize].flags
-        & core::constants::ItemFlags::IF_MONEY.bits())
-        != 0;
+    let is_money =
+        (gs.items[in_id as usize].flags & core::constants::ItemFlags::IF_MONEY.bits()) != 0;
 
     if is_money {
-        let value = Repository::global_mut().items[in_id as usize].value;
+        let value = gs.items[in_id as usize].value;
 
-        Repository::global_mut().characters[cn].gold += value as i32;
+        gs.characters[cn].gold += value as i32;
 
         let message = format!("You got {}G {}S\n", value / 100, value % 100);
-        Repository::global_mut().do_character_log(cn, core::types::FontColor::Red, &message);
+        gs.do_character_log(cn, core::types::FontColor::Red, &message);
 
         log::info!("Character {} took {}G {}S", cn, value / 100, value % 100);
 
-        Repository::global_mut().map[m].it = 0;
+        gs.map[m].it = 0;
 
-        let (active, light_active, light_inactive) = {
-            let gs = Repository::global_mut();
-            (
-                gs.items[in_id as usize].active,
-                gs.items[in_id as usize].light[1],
-                gs.items[in_id as usize].light[0],
-            )
-        };
+        let active = gs.items[in_id as usize].active;
+        let light_active = gs.items[in_id as usize].light[1];
+        let light_inactive = gs.items[in_id as usize].light[0];
 
-        {
-            let gs = Repository::global_mut();
-            gs.items[in_id as usize].used = core::constants::USE_EMPTY;
-            gs.items[in_id as usize].x = 0;
-            gs.items[in_id as usize].y = 0;
-        }
+        gs.items[in_id as usize].used = core::constants::USE_EMPTY;
+        gs.items[in_id as usize].x = 0;
+        gs.items[in_id as usize].y = 0;
 
         if active != 0 && light_active != 0 {
-            Repository::global_mut().do_add_light(x as i32, y as i32, -(light_active as i32));
+            gs.do_add_light(x as i32, y as i32, -(light_active as i32));
         } else if light_inactive != 0 {
-            Repository::global_mut().do_add_light(x as i32, y as i32, -(light_inactive as i32));
+            gs.do_add_light(x as i32, y as i32, -(light_inactive as i32));
         }
 
         return;
     }
 
     // Non-money item
-    Repository::global_mut().map[m].it = 0;
+    gs.map[m].it = 0;
 
-    let is_player =
-        (Repository::global_mut().characters[cn].flags & CharacterFlags::Player.bits()) != 0;
+    let is_player = (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0;
 
     if is_player {
-        let slot_found = {
-            let gs = Repository::global_mut();
-            let mut found = None;
-            for n in 0..40 {
-                if gs.characters[cn].item[n] == 0 {
-                    gs.characters[cn].item[n] = in_id;
-                    found = Some(n);
-                    break;
-                }
+        let mut slot_found = None;
+        for n in 0..40 {
+            if gs.characters[cn].item[n] == 0 {
+                gs.characters[cn].item[n] = in_id;
+                slot_found = Some(n);
+                break;
             }
-            found
-        };
-
-        if slot_found.is_none() {
-            Repository::global_mut().characters[cn].citem = in_id;
         }
 
-        let item_name = Repository::global_mut().items[in_id as usize]
-            .get_name()
-            .to_string();
+        if slot_found.is_none() {
+            gs.characters[cn].citem = in_id;
+        }
+
+        let item_name = gs.items[in_id as usize].get_name().to_string();
 
         log::info!("Character {} took {}", cn, item_name);
     } else {
-        Repository::global_mut().characters[cn].citem = in_id;
+        gs.characters[cn].citem = in_id;
     }
 
-    let (active, light_active, light_inactive) = {
-        let gs = Repository::global_mut();
-        (
-            gs.items[in_id as usize].active,
-            gs.items[in_id as usize].light[1],
-            gs.items[in_id as usize].light[0],
-        )
-    };
+    let active = gs.items[in_id as usize].active;
+    let light_active = gs.items[in_id as usize].light[1];
+    let light_inactive = gs.items[in_id as usize].light[0];
 
-    {
-        let gs = Repository::global_mut();
-        gs.items[in_id as usize].x = 0;
-        gs.items[in_id as usize].y = 0;
-        gs.items[in_id as usize].carried = cn as u16;
-    }
+    gs.items[in_id as usize].x = 0;
+    gs.items[in_id as usize].y = 0;
+    gs.items[in_id as usize].carried = cn as u16;
 
     if active != 0 && light_active != 0 {
-        Repository::global_mut().do_add_light(x as i32, y as i32, -(light_active as i32));
+        gs.do_add_light(x as i32, y as i32, -(light_active as i32));
     } else if light_inactive != 0 {
-        Repository::global_mut().do_add_light(x as i32, y as i32, -(light_inactive as i32));
+        gs.do_add_light(x as i32, y as i32, -(light_inactive as i32));
     }
 }
 
@@ -1307,31 +1129,13 @@ pub fn plr_pickup(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index performing the bow
 pub fn plr_bow(cn: usize) {
-    let ch = Repository::global_mut().characters[cn];
-    Repository::global_mut().do_area_notify(
-        cn as i32,
-        0,
-        ch.x as i32,
-        ch.y as i32,
-        core::constants::NT_SEE as i32,
-        cn as i32,
-        0,
-        0,
-        0,
-    );
-    Repository::global_mut().do_character_log(cn, core::types::FontColor::Red, "You bow deeply.\n");
-    Repository::global_mut().do_area_log(
+    plr_social_action_gs(
+        GameState::global_mut(),
         cn,
-        0,
-        ch.x as i32,
-        ch.y as i32,
-        core::types::FontColor::Blue,
-        &format!("{} bows deeply.\n", &ch.get_reference()),
+        "You bow deeply.\n",
+        "{} bows deeply.\n",
+        "bows",
     );
-
-    log::info!("Character {} bows", cn);
-
-    Repository::global_mut().characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
 }
 
 /// Port of `plr_wave` from `svr_act.cpp`
@@ -1343,35 +1147,13 @@ pub fn plr_bow(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index performing the wave
 pub fn plr_wave(cn: usize) {
-    let ch = Repository::global_mut().characters[cn];
-    Repository::global_mut().do_area_notify(
-        cn as i32,
-        0,
-        ch.x as i32,
-        ch.y as i32,
-        core::constants::NT_SEE as i32,
-        cn as i32,
-        0,
-        0,
-        0,
-    );
-    Repository::global_mut().do_character_log(
+    plr_social_action_gs(
+        GameState::global_mut(),
         cn,
-        core::types::FontColor::Red,
         "You wave happily.\n",
+        "{} waves happily.\n",
+        "waves",
     );
-    Repository::global_mut().do_area_log(
-        cn,
-        0,
-        ch.x as i32,
-        ch.y as i32,
-        core::types::FontColor::Blue,
-        &format!("{} waves happily.\n", &ch.get_reference()),
-    );
-
-    log::info!("Character {} waves", cn);
-
-    Repository::global_mut().characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
 }
 
 /// Port of `plr_use` from `svr_act.cpp`
