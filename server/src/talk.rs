@@ -2522,8 +2522,8 @@ pub fn answer_buyhealth(gs: &mut GameState, cn: usize, co: usize) {
 
     gs.characters[co].data[41] += 6;
 
-    if let Some(item_id) = God::create_item(101) {
-        God::give_character_item(co, item_id);
+    if let Some(item_id) = God::create_item(gs, 101) {
+        God::give_character_item(gs, co, item_id);
 
         gs.do_sayx(
             cn,
@@ -2561,8 +2561,8 @@ pub fn answer_buymana(gs: &mut GameState, cn: usize, co: usize) {
 
     gs.characters[co].data[41] += 9;
 
-    if let Some(item_id) = God::create_item(102) {
-        God::give_character_item(co, item_id);
+    if let Some(item_id) = God::create_item(gs, 102) {
+        God::give_character_item(gs, co, item_id);
 
         gs.do_sayx(
             cn,

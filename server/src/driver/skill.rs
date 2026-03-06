@@ -313,7 +313,7 @@ pub fn is_exhausted(gs: &mut GameState, cn: usize) -> i32 {
 
 pub fn add_exhaust(gs: &mut GameState, cn: usize, exhaust_length: i32) {
     // Ported from C++ add_exhaust(int cn, int len)
-    let in_ = God::create_item_in_state(gs, 1);
+    let in_ = God::create_item(gs, 1);
     if in_.is_none() {
         log::error!("god_create_item failed in add_exhaust");
         return;
@@ -346,7 +346,7 @@ pub fn spell_from_item(gs: &mut GameState, cn: usize, in2: usize) {
         );
         return;
     }
-    let in_ = God::create_item_in_state(gs, 1);
+    let in_ = God::create_item(gs, 1);
     if in_.is_none() {
         log::error!("god_create_item failed in skill_from_item");
         return;
@@ -401,7 +401,7 @@ pub fn spell_from_item(gs: &mut GameState, cn: usize, in2: usize) {
 
 pub fn spell_light(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
     // Ported from C++ spell_light(int cn, int co, int power)
-    let in_ = God::create_item_in_state(gs, 1);
+    let in_ = God::create_item(gs, 1);
     if in_.is_none() {
         log::error!("god_create_item failed in spell_light");
         return 0;
@@ -557,7 +557,7 @@ pub fn spellpower(gs: &GameState, cn: usize) -> i32 {
 }
 
 pub fn spell_protect(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
-    let in_opt = God::create_item_in_state(gs, 1);
+    let in_opt = God::create_item(gs, 1);
     if in_opt.is_none() {
         log::error!("god_create_item failed in skill_protect");
         return 0;
@@ -742,7 +742,7 @@ pub fn skill_protect(gs: &mut GameState, cn: usize) {
 }
 
 pub fn spell_enhance(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
-    let in_opt = God::create_item_in_state(gs, 1);
+    let in_opt = God::create_item(gs, 1);
     if in_opt.is_none() {
         log::error!("god_create_item failed in skill_enhance");
         return 0;
@@ -957,7 +957,7 @@ pub fn skill_enhance(gs: &mut GameState, cn: usize) {
 }
 
 pub fn spell_bless(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
-    let in_opt = God::create_item_in_state(gs, 1);
+    let in_opt = God::create_item(gs, 1);
     if in_opt.is_none() {
         log::error!("god_create_item failed in skill_bless");
         return 0;
@@ -1201,7 +1201,7 @@ pub fn skill_wimp(gs: &mut GameState, cn: usize) {
 
     gs.characters[cn].a_end -= 20000;
 
-    let in_opt = God::create_item_in_state(gs, 1);
+    let in_opt = God::create_item(gs, 1);
     if in_opt.is_none() {
         log::error!("god_create_item failed in skill_wimp");
         return;
@@ -1261,7 +1261,7 @@ pub fn skill_wimp(gs: &mut GameState, cn: usize) {
 }
 
 pub fn spell_mshield(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
-    let in_opt = God::create_item_in_state(gs, 1);
+    let in_opt = God::create_item(gs, 1);
     if in_opt.is_none() {
         log::error!("god_create_item failed in skill_mshield");
         return 0;
@@ -1545,7 +1545,7 @@ pub fn spell_curse(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 
         return 0;
     }
 
-    let in_opt = God::create_item_in_state(gs, 1);
+    let in_opt = God::create_item(gs, 1);
     if in_opt.is_none() {
         log::error!("god_create_item failed in spell_curse");
         return 0;
@@ -1801,7 +1801,7 @@ pub fn warcry(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
         );
     }
 
-    let in_opt = God::create_item_in_state(gs, 1);
+    let in_opt = God::create_item(gs, 1);
     if in_opt.is_none() {
         log::error!("god_create_item failed in skill_warcry");
         return 0;
@@ -1824,7 +1824,7 @@ pub fn warcry(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
 
     add_spell(gs, co, in_idx);
 
-    let in2_opt = God::create_item_in_state(gs, 1);
+    let in2_opt = God::create_item(gs, 1);
     if in2_opt.is_none() {
         log::error!("god_create_item failed in skill_warcry");
         return 0;
@@ -2517,7 +2517,7 @@ pub fn skill_repair(gs: &mut GameState, cn: usize) {
     let die = helpers::random_mod_i32(20);
 
     if die <= chan {
-        let in2_opt = God::create_item_in_state(gs, gs.items[in_idx].temp as usize);
+        let in2_opt = God::create_item(gs, gs.items[in_idx].temp as usize);
         if in2_opt.is_none() {
             gs.do_character_log(cn, core::types::FontColor::Green, "You failed.\n");
             return;
@@ -2557,7 +2557,7 @@ pub fn skill_recall(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    let in_opt = God::create_item_in_state(gs, 1);
+    let in_opt = God::create_item(gs, 1);
     if in_opt.is_none() {
         gs.do_character_log(cn, core::types::FontColor::Green, "You failed.\n");
         return;
@@ -2603,7 +2603,7 @@ pub fn spell_stun(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
         return 0;
     }
 
-    let in_opt = God::create_item_in_state(gs, 1);
+    let in_opt = God::create_item(gs, 1);
     if in_opt.is_none() {
         return 0;
     }
@@ -3142,7 +3142,7 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
     let cc = cc_opt.unwrap();
 
     let (cc_x, cc_y) = (gs.characters[cn].x as usize, gs.characters[cn].y as usize);
-    if !God::drop_char_fuzzy(cc, cc_x, cc_y) {
+    if !God::drop_char_fuzzy(gs, cc, cc_x, cc_y) {
         gs.characters[cc].used = USE_EMPTY;
         gs.do_character_log(
             cn,

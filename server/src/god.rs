@@ -9,13 +9,13 @@ use core::{
 
 use crate::{
     area, chlog, driver, effect::EffectManager, enums::LogoutReason, game_state::GameState,
-    game_state::GameState as Repository, helpers, player, populate, server::Server,
+    helpers, player, populate, server::Server,
 };
 
 pub struct God {}
 impl God {
     /// Drop a character near the target using an explicit game-state borrow.
-    pub fn drop_char_fuzzy_large_in_state(
+    pub fn drop_char_fuzzy_large(
         gs: &mut GameState,
         character_id: usize,
         x: usize,
@@ -58,7 +58,7 @@ impl God {
                 *try_x as i32,
                 *try_y as i32,
             ) != 0
-                && Self::drop_char_in_state(gs, character_id, *try_x, *try_y);
+                && Self::drop_char(gs, character_id, *try_x, *try_y);
 
             if early_return {
                 return true;
@@ -68,20 +68,8 @@ impl God {
         false
     }
 
-    /// Port of `create_item(int template_id)` from `svr_god.cpp`.
-    ///
-    /// Create a new item from the specified template. Returns the newly
-    /// allocated item index on success or `None` if creation failed
-    /// (invalid template, unique-item conflict, or no free slots).
-    ///
-    /// # Arguments
-    /// * `template_id` - Item template identifier
-    pub fn create_item(template_id: usize) -> Option<usize> {
-        Self::create_item_in_state(Repository::global_mut(), template_id)
-    }
-
     /// Create an item using an explicit game-state borrow.
-    pub(crate) fn create_item_in_state(gs: &mut GameState, template_id: usize) -> Option<usize> {
+    pub(crate) fn create_item(gs: &mut GameState, template_id: usize) -> Option<usize> {
         if !core::types::Item::is_sane_item_template(template_id) {
             return None;
         }
@@ -171,25 +159,9 @@ impl God {
     }
 
     // Implementation of god_give_char from svr_god.cpp
-    /// Give an existing item instance to a character's inventory.
-    ///
-    /// Performs basic sanity checks and places `item_id` into the first
-    /// available inventory slot of `character_id`. Returns `true` on
-    /// success.
-    ///
-    /// # Arguments
-    /// * `character_id` - Recipient character index
-    /// * `item_id` - Item index to give
-    pub fn give_character_item(character_id: usize, item_id: usize) -> bool {
-        Self::give_character_item_in_state(Repository::global_mut(), character_id, item_id)
-    }
 
     /// Give an item to a character using an explicit game-state borrow.
-    fn give_character_item_in_state(
-        gs: &mut GameState,
-        character_id: usize,
-        item_id: usize,
-    ) -> bool {
+    pub fn give_character_item(gs: &mut GameState, character_id: usize, item_id: usize) -> bool {
         if !core::types::Item::is_sane_item(item_id) {
             log::error!("Invalid item ID {} when giving item.", item_id);
             return false;
@@ -269,8 +241,7 @@ impl God {
     /// # Arguments
     /// * `character_id` - Character index
     /// * `build_type` - Build action selector
-    pub fn build(character_id: usize, build_type: u32) {
-        let gs = Repository::global_mut();
+    pub fn build(gs: &mut GameState, character_id: usize, build_type: u32) {
         let character_is_building = gs.characters[character_id].is_building();
         let name = gs.characters[character_id].get_name().to_string();
         if !character_is_building {
@@ -621,7 +592,7 @@ impl God {
             return false;
         }
 
-        let character_id_to_hold_inventory = Self::create_char_in_state(gs, 1, false);
+        let character_id_to_hold_inventory = Self::create_char(gs, 1, false);
 
         if character_id_to_hold_inventory.is_none() {
             gs.do_character_log(
@@ -661,7 +632,7 @@ impl God {
         };
         gs.characters[holder_id].name = holder_name;
 
-        Self::drop_char_in_state(gs, holder_id, 10, 10);
+        Self::drop_char(gs, holder_id, 10, 10);
 
         gs.characters[character_id].flags |= CharacterFlags::BuildMode.bits();
         gs.characters[character_id].set_do_update_flags();
@@ -751,20 +722,8 @@ impl God {
         gs.characters[character_id].set_do_update_flags();
     }
 
-    /// Transfer a character to exact coordinates `(x, y)` if possible.
-    ///
-    /// Attempts a precise placement and falls back to nearby tiles when the
-    /// target tile is blocked. Returns `true` when the character was placed.
-    ///
-    /// # Arguments
-    /// * `character_id` - Character index
-    /// * `x`, `y` - Target coordinates
-    pub fn transfer_char(character_id: usize, x: usize, y: usize) -> bool {
-        Self::transfer_char_in_state(Repository::global_mut(), character_id, x, y)
-    }
-
     /// Transfer a character using an explicit game-state borrow.
-    fn transfer_char_in_state(gs: &mut GameState, character_id: usize, x: usize, y: usize) -> bool {
+    pub fn transfer_char(gs: &mut GameState, character_id: usize, x: usize, y: usize) -> bool {
         if !Character::is_sane_character(character_id) || !Map::is_sane_coordinates(x, y) {
             log::error!(
                 "Invalid character ID {} or coordinates ({}, {}) in transfer_char",
@@ -786,7 +745,7 @@ impl God {
             [(x, y), (x + 3, y), (x, y + 3), (x - 3, y), (x, y - 3)];
 
         for (try_x, try_y) in positions_to_try.iter() {
-            if Self::drop_char_fuzzy_large_in_state(gs, character_id, *try_x, *try_y, x, y) {
+            if Self::drop_char_fuzzy_large(gs, character_id, *try_x, *try_y, x, y) {
                 return true;
             }
         }
@@ -794,24 +753,8 @@ impl God {
         false
     }
 
-    /// Place a character near `(x,y)` using a predefined small offset table.
-    ///
-    /// Tries multiple nearby tiles until a free space is found.
-    ///
-    /// # Arguments
-    /// * `character_id` - Character to place
-    /// * `x`, `y` - Central coordinates
-    pub fn drop_char_fuzzy(character_id: usize, x: usize, y: usize) -> bool {
-        Self::drop_char_fuzzy_in_state(Repository::global_mut(), character_id, x, y)
-    }
-
     /// Place a character near a tile using an explicit game-state borrow.
-    fn drop_char_fuzzy_in_state(
-        gs: &mut GameState,
-        character_id: usize,
-        x: usize,
-        y: usize,
-    ) -> bool {
+    pub fn drop_char_fuzzy(gs: &mut GameState, character_id: usize, x: usize, y: usize) -> bool {
         let positions_to_try: [(usize, usize); 25] = [
             (x, y),
             (x + 1, y),
@@ -843,7 +786,7 @@ impl God {
         for (try_x, try_y) in positions_to_try.iter() {
             let early_return =
                 gs.can_go(*try_x as i32, *try_y as i32, *try_x as i32, *try_y as i32) != 0
-                    && Self::drop_char_in_state(gs, character_id, *try_x, *try_y);
+                    && Self::drop_char(gs, character_id, *try_x, *try_y);
 
             if early_return {
                 return true;
@@ -853,49 +796,8 @@ impl God {
         false
     }
 
-    /// Place a character using a larger fuzzy search around a center point.
-    ///
-    /// Useful when placing characters in crowded or constrained areas.
-    ///
-    /// # Arguments
-    /// * `character_id` - Character to place
-    /// * `x`, `y` - Desired coordinates
-    /// * `center_x`, `center_y` - Center for the larger search pattern
-    pub fn drop_char_fuzzy_large(
-        character_id: usize,
-        x: usize,
-        y: usize,
-        center_x: usize,
-        center_y: usize,
-    ) -> bool {
-        Self::drop_char_fuzzy_large_in_state(
-            Repository::global_mut(),
-            character_id,
-            x,
-            y,
-            center_x,
-            center_y,
-        )
-    }
-
-    /// Create and initialize a character from a template id.
-    ///
-    /// Allocates a character slot, copies template defaults and optionally
-    /// equips starting items. Returns `Some(index)` on success.
-    ///
-    /// # Arguments
-    /// * `template_id` - Template identifier
-    /// * `with_items` - Whether to populate starting items
-    pub fn create_char(template_id: usize, with_items: bool) -> Option<i32> {
-        Self::create_char_in_state(Repository::global_mut(), template_id, with_items)
-    }
-
     /// Create a character using an explicit game-state borrow.
-    fn create_char_in_state(
-        gs: &mut GameState,
-        template_id: usize,
-        with_items: bool,
-    ) -> Option<i32> {
+    pub fn create_char(gs: &mut GameState, template_id: usize, with_items: bool) -> Option<i32> {
         let unused_index = (1..core::constants::MAXCHARS)
             .find(|&i| gs.characters[i].used == core::constants::USE_EMPTY);
 
@@ -980,7 +882,7 @@ impl God {
             }
 
             if with_items {
-                tmp = Self::create_item_in_state(gs, tmp as usize).unwrap_or(0) as u32;
+                tmp = Self::create_item(gs, tmp as usize).unwrap_or(0) as u32;
                 if tmp == 0 {
                     log::error!(
                         "Failed to create item from template new character ID {}",
@@ -1005,7 +907,7 @@ impl God {
             }
 
             if with_items {
-                tmp_worn = Self::create_item_in_state(gs, tmp_worn as usize).unwrap_or(0) as u32;
+                tmp_worn = Self::create_item(gs, tmp_worn as usize).unwrap_or(0) as u32;
                 if tmp_worn == 0 {
                     log::error!(
                         "Failed to create worn item from template for new character ID {}",
@@ -1032,7 +934,7 @@ impl God {
         let mut tmp_citem = gs.characters[char_index].citem;
         if tmp_citem != 0 {
             if with_items {
-                tmp_citem = Self::create_item_in_state(gs, tmp_citem as usize).unwrap_or(0) as u32;
+                tmp_citem = Self::create_item(gs, tmp_citem as usize).unwrap_or(0) as u32;
                 if tmp_citem == 0 {
                     log::error!(
                         "Failed to create citem from template for new character ID {}",
@@ -1055,7 +957,7 @@ impl God {
                 "One or more items failed to be created for new character ID {}",
                 char_index
             );
-            Self::destroy_items_in_state(gs, char_index);
+            Self::destroy_items(gs, char_index);
             gs.characters[char_index].used = core::constants::USE_EMPTY;
             return None;
         }
@@ -1068,19 +970,8 @@ impl God {
         Some(char_index as i32)
     }
 
-    /// Destroy all items owned or carried by `char_id`.
-    ///
-    /// Empties the character's inventory and removes item instances from the
-    /// world, marking slots as free.
-    ///
-    /// # Arguments
-    /// * `char_id` - Character index whose items will be destroyed
-    pub fn destroy_items(char_id: usize) {
-        Self::destroy_items_in_state(Repository::global_mut(), char_id)
-    }
-
     /// Destroy a character's items using an explicit game-state borrow.
-    pub fn destroy_items_in_state(gs: &mut GameState, char_id: usize) {
+    pub fn destroy_items(gs: &mut GameState, char_id: usize) {
         if !core::types::Character::is_sane_character(char_id) {
             log::error!("Invalid character ID {} in destroy_items", char_id);
             return;
@@ -1143,19 +1034,8 @@ impl God {
         gs.characters[char_id].set_do_update_flags();
     }
 
-    /// Remove `item_id` from character `cn` and drop it onto their map tile.
-    ///
-    /// Returns `true` on success.
-    ///
-    /// # Arguments
-    /// * `item_id` - Item index to take
-    /// * `cn` - Character index from which to remove the item
-    pub fn take_from_char(item_id: usize, cn: usize) -> bool {
-        Self::take_from_char_in_state(Repository::global_mut(), item_id, cn)
-    }
-
     /// Take an item from a character using an explicit game-state borrow.
-    pub fn take_from_char_in_state(gs: &mut GameState, item_id: usize, cn: usize) -> bool {
+    pub fn take_from_char(gs: &mut GameState, item_id: usize, cn: usize) -> bool {
         if !core::types::Item::is_sane_item(item_id) {
             return false;
         }
@@ -1206,19 +1086,8 @@ impl God {
         true
     }
 
-    /// Drop an item at the given coordinates `x,y` on the map.
-    ///
-    /// Performs sanity checks and writes the item id to the map tile.
-    ///
-    /// # Arguments
-    /// * `item_id` - Item instance index
-    /// * `x`, `y` - Target map coordinates
-    pub fn drop_item(item_id: usize, x: usize, y: usize) -> bool {
-        Self::drop_item_in_state(Repository::global_mut(), item_id, x, y)
-    }
-
     /// Drop an item using an explicit game-state borrow.
-    fn drop_item_in_state(gs: &mut GameState, item_id: usize, x: usize, y: usize) -> bool {
+    pub fn drop_item(gs: &mut GameState, item_id: usize, x: usize, y: usize) -> bool {
         if !Map::is_sane_coordinates(x, y) {
             return false;
         }
@@ -1257,24 +1126,8 @@ impl God {
         true
     }
 
-    /// Place a character at the exact tile `(x,y)` if it is a valid move.
-    ///
-    /// Performs map validation and updates the character's position state.
-    ///
-    /// # Arguments
-    /// * `character_id` - Character to place
-    /// * `x`, `y` - Tile coordinates
-    pub fn drop_char(character_id: usize, x: usize, y: usize) -> bool {
-        Self::drop_char_in_state(Repository::global_mut(), character_id, x, y)
-    }
-
     /// Place a character using an explicit game-state borrow.
-    pub(crate) fn drop_char_in_state(
-        gs: &mut GameState,
-        character_id: usize,
-        x: usize,
-        y: usize,
-    ) -> bool {
+    pub(crate) fn drop_char(gs: &mut GameState, character_id: usize, x: usize, y: usize) -> bool {
         if !Map::is_sane_coordinates(x, y) {
             return false;
         }
@@ -1314,8 +1167,7 @@ impl God {
     /// * `cn` - Requesting character
     /// * `co` - Target character
     /// * `pass` - New password string
-    pub fn change_pass(cn: usize, co: usize, pass: &str) -> i32 {
-        let gs = Repository::global_mut();
+    pub fn change_pass(gs: &mut GameState, cn: usize, co: usize, pass: &str) -> i32 {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return 0;
         }
@@ -1351,18 +1203,9 @@ impl God {
     }
 
     // This function is unused in the original implementation
-    #[allow(dead_code)]
-    /// Remove an item from a character's inventory (unused helper).
-    ///
-    /// # Arguments
-    /// * `cn` - Character index
-    /// * `item_id` - Item index to remove
-    pub fn remove_item(cn: usize, item_id: usize) -> i32 {
-        Self::remove_item_from_character(Repository::global_mut(), cn, item_id)
-    }
 
     /// Remove an item from a character while reusing an existing game-state borrow.
-    fn remove_item_from_character(gs: &mut GameState, cn: usize, item_id: usize) -> i32 {
+    fn remove_item(gs: &mut GameState, cn: usize, item_id: usize) -> i32 {
         if !Character::is_sane_character(cn) || !core::types::Item::is_sane_item(item_id) {
             return 0;
         }
@@ -1421,7 +1264,7 @@ impl God {
         ];
 
         for (try_x, try_y) in positions_to_try.iter() {
-            if Self::drop_item_in_state(gs, nr, *try_x, *try_y) {
+            if Self::drop_item(gs, nr, *try_x, *try_y) {
                 return true;
             }
         }
@@ -1438,8 +1281,7 @@ impl God {
     /// * `cn` - Requesting character
     /// * `co` - Target character
     /// * `cx`, `cy` - Coordinate strings
-    pub fn goto(cn: usize, co: usize, cx: &str, cy: &str) {
-        let gs = Repository::global_mut();
+    pub fn goto(gs: &mut GameState, cn: usize, co: usize, cx: &str, cy: &str) {
         log::debug!(
             "goto() called by character {} to move character {} to '{},{}'",
             cn,
@@ -1481,7 +1323,7 @@ impl God {
                 EffectManager::fx_add_effect(12, 0, orig_pos.0 as i32, orig_pos.1 as i32, 0);
             }
 
-            if !Self::transfer_char_in_state(gs, co, x, y) {
+            if !Self::transfer_char(gs, co, x, y) {
                 gs.do_character_log(
                     cn,
                     core::types::FontColor::Red,
@@ -1704,9 +1546,7 @@ impl God {
     /// # Arguments
     /// * `cn` - Requesting character
     /// * `co` - Target character
-    pub fn info(cn: usize, co: usize) {
-        let gs = Repository::global_mut();
-
+    pub fn info(gs: &mut GameState, cn: usize, co: usize) {
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -2051,9 +1891,7 @@ impl God {
     /// # Arguments
     /// * `cn` - Requesting character
     /// * `item_index` - Item instance index
-    pub fn iinfo(cn: usize, item_index: usize) {
-        let gs = Repository::global_mut();
-
+    pub fn iinfo(gs: &mut GameState, cn: usize, item_index: usize) {
         if !Character::is_sane_character(cn) || !core::types::Item::is_sane_item(item_index) {
             return;
         }
@@ -2078,9 +1916,7 @@ impl God {
     /// # Arguments
     /// * `cn` - Requesting character
     /// * `template` - Item template id
-    pub fn tinfo(cn: usize, template: usize) {
-        let gs = Repository::global_mut();
-
+    pub fn tinfo(gs: &mut GameState, cn: usize, template: usize) {
         if !Character::is_sane_character(cn) || !core::types::Item::is_sane_item_template(template)
         {
             return;
@@ -2104,9 +1940,7 @@ impl God {
     ///
     /// # Arguments
     /// * `cn` - Requesting character
-    pub fn unique(cn: usize) {
-        let gs = Repository::global_mut();
-
+    pub fn unique(gs: &mut GameState, cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -2135,9 +1969,7 @@ impl God {
     ///
     /// # Arguments
     /// * `cn` - Requesting character
-    pub fn who(cn: usize) {
-        let gs = Repository::global_mut();
-
+    pub fn who(gs: &mut GameState, cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -2291,9 +2123,7 @@ impl God {
     ///
     /// # Arguments
     /// * `cn` - Requesting character
-    pub fn implist(cn: usize) {
-        let gs = Repository::global_mut();
-
+    pub fn implist(gs: &mut GameState, cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -2382,9 +2212,7 @@ impl God {
     ///
     /// # Arguments
     /// * `cn` - Requesting character
-    pub fn user_who(cn: usize) {
-        let gs = Repository::global_mut();
-
+    pub fn user_who(gs: &mut GameState, cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -2501,9 +2329,7 @@ impl God {
     ///
     /// # Arguments
     /// * `cn` - Requesting character
-    pub fn top(cn: usize) {
-        let gs = Repository::global_mut();
-
+    pub fn top(gs: &mut GameState, cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -2534,9 +2360,7 @@ impl God {
     /// # Arguments
     /// * `cn` - Requesting character
     /// * `x` - Template id
-    pub fn create(cn: usize, x: i32) {
-        let gs = Repository::global_mut();
-
+    pub fn create(gs: &mut GameState, cn: usize, x: i32) {
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -2570,10 +2394,10 @@ impl God {
             return;
         }
 
-        let item_id = Self::create_item_in_state(gs, template_id);
+        let item_id = Self::create_item(gs, template_id);
 
         if let Some(item_id) = item_id {
-            if !Self::give_character_item_in_state(gs, cn, item_id) {
+            if !Self::give_character_item(gs, cn, item_id) {
                 gs.do_character_log(cn, core::types::FontColor::Red, "Your inventory is full!\n");
                 return;
             }
@@ -2603,9 +2427,7 @@ impl God {
     /// * `armor` - Armor type (Titanium, Steel, etc.)
     /// * `animal` - Animal type (Bear, Lion, etc.)
     /// * `godly` - 'godly' or not provided
-    pub fn create_special(cn: usize, armor: &str, animal: &str, godly: &str) {
-        let gs = Repository::global_mut();
-
+    pub fn create_special(gs: &mut GameState, cn: usize, armor: &str, animal: &str, godly: &str) {
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -2644,7 +2466,7 @@ impl God {
 
         let mut created: [usize; 2] = [0, 0];
         for (idx, temp) in [helmet_temp, armor_temp].iter().copied().enumerate() {
-            let item_id = match Self::create_item_in_state(gs, temp) {
+            let item_id = match Self::create_item(gs, temp) {
                 Some(item_id) => item_id,
                 None => {
                     // Clean up any items already created.
@@ -2743,14 +2565,14 @@ impl God {
         }
 
         // Deliver both items (and roll back cleanly if we can't give the full pair).
-        if !Self::give_character_item_in_state(gs, cn, created[0]) {
+        if !Self::give_character_item(gs, cn, created[0]) {
             gs.items[created[0]].used = core::constants::USE_EMPTY;
             gs.do_character_log(cn, core::types::FontColor::Red, "Your inventory is full!\n");
             return;
         }
-        if !Self::give_character_item_in_state(gs, cn, created[1]) {
+        if !Self::give_character_item(gs, cn, created[1]) {
             // Remove the first item again to keep behavior consistent (we create a pair).
-            let _ = Self::remove_item_from_character(gs, cn, created[0]);
+            let _ = Self::remove_item(gs, cn, created[0]);
             gs.items[created[0]].used = core::constants::USE_EMPTY;
             gs.items[created[1]].used = core::constants::USE_EMPTY;
             gs.do_character_log(cn, core::types::FontColor::Red, "Your inventory is full!\n");
@@ -2773,25 +2595,8 @@ impl God {
         );
     }
 
-    /// Find the next character matching the given specs starting at index.
-    ///
-    /// Used by admin search utilities to resolve partial names or rank
-    /// specifiers.
-    ///
-    /// # Arguments
-    /// * `start_index` - Index to start the search from
-    /// * `spec1`, `spec2` - Match specifications
-    pub fn find_next_char(start_index: usize, spec1: &str, spec2: &str) -> i32 {
-        Self::find_next_char_in_state(Repository::global_mut(), start_index, spec1, spec2)
-    }
-
     /// Find the next matching character using an explicit game-state borrow.
-    fn find_next_char_in_state(
-        gs: &mut GameState,
-        start_index: usize,
-        spec1: &str,
-        spec2: &str,
-    ) -> i32 {
+    fn find_next_char(gs: &mut GameState, start_index: usize, spec1: &str, spec2: &str) -> i32 {
         let spec1_lower = spec1.to_lowercase();
         let spec2_lower = spec2.to_lowercase();
 
@@ -2831,7 +2636,7 @@ impl God {
     /// # Arguments
     /// * `looker` - Character performing the check
     /// * `target` - Target character
-    fn invis_in_state(gs: &mut GameState, looker: usize, target: usize) -> i32 {
+    fn invis(gs: &mut GameState, looker: usize, target: usize) -> i32 {
         if !Character::is_sane_character(looker) || !Character::is_sane_character(target) {
             return 1;
         }
@@ -2857,9 +2662,7 @@ impl God {
     /// # Arguments
     /// * `cn` - Summoning character
     /// * `spec1`, `spec2`, `spec3` - Summon parameters
-    pub fn summon(cn: usize, spec1: &str, spec2: &str, spec3: &str) {
-        let gs = Repository::global_mut();
-
+    pub fn summon(gs: &mut GameState, cn: usize, spec1: &str, spec2: &str, spec3: &str) {
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -2876,8 +2679,7 @@ impl God {
             // single-arg: treat spec1 as character number
             co = spec1.parse::<usize>().unwrap_or(0);
 
-            if co == 0 || !Character::is_sane_character(co) || Self::invis_in_state(gs, cn, co) != 0
-            {
+            if co == 0 || !Character::is_sane_character(co) || Self::invis(gs, cn, co) != 0 {
                 gs.do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
                 return;
             }
@@ -2932,7 +2734,7 @@ impl God {
             let which = spec3.parse::<usize>().unwrap_or(1).max(1);
 
             while count < which {
-                let found = Self::find_next_char_in_state(gs, co, spec1, spec2) as usize;
+                let found = Self::find_next_char(gs, co, spec1, spec2) as usize;
                 if found == 0 {
                     break;
                 }
@@ -2957,7 +2759,7 @@ impl God {
                 }
 
                 // invisibility check: ignore whom we can't see
-                if Self::invis_in_state(gs, cn, co) != 0 {
+                if Self::invis(gs, cn, co) != 0 {
                     continue;
                 }
 
@@ -3015,7 +2817,7 @@ impl God {
             (tx, ty, xo, yo)
         };
 
-        if !Self::transfer_char_in_state(gs, co, x, y) {
+        if !Self::transfer_char(gs, co, x, y) {
             gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -3046,9 +2848,7 @@ impl God {
     /// # Arguments
     /// * `cn` - Requesting character
     /// * `spec1`, `spec2` - Mirror parameters
-    pub fn mirror(cn: usize, spec1: &str, spec2: &str) {
-        let gs = Repository::global_mut();
-
+    pub fn mirror(gs: &mut GameState, cn: usize, spec1: &str, spec2: &str) {
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -3071,7 +2871,7 @@ impl God {
         } else if spec1.chars().all(|c| c.is_ascii_digit()) {
             spec1.parse::<usize>().unwrap_or(0)
         } else {
-            Self::find_next_char_in_state(gs, 1, spec1, "") as usize
+            Self::find_next_char(gs, 1, spec1, "") as usize
         };
 
         if !Character::is_sane_character(co) {
@@ -3110,7 +2910,7 @@ impl God {
         }
 
         // Create mirror character with template 968
-        let cc = match Self::create_char_in_state(gs, 968, false) {
+        let cc = match Self::create_char(gs, 968, false) {
             Some(cc) => cc as usize,
             None => {
                 gs.do_character_log(
@@ -3192,7 +2992,7 @@ impl God {
             mirror.set_do_update_flags();
 
             // Drop the mirror at caster's position
-            Self::drop_char_fuzzy_in_state(gs, cc, caster_x as usize, caster_y as usize);
+            Self::drop_char_fuzzy(gs, cc, caster_x as usize, caster_y as usize);
 
             // Add target as enemy
             driver::npc_add_enemy(gs, cc, co, true);
@@ -3213,9 +3013,7 @@ impl God {
     /// # Arguments
     /// * `cn` - Requesting character
     /// * `spec1`, `spec2` - Target and options
-    pub fn thrall(cn: usize, spec1: &str, spec2: &str) -> i32 {
-        let gs = Repository::global_mut();
-
+    pub fn thrall(gs: &mut GameState, cn: usize, spec1: &str, spec2: &str) -> i32 {
         if !Character::is_sane_character(cn) {
             return 0;
         }
@@ -3259,7 +3057,7 @@ impl God {
             // At least 2 arguments - find character by name/rank
             let mut co = 0usize;
             loop {
-                co = Self::find_next_char_in_state(gs, co, spec1, spec2) as usize;
+                co = Self::find_next_char(gs, co, spec1, spec2) as usize;
                 if co == 0 {
                     break;
                 }
@@ -3354,7 +3152,7 @@ impl God {
         // Get target template and create thrall
         let target_template = gs.characters[co].temp;
 
-        let ct = match Self::create_char_in_state(gs, target_template as usize, true) {
+        let ct = match Self::create_char(gs, target_template as usize, true) {
             Some(ct) => ct as usize,
             None => {
                 gs.do_character_log(
@@ -3430,13 +3228,13 @@ impl God {
         };
 
         // Drop thrall at calculated position
-        if !Self::drop_char_fuzzy_in_state(gs, ct, x, y) {
+        if !Self::drop_char_fuzzy(gs, ct, x, y) {
             gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 "god_drop_char_fuzzy() called from god_thrall() failed.\n",
             );
-            Self::destroy_items_in_state(gs, ct);
+            Self::destroy_items(gs, ct);
             gs.characters[ct].used = core::constants::USE_EMPTY;
             return 0;
         }
@@ -3456,9 +3254,7 @@ impl God {
     ///
     /// # Arguments
     /// * `cn` - Target character
-    pub fn tavern(cn: usize) {
-        let gs = Repository::global_mut();
-
+    pub fn tavern(gs: &mut GameState, cn: usize) {
         if !Character::is_sane_character(cn) {
             log::error!("god_tavern() called with invalid character number: {}", cn);
             return;
@@ -3493,9 +3289,7 @@ impl God {
     /// * `cn` - Requesting character
     /// * `arg1` - Target character or can be the amount if arg2 is empty (apply to self)
     /// * `arg2` - Increase amount
-    pub fn raise_char(cn: usize, arg1: &str, arg2: &str) {
-        let gs = Repository::global_mut();
-
+    pub fn raise_char(gs: &mut GameState, cn: usize, arg1: &str, arg2: &str) {
         log::debug!(
             "god_raise_char() called with arg1='{}', arg2='{}'",
             arg1,
@@ -3522,16 +3316,17 @@ impl God {
             (arg1, arg2)
         };
 
-        let (co, name) = if let Some((co, name)) = Self::find_character_by_name_or_id(target_arg) {
-            (co, name)
-        } else {
-            gs.do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                &format!("No such character: {}\n", target_arg),
-            );
-            return;
-        };
+        let (co, name) =
+            if let Some((co, name)) = Self::find_character_by_name_or_id(gs, target_arg) {
+                (co, name)
+            } else {
+                gs.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("No such character: {}\n", target_arg),
+                );
+                return;
+            };
 
         let value = match value_arg.parse::<i32>() {
             Ok(v) => v,
@@ -3586,9 +3381,7 @@ impl God {
     /// * `cn` - Requesting character
     /// * `arg1` - Target character or can be the amount of arg2 isn't provided.
     /// * `arg2` - Decrease amount
-    pub fn lower_char(cn: usize, arg1: &str, arg2: &str) {
-        let gs = Repository::global_mut();
-
+    pub fn lower_char(gs: &mut GameState, cn: usize, arg1: &str, arg2: &str) {
         log::debug!(
             "god_lower_char() called with arg1='{}', arg2='{}'",
             arg1,
@@ -3615,16 +3408,17 @@ impl God {
             (arg1, arg2)
         };
 
-        let (co, name) = if let Some((co, name)) = Self::find_character_by_name_or_id(target_arg) {
-            (co, name)
-        } else {
-            gs.do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                &format!("No such character: {}\n", target_arg),
-            );
-            return;
-        };
+        let (co, name) =
+            if let Some((co, name)) = Self::find_character_by_name_or_id(gs, target_arg) {
+                (co, name)
+            } else {
+                gs.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("No such character: {}\n", target_arg),
+                );
+                return;
+            };
 
         let value = match value_arg.parse::<i32>() {
             Ok(v) => v,
@@ -3681,9 +3475,7 @@ impl God {
     /// * `arg` - Recipient character or empty (if self)
     /// * `value` - Gold amount
     /// * `silver` - Silver amount
-    pub fn gold_char(cn: usize, arg: &str, gold: u32, silver: u32) {
-        let gs = Repository::global_mut();
-
+    pub fn gold_char(gs: &mut GameState, cn: usize, arg: &str, gold: u32, silver: u32) {
         log::debug!(
             "gold_char() called with arg='{}', gold='{}', silver='{}'",
             arg,
@@ -3710,16 +3502,17 @@ impl God {
             arg
         };
 
-        let (co, name) = if let Some((co, name)) = Self::find_character_by_name_or_id(target_arg) {
-            (co, name)
-        } else {
-            gs.do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                &format!("No such character: {}\n", target_arg),
-            );
-            return;
-        };
+        let (co, name) =
+            if let Some((co, name)) = Self::find_character_by_name_or_id(gs, target_arg) {
+                (co, name)
+            } else {
+                gs.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("No such character: {}\n", target_arg),
+                );
+                return;
+            };
 
         let target = &mut gs.characters[co];
         target.gold = (target.gold + total_silver as i32).max(0);
@@ -3740,9 +3533,7 @@ impl God {
     /// * `cn` - Requesting character
     /// * `co` - Target character
     /// * `erase_player` - If non-zero, allow player erasure
-    pub fn erase(cn: usize, co: usize, erase_player: i32) {
-        let gs = Repository::global_mut();
-
+    pub fn erase(gs: &mut GameState, cn: usize, co: usize, erase_player: i32) {
         if co == 0 {
             gs.do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
             return;
@@ -3838,9 +3629,7 @@ impl God {
     /// # Arguments
     /// * `cn` - Requesting character
     /// * `co` - Target character to kick
-    pub fn kick(cn: usize, co: usize) {
-        let gs = Repository::global_mut();
-
+    pub fn kick(gs: &mut GameState, cn: usize, co: usize) {
         // Check co == 0
         if co == 0 {
             gs.do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
@@ -3895,9 +3684,7 @@ impl God {
     /// * `co` - Target character
     /// * `n` - Skill index
     /// * `val` - New skill value
-    pub fn skill(cn: usize, co: usize, n: i32, val: i32) {
-        let gs = Repository::global_mut();
-
+    pub fn skill(gs: &mut GameState, cn: usize, co: usize, n: i32, val: i32) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
         }
@@ -3938,13 +3725,12 @@ impl God {
     /// # Arguments
     /// * `item_id` - Item instance index
     /// * `place` - Donation site selector
-    pub fn donate_item(item_id: usize, place: i32) {
+    pub fn donate_item(gs: &mut GameState, item_id: usize, place: i32) {
         // Donation locations:
         // Temple of Skua: (497, 512)
         // Temple of the Purple One: (560, 542)
         const DON_X: [usize; 2] = [497, 560];
         const DON_Y: [usize; 2] = [512, 542];
-        let gs = Repository::global_mut();
 
         if !core::types::Item::is_sane_item(item_id) {
             log::warn!("Attempt to god_donate_item {}", item_id);
@@ -3977,13 +3763,12 @@ impl God {
     ///
     /// Administrative helper to OR the provided `flag` into the target's
     /// flag field.
-    pub fn set_flag(cn: usize, arg1: &str, flag: u64) {
+    pub fn set_flag(gs: &mut GameState, cn: usize, arg1: &str, flag: u64) {
         log::debug!(
             "god_set_flag() called with arg1='{}', flag={:x}",
             arg1,
             flag
         );
-        let gs = Repository::global_mut();
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -3996,7 +3781,7 @@ impl God {
             arg1.to_string()
         };
 
-        if let Some((co, name)) = Self::find_character_by_name_or_id(&query) {
+        if let Some((co, name)) = Self::find_character_by_name_or_id(gs, &query) {
             // Toggle the flag
             if gs.characters[co].flags & flag != 0 {
                 gs.characters[co].flags &= !flag;
@@ -4043,9 +3828,7 @@ impl God {
     /// Find a character by name (case-insensitive).
     ///
     /// Returns the character index and name string if found, or None if not.
-    fn find_character_by_name_or_id(arg: &str) -> Option<(usize, String)> {
-        let gs = Repository::global_mut();
-
+    fn find_character_by_name_or_id(gs: &mut GameState, arg: &str) -> Option<(usize, String)> {
         if arg.chars().all(|c| c.is_numeric()) {
             // Search by character number
             let co = arg.parse::<usize>().unwrap_or(0);
@@ -4071,9 +3854,7 @@ impl God {
     /// Set a global server flag (admin operation).
     ///
     /// Modifies server-level flags used to enable or disable features.
-    pub fn set_gflag(cn: usize, flag: i32) {
-        let gs = Repository::global_mut();
-
+    pub fn set_gflag(gs: &mut GameState, cn: usize, flag: i32) {
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -4099,9 +3880,7 @@ impl God {
     /// Toggle the purple (privileged) status for a character.
     ///
     /// Grants or removes purple display/privileges from `co`.
-    pub fn set_purple(cn: usize, co: usize) {
-        let gs = Repository::global_mut();
-
+    pub fn set_purple(gs: &mut GameState, cn: usize, co: usize) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
         }
@@ -4135,9 +3914,7 @@ impl God {
     /// Completely replaces the character with the template, preserving only
     /// essential account information like name, passwords, gold, and depot.
     /// This resets all stats, skills, and experience to template defaults.
-    pub fn racechange(co: usize, temp: i32) {
-        let gs = Repository::global_mut();
-
+    pub fn racechange(gs: &mut GameState, co: usize, temp: i32) {
         if !Character::is_sane_character(co) {
             return;
         }
@@ -4171,7 +3948,7 @@ impl God {
         }
 
         // First destroy all items
-        Self::destroy_items(co);
+        Self::destroy_items(gs, co);
 
         {
             let character = &mut gs.characters[co];
@@ -4301,9 +4078,7 @@ impl God {
     /// Save character `co` to persistent storage.
     ///
     /// Returns `1` on success and performs necessary write operations.
-    pub fn save(cn: usize, co: usize) -> i32 {
-        let gs = Repository::global_mut();
-
+    pub fn save(gs: &mut GameState, cn: usize, co: usize) -> i32 {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return 0;
         }
@@ -4331,9 +4106,7 @@ impl God {
     // TODO: Implement actual mail logic
     #[allow(dead_code)]
     /// Placeholder for mail-related password operations.
-    pub fn mail_pass(cn: usize, co: usize) {
-        let gs = Repository::global_mut();
-
+    pub fn mail_pass(gs: &mut GameState, cn: usize, co: usize) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
         }
@@ -4349,9 +4122,7 @@ impl God {
     }
 
     /// Command to make `co` perform a slap animation (cosmetic/admin).
-    pub fn slap(cn: usize, co: usize) {
-        let gs = Repository::global_mut();
-
+    pub fn slap(gs: &mut GameState, cn: usize, co: usize) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
         }
@@ -4376,9 +4147,7 @@ impl God {
     /// Change a character's sprite id.
     ///
     /// Performs validation of the sprite id before updating the character.
-    pub fn spritechange(cn: usize, co: usize, sprite: i32) {
-        let gs = Repository::global_mut();
-
+    pub fn spritechange(gs: &mut GameState, cn: usize, co: usize, sprite: i32) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
         }
@@ -4410,9 +4179,7 @@ impl God {
     }
 
     /// Adjust the `luck` stat for a character.
-    pub fn luck(cn: usize, co: usize, value: i32) {
-        let gs = Repository::global_mut();
-
+    pub fn luck(gs: &mut GameState, cn: usize, co: usize, value: i32) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
         }
@@ -4434,9 +4201,7 @@ impl God {
     }
 
     /// Reset a character's description to a blank/default value.
-    pub fn reset_description(cn: usize, co: usize) {
-        let gs = Repository::global_mut();
-
+    pub fn reset_description(gs: &mut GameState, cn: usize, co: usize) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
         }
@@ -4468,9 +4233,7 @@ impl God {
     /// Set or change the visible name of a character, with validation.
     ///
     /// Ensures the new name meets length and character constraints.
-    pub fn set_name(cn: usize, co: usize, name: &str) {
-        let gs = Repository::global_mut();
-
+    pub fn set_name(gs: &mut GameState, cn: usize, co: usize, name: &str) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
         }
@@ -4511,9 +4274,7 @@ impl God {
     /// # Arguments
     /// * `cn` - Requesting character
     /// * `co` - NPC to usurp
-    pub fn usurp(cn: usize, co: usize) {
-        let gs = Repository::global_mut();
-
+    pub fn usurp(gs: &mut GameState, cn: usize, co: usize) {
         // Check co == 0
         if co == 0 {
             gs.do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
@@ -4578,9 +4339,9 @@ impl God {
         if caller_is_player {
             gs.characters[cn].tavern_x = gs.characters[cn].x as u16;
             gs.characters[cn].tavern_y = gs.characters[cn].y as u16;
-            God::transfer_char(cn, 10, 10);
+            God::transfer_char(gs, cn, 10, 10);
             if should_set_afk {
-                Repository::global_mut().do_afk(cn, "");
+                gs.do_afk(cn, "");
             }
         }
 
@@ -4592,9 +4353,7 @@ impl God {
     ///
     /// # Arguments
     /// * `cn` - Character exiting usurp mode
-    pub fn exit_usurp(cn: usize) {
-        let gs = Repository::global_mut();
-
+    pub fn exit_usurp(gs: &mut GameState, cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -4617,34 +4376,32 @@ impl God {
                 }
             });
 
-            God::transfer_char(co, 512, 512);
-            Repository::global_mut().do_afk(co, "");
+            God::transfer_char(gs, co, 512, 512);
+            gs.do_afk(co, "");
             gs.characters[cn].set_do_update_flags();
         }
     }
 
     /// Spawn a Grolm NPC near the caller for testing or event purposes.
-    pub fn grolm(cn: usize) {
+    pub fn grolm(gs: &mut GameState, cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
         }
 
         // Create character from template 386 with items
-        if let Some(co) = populate::pop_create_char(Repository::global_mut(), 386, true) {
-            let character_name = Repository::global_mut().characters[co].name;
+        if let Some(co) = populate::pop_create_char(gs, 386, true) {
+            let character_name = gs.characters[co].name;
 
             let name_str = c_string_to_str(&character_name);
 
             log::info!("IMP: {} is now playing {} ({})", cn, name_str, co);
 
-            Self::usurp(cn, co);
+            Self::usurp(gs, cn, co);
         }
     }
 
     /// Show internal debug/state information for the Grolm NPC.
-    pub fn grolm_info(cn: usize) {
-        let gs = Repository::global_mut();
-
+    pub fn grolm_info(gs: &mut GameState, cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -4703,9 +4460,7 @@ impl God {
     }
 
     /// Start scripted movement or behaviour for the Grolm NPC.
-    pub fn grolm_start(cn: usize) {
-        let gs = Repository::global_mut();
-
+    pub fn grolm_start(gs: &mut GameState, cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -4752,28 +4507,26 @@ impl God {
     }
 
     /// Spawn a Gargoyle NPC near the caller for testing or event purposes.
-    pub fn gargoyle(cn: usize) {
+    pub fn gargoyle(gs: &mut GameState, cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
         }
 
         // Create character from template 495 with items
-        if let Some(co) = populate::pop_create_char(Repository::global_mut(), 495, true) {
-            let character_name = Repository::global_mut().characters[co].name;
+        if let Some(co) = populate::pop_create_char(gs, 495, true) {
+            let character_name = gs.characters[co].name;
 
             let name_str = c_string_to_str(&character_name);
 
             log::info!("IMP: {} is now playing {} ({})", cn, name_str, co);
 
-            Self::usurp(cn, co);
+            Self::usurp(gs, cn, co);
         }
     }
 
     /// Perform a minor race/template change on the caller while preserving
     /// key attributes.
-    pub fn minor_racechange(cn: usize, temp: i32) {
-        let gs = Repository::global_mut();
-
+    pub fn minor_racechange(gs: &mut GameState, cn: usize, temp: i32) {
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -4846,9 +4599,7 @@ impl God {
     /// * `cn` - Requesting character
     /// * `whom` - Target specification
     /// * `text` - Text to force
-    pub fn force(cn: usize, whom: &str, text: &str) {
-        let gs = Repository::global_mut();
-
+    pub fn force(gs: &mut GameState, cn: usize, whom: &str, text: &str) {
         // Check cn <= 0
         if cn == 0 {
             return;
@@ -4861,7 +4612,7 @@ impl God {
         }
 
         // Find the character
-        let co = Self::find_next_char(1, whom, "");
+        let co = Self::find_next_char(gs, 1, whom, "");
 
         if co <= 0 {
             gs.do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
@@ -4927,8 +4678,7 @@ impl God {
     ///
     /// # Arguments
     /// * `addr` - IPv4 address as integer
-    pub fn is_banned(addr: i32) -> bool {
-        let gs = Repository::global_mut();
+    pub fn is_banned(gs: &mut GameState, addr: i32) -> bool {
         let addr = addr as u32;
 
         for ban in gs.ban_list.iter() {
@@ -4943,9 +4693,7 @@ impl God {
     /// Add a single ban entry for a specific address.
     ///
     /// Records the issuer `cn` and optionally the victim `co`.
-    pub fn add_single_ban(cn: usize, co: usize, addr: u32) {
-        let gs = Repository::global_mut();
-
+    pub fn add_single_ban(gs: &mut GameState, cn: usize, co: usize, addr: u32) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
         }
@@ -4973,7 +4721,7 @@ impl God {
     }
 
     /// Ban the current address of the target character `co`.
-    pub fn add_ban(cn: usize, co: usize) {
+    pub fn add_ban(gs: &mut GameState, cn: usize, co: usize) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
         }
@@ -4982,13 +4730,11 @@ impl God {
         // For now using placeholder logic
         let addr = 0u32; // TODO: Get actual player IP address
 
-        Self::add_single_ban(cn, co, addr);
+        Self::add_single_ban(gs, cn, co, addr);
     }
 
     /// Delete a ban list entry by its index `nr`.
-    pub fn del_ban(cn: usize, nr: usize) {
-        let gs = Repository::global_mut();
-
+    pub fn del_ban(gs: &mut GameState, cn: usize, nr: usize) {
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -5012,9 +4758,7 @@ impl God {
     }
 
     /// List all active ban entries to the requesting character.
-    pub fn list_ban(cn: usize) {
-        let gs = Repository::global_mut();
-
+    pub fn list_ban(gs: &mut GameState, cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -5045,9 +4789,7 @@ impl God {
     }
 
     /// Mute a character `co` so they cannot speak publicly.
-    pub fn shutup(cn: usize, co: usize) {
-        let gs = Repository::global_mut();
-
+    pub fn shutup(gs: &mut GameState, cn: usize, co: usize) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
         }
@@ -5080,9 +4822,7 @@ impl God {
     /// The difference `ltick - rtick` is a *tick lag* / backlog indicator
     /// (how far behind the client is), which we report as an approximate
     /// latency in milliseconds.
-    pub fn show_network_info(cn: usize, target: &str) {
-        let gs = Repository::global_mut();
-
+    pub fn show_network_info(gs: &mut GameState, cn: usize, target: &str) {
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -5214,9 +4954,7 @@ impl God {
     ///
     /// This is intended for god/imp usage; it enumerates active player
     /// connections and prints the same columns as `show_network_info`.
-    pub fn show_network_info_all(cn: usize) {
-        let gs = Repository::global_mut();
-
+    pub fn show_network_info_all(gs: &mut GameState, cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
         }

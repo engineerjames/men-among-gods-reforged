@@ -225,7 +225,7 @@ impl GameState {
                 self.characters[co].data[1] as usize,
                 self.characters[co].data[2] as usize,
             );
-            God::transfer_char(cn, 512, 512);
+            God::transfer_char(self, cn, 512, 512);
             log::info!("Labkeeper room solved by GC: cc={}", cc);
             return;
         }
@@ -258,7 +258,7 @@ impl GameState {
             let is_sane_and_companion = self.characters[cc2].used != core::constants::USE_EMPTY
                 && (self.characters[cc2].temp == core::constants::CT_COMPANION as u16);
             if is_sane_and_companion {
-                God::transfer_char(cc2, 512, 512);
+                God::transfer_char(self, cc2, 512, 512);
             }
         }
     }

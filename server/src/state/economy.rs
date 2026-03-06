@@ -258,7 +258,7 @@ impl GameState {
             );
             return;
         }
-        if !God::give_character_item(co, in_id) {
+        if !God::give_character_item(self, co, in_id) {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,

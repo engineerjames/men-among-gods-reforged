@@ -440,7 +440,7 @@ impl GameState {
 
         if let Some((slot_index, location)) = found_location {
             // Try to give the item to the admin character
-            if God::give_character_item(cn, item_id as usize) {
+            if God::give_character_item(self, cn, item_id as usize) {
                 // Remove item from target's slot
                 match location {
                     "inventory" => self.characters[co].item[slot_index] = 0,

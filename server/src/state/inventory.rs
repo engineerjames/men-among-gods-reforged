@@ -416,7 +416,7 @@ impl GameState {
 
         if receiver_has_citem {
             // Receiver already has a carried item, try to put it in their inventory
-            let success = God::give_character_item(co, item_idx);
+            let success = God::give_character_item(self, co, item_idx);
 
             if success {
                 self.characters[cn].citem = 0;

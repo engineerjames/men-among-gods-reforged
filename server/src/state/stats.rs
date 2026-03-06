@@ -803,7 +803,7 @@ impl GameState {
                             let is_invisible =
                                 self.characters[cn].flags & CharacterFlags::Invisible.bits() != 0;
 
-                            if God::transfer_char(cn, dest_x as usize, dest_y as usize) {
+                            if God::transfer_char(self, cn, dest_x as usize, dest_y as usize) {
                                 if !is_invisible {
                                     EffectManager::fx_add_effect(
                                         12,
@@ -1497,7 +1497,7 @@ impl GameState {
                 crate::effect::EffectManager::fx_add_effect(6, 0, co_x as i32, co_y as i32, 0);
                 let temple_x = self.characters[co].temple_x as usize;
                 let temple_y = self.characters[co].temple_y as usize;
-                God::transfer_char(co, temple_x, temple_y);
+                God::transfer_char(self, co, temple_x, temple_y);
                 let new_x = self.characters[co].x;
                 let new_y = self.characters[co].y;
                 crate::effect::EffectManager::fx_add_effect(6, 0, new_x as i32, new_y as i32, 0);

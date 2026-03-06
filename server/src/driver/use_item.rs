@@ -245,12 +245,12 @@ pub fn use_create_item(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         return 0;
     }
 
-    let in2 = match God::create_item(template_id) {
+    let in2 = match God::create_item(gs, template_id) {
         Some(id) => id,
         None => return 0,
     };
 
-    if !God::give_character_item(cn, in2) {
+    if !God::give_character_item(gs, cn, in2) {
         let item_ref = gs.items[in2].reference;
         gs.do_character_log(
             cn,
@@ -389,12 +389,12 @@ pub fn use_create_item2(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         return 0;
     }
 
-    let in2 = match God::create_item(template_id) {
+    let in2 = match God::create_item(gs, template_id) {
         Some(id) => id,
         None => return 0,
     };
 
-    if !God::give_character_item(cn, in2) {
+    if !God::give_character_item(gs, cn, in2) {
         let item_ref = c_string_to_str(&gs.items[in2].reference);
         gs.do_character_log(
             cn,
@@ -471,9 +471,9 @@ pub fn use_create_item3(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     // Check if this is a special item template
     let in2 = match template_id {
         57 | 59 | 63 | 65 | 69 | 71 | 75 | 76 | 94 | 95 | 981 | 982 => {
-            helpers::create_special_item(template_id)
+            helpers::create_special_item(gs, template_id)
         }
-        _ => God::create_item(template_id),
+        _ => God::create_item(gs, template_id),
     };
 
     let in2 = match in2 {
@@ -484,7 +484,7 @@ pub fn use_create_item3(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         }
     };
 
-    if !God::give_character_item(cn, in2) {
+    if !God::give_character_item(gs, cn, in2) {
         gs.do_character_log(
             cn,
             core::types::FontColor::Blue,
@@ -613,7 +613,7 @@ pub fn use_mix_potion(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         }
     };
 
-    let in3 = match God::create_item(result_template) {
+    let in3 = match God::create_item(gs, result_template) {
         Some(id) => id,
         None => return 0,
     };
@@ -624,7 +624,7 @@ pub fn use_mix_potion(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     gs.characters[cn].citem = 0;
 
     take_item_from_char(gs, item_idx, cn);
-    God::give_character_item(cn, in3);
+    God::give_character_item(gs, cn, in3);
 
     1
 }
@@ -668,7 +668,7 @@ pub fn use_chain(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         return 0;
     }
 
-    let in3 = match God::create_item((current_temp + 1) as usize) {
+    let in3 = match God::create_item(gs, (current_temp + 1) as usize) {
         Some(id) => id,
         None => return 0,
     };
@@ -679,7 +679,7 @@ pub fn use_chain(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     gs.characters[cn].citem = 0;
 
     take_item_from_char(gs, item_idx, cn);
-    God::give_character_item(cn, in3);
+    God::give_character_item(gs, cn, in3);
 
     1
 }
@@ -720,12 +720,12 @@ pub fn stone_sword(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         return 0;
     }
 
-    let in2 = match God::create_item(template_id) {
+    let in2 = match God::create_item(gs, template_id) {
         Some(id) => id,
         None => return 0,
     };
 
-    God::give_character_item(cn, in2);
+    God::give_character_item(gs, cn, in2);
 
     let item_ref = c_string_to_str(&gs.items[in2].reference).to_string();
     gs.do_character_log(
@@ -826,7 +826,7 @@ pub fn finish_laby_teleport(gs: &mut GameState, cn: usize, nr: usize, exp: usize
 
     // Add effects and transfer character
     EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
-    God::transfer_char(cn, 512, 512); // TODO: Shouldn't this be their temple coords?
+    God::transfer_char(gs, cn, 512, 512); // TODO: Shouldn't this be their temple coords?
     EffectManager::fx_add_effect(6, 0, 512_i32, 512_i32, 0);
 
     let (x, y) = (gs.characters[cn].x, gs.characters[cn].y);
@@ -915,7 +915,7 @@ pub fn teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     let dest_y = gs.items[item_idx].data[1] as usize;
 
     EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
-    God::transfer_char(cn, dest_x, dest_y);
+    God::transfer_char(gs, cn, dest_x, dest_y);
     EffectManager::fx_add_effect(6, 0, dest_x as i32, dest_y as i32, 0);
 
     1
@@ -955,7 +955,7 @@ pub fn teleport2(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     }
 
     // Create a recall spell item
-    let spell_item = match God::create_item(1) {
+    let spell_item = match God::create_item(gs, 1) {
         Some(id) => id,
         None => {
             log::error!("god_create_item failed in teleport2");
@@ -1051,7 +1051,7 @@ pub fn use_labyrinth(gs: &mut GameState, cn: usize, _item_idx: usize) -> i32 {
 
     let flag = if let Some((dest_x, dest_y)) = destination {
         EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
-        let result = God::transfer_char(cn, dest_x, dest_y);
+        let result = God::transfer_char(gs, cn, dest_x, dest_y);
         let (new_x, new_y) = (gs.characters[cn].x, gs.characters[cn].y);
         EffectManager::fx_add_effect(6, 0, new_x as i32, new_y as i32, 0);
         result
@@ -1085,7 +1085,7 @@ pub fn use_ladder(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     let dest_x = (item_x as i32 + offset_x) as usize;
     let dest_y = (item_y as i32 + offset_y) as usize;
 
-    God::transfer_char(cn, dest_x, dest_y);
+    God::transfer_char(gs, cn, dest_x, dest_y);
 
     1
 }
@@ -1220,7 +1220,7 @@ pub fn use_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     }
 
     gs.items[item_idx].used = USE_EMPTY;
-    God::take_from_char(item_idx, cn);
+    God::take_from_char(gs, item_idx, cn);
     gs.characters[cn].set_do_update_flags();
 
     1
@@ -1448,7 +1448,7 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
     let tmp = temps[helpers::random_mod_usize(temps.len())];
 
     // create char
-    let cc_i32 = match God::create_char(tmp, false) {
+    let cc_i32 = match God::create_char(gs, tmp, false) {
         Some(id) => id,
         None => return 0,
     };
@@ -1456,8 +1456,8 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
 
     // attempt to drop at crystal position
     let (item_x, item_y) = (gs.items[item_idx].x, gs.items[item_idx].y);
-    if !God::drop_char_fuzzy(cc, item_x as usize, item_y as usize) {
-        God::destroy_items(cc);
+    if !God::drop_char_fuzzy(gs, cc, item_x as usize, item_y as usize) {
+        God::destroy_items(gs, cc);
         {
             gs.characters[cc].used = core::constants::USE_EMPTY;
         };
@@ -1867,18 +1867,18 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
 
     // occasional extra items (partial port)
     if helpers::random_mod_i32(30) == 0 && gs.characters[cc].data[0] > 5 {
-        if let Some(it) = God::create_item(helpers::random_mod_usize(2) + 273) {
-            God::give_character_item(cc, it);
+        if let Some(it) = God::create_item(gs, helpers::random_mod_usize(2) + 273) {
+            God::give_character_item(gs, cc, it);
         }
     }
     if helpers::random_mod_i32(60) == 0 && gs.characters[cc].data[0] > 15 {
-        if let Some(it) = God::create_item(helpers::random_mod_usize(2) + 192) {
-            God::give_character_item(cc, it);
+        if let Some(it) = God::create_item(gs, helpers::random_mod_usize(2) + 192) {
+            God::give_character_item(gs, cc, it);
         }
     }
     if helpers::random_mod_i32(150) == 0 && gs.characters[cc].data[0] > 20 {
-        if let Some(it) = God::create_item(helpers::random_mod_usize(9) + 181) {
-            God::give_character_item(cc, it);
+        if let Some(it) = God::create_item(gs, helpers::random_mod_usize(9) + 181) {
+            God::give_character_item(gs, cc, it);
         }
     }
 
@@ -1960,10 +1960,10 @@ pub fn use_mine_respawn(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 
 
     // drop the character near the mine item
     let (item_x, item_y) = (gs.items[item_idx].x, gs.items[item_idx].y);
-    if !God::drop_char_fuzzy(cc, item_x as usize, item_y as usize) {
+    if !God::drop_char_fuzzy(gs, cc, item_x as usize, item_y as usize) {
         log::warn!("use_mine_respawn ({},{}): drop_char failed", item_x, item_y);
         // cleanup on failure
-        God::destroy_items(cc);
+        God::destroy_items(gs, cc);
         {
             gs.characters[cc].used = core::constants::USE_EMPTY;
         };
@@ -2049,7 +2049,7 @@ pub fn rat_eye(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         // Create the final item from data[9]
         let result_template = gs.items[item_idx].data[9] as usize;
 
-        let in3 = match God::create_item(result_template) {
+        let in3 = match God::create_item(gs, result_template) {
             Some(id) => id,
             None => return 1,
         };
@@ -2065,7 +2065,7 @@ pub fn rat_eye(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         };
 
         // Give the completed item to the character
-        God::give_character_item(cn, in3);
+        God::give_character_item(gs, cn, in3);
     }
 
     1
@@ -2125,7 +2125,7 @@ pub fn skua_protect(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         };
 
         // Create replacement weapon
-        if let Some(new_weapon) = crate::god::God::create_item(replacement_template) {
+        if let Some(new_weapon) = crate::god::God::create_item(gs, replacement_template) {
             {
                 gs.items[new_weapon].carried = cn as u16;
                 gs.items[new_weapon].flags |= core::constants::ItemFlags::IF_UPDATE.bits();
@@ -2194,7 +2194,7 @@ pub fn purple_protect(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         };
 
         // Create replacement weapon
-        if let Some(new_weapon) = crate::god::God::create_item(replacement_template) {
+        if let Some(new_weapon) = crate::god::God::create_item(gs, replacement_template) {
             {
                 gs.items[new_weapon].carried = cn as u16;
                 gs.items[new_weapon].flags |= core::constants::ItemFlags::IF_UPDATE.bits();
@@ -2379,7 +2379,7 @@ pub fn use_pile(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     let tmp = FIND[tmp_idx];
 
     // Create item
-    if let Some(in2) = God::create_item(tmp) {
+    if let Some(in2) = God::create_item(gs, tmp) {
         let (is_takeable, data_0) = {
             (
                 (gs.items[in2].flags & ItemFlags::IF_TAKE.bits()) != 0,
@@ -2389,7 +2389,7 @@ pub fn use_pile(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
 
         if is_takeable {
             // Give to player
-            if God::give_character_item(cn, in2) {
+            if God::give_character_item(gs, cn, in2) {
                 let reference = gs.items[in2].reference;
                 gs.do_character_log(
                     cn,
@@ -2399,7 +2399,7 @@ pub fn use_pile(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             }
         } else {
             // It's a monster spawner
-            God::drop_item(in2, x as usize, y as usize);
+            God::drop_item(gs, in2, x as usize, y as usize);
             EffectManager::fx_add_effect(9, 16, in2 as i32, data_0 as i32, 0);
             log::info!("use_pile: spawning monster at ({}, {})", x, y);
         }
@@ -2433,8 +2433,8 @@ pub fn use_grave(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
 
     let (item_x, item_y) = (gs.items[item_idx].x, gs.items[item_idx].y);
 
-    if !God::drop_char_fuzzy(cc, item_x as usize, item_y as usize) {
-        God::destroy_items(cc);
+    if !God::drop_char_fuzzy(gs, cc, item_x as usize, item_y as usize) {
+        God::destroy_items(gs, cc);
         {
             gs.characters[cc].used = USE_EMPTY;
         };
@@ -2751,7 +2751,7 @@ pub fn build_ring(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     };
 
     // Create result item
-    if let Some(in3) = God::create_item(r) {
+    if let Some(in3) = God::create_item(gs, r) {
         {
             gs.items[in3].flags |= ItemFlags::IF_UPDATE.bits();
         };
@@ -2773,7 +2773,7 @@ pub fn build_ring(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         };
 
         // Give result to character
-        God::give_character_item(cn, in3);
+        God::give_character_item(gs, cn, in3);
 
         return 1;
     }
@@ -2814,7 +2814,7 @@ pub fn build_amulet(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     };
 
     // Create result item
-    if let Some(in3) = God::create_item(r) {
+    if let Some(in3) = God::create_item(gs, r) {
         {
             gs.items[in3].flags |= ItemFlags::IF_UPDATE.bits();
         };
@@ -2833,7 +2833,7 @@ pub fn build_amulet(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         };
 
         // Give result to character
-        God::give_character_item(cn, in3);
+        God::give_character_item(gs, cn, in3);
 
         return 1;
     }
@@ -2855,7 +2855,7 @@ pub fn use_gargoyle(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     }
 
     // Create gargoyle character (template 325)
-    let cc = match God::create_char(325, true) {
+    let cc = match God::create_char(gs, 325, true) {
         Some(cc) => cc as usize,
         None => return 0,
     };
@@ -2864,11 +2864,11 @@ pub fn use_gargoyle(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     let (ch_x, ch_y) = (gs.characters[cn].x, gs.characters[cn].y);
 
     // Try to drop near character
-    if !God::drop_char_fuzzy(cc, ch_x as usize, ch_y as usize) {
+    if !God::drop_char_fuzzy(gs, cc, ch_x as usize, ch_y as usize) {
         {
             gs.characters[cc].used = USE_EMPTY;
         };
-        God::destroy_items(cc);
+        God::destroy_items(gs, cc);
         gs.do_character_log(
             cn,
             core::types::FontColor::Green,
@@ -2910,7 +2910,7 @@ pub fn use_grolm(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     }
 
     // Create grolm character (template 577)
-    let cc = match God::create_char(577, true) {
+    let cc = match God::create_char(gs, 577, true) {
         Some(cc) => cc as usize,
         None => return 0,
     };
@@ -2919,11 +2919,11 @@ pub fn use_grolm(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     let (ch_x, ch_y) = (gs.characters[cn].x, gs.characters[cn].y);
 
     // Try to drop near character
-    if !God::drop_char_fuzzy(cc, ch_x as usize, ch_y as usize) {
+    if !God::drop_char_fuzzy(gs, cc, ch_x as usize, ch_y as usize) {
         {
             gs.characters[cc].used = USE_EMPTY;
         };
-        God::destroy_items(cc);
+        God::destroy_items(gs, cc);
         gs.do_character_log(
             cn,
             core::types::FontColor::Green,
@@ -2985,7 +2985,7 @@ pub fn boost_char(gs: &mut GameState, cn: usize, divi: usize) -> i32 {
     };
 
     // Create soulstone
-    if let Some(in_idx) = God::create_item(1146) {
+    if let Some(in_idx) = God::create_item(gs, 1146) {
         let (exp, rank) = {
             let exp = gs.characters[cn].points_tot as u32 / 10
                 + crate::helpers::random_mod(gs.characters[cn].points_tot as u32 / 20 + 1);
@@ -3014,7 +3014,7 @@ pub fn boost_char(gs: &mut GameState, cn: usize, divi: usize) -> i32 {
             gs.items[in_idx].driver = 68;
         };
 
-        God::give_character_item(cn, in_idx);
+        God::give_character_item(gs, cn, in_idx);
     }
 
     0
@@ -3085,8 +3085,8 @@ pub fn spawn_penta_enemy(gs: &mut GameState, item_idx: usize) -> i32 {
     }
 
     // Try to drop character
-    if !God::drop_char_fuzzy(cn, x as usize, y as usize) {
-        God::destroy_items(cn);
+    if !God::drop_char_fuzzy(gs, cn, x as usize, y as usize) {
+        God::destroy_items(gs, cn);
         {
             gs.characters[cn].used = USE_EMPTY;
         };
@@ -3912,7 +3912,7 @@ pub fn teleport3(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             gs.items[item_idx].data[1] as usize,
         )
     };
-    God::transfer_char(cn, dest_x, dest_y);
+    God::transfer_char(gs, cn, dest_x, dest_y);
     {
         EffectManager::fx_add_effect(
             6,
@@ -4071,7 +4071,7 @@ pub fn use_seyan_shrine(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
                 // Replace with broken sword (template 683)
                 let (x, y, carried) = (gs.items[n].x, gs.items[n].y, gs.items[n].carried);
 
-                if let Some(broken_sword) = God::create_item(683) {
+                if let Some(broken_sword) = God::create_item(gs, 683) {
                     if broken_sword == 0 {
                         continue;
                     }
@@ -4101,14 +4101,14 @@ pub fn use_seyan_shrine(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         }
 
         // Create new Seyan'Du sword (template 682)
-        let Some(new_sword) = God::create_item(682) else {
+        let Some(new_sword) = God::create_item(gs, 682) else {
             return 0;
         };
         if new_sword == 0 {
             return 0;
         }
         in2 = new_sword;
-        God::give_character_item(cn, in2);
+        God::give_character_item(gs, cn, in2);
         {
             gs.items[in2].data[0] = cn as u32;
         };
@@ -4230,17 +4230,17 @@ pub fn use_seyan_portal(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
 
         // Change race: 13 for male Seyan'Du, 79 for female Seyan'Du
         if is_male {
-            God::racechange(cn, 13);
+            God::racechange(gs, cn, 13);
         } else {
-            God::racechange(cn, 79);
+            God::racechange(gs, cn, 79);
         }
 
         // Give Seyan'Du sword (template 682)
-        let in2 = match God::create_item(682) {
+        let in2 = match God::create_item(gs, 682) {
             Some(id) => id,
             None => return 0,
         };
-        God::give_character_item(cn, in2);
+        God::give_character_item(gs, cn, in2);
         {
             gs.items[in2].data[0] = cn as u32;
         };
@@ -4334,7 +4334,7 @@ pub fn use_seyan_portal(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             gs.items[item_idx].data[1] as usize,
         )
     };
-    God::transfer_char(cn, dest_x, dest_y);
+    God::transfer_char(gs, cn, dest_x, dest_y);
     {
         EffectManager::fx_add_effect(
             6,
@@ -4490,8 +4490,8 @@ pub fn use_create_npc(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
 
     // Drop NPC near item location
     let (x, y) = (gs.items[item_idx].x as usize, gs.items[item_idx].y as usize);
-    if !God::drop_char_fuzzy(co, x, y) {
-        God::destroy_items(co);
+    if !God::drop_char_fuzzy(gs, co, x, y) {
+        God::destroy_items(gs, co);
         {
             gs.characters[co].used = USE_EMPTY;
         };
@@ -4589,7 +4589,7 @@ pub fn use_lab8_key(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     log::info!("Added {} to {}", citem_name, item_name);
 
     // Remove both old parts
-    God::take_from_char(item_idx, cn);
+    God::take_from_char(gs, item_idx, cn);
     {
         gs.items[item_idx].used = USE_EMPTY;
     };
@@ -4602,11 +4602,11 @@ pub fn use_lab8_key(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     };
 
     // Create and give new key
-    let new_key = God::create_item(result_template as usize);
+    let new_key = God::create_item(gs, result_template as usize);
     {
         gs.items[new_key.unwrap()].flags |= core::constants::ItemFlags::IF_UPDATE.bits();
     };
-    God::give_character_item(cn, new_key.unwrap());
+    God::give_character_item(gs, cn, new_key.unwrap());
 
     1
 }
@@ -4660,9 +4660,9 @@ pub fn use_lab8_shrine(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
 
     // Create and give gift
     let gift_template = gs.items[item_idx].data[1];
-    let gift = God::create_item(gift_template as usize);
+    let gift = God::create_item(gs, gift_template as usize);
 
-    if !God::give_character_item(cn, gift.unwrap()) {
+    if !God::give_character_item(gs, cn, gift.unwrap()) {
         // If inventory full, put in carried
         {
             gs.characters[cn].citem = gift.unwrap() as u32;
@@ -4733,7 +4733,7 @@ pub fn use_lab8_moneyshrine(gs: &mut GameState, cn: usize, item_idx: usize) -> i
     };
 
     let (dest_x, dest_y) = (gs.items[item_idx].data[1], gs.items[item_idx].data[2]);
-    God::transfer_char(cn, dest_x as usize, dest_y as usize);
+    God::transfer_char(gs, cn, dest_x as usize, dest_y as usize);
 
     // Restore mana if needed
     let (a_mana, max_mana) = { (gs.characters[cn].a_mana, gs.characters[cn].mana[5] * 1000) };
@@ -4793,7 +4793,7 @@ pub fn change_to_archtemplar(gs: &mut GameState, cn: usize) {
     };
 
     let new_race = if is_male { 544 } else { 549 };
-    God::minor_racechange(cn, new_race);
+    God::minor_racechange(gs, cn, new_race);
     gs.do_character_log(
         cn,
         core::types::FontColor::Yellow,
@@ -4836,7 +4836,7 @@ pub fn change_to_archharakim(gs: &mut GameState, cn: usize) {
     };
 
     let new_race = if is_male { 545 } else { 550 };
-    God::minor_racechange(cn, new_race);
+    God::minor_racechange(gs, cn, new_race);
 
     gs.do_character_log(
         cn,
@@ -4880,7 +4880,7 @@ pub fn change_to_warrior(gs: &mut GameState, cn: usize) {
     };
 
     let new_race = if is_male { 547 } else { 552 };
-    God::minor_racechange(cn, new_race);
+    God::minor_racechange(gs, cn, new_race);
 
     gs.do_character_log(
         cn,
@@ -4924,7 +4924,7 @@ pub fn change_to_sorcerer(gs: &mut GameState, cn: usize) {
     };
 
     let new_race = if is_male { 546 } else { 551 };
-    God::minor_racechange(cn, new_race);
+    God::minor_racechange(gs, cn, new_race);
 
     gs.do_character_log(
         cn,
@@ -5423,7 +5423,7 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
             }
 
             // Remove item from character
-            God::take_from_char(item_idx, cn);
+            God::take_from_char(gs, item_idx, cn);
             gs.items[item_idx].used = USE_EMPTY;
 
             // If character died as a result, announce and handle death
@@ -5583,17 +5583,17 @@ fn soul_transform(
 ) -> usize {
     use crate::god::God;
 
-    God::take_from_char(soulstone_idx, cn);
-    God::take_from_char(item_idx, cn);
+    God::take_from_char(gs, soulstone_idx, cn);
+    God::take_from_char(gs, item_idx, cn);
 
     {
         gs.items[soulstone_idx].used = core::constants::USE_EMPTY;
         gs.items[item_idx].used = core::constants::USE_EMPTY;
     };
 
-    let new_item = God::create_item(new_temp);
+    let new_item = God::create_item(gs, new_temp);
     if let Some(new_item_idx) = new_item {
-        God::give_character_item(cn, new_item_idx);
+        God::give_character_item(gs, cn, new_item_idx);
         new_item_idx
     } else {
         0
@@ -5604,7 +5604,7 @@ fn soul_transform(
 fn soul_repair(gs: &mut GameState, cn: usize, soulstone_idx: usize, item_idx: usize) -> usize {
     use crate::god::God;
 
-    God::take_from_char(soulstone_idx, cn);
+    God::take_from_char(gs, soulstone_idx, cn);
 
     {
         gs.items[soulstone_idx].used = core::constants::USE_EMPTY;
@@ -5628,7 +5628,7 @@ fn soul_repair(gs: &mut GameState, cn: usize, soulstone_idx: usize, item_idx: us
 fn soul_destroy(gs: &mut GameState, cn: usize, item_idx: usize) {
     use crate::god::God;
 
-    God::take_from_char(item_idx, cn);
+    God::take_from_char(gs, item_idx, cn);
     {
         gs.items[item_idx].used = core::constants::USE_EMPTY;
     };
@@ -6164,7 +6164,7 @@ pub fn age_message(gs: &mut GameState, cn: usize, item_idx: usize, where_is: &st
 }
 
 pub fn char_item_expire(gs: &mut GameState, cn: usize) {
-    if { (gs.characters[cn].flags & CharacterFlags::BuildMode.bits()) != 0 } {
+    if (gs.characters[cn].flags & CharacterFlags::BuildMode.bits()) != 0 {
         return;
     }
 
@@ -6445,8 +6445,8 @@ pub fn spiderweb(gs: &mut GameState, item_idx: usize) {
                 gs.characters[cn].dir = DX_RIGHT;
             };
 
-            if !God::drop_char_fuzzy(cn, x, y) {
-                God::destroy_items(cn);
+            if !God::drop_char_fuzzy(gs, cn, x, y) {
+                God::destroy_items(gs, cn);
                 {
                     gs.characters[cn].used = USE_EMPTY;
                 };
@@ -6507,8 +6507,8 @@ pub fn greenlingball(gs: &mut GameState, item_idx: usize) {
                 gs.characters[cn].dir = DX_RIGHT;
             };
 
-            if !God::drop_char_fuzzy(cn, x, y) {
-                God::destroy_items(cn);
+            if !God::drop_char_fuzzy(gs, cn, x, y) {
+                God::destroy_items(gs, cn);
                 {
                     gs.characters[cn].used = USE_EMPTY;
                 };
@@ -6693,7 +6693,7 @@ pub fn item_tick_expire(gs: &mut GameState) {
                                 };
 
                                 // Remove the character and its items
-                                God::destroy_items(co);
+                                God::destroy_items(gs, co);
                                 {
                                     gs.characters[co].used = core::constants::USE_EMPTY;
                                 };
@@ -7041,7 +7041,7 @@ pub fn trap2(gs: &mut GameState, cn: usize, tmp: usize) {
 
     let (ch_x, ch_y) = { (gs.characters[cn].x as usize, gs.characters[cn].y as usize) };
 
-    if !God::drop_char_fuzzy(cc, ch_x, ch_y) {
+    if !God::drop_char_fuzzy(gs, cc, ch_x, ch_y) {
         log::error!("trap2: drop failed");
         {
             gs.characters[cc].used = USE_EMPTY;
@@ -7514,7 +7514,7 @@ pub fn step_portal_arena(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 
     let drop_x = (data0 as usize) % SERVER_MAPX as usize;
     let drop_y = (data0 as usize) / SERVER_MAPX as usize;
 
-    if !God::drop_char_fuzzy(co, drop_x, drop_y) {
+    if !God::drop_char_fuzzy(gs, co, drop_x, drop_y) {
         gs.do_character_log(
             cn,
             core::types::FontColor::Red,
@@ -7530,8 +7530,8 @@ pub fn step_portal_arena(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 
     };
 
     // Create arena token
-    if let Some(in2) = God::create_item(687) {
-        God::give_character_item(co, in2);
+    if let Some(in2) = God::create_item(gs, 687) {
+        God::give_character_item(gs, co, in2);
     }
 
     {
@@ -7669,7 +7669,7 @@ pub fn step_teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
 pub fn step_firefloor(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     gs.do_character_log(cn, core::types::FontColor::Red, "Outch!\n");
 
-    let in2 = match God::create_item(1) {
+    let in2 = match God::create_item(gs, 1) {
         Some(idx) => idx,
         None => return 0,
     };

@@ -448,9 +448,9 @@ impl GameState {
         );
 
         if cur_x as u16 == temple_x && cur_y as u16 == temple_y {
-            God::transfer_char(co, (temple_x + 4) as usize, (temple_y + 4) as usize);
+            God::transfer_char(self, co, (temple_x + 4) as usize, (temple_y + 4) as usize);
         } else {
-            God::transfer_char(co, temple_x as usize, temple_y as usize);
+            God::transfer_char(self, co, temple_x as usize, temple_y as usize);
         }
 
         // Resurrect player with 10 HP
@@ -669,7 +669,7 @@ impl GameState {
 
         // Destroy all items
         // TODO: Seems like we're getting rid of the items twice?
-        God::destroy_items(co);
+        God::destroy_items(self, co);
         self.characters[co].citem = 0;
         self.characters[co].gold = 0;
         for z in 0..40 {

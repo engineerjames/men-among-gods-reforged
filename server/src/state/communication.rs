@@ -1062,7 +1062,7 @@ impl GameState {
         }
 
         if m_val == 4 {
-            God::slap(0, cn);
+            God::slap(self, 0, cn);
             chlog!(cn, "Punished for trying to fake another character");
         }
 

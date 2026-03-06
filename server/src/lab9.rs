@@ -569,6 +569,7 @@ impl Labyrinth9 {
                 );
 
                 if God::transfer_char(
+                    Repository::global_mut(),
                     character_id,
                     DESTINATIONS[guesser_index as usize].x as usize,
                     DESTINATIONS[guesser_index as usize].y as usize,

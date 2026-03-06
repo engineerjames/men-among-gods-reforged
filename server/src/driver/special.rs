@@ -459,7 +459,7 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> i32 {
         let data_24 = gs.characters[cn].data[24];
         if state == 1 && ticker > data_24 + TICKS * 10 {
             if gs.characters[cn].citem == 0 {
-                if let Some(in_item) = God::create_item(718) {
+                if let Some(in_item) = God::create_item(gs, 718) {
                     gs.characters[cn].citem = in_item as u32;
                     gs.items[in_item].carried = cn as u16;
                 }
@@ -926,7 +926,7 @@ pub fn npc_malte_low(gs: &mut GameState, cn: usize) -> i32 {
                 "I found this part of the coin, and I heard that Damor in Aston has another one. Ask him for the 'Black Stronghold Coin'.",
             );
 
-            if let Some(in_item) = crate::god::God::create_item(763) {
+            if let Some(in_item) = crate::god::God::create_item(gs, 763) {
                 gs.characters[cn].citem = in_item as u32;
                 gs.characters[cn].data[2] = ticker + TICKS * 5;
                 gs.characters[cn].data[1] += 1;
@@ -963,7 +963,7 @@ pub fn npc_malte_low(gs: &mut GameState, cn: usize) -> i32 {
             gs.do_sayx(cn, "Good luck my friend. And thank you for freeing me!");
 
             player::plr_map_remove(cn);
-            God::destroy_items(cn);
+            God::destroy_items(gs, cn);
             gs.characters[cn].used = USE_EMPTY;
         }
         _ => {}

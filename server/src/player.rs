@@ -194,7 +194,8 @@ pub fn plr_logout(
                         gs.characters[character_id].get_name(),
                     );
 
-                    if let Some(item_id) = God::create_item(core::constants::IT_LAGSCROLL as usize)
+                    if let Some(item_id) =
+                        God::create_item(gs, core::constants::IT_LAGSCROLL as usize)
                     {
                         let (char_x, char_y) =
                             (gs.characters[character_id].x, gs.characters[character_id].y);
@@ -203,7 +204,7 @@ pub fn plr_logout(
                         gs.items[item_id].data[1] = char_y as u32;
                         gs.items[item_id].data[2] = gs.globals.ticker as u32;
 
-                        God::give_character_item(character_id, item_id);
+                        God::give_character_item(gs, character_id, item_id);
                     } else {
                         log::error!(
                             "Failed to create lag scroll for character '{}'.",
@@ -257,7 +258,7 @@ pub fn plr_logout(
                 character.flags |= CharacterFlags::SaveMe.bits();
             }
             if gs.characters[character_id].is_building() {
-                God::build(character_id, 0);
+                God::build(gs, character_id, 0);
             }
 
             gs.do_announce(character_id, 0, &format!("{} left the game.\n", name));
@@ -509,7 +510,7 @@ pub fn plr_map_set_gs(gs: &mut GameState, cn: usize) {
 
         if is_tavern && is_player {
             if gs.characters[cn].is_building() {
-                God::build(cn, 0);
+                God::build(gs, cn, 0);
             }
             gs.characters[cn].tavern_x = gs.characters[cn].x as u16;
             gs.characters[cn].tavern_y = gs.characters[cn].y as u16;
@@ -1329,7 +1330,7 @@ pub fn plr_drop(cn: usize) {
     // Handle money
     let final_in_id = if in_id & 0x80000000 != 0 {
         let tmp = in_id & 0x7FFFFFFF;
-        let new_in = God::create_item(1); // blank template
+        let new_in = God::create_item(gs, 1); // blank template
 
         if new_in.is_none() {
             gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
@@ -2526,7 +2527,7 @@ fn plr_newlogin(gs: &mut GameState, nr: usize) {
 
     // ban check
     let addr = Server::with_players(|players| players[nr].addr);
-    if God::is_banned(addr as i32) {
+    if God::is_banned(gs, addr as i32) {
         log::info!("Banned, sent away");
         plr_logout(gs, 0, nr, enums::LogoutReason::Kicked);
         return;
@@ -2541,7 +2542,7 @@ fn plr_newlogin(gs: &mut GameState, nr: usize) {
     }
 
     // create new character from template
-    let maybe_cn = God::create_char(temp as usize, true);
+    let maybe_cn = God::create_char(gs, temp as usize, true);
     let cn = match maybe_cn {
         Some(v) => v as usize,
         None => {
@@ -2564,18 +2565,21 @@ fn plr_newlogin(gs: &mut GameState, nr: usize) {
 
     // Try dropping the character near the home temple (three attempts)
     if !God::drop_char_fuzzy_large(
+        gs,
         cn,
         core::constants::HOME_MERCENARY_X as usize,
         core::constants::HOME_MERCENARY_Y as usize,
         core::constants::HOME_MERCENARY_X as usize,
         core::constants::HOME_MERCENARY_Y as usize,
     ) && !God::drop_char_fuzzy_large(
+        gs,
         cn,
         (core::constants::HOME_MERCENARY_X + 3) as usize,
         core::constants::HOME_MERCENARY_Y as usize,
         core::constants::HOME_MERCENARY_X as usize,
         core::constants::HOME_MERCENARY_Y as usize,
     ) && !God::drop_char_fuzzy_large(
+        gs,
         cn,
         core::constants::HOME_MERCENARY_X as usize,
         (core::constants::HOME_MERCENARY_Y + 3) as usize,
@@ -2688,7 +2692,7 @@ fn plr_newlogin(gs: &mut GameState, nr: usize) {
             // extract password string
             let pass =
                 Server::with_players(|players| c_string_to_str(&players[nr].passwd).to_string());
-            God::change_pass(cn, cn, &pass);
+            God::change_pass(gs, cn, cn, &pass);
         }
     }
 
@@ -2825,7 +2829,7 @@ fn plr_login(gs: &mut GameState, nr: usize) {
     let exempt = (gs.characters[cn].flags
         & (CharacterFlags::Golden.bits() | CharacterFlags::God.bits()))
         != 0;
-    if !exempt && God::is_banned(banned as i32) {
+    if !exempt && God::is_banned(gs, banned as i32) {
         log::info!("{} is banned, sent away", cn);
         plr_logout(gs, 0, nr, enums::LogoutReason::Kicked);
         return;
@@ -2903,9 +2907,9 @@ fn plr_login(gs: &mut GameState, nr: usize) {
     // Try to drop character at tavern/nearby
     let tav_x = gs.characters[cn].tavern_x as usize;
     let tav_y = gs.characters[cn].tavern_y as usize;
-    if !God::drop_char_fuzzy_large(cn, tav_x, tav_y, tav_x, tav_y)
-        && !God::drop_char_fuzzy_large(cn, tav_x + 3, tav_y, tav_x, tav_y)
-        && !God::drop_char_fuzzy_large(cn, tav_x, tav_y + 3, tav_x, tav_y)
+    if !God::drop_char_fuzzy_large(gs, cn, tav_x, tav_y, tav_x, tav_y)
+        && !God::drop_char_fuzzy_large(gs, cn, tav_x + 3, tav_y, tav_x, tav_y)
+        && !God::drop_char_fuzzy_large(gs, cn, tav_x, tav_y + 3, tav_x, tav_y)
     {
         log::error!("plr_login(): could not drop new character");
         plr_logout(gs, cn, nr, enums::LogoutReason::NoRoom);
@@ -2965,7 +2969,7 @@ fn plr_login(gs: &mut GameState, nr: usize) {
                 let pass = Server::with_players(|players| {
                     c_string_to_str(&players[nr].passwd).to_string()
                 });
-                God::change_pass(cn, cn, &pass);
+                God::change_pass(gs, cn, cn, &pass);
             }
         }
     }
@@ -3037,7 +3041,7 @@ fn resolve_api_login_character(
         }
         None => {
             let template_id = get_race_integer(character.sex == Sex::Male, character.class);
-            let maybe_cn = God::create_char(template_id as usize, true);
+            let maybe_cn = God::create_char(gs, template_id as usize, true);
             let cn = match maybe_cn {
                 Some(value) => value as usize,
                 None => {

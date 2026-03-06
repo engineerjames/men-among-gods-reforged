@@ -143,7 +143,7 @@ impl EffectManager {
 
                     log::info!("Character {} could not drop grave", co);
 
-                    God::destroy_items(co);
+                    God::destroy_items(gs, co);
 
                     gs.characters[co].used = core::constants::USE_EMPTY;
 
@@ -188,7 +188,7 @@ impl EffectManager {
             gs.map[map_index].flags &= !core::constants::MF_GFX_TOMB;
             gs.map[map_index].flags &= !(core::constants::MF_MOVEBLOCK as u64);
 
-            let in_id = God::create_item(170);
+            let in_id = God::create_item(gs, 170);
             if let Some(in_id) = in_id {
                 gs.items[in_id].data[0] = co as u32;
 
@@ -229,7 +229,7 @@ impl EffectManager {
                     .copy_from_slice(&description_string.as_bytes()[..bytes_to_copy]);
                 gs.items[in_id].description = desc_bytes;
 
-                God::drop_item(in_id, drop_x, drop_y);
+                God::drop_item(gs, in_id, drop_x, drop_y);
 
                 let item_x = gs.items[in_id].x;
                 let item_y = gs.items[in_id].y;
@@ -374,7 +374,7 @@ impl EffectManager {
             let spawn_template = gs.effects[n].data[1];
             if spawn_template != 0 {
                 if let Some(cn) = populate::pop_create_char(gs, spawn_template as usize, false) {
-                    God::drop_char(cn, x as usize, y as usize);
+                    God::drop_char(gs, cn, x as usize, y as usize);
                     gs.characters[cn].dir = core::constants::DX_RIGHTUP;
                     player::plr_reset_status(cn);
                 }
@@ -409,10 +409,10 @@ impl EffectManager {
             let in2 = gs.map[map_index].it;
             gs.map[map_index].it = 0;
 
-            let in_id = God::create_item(item_template);
+            let in_id = God::create_item(gs, item_template);
 
             if let Some(in_id) = in_id {
-                let drop_success = God::drop_item(in_id, drop_x, drop_y);
+                let drop_success = God::drop_item(gs, in_id, drop_x, drop_y);
 
                 if !drop_success {
                     gs.effects[n].duration = (core::constants::TICKS * 60) as u32;
@@ -596,7 +596,7 @@ impl EffectManager {
         } else {
             let temp = gs.characters[co].temp as usize;
 
-            God::destroy_items(co);
+            God::destroy_items(gs, co);
 
             gs.characters[co].used = core::constants::USE_EMPTY;
 

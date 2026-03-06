@@ -76,10 +76,8 @@ pub fn write_c_string(buf: &mut [u8], s: &str) {
 ///
 /// Creates a template item, then applies randomized prefix/suffix modifiers, sprite overrides,
 /// and rewrites name/reference/description. Returns the new item id, or `None` if creation fails.
-pub fn create_special_item(temp: usize) -> Option<usize> {
-    let item_id = God::create_item(temp)?;
-
-    let gs = GameState::global_mut();
+pub fn create_special_item(gs: &mut GameState, temp: usize) -> Option<usize> {
+    let item_id = God::create_item(gs, temp)?;
     let item = &mut gs.items[item_id];
 
     // Match C: the resulting item should not be linked to its original template.
@@ -251,14 +249,14 @@ pub fn use_labtransfer(gs: &mut GameState, cn: usize, nr: i32, exp: i32) -> bool
         }
     };
 
-    if !God::drop_char(co, 174, 172) {
+    if !God::drop_char(gs, co, 174, 172) {
         gs.do_character_log(cn, FontColor::Red, "Sorry, could not place your enemy.\n");
         log::error!(
             "use_labtransfer: god_drop_char({}, 174, 172) failed for player {}",
             co,
             gs.characters[cn].get_name().to_string()
         );
-        God::destroy_items(co);
+        God::destroy_items(gs, co);
         gs.characters[co].used = core::constants::USE_EMPTY;
         return false;
     }
@@ -279,7 +277,7 @@ pub fn use_labtransfer(gs: &mut GameState, cn: usize, nr: i32, exp: i32) -> bool
     driver::npc_add_enemy(gs, co, cn, true);
 
     // god_transfer_char(cn, 174, 166): transfer player (assume function exists)
-    if !God::transfer_char(cn, 174, 166) {
+    if !God::transfer_char(gs, cn, 174, 166) {
         gs.do_character_log(
             cn,
             FontColor::Red,
@@ -289,7 +287,7 @@ pub fn use_labtransfer(gs: &mut GameState, cn: usize, nr: i32, exp: i32) -> bool
             "use_labtransfer: god_transfer_char({}, 174, 166) failed",
             gs.characters[cn].get_name().to_string()
         );
-        God::destroy_items(co);
+        God::destroy_items(gs, co);
         gs.characters[co].used = core::constants::USE_EMPTY;
         return false;
     }

@@ -163,7 +163,7 @@ impl GameState {
             self.characters[cn].gold += price;
 
             // Transfer item to merchant
-            if !God::give_character_item(co, item_idx) {
+            if !God::give_character_item(self, co, item_idx) {
                 log::error!(
                     "do_shop_char: god_give_character_item({}, {}) failed",
                     item_idx,
@@ -232,7 +232,7 @@ impl GameState {
                             0
                         };
 
-                        if !God::take_from_char(item_idx, co) {
+                        if !God::take_from_char(self, item_idx, co) {
                             log::error!(
                                 "do_shop_char: god_take_from_char({}, {}) failed",
                                 item_idx,
@@ -240,7 +240,7 @@ impl GameState {
                             );
                         }
 
-                        let gave_success = God::give_character_item(cn, item_idx);
+                        let gave_success = God::give_character_item(self, cn, item_idx);
 
                         if gave_success {
                             if is_merchant {
@@ -287,7 +287,7 @@ impl GameState {
                             }
                         } else {
                             // Failed to give item - put it back
-                            God::give_character_item(co, item_idx);
+                            God::give_character_item(self, co, item_idx);
 
                             let item_ref =
                                 c_string_to_str(&mut self.items[item_idx].reference).to_string();
@@ -320,9 +320,9 @@ impl GameState {
                         let item_idx = self.characters[co].worn[worn_slot] as usize;
 
                         if item_idx != 0 {
-                            God::take_from_char(item_idx, co);
+                            God::take_from_char(self, item_idx, co);
 
-                            let gave_success = God::give_character_item(cn, item_idx);
+                            let gave_success = God::give_character_item(self, cn, item_idx);
 
                             if gave_success {
                                 let item_name = self.items[item_idx].get_name().to_string();
@@ -338,7 +338,7 @@ impl GameState {
                                 );
                             } else {
                                 // Failed to give item - put it back
-                                God::give_character_item(co, item_idx);
+                                God::give_character_item(self, co, item_idx);
 
                                 let item_ref = c_string_to_str(&mut self.items[item_idx].reference)
                                     .to_string();
@@ -360,7 +360,7 @@ impl GameState {
                         let item_idx = self.characters[co].citem as usize;
 
                         if item_idx != 0 {
-                            if !God::take_from_char(item_idx, co) {
+                            if !God::take_from_char(self, item_idx, co) {
                                 log::error!(
                                     "do_shop_char: god_take_from_char({}, {}) failed",
                                     item_idx,
@@ -369,7 +369,7 @@ impl GameState {
                                 return;
                             }
 
-                            let gave_success = God::give_character_item(cn, item_idx);
+                            let gave_success = God::give_character_item(self, cn, item_idx);
 
                             if gave_success {
                                 let item_name = self.items[item_idx].get_name().to_string();
@@ -384,7 +384,7 @@ impl GameState {
                                     &format!("You took a {}.\n", item_ref),
                                 );
                             } else {
-                                if !God::give_character_item(co, item_idx) {
+                                if !God::give_character_item(self, co, item_idx) {
                                     log::error!(
                                         "do_shop_char: god_give_character_item({}, {}) failed",
                                         item_idx,
@@ -784,7 +784,7 @@ impl GameState {
                 let item_idx = self.characters[co].depot[nr as usize];
 
                 if item_idx != 0 {
-                    let gave_success = God::give_character_item(cn, item_idx as usize);
+                    let gave_success = God::give_character_item(self, cn, item_idx as usize);
 
                     if gave_success {
                         self.characters[co].depot[nr as usize] = 0;

@@ -296,7 +296,7 @@ impl GameState {
         for m in 0..40 {
             let slot = self.characters[cn].item[m];
             if slot == 0 {
-                if let Some(in_idx) = God::create_item(132) {
+                if let Some(in_idx) = God::create_item(self, 132) {
                     self.items[in_idx].temp = 0;
                     self.items[in_idx].description = [0; 200];
                     let bytes = text.as_bytes();
@@ -426,7 +426,7 @@ impl GameState {
     ///
     /// Create a soulstone item.
     pub(crate) fn do_make_soulstone(&mut self, cn: usize, cexp: i32) {
-        if let Some(in_idx) = God::create_item(1146) {
+        if let Some(in_idx) = God::create_item(self, 1146) {
             let rank = core::ranks::points2rank(cexp as u32);
 
             let it = &mut self.items[in_idx];
@@ -455,7 +455,7 @@ impl GameState {
             it.temp = 0;
             it.driver = 68;
 
-            God::give_character_item(cn, in_idx);
+            God::give_character_item(self, cn, in_idx);
         }
     }
 
@@ -882,7 +882,7 @@ impl GameState {
             }
             Some("addban") if f_gi => {
                 log::debug!("Processing addban command for {}", cn);
-                God::add_ban(cn, parse_usize(arg_get(1)));
+                God::add_ban(self, cn, parse_usize(arg_get(1)));
                 return;
             }
             Some("bow") if !f_sh => {
@@ -897,12 +897,12 @@ impl GameState {
             }
             Some("black") if f_g => {
                 log::debug!("Processing black command for {}", cn);
-                God::set_flag(cn, arg_get(1), CharacterFlags::Black.bits());
+                God::set_flag(self, cn, arg_get(1), CharacterFlags::Black.bits());
                 return;
             }
             Some("build") if f_c => {
                 log::debug!("Processing build command for {}", cn);
-                God::build(cn, parse_i32(arg_get(1)) as u32);
+                God::build(self, cn, parse_i32(arg_get(1)) as u32);
                 return;
             }
             Some("cap") if f_g => {
@@ -921,6 +921,7 @@ impl GameState {
             Some("ccp") if f_i => {
                 log::debug!("Processing ccp command for {}", cn);
                 God::set_flag(
+                    self,
                     cn,
                     arg_get(1),
                     CharacterFlags::ComputerControlledPlayer.bits(),
@@ -929,22 +930,22 @@ impl GameState {
             }
             Some("closenemey") if f_g => {
                 log::debug!("Processing closeenemy command for {}", cn);
-                God::set_gflag(cn, GF_CLOSEENEMY);
+                God::set_gflag(self, cn, GF_CLOSEENEMY);
                 return;
             }
             Some("create") if f_g => {
                 log::debug!("Processing create command for {}", cn);
-                God::create(cn, parse_i32(arg_get(1)));
+                God::create(self, cn, parse_i32(arg_get(1)));
                 return;
             }
             Some("createspecial") if f_g => {
                 log::debug!("Processing createspecial command for {}", cn);
-                God::create_special(cn, arg_get(1), arg_get(2), arg_get(3));
+                God::create_special(self, cn, arg_get(1), arg_get(2), arg_get(3));
                 return;
             }
             Some("creator") if f_gg => {
                 log::debug!("Processing creator command for {}", cn);
-                God::set_flag(cn, arg_get(1), CharacterFlags::Creator.bits());
+                God::set_flag(self, cn, arg_get(1), CharacterFlags::Creator.bits());
                 return;
             }
             Some("deposit") if !f_m => {
@@ -959,7 +960,7 @@ impl GameState {
             }
             Some("delban") if f_giu => {
                 log::debug!("Processing delban command for {}", cn);
-                God::del_ban(cn, parse_usize(arg_get(1)));
+                God::del_ban(self, cn, parse_usize(arg_get(1)));
                 return;
             }
             Some("emote") => {
@@ -979,7 +980,7 @@ impl GameState {
             }
             Some("exit") if f_u => {
                 log::debug!("Processing exit command for {}", cn);
-                God::exit_usurp(cn);
+                God::exit_usurp(self, cn);
                 return;
             }
             Some("eras") if f_g => {
@@ -987,7 +988,7 @@ impl GameState {
             }
             Some("erase") if f_g => {
                 log::debug!("Processing erase command for {}", cn);
-                God::erase(cn, parse_usize(arg_get(1)), 0);
+                God::erase(self, cn, parse_usize(arg_get(1)), 0);
                 return;
             }
             Some("fightback") => {
@@ -1002,7 +1003,7 @@ impl GameState {
             }
             Some("force") if f_giu => {
                 log::debug!("Processing force command for {}", cn);
-                God::force(cn, arg_get(1), args_get(1));
+                God::force(self, cn, arg_get(1), args_get(1));
                 return;
             }
             Some("gtell") if !f_m => {
@@ -1017,7 +1018,7 @@ impl GameState {
             }
             Some("golden") if f_g => {
                 log::debug!("Processing golden command for {}", cn);
-                God::set_flag(cn, arg_get(1), CharacterFlags::Golden.bits());
+                God::set_flag(self, cn, arg_get(1), CharacterFlags::Golden.bits());
                 return;
             }
             Some("group") if !f_m => {
@@ -1027,12 +1028,18 @@ impl GameState {
             }
             Some("gargoyle") if f_gi => {
                 log::debug!("Processing gargoyle command for {}", cn);
-                God::gargoyle(cn);
+                God::gargoyle(self, cn);
                 return;
             }
             Some("ggold") if f_g => {
                 log::debug!("Processing ggold command for {}", cn);
-                God::gold_char(cn, arg_get(1), parse_u32(arg_get(2)), parse_u32(arg_get(3)));
+                God::gold_char(
+                    self,
+                    cn,
+                    arg_get(1),
+                    parse_u32(arg_get(2)),
+                    parse_u32(arg_get(3)),
+                );
                 return;
             }
             Some("give") if f_giu => {
@@ -1042,37 +1049,37 @@ impl GameState {
             }
             Some("goto") if f_giu => {
                 log::debug!("Processing goto command for {}", cn);
-                God::goto(cn, cn, arg_get(1), arg_get(2));
+                God::goto(self, cn, cn, arg_get(1), arg_get(2));
                 return;
             }
             Some("god") if f_g => {
                 log::debug!("Processing god command for {}", cn);
-                God::set_flag(cn, arg_get(1), CharacterFlags::God.bits());
+                God::set_flag(self, cn, arg_get(1), CharacterFlags::God.bits());
                 return;
             }
             Some("greatergod") if f_gg => {
                 log::debug!("Processing greatergod command for {}", cn);
-                God::set_flag(cn, arg_get(1), CharacterFlags::GreaterGod.bits());
+                God::set_flag(self, cn, arg_get(1), CharacterFlags::GreaterGod.bits());
                 return;
             }
             Some("greaterinv") if f_gg => {
                 log::debug!("Processing greaterinv command for {}", cn);
-                God::set_flag(cn, arg_get(1), CharacterFlags::GreaterInv.bits());
+                God::set_flag(self, cn, arg_get(1), CharacterFlags::GreaterInv.bits());
                 return;
             }
             Some("grolm") if f_gi => {
                 log::debug!("Processing grolm command for {}", cn);
-                God::grolm(cn);
+                God::grolm(self, cn);
                 return;
             }
             Some("grolminfo") if f_gi => {
                 log::debug!("Processing grolminfo command for {}", cn);
-                God::grolm_info(cn);
+                God::grolm_info(self, cn);
                 return;
             }
             Some("grolmstart") if f_g => {
                 log::debug!("Processing grolmstart command for {}", cn);
-                God::grolm_start(cn);
+                God::grolm_start(self, cn);
                 return;
             }
             Some("help") => {
@@ -1092,17 +1099,17 @@ impl GameState {
             }
             Some("iinfo") if f_g => {
                 log::debug!("Processing iinfo command for {}", cn);
-                God::iinfo(cn, parse_usize(arg_get(1)));
+                God::iinfo(self, cn, parse_usize(arg_get(1)));
                 return;
             }
             Some("immortal") if f_u || f_g => {
                 log::debug!("Processing immortal command for {}", cn);
-                God::set_flag(cn, arg_get(1), CharacterFlags::Immortal.bits());
+                God::set_flag(self, cn, arg_get(1), CharacterFlags::Immortal.bits());
                 return;
             }
             Some("imp") if f_g => {
                 log::debug!("Processing imp command for {}", cn);
-                God::set_flag(cn, arg_get(1), CharacterFlags::Imp.bits());
+                God::set_flag(self, cn, arg_get(1), CharacterFlags::Imp.bits());
                 return;
             }
             Some("info") if f_gius => {
@@ -1112,17 +1119,17 @@ impl GameState {
                 } else {
                     parse_usize(arg_get(1))
                 };
-                God::info(cn, target);
+                God::info(self, cn, target);
                 return;
             }
             Some("infra") | Some("infrared") if f_giu => {
                 log::debug!("Processing infrared command for {}", cn);
-                God::set_flag(cn, arg_get(1), CharacterFlags::Infrared.bits());
+                God::set_flag(self, cn, arg_get(1), CharacterFlags::Infrared.bits());
                 return;
             }
             Some("invisible") if f_giu => {
                 log::debug!("Processing invisible command for {}", cn);
-                God::set_flag(cn, arg_get(1), CharacterFlags::Invisible.bits());
+                God::set_flag(self, cn, arg_get(1), CharacterFlags::Invisible.bits());
                 return;
             }
             Some("ipshow") if f_giu => {
@@ -1137,7 +1144,7 @@ impl GameState {
             }
             Some("kick") if f_giu => {
                 log::debug!("Processing kick command for {}", cn);
-                God::kick(cn, parse_usize(arg_get(1)));
+                God::kick(self, cn, parse_usize(arg_get(1)));
                 return;
             }
             Some("lag") if !f_m => {
@@ -1173,27 +1180,27 @@ impl GameState {
             }
             Some("looting") if f_g => {
                 log::debug!("Processing looting command for {}", cn);
-                God::set_gflag(cn, GF_LOOTING);
+                God::set_gflag(self, cn, GF_LOOTING);
                 return;
             }
             Some("lower") if f_g => {
                 log::debug!("Processing lower command for {}", cn);
-                God::lower_char(cn, arg_get(1), arg_get(2));
+                God::lower_char(self, cn, arg_get(1), arg_get(2));
                 return;
             }
             Some("luck") if f_giu => {
                 log::debug!("Processing luck command for {}", cn);
-                God::luck(cn, parse_usize(arg_get(1)), parse_i32(arg_get(2)));
+                God::luck(self, cn, parse_usize(arg_get(1)), parse_i32(arg_get(2)));
                 return;
             }
             Some("listban") if f_giu => {
                 log::debug!("Processing listban command for {}", cn);
-                God::list_ban(cn);
+                God::list_ban(self, cn);
                 return;
             }
             Some("listimps") if f_giu => {
                 log::debug!("Processing listimps command for {}", cn);
-                God::implist(cn);
+                God::implist(self, cn);
                 return;
             }
             Some("listgolden") if f_giu => {
@@ -1208,7 +1215,7 @@ impl GameState {
             }
             Some("mayhem") if f_g => {
                 log::debug!("Processing mayhem command for {}", cn);
-                God::set_gflag(cn, GF_MAYHEM);
+                God::set_gflag(self, cn, GF_MAYHEM);
                 return;
             }
             Some("mark") if f_giu => {
@@ -1223,7 +1230,7 @@ impl GameState {
             }
             Some("mirror") if f_giu => {
                 log::debug!("Processing mirror command for {}", cn);
-                God::mirror(cn, arg_get(1), arg_get(2));
+                God::mirror(self, cn, arg_get(1), arg_get(2));
                 return;
             }
             Some("noshout") if !f_m => {
@@ -1243,27 +1250,27 @@ impl GameState {
             }
             Some("name") if f_giu => {
                 log::debug!("Processing name command for {}", cn);
-                God::set_name(cn, parse_usize(arg_get(1)), args_get(1));
+                God::set_name(self, cn, parse_usize(arg_get(1)), args_get(1));
                 return;
             }
             Some("nodesc") if f_giu => {
                 log::debug!("Processing nodesc command for {}", cn);
-                God::reset_description(cn, parse_usize(arg_get(1)));
+                God::reset_description(self, cn, parse_usize(arg_get(1)));
                 return;
             }
             Some("nolist") if f_gi => {
                 log::debug!("Processing nolist command for {}", cn);
-                God::set_flag(cn, arg_get(1), CharacterFlags::NoList.bits());
+                God::set_flag(self, cn, arg_get(1), CharacterFlags::NoList.bits());
                 return;
             }
             Some("noluck") if f_giu => {
                 log::debug!("Processing noluck command for {}", cn);
-                God::luck(cn, parse_usize(arg_get(1)), -parse_i32(arg_get(2)));
+                God::luck(self, cn, parse_usize(arg_get(1)), -parse_i32(arg_get(2)));
                 return;
             }
             Some("nowho") if f_gi => {
                 log::debug!("Processing nowho command for {}", cn);
-                God::set_flag(cn, arg_get(1), CharacterFlags::NoWho.bits());
+                God::set_flag(self, cn, arg_get(1), CharacterFlags::NoWho.bits());
                 return;
             }
             Some("npclist") if f_giu => {
@@ -1275,12 +1282,12 @@ impl GameState {
                 if f_g {
                     log::debug!("Processing others-password command for {}", cn);
                     // change another's password
-                    God::change_pass(cn, parse_usize(arg_get(1)), arg_get(2));
+                    God::change_pass(self, cn, parse_usize(arg_get(1)), arg_get(2));
                     return;
                 }
                 log::debug!("Processing own-password command for {}", cn);
                 // change own password
-                God::change_pass(cn, cn, arg_get(1));
+                God::change_pass(self, cn, cn, arg_get(1));
                 return;
             }
             Some("pent") => {
@@ -1290,17 +1297,17 @@ impl GameState {
             }
             Some("poh") if f_pol => {
                 log::debug!("Processing poh command for {}", cn);
-                God::set_flag(cn, arg_get(1), CharacterFlags::Poh.bits());
+                God::set_flag(self, cn, arg_get(1), CharacterFlags::Poh.bits());
                 return;
             }
             Some("pol") if f_pol => {
                 log::debug!("Processing pol command for {}", cn);
-                God::set_flag(cn, arg_get(1), CharacterFlags::PohLeader.bits());
+                God::set_flag(self, cn, arg_get(1), CharacterFlags::PohLeader.bits());
                 return;
             }
             Some("prof") if f_g => {
                 log::debug!("Processing prof command for {}", cn);
-                God::set_flag(cn, arg_get(1), CharacterFlags::Profile.bits());
+                God::set_flag(self, cn, arg_get(1), CharacterFlags::Profile.bits());
                 return;
             }
             Some("purple") => {
@@ -1312,13 +1319,13 @@ impl GameState {
 
                 if f_g {
                     log::debug!("Processing set_purple command for {}", cn);
-                    God::set_purple(cn, parse_usize(arg_get(1)));
+                    God::set_purple(self, cn, parse_usize(arg_get(1)));
                     return;
                 }
             }
             Some("perase") if f_g => {
                 log::debug!("Processing perase command for {}", cn);
-                God::erase(cn, parse_usize(arg_get(1)), 1);
+                God::erase(self, cn, parse_usize(arg_get(1)), 1);
                 return;
             }
             Some("rank") => {
@@ -1328,12 +1335,12 @@ impl GameState {
             }
             Some("raise") if f_giu => {
                 log::debug!("Processing raise command for {}", cn);
-                God::raise_char(cn, arg_get(1), arg_get(2));
+                God::raise_char(self, cn, arg_get(1), arg_get(2));
                 return;
             }
             Some("recall") if f_giu => {
                 log::debug!("Processing recall command for {}", cn);
-                God::goto(cn, cn, "512", "512");
+                God::goto(self, cn, cn, "512", "512");
                 return;
             }
             Some("respawn") if f_giu => {
@@ -1345,9 +1352,9 @@ impl GameState {
                 log::debug!("Processing network command for {}", cn);
                 let target = args_get(0).trim();
                 if f_gi && target.is_empty() {
-                    God::show_network_info_all(cn);
+                    God::show_network_info_all(self, cn);
                 } else {
-                    God::show_network_info(cn, target);
+                    God::show_network_info(self, cn, target);
                 }
                 return;
             }
@@ -1358,12 +1365,12 @@ impl GameState {
             }
             Some("safe") if f_g => {
                 log::debug!("Processing safe command for {}", cn);
-                God::set_flag(cn, arg_get(1), CharacterFlags::Safe.bits());
+                God::set_flag(self, cn, arg_get(1), CharacterFlags::Safe.bits());
                 return;
             }
             Some("save") if f_g => {
                 log::debug!("Processing save command for {}", cn);
-                God::save(cn, parse_usize(arg_get(1)));
+                God::save(self, cn, parse_usize(arg_get(1)));
                 return;
             }
             Some("seen") => {
@@ -1373,17 +1380,18 @@ impl GameState {
             }
             Some("send") => {
                 log::debug!("Processing send command for {}", cn);
-                God::goto(cn, parse_usize(arg_get(1)), arg_get(2), arg_get(3));
+                God::goto(self, cn, parse_usize(arg_get(1)), arg_get(2), arg_get(3));
                 return;
             }
             Some("shutup") if f_gius => {
                 log::debug!("Processing shutup command for {}", cn);
-                God::shutup(cn, parse_usize(arg_get(1)));
+                God::shutup(self, cn, parse_usize(arg_get(1)));
                 return;
             }
             Some("skill") if f_g => {
                 log::debug!("Processing skill command for {}", cn);
                 God::skill(
+                    self,
                     cn,
                     parse_usize(arg_get(1)),
                     driver::skill_lookup(arg_get(2)),
@@ -1398,7 +1406,7 @@ impl GameState {
             }
             Some("slap") if f_giu => {
                 log::debug!("Processing slap command for {}", cn);
-                God::slap(cn, parse_usize(arg_get(1)));
+                God::slap(self, cn, parse_usize(arg_get(1)));
                 return;
             }
             Some("sort") => {
@@ -1413,7 +1421,7 @@ impl GameState {
             }
             Some("speedy") if f_g => {
                 log::debug!("Processing speedy command for {}", cn);
-                God::set_gflag(cn, GF_SPEEDY);
+                God::set_gflag(self, cn, GF_SPEEDY);
                 return;
             }
             Some("spellignore") if !f_m => {
@@ -1423,7 +1431,7 @@ impl GameState {
             }
             Some("sprite") if f_giu => {
                 log::debug!("Processing sprite command for {}", cn);
-                God::spritechange(cn, parse_usize(arg_get(1)), parse_i32(arg_get(2)));
+                God::spritechange(self, cn, parse_usize(arg_get(1)), parse_i32(arg_get(2)));
                 return;
             }
             Some("stell") if f_giu => {
@@ -1438,7 +1446,7 @@ impl GameState {
             }
             Some("staff") if f_g => {
                 log::debug!("Processing staff command for {}", cn);
-                God::set_flag(cn, arg_get(1), CharacterFlags::Staff.bits());
+                God::set_flag(self, cn, arg_get(1), CharacterFlags::Staff.bits());
                 return;
             }
             Some("steal") if f_gg => {
@@ -1448,7 +1456,7 @@ impl GameState {
             }
             Some("summon") if f_g => {
                 log::debug!("Processing summon command for {}", cn);
-                God::summon(cn, arg_get(1), arg_get(2), arg_get(3));
+                God::summon(self, cn, arg_get(1), arg_get(2), arg_get(3));
                 return;
             }
             Some("tell") => {
@@ -1458,17 +1466,17 @@ impl GameState {
             }
             Some("tavern") if f_g && !f_m => {
                 log::debug!("Processing tavern command for {}", cn);
-                God::tavern(cn);
+                God::tavern(self, cn);
                 return;
             }
             Some("temple") if f_giu => {
                 log::debug!("Processing temple command for {}", cn);
-                God::goto(cn, cn, "800", "800");
+                God::goto(self, cn, cn, "800", "800");
                 return;
             }
             Some("thrall") if f_giu => {
                 log::debug!("Processing thrall command for {}", cn);
-                God::thrall(cn, arg_get(1), arg_get(2));
+                God::thrall(self, cn, arg_get(1), arg_get(2));
                 return;
             }
             Some("time") => {
@@ -1478,30 +1486,30 @@ impl GameState {
             }
             Some("tinfo") if f_g => {
                 log::debug!("Processing tinfo command for {}", cn);
-                God::tinfo(cn, parse_usize(arg_get(1)));
+                God::tinfo(self, cn, parse_usize(arg_get(1)));
                 return;
             }
             Some("top") if f_g => {
                 log::debug!("Processing top command for {}", cn);
-                God::top(cn);
+                God::top(self, cn);
                 return;
             }
             Some("unique") if f_g => {
                 log::debug!("Processing unique command for {}", cn);
-                God::unique(cn);
+                God::unique(self, cn);
                 return;
             }
             Some("usurp") if f_giu => {
                 log::debug!("Processing usurp command for {}", cn);
-                God::usurp(cn, parse_usize(arg_get(1)));
+                God::usurp(self, cn, parse_usize(arg_get(1)));
                 return;
             }
             Some("who") => {
                 log::debug!("Processing who command for {}", cn);
                 if f_gius {
-                    God::who(cn);
+                    God::who(self, cn);
                 } else {
-                    God::user_who(cn);
+                    God::user_who(self, cn);
                 }
                 return;
             }

@@ -262,7 +262,7 @@ pub fn npc_gotattack(gs: &mut GameState, cn: usize, co: usize, _dam: i32) -> i32
         );
         gs.characters[cn].data[70] = ticker + (TICKS * 60);
 
-        let cc = God::create_char(80, true);
+        let cc = God::create_char(gs, 80, true);
         if cc.is_some() && cc.unwrap() > 0 && cc.unwrap() < MAXCHARS as i32 {
             let cc = cc.unwrap() as usize;
             gs.characters[cc].temp = CT_COMPANION as u16;
@@ -282,11 +282,12 @@ pub fn npc_gotattack(gs: &mut GameState, cn: usize, co: usize, _dam: i32) -> i32
             gs.characters[cc].set_description("You see a Shadow of Peace.");
 
             if !God::drop_char_fuzzy(
+                gs,
                 cc,
                 gs.characters[co].x as usize,
                 gs.characters[co].y as usize,
             ) {
-                God::destroy_items(cc);
+                God::destroy_items(gs, cc);
                 gs.characters[cc].used = 0;
             }
         }
@@ -606,7 +607,7 @@ pub fn npc_give(gs: &mut GameState, cn: usize, co: usize, in_item: usize, money:
         if gs.characters[cn].data[49] == 740 && gs.characters[cn].temp == 518 {
             gs.characters[co].data[43] += 1;
             // Remove item from NPC and destroy it
-            God::take_from_char(in_item, cn);
+            God::take_from_char(gs, in_item, cn);
             gs.items[in_item].used = core::constants::USE_EMPTY;
 
             gs.do_sayx(
@@ -697,8 +698,8 @@ pub fn npc_give(gs: &mut GameState, cn: usize, co: usize, in_item: usize, money:
                     ),
                 );
                 // give item back to player
-                God::take_from_char(in_item, cn);
-                God::give_character_item(co, in_item);
+                God::take_from_char(gs, in_item, cn);
+                God::give_character_item(gs, co, in_item);
                 gs.do_character_log(
                     co,
                     core::types::FontColor::Green,
@@ -731,7 +732,7 @@ pub fn npc_give(gs: &mut GameState, cn: usize, co: usize, in_item: usize, money:
                 }
 
                 // take and destroy the offered item
-                God::take_from_char(in_item, cn);
+                God::take_from_char(gs, in_item, cn);
                 gs.items[in_item].used = core::constants::USE_EMPTY;
             }
         }
@@ -746,10 +747,10 @@ pub fn npc_give(gs: &mut GameState, cn: usize, co: usize, in_item: usize, money:
                     c_string_to_str(&gs.item_templates[give_temp as usize].reference).to_string()
                 ),
             );
-            God::take_from_char(in_item, cn);
+            God::take_from_char(gs, in_item, cn);
             gs.items[in_item].used = core::constants::USE_EMPTY;
-            if let Some(new_item) = God::create_item(give_temp as usize) {
-                God::give_character_item(co, new_item);
+            if let Some(new_item) = God::create_item(gs, give_temp as usize) {
+                God::give_character_item(gs, co, new_item);
             }
         }
 
@@ -769,13 +770,13 @@ pub fn npc_give(gs: &mut GameState, cn: usize, co: usize, in_item: usize, money:
                         gs.characters[still as usize].get_name().to_string()
                     ),
                 );
-                God::take_from_char(in_item, cn);
-                God::give_character_item(co, in_item);
+                God::take_from_char(gs, in_item, cn);
+                God::give_character_item(gs, co, in_item);
                 return 0;
             }
 
             // Destroy gift from player and pose riddle
-            God::take_from_char(in_item, co);
+            God::take_from_char(gs, in_item, co);
             gs.items[in_item].used = core::constants::USE_EMPTY;
             crate::lab9::Labyrinth9::with_mut(|lab9| lab9.lab9_pose_riddle(cn, co));
         }
@@ -788,8 +789,8 @@ pub fn npc_give(gs: &mut GameState, cn: usize, co: usize, in_item: usize, money:
         gs.characters[cn].gold -= money;
     } else {
         // Not accepted - return item to giver
-        God::take_from_char(in_item, cn);
-        God::give_character_item(co, in_item);
+        God::take_from_char(gs, in_item, cn);
+        God::give_character_item(gs, co, in_item);
         gs.do_character_log(
             co,
             core::types::FontColor::Green,
@@ -1197,7 +1198,7 @@ pub fn die_companion(gs: &mut GameState, cn: usize) {
         gs.characters[cn].y as i32,
         0,
     );
-    God::destroy_items(cn);
+    God::destroy_items(gs, cn);
     gs.characters[cn].gold = 0;
 
     gs.do_character_killed(cn, 0, false);
@@ -1245,7 +1246,7 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> i32 {
         }
         if do_die {
             gs.do_sayx(cn, "Free!");
-            God::destroy_items(cn);
+            God::destroy_items(gs, cn);
             player::plr_map_remove_gs(gs, cn);
             gs.characters[cn].used = USE_EMPTY;
             npc_remove_enemy(gs, cn, 0);
@@ -1327,7 +1328,7 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> i32 {
                 gs.items[citem].current_age[0] = 0;
                 gs.items[citem].current_age[1] = 0;
                 gs.items[citem].current_damage = 0;
-                God::donate_item(citem, donate_dest);
+                God::donate_item(gs, citem, donate_dest);
                 gs.characters[cn].citem = 0;
             }
         }
@@ -1349,7 +1350,7 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> i32 {
                 gs.items[it39].current_age[0] = 0;
                 gs.items[it39].current_age[1] = 0;
                 gs.items[it39].current_damage = 0;
-                God::donate_item(it39, donate_dest);
+                God::donate_item(gs, it39, donate_dest);
                 gs.characters[cn].item[39] = 0;
             }
         }
@@ -1648,7 +1649,7 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> i32 {
                         let is_empty = gs.map[map_idx].it == 0;
 
                         if is_empty && player::plr_check_target(map_idx) {
-                            if let Some(in2) = God::create_item(18) {
+                            if let Some(in2) = God::create_item(gs, 18) {
                                 gs.items[in2].carried = cn as u16;
                                 gs.characters[cn].citem = in2 as u32;
                                 gs.characters[cn].misc_action = DR_DROP as u16;
@@ -2104,9 +2105,9 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
                         }
                     };
 
-                    if !God::drop_char_fuzzy(co, 452, 345) {
+                    if !God::drop_char_fuzzy(gs, co, 452, 345) {
                         gs.do_sayx(cn, &format!("drop char ({})", m_idx));
-                        God::destroy_items(co);
+                        God::destroy_items(gs, co);
                         gs.characters[co].used = 0;
                         break;
                     }
@@ -2527,7 +2528,7 @@ pub fn update_shop(gs: &mut GameState, cn: usize) {
             let flags = gs.items[in_idx as usize].flags;
 
             if (flags & ItemFlags::IF_DONATE.bits()) != 0 {
-                God::donate_item(in_idx as usize, 0);
+                God::donate_item(gs, in_idx as usize, 0);
                 gs.items[in_idx as usize].used = USE_EMPTY;
             } else {
                 gs.items[in_idx as usize].used = USE_EMPTY;
@@ -2544,10 +2545,10 @@ pub fn update_shop(gs: &mut GameState, cn: usize) {
             continue;
         }
 
-        let in_idx = God::create_item(temp as usize);
+        let in_idx = God::create_item(gs, temp as usize);
 
         if in_idx.is_some() {
-            if !God::give_character_item(cn, in_idx.unwrap()) {
+            if !God::give_character_item(gs, cn, in_idx.unwrap()) {
                 gs.items[in_idx.unwrap()].used = USE_EMPTY;
             }
         }
