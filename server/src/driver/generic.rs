@@ -689,15 +689,15 @@ pub fn act_move_rightdown(gs: &mut GameState, cn: usize) {
     let m2 = (base + 1) as usize;
     let target = (base + core::constants::SERVER_MAPX + 1) as usize;
 
-    if !player::plr_check_target_gs(gs, m1) {
+    if !player::plr_check_target(gs, m1) {
         gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
-    if !player::plr_check_target_gs(gs, m2) {
+    if !player::plr_check_target(gs, m2) {
         gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
-    if !player::plr_set_target_gs(gs, target, cn) {
+    if !player::plr_set_target(gs, target, cn) {
         gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
@@ -739,15 +739,15 @@ pub fn act_move_rightup(gs: &mut GameState, cn: usize) {
     let m2 = (base + 1) as usize;
     let target = (base - core::constants::SERVER_MAPX + 1) as usize;
 
-    if !player::plr_check_target_gs(gs, m1) {
+    if !player::plr_check_target(gs, m1) {
         gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
-    if !player::plr_check_target_gs(gs, m2) {
+    if !player::plr_check_target(gs, m2) {
         gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
-    if !player::plr_set_target_gs(gs, target, cn) {
+    if !player::plr_set_target(gs, target, cn) {
         gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
@@ -789,15 +789,15 @@ pub fn act_move_leftdown(gs: &mut GameState, cn: usize) {
     let m2 = (base - 1) as usize;
     let target = (base + core::constants::SERVER_MAPX - 1) as usize;
 
-    if !player::plr_check_target_gs(gs, m1) {
+    if !player::plr_check_target(gs, m1) {
         gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
-    if !player::plr_check_target_gs(gs, m2) {
+    if !player::plr_check_target(gs, m2) {
         gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
-    if !player::plr_set_target_gs(gs, target, cn) {
+    if !player::plr_set_target(gs, target, cn) {
         gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
@@ -839,15 +839,15 @@ pub fn act_move_leftup(gs: &mut GameState, cn: usize) {
     let m2 = (base - 1) as usize;
     let target = (base - core::constants::SERVER_MAPX - 1) as usize;
 
-    if !player::plr_check_target_gs(gs, m1) {
+    if !player::plr_check_target(gs, m1) {
         gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
-    if !player::plr_check_target_gs(gs, m2) {
+    if !player::plr_check_target(gs, m2) {
         gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
-    if !player::plr_set_target_gs(gs, target, cn) {
+    if !player::plr_set_target(gs, target, cn) {
         gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
@@ -883,7 +883,7 @@ pub fn act_move_right(gs: &mut GameState, cn: usize) {
     let base = x + y * core::constants::SERVER_MAPX;
     let target = (base + 1) as usize;
 
-    if !player::plr_set_target_gs(gs, target, cn) {
+    if !player::plr_set_target(gs, target, cn) {
         gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
@@ -919,7 +919,7 @@ pub fn act_move_left(gs: &mut GameState, cn: usize) {
     let base = x + y * core::constants::SERVER_MAPX;
     let target = (base - 1) as usize;
 
-    if !player::plr_set_target_gs(gs, target, cn) {
+    if !player::plr_set_target(gs, target, cn) {
         gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
@@ -955,7 +955,7 @@ pub fn act_move_down(gs: &mut GameState, cn: usize) {
     let base = x + y * core::constants::SERVER_MAPX;
     let target = (base + core::constants::SERVER_MAPX) as usize;
 
-    if !player::plr_set_target_gs(gs, target, cn) {
+    if !player::plr_set_target(gs, target, cn) {
         gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
@@ -991,7 +991,7 @@ pub fn act_move_up(gs: &mut GameState, cn: usize) {
     let base = x + y * core::constants::SERVER_MAPX;
     let target = (base - core::constants::SERVER_MAPX) as usize;
 
-    if !player::plr_set_target_gs(gs, target, cn) {
+    if !player::plr_set_target(gs, target, cn) {
         gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
@@ -1926,7 +1926,7 @@ pub fn follow_driver(gs: &mut GameState, cn: usize, co: usize) -> bool {
         if try_m < 0 || try_m as usize >= map_len {
             continue;
         }
-        if player::plr_check_target_gs(gs, try_m as usize) {
+        if player::plr_check_target(gs, try_m as usize) {
             new_m = try_m;
             found = true;
             break;
@@ -1965,7 +1965,7 @@ pub fn driver(gs: &mut GameState, cn: usize) {
         != 0;
     let attack_cn = gs.characters[cn].attack_cn;
     if is_player_or_usurp && attack_cn == 0 {
-        player::player_driver_med_gs(gs, cn);
+        player::player_driver_med(gs, cn);
     }
 
     let goto_x = gs.characters[cn].goto_x;

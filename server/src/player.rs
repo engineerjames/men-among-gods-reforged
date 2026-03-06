@@ -289,7 +289,7 @@ pub fn plr_logout(
             }
         }
 
-        player_exit_gs(gs, player_id);
+        player_exit(gs, player_id);
     }
 }
 
@@ -301,7 +301,7 @@ pub fn plr_logout(
 /// # Arguments
 /// * `gs` - Active game state used to clear character ownership.
 /// * `player_id` - Player slot index
-pub fn player_exit_gs(gs: &mut GameState, player_id: usize) {
+pub fn player_exit(gs: &mut GameState, player_id: usize) {
     if player_id == 0 || player_id >= core::constants::MAXPLAYER {
         log::error!("player_exit: Invalid player id {}", player_id);
         return;
@@ -330,14 +330,6 @@ pub fn player_exit_gs(gs: &mut GameState, player_id: usize) {
     });
 }
 
-/// Finalize player exit operations using the global game state bridge.
-///
-/// # Arguments
-/// * `player_id` - Player slot index
-pub fn player_exit(player_id: usize) {
-    player_exit_gs(GameState::global_mut(), player_id);
-}
-
 /// Port of `plr_map_remove` from `svr_act.cpp`
 ///
 /// Removes a character from the world map tile and clears any transient
@@ -348,7 +340,7 @@ pub fn player_exit(player_id: usize) {
 /// # Arguments
 /// * `gs` - Active game state used to update map occupancy and lighting.
 /// * `cn` - Character index to remove from the map
-pub fn plr_map_remove_gs(gs: &mut GameState, cn: usize) {
+pub fn plr_map_remove(gs: &mut GameState, cn: usize) {
     let ch = gs.characters[cn];
     let m = (ch.x as usize) + (ch.y as usize) * core::constants::SERVER_MAPX as usize;
     let to_m = (ch.tox as usize) + (ch.toy as usize) * core::constants::SERVER_MAPX as usize;
@@ -374,14 +366,6 @@ pub fn plr_map_remove_gs(gs: &mut GameState, cn: usize) {
     }
 }
 
-/// Remove a character from the map using the global game state bridge.
-///
-/// # Arguments
-/// * `cn` - Character index to remove from the map
-pub fn plr_map_remove(cn: usize) {
-    plr_map_remove_gs(GameState::global_mut(), cn);
-}
-
 /// Port of `plr_map_set` from `svr_act.cpp`
 ///
 /// Places a character on the map and handles tile interactions that occur
@@ -396,7 +380,7 @@ pub fn plr_map_remove(cn: usize) {
 /// # Arguments
 /// * `gs` - Active game state used for map transitions and tile effects.
 /// * `cn` - Character index to place on the map
-pub fn plr_map_set_gs(gs: &mut GameState, cn: usize) {
+pub fn plr_map_set(gs: &mut GameState, cn: usize) {
     let (x, y, flags, light) = (
         gs.characters[cn].x,
         gs.characters[cn].y,
@@ -600,14 +584,6 @@ pub fn plr_map_set_gs(gs: &mut GameState, cn: usize) {
     );
 }
 
-/// Place a character on the map using the global game state bridge.
-///
-/// # Arguments
-/// * `cn` - Character index to place on the map
-pub fn plr_map_set(cn: usize) {
-    plr_map_set_gs(GameState::global_mut(), cn);
-}
-
 /// Notify nearby clients about the character's current tile.
 ///
 /// # Arguments
@@ -636,8 +612,8 @@ fn notify_character_tile(gs: &mut GameState, cn: usize) {
 /// * `cn` - Character index performing the move.
 /// * `dx` - Horizontal movement delta.
 /// * `dy` - Vertical movement delta.
-fn plr_move_by_gs(gs: &mut GameState, cn: usize, dx: i16, dy: i16) {
-    plr_map_remove_gs(gs, cn);
+fn plr_move_by(gs: &mut GameState, cn: usize, dx: i16, dy: i16) {
+    plr_map_remove(gs, cn);
 
     let ch = &mut gs.characters[cn];
     ch.frx = ch.x;
@@ -647,7 +623,7 @@ fn plr_move_by_gs(gs: &mut GameState, cn: usize, dx: i16, dy: i16) {
     ch.tox = ch.x;
     ch.toy = ch.y;
 
-    plr_map_set_gs(gs, cn);
+    plr_map_set(gs, cn);
     gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
 }
 
@@ -657,7 +633,7 @@ fn plr_move_by_gs(gs: &mut GameState, cn: usize, dx: i16, dy: i16) {
 /// * `gs` - Active game state used for notification dispatch.
 /// * `cn` - Character index rotating.
 /// * `dir` - New facing direction.
-fn plr_turn_gs(gs: &mut GameState, cn: usize, dir: u8) {
+fn plr_turn(gs: &mut GameState, cn: usize, dir: u8) {
     notify_character_tile(gs, cn);
     gs.characters[cn].dir = dir;
     gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
@@ -673,7 +649,7 @@ fn plr_turn_gs(gs: &mut GameState, cn: usize, dir: u8) {
 /// # Returns
 /// * `Some((map_index, x, y))` if the facing direction is valid.
 /// * `None` if the direction is invalid and `cerrno` was set.
-fn plr_front_tile_gs(gs: &mut GameState, cn: usize, action: &str) -> Option<(usize, i32, i32)> {
+fn plr_front_tile(gs: &mut GameState, cn: usize, action: &str) -> Option<(usize, i32, i32)> {
     let (mut x, mut y, dir) = (
         gs.characters[cn].x as i32,
         gs.characters[cn].y as i32,
@@ -705,7 +681,7 @@ fn plr_front_tile_gs(gs: &mut GameState, cn: usize, action: &str) -> Option<(usi
 /// # Returns
 /// * `Some((map_index, x, y))` when the facing tile is on the map.
 /// * `None` if the facing direction is diagonal or would leave the map.
-fn plr_cardinal_front_tile_gs(gs: &mut GameState, cn: usize) -> Option<(usize, i16, i16)> {
+fn plr_cardinal_front_tile(gs: &mut GameState, cn: usize) -> Option<(usize, i16, i16)> {
     let ch = gs.characters[cn];
 
     match ch.dir {
@@ -743,8 +719,8 @@ fn plr_cardinal_front_tile_gs(gs: &mut GameState, cn: usize) -> Option<(usize, i
 ///
 /// # Arguments
 /// * `cn` - Character index performing the move
-pub fn plr_move_up(cn: usize) {
-    plr_move_by_gs(GameState::global_mut(), cn, 0, -1);
+pub fn plr_move_up(gs: &mut GameState, cn: usize) {
+    plr_move_by(gs, cn, 0, -1);
 }
 
 /// Port of `plr_move_down` from `svr_act.cpp`
@@ -754,8 +730,8 @@ pub fn plr_move_up(cn: usize) {
 ///
 /// # Arguments
 /// * `cn` - Character index performing the move
-pub fn plr_move_down(cn: usize) {
-    plr_move_by_gs(GameState::global_mut(), cn, 0, 1);
+pub fn plr_move_down(gs: &mut GameState, cn: usize) {
+    plr_move_by(gs, cn, 0, 1);
 }
 
 /// Port of `plr_move_left` from `svr_act.cpp`
@@ -765,8 +741,8 @@ pub fn plr_move_down(cn: usize) {
 ///
 /// # Arguments
 /// * `cn` - Character index performing the move
-pub fn plr_move_left(cn: usize) {
-    plr_move_by_gs(GameState::global_mut(), cn, -1, 0);
+pub fn plr_move_left(gs: &mut GameState, cn: usize) {
+    plr_move_by(gs, cn, -1, 0);
 }
 
 /// Port of `plr_move_right` from `svr_act.cpp`
@@ -776,8 +752,8 @@ pub fn plr_move_left(cn: usize) {
 ///
 /// # Arguments
 /// * `cn` - Character index performing the move
-pub fn plr_move_right(cn: usize) {
-    plr_move_by_gs(GameState::global_mut(), cn, 1, 0);
+pub fn plr_move_right(gs: &mut GameState, cn: usize) {
+    plr_move_by(gs, cn, 1, 0);
 }
 
 /// Port of `plr_move_leftup` from `svr_act.cpp`
@@ -786,8 +762,8 @@ pub fn plr_move_right(cn: usize) {
 ///
 /// # Arguments
 /// * `cn` - Character index performing the move
-pub fn plr_move_leftup(cn: usize) {
-    plr_move_by_gs(GameState::global_mut(), cn, -1, -1);
+pub fn plr_move_leftup(gs: &mut GameState, cn: usize) {
+    plr_move_by(gs, cn, -1, -1);
 }
 
 /// Port of `plr_move_leftdown` from `svr_act.cpp`
@@ -796,8 +772,8 @@ pub fn plr_move_leftup(cn: usize) {
 ///
 /// # Arguments
 /// * `cn` - Character index performing the move
-pub fn plr_move_leftdown(cn: usize) {
-    plr_move_by_gs(GameState::global_mut(), cn, -1, 1);
+pub fn plr_move_leftdown(gs: &mut GameState, cn: usize) {
+    plr_move_by(gs, cn, -1, 1);
 }
 
 /// Port of `plr_move_rightup` from `svr_act.cpp`
@@ -806,8 +782,8 @@ pub fn plr_move_leftdown(cn: usize) {
 ///
 /// # Arguments
 /// * `cn` - Character index performing the move
-pub fn plr_move_rightup(cn: usize) {
-    plr_move_by_gs(GameState::global_mut(), cn, 1, -1);
+pub fn plr_move_rightup(gs: &mut GameState, cn: usize) {
+    plr_move_by(gs, cn, 1, -1);
 }
 
 /// Port of `plr_move_rightdown` from `svr_act.cpp`
@@ -816,8 +792,8 @@ pub fn plr_move_rightup(cn: usize) {
 ///
 /// # Arguments
 /// * `cn` - Character index performing the move
-pub fn plr_move_rightdown(cn: usize) {
-    plr_move_by_gs(GameState::global_mut(), cn, 1, 1);
+pub fn plr_move_rightdown(gs: &mut GameState, cn: usize) {
+    plr_move_by(gs, cn, 1, 1);
 }
 
 /// Port of `plr_turn_up` from `svr_act.cpp`
@@ -827,8 +803,8 @@ pub fn plr_move_rightdown(cn: usize) {
 ///
 /// # Arguments
 /// * `cn` - Character index rotating to face up
-pub fn plr_turn_up(cn: usize) {
-    plr_turn_gs(GameState::global_mut(), cn, core::constants::DX_UP);
+pub fn plr_turn_up(gs: &mut GameState, cn: usize) {
+    plr_turn(gs, cn, core::constants::DX_UP);
 }
 
 /// Port of `plr_turn_leftup` from `svr_act.cpp`
@@ -838,8 +814,8 @@ pub fn plr_turn_up(cn: usize) {
 ///
 /// # Arguments
 /// * `cn` - Character index rotating to face left-up
-pub fn plr_turn_leftup(cn: usize) {
-    plr_turn_gs(GameState::global_mut(), cn, core::constants::DX_LEFTUP);
+pub fn plr_turn_leftup(gs: &mut GameState, cn: usize) {
+    plr_turn(gs, cn, core::constants::DX_LEFTUP);
 }
 
 /// Port of `plr_turn_leftdown` from `svr_act.cpp`
@@ -849,8 +825,8 @@ pub fn plr_turn_leftup(cn: usize) {
 ///
 /// # Arguments
 /// * `cn` - Character index rotating to face left-down
-pub fn plr_turn_leftdown(cn: usize) {
-    plr_turn_gs(GameState::global_mut(), cn, core::constants::DX_LEFTDOWN);
+pub fn plr_turn_leftdown(gs: &mut GameState, cn: usize) {
+    plr_turn(gs, cn, core::constants::DX_LEFTDOWN);
 }
 
 /// Port of `plr_turn_down` from `svr_act.cpp`
@@ -860,8 +836,8 @@ pub fn plr_turn_leftdown(cn: usize) {
 ///
 /// # Arguments
 /// * `cn` - Character index rotating to face down
-pub fn plr_turn_down(cn: usize) {
-    plr_turn_gs(GameState::global_mut(), cn, core::constants::DX_DOWN);
+pub fn plr_turn_down(gs: &mut GameState, cn: usize) {
+    plr_turn(gs, cn, core::constants::DX_DOWN);
 }
 
 /// Port of `plr_turn_rightdown` from `svr_act.cpp`
@@ -871,8 +847,8 @@ pub fn plr_turn_down(cn: usize) {
 ///
 /// # Arguments
 /// * `cn` - Character index rotating to face right-down
-pub fn plr_turn_rightdown(cn: usize) {
-    plr_turn_gs(GameState::global_mut(), cn, core::constants::DX_RIGHTDOWN);
+pub fn plr_turn_rightdown(gs: &mut GameState, cn: usize) {
+    plr_turn(gs, cn, core::constants::DX_RIGHTDOWN);
 }
 
 /// Port of `plr_turn_rightup` from `svr_act.cpp`
@@ -882,8 +858,8 @@ pub fn plr_turn_rightdown(cn: usize) {
 ///
 /// # Arguments
 /// * `cn` - Character index rotating to face right-up
-pub fn plr_turn_rightup(cn: usize) {
-    plr_turn_gs(GameState::global_mut(), cn, core::constants::DX_RIGHTUP);
+pub fn plr_turn_rightup(gs: &mut GameState, cn: usize) {
+    plr_turn(gs, cn, core::constants::DX_RIGHTUP);
 }
 
 /// Port of `plr_turn_left` from `svr_act.cpp`
@@ -893,8 +869,8 @@ pub fn plr_turn_rightup(cn: usize) {
 ///
 /// # Arguments
 /// * `cn` - Character index rotating to face left
-pub fn plr_turn_left(cn: usize) {
-    plr_turn_gs(GameState::global_mut(), cn, core::constants::DX_LEFT);
+pub fn plr_turn_left(gs: &mut GameState, cn: usize) {
+    plr_turn(gs, cn, core::constants::DX_LEFT);
 }
 
 /// Port of `plr_turn_right` from `svr_act.cpp`
@@ -904,8 +880,8 @@ pub fn plr_turn_left(cn: usize) {
 ///
 /// # Arguments
 /// * `cn` - Character index rotating to face right
-pub fn plr_turn_right(cn: usize) {
-    plr_turn_gs(GameState::global_mut(), cn, core::constants::DX_RIGHT);
+pub fn plr_turn_right(gs: &mut GameState, cn: usize) {
+    plr_turn(gs, cn, core::constants::DX_RIGHT);
 }
 
 /// Port of `plr_attack` from `svr_act.cpp`
@@ -918,11 +894,10 @@ pub fn plr_turn_right(cn: usize) {
 /// # Arguments
 /// * `cn` - Attacking character index
 /// * `is_surround` - Surround flag passed to `do_attack` (0 or 1)
-pub fn plr_attack(cn: usize, is_surround: bool) {
-    let gs = GameState::global_mut();
+pub fn plr_attack(gs: &mut GameState, cn: usize, is_surround: bool) {
     notify_character_tile(gs, cn);
 
-    let Some((m, x, y)) = plr_front_tile_gs(gs, cn, "plr_attack") else {
+    let Some((m, x, y)) = plr_front_tile(gs, cn, "plr_attack") else {
         return;
     };
 
@@ -963,11 +938,10 @@ pub fn plr_attack(cn: usize, is_surround: bool) {
 ///
 /// # Arguments
 /// * `cn` - Giver character index
-pub fn plr_give(cn: usize) {
-    let gs = GameState::global_mut();
+pub fn plr_give(gs: &mut GameState, cn: usize) {
     notify_character_tile(gs, cn);
 
-    let Some((m, _, _)) = plr_front_tile_gs(gs, cn, "plr_give") else {
+    let Some((m, _, _)) = plr_front_tile(gs, cn, "plr_give") else {
         return;
     };
 
@@ -993,7 +967,7 @@ pub fn plr_give(cn: usize) {
 /// * `self_text` - Message shown to the acting character.
 /// * `area_text` - Message template shown to nearby players.
 /// * `log_verb` - Verb used for server logging.
-fn plr_social_action_gs(
+fn plr_social_action(
     gs: &mut GameState,
     cn: usize,
     self_text: &str,
@@ -1028,8 +1002,7 @@ fn plr_social_action_gs(
 ///
 /// # Arguments
 /// * `cn` - Character index attempting to pick up an item
-pub fn plr_pickup(cn: usize) {
-    let gs = GameState::global_mut();
+pub fn plr_pickup(gs: &mut GameState, cn: usize) {
     notify_character_tile(gs, cn);
 
     let has_citem = gs.characters[cn].citem != 0;
@@ -1166,14 +1139,8 @@ pub fn plr_pickup(cn: usize) {
 ///
 /// # Arguments
 /// * `cn` - Character index performing the bow
-pub fn plr_bow(cn: usize) {
-    plr_social_action_gs(
-        GameState::global_mut(),
-        cn,
-        "You bow deeply.\n",
-        "{} bows deeply.\n",
-        "bows",
-    );
+pub fn plr_bow(gs: &mut GameState, cn: usize) {
+    plr_social_action(gs, cn, "You bow deeply.\n", "{} bows deeply.\n", "bows");
 }
 
 /// Port of `plr_wave` from `svr_act.cpp`
@@ -1184,9 +1151,9 @@ pub fn plr_bow(cn: usize) {
 ///
 /// # Arguments
 /// * `cn` - Character index performing the wave
-pub fn plr_wave(cn: usize) {
-    plr_social_action_gs(
-        GameState::global_mut(),
+pub fn plr_wave(gs: &mut GameState, cn: usize) {
+    plr_social_action(
+        gs,
         cn,
         "You wave happily.\n",
         "{} waves happily.\n",
@@ -1206,7 +1173,7 @@ pub fn plr_wave(cn: usize) {
 pub fn plr_use(gs: &mut GameState, cn: usize) {
     notify_character_tile(gs, cn);
 
-    let Some((m, _, _)) = plr_cardinal_front_tile_gs(gs, cn) else {
+    let Some((m, _, _)) = plr_cardinal_front_tile(gs, cn) else {
         gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     };
@@ -1250,7 +1217,7 @@ pub fn plr_skill(gs: &mut GameState, cn: usize) {
 /// # Arguments
 /// * `gs` - Active game state used for ticker and follow target lookup.
 /// * `cn` - Character index to process.
-pub fn player_driver_med_gs(gs: &mut GameState, cn: usize) {
+pub fn player_driver_med(gs: &mut GameState, cn: usize) {
     let ticker = gs.globals.ticker;
     if gs.characters[cn].data[12] + core::constants::TICKS * 15 > ticker {
         return;
@@ -1262,18 +1229,6 @@ pub fn player_driver_med_gs(gs: &mut GameState, cn: usize) {
     }
 }
 
-/// Periodic driver invoked at a medium rate for a player.
-///
-/// This function uses a rate-limiter (character data[12]) to avoid running
-/// too often. When appropriate it will call the follow driver if the
-/// character has a follow target set in `data[10]`.
-///
-/// # Arguments
-/// * `cn` - Character index to process
-pub fn player_driver_med(cn: usize) {
-    player_driver_med_gs(GameState::global_mut(), cn);
-}
-
 /// Port of `plr_drop` from `svr_act.cpp`
 ///
 /// Drops the currently carried item (cursor/item in hand) onto the tile in
@@ -1283,8 +1238,7 @@ pub fn player_driver_med(cn: usize) {
 ///
 /// # Arguments
 /// * `cn` - Character index performing the drop
-pub fn plr_drop(cn: usize) {
-    let gs = GameState::global_mut();
+pub fn plr_drop(gs: &mut GameState, cn: usize) {
     notify_character_tile(gs, cn);
 
     let in_id = gs.characters[cn].citem;
@@ -1293,7 +1247,7 @@ pub fn plr_drop(cn: usize) {
         return;
     }
 
-    let Some((m, x, y)) = plr_cardinal_front_tile_gs(gs, cn) else {
+    let Some((m, x, y)) = plr_cardinal_front_tile(gs, cn) else {
         gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     };
@@ -1436,25 +1390,25 @@ pub fn plr_misc(gs: &mut GameState, cn: usize) {
                     cn
                 );
             }
-            plr_attack(cn, false);
+            plr_attack(gs, cn, false);
         }
         1 => {
             if is_player {
                 log::debug!("plr_misc: pickup action for char {}", cn);
             }
-            plr_pickup(cn);
+            plr_pickup(gs, cn);
         }
         2 => {
             if is_player {
                 log::debug!("plr_misc: drop action for char {}", cn);
             }
-            plr_drop(cn);
+            plr_drop(gs, cn);
         }
         3 => {
             if is_player {
                 log::debug!("plr_misc: give action for char {}", cn);
             }
-            plr_give(cn);
+            plr_give(gs, cn);
         }
         4 => {
             if is_player {
@@ -1466,7 +1420,7 @@ pub fn plr_misc(gs: &mut GameState, cn: usize) {
             if is_player {
                 log::debug!("plr_misc: attack action (is_surround=true) for char {}", cn);
             }
-            plr_attack(cn, true);
+            plr_attack(gs, cn, true);
         }
         6 => {
             if is_player {
@@ -1475,19 +1429,19 @@ pub fn plr_misc(gs: &mut GameState, cn: usize) {
                     cn
                 );
             }
-            plr_attack(cn, false);
+            plr_attack(gs, cn, false);
         }
         7 => {
             if is_player {
                 log::debug!("plr_misc: bow action for char {}", cn);
             }
-            plr_bow(cn);
+            plr_bow(gs, cn);
         }
         8 => {
             if is_player {
                 log::debug!("plr_misc: wave action for char {}", cn);
             }
-            plr_wave(cn);
+            plr_wave(gs, cn);
         }
         9 => {
             if is_player {
@@ -1507,7 +1461,7 @@ pub fn plr_misc(gs: &mut GameState, cn: usize) {
 /// # Arguments
 /// * `gs` - Active game state used to mutate the character.
 /// * `cn` - Character index whose status should be reset.
-pub fn plr_reset_status_gs(gs: &mut GameState, cn: usize) {
+pub fn plr_reset_status(gs: &mut GameState, cn: usize) {
     gs.characters[cn].status = match gs.characters[cn].dir {
         core::constants::DX_UP => 0,
         core::constants::DX_DOWN => 1,
@@ -1541,7 +1495,7 @@ pub fn plr_reset_status_gs(gs: &mut GameState, cn: usize) {
 ///
 /// # Returns
 /// `true` if tile is a valid empty target, `false` otherwise
-pub fn plr_check_target_gs(gs: &mut GameState, m: usize) -> bool {
+pub fn plr_check_target(gs: &mut GameState, m: usize) -> bool {
     if gs.map[m].ch != 0 || gs.map[m].to_ch != 0 {
         return false;
     }
@@ -1558,17 +1512,6 @@ pub fn plr_check_target_gs(gs: &mut GameState, m: usize) -> bool {
     }
 }
 
-/// Check whether a target tile is usable via the global game state bridge.
-///
-/// # Arguments
-/// * `m` - Map index to inspect
-///
-/// # Returns
-/// `true` if tile is a valid empty target, `false` otherwise
-pub fn plr_check_target(m: usize) -> bool {
-    plr_check_target_gs(GameState::global_mut(), m)
-}
-
 /// Port of `plr_set_target` from `svr_act.cpp`
 ///
 /// Marks the provided map tile as targeted by character `cn` by setting
@@ -1580,38 +1523,14 @@ pub fn plr_check_target(m: usize) -> bool {
 ///
 /// # Returns
 /// `true` on success, `false` if tile is not a valid target
-pub fn plr_set_target_gs(gs: &mut GameState, m: usize, cn: usize) -> bool {
-    if !plr_check_target_gs(gs, m) {
+pub fn plr_set_target(gs: &mut GameState, m: usize, cn: usize) -> bool {
+    if !plr_check_target(gs, m) {
         return false;
     }
 
     gs.map[m].to_ch = cn as u32;
 
     true
-}
-
-/// Mark a target tile via the global game state bridge.
-///
-/// # Arguments
-/// * `m` - Map index to set as target
-/// * `cn` - Character index that will be the target occupant
-///
-/// # Returns
-/// `true` on success, `false` if tile is not a valid target
-pub fn plr_set_target(m: usize, cn: usize) -> bool {
-    plr_set_target_gs(GameState::global_mut(), m, cn)
-}
-
-/// Port of `plr_reset_status` from `svr_act.cpp`
-///
-/// Resets the character's `status` to the base idle status corresponding
-/// to its current `dir` (direction). Performs sanity checks for illegal
-/// `dir` values and logs an error if encountered.
-///
-/// # Arguments
-/// * `cn` - Character index whose status to reset
-pub fn plr_reset_status(cn: usize) {
-    plr_reset_status_gs(GameState::global_mut(), cn);
 }
 
 /// Perform the character's current driving action.
@@ -1623,7 +1542,7 @@ pub fn plr_reset_status(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index to perform driver actions for
 pub fn plr_doact(gs: &mut GameState, cn: usize) {
-    plr_reset_status_gs(gs, cn);
+    plr_reset_status(gs, cn);
     if gs.characters[cn].group_active() {
         driver::driver(gs, cn);
     }
@@ -1664,333 +1583,333 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 
         // walk up: 16..22 increment, 23 execute
         16..=22 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         23 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status = 16;
-                plr_move_up(cn);
+                plr_move_up(gs, cn);
                 plr_doact(gs, cn);
             }
         }
 
         // walk down: 24..30 then 31
         24..=30 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         31 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status = 24;
-                plr_move_down(cn);
+                plr_move_down(gs, cn);
                 plr_doact(gs, cn);
             }
         }
 
         // walk left: 32..38 then 39
         32..=38 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         39 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status = 32;
-                plr_move_left(cn);
+                plr_move_left(gs, cn);
                 plr_doact(gs, cn);
             }
         }
 
         // walk right: 40..46 then 47
         40..=46 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         47 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status = 40;
-                plr_move_right(cn);
+                plr_move_right(gs, cn);
                 plr_doact(gs, cn);
             }
         }
 
         // left+up: 48..58 then 59
         48..=58 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         59 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status = 48;
-                plr_move_leftup(cn);
+                plr_move_leftup(gs, cn);
                 plr_doact(gs, cn);
             }
         }
 
         // left+down: 60..70 then 71
         60..=70 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         71 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status = 60;
-                plr_move_leftdown(cn);
+                plr_move_leftdown(gs, cn);
                 plr_doact(gs, cn);
             }
         }
 
         // right+up: 72..82 then 83
         72..=82 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         83 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status = 72;
-                plr_move_rightup(cn);
+                plr_move_rightup(gs, cn);
                 plr_doact(gs, cn);
             }
         }
 
         // right+down: 84..94 then 95
         84..=94 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         95 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status = 84;
-                plr_move_rightdown(cn);
+                plr_move_rightdown(gs, cn);
                 plr_doact(gs, cn);
             }
         }
 
         // turns: grouped ranges mapping to final turn actions
         96..=98 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         99 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status = 96;
-                plr_turn_leftup(cn);
+                plr_turn_leftup(gs, cn);
                 plr_doact(gs, cn);
             }
         }
 
         100..=102 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         103 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status = 96;
-                plr_turn_left(cn);
+                plr_turn_left(gs, cn);
                 plr_doact(gs, cn);
             }
         }
 
         104..=106 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         107 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status = 104;
-                plr_turn_rightup(cn);
+                plr_turn_rightup(gs, cn);
                 plr_doact(gs, cn);
             }
         }
 
         108..=110 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         111 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status = 108;
-                plr_turn_right(cn);
+                plr_turn_right(gs, cn);
                 plr_doact(gs, cn);
             }
         }
 
         112..=114 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         115 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status = 112;
-                plr_turn_leftdown(cn);
+                plr_turn_leftdown(gs, cn);
                 plr_doact(gs, cn);
             }
         }
 
         116..=118 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         119 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status = 116;
-                plr_turn_left(cn);
+                plr_turn_left(gs, cn);
                 plr_doact(gs, cn);
             }
         }
 
         120..=122 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         123 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status = 120;
-                plr_turn_rightdown(cn);
+                plr_turn_rightdown(gs, cn);
                 plr_doact(gs, cn);
             }
         }
 
         124..=126 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         127 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status = 124;
-                plr_turn_right(cn);
+                plr_turn_right(gs, cn);
                 plr_doact(gs, cn);
             }
         }
 
         128..=130 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         131 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status = 128;
-                plr_turn_leftup(cn);
+                plr_turn_leftup(gs, cn);
                 plr_doact(gs, cn);
             }
         }
 
         132..=134 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         135 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status = 132;
-                plr_turn_up(cn);
+                plr_turn_up(gs, cn);
                 plr_doact(gs, cn);
             }
         }
 
         136..=138 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         139 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status = 136;
-                plr_turn_leftdown(cn);
+                plr_turn_leftdown(gs, cn);
                 plr_doact(gs, cn);
             }
         }
 
         140..=142 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         143 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status = 140;
-                plr_turn_down(cn);
+                plr_turn_down(gs, cn);
                 plr_doact(gs, cn);
             }
         }
 
         144..=146 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         147 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status = 144;
-                plr_turn_rightup(cn);
+                plr_turn_rightup(gs, cn);
                 plr_doact(gs, cn);
             }
         }
 
         148..=150 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         151 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status = 148;
-                plr_turn_up(cn);
+                plr_turn_up(gs, cn);
                 plr_doact(gs, cn);
             }
         }
 
         152..=154 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         155 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status = 152;
-                plr_turn_rightdown(cn);
+                plr_turn_rightdown(gs, cn);
                 plr_doact(gs, cn);
             }
         }
 
         156..=158 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         159 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status = 156;
-                plr_turn_down(cn);
+                plr_turn_down(gs, cn);
                 plr_doact(gs, cn);
             }
         }
 
         // misc actions: 160..166 increment, 167 execute misc then doact
         160..=166 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         167 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status = 160;
                 plr_misc(gs, cn);
                 plr_doact(gs, cn);
@@ -1999,12 +1918,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 
         // misc down 168..174 then 175
         168..=174 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         175 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status = 168;
                 plr_misc(gs, cn);
                 plr_doact(gs, cn);
@@ -2013,12 +1932,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 
         // misc left 176..182 then 183
         176..=182 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         183 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status = 176;
                 plr_misc(gs, cn);
                 plr_doact(gs, cn);
@@ -2027,12 +1946,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 
         // misc right 184..190 then 191
         184..=190 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         191 => {
-            if speedo_gs(gs, cn) != 0 {
+            if speedo(gs, cn) != 0 {
                 gs.characters[cn].status = 184;
                 plr_misc(gs, cn);
                 plr_doact(gs, cn);
@@ -2058,7 +1977,7 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 ///
 /// # Arguments
 /// * `n` - Character index
-pub fn speedo_gs(gs: &mut GameState, n: usize) -> i32 {
+pub fn speedo(gs: &mut GameState, n: usize) -> i32 {
     let speed = (gs.characters[n].speed as usize).min(core::constants::MAX_SPEEDTAB_SPEED_INDEX);
     let ctick = gs.globals.ticker as usize % core::constants::CTICK_CYCLE_LEN;
     SPEEDTAB[speed][ctick] as i32
@@ -2085,10 +2004,10 @@ pub fn plr_clear_map() {
 /// # Arguments
 /// * `nr` - Player slot index requesting the map update
 pub fn plr_getmap(gs: &mut GameState, nr: usize) {
-    plr_getmap_complete_gs(gs, nr);
+    plr_getmap_complete(gs, nr);
 }
 
-pub fn plr_getmap_complete_gs(gs: &mut GameState, nr: usize) {
+pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
     let cn = Server::with_players(|players| players[nr].usnr);
 
     // We copy it out here so we HAVE to write it back.

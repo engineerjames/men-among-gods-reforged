@@ -106,7 +106,7 @@ impl EffectManager {
 
         if duration == 0 {
             // Check if target position is clear
-            if player::plr_check_target(map_index) {
+            if player::plr_check_target(gs, map_index) {
                 gs.map[map_index].flags |= core::constants::MF_MOVEBLOCK as u64;
                 gs.effects[n].effect_type = 8;
             }
@@ -134,7 +134,7 @@ impl EffectManager {
             gs.map[map_index].flags |= ((duration / 2) as u64) << 40;
 
             if duration == Self::EFFECT_DEATH_MIST_MIDPOINT {
-                player::plr_map_remove(co);
+                player::plr_map_remove(gs, co);
 
                 let m = Self::find_drop_position(gs, map_index);
 
@@ -376,7 +376,7 @@ impl EffectManager {
                 if let Some(cn) = populate::pop_create_char(gs, spawn_template as usize, false) {
                     God::drop_char(gs, cn, x as usize, y as usize);
                     gs.characters[cn].dir = core::constants::DX_RIGHTUP;
-                    player::plr_reset_status(cn);
+                    player::plr_reset_status(gs, cn);
                 }
             }
 

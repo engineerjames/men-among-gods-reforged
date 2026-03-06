@@ -962,7 +962,7 @@ pub fn npc_malte_low(gs: &mut GameState, cn: usize) -> i32 {
         6 => {
             gs.do_sayx(cn, "Good luck my friend. And thank you for freeing me!");
 
-            player::plr_map_remove(cn);
+            player::plr_map_remove(gs, cn);
             God::destroy_items(gs, cn);
             gs.characters[cn].used = USE_EMPTY;
         }

@@ -921,7 +921,7 @@ pub fn reset_char(gs: &mut GameState, n: usize) {
 
             // Destroy items and remove from map
             God::destroy_items(gs, cn);
-            player::plr_map_remove(cn);
+            player::plr_map_remove(gs, cn);
 
             // Mark character as unused
             gs.characters[cn].used = USE_EMPTY;

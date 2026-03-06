@@ -698,7 +698,7 @@ impl God {
             companion_citem = companion.citem;
             companion.citem = 0;
         }
-        player::plr_map_remove(companion_id);
+        player::plr_map_remove(gs, companion_id);
         gs.characters[companion_id].used = core::constants::USE_EMPTY;
         gs.characters[character_id].data[core::constants::CHD_COMPANION] = 0;
 
@@ -1149,12 +1149,12 @@ impl God {
         }
 
         // Remove from previous tile (if any), update coords and insert into map
-        player::plr_map_remove(character_id);
+        player::plr_map_remove(gs, character_id);
         gs.characters[character_id].x = x as i16;
         gs.characters[character_id].y = y as i16;
         gs.characters[character_id].tox = x as i16;
         gs.characters[character_id].toy = y as i16;
-        player::plr_map_set(character_id);
+        player::plr_map_set(gs, character_id);
 
         true
     }
