@@ -13,8 +13,8 @@ use core::{
 };
 
 use crate::{
-    chlog, core::types::Character, driver, effect::EffectManager, game_state::GameState, god::God,
-    helpers, populate,
+    chlog, core::types::Character, driver, effect::EffectManager, game_state::GameState,
+    game_state::GameState as Repository, god::God, helpers, populate,
 };
 
 use core::constants::LEGACY_TICKS;

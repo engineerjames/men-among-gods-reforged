@@ -902,20 +902,20 @@ pub fn npc_msg(
     }
 
     match msg_type {
-        x if x == NT_GOTHIT as i32 => npc_gothit(cn, dat1 as usize, dat2),
-        x if x == NT_GOTMISS as i32 => npc_gotmiss(cn, dat1 as usize),
+        x if x == NT_GOTHIT as i32 => npc_gothit(gs, cn, dat1 as usize, dat2),
+        x if x == NT_GOTMISS as i32 => npc_gotmiss(gs, cn, dat1 as usize),
         x if x == NT_DIDHIT as i32 => npc_didhit(cn, dat1 as usize, dat2),
         x if x == NT_DIDMISS as i32 => npc_didmiss(cn, dat1 as usize),
-        x if x == NT_DIDKILL as i32 => npc_didkill(cn, dat1 as usize),
+        x if x == NT_DIDKILL as i32 => npc_didkill(gs, cn, dat1 as usize),
         x if x == NT_GOTEXP as i32 => npc_gotexp(cn, dat1),
-        x if x == NT_SEEKILL as i32 => npc_seekill(cn, dat1 as usize, dat2 as usize),
-        x if x == NT_SEEHIT as i32 => npc_seehit(cn, dat1 as usize, dat2 as usize),
-        x if x == NT_SEEMISS as i32 => npc_seemiss(cn, dat1 as usize, dat2 as usize),
-        x if x == NT_GIVE as i32 => npc_give(cn, dat1 as usize, dat2 as usize, dat3),
-        x if x == NT_SEE as i32 => npc_see(cn, dat1 as usize),
-        x if x == NT_DIED as i32 => npc_died(cn, dat1 as usize),
-        x if x == NT_SHOUT as i32 => npc_shout(cn, dat1 as usize, dat2, dat3, dat4),
-        x if x == NT_HITME as i32 => npc_hitme(cn, dat1 as usize),
+        x if x == NT_SEEKILL as i32 => npc_seekill(gs, cn, dat1 as usize, dat2 as usize),
+        x if x == NT_SEEHIT as i32 => npc_seehit(gs, cn, dat1 as usize, dat2 as usize),
+        x if x == NT_SEEMISS as i32 => npc_seemiss(gs, cn, dat1 as usize, dat2 as usize),
+        x if x == NT_GIVE as i32 => npc_give(gs, cn, dat1 as usize, dat2 as usize, dat3),
+        x if x == NT_SEE as i32 => npc_see(gs, cn, dat1 as usize),
+        x if x == NT_DIED as i32 => npc_died(gs, cn, dat1 as usize),
+        x if x == NT_SHOUT as i32 => npc_shout(gs, cn, dat1 as usize, dat2, dat3, dat4),
+        x if x == NT_HITME as i32 => npc_hitme(gs, cn, dat1 as usize),
         _ => {
             log::error!("Unknown NPC message for {}: {}", cn, msg_type);
             0
@@ -1508,38 +1508,31 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> i32 {
             if gs.characters[cn].a_mana > 75000 && npc_try_spell(gs, cn, cn, SK_BLESS) {
                 return 1;
             }
-            if npc_try_spell(cn, cn, SK_PROTECT) {
+            if npc_try_spell(gs, cn, cn, SK_PROTECT) {
                 return 1;
             }
-            if npc_try_spell(cn, cn, SK_MSHIELD) {
+            if npc_try_spell(gs, cn, cn, SK_MSHIELD) {
                 return 1;
             }
-            if npc_try_spell(cn, cn, SK_ENHANCE) {
+            if npc_try_spell(gs, cn, cn, SK_ENHANCE) {
                 return 1;
             }
-            if npc_try_spell(cn, cn, SK_BLESS) {
+            if npc_try_spell(gs, cn, cn, SK_BLESS) {
                 return 1;
             }
-            if co != 0 && npc_try_spell(cn, co, SK_CURSE) {
+            if co != 0 && npc_try_spell(gs, cn, co, SK_CURSE) {
                 return 1;
             }
             if co != 0
-                && Repository::with_globals(|g| g.ticker)
-                    > Repository::with_characters(|characters| characters[cn].data[74])
-                        + (TICKS * 10)
-                && npc_try_spell(cn, co, SK_GHOST)
+                && gs.globals.ticker > gs.characters[cn].data[74] + (TICKS * 10)
+                && npc_try_spell(gs, cn, co, SK_GHOST)
             {
-                Repository::with_characters_mut(|characters| {
-                    characters[cn].data[74] = Repository::with_globals(|g| g.ticker)
-                });
+                gs.characters[cn].data[74] = gs.globals.ticker;
                 return 1;
             }
 
-            if co != 0
-                && Repository::with_characters(|characters| characters[co].armor) + 5
-                    > Repository::with_characters(|characters| characters[cn].weapon)
-            {
-                if npc_try_spell(cn, co, SK_BLAST) {
+            if co != 0 && gs.characters[co].armor + 5 > gs.characters[cn].weapon {
+                if npc_try_spell(gs, cn, co, SK_BLAST) {
                     return 1;
                 }
             }
@@ -1577,26 +1570,18 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> i32 {
     }
 
     // don't scan if we don't use the information
-    if Repository::with_characters(|characters| characters[cn].data[41]) == 0
-        && Repository::with_characters(|characters| characters[cn].data[47]) == 0
-    {
+    if gs.characters[cn].data[41] == 0 && gs.characters[cn].data[47] == 0 {
         return 0;
     }
 
     // save some work
-    if Repository::with_characters(|characters| characters[cn].data[41]) != 0
-        && Repository::with_characters(|characters| characters[cn].misc_action) == DR_USE as u16
-    {
+    if gs.characters[cn].data[41] != 0 && gs.characters[cn].misc_action == DR_USE as u16 {
         return 0;
     }
-    if Repository::with_characters(|characters| characters[cn].data[47]) != 0
-        && Repository::with_characters(|characters| characters[cn].misc_action) == DR_PICKUP as u16
-    {
+    if gs.characters[cn].data[47] != 0 && gs.characters[cn].misc_action == DR_PICKUP as u16 {
         return 0;
     }
-    if Repository::with_characters(|characters| characters[cn].data[47]) != 0
-        && Repository::with_characters(|characters| characters[cn].misc_action) == DR_USE as u16
-    {
+    if gs.characters[cn].data[47] != 0 && gs.characters[cn].misc_action == DR_USE as u16 {
         return 0;
     }
 
@@ -1689,7 +1674,7 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> i32 {
 
 pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
     // Check for special driver
-    let special_driver = Repository::with_characters(|chars| chars[cn].data[25]);
+    let special_driver = gs.characters[cn].data[25];
 
     if special_driver != 0 {
         match special_driver {
@@ -1704,26 +1689,20 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    let ticker = Repository::with_globals(|globals| globals.ticker);
-    let flags = Repository::with_globals(|globals| globals.flags);
+    let ticker = gs.globals.ticker;
+    let flags = gs.globals.flags;
 
     // Handle action results
-    Repository::with_characters_mut(|characters| {
-        if characters[cn].last_action == ERR_SUCCESS as i8 {
-            characters[cn].data[36] = 0; // Reset frust with successful action
-        } else if characters[cn].last_action == ERR_FAILED as i8 {
-            characters[cn].data[36] += 1; // Increase frust with failed action
-        }
-    });
+    if gs.characters[cn].last_action == ERR_SUCCESS as i8 {
+        gs.characters[cn].data[36] = 0;
+    } else if gs.characters[cn].last_action == ERR_FAILED as i8 {
+        gs.characters[cn].data[36] += 1;
+    }
 
     // Are we supposed to loot graves?
-    let (alignment, temp, character_flags) = Repository::with_characters(|characters| {
-        (
-            characters[cn].alignment,
-            characters[cn].temp,
-            characters[cn].flags,
-        )
-    });
+    let alignment = gs.characters[cn].alignment;
+    let temp = gs.characters[cn].temp;
+    let character_flags = gs.characters[cn].flags;
 
     if alignment < 0
         && (flags & GF_LOOTING) != 0
@@ -1731,7 +1710,7 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
             || (character_flags & CharacterFlags::IsLooting.bits()) != 0)
         && temp != CT_COMPANION as u16
     {
-        if npc_grave_logic(cn) {
+        if npc_grave_logic(gs, cn) {
             return;
         }
     }
@@ -1829,40 +1808,32 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
     }
 
     // Patrol, low
-    let data_10 = Repository::with_characters(|characters| characters[cn].data[10]);
+    let data_10 = gs.characters[cn].data[10];
     if data_10 != 0 {
-        let mut n = Repository::with_characters(|characters| characters[cn].data[19]);
+        let mut n = gs.characters[cn].data[19];
 
         if !(10..=18).contains(&n) {
             n = 10;
-            Repository::with_characters_mut(|characters| {
-                characters[cn].data[19] = n;
-            });
+            gs.characters[cn].data[19] = n;
         }
 
-        let data_57 = Repository::with_characters(|characters| characters[cn].data[57]);
+        let data_57 = gs.characters[cn].data[57];
         if data_57 > ticker {
             return;
         }
 
-        let (m, data_36, ch_x, ch_y, data_79) = Repository::with_characters(|characters| {
-            (
-                characters[cn].data[n as usize],
-                characters[cn].data[36],
-                characters[cn].x,
-                characters[cn].y,
-                characters[cn].data[79],
-            )
-        });
+        let m = gs.characters[cn].data[n as usize];
+        let data_36 = gs.characters[cn].data[36];
+        let ch_x = gs.characters[cn].x;
+        let ch_y = gs.characters[cn].y;
+        let data_79 = gs.characters[cn].data[79];
 
         let x = (m % SERVER_MAPX) + get_frust_x_off(data_36);
         let y = (m / SERVER_MAPX) + get_frust_y_off(data_36);
 
         if data_36 > 20 || ((ch_x as i32 - x).abs() + (ch_y as i32 - y).abs()) < 4 {
             if data_36 <= 20 && data_79 != 0 {
-                Repository::with_characters_mut(|characters| {
-                    characters[cn].data[57] = ticker + data_79;
-                });
+                gs.characters[cn].data[57] = ticker + data_79;
             }
 
             n += 1;
@@ -1870,24 +1841,20 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
                 n = 10;
             }
 
-            let data_n = Repository::with_characters(|characters| characters[cn].data[n as usize]);
+            let data_n = gs.characters[cn].data[n as usize];
             if data_n == 0 {
                 n = 10;
             }
 
-            Repository::with_characters_mut(|characters| {
-                characters[cn].data[19] = n;
-                characters[cn].data[36] = 0;
-            });
+            gs.characters[cn].data[19] = n;
+            gs.characters[cn].data[36] = 0;
 
             return;
         }
 
-        Repository::with_characters_mut(|characters| {
-            characters[cn].goto_x = x as u16;
-            characters[cn].goto_y = y as u16;
-            characters[cn].data[58] = 0;
-        });
+        gs.characters[cn].goto_x = x as u16;
+        gs.characters[cn].goto_y = y as u16;
+        gs.characters[cn].data[58] = 0;
         return;
     }
 
@@ -2011,7 +1978,7 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
 
         if ch_dir as i32 != data_30 {
             {
-                characters[cn].misc_action = core::constants::DR_TURN as u16;
+                gs.characters[cn].misc_action = core::constants::DR_TURN as u16;
 
                 // Turn toward an adjacent tile based on desired direction.
                 // (misc_target1/misc_target2 are coordinates, not the direction value.)
@@ -2120,7 +2087,7 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
                     if is_active == 0 {
                         n += 1;
                     } else {
-                        if shiva_activate_candle(cn, it_idx as usize) != 0 {
+                        if shiva_activate_candle(gs, cn, it_idx as usize) != 0 {
                             return;
                         }
                     }
@@ -2328,24 +2295,19 @@ pub fn npc_equip_item(gs: &mut GameState, cn: usize, in_idx: usize) -> bool {
     false
 }
 
-pub fn npc_loot_grave(cn: usize, in_idx: usize) -> bool {
-    let (ch_x, ch_y, ch_dir, frust) = Repository::with_characters(|characters| {
-        (
-            characters[cn].x,
-            characters[cn].y,
-            characters[cn].dir,
-            characters[cn].data[36], // frustration counter
-        )
-    });
+pub fn npc_loot_grave(gs: &mut GameState, cn: usize, in_idx: usize) -> bool {
+    let ch_x = gs.characters[cn].x;
+    let ch_y = gs.characters[cn].y;
+    let ch_dir = gs.characters[cn].dir;
+    let frust = gs.characters[cn].data[36];
 
-    let (it_x, it_y) = Repository::with_items(|items| (items[in_idx].x, items[in_idx].y));
+    let (it_x, it_y) = (gs.items[in_idx].x, gs.items[in_idx].y);
 
     // Check if we're adjacent and facing the grave
     if ((ch_x as i32 - it_x as i32).abs() + (ch_y as i32 - it_y as i32).abs()) > 1
         || helpers::drv_dcoor2dir(it_x as i32 - ch_x as i32, it_y as i32 - ch_y as i32)
             != ch_dir as i32
     {
-        // If frustration is too high, give up on this grave
         if frust > 20 {
             log::debug!(
                 "NPC {} giving up on grave {} due to high frustration ({})",
@@ -2353,20 +2315,17 @@ pub fn npc_loot_grave(cn: usize, in_idx: usize) -> bool {
                 in_idx,
                 frust
             );
-            return false; // Give up, mark grave as searched
+            return false;
         }
 
-        Repository::with_characters_mut(|characters| {
-            characters[cn].misc_action = DR_USE as u16;
-            characters[cn].misc_target1 = it_x;
-            characters[cn].misc_target2 = it_y;
-        });
+        gs.characters[cn].misc_action = DR_USE as u16;
+        gs.characters[cn].misc_target1 = it_x;
+        gs.characters[cn].misc_target2 = it_y;
         return true;
     }
 
-    let co = Repository::with_items(|items| items[in_idx].data[0]) as usize;
+    let co = gs.items[in_idx].data[0] as usize;
 
-    // Safety check: ensure corpse character is valid and is actually a corpse/body
     if !Character::is_sane_character(co) {
         log::warn!(
             "NPC {} tried to loot grave {} but corpse character {} is invalid",
@@ -2374,13 +2333,10 @@ pub fn npc_loot_grave(cn: usize, in_idx: usize) -> bool {
             in_idx,
             co
         );
-        return false; // Mark grave as searched since corpse is invalid
+        return false;
     }
 
-    // Check if the corpse is actually a dead body (not a reused character slot)
-    let is_body = Repository::with_characters(|characters| {
-        (characters[co].flags & CharacterFlags::Body.bits()) != 0
-    });
+    let is_body = (gs.characters[co].flags & CharacterFlags::Body.bits()) != 0;
 
     if !is_body {
         log::warn!(
@@ -2389,28 +2345,20 @@ pub fn npc_loot_grave(cn: usize, in_idx: usize) -> bool {
             in_idx,
             co
         );
-        return false; // Mark grave as searched since corpse slot was reused
+        return false;
     }
 
     // Try to loot worn items
     for n in 0..20 {
-        let worn_item = Repository::with_characters(|characters| characters[co].worn[n]);
+        let worn_item = gs.characters[co].worn[n];
 
         if worn_item != 0 {
             let in_item = worn_item as usize;
-            if npc_equip_item(cn, in_item) {
-                let (item_name, co_name) = Repository::with_items(|items| {
-                    Repository::with_characters(|characters| {
-                        (
-                            items[in_item].get_name().to_string(),
-                            characters[co].get_name().to_string(),
-                        )
-                    })
-                });
+            if npc_equip_item(gs, cn, in_item) {
+                let item_name = gs.items[in_item].get_name().to_string();
+                let co_name = gs.characters[co].get_name().to_string();
                 log::info!("got {} from {}'s grave", item_name, co_name);
-                Repository::with_characters_mut(|characters| {
-                    characters[co].worn[n] = 0;
-                });
+                gs.characters[co].worn[n] = 0;
                 return true;
             }
         }
@@ -2418,112 +2366,82 @@ pub fn npc_loot_grave(cn: usize, in_idx: usize) -> bool {
 
     // Try to loot inventory items
     for n in 0..40 {
-        let inv_item = Repository::with_characters(|characters| characters[co].item[n]);
+        let inv_item = gs.characters[co].item[n];
 
         if inv_item != 0 {
             let in_item = inv_item as usize;
 
-            if npc_equip_item(cn, in_item) {
-                let (item_name, co_name) = Repository::with_items(|items| {
-                    Repository::with_characters(|characters| {
-                        (
-                            items[in_item].get_name().to_string(),
-                            characters[co].get_name().to_string(),
-                        )
-                    })
-                });
+            if npc_equip_item(gs, cn, in_item) {
+                let item_name = gs.items[in_item].get_name().to_string();
+                let co_name = gs.characters[co].get_name().to_string();
                 log::info!("got {} from {}'s grave", item_name, co_name);
-                Repository::with_characters_mut(|characters| {
-                    characters[co].item[n] = 0;
-                });
+                gs.characters[co].item[n] = 0;
                 return true;
             }
 
-            if npc_want_item(cn, in_item) {
-                let (item_name, co_name) = Repository::with_items(|items| {
-                    Repository::with_characters(|characters| {
-                        (
-                            items[in_item].get_name().to_string(),
-                            characters[co].get_name().to_string(),
-                        )
-                    })
-                });
+            if npc_want_item(gs, cn, in_item) {
+                let item_name = gs.items[in_item].get_name().to_string();
+                let co_name = gs.characters[co].get_name().to_string();
                 log::info!("got {} from {}'s grave", item_name, co_name);
-                Repository::with_characters_mut(|characters| {
-                    characters[co].item[n] = 0;
-                });
+                gs.characters[co].item[n] = 0;
                 return true;
             }
         }
     }
 
     // Try to loot gold
-    let co_gold = Repository::with_characters(|characters| characters[co].gold);
+    let co_gold = gs.characters[co].gold;
     if co_gold != 0 {
-        let co_name =
-            Repository::with_characters(|characters| characters[co].get_name().to_string());
+        let co_name = gs.characters[co].get_name().to_string();
         log::info!(
             "got {:.2}G from {}'s grave",
             co_gold as f32 / 100.0,
             co_name
         );
-        Repository::with_characters_mut(|characters| {
-            characters[cn].gold += co_gold;
-            characters[co].gold = 0;
-        });
+        gs.characters[cn].gold += co_gold;
+        gs.characters[co].gold = 0;
         return true;
     }
 
     false
 }
 
-pub fn npc_already_searched_grave(cn: usize, in_idx: usize) -> bool {
-    Repository::with_characters(|characters| {
-        let text_9 = &characters[cn].text[9];
+pub fn npc_already_searched_grave(gs: &GameState, cn: usize, in_idx: usize) -> bool {
+    let text_9 = &gs.characters[cn].text[9];
 
-        // Search through text[9] in 4-byte (sizeof(int)) chunks
-        let mut n = 0;
-        while n < 160 {
-            // Read 4 bytes as an i32 (little-endian)
-            if n + 4 <= text_9.len() {
-                let value =
-                    i32::from_le_bytes([text_9[n], text_9[n + 1], text_9[n + 2], text_9[n + 3]]);
+    let mut n = 0;
+    while n < 160 {
+        if n + 4 <= text_9.len() {
+            let value =
+                i32::from_le_bytes([text_9[n], text_9[n + 1], text_9[n + 2], text_9[n + 3]]);
 
-                if value == in_idx as i32 {
-                    return true;
-                }
+            if value == in_idx as i32 {
+                return true;
             }
-            n += std::mem::size_of::<i32>();
         }
+        n += std::mem::size_of::<i32>();
+    }
 
-        false
-    })
+    false
 }
 
-pub fn npc_add_searched_grave(cn: usize, in_idx: usize) {
-    Repository::with_characters_mut(|characters| {
-        let int_size = std::mem::size_of::<i32>();
-        let text_9_len = characters[cn].text[9].len();
+pub fn npc_add_searched_grave(gs: &mut GameState, cn: usize, in_idx: usize) {
+    let int_size = std::mem::size_of::<i32>();
+    let text_9_len = gs.characters[cn].text[9].len();
 
-        // Shift existing data right by sizeof(int) bytes
-        // memmove(dest + sizeof(int), src, len - sizeof(int))
-        if text_9_len > int_size {
-            characters[cn].text[9].copy_within(0..(text_9_len - int_size), int_size);
-        }
+    if text_9_len > int_size {
+        gs.characters[cn].text[9].copy_within(0..(text_9_len - int_size), int_size);
+    }
 
-        // Write the new grave index at the start
-        let bytes = (in_idx as i32).to_le_bytes();
-        if text_9_len >= int_size {
-            characters[cn].text[9][0..int_size].copy_from_slice(&bytes);
-        }
-    });
+    let bytes = (in_idx as i32).to_le_bytes();
+    if text_9_len >= int_size {
+        gs.characters[cn].text[9][0..int_size].copy_from_slice(&bytes);
+    }
 }
 
-pub fn npc_grave_logic(cn: usize) -> bool {
-    let (ch_x, ch_y) =
-        Repository::with_characters(|characters| (characters[cn].x, characters[cn].y));
+pub fn npc_grave_logic(gs: &mut GameState, cn: usize) -> bool {
+    let (ch_x, ch_y) = (gs.characters[cn].x, gs.characters[cn].y);
 
-    // Scan area around NPC (within 8 tiles)
     let min_y = std::cmp::max(ch_y as i32 - 8, 1);
     let max_y = std::cmp::min(ch_y as i32 + 8, SERVER_MAPY - 1);
     let min_x = std::cmp::max(ch_x as i32 - 8, 1);
@@ -2532,40 +2450,27 @@ pub fn npc_grave_logic(cn: usize) -> bool {
     for y in min_y..max_y {
         for x in min_x..max_x {
             let map_idx = (x + y * SERVER_MAPX) as usize;
-            let in_idx = Repository::with_map(|map| map[map_idx].it);
+            let in_idx = gs.map[map_idx].it;
 
             if in_idx != 0 {
                 let in_idx = in_idx as usize;
 
-                // Check if it's a grave (temp == 170)
-                let is_grave = Repository::with_items(|items| items[in_idx].temp == 170);
+                let is_grave = gs.items[in_idx].temp == 170;
 
                 if is_grave {
-                    let (it_x, it_y) =
-                        Repository::with_items(|items| (items[in_idx].x, items[in_idx].y));
+                    let (it_x, it_y) = (gs.items[in_idx].x, gs.items[in_idx].y);
 
-                    // Check if we can reach the grave and haven't searched it yet
-                    let can_reach = Repository::global_mut().can_go(
-                        ch_x as i32,
-                        ch_y as i32,
-                        it_x as i32,
-                        it_y as i32,
-                    ) != 0;
+                    let can_reach =
+                        gs.can_go(ch_x as i32, ch_y as i32, it_x as i32, it_y as i32) != 0;
 
-                    let can_see = Repository::global_mut().do_char_can_see_item(cn, in_idx) != 0;
+                    let can_see = gs.do_char_can_see_item(cn, in_idx) != 0;
 
-                    if can_reach && can_see && !npc_already_searched_grave(cn, in_idx) {
-                        if !npc_loot_grave(cn, in_idx) {
-                            // Grave is empty, mark as searched
-                            npc_add_searched_grave(cn, in_idx);
-                            Repository::with_characters_mut(|characters| {
-                                characters[cn].flags &= !CharacterFlags::IsLooting.bits();
-                            });
+                    if can_reach && can_see && !npc_already_searched_grave(gs, cn, in_idx) {
+                        if !npc_loot_grave(gs, cn, in_idx) {
+                            npc_add_searched_grave(gs, cn, in_idx);
+                            gs.characters[cn].flags &= !CharacterFlags::IsLooting.bits();
                         } else {
-                            // Still looting
-                            Repository::with_characters_mut(|characters| {
-                                characters[cn].flags |= CharacterFlags::IsLooting.bits();
-                            });
+                            gs.characters[cn].flags |= CharacterFlags::IsLooting.bits();
                         }
                         return true;
                     }
@@ -2581,69 +2486,54 @@ pub fn npc_grave_logic(cn: usize) -> bool {
 // Shop Functions
 // ****************************************************
 
-pub fn update_shop(cn: usize) {
+pub fn update_shop(gs: &mut GameState, cn: usize) {
     let mut sale = [0i32; 10];
 
-    // Copy shop inventory template from data[0..9]
-    Repository::with_characters(|characters| {
-        let data_copy = characters[cn].data;
-        sale.copy_from_slice(&data_copy[0..10]);
-    });
+    let data_copy = gs.characters[cn].data;
+    sale.copy_from_slice(&data_copy[0..10]);
 
-    // Check if we have free space (at least 10 slots)
-    Repository::global_mut().do_sort(cn, "v");
+    gs.do_sort(cn, "v");
 
-    let mut m = 0; // Free slots
-    let mut x = 0; // Last non-sale item position
+    let mut m = 0;
+    let mut x = 0;
 
     for n in 0..40 {
-        let in_idx = Repository::with_characters(|characters| characters[cn].item[n]);
+        let in_idx = gs.characters[cn].item[n];
 
         if in_idx == 0 {
             m += 1;
         } else {
-            let temp = Repository::with_items(|items| items[in_idx as usize].temp);
+            let temp = gs.items[in_idx as usize].temp;
 
-            // Check if this item is part of our shop inventory
             let mut found = false;
             for z in 0..10 {
                 if temp == sale[z] as u16 {
-                    sale[z] = 0; // Mark as found
+                    sale[z] = 0;
                     found = true;
                     break;
                 }
             }
 
             if !found {
-                x = n; // This is not a sale item
+                x = n;
             }
         }
     }
 
-    // If we have less than 2 free slots, remove a non-sale item
     if m < 2 {
-        let in_idx = Repository::with_characters(|characters| characters[cn].item[x]);
+        let in_idx = gs.characters[cn].item[x];
 
         if in_idx != 0 {
-            let flags = Repository::with_items(|items| items[in_idx as usize].flags);
+            let flags = gs.items[in_idx as usize].flags;
 
-            // TODO: Add RANDOM function call
-            // For now, use a simple check
             if (flags & ItemFlags::IF_DONATE.bits()) != 0 {
-                // Call god_donate_item (doesn't exist yet)
                 God::donate_item(in_idx as usize, 0);
-                Repository::with_items_mut(|items| {
-                    items[in_idx as usize].used = USE_EMPTY;
-                });
+                gs.items[in_idx as usize].used = USE_EMPTY;
             } else {
-                Repository::with_items_mut(|items| {
-                    items[in_idx as usize].used = USE_EMPTY;
-                });
+                gs.items[in_idx as usize].used = USE_EMPTY;
             }
 
-            Repository::with_characters_mut(|characters| {
-                characters[cn].item[x] = 0;
-            });
+            gs.characters[cn].item[x] = 0;
         }
     }
 
@@ -2657,11 +2547,8 @@ pub fn update_shop(cn: usize) {
         let in_idx = God::create_item(temp as usize);
 
         if in_idx.is_some() {
-            // Call god_give_char
             if !God::give_character_item(cn, in_idx.unwrap()) {
-                Repository::with_items_mut(|items| {
-                    items[in_idx.unwrap()].used = USE_EMPTY;
-                });
+                gs.items[in_idx.unwrap()].used = USE_EMPTY;
             }
         }
     }
@@ -2669,52 +2556,38 @@ pub fn update_shop(cn: usize) {
     // Small-repair all items (reset damage and age)
     // Junk all items needing serious repair
     for n in 0..40 {
-        let in_idx = Repository::with_characters(|characters| characters[cn].item[n]);
+        let in_idx = gs.characters[cn].item[n];
 
         if in_idx != 0 {
-            let (damage_state, flags) = Repository::with_items(|items| {
-                (
-                    items[in_idx as usize].damage_state,
-                    items[in_idx as usize].flags,
-                )
-            });
+            let damage_state = gs.items[in_idx as usize].damage_state;
+            let flags = gs.items[in_idx as usize].flags;
 
             if damage_state != 0 || (flags & ItemFlags::IF_SHOPDESTROY.bits()) != 0 {
-                // Item needs serious repair or should be destroyed
-                Repository::with_items_mut(|items| {
-                    items[in_idx as usize].used = USE_EMPTY;
-                });
-                Repository::with_characters_mut(|characters| {
-                    characters[cn].item[n] = 0;
-                });
+                gs.items[in_idx as usize].used = USE_EMPTY;
+                gs.characters[cn].item[n] = 0;
             } else {
-                // Small repair - reset current damage and age
-                Repository::with_items_mut(|items| {
-                    items[in_idx as usize].current_damage = 0;
-                    items[in_idx as usize].current_age[0] = 0;
-                    items[in_idx as usize].current_age[1] = 0;
-                });
+                gs.items[in_idx as usize].current_damage = 0;
+                gs.items[in_idx as usize].current_age[0] = 0;
+                gs.items[in_idx as usize].current_age[1] = 0;
             }
         }
     }
 
-    Repository::global_mut().do_sort(cn, "v");
+    gs.do_sort(cn, "v");
 }
 
 // ****************************************************
 // Special Functions
 // ****************************************************
 
-pub fn shiva_activate_candle(cn: usize, in_idx: usize) -> i32 {
-    let (mdtime, mdday) = Repository::with_globals(|globals| (globals.mdtime, globals.mdday));
+pub fn shiva_activate_candle(gs: &mut GameState, cn: usize, in_idx: usize) -> i32 {
+    let (mdtime, mdday) = (gs.globals.mdtime, gs.globals.mdday);
 
-    // Only allow during night time (mdtime <= 2000)
     if mdtime > 2000 {
         return 0;
     }
 
-    // Check if character can create another candle (cooldown check)
-    let data_0 = Repository::with_characters(|characters| characters[cn].data[0]);
+    let data_0 = gs.characters[cn].data[0];
     if data_0 >= mdday {
         return 0;
     }
@@ -2726,48 +2599,31 @@ pub fn shiva_activate_candle(cn: usize, in_idx: usize) -> i32 {
         data_0
     );
 
-    // Set cooldown: can create another candle in 9 days
-    Repository::with_characters_mut(|characters| {
-        characters[cn].data[0] = mdday + 9;
-    });
+    gs.characters[cn].data[0] = mdday + 9;
 
-    // Deactivate the candle item
-    Repository::with_items_mut(|items| {
-        items[in_idx].active = 0;
-    });
+    gs.items[in_idx].active = 0;
 
-    // Update lighting if the candle provides light
-    let (light_0, light_1, it_x, it_y) = Repository::with_items(|items| {
-        (
-            items[in_idx].light[0],
-            items[in_idx].light[1],
-            items[in_idx].x,
-            items[in_idx].y,
-        )
-    });
+    let light_0 = gs.items[in_idx].light[0];
+    let light_1 = gs.items[in_idx].light[1];
+    let it_x = gs.items[in_idx].x;
+    let it_y = gs.items[in_idx].y;
 
     if light_0 != light_1 && it_x > 0 {
-        Repository::global_mut().do_add_light(
-            it_x as i32,
-            it_y as i32,
-            light_0 as i32 - light_1 as i32,
-        );
+        gs.do_add_light(it_x as i32, it_y as i32, light_0 as i32 - light_1 as i32);
     }
 
-    // Add visual effects
     EffectManager::fx_add_effect(6, 0, it_x as i32, it_y as i32, 0);
+    EffectManager::fx_add_effect(
+        7,
+        0,
+        gs.characters[cn].x as i32,
+        gs.characters[cn].y as i32,
+        0,
+    );
 
-    Repository::with_characters(|ch| {
-        EffectManager::fx_add_effect(7, 0, ch[cn].x as i32, ch[cn].y as i32, 0);
-    });
+    gs.do_sayx(cn, "Shirak ishagur gorweran dulak!");
 
-    // Character says the magic words
-    Repository::global_mut().do_sayx(cn, "Shirak ishagur gorweran dulak!");
-
-    // Consume mana
-    Repository::with_characters_mut(|characters| {
-        characters[cn].a_mana -= 800 * 1000;
-    });
+    gs.characters[cn].a_mana -= 800 * 1000;
 
     1
 }
@@ -2776,7 +2632,7 @@ pub fn shiva_activate_candle(cn: usize, in_idx: usize) -> i32 {
 // Helper Functions for npc_see
 // ****************************************************
 
-pub fn is_unique(in_idx: usize) -> bool {
+pub fn is_unique(gs: &GameState, in_idx: usize) -> bool {
     const UNIQUE_TEMPS: [u16; 60] = [
         280, 281, 282, 283, 284, 285, 286, 287, 288, 289, 290, 291, 292, 525, 526, 527, 528, 529,
         530, 531, 532, 533, 534, 535, 536, 537, 538, 539, 540, 541, 542, 543, 544, 545, 546, 547,
@@ -2784,41 +2640,35 @@ pub fn is_unique(in_idx: usize) -> bool {
         581, 582, 583, 584, 585, 586,
     ];
 
-    Repository::with_items(|items| {
-        let temp = items[in_idx].temp;
-        UNIQUE_TEMPS.contains(&temp)
-    })
+    let temp = gs.items[in_idx].temp;
+    UNIQUE_TEMPS.contains(&temp)
 }
 
-pub fn count_uniques(cn: usize) -> i32 {
+pub fn count_uniques(gs: &GameState, cn: usize) -> i32 {
     let mut cnt = 0;
 
-    // Check citem
-    let citem = Repository::with_characters(|characters| characters[cn].citem);
-    if citem != 0 && (citem & 0x80000000) == 0 && is_unique(citem as usize) {
+    let citem = gs.characters[cn].citem;
+    if citem != 0 && (citem & 0x80000000) == 0 && is_unique(gs, citem as usize) {
         cnt += 1;
     }
 
-    // Check inventory items
     for n in 0..40 {
-        let in_idx = Repository::with_characters(|characters| characters[cn].item[n]);
-        if in_idx != 0 && is_unique(in_idx as usize) {
+        let in_idx = gs.characters[cn].item[n];
+        if in_idx != 0 && is_unique(gs, in_idx as usize) {
             cnt += 1;
         }
     }
 
-    // Check worn items
     for n in 0..20 {
-        let in_idx = Repository::with_characters(|characters| characters[cn].worn[n]);
-        if in_idx != 0 && is_unique(in_idx as usize) {
+        let in_idx = gs.characters[cn].worn[n];
+        if in_idx != 0 && is_unique(gs, in_idx as usize) {
             cnt += 1;
         }
     }
 
-    // Check depot items
     for n in 0..62 {
-        let in_idx = Repository::with_characters(|characters| characters[cn].depot[n]);
-        if in_idx != 0 && is_unique(in_idx as usize) {
+        let in_idx = gs.characters[cn].depot[n];
+        if in_idx != 0 && is_unique(gs, in_idx as usize) {
             cnt += 1;
         }
     }
@@ -2826,34 +2676,24 @@ pub fn count_uniques(cn: usize) -> i32 {
     cnt
 }
 
-pub fn npc_cityguard_see(cn: usize, co: usize, flag: i32) -> i32 {
-    let co_group = Repository::with_characters(|characters| characters[co].data[42]);
+pub fn npc_cityguard_see(gs: &mut GameState, cn: usize, co: usize, flag: i32) -> i32 {
+    let co_group = gs.characters[co].data[42];
 
-    // Check if enemy is from group 27 (monsters)
     if co_group == 27 {
-        let ticker = Repository::with_globals(|globals| globals.ticker);
-        let (data_55, data_52, ch_x, ch_y) = Repository::with_characters(|characters| {
-            (
-                characters[cn].data[55],
-                characters[cn].data[52],
-                characters[cn].x,
-                characters[cn].y,
-            )
-        });
+        let ticker = gs.globals.ticker;
+        let data_55 = gs.characters[cn].data[55];
+        let data_52 = gs.characters[cn].data[52];
+        let ch_x = gs.characters[cn].x;
+        let ch_y = gs.characters[cn].y;
 
-        // Shout every 180 seconds
         if data_55 + (TICKS * 180) < ticker {
-            Repository::with_characters_mut(|characters| {
-                characters[cn].data[54] = 0;
-                characters[cn].data[55] = ticker;
-            });
+            gs.characters[cn].data[54] = 0;
+            gs.characters[cn].data[55] = ticker;
 
-            let co_name =
-                Repository::with_characters(|characters| characters[co].get_name().to_string());
+            let co_name = gs.characters[co].get_name().to_string();
 
-            // Say text and shout
-            npc_saytext_n(cn, 4, Some(&co_name));
-            Repository::global_mut().do_npc_shout(
+            npc_saytext_n(gs, cn, 4, Some(&co_name));
+            gs.do_npc_shout(
                 cn,
                 NT_SHOUT as i32,
                 cn as i32,
@@ -2862,20 +2702,15 @@ pub fn npc_cityguard_see(cn: usize, co: usize, flag: i32) -> i32 {
                 ch_y as i32,
             );
 
-            // Shout for players too
             for n in 1..MAXCHARS {
-                let (is_player, used, no_shout) = Repository::with_characters(|characters| {
-                    if n >= characters.len() {
-                        return (false, USE_EMPTY, true);
-                    }
-                    (
-                        (characters[n].flags
-                            & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
-                            != 0,
-                        characters[n].used,
-                        (characters[n].flags & CharacterFlags::NoShout.bits()) != 0,
-                    )
-                });
+                if n >= gs.characters.len() {
+                    break;
+                }
+                let is_player = (gs.characters[n].flags
+                    & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
+                    != 0;
+                let used = gs.characters[n].used;
+                let no_shout = (gs.characters[n].flags & CharacterFlags::NoShout.bits()) != 0;
 
                 if is_player && used == USE_ACTIVE && !no_shout {
                     let message = if flag != 0 {
@@ -2896,48 +2731,35 @@ pub fn npc_cityguard_see(cn: usize, co: usize, flag: i32) -> i32 {
 // NPC See Function
 // ****************************************************
 
-pub fn npc_see(cn: usize, co: usize) -> i32 {
-    let ticker = Repository::with_globals(|globals| globals.ticker);
+pub fn npc_see(gs: &mut GameState, cn: usize, co: usize) -> i32 {
+    let ticker = gs.globals.ticker;
 
-    // Update no-sleep bonus if target is player
-    let co_flags = Repository::with_characters(|characters| characters[co].flags);
+    let co_flags = gs.characters[co].flags;
     if (co_flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits())) != 0 {
-        Repository::with_characters_mut(|characters| {
-            characters[cn].data[92] = TICKS * 60;
-        });
+        gs.characters[cn].data[92] = TICKS * 60;
     } else {
-        // For non-player targets we only refresh the NPC's awake timer if
-        // its action group is currently active (matching the original logic).
-        if Repository::with_characters(|characters| characters[cn].group_active()) {
-            Repository::with_characters_mut(|characters| {
-                characters[cn].data[92] = TICKS * 60;
-            });
+        if gs.characters[cn].group_active() {
+            gs.characters[cn].data[92] = TICKS * 60;
         }
     }
 
-    // Check if we can see the character
-    let can_see = Repository::global_mut().do_char_can_see(cn, co);
+    let can_see = gs.do_char_can_see(cn, co);
     if can_see == 0 {
-        return 1; // Processed: we cannot see them, so ignore
+        return 1;
     }
 
-    // Check for Ghost Companion seeing their master
-    let (temp, data_63) =
-        Repository::with_characters(|characters| (characters[cn].temp, characters[cn].data[63]));
+    let temp = gs.characters[cn].temp;
+    let data_63 = gs.characters[cn].data[63];
 
     if temp == CT_COMPANION as u16 && co == data_63 as usize {
-        // Happy to see master, reset timeout
-        Repository::with_characters_mut(|characters| {
-            characters[cn].data[98] = ticker + COMPANION_TIMEOUT;
-        });
+        gs.characters[cn].data[98] = ticker + COMPANION_TIMEOUT;
     }
 
-    // Special sub driver
-    let data_26 = Repository::with_characters(|characters| characters[cn].data[26]);
+    let data_26 = gs.characters[cn].data[26];
     if data_26 != 0 {
         let ret = match data_26 {
-            1 => npc_cityguard_see(cn, co, 0),
-            3 => npc_cityguard_see(cn, co, 1),
+            1 => npc_cityguard_see(gs, cn, co, 0),
+            3 => npc_cityguard_see(gs, cn, co, 1),
             _ => 0,
         };
         if ret != 0 {
@@ -2945,62 +2767,50 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
         }
     }
 
-    // Check indoor status
-    let (cn_x, cn_y, co_x, co_y) = Repository::with_characters(|characters| {
-        (
-            characters[cn].x,
-            characters[cn].y,
-            characters[co].x,
-            characters[co].y,
-        )
-    });
+    let cn_x = gs.characters[cn].x;
+    let cn_y = gs.characters[cn].y;
+    let co_x = gs.characters[co].x;
+    let co_y = gs.characters[co].y;
 
-    let indoor1 = Repository::with_map(|map| {
+    let indoor1 = {
         let idx = cn_x as usize + cn_y as usize * SERVER_MAPX as usize;
-        (map[idx].flags & MF_INDOORS as u64) != 0
-    });
+        (gs.map[idx].flags & MF_INDOORS as u64) != 0
+    };
 
-    let indoor2 = Repository::with_map(|map| {
+    let indoor2 = {
         let idx = co_x as usize + co_y as usize * SERVER_MAPX as usize;
-        (map[idx].flags & MF_INDOORS as u64) != 0
-    });
+        (gs.map[idx].flags & MF_INDOORS as u64) != 0
+    };
 
-    // Check if this is an enemy we added to our list earlier
-    let attack_cn = Repository::with_characters(|characters| characters[cn].attack_cn);
+    let attack_cn = gs.characters[cn].attack_cn;
     if attack_cn == 0 {
-        // Only attack if we aren't fighting already
-        let co_id =
-            Repository::with_characters(|characters| helpers::char_id(&characters[co])) as u32;
+        let co_id = helpers::char_id(&gs.characters[co]) as u32;
         let idx = co as i32 | ((co_id as i32) << 16);
 
         let mut found = false;
         for n in 80..92 {
-            let data_n = Repository::with_characters(|characters| characters[cn].data[n]);
-            if data_n == idx {
+            if gs.characters[cn].data[n] == idx {
                 found = true;
                 break;
             }
         }
 
         if found {
-            Repository::with_characters_mut(|characters| {
-                characters[cn].attack_cn = co as u16;
-                characters[cn].goto_x = 0; // Cancel goto (patrol)
-                characters[cn].data[58] = 2;
-            });
+            gs.characters[cn].attack_cn = co as u16;
+            gs.characters[cn].goto_x = 0;
+            gs.characters[cn].data[58] = 2;
             return 1;
         }
     }
 
-    // Check if we need to attack by group
-    let data_43 = Repository::with_characters(|characters| characters[cn].data[43]);
+    let data_43 = gs.characters[cn].data[43];
     if data_43 != 0 {
-        let co_group = Repository::with_characters(|characters| characters[co].data[42]);
-        let co_temp = Repository::with_characters(|characters| characters[co].temp);
+        let co_group = gs.characters[co].data[42];
+        let co_temp = gs.characters[co].temp;
 
         let mut found = false;
         for n in 43..47 {
-            let data_n = Repository::with_characters(|characters| characters[cn].data[n]);
+            let data_n = gs.characters[cn].data[n];
             if data_n != 0 && co_group == data_n {
                 found = true;
                 break;
@@ -3017,14 +2827,9 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
         if !found {
             let mut should_attack = true;
 
-            // Check attack distance
-            let (data_95, data_93, data_29) = Repository::with_characters(|characters| {
-                (
-                    characters[cn].data[95],
-                    characters[cn].data[93],
-                    characters[cn].data[29],
-                )
-            });
+            let data_95 = gs.characters[cn].data[95];
+            let data_93 = gs.characters[cn].data[93];
+            let data_29 = gs.characters[cn].data[29];
 
             if data_95 == 2 && data_93 != 0 {
                 let rest_x = (data_29 % SERVER_MAPX) as i16;
@@ -3037,10 +2842,9 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
                 }
             }
 
-            if should_attack && npc_add_enemy(cn, co, false) {
-                let co_name =
-                    Repository::with_characters(|characters| characters[co].get_name().to_string());
-                npc_saytext_n(cn, 1, Some(&co_name));
+            if should_attack && npc_add_enemy(gs, cn, co, false) {
+                let co_name = gs.characters[co].get_name().to_string();
+                npc_saytext_n(gs, cn, 1, Some(&co_name));
                 log::info!(
                     "Added {} to kill list because he's not in my group",
                     co_name
@@ -3050,16 +2854,11 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
         }
     }
 
-    // Attack with warning
-    let (data_95, data_93, data_27, data_29, data_94) = Repository::with_characters(|characters| {
-        (
-            characters[cn].data[95],
-            characters[cn].data[93],
-            characters[cn].data[27],
-            characters[cn].data[29],
-            characters[cn].data[94],
-        )
-    });
+    let data_95 = gs.characters[cn].data[95];
+    let data_93 = gs.characters[cn].data[93];
+    let data_27 = gs.characters[cn].data[27];
+    let data_29 = gs.characters[cn].data[29];
+    let data_94 = gs.characters[cn].data[94];
 
     if data_95 == 1
         && (co_flags & CharacterFlags::Player.bits()) != 0
@@ -3072,10 +2871,9 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
         let dist = (x1 - x2).abs() + (y1 - y2).abs();
 
         if dist <= data_93 {
-            if npc_add_enemy(cn, co, false) {
-                let co_name =
-                    Repository::with_characters(|characters| characters[co].get_name().to_string());
-                npc_saytext_n(cn, 1, Some(&co_name));
+            if npc_add_enemy(gs, cn, co, false) {
+                let co_name = gs.characters[co].get_name().to_string();
+                npc_saytext_n(gs, cn, 1, Some(&co_name));
                 log::info!(
                     "Added {} to kill list because he didn't say the password",
                     co_name
@@ -3083,22 +2881,15 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
                 return 1;
             }
         } else if dist <= data_93 * 2 && data_94 + (TICKS * 15) < ticker {
-            npc_saytext_n(cn, 8, None);
-            Repository::with_characters_mut(|characters| {
-                characters[cn].data[94] = ticker;
-            });
+            npc_saytext_n(gs, cn, 8, None);
+            gs.characters[cn].data[94] = ticker;
             return 1;
         }
     }
 
-    // Check if we need to talk to them
-    let (attack_cn, data_37, data_56) = Repository::with_characters(|characters| {
-        (
-            characters[cn].attack_cn,
-            characters[cn].data[37],
-            characters[cn].data[56],
-        )
-    });
+    let attack_cn = gs.characters[cn].attack_cn;
+    let data_37 = gs.characters[cn].data[37];
+    let data_56 = gs.characters[cn].data[56];
 
     if attack_cn == 0
         && (co_flags & CharacterFlags::Player.bits()) != 0
@@ -3106,27 +2897,22 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
         && indoor1 == indoor2
         && data_56 < ticker
     {
-        // Check if we've already talked to this character
         let mut already_talked = false;
         for n in 37..41 {
-            let data_n = Repository::with_characters(|characters| characters[cn].data[n]);
-            if data_n == co as i32 {
+            if gs.characters[cn].data[n] == co as i32 {
                 already_talked = true;
                 break;
             }
         }
 
         if !already_talked {
-            let text_2 = Repository::with_characters(|characters| characters[cn].text[2]);
+            let text_2 = gs.characters[cn].text[2].clone();
             let text_2_str = c_string_to_str(&text_2).to_string();
-            let co_name =
-                Repository::with_characters(|characters| characters[co].get_name().to_string());
+            let co_name = gs.characters[co].get_name().to_string();
 
-            let (co_kindred, co_skill_19) = Repository::with_characters(|characters| {
-                (characters[co].kindred as u32, characters[co].skill[19][0])
-            });
+            let co_kindred = gs.characters[co].kindred as u32;
+            let co_skill_19 = gs.characters[co].skill[19][0];
 
-            // Special greeting logic
             if text_2_str == "#stunspec\0" || text_2_str.starts_with("#stunspec") {
                 let message = if (co_kindred & (KIN_TEMPLAR | KIN_ARCHTEMPLAR)) != 0
                     || ((co_kindred & KIN_SEYAN_DU) != 0 && co_skill_19 != 0)
@@ -3138,7 +2924,7 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
                         co_name
                     )
                 };
-                Repository::global_mut().do_sayx(cn, &message);
+                gs.do_sayx(cn, &message);
             } else if text_2_str == "#cursespec\0" || text_2_str.starts_with("#cursespec") {
                 let message = if (co_kindred & (KIN_TEMPLAR | KIN_ARCHTEMPLAR)) != 0
                     || ((co_kindred & KIN_SEYAN_DU) != 0 && co_skill_19 != 0)
@@ -3153,34 +2939,28 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
                         co_name
                     )
                 };
-                Repository::global_mut().do_sayx(cn, &message);
+                gs.do_sayx(cn, &message);
             } else {
-                // Check if this is a priest (temp 180) greeting a PURPLE player
-                let cn_temp = Repository::with_characters(|characters| characters[cn].temp);
+                let cn_temp = gs.characters[cn].temp;
                 if cn_temp == 180 && (co_kindred & KIN_PURPLE) != 0 {
-                    Repository::global_mut().do_sayx(cn, &format!("Greetings, {}!", co_name));
+                    gs.do_sayx(cn, &format!("Greetings, {}!", co_name));
                 } else {
-                    // Normal greeting
-                    npc_saytext_n(cn, 2, Some(&co_name));
+                    npc_saytext_n(gs, cn, 2, Some(&co_name));
                 }
             }
 
-            // Update talked-to list (FIFO queue)
-            Repository::with_characters_mut(|characters| {
-                characters[cn].data[40] = characters[cn].data[39];
-                characters[cn].data[39] = characters[cn].data[38];
-                characters[cn].data[38] = characters[cn].data[37];
-                characters[cn].data[37] = co as i32;
-                characters[cn].data[56] = ticker + (TICKS * 30);
-            });
+            gs.characters[cn].data[40] = gs.characters[cn].data[39];
+            gs.characters[cn].data[39] = gs.characters[cn].data[38];
+            gs.characters[cn].data[38] = gs.characters[cn].data[37];
+            gs.characters[cn].data[37] = co as i32;
+            gs.characters[cn].data[56] = ticker + (TICKS * 30);
 
-            // Special proc for unique warning
-            let data_26 = Repository::with_characters(|characters| characters[cn].data[26]);
+            let data_26 = gs.characters[cn].data[26];
             if data_26 == 5 {
-                let cnt = count_uniques(co);
+                let cnt = count_uniques(gs, co);
 
                 if cnt == 1 {
-                    Repository::global_mut().do_sayx(
+                    gs.do_sayx(
                         cn,
                         &format!(
                             "I see you have a sword dedicated to the gods. Make good use of it, {}.\n",
@@ -3188,7 +2968,7 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
                         ),
                     );
                 } else if cnt > 1 {
-                    Repository::global_mut().do_sayx(
+                    gs.do_sayx(
                         cn,
                         &format!(
                             "I see you have several swords dedicated to the gods. They will get angry if you keep more than one, {}.\n",

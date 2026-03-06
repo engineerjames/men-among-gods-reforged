@@ -501,7 +501,7 @@ impl GameState {
 
         // Update merchant shop display if applicable
         if is_merchant {
-            driver::update_shop(co);
+            driver::update_shop(self, co);
         }
 
         // Refresh the character/corpse display
