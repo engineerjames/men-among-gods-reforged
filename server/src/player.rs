@@ -39,34 +39,31 @@ pub fn plr_logout(
     let valid_character = character_id > 0 && character_id < core::constants::MAXCHARS;
 
     if valid_character && reason != enums::LogoutReason::Shutdown {
+        let character_name = gs.characters[character_id].get_name().to_string();
         log::debug!(
             "Logging out character '{}' for reason: {:?}",
-            Repository::global_mut().characters[character_id].get_name(),
+            character_name,
             reason
         );
     }
 
     let character_matches_player = valid_character
-        && (player_id == 0
-            || Repository::global_mut().characters[character_id].player == player_id as i32);
+        && (player_id == 0 || gs.characters[character_id].player == player_id as i32);
 
     // Handle usurp flag and recursive logout
     if character_matches_player {
-        let should_logout_co = {
-            let gs = Repository::global_mut();
-            let character = &mut gs.characters[character_id];
-            if character.flags & CharacterFlags::Usurp.bits() != 0 {
-                character.flags &= !(CharacterFlags::ComputerControlledPlayer
-                    | CharacterFlags::Usurp
-                    | CharacterFlags::Staff
-                    | CharacterFlags::Immortal
-                    | CharacterFlags::God
-                    | CharacterFlags::Creator)
-                    .bits();
-                Some(character.data[97] as usize)
-            } else {
-                None
-            }
+        let character = &mut gs.characters[character_id];
+        let should_logout_co = if character.flags & CharacterFlags::Usurp.bits() != 0 {
+            character.flags &= !(CharacterFlags::ComputerControlledPlayer
+                | CharacterFlags::Usurp
+                | CharacterFlags::Staff
+                | CharacterFlags::Immortal
+                | CharacterFlags::God
+                | CharacterFlags::Creator)
+                .bits();
+            Some(character.data[97] as usize)
+        } else {
+            None
         };
 
         if let Some(co) = should_logout_co {
@@ -76,69 +73,51 @@ pub fn plr_logout(
 
     // Main logout logic for active players
     if character_matches_player {
-        let character_flags = Repository::global_mut().characters[character_id].flags;
+        let character_flags = gs.characters[character_id].flags;
         let (is_player, is_not_ccp) = (
             character_flags & CharacterFlags::Player.bits() != 0,
             character_flags & CharacterFlags::ComputerControlledPlayer.bits() == 0,
         );
 
         if is_player && is_not_ccp {
-            let name = Repository::global_mut().characters[character_id]
-                .get_name()
-                .to_string();
+            let name = gs.characters[character_id].get_name().to_string();
 
             // Handle exit punishment
             if reason == enums::LogoutReason::Exit {
-                {
-                    let gs = Repository::global_mut();
-                    let character = &gs.characters[character_id];
-                    log::warn!(
-                        "Character '{}' punished for leaving the game by means of F12.",
-                        character.get_name(),
-                    );
-                    let _ = character; // drop borrow
-                }
-                let hp5 = Repository::global_mut().characters[character_id].hp[5];
+                log::warn!(
+                    "Character '{}' punished for leaving the game by means of F12.",
+                    gs.characters[character_id].get_name(),
+                );
+                let hp5 = gs.characters[character_id].hp[5];
                 let damage_message = format!(
                     "You have been hit by a demon. You lost {} HP.\n",
                     (hp5 * 8 / 10)
                 );
-                Repository::global_mut().do_character_log(
-                    character_id,
-                    core::types::FontColor::Red,
-                    " \n",
-                );
-                Repository::global_mut().do_character_log(
+                gs.do_character_log(character_id, core::types::FontColor::Red, " \n");
+                gs.do_character_log(
                     character_id,
                     core::types::FontColor::Red,
                     "You are being punished for leaving the game without entering a tavern:\n",
                 );
-                Repository::global_mut().do_character_log(
-                    character_id,
-                    core::types::FontColor::Red,
-                    " \n",
-                );
-                Repository::global_mut().do_character_log(
+                gs.do_character_log(character_id, core::types::FontColor::Red, " \n");
+                gs.do_character_log(
                     character_id,
                     core::types::FontColor::Red,
                     damage_message.as_str(),
                 );
 
-                {
-                    let gs = Repository::global_mut();
-                    gs.characters[character_id].a_hp -= (hp5 * 800) as i32;
-                }
-                let a_hp = Repository::global_mut().characters[character_id].a_hp;
+                gs.characters[character_id].a_hp -= (hp5 * 800) as i32;
+                let a_hp = gs.characters[character_id].a_hp;
 
                 if a_hp < 500 {
-                    Repository::global_mut().do_character_log(
+                    gs.do_character_log(
                         character_id,
                         core::types::FontColor::Red,
                         String::from("The demon killed you.\n \n").as_str(),
                     );
-                    Repository::global_mut().do_character_killed(character_id, 0, false);
+                    gs.do_character_killed(character_id, 0, false);
                 } else {
-                    let gold_tenth = Repository::global_mut().characters[character_id].gold / 10;
+                    let gold_tenth = gs.characters[character_id].gold / 10;
                     if gold_tenth > 0 {
                         let money_stolen_message = format!(
                             " \nA demon grabs your purse and removes {} gold, and {} silver.\n",
@@ -146,30 +125,30 @@ pub fn plr_logout(
                             gold_tenth % 100
                         );
 
-                        Repository::global_mut().do_character_log(
+                        gs.do_character_log(
                             character_id,
                             core::types::FontColor::Red,
                             money_stolen_message.as_str(),
                         );
-                        Repository::global_mut().characters[character_id].gold -= gold_tenth;
+                        gs.characters[character_id].gold -= gold_tenth;
 
                         // In the original protocol, the high bit marks "money in hand".
-                        let citem = Repository::global_mut().characters[character_id].citem;
+                        let citem = gs.characters[character_id].citem;
                         if citem != 0 && (citem & 0x80000000) != 0 {
-                            Repository::global_mut().do_character_log(
+                            gs.do_character_log(
                                 character_id,
                                 core::types::FontColor::Red,
                                 "The demon also takes the money in your hand!\n",
                             );
 
-                            Repository::global_mut().characters[character_id].citem = 0;
+                            gs.characters[character_id].citem = 0;
                         }
                     }
                 }
             }
 
             // Clear map positions
-            let ch = Repository::global_mut().characters[character_id];
+            let ch = gs.characters[character_id];
             let (map_index, to_map_index, light, character_x, character_y) = (
                 (ch.y as usize) * core::constants::SERVER_MAPX as usize + (ch.x as usize),
                 (ch.toy as usize) * core::constants::SERVER_MAPX as usize + (ch.tox as usize),
@@ -178,38 +157,33 @@ pub fn plr_logout(
                 ch.y,
             );
 
-            let ch_was_here = Repository::global_mut().map[map_index].ch == character_id as u32;
+            let ch_was_here = gs.map[map_index].ch == character_id as u32;
             if ch_was_here {
-                Repository::global_mut().map[map_index].ch = 0;
+                gs.map[map_index].ch = 0;
                 if light != 0 {
-                    Repository::global_mut().do_add_light(
-                        character_x as i32,
-                        character_y as i32,
-                        -(light as i32),
-                    );
+                    gs.do_add_light(character_x as i32, character_y as i32, -(light as i32));
                 }
             }
-            if Repository::global_mut().map[to_map_index].to_ch == character_id as u32 {
-                Repository::global_mut().map[to_map_index].to_ch = 0;
+            if gs.map[to_map_index].to_ch == character_id as u32 {
+                gs.map[to_map_index].to_ch = 0;
             }
 
             // Remove references to this character from other enemies lists.
-            Repository::global_mut().remove_enemy(character_id);
+            gs.remove_enemy(character_id);
 
             // Handle lag scroll
             if reason == enums::LogoutReason::IdleTooLong
                 || reason == enums::LogoutReason::Shutdown
                 || reason == enums::LogoutReason::Unknown
             {
-                let ch = Repository::global_mut().characters[character_id];
+                let ch = gs.characters[character_id];
                 let (is_close_to_temple, map_index) = (
                     ch.is_close_to_temple(),
                     (ch.y as usize) * core::constants::SERVER_MAPX as usize + (ch.x as usize),
                 );
 
                 let should_give = if !is_close_to_temple {
-                    Repository::global_mut().map[map_index].flags & core::constants::MF_NOLAG as u64
-                        == 0
+                    gs.map[map_index].flags & core::constants::MF_NOLAG as u64 == 0
                 } else {
                     false
                 };
@@ -217,30 +191,23 @@ pub fn plr_logout(
                 if should_give {
                     log::info!(
                         "Giving lag scroll to character '{}' for idle/logout too long.",
-                        Repository::global_mut().characters[character_id].get_name(),
+                        gs.characters[character_id].get_name(),
                     );
 
                     if let Some(item_id) = God::create_item(core::constants::IT_LAGSCROLL as usize)
                     {
-                        let (char_x, char_y) = (
-                            Repository::global_mut().characters[character_id].x,
-                            Repository::global_mut().characters[character_id].y,
-                        );
+                        let (char_x, char_y) =
+                            (gs.characters[character_id].x, gs.characters[character_id].y);
 
-                        {
-                            let gs = Repository::global_mut();
-                            gs.items[item_id].data[0] = char_x as u32;
-                            gs.items[item_id].data[1] = char_y as u32;
-                        }
-
-                        let ticker = Repository::global_mut().globals.ticker as u32;
-                        Repository::global_mut().items[item_id].data[2] = ticker;
+                        gs.items[item_id].data[0] = char_x as u32;
+                        gs.items[item_id].data[1] = char_y as u32;
+                        gs.items[item_id].data[2] = gs.globals.ticker as u32;
 
                         God::give_character_item(character_id, item_id);
                     } else {
                         log::error!(
                             "Failed to create lag scroll for character '{}'.",
-                            Repository::global_mut().characters[character_id].get_name(),
+                            gs.characters[character_id].get_name(),
                         );
                     }
                 }
@@ -248,7 +215,6 @@ pub fn plr_logout(
 
             // Reset character state
             {
-                let gs = Repository::global_mut();
                 let character = &mut gs.characters[character_id];
                 character.x = 0;
                 character.y = 0;
@@ -290,15 +256,11 @@ pub fn plr_logout(
 
                 character.flags |= CharacterFlags::SaveMe.bits();
             }
-            if Repository::global_mut().characters[character_id].is_building() {
+            if gs.characters[character_id].is_building() {
                 God::build(character_id, 0);
             }
 
-            Repository::global_mut().do_announce(
-                character_id,
-                0,
-                &format!("{} left the game.\n", name),
-            );
+            gs.do_announce(character_id, 0, &format!("{} left the game.\n", name));
         }
     }
 
@@ -326,7 +288,7 @@ pub fn plr_logout(
             }
         }
 
-        player_exit(player_id);
+        player_exit_gs(gs, player_id);
     }
 }
 
@@ -336,20 +298,21 @@ pub fn plr_logout(
 /// player's state, clears `ch.player`, and records the last tick.
 ///
 /// # Arguments
+/// * `gs` - Active game state used to clear character ownership.
 /// * `player_id` - Player slot index
-pub fn player_exit(player_id: usize) {
+pub fn player_exit_gs(gs: &mut GameState, player_id: usize) {
     if player_id == 0 || player_id >= core::constants::MAXPLAYER {
         log::error!("player_exit: Invalid player id {}", player_id);
         return;
     }
 
-    let ticker = Repository::global_mut().globals.ticker as u32;
+    let ticker = gs.globals.ticker as u32;
 
     Server::with_players_mut(|players| {
         players[player_id].state = core::constants::ST_EXIT;
         players[player_id].lasttick = ticker;
 
-        let maybe_char = Repository::global_mut()
+        let maybe_char = gs
             .characters
             .iter_mut()
             .find(|ch| ch.player as usize == player_id);
@@ -366,6 +329,14 @@ pub fn player_exit(player_id: usize) {
     });
 }
 
+/// Finalize player exit operations using the global game state bridge.
+///
+/// # Arguments
+/// * `player_id` - Player slot index
+pub fn player_exit(player_id: usize) {
+    player_exit_gs(GameState::global_mut(), player_id);
+}
+
 /// Port of `plr_map_remove` from `svr_act.cpp`
 ///
 /// Removes a character from the world map tile and clears any transient
@@ -374,27 +345,25 @@ pub fn player_exit(player_id: usize) {
 /// drivers for stepped-on items when appropriate.
 ///
 /// # Arguments
+/// * `gs` - Active game state used to update map occupancy and lighting.
 /// * `cn` - Character index to remove from the map
-pub fn plr_map_remove(cn: usize) {
-    let ch = Repository::global_mut().characters[cn];
+pub fn plr_map_remove_gs(gs: &mut GameState, cn: usize) {
+    let ch = gs.characters[cn];
     let m = (ch.x as usize) + (ch.y as usize) * core::constants::SERVER_MAPX as usize;
     let to_m = (ch.tox as usize) + (ch.toy as usize) * core::constants::SERVER_MAPX as usize;
     let light = ch.light;
     let (x, y) = (ch.x, ch.y);
     let is_body = (ch.flags & CharacterFlags::Body.bits()) != 0;
 
-    {
-        let gs = Repository::global_mut();
-        gs.map[m].ch = 0;
-        gs.map[to_m].to_ch = 0;
-    }
+    gs.map[m].ch = 0;
+    gs.map[to_m].to_ch = 0;
     if light != 0 {
-        Repository::global_mut().do_add_light(x as i32, y as i32, -(light as i32));
+        gs.do_add_light(x as i32, y as i32, -(light as i32));
     }
     if !is_body {
-        let in_id = Repository::global_mut().map[m].it;
+        let in_id = gs.map[m].it;
         if in_id != 0 {
-            let has_step_action = (Repository::global_mut().items[in_id as usize].flags
+            let has_step_action = (gs.items[in_id as usize].flags
                 & core::constants::ItemFlags::IF_STEPACTION.bits())
                 != 0;
             if has_step_action {
@@ -402,6 +371,14 @@ pub fn plr_map_remove(cn: usize) {
             }
         }
     }
+}
+
+/// Remove a character from the map using the global game state bridge.
+///
+/// # Arguments
+/// * `cn` - Character index to remove from the map
+pub fn plr_map_remove(cn: usize) {
+    plr_map_remove_gs(GameState::global_mut(), cn);
 }
 
 /// Port of `plr_map_set` from `svr_act.cpp`
@@ -416,13 +393,14 @@ pub fn plr_map_remove(cn: usize) {
 /// teleport/step-driver returns special values, and updates lighting.
 ///
 /// # Arguments
+/// * `gs` - Active game state used for map transitions and tile effects.
 /// * `cn` - Character index to place on the map
-pub fn plr_map_set(cn: usize) {
+pub fn plr_map_set_gs(gs: &mut GameState, cn: usize) {
     let (x, y, flags, light) = (
-        Repository::global_mut().characters[cn].x,
-        Repository::global_mut().characters[cn].y,
-        Repository::global_mut().characters[cn].flags,
-        Repository::global_mut().characters[cn].light,
+        gs.characters[cn].x,
+        gs.characters[cn].y,
+        gs.characters[cn].flags,
+        gs.characters[cn].light,
     );
 
     let m = (x as usize) + (y as usize) * core::constants::SERVER_MAPX as usize;
@@ -431,9 +409,9 @@ pub fn plr_map_set(cn: usize) {
 
     if !is_body {
         // Check for step action
-        let in_id = Repository::global_mut().map[m].it;
+        let in_id = gs.map[m].it;
         if in_id != 0 {
-            let has_step_action = (Repository::global_mut().items[in_id as usize].flags
+            let has_step_action = (gs.items[in_id as usize].flags
                 & core::constants::ItemFlags::IF_STEPACTION.bits())
                 != 0;
 
@@ -442,80 +420,69 @@ pub fn plr_map_set(cn: usize) {
                 let ret = driver::step_driver(cn, in_id as usize);
 
                 if ret == 1 {
-                    Repository::global_mut().map[m].to_ch = 0;
+                    gs.map[m].to_ch = 0;
 
                     // compute destination: x + (x - frx), y + (y - fry)
                     let (cx, cy, frx, fry, light) = (
-                        Repository::global_mut().characters[cn].x as i32,
-                        Repository::global_mut().characters[cn].y as i32,
-                        Repository::global_mut().characters[cn].frx as i32,
-                        Repository::global_mut().characters[cn].fry as i32,
-                        Repository::global_mut().characters[cn].light,
+                        gs.characters[cn].x as i32,
+                        gs.characters[cn].y as i32,
+                        gs.characters[cn].frx as i32,
+                        gs.characters[cn].fry as i32,
+                        gs.characters[cn].light,
                     );
 
                     let nx = cx + (cx - frx);
                     let ny = cy + (cy - fry);
 
                     let idx = (nx as usize) + (ny as usize) * core::constants::SERVER_MAPX as usize;
-                    let target_empty = Repository::global_mut().map[idx].ch == 0;
+                    let target_empty = gs.map[idx].ch == 0;
 
                     if target_empty {
-                        {
-                            let gs = Repository::global_mut();
-                            gs.characters[cn].x = nx as i16;
-                            gs.characters[cn].y = ny as i16;
-                            gs.characters[cn].use_nr = 0;
-                            gs.characters[cn].skill_nr = 0;
-                            gs.characters[cn].attack_cn = 0;
-                            gs.characters[cn].goto_x = 0;
-                            gs.characters[cn].goto_y = 0;
-                            gs.characters[cn].misc_action = 0;
-                        }
-                        {
-                            let idx = (nx as usize)
-                                + (ny as usize) * core::constants::SERVER_MAPX as usize;
-                            Repository::global_mut().map[idx].ch = cn as u32;
-                        }
-
-                        if light != 0 {
-                            Repository::global_mut().do_add_light(nx, ny, light as i32);
-                        }
-
-                        return;
-                    } else {
-                        // fall through and handle as ret == -1
-                    }
-                }
-
-                if ret == -1 {
-                    Repository::global_mut().map[m].to_ch = 0;
-
-                    let (frx, fry, light) = (
-                        Repository::global_mut().characters[cn].frx as i32,
-                        Repository::global_mut().characters[cn].fry as i32,
-                        Repository::global_mut().characters[cn].light,
-                    );
-
-                    {
-                        let gs = Repository::global_mut();
-                        gs.characters[cn].x = frx as i16;
-                        gs.characters[cn].y = fry as i16;
+                        gs.characters[cn].x = nx as i16;
+                        gs.characters[cn].y = ny as i16;
                         gs.characters[cn].use_nr = 0;
                         gs.characters[cn].skill_nr = 0;
                         gs.characters[cn].attack_cn = 0;
                         gs.characters[cn].goto_x = 0;
                         gs.characters[cn].goto_y = 0;
                         gs.characters[cn].misc_action = 0;
-                    }
 
-                    {
                         let idx =
-                            (frx as usize) + (fry as usize) * core::constants::SERVER_MAPX as usize;
-                        Repository::global_mut().map[idx].ch = cn as u32;
+                            (nx as usize) + (ny as usize) * core::constants::SERVER_MAPX as usize;
+                        gs.map[idx].ch = cn as u32;
+
+                        if light != 0 {
+                            gs.do_add_light(nx, ny, light as i32);
+                        }
+
+                        return;
                     }
+                }
+
+                if ret == -1 {
+                    gs.map[m].to_ch = 0;
+
+                    let (frx, fry, light) = (
+                        gs.characters[cn].frx as i32,
+                        gs.characters[cn].fry as i32,
+                        gs.characters[cn].light,
+                    );
+
+                    gs.characters[cn].x = frx as i16;
+                    gs.characters[cn].y = fry as i16;
+                    gs.characters[cn].use_nr = 0;
+                    gs.characters[cn].skill_nr = 0;
+                    gs.characters[cn].attack_cn = 0;
+                    gs.characters[cn].goto_x = 0;
+                    gs.characters[cn].goto_y = 0;
+                    gs.characters[cn].misc_action = 0;
+
+                    let idx =
+                        (frx as usize) + (fry as usize) * core::constants::SERVER_MAPX as usize;
+                    gs.map[idx].ch = cn as u32;
 
                     if light != 0 {
-                        Repository::global_mut().do_add_light(frx, fry, light as i32);
+                        gs.do_add_light(frx, fry, light as i32);
                     }
 
                     return;
@@ -524,17 +491,13 @@ pub fn plr_map_set(cn: usize) {
                 if ret == 2 {
                     // TELEPORT_SUCCESS: just add light and return
                     let (tx, ty, current_light) = (
-                        Repository::global_mut().characters[cn].x,
-                        Repository::global_mut().characters[cn].y,
-                        Repository::global_mut().characters[cn].light,
+                        gs.characters[cn].x,
+                        gs.characters[cn].y,
+                        gs.characters[cn].light,
                     );
 
                     if current_light != 0 {
-                        Repository::global_mut().do_add_light(
-                            tx as i32,
-                            ty as i32,
-                            current_light as i32,
-                        );
+                        gs.do_add_light(tx as i32, ty as i32, current_light as i32);
                     }
                     return;
                 }
@@ -542,50 +505,40 @@ pub fn plr_map_set(cn: usize) {
         }
 
         // Check for tavern
-        let is_tavern =
-            (Repository::global_mut().map[m].flags & core::constants::MF_TAVERN as u64) != 0;
+        let is_tavern = (gs.map[m].flags & core::constants::MF_TAVERN as u64) != 0;
 
         if is_tavern && is_player {
-            if Repository::global_mut().characters[cn].is_building() {
+            if gs.characters[cn].is_building() {
                 God::build(cn, 0);
             }
-            Repository::global_mut().characters[cn].tavern_x =
-                Repository::global_mut().characters[cn].x as u16;
-            Repository::global_mut().characters[cn].tavern_y =
-                Repository::global_mut().characters[cn].y as u16;
+            gs.characters[cn].tavern_x = gs.characters[cn].x as u16;
+            gs.characters[cn].tavern_y = gs.characters[cn].y as u16;
 
             log::info!("Character {} entered tavern", cn);
 
-            let player_id = Repository::global_mut().characters[cn].player;
-            plr_logout(
-                Repository::global_mut(),
-                cn,
-                player_id as usize,
-                enums::LogoutReason::Tavern,
-            );
+            let player_id = gs.characters[cn].player;
+            plr_logout(gs, cn, player_id as usize, enums::LogoutReason::Tavern);
             return;
         }
 
         // Check for no magic zone, respect items that exempt char from nomagic
-        let is_nomagic =
-            (Repository::global_mut().map[m].flags & core::constants::MF_NOMAGIC as u64) != 0;
+        let is_nomagic = (gs.map[m].flags & core::constants::MF_NOMAGIC as u64) != 0;
 
-        let wears_466 = Repository::global_mut().char_wears_item(cn, 466);
-        let wears_481 = Repository::global_mut().char_wears_item(cn, 481);
+        let wears_466 = gs.char_wears_item(cn, 466);
+        let wears_481 = gs.char_wears_item(cn, 481);
 
         if is_nomagic && !wears_466 && !wears_481 {
             // Match original behavior: only apply/remove spells and log once
             // when entering a no-magic tile (i.e., on flag transition).
             let mut became_nomagic = false;
-            if (Repository::global_mut().characters[cn].flags & CharacterFlags::NoMagic.bits()) == 0
-            {
-                Repository::global_mut().characters[cn].flags |= CharacterFlags::NoMagic.bits();
+            if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) == 0 {
+                gs.characters[cn].flags |= CharacterFlags::NoMagic.bits();
                 became_nomagic = true;
             }
 
             if became_nomagic {
                 driver::remove_spells(cn);
-                Repository::global_mut().do_character_log(
+                gs.do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     "You feel your magic fail.\n",
@@ -593,15 +546,14 @@ pub fn plr_map_set(cn: usize) {
             }
         } else {
             let mut was_nomagic = false;
-            if (Repository::global_mut().characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0
-            {
-                Repository::global_mut().characters[cn].flags &= !CharacterFlags::NoMagic.bits();
-                Repository::global_mut().characters[cn].set_do_update_flags();
+            if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
+                gs.characters[cn].flags &= !CharacterFlags::NoMagic.bits();
+                gs.characters[cn].set_do_update_flags();
                 was_nomagic = true;
             }
 
             if was_nomagic {
-                Repository::global_mut().do_character_log(
+                gs.do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     "You feel your magic return.\n",
@@ -611,34 +563,30 @@ pub fn plr_map_set(cn: usize) {
     }
 
     // Set character on map
-    {
-        let gs = Repository::global_mut();
-        gs.map[m].ch = cn as u32;
-        gs.map[m].to_ch = 0;
-    }
+    gs.map[m].ch = cn as u32;
+    gs.map[m].to_ch = 0;
 
     if !is_body {
         if light != 0 {
-            Repository::global_mut().do_add_light(x as i32, y as i32, light as i32);
+            gs.do_add_light(x as i32, y as i32, light as i32);
         }
 
         // Check for death trap
-        let is_deathtrap =
-            (Repository::global_mut().map[m].flags & core::constants::MF_DEATHTRAP as u64) != 0;
+        let is_deathtrap = (gs.map[m].flags & core::constants::MF_DEATHTRAP as u64) != 0;
 
         if is_deathtrap {
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 "You entered a Deathtrap!\n",
             );
             log::info!("Character {} entered a Deathtrap", cn);
-            Repository::global_mut().do_character_killed(cn, 0, true);
+            gs.do_character_killed(cn, 0, true);
             return;
         }
     }
 
-    Repository::global_mut().do_area_notify(
+    gs.do_area_notify(
         cn as i32,
         0,
         x as i32,
@@ -649,6 +597,14 @@ pub fn plr_map_set(cn: usize) {
         0,
         0,
     );
+}
+
+/// Place a character on the map using the global game state bridge.
+///
+/// # Arguments
+/// * `cn` - Character index to place on the map
+pub fn plr_map_set(cn: usize) {
+    plr_map_set_gs(GameState::global_mut(), cn);
 }
 
 /// Port of `plr_move_up` from `svr_act.cpp`
