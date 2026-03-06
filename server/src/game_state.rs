@@ -65,7 +65,6 @@ struct NormalizedDataSet<T> {
 /// computation state, pathfinding state, and persistence metadata.  Created
 /// once in `main()` via [`GameState::initialize`] and passed by mutable
 /// reference throughout the server's call chain.
-#[allow(dead_code)] // Fields used incrementally as modules are converted
 pub struct GameState {
     // -- World data (formerly Repository) --
     /// Map tiles indexed by `x + y * SERVER_MAPX`.
