@@ -38,6 +38,7 @@ impl<T> SingleThreadCell<T> {
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub fn get_mut(&self) -> &mut T {
         self.assert_owner_thread();
         unsafe { &mut *self.value.get() }

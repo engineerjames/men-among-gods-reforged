@@ -6,9 +6,8 @@
 // direct ports from the original `lab9.cpp`/`lab9.h` if they are added.
 
 use core::{constants::ItemFlags, types::Character};
-use std::sync::{OnceLock, RwLock};
 
-use crate::{game_state::GameState, game_state::GameState as Repository, god::God, helpers};
+use crate::{game_state::GameState, god::God, helpers};
 
 #[derive(Clone, Copy)]
 struct Destination {
@@ -341,606 +340,482 @@ const DESTINATIONS: [Destination; core::constants::RIDDLEGIVERS] = [
     Destination { x: 34, y: 806 },
 ];
 
-static LABYRINTH9: OnceLock<RwLock<Labyrinth9>> = OnceLock::new();
-
 pub struct Labyrinth9 {
-    guesser: [i32; core::constants::RIDDLEGIVERS],
-    riddleno: [i32; core::constants::RIDDLEGIVERS],
-    riddle_timeout: [i32; core::constants::RIDDLEGIVERS],
-    riddle_attempts: [i32; core::constants::RIDDLEGIVERS],
-    riddles: &'static [[Riddle; core::constants::MAX_RIDDLES]; core::constants::RIDDLEGIVERS],
-    switch_questions:
-        &'static [[SwitchQuestions; core::constants::BANK_QUESTIONS]; core::constants::BANKS],
-    banks: &'static [Bank; core::constants::BANKS],
-    questions: [[i32; core::constants::SWITCHES]; core::constants::BANKS],
+    pub guesser: [i32; core::constants::RIDDLEGIVERS],
+    pub riddleno: [i32; core::constants::RIDDLEGIVERS],
+    pub riddle_timeout: [i32; core::constants::RIDDLEGIVERS],
+    pub riddle_attempts: [i32; core::constants::RIDDLEGIVERS],
+    pub questions: [[i32; core::constants::SWITCHES]; core::constants::BANKS],
 }
 
 impl Labyrinth9 {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             guesser: [0; core::constants::RIDDLEGIVERS],
             riddleno: [0; core::constants::RIDDLEGIVERS],
             riddle_timeout: [0; core::constants::RIDDLEGIVERS],
             riddle_attempts: [0; core::constants::RIDDLEGIVERS],
-            riddles: &RIDDLES,
-            switch_questions: &SWITCH_QUESTIONS,
-            banks: &BANKS,
             questions: [[0; core::constants::SWITCHES]; core::constants::BANKS],
         }
     }
+}
 
-    pub fn initialize(_gs: &mut GameState) -> Result<(), String> {
-        log::info!("Initializing Labyrinth 9...");
-        let lab = Labyrinth9::new();
-        LABYRINTH9
-            .set(RwLock::new(lab))
-            .map_err(|_| "Labyrinth9 already initialized".to_string())?;
-
-        Labyrinth9::with_mut(|lab| {
-            for i in 1..BANKS.len() + 1 {
-                lab.lab9_reset_bank(i as i32, true);
-            }
-        });
-
-        Ok(())
+pub fn lab9_initialize(gs: &mut GameState) {
+    log::info!("Initializing Labyrinth 9...");
+    gs.lab9 = Labyrinth9::new();
+    for i in 1..BANKS.len() + 1 {
+        lab9_reset_bank(gs, i as i32, true);
     }
+}
 
-    pub fn with<F, R>(f: F) -> R
-    where
-        F: FnOnce(&Labyrinth9) -> R,
+pub fn lab9_get_guesser(gs: &GameState, idx: usize) -> i32 {
+    gs.lab9.guesser[idx]
+}
+
+pub fn lab9_tick_riddle_timeout(gs: &mut GameState, riddler_id: usize) {
+    let area_of_knowledge = gs.characters[riddler_id].data[72];
+    if !(core::constants::RIDDLE_MIN_AREA..=core::constants::RIDDLE_MAX_AREA)
+        .contains(&area_of_knowledge)
     {
-        let lab = LABYRINTH9
-            .get()
-            .expect("Labyrinth9 not initialized")
-            .read()
-            .unwrap();
-        f(&lab)
+        return;
     }
 
-    pub fn with_mut<F, R>(f: F) -> R
-    where
-        F: FnOnce(&mut Labyrinth9) -> R,
-    {
-        let mut lab = LABYRINTH9
-            .get()
-            .expect("Labyrinth9 not initialized")
-            .write()
-            .unwrap();
-        f(&mut lab)
-    }
-
-    pub fn get_guesser(&self, idx: usize) -> i32 {
-        self.guesser[idx]
-    }
-
-    pub fn tick_riddle_timeout(&mut self, riddler_id: usize) {
-        let area_of_knowledge = Repository::global_mut().characters[riddler_id].data[72];
-        if !(core::constants::RIDDLE_MIN_AREA..=core::constants::RIDDLE_MAX_AREA)
-            .contains(&area_of_knowledge)
-        {
-            return;
-        }
-
-        let guesser_index = (area_of_knowledge - core::constants::RIDDLE_MIN_AREA) as usize;
-        if self.riddle_timeout[guesser_index] > 0 {
-            self.riddle_timeout[guesser_index] -= 1;
-            if self.riddle_timeout[guesser_index] <= 0 {
-                let guesser_id = self.guesser[guesser_index];
-                if guesser_id > 0 {
-                    let guesser_usize = guesser_id as usize;
-                    if guesser_usize < Repository::global_mut().characters.len()
-                        && Repository::global_mut().characters[guesser_usize].is_player()
-                    {
-                        Repository::global_mut().characters[guesser_usize].data
-                            [core::constants::CHD_RIDDLER] = 0;
-                    }
+    let guesser_index = (area_of_knowledge - core::constants::RIDDLE_MIN_AREA) as usize;
+    if gs.lab9.riddle_timeout[guesser_index] > 0 {
+        gs.lab9.riddle_timeout[guesser_index] -= 1;
+        if gs.lab9.riddle_timeout[guesser_index] <= 0 {
+            let guesser_id = gs.lab9.guesser[guesser_index];
+            if guesser_id > 0 {
+                let guesser_usize = guesser_id as usize;
+                if guesser_usize < gs.characters.len() && gs.characters[guesser_usize].is_player() {
+                    gs.characters[guesser_usize].data[core::constants::CHD_RIDDLER] = 0;
                 }
-                self.guesser[guesser_index] = 0;
-
-                let riddler_name = Repository::global_mut().characters[riddler_id]
-                    .get_name()
-                    .to_string();
-                Repository::global_mut().do_character_log(
-                    riddler_id,
-                    core::types::FontColor::Yellow,
-                    &format!(
-                        "{} tells you: Too late! Too late! Try again some time.\n",
-                        riddler_name
-                    ),
-                );
             }
-        }
-    }
+            gs.lab9.guesser[guesser_index] = 0;
 
-    pub fn lab9_guesser_says(&mut self, character_id: usize, text: &str) -> bool {
-        let is_player = Repository::global_mut().characters[character_id].is_player();
-
-        if !is_player {
-            return false;
-        }
-
-        let return_value = 'guesser: {
-            let riddler = Repository::global_mut().characters[character_id].data
-                [core::constants::CHD_RIDDLER];
-
-            if riddler <= 0 {
-                Repository::global_mut().characters[character_id].data
-                    [core::constants::CHD_RIDDLER] = 0;
-                break 'guesser false;
-            }
-
-            let riddler_usize = riddler as usize;
-            if riddler_usize >= Repository::global_mut().characters.len() {
-                Repository::global_mut().characters[character_id].data
-                    [core::constants::CHD_RIDDLER] = 0;
-                break 'guesser false;
-            }
-
-            // Valid riddler?
-            let is_sane = Character::is_sane_npc(
-                riddler_usize,
-                &Repository::global_mut().characters[riddler_usize],
+            let riddler_name = gs.characters[riddler_id].get_name().to_string();
+            gs.do_character_log(
+                riddler_id,
+                core::types::FontColor::Yellow,
+                &format!(
+                    "{} tells you: Too late! Too late! Try again some time.\n",
+                    riddler_name
+                ),
             );
-            if !is_sane {
-                Repository::global_mut().characters[character_id].data
-                    [core::constants::CHD_RIDDLER] = 0;
-                break 'guesser false;
-            }
+        }
+    }
+}
 
-            // Certified riddler?
-            let area_of_knowledge = Repository::global_mut().characters[riddler_usize].data[72];
-            if !(core::constants::RIDDLE_MIN_AREA..=core::constants::RIDDLE_MAX_AREA)
-                .contains(&area_of_knowledge)
-            {
-                Repository::global_mut().characters[character_id].data
-                    [core::constants::CHD_RIDDLER] = 0;
-                break 'guesser false;
-            }
+pub fn lab9_guesser_says(gs: &mut GameState, character_id: usize, text: &str) -> bool {
+    let is_player = gs.characters[character_id].is_player();
 
-            // Does the riddler remember the guesser?
-            let guesser_index = area_of_knowledge - core::constants::RIDDLE_MIN_AREA;
-            let guesser_match = self.guesser[guesser_index as usize] == character_id as i32;
-
-            if !guesser_match {
-                Repository::global_mut().characters[character_id].data
-                    [core::constants::CHD_RIDDLER] = 0;
-                break 'guesser false;
-            }
-
-            // Does the player see the riddler?
-            let can_see_riddler =
-                Repository::global_mut().do_char_can_see(character_id, riddler_usize);
-
-            if can_see_riddler == 0 {
-                // If the guesser cannot see the riddler, ignore the speech
-                // without resetting the riddle state.
-                break 'guesser false;
-            }
-
-            let riddle = {
-                let riddleno = self.riddleno[guesser_index as usize];
-                self.riddles[guesser_index as usize][riddleno as usize - 1]
-            };
-
-            let mut found = false;
-
-            // Split into alphanumeric words (like do_say()), then compare each word
-            // case-insensitively against up to 3 accepted answers.
-            let matches_answer = |word: &str| {
-                riddle.answer_1.eq_ignore_ascii_case(word)
-                    || (!riddle.answer_2.is_empty() && riddle.answer_2.eq_ignore_ascii_case(word))
-                    || (!riddle.answer_3.is_empty() && riddle.answer_3.eq_ignore_ascii_case(word))
-            };
-
-            let mut word_start: Option<usize> = None;
-            for (idx, ch) in text.char_indices() {
-                if ch.is_ascii_alphanumeric() {
-                    if word_start.is_none() {
-                        word_start = Some(idx);
-                    }
-                } else if let Some(start) = word_start.take() {
-                    let word = &text[start..idx];
-                    if matches_answer(word) {
-                        found = true;
-                        break;
-                    }
-                }
-            }
-            if !found {
-                if let Some(start) = word_start {
-                    let word = &text[start..];
-                    if matches_answer(word) {
-                        found = true;
-                    }
-                }
-            }
-
-            if found {
-                let char_name = Repository::global_mut().characters[character_id]
-                    .get_name()
-                    .to_string();
-                Repository::global_mut().do_sayx(
-                    riddler as usize,
-                    format!(
-                        "That's absolutely correct, {}! \nFor solving my riddle, I will advance you in your quest. \nClose your eyes and...\n",
-                        char_name
-                    )
-                    .as_str(),
-                );
-
-                if God::transfer_char(
-                    Repository::global_mut(),
-                    character_id,
-                    DESTINATIONS[guesser_index as usize].x as usize,
-                    DESTINATIONS[guesser_index as usize].y as usize,
-                ) {
-                    Repository::global_mut().characters[character_id].data
-                        [core::constants::CHD_RIDDLER] = 0;
-                    self.guesser[guesser_index as usize] = 0;
-                } else {
-                    log::error!(
-                        "Failed to transfer character {} to destination after solving riddle.",
-                        character_id
-                    );
-                    Repository::global_mut().do_sayx(
-                        riddler as usize,
-                        "Oops! Something went wrong. Please try again a bit later.\n",
-                    );
-                }
-                break 'guesser true;
-            } else {
-                let riddle_attempts = {
-                    self.riddle_attempts[guesser_index as usize] -= 1;
-                    self.riddle_attempts[guesser_index as usize]
-                };
-
-                if riddle_attempts > 0 {
-                    Repository::global_mut().do_sayx(
-                        riddler as usize,
-                        format!(
-                            "Sorry, that's not right. You have {} more attempt{}!\n",
-                            riddle_attempts,
-                            if riddle_attempts == 1 { "" } else { "s" }
-                        )
-                        .as_str(),
-                    );
-                } else {
-                    Repository::global_mut().do_sayx(
-                        riddler as usize,
-                        "Sorry, that's not right. Now you'll have to bring me the book again to start over!\n",
-                    );
-                    Repository::global_mut().characters[character_id].data
-                        [core::constants::CHD_RIDDLER] = 0;
-                    self.guesser[guesser_index as usize] = 0;
-                }
-            }
-
-            // wrong/no matching answer returns false.
-            false
-        };
-
-        return_value
+    if !is_player {
+        return false;
     }
 
-    pub fn lab9_pose_riddle(&mut self, riddler_id: usize, character_id: usize) {
-        let riddle_index = Repository::global_mut().characters[riddler_id].data[72]
-            - core::constants::RIDDLE_MIN_AREA;
+    let riddler = gs.characters[character_id].data[core::constants::CHD_RIDDLER];
 
-        let riddle_number = 1 + helpers::random_mod(core::constants::MAX_RIDDLES as u32);
-        let question = self.riddles[riddle_index as usize][riddle_number as usize - 1].question;
-        self.guesser[riddle_index as usize] = character_id as i32;
-        self.riddleno[riddle_index as usize] = riddle_number as i32;
-        self.riddle_timeout[riddle_index as usize] = core::constants::RIDDLE_TIMEOUT;
-        self.riddle_attempts[riddle_index as usize] = core::constants::RIDDLE_ATTEMPTS;
-        Repository::global_mut().do_sayx(
-            riddler_id,
+    if riddler <= 0 {
+        gs.characters[character_id].data[core::constants::CHD_RIDDLER] = 0;
+        return false;
+    }
+
+    let riddler_usize = riddler as usize;
+    if riddler_usize >= gs.characters.len() {
+        gs.characters[character_id].data[core::constants::CHD_RIDDLER] = 0;
+        return false;
+    }
+
+    let is_sane = Character::is_sane_npc(riddler_usize, &gs.characters[riddler_usize]);
+    if !is_sane {
+        gs.characters[character_id].data[core::constants::CHD_RIDDLER] = 0;
+        return false;
+    }
+
+    let area_of_knowledge = gs.characters[riddler_usize].data[72];
+    if !(core::constants::RIDDLE_MIN_AREA..=core::constants::RIDDLE_MAX_AREA)
+        .contains(&area_of_knowledge)
+    {
+        gs.characters[character_id].data[core::constants::CHD_RIDDLER] = 0;
+        return false;
+    }
+
+    let guesser_index = (area_of_knowledge - core::constants::RIDDLE_MIN_AREA) as usize;
+    let guesser_match = gs.lab9.guesser[guesser_index] == character_id as i32;
+
+    if !guesser_match {
+        gs.characters[character_id].data[core::constants::CHD_RIDDLER] = 0;
+        return false;
+    }
+
+    let can_see_riddler = gs.do_char_can_see(character_id, riddler_usize);
+
+    if can_see_riddler == 0 {
+        return false;
+    }
+
+    let riddle = {
+        let riddleno = gs.lab9.riddleno[guesser_index];
+        RIDDLES[guesser_index][riddleno as usize - 1]
+    };
+
+    let mut found = false;
+
+    let matches_answer = |word: &str| {
+        riddle.answer_1.eq_ignore_ascii_case(word)
+            || (!riddle.answer_2.is_empty() && riddle.answer_2.eq_ignore_ascii_case(word))
+            || (!riddle.answer_3.is_empty() && riddle.answer_3.eq_ignore_ascii_case(word))
+    };
+
+    let mut word_start: Option<usize> = None;
+    for (idx, ch) in text.char_indices() {
+        if ch.is_ascii_alphanumeric() {
+            if word_start.is_none() {
+                word_start = Some(idx);
+            }
+        } else if let Some(start) = word_start.take() {
+            let word = &text[start..idx];
+            if matches_answer(word) {
+                found = true;
+                break;
+            }
+        }
+    }
+    if !found {
+        if let Some(start) = word_start {
+            let word = &text[start..];
+            if matches_answer(word) {
+                found = true;
+            }
+        }
+    }
+
+    if found {
+        let char_name = gs.characters[character_id].get_name().to_string();
+        gs.do_sayx(
+            riddler as usize,
             format!(
-                "Here is a riddle. You have 3 minutes and {} attempts to say the correct answer.\n",
-                self.riddle_attempts[riddle_index as usize],
+                "That's absolutely correct, {}! \nFor solving my riddle, I will advance you in your quest. \nClose your eyes and...\n",
+                char_name
             )
             .as_str(),
         );
-        Repository::global_mut().do_sayx(riddler_id, question);
 
-        Repository::global_mut().characters[character_id].data[core::constants::CHD_RIDDLER] =
-            riddler_id as i32;
+        if God::transfer_char(
+            gs,
+            character_id,
+            DESTINATIONS[guesser_index].x as usize,
+            DESTINATIONS[guesser_index].y as usize,
+        ) {
+            gs.characters[character_id].data[core::constants::CHD_RIDDLER] = 0;
+            gs.lab9.guesser[guesser_index] = 0;
+        } else {
+            log::error!(
+                "Failed to transfer character {} to destination after solving riddle.",
+                character_id
+            );
+            gs.do_sayx(
+                riddler as usize,
+                "Oops! Something went wrong. Please try again a bit later.\n",
+            );
+        }
+        return true;
     }
 
-    pub fn lab9_check_door(&self, bankno: i32) -> bool {
-        if bankno < 1 || bankno > core::constants::BANKS as i32 {
-            log::error!("lab9_check_door: invalid bank number {}", bankno);
-            return false;
-        }
-        let bank_index = bankno - 1;
+    let riddle_attempts = {
+        gs.lab9.riddle_attempts[guesser_index] -= 1;
+        gs.lab9.riddle_attempts[guesser_index]
+    };
 
-        let x = BANKS[bank_index as usize].x1;
-        let y: i32 = BANKS[bank_index as usize].y1;
-        let t = BANKS[bank_index as usize].temp;
+    if riddle_attempts > 0 {
+        gs.do_sayx(
+            riddler as usize,
+            format!(
+                "Sorry, that's not right. You have {} more attempt{}!\n",
+                riddle_attempts,
+                if riddle_attempts == 1 { "" } else { "s" }
+            )
+            .as_str(),
+        );
+    } else {
+        gs.do_sayx(
+            riddler as usize,
+            "Sorry, that's not right. Now you'll have to bring me the book again to start over!\n",
+        );
+        gs.characters[character_id].data[core::constants::CHD_RIDDLER] = 0;
+        gs.lab9.guesser[guesser_index] = 0;
+    }
 
-        let mut correct = true;
-        let mut m = x + y * core::constants::SERVER_MAPX;
+    false
+}
 
-        for n in 0..core::constants::SWITCHES {
-            let item_number = Repository::global_mut().map[m as usize].it;
+pub fn lab9_pose_riddle(gs: &mut GameState, riddler_id: usize, character_id: usize) {
+    let riddle_index =
+        (gs.characters[riddler_id].data[72] - core::constants::RIDDLE_MIN_AREA) as usize;
 
-            if item_number == 0
-                || Repository::global_mut().items[item_number as usize].temp != t as u16
-            {
-                log::error!(
-                    "lab9_check_door: switch {} in bank {} is not set correctly",
-                    n + 1,
-                    bankno
-                );
-                return false;
-            }
+    let riddle_number = 1 + helpers::random_mod(core::constants::MAX_RIDDLES as u32);
+    let question = RIDDLES[riddle_index][riddle_number as usize - 1].question;
+    gs.lab9.guesser[riddle_index] = character_id as i32;
+    gs.lab9.riddleno[riddle_index] = riddle_number as i32;
+    gs.lab9.riddle_timeout[riddle_index] = core::constants::RIDDLE_TIMEOUT;
+    gs.lab9.riddle_attempts[riddle_index] = core::constants::RIDDLE_ATTEMPTS;
+    gs.do_sayx(
+        riddler_id,
+        format!(
+            "Here is a riddle. You have 3 minutes and {} attempts to say the correct answer.\n",
+            gs.lab9.riddle_attempts[riddle_index],
+        )
+        .as_str(),
+    );
+    gs.do_sayx(riddler_id, question);
 
-            let question = self.questions[bank_index as usize][n];
-            let switch_is_true = Repository::global_mut().items[item_number as usize].data[1] == 0;
+    gs.characters[character_id].data[core::constants::CHD_RIDDLER] = riddler_id as i32;
+}
 
-            if switch_is_true
-                != self.switch_questions[bank_index as usize][question as usize - 1].should_be_true
-            {
-                correct = false;
-            }
+fn lab9_check_door(gs: &mut GameState, bankno: i32) -> bool {
+    if bankno < 1 || bankno > core::constants::BANKS as i32 {
+        log::error!("lab9_check_door: invalid bank number {}", bankno);
+        return false;
+    }
+    let bank_index = (bankno - 1) as usize;
 
-            // Next switch is one tile south.
-            m += core::constants::SERVER_MAPX;
-        }
+    let x = BANKS[bank_index].x1;
+    let y: i32 = BANKS[bank_index].y1;
+    let t = BANKS[bank_index].temp;
 
-        // Door logic
-        m = self.banks[bank_index as usize].doorx
-            + self.banks[bank_index as usize].doory * core::constants::SERVER_MAPX;
+    let mut correct = true;
+    let mut m = x + y * core::constants::SERVER_MAPX;
 
-        let item_number = Repository::global_mut().map[m as usize].it;
+    for n in 0..core::constants::SWITCHES {
+        let item_number = gs.map[m as usize].it;
 
-        if item_number == 0 {
+        if item_number == 0 || gs.items[item_number as usize].temp != t as u16 {
             log::error!(
-                "lab9_check_door: door in bank {} has no item assigned",
+                "lab9_check_door: switch {} in bank {} is not set correctly",
+                n + 1,
                 bankno
             );
             return false;
         }
 
-        if correct {
-            // Open the door
-            let item_idx = item_number as usize;
-            let gs = Repository::global_mut();
-            if gs.items[item_idx].active == 0 {
-                gs.items[item_idx].data[1] = 0;
-                gs.items[item_idx].active = gs.items[item_idx].duration;
-                gs.items[item_idx].flags &=
-                    !(ItemFlags::IF_MOVEBLOCK | ItemFlags::IF_SIGHTBLOCK).bits();
-                let (ix, iy) = (gs.items[item_idx].x as i32, gs.items[item_idx].y as i32);
-                gs.do_area_sound(0, 0, ix, iy, 10);
-                gs.reset_go(ix, iy);
-                gs.add_lights(ix, iy);
-            }
-            true
-        } else {
-            // Close the door
-            let item_idx = item_number as usize;
-            let gs = Repository::global_mut();
-            if gs.items[item_idx].active != 0 {
-                gs.items[item_idx].data[1] = 1;
-                gs.items[item_idx].active = 0;
-                let temp = gs.items[item_idx].temp;
-                let sightblock_flag =
-                    gs.item_templates[temp as usize].flags & ItemFlags::IF_SIGHTBLOCK.bits();
-                gs.items[item_idx].flags |= ItemFlags::IF_MOVEBLOCK.bits() | sightblock_flag;
-                let (ix, iy) = (gs.items[item_idx].x as i32, gs.items[item_idx].y as i32);
-                gs.do_area_sound(0, 0, ix, iy, 10);
-                gs.reset_go(ix, iy);
-                gs.add_lights(ix, iy);
-            }
-            false
+        let question = gs.lab9.questions[bank_index][n];
+        let switch_is_true = gs.items[item_number as usize].data[1] == 0;
+
+        if switch_is_true != SWITCH_QUESTIONS[bank_index][question as usize - 1].should_be_true {
+            correct = false;
         }
+
+        m += core::constants::SERVER_MAPX;
     }
 
-    /// Reset a given numbered switch bank
-    /// Translates C++ function: void lab9_reset_bank(int bankno, int closedoor)
-    pub fn lab9_reset_bank(&mut self, bankno: i32, closedoor: bool) {
-        log::info!("lab9: reset bank #{}", bankno);
+    let m = BANKS[bank_index].doorx + BANKS[bank_index].doory * core::constants::SERVER_MAPX;
 
-        if bankno < 1 || bankno > core::constants::BANKS as i32 {
-            log::error!("lab9_reset_bank(): panic: bad bank number {}!!", bankno);
+    let item_number = gs.map[m as usize].it;
+
+    if item_number == 0 {
+        log::error!(
+            "lab9_check_door: door in bank {} has no item assigned",
+            bankno
+        );
+        return false;
+    }
+
+    if correct {
+        let item_idx = item_number as usize;
+        if gs.items[item_idx].active == 0 {
+            gs.items[item_idx].data[1] = 0;
+            gs.items[item_idx].active = gs.items[item_idx].duration;
+            gs.items[item_idx].flags &=
+                !(ItemFlags::IF_MOVEBLOCK | ItemFlags::IF_SIGHTBLOCK).bits();
+            let (ix, iy) = (gs.items[item_idx].x as i32, gs.items[item_idx].y as i32);
+            gs.do_area_sound(0, 0, ix, iy, 10);
+            gs.reset_go(ix, iy);
+            gs.add_lights(ix, iy);
+        }
+        true
+    } else {
+        let item_idx = item_number as usize;
+        if gs.items[item_idx].active != 0 {
+            gs.items[item_idx].data[1] = 1;
+            gs.items[item_idx].active = 0;
+            let temp = gs.items[item_idx].temp;
+            let sightblock_flag =
+                gs.item_templates[temp as usize].flags & ItemFlags::IF_SIGHTBLOCK.bits();
+            gs.items[item_idx].flags |= ItemFlags::IF_MOVEBLOCK.bits() | sightblock_flag;
+            let (ix, iy) = (gs.items[item_idx].x as i32, gs.items[item_idx].y as i32);
+            gs.do_area_sound(0, 0, ix, iy, 10);
+            gs.reset_go(ix, iy);
+            gs.add_lights(ix, iy);
+        }
+        false
+    }
+}
+
+fn lab9_reset_bank(gs: &mut GameState, bankno: i32, closedoor: bool) {
+    log::info!("lab9: reset bank #{}", bankno);
+
+    if bankno < 1 || bankno > core::constants::BANKS as i32 {
+        log::error!("lab9_reset_bank(): panic: bad bank number {}!!", bankno);
+        return;
+    }
+
+    let bank_index = (bankno - 1) as usize;
+    let bank = BANKS[bank_index];
+    let x = bank.x1;
+    let mut y = bank.y1;
+    let t = bank.temp;
+
+    for n in 0..core::constants::SWITCHES {
+        let m = (x + y * core::constants::SERVER_MAPX) as usize;
+        let item_number = gs.map[m].it;
+
+        if item_number == 0 || gs.items[item_number as usize].temp != t as u16 {
+            log::error!("reset_bank_at(): panic: no switch at {}!!", m);
             return;
         }
 
-        let bank_index = (bankno - 1) as usize;
-        let bank = BANKS[bank_index];
-        let x = bank.x1;
-        let mut y = bank.y1;
-        let t = bank.temp;
+        let bankidx = (gs.items[item_number as usize].data[0] as i32 - 1) as usize;
 
-        // Reset switches and build description from random question
-        for n in 0..core::constants::SWITCHES {
-            let m = (x + y * core::constants::SERVER_MAPX) as usize;
-            let item_number = Repository::global_mut().map[m].it;
+        gs.items[item_number as usize].data[1] = 1;
+        gs.items[item_number as usize].active = 0;
 
-            if item_number == 0
-                || Repository::global_mut().items[item_number as usize].temp != t as u16
-            {
-                log::error!("reset_bank_at(): panic: no switch at {}!!", m);
-                return;
-            }
+        let mut q: i32;
 
-            let bankidx =
-                (Repository::global_mut().items[item_number as usize].data[0] as i32 - 1) as usize;
+        loop {
+            q = 1 + helpers::random_mod(core::constants::BANK_QUESTIONS as u32) as i32;
 
-            {
-                let gs = Repository::global_mut();
-                gs.items[item_number as usize].data[1] = 1;
-                gs.items[item_number as usize].active = 0;
-            }
+            gs.lab9.questions[bankidx][n] = q;
 
-            let mut q: i32;
-            let mut unique: bool;
-
-            loop {
-                q = 1 + helpers::random_mod(core::constants::BANK_QUESTIONS as u32) as i32;
-
-                self.questions[bankidx][n] = q;
-
-                unique = true;
-                for j in 0..n {
-                    let prev_q = self.questions[bankidx][j];
-                    if prev_q == q {
-                        unique = false;
-                        break;
-                    }
-                }
-
-                if unique {
+            let mut unique = true;
+            for j in 0..n {
+                let prev_q = gs.lab9.questions[bankidx][j];
+                if prev_q == q {
+                    unique = false;
                     break;
                 }
             }
 
-            // Set description on the switch
-            let question_text = SWITCH_QUESTIONS[bankidx][q as usize - 1].question;
-            let description = format!(
-                "It looks like a switch. Attached near the bottom is a note that reads: {}\n",
-                question_text
-            );
-
-            {
-                let gs = Repository::global_mut();
-                let desc_bytes = description.as_bytes();
-                let len = desc_bytes.len().min(200);
-                gs.items[item_number as usize].description[..len]
-                    .copy_from_slice(&desc_bytes[..len]);
-                // Null-terminate if there's space
-                if len < 200 {
-                    gs.items[item_number as usize].description[len] = 0;
-                }
+            if unique {
+                break;
             }
-
-            y += 1;
         }
 
-        // Handle door
-        let door_m = (bank.doorx + bank.doory * core::constants::SERVER_MAPX) as usize;
-        let door = Repository::global_mut().map[door_m].it;
+        let question_text = SWITCH_QUESTIONS[bankidx][q as usize - 1].question;
+        let description = format!(
+            "It looks like a switch. Attached near the bottom is a note that reads: {}\n",
+            question_text
+        );
 
-        if closedoor && door != 0 {
-            self.use_lab9_door(0, door as i32);
+        let desc_bytes = description.as_bytes();
+        let len = desc_bytes.len().min(200);
+        gs.items[item_number as usize].description[..len].copy_from_slice(&desc_bytes[..len]);
+        if len < 200 {
+            gs.items[item_number as usize].description[len] = 0;
         }
+
+        y += 1;
     }
 
-    /// Flip a switch in Lab 9
-    /// Translates C++ function: int use_lab9_switch(int cn, int in)
-    pub fn use_lab9_switch(&self, cn: usize, item_id: i32) -> bool {
-        log::info!("Character {} flipped a switch.", cn);
+    let door_m = (bank.doorx + bank.doory * core::constants::SERVER_MAPX) as usize;
+    let door = gs.map[door_m].it;
 
-        let (ix, iy, bank_no) = {
-            let gs = Repository::global_mut();
-            gs.items[item_id as usize].data[1] = if gs.items[item_id as usize].data[1] == 0 {
-                1
-            } else {
-                0
-            };
-            (
-                gs.items[item_id as usize].x as i32,
-                gs.items[item_id as usize].y as i32,
-                gs.items[item_id as usize].data[0] as i32,
-            )
-        };
+    if closedoor && door != 0 {
+        lab9_use_door(gs, 0, door as i32);
+    }
+}
 
-        Repository::global_mut().do_area_sound(0, 0, ix, iy, 10);
+pub fn lab9_use_switch(gs: &mut GameState, cn: usize, item_id: i32) -> bool {
+    log::info!("Character {} flipped a switch.", cn);
 
-        if self.lab9_check_door(bank_no) {
-            Repository::global_mut().do_character_log(
+    gs.items[item_id as usize].data[1] = if gs.items[item_id as usize].data[1] == 0 {
+        1
+    } else {
+        0
+    };
+    let ix = gs.items[item_id as usize].x as i32;
+    let iy = gs.items[item_id as usize].y as i32;
+    let bank_no = gs.items[item_id as usize].data[0] as i32;
+
+    gs.do_area_sound(0, 0, ix, iy, 10);
+
+    if lab9_check_door(gs, bank_no) {
+        gs.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            "You hear a door open nearby.\n",
+        );
+    }
+
+    true
+}
+
+pub fn lab9_use_door(gs: &mut GameState, cn: usize, item_id: i32) -> bool {
+    let item_x = gs.items[item_id as usize].x;
+    let item_y = gs.items[item_id as usize].y;
+    let m = (item_x as i32 + item_y as i32 * core::constants::SERVER_MAPX) as usize;
+
+    let ch_at_door = gs.map[m].ch;
+    if ch_at_door != 0 {
+        return false;
+    }
+
+    if cn == 0 {
+        gs.items[item_id as usize].active = 1;
+    } else {
+        let is_active = gs.items[item_id as usize].active;
+        let character_x = gs.characters[cn].x;
+        let character_y = gs.characters[cn].y;
+
+        if is_active == 0
+            && ((character_x as i32) > (item_x as i32) || (character_y as i32) < (item_y as i32))
+        {
+            gs.do_character_log(
                 cn,
-                core::types::FontColor::Green,
-                "You hear a door open nearby.\n",
+                core::types::FontColor::Red,
+                "It's locked and no key will open it.\n",
             );
-        }
-
-        true
-    }
-
-    /// One way door in lab 9
-    /// Translates C++ function: int use_lab9_door(int cn, int in)
-    /// data[3] = switch bank number (1..5)
-    pub fn use_lab9_door(&mut self, cn: usize, item_id: i32) -> bool {
-        let item_x = Repository::global_mut().items[item_id as usize].x;
-        let item_y = Repository::global_mut().items[item_id as usize].y;
-        let m = (item_x as i32 + item_y as i32 * core::constants::SERVER_MAPX) as usize;
-
-        let ch_at_door = Repository::global_mut().map[m].ch;
-        if ch_at_door != 0 {
             return false;
         }
-
-        // This statement allows free movement southward.
-        if cn == 0 {
-            Repository::global_mut().items[item_id as usize].active = 1; // just so it will close for sure
-        } else {
-            let is_active = Repository::global_mut().items[item_id as usize].active;
-            let character_x = Repository::global_mut().characters[cn].x;
-            let character_y = Repository::global_mut().characters[cn].y;
-
-            if is_active == 0
-                && ((character_x as i32) > (item_x as i32)
-                    || (character_y as i32) < (item_y as i32))
-            {
-                Repository::global_mut().do_character_log(
-                    cn,
-                    core::types::FontColor::Red,
-                    "It's locked and no key will open it.\n",
-                );
-                return false;
-            }
-        }
-
-        Repository::global_mut().reset_go(item_x as i32, item_y as i32);
-        Repository::global_mut().remove_lights(item_x as i32, item_y as i32);
-
-        Repository::global_mut().do_area_sound(0, 0, item_x as i32, item_y as i32, 10);
-
-        let is_active = Repository::global_mut().items[item_id as usize].active;
-
-        if is_active == 0 {
-            // open door
-            let gs = Repository::global_mut();
-            gs.items[item_id as usize].flags &=
-                !(ItemFlags::IF_MOVEBLOCK | ItemFlags::IF_SIGHTBLOCK).bits();
-            gs.items[item_id as usize].data[1] = 0;
-        } else {
-            // close door
-            let temp = Repository::global_mut().items[item_id as usize].temp;
-            let flags = Repository::global_mut().item_templates[temp as usize].flags
-                & ItemFlags::IF_SIGHTBLOCK.bits();
-
-            let bank_no = {
-                let gs = Repository::global_mut();
-                gs.items[item_id as usize].flags |= ItemFlags::IF_MOVEBLOCK.bits() | flags;
-                gs.items[item_id as usize].data[1] = 1;
-                gs.items[item_id as usize].data[3] as i32
-            };
-            self.lab9_reset_bank(bank_no, false);
-        }
-
-        Repository::global_mut().reset_go(item_x as i32, item_y as i32);
-        Repository::global_mut().add_lights(item_x as i32, item_y as i32);
-
-        if cn != 0 {
-            let character_position = (
-                Repository::global_mut().characters[cn].x as i32,
-                Repository::global_mut().characters[cn].y as i32,
-            );
-            Repository::global_mut().do_area_notify(
-                cn as i32,
-                0,
-                character_position.0,
-                character_position.1,
-                core::constants::NT_SEE as i32,
-                cn as i32,
-                0,
-                0,
-                0,
-            );
-        }
-
-        true
     }
+
+    gs.reset_go(item_x as i32, item_y as i32);
+    gs.remove_lights(item_x as i32, item_y as i32);
+
+    gs.do_area_sound(0, 0, item_x as i32, item_y as i32, 10);
+
+    let is_active = gs.items[item_id as usize].active;
+
+    if is_active == 0 {
+        gs.items[item_id as usize].flags &=
+            !(ItemFlags::IF_MOVEBLOCK | ItemFlags::IF_SIGHTBLOCK).bits();
+        gs.items[item_id as usize].data[1] = 0;
+    } else {
+        let temp = gs.items[item_id as usize].temp;
+        let flags = gs.item_templates[temp as usize].flags & ItemFlags::IF_SIGHTBLOCK.bits();
+
+        gs.items[item_id as usize].flags |= ItemFlags::IF_MOVEBLOCK.bits() | flags;
+        gs.items[item_id as usize].data[1] = 1;
+        let bank_no = gs.items[item_id as usize].data[3] as i32;
+        lab9_reset_bank(gs, bank_no, false);
+    }
+
+    gs.reset_go(item_x as i32, item_y as i32);
+    gs.add_lights(item_x as i32, item_y as i32);
+
+    if cn != 0 {
+        let character_position = (gs.characters[cn].x as i32, gs.characters[cn].y as i32);
+        gs.do_area_notify(
+            cn as i32,
+            0,
+            character_position.0,
+            character_position.1,
+            core::constants::NT_SEE as i32,
+            cn as i32,
+            0,
+            0,
+            0,
+        );
+    }
+
+    true
 }

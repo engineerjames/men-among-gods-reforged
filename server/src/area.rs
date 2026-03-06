@@ -1,7 +1,7 @@
 use crate::game_state::GameState;
 use core::area::AREAS;
 
-pub fn is_in_pentagram_quest_gs(gs: &mut GameState, cn: usize) -> bool {
+pub fn is_in_pentagram_quest(gs: &mut GameState, cn: usize) -> bool {
     if !(1..crate::core::constants::MAXCHARS).contains(&cn) {
         return false;
     }

@@ -806,6 +806,7 @@ impl GameState {
                             if God::transfer_char(self, cn, dest_x as usize, dest_y as usize) {
                                 if !is_invisible {
                                     EffectManager::fx_add_effect(
+                                        self,
                                         12,
                                         0,
                                         old_x as i32,
@@ -814,6 +815,7 @@ impl GameState {
                                     );
 
                                     EffectManager::fx_add_effect(
+                                        self,
                                         12,
                                         0,
                                         dest_x as i32,
@@ -1447,6 +1449,7 @@ impl GameState {
                     | core::constants::MF_GFX_INJURED2;
             }
             crate::effect::EffectManager::fx_add_effect(
+                self,
                 core::constants::FX_INJURED as i32,
                 8,
                 co_x as i32,
@@ -1494,13 +1497,27 @@ impl GameState {
                         self.characters[co].get_name().to_string()
                     ),
                 );
-                crate::effect::EffectManager::fx_add_effect(6, 0, co_x as i32, co_y as i32, 0);
+                crate::effect::EffectManager::fx_add_effect(
+                    self,
+                    6,
+                    0,
+                    co_x as i32,
+                    co_y as i32,
+                    0,
+                );
                 let temple_x = self.characters[co].temple_x as usize;
                 let temple_y = self.characters[co].temple_y as usize;
                 God::transfer_char(self, co, temple_x, temple_y);
                 let new_x = self.characters[co].x;
                 let new_y = self.characters[co].y;
-                crate::effect::EffectManager::fx_add_effect(6, 0, new_x as i32, new_y as i32, 0);
+                crate::effect::EffectManager::fx_add_effect(
+                    self,
+                    6,
+                    0,
+                    new_x as i32,
+                    new_y as i32,
+                    0,
+                );
 
                 self.do_notify_character(
                     cn as u32,

@@ -12,7 +12,6 @@ use crate::background_saver::{self, BackgroundSaver, SaveJob};
 use crate::effect::EffectManager;
 use crate::game_state::{GameState, StorageBackend};
 use crate::god::God;
-use crate::lab9::Labyrinth9;
 use crate::network_manager::NetworkManager;
 use crate::single_thread_cell::SingleThreadCell;
 use crate::tls::{self, GameStream};
@@ -247,7 +246,7 @@ impl Server {
         }
 
         // Initialize subsystems
-        Labyrinth9::initialize(gs)?;
+        crate::lab9::lab9_initialize(gs);
         populate::reset_changed_items(gs);
 
         log::info!("Checking for lab items on players...");

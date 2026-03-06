@@ -419,7 +419,7 @@ impl GameState {
 
         chlog!(cn, "Converted to skua. ({} days elapsed)", days);
 
-        EffectManager::fx_add_effect(5, 0, x as i32, y as i32, 0);
+        EffectManager::fx_add_effect(self, 5, 0, x as i32, y as i32, 0);
     }
 
     /// Port of `do_make_soulstone(int cn, int cexp)` from `svr_do.cpp`
@@ -763,7 +763,7 @@ impl GameState {
 
             chlog!(cn, "Converted to purple. ({} days elapsed)", 0);
 
-            EffectManager::fx_add_effect(5, 0, x as i32, y as i32, 0);
+            EffectManager::fx_add_effect(self, 5, 0, x as i32, y as i32, 0);
         } else {
             self.do_character_log(cn, FontColor::Red, "Hmm. Nothing happened.\n");
         }

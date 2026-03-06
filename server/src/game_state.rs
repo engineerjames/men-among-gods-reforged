@@ -16,7 +16,6 @@
 ///   gs.shutdown();
 /// ```
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
 use std::{env, fs};
 
 use bincode::{Decode, Encode};
@@ -24,7 +23,6 @@ use bincode::{Decode, Encode};
 use crate::keydb;
 use crate::keydb_store;
 use crate::path_finding::PathFinder;
-use crate::single_thread_cell::SingleThreadCell;
 
 /// Persistence backend used for loading and saving game data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,12 +46,6 @@ impl StorageBackend {
         }
     }
 }
-
-/// Global singleton for transitional access by modules not yet converted to
-/// receive `gs: &mut GameState` as a parameter.  Populated by
-/// [`GameState::register_global`] in `main()` and removed once all call sites
-/// are converted (Phase 5).
-static GAME_STATE: OnceLock<SingleThreadCell<GameState>> = OnceLock::new();
 
 const NORMALIZED_MAGIC: [u8; 4] = *b"MAG2";
 const NORMALIZED_VERSION: u32 = 1;
@@ -133,6 +125,9 @@ pub struct GameState {
     /// Number of pentagram items needed for a quest completion.
     pub penta_needed: usize,
 
+    // -- Labyrinth 9 --
+    pub lab9: crate::lab9::Labyrinth9,
+
     // -- Pathfinding --
     /// A* pathfinder with pre-allocated node/visited buffers.
     pub pathfinder: PathFinder,
@@ -148,172 +143,6 @@ pub struct GameState {
 }
 
 impl GameState {
-    /// Transitional immutable accessor for `characters`.
-    pub fn with_characters<F, R>(f: F) -> R
-    where
-        F: FnOnce(&Vec<core::types::Character>) -> R,
-    {
-        let gs = Self::global_mut();
-        f(&gs.characters)
-    }
-
-    /// Transitional mutable accessor for `characters`.
-    pub fn with_characters_mut<F, R>(f: F) -> R
-    where
-        F: FnOnce(&mut Vec<core::types::Character>) -> R,
-    {
-        let gs = Self::global_mut();
-        f(&mut gs.characters)
-    }
-
-    /// Transitional immutable accessor for `items`.
-    pub fn with_items<F, R>(f: F) -> R
-    where
-        F: FnOnce(&Vec<core::types::Item>) -> R,
-    {
-        let gs = Self::global_mut();
-        f(&gs.items)
-    }
-
-    /// Transitional mutable accessor for `items`.
-    pub fn with_items_mut<F, R>(f: F) -> R
-    where
-        F: FnOnce(&mut Vec<core::types::Item>) -> R,
-    {
-        let gs = Self::global_mut();
-        f(&mut gs.items)
-    }
-
-    /// Transitional immutable accessor for `map`.
-    pub fn with_map<F, R>(f: F) -> R
-    where
-        F: FnOnce(&Vec<core::types::Map>) -> R,
-    {
-        let gs = Self::global_mut();
-        f(&gs.map)
-    }
-
-    /// Transitional mutable accessor for `map`.
-    pub fn with_map_mut<F, R>(f: F) -> R
-    where
-        F: FnOnce(&mut Vec<core::types::Map>) -> R,
-    {
-        let gs = Self::global_mut();
-        f(&mut gs.map)
-    }
-
-    /// Transitional mutable accessor for `effects`.
-    pub fn with_effects_mut<F, R>(f: F) -> R
-    where
-        F: FnOnce(&mut Vec<core::types::Effect>) -> R,
-    {
-        let gs = Self::global_mut();
-        f(&mut gs.effects)
-    }
-
-    /// Transitional immutable accessor for `see_map`.
-    pub fn with_see_map<F, R>(f: F) -> R
-    where
-        F: FnOnce(&Vec<core::types::SeeMap>) -> R,
-    {
-        let gs = Self::global_mut();
-        f(&gs.see_map)
-    }
-
-    /// Transitional immutable accessor for `ban_list`.
-    pub fn with_ban_list<F, R>(f: F) -> R
-    where
-        F: FnOnce(&Vec<core::types::Ban>) -> R,
-    {
-        let gs = Self::global_mut();
-        f(&gs.ban_list)
-    }
-
-    /// Transitional mutable accessor for `ban_list`.
-    pub fn with_ban_list_mut<F, R>(f: F) -> R
-    where
-        F: FnOnce(&mut Vec<core::types::Ban>) -> R,
-    {
-        let gs = Self::global_mut();
-        f(&mut gs.ban_list)
-    }
-
-    /// Transitional immutable accessor for `globals`.
-    pub fn with_globals<F, R>(f: F) -> R
-    where
-        F: FnOnce(&core::types::Global) -> R,
-    {
-        let gs = Self::global_mut();
-        f(&gs.globals)
-    }
-
-    /// Transitional mutable accessor for `globals`.
-    pub fn with_globals_mut<F, R>(f: F) -> R
-    where
-        F: FnOnce(&mut core::types::Global) -> R,
-    {
-        let gs = Self::global_mut();
-        f(&mut gs.globals)
-    }
-
-    /// Transitional immutable accessor for `item_templates`.
-    pub fn with_item_templates<F, R>(f: F) -> R
-    where
-        F: FnOnce(&Vec<core::types::Item>) -> R,
-    {
-        let gs = Self::global_mut();
-        f(&gs.item_templates)
-    }
-
-    /// Transitional immutable accessor for `character_templates`.
-    pub fn with_character_templates<F, R>(f: F) -> R
-    where
-        F: FnOnce(&Vec<core::types::Character>) -> R,
-    {
-        let gs = Self::global_mut();
-        f(&gs.character_templates)
-    }
-
-    /// Transitional getter for `ice_cloak_clock`.
-    pub fn get_ice_cloak_clock() -> u32 {
-        Self::global_mut().ice_cloak_clock
-    }
-
-    /// Transitional setter for `ice_cloak_clock`.
-    pub fn set_ice_cloak_clock(value: u32) {
-        Self::global_mut().ice_cloak_clock = value;
-    }
-
-    /// Transitional getter for `item_tick_expire_counter`.
-    pub fn get_item_tick_expire_counter() -> u32 {
-        Self::global_mut().item_tick_expire_counter
-    }
-
-    /// Transitional setter for `item_tick_expire_counter`.
-    pub fn set_item_tick_expire_counter(value: u32) {
-        Self::global_mut().item_tick_expire_counter = value;
-    }
-
-    /// Transitional getter for `item_tick_gc_off`.
-    pub fn get_item_tick_gc_off() -> u32 {
-        Self::global_mut().item_tick_gc_off
-    }
-
-    /// Transitional setter for `item_tick_gc_off`.
-    pub fn set_item_tick_gc_off(value: u32) {
-        Self::global_mut().item_tick_gc_off = value;
-    }
-
-    /// Transitional getter for `item_tick_gc_count`.
-    pub fn get_item_tick_gc_count() -> u32 {
-        Self::global_mut().item_tick_gc_count
-    }
-
-    /// Transitional setter for `item_tick_gc_count`.
-    pub fn set_item_tick_gc_count(value: u32) {
-        Self::global_mut().item_tick_gc_count = value;
-    }
-
     /// Normalize MOTD text for safe client display.
     ///
     /// Applies the historical maximum length constraint to avoid client
@@ -401,6 +230,8 @@ impl GameState {
             oy: 0,
             is_monster: false,
             penta_needed: 5,
+            // Labyrinth 9
+            lab9: crate::lab9::Labyrinth9::new(),
             // Pathfinding
             pathfinder: PathFinder::new(),
             // Persistence
@@ -434,28 +265,6 @@ impl GameState {
         let mut gs = Self::new(backend);
         gs.load()?;
         Ok(gs)
-    }
-
-    /// Store the given `GameState` in a global singleton so that transitional
-    /// call sites can access it via global helper APIs.
-    ///
-    /// # Panics
-    ///
-    /// Panics if called more than once.
-    pub fn register_global(gs: GameState) {
-        if GAME_STATE.set(SingleThreadCell::new(gs)).is_err() {
-            panic!("GameState global already registered");
-        }
-    }
-
-    /// Direct mutable access to the global `GameState` singleton.
-    ///
-    /// # Panics
-    ///
-    /// Panics if [`GameState::register_global`] has not been called.
-    pub fn global_mut() -> &'static mut GameState {
-        let cell = GAME_STATE.get().expect("GameState not initialized");
-        cell.get_mut()
     }
 
     /// Return the storage backend in use.

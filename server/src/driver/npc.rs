@@ -254,6 +254,7 @@ pub fn npc_gotattack(gs: &mut GameState, cn: usize, co: usize, _dam: i32) -> i32
     {
         gs.do_sayx(cn, "Skua! Protect the innocent! Send me a Peacekeeper!");
         EffectManager::fx_add_effect(
+            gs,
             6,
             0,
             gs.characters[cn].x as i32,
@@ -302,6 +303,7 @@ pub fn npc_gotattack(gs: &mut GameState, cn: usize, co: usize, _dam: i32) -> i32
         gs.characters[cn].data[70] = ticker + (TICKS * 60 * 2);
         gs.characters[cn].a_mana = (gs.characters[cn].mana[5] * 1000) as i32;
         EffectManager::fx_add_effect(
+            gs,
             6,
             0,
             gs.characters[cn].x as i32,
@@ -761,7 +763,7 @@ pub fn npc_give(gs: &mut GameState, cn: usize, co: usize, in_item: usize, money:
         {
             let idx = (ar - core::constants::RIDDLE_MIN_AREA) as usize;
             // check Lab9 guesser
-            let still = crate::lab9::Labyrinth9::with(|lab9| lab9.get_guesser(idx));
+            let still = crate::lab9::lab9_get_guesser(gs, idx);
             if still != 0 && still as usize != co {
                 gs.do_sayx(
                     cn,
@@ -778,7 +780,7 @@ pub fn npc_give(gs: &mut GameState, cn: usize, co: usize, in_item: usize, money:
             // Destroy gift from player and pose riddle
             God::take_from_char(gs, in_item, co);
             gs.items[in_item].used = core::constants::USE_EMPTY;
-            crate::lab9::Labyrinth9::with_mut(|lab9| lab9.lab9_pose_riddle(cn, co));
+            crate::lab9::lab9_pose_riddle(gs, cn, co);
         }
 
         return 0;
@@ -1110,7 +1112,7 @@ pub fn npc_try_spell(gs: &mut GameState, cn: usize, co: usize, spell: usize) -> 
             gs.characters[co].data[96] |= tmp as i32;
             // Match C++ parameter semantics: effect[11].data[0]=target character id,
             // effect[11].data[1]=spellflag bitmask to clear later.
-            EffectManager::fx_add_effect(11, 8, co as i32, tmp as i32, 0);
+            EffectManager::fx_add_effect(gs, 11, 8, co as i32, tmp as i32, 0);
             return true;
         }
     }
@@ -1192,6 +1194,7 @@ pub fn npc_quaff_potion(gs: &mut GameState, cn: usize, itemp: i32, stemp: i32) -
 
 pub fn die_companion(gs: &mut GameState, cn: usize) {
     EffectManager::fx_add_effect(
+        gs,
         7,
         0,
         gs.characters[cn].x as i32,
@@ -1294,9 +1297,7 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> i32 {
         if (core::constants::RIDDLE_MIN_AREA..=core::constants::RIDDLE_MAX_AREA)
             .contains(&area_of_knowledge)
         {
-            crate::lab9::Labyrinth9::with_mut(|lab9| {
-                lab9.tick_riddle_timeout(cn);
-            });
+            crate::lab9::lab9_tick_riddle_timeout(gs, cn);
         }
     }
 
@@ -2113,6 +2114,7 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
                     }
 
                     EffectManager::fx_add_effect(
+                        gs,
                         6,
                         0,
                         gs.characters[co].x as i32,
@@ -2122,6 +2124,7 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
                 }
 
                 EffectManager::fx_add_effect(
+                    gs,
                     7,
                     0,
                     gs.characters[cn].x as i32,
@@ -2613,8 +2616,9 @@ pub fn shiva_activate_candle(gs: &mut GameState, cn: usize, in_idx: usize) -> i3
         gs.do_add_light(it_x as i32, it_y as i32, light_0 as i32 - light_1 as i32);
     }
 
-    EffectManager::fx_add_effect(6, 0, it_x as i32, it_y as i32, 0);
+    EffectManager::fx_add_effect(gs, 6, 0, it_x as i32, it_y as i32, 0);
     EffectManager::fx_add_effect(
+        gs,
         7,
         0,
         gs.characters[cn].x as i32,

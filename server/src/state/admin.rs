@@ -64,7 +64,7 @@ impl GameState {
         buf[15] = 0;
 
         NetworkManager::with(|network| {
-            network.xsend_gs(self, player_id as usize, &buf, 16);
+            network.xsend(self, player_id as usize, &buf, 16);
         });
 
         // Send SV_LOOK2 packet
@@ -89,7 +89,7 @@ impl GameState {
         buf[9..13].copy_from_slice(&hp_bytes);
 
         NetworkManager::with(|network| {
-            network.xsend_gs(self, player_id as usize, &buf, 16);
+            network.xsend(self, player_id as usize, &buf, 16);
         });
 
         // Send SV_LOOK3 packet
@@ -130,7 +130,7 @@ impl GameState {
         buf[14] = (amana_display >> 8) as u8;
 
         NetworkManager::with(|network| {
-            network.xsend_gs(self, player_id as usize, &buf, 16);
+            network.xsend(self, player_id as usize, &buf, 16);
         });
 
         // Send SV_LOOK4 packet
@@ -164,7 +164,7 @@ impl GameState {
         buf[6..10].copy_from_slice(&cost_bytes);
 
         NetworkManager::with(|network| {
-            network.xsend_gs(self, player_id as usize, &buf, 16);
+            network.xsend(self, player_id as usize, &buf, 16);
         });
 
         // Send SV_LOOK5 packet (character name)
@@ -176,7 +176,7 @@ impl GameState {
         buf[1..16].copy_from_slice(&co_name);
 
         NetworkManager::with(|network| {
-            network.xsend_gs(self, player_id as usize, &buf, 16);
+            network.xsend(self, player_id as usize, &buf, 16);
         });
 
         // Send SV_LOOK6 packets for all 62 depot slots in pairs
@@ -204,7 +204,7 @@ impl GameState {
             }
 
             NetworkManager::with(|network| {
-                network.xsend_gs(self, player_id as usize, &buf, 16);
+                network.xsend(self, player_id as usize, &buf, 16);
             });
         }
     }

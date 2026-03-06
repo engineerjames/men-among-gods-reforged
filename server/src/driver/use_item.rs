@@ -4,7 +4,6 @@ use crate::effect::EffectManager;
 use crate::game_state::GameState;
 use crate::god::God;
 use crate::helpers::{self};
-use crate::lab9::Labyrinth9;
 use crate::{chlog, driver, player, populate};
 use core::constants::{
     CharacterFlags, ItemFlags, AT_AGIL, AT_INT, AT_STREN, AT_WILL, DX_RIGHT, KIN_HARAKIM, KIN_MALE,
@@ -825,9 +824,9 @@ pub fn finish_laby_teleport(gs: &mut GameState, cn: usize, nr: usize, exp: usize
     }
 
     // Add effects and transfer character
-    EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
+    EffectManager::fx_add_effect(gs, 6, 0, x as i32, y as i32, 0);
     God::transfer_char(gs, cn, 512, 512); // TODO: Shouldn't this be their temple coords?
-    EffectManager::fx_add_effect(6, 0, 512_i32, 512_i32, 0);
+    EffectManager::fx_add_effect(gs, 6, 0, 512_i32, 512_i32, 0);
 
     let (x, y) = (gs.characters[cn].x, gs.characters[cn].y);
     gs.characters[cn].temple_x = x as u16;
@@ -914,9 +913,9 @@ pub fn teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     let dest_x = gs.items[item_idx].data[0] as usize;
     let dest_y = gs.items[item_idx].data[1] as usize;
 
-    EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
+    EffectManager::fx_add_effect(gs, 6, 0, x as i32, y as i32, 0);
     God::transfer_char(gs, cn, dest_x, dest_y);
-    EffectManager::fx_add_effect(6, 0, dest_x as i32, dest_y as i32, 0);
+    EffectManager::fx_add_effect(gs, 6, 0, dest_x as i32, dest_y as i32, 0);
 
     1
 }
@@ -992,7 +991,7 @@ pub fn teleport2(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     }
 
     let (x, y) = (gs.characters[cn].x, gs.characters[cn].y);
-    crate::effect::EffectManager::fx_add_effect(7, 0, x as i32, y as i32, 0);
+    crate::effect::EffectManager::fx_add_effect(gs, 7, 0, x as i32, y as i32, 0);
     1
 }
 
@@ -1050,10 +1049,10 @@ pub fn use_labyrinth(gs: &mut GameState, cn: usize, _item_idx: usize) -> i32 {
     };
 
     let flag = if let Some((dest_x, dest_y)) = destination {
-        EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
+        EffectManager::fx_add_effect(gs, 6, 0, x as i32, y as i32, 0);
         let result = God::transfer_char(gs, cn, dest_x, dest_y);
         let (new_x, new_y) = (gs.characters[cn].x, gs.characters[cn].y);
-        EffectManager::fx_add_effect(6, 0, new_x as i32, new_y as i32, 0);
+        EffectManager::fx_add_effect(gs, 6, 0, new_x as i32, new_y as i32, 0);
         result
     } else {
         gs.do_character_log(
@@ -2281,6 +2280,7 @@ pub fn use_spawn(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     if temp != 0 {
         {
             EffectManager::fx_add_effect(
+                gs,
                 2,
                 core::constants::TICKS * 10,
                 gs.character_templates[temp].x as i32,
@@ -2400,7 +2400,7 @@ pub fn use_pile(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         } else {
             // It's a monster spawner
             God::drop_item(gs, in2, x as usize, y as usize);
-            EffectManager::fx_add_effect(9, 16, in2 as i32, data_0 as i32, 0);
+            EffectManager::fx_add_effect(gs, 9, 16, in2 as i32, data_0 as i32, 0);
             log::info!("use_pile: spawning monster at ({}, {})", x, y);
         }
     }
@@ -2489,6 +2489,7 @@ pub fn mine_wall(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         // Use the template id as the effect parameter (matches original server behavior)
         let temp_id = gs.items[in_idx].temp;
         EffectManager::fx_add_effect(
+            gs,
             10,
             core::constants::TICKS * 60 * 15,
             item_x,
@@ -2581,7 +2582,7 @@ pub fn use_mine(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             item_damage_weapon(gs, cn, str * 10);
             str /= 4;
         }
-        GameState::char_play_sound(cn, 11, -150, 0);
+        GameState::char_play_sound(gs, cn, 11, -150, 0);
         gs.do_area_sound(
             cn,
             0,
@@ -2658,6 +2659,7 @@ pub fn use_mine_fast(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     };
 
     EffectManager::fx_add_effect(
+        gs,
         10,
         core::constants::TICKS * 60 * 15,
         x as i32,
@@ -3163,7 +3165,7 @@ pub fn solved_pentagram(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             };
         }
 
-        if area::is_in_pentagram_quest_gs(gs, n) {
+        if area::is_in_pentagram_quest(gs, n) {
             characters_in_pents += 1;
         }
     }
@@ -3700,7 +3702,7 @@ pub fn use_shrine(gs: &mut GameState, cn: usize, _item_idx: usize) -> i32 {
             );
             let (x, y) = { (gs.characters[cn].x as i32, gs.characters[cn].y as i32) };
 
-            EffectManager::fx_add_effect(6, 0, x, y, 0);
+            EffectManager::fx_add_effect(gs, 6, 0, x, y, 0);
         }
 
         // Determine message based on value
@@ -3788,6 +3790,7 @@ pub fn use_kill_undead(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
 
     {
         EffectManager::fx_add_effect(
+            gs,
             7,
             0,
             gs.characters[cn].x as i32,
@@ -3816,7 +3819,7 @@ pub fn use_kill_undead(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
 
                 if is_undead {
                     gs.do_hurt(cn, co, 500, 2);
-                    EffectManager::fx_add_effect(5, 0, x, y, 0);
+                    EffectManager::fx_add_effect(gs, 5, 0, x, y, 0);
                 }
             }
         }
@@ -3899,6 +3902,7 @@ pub fn teleport3(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     // Teleport
     {
         EffectManager::fx_add_effect(
+            gs,
             6,
             0,
             gs.characters[cn].x as i32,
@@ -3915,6 +3919,7 @@ pub fn teleport3(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     God::transfer_char(gs, cn, dest_x, dest_y);
     {
         EffectManager::fx_add_effect(
+            gs,
             6,
             0,
             gs.characters[cn].x as i32,
@@ -4321,6 +4326,7 @@ pub fn use_seyan_portal(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     // Teleport
     {
         EffectManager::fx_add_effect(
+            gs,
             6,
             0,
             gs.characters[cn].x as i32,
@@ -4337,6 +4343,7 @@ pub fn use_seyan_portal(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     God::transfer_char(gs, cn, dest_x, dest_y);
     {
         EffectManager::fx_add_effect(
+            gs,
             6,
             0,
             gs.characters[cn].x as i32,
@@ -4749,6 +4756,7 @@ pub fn use_lab8_moneyshrine(gs: &mut GameState, cn: usize, item_idx: usize) -> i
         );
         {
             EffectManager::fx_add_effect(
+                gs,
                 6,
                 0,
                 gs.characters[cn].x as i32,
@@ -5257,8 +5265,8 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
             61 => use_lab8_key(gs, cn, item_idx),
             63 => use_lab8_shrine(gs, cn, item_idx),
             64 => use_lab8_moneyshrine(gs, cn, item_idx),
-            65 => Labyrinth9::with(|lab9| lab9.use_lab9_switch(cn, item_idx as i32)) as i32,
-            66 => Labyrinth9::with_mut(|lab9| lab9.use_lab9_door(cn, item_idx as i32)) as i32,
+            65 => crate::lab9::lab9_use_switch(gs, cn, item_idx as i32) as i32,
+            66 => crate::lab9::lab9_use_door(gs, cn, item_idx as i32) as i32,
             67 => use_garbage(gs, cn, item_idx),
             68 => use_soulstone(gs, cn, item_idx),
             69 => 0,
@@ -6714,7 +6722,7 @@ pub fn item_tick_expire(gs: &mut GameState) {
                                         )
                                     };
 
-                                    EffectManager::fx_add_effect(2, dur, tx, ty, temp as i32);
+                                    EffectManager::fx_add_effect(gs, 2, dur, tx, ty, temp as i32);
                                     log::info!("respawn {} ({}): YES", co, name);
                                 } else {
                                     log::info!("respawn {} ({}): NO", co, name);
@@ -7610,6 +7618,7 @@ pub fn step_teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     // Add departure effect
     {
         EffectManager::fx_add_effect(
+            gs,
             6,
             0,
             gs.characters[cn].x as i32,
@@ -7655,6 +7664,7 @@ pub fn step_teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     // Add arrival effect
     {
         EffectManager::fx_add_effect(
+            gs,
             6,
             0,
             gs.characters[cn].x as i32,

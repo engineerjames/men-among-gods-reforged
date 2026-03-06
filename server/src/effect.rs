@@ -1,8 +1,6 @@
 use core::{constants::CharacterFlags, string_operations::c_string_to_str};
 
-use crate::{
-    game_state::GameState, game_state::GameState as Repository, god::God, helpers, player, populate,
-};
+use crate::{game_state::GameState, god::God, helpers, player, populate};
 
 pub struct EffectManager {}
 
@@ -16,7 +14,7 @@ impl EffectManager {
 
     /// Port of `can_drop(int m)` from `svr_effect.cpp`
     /// Checks if an item can be dropped at the given map index
-    fn can_drop_gs(gs: &mut GameState, map_index: usize) -> bool {
+    fn can_drop(gs: &mut GameState, map_index: usize) -> bool {
         let m = &gs.map[map_index];
         !(m.ch != 0
             || m.to_ch != 0
@@ -28,7 +26,7 @@ impl EffectManager {
 
     /// Port of `is_beam(int in)` from `svr_effect.cpp`
     /// Checks if an item is an active beam (template 453)
-    fn is_beam_gs(gs: &mut GameState, item_id: usize) -> bool {
+    fn is_beam(gs: &mut GameState, item_id: usize) -> bool {
         item_id != 0 && gs.items[item_id].temp == 453 && gs.items[item_id].active != 0
     }
 
@@ -151,7 +149,7 @@ impl EffectManager {
                     if (flags & CharacterFlags::Respawn.bits()) != 0 {
                         let tx = gs.character_templates[temp].x as i32;
                         let ty = gs.character_templates[temp].y as i32;
-                        Self::fx_add_effect_gs(
+                        Self::fx_add_effect(
                             gs,
                             2,
                             (core::constants::TICKS as u32 * 60 * 5
@@ -468,7 +466,7 @@ impl EffectManager {
     }
 
     /// Port of `fx_add_effect` from `svr_effect.cpp`
-    pub fn fx_add_effect_gs(
+    pub fn fx_add_effect(
         gs: &mut GameState,
         effect_type: i32,
         duration: i32,
@@ -490,16 +488,6 @@ impl EffectManager {
             }
         }
         None
-    }
-
-    pub fn fx_add_effect(
-        effect_type: i32,
-        duration: i32,
-        d1: i32,
-        d2: i32,
-        d3: i32,
-    ) -> Option<usize> {
-        Self::fx_add_effect_gs(Repository::global_mut(), effect_type, duration, d1, d2, d3)
     }
 
     // Helper functions
@@ -539,7 +527,7 @@ impl EffectManager {
 
         for offset in offsets.iter() {
             let m = (base_map_index as i32 + offset) as usize;
-            if Self::can_drop_gs(gs, m) {
+            if Self::can_drop(gs, m) {
                 return m;
             }
         }
@@ -581,7 +569,7 @@ impl EffectManager {
         if has_items || has_gold {
             gs.map[map_index].flags |= core::constants::MF_MOVEBLOCK as u64;
 
-            let fn_idx = Self::fx_add_effect_gs(
+            let fn_idx = Self::fx_add_effect(
                 gs,
                 4,
                 0,
@@ -608,7 +596,7 @@ impl EffectManager {
                 let ty = gs.character_templates[temp].y as i32;
 
                 if temp == 189 || temp == 561 {
-                    Self::fx_add_effect_gs(
+                    Self::fx_add_effect(
                         gs,
                         2,
                         (core::constants::TICKS as u32 * 60 * 20
@@ -619,7 +607,7 @@ impl EffectManager {
                         temp as i32,
                     );
                 } else {
-                    Self::fx_add_effect_gs(
+                    Self::fx_add_effect(
                         gs,
                         2,
                         (core::constants::TICKS as u32 * 60 * 4
@@ -676,7 +664,7 @@ impl EffectManager {
             let m = (map_index as i32 + offset) as usize;
             if m < map_len {
                 let it = gs.map[m].it;
-                if Self::is_beam_gs(gs, it as usize) {
+                if Self::is_beam(gs, it as usize) {
                     return true;
                 }
             }

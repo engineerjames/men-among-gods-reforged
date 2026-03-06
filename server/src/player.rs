@@ -280,11 +280,11 @@ pub fn plr_logout(
 
             if player_state == core::constants::ST_NORMAL {
                 NetworkManager::with(|network| {
-                    network.xsend_gs(gs, player_id, &buffer, 2);
+                    network.xsend(gs, player_id, &buffer, 2);
                 });
             } else {
                 NetworkManager::with(|network| {
-                    network.csend_gs(gs, player_id, &buffer, 2);
+                    network.csend(gs, player_id, &buffer, 2);
                 });
             }
         }
@@ -2569,7 +2569,7 @@ fn plr_newlogin(gs: &mut GameState, nr: usize) {
     buf[15] = ver_bytes[2];
 
     NetworkManager::with(|network| {
-        network.csend_gs(gs, nr, &buf, 16);
+        network.csend(gs, nr, &buf, 16);
     });
 
     // finalize player state
@@ -2586,7 +2586,7 @@ fn plr_newlogin(gs: &mut GameState, nr: usize) {
     tbuf[0] = core::constants::SV_TICK;
     tbuf[1] = (gs.globals.ticker as usize % core::constants::CTICK_CYCLE_LEN) as u8;
     NetworkManager::with(|network| {
-        network.xsend_gs(gs, nr, &tbuf, 2);
+        network.xsend(gs, nr, &tbuf, 2);
     });
 
     log::info!("Created new character");
@@ -2783,7 +2783,7 @@ fn plr_login(gs: &mut GameState, nr: usize) {
     buf[0] = core::constants::SV_LOGIN_OK;
     buf[1..5].copy_from_slice(&core::constants::VERSION.to_le_bytes());
     NetworkManager::with(|network| {
-        network.csend(nr, &buf, 16);
+        network.csend(gs, nr, &buf, 16);
     });
 
     // send tick
@@ -2791,7 +2791,7 @@ fn plr_login(gs: &mut GameState, nr: usize) {
     tbuf[0] = core::constants::SV_TICK;
     tbuf[1] = (gs.globals.ticker as usize % core::constants::CTICK_CYCLE_LEN) as u8;
     NetworkManager::with(|network| {
-        network.xsend_gs(gs, nr, &tbuf, 2);
+        network.xsend(gs, nr, &tbuf, 2);
     });
 
     // mark active and set login date, addr, add net history
@@ -3064,10 +3064,10 @@ pub fn plr_change(gs: &mut GameState, nr: usize) {
     plr_change_position(gs, nr, cn);
 
     // Send light updates
-    plr_change_light(nr);
+    plr_change_light(gs, nr);
 
     // Send tile content updates
-    plr_change_map(nr);
+    plr_change_map(gs, nr);
 
     // Send target updates
     plr_change_target(gs, nr, cn);
@@ -3087,13 +3087,13 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
         let mut buf: [u8; 16] = [0; 16];
         buf[0] = core::constants::SV_SETCHAR_NAME1;
         buf[1..16].copy_from_slice(&ch.name[0..15]);
-        NetworkManager::with(|network| network.xsend(nr, &buf, 16));
+        NetworkManager::with(|network| network.xsend(gs, nr, &buf, 16));
 
         // part2: next 15 bytes
         let mut buf2: [u8; 16] = [0; 16];
         buf2[0] = core::constants::SV_SETCHAR_NAME2;
         buf2[1..16].copy_from_slice(&ch.name[15..30]);
-        NetworkManager::with(|network| network.xsend(nr, &buf2, 16));
+        NetworkManager::with(|network| network.xsend(gs, nr, &buf2, 16));
 
         // part3: last 10 bytes + temp (u16 -> u32 slot)
         let mut buf3: [u8; 16] = [0; 16];
@@ -3101,7 +3101,7 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
         buf3[1..11].copy_from_slice(&ch.name[30..40]);
         let temp_bytes = (ch.temp as u32).to_le_bytes();
         buf3[11..15].copy_from_slice(&temp_bytes[0..4]);
-        NetworkManager::with(|network| network.xsend(nr, &buf3, 16));
+        NetworkManager::with(|network| network.xsend(gs, nr, &buf3, 16));
 
         // copy into cpl
         Server::with_players_mut(|players| players[nr].cpl.name.copy_from_slice(&ch.name));
@@ -3117,7 +3117,7 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
         let mut buf: [u8; 2] = [0; 2];
         buf[0] = core::constants::SV_SETCHAR_MODE;
         buf[1] = mode;
-        NetworkManager::with(|network| network.xsend(nr, &buf, 2));
+        NetworkManager::with(|network| network.xsend(gs, nr, &buf, 2));
         Server::with_players_mut(|players| players[nr].cpl.mode = mode as i32);
     }
 
@@ -3133,7 +3133,7 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
             buf[0] = core::constants::SV_SETCHAR_ATTRIB;
             buf[1] = a as u8;
             buf[2..8].copy_from_slice(&bytes);
-            NetworkManager::with(|network| network.xsend(nr, &buf, 8));
+            NetworkManager::with(|network| network.xsend(gs, nr, &buf, 8));
             Server::with_players_mut(|players| players[nr].cpl.attrib[a] = bytes);
         }
     }
@@ -3167,7 +3167,7 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
                 buf[off] = (v & 0xff) as u8;
                 buf[off + 1] = (v >> 8) as u8;
             }
-            NetworkManager::with(|network| network.xsend(nr, &buf, 13));
+            NetworkManager::with(|network| network.xsend(gs, nr, &buf, 13));
             // copy into cpl
             Server::with_players_mut(|players| match idx {
                 0 => players[nr].cpl.hp = ch.hp,
@@ -3190,7 +3190,7 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
             buf[0] = core::constants::SV_SETCHAR_SKILL;
             buf[1] = s as u8;
             buf[2..8].copy_from_slice(&bytes);
-            NetworkManager::with(|network| network.xsend(nr, &buf, 8));
+            NetworkManager::with(|network| network.xsend(gs, nr, &buf, 8));
             Server::with_players_mut(|players| players[nr].cpl.skill[s] = bytes);
         }
     }
@@ -3280,7 +3280,7 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
                 buf[8] = 0;
             }
 
-            NetworkManager::with(|network| network.xsend(nr, &buf, 9));
+            NetworkManager::with(|network| network.xsend(gs, nr, &buf, 9));
             Server::with_players_mut(|players| players[nr].cpl.item[i] = in_idx as i32);
         }
     }
@@ -3327,7 +3327,7 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
                 buf[8] = 0;
             }
 
-            NetworkManager::with(|network| network.xsend(nr, &buf, 9));
+            NetworkManager::with(|network| network.xsend(gs, nr, &buf, 9));
             Server::with_players_mut(|players| players[nr].cpl.worn[i] = in_idx as i32);
         }
     }
@@ -3389,7 +3389,7 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
                 });
             }
 
-            NetworkManager::with(|network| network.xsend(nr, &buf, 9));
+            NetworkManager::with(|network| network.xsend(gs, nr, &buf, 9));
         }
     }
 
@@ -3465,7 +3465,7 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
             buf[4] = 0;
         }
 
-        NetworkManager::with(|network| network.xsend(nr, &buf, 5));
+        NetworkManager::with(|network| network.xsend(gs, nr, &buf, 5));
         Server::with_players_mut(|players| players[nr].cpl.citem = in_idx as i32);
     }
 }
@@ -3482,7 +3482,7 @@ fn plr_change_hp(gs: &mut GameState, nr: usize, cn: usize) {
         buf[2] = (current_hp >> 8) as u8;
 
         NetworkManager::with(|network| {
-            network.xsend(nr, &buf, 3);
+            network.xsend(gs, nr, &buf, 3);
         });
 
         Server::with_players_mut(|players| {
@@ -3503,7 +3503,7 @@ fn plr_change_end(gs: &mut GameState, nr: usize, cn: usize) {
         buf[2] = (current_end >> 8) as u8;
 
         NetworkManager::with(|network| {
-            network.xsend(nr, &buf, 3);
+            network.xsend(gs, nr, &buf, 3);
         });
 
         Server::with_players_mut(|players| {
@@ -3524,7 +3524,7 @@ fn plr_change_mana(gs: &mut GameState, nr: usize, cn: usize) {
         buf[2] = (current_mana >> 8) as u8;
 
         NetworkManager::with(|network| {
-            network.xsend(nr, &buf, 3);
+            network.xsend(gs, nr, &buf, 3);
         });
 
         Server::with_players_mut(|players| {
@@ -3544,7 +3544,7 @@ fn plr_change_dir(gs: &mut GameState, nr: usize, cn: usize) {
         buf[1] = current_dir;
 
         NetworkManager::with(|network| {
-            network.xsend(nr, &buf, 2);
+            network.xsend(gs, nr, &buf, 2);
         });
 
         Server::with_players_mut(|players| players[nr].cpl.dir = current_dir as i32);
@@ -3572,7 +3572,7 @@ fn plr_change_points(gs: &mut GameState, nr: usize, cn: usize) {
         buf[5..9].copy_from_slice(&points_tot.to_le_bytes());
         buf[9..13].copy_from_slice(&kindred.to_le_bytes());
 
-        NetworkManager::with(|network| network.xsend(nr, &buf, 13));
+        NetworkManager::with(|network| network.xsend(gs, nr, &buf, 13));
 
         Server::with_players_mut(|players| {
             players[nr].cpl.points = points;
@@ -3606,7 +3606,7 @@ fn plr_change_gold(gs: &mut GameState, nr: usize, cn: usize) {
         buf[5..9].copy_from_slice(&armor32.to_le_bytes());
         buf[9..13].copy_from_slice(&weapon32.to_le_bytes());
 
-        NetworkManager::with(|network| network.xsend(nr, &buf, 13));
+        NetworkManager::with(|network| network.xsend(gs, nr, &buf, 13));
 
         Server::with_players_mut(|players| {
             players[nr].cpl.gold = gold;
@@ -3625,14 +3625,14 @@ fn plr_change_load(gs: &mut GameState, nr: usize, cn: usize, ticker: i32) {
         let mut buf: [u8; 5] = [0; 5];
         buf[0] = core::constants::SV_LOAD;
         buf[1..5].copy_from_slice(&load.to_le_bytes());
-        NetworkManager::with(|network| network.xsend(nr, &buf, 5));
+        NetworkManager::with(|network| network.xsend(gs, nr, &buf, 5));
     }
 }
 
 /// Light update functions - calculate efficiency of batch updates
 
 /// Updates a single light tile (least efficient)
-fn cl_light_one(n: usize, dosend: usize, update_only: bool) -> usize {
+fn cl_light_one(gs: &mut GameState, n: usize, dosend: usize, update_only: bool) -> usize {
     if !update_only {
         // Return efficiency score: 50 * 1 / 3
         return 50 / 3;
@@ -3648,13 +3648,13 @@ fn cl_light_one(n: usize, dosend: usize, update_only: bool) -> usize {
         buf[1] = (encoded & 0xff) as u8;
         buf[2] = ((encoded >> 8) & 0xff) as u8;
 
-        NetworkManager::with(|network| network.xsend(dosend, &buf, 3));
+        NetworkManager::with(|network| network.xsend(gs, dosend, &buf, 3));
     });
     1
 }
 
 /// Updates three light tiles
-fn cl_light_three(n: usize, dosend: usize, update_only: bool) -> usize {
+fn cl_light_three(gs: &mut GameState, n: usize, dosend: usize, update_only: bool) -> usize {
     if !update_only {
         // Count differences and return efficiency
         let l = Server::with_players(|players| {
@@ -3693,13 +3693,13 @@ fn cl_light_three(n: usize, dosend: usize, update_only: bool) -> usize {
             p += 1;
         }
 
-        NetworkManager::with(|network| network.xsend(dosend, &buf, 4));
+        NetworkManager::with(|network| network.xsend(gs, dosend, &buf, 4));
     });
     1
 }
 
 /// Updates seven light tiles
-fn cl_light_seven(n: usize, dosend: usize, update_only: bool) -> usize {
+fn cl_light_seven(gs: &mut GameState, n: usize, dosend: usize, update_only: bool) -> usize {
     if !update_only {
         // Count differences and return efficiency
         let l = Server::with_players(|players| {
@@ -3738,13 +3738,13 @@ fn cl_light_seven(n: usize, dosend: usize, update_only: bool) -> usize {
             p += 1;
         }
 
-        NetworkManager::with(|network| network.xsend(dosend, &buf, 6));
+        NetworkManager::with(|network| network.xsend(gs, dosend, &buf, 6));
     });
     1
 }
 
 /// Updates 27 light tiles (most efficient for large batches)
-fn cl_light_26(n: usize, dosend: usize, update_only: bool) -> usize {
+fn cl_light_26(gs: &mut GameState, n: usize, dosend: usize, update_only: bool) -> usize {
     if !update_only {
         // Count differences and return efficiency
         let l = Server::with_players(|players| {
@@ -3783,13 +3783,13 @@ fn cl_light_26(n: usize, dosend: usize, update_only: bool) -> usize {
             p += 1;
         }
 
-        NetworkManager::with(|network| network.xsend(dosend, &buf, 16));
+        NetworkManager::with(|network| network.xsend(gs, dosend, &buf, 16));
     });
     1
 }
 
 /// Send light updates for all changed tiles
-fn plr_change_light(nr: usize) {
+fn plr_change_light(gs: &mut GameState, nr: usize) {
     let total = core::constants::TILEX * core::constants::TILEY;
 
     for n in 0..total {
@@ -3801,11 +3801,11 @@ fn plr_change_light(nr: usize) {
             let mut best_efficiency = 0;
             let mut best_func = 0;
 
-            let lfuncs: [fn(usize, usize, bool) -> usize; 4] =
+            let lfuncs: [fn(&mut GameState, usize, usize, bool) -> usize; 4] =
                 [cl_light_one, cl_light_three, cl_light_seven, cl_light_26];
 
             for (idx, func) in lfuncs.iter().enumerate() {
-                let efficiency = func(n, nr, false);
+                let efficiency = func(gs, n, nr, false);
                 if efficiency >= best_efficiency {
                     best_efficiency = efficiency;
                     best_func = idx;
@@ -3813,13 +3813,13 @@ fn plr_change_light(nr: usize) {
             }
 
             // Execute the best function
-            lfuncs[best_func](n, nr, true);
+            lfuncs[best_func](gs, n, nr, true);
         }
     }
 }
 
 /// Send map tile content updates for all changed tiles
-fn plr_change_map(nr: usize) {
+fn plr_change_map(gs: &mut GameState, nr: usize) {
     let total = core::constants::TILEX * core::constants::TILEY;
     let mut lastn: i32 = -1;
     let mut n = 0;
@@ -3949,7 +3949,7 @@ fn plr_change_map(nr: usize) {
             // Only send if we actually found changes (matching C++ if (buf[1]))
             let did_update = buf[1] != 0;
             if did_update {
-                NetworkManager::with(|network| network.xsend(nr, &buf, p as u8));
+                NetworkManager::with(|network| network.xsend(gs, nr, &buf, p as u8));
             }
 
             // Copy smap to cmap for this tile (matching C++ mcpy)
@@ -3980,7 +3980,7 @@ fn plr_change_position(gs: &mut GameState, nr: usize, cn: usize) {
         if cpl_x == (x as i32 - 1) && cpl_y == y as i32 {
             // Scroll right
             buf[0] = core::constants::SV_SCROLL_RIGHT;
-            NetworkManager::with(|network| network.xsend(nr, &buf, 1));
+            NetworkManager::with(|network| network.xsend(gs, nr, &buf, 1));
 
             // Shift cmap left (moving right means old data shifts left)
             Server::with_players_mut(|players| {
@@ -3991,7 +3991,7 @@ fn plr_change_position(gs: &mut GameState, nr: usize, cn: usize) {
         } else if cpl_x == (x as i32 + 1) && cpl_y == y as i32 {
             // Scroll left
             buf[0] = core::constants::SV_SCROLL_LEFT;
-            NetworkManager::with(|network| network.xsend(nr, &buf, 1));
+            NetworkManager::with(|network| network.xsend(gs, nr, &buf, 1));
 
             // Shift cmap right (moving left means old data shifts right)
             Server::with_players_mut(|players| {
@@ -4002,7 +4002,7 @@ fn plr_change_position(gs: &mut GameState, nr: usize, cn: usize) {
         } else if cpl_x == x as i32 && cpl_y == (y as i32 - 1) {
             // Scroll down
             buf[0] = core::constants::SV_SCROLL_DOWN;
-            NetworkManager::with(|network| network.xsend(nr, &buf, 1));
+            NetworkManager::with(|network| network.xsend(gs, nr, &buf, 1));
 
             // Shift cmap up (moving down means old data shifts up)
             Server::with_players_mut(|players| {
@@ -4014,7 +4014,7 @@ fn plr_change_position(gs: &mut GameState, nr: usize, cn: usize) {
         } else if cpl_x == x as i32 && cpl_y == (y as i32 + 1) {
             // Scroll up
             buf[0] = core::constants::SV_SCROLL_UP;
-            NetworkManager::with(|network| network.xsend(nr, &buf, 1));
+            NetworkManager::with(|network| network.xsend(gs, nr, &buf, 1));
 
             // Shift cmap down (moving up means old data shifts down)
             Server::with_players_mut(|players| {
@@ -4026,7 +4026,7 @@ fn plr_change_position(gs: &mut GameState, nr: usize, cn: usize) {
         } else if cpl_x == (x as i32 + 1) && cpl_y == (y as i32 + 1) {
             // Scroll left-up
             buf[0] = core::constants::SV_SCROLL_LEFTUP;
-            NetworkManager::with(|network| network.xsend(nr, &buf, 1));
+            NetworkManager::with(|network| network.xsend(gs, nr, &buf, 1));
 
             Server::with_players_mut(|players| {
                 let cmap = &mut players[nr].cmap;
@@ -4037,7 +4037,7 @@ fn plr_change_position(gs: &mut GameState, nr: usize, cn: usize) {
         } else if cpl_x == (x as i32 + 1) && cpl_y == (y as i32 - 1) {
             // Scroll left-down
             buf[0] = core::constants::SV_SCROLL_LEFTDOWN;
-            NetworkManager::with(|network| network.xsend(nr, &buf, 1));
+            NetworkManager::with(|network| network.xsend(gs, nr, &buf, 1));
 
             // C++: memmove(cmap, cmap + TILEX - 1, sizeof(struct cmap) * (TILEX * TILEY - TILEX + 1))
             Server::with_players_mut(|players| {
@@ -4049,7 +4049,7 @@ fn plr_change_position(gs: &mut GameState, nr: usize, cn: usize) {
         } else if cpl_x == (x as i32 - 1) && cpl_y == (y as i32 + 1) {
             // Scroll right-up
             buf[0] = core::constants::SV_SCROLL_RIGHTUP;
-            NetworkManager::with(|network| network.xsend(nr, &buf, 1));
+            NetworkManager::with(|network| network.xsend(gs, nr, &buf, 1));
 
             // C++: memmove(cmap + TILEX - 1, cmap, sizeof(struct cmap) * (TILEX * TILEY - TILEX + 1))
             Server::with_players_mut(|players| {
@@ -4061,7 +4061,7 @@ fn plr_change_position(gs: &mut GameState, nr: usize, cn: usize) {
         } else if cpl_x == (x as i32 - 1) && cpl_y == (y as i32 - 1) {
             // Scroll right-down
             buf[0] = core::constants::SV_SCROLL_RIGHTDOWN;
-            NetworkManager::with(|network| network.xsend(nr, &buf, 1));
+            NetworkManager::with(|network| network.xsend(gs, nr, &buf, 1));
 
             // C++: memmove(cmap, cmap + TILEX + 1, sizeof(struct cmap) * (TILEX * TILEY - TILEX - 1))
             Server::with_players_mut(|players| {
@@ -4090,7 +4090,7 @@ fn plr_change_position(gs: &mut GameState, nr: usize, cn: usize) {
         buf[2] = ox_b[1];
         buf[3] = oy_b[0];
         buf[4] = oy_b[1];
-        NetworkManager::with(|network| network.xsend(nr, &buf, 5));
+        NetworkManager::with(|network| network.xsend(gs, nr, &buf, 5));
     }
 }
 
@@ -4158,7 +4158,7 @@ fn plr_change_target(gs: &mut GameState, nr: usize, cn: usize) {
         buf[12] = (misc_target2 >> 8) as u8;
 
         NetworkManager::with(|network| {
-            network.xsend(nr, &buf, 13);
+            network.xsend(gs, nr, &buf, 13);
         });
 
         Server::with_players_mut(|players| {
@@ -4349,7 +4349,7 @@ pub fn plr_cmd(gs: &mut GameState, nr: usize) {
             return;
         }
         core::constants::CL_PING => {
-            plr_cmd_ping(nr);
+            plr_cmd_ping(gs, nr);
             return;
         }
         core::constants::CL_CMD_LOOK => {
@@ -4520,7 +4520,7 @@ pub fn plr_cmd(gs: &mut GameState, nr: usize) {
 
 /// Port of `send_mod` from `svr_tick.cpp`
 /// Sends mod data to the client (8 packets of 15 bytes each)
-fn send_mod(nr: usize) {
+fn send_mod(gs: &mut GameState, nr: usize) {
     // TODO: Implement mod sending when mod data is available
     // For now, this is a stub - mod data would be loaded from somewhere
     // In the original code, this sends 8 SV_MOD packets with mod data
@@ -4533,7 +4533,7 @@ fn send_mod(nr: usize) {
         // buf[1..16].copy_from_slice(&mod_data[(n as usize * 15)..((n as usize + 1) * 15)]);
 
         NetworkManager::with(|network| {
-            network.csend(nr, &buf, 16);
+            network.csend(gs, nr, &buf, 16);
         });
     }
 }
@@ -4568,7 +4568,7 @@ fn plr_challenge_newlogin(gs: &mut GameState, nr: usize) {
     buf[1..5].copy_from_slice(&tmp.to_le_bytes());
 
     NetworkManager::with(|network| {
-        network.csend(nr, &buf, 16);
+        network.csend(gs, nr, &buf, 16);
     });
 
     log::debug!(
@@ -4577,7 +4577,7 @@ fn plr_challenge_newlogin(gs: &mut GameState, nr: usize) {
         tmp
     );
 
-    send_mod(nr);
+    send_mod(gs, nr);
 }
 
 /// Port of `plr_challenge` from `svr_tick.cpp`
@@ -4706,7 +4706,7 @@ fn plr_challenge_login(gs: &mut GameState, nr: usize) {
     buf[1..5].copy_from_slice(&tmp.to_le_bytes());
 
     NetworkManager::with(|network| {
-        network.csend(nr, &buf, 16);
+        network.csend(gs, nr, &buf, 16);
     });
 
     log::debug!("Player {} challenge_login: sent challenge {:08X}", nr, tmp);
@@ -4757,7 +4757,7 @@ fn plr_challenge_login(gs: &mut GameState, nr: usize) {
         nr
     );
 
-    send_mod(nr);
+    send_mod(gs, nr);
 }
 
 /// Handle API ticket based login challenge.
@@ -4804,12 +4804,12 @@ fn plr_challenge_api_login(gs: &mut GameState, nr: usize) {
     buf[0] = core::constants::SV_CHALLENGE;
     buf[1..5].copy_from_slice(&tmp.to_le_bytes());
     NetworkManager::with(|network| {
-        network.csend(nr, &buf, 16);
+        network.csend(gs, nr, &buf, 16);
     });
 
     log::info!("Player {} api login challenge issued", nr);
 
-    send_mod(nr);
+    send_mod(gs, nr);
 }
 
 /// Port of `plr_unique` from `svr_tick.cpp`
@@ -4856,7 +4856,7 @@ fn plr_unique(gs: &mut GameState, nr: usize) {
         buf[1..9].copy_from_slice(&new_unique.to_le_bytes());
 
         NetworkManager::with(|network| {
-            network.xsend(nr, &buf, 9);
+            network.xsend(gs, nr, &buf, 9);
         });
 
         log::debug!("Player {} sent unique {:016X}", nr, new_unique);
@@ -5369,7 +5369,7 @@ fn plr_cmd_ctick(gs: &mut GameState, nr: usize) {
 ///
 /// Reads `seq` and `client_time_ms` from the client's inbuf and replies with
 /// `SV_PONG`, echoing both values back to the client so it can compute RTT.
-fn plr_cmd_ping(nr: usize) {
+fn plr_cmd_ping(gs: &mut GameState, nr: usize) {
     let (seq, client_time_ms) = Server::with_players(|players| {
         let seq = u32::from_le_bytes([
             players[nr].inbuf[1],
@@ -5391,7 +5391,7 @@ fn plr_cmd_ping(nr: usize) {
     buf[1..5].copy_from_slice(&seq.to_le_bytes());
     buf[5..9].copy_from_slice(&client_time_ms.to_le_bytes());
 
-    NetworkManager::with(|network| network.xsend(nr, &buf, 16));
+    NetworkManager::with(|network| network.xsend(gs, nr, &buf, 16));
 }
 
 /// Handle look at item on ground

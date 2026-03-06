@@ -1960,8 +1960,8 @@ pub fn answer_transfer(gs: &mut GameState, cn: usize, co: usize) {
 
     gs.do_give_exp(co, exp_to_give, 1, -1);
 
-    EffectManager::fx_add_effect(6, 0, co_x as i32, co_y as i32, 0);
-    EffectManager::fx_add_effect(7, 0, cn_x as i32, cn_y as i32, 0);
+    EffectManager::fx_add_effect(gs, 6, 0, co_x as i32, co_y as i32, 0);
+    EffectManager::fx_add_effect(gs, 7, 0, cn_x as i32, cn_y as i32, 0);
 
     driver::die_companion(gs, cn);
 

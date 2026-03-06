@@ -2,8 +2,7 @@ use core::constants::{SV_SETMAP3, SV_SETMAP4, SV_SETMAP5, SV_SETMAP6};
 use std::net::Shutdown;
 use std::sync::{OnceLock, RwLock};
 
-use crate::game_state::GameState;
-use crate::{enums, player, server::Server};
+use crate::{enums, game_state::GameState, player, server::Server};
 
 static NETWORK_MANAGER: OnceLock<RwLock<NetworkManager>> = OnceLock::new();
 static PACKET_STATS: OnceLock<RwLock<PacketStats>> = OnceLock::new();
@@ -99,20 +98,6 @@ impl NetworkManager {
         f(&mut manager)
     }
 
-    /// Send bytes to a player's tick buffer without wrapping (bulk copy).
-    ///
-    /// Writes up to `length` bytes from `data` into the player's outgoing
-    /// tick buffer. If the player is too slow or the buffer would overflow
-    /// the connection is terminated and the player is logged out.
-    ///
-    /// # Arguments
-    /// * `player_id` - Target player index
-    /// * `data` - Source byte slice
-    /// * `length` - Number of bytes to copy
-    pub fn xsend(&self, player_id: usize, data: &[u8], length: u8) {
-        self.xsend_gs(GameState::global_mut(), player_id, data, length);
-    }
-
     /// Send bytes to a player's tick buffer using an explicit `GameState`.
     ///
     /// This is the non-singleton send path used by refactored callers that
@@ -123,7 +108,7 @@ impl NetworkManager {
     /// * `player_id` - Target player index
     /// * `data` - Source byte slice
     /// * `length` - Number of bytes to copy
-    pub fn xsend_gs(&self, gs: &mut GameState, player_id: usize, data: &[u8], length: u8) {
+    pub fn xsend(&self, gs: &mut GameState, player_id: usize, data: &[u8], length: u8) {
         // Determine number of bytes to send (don't exceed provided slice)
         let send_len = std::cmp::min(length as usize, data.len());
 
@@ -198,20 +183,6 @@ impl NetworkManager {
         });
     }
 
-    /// Send bytes into the player's circular output buffer (byte-at-a-time).
-    ///
-    /// Writes up to `length` bytes into the circular `obuf` for the player.
-    /// If the buffer is full the connection is considered too slow and the
-    /// player is disconnected.
-    ///
-    /// # Arguments
-    /// * `player_id` - Target player index
-    /// * `data` - Source byte slice
-    /// * `length` - Number of bytes to enqueue
-    pub fn csend(&self, player_id: usize, data: &[u8], length: u8) {
-        self.csend_gs(GameState::global_mut(), player_id, data, length);
-    }
-
     /// Send bytes into the player's circular output buffer using an explicit
     /// `GameState` for cleanup.
     ///
@@ -220,7 +191,7 @@ impl NetworkManager {
     /// * `player_id` - Target player index
     /// * `data` - Source byte slice
     /// * `length` - Number of bytes to enqueue
-    pub fn csend_gs(&self, gs: &mut GameState, player_id: usize, data: &[u8], length: u8) {
+    pub fn csend(&self, gs: &mut GameState, player_id: usize, data: &[u8], length: u8) {
         let send_len = std::cmp::min(length as usize, data.len());
 
         Server::with_players_mut(|players| {

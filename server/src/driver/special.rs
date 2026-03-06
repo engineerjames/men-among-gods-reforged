@@ -954,7 +954,7 @@ pub fn npc_malte_low(gs: &mut GameState, cn: usize) -> i32 {
             gs.do_sayx(cn, "I will recall now. I have enough of this prison!");
 
             let (cn_x, cn_y) = (gs.characters[cn].x, gs.characters[cn].y);
-            EffectManager::fx_add_effect(7, 0, cn_x as i32, cn_y as i32, 0);
+            EffectManager::fx_add_effect(gs, 7, 0, cn_x as i32, cn_y as i32, 0);
 
             gs.characters[cn].data[2] = ticker + TICKS * 6;
             gs.characters[cn].data[1] += 1;

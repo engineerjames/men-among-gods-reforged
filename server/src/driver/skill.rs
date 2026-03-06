@@ -396,7 +396,7 @@ pub fn spell_from_item(gs: &mut GameState, cn: usize, in2: usize) {
     }
     gs.do_character_log(cn, core::types::FontColor::Green, "You feel changed.\n");
     let sound = gs.characters[cn].sound;
-    GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
+    GameState::char_play_sound(gs, cn, sound as i32 + 1, -150, 0);
 }
 
 pub fn spell_light(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
@@ -458,10 +458,10 @@ pub fn spell_light(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 
             &format!("{} starts to emit light.\n", c_string_to_str(&name)),
         );
         let sound = gs.characters[cn].sound;
-        GameState::char_play_sound(co, sound as i32 + 1, -150, 0);
-        GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(gs, co, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(gs, cn, sound as i32 + 1, -150, 0);
         let (x, y) = (gs.characters[co].x, gs.characters[co].y);
-        EffectManager::fx_add_effect(7, 0, x as i32, y as i32, 0);
+        EffectManager::fx_add_effect(gs, 7, 0, x as i32, y as i32, 0);
     } else {
         if add_spell(gs, cn, in_.unwrap()) == 0 {
             let name = gs.items[in_.unwrap()].get_name().to_string();
@@ -478,16 +478,16 @@ pub fn spell_light(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 
             "You start to emit light.\n",
         );
         let sound = gs.characters[cn].sound;
-        GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(gs, cn, sound as i32 + 1, -150, 0);
         let flags = gs.characters[cn].flags;
         if (flags & CharacterFlags::Player.bits()) != 0 {
             chlog!(cn, "Cast Light");
         }
         let (x, y) = (gs.characters[cn].x, gs.characters[cn].y);
-        EffectManager::fx_add_effect(7, 0, x as i32, y as i32, 0);
+        EffectManager::fx_add_effect(gs, 7, 0, x as i32, y as i32, 0);
     }
     let (x, y) = (gs.characters[cn].x, gs.characters[cn].y);
-    EffectManager::fx_add_effect(7, 0, x as i32, y as i32, 0);
+    EffectManager::fx_add_effect(gs, 7, 0, x as i32, y as i32, 0);
     1
 }
 
@@ -635,11 +635,12 @@ pub fn spell_protect(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i3
             &format!("{} is now protected.\n", name),
         );
         let sound = gs.characters[cn].sound;
-        GameState::char_play_sound(co, sound as i32 + 1, -150, 0);
-        GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(gs, co, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(gs, cn, sound as i32 + 1, -150, 0);
         let target_name = gs.characters[co].get_name().to_string();
         chlog!(cn, "Cast Protect on {}", target_name);
         EffectManager::fx_add_effect(
+            gs,
             6,
             0,
             gs.characters[co].x as i32,
@@ -658,16 +659,17 @@ pub fn spell_protect(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i3
         }
         gs.do_character_log(cn, FontColor::Green, "You feel protected.\n");
         let sound = gs.characters[cn].sound;
-        GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(gs, cn, sound as i32 + 1, -150, 0);
         let flags = gs.characters[cn].flags;
         if (flags & CharacterFlags::Player.bits()) != 0 {
             chlog!(cn, "Cast Protect");
         }
         let (x, y) = (gs.characters[cn].x, gs.characters[cn].y);
-        EffectManager::fx_add_effect(6, 0, x as i32, y as i32, 0);
+        EffectManager::fx_add_effect(gs, 6, 0, x as i32, y as i32, 0);
     }
 
     EffectManager::fx_add_effect(
+        gs,
         7,
         0,
         gs.characters[cn].x as i32,
@@ -823,12 +825,13 @@ pub fn spell_enhance(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i3
             ),
         );
         let sound = gs.characters[cn].sound;
-        GameState::char_play_sound(co, sound as i32 + 1, -150, 0);
-        GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(gs, co, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(gs, cn, sound as i32 + 1, -150, 0);
         let target_name = gs.characters[co].get_name().to_string();
         chlog!(cn, "Cast Enhance on {}", target_name);
 
         EffectManager::fx_add_effect(
+            gs,
             6,
             0,
             gs.characters[co].x as i32,
@@ -847,12 +850,13 @@ pub fn spell_enhance(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i3
         }
         gs.do_character_log(cn, FontColor::Green, "Your weapon feels stronger.\n");
         let sound = gs.characters[cn].sound;
-        GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(gs, cn, sound as i32 + 1, -150, 0);
         let flags = gs.characters[cn].flags;
         if (flags & CharacterFlags::Player.bits()) != 0 {
             chlog!(cn, "Cast Enhance");
         }
         EffectManager::fx_add_effect(
+            gs,
             6,
             0,
             gs.characters[cn].x as i32,
@@ -862,6 +866,7 @@ pub fn spell_enhance(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i3
     }
 
     EffectManager::fx_add_effect(
+        gs,
         7,
         0,
         gs.characters[cn].x as i32,
@@ -1036,14 +1041,15 @@ pub fn spell_bless(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 
             ),
         );
         let sound = gs.characters[cn].sound;
-        GameState::char_play_sound(co, sound as i32 + 1, -150, 0);
-        GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(gs, co, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(gs, cn, sound as i32 + 1, -150, 0);
         chlog!(
             cn,
             "Cast Bless on {}",
             gs.characters[co].get_name().to_string()
         );
         EffectManager::fx_add_effect(
+            gs,
             6,
             0,
             gs.characters[co].x as i32,
@@ -1062,12 +1068,13 @@ pub fn spell_bless(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 
         }
         gs.do_character_log(cn, FontColor::Green, "You have been blessed.\n");
         let sound = gs.characters[cn].sound;
-        GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(gs, cn, sound as i32 + 1, -150, 0);
         let flags = gs.characters[cn].flags;
         if (flags & CharacterFlags::Player.bits()) != 0 {
             chlog!(cn, "Cast Bless");
         }
         EffectManager::fx_add_effect(
+            gs,
             6,
             0,
             gs.characters[cn].x as i32,
@@ -1077,6 +1084,7 @@ pub fn spell_bless(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 
     }
 
     EffectManager::fx_add_effect(
+        gs,
         7,
         0,
         gs.characters[cn].x as i32,
@@ -1242,9 +1250,10 @@ pub fn skill_wimp(gs: &mut GameState, cn: usize) {
         "Guardian Angel active!\n",
     );
     let sound = gs.characters[cn].sound;
-    GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
+    GameState::char_play_sound(gs, cn, sound as i32 + 1, -150, 0);
     chlog!(cn, "Cast Guardian Angel");
     EffectManager::fx_add_effect(
+        gs,
         7,
         0,
         gs.characters[cn].x as i32,
@@ -1252,6 +1261,7 @@ pub fn skill_wimp(gs: &mut GameState, cn: usize) {
         0,
     );
     EffectManager::fx_add_effect(
+        gs,
         6,
         0,
         gs.characters[cn].x as i32,
@@ -1317,14 +1327,15 @@ pub fn spell_mshield(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i3
             ),
         );
         let sound = gs.characters[cn].sound;
-        GameState::char_play_sound(co, sound as i32 + 1, -150, 0);
-        GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(gs, co, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(gs, cn, sound as i32 + 1, -150, 0);
         chlog!(
             cn,
             "Cast Magic Shield on {}",
             gs.characters[co].get_name().to_string()
         );
         EffectManager::fx_add_effect(
+            gs,
             6,
             0,
             gs.characters[co].x as i32,
@@ -1343,12 +1354,13 @@ pub fn spell_mshield(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i3
         }
         gs.do_character_log(cn, FontColor::Green, "Magic Shield active!\n");
         let sound = gs.characters[cn].sound;
-        GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(gs, cn, sound as i32 + 1, -150, 0);
         let flags = gs.characters[cn].flags;
         if (flags & CharacterFlags::Player.bits()) != 0 {
             chlog!(cn, "Cast Magic Shield");
         }
         EffectManager::fx_add_effect(
+            gs,
             6,
             0,
             gs.characters[cn].x as i32,
@@ -1358,6 +1370,7 @@ pub fn spell_mshield(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i3
     }
 
     EffectManager::fx_add_effect(
+        gs,
         7,
         0,
         gs.characters[cn].x as i32,
@@ -1412,14 +1425,15 @@ pub fn spell_heal(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
             &format!("{} was healed.\n", gs.characters[co].get_name().to_string()),
         );
         let sound = gs.characters[cn].sound;
-        GameState::char_play_sound(co, sound as i32 + 1, -150, 0);
-        GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(gs, co, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(gs, cn, sound as i32 + 1, -150, 0);
         chlog!(
             cn,
             "Cast Heal on {}",
             gs.characters[co].get_name().to_string()
         );
         EffectManager::fx_add_effect(
+            gs,
             6,
             0,
             gs.characters[co].x as i32,
@@ -1433,12 +1447,13 @@ pub fn spell_heal(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
         }
         gs.do_character_log(cn, FontColor::Green, "You have been healed.\n");
         let sound = gs.characters[cn].sound;
-        GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(gs, cn, sound as i32 + 1, -150, 0);
         let flags = gs.characters[cn].flags;
         if (flags & CharacterFlags::Player.bits()) != 0 {
             chlog!(cn, "Cast Heal");
         }
         EffectManager::fx_add_effect(
+            gs,
             6,
             0,
             gs.characters[cn].x as i32,
@@ -1448,6 +1463,7 @@ pub fn spell_heal(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
     }
 
     EffectManager::fx_add_effect(
+        gs,
         7,
         0,
         gs.characters[cn].x as i32,
@@ -1607,14 +1623,15 @@ pub fn spell_curse(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 
     gs.do_notify_character(cn as u32, NT_DIDHIT as i32, co as i32, 0, 0, 0);
 
     let sound = gs.characters[cn].sound;
-    GameState::char_play_sound(co, sound as i32 + 7, -150, 0);
-    GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
+    GameState::char_play_sound(gs, co, sound as i32 + 7, -150, 0);
+    GameState::char_play_sound(gs, cn, sound as i32 + 1, -150, 0);
     chlog!(
         cn,
         "Cast Curse on {}",
         gs.characters[co].get_name().to_string()
     );
     EffectManager::fx_add_effect(
+        gs,
         5,
         0,
         gs.characters[co].x as i32,
@@ -1757,6 +1774,7 @@ pub fn skill_curse(gs: &mut GameState, cn: usize) {
     }
 
     EffectManager::fx_add_effect(
+        gs,
         7,
         0,
         gs.characters[cn].x as i32,
@@ -1853,6 +1871,7 @@ pub fn warcry(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
     log::info!("Character {} cast Warcry on {}", cn, co_name);
 
     EffectManager::fx_add_effect(
+        gs,
         5,
         0,
         gs.characters[co].x as i32,
@@ -2221,7 +2240,7 @@ pub fn skill_identify(gs: &mut GameState, cn: usize) {
     }
 
     let sound = gs.characters[cn].sound;
-    GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
+    GameState::char_play_sound(gs, cn, sound as i32 + 1, -150, 0);
     chlog!(
         cn,
         "Cast Identify on {}",
@@ -2246,6 +2265,7 @@ pub fn skill_identify(gs: &mut GameState, cn: usize) {
     } else {
         char_info(gs, cn, co);
         EffectManager::fx_add_effect(
+            gs,
             6,
             0,
             gs.characters[co].x as i32,
@@ -2256,6 +2276,7 @@ pub fn skill_identify(gs: &mut GameState, cn: usize) {
 
     add_exhaust(gs, cn, TICKS * 2);
     EffectManager::fx_add_effect(
+        gs,
         7,
         0,
         gs.characters[cn].x as i32,
@@ -2364,7 +2385,7 @@ pub fn skill_blast(gs: &mut GameState, cn: usize) {
         gs.characters[co].y as i32,
         gs.characters[cn].sound as i32 + 6,
     );
-    GameState::char_play_sound(co, gs.characters[cn].sound as i32 + 6, -150, 0);
+    GameState::char_play_sound(gs, co, gs.characters[cn].sound as i32 + 6, -150, 0);
 
     chlog!(
         cn,
@@ -2389,6 +2410,7 @@ pub fn skill_blast(gs: &mut GameState, cn: usize) {
     }
 
     EffectManager::fx_add_effect(
+        gs,
         5,
         0,
         gs.characters[co].x as i32,
@@ -2449,6 +2471,7 @@ pub fn skill_blast(gs: &mut GameState, cn: usize) {
             );
         }
         EffectManager::fx_add_effect(
+            gs,
             5,
             0,
             gs.characters[maybe_co].x as i32,
@@ -2459,6 +2482,7 @@ pub fn skill_blast(gs: &mut GameState, cn: usize) {
 
     add_exhaust(gs, cn, core::constants::TICKS * 6);
     EffectManager::fx_add_effect(
+        gs,
         7,
         0,
         gs.characters[cn].x as i32,
@@ -2590,6 +2614,7 @@ pub fn skill_recall(gs: &mut GameState, cn: usize) {
     chlog!(cn, "Cast Recall");
     add_exhaust(gs, cn, TICKS);
     EffectManager::fx_add_effect(
+        gs,
         7,
         0,
         gs.characters[cn].x as i32,
@@ -2671,8 +2696,8 @@ pub fn spell_stun(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
         0,
     );
 
-    GameState::char_play_sound(co, gs.characters[cn].sound as i32 + 7, -150, 0);
-    GameState::char_play_sound(cn, gs.characters[cn].sound as i32 + 1, -150, 0);
+    GameState::char_play_sound(gs, co, gs.characters[cn].sound as i32 + 7, -150, 0);
+    GameState::char_play_sound(gs, cn, gs.characters[cn].sound as i32 + 1, -150, 0);
     chlog!(
         cn,
         "Cast Stun on {} for {} power",
@@ -2693,6 +2718,7 @@ pub fn spell_stun(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
     }
 
     EffectManager::fx_add_effect(
+        gs,
         5,
         0,
         gs.characters[co].x as i32,
@@ -2819,6 +2845,7 @@ pub fn skill_stun(gs: &mut GameState, cn: usize) {
     }
 
     EffectManager::fx_add_effect(
+        gs,
         7,
         0,
         gs.characters[cn].x as i32,
@@ -2990,14 +3017,15 @@ pub fn skill_dispel(gs: &mut GameState, cn: usize) {
             gs.do_notify_character(cn as u32, NT_DIDHIT as i32, co as i32, 0, 0, 0);
         }
 
-        GameState::char_play_sound(co, sound + 1, -150, 0);
-        GameState::char_play_sound(cn, sound + 1, -150, 0);
+        GameState::char_play_sound(gs, co, sound + 1, -150, 0);
+        GameState::char_play_sound(gs, cn, sound + 1, -150, 0);
         chlog!(
             cn,
             "Cast Dispel on {}",
             gs.characters[co].get_name().to_string()
         );
         EffectManager::fx_add_effect(
+            gs,
             6,
             0,
             gs.characters[co].x as i32,
@@ -3010,9 +3038,10 @@ pub fn skill_dispel(gs: &mut GameState, cn: usize) {
             FontColor::Green,
             &format!("{} has been removed.\n", removed_name),
         );
-        GameState::char_play_sound(cn, sound + 1, -150, 0);
+        GameState::char_play_sound(gs, cn, sound + 1, -150, 0);
         chlog!(cn, "Cast Dispel");
         EffectManager::fx_add_effect(
+            gs,
             6,
             0,
             gs.characters[cn].x as i32,
@@ -3023,6 +3052,7 @@ pub fn skill_dispel(gs: &mut GameState, cn: usize) {
 
     add_exhaust(gs, cn, TICKS * 2);
     EffectManager::fx_add_effect(
+        gs,
         7,
         0,
         gs.characters[cn].x as i32,
@@ -3365,9 +3395,9 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
     add_exhaust(gs, cn, TICKS * 4);
 
     let (cc_x, cc_y) = (gs.characters[cc].x as i32, gs.characters[cc].y as i32);
-    EffectManager::fx_add_effect(6, 0, cc_x, cc_y, 0);
+    EffectManager::fx_add_effect(gs, 6, 0, cc_x, cc_y, 0);
     let (cn_x, cn_y) = (gs.characters[cn].x as i32, gs.characters[cn].y as i32);
-    EffectManager::fx_add_effect(7, 0, cn_x, cn_y, 0);
+    EffectManager::fx_add_effect(gs, 7, 0, cn_x, cn_y, 0);
 }
 
 pub fn is_facing(gs: &GameState, cn: usize, co: usize) -> i32 {

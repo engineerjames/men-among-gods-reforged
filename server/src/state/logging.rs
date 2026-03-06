@@ -95,7 +95,7 @@ impl GameState {
             }
 
             NetworkManager::with(|network| {
-                network.xsend_gs(self, player_number, &buffer, 16);
+                network.xsend(self, player_number, &buffer, 16);
             });
 
             pos += take;
@@ -208,7 +208,13 @@ impl GameState {
     /// * `sound` - Sound id to play
     /// * `vol` - Volume modifier
     /// * `pan` - Stereo pan modifier
-    pub(crate) fn char_play_sound(character_id: usize, sound: i32, vol: i32, pan: i32) {
+    pub(crate) fn char_play_sound(
+        gs: &mut GameState,
+        character_id: usize,
+        sound: i32,
+        vol: i32,
+        pan: i32,
+    ) {
         let matching_player_id = Server::with_players(|players| {
             (0..MAXPLAYER).find(|&i| players[i].usnr == character_id)
         });
@@ -228,7 +234,7 @@ impl GameState {
         buf[9..13].copy_from_slice(&pan.to_le_bytes());
 
         NetworkManager::with(|network| {
-            network.xsend(player_id, &buf, 13);
+            network.xsend(gs, player_id, &buf, 13);
         });
     }
 
@@ -285,7 +291,7 @@ impl GameState {
             .collect();
 
         for (cc, vol, pan) in recipients_with_player {
-            Self::char_play_sound(cc, nr, vol, pan);
+            Self::char_play_sound(self, cc, nr, vol, pan);
         }
     }
 

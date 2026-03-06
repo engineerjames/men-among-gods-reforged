@@ -32,7 +32,6 @@ use std::sync::Arc;
 use core;
 
 use crate::game_state::GameState;
-use crate::game_state::GameState as Repository;
 use crate::server::Server;
 
 fn handle_command_line_args(args: &[String], gs: &mut GameState) {
@@ -71,9 +70,6 @@ fn handle_command_line_args(args: &[String], gs: &mut GameState) {
 fn main() -> Result<(), String> {
     let args: Vec<String> = env::args().collect();
 
-    // The original implementation had a call here for nice(5) to lower process priority.
-    // This is platform dependent and omitted for simplicity.
-
     core::initialize_logger(log::LevelFilter::Info, Some("server.log")).unwrap_or_else(|e| {
         eprintln!("Failed to initialize logger: {}. Exiting.", e);
         process::exit(1);
@@ -99,39 +95,29 @@ fn main() -> Result<(), String> {
         process::exit(1);
     }
 
-    // Initialize unified game state (owns its own copy of all world data)
-    let mut gs = Repository::initialize().unwrap_or_else(|e| {
+    let mut gs = GameState::initialize().unwrap_or_else(|e| {
         log::error!("Failed to initialize game state: {}. Exiting.", e);
         process::exit(1);
     });
 
-    // Handle CLI subcommands
     handle_command_line_args(&args, &mut gs);
 
-    // Check for dirty flag
     if gs.globals.is_dirty() {
         log::error!("Data files were not closed cleanly last time. Exiting.");
         process::exit(1);
     }
 
-    // Register GameState as a global singleton so systems can access shared
-    // state via `Repository::global_mut()` where threaded through `&mut GameState`
-    // is not practical yet.
-    Repository::register_global(gs);
-
     let mut server = server::Server::new();
 
-    server
-        .initialize(Repository::global_mut())
-        .unwrap_or_else(|e| {
-            log::error!("Failed to initialize server: {}. Exiting.", e);
-            process::exit(1);
-        });
+    server.initialize(&mut gs).unwrap_or_else(|e| {
+        log::error!("Failed to initialize server: {}. Exiting.", e);
+        process::exit(1);
+    });
 
     log::info!("Entering main game loop...");
 
     while !quit_flag.load(Ordering::SeqCst) {
-        server.tick(Repository::global_mut());
+        server.tick(&mut gs);
     }
 
     log::info!("Shutdown signal received, exiting main loop...");
@@ -141,20 +127,13 @@ fn main() -> Result<(), String> {
             logout_entries.push((players[n].usnr, n));
         }
     });
-    {
-        let gs = Repository::global_mut();
-        for (usnr, n) in &logout_entries {
-            player::plr_logout(gs, *usnr, *n, enums::LogoutReason::Shutdown);
-        }
+    for (usnr, n) in &logout_entries {
+        player::plr_logout(&mut gs, *usnr, *n, enums::LogoutReason::Shutdown);
     }
 
-    // Shut down background saver thread (flushes pending writes)
     server.shutdown_background_saver();
 
-    // Perform a full synchronous save to the unified game state
-    Repository::global_mut().shutdown();
-
-    // TODO: Wait some amount of time and forceably close all sockets
+    gs.shutdown();
 
     log::info!("Server shutdown complete.");
 

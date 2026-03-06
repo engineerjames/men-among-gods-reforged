@@ -437,7 +437,7 @@ impl GameState {
         buf[15] = autoflag as u8;
 
         NetworkManager::with(|network| {
-            network.xsend_gs(self, player_id as usize, &buf, 16);
+            network.xsend(self, player_id as usize, &buf, 16);
         });
 
         // Send SV_LOOK2 packet
@@ -493,7 +493,7 @@ impl GameState {
         }
 
         NetworkManager::with(|network| {
-            network.xsend_gs(self, player_id as usize, &buf, 16);
+            network.xsend(self, player_id as usize, &buf, 16);
         });
 
         // Send SV_LOOK3 packet
@@ -537,7 +537,7 @@ impl GameState {
         buf[14] = (amana_display >> 8) as u8;
 
         NetworkManager::with(|network| {
-            network.xsend_gs(self, player_id as usize, &buf, 16);
+            network.xsend(self, player_id as usize, &buf, 16);
         });
 
         // Send SV_LOOK4 packet
@@ -617,7 +617,7 @@ impl GameState {
         }
 
         NetworkManager::with(|network| {
-            network.xsend_gs(self, player_id as usize, &buf, 16);
+            network.xsend(self, player_id as usize, &buf, 16);
         });
 
         // Send SV_LOOK5 packet (character name)
@@ -632,7 +632,7 @@ impl GameState {
         buf[1..16].copy_from_slice(&co_name);
 
         NetworkManager::with(|network| {
-            network.xsend_gs(self, player_id as usize, &buf, 16);
+            network.xsend(self, player_id as usize, &buf, 16);
         });
 
         // Send SV_LOOK6 packets (shop inventory) if merchant or corpse
@@ -666,7 +666,7 @@ impl GameState {
                 }
 
                 NetworkManager::with(|network| {
-                    network.xsend_gs(self, player_id as usize, &buf, 16);
+                    network.xsend(self, player_id as usize, &buf, 16);
                 });
             }
 
@@ -693,7 +693,7 @@ impl GameState {
                 }
 
                 NetworkManager::with(|network| {
-                    network.xsend_gs(self, player_id as usize, &buf, 16);
+                    network.xsend(self, player_id as usize, &buf, 16);
                 });
             }
 
@@ -741,7 +741,7 @@ impl GameState {
             buf[10..14].copy_from_slice(&[0u8; 4]);
 
             NetworkManager::with(|network| {
-                network.xsend_gs(self, player_id as usize, &buf, 16);
+                network.xsend(self, player_id as usize, &buf, 16);
             });
         }
 
@@ -1071,9 +1071,7 @@ impl GameState {
         }
 
         // Lab 9 support
-        crate::lab9::Labyrinth9::with_mut(|lab9| {
-            let _ = lab9.lab9_guesser_says(cn, text);
-        });
+        crate::lab9::lab9_guesser_says(self, cn, text);
     }
 
     /// Port of `do_tell(int cn, const char *con, const char *text)` from `svr_do.cpp`

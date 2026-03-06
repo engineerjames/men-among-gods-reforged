@@ -966,6 +966,7 @@ pub fn reset_char(gs: &mut GameState, n: usize) {
         let template_y = gs.character_templates[n].y;
 
         EffectManager::fx_add_effect(
+            gs,
             2,          // Effect type 2 = respawn timer
             TICKS * 10, // 10 seconds delay
             template_x as i32,

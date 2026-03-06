@@ -373,10 +373,10 @@ impl GameState {
             let base_sound = self.characters[cn].sound as i32;
             if applied < 1 {
                 self.do_area_sound(co, 0, tx, ty, base_sound + 3);
-                Self::char_play_sound(co, base_sound + 3, -150, 0);
+                Self::char_play_sound(self, co, base_sound + 3, -150, 0);
             } else {
                 self.do_area_sound(co, 0, tx, ty, base_sound + 4);
-                Self::char_play_sound(co, base_sound + 4, -150, 0);
+                Self::char_play_sound(self, co, base_sound + 4, -150, 0);
             }
 
             // Surrounding strikes (cardinal neighbors around attacker)
@@ -430,7 +430,7 @@ impl GameState {
                 self.characters[co].y as i32,
                 base_sound + 5,
             );
-            Self::char_play_sound(co, base_sound + 5, -150, 0);
+            Self::char_play_sound(self, co, base_sound + 5, -150, 0);
 
             // Notify area that attacker missed
             let ax = self.characters[cn].x as i32;

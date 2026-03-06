@@ -86,18 +86,18 @@ impl GameState {
         // Hack for grolms (templates 364-374)
         if (364..=374).contains(&co_temp) {
             self.do_area_sound(character_id, 0, co_x as i32, co_y as i32, 17);
-            Self::char_play_sound(character_id, 17, -150, 0);
+            Self::char_play_sound(self, character_id, 17, -150, 0);
         }
         // Hack for gargoyles (templates 375-381)
         else if (375..=381).contains(&co_temp) {
             self.do_area_sound(character_id, 0, co_x as i32, co_y as i32, 18);
-            Self::char_play_sound(character_id, 18, -150, 0);
+            Self::char_play_sound(self, character_id, 18, -150, 0);
         }
         // Normal death sound
         else {
             let sound = co_sound + 2;
             self.do_area_sound(character_id, 0, co_x as i32, co_y as i32, sound as i32);
-            Self::char_play_sound(character_id, sound as i32, -150, 0);
+            Self::char_play_sound(self, character_id, sound as i32, -150, 0);
         }
 
         // Cleanup for ghost companions
@@ -152,6 +152,7 @@ impl GameState {
                         );
 
                         EffectManager::fx_add_effect(
+                            self,
                             6,
                             0,
                             self.characters[killer_id].x as i32,
@@ -220,7 +221,7 @@ impl GameState {
                     let monster_class = self.characters[character_id].monster_class;
                     if monster_class != 0 {
                         // killed_class: returns true if already killed, false if first kill
-                        if !helpers::killed_class(killer_id, monster_class) {
+                        if !helpers::killed_class(self, killer_id, monster_class) {
                             let class_name = helpers::get_class_name(monster_class);
                             self.do_character_log(
                                 killer_id,
@@ -346,7 +347,8 @@ impl GameState {
 
         // Schedule respawn and show death animation
 
-        let fn_idx = EffectManager::fx_add_effect(3, 0, co_x as i32, co_y as i32, corpse_id as i32);
+        let fn_idx =
+            EffectManager::fx_add_effect(self, 3, 0, co_x as i32, co_y as i32, corpse_id as i32);
         // Set data[3] = killer_id for the effect, if possible
         if fn_idx.unwrap() < self.effects.len() {
             self.effects[fn_idx.unwrap()].data[3] = killer_id as u32;

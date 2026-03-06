@@ -1320,7 +1320,7 @@ impl God {
             };
 
             if character_visible {
-                EffectManager::fx_add_effect(12, 0, orig_pos.0 as i32, orig_pos.1 as i32, 0);
+                EffectManager::fx_add_effect(gs, 12, 0, orig_pos.0 as i32, orig_pos.1 as i32, 0);
             }
 
             if !Self::transfer_char(gs, co, x, y) {
@@ -1337,7 +1337,7 @@ impl God {
                 (character.x as i32, character.y as i32)
             };
             if character_visible {
-                EffectManager::fx_add_effect(12, 0, new_pos.0, new_pos.1, 0);
+                EffectManager::fx_add_effect(gs, 12, 0, new_pos.0, new_pos.1, 0);
             }
             gs.do_character_log(
                 cn,
@@ -2825,8 +2825,8 @@ impl God {
             );
 
             // show effects at original and current position
-            EffectManager::fx_add_effect(12, 0, xo, yo, 0);
-            EffectManager::fx_add_effect(12, 0, xo, yo, 0);
+            EffectManager::fx_add_effect(gs, 12, 0, xo, yo, 0);
+            EffectManager::fx_add_effect(gs, 12, 0, xo, yo, 0);
 
             return;
         }
@@ -3814,7 +3814,7 @@ impl God {
             if flag == CharacterFlags::Invisible.bits() {
                 let x = gs.characters[co].x as i32;
                 let y = gs.characters[co].y as i32;
-                EffectManager::fx_add_effect(12, 0, x, y, 0);
+                EffectManager::fx_add_effect(gs, 12, 0, x, y, 0);
             }
         } else {
             gs.do_character_log(

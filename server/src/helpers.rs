@@ -406,7 +406,7 @@ pub fn get_class_name(nr: i32) -> &'static str {
 /// # Arguments
 /// * `cn` - Character index owning the kill record
 /// * `val` - Monster class id
-pub fn killed_class(cn: usize, val: i32) -> bool {
+pub fn killed_class(gs: &mut GameState, cn: usize, val: i32) -> bool {
     let (bit, data_idx) = if val < 32 {
         (1 << val, 60)
     } else if val < 64 {
@@ -416,9 +416,8 @@ pub fn killed_class(cn: usize, val: i32) -> bool {
     } else {
         (1 << (val - 96), 63)
     };
-    let characters = &mut GameState::global_mut().characters;
-    let tmp = characters[cn].data[data_idx] & bit;
-    characters[cn].data[data_idx] |= bit;
+    let tmp = gs.characters[cn].data[data_idx] & bit;
+    gs.characters[cn].data[data_idx] |= bit;
     tmp != 0
 }
 
