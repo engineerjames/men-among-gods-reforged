@@ -4103,24 +4103,6 @@ impl God {
         1
     }
 
-    // TODO: Implement actual mail logic
-    #[allow(dead_code)]
-    /// Placeholder for mail-related password operations.
-    pub fn mail_pass(gs: &mut GameState, cn: usize, co: usize) {
-        if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
-            return;
-        }
-
-        let character_name = gs.characters[co].get_name().to_string();
-
-        gs.do_character_log(
-            cn,
-            core::types::FontColor::Green,
-            &format!("Mailing password for character {}\n", character_name),
-        );
-        // TODO: Actual mail logic
-    }
-
     /// Command to make `co` perform a slap animation (cosmetic/admin).
     pub fn slap(gs: &mut GameState, cn: usize, co: usize) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {

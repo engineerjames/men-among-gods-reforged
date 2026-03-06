@@ -44,7 +44,7 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> i32 {
 
             if co_team == cn_team {
                 seen[maxseen].co = co;
-                seen[maxseen].dist = driver::npc_dist(gs, cn, co);
+                seen[maxseen].dist = driver::npc_dist(&gs.characters[cn], &gs.characters[co]);
                 seen[maxseen].is_friend = true;
                 seen[maxseen].stun = 0;
                 let low_hp = gs.characters[co].a_hp < (gs.characters[co].hp[5] as i32 * 400);
@@ -53,9 +53,9 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> i32 {
                 maxseen += 1;
             } else {
                 seen[maxseen].co = co;
-                seen[maxseen].dist = driver::npc_dist(gs, cn, co);
+                seen[maxseen].dist = driver::npc_dist(&gs.characters[cn], &gs.characters[co]);
                 seen[maxseen].is_friend = false;
-                if !driver::npc_is_stunned(gs, co) {
+                if !driver::npc_is_stunned(&gs.characters[co], &gs.items) {
                     let can_stun = gs.characters[cn].skill[SK_STUN][5] * 12
                         > gs.characters[co].skill[SK_RESIST][5] * 10;
                     seen[maxseen].stun = if can_stun { 1 } else { 0 };
@@ -123,7 +123,7 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> i32 {
         }
         if m == 0 {
             seen[maxseen].co = co;
-            seen[maxseen].dist = driver::npc_dist(gs, cn, co);
+            seen[maxseen].dist = driver::npc_dist(&gs.characters[cn], &gs.characters[co]);
             seen[maxseen].is_friend = false;
             let can_stun = gs.characters[cn].skill[SK_STUN][5] * 12
                 > gs.characters[co].skill[SK_RESIST][5] * 10;
@@ -388,7 +388,7 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> i32 {
             if seen[n].help > tmp
                 || (seen[n].help != 0 && seen[n].help == tmp && seen[n].dist < seen[m].dist)
             {
-                let needs_help = !driver::npc_is_blessed(gs, seen[n].co)
+                let needs_help = !driver::npc_is_blessed(&gs.characters[seen[n].co], &gs.items)
                     || gs.characters[seen[n].co].a_hp
                         < (gs.characters[seen[n].co].hp[5] * 400) as i32;
                 if needs_help {
@@ -841,7 +841,10 @@ fn npc_cityattack_see(gs: &mut GameState, cn: usize, co: usize) -> i32 {
     let co_team = gs.characters[co].data[42];
     if cn_team != co_team {
         let cc = gs.characters[cn].attack_cn as usize;
-        if cc == 0 || crate::driver::npc_dist(gs, cn, co) < crate::driver::npc_dist(gs, cn, cc) {
+        if cc == 0
+            || crate::driver::npc_dist(&gs.characters[cn], &gs.characters[co])
+                < crate::driver::npc_dist(&gs.characters[cn], &gs.characters[cc])
+        {
             gs.characters[cn].attack_cn = co as u16;
             gs.characters[cn].goto_x = 0;
         }
@@ -978,7 +981,10 @@ fn npc_malte_gotattack(gs: &mut GameState, cn: usize, co: usize) -> i32 {
 
     if cn_team != co_team {
         let cc = gs.characters[cn].attack_cn as usize;
-        if cc == 0 || crate::driver::npc_dist(gs, cn, co) < crate::driver::npc_dist(gs, cn, cc) {
+        if cc == 0
+            || crate::driver::npc_dist(&gs.characters[cn], &gs.characters[co])
+                < crate::driver::npc_dist(&gs.characters[cn], &gs.characters[cc])
+        {
             gs.characters[cn].attack_cn = co as u16;
             gs.characters[cn].goto_x = 0;
         }

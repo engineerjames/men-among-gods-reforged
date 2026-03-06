@@ -2516,23 +2516,6 @@ pub fn mine_wall(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     gs.items[in_idx].data[2] as i32
 }
 
-// Un-called in the original code
-#[allow(dead_code)]
-pub fn mine_state(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
-    if item_idx == 0 {
-        return 0;
-    }
-
-    // Check if item is a mine wall (driver 25)
-    let is_mine_wall = gs.items[item_idx].driver == 25;
-    if !is_mine_wall {
-        return 0;
-    }
-
-    // Return state from data[2]
-    gs.items[item_idx].data[2] as i32
-}
-
 pub fn use_mine(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     use core::constants::{AT_STREN, WN_RHAND};
 
@@ -4394,7 +4377,7 @@ pub fn spell_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             return 0;
         }
     } else {
-        if driver::player_or_ghost(gs, cn, co) == 0 {
+        if driver::player_or_ghost(&gs.characters[cn], cn, &gs.characters[co]) == 0 {
             // Change target to self
             co = cn;
         }

@@ -2,6 +2,7 @@ use core::constants::{CT_COMPANION, NT_GOTMISS, SERVER_MAPX, SERVER_MAPY, TICKS}
 use core::string_operations::c_string_to_str;
 
 use crate::game_state::GameState;
+use core::types::Character;
 
 struct Know {
     word: [&'static str; 20],
@@ -2415,13 +2416,12 @@ pub fn answer_time(gs: &mut GameState, cn: usize, _co: usize) {
 ///
 /// # Returns
 /// Total available stronghold points
-pub fn stronghold_points(gs: &GameState, cn: usize) -> i32 {
-    let ch = gs.characters[cn];
-    ch.data[26] / 25 +      // kills below rank
-    ch.data[27] +           // kills at rank
-    ch.data[28] * 2 +       // kills above rank
-    ch.data[43] * 25 -      // candles
-    ch.data[41] // points spent
+pub fn stronghold_points(cn: &Character) -> i32 {
+    cn.data[26] / 25 +      // kills below rank
+    cn.data[27] +           // kills at rank
+    cn.data[28] * 2 +       // kills above rank
+    cn.data[43] * 25 -      // candles
+    cn.data[41] // points spent
 }
 
 /// Port of `stronghold_exp_per_pt(int cn)` from `talk.cpp`
@@ -2434,8 +2434,8 @@ pub fn stronghold_points(gs: &GameState, cn: usize) -> i32 {
 ///
 /// # Returns
 /// Experience per point (clamped between 1 and 125)
-pub fn stronghold_exp_per_pt(gs: &GameState, cn: usize) -> i32 {
-    let exp_per_pt = gs.characters[cn].points_tot / 45123;
+pub fn stronghold_exp_per_pt(cn: &Character) -> i32 {
+    let exp_per_pt = cn.points_tot / 45123;
     exp_per_pt.clamp(1, 125)
 }
 
@@ -2449,8 +2449,8 @@ pub fn stronghold_exp_per_pt(gs: &GameState, cn: usize) -> i32 {
 /// * `co` - Player character whose points are described
 /// * `_know_idx` - Knowledge index that triggered this answer (unused)
 pub fn answer_points(gs: &mut GameState, cn: usize, co: usize, _know_idx: usize) {
-    let exp = stronghold_exp_per_pt(gs, co);
-    let pts = stronghold_points(gs, co);
+    let exp = stronghold_exp_per_pt(&gs.characters[co]);
+    let pts = stronghold_points(&gs.characters[co]);
 
     gs.do_sayx(cn, &format!(
             "You have {} points. You can BUY GOLD at one coin per point, BUY HEALING potions for 6 points, BUY MANA potions for 9 points or BUY EXPerience at {} exp per point.",
@@ -2467,7 +2467,7 @@ pub fn answer_points(gs: &mut GameState, cn: usize, co: usize, _know_idx: usize)
 /// * `cn` - NPC character handling the exchange
 /// * `co` - Player character spending points
 pub fn answer_buygold(gs: &mut GameState, cn: usize, co: usize) {
-    let mut pts = stronghold_points(gs, co);
+    let mut pts = stronghold_points(&gs.characters[co]);
     pts = pts.min(100);
 
     if pts < 1 {
@@ -2507,7 +2507,7 @@ pub fn answer_buygold(gs: &mut GameState, cn: usize, co: usize) {
 /// * `cn` - NPC vendor
 /// * `co` - Player purchasing the potion
 pub fn answer_buyhealth(gs: &mut GameState, cn: usize, co: usize) {
-    let pts = stronghold_points(gs, co);
+    let pts = stronghold_points(&gs.characters[co]);
 
     if pts < 6 {
         gs.do_sayx(
@@ -2546,7 +2546,7 @@ pub fn answer_buyhealth(gs: &mut GameState, cn: usize, co: usize) {
 /// * `cn` - NPC vendor
 /// * `co` - Player purchasing the potion
 pub fn answer_buymana(gs: &mut GameState, cn: usize, co: usize) {
-    let pts = stronghold_points(gs, co);
+    let pts = stronghold_points(&gs.characters[co]);
 
     if pts < 9 {
         gs.do_sayx(
@@ -2586,8 +2586,8 @@ pub fn answer_buymana(gs: &mut GameState, cn: usize, co: usize) {
 /// * `cn` - NPC vendor
 /// * `co` - Player purchasing experience
 pub fn answer_buyexp(gs: &mut GameState, cn: usize, co: usize) {
-    let pts = stronghold_points(gs, co);
-    let exp = stronghold_exp_per_pt(gs, co);
+    let pts = stronghold_points(&gs.characters[co]);
+    let exp = stronghold_exp_per_pt(&gs.characters[co]);
 
     if pts < 1 {
         gs.do_sayx(

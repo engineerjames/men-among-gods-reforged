@@ -1011,7 +1011,7 @@ impl Server {
                     continue;
                 }
 
-                let uniques = crate::driver::count_uniques(gs, cn);
+                let uniques = crate::driver::count_uniques(&gs.characters[cn], &gs.items);
 
                 if uniques > 1 {
                     // reduce luck for multi-unique holders if active

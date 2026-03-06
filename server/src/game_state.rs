@@ -284,7 +284,6 @@ impl GameState {
     /// # Returns
     ///
     /// * The current message of the day string.
-    #[allow(dead_code)] // Used by player.rs after Phase 3 conversion
     pub fn latest_message_of_the_day(&self) -> String {
         match self.storage_backend {
             StorageBackend::DatFiles => self.read_message_of_the_day_from_dat_file(),

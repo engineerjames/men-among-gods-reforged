@@ -90,18 +90,14 @@ pub fn skill_name(n: usize) -> &'static str {
     }
 }
 
-pub fn player_or_ghost(gs: &GameState, cn: usize, co: usize) -> i32 {
-    // Rust port of C++ player_or_ghost
-    let cn_flags = gs.characters[cn].flags;
-    if (cn_flags & CharacterFlags::Player.bits()) == 0 {
+pub fn player_or_ghost(cn: &Character, cn_idx: usize, co: &Character) -> i32 {
+    if (cn.flags & CharacterFlags::Player.bits()) == 0 {
         return 0;
     }
-    let co_flags = gs.characters[co].flags;
-    if (co_flags & CharacterFlags::Player.bits()) != 0 {
+    if (co.flags & CharacterFlags::Player.bits()) != 0 {
         return 1;
     }
-    let co_data_63 = gs.characters[co].data[63] as usize;
-    if co_data_63 == cn {
+    if co.data[63] as usize == cn_idx {
         return 1;
     }
     0
@@ -547,12 +543,12 @@ pub fn skill_light(gs: &mut GameState, cn: usize) {
     add_exhaust(gs, cn, TICKS / 4);
 }
 
-pub fn spellpower(gs: &GameState, cn: usize) -> i32 {
-    let a = gs.characters[cn].attrib[core::constants::AT_AGIL as usize][0] as i32;
-    let b = gs.characters[cn].attrib[core::constants::AT_STREN as usize][0] as i32;
-    let c = gs.characters[cn].attrib[core::constants::AT_INT as usize][0] as i32;
-    let d = gs.characters[cn].attrib[core::constants::AT_WILL as usize][0] as i32;
-    let e = gs.characters[cn].attrib[core::constants::AT_BRAVE as usize][0] as i32;
+pub fn spellpower(cn: &Character) -> i32 {
+    let a = cn.attrib[core::constants::AT_AGIL as usize][0] as i32;
+    let b = cn.attrib[core::constants::AT_STREN as usize][0] as i32;
+    let c = cn.attrib[core::constants::AT_INT as usize][0] as i32;
+    let d = cn.attrib[core::constants::AT_WILL as usize][0] as i32;
+    let e = cn.attrib[core::constants::AT_BRAVE as usize][0] as i32;
     a + b + c + d + e
 }
 
@@ -566,7 +562,7 @@ pub fn spell_protect(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i3
 
     // cap power to target's spellpower
     let mut power = power;
-    let target_spellpower = spellpower(gs, co);
+    let target_spellpower = spellpower(&gs.characters[co]);
     if power > target_spellpower {
         if cn != co {
             let reference = gs.characters[co].reference;
@@ -701,7 +697,7 @@ pub fn skill_protect(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    if player_or_ghost(gs, cn, co) == 0 {
+    if player_or_ghost(&gs.characters[cn], cn, &gs.characters[co]) == 0 {
         let name_from = gs.characters[co].get_name().to_string();
         let name_to = gs.characters[cn].get_name().to_string();
         gs.do_character_log(
@@ -753,7 +749,7 @@ pub fn spell_enhance(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i3
 
     // cap power to target's spellpower
     let mut power = power;
-    let target_spellpower = spellpower(gs, co);
+    let target_spellpower = spellpower(&gs.characters[co]);
     if power > target_spellpower {
         if cn != co {
             let reference = gs.characters[co].reference;
@@ -893,7 +889,7 @@ pub fn skill_enhance(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    if player_or_ghost(gs, cn, co) == 0 {
+    if player_or_ghost(&gs.characters[cn], cn, &gs.characters[co]) == 0 {
         let name_from = gs.characters[co].get_name().to_string();
         let name_to = gs.characters[cn].get_name().to_string();
         gs.do_character_log(
@@ -970,7 +966,7 @@ pub fn spell_bless(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 
     let in_ = in_opt.unwrap();
 
     let mut power = power;
-    let tmp = spellpower(gs, co);
+    let tmp = spellpower(&gs.characters[co]);
     if power > tmp {
         if cn != co {
             let reference = gs.characters[co].reference;
@@ -1111,7 +1107,7 @@ pub fn skill_bless(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    if player_or_ghost(gs, cn, co) == 0 {
+    if player_or_ghost(&gs.characters[cn], cn, &gs.characters[co]) == 0 {
         let name_from = gs.characters[co].get_name().to_string();
         let name_to = gs.characters[cn].get_name().to_string();
         gs.do_character_log(
@@ -1490,7 +1486,7 @@ pub fn skill_heal(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    if player_or_ghost(gs, cn, co) == 0 {
+    if player_or_ghost(&gs.characters[cn], cn, &gs.characters[co]) == 0 {
         let name_from = gs.characters[co].get_name().to_string();
         let name_to = gs.characters[cn].get_name().to_string();
         gs.do_character_log(
@@ -3237,7 +3233,7 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
     let ticker = gs.globals.ticker;
 
     let co_id = if co != 0 {
-        helpers::char_id(&gs.characters[co as usize])
+        helpers::char_id(&gs.characters[co])
     } else {
         0
     };
@@ -3400,12 +3396,12 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
     EffectManager::fx_add_effect(gs, 7, 0, cn_x, cn_y, 0);
 }
 
-pub fn is_facing(gs: &GameState, cn: usize, co: usize) -> i32 {
-    let dir = gs.characters[cn].dir;
-    let cx = gs.characters[cn].x;
-    let cy = gs.characters[cn].y;
-    let ox = gs.characters[co].x;
-    let oy = gs.characters[co].y;
+pub fn is_facing(cn: &Character, co: &Character) -> i32 {
+    let dir = cn.dir;
+    let cx = cn.x;
+    let cy = cn.y;
+    let ox = co.x;
+    let oy = co.y;
 
     match dir {
         DX_RIGHT => {
@@ -3440,12 +3436,12 @@ pub fn is_facing(gs: &GameState, cn: usize, co: usize) -> i32 {
     }
 }
 
-pub fn is_back(gs: &GameState, cn: usize, co: usize) -> i32 {
-    let dir = gs.characters[cn].dir;
-    let cx = gs.characters[cn].x;
-    let cy = gs.characters[cn].y;
-    let ox = gs.characters[co].x;
-    let oy = gs.characters[co].y;
+pub fn is_back(cn: &Character, co: &Character) -> i32 {
+    let dir = cn.dir;
+    let cx = cn.x;
+    let cy = cn.y;
+    let ox = co.x;
+    let oy = co.y;
 
     match dir {
         DX_LEFT => {

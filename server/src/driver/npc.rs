@@ -63,10 +63,8 @@ pub fn get_frust_y_off(f: i32) -> i32 {
 /// # Returns
 ///
 /// The maximum of the absolute X or Y distance as i32.
-pub fn npc_dist(gs: &GameState, cn: usize, co: usize) -> i32 {
-    let ch_cn = &gs.characters[cn];
-    let ch_co = &gs.characters[co];
-    std::cmp::max((ch_cn.x - ch_co.x).abs(), (ch_cn.y - ch_co.y).abs()) as i32
+pub fn npc_dist(cn: &Character, co: &Character) -> i32 {
+    std::cmp::max((cn.x - co.x).abs(), (cn.y - co.y).abs()) as i32
 }
 
 // ****************************************************
@@ -84,18 +82,26 @@ pub fn npc_dist(gs: &GameState, cn: usize, co: usize) -> i32 {
 /// # Returns
 ///
 /// `true` if the enemy was added, `false` otherwise.
-pub fn npc_add_enemy(gs: &mut GameState, cn: usize, co: usize, always: bool) -> bool {
-    // Don't attack anyone of the same group
-    if gs.characters[cn].data[42] == gs.characters[co].data[42] {
+/// Pure eligibility check: whether an NPC should consider `co` as a potential enemy
+/// based on group membership and relative power.
+pub fn npc_should_consider_enemy(cn: &Character, co: &Character, always: bool) -> bool {
+    // Same group -- never fight
+    if cn.data[42] == co.data[42] {
         return false;
     }
-
     // Group 1 mobs shall not attack ghost companions
-    if !always && gs.characters[cn].data[42] == 1 && (gs.characters[co].data[42] & 0x10000) != 0 {
+    if !always && cn.data[42] == 1 && (co.data[42] & 0x10000) != 0 {
         return false;
     }
+    // Too weak relative to the target
+    if !always && (cn.points_tot + 500) * 25 < co.points_tot {
+        return false;
+    }
+    true
+}
 
-    if !always && (gs.characters[cn].points_tot + 500) * 25 < gs.characters[co].points_tot {
+pub fn npc_add_enemy(gs: &mut GameState, cn: usize, co: usize, always: bool) -> bool {
+    if !npc_should_consider_enemy(&gs.characters[cn], &gs.characters[co], always) {
         return false;
     }
 
@@ -106,11 +112,11 @@ pub fn npc_add_enemy(gs: &mut GameState, cn: usize, co: usize, always: bool) -> 
 
     let cc = gs.characters[cn].attack_cn;
     let d1 = if cc > 0 && usize::from(cc) < MAXCHARS {
-        npc_dist(gs, cn, cc as usize)
+        npc_dist(&gs.characters[cn], &gs.characters[cc as usize])
     } else {
         i32::MAX
     };
-    let d2 = npc_dist(gs, cn, co);
+    let d2 = npc_dist(&gs.characters[cn], &gs.characters[co]);
 
     let flags = gs.globals.flags;
     if gs.characters[cn].attack_cn == 0
@@ -124,7 +130,7 @@ pub fn npc_add_enemy(gs: &mut GameState, cn: usize, co: usize, always: bool) -> 
         gs.characters[cn].data[58] = 2;
     }
 
-    let idx = co as i32 | (helpers::char_id(&gs.characters[co as usize]) << 16);
+    let idx = co as i32 | (helpers::char_id(&gs.characters[co]) << 16);
 
     // Check if already in enemy list
     for n in 80..92 {
@@ -142,11 +148,11 @@ pub fn npc_add_enemy(gs: &mut GameState, cn: usize, co: usize, always: bool) -> 
     true
 }
 
-pub fn npc_is_enemy(gs: &GameState, cn: usize, co: usize) -> bool {
-    let idx = co as i32 | (helpers::char_id(&gs.characters[co as usize]) << 16);
+pub fn npc_is_enemy(cn: &Character, co: &Character, co_idx: usize) -> bool {
+    let idx = co_idx as i32 | (helpers::char_id(co) << 16);
 
     for n in 80..92 {
-        if gs.characters[cn].data[n] == idx {
+        if cn.data[n] == idx {
             return true;
         }
     }
@@ -272,8 +278,7 @@ pub fn npc_gotattack(gs: &mut GameState, cn: usize, co: usize, _dam: i32) -> i32
             gs.characters[cc].data[24] = 0;
             gs.characters[cc].data[36] = 0;
             gs.characters[cc].data[43] = 0;
-            gs.characters[cc].data[80] =
-                co as i32 | (helpers::char_id(&gs.characters[co as usize]) << 16);
+            gs.characters[cc].data[80] = co as i32 | (helpers::char_id(&gs.characters[co]) << 16);
             gs.characters[cc].data[63] = cn as i32;
             gs.characters[cc].data[64] = ticker + 120 * TICKS;
             gs.characters[cc].data[70] = ticker + (TICKS * 60);
@@ -384,7 +389,7 @@ pub fn npc_killed(gs: &mut GameState, cn: usize, cc: usize, co: usize) -> i32 {
     gs.characters[cn].data[77] = 0;
     gs.characters[cn].data[78] = 0;
 
-    let idx = co as i32 | (helpers::char_id(&gs.characters[co as usize]) << 16);
+    let idx = co as i32 | (helpers::char_id(&gs.characters[co]) << 16);
 
     for n in 80..92 {
         if gs.characters[cn].data[n] == idx {
@@ -930,9 +935,9 @@ pub fn npc_msg(
 // Spell and Combat Functions
 // ****************************************************
 
-pub fn get_spellcost(gs: &GameState, cn: usize, spell: usize) -> i32 {
+pub fn get_spellcost(cn: &Character, spell: usize) -> i32 {
     (match spell {
-        SK_BLAST => gs.characters[cn].skill[SK_BLAST][5] / 5,
+        SK_BLAST => cn.skill[SK_BLAST][5] / 5,
         SK_IDENT => 50,
         SK_CURSE => 35,
         SK_BLESS => 35,
@@ -992,10 +997,10 @@ pub fn npc_check_target(gs: &GameState, x: usize, y: usize) -> bool {
     true
 }
 
-pub fn npc_is_stunned(gs: &GameState, cn: usize) -> bool {
+pub fn npc_is_stunned(cn: &Character, items: &[core::types::Item]) -> bool {
     for n in 0..20 {
-        let active_spell = gs.characters[cn].spell[n];
-        if active_spell != 0 && gs.items[active_spell as usize].temp == SK_STUN as u16 {
+        let active_spell = cn.spell[n];
+        if active_spell != 0 && items[active_spell as usize].temp == SK_STUN as u16 {
             return true;
         }
     }
@@ -1003,11 +1008,10 @@ pub fn npc_is_stunned(gs: &GameState, cn: usize) -> bool {
     false
 }
 
-// TODO: Combine with npc_is_stunned?
-pub fn npc_is_blessed(gs: &GameState, cn: usize) -> bool {
+pub fn npc_is_blessed(cn: &Character, items: &[core::types::Item]) -> bool {
     for n in 0..20 {
-        let active_spell = gs.characters[cn].spell[n];
-        if active_spell != 0 && gs.items[active_spell as usize].temp == SK_BLESS as u16 {
+        let active_spell = cn.spell[n];
+        if active_spell != 0 && items[active_spell as usize].temp == SK_BLESS as u16 {
             return true;
         }
     }
@@ -1015,50 +1019,48 @@ pub fn npc_is_blessed(gs: &GameState, cn: usize) -> bool {
     false
 }
 
-pub fn npc_try_spell(gs: &mut GameState, cn: usize, co: usize, spell: usize) -> bool {
-    if gs.characters[cn].flags & CharacterFlags::NoMagic.bits() != 0 {
+/// Pure pre-condition check: whether an NPC can consider casting `spell` on `co`
+/// based on character flags, skill availability, and spell-specific feasibility.
+pub fn npc_spell_preconditions_met(cn: &Character, co: &Character, spell: usize) -> bool {
+    if cn.flags & CharacterFlags::NoMagic.bits() != 0 {
         return false;
     }
-
-    if gs.characters[co].used != core::constants::USE_ACTIVE {
+    if co.used != core::constants::USE_ACTIVE {
         return false;
     }
-
-    if gs.characters[co].flags & CharacterFlags::Body.bits() != 0 {
+    if co.flags & CharacterFlags::Body.bits() != 0 {
         return false;
     }
-
-    if gs.characters[cn].skill[spell][0] == 0 {
+    if cn.skill[spell][0] == 0 {
         return false;
     }
-
-    if gs.characters[co].flags & CharacterFlags::Stoned.bits() != 0 {
+    if co.flags & CharacterFlags::Stoned.bits() != 0 {
         return false;
     }
-
-    // Don't blast if the enemies armor is too high
     if spell == core::constants::SK_BLAST
-        && (gs.characters[cn].skill[core::constants::SK_BLAST][5] as i16 - gs.characters[co].armor)
-            < 10
+        && (cn.skill[core::constants::SK_BLAST][5] as i16 - co.armor) < 10
     {
         return false;
     }
-
-    // Don't stun if the chance of success is bad
     if spell == core::constants::SK_CURSE
-        && 10 * gs.characters[cn].skill[core::constants::SK_CURSE][5] as i32
-            / (std::cmp::max(1, gs.characters[co].skill[core::constants::SK_RESIST][5]) as i32)
+        && 10 * cn.skill[core::constants::SK_CURSE][5] as i32
+            / (std::cmp::max(1, co.skill[core::constants::SK_RESIST][5]) as i32)
             < 7
     {
         return false;
     }
-
-    // Don't stun if the chance of success is bad
     if spell == core::constants::SK_STUN
-        && 10 * gs.characters[cn].skill[core::constants::SK_STUN][5] as i32
-            / (std::cmp::max(1, gs.characters[co].skill[core::constants::SK_RESIST][5]) as i32)
+        && 10 * cn.skill[core::constants::SK_STUN][5] as i32
+            / (std::cmp::max(1, co.skill[core::constants::SK_RESIST][5]) as i32)
             < 5
     {
+        return false;
+    }
+    true
+}
+
+pub fn npc_try_spell(gs: &mut GameState, cn: usize, co: usize, spell: usize) -> bool {
+    if !npc_spell_preconditions_met(&gs.characters[cn], &gs.characters[co], spell) {
         return false;
     }
 
@@ -1106,7 +1108,9 @@ pub fn npc_try_spell(gs: &mut GameState, cn: usize, co: usize, spell: usize) -> 
     if !found {
         let tmp = spellflag(spell);
 
-        if mana >= get_spellcost(gs, cn, spell) && gs.characters[co].data[96] as u32 & tmp == 0 {
+        if mana >= get_spellcost(&gs.characters[cn], spell)
+            && gs.characters[co].data[96] as u32 & tmp == 0
+        {
             gs.characters[cn].skill_nr = spell as u16;
             gs.characters[cn].skill_target1 = co as u16;
             gs.characters[co].data[96] |= tmp as i32;
@@ -1129,14 +1133,14 @@ pub fn spell_immunity(power: i32, immunity: i32) -> i32 {
     power - half_immunity
 }
 
-pub fn npc_can_spell(gs: &GameState, cn: usize, co: usize, spell: usize) -> bool {
-    if gs.characters[cn].a_mana / 1000 < get_spellcost(gs, cn, spell) {
+pub fn npc_can_spell(cn: &Character, co: &Character, spell: usize) -> bool {
+    if cn.a_mana / 1000 < get_spellcost(cn, spell) {
         return false;
     }
-    if gs.characters[cn].skill[spell][0] == 0 {
+    if cn.skill[spell][0] == 0 {
         return false;
     }
-    if gs.characters[co].skill[spell][5] > gs.characters[cn].skill[spell][5] {
+    if co.skill[spell][5] > cn.skill[spell][5] {
         return false;
     }
     true
@@ -1441,9 +1445,9 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> i32 {
             let cc = gs.characters[co].attack_cn as usize;
 
             if gs.characters[cn].a_mana
-                > (get_spellcost(gs, cn, SK_BLESS) * 2
-                    + get_spellcost(gs, cn, SK_PROTECT)
-                    + get_spellcost(gs, cn, SK_ENHANCE))
+                > (get_spellcost(&gs.characters[cn], SK_BLESS) * 2
+                    + get_spellcost(&gs.characters[cn], SK_PROTECT)
+                    + get_spellcost(&gs.characters[cn], SK_ENHANCE))
             {
                 if npc_try_spell(gs, cn, cn, SK_BLESS) {
                     return 1;
@@ -1456,19 +1460,25 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> i32 {
                 }
             }
 
-            if !npc_can_spell(gs, co, cn, SK_PROTECT) && npc_try_spell(gs, cn, co, SK_PROTECT) {
+            if !npc_can_spell(&gs.characters[co], &gs.characters[cn], SK_PROTECT)
+                && npc_try_spell(gs, cn, co, SK_PROTECT)
+            {
                 return 1;
             }
-            if !npc_can_spell(gs, co, cn, SK_ENHANCE) && npc_try_spell(gs, cn, co, SK_ENHANCE) {
+            if !npc_can_spell(&gs.characters[co], &gs.characters[cn], SK_ENHANCE)
+                && npc_try_spell(gs, cn, co, SK_ENHANCE)
+            {
                 return 1;
             }
-            if !npc_can_spell(gs, co, cn, SK_BLESS) && npc_try_spell(gs, cn, co, SK_BLESS) {
+            if !npc_can_spell(&gs.characters[co], &gs.characters[cn], SK_BLESS)
+                && npc_try_spell(gs, cn, co, SK_BLESS)
+            {
                 return 1;
             }
 
             if cc != 0
                 && gs.characters[co].a_hp < gs.characters[co].hp[5] as i32 * 650
-                && npc_is_enemy(gs, cn, cc)
+                && npc_is_enemy(&gs.characters[cn], &gs.characters[cc], cc)
             {
                 if npc_try_spell(gs, cn, cc, SK_BLAST) {
                     return 1;
@@ -2166,14 +2176,7 @@ pub fn npc_check_placement(gs: &GameState, in_idx: usize, n: usize) -> bool {
     }
 }
 
-pub fn npc_can_wear_item(gs: &GameState, cn: usize, in_idx: usize) -> bool {
-    if (in_idx & 0x80000000) != 0 {
-        return false;
-    }
-
-    let ch = &gs.characters[cn];
-    let it = &gs.items[in_idx];
-
+pub fn npc_can_wear_item(ch: &Character, it: &core::types::Item) -> bool {
     // Check attribute requirements
     for m in 0..5 {
         if it.attrib[m][2] > ch.attrib[m][0] as i8 {
@@ -2204,8 +2207,7 @@ pub fn npc_can_wear_item(gs: &GameState, cn: usize, in_idx: usize) -> bool {
     true
 }
 
-pub fn npc_item_value(gs: &GameState, in_idx: usize) -> i32 {
-    let it = &gs.items[in_idx];
+pub fn npc_item_value(it: &core::types::Item) -> i32 {
     let mut score = 0;
 
     for n in 0..50 {
@@ -2270,9 +2272,11 @@ pub fn npc_equip_item(gs: &mut GameState, cn: usize, in_idx: usize) -> bool {
     for n in 0..20 {
         let worn_n = gs.characters[cn].worn[n];
 
-        if worn_n == 0 || npc_item_value(gs, in_idx) > npc_item_value(gs, worn_n as usize) {
+        if worn_n == 0
+            || npc_item_value(&gs.items[in_idx]) > npc_item_value(&gs.items[worn_n as usize])
+        {
             if npc_check_placement(gs, in_idx, n) {
-                if npc_can_wear_item(gs, cn, in_idx) {
+                if npc_can_wear_item(&gs.characters[cn], &gs.items[in_idx]) {
                     log::info!("now wearing {}", gs.items[in_idx].get_name());
 
                     // Remove old item if any
@@ -2410,8 +2414,8 @@ pub fn npc_loot_grave(gs: &mut GameState, cn: usize, in_idx: usize) -> bool {
     false
 }
 
-pub fn npc_already_searched_grave(gs: &GameState, cn: usize, in_idx: usize) -> bool {
-    let text_9 = &gs.characters[cn].text[9];
+pub fn npc_already_searched_grave(cn: &Character, in_idx: usize) -> bool {
+    let text_9 = &cn.text[9];
 
     let mut n = 0;
     while n < 160 {
@@ -2469,7 +2473,10 @@ pub fn npc_grave_logic(gs: &mut GameState, cn: usize) -> bool {
 
                     let can_see = gs.do_char_can_see_item(cn, in_idx) != 0;
 
-                    if can_reach && can_see && !npc_already_searched_grave(gs, cn, in_idx) {
+                    if can_reach
+                        && can_see
+                        && !npc_already_searched_grave(&gs.characters[cn], in_idx)
+                    {
                         if !npc_loot_grave(gs, cn, in_idx) {
                             npc_add_searched_grave(gs, cn, in_idx);
                             gs.characters[cn].flags &= !CharacterFlags::IsLooting.bits();
@@ -2637,7 +2644,7 @@ pub fn shiva_activate_candle(gs: &mut GameState, cn: usize, in_idx: usize) -> i3
 // Helper Functions for npc_see
 // ****************************************************
 
-pub fn is_unique(gs: &GameState, in_idx: usize) -> bool {
+pub fn is_unique_item(it: &core::types::Item) -> bool {
     const UNIQUE_TEMPS: [u16; 60] = [
         280, 281, 282, 283, 284, 285, 286, 287, 288, 289, 290, 291, 292, 525, 526, 527, 528, 529,
         530, 531, 532, 533, 534, 535, 536, 537, 538, 539, 540, 541, 542, 543, 544, 545, 546, 547,
@@ -2645,35 +2652,34 @@ pub fn is_unique(gs: &GameState, in_idx: usize) -> bool {
         581, 582, 583, 584, 585, 586,
     ];
 
-    let temp = gs.items[in_idx].temp;
-    UNIQUE_TEMPS.contains(&temp)
+    UNIQUE_TEMPS.contains(&it.temp)
 }
 
-pub fn count_uniques(gs: &GameState, cn: usize) -> i32 {
+pub fn count_uniques(cn: &Character, items: &[core::types::Item]) -> i32 {
     let mut cnt = 0;
 
-    let citem = gs.characters[cn].citem;
-    if citem != 0 && (citem & 0x80000000) == 0 && is_unique(gs, citem as usize) {
+    let citem = cn.citem;
+    if citem != 0 && (citem & 0x80000000) == 0 && is_unique_item(&items[citem as usize]) {
         cnt += 1;
     }
 
     for n in 0..40 {
-        let in_idx = gs.characters[cn].item[n];
-        if in_idx != 0 && is_unique(gs, in_idx as usize) {
+        let in_idx = cn.item[n];
+        if in_idx != 0 && is_unique_item(&items[in_idx as usize]) {
             cnt += 1;
         }
     }
 
     for n in 0..20 {
-        let in_idx = gs.characters[cn].worn[n];
-        if in_idx != 0 && is_unique(gs, in_idx as usize) {
+        let in_idx = cn.worn[n];
+        if in_idx != 0 && is_unique_item(&items[in_idx as usize]) {
             cnt += 1;
         }
     }
 
     for n in 0..62 {
-        let in_idx = gs.characters[cn].depot[n];
-        if in_idx != 0 && is_unique(gs, in_idx as usize) {
+        let in_idx = cn.depot[n];
+        if in_idx != 0 && is_unique_item(&items[in_idx as usize]) {
             cnt += 1;
         }
     }
@@ -2911,7 +2917,7 @@ pub fn npc_see(gs: &mut GameState, cn: usize, co: usize) -> i32 {
         }
 
         if !already_talked {
-            let text_2 = gs.characters[cn].text[2].clone();
+            let text_2 = gs.characters[cn].text[2];
             let text_2_str = c_string_to_str(&text_2).to_string();
             let co_name = gs.characters[co].get_name().to_string();
 
@@ -2962,7 +2968,7 @@ pub fn npc_see(gs: &mut GameState, cn: usize, co: usize) -> i32 {
 
             let data_26 = gs.characters[cn].data[26];
             if data_26 == 5 {
-                let cnt = count_uniques(gs, co);
+                let cnt = count_uniques(&gs.characters[co], &gs.items);
 
                 if cnt == 1 {
                     gs.do_sayx(

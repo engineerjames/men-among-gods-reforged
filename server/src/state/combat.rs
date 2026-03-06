@@ -110,7 +110,7 @@ impl GameState {
             return;
         }
 
-        if driver::npc_is_enemy(self, co, cv) {
+        if driver::npc_is_enemy(&self.characters[co], &self.characters[cv], cv) {
             if !driver::npc_remove_enemy(self, co, cv) {
                 let vname = self.characters[cv].get_name().to_string();
                 let cname = self.characters[co].get_name().to_string();
@@ -249,11 +249,11 @@ impl GameState {
         }
 
         // Use canonical helpers for facing/back checks
-        if driver::is_facing(self, co, cn) == 0 {
+        if driver::is_facing(&self.characters[co], &self.characters[cn]) == 0 {
             s2 -= 10;
         }
 
-        if driver::is_back(self, co, cn) != 0 {
+        if driver::is_back(&self.characters[co], &self.characters[cn]) != 0 {
             s2 -= 10;
         }
 

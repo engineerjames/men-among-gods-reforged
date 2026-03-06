@@ -80,24 +80,6 @@ impl NetworkManager {
         f(&manager)
     }
 
-    // TODO: We might not need this...
-    #[allow(dead_code)]
-    /// Execute a mutable closure with the global `NetworkManager`.
-    ///
-    /// # Safety
-    /// The caller must ensure only one mutable access is active at a time.
-    pub fn with_mut<F, R>(f: F) -> R
-    where
-        F: FnOnce(&mut NetworkManager) -> R,
-    {
-        let mut manager = NETWORK_MANAGER
-            .get()
-            .expect("NetworkManager not initialized")
-            .write()
-            .unwrap();
-        f(&mut manager)
-    }
-
     /// Send bytes to a player's tick buffer using an explicit `GameState`.
     ///
     /// This is the non-singleton send path used by refactored callers that

@@ -1208,43 +1208,6 @@ pub fn pop_wipe(gs: &mut GameState) {
     log::info!("Wiped all dynamic game data");
 }
 
-/// Port of `pop_remove` from `populate.cpp`
-/// Saves all players to disk
-#[allow(dead_code)]
-pub fn pop_remove(gs: &mut GameState) {
-    log::info!("Saving players...");
-
-    // TODO: Implement actual file saving when persistence system is ready
-    // This would open .tmp/char.dat, .tmp/item.dat, .tmp/global.dat
-    // and write out all player data
-
-    let mut chc = 0;
-
-    for n in 1..MAXCHARS {
-        let used = gs.characters[n].used;
-        let is_player = (gs.characters[n].flags & CharacterFlags::Player.bits()) != 0;
-
-        if used != USE_EMPTY && is_player {
-            // TODO: Write character to file
-            chc += 1;
-        }
-    }
-
-    log::info!("Saved {} player characters", chc);
-}
-
-/// Port of `pop_load` from `populate.cpp`
-/// Loads game data from disk
-#[allow(dead_code)]
-pub fn pop_load() {
-    log::info!("Loading game data...");
-
-    // TODO: Implement actual file loading when persistence system is ready
-    // This would read from data files and populate the repository
-
-    log::info!("Game data loaded");
-}
-
 /// Port of `populate` from `populate.cpp`
 /// Populates the world with NPCs
 pub fn populate(gs: &mut GameState) {
