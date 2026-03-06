@@ -13,8 +13,8 @@ use core::{
 };
 
 use crate::{
-    chlog, core::types::Character, driver, effect::EffectManager, game_state::GameState,
-    game_state::GameState as Repository, god::God, helpers, populate,
+    chlog, core::types::Character, driver, effect::EffectManager, game_state::GameState, god::God,
+    helpers, populate,
 };
 
 use core::constants::LEGACY_TICKS;
@@ -396,7 +396,7 @@ pub fn spell_from_item(gs: &mut GameState, cn: usize, in2: usize) {
     }
     gs.do_character_log(cn, core::types::FontColor::Green, "You feel changed.\n");
     let sound = gs.characters[cn].sound;
-    gs.char_play_sound(cn, sound as i32 + 1, -150, 0);
+    GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
 }
 
 pub fn spell_light(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
@@ -458,8 +458,8 @@ pub fn spell_light(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 
             &format!("{} starts to emit light.\n", c_string_to_str(&name)),
         );
         let sound = gs.characters[cn].sound;
-        gs.char_play_sound(co, sound as i32 + 1, -150, 0);
-        gs.char_play_sound(cn, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(co, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
         let (x, y) = (gs.characters[co].x, gs.characters[co].y);
         EffectManager::fx_add_effect(7, 0, x as i32, y as i32, 0);
     } else {
@@ -478,7 +478,7 @@ pub fn spell_light(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 
             "You start to emit light.\n",
         );
         let sound = gs.characters[cn].sound;
-        gs.char_play_sound(cn, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
         let flags = gs.characters[cn].flags;
         if (flags & CharacterFlags::Player.bits()) != 0 {
             chlog!(cn, "Cast Light");
@@ -590,20 +590,20 @@ pub fn spell_protect(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i3
 
     let power = spell_race_mod(gs, power, gs.characters[cn].kindred);
 
-    Repository::with_items_mut(|it| {
+    {
         let mut name_bytes = [0u8; 40];
         let name = b"Protection";
         let len = name.len().min(40);
         name_bytes[..len].copy_from_slice(&name[..len]);
-        it[in_].name = name_bytes;
-        it[in_].flags |= ItemFlags::IF_SPELL.bits();
-        it[in_].armor[1] = (power / 4 + 4) as i8;
-        it[in_].sprite[1] = 86;
-        it[in_].duration = (TICKS * 60 * 10) as u32;
-        it[in_].active = (TICKS * 60 * 10) as u32;
-        it[in_].temp = SK_PROTECT as u16;
-        it[in_].power = power as u32;
-    });
+        gs.items[in_].name = name_bytes;
+        gs.items[in_].flags |= ItemFlags::IF_SPELL.bits();
+        gs.items[in_].armor[1] = (power / 4 + 4) as i8;
+        gs.items[in_].sprite[1] = 86;
+        gs.items[in_].duration = (TICKS * 60 * 10) as u32;
+        gs.items[in_].active = (TICKS * 60 * 10) as u32;
+        gs.items[in_].temp = SK_PROTECT as u16;
+        gs.items[in_].power = power as u32;
+    }
 
     if cn != co {
         if add_spell(gs, co, in_) == 0 {
@@ -635,8 +635,8 @@ pub fn spell_protect(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i3
             &format!("{} is now protected.\n", name),
         );
         let sound = gs.characters[cn].sound;
-        gs.char_play_sound(co, sound as i32 + 1, -150, 0);
-        gs.char_play_sound(cn, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(co, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
         let target_name = gs.characters[co].get_name().to_string();
         chlog!(cn, "Cast Protect on {}", target_name);
         EffectManager::fx_add_effect(
@@ -658,7 +658,7 @@ pub fn spell_protect(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i3
         }
         gs.do_character_log(cn, FontColor::Green, "You feel protected.\n");
         let sound = gs.characters[cn].sound;
-        gs.char_play_sound(cn, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
         let flags = gs.characters[cn].flags;
         if (flags & CharacterFlags::Player.bits()) != 0 {
             chlog!(cn, "Cast Protect");
@@ -775,20 +775,20 @@ pub fn spell_enhance(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i3
 
     let power = spell_race_mod(gs, power, gs.characters[cn].kindred);
 
-    Repository::with_items_mut(|it| {
+    {
         let mut name_bytes = [0u8; 40];
         let name = b"Enhance Weapon";
         let len = name.len().min(40);
         name_bytes[..len].copy_from_slice(&name[..len]);
-        it[in_].name = name_bytes;
-        it[in_].flags |= ItemFlags::IF_SPELL.bits();
-        it[in_].weapon[1] = (power / 4 + 4) as i8;
-        it[in_].sprite[1] = 87;
-        it[in_].duration = (TICKS * 60 * 10) as u32;
-        it[in_].active = (TICKS * 60 * 10) as u32;
-        it[in_].temp = SK_ENHANCE as u16;
-        it[in_].power = power as u32;
-    });
+        gs.items[in_].name = name_bytes;
+        gs.items[in_].flags |= ItemFlags::IF_SPELL.bits();
+        gs.items[in_].weapon[1] = (power / 4 + 4) as i8;
+        gs.items[in_].sprite[1] = 87;
+        gs.items[in_].duration = (TICKS * 60 * 10) as u32;
+        gs.items[in_].active = (TICKS * 60 * 10) as u32;
+        gs.items[in_].temp = SK_ENHANCE as u16;
+        gs.items[in_].power = power as u32;
+    }
 
     if cn != co {
         if add_spell(gs, co, in_) == 0 {
@@ -823,8 +823,8 @@ pub fn spell_enhance(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i3
             ),
         );
         let sound = gs.characters[cn].sound;
-        gs.char_play_sound(co, sound as i32 + 1, -150, 0);
-        gs.char_play_sound(cn, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(co, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
         let target_name = gs.characters[co].get_name().to_string();
         chlog!(cn, "Cast Enhance on {}", target_name);
 
@@ -847,7 +847,7 @@ pub fn spell_enhance(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i3
         }
         gs.do_character_log(cn, FontColor::Green, "Your weapon feels stronger.\n");
         let sound = gs.characters[cn].sound;
-        gs.char_play_sound(cn, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
         let flags = gs.characters[cn].flags;
         if (flags & CharacterFlags::Player.bits()) != 0 {
             chlog!(cn, "Cast Enhance");
@@ -989,22 +989,22 @@ pub fn spell_bless(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 
 
     let power = spell_race_mod(gs, power, gs.characters[cn].kindred);
 
-    Repository::with_items_mut(|it| {
+    {
         let mut name_bytes = [0u8; 40];
         let name = b"Bless";
         let len = name.len().min(40);
         name_bytes[..len].copy_from_slice(&name[..len]);
-        it[in_].name = name_bytes;
-        it[in_].flags |= ItemFlags::IF_SPELL.bits();
+        gs.items[in_].name = name_bytes;
+        gs.items[in_].flags |= ItemFlags::IF_SPELL.bits();
         for n in 0..5 {
-            it[in_].attrib[n][1] = (power / 5 + 3) as i8;
+            gs.items[in_].attrib[n][1] = (power / 5 + 3) as i8;
         }
-        it[in_].sprite[1] = 88;
-        it[in_].duration = (TICKS * 60 * 10) as u32;
-        it[in_].active = (TICKS * 60 * 10) as u32;
-        it[in_].temp = SK_BLESS as u16;
-        it[in_].power = power as u32;
-    });
+        gs.items[in_].sprite[1] = 88;
+        gs.items[in_].duration = (TICKS * 60 * 10) as u32;
+        gs.items[in_].active = (TICKS * 60 * 10) as u32;
+        gs.items[in_].temp = SK_BLESS as u16;
+        gs.items[in_].power = power as u32;
+    }
 
     if cn != co {
         if add_spell(gs, co, in_) == 0 {
@@ -1036,8 +1036,8 @@ pub fn spell_bless(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 
             ),
         );
         let sound = gs.characters[cn].sound;
-        gs.char_play_sound(co, sound as i32 + 1, -150, 0);
-        gs.char_play_sound(cn, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(co, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
         chlog!(
             cn,
             "Cast Bless on {}",
@@ -1062,7 +1062,7 @@ pub fn spell_bless(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 
         }
         gs.do_character_log(cn, FontColor::Green, "You have been blessed.\n");
         let sound = gs.characters[cn].sound;
-        gs.char_play_sound(cn, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
         let flags = gs.characters[cn].flags;
         if (flags & CharacterFlags::Player.bits()) != 0 {
             chlog!(cn, "Cast Bless");
@@ -1208,22 +1208,22 @@ pub fn skill_wimp(gs: &mut GameState, cn: usize) {
     }
     let in_idx = in_opt.unwrap();
 
-    Repository::with_items_mut(|it| {
+    {
         let mut name_bytes = [0u8; 40];
         let name = b"Guardian Angel";
         let len = name.len().min(40);
         name_bytes[..len].copy_from_slice(&name[..len]);
-        it[in_idx].name = name_bytes;
-        it[in_idx].flags |= ItemFlags::IF_SPELL.bits() | ItemFlags::IF_PERMSPELL.bits();
-        it[in_idx].hp[0] = -1;
-        it[in_idx].end[0] = -1;
-        it[in_idx].mana[0] = -1;
-        it[in_idx].sprite[1] = 94;
-        it[in_idx].duration = (TICKS * 60 * 60 * 2) as u32;
-        it[in_idx].active = (TICKS * 60 * 60 * 2) as u32;
-        it[in_idx].temp = SK_WIMPY as u16;
-        it[in_idx].power = gs.characters[cn].skill[SK_WIMPY][5] as u32;
-    });
+        gs.items[in_idx].name = name_bytes;
+        gs.items[in_idx].flags |= ItemFlags::IF_SPELL.bits() | ItemFlags::IF_PERMSPELL.bits();
+        gs.items[in_idx].hp[0] = -1;
+        gs.items[in_idx].end[0] = -1;
+        gs.items[in_idx].mana[0] = -1;
+        gs.items[in_idx].sprite[1] = 94;
+        gs.items[in_idx].duration = (TICKS * 60 * 60 * 2) as u32;
+        gs.items[in_idx].active = (TICKS * 60 * 60 * 2) as u32;
+        gs.items[in_idx].temp = SK_WIMPY as u16;
+        gs.items[in_idx].power = gs.characters[cn].skill[SK_WIMPY][5] as u32;
+    }
 
     if add_spell(gs, cn, in_idx) == 0 {
         gs.do_character_log(
@@ -1242,7 +1242,7 @@ pub fn skill_wimp(gs: &mut GameState, cn: usize) {
         "Guardian Angel active!\n",
     );
     let sound = gs.characters[cn].sound;
-    gs.char_play_sound(cn, sound as i32 + 1, -150, 0);
+    GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
     chlog!(cn, "Cast Guardian Angel");
     EffectManager::fx_add_effect(
         7,
@@ -1268,21 +1268,21 @@ pub fn spell_mshield(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i3
     }
     let in_ = in_opt.unwrap();
 
-    Repository::with_items_mut(|it| {
+    {
         let mut name_bytes = [0u8; 40];
         let name = b"Magic Shield";
         let len = name.len().min(40);
         name_bytes[..len].copy_from_slice(&name[..len]);
-        it[in_].name = name_bytes;
-        it[in_].flags |= ItemFlags::IF_SPELL.bits();
-        it[in_].sprite[1] = 95;
+        gs.items[in_].name = name_bytes;
+        gs.items[in_].flags |= ItemFlags::IF_SPELL.bits();
+        gs.items[in_].sprite[1] = 95;
         let dur = spell_race_mod(gs, power * 256, gs.characters[cn].kindred);
-        it[in_].duration = dur as u32;
-        it[in_].active = dur as u32;
-        it[in_].armor[1] = (it[in_].active / 1024) as i8 + 1;
-        it[in_].temp = SK_MSHIELD as u16;
-        it[in_].power = it[in_].active / 256;
-    });
+        gs.items[in_].duration = dur as u32;
+        gs.items[in_].active = dur as u32;
+        gs.items[in_].armor[1] = (gs.items[in_].active / 1024) as i8 + 1;
+        gs.items[in_].temp = SK_MSHIELD as u16;
+        gs.items[in_].power = gs.items[in_].active / 256;
+    }
 
     if cn != co {
         if add_spell(gs, co, in_) == 0 {
@@ -1317,8 +1317,8 @@ pub fn spell_mshield(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i3
             ),
         );
         let sound = gs.characters[cn].sound;
-        gs.char_play_sound(co, sound as i32 + 1, -150, 0);
-        gs.char_play_sound(cn, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(co, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
         chlog!(
             cn,
             "Cast Magic Shield on {}",
@@ -1343,7 +1343,7 @@ pub fn spell_mshield(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i3
         }
         gs.do_character_log(cn, FontColor::Green, "Magic Shield active!\n");
         let sound = gs.characters[cn].sound;
-        gs.char_play_sound(cn, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
         let flags = gs.characters[cn].flags;
         if (flags & CharacterFlags::Player.bits()) != 0 {
             chlog!(cn, "Cast Magic Shield");
@@ -1412,8 +1412,8 @@ pub fn spell_heal(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
             &format!("{} was healed.\n", gs.characters[co].get_name().to_string()),
         );
         let sound = gs.characters[cn].sound;
-        gs.char_play_sound(co, sound as i32 + 1, -150, 0);
-        gs.char_play_sound(cn, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(co, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
         chlog!(
             cn,
             "Cast Heal on {}",
@@ -1433,7 +1433,7 @@ pub fn spell_heal(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
         }
         gs.do_character_log(cn, FontColor::Green, "You have been healed.\n");
         let sound = gs.characters[cn].sound;
-        gs.char_play_sound(cn, sound as i32 + 1, -150, 0);
+        GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
         let flags = gs.characters[cn].flags;
         if (flags & CharacterFlags::Player.bits()) != 0 {
             chlog!(cn, "Cast Heal");
@@ -1553,25 +1553,25 @@ pub fn spell_curse(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 
     let in_idx = in_opt.unwrap();
 
     let mut power = power;
-    power = spell_immunity(power, gs.characters[co].skill[SK_IMMUN][5] as i32);
+    power = spell_immunity(gs, power, gs.characters[co].skill[SK_IMMUN][5] as i32);
     power = spell_race_mod(gs, power, gs.characters[cn].kindred);
 
-    Repository::with_items_mut(|it| {
+    {
         let mut name_bytes = [0u8; 40];
         let name = b"Curse";
         let len = name.len().min(40);
         name_bytes[..len].copy_from_slice(&name[..len]);
-        it[in_idx].name = name_bytes;
-        it[in_idx].flags |= ItemFlags::IF_SPELL.bits();
+        gs.items[in_idx].name = name_bytes;
+        gs.items[in_idx].flags |= ItemFlags::IF_SPELL.bits();
         for n in 0..5 {
-            it[in_idx].attrib[n][1] = -((power / 3) as i8);
+            gs.items[in_idx].attrib[n][1] = -((power / 3) as i8);
         }
-        it[in_idx].sprite[1] = 89;
-        it[in_idx].duration = (TICKS * 60 * 2) as u32;
-        it[in_idx].active = (TICKS * 60 * 2) as u32;
-        it[in_idx].temp = SK_CURSE as u16;
-        it[in_idx].power = power as u32;
-    });
+        gs.items[in_idx].sprite[1] = 89;
+        gs.items[in_idx].duration = (TICKS * 60 * 2) as u32;
+        gs.items[in_idx].active = (TICKS * 60 * 2) as u32;
+        gs.items[in_idx].temp = SK_CURSE as u16;
+        gs.items[in_idx].power = power as u32;
+    }
 
     if add_spell(gs, co, in_idx) == 0 {
         gs.do_character_log(
@@ -1607,8 +1607,8 @@ pub fn spell_curse(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 
     gs.do_notify_character(cn as u32, NT_DIDHIT as i32, co as i32, 0, 0, 0);
 
     let sound = gs.characters[cn].sound;
-    gs.char_play_sound(co, sound as i32 + 7, -150, 0);
-    gs.char_play_sound(cn, sound as i32 + 1, -150, 0);
+    GameState::char_play_sound(co, sound as i32 + 7, -150, 0);
+    GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
     chlog!(
         cn,
         "Cast Curse on {}",
@@ -1808,19 +1808,19 @@ pub fn warcry(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
     }
     let in_idx = in_opt.unwrap();
 
-    Repository::with_items_mut(|it| {
+    {
         let mut name_bytes = [0u8; 40];
         let name = b"War-Stun";
         let len = name.len().min(40);
         name_bytes[..len].copy_from_slice(&name[..len]);
-        it[in_idx].name = name_bytes;
-        it[in_idx].flags |= ItemFlags::IF_SPELL.bits();
-        it[in_idx].sprite[1] = 91;
-        it[in_idx].duration = core::constants::TICKS as u32 * 3;
-        it[in_idx].active = core::constants::TICKS as u32 * 3;
-        it[in_idx].temp = core::constants::SK_WARCRY2 as u16;
-        it[in_idx].power = power as u32;
-    });
+        gs.items[in_idx].name = name_bytes;
+        gs.items[in_idx].flags |= ItemFlags::IF_SPELL.bits();
+        gs.items[in_idx].sprite[1] = 91;
+        gs.items[in_idx].duration = core::constants::TICKS as u32 * 3;
+        gs.items[in_idx].active = core::constants::TICKS as u32 * 3;
+        gs.items[in_idx].temp = core::constants::SK_WARCRY2 as u16;
+        gs.items[in_idx].power = power as u32;
+    }
 
     add_spell(gs, co, in_idx);
 
@@ -1830,22 +1830,22 @@ pub fn warcry(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
         return 0;
     }
     let in2 = in2_opt.unwrap();
-    Repository::with_items_mut(|it| {
+    {
         let mut name_bytes = [0u8; 40];
         let name = b"Warcry";
         let len = name.len().min(40);
         name_bytes[..len].copy_from_slice(&name[..len]);
-        it[in2].name = name_bytes;
-        it[in2].flags |= ItemFlags::IF_SPELL.bits();
+        gs.items[in2].name = name_bytes;
+        gs.items[in2].flags |= ItemFlags::IF_SPELL.bits();
         for n in 0..5 {
-            it[in2].attrib[n][1] = -15;
+            gs.items[in2].attrib[n][1] = -15;
         }
-        it[in2].sprite[1] = 89;
-        it[in2].duration = (TICKS * 60) as u32;
-        it[in2].active = (TICKS * 60) as u32;
-        it[in2].temp = core::constants::SK_WARCRY as u16;
-        it[in2].power = (power / 2) as u32;
-    });
+        gs.items[in2].sprite[1] = 89;
+        gs.items[in2].duration = (TICKS * 60) as u32;
+        gs.items[in2].active = (TICKS * 60) as u32;
+        gs.items[in2].temp = core::constants::SK_WARCRY as u16;
+        gs.items[in2].power = (power / 2) as u32;
+    }
 
     add_spell(gs, co, in2);
 
@@ -1957,8 +1957,11 @@ pub fn item_info(gs: &mut GameState, cn: usize, in_: usize, _look: i32) {
     }
 
     // HP/End/Mana
-    let (hp0, hp1, hp2) =
-        Repository::with_items(|it| (it[in_].hp[0], it[in_].hp[1], it[in_].hp[2]));
+    let (hp0, hp1, hp2) = (
+        gs.items[in_].hp[0],
+        gs.items[in_].hp[1],
+        gs.items[in_].hp[2],
+    );
     if hp0 != 0 || hp1 != 0 || hp2 != 0 {
         gs.do_character_log(
             cn,
@@ -1966,8 +1969,11 @@ pub fn item_info(gs: &mut GameState, cn: usize, in_: usize, _look: i32) {
             &format!("{:<12.12} {:+4} {:+4} {:3}\n", "Hitpoints", hp0, hp1, hp2),
         );
     }
-    let (end0, end1, end2) =
-        Repository::with_items(|it| (it[in_].end[0], it[in_].end[1], it[in_].end[2]));
+    let (end0, end1, end2) = (
+        gs.items[in_].end[0],
+        gs.items[in_].end[1],
+        gs.items[in_].end[2],
+    );
     if end0 != 0 || end1 != 0 || end2 != 0 {
         gs.do_character_log(
             cn,
@@ -1978,8 +1984,11 @@ pub fn item_info(gs: &mut GameState, cn: usize, in_: usize, _look: i32) {
             ),
         );
     }
-    let (mana0, mana1, mana2) =
-        Repository::with_items(|it| (it[in_].mana[0], it[in_].mana[1], it[in_].mana[2]));
+    let (mana0, mana1, mana2) = (
+        gs.items[in_].mana[0],
+        gs.items[in_].mana[1],
+        gs.items[in_].mana[2],
+    );
     if mana0 != 0 || mana1 != 0 || mana2 != 0 {
         gs.do_character_log(
             cn,
@@ -1988,15 +1997,12 @@ pub fn item_info(gs: &mut GameState, cn: usize, in_: usize, _look: i32) {
         );
     }
 
-    // Skills on item
     for n in 0..50 {
-        let (s0, s1, s2) = Repository::with_items(|it| {
-            (
-                it[in_].skill[n][0],
-                it[in_].skill[n][1],
-                it[in_].skill[n][2],
-            )
-        });
+        let (s0, s1, s2) = (
+            gs.items[in_].skill[n][0],
+            gs.items[in_].skill[n][1],
+            gs.items[in_].skill[n][2],
+        );
         if s0 == 0 && s1 == 0 && s2 == 0 {
             continue;
         }
@@ -2008,8 +2014,7 @@ pub fn item_info(gs: &mut GameState, cn: usize, in_: usize, _look: i32) {
         );
     }
 
-    // Weapon/Armor/Light
-    let (w0, w1) = Repository::with_items(|it| (it[in_].weapon[0], it[in_].weapon[1]));
+    let (w0, w1) = (gs.items[in_].weapon[0], gs.items[in_].weapon[1]);
     if w0 != 0 || w1 != 0 {
         gs.do_character_log(
             cn,
@@ -2017,7 +2022,7 @@ pub fn item_info(gs: &mut GameState, cn: usize, in_: usize, _look: i32) {
             &format!("{:<12.12} {:+4} {:+4}\n", "Weapon", w0, w1),
         );
     }
-    let (ar0, ar1) = Repository::with_items(|it| (it[in_].armor[0], it[in_].armor[1]));
+    let (ar0, ar1) = (gs.items[in_].armor[0], gs.items[in_].armor[1]);
     if ar0 != 0 || ar1 != 0 {
         gs.do_character_log(
             cn,
@@ -2025,7 +2030,7 @@ pub fn item_info(gs: &mut GameState, cn: usize, in_: usize, _look: i32) {
             &format!("{:<12.12} {:+4} {:+4}\n", "Armor", ar0, ar1),
         );
     }
-    let (l0, l1) = Repository::with_items(|it| (it[in_].light[0], it[in_].light[1]));
+    let (l0, l1) = (gs.items[in_].light[0], gs.items[in_].light[1]);
     if l0 != 0 || l1 != 0 {
         gs.do_character_log(
             cn,
@@ -2184,9 +2189,7 @@ pub fn skill_identify(gs: &mut GameState, cn: usize) {
     let power: i32;
 
     let sane_item = if citem != 0 {
-        Repository::with_items(|it| {
-            citem < it.len() && it[citem].used != core::constants::USE_EMPTY
-        })
+        citem < gs.items.len() && gs.items[citem].used != core::constants::USE_EMPTY
     } else {
         false
     };
@@ -2218,7 +2221,7 @@ pub fn skill_identify(gs: &mut GameState, cn: usize) {
     }
 
     let sound = gs.characters[cn].sound;
-    gs.char_play_sound(cn, sound as i32 + 1, -150, 0);
+    GameState::char_play_sound(cn, sound as i32 + 1, -150, 0);
     chlog!(
         cn,
         "Cast Identify on {}",
@@ -2231,7 +2234,7 @@ pub fn skill_identify(gs: &mut GameState, cn: usize) {
 
     if in_idx != 0 {
         item_info(gs, cn, in_idx, 0);
-        Repository::with_items_mut(|it| it[in_idx].flags ^= ItemFlags::IF_IDENTIFIED.bits());
+        gs.items[in_idx].flags ^= ItemFlags::IF_IDENTIFIED.bits();
         let identified = (gs.items[in_idx].flags & ItemFlags::IF_IDENTIFIED.bits()) != 0;
         if !identified {
             gs.do_character_log(
@@ -2306,6 +2309,7 @@ pub fn skill_blast(gs: &mut GameState, cn: usize) {
 
     let mut power = gs.characters[cn].skill[core::constants::SK_BLAST][5] as i32;
     power = spell_immunity(
+        gs,
         power,
         gs.characters[co].skill[core::constants::SK_IMMUN][5] as i32,
     );
@@ -2360,7 +2364,7 @@ pub fn skill_blast(gs: &mut GameState, cn: usize) {
         gs.characters[co].y as i32,
         gs.characters[cn].sound as i32 + 6,
     );
-    gs.char_play_sound(co, gs.characters[cn].sound as i32 + 6, -150, 0);
+    GameState::char_play_sound(co, gs.characters[cn].sound as i32 + 6, -150, 0);
 
     chlog!(
         cn,
@@ -2475,8 +2479,7 @@ pub fn skill_repair(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    if gs.items[in_idx].power as i32
-        > Repository::with_characters(|ch| ch[cn].skill[SK_REPAIR][5] as i32)
+    if gs.items[in_idx].power as i32 > gs.characters[cn].skill[SK_REPAIR][5] as i32
         || (gs.items[in_idx].flags & ItemFlags::IF_NOREPAIR.bits()) != 0
     {
         gs.do_character_log(
@@ -2497,10 +2500,10 @@ pub fn skill_repair(gs: &mut GameState, cn: usize) {
     }
 
     let cost = gs.items[in_idx].power as i32;
-    Repository::with_characters_mut(|ch| ch[cn].a_end -= cost * 1000);
+    gs.characters[cn].a_end -= cost * 1000;
 
     let mut chan: i32 = if gs.items[in_idx].power != 0 {
-        let skill = Repository::with_characters(|ch| ch[cn].skill[SK_REPAIR][5]) as i32;
+        let skill = gs.characters[cn].skill[SK_REPAIR][5] as i32;
         let power = gs.items[in_idx].power as i32;
         skill * 15 / power
     } else {
@@ -2520,9 +2523,9 @@ pub fn skill_repair(gs: &mut GameState, cn: usize) {
             return;
         }
         let in2 = in2_opt.unwrap();
-        Repository::with_items_mut(|it| it[in_idx].used = core::constants::USE_EMPTY);
-        Repository::with_characters_mut(|ch| ch[cn].citem = in2 as u32);
-        Repository::with_items_mut(|it| it[in2].carried = cn as u16);
+        gs.items[in_idx].used = core::constants::USE_EMPTY;
+        gs.characters[cn].citem = in2 as u32;
+        gs.items[in2].carried = cn as u16;
         gs.do_character_log(cn, core::types::FontColor::Green, "Success!\n");
     } else {
         gs.do_character_log(cn, core::types::FontColor::Green, "You failed.\n");
@@ -2561,24 +2564,23 @@ pub fn skill_recall(gs: &mut GameState, cn: usize) {
     }
     let in_idx = in_opt.unwrap();
 
-    Repository::with_items_mut(|it| {
+    {
         let mut name_bytes = [0u8; 40];
         let name = b"Recall";
         let len = name.len().min(40);
         name_bytes[..len].copy_from_slice(&name[..len]);
-        it[in_idx].name = name_bytes;
-        it[in_idx].flags |= ItemFlags::IF_SPELL.bits();
-        it[in_idx].sprite[1] = 90;
-        let base_dur =
-            60 - (Repository::with_characters(|ch| ch[cn].skill[SK_RECALL][5] / 4) as i32);
+        gs.items[in_idx].name = name_bytes;
+        gs.items[in_idx].flags |= ItemFlags::IF_SPELL.bits();
+        gs.items[in_idx].sprite[1] = 90;
+        let base_dur = 60 - (gs.characters[cn].skill[SK_RECALL][5] / 4) as i32;
         let dur = std::cmp::max(TICKS / 2, base_dur * TICKS / LEGACY_TICKS);
-        it[in_idx].duration = dur as u32;
-        it[in_idx].active = it[in_idx].duration;
-        it[in_idx].temp = SK_RECALL as u16;
-        it[in_idx].power = Repository::with_characters(|ch| ch[cn].skill[SK_RECALL][5]) as u32;
-        it[in_idx].data[0] = Repository::with_characters(|ch| ch[cn].temple_x) as u32;
-        it[in_idx].data[1] = Repository::with_characters(|ch| ch[cn].temple_y) as u32;
-    });
+        gs.items[in_idx].duration = dur as u32;
+        gs.items[in_idx].active = gs.items[in_idx].duration;
+        gs.items[in_idx].temp = SK_RECALL as u16;
+        gs.items[in_idx].power = gs.characters[cn].skill[SK_RECALL][5] as u32;
+        gs.items[in_idx].data[0] = gs.characters[cn].temple_x as u32;
+        gs.items[in_idx].data[1] = gs.characters[cn].temple_y as u32;
+    }
 
     if add_spell(gs, cn, in_idx) == 0 {
         gs.do_character_log(cn, core::types::FontColor::Green, "You failed.\n");
@@ -2597,40 +2599,38 @@ pub fn skill_recall(gs: &mut GameState, cn: usize) {
 }
 
 pub fn spell_stun(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
-    if Repository::with_characters(|ch| (ch[co].flags & CharacterFlags::Immortal.bits()) != 0) {
+    if (gs.characters[co].flags & CharacterFlags::Immortal.bits()) != 0 {
         return 0;
     }
 
     let in_opt = God::create_item_in_state(gs, 1);
     if in_opt.is_none() {
-        // xlog equivalent omitted
         return 0;
     }
     let in_idx = in_opt.unwrap();
 
     let mut power = spell_immunity(
+        gs,
         power,
-        Repository::with_characters(|ch| ch[co].skill[core::constants::SK_IMMUN][5] as i32),
+        gs.characters[co].skill[core::constants::SK_IMMUN][5] as i32,
     );
     power = spell_race_mod(gs, power, gs.characters[cn].kindred);
 
-    Repository::with_items_mut(|it| {
+    {
         let mut name_bytes = [0u8; 40];
         let name = b"Stun";
         let len = name.len().min(40);
         name_bytes[..len].copy_from_slice(&name[..len]);
-        it[in_idx].name = name_bytes;
-        it[in_idx].flags |= ItemFlags::IF_SPELL.bits();
-        it[in_idx].sprite[1] = 91;
-        it[in_idx].duration = (power + core::constants::TICKS) as u32;
-        it[in_idx].active = it[in_idx].duration;
-        it[in_idx].temp = core::constants::SK_STUN as u16;
-        it[in_idx].power = power as u32;
-    });
+        gs.items[in_idx].name = name_bytes;
+        gs.items[in_idx].flags |= ItemFlags::IF_SPELL.bits();
+        gs.items[in_idx].sprite[1] = 91;
+        gs.items[in_idx].duration = (power + core::constants::TICKS) as u32;
+        gs.items[in_idx].active = gs.items[in_idx].duration;
+        gs.items[in_idx].temp = core::constants::SK_STUN as u16;
+        gs.items[in_idx].power = power as u32;
+    }
 
-    if Repository::with_characters(|ch| {
-        ch[co].skill[core::constants::SK_SENSE][5] + 10 > power as u8
-    }) {
+    if gs.characters[co].skill[core::constants::SK_SENSE][5] + 10 > power as u8 {
         gs.do_character_log(
             co,
             FontColor::Green,
@@ -2671,8 +2671,8 @@ pub fn spell_stun(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
         0,
     );
 
-    gs.char_play_sound(co, gs.characters[cn].sound as i32 + 7, -150, 0);
-    gs.char_play_sound(cn, gs.characters[cn].sound as i32 + 1, -150, 0);
+    GameState::char_play_sound(co, gs.characters[cn].sound as i32 + 7, -150, 0);
+    GameState::char_play_sound(cn, gs.characters[cn].sound as i32 + 1, -150, 0);
     chlog!(
         cn,
         "Cast Stun on {} for {} power",
@@ -2758,7 +2758,7 @@ pub fn skill_stun(gs: &mut GameState, cn: usize) {
     {
         if cn != co
             && gs.characters[co].skill[core::constants::SK_SENSE][5]
-                > Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_STUN][5]) + 5
+                > gs.characters[cn].skill[core::constants::SK_STUN][5] + 5
         {
             gs.do_character_log(
                 co,
@@ -2782,12 +2782,12 @@ pub fn skill_stun(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    if Repository::with_characters(|ch| (ch[co].flags & CharacterFlags::Immortal.bits()) != 0) {
+    if (gs.characters[co].flags & CharacterFlags::Immortal.bits()) != 0 {
         gs.do_character_log(cn, core::types::FontColor::Red, "You lost your focus.\n");
         return;
     }
 
-    let power = Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_STUN][5] as i32);
+    let power = gs.characters[cn].skill[core::constants::SK_STUN][5] as i32;
     spell_stun(gs, cn, co, power);
 
     let co_orig = co;
@@ -2801,19 +2801,12 @@ pub fn skill_stun(gs: &mut GameState, cn: usize) {
     ];
     for delta in adj.iter() {
         let idx = (m as isize + *delta) as usize;
-        let maybe_co =
-            Repository::with_map(|map| map.get(idx).and_then(|m| Some(m.ch))).unwrap_or(0) as usize;
-        if maybe_co != 0
-            && Repository::with_characters(|ch| ch[maybe_co].attack_cn) == cn as u16
-            && maybe_co != co_orig
-        {
+        let maybe_co = gs.map.get(idx).map(|m| m.ch).unwrap_or(0) as usize;
+        if maybe_co != 0 && gs.characters[maybe_co].attack_cn == cn as u16 && maybe_co != co_orig {
             let s_rand = helpers::random_mod_i32(20);
             let o_rand = helpers::random_mod_i32(20);
-            if Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_STUN][5] as i32)
-                + s_rand
-                > Repository::with_characters(|ch| {
-                    ch[maybe_co].skill[core::constants::SK_RESIST][5] as i32
-                }) + o_rand
+            if gs.characters[cn].skill[core::constants::SK_STUN][5] as i32 + s_rand
+                > gs.characters[maybe_co].skill[core::constants::SK_RESIST][5] as i32 + o_rand
             {
                 spell_stun(
                     gs,
@@ -2837,12 +2830,12 @@ pub fn skill_stun(gs: &mut GameState, cn: usize) {
 
 pub fn remove_spells(gs: &mut GameState, cn: usize) {
     for n in 0..20usize {
-        let in_idx = Repository::with_characters(|ch| ch[cn].spell[n] as usize);
+        let in_idx = gs.characters[cn].spell[n] as usize;
         if in_idx == 0 {
             continue;
         }
-        Repository::with_items_mut(|it| it[in_idx].used = core::constants::USE_EMPTY);
-        Repository::with_characters_mut(|ch| ch[cn].spell[n] = 0);
+        gs.items[in_idx].used = core::constants::USE_EMPTY;
+        gs.characters[cn].spell[n] = 0;
     }
     gs.do_update_char(cn);
 }
@@ -2916,7 +2909,7 @@ pub fn skill_dispel(gs: &mut GameState, cn: usize) {
     }
 
     let slot = slot.expect("slot must be set");
-    let in_idx = Repository::with_characters(|ch| ch[co].spell[slot] as usize);
+    let in_idx = gs.characters[co].spell[slot] as usize;
     if in_idx == 0 {
         return;
     }
@@ -2927,11 +2920,11 @@ pub fn skill_dispel(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    let dispel_skill = Repository::with_characters(|ch| ch[cn].skill[SK_DISPEL][5] as i32);
+    let dispel_skill = gs.characters[cn].skill[SK_DISPEL][5] as i32;
     let kindred = gs.characters[cn].kindred;
     if chance_base(gs, cn, spell_race_mod(gs, dispel_skill, kindred), 12, pwr) != 0 {
         if cn != co {
-            let sense = Repository::with_characters(|ch| ch[co].skill[SK_SENSE][5] as i32);
+            let sense = gs.characters[co].skill[SK_SENSE][5] as i32;
             if sense > dispel_skill + 5 {
                 let reference = gs.characters[cn].reference;
                 gs.do_character_log(
@@ -2951,8 +2944,8 @@ pub fn skill_dispel(gs: &mut GameState, cn: usize) {
     let removed_name = gs.items[in_idx].get_name().to_string();
 
     // Remove the spell item and unlink it from the target.
-    Repository::with_items_mut(|it| it[in_idx].used = core::constants::USE_EMPTY);
-    Repository::with_characters_mut(|ch| ch[co].spell[slot] = 0);
+    gs.items[in_idx].used = core::constants::USE_EMPTY;
+    gs.characters[co].spell[slot] = 0;
     gs.do_update_char(co);
 
     // Remember PvP attacks when dispelling non-curse from someone else.
@@ -2963,7 +2956,7 @@ pub fn skill_dispel(gs: &mut GameState, cn: usize) {
     let sound = gs.characters[cn].sound as i32;
 
     if target != 0 {
-        let sense = Repository::with_characters(|ch| ch[co].skill[SK_SENSE][5] as i32);
+        let sense = gs.characters[co].skill[SK_SENSE][5] as i32;
         if sense + 10 > dispel_skill {
             let reference = gs.characters[cn].reference;
             gs.do_character_log(
@@ -2989,20 +2982,16 @@ pub fn skill_dispel(gs: &mut GameState, cn: usize) {
             &format!("Removed {} from {}.\n", removed_name, target_name),
         );
 
-        // Match C: only notify (as an attack) when dispelling a non-curse spell from an NPC.
-        let target_is_player =
-            Repository::with_characters(|ch| (ch[co].flags & CharacterFlags::Player.bits()) != 0);
+        let target_is_player = (gs.characters[co].flags & CharacterFlags::Player.bits()) != 0;
         if removed_temp != SK_CURSE as u16 && !target_is_player {
-            if Repository::with_characters(|ch| {
-                (ch[co].flags & CharacterFlags::SpellIgnore.bits()) == 0
-            }) {
+            if (gs.characters[co].flags & CharacterFlags::SpellIgnore.bits()) == 0 {
                 gs.do_notify_character(co as u32, NT_GOTHIT as i32, cn as i32, 0, 0, 0);
             }
             gs.do_notify_character(cn as u32, NT_DIDHIT as i32, co as i32, 0, 0, 0);
         }
 
-        gs.char_play_sound(co, sound + 1, -150, 0);
-        gs.char_play_sound(cn, sound + 1, -150, 0);
+        GameState::char_play_sound(co, sound + 1, -150, 0);
+        GameState::char_play_sound(cn, sound + 1, -150, 0);
         chlog!(
             cn,
             "Cast Dispel on {}",
@@ -3021,7 +3010,7 @@ pub fn skill_dispel(gs: &mut GameState, cn: usize) {
             FontColor::Green,
             &format!("{} has been removed.\n", removed_name),
         );
-        gs.char_play_sound(cn, sound + 1, -150, 0);
+        GameState::char_play_sound(cn, sound + 1, -150, 0);
         chlog!(cn, "Cast Dispel");
         EffectManager::fx_add_effect(
             6,
@@ -3044,21 +3033,19 @@ pub fn skill_dispel(gs: &mut GameState, cn: usize) {
 
 pub fn skill_ghost(gs: &mut GameState, cn: usize) {
     // Check if in build mode
-    if Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::BuildMode.bits()) != 0) {
+    if (gs.characters[cn].flags & CharacterFlags::BuildMode.bits()) != 0 {
         gs.do_character_log(cn, FontColor::Red, "Not in build mode.\n");
         return;
     }
 
-    // Check if player already has a companion
-    let existing_companion = Repository::with_characters(|ch| {
-        if (ch[cn].flags & CharacterFlags::Player.bits()) != 0 {
-            let co = ch[cn].data[CHD_COMPANION] as usize;
+    let existing_companion = {
+        if (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0 {
+            let co = gs.characters[cn].data[CHD_COMPANION] as usize;
             if co != 0 {
-                // Validate companion still exists
                 if Character::is_sane_character(co)
-                    && ch[co].data[63] == cn as i32
-                    && (ch[co].flags & CharacterFlags::Body.bits()) == 0
-                    && ch[co].used != USE_EMPTY
+                    && gs.characters[co].data[63] == cn as i32
+                    && (gs.characters[co].flags & CharacterFlags::Body.bits()) == 0
+                    && gs.characters[co].used != USE_EMPTY
                 {
                     Some(co)
                 } else {
@@ -3070,7 +3057,7 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
         } else {
             None
         }
-    });
+    };
 
     if let Some(co) = existing_companion {
         gs.do_character_log(
@@ -3122,8 +3109,8 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
     // Chance check
     if chance(gs, cn, 15) != 0 {
         if co != 0 && cn != co {
-            let sense = Repository::with_characters(|ch| ch[co].skill[SK_SENSE][5] as i32);
-            let ghost_skill = Repository::with_characters(|ch| ch[cn].skill[SK_GHOST][5] as i32);
+            let sense = gs.characters[co].skill[SK_SENSE][5] as i32;
+            let ghost_skill = gs.characters[cn].skill[SK_GHOST][5] as i32;
             if sense > ghost_skill + 5 {
                 let cn_ref = gs.characters[cn].reference;
                 gs.do_character_log(
@@ -3134,9 +3121,7 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
                         c_string_to_str(&cn_ref)
                     ),
                 );
-                if Repository::with_characters(|ch| {
-                    (ch[co].flags & CharacterFlags::SpellIgnore.bits()) == 0
-                }) {
+                if (gs.characters[co].flags & CharacterFlags::SpellIgnore.bits()) == 0 {
                     gs.do_notify_character(co as u32, NT_GOTMISS as i32, cn as i32, 0, 0, 0);
                 }
             }
@@ -3145,7 +3130,7 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
     }
 
     // Create companion
-    let cc_opt = populate::pop_create_char(Repository::global_mut(), CT_COMPANION as usize, true);
+    let cc_opt = populate::pop_create_char(gs, CT_COMPANION as usize, true);
     if cc_opt.is_none() {
         gs.do_character_log(
             cn,
@@ -3156,11 +3141,9 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
     }
     let cc = cc_opt.unwrap();
 
-    let (cc_x, cc_y) = Repository::with_characters(|ch| (ch[cn].x as usize, ch[cn].y as usize));
+    let (cc_x, cc_y) = (gs.characters[cn].x as usize, gs.characters[cn].y as usize);
     if !God::drop_char_fuzzy(cc, cc_x, cc_y) {
-        Repository::with_characters_mut(|ch| {
-            ch[cc].used = USE_EMPTY;
-        });
+        gs.characters[cc].used = USE_EMPTY;
         gs.do_character_log(
             cn,
             FontColor::Red,
@@ -3174,12 +3157,8 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
         let mut candidate = None;
         for _ in 0..100 {
             let name = core::names::randomly_generate_name();
-            let name_exists = Repository::with_characters(|ch| {
-                ch.iter().enumerate().any(|(idx, other)| {
-                    idx != cc
-                        && other.used != USE_EMPTY
-                        && other.get_name().eq_ignore_ascii_case(&name)
-                })
+            let name_exists = gs.characters.iter().enumerate().any(|(idx, other)| {
+                idx != cc && other.used != USE_EMPTY && other.get_name().eq_ignore_ascii_case(&name)
             });
             if !name_exists {
                 candidate = Some(name);
@@ -3189,8 +3168,8 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
         candidate.unwrap_or_else(core::names::randomly_generate_name)
     };
 
-    Repository::with_characters_mut(|ch| {
-        let companion = &mut ch[cc];
+    {
+        let companion = &mut gs.characters[cc];
 
         let mut name_bytes = [0u8; 40];
         let name_src = random_name.as_bytes();
@@ -3208,202 +3187,153 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
         let desc_len = desc_src.len().min(desc_bytes.len());
         desc_bytes[..desc_len].copy_from_slice(&desc_src[..desc_len]);
         companion.description = desc_bytes;
-    });
+    }
 
-    // Notify target and attacker
     if co != 0 {
-        if Repository::with_characters(|ch| {
-            (ch[co].flags & CharacterFlags::SpellIgnore.bits()) == 0
-        }) {
+        if (gs.characters[co].flags & CharacterFlags::SpellIgnore.bits()) == 0 {
             gs.do_notify_character(co as u32, NT_GOTHIT as i32, cn as i32, 0, 0, 0);
         }
         gs.do_notify_character(cn as u32, NT_DIDHIT as i32, co as i32, 0, 0, 0);
     }
 
-    // Set player companion reference
     if (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0 {
-        Repository::with_characters_mut(|ch| {
-            ch[cn].data[CHD_COMPANION] = cc as i32;
-        });
+        gs.characters[cn].data[CHD_COMPANION] = cc as i32;
     }
 
-    // Calculate base power
-    let mut base = Repository::with_characters(|ch| (ch[cn].skill[SK_GHOST][5] as i32 * 4) / 11);
+    let mut base = (gs.characters[cn].skill[SK_GHOST][5] as i32 * 4) / 11;
     let kindred = gs.characters[cn].kindred;
     base = spell_race_mod(gs, base, kindred);
 
-    let ticker = Repository::with_globals(|g| g.ticker);
+    let ticker = gs.globals.ticker;
 
     let co_id = if co != 0 {
-        Repository::with_characters(|ch| helpers::char_id(&ch[co as usize]))
+        helpers::char_id(&gs.characters[co as usize])
     } else {
         0
     };
 
-    // Configure companion
-    Repository::with_characters_mut(|ch| {
-        ch[cc].data[29] = 0; // reset experience earned
-        ch[cc].data[42] = 65536 + cn as i32; // set group
-        ch[cc].kindred &= !(KIN_MONSTER as i32);
-        ch[cc].flags &= !CharacterFlags::Player.bits();
+    gs.characters[cc].data[29] = 0;
+    gs.characters[cc].data[42] = 65536 + cn as i32;
+    gs.characters[cc].kindred &= !(KIN_MONSTER as i32);
+    gs.characters[cc].flags &= !CharacterFlags::Player.bits();
 
-        if co != 0 {
-            ch[cc].attack_cn = co as u16;
-            let idx = co as i32 | (co_id << 16);
-            ch[cc].data[80] = idx; // add enemy to kill list
+    if co != 0 {
+        gs.characters[cc].attack_cn = co as u16;
+        let idx = co as i32 | (co_id << 16);
+        gs.characters[cc].data[80] = idx;
+    }
+
+    gs.characters[cc].data[63] = cn as i32;
+    gs.characters[cc].data[69] = cn as i32;
+
+    if (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0 {
+        gs.characters[cc].data[CHD_COMPANION] = 0;
+    } else {
+        gs.characters[cc].data[CHD_COMPANION] = ticker + TICKS * 60 * 5;
+    }
+    gs.characters[cc].data[98] = ticker + COMPANION_TIMEOUT;
+
+    let text0 = b"#14#Yes! %s buys the farm!";
+    gs.characters[cc].text[0][..text0.len()].copy_from_slice(text0);
+    let text1 = b"#13#Yahoo! An enemy! Prepare to die, %s!";
+    gs.characters[cc].text[1][..text1.len()].copy_from_slice(text1);
+    let text3 = b"My successor will avenge me, %s!";
+    gs.characters[cc].text[3][..text3.len()].copy_from_slice(text3);
+
+    gs.characters[cc].data[48] = 33;
+
+    gs.characters[cc].data[CHD_TALKATIVE] =
+        gs.character_templates[CT_COMPANION as usize].data[CHD_TALKATIVE];
+
+    for n in 0..5 {
+        let mut tmp = base;
+        tmp = tmp * 3 / std::cmp::max(1, gs.characters[cc].attrib[n][3] as i32);
+        gs.characters[cc].attrib[n][0] = std::cmp::max(
+            10,
+            std::cmp::min(gs.characters[cc].attrib[n][2] as i32, tmp) as u8,
+        );
+    }
+
+    for n in 0..50 {
+        let mut tmp = base;
+        tmp = tmp * 3 / std::cmp::max(1, gs.characters[cc].skill[n][3] as i32);
+        if gs.characters[cc].skill[n][2] != 0 {
+            gs.characters[cc].skill[n][0] = std::cmp::min(gs.characters[cc].skill[n][2], tmp as u8);
         }
+    }
 
-        ch[cc].data[63] = cn as i32;
-        ch[cc].data[69] = cn as i32;
+    gs.characters[cc].hp[0] =
+        std::cmp::max(50, std::cmp::min(gs.characters[cc].hp[2] as i32, base * 5)) as u16;
+    gs.characters[cc].end[0] =
+        std::cmp::max(50, std::cmp::min(gs.characters[cc].end[2] as i32, base * 5)) as u16;
+    gs.characters[cc].mana[0] = 0;
 
-        if (ch[cn].flags & CharacterFlags::Player.bits()) != 0 {
-            ch[cc].data[CHD_COMPANION] = 0; // player GCs stay forever
-        } else {
-            ch[cc].data[CHD_COMPANION] = ticker + TICKS * 60 * 5; // NPC GCs stay only for 5 minutes
-        }
-        ch[cc].data[98] = ticker + COMPANION_TIMEOUT;
-
-        // Set text
-        let text0 = b"#14#Yes! %s buys the farm!";
-        ch[cc].text[0][..text0.len()].copy_from_slice(text0);
-        let text1 = b"#13#Yahoo! An enemy! Prepare to die, %s!";
-        ch[cc].text[1][..text1.len()].copy_from_slice(text1);
-        let text3 = b"My successor will avenge me, %s!";
-        ch[cc].text[3][..text3.len()].copy_from_slice(text3);
-
-        ch[cc].data[48] = 33;
-    });
-
-    // Copy talkative setting from template
-    Repository::with_character_templates(|templates| {
-        Repository::with_characters_mut(|ch| {
-            ch[cc].data[CHD_TALKATIVE] = templates[CT_COMPANION as usize].data[CHD_TALKATIVE];
-        });
-    });
-
-    // Set attributes
-    Repository::with_characters_mut(|ch| {
-        for n in 0..5 {
-            let mut tmp = base;
-            tmp = tmp * 3 / std::cmp::max(1, ch[cc].attrib[n][3] as i32);
-            ch[cc].attrib[n][0] =
-                std::cmp::max(10, std::cmp::min(ch[cc].attrib[n][2] as i32, tmp) as u8);
-        }
-    });
-
-    // Set skills
-    Repository::with_characters_mut(|ch| {
-        for n in 0..50 {
-            let mut tmp = base;
-            tmp = tmp * 3 / std::cmp::max(1, ch[cc].skill[n][3] as i32);
-            if ch[cc].skill[n][2] != 0 {
-                ch[cc].skill[n][0] = std::cmp::min(ch[cc].skill[n][2], tmp as u8);
-            }
-        }
-    });
-
-    // Set hp, end, mana
-    Repository::with_characters_mut(|ch| {
-        ch[cc].hp[0] = std::cmp::max(50, std::cmp::min(ch[cc].hp[2] as i32, base * 5)) as u16;
-        ch[cc].end[0] = std::cmp::max(50, std::cmp::min(ch[cc].end[2] as i32, base * 5)) as u16;
-        ch[cc].mana[0] = 0;
-    });
-
-    // Calculate experience points
     let mut pts = 0i32;
 
-    let (attribs, hp0, end0, mana0, skills) = Repository::with_characters(|ch| {
-        (
-            ch[cc].attrib,
-            ch[cc].hp[0],
-            ch[cc].end[0],
-            ch[cc].mana[0],
-            ch[cc].skill,
-        )
-    });
+    let attribs = gs.characters[cc].attrib;
+    let hp0 = gs.characters[cc].hp[0];
+    let end0 = gs.characters[cc].end[0];
+    let mana0 = gs.characters[cc].mana[0];
+    let skills = gs.characters[cc].skill;
 
-    // Attributes
     for z in 0..5 {
         for m in 10..(attribs[z][0] as i32) {
             pts += helpers::attrib_needed(m, 3);
         }
     }
 
-    // HP
     for m in 50..(hp0 as i32) {
         pts += helpers::hp_needed(m, 3);
     }
 
-    // Endurance
     for m in 50..(end0 as i32) {
         pts += helpers::end_needed(m, 2);
     }
 
-    // Mana
     for m in 50..(mana0 as i32) {
         pts += helpers::mana_needed(m, 3);
     }
 
-    // Skills
     for z in 0..50 {
         for m in 1..(skills[z][0] as i32) {
             pts += helpers::skill_needed(m, 2);
         }
     }
 
-    // Set points and action timers
-    Repository::with_characters_mut(|ch| {
-        ch[cc].points_tot = pts;
-        ch[cc].gold = 0;
-        ch[cc].a_hp = 999999;
-        ch[cc].a_end = 999999;
-        ch[cc].a_mana = 999999;
+    gs.characters[cc].points_tot = pts;
+    gs.characters[cc].gold = 0;
+    gs.characters[cc].a_hp = 999999;
+    gs.characters[cc].a_end = 999999;
+    gs.characters[cc].a_mana = 999999;
+    gs.characters[cc].alignment = gs.characters[cn].alignment / 2;
 
-        // Set alignment
-        ch[cc].alignment = ch[cn].alignment / 2;
-    });
+    let agil = gs.characters[cc].attrib[AT_AGIL as usize][0];
+    let stren = gs.characters[cc].attrib[AT_STREN as usize][0];
 
-    // Set equipment bonuses based on attributes
-    let (agil, stren) = Repository::with_characters(|ch| {
-        (
-            ch[cc].attrib[AT_AGIL as usize][0],
-            ch[cc].attrib[AT_STREN as usize][0],
-        )
-    });
+    if agil >= 90 && stren >= 90 {
+        gs.characters[cc].armor_bonus = 48 + 32;
+        gs.characters[cc].weapon_bonus = 40 + 32;
+    } else if agil >= 72 && stren >= 72 {
+        gs.characters[cc].armor_bonus = 36 + 28;
+        gs.characters[cc].weapon_bonus = 32 + 28;
+    } else if agil >= 40 && stren >= 40 {
+        gs.characters[cc].armor_bonus = 30 + 24;
+        gs.characters[cc].weapon_bonus = 24 + 24;
+    } else if agil >= 24 && stren >= 24 {
+        gs.characters[cc].armor_bonus = 24 + 20;
+        gs.characters[cc].weapon_bonus = 16 + 20;
+    } else if agil >= 16 && stren >= 16 {
+        gs.characters[cc].armor_bonus = 18 + 16;
+        gs.characters[cc].weapon_bonus = 8 + 16;
+    } else if agil >= 12 && stren >= 12 {
+        gs.characters[cc].armor_bonus = 12 + 12;
+        gs.characters[cc].weapon_bonus = 8 + 12;
+    } else if agil >= 10 && stren >= 10 {
+        gs.characters[cc].armor_bonus = 6 + 8;
+        gs.characters[cc].weapon_bonus = 8 + 8;
+    }
 
-    Repository::with_characters_mut(|ch| {
-        if agil >= 90 && stren >= 90 {
-            // titanium
-            ch[cc].armor_bonus = 48 + 32;
-            ch[cc].weapon_bonus = 40 + 32;
-        } else if agil >= 72 && stren >= 72 {
-            // crystal
-            ch[cc].armor_bonus = 36 + 28;
-            ch[cc].weapon_bonus = 32 + 28;
-        } else if agil >= 40 && stren >= 40 {
-            // gold
-            ch[cc].armor_bonus = 30 + 24;
-            ch[cc].weapon_bonus = 24 + 24;
-        } else if agil >= 24 && stren >= 24 {
-            // steel
-            ch[cc].armor_bonus = 24 + 20;
-            ch[cc].weapon_bonus = 16 + 20;
-        } else if agil >= 16 && stren >= 16 {
-            // bronze
-            ch[cc].armor_bonus = 18 + 16;
-            ch[cc].weapon_bonus = 8 + 16;
-        } else if agil >= 12 && stren >= 12 {
-            // leather
-            ch[cc].armor_bonus = 12 + 12;
-            ch[cc].weapon_bonus = 8 + 12;
-        } else if agil >= 10 && stren >= 10 {
-            // cloth
-            ch[cc].armor_bonus = 6 + 8;
-            ch[cc].weapon_bonus = 8 + 8;
-        }
-    });
-
-    let (cc_name, cn_ref) = Repository::with_characters(|ch| (ch[cc].name, ch[cn].reference));
+    let (cc_name, cn_ref) = (gs.characters[cc].name, gs.characters[cn].reference);
     log::info!(
         "Created {} ({}) with base {} as Ghost Companion for {}",
         c_string_to_str(&cc_name),
@@ -3426,8 +3356,7 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
             // GC not yet Master Sergeant
             gs.do_sayx(cc, &format!("I shall defend you and obey your commands, {}. I will WAIT, FOLLOW , be QUIET or ATTACK for you and tell you WHAT TIME. You may also command me to TRANSFER my experience to you, though I'd rather you didn't.\n", cn_name));
         } else {
-            Repository::global_mut()
-                .do_sayx(cc, &format!("Thank you for creating me, {}!\n", cn_name));
+            gs.do_sayx(cc, &format!("Thank you for creating me, {}!\n", cn_name));
         }
     }
 
@@ -3435,14 +3364,14 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
 
     add_exhaust(gs, cn, TICKS * 4);
 
-    let (cc_x, cc_y) = Repository::with_characters(|ch| (ch[cc].x as i32, ch[cc].y as i32));
+    let (cc_x, cc_y) = (gs.characters[cc].x as i32, gs.characters[cc].y as i32);
     EffectManager::fx_add_effect(6, 0, cc_x, cc_y, 0);
-    let (cn_x, cn_y) = Repository::with_characters(|ch| (ch[cn].x as i32, ch[cn].y as i32));
+    let (cn_x, cn_y) = (gs.characters[cn].x as i32, gs.characters[cn].y as i32);
     EffectManager::fx_add_effect(7, 0, cn_x, cn_y, 0);
 }
 
 pub fn is_facing(gs: &GameState, cn: usize, co: usize) -> i32 {
-    let dir = Repository::with_characters(|ch| ch[cn].dir);
+    let dir = gs.characters[cn].dir;
     let cx = gs.characters[cn].x;
     let cy = gs.characters[cn].y;
     let ox = gs.characters[co].x;
@@ -3482,7 +3411,7 @@ pub fn is_facing(gs: &GameState, cn: usize, co: usize) -> i32 {
 }
 
 pub fn is_back(gs: &GameState, cn: usize, co: usize) -> i32 {
-    let dir = Repository::with_characters(|ch| ch[cn].dir);
+    let dir = gs.characters[cn].dir;
     let cx = gs.characters[cn].x;
     let cy = gs.characters[cn].y;
     let ox = gs.characters[co].x;
