@@ -6973,10 +6973,11 @@ pub fn spiderweb(item_idx: usize) {
         if should_spawn {
             // Create spider (template 390-392)
             let spider_template = 390usize + helpers::random_mod_usize(3);
-            let cn = match populate::pop_create_char(Repository::global_mut(), spider_template, false) {
-                Some(cn) => cn,
-                None => continue,
-            };
+            let cn =
+                match populate::pop_create_char(Repository::global_mut(), spider_template, false) {
+                    Some(cn) => cn,
+                    None => continue,
+                };
 
             let (x, y) = Repository::with_items(|items| {
                 (items[item_idx].x as usize, items[item_idx].y as usize)
@@ -7037,7 +7038,11 @@ pub fn greenlingball(item_idx: usize) {
         if should_spawn {
             // Create greenling (template 553 + data[0])
             let greenling_type = Repository::with_items(|items| items[item_idx].data[0]);
-            let cn = match populate::pop_create_char(Repository::global_mut(), 553 + greenling_type as usize, false) {
+            let cn = match populate::pop_create_char(
+                Repository::global_mut(),
+                553 + greenling_type as usize,
+                false,
+            ) {
                 Some(cn) => cn,
                 None => continue,
             };

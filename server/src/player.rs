@@ -2359,7 +2359,7 @@ pub fn plr_getmap_complete_gs(gs: &mut GameState, nr: usize) {
                     smap[n].ch_status2 = char_co.status2 as u8;
                     smap[n].ch_speed = char_co.speed as u8;
                     smap[n].ch_nr = co as u16;
-                    smap[n].ch_id = helpers::char_id(co) as u16;
+                    smap[n].ch_id = helpers::char_id(&char_co) as u16;
 
                     if tmp_see <= 75 && char_co.hp[5] > 0 {
                         smap[n].ch_proz = (((char_co.a_hp + 5) / 10) / char_co.hp[5] as i32) as u8;

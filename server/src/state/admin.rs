@@ -100,7 +100,7 @@ impl GameState {
         let a_end = self.characters[co].a_end;
         let mana5 = self.characters[co].mana[5];
         let a_mana = self.characters[co].a_mana;
-        let co_id = helpers::char_id(co);
+        let co_id = helpers::char_id(&self.characters[co]);
 
         buf[1] = (end5 & 0xFF) as u8;
         buf[2] = (end5 >> 8) as u8;

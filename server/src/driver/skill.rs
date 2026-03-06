@@ -243,6 +243,7 @@ pub fn add_spell(cn: usize, in_: usize) -> i32 {
     }
     // Overwrite spells if same spell is cast twice and the new spell is more powerful
     let mut found = false;
+
     Repository::with_characters_mut(|ch| {
         for i in 0..20 {
             if ch[cn].spell[i] != 0 {
@@ -3491,6 +3492,12 @@ pub fn skill_ghost(cn: usize) {
 
     let ticker = Repository::with_globals(|g| g.ticker);
 
+    let co_id = if co != 0 {
+        Repository::with_characters(|ch| helpers::char_id(&ch[co as usize]))
+    } else {
+        0
+    };
+
     // Configure companion
     Repository::with_characters_mut(|ch| {
         ch[cc].data[29] = 0; // reset experience earned
@@ -3500,7 +3507,7 @@ pub fn skill_ghost(cn: usize) {
 
         if co != 0 {
             ch[cc].attack_cn = co as u16;
-            let idx = co as i32 | (helpers::char_id(co) << 16);
+            let idx = co as i32 | (co_id << 16);
             ch[cc].data[80] = idx; // add enemy to kill list
         }
 

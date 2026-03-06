@@ -720,8 +720,8 @@ impl GameState {
 
         let (co_used, co_flags) = (self.characters[co].used, self.characters[co].flags);
         let co_invis = (co_flags & CharacterFlags::Invisible.bits()) != 0;
-        let cn_invis_level = crate::helpers::invis_level(cn);
-        let co_invis_level = crate::helpers::invis_level(co);
+        let cn_invis_level = crate::helpers::invis_level(&self.characters[cn]);
+        let co_invis_level = crate::helpers::invis_level(&self.characters[co]);
         if co_used != core::constants::USE_ACTIVE || (co_invis && cn_invis_level < co_invis_level) {
             let nm = self.characters[co].get_name().to_string();
             self.do_character_log(
@@ -772,7 +772,7 @@ impl GameState {
             23 => 6,
             _ => 3,
         };
-        let diff = crate::helpers::rankdiff(cn as i32, co as i32);
+        let diff = crate::helpers::rankdiff(&self.characters[cn], &self.characters[co]);
         if diff.abs() > allow {
             let nm = self.characters[co].get_name().to_string();
             let relation = if diff > 0 { "above" } else { "below" };

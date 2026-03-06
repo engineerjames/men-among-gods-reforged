@@ -127,7 +127,7 @@ pub fn npc_add_enemy(cn: usize, co: usize, always: bool) -> bool {
             characters[cn].data[58] = 2;
         }
 
-        let idx = co as i32 | (helpers::char_id(co) << 16);
+        let idx = co as i32 | (helpers::char_id(&characters[co as usize]) << 16);
 
         // Check if already in enemy list
         for n in 80..92 {
@@ -148,7 +148,7 @@ pub fn npc_add_enemy(cn: usize, co: usize, always: bool) -> bool {
 
 pub fn npc_is_enemy(cn: usize, co: usize) -> bool {
     Repository::with_characters(|characters| {
-        let idx = co as i32 | (helpers::char_id(co) << 16);
+        let idx = co as i32 | (helpers::char_id(&characters[co as usize]) << 16);
 
         for n in 80..92 {
             if characters[cn].data[n] == idx {
@@ -283,7 +283,8 @@ pub fn npc_gotattack(cn: usize, co: usize, _dam: i32) -> i32 {
                 characters[cc].data[24] = 0;
                 characters[cc].data[36] = 0;
                 characters[cc].data[43] = 0;
-                characters[cc].data[80] = co as i32 | (helpers::char_id(co) << 16);
+                characters[cc].data[80] =
+                    co as i32 | (helpers::char_id(&characters[co as usize]) << 16);
                 characters[cc].data[63] = cn as i32;
                 characters[cc].data[64] = ticker + 120 * TICKS;
                 characters[cc].data[70] = ticker + (TICKS * 60);
@@ -382,7 +383,7 @@ pub fn npc_killed(cn: usize, cc: usize, co: usize) -> i32 {
         characters[cn].data[77] = 0;
         characters[cn].data[78] = 0;
 
-        let idx = co as i32 | (helpers::char_id(co) << 16);
+        let idx = co as i32 | (helpers::char_id(&characters[co as usize]) << 16);
 
         for n in 80..92 {
             if characters[cn].data[n] == idx {
@@ -2324,7 +2325,11 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
 
             if n > 0 {
                 for m_idx in 0..n {
-                    let co = match populate::pop_create_char(Repository::global_mut(), 503 + m_idx, false) {
+                    let co = match populate::pop_create_char(
+                        Repository::global_mut(),
+                        503 + m_idx,
+                        false,
+                    ) {
                         Some(co) => co,
                         None => {
                             Repository::global_mut()
@@ -3195,7 +3200,8 @@ pub fn npc_see(cn: usize, co: usize) -> i32 {
     let attack_cn = Repository::with_characters(|characters| characters[cn].attack_cn);
     if attack_cn == 0 {
         // Only attack if we aren't fighting already
-        let co_id = helpers::char_id(co) as u32;
+        let co_id =
+            Repository::with_characters(|characters| helpers::char_id(&characters[co])) as u32;
         let idx = co as i32 | ((co_id as i32) << 16);
 
         let mut found = false;

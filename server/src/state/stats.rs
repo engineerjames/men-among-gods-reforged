@@ -1419,7 +1419,7 @@ impl GameState {
         if type_hurt != 2 && type_hurt != 3 && noexp == 0 {
             let mut tmp = dam / 4000;
             if tmp > 0 && cn != 0 {
-                tmp = helpers::scale_exps(cn as i32, co as i32, tmp);
+                tmp = helpers::scale_exps(&self.characters[cn], &self.characters[co], tmp);
                 if tmp > 0 {
                     self.characters[cn].points += tmp;
                     self.characters[cn].points_tot += tmp;

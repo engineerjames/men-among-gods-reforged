@@ -15,7 +15,7 @@ use crate::{
 pub struct God {}
 impl God {
     /// Drop a character near the target using an explicit game-state borrow.
-    pub fn drop_char_fuzzy_large_gs(
+    pub fn drop_char_fuzzy_large_in_state(
         gs: &mut GameState,
         character_id: usize,
         x: usize,
@@ -58,7 +58,7 @@ impl God {
                 *try_x as i32,
                 *try_y as i32,
             ) != 0
-                && Self::drop_char_gs(gs, character_id, *try_x, *try_y);
+                && Self::drop_char_in_state(gs, character_id, *try_x, *try_y);
 
             if early_return {
                 return true;
@@ -77,11 +77,11 @@ impl God {
     /// # Arguments
     /// * `template_id` - Item template identifier
     pub fn create_item(template_id: usize) -> Option<usize> {
-        Self::create_item_gs(Repository::global_mut(), template_id)
+        Self::create_item_in_state(Repository::global_mut(), template_id)
     }
 
     /// Create an item using an explicit game-state borrow.
-    pub(crate) fn create_item_gs(gs: &mut GameState, template_id: usize) -> Option<usize> {
+    pub(crate) fn create_item_in_state(gs: &mut GameState, template_id: usize) -> Option<usize> {
         if !core::types::Item::is_sane_item_template(template_id) {
             return None;
         }
@@ -181,11 +181,15 @@ impl God {
     /// * `character_id` - Recipient character index
     /// * `item_id` - Item index to give
     pub fn give_character_item(character_id: usize, item_id: usize) -> bool {
-        Self::give_character_item_gs(Repository::global_mut(), character_id, item_id)
+        Self::give_character_item_in_state(Repository::global_mut(), character_id, item_id)
     }
 
     /// Give an item to a character using an explicit game-state borrow.
-    fn give_character_item_gs(gs: &mut GameState, character_id: usize, item_id: usize) -> bool {
+    fn give_character_item_in_state(
+        gs: &mut GameState,
+        character_id: usize,
+        item_id: usize,
+    ) -> bool {
         if !core::types::Item::is_sane_item(item_id) {
             log::error!("Invalid item ID {} when giving item.", item_id);
             return false;
@@ -266,23 +270,19 @@ impl God {
     /// * `character_id` - Character index
     /// * `build_type` - Build action selector
     pub fn build(character_id: usize, build_type: u32) {
-        Self::build_gs(Repository::global_mut(), character_id, build_type)
-    }
-
-    /// Manage build mode using an explicit game-state borrow.
-    fn build_gs(gs: &mut GameState, character_id: usize, build_type: u32) {
+        let gs = Repository::global_mut();
         let character_is_building = gs.characters[character_id].is_building();
         let name = gs.characters[character_id].get_name().to_string();
         if !character_is_building {
-            if Self::build_start_gs(gs, character_id) {
-                Self::build_equip_gs(gs, character_id, build_type);
+            if Self::build_start(gs, character_id) {
+                Self::build_equip(gs, character_id, build_type);
             } else {
                 log::error!("Failed to start build mode for character {}", name);
             }
         } else if build_type != 0 {
-            Self::build_stop_gs(gs, character_id);
+            Self::build_stop(gs, character_id);
         } else {
-            Self::build_equip_gs(gs, character_id, build_type);
+            Self::build_equip(gs, character_id, build_type);
         }
     }
 
@@ -294,7 +294,7 @@ impl God {
     /// # Arguments
     /// * `character_id` - Character index
     /// * `build_type` - Equipment variant
-    fn build_equip_gs(gs: &mut GameState, character_id: usize, build_type: u32) {
+    fn build_equip(gs: &mut GameState, character_id: usize, build_type: u32) {
         let mut m = 0;
         let char_name = {
             let character = &mut gs.characters[character_id];
@@ -600,7 +600,7 @@ impl God {
     ///
     /// # Arguments
     /// * `character_id` - Character entering build mode
-    fn build_start_gs(gs: &mut GameState, character_id: usize) -> bool {
+    fn build_start(gs: &mut GameState, character_id: usize) -> bool {
         let companion = {
             let character = &gs.characters[character_id];
             if character.data[core::constants::CHD_COMPANION] != 0 {
@@ -621,7 +621,7 @@ impl God {
             return false;
         }
 
-        let character_id_to_hold_inventory = Self::create_char_gs(gs, 1, false);
+        let character_id_to_hold_inventory = Self::create_char_in_state(gs, 1, false);
 
         if character_id_to_hold_inventory.is_none() {
             gs.do_character_log(
@@ -661,7 +661,7 @@ impl God {
         };
         gs.characters[holder_id].name = holder_name;
 
-        Self::drop_char_gs(gs, holder_id, 10, 10);
+        Self::drop_char_in_state(gs, holder_id, 10, 10);
 
         gs.characters[character_id].flags |= CharacterFlags::BuildMode.bits();
         gs.characters[character_id].set_do_update_flags();
@@ -674,7 +674,7 @@ impl God {
     ///
     /// # Arguments
     /// * `character_id` - Character exiting build mode
-    fn build_stop_gs(gs: &mut GameState, character_id: usize) {
+    fn build_stop(gs: &mut GameState, character_id: usize) {
         if !core::types::Character::is_sane_character(character_id) {
             log::error!("Invalid character ID {} in build_stop", character_id);
             return;
@@ -760,11 +760,11 @@ impl God {
     /// * `character_id` - Character index
     /// * `x`, `y` - Target coordinates
     pub fn transfer_char(character_id: usize, x: usize, y: usize) -> bool {
-        Self::transfer_char_gs(Repository::global_mut(), character_id, x, y)
+        Self::transfer_char_in_state(Repository::global_mut(), character_id, x, y)
     }
 
     /// Transfer a character using an explicit game-state borrow.
-    fn transfer_char_gs(gs: &mut GameState, character_id: usize, x: usize, y: usize) -> bool {
+    fn transfer_char_in_state(gs: &mut GameState, character_id: usize, x: usize, y: usize) -> bool {
         if !Character::is_sane_character(character_id) || !Map::is_sane_coordinates(x, y) {
             log::error!(
                 "Invalid character ID {} or coordinates ({}, {}) in transfer_char",
@@ -786,7 +786,7 @@ impl God {
             [(x, y), (x + 3, y), (x, y + 3), (x - 3, y), (x, y - 3)];
 
         for (try_x, try_y) in positions_to_try.iter() {
-            if Self::drop_char_fuzzy_large_gs(gs, character_id, *try_x, *try_y, x, y) {
+            if Self::drop_char_fuzzy_large_in_state(gs, character_id, *try_x, *try_y, x, y) {
                 return true;
             }
         }
@@ -802,11 +802,16 @@ impl God {
     /// * `character_id` - Character to place
     /// * `x`, `y` - Central coordinates
     pub fn drop_char_fuzzy(character_id: usize, x: usize, y: usize) -> bool {
-        Self::drop_char_fuzzy_gs(Repository::global_mut(), character_id, x, y)
+        Self::drop_char_fuzzy_in_state(Repository::global_mut(), character_id, x, y)
     }
 
     /// Place a character near a tile using an explicit game-state borrow.
-    fn drop_char_fuzzy_gs(gs: &mut GameState, character_id: usize, x: usize, y: usize) -> bool {
+    fn drop_char_fuzzy_in_state(
+        gs: &mut GameState,
+        character_id: usize,
+        x: usize,
+        y: usize,
+    ) -> bool {
         let positions_to_try: [(usize, usize); 25] = [
             (x, y),
             (x + 1, y),
@@ -838,7 +843,7 @@ impl God {
         for (try_x, try_y) in positions_to_try.iter() {
             let early_return =
                 gs.can_go(*try_x as i32, *try_y as i32, *try_x as i32, *try_y as i32) != 0
-                    && Self::drop_char_gs(gs, character_id, *try_x, *try_y);
+                    && Self::drop_char_in_state(gs, character_id, *try_x, *try_y);
 
             if early_return {
                 return true;
@@ -863,7 +868,7 @@ impl God {
         center_x: usize,
         center_y: usize,
     ) -> bool {
-        Self::drop_char_fuzzy_large_gs(
+        Self::drop_char_fuzzy_large_in_state(
             Repository::global_mut(),
             character_id,
             x,
@@ -882,11 +887,15 @@ impl God {
     /// * `template_id` - Template identifier
     /// * `with_items` - Whether to populate starting items
     pub fn create_char(template_id: usize, with_items: bool) -> Option<i32> {
-        Self::create_char_gs(Repository::global_mut(), template_id, with_items)
+        Self::create_char_in_state(Repository::global_mut(), template_id, with_items)
     }
 
     /// Create a character using an explicit game-state borrow.
-    fn create_char_gs(gs: &mut GameState, template_id: usize, with_items: bool) -> Option<i32> {
+    fn create_char_in_state(
+        gs: &mut GameState,
+        template_id: usize,
+        with_items: bool,
+    ) -> Option<i32> {
         let unused_index = (1..core::constants::MAXCHARS)
             .find(|&i| gs.characters[i].used == core::constants::USE_EMPTY);
 
@@ -971,7 +980,7 @@ impl God {
             }
 
             if with_items {
-                tmp = Self::create_item_gs(gs, tmp as usize).unwrap_or(0) as u32;
+                tmp = Self::create_item_in_state(gs, tmp as usize).unwrap_or(0) as u32;
                 if tmp == 0 {
                     log::error!(
                         "Failed to create item from template new character ID {}",
@@ -996,7 +1005,7 @@ impl God {
             }
 
             if with_items {
-                tmp_worn = Self::create_item_gs(gs, tmp_worn as usize).unwrap_or(0) as u32;
+                tmp_worn = Self::create_item_in_state(gs, tmp_worn as usize).unwrap_or(0) as u32;
                 if tmp_worn == 0 {
                     log::error!(
                         "Failed to create worn item from template for new character ID {}",
@@ -1023,7 +1032,7 @@ impl God {
         let mut tmp_citem = gs.characters[char_index].citem;
         if tmp_citem != 0 {
             if with_items {
-                tmp_citem = Self::create_item_gs(gs, tmp_citem as usize).unwrap_or(0) as u32;
+                tmp_citem = Self::create_item_in_state(gs, tmp_citem as usize).unwrap_or(0) as u32;
                 if tmp_citem == 0 {
                     log::error!(
                         "Failed to create citem from template for new character ID {}",
@@ -1046,7 +1055,7 @@ impl God {
                 "One or more items failed to be created for new character ID {}",
                 char_index
             );
-            Self::destroy_items_gs(gs, char_index);
+            Self::destroy_items_in_state(gs, char_index);
             gs.characters[char_index].used = core::constants::USE_EMPTY;
             return None;
         }
@@ -1067,11 +1076,11 @@ impl God {
     /// # Arguments
     /// * `char_id` - Character index whose items will be destroyed
     pub fn destroy_items(char_id: usize) {
-        Self::destroy_items_gs(Repository::global_mut(), char_id)
+        Self::destroy_items_in_state(Repository::global_mut(), char_id)
     }
 
     /// Destroy a character's items using an explicit game-state borrow.
-    pub fn destroy_items_gs(gs: &mut GameState, char_id: usize) {
+    pub fn destroy_items_in_state(gs: &mut GameState, char_id: usize) {
         if !core::types::Character::is_sane_character(char_id) {
             log::error!("Invalid character ID {} in destroy_items", char_id);
             return;
@@ -1142,11 +1151,11 @@ impl God {
     /// * `item_id` - Item index to take
     /// * `cn` - Character index from which to remove the item
     pub fn take_from_char(item_id: usize, cn: usize) -> bool {
-        Self::take_from_char_gs(Repository::global_mut(), item_id, cn)
+        Self::take_from_char_in_state(Repository::global_mut(), item_id, cn)
     }
 
     /// Take an item from a character using an explicit game-state borrow.
-    pub fn take_from_char_gs(gs: &mut GameState, item_id: usize, cn: usize) -> bool {
+    pub fn take_from_char_in_state(gs: &mut GameState, item_id: usize, cn: usize) -> bool {
         if !core::types::Item::is_sane_item(item_id) {
             return false;
         }
@@ -1205,11 +1214,11 @@ impl God {
     /// * `item_id` - Item instance index
     /// * `x`, `y` - Target map coordinates
     pub fn drop_item(item_id: usize, x: usize, y: usize) -> bool {
-        Self::drop_item_gs(Repository::global_mut(), item_id, x, y)
+        Self::drop_item_in_state(Repository::global_mut(), item_id, x, y)
     }
 
     /// Drop an item using an explicit game-state borrow.
-    fn drop_item_gs(gs: &mut GameState, item_id: usize, x: usize, y: usize) -> bool {
+    fn drop_item_in_state(gs: &mut GameState, item_id: usize, x: usize, y: usize) -> bool {
         if !Map::is_sane_coordinates(x, y) {
             return false;
         }
@@ -1256,11 +1265,11 @@ impl God {
     /// * `character_id` - Character to place
     /// * `x`, `y` - Tile coordinates
     pub fn drop_char(character_id: usize, x: usize, y: usize) -> bool {
-        Self::drop_char_gs(Repository::global_mut(), character_id, x, y)
+        Self::drop_char_in_state(Repository::global_mut(), character_id, x, y)
     }
 
     /// Place a character using an explicit game-state borrow.
-    pub(crate) fn drop_char_gs(
+    pub(crate) fn drop_char_in_state(
         gs: &mut GameState,
         character_id: usize,
         x: usize,
@@ -1306,11 +1315,7 @@ impl God {
     /// * `co` - Target character
     /// * `pass` - New password string
     pub fn change_pass(cn: usize, co: usize, pass: &str) -> i32 {
-        Self::change_pass_gs(Repository::global_mut(), cn, co, pass)
-    }
-
-    /// Change a character password using an explicit game-state borrow.
-    fn change_pass_gs(gs: &mut GameState, cn: usize, co: usize, pass: &str) -> i32 {
+        let gs = Repository::global_mut();
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return 0;
         }
@@ -1353,11 +1358,11 @@ impl God {
     /// * `cn` - Character index
     /// * `item_id` - Item index to remove
     pub fn remove_item(cn: usize, item_id: usize) -> i32 {
-        Self::remove_item_gs(Repository::global_mut(), cn, item_id)
+        Self::remove_item_from_character(Repository::global_mut(), cn, item_id)
     }
 
-    /// Remove an item using an explicit game-state borrow.
-    fn remove_item_gs(gs: &mut GameState, cn: usize, item_id: usize) -> i32 {
+    /// Remove an item from a character while reusing an existing game-state borrow.
+    fn remove_item_from_character(gs: &mut GameState, cn: usize, item_id: usize) -> i32 {
         if !Character::is_sane_character(cn) || !core::types::Item::is_sane_item(item_id) {
             return 0;
         }
@@ -1385,19 +1390,8 @@ impl God {
         0
     }
 
-    /// Attempt to drop an item near `(x,y)` using a small search pattern.
-    ///
-    /// Useful when the exact tile is blocked.
-    ///
-    /// # Arguments
-    /// * `nr` - Item id
-    /// * `x`, `y` - Central coordinates
-    pub fn drop_item_fuzzy(nr: usize, x: usize, y: usize) -> bool {
-        Self::drop_item_fuzzy_gs(Repository::global_mut(), nr, x, y)
-    }
-
-    /// Drop an item near a tile using an explicit game-state borrow.
-    fn drop_item_fuzzy_gs(gs: &mut GameState, nr: usize, x: usize, y: usize) -> bool {
+    /// Try to drop an item near a tile while reusing an existing game-state borrow.
+    fn drop_item_fuzzy(gs: &mut GameState, nr: usize, x: usize, y: usize) -> bool {
         let positions_to_try: [(usize, usize); 25] = [
             (x, y),
             (x + 1, y),
@@ -1427,7 +1421,7 @@ impl God {
         ];
 
         for (try_x, try_y) in positions_to_try.iter() {
-            if Self::drop_item_gs(gs, nr, *try_x, *try_y) {
+            if Self::drop_item_in_state(gs, nr, *try_x, *try_y) {
                 return true;
             }
         }
@@ -1445,11 +1439,7 @@ impl God {
     /// * `co` - Target character
     /// * `cx`, `cy` - Coordinate strings
     pub fn goto(cn: usize, co: usize, cx: &str, cy: &str) {
-        Self::goto_gs(Repository::global_mut(), cn, co, cx, cy)
-    }
-
-    /// Execute goto using an explicit game-state borrow.
-    fn goto_gs(gs: &mut GameState, cn: usize, co: usize, cx: &str, cy: &str) {
+        let gs = Repository::global_mut();
         log::debug!(
             "goto() called by character {} to move character {} to '{},{}'",
             cn,
@@ -1474,57 +1464,50 @@ impl God {
             return;
         }
 
-        let goto_functions = [
-            Self::goto_cardinal_length_gs
-                as fn(&mut GameState, usize, &str, &str) -> Option<(usize, usize)>,
-            Self::goto_target_coordinates_gs
-                as fn(&mut GameState, usize, &str, &str) -> Option<(usize, usize)>,
-            Self::goto_character_by_name_gs
-                as fn(&mut GameState, usize, &str, &str) -> Option<(usize, usize)>,
-        ];
-
         let character_name = gs.characters[co].get_name().to_string();
         let character_visible = gs.characters[co].flags & CharacterFlags::Invisible.bits() == 0
             && gs.characters[co].flags & CharacterFlags::GreaterInv.bits() == 0;
-        for goto_fn in goto_functions.iter() {
-            if let Some((x, y)) = goto_fn(gs, cn, cx, cy) {
-                let orig_pos = {
-                    let character = &gs.characters[co];
-                    (character.x as usize, character.y as usize)
-                };
+        let target = Self::goto_cardinal_length(gs, cn, cx, cy)
+            .or_else(|| Self::goto_target_coordinates(cn, cx, cy))
+            .or_else(|| Self::goto_character_by_name(gs, cn, cx, cy));
 
-                if character_visible {
-                    EffectManager::fx_add_effect(12, 0, orig_pos.0 as i32, orig_pos.1 as i32, 0);
-                }
+        if let Some((x, y)) = target {
+            let orig_pos = {
+                let character = &gs.characters[co];
+                (character.x as usize, character.y as usize)
+            };
 
-                if !Self::transfer_char_gs(gs, co, x, y) {
-                    gs.do_character_log(
-                            cn,
-                            core::types::FontColor::Red,
-                            "GOTO failed. Dykstra was right (Elrac will explain this comment if you ask nicely).\n",
-                        );
-                    return;
-                }
+            if character_visible {
+                EffectManager::fx_add_effect(12, 0, orig_pos.0 as i32, orig_pos.1 as i32, 0);
+            }
 
-                let new_pos = {
-                    let character = &gs.characters[co];
-                    (character.x as i32, character.y as i32)
-                };
-                if character_visible {
-                    EffectManager::fx_add_effect(12, 0, new_pos.0, new_pos.1, 0);
-                }
+            if !Self::transfer_char_in_state(gs, co, x, y) {
                 gs.do_character_log(
                     cn,
-                    core::types::FontColor::Green,
-                    &format!(
-                        "{} teleported to ({}, {})\n",
-                        if cn == co { "You" } else { &character_name },
-                        new_pos.0,
-                        new_pos.1
-                    ),
+                    core::types::FontColor::Red,
+                    "GOTO failed. Dykstra was right (Elrac will explain this comment if you ask nicely).\n",
                 );
                 return;
             }
+
+            let new_pos = {
+                let character = &gs.characters[co];
+                (character.x as i32, character.y as i32)
+            };
+            if character_visible {
+                EffectManager::fx_add_effect(12, 0, new_pos.0, new_pos.1, 0);
+            }
+            gs.do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                &format!(
+                    "{} teleported to ({}, {})\n",
+                    if cn == co { "You" } else { &character_name },
+                    new_pos.0,
+                    new_pos.1
+                ),
+            );
+            return;
         }
 
         log::error!(
@@ -1569,16 +1552,7 @@ impl God {
         Some((target_x, target_y))
     }
 
-    fn goto_target_coordinates_gs(
-        _gs: &mut GameState,
-        cn: usize,
-        cx: &str,
-        cy: &str,
-    ) -> Option<(usize, usize)> {
-        Self::goto_target_coordinates(cn, cx, cy)
-    }
-
-    fn goto_cardinal_length_gs(
+    fn goto_cardinal_length(
         gs: &mut GameState,
         cn: usize,
         cx: &str,
@@ -1687,7 +1661,7 @@ impl God {
         Some((target_x, target_y))
     }
 
-    fn goto_character_by_name_gs(
+    fn goto_character_by_name(
         gs: &mut GameState,
         cn: usize,
         cx: &str,
@@ -1869,8 +1843,8 @@ impl God {
             (invis_or_nowho, caller_priv)
         };
         if hide_pos && !caller_priv {
-            let cn_invis_level = helpers::invis_level(cn);
-            let co_invis_level = helpers::invis_level(co);
+            let cn_invis_level = helpers::invis_level(&gs.characters[cn]);
+            let co_invis_level = helpers::invis_level(&gs.characters[co]);
             if co_invis_level > cn_invis_level {
                 px = 0;
                 py = 0;
@@ -2193,7 +2167,7 @@ impl God {
                 | CharacterFlags::Usurp.bits()))
             != 0;
 
-        let cn_invis_level = helpers::invis_level(cn);
+        let cn_invis_level = helpers::invis_level(&gs.characters[cn]);
 
         let mut players = 0;
         gs.do_character_log(
@@ -2225,7 +2199,7 @@ impl God {
                 }
                 core::types::FontColor::Blue
             } else if n_is_invisible {
-                let n_invis_level = helpers::invis_level(n);
+                let n_invis_level = helpers::invis_level(&gs.characters[n]);
                 if cn_invis_level < n_invis_level {
                     continue;
                 }
@@ -2623,10 +2597,10 @@ impl God {
             return;
         }
 
-        let item_id = Self::create_item_gs(gs, template_id);
+        let item_id = Self::create_item_in_state(gs, template_id);
 
         if let Some(item_id) = item_id {
-            if !Self::give_character_item_gs(gs, cn, item_id) {
+            if !Self::give_character_item_in_state(gs, cn, item_id) {
                 gs.do_character_log(cn, core::types::FontColor::Red, "Your inventory is full!\n");
                 return;
             }
@@ -2700,7 +2674,7 @@ impl God {
 
         let mut created: [usize; 2] = [0, 0];
         for (idx, temp) in [helmet_temp, armor_temp].iter().copied().enumerate() {
-            let item_id = match Self::create_item_gs(gs, temp) {
+            let item_id = match Self::create_item_in_state(gs, temp) {
                 Some(item_id) => item_id,
                 None => {
                     // Clean up any items already created.
@@ -2799,14 +2773,14 @@ impl God {
         }
 
         // Deliver both items (and roll back cleanly if we can't give the full pair).
-        if !Self::give_character_item_gs(gs, cn, created[0]) {
+        if !Self::give_character_item_in_state(gs, cn, created[0]) {
             gs.items[created[0]].used = core::constants::USE_EMPTY;
             gs.do_character_log(cn, core::types::FontColor::Red, "Your inventory is full!\n");
             return;
         }
-        if !Self::give_character_item_gs(gs, cn, created[1]) {
+        if !Self::give_character_item_in_state(gs, cn, created[1]) {
             // Remove the first item again to keep behavior consistent (we create a pair).
-            let _ = Self::remove_item_gs(gs, cn, created[0]);
+            let _ = Self::remove_item_from_character(gs, cn, created[0]);
             gs.items[created[0]].used = core::constants::USE_EMPTY;
             gs.items[created[1]].used = core::constants::USE_EMPTY;
             gs.do_character_log(cn, core::types::FontColor::Red, "Your inventory is full!\n");
@@ -3068,7 +3042,7 @@ impl God {
             (tx, ty, xo, yo)
         };
 
-        if !Self::transfer_char_gs(gs, co, x, y) {
+        if !Self::transfer_char_in_state(gs, co, x, y) {
             gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -3166,7 +3140,7 @@ impl God {
         }
 
         // Create mirror character with template 968
-        let cc = match Self::create_char_gs(gs, 968, false) {
+        let cc = match Self::create_char_in_state(gs, 968, false) {
             Some(cc) => cc as usize,
             None => {
                 gs.do_character_log(
@@ -3248,7 +3222,7 @@ impl God {
             mirror.set_do_update_flags();
 
             // Drop the mirror at caster's position
-            Self::drop_char_fuzzy_gs(gs, cc, caster_x as usize, caster_y as usize);
+            Self::drop_char_fuzzy_in_state(gs, cc, caster_x as usize, caster_y as usize);
 
             // Add target as enemy
             driver::npc_add_enemy(cc, co, true);
@@ -3413,7 +3387,7 @@ impl God {
         // Get target template and create thrall
         let target_template = gs.characters[co].temp;
 
-        let ct = match Self::create_char_gs(gs, target_template as usize, true) {
+        let ct = match Self::create_char_in_state(gs, target_template as usize, true) {
             Some(ct) => ct as usize,
             None => {
                 gs.do_character_log(
@@ -3489,13 +3463,13 @@ impl God {
         };
 
         // Drop thrall at calculated position
-        if !Self::drop_char_fuzzy_gs(gs, ct, x, y) {
+        if !Self::drop_char_fuzzy_in_state(gs, ct, x, y) {
             gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 "god_drop_char_fuzzy() called from god_thrall() failed.\n",
             );
-            Self::destroy_items_gs(gs, ct);
+            Self::destroy_items_in_state(gs, ct);
             gs.characters[ct].used = core::constants::USE_EMPTY;
             return 0;
         }
@@ -3537,7 +3511,7 @@ impl God {
 
         if gs.characters[cn].is_building() {
             log::info!("god_tavern() called for building character: {}", cn);
-            God::build_stop_gs(gs, cn);
+            God::build_stop(gs, cn);
         }
 
         gs.characters[cn].tavern_x = gs.characters[cn].x as u16;
@@ -4024,7 +3998,7 @@ impl God {
         let y = DON_Y[(place - 1) as usize];
 
         // Try to drop the item at the donation location
-        if !Self::drop_item_fuzzy(item_id, x, y) {
+        if !Self::drop_item_fuzzy(gs, item_id, x, y) {
             // If drop fails, destroy the item. Clear carried field to prevent
             // stale references (though drop_item_fuzzy should have already done this).
             gs.items[item_id].carried = 0;

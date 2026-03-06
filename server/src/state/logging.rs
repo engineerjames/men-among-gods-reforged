@@ -423,8 +423,8 @@ impl GameState {
             // C++: if ( ( ch[ source ].flags & ( CF_INVISIBLE | CF_NOWHO ) ) && invis_level( source ) > invis_level( n ) ) continue;
             if source != 0 {
                 let src_flags = self.characters[source].flags;
-                let src_invis_level = crate::helpers::invis_level(source);
-                let n_invis_level = crate::helpers::invis_level(n);
+                let src_invis_level = crate::helpers::invis_level(&self.characters[source]);
+                let n_invis_level = crate::helpers::invis_level(&self.characters[n]);
                 if (src_flags
                     & (core::constants::CharacterFlags::Invisible.bits()
                         | core::constants::CharacterFlags::NoWho.bits()))
@@ -474,8 +474,9 @@ impl GameState {
             // C++: if ( ( ch[ source ].flags & ( CF_INVISIBLE | CF_NOWHO ) ) && invis_level( source ) > invis_level( n ) ) continue;
             if source > 0 {
                 let src_flags = self.characters[source as usize].flags;
-                let src_invis_level = crate::helpers::invis_level(source as usize);
-                let n_invis_level = crate::helpers::invis_level(n);
+                let src_invis_level =
+                    crate::helpers::invis_level(&self.characters[source as usize]);
+                let n_invis_level = crate::helpers::invis_level(&self.characters[n]);
                 if (src_flags
                     & (core::constants::CharacterFlags::Invisible.bits()
                         | core::constants::CharacterFlags::NoWho.bits()))

@@ -504,7 +504,7 @@ impl GameState {
         let a_end = self.characters[co].a_end;
         let mana5 = self.characters[co].mana[5];
         let a_mana = self.characters[co].a_mana;
-        let co_id = helpers::char_id(co);
+        let co_id = helpers::char_id(&self.characters[co]);
 
         // reuse previously computed hp_diff, end_diff, mana_diff (populated in SV_LOOK2)
 
@@ -844,9 +844,11 @@ impl GameState {
                         && self.characters[master as usize].points_tot
                             > self.characters[cn].points_tot
                     {
-                        self.characters[cn].data[28] += helpers::scale_exps2(master, rank, p);
+                        self.characters[cn].data[28] +=
+                            helpers::scale_exps2(&self.characters[master as usize], rank, p);
                     } else {
-                        self.characters[cn].data[28] += helpers::scale_exps2(cn as i32, rank, p);
+                        self.characters[cn].data[28] +=
+                            helpers::scale_exps2(&self.characters[cn], rank, p);
                     }
                 }
             }
@@ -861,9 +863,9 @@ impl GameState {
                 && (master as usize) < core::constants::MAXCHARS
                 && self.characters[master as usize].points_tot > self.characters[cn].points_tot
             {
-                p = helpers::scale_exps2(master, rank, p);
+                p = helpers::scale_exps2(&self.characters[master as usize], rank, p);
             } else {
-                p = helpers::scale_exps2(cn as i32, rank, p);
+                p = helpers::scale_exps2(&self.characters[cn], rank, p);
             }
         }
 
@@ -1107,8 +1109,8 @@ impl GameState {
         let co_notell = (co_flags & CharacterFlags::NoTell.bits()) != 0;
         let co_active = co_used == core::constants::USE_ACTIVE;
         let cn_invis = (cn_flags & CharacterFlags::Invisible.bits()) != 0;
-        let cn_invis_level = crate::helpers::invis_level(cn);
-        let co_invis_level = crate::helpers::invis_level(co);
+        let cn_invis_level = crate::helpers::invis_level(&self.characters[cn]);
+        let co_invis_level = crate::helpers::invis_level(&self.characters[co]);
         // do_is_ignore
         let is_ignored = !cn_is_god && self.do_is_ignore(cn, co, 0) != 0;
         // C++: ! (player) || not active || (invis && invis_level) || (not god && (notell || ignore))

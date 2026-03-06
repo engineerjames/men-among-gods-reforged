@@ -1,12 +1,10 @@
 use core::{
     constants::{CharacterFlags, AT_AGIL, AT_BRAVE, AT_INT, AT_STREN, AT_WILL},
     string_operations::c_string_to_str,
-    types::FontColor,
+    types::{Character, FontColor},
 };
 
-use crate::{
-    driver, game_state::GameState, game_state::GameState as Repository, god::God, populate,
-};
+use crate::{driver, game_state::GameState, god::God, populate};
 
 #[macro_export]
 macro_rules! chlog {
@@ -514,10 +512,9 @@ pub fn show_time(gs: &mut GameState, cn: usize) {
 /// a compact identifier from the character name and password fields.
 ///
 /// # Arguments
-/// * `cn` - Character index
-pub fn char_id(cn: usize) -> i32 {
+/// * `ch` - Character data to hash.
+pub fn char_id(ch: &Character) -> i32 {
     let mut id = 0;
-    let ch = Repository::global_mut().characters[cn];
 
     for n in (0..40).step_by(std::mem::size_of::<i32>()) {
         id ^= ch.name[n] as u32;
@@ -576,11 +573,11 @@ pub fn points_tolevel(current_experience: u32) -> u32 {
 /// characters, based on their total experience.
 ///
 /// # Arguments
-/// * `cn` - First character index
-/// * `co` - Second character index
-pub fn rankdiff(cn: i32, co: i32) -> i32 {
-    let cn_experience = Repository::global_mut().characters[cn as usize].points_tot as u32;
-    let co_experience = Repository::global_mut().characters[co as usize].points_tot as u32;
+/// * `cn` - First character.
+/// * `co` - Second character.
+pub fn rankdiff(cn: &Character, co: &Character) -> i32 {
+    let cn_experience = cn.points_tot as u32;
+    let co_experience = co.points_tot as u32;
 
     core::ranks::points2rank(co_experience) as i32 - core::ranks::points2rank(cn_experience) as i32
 }
@@ -588,29 +585,29 @@ pub fn rankdiff(cn: i32, co: i32) -> i32 {
 /// Absolute rank difference between two characters.
 ///
 /// # Arguments
-/// * `cn` - First character index
-/// * `co` - Second character index
-pub fn absrankdiff(cn: i32, co: i32) -> u32 {
+/// * `cn` - First character.
+/// * `co` - Second character.
+pub fn absrankdiff(cn: &Character, co: &Character) -> u32 {
     rankdiff(cn, co).abs() as u32
 }
 
 /// Check whether two characters are within attack range (unused helper).
 ///
 /// # Arguments
-/// * `cn` - First character index
-/// * `co` - Second character index
+/// * `cn` - First character.
+/// * `co` - Second character.
 #[allow(dead_code)]
-pub fn in_attackrange(cn: i32, co: i32) -> bool {
+pub fn in_attackrange(cn: &Character, co: &Character) -> bool {
     absrankdiff(cn, co) <= core::constants::ATTACK_RANGE as u32
 }
 
 /// Check whether two characters are within group range (unused helper).
 ///
 /// # Arguments
-/// * `cn` - First character index
-/// * `co` - Second character index
+/// * `cn` - First character.
+/// * `co` - Second character.
 #[allow(dead_code)]
-pub fn in_grouprange(cn: i32, co: i32) -> bool {
+pub fn in_grouprange(cn: &Character, co: &Character) -> bool {
     absrankdiff(cn, co) <= core::constants::GROUP_RANGE as u32
 }
 
@@ -621,10 +618,10 @@ pub fn in_grouprange(cn: i32, co: i32) -> bool {
 /// experience value.
 ///
 /// # Arguments
-/// * `cn` - Player character index
+/// * `cn` - Player character.
 /// * `co_rank` - Opponent's rank index
 /// * `exp` - Base experience to scale
-pub fn scale_exps2(cn: i32, co_rank: i32, exp: i32) -> i32 {
+pub fn scale_exps2(cn: &Character, co_rank: i32, exp: i32) -> i32 {
     const SCALE_TAB: [f32; 49] = [
         0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07,
         0.10, 0.15, 0.20, 0.25, 0.33, 0.50, 0.70, 0.80, 0.90, 1.00, 1.02, 1.04, 1.08, 1.16, 1.32,
@@ -632,7 +629,7 @@ pub fn scale_exps2(cn: i32, co_rank: i32, exp: i32) -> i32 {
         4.00, 4.00, 4.00, 4.00,
     ];
 
-    let player_experience = Repository::global_mut().characters[cn as usize].points_tot as u32;
+    let player_experience = cn.points_tot as u32;
 
     let mut diff = co_rank - core::ranks::points2rank(player_experience) as i32;
 
@@ -648,11 +645,11 @@ pub fn scale_exps2(cn: i32, co_rank: i32, exp: i32) -> i32 {
 /// their total points.
 ///
 /// # Arguments
-/// * `cn` - Player character index
-/// * `co` - Opponent character index
+/// * `cn` - Player character.
+/// * `co` - Opponent character.
 /// * `exp` - Base experience to scale
-pub fn scale_exps(cn: i32, co: i32, exp: i32) -> i32 {
-    let co_experience = Repository::global_mut().characters[co as usize].points_tot as u32;
+pub fn scale_exps(cn: &Character, co: &Character, exp: i32) -> i32 {
+    let co_experience = co.points_tot as u32;
     scale_exps2(cn, core::ranks::points2rank(co_experience) as i32, exp)
 }
 
@@ -826,9 +823,9 @@ pub fn drv_dcoor2dir(dx: i32, dy: i32) -> i32 {
 /// invisibility hierarchy (greater inv, god, imp/usurp, staff, default).
 ///
 /// # Arguments
-/// * `cn` - Character index
-pub fn invis_level(cn: usize) -> i32 {
-    let flags = Repository::global_mut().characters[cn].flags;
+/// * `ch` - Character to inspect.
+pub fn invis_level(ch: &Character) -> i32 {
+    let flags = ch.flags;
     if flags & CharacterFlags::GreaterInv.bits() != 0 {
         return 15;
     }

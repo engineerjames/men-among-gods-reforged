@@ -772,7 +772,7 @@ impl GameState {
             return 0;
         }
 
-        if helpers::absrankdiff(cn_actual as i32, co_actual as i32)
+        if helpers::absrankdiff(&self.characters[cn_actual], &self.characters[co_actual])
             > core::constants::ATTACK_RANGE as u32
         {
             if msg {

@@ -158,7 +158,7 @@ impl Server {
             return;
         }
 
-        God::take_from_char_gs(gs, item_idx, cn);
+        God::take_from_char_in_state(gs, item_idx, cn);
         gs.items[item_idx].used = core::constants::USE_EMPTY;
 
         log::warn!(
@@ -577,7 +577,7 @@ impl Server {
                         gs.characters[n].data[98] += 1;
                         if gs.characters[n].data[98] > (core::constants::TICKS * 60 * 30) {
                             log::info!("Removing lost body for character {}", n);
-                            God::destroy_items_gs(gs, n);
+                            God::destroy_items_in_state(gs, n);
                             gs.characters[n].used = core::constants::USE_EMPTY;
                             continue;
                         }
@@ -803,7 +803,7 @@ impl Server {
                 cn
             );
             // Best-effort: destroy carried items and mark as unused
-            God::destroy_items_gs(gs, cn);
+            God::destroy_items_in_state(gs, cn);
             gs.characters[cn].used = core::constants::USE_EMPTY;
             return false;
         }
@@ -822,7 +822,7 @@ impl Server {
             if map_ch != 0 {
                 // Try to drop character items near their position as in original
                 let (cx, cy) = (gs.characters[cn].x as usize, gs.characters[cn].y as usize);
-                if !God::drop_char_fuzzy_large_gs(gs, cn, cx, cy, cx, cy) {
+                if !God::drop_char_fuzzy_large_in_state(gs, cn, cx, cy, cx, cy) {
                     // couldn't drop items; leave as-is (original tried a few options)
                 }
             } else {

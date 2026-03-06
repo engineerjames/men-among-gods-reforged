@@ -86,21 +86,21 @@ pub fn pop_create_item(gs: &mut GameState, temp: usize, cn: usize) -> usize {
     // First check: Gorn uniques (1/150 chance)
     if in_id == 0 && alignment < 0 && helpers::random_mod(150) == 0 {
         in_id = match temp {
-            27 => God::create_item_gs(gs, 542),  // bronze dagger
-            28 => God::create_item_gs(gs, 543),  // steel dagger
-            29 => God::create_item_gs(gs, 544),  // gold dagger
-            30 => God::create_item_gs(gs, 545),  // crystal dagger
-            523 => God::create_item_gs(gs, 546), // titan dagger
-            31 => God::create_item_gs(gs, 547),  // bronze sword
-            32 => God::create_item_gs(gs, 548),  // steel sword
-            33 => God::create_item_gs(gs, 549),  // gold sword
-            34 => God::create_item_gs(gs, 550),  // crystal sword
-            524 => God::create_item_gs(gs, 551), // titan sword
-            35 => God::create_item_gs(gs, 552),  // bronze two
-            36 => God::create_item_gs(gs, 553),  // steel two
-            37 => God::create_item_gs(gs, 554),  // gold two
-            38 => God::create_item_gs(gs, 555),  // crystal two
-            125 => God::create_item_gs(gs, 556), // titan two
+            27 => God::create_item_in_state(gs, 542),  // bronze dagger
+            28 => God::create_item_in_state(gs, 543),  // steel dagger
+            29 => God::create_item_in_state(gs, 544),  // gold dagger
+            30 => God::create_item_in_state(gs, 545),  // crystal dagger
+            523 => God::create_item_in_state(gs, 546), // titan dagger
+            31 => God::create_item_in_state(gs, 547),  // bronze sword
+            32 => God::create_item_in_state(gs, 548),  // steel sword
+            33 => God::create_item_in_state(gs, 549),  // gold sword
+            34 => God::create_item_in_state(gs, 550),  // crystal sword
+            524 => God::create_item_in_state(gs, 551), // titan sword
+            35 => God::create_item_in_state(gs, 552),  // bronze two
+            36 => God::create_item_in_state(gs, 553),  // steel two
+            37 => God::create_item_in_state(gs, 554),  // gold two
+            38 => God::create_item_in_state(gs, 555),  // crystal two
+            125 => God::create_item_in_state(gs, 556), // titan two
             _ => None,
         }
         .unwrap_or(0);
@@ -109,21 +109,21 @@ pub fn pop_create_item(gs: &mut GameState, temp: usize, cn: usize) -> usize {
     // Second check: Kwai uniques (1/150 chance)
     if in_id == 0 && alignment < 0 && helpers::random_mod(150) == 0 {
         in_id = match temp {
-            27 => God::create_item_gs(gs, 527),  // bronze dagger
-            28 => God::create_item_gs(gs, 528),  // steel dagger
-            29 => God::create_item_gs(gs, 529),  // gold dagger
-            30 => God::create_item_gs(gs, 530),  // crystal dagger
-            523 => God::create_item_gs(gs, 531), // titan dagger
-            31 => God::create_item_gs(gs, 532),  // bronze sword
-            32 => God::create_item_gs(gs, 533),  // steel sword
-            33 => God::create_item_gs(gs, 534),  // gold sword
-            34 => God::create_item_gs(gs, 535),  // crystal sword
-            524 => God::create_item_gs(gs, 536), // titan sword
-            35 => God::create_item_gs(gs, 537),  // bronze two
-            36 => God::create_item_gs(gs, 538),  // steel two
-            37 => God::create_item_gs(gs, 539),  // gold two
-            38 => God::create_item_gs(gs, 540),  // crystal two
-            125 => God::create_item_gs(gs, 541), // titan two
+            27 => God::create_item_in_state(gs, 527),  // bronze dagger
+            28 => God::create_item_in_state(gs, 528),  // steel dagger
+            29 => God::create_item_in_state(gs, 529),  // gold dagger
+            30 => God::create_item_in_state(gs, 530),  // crystal dagger
+            523 => God::create_item_in_state(gs, 531), // titan dagger
+            31 => God::create_item_in_state(gs, 532),  // bronze sword
+            32 => God::create_item_in_state(gs, 533),  // steel sword
+            33 => God::create_item_in_state(gs, 534),  // gold sword
+            34 => God::create_item_in_state(gs, 535),  // crystal sword
+            524 => God::create_item_in_state(gs, 536), // titan sword
+            35 => God::create_item_in_state(gs, 537),  // bronze two
+            36 => God::create_item_in_state(gs, 538),  // steel two
+            37 => God::create_item_in_state(gs, 539),  // gold two
+            38 => God::create_item_in_state(gs, 540),  // crystal two
+            125 => God::create_item_in_state(gs, 541), // titan two
             _ => None,
         }
         .unwrap_or(0);
@@ -132,21 +132,21 @@ pub fn pop_create_item(gs: &mut GameState, temp: usize, cn: usize) -> usize {
     // Third check: Purple One uniques (1/150 chance)
     if in_id == 0 && alignment < 0 && helpers::random_mod(150) == 0 {
         in_id = match temp {
-            27 => God::create_item_gs(gs, 572),  // bronze dagger
-            28 => God::create_item_gs(gs, 573),  // steel dagger
-            29 => God::create_item_gs(gs, 574),  // gold dagger
-            30 => God::create_item_gs(gs, 575),  // crystal dagger
-            523 => God::create_item_gs(gs, 576), // titan dagger
-            31 => God::create_item_gs(gs, 577),  // bronze sword
-            32 => God::create_item_gs(gs, 578),  // steel sword
-            33 => God::create_item_gs(gs, 579),  // gold sword
-            34 => God::create_item_gs(gs, 580),  // crystal sword
-            524 => God::create_item_gs(gs, 581), // titan sword
-            35 => God::create_item_gs(gs, 582),  // bronze two
-            36 => God::create_item_gs(gs, 583),  // steel two
-            37 => God::create_item_gs(gs, 584),  // gold two
-            38 => God::create_item_gs(gs, 585),  // crystal two
-            125 => God::create_item_gs(gs, 586), // titan two
+            27 => God::create_item_in_state(gs, 572),  // bronze dagger
+            28 => God::create_item_in_state(gs, 573),  // steel dagger
+            29 => God::create_item_in_state(gs, 574),  // gold dagger
+            30 => God::create_item_in_state(gs, 575),  // crystal dagger
+            523 => God::create_item_in_state(gs, 576), // titan dagger
+            31 => God::create_item_in_state(gs, 577),  // bronze sword
+            32 => God::create_item_in_state(gs, 578),  // steel sword
+            33 => God::create_item_in_state(gs, 579),  // gold sword
+            34 => God::create_item_in_state(gs, 580),  // crystal sword
+            524 => God::create_item_in_state(gs, 581), // titan sword
+            35 => God::create_item_in_state(gs, 582),  // bronze two
+            36 => God::create_item_in_state(gs, 583),  // steel two
+            37 => God::create_item_in_state(gs, 584),  // gold two
+            38 => God::create_item_in_state(gs, 585),  // crystal two
+            125 => God::create_item_in_state(gs, 586), // titan two
             _ => None,
         }
         .unwrap_or(0);
@@ -155,21 +155,21 @@ pub fn pop_create_item(gs: &mut GameState, temp: usize, cn: usize) -> usize {
     // Fourth check: Skua uniques (1/150 chance)
     if in_id == 0 && alignment < 0 && helpers::random_mod(150) == 0 {
         in_id = match temp {
-            27 => God::create_item_gs(gs, 280),  // bronze dagger
-            28 => God::create_item_gs(gs, 281),  // steel dagger
-            29 => God::create_item_gs(gs, 282),  // gold dagger
-            30 => God::create_item_gs(gs, 283),  // crystal dagger
-            523 => God::create_item_gs(gs, 525), // titan dagger
-            31 => God::create_item_gs(gs, 284),  // bronze sword
-            32 => God::create_item_gs(gs, 285),  // steel sword
-            33 => God::create_item_gs(gs, 286),  // gold sword
-            34 => God::create_item_gs(gs, 287),  // crystal sword
-            524 => God::create_item_gs(gs, 526), // titan sword
-            35 => God::create_item_gs(gs, 288),  // bronze two
-            36 => God::create_item_gs(gs, 289),  // steel two
-            37 => God::create_item_gs(gs, 290),  // gold two
-            38 => God::create_item_gs(gs, 291),  // crystal two
-            125 => God::create_item_gs(gs, 292), // titan two
+            27 => God::create_item_in_state(gs, 280),  // bronze dagger
+            28 => God::create_item_in_state(gs, 281),  // steel dagger
+            29 => God::create_item_in_state(gs, 282),  // gold dagger
+            30 => God::create_item_in_state(gs, 283),  // crystal dagger
+            523 => God::create_item_in_state(gs, 525), // titan dagger
+            31 => God::create_item_in_state(gs, 284),  // bronze sword
+            32 => God::create_item_in_state(gs, 285),  // steel sword
+            33 => God::create_item_in_state(gs, 286),  // gold sword
+            34 => God::create_item_in_state(gs, 287),  // crystal sword
+            524 => God::create_item_in_state(gs, 526), // titan sword
+            35 => God::create_item_in_state(gs, 288),  // bronze two
+            36 => God::create_item_in_state(gs, 289),  // steel two
+            37 => God::create_item_in_state(gs, 290),  // gold two
+            38 => God::create_item_in_state(gs, 291),  // crystal two
+            125 => God::create_item_in_state(gs, 292), // titan two
             _ => None,
         }
         .unwrap_or(0);
@@ -177,7 +177,7 @@ pub fn pop_create_item(gs: &mut GameState, temp: usize, cn: usize) -> usize {
 
     // Default: create item from template
     if in_id == 0 {
-        in_id = God::create_item_gs(gs, temp).unwrap_or(0);
+        in_id = God::create_item_in_state(gs, temp).unwrap_or(0);
 
         // Apply item damage for regular items
         if in_id != 0 {
@@ -278,7 +278,7 @@ pub fn pop_create_bonus(gs: &mut GameState, cn: usize, _chance: i32) -> i32 {
         }
     };
 
-    let in_id = God::create_item_gs(gs, template);
+    let in_id = God::create_item_in_state(gs, template);
 
     if let Some(in_id) = in_id {
         let char_name = gs.characters[cn].get_name().to_string();
@@ -311,7 +311,7 @@ pub fn pop_create_bonus_belt(gs: &mut GameState, cn: usize) -> i32 {
         return 0;
     }
 
-    let in_id = God::create_item_gs(gs, 1106); // Rainbow belt template
+    let in_id = God::create_item_in_state(gs, 1106); // Rainbow belt template
     if in_id.is_none() {
         return 0;
     }
@@ -737,7 +737,7 @@ pub fn pop_create_char(gs: &mut GameState, template_id: usize, drop: bool) -> Op
             continue;
         }
 
-        let tmp_instance = God::create_item_gs(gs, tmp_template as usize).unwrap_or(0);
+        let tmp_instance = God::create_item_in_state(gs, tmp_template as usize).unwrap_or(0);
         if tmp_instance == 0 {
             flag = true;
             gs.characters[cn].item[m] = 0;
@@ -774,7 +774,7 @@ pub fn pop_create_char(gs: &mut GameState, template_id: usize, drop: bool) -> Op
     // Create carried item (citem) from template.
     let tmp_template = gs.characters[cn].citem;
     if tmp_template != 0 {
-        let tmp_instance = God::create_item_gs(gs, tmp_template as usize).unwrap_or(0);
+        let tmp_instance = God::create_item_in_state(gs, tmp_template as usize).unwrap_or(0);
         if tmp_instance == 0 {
             flag = true;
             gs.characters[cn].citem = 0;
@@ -787,7 +787,7 @@ pub fn pop_create_char(gs: &mut GameState, template_id: usize, drop: bool) -> Op
 
     // Roll back if any item creation failed.
     if flag {
-        God::destroy_items_gs(gs, cn);
+        God::destroy_items_in_state(gs, cn);
         gs.characters[cn].used = USE_EMPTY;
         return None;
     }
@@ -869,9 +869,9 @@ pub fn pop_create_char(gs: &mut GameState, template_id: usize, drop: bool) -> Op
             (ch.x, ch.y)
         };
 
-        if x < 0 || y < 0 || !God::drop_char_gs(gs, cn, x as usize, y as usize) {
+        if x < 0 || y < 0 || !God::drop_char_in_state(gs, cn, x as usize, y as usize) {
             log::error!("Could not drop char template {}", template_id);
-            God::destroy_items_gs(gs, cn);
+            God::destroy_items_in_state(gs, cn);
             gs.characters[cn].used = USE_EMPTY;
             return None;
         }

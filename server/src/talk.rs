@@ -2220,13 +2220,15 @@ pub fn answer_attack(gs: &mut GameState, cn: usize, co: usize, text: &str) {
 
         let target_name = gs.characters[best_target].get_name().to_string();
 
+        let target_id = helpers::char_id(&gs.characters[best_target]) as usize;
+
         {
             let characters_mut = &mut gs.characters;
             if best_target <= u16::MAX as usize {
                 characters_mut[cn].attack_cn = best_target as u16;
             }
 
-            let idx = best_target | (helpers::char_id(best_target) as usize) << 16;
+            let idx = best_target | (target_id << 16);
             characters_mut[cn].data[80] = idx as i32;
             characters_mut[cn].data[80] = best_target as i32;
         }
