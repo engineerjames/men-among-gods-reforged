@@ -1684,7 +1684,7 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> i32 {
     {
         let co = Repository::with_characters(|characters| characters[cn].data[69] as usize);
         if Repository::with_characters(|characters| characters[cn].attack_cn) == 0 && co != 0 {
-            if driver::follow_driver(cn, co) {
+            if driver::follow_driver(gs, cn, co) {
                 let (cn_x, cn_y, co_y) = Repository::with_characters(|characters| {
                     (characters[cn].x, characters[cn].y, characters[co].y)
                 });

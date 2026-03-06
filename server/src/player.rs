@@ -1257,7 +1257,7 @@ pub fn player_driver_med_gs(gs: &mut GameState, cn: usize) {
 
     let co = gs.characters[cn].data[10];
     if co != 0 {
-        driver::follow_driver(cn, co as usize);
+        driver::follow_driver(gs, cn, co as usize);
     }
 }
 
@@ -1645,19 +1645,19 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
     );
 
     if stunned != 0 {
-        driver::act_idle(cn);
+        driver::act_idle(gs, cn);
         return;
     }
 
     if flags & CharacterFlags::Stoned.bits() != 0 {
-        driver::act_idle(cn);
+        driver::act_idle(gs, cn);
         return;
     }
 
     match status {
         // idle states: call idle and driver
         0..=7 => {
-            driver::act_idle(cn);
+            driver::act_idle(gs, cn);
             plr_doact(gs, cn);
         }
 
