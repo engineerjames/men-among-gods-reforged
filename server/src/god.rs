@@ -2711,8 +2711,9 @@ impl God {
             created[idx] = item_id;
 
             // Apply the same logic as helpers::create_special_item, but deterministically based on args.
-            Repository::with_items_mut(|items| {
-                let item = &mut items[item_id];
+            {
+                let gs = Repository::global_mut();
+                let item = &mut gs.items[item_id];
 
                 // Match C: the resulting item should not be linked to its original template.
                 item.temp = 0;
@@ -2785,7 +2786,7 @@ impl God {
 
                 helpers::write_c_string(&mut item.reference, &combined);
                 helpers::write_c_string(&mut item.description, &format!("A {}.", combined));
-            });
+            }
         }
 
         // Deliver both items (and roll back cleanly if we can't give the full pair).
@@ -4056,12 +4057,13 @@ impl God {
         if !Self::drop_item_fuzzy(item_id, x, y) {
             // If drop fails, destroy the item. Clear carried field to prevent
             // stale references (though drop_item_fuzzy should have already done this).
-            Repository::with_items_mut(|items| {
-                items[item_id].carried = 0;
-                items[item_id].x = 0;
-                items[item_id].y = 0;
-                items[item_id].used = core::constants::USE_EMPTY;
-            });
+            {
+                let gs = Repository::global_mut();
+                gs.items[item_id].carried = 0;
+                gs.items[item_id].x = 0;
+                gs.items[item_id].y = 0;
+                gs.items[item_id].used = core::constants::USE_EMPTY;
+            }
         }
     }
 
@@ -4250,144 +4252,143 @@ impl God {
             return;
         }
 
-        Repository::with_character_templates(|templates| {
-            let template = &templates[temp as usize];
+        let template = Repository::global_mut().character_templates[temp as usize];
 
-            if template.used == core::constants::USE_EMPTY {
-                Repository::global_mut().do_character_log(
-                    co,
-                    core::types::FontColor::Red,
-                    &format!("Template {} is not in use\n", temp),
-                );
-                log::error!("Template {} is not in use", temp);
-                return;
+        if template.used == core::constants::USE_EMPTY {
+            Repository::global_mut().do_character_log(
+                co,
+                core::types::FontColor::Red,
+                &format!("Template {} is not in use\n", temp),
+            );
+            log::error!("Template {} is not in use", temp);
+            return;
+        }
+
+        // First destroy all items
+        Self::destroy_items(co);
+
+        {
+            let gs = Repository::global_mut();
+            let character = &mut gs.characters[co];
+
+            // Preserve important data before replacing
+            let old_pass1 = character.pass1;
+            let old_pass2 = character.pass2;
+            let old_gold = character.gold;
+            let old_name = character.name;
+            let old_reference = character.reference;
+            let old_description = character.description;
+            let old_dir = character.dir;
+            let old_creation_date = character.creation_date;
+            let old_login_date = character.login_date;
+            let old_flags = character.flags;
+            let old_kindred = character.kindred;
+            let old_total_online_time = character.total_online_time;
+            let old_current_online_time = character.current_online_time;
+            let old_comp_volume = character.comp_volume;
+            let old_raw_volume = character.raw_volume;
+            let old_idle = character.idle;
+            let old_x = character.x;
+            let old_y = character.y;
+            let old_tox = character.tox;
+            let old_toy = character.toy;
+            let old_frx = character.frx;
+            let old_fry = character.fry;
+            let old_mode = character.mode;
+            let old_player = character.player;
+            let old_luck = character.luck;
+            let old_light = character.light;
+            let old_status = character.status;
+            let old_status2 = character.status2;
+            let old_data = character.data;
+            let old_depot = character.depot;
+
+            // Replace character with template
+            *character = template;
+
+            // Restore preserved fields
+            character.temp = temp as u16;
+            character.pass1 = old_pass1;
+            character.pass2 = old_pass2;
+            character.gold = old_gold;
+            character.name = old_name;
+            character.reference = old_reference;
+            character.description = old_description;
+            character.dir = old_dir;
+
+            // Set temple/tavern to mercenary home by default
+            character.temple_x = 512;
+            character.temple_y = 512;
+            character.tavern_x = 512;
+            character.tavern_y = 512;
+
+            character.creation_date = old_creation_date;
+            character.login_date = old_login_date;
+            character.flags = old_flags;
+
+            // Preserve purple kindred if they had it
+            if (old_kindred & 0x00000001) != 0 {
+                character.kindred |= 0x00000001; // KIN_PURPLE
+                character.temple_x = 558;
+                character.temple_y = 542;
             }
 
-            // First destroy all items
-            Self::destroy_items(co);
+            character.total_online_time = old_total_online_time;
+            character.current_online_time = old_current_online_time;
+            character.comp_volume = old_comp_volume;
+            character.raw_volume = old_raw_volume;
+            character.idle = old_idle;
 
-            Repository::with_characters_mut(|characters| {
-                let character = &mut characters[co];
+            // Set action times to max (full health/mana/endurance)
+            character.a_end = 1000000;
+            character.a_hp = 1000000;
+            character.a_mana = 1000000;
 
-                // Preserve important data before replacing
-                let old_pass1 = character.pass1;
-                let old_pass2 = character.pass2;
-                let old_gold = character.gold;
-                let old_name = character.name;
-                let old_reference = character.reference;
-                let old_description = character.description;
-                let old_dir = character.dir;
-                let old_creation_date = character.creation_date;
-                let old_login_date = character.login_date;
-                let old_flags = character.flags;
-                let old_kindred = character.kindred;
-                let old_total_online_time = character.total_online_time;
-                let old_current_online_time = character.current_online_time;
-                let old_comp_volume = character.comp_volume;
-                let old_raw_volume = character.raw_volume;
-                let old_idle = character.idle;
-                let old_x = character.x;
-                let old_y = character.y;
-                let old_tox = character.tox;
-                let old_toy = character.toy;
-                let old_frx = character.frx;
-                let old_fry = character.fry;
-                let old_mode = character.mode;
-                let old_player = character.player;
-                let old_luck = character.luck;
-                let old_light = character.light;
-                let old_status = character.status;
-                let old_status2 = character.status2;
-                let old_data = character.data;
-                let old_depot = character.depot;
+            // Restore position
+            character.x = old_x;
+            character.y = old_y;
+            character.tox = old_tox;
+            character.toy = old_toy;
+            character.frx = old_frx;
+            character.fry = old_fry;
 
-                // Replace character with template
-                *character = *template;
+            character.mode = old_mode;
+            character.used = core::constants::USE_ACTIVE;
+            character.player = old_player;
+            character.alignment = 0;
+            character.luck = old_luck;
+            character.light = old_light;
+            character.status = old_status;
+            character.status2 = old_status2;
 
-                // Restore preserved fields
-                character.temp = temp as u16;
-                character.pass1 = old_pass1;
-                character.pass2 = old_pass2;
-                character.gold = old_gold;
-                character.name = old_name;
-                character.reference = old_reference;
-                character.description = old_description;
-                character.dir = old_dir;
+            // Clear inventory, worn, and spell arrays (already done by destroy_items)
+            for n in 0..40 {
+                character.item[n] = 0;
+            }
+            for n in 0..20 {
+                character.worn[n] = 0;
+                character.spell[n] = 0;
+            }
 
-                // Set temple/tavern to mercenary home by default
-                character.temple_x = 512;
-                character.temple_y = 512;
-                character.tavern_x = 512;
-                character.tavern_y = 512;
+            // Restore data array but reset specific fields
+            character.data = old_data;
+            character.data[18] = 0; // pentagram experience
+            character.data[20] = 0; // highest gorge solved
+            character.data[21] = 0; // seyan'du sword bits
+            character.data[22] = 0; // arena monster reset
+            character.data[45] = 0; // current rank
 
-                character.creation_date = old_creation_date;
-                character.login_date = old_login_date;
-                character.flags = old_flags;
+            // Restore depot
+            character.depot = old_depot;
 
-                // Preserve purple kindred if they had it
-                if (old_kindred & 0x00000001) != 0 {
-                    character.kindred |= 0x00000001; // KIN_PURPLE
-                    character.temple_x = 558;
-                    character.temple_y = 542;
-                }
+            character.set_do_update_flags();
 
-                character.total_online_time = old_total_online_time;
-                character.current_online_time = old_current_online_time;
-                character.comp_volume = old_comp_volume;
-                character.raw_volume = old_raw_volume;
-                character.idle = old_idle;
-
-                // Set action times to max (full health/mana/endurance)
-                character.a_end = 1000000;
-                character.a_hp = 1000000;
-                character.a_mana = 1000000;
-
-                // Restore position
-                character.x = old_x;
-                character.y = old_y;
-                character.tox = old_tox;
-                character.toy = old_toy;
-                character.frx = old_frx;
-                character.fry = old_fry;
-
-                character.mode = old_mode;
-                character.used = core::constants::USE_ACTIVE;
-                character.player = old_player;
-                character.alignment = 0;
-                character.luck = old_luck;
-                character.light = old_light;
-                character.status = old_status;
-                character.status2 = old_status2;
-
-                // Clear inventory, worn, and spell arrays (already done by destroy_items)
-                for n in 0..40 {
-                    character.item[n] = 0;
-                }
-                for n in 0..20 {
-                    character.worn[n] = 0;
-                    character.spell[n] = 0;
-                }
-
-                // Restore data array but reset specific fields
-                character.data = old_data;
-                character.data[18] = 0; // pentagram experience
-                character.data[20] = 0; // highest gorge solved
-                character.data[21] = 0; // seyan'du sword bits
-                character.data[22] = 0; // arena monster reset
-                character.data[45] = 0; // current rank
-
-                // Restore depot
-                character.depot = old_depot;
-
-                character.set_do_update_flags();
-
-                log::info!(
-                    "Changed race of character {} to template {}",
-                    character.get_name(),
-                    temp
-                );
-            });
-        });
+            log::info!(
+                "Changed race of character {} to template {}",
+                character.get_name(),
+                temp
+            );
+        }
 
         Repository::global_mut().do_update_char(co);
     }

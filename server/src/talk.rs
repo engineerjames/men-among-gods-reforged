@@ -1915,8 +1915,18 @@ pub fn obey(cn: usize, co: usize) -> i32 {
 }
 
 /// Transitional Phase-3 entry point for obedience checks with GameState in signature.
-pub fn obey_gs(_gs: &mut GameState, cn: usize, co: usize) -> i32 {
-    obey(cn, co)
+pub fn obey_gs(gs: &mut GameState, cn: usize, co: usize) -> i32 {
+    // Check if co is the companion master (data[63])
+    if gs.characters[cn].data[63] == co as i32 {
+        return 1;
+    }
+    // Check kindred and obedience flags (data[26] & data[28])
+    if (gs.characters[cn].data[26] & gs.characters[co].kindred) != 0
+        && (gs.characters[cn].data[28] & 1) != 0
+    {
+        return 2;
+    }
+    0
 }
 
 /// Port of `answer_spellinfo(int cn, int co)` from `talk.cpp`
