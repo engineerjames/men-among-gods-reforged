@@ -15,25 +15,55 @@ use crate::{
 pub struct God {}
 impl God {
     /// Transitional Phase-3 entry point for taking an item from a character.
-    pub fn take_from_char_gs(_gs: &mut GameState, item_id: usize, cn: usize) -> bool {
-        Self::take_from_char(item_id, cn)
+    pub fn take_from_char_gs(gs: &mut GameState, item_id: usize, cn: usize) -> bool {
+        Self::take_from_char_impl(gs, item_id, cn)
     }
 
     /// Transitional Phase-3 entry point for destroying a character's carried/worn items.
-    pub fn destroy_items_gs(_gs: &mut GameState, char_id: usize) {
-        Self::destroy_items(char_id)
+    pub fn destroy_items_gs(gs: &mut GameState, char_id: usize) {
+        Self::destroy_items_impl(gs, char_id)
     }
 
     /// Transitional Phase-3 entry point for fuzzy large character drop.
     pub fn drop_char_fuzzy_large_gs(
-        _gs: &mut GameState,
+        gs: &mut GameState,
         character_id: usize,
         x: usize,
         y: usize,
         backup_x: usize,
         backup_y: usize,
     ) -> bool {
-        Self::drop_char_fuzzy_large(character_id, x, y, backup_x, backup_y)
+        Self::drop_char_fuzzy_large_impl(gs, character_id, x, y, backup_x, backup_y)
+    }
+
+    /// Transitional Phase-3 entry point for creating an item from a template.
+    pub fn create_item_gs(gs: &mut GameState, template_id: usize) -> Option<usize> {
+        Self::create_item_impl(gs, template_id)
+    }
+
+    /// Transitional Phase-3 entry point for giving an item to a character.
+    pub fn give_character_item_gs(gs: &mut GameState, character_id: usize, item_id: usize) -> bool {
+        Self::give_character_item_impl(gs, character_id, item_id)
+    }
+
+    /// Transitional Phase-3 entry point for build mode state changes.
+    pub fn build_gs(gs: &mut GameState, character_id: usize, build_type: u32) {
+        Self::build_impl(gs, character_id, build_type)
+    }
+
+    /// Transitional Phase-3 entry point for build-mode inventory population.
+    pub fn build_equip_gs(gs: &mut GameState, character_id: usize, build_type: u32) {
+        Self::build_equip_impl(gs, character_id, build_type)
+    }
+
+    /// Transitional Phase-3 entry point for starting build mode.
+    pub fn build_start_gs(gs: &mut GameState, character_id: usize) -> bool {
+        Self::build_start_impl(gs, character_id)
+    }
+
+    /// Transitional Phase-3 entry point for stopping build mode.
+    pub fn build_stop_gs(gs: &mut GameState, character_id: usize) {
+        Self::build_stop_impl(gs, character_id)
     }
 
     /// Port of `create_item(int template_id)` from `svr_god.cpp`.
@@ -45,11 +75,15 @@ impl God {
     /// # Arguments
     /// * `template_id` - Item template identifier
     pub fn create_item(template_id: usize) -> Option<usize> {
+        Self::create_item_impl(Repository::global_mut(), template_id)
+    }
+
+    fn create_item_impl(gs: &mut GameState, template_id: usize) -> Option<usize> {
         if !core::types::Item::is_sane_item_template(template_id) {
             return None;
         }
 
-        if Repository::global_mut().item_templates[template_id].used == core::constants::USE_EMPTY {
+        if gs.item_templates[template_id].used == core::constants::USE_EMPTY {
             log::error!(
                 "Attempted to create item with an unused template ID: {}",
                 template_id
@@ -57,9 +91,9 @@ impl God {
             return None;
         }
 
-        if Repository::global_mut().item_templates[template_id].is_unique() {
+        if gs.item_templates[template_id].is_unique() {
             // Check if the unique item already exists
-            for item in Repository::global_mut().items.iter() {
+            for item in gs.items.iter() {
                 if item.used != core::constants::USE_EMPTY && item.temp as usize == template_id {
                     log::error!(
                         "Attempted to create unique item with template ID {} but it already exists.",
@@ -70,17 +104,14 @@ impl God {
             }
         }
 
-        let free_item_id = Self::get_free_item().unwrap_or_else(|| {
+        let free_item_id = Self::get_free_item_impl(gs).unwrap_or_else(|| {
             log::error!("No free item slots available to create new item.");
             0
         });
 
-        {
-            let gs = Repository::global_mut();
-            let template_copy = gs.item_templates[template_id];
-            gs.items[free_item_id] = template_copy;
-            gs.items[free_item_id].temp = template_id as u16;
-        }
+        let template_copy = gs.item_templates[template_id];
+        gs.items[free_item_id] = template_copy;
+        gs.items[free_item_id].temp = template_id as u16;
 
         Some(free_item_id)
     }
@@ -90,46 +121,46 @@ impl God {
     ///
     /// Returns `Some(index)` when a free slot is found, otherwise `None`.
     fn get_free_item() -> Option<usize> {
+        Self::get_free_item_impl(Repository::global_mut())
+    }
+
+    fn get_free_item_impl(gs: &mut GameState) -> Option<usize> {
         for item_id in 1..core::constants::MAXITEM {
-            if Repository::global_mut().items[item_id].used != core::constants::USE_EMPTY {
+            if gs.items[item_id].used != core::constants::USE_EMPTY {
                 continue;
             }
 
             // Safety net: if an item was destroyed but left referenced by a character,
             // reusing this slot would make the client briefly show it as a different
             // template before server-side validity checks clear it.
-            let carried = Repository::global_mut().items[item_id].carried as usize;
+            let carried = gs.items[item_id].carried as usize;
             if carried != 0 {
                 if Character::is_sane_character(carried) {
-                    {
-                        let gs = Repository::global_mut();
-                        let ch = &mut gs.characters[carried];
-                        if ch.citem as usize == item_id {
-                            ch.citem = 0;
-                        }
-                        for slot in 0..40 {
-                            if ch.item[slot] as usize == item_id {
-                                ch.item[slot] = 0;
-                            }
-                        }
-                        for slot in 0..20 {
-                            if ch.worn[slot] as usize == item_id {
-                                ch.worn[slot] = 0;
-                            }
-                            if ch.spell[slot] as usize == item_id {
-                                ch.spell[slot] = 0;
-                            }
-                        }
-                        for slot in 0..62 {
-                            if ch.depot[slot] as usize == item_id {
-                                ch.depot[slot] = 0;
-                            }
-                        }
-                        ch.set_do_update_flags();
+                    let ch = &mut gs.characters[carried];
+                    if ch.citem as usize == item_id {
+                        ch.citem = 0;
                     }
+                    for slot in 0..40 {
+                        if ch.item[slot] as usize == item_id {
+                            ch.item[slot] = 0;
+                        }
+                    }
+                    for slot in 0..20 {
+                        if ch.worn[slot] as usize == item_id {
+                            ch.worn[slot] = 0;
+                        }
+                        if ch.spell[slot] as usize == item_id {
+                            ch.spell[slot] = 0;
+                        }
+                    }
+                    for slot in 0..62 {
+                        if ch.depot[slot] as usize == item_id {
+                            ch.depot[slot] = 0;
+                        }
+                    }
+                    ch.set_do_update_flags();
                 }
 
-                let gs = Repository::global_mut();
                 gs.items[item_id].carried = 0;
                 gs.items[item_id].x = 0;
                 gs.items[item_id].y = 0;
@@ -151,18 +182,22 @@ impl God {
     /// * `character_id` - Recipient character index
     /// * `item_id` - Item index to give
     pub fn give_character_item(character_id: usize, item_id: usize) -> bool {
+        Self::give_character_item_impl(Repository::global_mut(), character_id, item_id)
+    }
+
+    fn give_character_item_impl(gs: &mut GameState, character_id: usize, item_id: usize) -> bool {
         if !core::types::Item::is_sane_item(item_id) {
             log::error!("Invalid item ID {} when giving item.", item_id);
             return false;
         }
 
-        if !Repository::global_mut().characters[character_id].is_living_character(character_id) {
+        if !gs.characters[character_id].is_living_character(character_id) {
             log::error!("Invalid character ID {} when giving item.", character_id);
             return false;
         }
 
         let (old_x, old_y, old_carried, old_active, old_light_inactive, old_light_active) = {
-            let item = &Repository::global_mut().items[item_id];
+            let item = &gs.items[item_id];
             (
                 item.x,
                 item.y,
@@ -180,7 +215,7 @@ impl God {
             let map_index =
                 (old_x as usize) + (old_y as usize) * core::constants::SERVER_MAPX as usize;
 
-            let map_it = Repository::global_mut().map[map_index].it;
+            let map_it = gs.map[map_index].it;
             if map_it == item_id as u32 {
                 let light_value = if old_active != 0 {
                     old_light_active
@@ -189,33 +224,23 @@ impl God {
                 };
 
                 if light_value != 0 {
-                    Repository::global_mut().do_add_light(
-                        old_x as i32,
-                        old_y as i32,
-                        -(light_value as i32),
-                    );
+                    gs.do_add_light(old_x as i32, old_y as i32, -(light_value as i32));
                 }
 
-                Repository::global_mut().map[map_index].it = 0;
+                gs.map[map_index].it = 0;
             }
         }
 
-        let (item_name, char_name) = {
-            let gs = Repository::global_mut();
-            (
-                gs.items[item_id].get_name().to_string(),
-                gs.characters[character_id].get_name().to_string(),
-            )
-        };
+        let item_name = gs.items[item_id].get_name().to_string();
+        let char_name = gs.characters[character_id].get_name().to_string();
         log::debug!(
             "Attempting to give item '{}' to character '{}'",
             item_name,
             char_name,
         );
 
-        let slot = Repository::global_mut().characters[character_id].get_next_inventory_slot();
+        let slot = gs.characters[character_id].get_next_inventory_slot();
         if let Some(slot) = slot {
-            let gs = Repository::global_mut();
             gs.characters[character_id].item[slot] = item_id as u32;
             gs.items[item_id].x = 0;
             gs.items[item_id].y = 0;
@@ -241,20 +266,22 @@ impl God {
     /// * `character_id` - Character index
     /// * `build_type` - Build action selector
     pub fn build(character_id: usize, build_type: u32) {
-        let character_is_building = Repository::global_mut().characters[character_id].is_building();
-        let name = Repository::global_mut().characters[character_id]
-            .get_name()
-            .to_string();
+        Self::build_impl(Repository::global_mut(), character_id, build_type)
+    }
+
+    fn build_impl(gs: &mut GameState, character_id: usize, build_type: u32) {
+        let character_is_building = gs.characters[character_id].is_building();
+        let name = gs.characters[character_id].get_name().to_string();
         if !character_is_building {
-            if Self::build_start(character_id) {
-                Self::build_equip(character_id, build_type);
+            if Self::build_start_impl(gs, character_id) {
+                Self::build_equip_impl(gs, character_id, build_type);
             } else {
                 log::error!("Failed to start build mode for character {}", name);
             }
         } else if build_type != 0 {
-            Self::build_stop(character_id);
+            Self::build_stop_impl(gs, character_id);
         } else {
-            Self::build_equip(character_id, build_type);
+            Self::build_equip_impl(gs, character_id, build_type);
         }
     }
 
@@ -267,10 +294,13 @@ impl God {
     /// * `character_id` - Character index
     /// * `build_type` - Equipment variant
     pub fn build_equip(character_id: usize, build_type: u32) {
-        let gs = Repository::global_mut();
-        let character = &mut gs.characters[character_id];
+        Self::build_equip_impl(Repository::global_mut(), character_id, build_type)
+    }
+
+    fn build_equip_impl(gs: &mut GameState, character_id: usize, build_type: u32) {
         let mut m = 0;
-        {
+        let char_name = {
+            let character = &mut gs.characters[character_id];
             match build_type {
                 0 => {
                     // Map flags
@@ -528,37 +558,38 @@ impl God {
                 }
                 _ => {}
             }
-        }
-        // Fill inventory with other stuff upward from last item
-        for n in build_type as usize..core::constants::MAXTITEM {
-            if m >= 40 {
-                break;
+            // Fill inventory with other stuff upward from last item
+            for n in build_type as usize..core::constants::MAXTITEM {
+                if m >= 40 {
+                    break;
+                }
+
+                if gs.item_templates[n].used == core::constants::USE_EMPTY {
+                    continue;
+                }
+
+                if gs.item_templates[n].flags & core::constants::ItemFlags::IF_TAKE.bits() != 0 {
+                    continue;
+                }
+
+                if gs.item_templates[n].driver == 25 && gs.item_templates[n].data[3] == 0 {
+                    continue;
+                }
+
+                if gs.item_templates[n].driver == 22 {
+                    continue;
+                }
+
+                character.item[m] = n as u32;
+                m += 1;
             }
 
-            if gs.item_templates[n].used == core::constants::USE_EMPTY {
-                continue;
-            }
+            character.get_name().to_string()
+        };
 
-            if gs.item_templates[n].flags & core::constants::ItemFlags::IF_TAKE.bits() != 0 {
-                continue;
-            }
-
-            if gs.item_templates[n].driver == 25 && gs.item_templates[n].data[3] == 0 {
-                continue;
-            }
-
-            if gs.item_templates[n].driver == 22 {
-                continue;
-            }
-
-            character.item[m] = n as u32;
-            m += 1;
-        }
-
-        let char_name = character.get_name().to_string();
         log::info!("Build mode {} set for character {}", build_type, char_name);
 
-        Repository::global_mut().do_character_log(
+        gs.do_character_log(
             character_id,
             core::types::FontColor::Blue,
             "You are now in build mode. To exit, use the build command again.\n",
@@ -573,8 +604,12 @@ impl God {
     /// # Arguments
     /// * `character_id` - Character entering build mode
     pub fn build_start(character_id: usize) -> bool {
+        Self::build_start_impl(Repository::global_mut(), character_id)
+    }
+
+    fn build_start_impl(gs: &mut GameState, character_id: usize) -> bool {
         let companion = {
-            let character = &Repository::global_mut().characters[character_id];
+            let character = &gs.characters[character_id];
             if character.data[core::constants::CHD_COMPANION] != 0 {
                 Some(character.data[core::constants::CHD_COMPANION] as usize)
             } else {
@@ -583,10 +618,8 @@ impl God {
         };
 
         if let Some(companion_id) = companion {
-            let companion_name = Repository::global_mut().characters[companion_id]
-                .get_name()
-                .to_string();
-            Repository::global_mut().do_character_log(
+            let companion_name = gs.characters[companion_id].get_name().to_string();
+            gs.do_character_log(
                 character_id,
                 core::types::FontColor::Red,
                 &format!("Get rid of your companion '{}' first.\n", companion_name),
@@ -595,10 +628,10 @@ impl God {
             return false;
         }
 
-        let character_id_to_hold_inventory = Self::create_char(1, false);
+        let character_id_to_hold_inventory = Self::create_char_impl(gs, 1, false);
 
         if character_id_to_hold_inventory.is_none() {
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 character_id,
                 core::types::FontColor::Red,
                 "Failed to create temporary character to hold your items for build mode.\n",
@@ -612,22 +645,20 @@ impl God {
 
         let holder_id = character_id_to_hold_inventory.unwrap() as usize;
         for i in 0..40 {
-            let item_id = Repository::global_mut().characters[character_id].item[i] as usize;
+            let item_id = gs.characters[character_id].item[i] as usize;
             if item_id != 0 {
-                Repository::global_mut().characters[character_id].item[i] = 0;
-                Repository::global_mut().characters[holder_id].item[i] = item_id as u32;
-                Repository::global_mut().items[item_id].carried = holder_id as u16;
+                gs.characters[character_id].item[i] = 0;
+                gs.characters[holder_id].item[i] = item_id as u32;
+                gs.items[item_id].carried = holder_id as u16;
             }
         }
-        let citem = Repository::global_mut().characters[character_id].citem;
-        Repository::global_mut().characters[holder_id].citem = citem;
-        Repository::global_mut().characters[character_id].citem = 0;
+        let citem = gs.characters[character_id].citem;
+        gs.characters[holder_id].citem = citem;
+        gs.characters[character_id].citem = 0;
 
         // TODO: This function looks very ugly... refactor later
         let holder_name = {
-            let char_name = Repository::global_mut().characters[character_id]
-                .get_name()
-                .to_string();
+            let char_name = gs.characters[character_id].get_name().to_string();
             format!("{}'s holder", char_name)
                 .bytes()
                 .take(40)
@@ -635,12 +666,12 @@ impl God {
                 .try_into()
                 .unwrap_or([0; 40])
         };
-        Repository::global_mut().characters[holder_id].name = holder_name;
+        gs.characters[holder_id].name = holder_name;
 
-        Self::drop_char(holder_id, 10, 10);
+        Self::drop_char_impl(gs, holder_id, 10, 10);
 
-        Repository::global_mut().characters[character_id].flags |= CharacterFlags::BuildMode.bits();
-        Repository::global_mut().characters[character_id].set_do_update_flags();
+        gs.characters[character_id].flags |= CharacterFlags::BuildMode.bits();
+        gs.characters[character_id].set_do_update_flags();
         true
     }
 
@@ -651,6 +682,10 @@ impl God {
     /// # Arguments
     /// * `character_id` - Character exiting build mode
     pub fn build_stop(character_id: usize) {
+        Self::build_stop_impl(Repository::global_mut(), character_id)
+    }
+
+    fn build_stop_impl(gs: &mut GameState, character_id: usize) {
         if !core::types::Character::is_sane_character(character_id) {
             log::error!("Invalid character ID {} in build_stop", character_id);
             return;
@@ -658,7 +693,6 @@ impl God {
 
         // Empty builder's inventory
         {
-            let gs = Repository::global_mut();
             let character = &mut gs.characters[character_id];
             for n in 0..40 {
                 character.item[n] = 0;
@@ -669,15 +703,15 @@ impl God {
             let char_name = character.get_name().to_string();
             log::info!("Character {} now out of build mode", char_name);
         }
-        Repository::global_mut().do_character_log(
+        gs.do_character_log(
             character_id,
             core::types::FontColor::Blue,
             "You are now out of build mode.\n",
         );
 
         // Retrieve inventory from item holder
-        let companion_id = Repository::global_mut().characters[character_id].data
-            [core::constants::CHD_COMPANION] as usize;
+        let companion_id =
+            gs.characters[character_id].data[core::constants::CHD_COMPANION] as usize;
 
         if companion_id == 0 {
             log::error!(
@@ -685,7 +719,7 @@ impl God {
                 character_id
             );
 
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 character_id,
                 core::types::FontColor::Red,
                 "Could not find your item holder!\n",
@@ -696,7 +730,6 @@ impl God {
         let mut items_to_transfer = Vec::new();
         let companion_citem;
         {
-            let gs = Repository::global_mut();
             let companion = &mut gs.characters[companion_id];
             for n in 0..40 {
                 items_to_transfer.push((n, companion.item[n]));
@@ -706,28 +739,27 @@ impl God {
             companion.citem = 0;
         }
         player::plr_map_remove(companion_id);
-        Repository::global_mut().characters[companion_id].used = core::constants::USE_EMPTY;
-        Repository::global_mut().characters[character_id].data[core::constants::CHD_COMPANION] = 0;
+        gs.characters[companion_id].used = core::constants::USE_EMPTY;
+        gs.characters[character_id].data[core::constants::CHD_COMPANION] = 0;
 
         // Transfer inventory from companion to builder
         for (n, item_id) in items_to_transfer {
             if item_id != 0 {
-                Repository::global_mut().characters[character_id].item[n] = item_id;
+                gs.characters[character_id].item[n] = item_id;
                 if core::types::Item::is_sane_item(item_id as usize) {
-                    Repository::global_mut().items[item_id as usize].carried = character_id as u16;
+                    gs.items[item_id as usize].carried = character_id as u16;
                 }
             }
         }
 
         // Transfer citem from companion to builder
-        Repository::global_mut().characters[character_id].citem = companion_citem;
+        gs.characters[character_id].citem = companion_citem;
         if companion_citem != 0 {
             if core::types::Item::is_sane_item(companion_citem as usize) {
-                Repository::global_mut().items[companion_citem as usize].carried =
-                    character_id as u16;
+                gs.items[companion_citem as usize].carried = character_id as u16;
             }
         }
-        Repository::global_mut().characters[character_id].set_do_update_flags();
+        gs.characters[character_id].set_do_update_flags();
     }
 
     /// Transfer a character to exact coordinates `(x, y)` if possible.
@@ -739,6 +771,10 @@ impl God {
     /// * `character_id` - Character index
     /// * `x`, `y` - Target coordinates
     pub fn transfer_char(character_id: usize, x: usize, y: usize) -> bool {
+        Self::transfer_char_impl(Repository::global_mut(), character_id, x, y)
+    }
+
+    fn transfer_char_impl(gs: &mut GameState, character_id: usize, x: usize, y: usize) -> bool {
         if !Character::is_sane_character(character_id) || !Map::is_sane_coordinates(x, y) {
             log::error!(
                 "Invalid character ID {} or coordinates ({}, {}) in transfer_char",
@@ -749,21 +785,18 @@ impl God {
             return false;
         }
 
-        {
-            let gs = Repository::global_mut();
-            let character = &mut gs.characters[character_id];
-            character.status = 0;
-            character.attack_cn = 0;
-            character.skill_nr = 0;
-            character.goto_x = x as u16;
-            character.goto_y = y as u16; // TODO: This was missing before... should this be here?
-        }
+        let character = &mut gs.characters[character_id];
+        character.status = 0;
+        character.attack_cn = 0;
+        character.skill_nr = 0;
+        character.goto_x = x as u16;
+        character.goto_y = y as u16; // TODO: This was missing before... should this be here?
 
         let positions_to_try: [(usize, usize); 5] =
             [(x, y), (x + 3, y), (x, y + 3), (x - 3, y), (x, y - 3)];
 
         for (try_x, try_y) in positions_to_try.iter() {
-            if Self::drop_char_fuzzy_large(character_id, *try_x, *try_y, x, y) {
+            if Self::drop_char_fuzzy_large_impl(gs, character_id, *try_x, *try_y, x, y) {
                 return true;
             }
         }
@@ -779,6 +812,10 @@ impl God {
     /// * `character_id` - Character to place
     /// * `x`, `y` - Central coordinates
     pub fn drop_char_fuzzy(character_id: usize, x: usize, y: usize) -> bool {
+        Self::drop_char_fuzzy_impl(Repository::global_mut(), character_id, x, y)
+    }
+
+    fn drop_char_fuzzy_impl(gs: &mut GameState, character_id: usize, x: usize, y: usize) -> bool {
         let positions_to_try: [(usize, usize); 25] = [
             (x, y),
             (x + 1, y),
@@ -808,13 +845,9 @@ impl God {
         ];
 
         for (try_x, try_y) in positions_to_try.iter() {
-            let early_return = Repository::global_mut().can_go(
-                *try_x as i32,
-                *try_y as i32,
-                *try_x as i32,
-                *try_y as i32,
-            ) != 0
-                && Self::drop_char(character_id, *try_x, *try_y);
+            let early_return =
+                gs.can_go(*try_x as i32, *try_y as i32, *try_x as i32, *try_y as i32) != 0
+                    && Self::drop_char_impl(gs, character_id, *try_x, *try_y);
 
             if early_return {
                 return true;
@@ -833,6 +866,24 @@ impl God {
     /// * `x`, `y` - Desired coordinates
     /// * `center_x`, `center_y` - Center for the larger search pattern
     pub fn drop_char_fuzzy_large(
+        character_id: usize,
+        x: usize,
+        y: usize,
+        center_x: usize,
+        center_y: usize,
+    ) -> bool {
+        Self::drop_char_fuzzy_large_impl(
+            Repository::global_mut(),
+            character_id,
+            x,
+            y,
+            center_x,
+            center_y,
+        )
+    }
+
+    fn drop_char_fuzzy_large_impl(
+        gs: &mut GameState,
         character_id: usize,
         x: usize,
         y: usize,
@@ -870,13 +921,13 @@ impl God {
 
         for (try_x, try_y) in positions_to_try.iter() {
             // Also check can_map_go here
-            let early_return = Repository::global_mut().can_go(
+            let early_return = gs.can_go(
                 center_x as i32,
                 center_y as i32,
                 *try_x as i32,
                 *try_y as i32,
             ) != 0
-                && Self::drop_char(character_id, *try_x, *try_y);
+                && Self::drop_char_impl(gs, character_id, *try_x, *try_y);
 
             if early_return {
                 return true;
@@ -895,8 +946,12 @@ impl God {
     /// * `template_id` - Template identifier
     /// * `with_items` - Whether to populate starting items
     pub fn create_char(template_id: usize, with_items: bool) -> Option<i32> {
+        Self::create_char_impl(Repository::global_mut(), template_id, with_items)
+    }
+
+    fn create_char_impl(gs: &mut GameState, template_id: usize, with_items: bool) -> Option<i32> {
         let unused_index = (1..core::constants::MAXCHARS)
-            .find(|&i| Repository::global_mut().characters[i].used == core::constants::USE_EMPTY);
+            .find(|&i| gs.characters[i].used == core::constants::USE_EMPTY);
 
         let char_index = match unused_index {
             Some(index) => index,
@@ -907,42 +962,34 @@ impl God {
         };
 
         // Copy template into character slot
-        {
-            let gs = Repository::global_mut();
-            let template_copy = gs.character_templates[template_id];
-            gs.characters[char_index] = template_copy;
-        }
+        let template_copy = gs.character_templates[template_id];
+        gs.characters[char_index] = template_copy;
 
         // Templates can carry runtime fields like `player`; never inherit a player binding.
-        Repository::global_mut().characters[char_index].player = 0;
-        Repository::global_mut().characters[char_index].pass1 =
-            crate::helpers::random_mod(0x3fffffff);
-        Repository::global_mut().characters[char_index].pass2 =
-            crate::helpers::random_mod(0x3fffffff);
-        Repository::global_mut().characters[char_index].temp = template_id as u16;
+        gs.characters[char_index].player = 0;
+        gs.characters[char_index].pass1 = crate::helpers::random_mod(0x3fffffff);
+        gs.characters[char_index].pass2 = crate::helpers::random_mod(0x3fffffff);
+        gs.characters[char_index].temp = template_id as u16;
 
         loop {
             log::info!("Generating random name for new character...");
             let potential_new_name = core::names::randomly_generate_name();
 
-            let name_exists = Repository::global_mut()
-                .characters
-                .iter()
-                .any(|existing_char| {
-                    existing_char.used != core::constants::USE_EMPTY
-                        && existing_char
-                            .get_name()
-                            .eq_ignore_ascii_case(&potential_new_name)
-                });
+            let name_exists = gs.characters.iter().any(|existing_char| {
+                existing_char.used != core::constants::USE_EMPTY
+                    && existing_char
+                        .get_name()
+                        .eq_ignore_ascii_case(&potential_new_name)
+            });
             if !name_exists {
                 let mut name_arr = [0u8; 40];
                 let name_bytes = potential_new_name.as_bytes();
                 let copy_len = name_bytes.len().min(40);
                 name_arr[..copy_len].copy_from_slice(&name_bytes[..copy_len]);
-                Repository::global_mut().characters[char_index].name = name_arr;
+                gs.characters[char_index].name = name_arr;
                 log::info!(
                     "Assigned name '{}' to new character (ID {})",
-                    Repository::global_mut().characters[char_index].get_name(),
+                    gs.characters[char_index].get_name(),
                     char_index
                 );
                 break;
@@ -954,43 +1001,40 @@ impl God {
             );
         }
 
-        {
-            let gs = Repository::global_mut();
-            let character = &mut gs.characters[char_index];
-            character.reference = character.name;
-            character.description = character
-                .get_default_description()
-                .as_bytes()
-                .iter()
-                .take(200)
-                .copied()
-                .collect::<Vec<u8>>()
-                .try_into()
-                .unwrap_or([0; 200]); // TODO: Is this really the right way to do this?
+        let character = &mut gs.characters[char_index];
+        character.reference = character.name;
+        character.description = character
+            .get_default_description()
+            .as_bytes()
+            .iter()
+            .take(200)
+            .copied()
+            .collect::<Vec<u8>>()
+            .try_into()
+            .unwrap_or([0; 200]); // TODO: Is this really the right way to do this?
 
-            for i in 0..100_usize {
-                character.data[i] = 0;
-            }
-            character.attack_cn = 0;
-            character.skill_nr = 0;
-            character.goto_x = 0;
-            character.goto_y = 0; // TODO: This was missing before... should this be here?
-            character.use_nr = 0;
-            character.misc_action = 0;
-            character.stunned = 0;
-            character.retry = 0;
-            character.dir = core::constants::DX_DOWN;
+        for i in 0..100_usize {
+            character.data[i] = 0;
         }
+        character.attack_cn = 0;
+        character.skill_nr = 0;
+        character.goto_x = 0;
+        character.goto_y = 0; // TODO: This was missing before... should this be here?
+        character.use_nr = 0;
+        character.misc_action = 0;
+        character.stunned = 0;
+        character.retry = 0;
+        character.dir = core::constants::DX_DOWN;
 
         let mut flag = 0;
         for i in 0..40 {
-            let mut tmp = Repository::global_mut().characters[char_index].item[i];
+            let mut tmp = gs.characters[char_index].item[i];
             if tmp == 0 {
                 continue;
             }
 
             if with_items {
-                tmp = Self::create_item(tmp as usize).unwrap_or(0) as u32;
+                tmp = Self::create_item_impl(gs, tmp as usize).unwrap_or(0) as u32;
                 if tmp == 0 {
                     log::error!(
                         "Failed to create item from template new character ID {}",
@@ -998,27 +1042,24 @@ impl God {
                     );
                     flag = 1;
                 }
-                if tmp != 0
-                    && Repository::global_mut().items[tmp as usize].used
-                        != core::constants::USE_EMPTY
-                {
-                    Repository::global_mut().items[tmp as usize].carried = char_index as u16;
+                if tmp != 0 && gs.items[tmp as usize].used != core::constants::USE_EMPTY {
+                    gs.items[tmp as usize].carried = char_index as u16;
                 }
             } else {
                 tmp = 0;
             }
 
-            Repository::global_mut().characters[char_index].item[i] = tmp;
+            gs.characters[char_index].item[i] = tmp;
         }
 
         for i in 0..20 {
-            let mut tmp_worn = Repository::global_mut().characters[char_index].worn[i];
+            let mut tmp_worn = gs.characters[char_index].worn[i];
             if tmp_worn == 0 {
                 continue;
             }
 
             if with_items {
-                tmp_worn = Self::create_item(tmp_worn as usize).unwrap_or(0) as u32;
+                tmp_worn = Self::create_item_impl(gs, tmp_worn as usize).unwrap_or(0) as u32;
                 if tmp_worn == 0 {
                     log::error!(
                         "Failed to create worn item from template for new character ID {}",
@@ -1027,25 +1068,25 @@ impl God {
                     flag = 1;
                 }
                 if core::types::Item::is_sane_item(tmp_worn as usize) {
-                    Repository::global_mut().items[tmp_worn as usize].carried = char_index as u16;
+                    gs.items[tmp_worn as usize].carried = char_index as u16;
                 }
             } else {
                 tmp_worn = 0;
             }
 
-            Repository::global_mut().characters[char_index].worn[i] = tmp_worn;
+            gs.characters[char_index].worn[i] = tmp_worn;
         }
 
         for i in 0..20 {
-            if Repository::global_mut().characters[char_index].spell[i] != 0 {
-                Repository::global_mut().characters[char_index].spell[i] = 0;
+            if gs.characters[char_index].spell[i] != 0 {
+                gs.characters[char_index].spell[i] = 0;
             }
         }
 
-        let mut tmp_citem = Repository::global_mut().characters[char_index].citem;
+        let mut tmp_citem = gs.characters[char_index].citem;
         if tmp_citem != 0 {
             if with_items {
-                tmp_citem = Self::create_item(tmp_citem as usize).unwrap_or(0) as u32;
+                tmp_citem = Self::create_item_impl(gs, tmp_citem as usize).unwrap_or(0) as u32;
                 if tmp_citem == 0 {
                     log::error!(
                         "Failed to create citem from template for new character ID {}",
@@ -1054,13 +1095,13 @@ impl God {
                     flag = 1;
                 }
                 if core::types::Item::is_sane_item(tmp_citem as usize) {
-                    Repository::global_mut().items[tmp_citem as usize].carried = char_index as u16;
+                    gs.items[tmp_citem as usize].carried = char_index as u16;
                 }
             } else {
                 tmp_citem = 0;
             }
 
-            Repository::global_mut().characters[char_index].citem = tmp_citem;
+            gs.characters[char_index].citem = tmp_citem;
         }
 
         if flag != 0 {
@@ -1068,15 +1109,15 @@ impl God {
                 "One or more items failed to be created for new character ID {}",
                 char_index
             );
-            Self::destroy_items(char_index);
-            Repository::global_mut().characters[char_index].used = core::constants::USE_EMPTY;
+            Self::destroy_items_impl(gs, char_index);
+            gs.characters[char_index].used = core::constants::USE_EMPTY;
             return None;
         }
 
-        Repository::global_mut().characters[char_index].a_end = 1000000;
-        Repository::global_mut().characters[char_index].a_hp = 1000000;
-        Repository::global_mut().characters[char_index].a_mana = 1000000;
-        Repository::global_mut().characters[char_index].set_do_update_flags();
+        gs.characters[char_index].a_end = 1000000;
+        gs.characters[char_index].a_hp = 1000000;
+        gs.characters[char_index].a_mana = 1000000;
+        gs.characters[char_index].set_do_update_flags();
 
         Some(char_index as i32)
     }
@@ -1089,6 +1130,10 @@ impl God {
     /// # Arguments
     /// * `char_id` - Character index whose items will be destroyed
     pub fn destroy_items(char_id: usize) {
+        Self::destroy_items_impl(Repository::global_mut(), char_id)
+    }
+
+    fn destroy_items_impl(gs: &mut GameState, char_id: usize) {
         if !core::types::Character::is_sane_character(char_id) {
             log::error!("Invalid character ID {} in destroy_items", char_id);
             return;
@@ -1096,59 +1141,59 @@ impl God {
 
         // Destroy all inventory items (40 slots)
         for n in 0..40 {
-            let item_id = Repository::global_mut().characters[char_id].item[n] as usize;
+            let item_id = gs.characters[char_id].item[n] as usize;
             if item_id != 0 {
-                Repository::global_mut().characters[char_id].item[n] = 0;
+                gs.characters[char_id].item[n] = 0;
                 if core::types::Item::is_sane_item(item_id) {
-                    Repository::global_mut().items[item_id].used = core::constants::USE_EMPTY;
+                    gs.items[item_id].used = core::constants::USE_EMPTY;
                 }
             }
         }
 
         // Destroy all worn items (20 slots)
         for n in 0..20 {
-            let worn_id = Repository::global_mut().characters[char_id].worn[n] as usize;
+            let worn_id = gs.characters[char_id].worn[n] as usize;
             if worn_id != 0 {
-                Repository::global_mut().characters[char_id].worn[n] = 0;
+                gs.characters[char_id].worn[n] = 0;
                 if core::types::Item::is_sane_item(worn_id) {
-                    Repository::global_mut().items[worn_id].used = core::constants::USE_EMPTY;
+                    gs.items[worn_id].used = core::constants::USE_EMPTY;
                 }
             }
 
-            let spell_id = Repository::global_mut().characters[char_id].spell[n] as usize;
+            let spell_id = gs.characters[char_id].spell[n] as usize;
             if spell_id != 0 {
-                Repository::global_mut().characters[char_id].spell[n] = 0;
+                gs.characters[char_id].spell[n] = 0;
                 if core::types::Item::is_sane_item(spell_id) {
-                    Repository::global_mut().items[spell_id].used = core::constants::USE_EMPTY;
+                    gs.items[spell_id].used = core::constants::USE_EMPTY;
                 }
             }
         }
 
         // Destroy carried item (citem)
-        let citem_id = Repository::global_mut().characters[char_id].citem as usize;
+        let citem_id = gs.characters[char_id].citem as usize;
         if citem_id != 0 {
-            Repository::global_mut().characters[char_id].citem = 0;
+            gs.characters[char_id].citem = 0;
             // TODO: Refactor this check--it is duplicated due to the != 0
             // check above anyway.
             if core::types::Item::is_sane_item(citem_id) {
-                Repository::global_mut().items[citem_id].used = core::constants::USE_EMPTY;
+                gs.items[citem_id].used = core::constants::USE_EMPTY;
             }
         }
 
         // If player, destroy depot/storage items (62 slots)
-        if Repository::global_mut().characters[char_id].is_player() {
+        if gs.characters[char_id].is_player() {
             for n in 0..62 {
-                let depot_id = Repository::global_mut().characters[char_id].depot[n] as usize;
+                let depot_id = gs.characters[char_id].depot[n] as usize;
                 if depot_id != 0 {
-                    Repository::global_mut().characters[char_id].depot[n] = 0;
+                    gs.characters[char_id].depot[n] = 0;
                     if core::types::Item::is_sane_item(depot_id) {
-                        Repository::global_mut().items[depot_id].used = core::constants::USE_EMPTY;
+                        gs.items[depot_id].used = core::constants::USE_EMPTY;
                     }
                 }
             }
         }
 
-        Repository::global_mut().characters[char_id].set_do_update_flags();
+        gs.characters[char_id].set_do_update_flags();
     }
 
     /// Remove `item_id` from character `cn` and drop it onto their map tile.
@@ -1159,23 +1204,27 @@ impl God {
     /// * `item_id` - Item index to take
     /// * `cn` - Character index from which to remove the item
     pub fn take_from_char(item_id: usize, cn: usize) -> bool {
+        Self::take_from_char_impl(Repository::global_mut(), item_id, cn)
+    }
+
+    fn take_from_char_impl(gs: &mut GameState, item_id: usize, cn: usize) -> bool {
         if !core::types::Item::is_sane_item(item_id) {
             return false;
         }
 
-        if !Repository::global_mut().characters[cn].is_living_character(cn) {
+        if !gs.characters[cn].is_living_character(cn) {
             return false;
         }
 
         // Remove from citem
-        if Repository::global_mut().characters[cn].citem as usize == item_id {
-            Repository::global_mut().characters[cn].citem = 0;
+        if gs.characters[cn].citem as usize == item_id {
+            gs.characters[cn].citem = 0;
         } else {
             // Try inventory
             let mut found = false;
             for n in 0..40 {
-                if Repository::global_mut().characters[cn].item[n] as usize == item_id {
-                    Repository::global_mut().characters[cn].item[n] = 0;
+                if gs.characters[cn].item[n] as usize == item_id {
+                    gs.characters[cn].item[n] = 0;
                     found = true;
                     break;
                 }
@@ -1183,8 +1232,8 @@ impl God {
             if !found {
                 // Try worn
                 for n in 0..20 {
-                    if Repository::global_mut().characters[cn].worn[n] as usize == item_id {
-                        Repository::global_mut().characters[cn].worn[n] = 0;
+                    if gs.characters[cn].worn[n] as usize == item_id {
+                        gs.characters[cn].worn[n] = 0;
                         found = true;
                         break;
                     }
@@ -1196,15 +1245,15 @@ impl God {
         }
 
         // Clear item carriage
-        Repository::global_mut().items[item_id].x = 0;
-        Repository::global_mut().items[item_id].y = 0;
-        Repository::global_mut().items[item_id].carried = 0;
+        gs.items[item_id].x = 0;
+        gs.items[item_id].y = 0;
+        gs.items[item_id].carried = 0;
 
         // Mark character for update
-        Repository::global_mut().characters[cn].set_do_update_flags();
+        gs.characters[cn].set_do_update_flags();
 
         // Call update hook in GameState so network/clients can be informed.
-        Repository::global_mut().do_update_char(cn);
+        gs.do_update_char(cn);
 
         true
     }
@@ -1217,27 +1266,23 @@ impl God {
     /// * `item_id` - Item instance index
     /// * `x`, `y` - Target map coordinates
     pub fn drop_item(item_id: usize, x: usize, y: usize) -> bool {
+        Self::drop_item_impl(Repository::global_mut(), item_id, x, y)
+    }
+
+    fn drop_item_impl(gs: &mut GameState, item_id: usize, x: usize, y: usize) -> bool {
         if !Map::is_sane_coordinates(x, y) {
             return false;
         }
 
         let map_index = x + y * core::constants::SERVER_MAPX as usize;
 
-        let can_drop = {
-            let gs = Repository::global_mut();
-            if gs.map[map_index].ch != 0
-                || gs.map[map_index].to_ch != 0
-                || gs.map[map_index].it != 0
-                || (gs.map[map_index].flags
-                    & (core::constants::MF_MOVEBLOCK | core::constants::MF_DEATHTRAP) as u64)
-                    != 0
-                || gs.map[map_index].fsprite != 0
-            {
-                false
-            } else {
-                true
-            }
-        };
+        let can_drop = !(gs.map[map_index].ch != 0
+            || gs.map[map_index].to_ch != 0
+            || gs.map[map_index].it != 0
+            || (gs.map[map_index].flags
+                & (core::constants::MF_MOVEBLOCK | core::constants::MF_DEATHTRAP) as u64)
+                != 0
+            || gs.map[map_index].fsprite != 0);
 
         if !can_drop {
             return false;
@@ -1245,23 +1290,20 @@ impl God {
 
         // Update the item first so if other systems validate map->item consistency
         // concurrently, they won't observe a map reference to an item with stale coordinates.
-        {
-            let gs = Repository::global_mut();
-            gs.items[item_id].x = x as u16;
-            gs.items[item_id].y = y as u16;
-            gs.items[item_id].carried = 0;
-            let light_value = if gs.items[item_id].active != 0 {
-                gs.items[item_id].light[1]
-            } else {
-                gs.items[item_id].light[0]
-            };
-            if light_value != 0 {
-                Repository::global_mut().do_add_light(x as i32, y as i32, light_value as i32);
-            }
+        gs.items[item_id].x = x as u16;
+        gs.items[item_id].y = y as u16;
+        gs.items[item_id].carried = 0;
+        let light_value = if gs.items[item_id].active != 0 {
+            gs.items[item_id].light[1]
+        } else {
+            gs.items[item_id].light[0]
+        };
+        if light_value != 0 {
+            gs.do_add_light(x as i32, y as i32, light_value as i32);
         }
 
         // Write the map reference last.
-        Repository::global_mut().map[map_index].it = item_id as u32;
+        gs.map[map_index].it = item_id as u32;
 
         true
     }
@@ -1274,29 +1316,25 @@ impl God {
     /// * `character_id` - Character to place
     /// * `x`, `y` - Tile coordinates
     pub fn drop_char(character_id: usize, x: usize, y: usize) -> bool {
+        Self::drop_char_impl(Repository::global_mut(), character_id, x, y)
+    }
+
+    fn drop_char_impl(gs: &mut GameState, character_id: usize, x: usize, y: usize) -> bool {
         if !Map::is_sane_coordinates(x, y) {
             return false;
         }
 
         let map_index = x + y * core::constants::SERVER_MAPX as usize;
 
-        let move_is_valid = {
-            let gs = Repository::global_mut();
-            let item_on_tile = gs.map[map_index].it;
-            if gs.map[map_index].ch != 0
-                || (item_on_tile != 0
-                    && gs.items[item_on_tile as usize].flags
-                        & core::constants::ItemFlags::IF_MOVEBLOCK.bits()
-                        != 0)
-                || gs.map[map_index].flags & core::constants::MF_MOVEBLOCK as u64 != 0
-                || gs.map[map_index].flags & core::constants::MF_TAVERN as u64 != 0
-                || gs.map[map_index].flags & core::constants::MF_DEATHTRAP as u64 != 0
-            {
-                false
-            } else {
-                true
-            }
-        };
+        let item_on_tile = gs.map[map_index].it;
+        let move_is_valid = !(gs.map[map_index].ch != 0
+            || (item_on_tile != 0
+                && gs.items[item_on_tile as usize].flags
+                    & core::constants::ItemFlags::IF_MOVEBLOCK.bits()
+                    != 0)
+            || gs.map[map_index].flags & core::constants::MF_MOVEBLOCK as u64 != 0
+            || gs.map[map_index].flags & core::constants::MF_TAVERN as u64 != 0
+            || gs.map[map_index].flags & core::constants::MF_DEATHTRAP as u64 != 0);
 
         if !move_is_valid {
             return false;
@@ -1304,13 +1342,10 @@ impl God {
 
         // Remove from previous tile (if any), update coords and insert into map
         player::plr_map_remove(character_id);
-        {
-            let gs = Repository::global_mut();
-            gs.characters[character_id].x = x as i16;
-            gs.characters[character_id].y = y as i16;
-            gs.characters[character_id].tox = x as i16;
-            gs.characters[character_id].toy = y as i16;
-        }
+        gs.characters[character_id].x = x as i16;
+        gs.characters[character_id].y = y as i16;
+        gs.characters[character_id].tox = x as i16;
+        gs.characters[character_id].toy = y as i16;
         player::plr_map_set(character_id);
 
         true
@@ -1325,6 +1360,10 @@ impl God {
     /// * `co` - Target character
     /// * `pass` - New password string
     pub fn change_pass(cn: usize, co: usize, pass: &str) -> i32 {
+        Self::change_pass_impl(Repository::global_mut(), cn, co, pass)
+    }
+
+    fn change_pass_impl(gs: &mut GameState, cn: usize, co: usize, pass: &str) -> i32 {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return 0;
         }
@@ -1339,21 +1378,21 @@ impl God {
             .skip(4)
             .take(4)
             .fold(0u32, |acc, &b| (acc << 8) | b as u32);
-        {
-            let gs = Repository::global_mut();
+        let char_name = {
             let character = &mut gs.characters[co];
             character.pass1 = pass1;
             character.pass2 = pass2;
             character.set_do_update_flags();
-            let char_name = character.get_name().to_string();
-            log::info!("Password changed for character {}", char_name);
-        }
-        Repository::global_mut().do_character_log(
+            character.get_name().to_string()
+        };
+        log::info!("Password changed for character {}", char_name);
+        let target_name = gs.characters[co].get_name().to_string();
+        gs.do_character_log(
             cn,
             core::types::FontColor::Green,
             &format!(
                 "You have changed the password for character '{}'.\n",
-                Repository::global_mut().characters[co].get_name()
+                target_name
             ),
         );
         1
@@ -1367,26 +1406,30 @@ impl God {
     /// * `cn` - Character index
     /// * `item_id` - Item index to remove
     pub fn remove_item(cn: usize, item_id: usize) -> i32 {
+        Self::remove_item_impl(Repository::global_mut(), cn, item_id)
+    }
+
+    fn remove_item_impl(gs: &mut GameState, cn: usize, item_id: usize) -> i32 {
         if !Character::is_sane_character(cn) || !core::types::Item::is_sane_item(item_id) {
             return 0;
         }
 
         // Check inventory slots
         for n in 0..40 {
-            if Repository::global_mut().characters[cn].item[n] == item_id as u32 {
-                Repository::global_mut().characters[cn].item[n] = 0;
-                Repository::global_mut().items[item_id].carried = 0;
-                Repository::global_mut().characters[cn].set_do_update_flags();
+            if gs.characters[cn].item[n] == item_id as u32 {
+                gs.characters[cn].item[n] = 0;
+                gs.items[item_id].carried = 0;
+                gs.characters[cn].set_do_update_flags();
                 return 1;
             }
         }
 
         // Check worn/wielded slots
         for n in 0..20 {
-            if Repository::global_mut().characters[cn].worn[n] == item_id as u32 {
-                Repository::global_mut().characters[cn].worn[n] = 0;
-                Repository::global_mut().items[item_id].carried = 0;
-                Repository::global_mut().characters[cn].set_do_update_flags();
+            if gs.characters[cn].worn[n] == item_id as u32 {
+                gs.characters[cn].worn[n] = 0;
+                gs.items[item_id].carried = 0;
+                gs.characters[cn].set_do_update_flags();
                 return 1;
             }
         }
@@ -1402,6 +1445,10 @@ impl God {
     /// * `nr` - Item id
     /// * `x`, `y` - Central coordinates
     pub fn drop_item_fuzzy(nr: usize, x: usize, y: usize) -> bool {
+        Self::drop_item_fuzzy_impl(Repository::global_mut(), nr, x, y)
+    }
+
+    fn drop_item_fuzzy_impl(gs: &mut GameState, nr: usize, x: usize, y: usize) -> bool {
         let positions_to_try: [(usize, usize); 25] = [
             (x, y),
             (x + 1, y),
@@ -1431,7 +1478,7 @@ impl God {
         ];
 
         for (try_x, try_y) in positions_to_try.iter() {
-            if Self::drop_item(nr, *try_x, *try_y) {
+            if Self::drop_item_impl(gs, nr, *try_x, *try_y) {
                 return true;
             }
         }
@@ -1449,6 +1496,10 @@ impl God {
     /// * `co` - Target character
     /// * `cx`, `cy` - Coordinate strings
     pub fn goto(cn: usize, co: usize, cx: &str, cy: &str) {
+        Self::goto_impl(Repository::global_mut(), cn, co, cx, cy)
+    }
+
+    fn goto_impl(gs: &mut GameState, cn: usize, co: usize, cx: &str, cy: &str) {
         log::debug!(
             "goto() called by character {} to move character {} to '{},{}'",
             cn,
@@ -1462,7 +1513,7 @@ impl God {
 
         // We expect at least one of the values passed in to be non-empty
         if cx.is_empty() && cy.is_empty() {
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 &format!(
@@ -1474,23 +1525,21 @@ impl God {
         }
 
         let goto_functions = [
-            Self::goto_cardinal_length as fn(usize, &str, &str) -> Option<(usize, usize)>,
-            Self::goto_target_coordinates as fn(usize, &str, &str) -> Option<(usize, usize)>,
-            Self::goto_character_by_name as fn(usize, &str, &str) -> Option<(usize, usize)>,
+            Self::goto_cardinal_length_impl
+                as fn(&mut GameState, usize, &str, &str) -> Option<(usize, usize)>,
+            Self::goto_target_coordinates_impl
+                as fn(&mut GameState, usize, &str, &str) -> Option<(usize, usize)>,
+            Self::goto_character_by_name_impl
+                as fn(&mut GameState, usize, &str, &str) -> Option<(usize, usize)>,
         ];
 
-        let character_name = Repository::global_mut().characters[co]
-            .get_name()
-            .to_string();
-        let character_visible = Repository::global_mut().characters[co].flags
-            & CharacterFlags::Invisible.bits()
-            == 0
-            && Repository::global_mut().characters[co].flags & CharacterFlags::GreaterInv.bits()
-                == 0;
+        let character_name = gs.characters[co].get_name().to_string();
+        let character_visible = gs.characters[co].flags & CharacterFlags::Invisible.bits() == 0
+            && gs.characters[co].flags & CharacterFlags::GreaterInv.bits() == 0;
         for goto_fn in goto_functions.iter() {
-            if let Some((x, y)) = goto_fn(cn, cx, cy) {
+            if let Some((x, y)) = goto_fn(gs, cn, cx, cy) {
                 let orig_pos = {
-                    let character = &Repository::global_mut().characters[co];
+                    let character = &gs.characters[co];
                     (character.x as usize, character.y as usize)
                 };
 
@@ -1498,8 +1547,8 @@ impl God {
                     EffectManager::fx_add_effect(12, 0, orig_pos.0 as i32, orig_pos.1 as i32, 0);
                 }
 
-                if !Self::transfer_char(co, x, y) {
-                    Repository::global_mut().do_character_log(
+                if !Self::transfer_char_impl(gs, co, x, y) {
+                    gs.do_character_log(
                             cn,
                             core::types::FontColor::Red,
                             "GOTO failed. Dykstra was right (Elrac will explain this comment if you ask nicely).\n",
@@ -1508,13 +1557,13 @@ impl God {
                 }
 
                 let new_pos = {
-                    let character = &Repository::global_mut().characters[co];
+                    let character = &gs.characters[co];
                     (character.x as i32, character.y as i32)
                 };
                 if character_visible {
                     EffectManager::fx_add_effect(12, 0, new_pos.0, new_pos.1, 0);
                 }
-                Repository::global_mut().do_character_log(
+                gs.do_character_log(
                     cn,
                     core::types::FontColor::Green,
                     &format!(
@@ -1535,7 +1584,7 @@ impl God {
             cy
         );
 
-        Repository::global_mut().do_character_log(
+        gs.do_character_log(
             cn,
             core::types::FontColor::Red,
             &format!("goto() failed with input '{},{}'\n", cx, cy),
@@ -1570,7 +1619,21 @@ impl God {
         Some((target_x, target_y))
     }
 
-    fn goto_cardinal_length(cn: usize, cx: &str, cy: &str) -> Option<(usize, usize)> {
+    fn goto_target_coordinates_impl(
+        _gs: &mut GameState,
+        cn: usize,
+        cx: &str,
+        cy: &str,
+    ) -> Option<(usize, usize)> {
+        Self::goto_target_coordinates(cn, cx, cy)
+    }
+
+    fn goto_cardinal_length_impl(
+        gs: &mut GameState,
+        cn: usize,
+        cx: &str,
+        cy: &str,
+    ) -> Option<(usize, usize)> {
         if cx.chars().next().unwrap_or_default().is_alphabetic()
             && !cy.chars().next().unwrap_or_default().is_numeric()
         {
@@ -1588,7 +1651,7 @@ impl God {
         // Attempting to use format like "n 10" or "s 5", etc;
         // but we didn't use N/S/E/W as the first character
         if !["n", "s", "e", "w"].contains(&cx.to_lowercase().as_str()) {
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 &format!(
@@ -1599,10 +1662,8 @@ impl God {
             return None;
         }
 
-        let (current_x, current_y) = {
-            let character = &Repository::global_mut().characters[cn];
-            (character.x as usize, character.y as usize)
-        };
+        let character = &gs.characters[cn];
+        let (current_x, current_y) = (character.x as usize, character.y as usize);
 
         // North - decrease x
         // South - increase x
@@ -1676,14 +1737,19 @@ impl God {
         Some((target_x, target_y))
     }
 
-    fn goto_character_by_name(cn: usize, cx: &str, cy: &str) -> Option<(usize, usize)> {
+    fn goto_character_by_name_impl(
+        gs: &mut GameState,
+        cn: usize,
+        cx: &str,
+        cy: &str,
+    ) -> Option<(usize, usize)> {
         if cx.chars().next().unwrap().is_numeric() || !cy.is_empty() {
             log::debug!("Not a character name formatted goto command");
             return None;
         }
 
         let target_name = cx;
-        let target_location: Option<(usize, usize)> = Repository::global_mut()
+        let target_location: Option<(usize, usize)> = gs
             .characters
             .iter()
             .find(|char| {
@@ -1695,7 +1761,7 @@ impl God {
         if target_location.is_none() {
             log::error!("Character name '{}' not found in goto command", target_name);
 
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 &format!("No such character found with name '{}'.\n", target_name),
@@ -1715,11 +1781,15 @@ impl God {
     /// * `cn` - Requesting character
     /// * `co` - Target character
     pub fn info(cn: usize, co: usize) {
+        Self::info_impl(Repository::global_mut(), cn, co)
+    }
+
+    fn info_impl(gs: &mut GameState, cn: usize, co: usize) {
         if !Character::is_sane_character(cn) {
             return;
         }
         if !Character::is_sane_character(co) {
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 "There's no such character.\n",
@@ -1729,8 +1799,8 @@ impl God {
 
         // Access checks: sane NPCs are hidden from non-gods/imp/usurp; gods hidden from non-gods
         let denied = {
-            let target = &Repository::global_mut().characters[co];
-            let caller = &Repository::global_mut().characters[cn];
+            let target = &gs.characters[co];
+            let caller = &gs.characters[cn];
             let is_sane_npc = (target.flags & CharacterFlags::Player.bits()) == 0;
             let caller_is_priv = (caller.flags & CharacterFlags::God.bits()) != 0
                 || (caller.flags & CharacterFlags::Imp.bits()) != 0
@@ -1740,11 +1810,7 @@ impl God {
                     && (caller.flags & CharacterFlags::God.bits()) == 0)
         };
         if denied {
-            Repository::global_mut().do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                "Access denied.\n",
-            );
+            gs.do_character_log(cn, core::types::FontColor::Red, "Access denied.\n");
             return;
         }
 
@@ -1753,7 +1819,7 @@ impl God {
 
         // cnum_str: only visible to IMP/USURP
         let cnum_str = {
-            let caller = &Repository::global_mut().characters[cn];
+            let caller = &gs.characters[cn];
             if (caller.flags & CharacterFlags::Imp.bits()) != 0
                 || (caller.flags & CharacterFlags::Usurp.bits()) != 0
             {
@@ -1790,7 +1856,7 @@ impl God {
             a_end,
             a_mana,
         ) = {
-            let t = &Repository::global_mut().characters[co];
+            let t = &gs.characters[co];
             let posx = t.x as i32;
             let posy = t.y as i32;
             let p = t.points_tot;
@@ -1843,8 +1909,8 @@ impl God {
         let mut px = pos_x;
         let mut py = pos_y;
         let (hide_pos, caller_priv) = {
-            let tflags = Repository::global_mut().characters[co].flags;
-            let caller = &Repository::global_mut().characters[cn];
+            let tflags = gs.characters[co].flags;
+            let caller = &gs.characters[cn];
             let invis_or_nowho = (tflags & CharacterFlags::Invisible.bits()) != 0
                 || (tflags & CharacterFlags::NoWho.bits()) != 0;
             let caller_priv = (caller.flags & CharacterFlags::Imp.bits()) != 0
@@ -1870,15 +1936,14 @@ impl God {
         if player_flag {
             let rank = core::ranks::points2rank(pts as u32) as usize;
             let rank_short = helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
-            Repository::global_mut().do_character_log(
+            let target_name = gs.characters[co].get_name().to_string();
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
                 &format!(
                     "{} {}{}{} Pts/need={}/{}.\n",
                     rank_short,
-                    Repository::global_mut().characters[co]
-                        .get_name()
-                        .to_string(),
+                    target_name,
                     cnum_str,
                     pos_str,
                     int2str(pts),
@@ -1888,7 +1953,7 @@ impl God {
         } else {
             // NPC
             let temp_str = {
-                let caller = &Repository::global_mut().characters[cn];
+                let caller = &gs.characters[cn];
                 if (caller.flags & CharacterFlags::Imp.bits()) != 0
                     || (caller.flags & CharacterFlags::Usurp.bits()) != 0
                 {
@@ -1899,24 +1964,19 @@ impl God {
             };
             let rank = core::ranks::points2rank(pts as u32) as usize;
             let rank_short = helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
-            Repository::global_mut().do_character_log(
+            let target_name = gs.characters[co].get_name().to_string();
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
                 &format!(
                     "{} {}{}{}{}.\n",
-                    rank_short,
-                    Repository::global_mut().characters[co]
-                        .get_name()
-                        .to_string(),
-                    cnum_str,
-                    pos_str,
-                    temp_str
+                    rank_short, target_name, cnum_str, pos_str, temp_str
                 ),
             );
         }
 
         // HP/End/Mana line
-        Repository::global_mut().do_character_log(
+        gs.do_character_log(
             cn,
             core::types::FontColor::Yellow,
             &format!(
@@ -1926,7 +1986,7 @@ impl God {
         );
 
         // Speed/Gold line
-        Repository::global_mut().do_character_log(
+        gs.do_character_log(
             cn,
             core::types::FontColor::Yellow,
             &format!(
@@ -1944,16 +2004,12 @@ impl God {
             && (kindred & core::constants::KIN_PURPLE as i32) != 0
             && data_vals[core::constants::CHD_ATTACKTIME] != 0
         {
-            let dt = Repository::global_mut().globals.ticker
-                - Repository::global_mut().characters[co].data[core::constants::CHD_ATTACKTIME];
-            if (Repository::global_mut().characters[cn].flags & CharacterFlags::Imp.bits()) != 0 {
-                let victim = Repository::global_mut().characters[co].data
-                    [core::constants::CHD_ATTACKVICT] as usize;
+            let dt = gs.globals.ticker - gs.characters[co].data[core::constants::CHD_ATTACKTIME];
+            if (gs.characters[cn].flags & CharacterFlags::Imp.bits()) != 0 {
+                let victim = gs.characters[co].data[core::constants::CHD_ATTACKVICT] as usize;
                 if Character::is_sane_character(victim) {
-                    let victim_name = Repository::global_mut().characters[victim]
-                        .get_name()
-                        .to_string();
-                    Repository::global_mut().do_character_log(
+                    let victim_name = gs.characters[victim].get_name().to_string();
+                    gs.do_character_log(
                         cn,
                         core::types::FontColor::Yellow,
                         &format!(
@@ -1964,7 +2020,7 @@ impl God {
                     );
                 }
             } else {
-                Repository::global_mut().do_character_log(
+                gs.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
                     &format!("Last PvP attack: {}.\n", helpers::ago_string(dt as u128)),
@@ -1974,14 +2030,14 @@ impl God {
 
         // Additional info for IMP/USURP
         let caller_priv = {
-            let c = &Repository::global_mut().characters[cn];
+            let c = &gs.characters[cn];
             (c.flags & CharacterFlags::Imp.bits()) != 0
                 || (c.flags & CharacterFlags::Usurp.bits()) != 0
         };
         if caller_priv {
             // Print several data fields similar to C++ output
             {
-                Repository::global_mut().do_character_log(
+                gs.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
                     &format!(
@@ -1989,7 +2045,7 @@ impl God {
                         data_vals[23], data_vals[24], data_vals[25]
                     ),
                 );
-                Repository::global_mut().do_character_log(
+                gs.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
                     &format!(
@@ -1997,7 +2053,7 @@ impl God {
                         data_vals[29], data_vals[40]
                     ),
                 );
-                Repository::global_mut().do_character_log(
+                gs.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
                     &format!(
@@ -2005,7 +2061,7 @@ impl God {
                         data_vals[26], data_vals[27], data_vals[28], data_vals[43]
                     ),
                 );
-                Repository::global_mut().do_character_log(
+                gs.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
                     &format!(
@@ -2014,14 +2070,14 @@ impl God {
                     ),
                 );
                 // Group/Single Awake/Spells
-                let group_count = if Repository::global_mut().characters[co].group_active() {
+                let group_count = if gs.characters[co].group_active() {
                     1
                 } else {
                     0
                 };
                 let single_awake = data_vals[92];
                 let spells = data_vals[96];
-                Repository::global_mut().do_character_log(
+                gs.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
                     &format!(
@@ -2029,12 +2085,12 @@ impl God {
                         data_vals[42], group_count, single_awake, spells
                     ),
                 );
-                Repository::global_mut().do_character_log(
+                gs.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
                     &format!("Luck={}, Gethit_Dam={}.\n", luck, gethit_dam),
                 );
-                Repository::global_mut().do_character_log(
+                gs.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
                     &format!(
@@ -2052,15 +2108,14 @@ impl God {
             }
 
             // Self-destruct time for sane NPCs
-            if (Repository::global_mut().characters[co].flags & CharacterFlags::Player.bits()) == 0
-                && Repository::global_mut().characters[co].data[64] != 0
+            if (gs.characters[co].flags & CharacterFlags::Player.bits()) == 0
+                && gs.characters[co].data[64] != 0
             {
-                let t = Repository::global_mut().characters[co].data[64]
-                    - Repository::global_mut().globals.ticker;
+                let t = gs.characters[co].data[64] - gs.globals.ticker;
                 let t_secs = t / core::constants::TICKS;
                 let mins = t_secs / 60;
                 let secs = t_secs % 60;
-                Repository::global_mut().do_character_log(
+                gs.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
                     &format!("Will self destruct in {}m {}s.\n", mins, secs),
@@ -2075,26 +2130,27 @@ impl God {
     /// * `cn` - Requesting character
     /// * `item_index` - Item instance index
     pub fn iinfo(cn: usize, item_index: usize) {
+        Self::iinfo_impl(Repository::global_mut(), cn, item_index)
+    }
+
+    fn iinfo_impl(gs: &mut GameState, cn: usize, item_index: usize) {
         if !Character::is_sane_character(cn) || !core::types::Item::is_sane_item(item_index) {
             return;
         }
 
-        {
-            let gs = Repository::global_mut();
-            let item = &gs.items[item_index];
-            let sprite_0_to_print = item.sprite[0];
-            let sprite_1_to_print = item.sprite[1];
-            let carried_to_print = item.carried;
-            let used = item.used;
-            gs.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                &format!(
-                    "Item Info: ID={}, Sprite=[{},{}], Carried={}, Used={}\n",
-                    item_index, sprite_0_to_print, sprite_1_to_print, carried_to_print, used
-                ),
-            );
-        }
+        let item = &gs.items[item_index];
+        let sprite_0_to_print = item.sprite[0];
+        let sprite_1_to_print = item.sprite[1];
+        let carried_to_print = item.carried;
+        let used = item.used;
+        gs.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            &format!(
+                "Item Info: ID={}, Sprite=[{},{}], Carried={}, Used={}\n",
+                item_index, sprite_0_to_print, sprite_1_to_print, carried_to_print, used
+            ),
+        );
     }
 
     /// Inspect an item template and display its fields to `cn`.
@@ -2103,26 +2159,27 @@ impl God {
     /// * `cn` - Requesting character
     /// * `template` - Item template id
     pub fn tinfo(cn: usize, template: usize) {
+        Self::tinfo_impl(Repository::global_mut(), cn, template)
+    }
+
+    fn tinfo_impl(gs: &mut GameState, cn: usize, template: usize) {
         if !Character::is_sane_character(cn) || !core::types::Item::is_sane_item_template(template)
         {
             return;
         }
 
-        {
-            let gs = Repository::global_mut();
-            let tmpl = &gs.item_templates[template];
-            let sprite_0_to_print = tmpl.sprite[0];
-            let sprite_1_to_print = tmpl.sprite[1];
-            let used_to_print = tmpl.used;
-            gs.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                &format!(
-                    "Template Info: ID={}, Sprite=[{},{}], Used={}\n",
-                    template, sprite_0_to_print, sprite_1_to_print, used_to_print
-                ),
-            );
-        }
+        let tmpl = &gs.item_templates[template];
+        let sprite_0_to_print = tmpl.sprite[0];
+        let sprite_1_to_print = tmpl.sprite[1];
+        let used_to_print = tmpl.used;
+        gs.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            &format!(
+                "Template Info: ID={}, Sprite=[{},{}], Used={}\n",
+                template, sprite_0_to_print, sprite_1_to_print, used_to_print
+            ),
+        );
     }
 
     /// List or check unique items on the server for admin inspection.
@@ -2130,17 +2187,16 @@ impl God {
     /// # Arguments
     /// * `cn` - Requesting character
     pub fn unique(cn: usize) {
+        Self::unique_impl(Repository::global_mut(), cn)
+    }
+
+    fn unique_impl(gs: &mut GameState, cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
         }
 
-        Repository::global_mut().do_character_log(
-            cn,
-            core::types::FontColor::Green,
-            "Listing unique items:",
-        );
+        gs.do_character_log(cn, core::types::FontColor::Green, "Listing unique items:");
         for i in 1..core::constants::MAXITEM {
-            let gs = Repository::global_mut();
             if gs.items[i].used != core::constants::USE_EMPTY && gs.items[i].is_unique() {
                 let sprite_0_to_print = gs.items[i].sprite[0];
                 let sprite_1_to_print = gs.items[i].sprite[1];
@@ -2164,159 +2220,157 @@ impl God {
     /// # Arguments
     /// * `cn` - Requesting character
     pub fn who(cn: usize) {
+        Self::who_impl(Repository::global_mut(), cn)
+    }
+
+    fn who_impl(gs: &mut GameState, cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
         }
 
-        {
-            let characters = &Repository::global_mut().characters;
-            let cn_flags = characters[cn].flags;
-            let cn_is_god = (cn_flags & CharacterFlags::God.bits()) != 0;
-            let cn_is_imp_or_god =
-                (cn_flags & (CharacterFlags::God.bits() | CharacterFlags::Imp.bits())) != 0;
-            let cn_is_god_imp_or_usurp = (cn_flags
-                & (CharacterFlags::God.bits()
-                    | CharacterFlags::Imp.bits()
-                    | CharacterFlags::Usurp.bits()))
-                != 0;
+        let cn_flags = gs.characters[cn].flags;
+        let cn_is_god = (cn_flags & CharacterFlags::God.bits()) != 0;
+        let cn_is_imp_or_god =
+            (cn_flags & (CharacterFlags::God.bits() | CharacterFlags::Imp.bits())) != 0;
+        let cn_is_god_imp_or_usurp = (cn_flags
+            & (CharacterFlags::God.bits()
+                | CharacterFlags::Imp.bits()
+                | CharacterFlags::Usurp.bits()))
+            != 0;
 
-            let cn_invis_level = helpers::invis_level(cn);
+        let cn_invis_level = helpers::invis_level(cn);
 
-            let mut players = 0;
-            Repository::global_mut().do_character_log(
-                cn,
-                core::types::FontColor::Blue,
-                "-----------------------------------------------\n",
-            );
+        let mut players = 0;
+        gs.do_character_log(
+            cn,
+            core::types::FontColor::Blue,
+            "-----------------------------------------------\n",
+        );
 
-            for n in 1..core::constants::MAXCHARS {
-                let c = &characters[n];
-                if c.used != core::constants::USE_ACTIVE {
-                    continue;
-                }
-
-                let n_flags = c.flags;
-                let n_is_player = (n_flags & CharacterFlags::Player.bits()) != 0;
-                let n_is_usurp = (n_flags & CharacterFlags::Usurp.bits()) != 0;
-                let n_is_invisible = (n_flags & CharacterFlags::Invisible.bits()) != 0;
-                let n_is_nowho = (n_flags & CharacterFlags::NoWho.bits()) != 0;
-                let n_is_staff = (n_flags & CharacterFlags::Staff.bits()) != 0;
-                let n_is_god = (n_flags & CharacterFlags::God.bits()) != 0;
-
-                let font = if !n_is_player {
-                    if !n_is_usurp {
-                        continue;
-                    }
-                    if !cn_is_imp_or_god {
-                        continue;
-                    }
-                    core::types::FontColor::Blue
-                } else if n_is_invisible {
-                    let n_invis_level = helpers::invis_level(n);
-                    if cn_invis_level < n_invis_level {
-                        continue;
-                    }
-                    core::types::FontColor::Red
-                } else if n_is_nowho {
-                    if !cn_is_imp_or_god {
-                        continue;
-                    }
-                    core::types::FontColor::Blue
-                } else if n_is_staff || n_is_god {
-                    core::types::FontColor::Green
-                } else {
-                    core::types::FontColor::Yellow
-                };
-
-                players += 1;
-
-                let mut showarea = true;
-                if n_is_god && !cn_is_god {
-                    showarea = false;
-                }
-                let n_is_purple = (c.kindred as u32 & core::constants::KIN_PURPLE) != 0;
-                if n_is_purple && !cn_is_god_imp_or_usurp {
-                    showarea = false;
-                }
-
-                let name = c.get_name();
-                let points_str = helpers::format_number(c.points_tot);
-                let area_str = if showarea {
-                    area::get_area_m(c.x as i32, c.y as i32, false)
-                } else {
-                    "--------".to_string()
-                };
-
-                let is_poh = (n_flags & CharacterFlags::Poh.bits()) != 0;
-                let is_poh_leader = (n_flags & CharacterFlags::PohLeader.bits()) != 0;
-
-                Repository::global_mut().do_character_log(
-                    cn,
-                    font,
-                    &format!(
-                        "{:4}: {:<10.10}{}{}{} {:<8.8} {:<18.18}\n",
-                        n,
-                        name,
-                        if n_is_purple { '*' } else { ' ' },
-                        if is_poh { '+' } else { ' ' },
-                        if is_poh_leader { '+' } else { ' ' },
-                        points_str,
-                        area_str,
-                    ),
-                );
+        for n in 1..core::constants::MAXCHARS {
+            let c = &gs.characters[n];
+            if c.used != core::constants::USE_ACTIVE {
+                continue;
             }
 
-            // List player's GC and thralls, if any
-            for n in 1..core::constants::MAXCHARS {
-                let c = &characters[n];
-                let n_flags = c.flags;
-                let n_is_player = (n_flags & CharacterFlags::Player.bits()) != 0;
-                if n_is_player {
+            let n_flags = c.flags;
+            let n_is_player = (n_flags & CharacterFlags::Player.bits()) != 0;
+            let n_is_usurp = (n_flags & CharacterFlags::Usurp.bits()) != 0;
+            let n_is_invisible = (n_flags & CharacterFlags::Invisible.bits()) != 0;
+            let n_is_nowho = (n_flags & CharacterFlags::NoWho.bits()) != 0;
+            let n_is_staff = (n_flags & CharacterFlags::Staff.bits()) != 0;
+            let n_is_god = (n_flags & CharacterFlags::God.bits()) != 0;
+
+            let font = if !n_is_player {
+                if !n_is_usurp {
                     continue;
                 }
-                if c.data[63] != cn as i32 {
+                if !cn_is_imp_or_god {
                     continue;
                 }
+                core::types::FontColor::Blue
+            } else if n_is_invisible {
+                let n_invis_level = helpers::invis_level(n);
+                if cn_invis_level < n_invis_level {
+                    continue;
+                }
+                core::types::FontColor::Red
+            } else if n_is_nowho {
+                if !cn_is_imp_or_god {
+                    continue;
+                }
+                core::types::FontColor::Blue
+            } else if n_is_staff || n_is_god {
+                core::types::FontColor::Green
+            } else {
+                core::types::FontColor::Yellow
+            };
 
-                let rank = core::ranks::points2rank(c.points_tot as u32) as usize;
-                let rank_short = helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
+            players += 1;
 
-                let name = c.get_name();
-                let area_str = area::get_area_m(c.x as i32, c.y as i32, false);
-                let n_is_purple = (c.kindred as u32 & core::constants::KIN_PURPLE) != 0;
-                let is_poh = (n_flags & CharacterFlags::Poh.bits()) != 0;
-                let is_poh_leader = (n_flags & CharacterFlags::PohLeader.bits()) != 0;
-
-                Repository::global_mut().do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    &format!(
-                        "{:.5} {:<10.10}{}{}{} {:<23.23}\n",
-                        rank_short,
-                        name,
-                        if n_is_purple { '*' } else { ' ' },
-                        if is_poh { '+' } else { ' ' },
-                        if is_poh_leader { '+' } else { ' ' },
-                        area_str,
-                    ),
-                );
+            let mut showarea = true;
+            if n_is_god && !cn_is_god {
+                showarea = false;
+            }
+            let n_is_purple = (c.kindred as u32 & core::constants::KIN_PURPLE) != 0;
+            if n_is_purple && !cn_is_god_imp_or_usurp {
+                showarea = false;
             }
 
-            Repository::global_mut().do_character_log(
+            let name = c.get_name().to_string();
+            let points_str = helpers::format_number(c.points_tot);
+            let area_str = if showarea {
+                area::get_area_m(c.x as i32, c.y as i32, false)
+            } else {
+                "--------".to_string()
+            };
+
+            let is_poh = (n_flags & CharacterFlags::Poh.bits()) != 0;
+            let is_poh_leader = (n_flags & CharacterFlags::PohLeader.bits()) != 0;
+
+            gs.do_character_log(
                 cn,
-                core::types::FontColor::Blue,
-                "-----------------------------------------------\n",
-            );
-            Repository::global_mut().do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
+                font,
                 &format!(
-                    "{:3} player{} online.\n",
-                    players,
-                    if players > 1 { "s" } else { "" }
+                    "{:4}: {:<10.10}{}{}{} {:<8.8} {:<18.18}\n",
+                    n,
+                    name,
+                    if n_is_purple { '*' } else { ' ' },
+                    if is_poh { '+' } else { ' ' },
+                    if is_poh_leader { '+' } else { ' ' },
+                    points_str,
+                    area_str,
                 ),
             );
         }
+
+        for n in 1..core::constants::MAXCHARS {
+            let c = &gs.characters[n];
+            let n_flags = c.flags;
+            if (n_flags & CharacterFlags::Player.bits()) != 0 {
+                continue;
+            }
+            if c.data[63] != cn as i32 {
+                continue;
+            }
+
+            let rank = core::ranks::points2rank(c.points_tot as u32) as usize;
+            let rank_short = helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
+            let name = c.get_name().to_string();
+            let area_str = area::get_area_m(c.x as i32, c.y as i32, false);
+            let n_is_purple = (c.kindred as u32 & core::constants::KIN_PURPLE) != 0;
+            let is_poh = (n_flags & CharacterFlags::Poh.bits()) != 0;
+            let is_poh_leader = (n_flags & CharacterFlags::PohLeader.bits()) != 0;
+
+            gs.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                &format!(
+                    "{:.5} {:<10.10}{}{}{} {:<23.23}\n",
+                    rank_short,
+                    name,
+                    if n_is_purple { '*' } else { ' ' },
+                    if is_poh { '+' } else { ' ' },
+                    if is_poh_leader { '+' } else { ' ' },
+                    area_str,
+                ),
+            );
+        }
+
+        gs.do_character_log(
+            cn,
+            core::types::FontColor::Blue,
+            "-----------------------------------------------\n",
+        );
+        gs.do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            &format!(
+                "{:3} player{} online.\n",
+                players,
+                if players > 1 { "s" } else { "" }
+            ),
+        );
     }
 
     /// Show implemented admin commands or privileges.
@@ -2324,94 +2378,92 @@ impl God {
     /// # Arguments
     /// * `cn` - Requesting character
     pub fn implist(cn: usize) {
+        Self::implist_impl(Repository::global_mut(), cn)
+    }
+
+    fn implist_impl(gs: &mut GameState, cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
         }
 
-        {
-            let characters = &Repository::global_mut().characters;
-            let cn_flags = characters[cn].flags;
-            let cn_is_god = (cn_flags & CharacterFlags::God.bits()) != 0;
-            let cn_is_god_imp_or_usurp = (cn_flags
-                & (CharacterFlags::God.bits()
-                    | CharacterFlags::Imp.bits()
-                    | CharacterFlags::Usurp.bits()))
-                != 0;
+        let cn_flags = gs.characters[cn].flags;
+        let cn_is_god = (cn_flags & CharacterFlags::God.bits()) != 0;
+        let cn_is_god_imp_or_usurp = (cn_flags
+            & (CharacterFlags::God.bits()
+                | CharacterFlags::Imp.bits()
+                | CharacterFlags::Usurp.bits()))
+            != 0;
 
-            let mut imps = 0;
-            Repository::global_mut().do_character_log(
-                cn,
-                core::types::FontColor::Blue,
-                "-----------------------------------------------\n",
-            );
+        let mut imps = 0;
+        gs.do_character_log(
+            cn,
+            core::types::FontColor::Blue,
+            "-----------------------------------------------\n",
+        );
 
-            for n in 1..core::constants::MAXCHARS {
-                let c = &characters[n];
-                if c.used == core::constants::USE_EMPTY {
-                    continue;
-                }
-
-                let n_flags = c.flags;
-                let n_is_player = (n_flags & CharacterFlags::Player.bits()) != 0;
-                if !n_is_player {
-                    continue;
-                }
-
-                let n_is_imp = (n_flags & CharacterFlags::Imp.bits()) != 0;
-                if !n_is_imp {
-                    continue;
-                }
-
-                imps += 1;
-
-                let mut showarea = true;
-                let n_is_god = (n_flags & CharacterFlags::God.bits()) != 0;
-                if n_is_god && !cn_is_god {
-                    showarea = false;
-                }
-                let n_is_purple = (c.kindred as u32 & core::constants::KIN_PURPLE) != 0;
-                if n_is_purple && !cn_is_god_imp_or_usurp {
-                    showarea = false;
-                }
-
-                let name = c.get_name();
-                let points_str = helpers::format_number(c.points_tot);
-                let area_str = if showarea {
-                    area::get_area_m(c.x as i32, c.y as i32, false)
-                } else {
-                    "--------".to_string()
-                };
-
-                let is_poh = (n_flags & CharacterFlags::Poh.bits()) != 0;
-                let is_poh_leader = (n_flags & CharacterFlags::PohLeader.bits()) != 0;
-
-                Repository::global_mut().do_character_log(
-                    cn,
-                    core::types::FontColor::Yellow,
-                    &format!(
-                        "{:4}: {:<10.10}{}{}{} {:<8.8} {:.18}\n",
-                        n,
-                        name,
-                        if n_is_purple { '*' } else { ' ' },
-                        if is_poh { '+' } else { ' ' },
-                        if is_poh_leader { '+' } else { ' ' },
-                        points_str,
-                        area_str
-                    ),
-                );
+        for n in 1..core::constants::MAXCHARS {
+            let c = &gs.characters[n];
+            if c.used == core::constants::USE_EMPTY {
+                continue;
             }
 
-            Repository::global_mut().do_character_log(
-                cn,
-                core::types::FontColor::Blue,
-                "-----------------------------------------------\n",
-            );
-            Repository::global_mut().do_character_log(
+            let n_flags = c.flags;
+            if (n_flags & CharacterFlags::Player.bits()) == 0 {
+                continue;
+            }
+            if (n_flags & CharacterFlags::Imp.bits()) == 0 {
+                continue;
+            }
+
+            imps += 1;
+
+            let mut showarea = true;
+            let n_is_god = (n_flags & CharacterFlags::God.bits()) != 0;
+            if n_is_god && !cn_is_god {
+                showarea = false;
+            }
+            let n_is_purple = (c.kindred as u32 & core::constants::KIN_PURPLE) != 0;
+            if n_is_purple && !cn_is_god_imp_or_usurp {
+                showarea = false;
+            }
+
+            let name = c.get_name().to_string();
+            let points_str = helpers::format_number(c.points_tot);
+            let area_str = if showarea {
+                area::get_area_m(c.x as i32, c.y as i32, false)
+            } else {
+                "--------".to_string()
+            };
+
+            let is_poh = (n_flags & CharacterFlags::Poh.bits()) != 0;
+            let is_poh_leader = (n_flags & CharacterFlags::PohLeader.bits()) != 0;
+
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
-                &format!("{:3} imp{}.\n", imps, if imps > 1 { "s" } else { "" }),
+                &format!(
+                    "{:4}: {:<10.10}{}{}{} {:<8.8} {:.18}\n",
+                    n,
+                    name,
+                    if n_is_purple { '*' } else { ' ' },
+                    if is_poh { '+' } else { ' ' },
+                    if is_poh_leader { '+' } else { ' ' },
+                    points_str,
+                    area_str
+                ),
             );
         }
+
+        gs.do_character_log(
+            cn,
+            core::types::FontColor::Blue,
+            "-----------------------------------------------\n",
+        );
+        gs.do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            &format!("{:3} imp{}.\n", imps, if imps > 1 { "s" } else { "" }),
+        );
     }
 
     /// Show a compact user 'who' listing to `cn` (counts/brief data).
@@ -2419,121 +2471,120 @@ impl God {
     /// # Arguments
     /// * `cn` - Requesting character
     pub fn user_who(cn: usize) {
+        Self::user_who_impl(Repository::global_mut(), cn)
+    }
+
+    fn user_who_impl(gs: &mut GameState, cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
         }
 
-        {
-            let characters = &Repository::global_mut().characters;
-            let cn_flags = characters[cn].flags;
-            let cn_is_god = (cn_flags & CharacterFlags::God.bits()) != 0;
-            let cn_is_god_imp_or_usurp = (cn_flags
-                & (CharacterFlags::God.bits()
-                    | CharacterFlags::Imp.bits()
-                    | CharacterFlags::Usurp.bits()))
-                != 0;
+        let cn_flags = gs.characters[cn].flags;
+        let cn_is_god = (cn_flags & CharacterFlags::God.bits()) != 0;
+        let cn_is_god_imp_or_usurp = (cn_flags
+            & (CharacterFlags::God.bits()
+                | CharacterFlags::Imp.bits()
+                | CharacterFlags::Usurp.bits()))
+            != 0;
 
-            let mut players = 0;
-            Repository::global_mut().do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
-                "-----------------------------------------------\n",
-            );
+        let mut players = 0;
+        gs.do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "-----------------------------------------------\n",
+        );
 
-            // list players
-            for n in 1..core::constants::MAXCHARS {
-                let c = &characters[n];
-                let n_flags = c.flags;
-
-                let n_is_player = (n_flags & CharacterFlags::Player.bits()) != 0;
-                if !n_is_player {
-                    continue;
-                }
-                let n_is_invisible = (n_flags & CharacterFlags::Invisible.bits()) != 0;
-                let n_is_nowho = (n_flags & CharacterFlags::NoWho.bits()) != 0;
-                if c.used != core::constants::USE_ACTIVE || n_is_invisible || n_is_nowho {
-                    continue;
-                }
-
-                players += 1;
-
-                // color staff and gods green
-                let n_is_staff = (n_flags & CharacterFlags::Staff.bits()) != 0;
-                let n_is_god = (n_flags & CharacterFlags::God.bits()) != 0;
-                let font = if n_is_staff || n_is_god {
-                    core::types::FontColor::Green
-                } else {
-                    core::types::FontColor::Yellow
-                };
-
-                let mut showarea = true;
-                if n_is_god && !cn_is_god {
-                    showarea = false;
-                }
-                let n_is_purple = (c.kindred as u32 & core::constants::KIN_PURPLE) != 0;
-                if n_is_purple && !cn_is_god_imp_or_usurp {
-                    showarea = false;
-                }
-
-                let rank = core::ranks::points2rank(c.points_tot as u32) as usize;
-                let rank_short = helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
-                let name = c.get_name();
-                let area_str = if showarea {
-                    area::get_area_m(c.x as i32, c.y as i32, false)
-                } else {
-                    "--------".to_string()
-                };
-
-                let is_poh = (n_flags & CharacterFlags::Poh.bits()) != 0;
-                let is_poh_leader = (n_flags & CharacterFlags::PohLeader.bits()) != 0;
-
-                Repository::global_mut().do_character_log(
-                    cn,
-                    font,
-                    &format!(
-                        "{:.5} {:<10.10}{}{}{} {:<23.23}\n",
-                        rank_short,
-                        name,
-                        if n_is_purple { '*' } else { ' ' },
-                        if is_poh { '+' } else { ' ' },
-                        if is_poh_leader { '+' } else { ' ' },
-                        area_str,
-                    ),
-                );
+        for n in 1..core::constants::MAXCHARS {
+            let c = &gs.characters[n];
+            let n_flags = c.flags;
+            if (n_flags & CharacterFlags::Player.bits()) == 0 {
+                continue;
+            }
+            let n_is_invisible = (n_flags & CharacterFlags::Invisible.bits()) != 0;
+            let n_is_nowho = (n_flags & CharacterFlags::NoWho.bits()) != 0;
+            if c.used != core::constants::USE_ACTIVE || n_is_invisible || n_is_nowho {
+                continue;
             }
 
-            // show companion (GC) if any
-            let gc = characters[cn].data[core::constants::CHD_COMPANION] as usize;
-            if Character::is_sane_character(gc) && characters[gc].is_living_character(gc) {
-                let gc_name = characters[gc].get_name();
-                let points_str = helpers::format_number(characters[gc].points_tot);
-                let area_str =
-                    area::get_area_m(characters[gc].x as i32, characters[gc].y as i32, false);
-                Repository::global_mut().do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    &format!(
-                        "{:4}: {:<10.10}@ {:<8.8} {:<20.20}\n",
-                        gc, gc_name, points_str, area_str
-                    ),
-                );
+            players += 1;
+
+            let n_is_staff = (n_flags & CharacterFlags::Staff.bits()) != 0;
+            let n_is_god = (n_flags & CharacterFlags::God.bits()) != 0;
+            let font = if n_is_staff || n_is_god {
+                core::types::FontColor::Green
+            } else {
+                core::types::FontColor::Yellow
+            };
+
+            let mut showarea = true;
+            if n_is_god && !cn_is_god {
+                showarea = false;
+            }
+            let n_is_purple = (c.kindred as u32 & core::constants::KIN_PURPLE) != 0;
+            if n_is_purple && !cn_is_god_imp_or_usurp {
+                showarea = false;
             }
 
-            Repository::global_mut().do_character_log(
+            let rank = core::ranks::points2rank(c.points_tot as u32) as usize;
+            let rank_short = helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
+            let name = c.get_name().to_string();
+            let area_str = if showarea {
+                area::get_area_m(c.x as i32, c.y as i32, false)
+            } else {
+                "--------".to_string()
+            };
+
+            let is_poh = (n_flags & CharacterFlags::Poh.bits()) != 0;
+            let is_poh_leader = (n_flags & CharacterFlags::PohLeader.bits()) != 0;
+
+            gs.do_character_log(
                 cn,
-                core::types::FontColor::Yellow,
-                "-----------------------------------------------\n",
-            );
-            Repository::global_mut().do_character_log(
-                cn,
-                core::types::FontColor::Yellow,
+                font,
                 &format!(
-                    "{:3} player{} online.\n",
-                    players,
-                    if players > 1 { "s" } else { "" }
+                    "{:.5} {:<10.10}{}{}{} {:<23.23}\n",
+                    rank_short,
+                    name,
+                    if n_is_purple { '*' } else { ' ' },
+                    if is_poh { '+' } else { ' ' },
+                    if is_poh_leader { '+' } else { ' ' },
+                    area_str,
                 ),
             );
         }
+
+        let gc = gs.characters[cn].data[core::constants::CHD_COMPANION] as usize;
+        if Character::is_sane_character(gc) && gs.characters[gc].is_living_character(gc) {
+            let gc_name = gs.characters[gc].get_name().to_string();
+            let points_str = helpers::format_number(gs.characters[gc].points_tot);
+            let area_str = area::get_area_m(
+                gs.characters[gc].x as i32,
+                gs.characters[gc].y as i32,
+                false,
+            );
+            gs.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                &format!(
+                    "{:4}: {:<10.10}@ {:<8.8} {:<20.20}\n",
+                    gc, gc_name, points_str, area_str
+                ),
+            );
+        }
+
+        gs.do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            "-----------------------------------------------\n",
+        );
+        gs.do_character_log(
+            cn,
+            core::types::FontColor::Yellow,
+            &format!(
+                "{:3} player{} online.\n",
+                players,
+                if players > 1 { "s" } else { "" }
+            ),
+        );
     }
 
     /// Display a simple top-players leaderboard to `cn`.
@@ -2541,26 +2592,27 @@ impl God {
     /// # Arguments
     /// * `cn` - Requesting character
     pub fn top(cn: usize) {
+        Self::top_impl(Repository::global_mut(), cn)
+    }
+
+    fn top_impl(gs: &mut GameState, cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
         }
 
         // Simple top players list - would need proper ranking system
-        Repository::global_mut().do_character_log(
-            cn,
-            core::types::FontColor::Green,
-            "Top players by points:",
-        );
+        gs.do_character_log(cn, core::types::FontColor::Green, "Top players by points:");
         // This is simplified - original had more complex ranking
         for i in 1..core::constants::MAXCHARS {
-            let c = &Repository::global_mut().characters[i];
+            let c = &gs.characters[i];
             if c.is_living_character(i) && c.is_player() {
                 if c.points > 100000 {
                     let points_to_print = c.points;
-                    Repository::global_mut().do_character_log(
+                    let name = c.get_name().to_string();
+                    gs.do_character_log(
                         cn,
                         core::types::FontColor::Green,
-                        &format!("  {}: Points={}\n", c.get_name(), points_to_print),
+                        &format!("  {}: Points={}\n", name, points_to_print),
                     );
                 }
             }
@@ -2575,23 +2627,23 @@ impl God {
     /// * `cn` - Requesting character
     /// * `x` - Template id
     pub fn create(cn: usize, x: i32) {
+        Self::create_impl(Repository::global_mut(), cn, x)
+    }
+
+    fn create_impl(gs: &mut GameState, cn: usize, x: i32) {
         if !Character::is_sane_character(cn) {
             return;
         }
 
         // Match original behavior: require a sane, take-able template.
         if x == 0 {
-            Repository::global_mut().do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                "No such item.\n",
-            );
+            gs.do_character_log(cn, core::types::FontColor::Red, "No such item.\n");
             return;
         }
 
         let template_id = x as usize;
         if !core::types::Item::is_sane_item_template(template_id) {
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 &format!("Bad item number: {}.\n", x),
@@ -2599,12 +2651,12 @@ impl God {
             return;
         }
 
-        let is_takeable = (Repository::global_mut().item_templates[template_id].flags
+        let is_takeable = (gs.item_templates[template_id].flags
             & core::constants::ItemFlags::IF_TAKE.bits())
             != 0;
 
         if !is_takeable {
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 &format!("Item template {} is not take-able.\n", x),
@@ -2612,29 +2664,23 @@ impl God {
             return;
         }
 
-        let item_id = Self::create_item(template_id);
+        let item_id = Self::create_item_impl(gs, template_id);
 
         if let Some(item_id) = item_id {
-            if !Self::give_character_item(cn, item_id) {
-                Repository::global_mut().do_character_log(
-                    cn,
-                    core::types::FontColor::Red,
-                    "Your inventory is full!\n",
-                );
+            if !Self::give_character_item_impl(gs, cn, item_id) {
+                gs.do_character_log(cn, core::types::FontColor::Red, "Your inventory is full!\n");
                 return;
             }
 
-            let item_name = Repository::global_mut().items[item_id]
-                .get_name()
-                .to_string();
-            Repository::global_mut().do_character_log(
+            let item_name = gs.items[item_id].get_name().to_string();
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Green,
                 &format!("Created one {}.\n", item_name),
             );
             chlog!(cn, "IMP: created one {}.", item_name);
         } else {
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 &format!("god_create_item() failed for {}.\n", x),
@@ -2652,6 +2698,10 @@ impl God {
     /// * `animal` - Animal type (Bear, Lion, etc.)
     /// * `godly` - 'godly' or not provided
     pub fn create_special(cn: usize, armor: &str, animal: &str, godly: &str) {
+        Self::create_special_impl(Repository::global_mut(), cn, armor, animal, godly)
+    }
+
+    fn create_special_impl(gs: &mut GameState, cn: usize, armor: &str, animal: &str, godly: &str) {
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -2659,7 +2709,7 @@ impl God {
         let armor_type = ArmorType::from_str(armor).unwrap_or_else(|| ArmorType::Cloth);
 
         if armor_type == ArmorType::Cloth || armor_type == ArmorType::Leather {
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 "Invalid armor type specified.\n",
@@ -2679,7 +2729,7 @@ impl God {
             ArmorType::Emerald => (981usize, 982usize),
             ArmorType::Cloth | ArmorType::Leather => {
                 // Already filtered above, but keep an explicit guard.
-                Repository::global_mut().do_character_log(
+                gs.do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     "Invalid armor type specified.\n",
@@ -2690,16 +2740,16 @@ impl God {
 
         let mut created: [usize; 2] = [0, 0];
         for (idx, temp) in [helmet_temp, armor_temp].iter().copied().enumerate() {
-            let item_id = match Self::create_item(temp) {
+            let item_id = match Self::create_item_impl(gs, temp) {
                 Some(item_id) => item_id,
                 None => {
                     // Clean up any items already created.
                     for &id in created.iter() {
                         if id != 0 {
-                            Repository::global_mut().items[id].used = core::constants::USE_EMPTY;
+                            gs.items[id].used = core::constants::USE_EMPTY;
                         }
                     }
-                    Repository::global_mut().do_character_log(
+                    gs.do_character_log(
                         cn,
                         core::types::FontColor::Red,
                         &format!("god_create_item() failed for {}.\n", temp),
@@ -2712,7 +2762,6 @@ impl God {
 
             // Apply the same logic as helpers::create_special_item, but deterministically based on args.
             {
-                let gs = Repository::global_mut();
                 let item = &mut gs.items[item_id];
 
                 // Match C: the resulting item should not be linked to its original template.
@@ -2790,40 +2839,24 @@ impl God {
         }
 
         // Deliver both items (and roll back cleanly if we can't give the full pair).
-        if !Self::give_character_item(cn, created[0]) {
-            Repository::global_mut().items[created[0]].used = core::constants::USE_EMPTY;
-            Repository::global_mut().do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                "Your inventory is full!\n",
-            );
+        if !Self::give_character_item_impl(gs, cn, created[0]) {
+            gs.items[created[0]].used = core::constants::USE_EMPTY;
+            gs.do_character_log(cn, core::types::FontColor::Red, "Your inventory is full!\n");
             return;
         }
-        if !Self::give_character_item(cn, created[1]) {
+        if !Self::give_character_item_impl(gs, cn, created[1]) {
             // Remove the first item again to keep behavior consistent (we create a pair).
-            let _ = Self::remove_item(cn, created[0]);
-            {
-                let gs = Repository::global_mut();
-                gs.items[created[0]].used = core::constants::USE_EMPTY;
-                gs.items[created[1]].used = core::constants::USE_EMPTY;
-            }
-            Repository::global_mut().do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                "Your inventory is full!\n",
-            );
+            let _ = Self::remove_item_impl(gs, cn, created[0]);
+            gs.items[created[0]].used = core::constants::USE_EMPTY;
+            gs.items[created[1]].used = core::constants::USE_EMPTY;
+            gs.do_character_log(cn, core::types::FontColor::Red, "Your inventory is full!\n");
             return;
         }
 
-        let (helmet_name, armor_name) = {
-            let gs = Repository::global_mut();
-            (
-                gs.items[created[0]].get_name().to_string(),
-                gs.items[created[1]].get_name().to_string(),
-            )
-        };
+        let helmet_name = gs.items[created[0]].get_name().to_string();
+        let armor_name = gs.items[created[1]].get_name().to_string();
 
-        Repository::global_mut().do_character_log(
+        gs.do_character_log(
             cn,
             core::types::FontColor::Green,
             &format!("Created special items: {}, {}.\n", helmet_name, armor_name),
