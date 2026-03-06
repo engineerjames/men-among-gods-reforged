@@ -4203,6 +4203,8 @@ impl God {
     ///
     /// Grants or removes purple display/privileges from `co`.
     pub fn set_purple(cn: usize, co: usize) {
+        let gs = Repository::global_mut();
+
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
         }
@@ -4210,27 +4212,25 @@ impl God {
         // Toggle purple (PK) status
         // Assuming there's a PK flag in constants
         let pk_flag = 0x1000000u64; // Example PK flag
-        let target_name = Repository::global_mut().characters[co]
-            .get_name()
-            .to_string();
+        let target_name = gs.characters[co].get_name().to_string();
 
-        if Repository::global_mut().characters[co].flags & pk_flag != 0 {
-            Repository::global_mut().characters[co].flags &= !pk_flag;
-            Repository::global_mut().do_character_log(
+        if gs.characters[co].flags & pk_flag != 0 {
+            gs.characters[co].flags &= !pk_flag;
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Green,
                 &format!("Removed PK status from character {}\n", target_name),
             );
         } else {
-            Repository::global_mut().characters[co].flags |= pk_flag;
-            Repository::global_mut().do_character_log(
+            gs.characters[co].flags |= pk_flag;
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Green,
                 &format!("Added PK status to character {}\n", target_name),
             );
         }
 
-        Repository::global_mut().characters[co].set_do_update_flags();
+        gs.characters[co].set_do_update_flags();
     }
 
     /// Change the race/template of character `co` to `temp`.
@@ -4239,18 +4239,20 @@ impl God {
     /// essential account information like name, passwords, gold, and depot.
     /// This resets all stats, skills, and experience to template defaults.
     pub fn racechange(co: usize, temp: i32) {
+        let gs = Repository::global_mut();
+
         if !Character::is_sane_character(co) {
             return;
         }
 
         // Only allow for players
-        let is_player = Repository::global_mut().characters[co].is_player();
+        let is_player = gs.characters[co].is_player();
         if !is_player {
             return;
         }
 
         if temp < 0 || temp >= core::constants::MAXTCHARS as i32 {
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 co,
                 core::types::FontColor::Red,
                 &format!("Invalid character template: {}\n", temp),
@@ -4259,10 +4261,10 @@ impl God {
             return;
         }
 
-        let template = Repository::global_mut().character_templates[temp as usize];
+        let template = gs.character_templates[temp as usize];
 
         if template.used == core::constants::USE_EMPTY {
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 co,
                 core::types::FontColor::Red,
                 &format!("Template {} is not in use\n", temp),
@@ -4275,7 +4277,6 @@ impl God {
         Self::destroy_items(co);
 
         {
-            let gs = Repository::global_mut();
             let character = &mut gs.characters[co];
 
             // Preserve important data before replacing
@@ -4397,19 +4398,21 @@ impl God {
             );
         }
 
-        Repository::global_mut().do_update_char(co);
+        gs.do_update_char(co);
     }
 
     /// Save character `co` to persistent storage.
     ///
     /// Returns `1` on success and performs necessary write operations.
     pub fn save(cn: usize, co: usize) -> i32 {
+        let gs = Repository::global_mut();
+
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return 0;
         }
 
-        if !Repository::global_mut().characters[co].is_player() {
-            Repository::global_mut().do_character_log(
+        if !gs.characters[co].is_player() {
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 "Cannot save non-player character\n",
@@ -4417,13 +4420,11 @@ impl God {
             return 0;
         }
 
-        Repository::global_mut().do_character_log(
+        let target_name = gs.characters[co].get_name().to_string();
+        gs.do_character_log(
             cn,
             core::types::FontColor::Green,
-            &format!(
-                "Saving character {}\n",
-                Repository::global_mut().characters[co].get_name()
-            ),
+            &format!("Saving character {}\n", target_name),
         );
         // TODO: Actual save logic would write to disk
 
@@ -4434,57 +4435,59 @@ impl God {
     #[allow(dead_code)]
     /// Placeholder for mail-related password operations.
     pub fn mail_pass(cn: usize, co: usize) {
+        let gs = Repository::global_mut();
+
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
         }
 
-        let character = &Repository::global_mut().characters[co];
+        let character_name = gs.characters[co].get_name().to_string();
 
-        Repository::global_mut().do_character_log(
+        gs.do_character_log(
             cn,
             core::types::FontColor::Green,
-            &format!("Mailing password for character {}\n", character.get_name()),
+            &format!("Mailing password for character {}\n", character_name),
         );
         // TODO: Actual mail logic
     }
 
     /// Command to make `co` perform a slap animation (cosmetic/admin).
     pub fn slap(cn: usize, co: usize) {
+        let gs = Repository::global_mut();
+
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
         }
 
-        Repository::with_characters_mut(|characters| {
-            let target = &mut characters[co];
+        let (damage, target_name) = {
+            let target = &mut gs.characters[co];
 
-            // Damage the target (hp[5] is total, hp[0] is max)
             let damage = (target.hp[0] / 10).max(1);
             target.hp[5] = (target.hp[5] as i32 - damage as i32).max(1) as u16;
-
             target.set_do_update_flags();
 
-            Repository::global_mut().do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                &format!(
-                    "Slapped character {} for {} damage\n",
-                    target.get_name(),
-                    damage
-                ),
-            );
-        });
+            (damage, target.get_name().to_string())
+        };
+
+        gs.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            &format!("Slapped character {} for {} damage\n", target_name, damage),
+        );
     }
 
     /// Change a character's sprite id.
     ///
     /// Performs validation of the sprite id before updating the character.
     pub fn spritechange(cn: usize, co: usize, sprite: i32) {
+        let gs = Repository::global_mut();
+
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
         }
 
         if !(0..=10000).contains(&sprite) {
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 &format!("Invalid sprite number: {}\n", sprite),
@@ -4492,54 +4495,58 @@ impl God {
             return;
         }
 
-        Repository::with_characters_mut(|characters| {
-            let target = &mut characters[co];
+        let target_name = {
+            let target = &mut gs.characters[co];
             target.sprite = sprite as u16;
             target.set_do_update_flags();
+            target.get_name().to_string()
+        };
 
-            Repository::global_mut().do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                &format!(
-                    "Changed sprite of character {} to {}\n",
-                    target.get_name(),
-                    sprite
-                ),
-            );
-        });
+        gs.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            &format!(
+                "Changed sprite of character {} to {}\n",
+                target_name, sprite
+            ),
+        );
     }
 
     /// Adjust the `luck` stat for a character.
     pub fn luck(cn: usize, co: usize, value: i32) {
+        let gs = Repository::global_mut();
+
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
         }
 
         let value = value.clamp(-10000, 10000);
 
-        Repository::with_characters_mut(|characters| {
-            let target = &mut characters[co];
+        let target_name = {
+            let target = &mut gs.characters[co];
             target.luck = value;
             target.set_do_update_flags();
+            target.get_name().to_string()
+        };
 
-            Repository::global_mut().do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                &format!("Set luck of character {} to {}\n", target.get_name(), value),
-            );
-        });
+        gs.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            &format!("Set luck of character {} to {}\n", target_name, value),
+        );
     }
 
     /// Reset a character's description to a blank/default value.
     pub fn reset_description(cn: usize, co: usize) {
+        let gs = Repository::global_mut();
+
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
         }
 
-        Repository::with_characters_mut(|characters| {
-            let target = &mut characters[co];
+        let target_name = {
+            let target = &mut gs.characters[co];
 
-            // Reset to default description
             let default_desc = format!(
                 "{} is a character. They look somewhat nondescript.",
                 target.get_name()
@@ -4551,25 +4558,28 @@ impl God {
                 .try_into()
                 .unwrap_or([0; 200]);
             target.set_do_update_flags();
+            target.get_name().to_string()
+        };
 
-            Repository::global_mut().do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                &format!("Reset description for character {}\n", target.get_name()),
-            );
-        });
+        gs.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            &format!("Reset description for character {}\n", target_name),
+        );
     }
 
     /// Set or change the visible name of a character, with validation.
     ///
     /// Ensures the new name meets length and character constraints.
     pub fn set_name(cn: usize, co: usize, name: &str) {
+        let gs = Repository::global_mut();
+
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
         }
 
         if name.len() > 16 || name.is_empty() {
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 &format!("Invalid name length: {}\n", name.len()),
@@ -4577,8 +4587,8 @@ impl God {
             return;
         }
 
-        Repository::with_characters_mut(|characters| {
-            let target = &mut characters[co];
+        let old_name = {
+            let target = &mut gs.characters[co];
             let old_name = target.get_name().to_string();
             target.name = name
                 .bytes()
@@ -4587,13 +4597,14 @@ impl God {
                 .try_into()
                 .unwrap_or([0; 40]);
             target.set_do_update_flags();
+            old_name
+        };
 
-            Repository::global_mut().do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                &format!("Changed name of character from {} to {}\n", old_name, name),
-            );
-        });
+        gs.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            &format!("Changed name of character from {} to {}\n", old_name, name),
+        );
     }
 
     /// Usurp an NPC: take control of its slot as an admin operation.
