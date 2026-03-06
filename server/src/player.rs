@@ -11,8 +11,8 @@ use core::{
 };
 
 use crate::{
-    driver, enums, game_state::GameState, game_state::GameState as Repository, god::God, helpers,
-    keydb, network_manager::NetworkManager, server::Server, types::cmap::CMap,
+    driver, enums, game_state::GameState, god::God, helpers, keydb,
+    network_manager::NetworkManager, server::Server, types::cmap::CMap,
 };
 
 /// Port of `plr_logout(int cn, int player_id, LogoutReason reason)` from `svr_tick.cpp`
@@ -4376,7 +4376,7 @@ pub fn plr_cmd(gs: &mut GameState, nr: usize) {
     // immediately in the original code.
     match cmd {
         core::constants::CL_NEWLOGIN => {
-            plr_challenge_newlogin(nr);
+            plr_challenge_newlogin(gs, nr);
         }
         core::constants::CL_CHALLENGE => {
             plr_challenge(gs, nr);
@@ -4385,10 +4385,10 @@ pub fn plr_cmd(gs: &mut GameState, nr: usize) {
             plr_challenge_login(gs, nr);
         }
         core::constants::CL_API_LOGIN => {
-            plr_challenge_api_login(nr);
+            plr_challenge_api_login(gs, nr);
         }
         core::constants::CL_CMD_UNIQUE => {
-            plr_unique(nr);
+            plr_unique(gs, nr);
             return;
         }
         core::constants::CL_PASSWD => {
@@ -4413,7 +4413,7 @@ pub fn plr_cmd(gs: &mut GameState, nr: usize) {
         && cmd != core::constants::CL_CMD_CTICK
         && cmd != core::constants::CL_PING
     {
-        let ticker = Repository::global_mut().globals.ticker as u32;
+        let ticker = gs.globals.ticker as u32;
         Server::with_players_mut(|players| {
             players[nr].lasttick2 = ticker;
         });
@@ -4422,7 +4422,7 @@ pub fn plr_cmd(gs: &mut GameState, nr: usize) {
     // Handle commands that don't require stun check
     match cmd {
         core::constants::CL_PERF_REPORT => {
-            plr_perf_report(nr);
+            plr_perf_report(gs, nr);
             return;
         }
         core::constants::CL_PING => {
@@ -4431,143 +4431,141 @@ pub fn plr_cmd(gs: &mut GameState, nr: usize) {
         }
         core::constants::CL_CMD_LOOK => {
             log::debug!("PLR_CMD_LOOK received for player {}", nr);
-            plr_cmd_look(nr, false);
+            plr_cmd_look(gs, nr, false);
             return;
         }
         core::constants::CL_CMD_AUTOLOOK => {
             // Don't log auto commands to reduce log spam
-            plr_cmd_look(nr, true);
+            plr_cmd_look(gs, nr, true);
             return;
         }
         core::constants::CL_CMD_SETUSER => {
             log::debug!("PLR_CMD_SETUSER received for player {}", nr);
-            plr_cmd_setuser(nr);
+            plr_cmd_setuser(gs, nr);
             return;
         }
         core::constants::CL_CMD_STAT => {
             log::debug!("PLR_CMD_STAT received for player {}", nr);
-            plr_cmd_stat(nr);
+            plr_cmd_stat(gs, nr);
             return;
         }
         core::constants::CL_CMD_INPUT1 => {
-            plr_cmd_input(nr, 1);
+            plr_cmd_input(gs, nr, 1);
             return;
         }
         core::constants::CL_CMD_INPUT2 => {
-            plr_cmd_input(nr, 2);
+            plr_cmd_input(gs, nr, 2);
             return;
         }
         core::constants::CL_CMD_INPUT3 => {
-            plr_cmd_input(nr, 3);
+            plr_cmd_input(gs, nr, 3);
             return;
         }
         core::constants::CL_CMD_INPUT4 => {
-            plr_cmd_input(nr, 4);
+            plr_cmd_input(gs, nr, 4);
             return;
         }
         core::constants::CL_CMD_INPUT5 => {
-            plr_cmd_input(nr, 5);
+            plr_cmd_input(gs, nr, 5);
             return;
         }
         core::constants::CL_CMD_INPUT6 => {
-            plr_cmd_input(nr, 6);
+            plr_cmd_input(gs, nr, 6);
             return;
         }
         core::constants::CL_CMD_INPUT7 => {
-            plr_cmd_input(nr, 7);
+            plr_cmd_input(gs, nr, 7);
             return;
         }
         core::constants::CL_CMD_INPUT8 => {
-            plr_cmd_input(nr, 8);
+            plr_cmd_input(gs, nr, 8);
             return;
         }
         core::constants::CL_CMD_CTICK => {
-            plr_cmd_ctick(nr);
+            plr_cmd_ctick(gs, nr);
             return;
         }
         _ => {}
     }
 
     let cn = Server::with_players(|players| players[nr].usnr);
-    let is_stunned = Repository::global_mut().characters[cn].stunned > 0;
+    let is_stunned = gs.characters[cn].stunned > 0;
 
     if is_stunned {
-        Repository::global_mut().do_character_log(
+        gs.do_character_log(
             cn,
             core::types::FontColor::Red,
             "You have been stunned. You cannot move.\n",
         );
     }
 
-    let character_name = Repository::global_mut().characters[cn]
-        .get_name()
-        .to_string();
+    let character_name = gs.characters[cn].get_name().to_string();
 
     // Handle commands that show stun message but still execute
     match cmd {
         core::constants::CL_CMD_LOOK_ITEM => {
             log::debug!("PLR_CMD_LOOK_ITEM received for player {}", character_name);
-            plr_cmd_look_item(nr);
+            plr_cmd_look_item(gs, nr);
             return;
         }
         core::constants::CL_CMD_GIVE => {
             log::debug!("PLR_CMD_GIVE received for player {}", character_name);
-            plr_cmd_give(nr);
+            plr_cmd_give(gs, nr);
             return;
         }
         core::constants::CL_CMD_TURN => {
             log::debug!("PLR_CMD_TURN received for player {}", character_name);
-            plr_cmd_turn(nr);
+            plr_cmd_turn(gs, nr);
             return;
         }
         core::constants::CL_CMD_DROP => {
             log::debug!("PLR_CMD_DROP received for player {}", character_name);
-            plr_cmd_drop(nr);
+            plr_cmd_drop(gs, nr);
             return;
         }
         core::constants::CL_CMD_PICKUP => {
             log::debug!("PLR_CMD_PICKUP received for player {}", character_name);
-            plr_cmd_pickup(nr);
+            plr_cmd_pickup(gs, nr);
             return;
         }
         core::constants::CL_CMD_ATTACK => {
             log::debug!("PLR_CMD_ATTACK received for player {}", character_name);
-            plr_cmd_attack(nr);
+            plr_cmd_attack(gs, nr);
             return;
         }
         core::constants::CL_CMD_MODE => {
             log::debug!("PLR_CMD_MODE received for player {}", character_name);
-            plr_cmd_mode(nr);
+            plr_cmd_mode(gs, nr);
             return;
         }
         core::constants::CL_CMD_MOVE => {
             log::debug!("PLR_CMD_MOVE received for player {}", character_name);
-            plr_cmd_move(nr);
+            plr_cmd_move(gs, nr);
             return;
         }
         core::constants::CL_CMD_RESET => {
             log::debug!("PLR_CMD_RESET received for player {}", character_name);
-            plr_cmd_reset(nr);
+            plr_cmd_reset(gs, nr);
             return;
         }
         core::constants::CL_CMD_SKILL => {
             log::debug!("PLR_CMD_SKILL received for player {}", character_name);
-            plr_cmd_skill(nr);
+            plr_cmd_skill(gs, nr);
             return;
         }
         core::constants::CL_CMD_INV_LOOK => {
             log::debug!("PLR_CMD_INV_LOOK received for player {}", character_name);
-            plr_cmd_inv_look(nr);
+            plr_cmd_inv_look(gs, nr);
             return;
         }
         core::constants::CL_CMD_USE => {
             log::debug!("PLR_CMD_USE received for player {}", character_name);
-            plr_cmd_use(nr);
+            plr_cmd_use(gs, nr);
             return;
         }
         core::constants::CL_CMD_INV => {
             log::debug!("PLR_CMD_INV received for player {}", character_name);
-            plr_cmd_inv(nr);
+            plr_cmd_inv(gs, nr);
             return;
         }
         core::constants::CL_CMD_EXIT => {
@@ -4585,7 +4583,7 @@ pub fn plr_cmd(gs: &mut GameState, nr: usize) {
 
     match cmd {
         core::constants::CL_CMD_SHOP => {
-            plr_cmd_shop(nr);
+            plr_cmd_shop(gs, nr);
         }
         _ => {
             log::warn!("Unknown CL command: {} for player {}", cmd, character_name);
@@ -4626,14 +4624,14 @@ fn send_mod(nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index to challenge
-fn plr_challenge_newlogin(nr: usize) {
+fn plr_challenge_newlogin(gs: &mut GameState, nr: usize) {
     // Generate random challenge value (0x3fffffff max, ensure non-zero)
     let mut tmp = helpers::random_mod(0x3fffffff_u32 - 1) + 1;
     if tmp == 0 {
         tmp = 42;
     }
 
-    let ticker = Repository::global_mut().globals.ticker as u32;
+    let ticker = gs.globals.ticker as u32;
 
     Server::with_players_mut(|players| {
         players[nr].challenge = tmp;
@@ -4718,7 +4716,7 @@ fn plr_challenge(gs: &mut GameState, nr: usize) {
         return;
     }
 
-    let ticker = Repository::global_mut().globals.ticker as u32;
+    let ticker = gs.globals.ticker as u32;
 
     // Update state based on current state
     match state {
@@ -4771,7 +4769,7 @@ fn plr_challenge_login(gs: &mut GameState, nr: usize) {
         tmp = 42;
     }
 
-    let ticker = Repository::global_mut().globals.ticker as u32;
+    let ticker = gs.globals.ticker as u32;
 
     Server::with_players_mut(|players| {
         players[nr].challenge = tmp;
@@ -4844,7 +4842,7 @@ fn plr_challenge_login(gs: &mut GameState, nr: usize) {
 /// The client sends `CL_API_LOGIN` with a u64 one-time ticket in the payload.
 /// We store the ticket on the player slot and then proceed with the normal
 /// `SV_CHALLENGE` / `CL_CHALLENGE` handshake.
-fn plr_challenge_api_login(nr: usize) {
+fn plr_challenge_api_login(gs: &mut GameState, nr: usize) {
     log::debug!("Player {} challenge_api_login", nr);
 
     // Generate random challenge value (0x3fffffff max, ensure non-zero)
@@ -4866,7 +4864,7 @@ fn plr_challenge_api_login(nr: usize) {
         ])
     });
 
-    let ticker = Repository::global_mut().globals.ticker as u32;
+    let ticker = gs.globals.ticker as u32;
     Server::with_players_mut(|players| {
         players[nr].challenge = tmp;
         players[nr].state = core::constants::ST_LOGIN_CHALLENGE;
@@ -4899,7 +4897,7 @@ fn plr_challenge_api_login(nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index sending the unique
-fn plr_unique(nr: usize) {
+fn plr_unique(gs: &mut GameState, nr: usize) {
     // Read unique ID from inbuf (8 bytes as u64)
     let unique = Server::with_players(|players| {
         u64::from_le_bytes([
@@ -4922,9 +4920,8 @@ fn plr_unique(nr: usize) {
 
     // If client doesn't have a unique ID, generate one
     if unique == 0 {
-        Repository::global_mut().globals.unique =
-            Repository::global_mut().globals.unique.wrapping_add(1);
-        let new_unique = Repository::global_mut().globals.unique;
+        gs.globals.unique = gs.globals.unique.wrapping_add(1);
+        let new_unique = gs.globals.unique;
 
         Server::with_players_mut(|players| {
             players[nr].unique = new_unique;
@@ -4981,7 +4978,7 @@ fn plr_passwd(nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index reporting performance
-fn plr_perf_report(nr: usize) {
+fn plr_perf_report(gs: &mut GameState, nr: usize) {
     // Read performance metrics from inbuf (unused but parsed for completeness)
     let (_ticksize, _skip, _idle) = Server::with_players(|players| {
         let ticksize = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]);
@@ -4991,7 +4988,7 @@ fn plr_perf_report(nr: usize) {
     });
 
     // Update timeout - this is the important part
-    let ticker = Repository::global_mut().globals.ticker as u32;
+    let ticker = gs.globals.ticker as u32;
     Server::with_players_mut(|players| {
         players[nr].lasttick = ticker;
     });
@@ -5010,7 +5007,7 @@ fn plr_perf_report(nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index issuing the look
 /// * `autoflag` - When true, treat the request as an automatic look
-fn plr_cmd_look(nr: usize, autoflag: bool) {
+fn plr_cmd_look(gs: &mut GameState, nr: usize, autoflag: bool) {
     let (cn, co) = Server::with_players(|players| {
         let co = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]) as usize;
         (players[nr].usnr, co)
@@ -5020,11 +5017,11 @@ fn plr_cmd_look(nr: usize, autoflag: bool) {
     if (co & 0x8000) != 0 {
         // Looking at depot slot
         let depot_slot = co & 0x7fff;
-        Repository::global_mut().do_look_depot(cn, depot_slot);
+        gs.do_look_depot(cn, depot_slot);
     } else {
         // Looking at character
         let autoflag_int = if autoflag { 1 } else { 0 };
-        Repository::global_mut().do_look_char(cn, co, 0, autoflag_int, 0);
+        gs.do_look_char(cn, co, 0, autoflag_int, 0);
     }
 }
 
@@ -5038,7 +5035,7 @@ fn plr_cmd_look(nr: usize, autoflag: bool) {
 ///
 /// # Arguments
 /// * `_nr` - Player slot index sending the data
-fn plr_cmd_setuser(_nr: usize) {
+fn plr_cmd_setuser(gs: &mut GameState, _nr: usize) {
     // Implementation based on original svr_tick.cpp
     // Read subtype, position and 13 bytes of data from player's inbuf
     let (nr, subtype, pos, chunk): (usize, u8, usize, [u8; 13]) = Server::with_players(|players| {
@@ -5061,20 +5058,17 @@ fn plr_cmd_setuser(_nr: usize) {
         0 | 1 => {
             // write 13 bytes into text[0] or text[1]
             let text_idx = if subtype == 0 { 0 } else { 1 };
-            Repository::global_mut().characters[cn].text[text_idx][pos..(13 + pos)]
-                .copy_from_slice(&chunk);
+            gs.characters[cn].text[text_idx][pos..(13 + pos)].copy_from_slice(&chunk);
         }
         2 => {
             // write into text[2]
-            Repository::global_mut().characters[cn].text[2][pos..(13 + pos)]
-                .copy_from_slice(&chunk);
+            gs.characters[cn].text[2][pos..(13 + pos)].copy_from_slice(&chunk);
 
             // If this was the final chunk (pos == 65) perform validation and possibly
             // commit name/reference/description changes.
             if pos == 65 {
                 // Work inside a mutable characters closure to inspect & modify
                 {
-                    let gs = Repository::global_mut();
                     let is_new_user = (gs.characters[cn].flags
                         & core::constants::CharacterFlags::NewUser.bits())
                         != 0;
@@ -5346,7 +5340,7 @@ fn plr_cmd_setuser(_nr: usize) {
 ///
 /// # Arguments
 /// * `_nr` - Player slot index issuing the stat change
-fn plr_cmd_stat(_nr: usize) {
+fn plr_cmd_stat(gs: &mut GameState, _nr: usize) {
     // Read stat index and value from inbuf and apply raises
     let (cn, n, v) = Server::with_players(|players| {
         let cn = players[_nr].usnr;
@@ -5363,28 +5357,28 @@ fn plr_cmd_stat(_nr: usize) {
     // perform raises
     if n < 5 {
         for _ in 0..v {
-            let _ = Repository::global_mut().do_raise_attrib(cn, n as i32);
+            let _ = gs.do_raise_attrib(cn, n as i32);
         }
     } else if n == 5 {
         for _ in 0..v {
-            let _ = Repository::global_mut().do_raise_hp(cn);
+            let _ = gs.do_raise_hp(cn);
         }
     } else if n == 6 {
         for _ in 0..v {
-            let _ = Repository::global_mut().do_raise_end(cn);
+            let _ = gs.do_raise_end(cn);
         }
     } else if n == 7 {
         for _ in 0..v {
-            let _ = Repository::global_mut().do_raise_mana(cn);
+            let _ = gs.do_raise_mana(cn);
         }
     } else {
         for _ in 0..v {
-            let _ = Repository::global_mut().do_raise_skill(cn, (n - 8) as i32);
+            let _ = gs.do_raise_skill(cn, (n - 8) as i32);
         }
     }
 
     // request character update
-    Repository::global_mut().do_update_char(cn);
+    gs.do_update_char(cn);
 }
 
 /// Handle text input commands (1-8)
@@ -5397,7 +5391,7 @@ fn plr_cmd_stat(_nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index sending the input
 /// * `part` - Which 1..8 chunk this call contains
-fn plr_cmd_input(nr: usize, part: u8) {
+fn plr_cmd_input(gs: &mut GameState, nr: usize, part: u8) {
     // Copy 15 bytes of input from inbuf to player input buffer
     let offset = ((part - 1) as usize) * 15;
     Server::with_players_mut(|players| {
@@ -5421,7 +5415,7 @@ fn plr_cmd_input(nr: usize, part: u8) {
         let text = c_string_to_str(&raw);
 
         // Call the server state handler (port of C++ do_say)
-        Repository::global_mut().do_say(cn, text);
+        gs.do_say(cn, text);
     }
 }
 
@@ -5433,8 +5427,8 @@ fn plr_cmd_input(nr: usize, part: u8) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index sending the tick
-fn plr_cmd_ctick(nr: usize) {
-    let ticker = Repository::global_mut().globals.ticker as u32;
+fn plr_cmd_ctick(gs: &mut GameState, nr: usize) {
+    let ticker = gs.globals.ticker as u32;
     Server::with_players_mut(|players| {
         // Read rtick from inbuf (4 bytes at offset 1)
         let rtick = u32::from_le_bytes([
@@ -5485,7 +5479,7 @@ fn plr_cmd_ping(nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index issuing the request
-fn plr_cmd_look_item(nr: usize) {
+fn plr_cmd_look_item(gs: &mut GameState, nr: usize) {
     // Read x,y from inbuf and call do_look_item
     let (x, y, cn) = Server::with_players(|players| {
         let x = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]) as i32;
@@ -5500,10 +5494,9 @@ fn plr_cmd_look_item(nr: usize) {
         return;
     }
 
-    let in_idx =
-        Repository::global_mut().map[(x + y * core::constants::SERVER_MAPX) as usize].it as usize;
+    let in_idx = gs.map[(x + y * core::constants::SERVER_MAPX) as usize].it as usize;
 
-    Repository::global_mut().do_look_item(cn, in_idx);
+    gs.do_look_item(cn, in_idx);
 }
 
 /// Handle give item command
@@ -5514,7 +5507,7 @@ fn plr_cmd_look_item(nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index issuing the give
-fn plr_cmd_give(nr: usize) {
+fn plr_cmd_give(gs: &mut GameState, nr: usize) {
     // Read target character id (4 bytes) and set give action
     let co = Server::with_players(|players| {
         u32::from_le_bytes([
@@ -5531,9 +5524,7 @@ fn plr_cmd_give(nr: usize) {
     }
 
     let cn = Server::with_players(|players| players[nr].usnr);
-    let ticker = Repository::global_mut().globals.ticker;
-
-    let gs = Repository::global_mut();
+    let ticker = gs.globals.ticker;
     gs.characters[cn].attack_cn = 0;
     gs.characters[cn].goto_x = 0;
     gs.characters[cn].misc_action = core::constants::DR_GIVE as u16;
@@ -5550,7 +5541,7 @@ fn plr_cmd_give(nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index issuing the turn
-fn plr_cmd_turn(nr: usize) {
+fn plr_cmd_turn(gs: &mut GameState, nr: usize) {
     // Read x,y and set turn action
     let (x, y, cn) = Server::with_players(|players| {
         let x = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]) as i32;
@@ -5561,15 +5552,13 @@ fn plr_cmd_turn(nr: usize) {
     log::info!("plr_cmd_turn: cn={} turning to {},{}", cn, x, y);
 
     // If building mode, ignore
-    let is_building = Repository::global_mut().characters[cn].is_building();
+    let is_building = gs.characters[cn].is_building();
     if is_building {
         log::debug!("plr_cmd_turn: cn={} is building, ignoring turn", cn);
         return;
     }
 
-    let ticker = Repository::global_mut().globals.ticker;
-
-    let gs = Repository::global_mut();
+    let ticker = gs.globals.ticker;
     gs.characters[cn].attack_cn = 0;
     gs.characters[cn].goto_x = 0;
     gs.characters[cn].goto_y = 0;
@@ -5588,7 +5577,7 @@ fn plr_cmd_turn(nr: usize) {
 ///
 /// # Arguments
 /// * `_nr` - Player slot index performing the drop
-fn plr_cmd_drop(_nr: usize) {
+fn plr_cmd_drop(gs: &mut GameState, _nr: usize) {
     let (x, y, cn) = Server::with_players(|players| {
         let x = u16::from_le_bytes([players[_nr].inbuf[1], players[_nr].inbuf[2]]) as i32;
         let y = u16::from_le_bytes([players[_nr].inbuf[3], players[_nr].inbuf[4]]) as i32;
@@ -5596,12 +5585,12 @@ fn plr_cmd_drop(_nr: usize) {
     });
 
     // Building-mode special handling
-    let is_building = Repository::global_mut().characters[cn].is_building();
+    let is_building = gs.characters[cn].is_building();
     if is_building {
         let (action, tx, ty) = (
-            Repository::global_mut().characters[cn].misc_action,
-            Repository::global_mut().characters[cn].misc_target1,
-            Repository::global_mut().characters[cn].misc_target2,
+            gs.characters[cn].misc_action,
+            gs.characters[cn].misc_target1,
+            gs.characters[cn].misc_target2,
         );
 
         if action == core::constants::DR_AREABUILD2 as u16 {
@@ -5610,28 +5599,24 @@ fn plr_cmd_drop(_nr: usize) {
             let xe = std::cmp::max(x, tx as i32);
             let ye = std::cmp::max(y, ty as i32);
 
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Green,
                 &format!("Areaend: {},{}\n", x, y),
             );
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Green,
                 &format!("Area: {},{} - {},{}\n", xs, ys, xe, ye),
             );
 
             // Note: actual build_drop per-tile processing not implemented yet.
-            Repository::global_mut().characters[cn].misc_action =
-                core::constants::DR_AREABUILD1 as u16;
+            gs.characters[cn].misc_action = core::constants::DR_AREABUILD1 as u16;
         } else if action == core::constants::DR_AREABUILD1 as u16 {
-            {
-                let gs = Repository::global_mut();
-                gs.characters[cn].misc_action = core::constants::DR_AREABUILD2 as u16;
-                gs.characters[cn].misc_target1 = x as u16;
-                gs.characters[cn].misc_target2 = y as u16;
-            }
-            Repository::global_mut().do_character_log(
+            gs.characters[cn].misc_action = core::constants::DR_AREABUILD2 as u16;
+            gs.characters[cn].misc_target1 = x as u16;
+            gs.characters[cn].misc_target2 = y as u16;
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Green,
                 &format!("Areastart: {},{}\n", x, y),
@@ -5643,9 +5628,7 @@ fn plr_cmd_drop(_nr: usize) {
         return;
     }
 
-    let ticker = Repository::global_mut().globals.ticker;
-
-    let gs = Repository::global_mut();
+    let ticker = gs.globals.ticker;
     gs.characters[cn].attack_cn = 0;
     gs.characters[cn].goto_x = 0;
     gs.characters[cn].misc_action = core::constants::DR_DROP as u16;
@@ -5663,7 +5646,7 @@ fn plr_cmd_drop(_nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index issuing the pickup
-fn plr_cmd_pickup(nr: usize) {
+fn plr_cmd_pickup(gs: &mut GameState, nr: usize) {
     let (x, y, cn) = Server::with_players(|players| {
         let x = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]) as i32;
         let y = u16::from_le_bytes([players[nr].inbuf[3], players[nr].inbuf[4]]) as i32;
@@ -5671,16 +5654,14 @@ fn plr_cmd_pickup(nr: usize) {
     });
 
     // Building-mode: removal in build mode should remove the temporary build object
-    let is_building = Repository::global_mut().characters[cn].is_building();
+    let is_building = gs.characters[cn].is_building();
     if is_building {
         // Call the build removal helper (port of C++ build_remove)
-        Repository::global_mut().do_build_remove(x, y);
+        gs.do_build_remove(x, y);
         return;
     }
 
-    let ticker = Repository::global_mut().globals.ticker;
-
-    let gs = Repository::global_mut();
+    let ticker = gs.globals.ticker;
     gs.characters[cn].attack_cn = 0;
     gs.characters[cn].goto_x = 0;
     gs.characters[cn].misc_action = core::constants::DR_PICKUP as u16;
@@ -5699,7 +5680,7 @@ fn plr_cmd_pickup(nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index issuing the attack
-fn plr_cmd_attack(nr: usize) {
+fn plr_cmd_attack(gs: &mut GameState, nr: usize) {
     let co = Server::with_players(|players| {
         u32::from_le_bytes([
             players[nr].inbuf[1],
@@ -5714,26 +5695,23 @@ fn plr_cmd_attack(nr: usize) {
     }
 
     let cn = Server::with_players(|players| players[nr].usnr);
-    let ticker = Repository::global_mut().globals.ticker;
+    let ticker = gs.globals.ticker;
 
-    {
-        let gs = Repository::global_mut();
-        gs.characters[cn].attack_cn = co as u16;
-        gs.characters[cn].goto_x = 0;
-        gs.characters[cn].misc_action = 0;
-        gs.characters[cn].cerrno = 0;
-        gs.characters[cn].data[12] = ticker;
-    }
+    gs.characters[cn].attack_cn = co as u16;
+    gs.characters[cn].goto_x = 0;
+    gs.characters[cn].misc_action = 0;
+    gs.characters[cn].cerrno = 0;
+    gs.characters[cn].data[12] = ticker;
 
-    if (co as usize) < Repository::global_mut().characters.len() {
+    if (co as usize) < gs.characters.len() {
         log::info!(
             "Trying to attack {} ({})",
-            Repository::global_mut().characters[co as usize].get_name(),
+            gs.characters[co as usize].get_name(),
             co
         );
     }
 
-    Repository::global_mut().remember_pvp(cn, co as usize);
+    gs.remember_pvp(cn, co as usize);
 }
 
 /// Handle speed mode command
@@ -5744,7 +5722,7 @@ fn plr_cmd_attack(nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index setting the mode
-fn plr_cmd_mode(nr: usize) {
+fn plr_cmd_mode(gs: &mut GameState, nr: usize) {
     let mode = Server::with_players(|players| {
         u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]])
     });
@@ -5756,9 +5734,9 @@ fn plr_cmd_mode(nr: usize) {
 
     let cn = Server::with_players(|players| players[nr].usnr);
 
-    Repository::global_mut().characters[cn].mode = mode as u8;
+    gs.characters[cn].mode = mode as u8;
 
-    Repository::global_mut().do_update_char(cn);
+    gs.do_update_char(cn);
 
     log::info!("Player {} set speed mode to {}", cn, mode);
 }
@@ -5771,29 +5749,26 @@ fn plr_cmd_mode(nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index sending the movement target
-fn plr_cmd_move(nr: usize) {
+fn plr_cmd_move(gs: &mut GameState, nr: usize) {
     let (x, y, cn) = Server::with_players(|players| {
         let x = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]);
         let y = u16::from_le_bytes([players[nr].inbuf[3], players[nr].inbuf[4]]);
         (x, y, players[nr].usnr)
     });
 
-    let ticker = Repository::global_mut().globals.ticker;
+    let ticker = gs.globals.ticker;
 
-    {
-        let gs = Repository::global_mut();
-        log::info!(
-            "plr_cmd_move: current_position = ({},{})",
-            gs.characters[cn].x,
-            gs.characters[cn].y,
-        );
-        gs.characters[cn].attack_cn = 0;
-        gs.characters[cn].goto_x = x;
-        gs.characters[cn].goto_y = y;
-        gs.characters[cn].misc_action = 0;
-        gs.characters[cn].cerrno = 0;
-        gs.characters[cn].data[12] = ticker;
-    }
+    log::info!(
+        "plr_cmd_move: current_position = ({},{})",
+        gs.characters[cn].x,
+        gs.characters[cn].y,
+    );
+    gs.characters[cn].attack_cn = 0;
+    gs.characters[cn].goto_x = x;
+    gs.characters[cn].goto_y = y;
+    gs.characters[cn].misc_action = 0;
+    gs.characters[cn].cerrno = 0;
+    gs.characters[cn].data[12] = ticker;
 }
 
 /// Handle reset command
@@ -5804,11 +5779,9 @@ fn plr_cmd_move(nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index requesting the reset
-fn plr_cmd_reset(nr: usize) {
+fn plr_cmd_reset(gs: &mut GameState, nr: usize) {
     let cn = Server::with_players(|players| players[nr].usnr);
-    let ticker = Repository::global_mut().globals.ticker;
-
-    let gs = Repository::global_mut();
+    let ticker = gs.globals.ticker;
     gs.characters[cn].use_nr = 0;
     gs.characters[cn].skill_nr = 0;
     gs.characters[cn].attack_cn = 0;
@@ -5827,7 +5800,7 @@ fn plr_cmd_reset(nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index invoking the skill
-fn plr_cmd_skill(nr: usize) {
+fn plr_cmd_skill(gs: &mut GameState, nr: usize) {
     let (n, co, cn) = Server::with_players(|players| {
         let n = u32::from_le_bytes([
             players[nr].inbuf[1],
@@ -5853,16 +5826,13 @@ fn plr_cmd_skill(nr: usize) {
     }
 
     // ensure skill exists for this character
-    let has_skill = Repository::global_mut().characters[cn].skill[n][0] != 0;
+    let has_skill = gs.characters[cn].skill[n][0] != 0;
     if !has_skill {
         return;
     }
 
-    {
-        let gs = Repository::global_mut();
-        gs.characters[cn].skill_nr = n as u16;
-        gs.characters[cn].skill_target1 = co as u16;
-    }
+    gs.characters[cn].skill_nr = n as u16;
+    gs.characters[cn].skill_target1 = co as u16;
 }
 
 /// Handle inventory look command
@@ -5873,7 +5843,7 @@ fn plr_cmd_skill(nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index issuing the command
-fn plr_cmd_inv_look(nr: usize) {
+fn plr_cmd_inv_look(gs: &mut GameState, nr: usize) {
     let (n, cn) = Server::with_players(|players| {
         let n = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]) as usize;
         (n, players[nr].usnr)
@@ -5883,21 +5853,18 @@ fn plr_cmd_inv_look(nr: usize) {
         return;
     }
 
-    let is_building = Repository::global_mut().characters[cn].is_building();
+    let is_building = gs.characters[cn].is_building();
     if is_building {
         // set carried item to the selected inventory slot and enter area-build
-        {
-            let gs = Repository::global_mut();
-            gs.characters[cn].citem = gs.characters[cn].item[n];
-            gs.characters[cn].misc_action = core::constants::DR_AREABUILD1 as u16;
-        }
-        Repository::global_mut().do_character_log(cn, core::types::FontColor::Green, "Area mode\n");
+        gs.characters[cn].citem = gs.characters[cn].item[n];
+        gs.characters[cn].misc_action = core::constants::DR_AREABUILD1 as u16;
+        gs.do_character_log(cn, core::types::FontColor::Green, "Area mode\n");
         return;
     }
 
-    let in_idx = Repository::global_mut().characters[cn].item[n] as usize;
+    let in_idx = gs.characters[cn].item[n] as usize;
     if in_idx != 0 {
-        Repository::global_mut().do_look_item(cn, in_idx);
+        gs.do_look_item(cn, in_idx);
     }
 }
 
@@ -5909,16 +5876,14 @@ fn plr_cmd_inv_look(nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index issuing the use
-fn plr_cmd_use(nr: usize) {
+fn plr_cmd_use(gs: &mut GameState, nr: usize) {
     let (x, y, cn) = Server::with_players(|players| {
         let x = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]) as i32;
         let y = u16::from_le_bytes([players[nr].inbuf[3], players[nr].inbuf[4]]) as i32;
         (x, y, players[nr].usnr)
     });
 
-    let ticker = Repository::global_mut().globals.ticker;
-
-    let gs = Repository::global_mut();
+    let ticker = gs.globals.ticker;
     gs.characters[cn].attack_cn = 0;
     gs.characters[cn].goto_x = 0;
     gs.characters[cn].misc_action = core::constants::DR_USE as u16;
@@ -5937,7 +5902,7 @@ fn plr_cmd_use(nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index issuing the inventory command
-fn plr_cmd_inv(nr: usize) {
+fn plr_cmd_inv(gs: &mut GameState, nr: usize) {
     let (what, n, mut co, cn) = Server::with_players(|players| {
         let what = u32::from_le_bytes([
             players[nr].inbuf[1],
@@ -5970,45 +5935,41 @@ fn plr_cmd_inv(nr: usize) {
             return;
         }
 
-        let stunned = Repository::global_mut().characters[cn].stunned > 0;
+        let stunned = gs.characters[cn].stunned > 0;
         if stunned {
             return;
         }
 
         // check for lag scroll template on the item
-        let tmp = Repository::global_mut().characters[cn].item[n] as usize;
-        let is_lag = {
-            let gs = Repository::global_mut();
-            if tmp != 0 && tmp < gs.items.len() && gs.items[tmp].used == core::constants::USE_ACTIVE
-            {
-                gs.items[tmp].temp as i32 == core::constants::IT_LAGSCROLL
-            } else {
-                false
-            }
+        let tmp = gs.characters[cn].item[n] as usize;
+        let is_lag = if tmp != 0
+            && tmp < gs.items.len()
+            && gs.items[tmp].used == core::constants::USE_ACTIVE
+        {
+            gs.items[tmp].temp as i32 == core::constants::IT_LAGSCROLL
+        } else {
+            false
         };
         if is_lag {
             return;
         }
 
-        Repository::global_mut().do_update_char(cn);
+        gs.do_update_char(cn);
 
         // Now handle citem/gold swap or placing citem into slot
-        {
-            let gs = Repository::global_mut();
-            if (gs.characters[cn].citem & 0x80000000) != 0 {
-                let tmpval = gs.characters[cn].citem & 0x7fffffff;
-                if tmpval > 0 {
-                    gs.characters[cn].gold += tmpval as i32;
-                }
-                gs.characters[cn].citem = 0;
-            } else {
-                if !gs.characters[cn].is_building() {
-                    gs.characters[cn].item[n] = gs.characters[cn].citem;
-                } else {
-                    gs.characters[cn].misc_action = core::constants::DR_SINGLEBUILD as u16;
-                }
-                gs.characters[cn].citem = tmp as u32;
+        if (gs.characters[cn].citem & 0x80000000) != 0 {
+            let tmpval = gs.characters[cn].citem & 0x7fffffff;
+            if tmpval > 0 {
+                gs.characters[cn].gold += tmpval as i32;
             }
+            gs.characters[cn].citem = 0;
+        } else {
+            if !gs.characters[cn].is_building() {
+                gs.characters[cn].item[n] = gs.characters[cn].citem;
+            } else {
+                gs.characters[cn].misc_action = core::constants::DR_SINGLEBUILD as u16;
+            }
+            gs.characters[cn].citem = tmp as u32;
         }
 
         return;
@@ -6016,36 +5977,33 @@ fn plr_cmd_inv(nr: usize) {
 
     // what == 1 : big inventory swap
     if what == 1 {
-        let stunned = Repository::global_mut().characters[cn].stunned > 0;
+        let stunned = gs.characters[cn].stunned > 0;
         if stunned {
             return;
         }
-        let _ = Repository::global_mut().do_swap_item(cn, n);
+        let _ = gs.do_swap_item(cn, n);
         return;
     }
 
     // what == 2 : withdraw gold into cursor
     if what == 2 {
-        let stunned = Repository::global_mut().characters[cn].stunned > 0;
+        let stunned = gs.characters[cn].stunned > 0;
         if stunned {
             return;
         }
-        let citem = Repository::global_mut().characters[cn].citem;
+        let citem = gs.characters[cn].citem;
         if citem != 0 {
             return;
         }
-        if n as i32 > Repository::global_mut().characters[cn].gold {
+        if n as i32 > gs.characters[cn].gold {
             return;
         }
         if n == 0 {
             return;
         }
-        {
-            let gs = Repository::global_mut();
-            gs.characters[cn].citem = 0x80000000 | (n as u32);
-            gs.characters[cn].gold -= n as i32;
-        }
-        Repository::global_mut().do_update_char(cn);
+        gs.characters[cn].citem = 0x80000000 | (n as u32);
+        gs.characters[cn].gold -= n as i32;
+        gs.do_update_char(cn);
         return;
     }
 
@@ -6054,15 +6012,12 @@ fn plr_cmd_inv(nr: usize) {
         if n > 19 {
             return;
         }
-        let is_building = Repository::global_mut().characters[cn].is_building();
+        let is_building = gs.characters[cn].is_building();
         if is_building {
             return;
         }
-        {
-            let gs = Repository::global_mut();
-            gs.characters[cn].use_nr = n as u16;
-            gs.characters[cn].skill_target1 = co as u16;
-        }
+        gs.characters[cn].use_nr = n as u16;
+        gs.characters[cn].skill_target1 = co as u16;
         return;
     }
 
@@ -6071,15 +6026,12 @@ fn plr_cmd_inv(nr: usize) {
         if n > 39 {
             return;
         }
-        let is_building = Repository::global_mut().characters[cn].is_building();
+        let is_building = gs.characters[cn].is_building();
         if is_building {
             return;
         }
-        {
-            let gs = Repository::global_mut();
-            gs.characters[cn].use_nr = (n as u16) + 20;
-            gs.characters[cn].skill_target1 = co as u16;
-        }
+        gs.characters[cn].use_nr = (n as u16) + 20;
+        gs.characters[cn].skill_target1 = co as u16;
         return;
     }
 
@@ -6088,13 +6040,13 @@ fn plr_cmd_inv(nr: usize) {
         if n > 19 {
             return;
         }
-        let is_building = Repository::global_mut().characters[cn].is_building();
+        let is_building = gs.characters[cn].is_building();
         if is_building {
             return;
         }
-        let in_idx = Repository::global_mut().characters[cn].worn[n] as usize;
+        let in_idx = gs.characters[cn].worn[n] as usize;
         if in_idx != 0 {
-            Repository::global_mut().do_look_item(cn, in_idx);
+            gs.do_look_item(cn, in_idx);
         }
         return;
     }
@@ -6104,13 +6056,13 @@ fn plr_cmd_inv(nr: usize) {
         if n > 39 {
             return;
         }
-        let is_building = Repository::global_mut().characters[cn].is_building();
+        let is_building = gs.characters[cn].is_building();
         if is_building {
             return;
         }
-        let in_idx = Repository::global_mut().characters[cn].item[n] as usize;
+        let in_idx = gs.characters[cn].item[n] as usize;
         if in_idx != 0 {
-            Repository::global_mut().do_look_item(cn, in_idx);
+            gs.do_look_item(cn, in_idx);
         }
         return;
     }
@@ -6139,7 +6091,7 @@ fn plr_cmd_exit(gs: &mut GameState, nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index issuing the shop command
-fn plr_cmd_shop(nr: usize) {
+fn plr_cmd_shop(gs: &mut GameState, nr: usize) {
     let (co, n, cn) = Server::with_players(|players| {
         let co = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]) as usize;
         let n = u16::from_le_bytes([players[nr].inbuf[3], players[nr].inbuf[4]]) as i32;
@@ -6148,8 +6100,8 @@ fn plr_cmd_shop(nr: usize) {
 
     if (co & 0x8000) != 0 {
         let idx = co & 0x7fff;
-        Repository::global_mut().do_depot_char(cn, idx, n);
+        gs.do_depot_char(cn, idx, n);
     } else {
-        Repository::global_mut().do_shop_char(cn, co, n);
+        gs.do_shop_char(cn, co, n);
     }
 }
